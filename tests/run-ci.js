@@ -56,7 +56,7 @@ for (const [file, what, browser] of SUITE) {
   fs.writeFileSync(path.join(OUT, file.replace('.js', '.log')), out);
   rows.push(`${why ? '❌' : '✅'} ${file.padEnd(17)} ${what}${browser ? ` [${BROWSER}]` : ''} · ${Math.round((Date.now() - t0) / 1000)} s${why ? ' · ' + why : ''}`);
   if (why) { fail++;
-    const labels = out.split('\n').filter(l => /^\s*❌/.test(l)).map(l => l.split(/ \| | → |\t/)[0].trim().slice(0, 90)).slice(0, 8).join(' / ');
+    const labels = out.split('\n').map((l, i, A) => /^\s*❌/.test(l) ? l.trim().slice(0, 160) + ' ⏎ ' + (A[i + 1] || '').trim().slice(0, 260) : null).filter(Boolean).slice(0, 6).join(' / ');   // données 100 % fictives : le contexte peut être affiché
     if (process.env.GITHUB_ACTIONS) console.log(`::error title=${file} (${BROWSER})::${scrub(why + (labels ? ' | ' + labels : '')).replace(/[\r\n%]/g, ' ')}`);   // dépôt public : jamais la sortie brute (elle peut contenir l'agenda)
     else console.log(out.split('\n').slice(-25).join('\n')); }
 }

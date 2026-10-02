@@ -5,7 +5,9 @@ name: Race Control · tests
 #    Aucun navigateur, aucun build de l'app, aucun affichage de donnée.
 #  - tests : AUCUN secret. L'app est construite avec un préréglage, un agenda et une clé 100 % fictifs, puis testée
 #    sur Chromium et sur WebKit (moteur de Safari, profil iPhone), réseau extérieur bloqué.
-#  - deploy : seulement si confidentialite ET les deux navigateurs sont verts, pour un push sur main ou un retour arrière.
+#  - relay-smoke : AUCUN secret. Le vrai relay.js tourne sur une configuration, un agenda et une géographie fictifs
+#    (alerte du matin, absence de doublon, télétravail, agenda chiffré avec tracés, obs.json sans donnée de trajet).
+#  - deploy : seulement si confidentialite, relay-smoke ET les deux navigateurs sont verts, pour un push sur main ou un retour arrière.
 #    Publie le build sur gh-pages sans jamais toucher aux fichiers du relais, étiquette la version (prod-N), vérifie la version en ligne.
 #    Un déploiement commencé n'est jamais annulé.
 # Retour arrière : Actions → « Race Control · tests » → Run workflow → version = prod-N. C'est un NOUVEAU déploiement contrôlé
@@ -14,7 +16,7 @@ name: Race Control · tests
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'tools/**', 'tests/**', 'encrypted/**', 'package.json', 'package-lock.json', '.github/workflows/ci.yml']
+    paths: ['src/**', 'tools/**', 'tests/**', 'encrypted/**', 'package.json', 'package-lock.json', '.github/workflows/ci.yml', '.github/workflows/race-control.yml']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -86,8 +88,21 @@ jobs:
         env:
           BROWSER: ${{ matrix.browser }}
         run: node tests/run-ci.js
+  relay-smoke:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - name: Relais de bout en bout (données fictives, sans aucun secret)
+        run: node tests/relay-smoke.js
   deploy:
-    needs: [version, confidentialite, tests]
+    needs: [version, confidentialite, tests, relay-smoke]
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -116,7 +131,12 @@ jobs:
           SRC_SHA: ${{ needs.version.outputs.ref }}
         run: |
           if [ -n "$ROLLBACK" ]; then N="${ROLLBACK#prod-}"; MSG="Retour arrière vers $ROLLBACK (${SRC_SHA::7}, tests verts, run ${{ github.run_number }})";
-          else N="${{ github.run_number }}"; MSG="Déploiement ${SRC_SHA::7} (tests verts, run ${{ github.run_number }})"; fi
+          else
+            # numérotation continue : dernière étiquette prod-N + 1 (les exécutions de pull requests ne consomment plus de numéro)
+            LAST=$(git ls-remote --tags origin 'refs/tags/prod-*' | sed -E 's#.*refs/tags/prod-([0-9]+)$#\1#' | grep -E '^[0-9]+$' | sort -n | tail -1)
+            N=$(( ${LAST:-0} + 1 )); MSG="Déploiement prod-$N : ${SRC_SHA::7} (tests verts, run ${{ github.run_number }})"
+          fi
+          echo "n=$N" >> "$GITHUB_OUTPUT"
           DEPLOY_RUN="$N" DEPLOY_SHA="$SRC_SHA" DEPLOY_ROLLBACK="$ROLLBACK" node tools/deploy-copy.js dist pages/race-control
           cd pages
           git config user.name "race-control-deploy"
@@ -129,8 +149,8 @@ jobs:
       - name: Étiquette de version (point de retour arrière)
         if: steps.pub.outputs.done == '1' && github.event.inputs.version == ''
         run: |
-          git tag "prod-${{ github.run_number }}" "$GITHUB_SHA"
-          git push -q origin "prod-${{ github.run_number }}"
+          git tag "prod-${{ steps.pub.outputs.n }}" "$GITHUB_SHA"
+          git push -q origin "prod-${{ steps.pub.outputs.n }}"
       - name: Vérification de la version en ligne
         if: steps.pub.outputs.done == '1'
         run: |

@@ -16,3 +16,4 @@ standalone.html
 test-results/
 node_modules/
 .ci/
+.ci-relay/

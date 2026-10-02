@@ -4,7 +4,7 @@ name: Race Control · contrôle des sources
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'tools/**', 'tests/**', 'encrypted/**', 'package.json', 'package-lock.json', '.github/workflows/sources-check.yml']
+    paths: ['src/**', 'tools/**', 'tests/**', 'encrypted/**', 'package.json', 'package-lock.json', '.github/workflows/sources-check.yml', '.github/workflows/race-control.yml']
   workflow_dispatch:
 permissions:
   contents: read
