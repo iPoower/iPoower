@@ -343,15 +343,41 @@ html { scroll-behavior: smooth; }
 .chip.gpsc small { font-family: var(--f-mono); font-size: 10.5px; opacity: .75; }
 #locMsg { align-self: center; flex-basis: 100%; }
 
+/* ---------- mode Météo, radar, air ---------- */
+.seg.view { align-self: flex-start; }
+.seg.view button { padding: 7px 16px; font-size: 13.5px; min-height: 38px; }
+.vm #secCars, .vm #secBrief, .vm #secCmp, .vm #secSeason, .vm #secJournal { display: none !important; }
+.radar { position: relative; }
+.rmap { height: 300px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel2); overflow: hidden; z-index: 0; }
+.rmsg { position: absolute; left: 10px; right: 10px; top: 50%; transform: translateY(-50%); text-align: center; font-size: 13px; color: var(--fg2); pointer-events: none; z-index: 500; }
+.rctr { position: absolute; left: 8px; top: 8px; z-index: 500; min-height: 34px !important; padding: 4px 10px; background: var(--panel); }
+.rctl { display: flex; align-items: center; gap: 10px; }
+.rctl input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.rctl #rtime { font-size: 12px; color: var(--fg2); white-space: nowrap; }
+.rleg { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--fg2); }
+.rleg i { flex: 1; max-width: 220px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, #9be1ff, #3fa8f5, #1c5fd6, #f5e130, #ff9a1f, #ff3b1f, #c4006e, #ff9cff); }
+.leaflet-container { background: var(--panel2); font: 11px var(--f-body); }
+.leaflet-control-attribution { background: color-mix(in srgb, var(--panel) 80%, transparent) !important; color: var(--fg2) !important; }
+.leaflet-control-attribution a { color: var(--fg2) !important; }
+.leaflet-bar a { background: var(--panel) !important; color: var(--fg) !important; border-color: var(--line) !important; }
+.airg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.airt { border: 1px solid var(--line); border-left: 3px solid var(--lv); border-radius: 4px; padding: 8px 10px; display: flex; flex-direction: column; gap: 1px; background: var(--lv-soft); min-width: 0; }
+.airt .k { font-size: 10.5px; color: var(--fg2); text-transform: uppercase; letter-spacing: .06em; }
+.airt .v { font-family: var(--f-disp); font-size: 28px; font-weight: 700; line-height: 1.05; color: var(--lv-t); }
+.airt .n { font-size: 11.5px; line-height: 1.25; }
+.airp { flex-wrap: wrap; }
+.pips.dm { flex-direction: column; align-items: flex-end; gap: 0; font-family: var(--f-mono); font-size: 11px; color: var(--fg2); line-height: 1.3; display: block; text-align: right; }
+
 </style>
 </head><body>
 <div class="statusbar"><div class="in" id="statusbar"></div></div>
 <main class="wrap">
   <header class="top">
     <h1 class="title"><small>CENTRE DE CONTRÔLE MÉTÉO · PNEUMATIQUES</small>Tyre Weather<br>Race Control</h1>
+    <div id="viewSeg"></div>
     <div class="chips" id="locChips"></div>
     <div class="srcline" id="srcline"></div>
-    <nav class="jump" aria-label="Aller à une section"><a href="#secCars">Voitures</a><a href="#secBrief">Départ</a><a href="#secIce">Verglas</a><a href="#secChart">24 h</a><a href="#secDays">7 jours</a><a href="#secSeason">Saison</a><a href="#secJournal">Journal</a><a href="#secAlerts">Alertes</a><a href="#settings">Réglages</a></nav>
+    <nav class="jump" id="jump" aria-label="Aller à une section"></nav>
   </header>
   <div id="demoBar"></div>
   <div id="notice"></div>
@@ -363,6 +389,8 @@ html { scroll-behavior: smooth; }
   <section class="mod" id="secIce" aria-label="Risque verglas"></section>
   <section class="mod" id="secChart" aria-label="Graphique 24 heures"></section>
   <section class="mod" id="secDays" aria-label="Prévisions 7 jours"></section>
+  <section class="mod" id="secRadar" aria-label="Radar pluie"></section>
+  <section class="mod" id="secAir" aria-label="Air, UV et pollens"></section>
   <section class="mod" id="secSeason" aria-label="Saison pneus"></section>
   <section class="mod" id="secJournal" aria-label="Journal de saison"></section>
   <section class="mod" id="secAlerts" aria-label="Alertes"></section>
@@ -533,7 +561,7 @@ function buildHours(p) {
     T: g('temperature_2m', i), RH: g('relative_humidity_2m', i), Td: g('dew_point_2m', i), Tapp: g('apparent_temperature', i),
     pp: g('precipitation_probability', i), P: g('precipitation', i), rain: g('rain', i), snow: g('snowfall', i),
     code: g('weather_code', i), pres: g('pressure_msl', i), cloud: g('cloud_cover', i), vis: g('visibility', i),
-    wind: g('wind_speed_10m', i), gust: g('wind_gusts_10m', i), rad: g('shortwave_radiation', i)
+    wind: g('wind_speed_10m', i), gust: g('wind_gusts_10m', i), rad: g('shortwave_radiation', i), uv: g('uv_index', i)
   }));
   hs.forEach(x => { x.Pl = (x.snow || 0) > 0.05 ? 0 : x.P; });
   hs.forEach(x => {
@@ -558,7 +586,7 @@ function makeModel(payload, mode, loc) {
     date: d, tmin: dg('temperature_2m_min', i), tmax: dg('temperature_2m_max', i),
     sunrise: D.sunrise ? D.sunrise[i] : null, sunset: D.sunset ? D.sunset[i] : null,
     psum: dg('precipitation_sum', i), ssum: dg('snowfall_sum', i), pmax: dg('precipitation_probability_max', i),
-    gust: dg('wind_gusts_10m_max', i), code: dg('weather_code', i)
+    gust: dg('wind_gusts_10m_max', i), code: dg('weather_code', i), uv: dg('uv_index_max', i)
   }));
   // min/max journaliers recalculés sur les heures fusionnées (cohérence avec AROME et le graphique)
   days.forEach(d => { const ts = hs.filter(x => x.date === d.date && x.T != null).map(x => x.T); if (ts.length === 24) { d.tmin = Math.min(...ts); d.tmax = Math.max(...ts); } });
@@ -1122,6 +1150,51 @@ function applyObs(model, stations, maxKm) {
 const WX_FR = { FG: 'brouillard', BR: 'brume', FZFG: 'brouillard givrant', RA: 'pluie', DZ: 'bruine', SN: 'neige', SHRA: 'averses', TS: 'orage', HZ: 'brume sèche', FZRA: 'pluie verglaçante', FZDZ: 'bruine verglaçante', MIFG: 'brouillard mince', BCFG: 'bancs de brouillard', PRFG: 'brouillard partiel' };
 const wxFr = s => String(s || '').split(' ').filter(Boolean).map(t => { const k = t.replace(/^[-+]|^VC/, ''); return (t[0] === '-' ? 'faible ' : t[0] === '+' ? 'fort ' : '') + (WX_FR[k] || WX_FR[k.slice(2)] || t); }).join(', ');
 
+/* ===================== MÉTÉO SEULE : UV, QUALITÉ DE L'AIR, POLLENS ===================== */
+// UV : échelle OMS
+const UV_LV = [[0, 'Faible', 0], [3, 'Modéré', 1], [6, 'Élevé', 2], [8, 'Très élevé', 3], [11, 'Extrême', 3]];
+function uvInfo(u) {
+  if (u == null || isNaN(u)) return null;
+  let r = UV_LV[0]; UV_LV.forEach(x => { if (u >= x[0]) r = x; });
+  const tip = r[2] === 0 ? 'Pas de protection nécessaire' : r[2] === 1 ? 'Lunettes, crème si exposition longue' : r[2] === 2 ? 'Crème, lunettes, chapeau, ombre aux heures centrales' : 'Éviter le soleil de 12 h à 16 h, protection maximale';
+  return { v: Math.round(u * 10) / 10, name: r[1], lv: r[2], tip };
+}
+// indice européen de qualité de l'air (EEA)
+const AQI_LV = [[0, 'Bon', 0], [20, 'Correct', 0], [40, 'Moyen', 1], [60, 'Médiocre', 2], [80, 'Très médiocre', 3], [100, 'Extrêmement médiocre', 3]];
+function aqiInfo(a) {
+  if (a == null || isNaN(a)) return null;
+  let r = AQI_LV[0]; AQI_LV.forEach(x => { if (a >= x[0]) r = x; });
+  return { v: Math.round(a), name: r[1], lv: r[2] };
+}
+// pollens (grains/m³) : seuils indicatifs, arbres plus émissifs que les herbacées
+const POLLENS = [
+  { k: 'birch_pollen', name: 'Bouleau', th: [1, 10, 50, 200] },
+  { k: 'alder_pollen', name: 'Aulne', th: [1, 10, 50, 200] },
+  { k: 'olive_pollen', name: 'Olivier', th: [1, 10, 50, 200] },
+  { k: 'grass_pollen', name: 'Graminées', th: [1, 5, 20, 50] },
+  { k: 'mugwort_pollen', name: 'Armoise', th: [1, 5, 20, 50] },
+  { k: 'ragweed_pollen', name: 'Ambroisie', th: [1, 5, 20, 50] }
+];
+const POL_NAME = ['Nul', 'Faible', 'Modéré', 'Élevé', 'Très élevé'];
+function pollenLv(p, v) { if (v == null || isNaN(v)) return null; let l = 0; p.th.forEach((t, i) => { if (v >= t) l = i + 1; }); return l; }
+// synthèse air + pollens : valeur actuelle et pic des 24 prochaines heures
+function airSummary(js, nowStr) {
+  if (!js || !js.hourly || !js.hourly.time) return null;
+  const H = js.hourly, t = H.time, c = js.current || {};
+  const now = (nowStr || '').slice(0, 13) + ':00'; let i0 = t.findIndex(x => x >= now); if (i0 < 0) i0 = 0;
+  const win = k => (H[k] || []).slice(i0, i0 + 24).map(num).filter(v => v != null);
+  const peak = k => { const a = win(k); return a.length ? Math.max(...a) : null; };
+  const peakAt = k => { const a = (H[k] || []).slice(i0, i0 + 24); let b = -1, bi = -1; a.forEach((v, j) => { if (v != null && v > b) { b = v; bi = j; } }); return bi >= 0 ? t[i0 + bi].slice(11, 16) : null; };
+  const cur = k => num(c[k]) ?? num((H[k] || [])[i0]);
+  const pol = POLLENS.map(p => { const v = cur(p.k), pk = peak(p.k); return { ...p, v, pk, lv: pollenLv(p, v), pkLv: pollenLv(p, pk) }; });
+  const anyPol = pol.some(p => p.v != null || p.pk != null);
+  return {
+    aqi: aqiInfo(cur('european_aqi')), aqiPk: aqiInfo(peak('european_aqi')), aqiPkAt: peakAt('european_aqi'),
+    pm25: cur('pm2_5'), pm10: cur('pm10'), o3: cur('ozone'), no2: cur('nitrogen_dioxide'),
+    pol, anyPol, polMax: anyPol ? Math.max(...pol.map(p => Math.max(p.lv || 0, p.pkLv || 0))) : null
+  };
+}
+
 /* ===================== DÉMO : scénarios simulés, au format exact de l'API ===================== */
 function parisOffsetH(dateStr) {
   const y = +dateStr.slice(0, 4);
@@ -1186,7 +1259,7 @@ function makeDemoPayload(key, loc, tz, dT) {
   const scn = DEMO_SCN[key] || DEMO_SCN.froid, nowStr = nowIn(tz), today = nowStr.slice(0, 10);
   const start = addMin(today + 'T00:00', -1440), nowHour = nowStr.slice(0, 13) + ':00';
   const N = 15 * 24, H = { time: [] };
-  const keys = ['temperature_2m', 'relative_humidity_2m', 'dew_point_2m', 'apparent_temperature', 'precipitation_probability', 'precipitation', 'rain', 'showers', 'snowfall', 'weather_code', 'pressure_msl', 'cloud_cover', 'visibility', 'wind_speed_10m', 'wind_gusts_10m', 'shortwave_radiation'];
+  const keys = ['temperature_2m', 'relative_humidity_2m', 'dew_point_2m', 'apparent_temperature', 'precipitation_probability', 'precipitation', 'rain', 'showers', 'snowfall', 'weather_code', 'pressure_msl', 'cloud_cover', 'visibility', 'wind_speed_10m', 'wind_gusts_10m', 'shortwave_radiation', 'uv_index'];
   keys.forEach(k => H[k] = []);
   const rows = [], lat = loc.lat, lon = loc.lon, sun = {};
   for (let k = 0; k < N; k++) {
@@ -1205,10 +1278,10 @@ function makeDemoPayload(key, loc, tz, dT) {
     H.apparent_temperature.push(+wchill.toFixed(1)); H.precipitation_probability.push(v.P > 0 ? 85 : v.cloud > 70 ? 25 : 5);
     H.precipitation.push(+v.P.toFixed(1)); H.rain.push(v.snow > 0 ? 0 : +v.P.toFixed(1)); H.showers.push(0); H.snowfall.push(+v.snow.toFixed(1));
     H.weather_code.push(v.code); H.pressure_msl.push(+(1014 + 4 * Math.sin(k / 30)).toFixed(1)); H.cloud_cover.push(Math.round(v.cloud));
-    H.visibility.push(v.vis); H.wind_speed_10m.push(+v.wind.toFixed(1)); H.wind_gusts_10m.push(+v.gust.toFixed(1)); H.shortwave_radiation.push(Math.round(rad));
-    rows.push({ date, T, P: v.P, snow: v.snow, code: v.code, gust: v.gust, pp: H.precipitation_probability[k] });
+    H.visibility.push(v.vis); H.wind_speed_10m.push(+v.wind.toFixed(1)); H.wind_gusts_10m.push(+v.gust.toFixed(1)); H.shortwave_radiation.push(Math.round(rad)); H.uv_index.push(+(rad / 95).toFixed(1));
+    rows.push({ date, T, P: v.P, snow: v.snow, code: v.code, gust: v.gust, pp: H.precipitation_probability[k], uv: rad / 95 });
   }
-  const D = { time: [], temperature_2m_max: [], temperature_2m_min: [], sunrise: [], sunset: [], precipitation_sum: [], snowfall_sum: [], precipitation_probability_max: [], wind_gusts_10m_max: [], weather_code: [] };
+  const D = { time: [], temperature_2m_max: [], temperature_2m_min: [], sunrise: [], sunset: [], precipitation_sum: [], snowfall_sum: [], precipitation_probability_max: [], wind_gusts_10m_max: [], weather_code: [], uv_index_max: [] };
   Object.keys(sun).forEach(date => {
     const r = rows.filter(x => x.date === date); if (r.length < 24) return;
     D.time.push(date);
@@ -1216,7 +1289,7 @@ function makeDemoPayload(key, loc, tz, dT) {
     D.sunrise.push(date + 'T' + hm(sun[date][0])); D.sunset.push(date + 'T' + hm(sun[date][1]));
     D.precipitation_sum.push(+r.reduce((a, x) => a + x.P, 0).toFixed(1)); D.snowfall_sum.push(+r.reduce((a, x) => a + x.snow, 0).toFixed(1));
     D.precipitation_probability_max.push(Math.max(...r.map(x => x.pp))); D.wind_gusts_10m_max.push(Math.max(...r.map(x => x.gust)));
-    D.weather_code.push(Math.max(...r.map(x => x.code)));
+    D.weather_code.push(Math.max(...r.map(x => x.code))); D.uv_index_max.push(+Math.max(...r.map(x => x.uv)).toFixed(1));
   });
   const ni = H.time.indexOf(nowHour), q = Math.floor(+nowStr.slice(14, 16) / 15) * 15;
   const cur = { time: nowStr.slice(0, 14) + pad(q), interval: 900 };
@@ -1249,6 +1322,15 @@ function makeDemoNowcast(base) {
   let ts = addMin(nowStr.slice(0, 14) + pad(q), -15); const time = [], P = [], S = [];
   for (let k = 0; k < 13; k++) { const i = base.hourly.time.indexOf(ts.slice(0, 13) + ':00'); time.push(ts); P.push(i >= 0 ? +((base.hourly.precipitation[i] || 0) / 4).toFixed(2) : 0); S.push(i >= 0 ? +((base.hourly.snowfall[i] || 0) / 4).toFixed(2) : 0); ts = addMin(ts, 15); }
   return { timezone: base.timezone, minutely_15: { time, precipitation: P, snowfall: S } };
+}
+
+// qualité de l'air et pollens simulés (démo uniquement)
+function makeDemoAir(base) {
+  const H = base.hourly, n = Math.min(H.time.length, 4 * 24), out = { time: H.time.slice(0, n) };
+  const w = k => H.time.slice(0, n).map((t, i) => { const hh = +t.slice(11, 13); return +Math.max(0, k[0] + k[1] * Math.sin(Math.PI * (hh - 8) / 14) + noiseAt(i, k[2]) * k[3]).toFixed(1); });
+  out.european_aqi = w([28, 14, 3, 6]); out.pm2_5 = w([8, 4, 4, 2]); out.pm10 = w([14, 6, 5, 3]); out.ozone = w([55, 25, 6, 5]); out.nitrogen_dioxide = w([12, -5, 7, 3]);
+  out.grass_pollen = w([6, 9, 8, 3]); out.birch_pollen = w([0, 0, 9, 0]); out.alder_pollen = w([0.5, 1, 10, 0.5]); out.mugwort_pollen = w([1, 2, 11, 1]); out.olive_pollen = w([0, 0, 12, 0]); out.ragweed_pollen = w([2, 4, 13, 1]);
+  return { hourly: out, current: {}, demo: true };
 }
 
 /* ===================== APPLICATION ===================== */
@@ -1373,8 +1455,8 @@ function setPath(o, path, val) {
 /* ---------- données ---------- */
 const API = 'https://api.open-meteo.com/v1/forecast';
 const Q_CUR = 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m';
-const Q_HR = 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,weather_code,pressure_msl,cloud_cover,visibility,wind_speed_10m,wind_gusts_10m,shortwave_radiation';
-const Q_DY = 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,snowfall_sum,precipitation_probability_max,wind_gusts_10m_max';
+const Q_HR = 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,weather_code,pressure_msl,cloud_cover,visibility,wind_speed_10m,wind_gusts_10m,shortwave_radiation,uv_index';
+const Q_DY = 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,snowfall_sum,precipitation_probability_max,wind_gusts_10m_max,uv_index_max';
 const urlFor = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&current=${Q_CUR}&hourly=${Q_HR}&daily=${Q_DY}&timezone=auto&past_days=1&forecast_days=14`;
 // Météo-France AROME (via Open-Meteo) : haute résolution sur 0–48 h. Pas de visibilité ni de probabilité de pluie : elles restent issues du modèle de base.
 const Q_AR = 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,showers,snowfall,weather_code,pressure_msl,cloud_cover,wind_speed_10m,wind_gusts_10m,shortwave_radiation';
@@ -1424,7 +1506,7 @@ function applyCalib() { const c = calibBias(S.calib); setRoadBias(c.bias); retur
 const locById = id => allLocs().find(l => l.id === id);
 let lastOk = null, lastTry = null, busy = false, CX = null;
 applyCalib();
-const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null };
+const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null, view: lsGet('twrc.view') === 'meteo' ? 'meteo' : 'pneus' };
 
 async function fetchJSON(url, ms) {
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms || 12000);
@@ -1478,7 +1560,7 @@ async function onPos(pos, focus) {
   if (!S.gpsAuto) { S.gpsAuto = 1; saveSettings(); }
   if (focus) UI.loc = 'gps';
   if (moved) {
-    delete ENSRAW.gps; delete NOWRAW.gps; delete RAW.gps;
+    delete ENSRAW.gps; delete NOWRAW.gps; delete RAW.gps; delete AQRAW.gps;
     const nm = await reverseName(np.lat, np.lon); Object.assign(GPS, nm);
     lsSet('twrc.gps', JSON.stringify(GPS));
     try { await loadLoc(GPS); lastOk = Date.now(); } catch (e) { ERR.gps = e.message; }
@@ -1499,7 +1581,7 @@ async function refreshAll() {
   });
   if (ok) lastOk = Date.now();
   busy = false; rebuild(); renderAll();
-  fetchVigi(); refreshEns();
+  fetchVigi(); refreshEns(); radarRefresh();
 }
 function startDemo(scn) {
   DEMO = { on: true, scn }; busy = false; MIDP = {};
@@ -1707,7 +1789,7 @@ function renderBanners() {
       <div class="thr"><span class="${vmin < 1000 ? 'on' : ''}">&lt; 1 000 m</span><span class="${vmin < 500 ? 'on' : ''}">&lt; 500 m</span><span class="${vmin < 200 ? 'on' : ''}">&lt; 200 m</span></div>
       <span style="font-size:13px">La météo elle-même impose une prudence particulière : distances de sécurité allongées, feux adaptés, vitesse réduite, quels que soient les pneus.</span></div>`;
   }
-  const top = Object.values(alerts).filter(a => S.alerts[a.id] && a.sev >= 2 && a.id !== 'fog' && a.id !== 'vis').sort((a, b) => b.sev - a.sev).slice(0, 3);
+  const top = Object.values(alerts).filter(a => S.alerts[a.id] && a.sev >= 2 && a.id !== 'fog' && a.id !== 'vis' && !(UI.view === 'meteo' && TIRE_ALERTS.includes(a.id))).sort((a, b) => b.sev - a.sev).slice(0, 3);
   if (top.length) h += '<div class="notes">' + top.map(a => `<div class="note lv${a.sev}"><b>${a.sev >= 3 ? 'DANGER' : 'ATTENTION'}</b><span>${esc(a.title)}</span></div>`).join('') + '</div>';
   el.innerHTML = h;
 }
@@ -1758,6 +1840,7 @@ function renderCurrent() {
     ${mt('Rafales', f0(c.gust), 'km/h', '', c.gust != null && c.gust >= 55)}
     ${mt('Pression', f0(c.pres), 'hPa', trend == null ? '' : (trend > 0.5 ? '↗ ' : trend < -0.5 ? '↘ ' : '→ ') + f1(trend) + ' / 3 h')}
     ${mt('Nuages', f0(c.cloud), '%')}
+    ${uvMetric(m, day)}
     ${mt('Lever du soleil', day.sunrise ? day.sunrise.slice(11, 16) : '—', '')}
     ${mt('Coucher du soleil', day.sunset ? day.sunset.slice(11, 16) : '—', '')}
   </div>
@@ -1771,6 +1854,155 @@ function renderCurrent() {
   ${ncBlock(m)}
   <div><div class="sub" style="margin-bottom:6px">ÉVOLUTION · PRÉVISIONS</div><div class="evo">${ev}</div></div>`;
 }
+
+
+/* ---------- mode Météo : bascule, ordre des modules ---------- */
+const TIRE_ALERTS = ['press', 'age', 'mont'];
+const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
+function renderView() {
+  const vm = UI.view === 'meteo';
+  document.body.classList.toggle('vm', vm);
+  $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="pneus" aria-pressed="${!vm}">🛞 Pneus</button><button data-act="view" data-v="meteo" aria-pressed="${vm}">🌦️ Météo</button></div>`;
+  const links = vm
+    ? [['secCur', 'Actuel'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
+    : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secSeason', 'Saison'], ['secJournal', 'Journal'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
+  $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
+  const order = vm
+    ? ['secCur', 'secRadar', 'secAir', 'secChart', 'secDays', 'secIce', 'secAlerts', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
+    : ['secCur', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'];
+  if (renderView.last === UI.view) return; renderView.last = UI.view;
+  let prev = $('#banners');
+  order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
+  if (RADAR.map) setTimeout(() => RADAR.map.invalidateSize(), 60);
+}
+
+/* ---------- UV ---------- */
+function uvToday(m) {
+  const today = m.nowStr.slice(0, 10); let best = null;
+  m.hs.forEach(x => { if (x.date === today && x.uv != null && (!best || x.uv > best.uv)) best = x; });
+  return best;
+}
+function uvMetric(m, day) {
+  const now = uvInfo((m.hs[m.nowI] || {}).uv), pk = uvToday(m), mx = uvInfo(day && day.uv != null ? day.uv : pk ? pk.uv : null);
+  if (!now && !mx) return mt('Indice UV', '—', '');
+  return mt('Indice UV', now ? f1(now.v) : '—', '', `${now ? now.name.toLowerCase() : ''}${mx ? ' · max ' + f0(mx.v) + (pk ? ' vers ' + pk.t.slice(11, 16) : '') : ''}`, now && now.lv >= 2);
+}
+
+/* ---------- qualité de l'air et pollens (Copernicus CAMS via Open-Meteo) ---------- */
+const AQRAW = {}, AQERR = {}, AQBUSY = new Set();
+const urlAQ = l => `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${l.lat}&longitude=${l.lon}&current=european_aqi,pm2_5,pm10,ozone,nitrogen_dioxide&hourly=european_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,${POLLENS.map(p => p.k).join(',')}&timezone=auto&forecast_days=2`;
+async function fetchAQ(l) {
+  if (!l || AQBUSY.has(l.id)) return; AQBUSY.add(l.id);
+  try { const p = await fetchJSON(urlAQ(l), 12000); if (!p || !p.hourly) throw new Error('réponse invalide'); AQRAW[l.id] = { p, t: Date.now() }; delete AQERR[l.id]; }
+  catch (e) { AQERR[l.id] = { t: Date.now(), msg: e.message }; }
+  AQBUSY.delete(l.id); if (UI.loc === l.id) renderAir();
+}
+const polCls = l => l == null || l === 0 ? 'lvx' : 'lv' + Math.min(3, l - 1);
+function renderAir() {
+  const el = $('#secAir'); if (!el) return; if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
+  const m = CX.m, l = curLoc(), id = l.id, r = AQRAW[id], er = AQERR[id];
+  if (!DEMO.on && (!r || Date.now() - r.t > 30 * 60e3) && !(er && Date.now() - er.t < 5 * 60e3)) fetchAQ(l);
+  const a = DEMO.on ? airSummary(makeDemoAir(m.payload), m.nowStr) : r ? airSummary(r.p, m.nowStr) : null;
+  const day = m.days.find(d => d.date === m.nowStr.slice(0, 10)) || {};
+  const uN = uvInfo((m.hs[m.nowI] || {}).uv), pk = uvToday(m), uM = uvInfo(day.uv != null ? day.uv : pk ? pk.uv : null);
+  const tile = (k, info, unit, note) => `<div class="airt ${info ? 'lv' + info.lv : 'lvx'}"><span class="k">${k}</span><span class="v num">${info ? (unit === 'uv' ? f1(info.v) : f0(info.v)) : '—'}</span><span class="n">${info ? esc(info.name) : 'indisponible'}${note ? ' · ' + note : ''}</span></div>`;
+  let pol = '';
+  if (a && a.anyPol) {
+    const act = a.pol.filter(p => (p.lv || 0) > 0 || (p.pkLv || 0) > 0), rest = a.pol.filter(p => !act.includes(p));
+    pol = act.length ? `<div class="probs">${act.map(p => `<div class="pb ${polCls(Math.max(p.lv || 0, p.pkLv || 0))}"><span class="k">${p.name}</span><span class="bar"><i style="width:${Math.max(4, Math.max(p.lv || 0, p.pkLv || 0) * 25)}%"></i></span><b class="num">${POL_NAME[Math.max(p.lv || 0, p.pkLv || 0)]}</b></div>`).join('')}
+      <div class="sub">Niveau = pic des 24 prochaines heures. ${rest.length ? 'Nul : ' + rest.map(p => p.name.toLowerCase()).join(', ') + '.' : ''}</div></div>` : `<div class="sub">🌿 Pollens : niveau nul pour les 6 espèces suivies (${a.pol.map(p => p.name.toLowerCase()).join(', ')}).</div>`;
+  } else if (a) pol = '<div class="sub">🌿 Pollens : aucune donnée pour ce lieu (hors saison ou hors Europe).</div>';
+  const pollu = a ? [['PM2,5', a.pm25], ['PM10', a.pm10], ['O₃', a.o3], ['NO₂', a.no2]].filter(x => x[1] != null).map(x => `<span><b class="num">${f0(x[1])}</b> ${x[0]}</span>`).join('') : '';
+  const msg = !a ? `<div class="sub">${AQBUSY.has(id) ? 'Chargement de la qualité de l’air…' : er ? 'Qualité de l’air indisponible (' + esc(er.msg) + ').' : 'Qualité de l’air en attente.'}</div>` : '';
+  el.innerHTML = `<div class="mod-h"><h2>Air · UV · pollens</h2><span class="src obs">prévision</span></div>
+    <div class="airg">${tile('UV maintenant', uN, 'uv', uN ? '' : '')}${tile('UV max auj.', uM, 'uv', pk && uM ? 'vers ' + pk.t.slice(11, 16) : '')}${tile('Qualité de l’air', a && a.aqi, 'aqi', a && a.aqiPk && a.aqiPk.v > (a.aqi ? a.aqi.v : 0) + 9 ? 'pic ' + a.aqiPk.v + (a.aqiPkAt ? ' vers ' + a.aqiPkAt : '') : '')}</div>
+    ${uM && uM.lv >= 1 ? `<div class="note lv${uM.lv}"><b>☀️ UV</b><span>${esc(uM.tip)}.</span></div>` : ''}
+    ${pollu ? `<div class="obs-row airp">${pollu}<span class="sub">µg/m³</span></div>` : ''}${msg}${pol}
+    <div class="disc">UV : échelle OMS (Open-Meteo). Air et pollens : modèle européen Copernicus CAMS via Open-Meteo, maille d’environ 10 km. Indice européen : 0–20 bon, 20–40 correct, 40–60 moyen, 60–80 médiocre, au-delà très médiocre. Prévisions, pas des mesures de capteur.</div>`;
+}
+
+/* ---------- radar de pluie (RainViewer : 2 dernières heures, image toutes les 10 min) ---------- */
+const RADAR = { map: null, base: null, layers: [], frames: [], idx: 0, play: null, t: 0, marker: null, state: 'idle', at: null, io: null, err: '' };
+function loadLeaflet() {
+  if (window.L && window.L.map) return Promise.resolve();
+  if (loadLeaflet.p) return loadLeaflet.p;
+  loadLeaflet.p = new Promise((res, rej) => {
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css'; document.head.appendChild(css);
+    const js = document.createElement('script'); js.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';
+    js.onload = () => res(); js.onerror = () => { loadLeaflet.p = null; rej(new Error('carte indisponible')); }; document.head.appendChild(js);
+  });
+  return loadLeaflet.p;
+}
+const isLight = () => { const t = document.documentElement.dataset.theme; return t === 'light' || (t !== 'dark' && matchMedia('(prefers-color-scheme: light)').matches); };
+function radarMsg(t) { const e = $('#rmsg'); if (e) { e.textContent = t || ''; e.hidden = !t; } }
+function renderRadar() {
+  const el = $('#secRadar'); if (!el) return;
+  if (!el.dataset.ready) {
+    el.dataset.ready = 1;
+    el.innerHTML = `<div class="mod-h"><h2>Radar pluie</h2><span class="src obs">mesuré · radar</span></div>
+      <div class="radar"><div id="rmap" class="rmap" role="img" aria-label="Carte radar des précipitations"></div><div class="rmsg" id="rmsg">La carte se charge quand tu arrives ici.</div>
+        <button class="btn sm rctr" data-act="rcenter" aria-label="Recentrer sur le lieu">◎</button></div>
+      <div class="rctl"><button class="btn sm" data-act="rplay" id="rplay" aria-label="Lecture">▶</button><input type="range" id="rslide" min="0" max="0" value="0" aria-label="Heure de l’image radar"><span class="num" id="rtime">—</span></div>
+      <div class="rleg"><span>faible</span><i></i><span>forte</span></div>
+      <div class="disc">Pluie et neige réellement mesurées par les radars sur les 2 dernières heures (RainViewer, précision régionale). Pour les 2 prochaines heures, voir « Pluie au quart d’heure » dans la météo actuelle. Un doigt fait défiler la page, deux doigts déplacent et zooment la carte.</div>`;
+    $('#rslide').addEventListener('input', e => { radarPlay(false); radarShow(+e.target.value); });
+    if ('IntersectionObserver' in window) {
+      RADAR.io = new IntersectionObserver(es => { if (es.some(x => x.isIntersecting)) { RADAR.io.disconnect(); initRadar(); } }, { rootMargin: '200px' });
+      RADAR.io.observe(el);
+    } else initRadar();
+  }
+  el.hidden = !CX;
+  if (RADAR.state === 'ready') { radarCenter(false); if (Date.now() - RADAR.t > 10 * 60e3) radarFrames(); }
+}
+async function initRadar() {
+  if (RADAR.state === 'loading' || RADAR.state === 'ready') return;
+  RADAR.state = 'loading'; radarMsg('Chargement du radar…');
+  try {
+    await loadLeaflet();
+    const l = curLoc(), mob = L.Browser.mobile;
+    const map = L.map('rmap', { zoomControl: false, minZoom: 5, maxZoom: 10, dragging: !mob, touchZoom: true, scrollWheelZoom: false, tap: false, attributionControl: true }).setView([l.lat, l.lon], 8);
+    map.attributionControl.setPrefix(false);
+    RADAR.base = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${isLight() ? 'light_all' : 'dark_all'}/{z}/{x}/{y}{r}.png`, { subdomains: 'abcd', maxZoom: 10, attribution: '© OpenStreetMap · © CARTO · Radar © RainViewer' }).addTo(map);
+    L.control.zoom({ position: 'topright' }).addTo(map);
+    RADAR.marker = L.circleMarker([l.lat, l.lon], { radius: 6, color: '#ffffff', weight: 2, fillColor: '#ff8c2b', fillOpacity: 1 }).addTo(map);
+    RADAR.map = map; RADAR.at = l.id;
+    await radarFrames();
+    RADAR.state = 'ready';
+  } catch (e) { RADAR.state = 'idle'; RADAR.err = e.message; radarMsg('Radar indisponible pour le moment (' + e.message + ').'); }
+}
+async function radarFrames() {
+  if (!RADAR.map) return;
+  RADAR.t = Date.now();
+  const js = await fetchJSON('https://api.rainviewer.com/public/weather-maps.json', 10000);
+  const past = (js && js.radar && js.radar.past) || []; if (!past.length) throw new Error('aucune image');
+  RADAR.layers.forEach(x => RADAR.map.removeLayer(x));
+  RADAR.frames = past;
+  RADAR.layers = past.map(f => L.tileLayer(`${js.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, maxNativeZoom: 7, maxZoom: 10, zIndex: 5 }).addTo(RADAR.map));
+  const sl = $('#rslide'); if (sl) sl.max = past.length - 1;
+  radarShow(past.length - 1); radarMsg('');
+}
+function radarShow(i) {
+  if (!RADAR.layers.length) return;
+  RADAR.idx = (i + RADAR.layers.length) % RADAR.layers.length;
+  RADAR.layers.forEach((x, k) => x.setOpacity(k === RADAR.idx ? 0.8 : 0));
+  const f = RADAR.frames[RADAR.idx], d = new Date(f.time * 1000), ago = Math.round((Date.now() - d) / 60000);
+  const sl = $('#rslide'); if (sl) sl.value = RADAR.idx;
+  const tt = $('#rtime'); if (tt) tt.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())} · ${RADAR.idx === RADAR.layers.length - 1 ? 'dernière image' : 'il y a ' + ago + ' min'}`;
+}
+function radarPlay(on) {
+  if (RADAR.play) { clearTimeout(RADAR.play); RADAR.play = null; }
+  const b = $('#rplay'); if (b) { b.textContent = on ? '❚❚' : '▶'; b.setAttribute('aria-label', on ? 'Pause' : 'Lecture'); }
+  if (!on || !RADAR.layers.length) return;
+  if (RADAR.idx === RADAR.layers.length - 1) radarShow(0);
+  const step = () => { if (document.hidden) { radarPlay(false); return; } radarShow(RADAR.idx + 1); RADAR.play = setTimeout(step, RADAR.idx === RADAR.layers.length - 1 ? 1600 : 550); };
+  RADAR.play = setTimeout(step, 550);
+}
+function radarCenter(force) {
+  if (!RADAR.map) return; const l = curLoc();
+  if (!force && RADAR.at === l.id) return;
+  RADAR.at = l.id; RADAR.marker.setLatLng([l.lat, l.lon]); RADAR.map.setView([l.lat, l.lon], force ? Math.max(8, RADAR.map.getZoom()) : 8, { animate: true });
+}
+function radarRefresh() { if (RADAR.state === 'ready' && Date.now() - RADAR.t > 9 * 60e3) radarFrames().catch(() => {}); }
 
 /* ---------- rendu : voitures ---------- */
 const tireTxt = car => {
@@ -2149,10 +2381,10 @@ function renderDays() {
       <div class="rng" title="${esc(wx(d.code))}"><div class="track"></div><div class="m0" style="left:${X(0)}%"></div><div class="m7" style="left:${X(7)}%"></div>
         <div class="fill" style="left:${X(d.tmin ?? 0)}%;width:${Math.max(2, X(d.tmax ?? 0) - X(d.tmin ?? 0))}%"></div></div>
       <div class="pr"><span class="num" style="color:var(--c-air)">${f0(d.tmin)}°</span> / <span class="num" style="color:var(--fg)">${f0(d.tmax)}°</span><br>${(d.psum || 0) >= 0.1 ? f1(d.psum) + ' mm' : '—'}${(d.ssum || 0) > 0 ? ' · ❄ ' + f1(d.ssum) + ' cm' : ''}</div>
-      <div class="pips">${pips}</div></div>`;
+      ${UI.view === 'meteo' ? `<div class="pips dm">${d.pmax != null ? '☂ ' + f0(d.pmax) + ' %' : ''}${d.uv != null ? '<br>UV ' + f0(d.uv) : ''}</div>` : `<div class="pips">${pips}</div>`}</div>`;
   }).join('');
   el.innerHTML = `<div class="mod-h"><h2>Prévisions 7 jours</h2><span class="src obs">prévision météo</span></div>
-   <div class="sub">Barre = min → max. Repères : 0 °C (bleu) et 7 °C (jaune). Carrés = verdict pneus du jour (${CX.cars.filter(c => hasTires(c.car)).map(c => esc(c.car.short)).join(', ')}).</div><div class="days">${rows}</div>`;
+   <div class="sub">Barre = min → max. Repères : 0 °C (bleu) et 7 °C (jaune). ${UI.view === 'meteo' ? 'À droite : probabilité de pluie maximale et indice UV maximal du jour.' : `Carrés = verdict pneus du jour (${CX.cars.filter(c => hasTires(c.car)).map(c => esc(c.car.short)).join(', ')}).`}</div><div class="days">${rows}</div>`;
 }
 function dayInfosOne(m, car, date) {
   const idx = []; m.hs.forEach((x, i) => { if (x.date === date) idx.push({ hs: m.hs, i }); });
@@ -2289,10 +2521,10 @@ function renderSettings(force) {
 function renderAll() {
   recordJournal();
   CX = computeCtx();
-  renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderCurrent(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderSeason(); renderJournal(); renderAlerts();
+  renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderCurrent(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
 }
 function softRender() { // après un réglage : tout sauf le panneau de paramètres
-  CX = computeCtx(); renderBanners(); renderCurrent(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
+  CX = computeCtx(); renderBanners(); renderCurrent(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
 }
 
 /* ---------- événements ---------- */
@@ -2308,6 +2540,9 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'lock') { ['twrc.plain', 'twrc.plain.v', 'twrc.key'].forEach(k => { try { localStorage.removeItem(k); } catch (err) { /* stockage */ } }); location.reload(); }
   else if (a === 'locate') locate(true);
+  else if (a === 'view') { UI.view = t.dataset.v === 'meteo' ? 'meteo' : 'pneus'; lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  else if (a === 'rplay') radarPlay(!RADAR.play);
+  else if (a === 'rcenter') radarCenter(true);
   else if (a === 'gps-forget') { GPS = null; S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } if (gpsWatch != null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; } UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
   else if (a === 'loc') { UI.loc = t.dataset.id; UI.chartIdx = null; renderAll(); }
   else if (a === 'tire') { const c = S.cars.find(x => x.id === t.dataset.car); switchTire(c, t.dataset.type); saveSettings(); renderSettings(); softRender(); }

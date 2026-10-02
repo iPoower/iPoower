@@ -1,5 +1,5 @@
 // Tyre Weather Race Control : ouverture hors ligne (réseau d'abord, cache en secours)
-const C = 'twrc-v3';
+const C = 'twrc-v4';
 const SHELL = ['./', './index.html', './apple-touch-icon.png', './icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(C).then(c => c.addAll(SHELL)).catch(() => {})); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

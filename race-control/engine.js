@@ -152,7 +152,7 @@ function buildHours(p) {
     T: g('temperature_2m', i), RH: g('relative_humidity_2m', i), Td: g('dew_point_2m', i), Tapp: g('apparent_temperature', i),
     pp: g('precipitation_probability', i), P: g('precipitation', i), rain: g('rain', i), snow: g('snowfall', i),
     code: g('weather_code', i), pres: g('pressure_msl', i), cloud: g('cloud_cover', i), vis: g('visibility', i),
-    wind: g('wind_speed_10m', i), gust: g('wind_gusts_10m', i), rad: g('shortwave_radiation', i)
+    wind: g('wind_speed_10m', i), gust: g('wind_gusts_10m', i), rad: g('shortwave_radiation', i), uv: g('uv_index', i)
   }));
   hs.forEach(x => { x.Pl = (x.snow || 0) > 0.05 ? 0 : x.P; });
   hs.forEach(x => {
@@ -177,7 +177,7 @@ function makeModel(payload, mode, loc) {
     date: d, tmin: dg('temperature_2m_min', i), tmax: dg('temperature_2m_max', i),
     sunrise: D.sunrise ? D.sunrise[i] : null, sunset: D.sunset ? D.sunset[i] : null,
     psum: dg('precipitation_sum', i), ssum: dg('snowfall_sum', i), pmax: dg('precipitation_probability_max', i),
-    gust: dg('wind_gusts_10m_max', i), code: dg('weather_code', i)
+    gust: dg('wind_gusts_10m_max', i), code: dg('weather_code', i), uv: dg('uv_index_max', i)
   }));
   // min/max journaliers recalculés sur les heures fusionnées (cohérence avec AROME et le graphique)
   days.forEach(d => { const ts = hs.filter(x => x.date === d.date && x.T != null).map(x => x.T); if (ts.length === 24) { d.tmin = Math.min(...ts); d.tmax = Math.max(...ts); } });
@@ -740,3 +740,48 @@ function applyObs(model, stations, maxKm) {
 }
 const WX_FR = { FG: 'brouillard', BR: 'brume', FZFG: 'brouillard givrant', RA: 'pluie', DZ: 'bruine', SN: 'neige', SHRA: 'averses', TS: 'orage', HZ: 'brume sèche', FZRA: 'pluie verglaçante', FZDZ: 'bruine verglaçante', MIFG: 'brouillard mince', BCFG: 'bancs de brouillard', PRFG: 'brouillard partiel' };
 const wxFr = s => String(s || '').split(' ').filter(Boolean).map(t => { const k = t.replace(/^[-+]|^VC/, ''); return (t[0] === '-' ? 'faible ' : t[0] === '+' ? 'fort ' : '') + (WX_FR[k] || WX_FR[k.slice(2)] || t); }).join(', ');
+
+/* ===================== MÉTÉO SEULE : UV, QUALITÉ DE L'AIR, POLLENS ===================== */
+// UV : échelle OMS
+const UV_LV = [[0, 'Faible', 0], [3, 'Modéré', 1], [6, 'Élevé', 2], [8, 'Très élevé', 3], [11, 'Extrême', 3]];
+function uvInfo(u) {
+  if (u == null || isNaN(u)) return null;
+  let r = UV_LV[0]; UV_LV.forEach(x => { if (u >= x[0]) r = x; });
+  const tip = r[2] === 0 ? 'Pas de protection nécessaire' : r[2] === 1 ? 'Lunettes, crème si exposition longue' : r[2] === 2 ? 'Crème, lunettes, chapeau, ombre aux heures centrales' : 'Éviter le soleil de 12 h à 16 h, protection maximale';
+  return { v: Math.round(u * 10) / 10, name: r[1], lv: r[2], tip };
+}
+// indice européen de qualité de l'air (EEA)
+const AQI_LV = [[0, 'Bon', 0], [20, 'Correct', 0], [40, 'Moyen', 1], [60, 'Médiocre', 2], [80, 'Très médiocre', 3], [100, 'Extrêmement médiocre', 3]];
+function aqiInfo(a) {
+  if (a == null || isNaN(a)) return null;
+  let r = AQI_LV[0]; AQI_LV.forEach(x => { if (a >= x[0]) r = x; });
+  return { v: Math.round(a), name: r[1], lv: r[2] };
+}
+// pollens (grains/m³) : seuils indicatifs, arbres plus émissifs que les herbacées
+const POLLENS = [
+  { k: 'birch_pollen', name: 'Bouleau', th: [1, 10, 50, 200] },
+  { k: 'alder_pollen', name: 'Aulne', th: [1, 10, 50, 200] },
+  { k: 'olive_pollen', name: 'Olivier', th: [1, 10, 50, 200] },
+  { k: 'grass_pollen', name: 'Graminées', th: [1, 5, 20, 50] },
+  { k: 'mugwort_pollen', name: 'Armoise', th: [1, 5, 20, 50] },
+  { k: 'ragweed_pollen', name: 'Ambroisie', th: [1, 5, 20, 50] }
+];
+const POL_NAME = ['Nul', 'Faible', 'Modéré', 'Élevé', 'Très élevé'];
+function pollenLv(p, v) { if (v == null || isNaN(v)) return null; let l = 0; p.th.forEach((t, i) => { if (v >= t) l = i + 1; }); return l; }
+// synthèse air + pollens : valeur actuelle et pic des 24 prochaines heures
+function airSummary(js, nowStr) {
+  if (!js || !js.hourly || !js.hourly.time) return null;
+  const H = js.hourly, t = H.time, c = js.current || {};
+  const now = (nowStr || '').slice(0, 13) + ':00'; let i0 = t.findIndex(x => x >= now); if (i0 < 0) i0 = 0;
+  const win = k => (H[k] || []).slice(i0, i0 + 24).map(num).filter(v => v != null);
+  const peak = k => { const a = win(k); return a.length ? Math.max(...a) : null; };
+  const peakAt = k => { const a = (H[k] || []).slice(i0, i0 + 24); let b = -1, bi = -1; a.forEach((v, j) => { if (v != null && v > b) { b = v; bi = j; } }); return bi >= 0 ? t[i0 + bi].slice(11, 16) : null; };
+  const cur = k => num(c[k]) ?? num((H[k] || [])[i0]);
+  const pol = POLLENS.map(p => { const v = cur(p.k), pk = peak(p.k); return { ...p, v, pk, lv: pollenLv(p, v), pkLv: pollenLv(p, pk) }; });
+  const anyPol = pol.some(p => p.v != null || p.pk != null);
+  return {
+    aqi: aqiInfo(cur('european_aqi')), aqiPk: aqiInfo(peak('european_aqi')), aqiPkAt: peakAt('european_aqi'),
+    pm25: cur('pm2_5'), pm10: cur('pm10'), o3: cur('ozone'), no2: cur('nitrogen_dioxide'),
+    pol, anyPol, polMax: anyPol ? Math.max(...pol.map(p => Math.max(p.lv || 0, p.pkLv || 0))) : null
+  };
+}
