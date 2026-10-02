@@ -2439,7 +2439,9 @@ function calTrip(ev) {
 function renderCal() {
   const el = $('#secCal'); if (!el) return;
   if (!CAL || !CX) { el.hidden = true; el.innerHTML = ''; return; }
-  const now = CX.m.nowStr, evs = (CAL.events || []).filter(e => (e.allDay ? e.s.slice(0, 10) >= now.slice(0, 10) : e.s > now)).slice(0, 8);
+  const now = CX.m.nowStr, home = S.locs[0], fut = (CAL.events || []).filter(e => (e.allDay ? e.s.slice(0, 10) >= now.slice(0, 10) : e.s > now));
+  // rendez-vous à moins de 3 km de chez toi : pas de trajet, on les masque
+  const near = fut.filter(e => e.lat != null && distKm(home, e) < 3), evs = fut.filter(e => !near.includes(e)).slice(0, 8);
   el.hidden = false;
   const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   if (!evs.length) { el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda</span></div><p class="sub">Aucun rendez-vous avec un lieu sur les 8 prochains jours. Ajoute une adresse ou une ville dans le champ « Lieu » de tes rendez-vous Google Agenda.</p><div class="disc">Agenda synchronisé le ${up}.</div>`; return; }
@@ -2463,7 +2465,7 @@ function renderCal() {
     return `<div class="cal-e"><div class="cal-h"><span class="cal-d">${dl} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(e.label || e.loc)}</span></div>${body}</div>`;
   }).join('');
   el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · prévision</span></div><div class="cal-l">${rows}</div>
-    <div class="disc">Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Départ estimé depuis ${esc(S.locs[0].name)} : distance × 1,3 à 55–90 km/h selon la longueur + 10 min de marge, sans trafic. Les rendez-vous « journée entière » sont calculés pour une arrivée à 09:00.</div>`;
+    <div class="disc">${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Départ estimé depuis ${esc(S.locs[0].name)} : distance × 1,3 à 55–90 km/h selon la longueur + 10 min de marge, sans trafic. Les rendez-vous « journée entière » sont calculés pour une arrivée à 09:00.</div>`;
 }
 
 /* ---------- rendu : voitures ---------- */

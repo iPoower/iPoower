@@ -95,15 +95,24 @@ function expand(evs, from, to) {
   return out.sort((a, b) => a.s < b.s ? -1 : 1);
 }
 async function geocodeLoc(q) {
-  try {
-    const j = await getJSON('https://data.geopf.fr/geocodage/search?limit=1&q=' + encodeURIComponent(q.slice(0, 200)));
-    const f = j && j.features && j.features[0];
-    if (f && f.properties && f.properties.score >= 0.45) return { lat: +f.geometry.coordinates[1].toFixed(4), lon: +f.geometry.coordinates[0].toFixed(4), label: f.properties.label };
-  } catch (e) { /* géocodeur français indisponible */ }
-  const parts = q.split(',').map(x => x.replace(/\d{5}/g, '').trim()).filter(Boolean);
-  for (const name of [...parts.slice().reverse(), q]) {
+  const COUNTRY = /^(france|belgique|belgium|suisse|switzerland|luxembourg|deutschland|allemagne|españa|espagne|italia|italie|united kingdom|royaume-uni)$/i;
+  const parts = q.split(',').map(x => x.trim()).filter(x => x && !COUNTRY.test(x));
+  // 1) adresse française : chaîne complète, puis sans le nom du lieu (salle, église…), en gardant le code postal
+  const cands = [parts.join(', '), parts.slice(1).join(', '), parts.slice(-2).join(', ')].filter((x, k, a) => x && a.indexOf(x) === k);
+  for (const c of cands) {
+    try {
+      const j = await getJSON('https://data.geopf.fr/geocodage/search?limit=1&q=' + encodeURIComponent(c.slice(0, 200)));
+      const f = j && j.features && j.features[0];
+      if (f && f.properties && f.properties.score >= 0.5) return { lat: +f.geometry.coordinates[1].toFixed(4), lon: +f.geometry.coordinates[0].toFixed(4), label: f.properties.label };
+    } catch (e) { /* suivant */ }
+  }
+  // 2) nom de ville (après un code postal s'il y en a un), jamais un nom de pays
+  const cities = [];
+  parts.forEach(x => { const m = /\b\d{5}\s+(.+)$/.exec(x); if (m) cities.push(m[1]); });
+  parts.slice().reverse().forEach(x => { if (!/\d/.test(x) && x.length <= 40) cities.push(x.replace(/^.*\b(?:de|d’|d')\s*/i, '').trim(), x); });
+  for (const name of cities.filter((x, k, a) => x && a.indexOf(x) === k)) {
     try { const j = await getJSON('https://geocoding-api.open-meteo.com/v1/search?count=1&language=fr&name=' + encodeURIComponent(name));
-      const r = j && j.results && j.results[0]; if (r) return { lat: r.latitude, lon: r.longitude, label: [r.name, r.admin1, r.country_code === 'FR' ? '' : r.country].filter(Boolean).join(', ') }; } catch (e) { /* suivant */ }
+      const r = j && j.results && j.results[0]; if (r && r.feature_code !== 'PCLI') return { lat: r.latitude, lon: r.longitude, label: [r.name, r.admin1, r.country_code === 'FR' ? '' : r.country].filter(Boolean).join(', ') }; } catch (e) { /* suivant */ }
   }
   return null;
 }
