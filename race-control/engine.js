@@ -43,6 +43,17 @@ const dateToTs = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d
 const addMin = (ts, m) => dateToTs(new Date(tsToDate(ts).getTime() + m * 60000));
 const dayDiff = (a, b) => Math.round((Date.parse(b.slice(0, 10) + 'T00:00:00Z') - Date.parse(a.slice(0, 10) + 'T00:00:00Z')) / 86400000);
 const toMin = s => { const m = /^(\d{1,2}):(\d{2})/.exec(s || ''); return m ? (+m[1]) * 60 + (+m[2]) : 0; };
+/* ---------- jours de trajet domicile-travail (1 = lundi … 7 = dimanche) ---------- */
+const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
+const isoDow = d => { const g = new Date(d.slice(0, 10) + 'T12:00:00Z').getUTCDay(); return g === 0 ? 7 : g; };
+const commuteDays = days => Array.isArray(days) && days.length ? days.map(Number) : ALL_DAYS;
+const isCommuteDay = (d, days) => commuteDays(days).includes(isoDow(d));
+// décalage (en jours) du prochain trajet domicile-travail à l'heure `time`, vu depuis `today` à `nowHm` ; null si aucun jour coché
+function commuteOff(today, time, nowHm, days) {
+  let off = toMin(time) > toMin(nowHm) ? 0 : 1;
+  for (let k = 0; k < 8; k++, off++) if (isCommuteDay(addMin(today.slice(0, 10) + 'T00:00', off * 1440), days)) return off;
+  return null;
+}
 function nowIn(tz) {
   try {
     const s = new Date().toLocaleString('sv-SE', { timeZone: tz, hour12: false });
@@ -430,6 +441,9 @@ function seasonAnalysis(model, car) {
   return { level, title, text, days: di, countdown, coldBefore };
 }
 const DAYN = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+const WDN = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+const daysTxt = days => { const d = commuteDays(days); return d.length === 7 ? 'tous les jours' : d.map(k => WDN[k - 1]).join(', '); };
+const cap1 = s => s ? s[0].toUpperCase() + s.slice(1) : s;
 function fmtDay(d) { const dt = new Date(d + 'T12:00:00Z'); return `${DAYN[dt.getUTCDay()]} ${pad(dt.getUTCDate())}/${pad(dt.getUTCMonth() + 1)}`; }
 
 /* ---------- alertes ---------- */

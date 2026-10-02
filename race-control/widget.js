@@ -8,7 +8,7 @@ const Q_CUR = 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,p
 const Q_HR = 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,weather_code,pressure_msl,cloud_cover,visibility,wind_speed_10m,wind_gusts_10m,shortwave_radiation';
 const Q_AR = 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,showers,snowfall,weather_code,pressure_msl,cloud_cover,wind_speed_10m,wind_gusts_10m,shortwave_radiation';
 const API = 'https://api.open-meteo.com/v1/forecast';
-const urlBase = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&current=${Q_CUR}&hourly=${Q_HR}&timezone=auto&past_days=1&forecast_days=3`;
+const urlBase = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&current=${Q_CUR}&hourly=${Q_HR}&timezone=auto&past_days=1&forecast_days=5`;
 const urlArome = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&current=${Q_CUR}&hourly=${Q_AR}&models=meteofrance_seamless&timezone=auto&past_days=1&forecast_days=3`;
 
 async function getText(u) { const r = new Request(u); r.timeoutInterval = 20; return await r.loadString(); }
@@ -26,11 +26,11 @@ async function build() {
   w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000);
   try {
     const src = await getText(SITE + 'engine.js');
-    const E = new Function(src + '; return { makeModel, mergeArome, seqOf, summarize, windowAssess, LV, ICE_LV, TYPE_LABEL, f1, f0, addMin, toMin };')();
+    const E = new Function(src + '; return { makeModel, mergeArome, seqOf, summarize, windowAssess, LV, ICE_LV, TYPE_LABEL, f1, f0, addMin, toMin, commuteOff, fmtDay };')();
     const [mA, mB] = await Promise.all([model(E, CFG.home), model(E, CFG.work)]);
     const now = mA.nowStr, x = mA.hs[mA.nowI];
-    // départ : prochain horaire du matin
-    const today = now.slice(0, 10), off = E.toMin(CFG.dep) > E.toMin(now.slice(11, 16)) ? 0 : 1;
+    // départ : prochain matin de trajet domicile-travail (télétravail et repos sautés)
+    const today = now.slice(0, 10), off = E.commuteOff(today, CFG.dep, now.slice(11, 16), CFG.days) ?? 0;
     const dep = E.addMin(today + 'T00:00', off * 1440 + E.toMin(CFG.dep)), arr = E.addMin(dep, CFG.durMin);
     const seq = []; for (let t = dep.slice(0, 13) + ':00'; t <= arr.slice(0, 13) + ':00'; t = E.addMin(t, 60)) {
       const a = mA.byTime.get(t), b = mB.byTime.get(t); if (a != null) seq.push({ hs: mA.hs, i: a }); if (b != null) seq.push({ hs: mB.hs, i: b }); }
@@ -40,7 +40,7 @@ async function build() {
     h.addSpacer();
     const t2 = h.addText(`${E.f1(x.T)} °C · chaussée ${E.f1(x.Tr)} °C`); t2.font = Font.mediumMonospacedSystemFont(11); t2.textColor = COL.fg;
     w.addSpacer(4);
-    const sub = w.addText(`Départ ${dep.slice(11, 16)} ${off ? 'demain' : 'aujourd’hui'} · min ${E.f1(sum.Tmin)} °C · verglas ${E.ICE_LV[sum.iceLevel || 0].toLowerCase()}${sum.visMin != null && sum.visMin < 1000 ? ' · brouillard ' + E.f0(sum.visMin) + ' m' : ''}`);
+    const sub = w.addText(`Départ ${dep.slice(11, 16)} ${off === 0 ? 'aujourd’hui' : off === 1 ? 'demain' : E.fmtDay(dep.slice(0, 10))} · min ${E.f1(sum.Tmin)} °C · verglas ${E.ICE_LV[sum.iceLevel || 0].toLowerCase()}${sum.visMin != null && sum.visMin < 1000 ? ' · brouillard ' + E.f0(sum.visMin) + ' m' : ''}`);
     sub.font = Font.systemFont(11); sub.textColor = COL.mute; sub.lineLimit = 2;
     w.addSpacer(6);
     CFG.cars.forEach(car => {

@@ -17,7 +17,7 @@ function openCfg() {
 const STATIONS = [{ id: 'LFAQ', name: 'Albert-Bray', lat: 49.9715, lon: 2.6976 }, { id: 'LFAY', name: 'Amiens-Glisy', lat: 49.8730, lon: 2.3870 }];
 let cfg = null; try { cfg = openCfg(); } catch (e) { console.log('Configuration illisible', e.message); }
 const ctx = { console, Math, Date, Intl, Map, Set, JSON }; vm.createContext(ctx);
-vm.runInContext(fs.readFileSync(path.join(dir, 'engine.js'), 'utf8') + ';this.E={makeModel,mergeArome,summarize,windowAssess,LV,ICE_LV,TYPE_LABEL,hasTires,f1,f0,addMin,toMin,nowIn,distKm,applyObs,wxFr,legPoints,legSeq,legCritical};', ctx);
+vm.runInContext(fs.readFileSync(path.join(dir, 'engine.js'), 'utf8') + ';this.E={makeModel,mergeArome,summarize,windowAssess,LV,ICE_LV,TYPE_LABEL,hasTires,f1,f0,addMin,toMin,nowIn,distKm,applyObs,wxFr,legPoints,legSeq,legCritical,isCommuteDay};', ctx);
 const E = ctx.E;
 const obsFile = path.join(dir, 'obs.json');
 const prev = fs.existsSync(obsFile) ? JSON.parse(fs.readFileSync(obsFile, 'utf8')) : { stations: {}, notified: null };
@@ -257,7 +257,9 @@ async function calendarSync(out) {
   // état du matin : on garde le pire constaté du jour pour ne notifier qu'en cas d'aggravation
   const pm = prev.morning && prev.morning.date === today ? prev.morning : null;
   out.morning = pm || { date: today, w: -1, i: -1, f: false, sent: 0, checks: 0 };
-  const depMin = cfg ? E.toMin(cfg.dep) : 390, inWin = hm >= depMin - 90 && hm <= depMin - 5;
+  // jours sans trajet domicile-travail (télétravail, repos) : pas de notification du matin ; l'agenda, lui, reste actif 7 j/7
+  const commute = !!cfg && E.isCommuteDay(today, cfg.days);
+  const depMin = cfg ? E.toMin(cfg.dep) : 390, inWin = commute && hm >= depMin - 90 && hm <= depMin - 5;
   if (cfg && (force || inWin)) {
     try {
       const API = 'https://api.open-meteo.com/v1/forecast';
