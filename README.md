@@ -20,6 +20,19 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
 - Ces éléments vivent dans `private/` (ignoré par Git) sur le poste de travail, ou dans les secrets GitHub (`APP_KEY`, `RC_KEY`, `GCAL_ICS`).
 - `tools/check-secrets.js` compare chaque fichier aux valeurs privées (lues localement ou déchiffrées avec les secrets) et bloque le commit (`tools/pre-commit`) ou le build.
 
+## Frontière des secrets
+
+Les vrais secrets (`APP_KEY`, `RC_KEY`, `GCAL_ICS`, et `RC_KEY_NEXT` pendant une rotation) ne sont donnés qu'à du code **déjà fusionné dans `main`** :
+
+| Workflow | Secrets | Quand |
+|---|---|---|
+| `ci.yml` · `confidentialite` | oui | push sur `main`, retour arrière lancé depuis `main` ; **jamais sur une pull request** |
+| `ci.yml` · `tests`, `relay-smoke` | non | partout (données et clés fictives) |
+| `pr-privacy.yml` | oui | chaque PR **de ce dépôt** : workflow et scanner de `main`, la PR est lue comme des fichiers et jamais exécutée ; jamais pour un fork (sinon le rouge/vert servirait à deviner une valeur) |
+| `race-control.yml` (relais) | oui | uniquement depuis `main` ; exécute le relais publié sur `gh-pages` |
+| `sources-check.yml` | oui | uniquement depuis `main` |
+| `rc-key-rotation.yml` (transitoire) | oui | lancé à la main depuis `main` ; la branche cible ne reçoit qu'un fichier chiffré, son code n'est jamais exécuté |
+
 ## Build
 
 ```sh

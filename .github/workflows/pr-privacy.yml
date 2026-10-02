@@ -1,0 +1,45 @@
+name: Race Control · confidentialité des pull requests
+# Contrôle AVANT fusion, avec les vraies valeurs sensibles, SANS jamais exécuter le code de la pull request.
+#  - pull_request_target : ce workflow et le scanner viennent TOUJOURS de main (code approuvé), jamais de la PR ;
+#  - la PR est récupérée au SHA exact dans target/, sans identifiants, et lue uniquement comme des fichiers
+#    (aucun node, npm, script, workflow, ni git exécuté sur target/ ; aucun lien symbolique suivi) ;
+#  - les secrets ne sont donnés qu'à l'étape du scanner de main ; sortie : nom de fichier + type de donnée, jamais la valeur.
+#  - uniquement pour les PR de CE dépôt : une PR venant d'un fork ne reçoit jamais ce contrôle, sinon le résultat rouge/vert
+#    servirait d'oracle pour deviner une valeur privée (ex. coordonnées du domicile) en soumettant des candidats.
+# Limite assumée : une branche poussée est déjà publique ; ce contrôle détecte avant fusion, la prévention reste le hook local (tools/pre-commit).
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+concurrency:
+  group: pr-privacy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  scan:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Scanner de confiance = main
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      - name: Contenu de la PR (SHA exact, données seulement, sans identifiants)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: target
+          persist-credentials: false
+      - name: Aucune donnée personnelle dans la PR (scanner de main, vraies valeurs)
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          RC_KEY: ${{ secrets.RC_KEY }}
+          RC_KEY_NEXT: ${{ secrets.RC_KEY_NEXT }}   # TRANSITOIRE (rotation Phase B)
+          GCAL_ICS: ${{ secrets.GCAL_ICS }}
+        run: node trusted/tools/check-secrets.js --root trusted --scan target
