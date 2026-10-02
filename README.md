@@ -28,3 +28,17 @@ node tools/build.js
 
 - Avec `private/` : les réglages sont rechiffrés dans `encrypted/` s'ils ont changé.
 - Sans `private/` (clone public, GitHub Actions) : `encrypted/` est utilisé tel quel. Le résultat est identique, octet pour octet, à la production.
+
+## Tests
+
+```sh
+npm ci
+node tools/build.js
+node tests/run-ci.js              # Chromium
+BROWSER=webkit node tests/run-ci.js   # WebKit (moteur de Safari), profil iPhone
+```
+
+- Moteur (verdicts, chaussée, verglas), widget, puis parcours navigateur avec horloge et réseau simulés : jours de trajet, timeline (avant départ, en cours, après arrivée), lieux, mini-carte.
+- Isolement réseau strict : proxy inexistant, service workers bloqués, refus par défaut. Aucun test ne peut joindre le vrai site ni le vrai agenda.
+- L'agenda des tests est fictif, produit par le vrai relais (`tests/relay-harness/`).
+- GitHub Actions (`ci.yml`) lance la suite sur Chromium et WebKit à chaque modification. Les journaux publics ne contiennent que les verdicts, jamais la sortie brute.
