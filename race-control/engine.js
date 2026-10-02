@@ -789,7 +789,7 @@ function airSummary(js, nowStr) {
 /* ===================== TRAJETS AGENDA : météo le long de l'itinéraire ===================== */
 // points du trajet : départ (f = 0), points intermédiaires de la route, arrivée (f = 1)
 function legPoints(leg) {
-  return [{ f: 0, lat: leg.from.lat, lon: leg.from.lon }, ...(leg.pts || []), { f: 1, lat: leg.to.lat, lon: leg.to.lon }];
+  return [{ f: 0, lat: leg.from.lat, lon: leg.from.lon, km: 0, name: leg.from.city || leg.from.label || null }, ...(leg.pts || []), { f: 1, lat: leg.to.lat, lon: leg.to.lon, km: leg.km, name: leg.to.city || leg.to.label || null }];
 }
 // séquence horaire : chaque point est pris à l'heure où on y passe (départ + fraction × durée)
 function legSeq(models, pts, dep, min) {
@@ -797,7 +797,7 @@ function legSeq(models, pts, dep, min) {
   pts.forEach((p, k) => {
     const m = models[k]; if (!m) return;
     const t = addMin(dep, Math.round(p.f * (min || 0))), i = m.byTime.get(t.slice(0, 13) + ':00');
-    if (i != null) seq.push({ hs: m.hs, i, f: p.f, t });
+    if (i != null) seq.push({ hs: m.hs, i, f: p.f, t, k, km: p.km, name: p.name });
   });
   return seq;
 }

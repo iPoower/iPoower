@@ -125,25 +125,38 @@ function sealWith(pass, obj) {
 /* ----- itinéraires (OSRM) et enchaînement des rendez-vous ----- */
 const hav = (a, b) => { const R = x => x * Math.PI / 180, dLa = R(b[1] - a[1]), dLo = R(b[0] - a[0]); return 6371 * 2 * Math.asin(Math.sqrt(Math.sin(dLa / 2) ** 2 + Math.cos(R(a[1])) * Math.cos(R(b[1])) * Math.sin(dLo / 2) ** 2)); };
 const rc = v => Math.round(v * 100) / 100;   // domicile arrondi à ~1 km avant tout envoi à un service externe
-const ROUTES = {};
+const ROUTES = {}, CITY = {};
+const cityOf = label => { const m = /\b\d{5}\s+(.+)$/.exec(String(label || '')); return m ? m[1].trim() : String(label || '').split(',')[0].trim(); };
+async function cityAt(lat, lon) {   // commune traversée (nom du tronçon critique)
+  const k = lat.toFixed(2) + ',' + lon.toFixed(2); if (CITY[k] !== undefined) return CITY[k];
+  let n = null;
+  try { const j = await getJSON(`https://data.geopf.fr/geocodage/reverse?limit=1&lon=${lon}&lat=${lat}`); const f = j && j.features && j.features[0]; n = f && f.properties ? (f.properties.city || f.properties.name || null) : null; } catch (e) { n = null; }
+  return (CITY[k] = n);
+}
 async function routeLeg(a, b) {
   const key = [a.lat, a.lon, b.lat, b.lon].join(',');
   if (ROUTES[key]) return ROUTES[key];
   let res = null;
   try {
-    const j = await getJSON(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=simplified&geometries=geojson`);
+    // géométrie complète + durée de chaque tronçon : les points météo sont placés selon le TEMPS de parcours
+    const j = await getJSON(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson&annotations=duration`);
     const r = j && j.routes && j.routes[0];
     if (r && r.geometry && r.geometry.coordinates.length > 1) {
-      const co = r.geometry.coordinates, cum = [0];
-      for (let i = 1; i < co.length; i++) cum.push(cum[i - 1] + hav(co[i - 1], co[i]));
-      const tot = cum[cum.length - 1] || 1;
-      const pts = [0.25, 0.5, 0.75].map(f => { let i = cum.findIndex(c => c >= f * tot); if (i < 0) i = co.length - 1; return { f, lat: +co[i][1].toFixed(3), lon: +co[i][0].toFixed(3) }; });
-      res = { km: Math.round(r.distance / 100) / 10, min: Math.max(1, Math.round(r.duration / 60)), pts, routed: true };
+      const co = r.geometry.coordinates, dur = (r.legs && r.legs[0] && r.legs[0].annotation && r.legs[0].annotation.duration) || null;
+      const cumD = [0], cumT = [0];
+      for (let i = 1; i < co.length; i++) { cumD.push(cumD[i - 1] + hav(co[i - 1], co[i])); cumT.push(cumT[i - 1] + (dur && dur[i - 1] != null ? dur[i - 1] : 0)); }
+      const totT = cumT[cumT.length - 1], totD = cumD[cumD.length - 1] || 1, byTime = totT > 0;
+      const pts = [];
+      for (const f of [0.25, 0.5, 0.75]) {
+        let i = (byTime ? cumT : cumD).findIndex(c => c >= f * (byTime ? totT : totD)); if (i < 0) i = co.length - 1;
+        pts.push({ f, lat: +co[i][1].toFixed(3), lon: +co[i][0].toFixed(3), km: Math.round(cumD[i] * 10) / 10, name: await cityAt(co[i][1], co[i][0]) });
+      }
+      res = { km: Math.round(r.distance / 100) / 10, min: Math.max(1, Math.round(r.duration / 60)), pts, routed: true, byTime };
     }
   } catch (e) { /* routeur indisponible : estimation */ }
   if (!res) {
     const km0 = E.distKm(a, b), km = Math.round(km0 * 13) / 10;
-    res = { km, min: Math.round(km / (km0 < 25 ? 55 : km0 < 60 ? 70 : 90) * 60), pts: [0.25, 0.5, 0.75].map(f => ({ f, lat: +(a.lat + (b.lat - a.lat) * f).toFixed(3), lon: +(a.lon + (b.lon - a.lon) * f).toFixed(3) })), routed: false };
+    res = { km, min: Math.round(km / (km0 < 25 ? 55 : km0 < 60 ? 70 : 90) * 60), pts: [0.25, 0.5, 0.75].map(f => ({ f, lat: +(a.lat + (b.lat - a.lat) * f).toFixed(3), lon: +(a.lon + (b.lon - a.lon) * f).toFixed(3), km: Math.round(km * f * 10) / 10, name: null })), routed: false, byTime: false };
   }
   return (ROUTES[key] = res);
 }
@@ -151,11 +164,12 @@ const shift = (ts, m) => new Date(Date.parse(ts + ':00Z') + m * 60000).toISOStri
 // aller (depuis le domicile ou le rendez-vous précédent s'il finit moins de 3 h avant) et retour (après le dernier rendez-vous enchaîné)
 async function planLegs(events, home) {
   const H = { lat: rc(home.lat), lon: rc(home.lon), label: 'Domicile', home: true };
-  const P = e => ({ lat: e.lat, lon: e.lon, label: e.label || e.loc });
+  const P = e => ({ lat: e.lat, lon: e.lon, label: e.label || e.loc, city: cityOf(e.label || e.loc) });
+  const keyOf = e => e.s + '|' + (e.t || '');
   const mkGo = async (from, e, fromKind, arrive) => { const r = await routeLeg(from, e), need = Math.round(r.min * 1.1) + 10;
-    return { k: 'go', from: { lat: from.lat, lon: from.lon, label: from.label }, to: P(e), fromKind, km: r.km, min: Math.round(r.min * 1.1), dep: shift(arrive, -need), arr: shift(arrive, -10), pts: r.pts, routed: r.routed }; };
+    return { k: 'go', from: { lat: from.lat, lon: from.lon, label: from.label, city: from.city || from.label }, to: P(e), fromKind, km: r.km, min: Math.round(r.min * 1.1), dep: shift(arrive, -need), arr: shift(arrive, -10), pts: r.pts, routed: r.routed, byTime: r.byTime }; };
   const mkRet = async (e, leave, assumed) => { const r = await routeLeg(e, H);
-    return { k: 'ret', from: P(e), to: { lat: H.lat, lon: H.lon, label: H.label }, fromKind: 'event', km: r.km, min: Math.round(r.min * 1.1), dep: leave, arr: shift(leave, Math.round(r.min * 1.1)), pts: r.pts, routed: r.routed, assumed: !!assumed }; };
+    return { k: 'ret', from: P(e), to: { lat: H.lat, lon: H.lon, label: H.label, city: H.label }, fromKind: 'event', km: r.km, min: Math.round(r.min * 1.1), dep: leave, arr: shift(leave, Math.round(r.min * 1.1)), pts: r.pts, routed: r.routed, byTime: r.byTime, assumed: !!assumed }; };
   const days = {};
   events.filter(e => e.lat != null).forEach(e => (days[e.s.slice(0, 10)] = days[e.s.slice(0, 10)] || []).push(e));
   for (const d of Object.keys(days).sort()) {
@@ -169,7 +183,14 @@ async function planLegs(events, home) {
       const gap = prev && !prev.near ? (Date.parse(e.s + ':00Z') - Date.parse(prev.ev.e + ':00Z')) / 60000 : null;
       if (gap != null && gap >= 0 && gap <= 180 && E.distKm(prev.ev, e) >= 1) e.legs.push(await mkGo(P(prev.ev), e, 'prev', e.s));
       else if (gap != null && gap >= 0 && gap <= 180) { /* même lieu : pas de trajet */ }
-      else { if (prev && !prev.near) prev.ev.legs.push(await mkRet(prev.ev, shift(prev.ev.e, 10))); e.legs.push(await mkGo(H, e, 'home', e.s)); }
+      else {
+        if (prev && !prev.near && gap != null && gap > 180) {
+          // écart de plus de 3 h : retour maison par défaut, avec l'option « enchaîner directement » préparée
+          const ret = await mkRet(prev.ev, shift(prev.ev.e, 10)), go = await mkGo(H, e, 'home', e.s), direct = await mkGo(P(prev.ev), e, 'prev', e.s);
+          ret.brk = go.brk = keyOf(e); prev.ev.legs.push(ret); e.legs.push(go);
+          e.alt = { key: keyOf(e), direct, fromLabel: prev.ev.label || prev.ev.loc, viaHome: { km: Math.round((ret.km + go.km) * 10) / 10, min: ret.min + go.min } };
+        } else { if (prev && !prev.near) prev.ev.legs.push(await mkRet(prev.ev, shift(prev.ev.e, 10))); e.legs.push(await mkGo(H, e, 'home', e.s)); }
+      }
       prev = { ev: e, near: false };
     }
     if (prev && !prev.near) prev.ev.legs.push(await mkRet(prev.ev, shift(prev.ev.e, 10)));
