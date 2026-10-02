@@ -17,7 +17,7 @@ function openCfg() {
 const STATIONS = [{ id: 'LFAQ', name: 'Albert-Bray', lat: 49.9715, lon: 2.6976 }, { id: 'LFAY', name: 'Amiens-Glisy', lat: 49.8730, lon: 2.3870 }];
 let cfg = null; try { cfg = openCfg(); } catch (e) { console.log('Configuration illisible', e.message); }
 const ctx = { console, Math, Date, Intl, Map, Set, JSON }; vm.createContext(ctx);
-vm.runInContext(fs.readFileSync(path.join(dir, 'engine.js'), 'utf8') + ';this.E={makeModel,mergeArome,summarize,windowAssess,LV,ICE_LV,TYPE_LABEL,hasTires,f1,f0,addMin,toMin,nowIn,distKm,applyObs,wxFr};', ctx);
+vm.runInContext(fs.readFileSync(path.join(dir, 'engine.js'), 'utf8') + ';this.E={makeModel,mergeArome,summarize,windowAssess,LV,ICE_LV,TYPE_LABEL,hasTires,f1,f0,addMin,toMin,nowIn,distKm,applyObs,wxFr,legPoints,legSeq,legCritical};', ctx);
 const E = ctx.E;
 const obsFile = path.join(dir, 'obs.json');
 const prev = fs.existsSync(obsFile) ? JSON.parse(fs.readFileSync(obsFile, 'utf8')) : { stations: {}, notified: null };
@@ -121,6 +121,60 @@ function sealWith(pass, obj) {
   const c = crypto.createCipheriv('aes-256-gcm', key, iv), ct = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final(), c.getAuthTag()]);
   return { v: 1, kdf: 'PBKDF2-SHA256', it: 600000, s: salt.toString('base64'), i: iv.toString('base64'), c: ct.toString('base64') };
 }
+
+/* ----- itinéraires (OSRM) et enchaînement des rendez-vous ----- */
+const hav = (a, b) => { const R = x => x * Math.PI / 180, dLa = R(b[1] - a[1]), dLo = R(b[0] - a[0]); return 6371 * 2 * Math.asin(Math.sqrt(Math.sin(dLa / 2) ** 2 + Math.cos(R(a[1])) * Math.cos(R(b[1])) * Math.sin(dLo / 2) ** 2)); };
+const rc = v => Math.round(v * 100) / 100;   // domicile arrondi à ~1 km avant tout envoi à un service externe
+const ROUTES = {};
+async function routeLeg(a, b) {
+  const key = [a.lat, a.lon, b.lat, b.lon].join(',');
+  if (ROUTES[key]) return ROUTES[key];
+  let res = null;
+  try {
+    const j = await getJSON(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=simplified&geometries=geojson`);
+    const r = j && j.routes && j.routes[0];
+    if (r && r.geometry && r.geometry.coordinates.length > 1) {
+      const co = r.geometry.coordinates, cum = [0];
+      for (let i = 1; i < co.length; i++) cum.push(cum[i - 1] + hav(co[i - 1], co[i]));
+      const tot = cum[cum.length - 1] || 1;
+      const pts = [0.25, 0.5, 0.75].map(f => { let i = cum.findIndex(c => c >= f * tot); if (i < 0) i = co.length - 1; return { f, lat: +co[i][1].toFixed(3), lon: +co[i][0].toFixed(3) }; });
+      res = { km: Math.round(r.distance / 100) / 10, min: Math.max(1, Math.round(r.duration / 60)), pts, routed: true };
+    }
+  } catch (e) { /* routeur indisponible : estimation */ }
+  if (!res) {
+    const km0 = E.distKm(a, b), km = Math.round(km0 * 13) / 10;
+    res = { km, min: Math.round(km / (km0 < 25 ? 55 : km0 < 60 ? 70 : 90) * 60), pts: [0.25, 0.5, 0.75].map(f => ({ f, lat: +(a.lat + (b.lat - a.lat) * f).toFixed(3), lon: +(a.lon + (b.lon - a.lon) * f).toFixed(3) })), routed: false };
+  }
+  return (ROUTES[key] = res);
+}
+const shift = (ts, m) => new Date(Date.parse(ts + ':00Z') + m * 60000).toISOString().slice(0, 16);
+// aller (depuis le domicile ou le rendez-vous précédent s'il finit moins de 3 h avant) et retour (après le dernier rendez-vous enchaîné)
+async function planLegs(events, home) {
+  const H = { lat: rc(home.lat), lon: rc(home.lon), label: 'Domicile', home: true };
+  const P = e => ({ lat: e.lat, lon: e.lon, label: e.label || e.loc });
+  const mkGo = async (from, e, fromKind, arrive) => { const r = await routeLeg(from, e), need = Math.round(r.min * 1.1) + 10;
+    return { k: 'go', from: { lat: from.lat, lon: from.lon, label: from.label }, to: P(e), fromKind, km: r.km, min: Math.round(r.min * 1.1), dep: shift(arrive, -need), arr: shift(arrive, -10), pts: r.pts, routed: r.routed }; };
+  const mkRet = async (e, leave, assumed) => { const r = await routeLeg(e, H);
+    return { k: 'ret', from: P(e), to: { lat: H.lat, lon: H.lon, label: H.label }, fromKind: 'event', km: r.km, min: Math.round(r.min * 1.1), dep: leave, arr: shift(leave, Math.round(r.min * 1.1)), pts: r.pts, routed: r.routed, assumed: !!assumed }; };
+  const days = {};
+  events.filter(e => e.lat != null).forEach(e => (days[e.s.slice(0, 10)] = days[e.s.slice(0, 10)] || []).push(e));
+  for (const d of Object.keys(days).sort()) {
+    const list = days[d].sort((a, b) => a.s < b.s ? -1 : 1);
+    let prev = null;
+    for (const e of list) {
+      e.legs = [];
+      const near = E.distKm(home, e) < 3;
+      if (e.allDay) { if (!near) { e.legs.push(await mkGo(H, e, 'home', d + 'T09:00')); e.legs.push(await mkRet(e, d + 'T18:00', true)); } continue; }
+      if (near) { if (prev && !prev.near) prev.ev.legs.push(await mkRet(prev.ev, shift(prev.ev.e, 10))); prev = { ev: e, near: true }; continue; }
+      const gap = prev && !prev.near ? (Date.parse(e.s + ':00Z') - Date.parse(prev.ev.e + ':00Z')) / 60000 : null;
+      if (gap != null && gap >= 0 && gap <= 180 && E.distKm(prev.ev, e) >= 1) e.legs.push(await mkGo(P(prev.ev), e, 'prev', e.s));
+      else if (gap != null && gap >= 0 && gap <= 180) { /* même lieu : pas de trajet */ }
+      else { if (prev && !prev.near) prev.ev.legs.push(await mkRet(prev.ev, shift(prev.ev.e, 10))); e.legs.push(await mkGo(H, e, 'home', e.s)); }
+      prev = { ev: e, near: false };
+    }
+    if (prev && !prev.near) prev.ev.legs.push(await mkRet(prev.ev, shift(prev.ev.e, 10)));
+  }
+}
 async function calendarSync(out) {
   const url = (process.env.GCAL_ICS || '').trim().replace(/^["'<«\s]+|["'>»\s]+$/g, '').replace(/^webcal:\/\//i, 'https://'), pass = (process.env.APP_KEY || process.env.RC_KEY || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();
   out.relay.cal = !url ? 'absent' : !pass ? 'sans clé' : 'ok';
@@ -136,8 +190,9 @@ async function calendarSync(out) {
       events.push({ t: e.title || 'Rendez-vous', s: e.s, e: e.e, allDay: !!e.start.allDay, loc: e.loc, lat: g ? g.lat : null, lon: g ? g.lon : null, label: g ? g.label : null });
     }
     out.relay.calN = events.length; out.relay.calGeo = events.filter(x => x.lat != null).length;
+    if (cfg) { try { await planLegs(events, (cfg.origins && cfg.origins[0]) || cfg.home); out.relay.calLegs = events.reduce((n, e) => n + (e.legs || []).length, 0); out.relay.calRouted = events.reduce((n, e) => n + (e.legs || []).filter(l => l.routed).length, 0); } catch (e) { out.relay.calLegErr = String(e.message || e).slice(0, 80); } }
     delete out.relay.calUrlDiag;
-    fs.writeFileSync(path.join(dir, 'calendar.sealed.json'), JSON.stringify(sealWith(pass, { updated: new Date().toISOString(), events })));
+    fs.writeFileSync(path.join(dir, 'calendar.sealed.json'), JSON.stringify(sealWith(pass, { v: 2, updated: new Date().toISOString(), events })));
     return events;
   } catch (e) { out.relay.calErr = String(e.message || e).replace(/https?:\S+/g, 'url').slice(0, 120); out.relay.calUrl = out.relay.calUrlDiag; delete out.relay.calUrlDiag; return null; }
 }
@@ -204,29 +259,29 @@ async function calendarSync(out) {
       out.notified = today;
     } catch (e) { console.log('Verdict impossible', e.message); out.relay.err = String(e.message || e).replace(/https?:\S+/g, 'url').slice(0, 120); }
   }
-  // 3) agenda : synchronisation chiffrée + alerte pour les trajets du jour (sans nom de lieu dans la notification)
+  // 3) agenda : synchronisation chiffrée + alerte par trajet (aller et retour, météo le long de la route), sans nom de lieu
   const evs = await calendarSync(out);
   if (cfg && evs && evs.length) {
     try {
       const API = 'https://api.open-meteo.com/v1/forecast', Q = 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,weather_code,pressure_msl,cloud_cover,visibility,wind_speed_10m,wind_gusts_10m,shortwave_radiation';
-      const home = (cfg.origins && cfg.origins[0]) || cfg.home, cars = cfg.cars.filter(E.hasTires), notified = (prev.calNotified || {});
+      const cars = cfg.cars.filter(E.hasTires), notified = prev.calNotified || {};
       out.calNotified = Object.fromEntries(Object.entries(notified).filter(([k]) => k.slice(0, 10) >= now.slice(0, 10)));
-      for (const ev of evs) {
-        if (ev.lat == null || ev.allDay) continue;
-        const km = E.distKm(home, ev); if (km < 3) continue;
-        const dur = Math.round(km * 1.3 / (km < 25 ? 55 : km < 60 ? 70 : 90) * 60) + 10, dep = new Date(Date.parse(ev.s + ':00Z') - (dur + 10) * 60000).toISOString().slice(0, 16);
-        const hrs = (Date.parse(dep + ':00Z') - Date.parse(now + ':00Z')) / 36e5; if (hrs < 0 || hrs > 14) continue;
-        const mk = async l => E.makeModel(await getJSON(`${API}?latitude=${l.lat}&longitude=${l.lon}&hourly=${Q}&timezone=auto&past_days=1&forecast_days=3`), 'relay', l);
-        const [A, B] = await Promise.all([mk(home), mk(ev)]), seq = [];
-        const arr = new Date(Date.parse(dep + ':00Z') + dur * 60000).toISOString().slice(0, 16);
-        for (let t = dep.slice(0, 13) + ':00'; t <= arr.slice(0, 13) + ':00'; t = E.addMin(t, 60)) { const a = A.byTime.get(t), b = B.byTime.get(t); if (a != null) seq.push({ hs: A.hs, i: a }); if (b != null) seq.push({ hs: B.hs, i: b }); }
-        if (!seq.length) continue;
+      const legs = []; evs.forEach(ev => (ev.legs || []).forEach(l => legs.push(l)));
+      for (const leg of legs) {
+        const hrs = (Date.parse(leg.dep + ':00Z') - Date.parse(now + ':00Z')) / 36e5; if (hrs < 0 || hrs > 14) continue;
+        const pts = E.legPoints(leg);
+        let js = await getJSON(`${API}?latitude=${pts.map(p => p.lat).join(',')}&longitude=${pts.map(p => p.lon).join(',')}&hourly=${Q}&timezone=Europe%2FParis&past_days=1&forecast_days=3`);
+        if (!Array.isArray(js)) js = [js];
+        const models = js.map((p, k) => { try { return E.makeModel(p, 'relay', pts[k]); } catch (e) { return null; } });
+        const seq = E.legSeq(models, pts, leg.dep, leg.min); if (!seq.length) continue;
         const res = cars.map(c => ({ c, w: E.windowAssess(c, seq, 'trip') })).filter(r => r.w), worst = res.reduce((m, r) => Math.max(m, r.w.level), 0), sum = E.summarize(seq);
-        const key = ev.s + '|' + (ev.t || '').length, fog = sum.visMin != null && sum.visMin < 500, ice = sum.iceLevel || 0;
+        const key = leg.dep + '|' + leg.k, fog = sum.visMin != null && sum.visMin < 500, ice = sum.iceLevel || 0;
         if ((worst >= 2 || fog || ice >= 1) && (notified[key] == null || worst > notified[key])) {
-          const title = `📅 ${E.LV[worst].emoji} ${E.LV[worst].name} · trajet agenda de ${ev.s.slice(11, 16)}`;
-          const lines = [`Départ conseillé ≈ ${dep.slice(11, 16)} · ${Math.round(km)} km`, ...res.map(r => `${r.c.short} : ${E.LV[r.w.level].name} ${r.w.score}/100`),
+          const cr = E.legCritical(seq, cars);
+          const title = `📅 ${E.LV[worst].emoji} ${E.LV[worst].name} · ${leg.k === 'ret' ? 'retour' : 'trajet'} agenda, départ ${leg.dep.slice(11, 16)}`;
+          const lines = [`${Math.round(leg.km)} km · ~${leg.min} min${leg.routed ? '' : ' (estimé)'}`, ...res.map(r => `${r.c.short} : ${E.LV[r.w.level].name} ${r.w.score}/100`),
             `Min ${E.f1(sum.Tmin)} °C · chaussée est. ${E.f1(sum.TrMin)} °C · verglas ${E.ICE_LV[ice].toLowerCase()}${fog ? ' · brouillard ' + E.f0(sum.visMin) + ' m' : ''}`];
+          if (cr && cr.q.f > 0 && cr.q.f < 1) lines.push(`Point le plus délicat : km ${Math.round(cr.q.f * leg.km)} vers ${cr.q.t.slice(11, 16)}`);
           const r = await fetch('https://ntfy.sh/', { method: 'POST', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ topic: cfg.ntfy, title, message: lines.join('\n'), priority: worst >= 3 ? 5 : 4, tags: ['calendar'], click: cfg.site }) });
           if (r.ok) out.calNotified[key] = worst;

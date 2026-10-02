@@ -785,3 +785,29 @@ function airSummary(js, nowStr) {
     pol, anyPol, polMax: anyPol ? Math.max(...pol.map(p => Math.max(p.lv || 0, p.pkLv || 0))) : null
   };
 }
+
+/* ===================== TRAJETS AGENDA : météo le long de l'itinéraire ===================== */
+// points du trajet : départ (f = 0), points intermédiaires de la route, arrivée (f = 1)
+function legPoints(leg) {
+  return [{ f: 0, lat: leg.from.lat, lon: leg.from.lon }, ...(leg.pts || []), { f: 1, lat: leg.to.lat, lon: leg.to.lon }];
+}
+// séquence horaire : chaque point est pris à l'heure où on y passe (départ + fraction × durée)
+function legSeq(models, pts, dep, min) {
+  const seq = [];
+  pts.forEach((p, k) => {
+    const m = models[k]; if (!m) return;
+    const t = addMin(dep, Math.round(p.f * (min || 0))), i = m.byTime.get(t.slice(0, 13) + ':00');
+    if (i != null) seq.push({ hs: m.hs, i, f: p.f, t });
+  });
+  return seq;
+}
+// point le plus délicat du trajet (verdict pneus, verglas, brouillard, chaussée)
+function legCritical(seq, cars) {
+  let best = null;
+  seq.forEach(q => {
+    const x = q.hs[q.i], lv = cars.map(c => hourVerdict(c, q.hs, q.i)).filter(Boolean).reduce((a, b) => Math.max(a, b.level), 0);
+    const ice = x.ice ? x.ice.level || 0 : 0, fog = x.vis != null && x.vis < 1000, sc = lv * 100 + ice * 20 + (fog ? 15 : 0) + (x.Tr != null && x.Tr < 2 ? 5 : 0) + ((x.P || 0) >= 1 ? 5 : 0);
+    if (!best || sc > best.sc) best = { q, x, lv, ice, fog, sc };
+  });
+  return best;
+}

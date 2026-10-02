@@ -450,6 +450,15 @@ html { scroll-behavior: smooth; }
 .cal-v { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cal-k { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--fg2); }
 .cal-k b { color: var(--fg); font-weight: 600; }
+.leg { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border-left: 3px solid var(--lv, var(--line2)); background: color-mix(in srgb, var(--lv-soft, transparent) 60%, transparent); border-radius: 0 4px 4px 0; }
+.leg.lvx { --lv: var(--line2); }
+.leg-h { font-size: 13px; }
+.leg-h b:first-child { font-family: var(--f-mono); font-size: 11px; letter-spacing: .1em; color: var(--accent); }
+.leg-o { font-size: 12px; color: var(--fg2); }
+.leg-c { font-size: 12.5px; padding: 5px 8px; border-radius: 4px; background: var(--lv-soft); border: 1px solid var(--lv); }
+.cal-sum { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--lv); background: var(--lv-soft); font-size: 13.5px; }
+.cal-sum b { font-family: var(--f-disp); font-size: 18px; letter-spacing: .04em; text-transform: uppercase; }
+.cal-v .btn.sm { min-height: 30px !important; padding: 3px 10px; }
 
 </style>
 </head><body>
@@ -1280,6 +1289,32 @@ function airSummary(js, nowStr) {
     pm25: cur('pm2_5'), pm10: cur('pm10'), o3: cur('ozone'), no2: cur('nitrogen_dioxide'),
     pol, anyPol, polMax: anyPol ? Math.max(...pol.map(p => Math.max(p.lv || 0, p.pkLv || 0))) : null
   };
+}
+
+/* ===================== TRAJETS AGENDA : météo le long de l'itinéraire ===================== */
+// points du trajet : départ (f = 0), points intermédiaires de la route, arrivée (f = 1)
+function legPoints(leg) {
+  return [{ f: 0, lat: leg.from.lat, lon: leg.from.lon }, ...(leg.pts || []), { f: 1, lat: leg.to.lat, lon: leg.to.lon }];
+}
+// séquence horaire : chaque point est pris à l'heure où on y passe (départ + fraction × durée)
+function legSeq(models, pts, dep, min) {
+  const seq = [];
+  pts.forEach((p, k) => {
+    const m = models[k]; if (!m) return;
+    const t = addMin(dep, Math.round(p.f * (min || 0))), i = m.byTime.get(t.slice(0, 13) + ':00');
+    if (i != null) seq.push({ hs: m.hs, i, f: p.f, t });
+  });
+  return seq;
+}
+// point le plus délicat du trajet (verdict pneus, verglas, brouillard, chaussée)
+function legCritical(seq, cars) {
+  let best = null;
+  seq.forEach(q => {
+    const x = q.hs[q.i], lv = cars.map(c => hourVerdict(c, q.hs, q.i)).filter(Boolean).reduce((a, b) => Math.max(a, b.level), 0);
+    const ice = x.ice ? x.ice.level || 0 : 0, fog = x.vis != null && x.vis < 1000, sc = lv * 100 + ice * 20 + (fog ? 15 : 0) + (x.Tr != null && x.Tr < 2 ? 5 : 0) + ((x.P || 0) >= 1 ? 5 : 0);
+    if (!best || sc > best.sc) best = { q, x, lv, ice, fog, sc };
+  });
+  return best;
 }
 
 /* ===================== DÉMO : scénarios simulés, au format exact de l'API ===================== */
@@ -2436,6 +2471,62 @@ function calTrip(ev) {
   const res = TCARS().map(c => ({ c, w: windowAssess(c, seq, 'trip') })).filter(r => r.w);
   return { km, dur, dep, arr, sum: summarize(seq), res, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0) };
 }
+
+// trajets calculés par le relais (itinéraire routier, aller / retour, enchaînement) : météo aux points de passage
+const LEGM = {}, LEGBUSY = new Set();
+const legKey = leg => legPoints(leg).map(p => (+p.lat).toFixed(2) + ',' + (+p.lon).toFixed(2)).join(';');
+async function fetchLeg(leg) {
+  const k = legKey(leg); if (LEGBUSY.has(k)) return; LEGBUSY.add(k);
+  const pts = legPoints(leg);
+  try {
+    let js = await fetchJSON(`${API}?latitude=${pts.map(p => p.lat).join(',')}&longitude=${pts.map(p => p.lon).join(',')}&hourly=${Q_HR}&timezone=Europe%2FParis&past_days=1&forecast_days=10`, 15000);
+    if (!Array.isArray(js)) js = [js];
+    LEGM[k] = { t: Date.now(), models: js.map((p, i) => { try { return makeModel(p, 'live', pts[i]); } catch (e) { return null; } }) };
+  } catch (e) { LEGM[k] = { t: Date.now() - 25 * 60e3, models: null }; }
+  LEGBUSY.delete(k); renderCal();
+}
+function legEval(leg) {
+  const k = legKey(leg), c = LEGM[k];
+  if (!c || Date.now() - c.t > 30 * 60e3) { fetchLeg(leg); if (!c) return { loading: true }; }
+  if (!c.models) return { err: true };
+  const seq = legSeq(c.models, legPoints(leg), leg.dep, leg.min); if (!seq.length) return { beyond: true };
+  const res = TCARS().map(car => ({ c: car, w: windowAssess(car, seq, 'trip') })).filter(r => r.w);
+  return { seq, sum: summarize(seq), res, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0), crit: legCritical(seq, TCARS()) };
+}
+function legHtml(leg) {
+  const r = legEval(leg), go = leg.k === 'go';
+  const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${leg.dep.slice(11, 16)}</b> → ${leg.arr.slice(11, 16)} · ${f0(leg.km)} km · ${leg.min} min${leg.routed ? '' : ' <span class="muted">(estimé)</span>'}${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''}</div>
+    <div class="leg-o">${go ? (leg.fromKind === 'prev' ? '↪ depuis ' + esc(leg.from.label || 'le rendez-vous précédent') + ' (rendez-vous précédent)' : '🏠 depuis le domicile') : '🏠 vers le domicile'}</div>`;
+  const plans = `<a class="btn sm" href="https://maps.apple.com/?daddr=${leg.to.lat},${leg.to.lon}&dirflg=d" target="_blank" rel="noopener">🧭 Plans</a>`;
+  let body;
+  if (r.loading) body = '<span class="sub">Analyse de la météo le long de la route…</span>';
+  else if (r.err) body = '<span class="sub">Météo indisponible pour ce trajet.</span>';
+  else if (r.beyond) body = '<span class="sub">Trop loin pour les prévisions horaires.</span>';
+  else {
+    const fb = frostBand(r.sum.TrMin), c = r.crit;
+    let crit = '';
+    if (c && c.q.f > 0 && c.q.f < 1 && (c.lv >= 1 || c.fog || c.ice >= 1 || (c.x.Tr != null && c.x.Tr < 2) || (c.x.P || 0) >= 1)) {
+      const why = c.fog ? 'visibilité ' + visTxt(c.x.vis) : c.ice >= 1 ? 'verglas ' + ICE_LV[c.ice].toLowerCase() : (c.x.P || 0) >= 1 ? 'pluie ' + f1(c.x.P) + ' mm/h' : c.lv >= 1 ? LV[c.lv].name : 'chaussée ' + f1(c.x.Tr) + ' °C';
+      crit = `<div class="leg-c lv${Math.max(1, c.lv)}">⚠️ Point le plus délicat : <b>vers le km ${Math.round(c.q.f * leg.km)}</b> (≈ ${c.q.t.slice(11, 16)}) · ${esc(why)}</div>`;
+    }
+    body = `<div class="cal-v"><span class="pill lv${r.worst}">${LV[r.worst].emoji} ${LV[r.worst].name}${r.res[0] ? ' ' + r.res[0].w.score : ''}</span>${plans}</div>
+      <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
+      ${crit}${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
+      ${r.res.length > 1 ? `<span class="sub">${r.res.map(x => `${esc(x.c.short)} : ${LV[x.w.level].name} ${x.w.score}`).join(' · ')}</span>` : ''}`;
+  }
+  return `<div class="leg lv${r.worst != null ? r.worst : 'x'}">${head}${body}</div>`;
+}
+// résumé de la journée : nombre de déplacements, kilomètres, trajet à surveiller
+function daySummary(evs, now) {
+  const legs = []; evs.forEach(e => (e.legs || []).forEach(l => { if (l.dep >= now.slice(0, 16)) legs.push({ l, e }); }));
+  if (!legs.length) return '';
+  const day = legs.map(x => x.l.dep.slice(0, 10)).sort()[0], L = legs.filter(x => x.l.dep.slice(0, 10) === day);
+  const km = L.reduce((a, x) => a + (x.l.km || 0), 0), ev = L.map(x => ({ x, r: legEval(x.l) })).filter(o => o.r && o.r.res);
+  const worst = ev.reduce((a, o) => !a || o.r.worst > a.r.worst ? o : a, null), dd = dayDiff(now.slice(0, 10), day);
+  const lbl = dd === 0 ? 'Aujourd’hui' : dd === 1 ? 'Demain' : fmtDay(day);
+  return `<div class="cal-sum lv${worst ? worst.r.worst : 0}"><b>${lbl} · ${L.length} trajet${L.length > 1 ? 's' : ''} · ${f0(km)} km</b>
+    <span>${worst && worst.r.worst >= 1 ? `${LV[worst.r.worst].emoji} ${worst.x.l.k === 'ret' ? 'retour' : 'aller'} ${esc(worst.x.e.t)} (${worst.x.l.dep.slice(11, 16)}) à surveiller` : ev.length === L.length ? '🟢 pneus adaptés à tous les trajets prévus' : 'analyse en cours…'}</span></div>`;
+}
 function renderCal() {
   const el = $('#secCal'); if (!el) return;
   if (!CAL || !CX) { el.hidden = true; el.innerHTML = ''; return; }
@@ -2447,9 +2538,10 @@ function renderCal() {
   if (!evs.length) { el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda</span></div><p class="sub">Aucun rendez-vous avec un lieu sur les 8 prochains jours. Ajoute une adresse ou une ville dans le champ « Lieu » de tes rendez-vous Google Agenda.</p><div class="disc">Agenda synchronisé le ${up}.</div>`; return; }
   const rows = evs.map(e => {
     const d = new Date(e.s.slice(0, 10) + 'T12:00:00Z'), dd = dayDiff(now.slice(0, 10), e.s.slice(0, 10)), dl = dd === 0 ? 'auj.' : dd === 1 ? 'demain' : DAYN[d.getUTCDay()] + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1);
-    const tr = calTrip(e);
+    const tr = e.legs ? null : calTrip(e);
     let body;
-    if (e.lat == null) body = `<span class="sub">Lieu introuvable sur la carte : précise l’adresse ou la ville dans le rendez-vous.</span>`;
+    if (e.legs && e.lat != null) body = (!e.allDay && e.legs.length && !e.legs.some(l => l.k === 'go') ? '<span class="sub">↪ Enchaîné avec le rendez-vous précédent, même lieu : pas de trajet aller.</span>' : '') + (e.legs.length ? e.legs.map(legHtml).join('') : '<span class="sub">Même lieu que le rendez-vous précédent : pas de trajet.</span>');
+    else if (e.lat == null) body = `<span class="sub">Lieu introuvable sur la carte : précise l’adresse ou la ville dans le rendez-vous.</span>`;
     else if (!tr) body = '<span class="sub">Météo en attente…</span>';
     else if (tr.near) body = `<span class="sub">À moins de 3 km de chez toi : pas de trajet à analyser.</span>`;
     else if (tr.loading) body = `<span class="sub">${f0(tr.km)} km · analyse de la météo du trajet…</span>`;
@@ -2464,8 +2556,8 @@ function renderCal() {
     }
     return `<div class="cal-e"><div class="cal-h"><span class="cal-d">${dl} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(e.label || e.loc)}</span></div>${body}</div>`;
   }).join('');
-  el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · prévision</span></div><div class="cal-l">${rows}</div>
-    <div class="disc">${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Départ estimé depuis ${esc(S.locs[0].name)} : distance × 1,3 à 55–90 km/h selon la longueur + 10 min de marge, sans trafic. Les rendez-vous « journée entière » sont calculés pour une arrivée à 09:00.</div>`;
+  el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · prévision</span></div>${daySummary(evs, now)}<div class="cal-l">${rows}</div>
+    <div class="disc">${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Itinéraire routier (OpenStreetMap), durée + 10 % et 10 min de marge, sans trafic : touche 🧭 Plans pour le trafic réel. Météo prise au départ, à 25, 50 et 75 % de la route et à l’arrivée, à l’heure de passage. Rendez-vous enchaînés (moins de 3 h d’écart) : départ du lieu précédent. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
 }
 
 /* ---------- rendu : voitures ---------- */
