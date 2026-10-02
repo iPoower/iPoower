@@ -106,7 +106,7 @@ jobs:
           node-version: 20
       - name: Relais de bout en bout (données fictives, sans aucun secret)
         run: node tests/relay-smoke.js
-      - name: Outils de clés : rotation et contrôle de séparation (clés fictives, sans aucun secret)
+      - name: "Outils de clés : rotation et contrôle de séparation (clés fictives, sans aucun secret)"
         run: node tests/keys-tools.js
   deploy:
     needs: [version, confidentialite, tests, relay-smoke]
