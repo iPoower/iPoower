@@ -367,6 +367,7 @@ html { scroll-behavior: smooth; }
 .airt .n { font-size: 11.5px; line-height: 1.25; }
 .airp { flex-wrap: wrap; }
 .pips.dm { flex-direction: column; align-items: flex-end; gap: 0; font-family: var(--f-mono); font-size: 11px; color: var(--fg2); line-height: 1.3; display: block; text-align: right; }
+.osm-dark { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.4); }
 
 </style>
 </head><body>
@@ -1922,7 +1923,7 @@ function renderAir() {
 }
 
 /* ---------- radar de pluie (RainViewer : 2 dernières heures, image toutes les 10 min) ---------- */
-const RADAR = { map: null, base: null, layers: [], frames: [], idx: 0, play: null, t: 0, marker: null, state: 'idle', at: null, io: null, err: '' };
+const RADAR = { map: null, baseL: null, baseKind: '', layers: [], frames: [], idx: 0, play: null, t: 0, marker: null, state: 'idle', at: null, io: null, err: '' };
 function loadLeaflet() {
   if (window.L && window.L.map) return Promise.resolve();
   if (loadLeaflet.p) return loadLeaflet.p;
@@ -1934,6 +1935,22 @@ function loadLeaflet() {
   return loadLeaflet.p;
 }
 const isLight = () => { const t = document.documentElement.dataset.theme; return t === 'light' || (t !== 'dark' && matchMedia('(prefers-color-scheme: light)').matches); };
+// fond de carte sans clé : Esri gris (sombre ou clair) + noms de villes au-dessus du radar ; secours OpenStreetMap
+function radarBase(map, kind) {
+  (RADAR.baseL || []).forEach(x => map.removeLayer(x));
+  const d = !isLight(), E = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_' + (d ? 'Dark' : 'Light') + '_Gray_';
+  if (kind === 'esri') {
+    const base = L.tileLayer(E + 'Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 10, attribution: 'Fond © Esri · © OpenStreetMap · Radar © RainViewer' });
+    const lab = L.tileLayer(E + 'Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom: 10, pane: 'labels' });
+    let ok = 0, bad = 0;
+    base.on('tileload', () => { ok++; });
+    base.on('tileerror', () => { bad++; if (!ok && bad >= 3) radarBase(map, 'osm'); });
+    RADAR.baseL = [base.addTo(map), lab.addTo(map)];
+  } else {
+    RADAR.baseL = [L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 10, className: d ? 'osm-dark' : '', attribution: '© OpenStreetMap · Radar © RainViewer' }).addTo(map)];
+  }
+  RADAR.baseKind = kind;
+}
 function radarMsg(t) { const e = $('#rmsg'); if (e) { e.textContent = t || ''; e.hidden = !t; } }
 function renderRadar() {
   const el = $('#secRadar'); if (!el) return;
@@ -1962,7 +1979,8 @@ async function initRadar() {
     const l = curLoc(), mob = L.Browser.mobile;
     const map = L.map('rmap', { zoomControl: false, minZoom: 5, maxZoom: 10, dragging: !mob, touchZoom: true, scrollWheelZoom: false, tap: false, attributionControl: true }).setView([l.lat, l.lon], 8);
     map.attributionControl.setPrefix(false);
-    RADAR.base = L.tileLayer(`https://{s}.basemaps.cartocdn.com/${isLight() ? 'light_all' : 'dark_all'}/{z}/{x}/{y}{r}.png`, { subdomains: 'abcd', maxZoom: 10, attribution: '© OpenStreetMap · © CARTO · Radar © RainViewer' }).addTo(map);
+    map.createPane('labels'); map.getPane('labels').style.zIndex = 450; map.getPane('labels').style.pointerEvents = 'none';
+    radarBase(map, 'esri');
     L.control.zoom({ position: 'topright' }).addTo(map);
     RADAR.marker = L.circleMarker([l.lat, l.lon], { radius: 6, color: '#ffffff', weight: 2, fillColor: '#ff8c2b', fillOpacity: 1 }).addTo(map);
     RADAR.map = map; RADAR.at = l.id;
