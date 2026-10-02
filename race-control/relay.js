@@ -165,7 +165,10 @@ async function routeLeg(a, b) {
         let i = (byTime ? cumT : cumD).findIndex(c => c >= f * (byTime ? totT : totD)); if (i < 0) i = co.length - 1;
         pts.push({ f, lat: +co[i][1].toFixed(3), lon: +co[i][0].toFixed(3), km: Math.round(cumD[i] * 10) / 10, name: await cityAt(co[i][1], co[i][0]) });
       }
-      res = { km: Math.round(r.distance / 100) / 10, min: Math.max(1, Math.round(r.duration / 60)), pts, routed: true, byTime };
+      // tracé simplifié pour la mini-carte de l'app (~80 points, ~100 m de précision) : stocké uniquement dans calendar.sealed.json (chiffré)
+      const g = [], step = totD / 80; let nxt = 0;
+      for (let i = 0; i < co.length; i++) if (cumD[i] >= nxt || i === co.length - 1) { g.push([+co[i][1].toFixed(3), +co[i][0].toFixed(3)]); nxt = cumD[i] + step; }
+      res = { km: Math.round(r.distance / 100) / 10, min: Math.max(1, Math.round(r.duration / 60)), pts, routed: true, byTime, g };
     }
   } catch (e) { /* routeur indisponible : estimation */ }
   if (!res) {
@@ -181,9 +184,9 @@ async function planLegs(events, home) {
   const P = e => ({ lat: e.lat, lon: e.lon, label: e.label || e.loc, city: cityOf(e.label || e.loc) });
   const keyOf = e => e.s + '|' + (e.t || '');
   const mkGo = async (from, e, fromKind, arrive) => { const r = await routeLeg(from, e), need = Math.round(r.min * 1.1) + 10;
-    return { k: 'go', from: { lat: from.lat, lon: from.lon, label: from.label, city: from.city || from.label }, to: P(e), fromKind, km: r.km, min: Math.round(r.min * 1.1), dep: shift(arrive, -need), arr: shift(arrive, -10), pts: r.pts, routed: r.routed, byTime: r.byTime }; };
+    return { k: 'go', from: { lat: from.lat, lon: from.lon, label: from.label, city: from.city || from.label }, to: P(e), fromKind, km: r.km, min: Math.round(r.min * 1.1), dep: shift(arrive, -need), arr: shift(arrive, -10), pts: r.pts, g: r.g, routed: r.routed, byTime: r.byTime }; };
   const mkRet = async (e, leave, assumed) => { const r = await routeLeg(e, H);
-    return { k: 'ret', from: P(e), to: { lat: H.lat, lon: H.lon, label: H.label, city: H.label }, fromKind: 'event', km: r.km, min: Math.round(r.min * 1.1), dep: leave, arr: shift(leave, Math.round(r.min * 1.1)), pts: r.pts, routed: r.routed, byTime: r.byTime, assumed: !!assumed }; };
+    return { k: 'ret', from: P(e), to: { lat: H.lat, lon: H.lon, label: H.label, city: H.label }, fromKind: 'event', km: r.km, min: Math.round(r.min * 1.1), dep: leave, arr: shift(leave, Math.round(r.min * 1.1)), pts: r.pts, g: r.g, routed: r.routed, byTime: r.byTime, assumed: !!assumed }; };
   const days = {};
   events.filter(e => e.lat != null && e.mode !== 'pasdetrajet').forEach(e => (days[e.s.slice(0, 10)] = days[e.s.slice(0, 10)] || []).push(e));
   for (const d of Object.keys(days).sort()) {

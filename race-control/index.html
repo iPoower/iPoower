@@ -398,6 +398,13 @@ html { scroll-behavior: smooth; }
 .brf-r span { color: var(--lv-t, var(--accent)); }
 .brf-ev { font-size: 14px; line-height: 1.35; color: var(--fg2); }
 .brf-ev b { color: var(--fg); font-weight: 600; }
+/* mini-carte du prochain trajet : à droite de la jauge sur grand écran, repliable sous les KPI sur iPhone */
+.brf-map { display: none; }
+.brf-mapt { align-self: flex-start; }
+.brf-mapm { height: 220px; }
+.tmap { position: relative; width: 100%; height: 100%; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--panel2); z-index: 0; }
+.tmap-b { position: absolute; top: 6px; left: 6px; z-index: 500; font: 11px var(--f-mono); color: var(--fg2); background: color-mix(in srgb, var(--panel) 82%, transparent); padding: 2px 6px; border-radius: 3px; }
+@media (min-width: 760px) { .brf-m.hasmap { grid-template-columns: 118px minmax(0, 1fr) minmax(240px, 40%); } .brf-m.hasmap .brf-map { display: block; height: 150px; } .brf-mapt, .brf-mapm { display: none !important; } }
 .brf-m { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 14px; align-items: center; }
 .gauge { width: 118px; height: 118px; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--lv) 45%, transparent)); }
 .g-bg { fill: none; stroke: var(--line); stroke-width: 10; }
@@ -2487,6 +2494,7 @@ function renderBrf() {
   }
   el.className = 'mod brf lv' + (main.res ? main.res[0].w.level : 0);
   el.innerHTML = briefCard(main, dayLbl) + tail;
+  if (main.res && !(LOCKED() && !lsGet('twrc.nocode'))) tripMapMount(main);   // pas de carte (ni d'appel externe) avant le déverrouillage
 }
 // carte de briefing complète, identique pour un trajet domicile-travail et un trajet agenda
 function briefCard(t, dayLbl) {
@@ -2504,12 +2512,14 @@ function briefCard(t, dayLbl) {
   const visV = v => v == null ? '—' : v >= 10000 ? '>10' : v >= 1000 ? f0(v / 1000) : f0(v), visU = v => v == null ? '' : v >= 1000 ? 'km' : 'm';
   const iceS = ['Faible', 'Modéré', 'Élevé', 'Max'];
   const tr = trendOf(t.key, t.dep, snapOf(t.res, sum, t.seq)), cr = t.crit;
+  const mOpen = lsGet('twrc.tripmap') === '1';
   return head + `
-    <div class="brf-m">${gaugeSvg(top.w.score, lv)}
+    <div class="brf-m hasmap">${gaugeSvg(top.w.score, lv)}
       <div class="brf-v"><span class="brf-lv">${LV[lv].emoji} ${LV[lv].name}</span>
         <span class="brf-car">${esc(top.c.short)} · ${esc(TYPE_LABEL[effType(top.c)] || '')}</span>
         <span class="brf-why">${parts.length ? 'Points d’attention : ' + parts.map(esc).join(' · ') : '✓ Pneus actuels adaptés au trajet'}</span>
-        ${t.res.slice(1).map(r => `<span class="brf-why">${LV[r.w.level].emoji} ${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}/100</span>`).join('')}</div></div>
+        ${t.res.slice(1).map(r => `<span class="brf-why">${LV[r.w.level].emoji} ${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}/100</span>`).join('')}</div>
+      <div class="brf-map" id="tmapW"></div></div>
     <div class="kpis">
       ${k('Route', deg(sum.TrMin), '±2', 'est', fb ? 'lv' + fb.lv : '')}
       ${k('Air', deg(sum.Tmin), '', 'prev')}
@@ -2520,7 +2530,64 @@ function briefCard(t, dayLbl) {
     ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
     ${cr && cr.q.f > 0 && cr.q.f < 1 && cr.sc >= 20 ? `<div class="brf-why">📍 Point le plus délicat : km ${f0(cr.q.f * t.l.km)}${cr.q.name ? ' (' + esc(cr.q.name) + ')' : ''} vers ${cr.q.t.slice(11, 16)}</div>` : ''}
     ${ob && ob.T != null ? `<div class="brf-obs"><i class="tag obs">mesuré</i> ${esc(ob.name)} · ${new Date(ob.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · <b>${f1(ob.T)} °C</b>${ob.vis != null && ob.vis < 5000 ? ' · visibilité ' + ob.vis + ' m' : ''}${ob.wx ? ' · ' + esc(wxFr(ob.wx)) : ''}</div>` : ''}
-    <div class="brf-t">${trendHtml(tr)}</div>`;
+    <div class="brf-t">${trendHtml(tr)}</div>
+    <button class="btn sm brf-mapt" data-act="tripmap" aria-expanded="${mOpen}">🗺️ ${mOpen ? 'Masquer le trajet ▴' : 'Voir le trajet ▾'}</button>
+    <div class="brf-mapm" id="tmapM" ${mOpen ? '' : 'hidden'}></div>`;
+}
+
+/* ---------- mini-carte du prochain trajet (Leaflet chargé seulement quand la carte est visible) ---------- */
+const TMAP = { node: null, map: null, key: '' };
+const wideScreen = () => matchMedia('(min-width: 760px)').matches;
+const rc2 = v => Math.round(v * 100) / 100;   // domicile et travail arrondis à ~1 km avant tout appel externe
+async function tripGeo(t) {
+  if (t.src === 'cal') {
+    const P = legPoints(t.l), pts = t.l.g && t.l.g.length > 1 ? t.l.g : P.map(p => [p.lat, p.lon]), cr = t.crit;
+    // point critique : seulement en cas de vrai risque (verdict orange ou rouge, verglas, brouillard)
+    const cp = cr && (cr.lv >= 2 || cr.ice >= 1 || cr.fog) && P[cr.q.k] ? { at: [P[cr.q.k].lat, P[cr.q.k].lon], lv: Math.max(2, cr.lv), t: cr.q.t } : null;
+    return { pts, est: !(t.l.g && t.l.g.length > 1), crit: cp };
+  }
+  const td = t.td, a = [rc2(td.LA.lat), rc2(td.LA.lon)], b = [rc2(td.LB.lat), rc2(td.LB.lon)], k = a.join(',') + ';' + b.join(',');
+  let C = {}; try { C = JSON.parse(lsGet('twrc.croute') || '{}'); } catch (e) { C = {}; }
+  if (C[k]) return { pts: C[k], est: false, crit: null };
+  try {
+    const j = await fetchJSON(`https://router.project-osrm.org/route/v1/driving/${a[1]},${a[0]};${b[1]},${b[0]}?overview=simplified&geometries=geojson`, 10000);
+    const co = j && j.routes && j.routes[0] && j.routes[0].geometry.coordinates;
+    if (co && co.length > 1) { const st = Math.max(1, Math.ceil(co.length / 120)), g = co.filter((c, i) => i % st === 0 || i === co.length - 1).map(c => [+c[1].toFixed(3), +c[0].toFixed(3)]);
+      lsSet('twrc.croute', JSON.stringify({ [k]: g })); return { pts: g, est: false, crit: null }; }
+  } catch (e) { /* itinéraire indisponible : tracé estimé */ }
+  return { pts: [a, ...(td.mids || []).map(p => [p.lat, p.lon]), b], est: true, crit: null };
+}
+function tripMapMount(t) {
+  const wide = wideScreen(), slot = wide ? $('#tmapW') : lsGet('twrc.tripmap') === '1' ? $('#tmapM') : null;
+  if (!slot) return;
+  const key = `${t.key}|${t.worst}|${wide ? 'w' : 'm'}`;
+  if (TMAP.node && TMAP.key === key) { slot.appendChild(TMAP.node); if (TMAP.map) setTimeout(() => TMAP.map.invalidateSize(), 0); return; }
+  if (TMAP.map) { try { TMAP.map.remove(); } catch (e) { /* déjà retirée */ } TMAP.map = null; }
+  const node = document.createElement('div'); node.className = 'tmap'; node.setAttribute('role', 'img'); node.setAttribute('aria-label', `Carte du trajet ${t.from} → ${t.to}`);
+  slot.appendChild(node); TMAP.node = node; TMAP.key = key;
+  tripGeo(t).then(geo => loadLeaflet().then(() => { if (TMAP.node === node) drawTripMap(node, t, geo); }))
+    .catch(() => { if (TMAP.node === node) node.innerHTML = '<div class="tmap-b">Carte indisponible</div>'; });
+}
+function drawTripMap(node, t, geo) {
+  const d = !isLight(), E = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_' + (d ? 'Dark' : 'Light') + '_Gray_';
+  const map = L.map(node, { zoomControl: false, scrollWheelZoom: false, dragging: !L.Browser.mobile, keyboard: false, attributionControl: true });
+  map.createPane('labels'); map.getPane('labels').style.zIndex = 450; map.getPane('labels').style.pointerEvents = 'none';
+  const base = L.tileLayer(E + 'Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 13, attribution: '© Esri · © OpenStreetMap · Itinéraire © OSRM' }).addTo(map);
+  L.tileLayer(E + 'Reference/MapServer/tile/{z}/{y}/{x}', { maxZoom: 13, pane: 'labels' }).addTo(map);
+  let ok = 0, bad = 0; base.on('tileload', () => ok++);
+  base.on('tileerror', () => { if (++bad >= 3 && !ok && !map._osm) { map._osm = 1; L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 13, className: d ? 'osm-dark' : '', attribution: '© OpenStreetMap · Itinéraire © OSRM' }).addTo(map); } });
+  const cs = getComputedStyle($('#secBrf')), col = (cs.getPropertyValue('--lv-t') || cs.getPropertyValue('--accent') || '#2ecc71').trim();
+  const line = L.polyline(geo.pts, { color: col, weight: 4, opacity: .95, dashArray: geo.est ? '6 7' : null }).addTo(map);
+  const a = geo.pts[0], b = geo.pts[geo.pts.length - 1];
+  L.circleMarker(a, { radius: 5, color: '#fff', weight: 2, fillColor: '#0b0f14', fillOpacity: 1 }).addTo(map).bindTooltip('Départ · ' + t.from);
+  L.circleMarker(b, { radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: .9 }).addTo(map).bindTooltip('Arrivée · ' + t.to);
+  if (geo.crit) {
+    const cc = (cs.getPropertyValue(geo.crit.lv >= 3 ? '--nogo-t' : '--risk-t') || (geo.crit.lv >= 3 ? '#e74c3c' : '#f39c12')).trim();
+    L.circleMarker(geo.crit.at, { radius: 8, color: cc, weight: 3, fillColor: cc, fillOpacity: .35 }).addTo(map).bindTooltip('Point le plus délicat vers ' + geo.crit.t.slice(11, 16));
+  }
+  map.fitBounds(line.getBounds(), { padding: [16, 16] });
+  node.insertAdjacentHTML('beforeend', `<div class="tmap-b">${t.worst != null ? LV[t.worst].emoji : '·'}${geo.est ? ' tracé estimé' : ''}</div>`);
+  TMAP.map = map;
 }
 
 
@@ -3327,6 +3394,7 @@ document.addEventListener('click', async e => {
   else if (a === 'from') { if (UI.dir === 'go') { S.work.from = t.dataset.id; markEdit('work.from'); } else { S.work.to = t.dataset.id; markEdit('work.to'); } saveSettings(); softRender(); }
   else if (a === 'dir') { UI.dir = t.dataset.d; UI.dayOff = null; softRender(); }
   else if (a === 'day') { UI.dayOff = +t.dataset.off; softRender(); }
+  else if (a === 'tripmap') { lsSet('twrc.tripmap', lsGet('twrc.tripmap') === '1' ? '0' : '1'); renderBrf(); }
   else if (a === 'wday') {
     const d = +t.dataset.d, cur = commuteDays(S.work.days).slice(), k = cur.indexOf(d);
     if (k >= 0) { if (cur.length === 1) return; cur.splice(k, 1); } else cur.push(d);   // au moins un jour de trajet
