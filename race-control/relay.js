@@ -7,7 +7,7 @@ const dir = __dirname, crypto = require('crypto');
 function openCfg() {
   const plainFile = path.join(dir, 'relay-config.json');
   if (fs.existsSync(plainFile)) return JSON.parse(fs.readFileSync(plainFile, 'utf8'));
-  const S = JSON.parse(fs.readFileSync(path.join(dir, 'relay-config.sealed.json'), 'utf8')), pass = process.env.RC_KEY;
+  const S = JSON.parse(fs.readFileSync(path.join(dir, 'relay-config.sealed.json'), 'utf8')), pass = (process.env.RC_KEY || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();
   if (!pass) { console.log('Secret RC_KEY absent : observations seules, pas de notification'); return null; }
   const key = crypto.pbkdf2Sync(pass, Buffer.from(S.s, 'base64'), S.it, 32, 'sha256'), buf = Buffer.from(S.c, 'base64');
   const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(S.i, 'base64')); d.setAuthTag(buf.subarray(buf.length - 16));
