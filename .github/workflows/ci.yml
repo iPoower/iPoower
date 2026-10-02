@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.version.outputs.ref }}
       - uses: actions/setup-node@v4
@@ -71,7 +71,7 @@ jobs:
       matrix:
         browser: [chromium, webkit]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.version.outputs.ref }}
       - uses: actions/setup-node@v4
@@ -97,7 +97,7 @@ jobs:
       group: race-control-deploy
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.version.outputs.ref }}
       - uses: actions/setup-node@v4
@@ -105,7 +105,7 @@ jobs:
           node-version: 20
       - name: Build de production (réglages déjà chiffrés, aucun secret)
         run: node tools/build.js
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: gh-pages
           path: pages
