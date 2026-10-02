@@ -49,6 +49,8 @@ async function getJSON(u) { const r = await fetch(u, { headers: { 'User-Agent': 
   // 2) notification du matin
   const now = E.nowIn('Europe/Paris'), hm = E.toMin(now.slice(11, 16)), today = now.slice(0, 10);
   const force = process.env.FORCE_PUSH === '1';
+  // diagnostic public, sans aucune donnée personnelle
+  out.relay = { cfg: cfg ? 'ok' : (process.env.RC_KEY ? 'illisible' : 'absent'), force, at: now };
   if (cfg && (force || (hm >= 5 * 60 + 25 && hm <= 6 * 60 + 15)) && (force || out.notified !== today)) {
     try {
       const API = 'https://api.open-meteo.com/v1/forecast';
@@ -76,10 +78,10 @@ async function getJSON(u) { const r = await fetch(u, { headers: { 'User-Agent': 
         if (st) lines.push(`Mesuré ${st.name} : ${E.f1(st.last.T)} °C${st.last.vis != null && st.last.vis < 5000 ? ', visibilité ' + st.last.vis + ' m' : ''}${st.last.wx ? ' · ' + E.wxFr(st.last.wx) : ''}`);
         const r = await fetch('https://ntfy.sh/', { method: 'POST', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ topic: cfg.ntfy, title, message: lines.join('\n'), priority: worst >= 3 ? 5 : worst >= 2 ? 4 : 3, tags: ['car'], click: cfg.site }) });
-        console.log('ntfy', r.status); out.lastPush = { at: now, level: worst };
-      } else console.log('Conditions sans alerte, pas de notification');
+        console.log('ntfy', r.status); out.relay.ntfy = r.status; out.lastPush = { at: now, level: worst };
+      } else { console.log('Conditions sans alerte, pas de notification'); out.relay.ntfy = 'rien'; }
       out.notified = today;
-    } catch (e) { console.log('Verdict impossible', e.message); }
+    } catch (e) { console.log('Verdict impossible', e.message); out.relay.err = String(e.message || e).replace(/https?:\S+/g, 'url').slice(0, 120); }
   }
   fs.writeFileSync(obsFile, JSON.stringify(out));
   console.log('Terminé');
