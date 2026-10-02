@@ -1,0 +1,37 @@
+name: Race Control · contrôle des sources
+# Étape 0 : aucune donnée personnelle dans le dépôt, et le build depuis les sources redonne exactement la version en production.
+# Ne déploie rien.
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'tools/**', 'tests/**', 'encrypted/**', '.github/workflows/sources-check.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Aucune donnée personnelle dans le dépôt
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          RC_KEY: ${{ secrets.RC_KEY }}
+          GCAL_ICS: ${{ secrets.GCAL_ICS }}
+        run: node tools/check-secrets.js
+      - name: Build depuis les sources (fichiers chiffrés seuls)
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          RC_KEY: ${{ secrets.RC_KEY }}
+        run: node tools/build.js
+      - name: Identique à la production
+        run: |
+          git fetch --depth 1 origin gh-pages
+          for f in index.html engine.js relay.js sw.js widget.js tiredb.json manifest.webmanifest relay-config.sealed.json; do
+            git show origin/gh-pages:race-control/$f > /tmp/prod_$f
+            if cmp -s dist/$f /tmp/prod_$f; then echo "identique : $f"; else echo "::warning::$f diffère de la production (normal si une modification n'est pas encore publiée)"; fi
+          done

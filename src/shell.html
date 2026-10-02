@@ -1,0 +1,37 @@
+<script>document.documentElement.dataset.theme = 'dark';</script>
+<div class="statusbar"><div class="in" id="statusbar"></div></div>
+<main class="wrap">
+  <header class="top">
+    <h1 class="title"><small>CENTRE DE CONTRÔLE MÉTÉO · PNEUMATIQUES</small>Tyre Weather Race Control</h1>
+    <div id="viewSeg"></div>
+    <div class="chips" id="locChips"></div>
+  </header>
+  <div id="demoBar"></div>
+  <div id="notice"></div>
+  <div id="hdrMore" class="hdr-more"><div class="srcline" id="srcline"></div>
+    <nav class="jump" id="jump" aria-label="Aller à une section"></nav></div>
+  <div id="banners" class="notes"></div>
+  <section class="mod brf" id="secBrf" aria-label="Briefing du trajet"></section>
+  <section class="mod" id="secCal" aria-label="Trajets de l’agenda" hidden></section>
+  <section class="mod" id="secCur" aria-label="Météo actuelle"></section>
+  <section class="mod tipm" id="secTip" aria-label="Astuce"></section>
+  <div class="grid2" id="secCars"></div>
+  <section class="mod" id="secBrief" aria-label="Briefing départ"></section>
+  <section class="mod" id="secCmp" aria-label="Comparateur des deux voitures"></section>
+  <section class="mod" id="secIce" aria-label="Risque verglas"></section>
+  <section class="mod" id="secChart" aria-label="Graphique 24 heures"></section>
+  <section class="mod" id="secDays" aria-label="Prévisions 7 jours"></section>
+  <section class="mod" id="secRadar" aria-label="Radar pluie"></section>
+  <section class="mod" id="secAir" aria-label="Air, UV et pollens"></section>
+  <section class="mod" id="secSeason" aria-label="Saison pneus"></section>
+  <section class="mod" id="secJournal" aria-label="Journal de saison"></section>
+  <section class="mod" id="secAlerts" aria-label="Alertes"></section>
+  <details class="mod" id="settings"><summary><h2>Paramètres</h2></summary><div id="settingsBody"></div></details>
+  <footer class="foot">
+    <h4>Méthode et limites</h4>
+    <p><b>Source.</b> Open-Meteo. Sur les 48 premières heures, température, rosée, pluie, neige, vent, nuages et rayonnement viennent du modèle Météo-France AROME (maille 1,3 à 2,5 km, mis à jour toutes les 3 h). Visibilité, probabilité de pluie et prévisions au-delà de 48 h viennent du modèle de base d’Open-Meteo. Les valeurs « actuelles » sont une analyse du modèle renouvelée toutes les 15 minutes, pas une mesure de station. Visibilité, point de rosée et rayonnement viennent des prévisions horaires.</p>
+    <p><b>Chaussée estimée.</b> Aucun capteur routier n’est interrogé. L’estimation combine l’inertie thermique (moyenne pondérée des 6 dernières heures d’air), le gain solaire de jour (rayonnement, nuages, vent), le refroidissement radiatif de nuit (ciel dégagé, vent faible, humidité) et l’effet de la pluie ou de la neige. Incertitude typique : ± 2 °C.</p>
+    <p><b>Risque de verglas.</b> Score de 0 à 100 : froid de la chaussée estimée × présence d’humidité (pluie en cours ou récente, point de rosée, humidité), plus bonus pour passage sous 0 °C, baisse rapide, neige récente ou brouillard givrant. Une pluie verglaçante annoncée par le modèle donne « très élevé ». C’est un risque estimé, jamais une observation.</p>
+    <p><b>Score pneus.</b> 100 moins des pénalités : plage de température du pneu, humidité de la chaussée, pluie et aquaplaning, neige, verglas, profondeur de gomme, puis visibilité et rafales (météo seule). Le seuil de 7 °C est une règle pratique : les performances relatives hiver/été évoluent progressivement. Indice d’aide à la décision, jamais une garantie de sécurité.</p>
+  </footer>
+</main>

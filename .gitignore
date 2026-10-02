@@ -1,0 +1,17 @@
+# Données privées : jamais dans Git (dépôt public)
+private/
+.passphrase
+preset.json
+relay-config.json
+.sealed-cache.json
+.relay-sealed-cache.json
+cfg-link.txt
+# Sorties de build et de tests (régénérées)
+dist/
+site/
+artifact.html
+standalone.html
+*.png
+!src/static/*.png
+test-results/
+node_modules/

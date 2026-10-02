@@ -1,0 +1,24 @@
+const {chromium}=require('playwright');const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync('engine.js','utf8')+fs.readFileSync('demo.js','utf8');const ctx={console,Math,Date,Intl,Map,Set,JSON};vm.createContext(ctx);vm.runInContext(src+';this.mk=makeDemoPayload;this.me=makeDemoEnsemble;this.mn=makeDemoNowcast;',ctx);
+const obs={updated:new Date().toISOString(),stations:{LFAQ:{id:'LFAQ',name:'Albert-Bray',lat:49.9715,lon:2.6976,last:{t:new Date(Date.now()-20*60000).toISOString(),T:2,Td:1.5,vis:400,wind:4,qnh:1031,wx:'FG',raw:'METAR LFAQ ... 0400 FG 02/01 Q1031'},hist:[]},LFAY:{id:'LFAY',name:'Amiens-Glisy',last:null,hist:[]}}};
+(async()=>{const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']});
+const c=await b.newContext({viewport:{width:414,height:896},deviceScaleFactor:2,isMobile:true,hasTouch:true,colorScheme:'dark',timezoneId:'Europe/Paris',ignoreHTTPSErrors:true});const p=await c.newPage();const e=[];p.on('pageerror',x=>e.push(x.message));
+await p.route('**/*',r=>{const u=r.request().url();const J=o=>r.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify(o)});
+ if(u.includes('open-meteo.com')){const q=new URL(u).searchParams;const base=ctx.mk('pluie',{lat:+q.get('latitude'),lon:+q.get('longitude')},'Europe/Paris',0);if(u.includes('ensemble'))return J(ctx.me(base));if(q.get('minutely_15'))return J(ctx.mn(base));return J(base);}
+ if(u.includes('/race-control/obs.json'))return J(obs);
+ if(u.includes('/race-control/tiredb.json'))return r.fulfill({status:200,contentType:'application/json',body:fs.readFileSync('site/tiredb.json','utf8')});
+ if(u.startsWith('https://ipoower.github.io/iPoower/race-control/'))return r.fulfill({status:200,contentType:'text/html',body:fs.readFileSync('site/index.html','utf8')});
+ return r.abort();});
+await p.goto('https://ipoower.github.io/iPoower/race-control/');await p.waitForTimeout(3000);
+const T=async(l,f)=>{try{console.log('OK  ',l,JSON.stringify(await f()));}catch(x){console.log('FAIL',l,x.message.split('\n')[0]);}};
+await T('obs block',()=>p.$eval('.obsb',x=>x.innerText.replace(/\n/g,' | ').slice(0,300)));
+await T('fog banner',()=>p.$eval('#banners .banner h3',x=>x.textContent));
+await T('journal',()=>p.$eval('#secJournal',x=>x.innerText.replace(/\n/g,' | ').slice(0,260)));
+await T('odo+tread',async()=>{await p.evaluate(()=>{document.querySelector('#settings').open=true});await p.waitForTimeout(300);
+  await p.fill('#odo-0','40000');await p.click('[data-act=odo][data-i="0"]');await p.waitForTimeout(150);await p.fill('#trd-0','6.8');await p.click('[data-act=tread-add][data-i="0"]');await p.waitForTimeout(150);
+  await p.evaluate(()=>{const s=JSON.parse(localStorage.getItem('twrc.settings.v1'));const c=s.cars[0];c.odo=[{d:'2026-08-01',km:36000},{d:'2026-10-02',km:40000}];c.tire.treads=[{d:'2026-06-01',mm:7.6,km:33000},{d:'2026-10-02',mm:6.8,km:40000}];c.tire.mountKm=33000;localStorage.setItem('twrc.settings.v1',JSON.stringify(s));});
+  await p.reload();await p.waitForTimeout(2500);return p.$eval('.tirebox.wear',x=>x.textContent);});
+await T('scrollW',()=>p.evaluate(()=>document.documentElement.scrollWidth));
+console.log('errors',JSON.stringify(e));
+await (await p.$('#secCur')).screenshot({path:'obs-cur.png'});await (await p.$('#secJournal')).screenshot({path:'obs-journal.png'});
+await b.close();})();

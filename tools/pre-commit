@@ -1,0 +1,7 @@
+#!/bin/sh
+# Bloque tout commit qui contiendrait une donnée personnelle ou un secret.
+# Installation : ln -sf ../../tools/pre-commit .git/hooks/pre-commit
+[ -f tools/check-secrets.js ] || exit 0   # branche sans garde-fou (ex. gh-pages) : rien à contrôler ici
+files=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$files" ] && exit 0
+node tools/check-secrets.js $files || { echo "Commit refusé : retire la donnée signalée."; exit 1; }

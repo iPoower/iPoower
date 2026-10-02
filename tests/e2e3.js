@@ -1,0 +1,23 @@
+const {chromium}=require('playwright');const fs=require('fs'),vm=require('vm');
+const src=fs.readFileSync('engine.js','utf8')+fs.readFileSync('demo.js','utf8');
+const ctx={console,Math,Date,Intl,Map,Set,JSON};vm.createContext(ctx);vm.runInContext(src+`;this.mk=makeDemoPayload;`,ctx);
+const link=fs.readFileSync('cfg-link.txt','utf8').trim(); const hash=link.slice(link.indexOf('#'));
+(async()=>{const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']});
+const c=await b.newContext({viewport:{width:390,height:844},deviceScaleFactor:2,colorScheme:'dark',timezoneId:'Europe/Paris',locale:'fr-FR'});const p=await c.newPage();const errs=[];
+p.on('pageerror',e=>errs.push(e.message));
+await p.route('**/*',r=>{const u=r.request().url();if(u.includes('api.open-meteo.com')&&!u.includes('geocoding')){const q=new URL(u).searchParams;return r.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify(ctx.mk('pluie',{lat:+q.get('latitude'),lon:+q.get('longitude')},'Europe/Paris',0))});}if(u.startsWith('file://'))return r.continue();return r.abort();});
+const base='file:///home/claude/twrc/site/index.html';
+const st=async l=>console.log(l,JSON.stringify(await p.evaluate(()=>({chips:[...document.querySelectorAll('#locChips .chip')].map(e=>e.textContent),cars:[...document.querySelectorAll('.car h3')].map(e=>e.textContent),note:document.querySelector('#notice')?.textContent.trim().slice(0,40),badge:document.querySelector('.badge')?.textContent}))));
+await p.goto(base);await p.waitForTimeout(900);await st('neutral');
+await p.goto('about:blank');await p.goto(base+hash);await p.waitForTimeout(900);await st('import');
+await p.click('[data-act=tire][data-car="308"][data-type=summer]');
+await p.goto('about:blank');await p.goto(base+hash);await p.waitForTimeout(900);await st('reopen same link (308 should stay été)');
+console.log('308 type',await p.evaluate(()=>JSON.parse(localStorage.getItem('twrc.settings.v1')).cars[1].tire.type));
+await p.screenshot({path:'shot-cfg.png'});
+// artifact preset build via a wrapper page
+fs.writeFileSync('/tmp/claude-0/art-test.html','<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>'+fs.readFileSync('artifact.html','utf8')+'</body></html>');
+const p2=await (await b.newContext({viewport:{width:390,height:844}})).newPage(); p2.on('pageerror',e=>errs.push('art '+e.message));
+await p2.route('**/*',r=>r.request().url().startsWith('file://')?r.continue():r.abort());
+await p2.goto('file:///tmp/claude-0/art-test.html');await p2.waitForTimeout(1200);
+console.log('artifact offline', JSON.stringify(await p2.evaluate(()=>({chips:[...document.querySelectorAll('#locChips .chip')].map(e=>e.textContent),link:document.querySelector('#notice a')?.href}))));
+console.log('errors',JSON.stringify(errs));await b.close();})();
