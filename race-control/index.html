@@ -2445,9 +2445,23 @@ function renderBrf() {
   const visV = v => v == null ? '—' : v >= 10000 ? '>10' : v >= 1000 ? f0(v / 1000) : f0(v), visU = v => v == null ? '' : v >= 1000 ? 'km' : 'm';
   const iceS = ['Faible', 'Modéré', 'Élevé', 'Max'];
   const ob = td.A.obs;
+  // hiérarchie de la journée : ce que tu conduis aujourd'hui d'abord. Un briefing complet seulement pour aujourd'hui,
+  // ou pour demain à partir de la veille au soir (18:00, ou dès le retour du boulot un jour de trajet).
+  const nowHm = CX.m.nowStr.slice(11, 16), eve = toMin(nowHm) >= Math.min(18 * 60, isCommuteDay(today, S.work.days) ? toMin(S.work.ret) : 1440);
+  const fullFor = d => { const n = dayDiff(today, d.slice(0, 10)); return n <= 0 || (n === 1 && eve); };
+  const dbh = dayBriefHtml(td, lv), agFull = !!dbh && fullFor(dayBriefHtml.day), wkFull = fullFor(td.dep);
+  const dayLbl = d => { const n = dayDiff(today, d.slice(0, 10)); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(d.slice(0, 10)); };
+  const wkLine = `<div class="brf-n"><span class="k">Prochain trajet domicile-travail</span><span>🏁 <b>${dayLbl(td.dep)} · ${td.dep.slice(11, 16)}</b> · ${cdSpan(td.dep)}</span></div>`;
+  const agLine = dbh && !agFull ? `<div class="brf-n"><span class="k">Prochain trajet agenda</span><span>📅 <b>${dayLbl(dayBriefHtml.first)} · ${dayBriefHtml.first.slice(11, 16)}</b> · ${dayBriefHtml.next}</span></div>` : '';
+  const nrNow = () => { const r = nextRisk(); return `<div class="brf-n"><span class="k">Prochain risque</span>${r ? `<span class="lv${r.lv}"><b style="color:var(--lv-t)">${r.lv >= 3 ? '🔴' : r.lv >= 2 ? '🟠' : '🟡'} ${r.day} ${r.t.slice(11, 16)}</b> · ${esc(r.why)}</span>` : '<span>🟢 Rien à signaler sur 72 h</span>'}</div>`; };
+  if (!wkFull) {   // pas de trajet domicile-travail aujourd'hui (télétravail, repos) : l'agenda du jour devient le briefing principal
+    el.className = 'mod brf lv' + (agFull ? dayBriefHtml.lv : 0);
+    el.innerHTML = `${agFull ? dbh : !CAL && !CALDONE && lsGet('twrc.key') ? '<div class="brf-h"><span class="brf-k">⏳ Lecture de l’agenda…</span></div>' : `<div class="brf-h"><span class="brf-k">💤 ${isCommuteDay(today, S.work.days) && td.dep.slice(0, 10) > today ? 'Plus de trajet prévu aujourd’hui' : 'Aucun trajet prévu aujourd’hui'}</span></div>`}${agLine}${wkLine}${nrNow()}`;
+    return;
+  }
   el.className = 'mod brf lv' + lv;
   const trC = trendOf('commute|' + td.dep + '|' + td.dir, td.dep, snapOf(res, sum, td.seq));
-  const dbh = dayBriefHtml(td, lv), dbTop = dbh && dayBriefHtml.day <= td.dep.slice(0, 10);   // journée agenda avant (ou le même jour que) le trajet domicile-travail : en haut
+  const dbTop = agFull && dayBriefHtml.first < td.dep;   // agenda et boulot le même jour : dans l'ordre des départs
   el.innerHTML = `${dbTop ? dbh : ''}<div class="brf-h"><span class="brf-k">🏁 Briefing ${td.dir === 'go' ? 'aller' : 'retour'}</span><span class="brf-w">${when} · ${cdSpan(td.dep)}</span></div>
     <div class="brf-r">${esc(td.fromName)} <span>→</span> ${esc(td.toName)}</div>
     <div class="brf-m">${gaugeSvg(top.w.score, lv)}
@@ -2466,12 +2480,12 @@ function renderBrf() {
     ${ob && ob.T != null ? `<div class="brf-obs"><i class="tag obs">mesuré</i> ${esc(ob.name)} · ${new Date(ob.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · <b>${f1(ob.T)} °C</b>${ob.vis != null && ob.vis < 5000 ? ' · visibilité ' + ob.vis + ' m' : ''}${ob.wx ? ' · ' + esc(wxFr(ob.wx)) : ''}</div>` : ''}
     <div class="brf-t">${trendHtml(trC)}</div>
     <div class="brf-n"><span class="k">Prochain risque</span>${nr ? `<span class="lv${nr.lv}"><b style="color:var(--lv-t)">${nr.lv >= 3 ? '🔴' : nr.lv >= 2 ? '🟠' : '🟡'} ${nr.day} ${nr.t.slice(11, 16)}</b> · ${esc(nr.why)}</span>` : '<span>🟢 Rien à signaler sur 72 h</span>'}</div>
-    ${dbh && !dbTop ? `<div class="db-after">${dbh}</div>` : ''}`;
+    ${agFull && !dbTop ? `<div class="db-after">${dbh}</div>` : agLine}`;
 }
 
 
 /* ---------- agenda Google : trajets des rendez-vous (fichier chiffré publié par le relais) ---------- */
-let CAL = null; const CALM = {}, CALBUSY = new Set();
+let CAL = null, CALDONE = false; const CALM = {}, CALBUSY = new Set();   // CALDONE : première lecture de l'agenda terminée (avec ou sans agenda)
 async function openSealed(S0, pass) {
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(S0.s), iterations: S0.it, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
@@ -2482,8 +2496,9 @@ async function loadCalendar() {
   try {
     const S0 = await fetchJSON('calendar.sealed.json?t=' + Math.floor(Date.now() / 300e3), 8000); if (!S0 || !S0.c) return;
     if (CAL && CAL.c === S0.c) return;
-    const d = await openSealed(S0, String(pass).trim().toLowerCase()); CAL = { ...d, c: S0.c }; renderCal(); renderBrf();
+    const d = await openSealed(S0, String(pass).trim().toLowerCase()); CAL = { ...d, c: S0.c }; CALDONE = true; renderCal(); renderBrf();
   } catch (e) { /* pas d'agenda publié, ou code différent */ }
+  finally { if (!CALDONE) { CALDONE = true; renderBrf(); } }
 }
 async function calModel(ev) {
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2);
@@ -2654,6 +2669,7 @@ function trendHtml(tr) {
 const snapOf = (res, sum, seq) => ({ lv: res.reduce((m, r) => Math.max(m, r.w.level), 0), pp: Math.max(0, ...seq.map(q => q.hs[q.i].pp || 0)), vis: sum.visMin, tr: sum.TrMin });
 // briefing de la journée : trajets agenda + trajet domicile/travail, prochain départ, trajet critique
 function dayBriefHtml(td, tdLv) {
+  dayBriefHtml.day = dayBriefHtml.first = dayBriefHtml.next = null; dayBriefHtml.lv = 0;
   if (!CAL || !CAL.events) return '';
   const now = CX.m.nowStr.slice(0, 16), legs = [];
   CAL.events.filter(e => e.mode !== 'pasdetrajet').forEach(e => effLegs(e).forEach(l => { if (l.dep >= now) legs.push({ l, e }); }));
@@ -2669,7 +2685,7 @@ function dayBriefHtml(td, tdLv) {
   const lines = T.map(o => `<div class="db-l"><span>${o.x.r && o.x.r.res ? LV[o.x.r.worst].emoji : '⏳'} ${o.x.l.dep.slice(11, 16)} · ${nm(o.x)}</span>${o.t && !o.t.first && o.t.ch.length ? trendHtml(o.t) : ''}</div>`).join('')
     + (!anyCh && ref ? `<div class="db-n">${trendHtml(ref.first ? ref : { ...ref, ch: [] })}</div>` : '');
   const car = TCARS()[0];
-  dayBriefHtml.day = day;
+  dayBriefHtml.day = day; dayBriefHtml.first = nx.l.dep; dayBriefHtml.next = nm(nx); dayBriefHtml.lv = worst ? worst.r.worst : 0;
   return `<div class="db lv${worst ? worst.r.worst : 0}"><div class="db-h"><b>${lbl} · ${L.length} trajet${L.length > 1 ? 's' : ''} agenda · ${f0(km)} km</b></div>
     ${worst && worst.r.worst >= 1 ? `<div class="db-w">${LV[worst.r.worst].emoji} <b>${nm(worst)} (${worst.l.dep.slice(11, 16)})</b> = trajet critique</div>` : ready.length === L.length ? '<div class="db-w">🟢 aucun trajet à risque</div>' : ''}
     <div class="db-n">⏱ Prochain départ agenda : <b>${nx.l.dep.slice(11, 16)}</b> · ${cdSpan(nx.l.dep)} · ${nm(nx)}</div>
