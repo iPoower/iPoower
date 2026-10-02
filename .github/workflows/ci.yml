@@ -4,7 +4,9 @@ name: Race Control · tests
 #    Aucun navigateur, aucun build de l'app, aucun affichage de donnée.
 #  - tests : AUCUN secret. L'app est construite avec un préréglage, un agenda et une clé 100 % fictifs, puis testée
 #    sur Chromium et sur WebKit (moteur de Safari, profil iPhone), réseau extérieur bloqué.
-# Ne déploie rien. Aucune capture ni sortie brute n'est publiée : le dépôt est public.
+#  - deploy (étape 2) : seulement sur main, seulement si confidentialite ET les deux navigateurs sont verts.
+#    Publie le build sur gh-pages sans jamais toucher aux fichiers du relais, étiquette la version (prod-N), puis vérifie la version en ligne.
+# Aucune capture ni sortie brute n'est publiée : le dépôt est public.
 on:
   push:
     branches: [main]
@@ -52,3 +54,51 @@ jobs:
         env:
           BROWSER: ${{ matrix.browser }}
         run: node tests/run-ci.js
+  deploy:
+    needs: [confidentialite, tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: race-control-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build de production (réglages déjà chiffrés, aucun secret)
+        run: node tools/build.js
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: pages
+      - name: Publier sur gh-pages
+        id: pub
+        run: |
+          DEPLOY_RUN=${{ github.run_number }} DEPLOY_SHA=$GITHUB_SHA node tools/deploy-copy.js dist pages/race-control
+          cd pages
+          git config user.name "race-control-deploy"
+          git config user.email "race-control-deploy@users.noreply.github.com"
+          git add race-control
+          if git diff --cached --quiet; then echo "Production déjà à jour"; echo "done=0" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git commit -q -m "Déploiement ${GITHUB_SHA::7} (tests verts, run ${{ github.run_number }})"
+          for i in 1 2 3 4 5; do git push -q && break; sleep 3; git pull -q --rebase; done
+          echo "done=1" >> "$GITHUB_OUTPUT"
+      - name: Étiquette de version (retour arrière possible)
+        if: steps.pub.outputs.done == '1'
+        run: |
+          git tag "prod-${{ github.run_number }}" "$GITHUB_SHA"
+          git push -q origin "prod-${{ github.run_number }}"
+      - name: Vérification de la version en ligne
+        if: steps.pub.outputs.done == '1'
+        run: |
+          want=$(sha256sum dist/index.html | cut -d' ' -f1)
+          for i in $(seq 1 30); do
+            got=$(curl -fsS "https://ipoower.github.io/iPoower/race-control/index.html?v=${GITHUB_RUN_ID}$i" | sha256sum | cut -d' ' -f1)
+            if [ "$got" = "$want" ]; then echo "✅ Version en ligne identique au build"; exit 0; fi
+            sleep 20
+          done
+          echo "::error::La version en ligne ne correspond pas au build après 10 minutes"; exit 1
