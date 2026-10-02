@@ -379,6 +379,8 @@ html { scroll-behavior: smooth; }
 .tip-n .btn { min-height: 32px !important; min-width: 36px; padding: 2px 8px; font-size: 16px; }
 .tip-t { font-size: 14.5px; line-height: 1.45; margin: 0; }
 .tip-s { font-size: 11.5px; color: var(--fg3); }
+.tip.live .tip-c { color: var(--lv-t); }
+.tip.live.lv0 .tip-c { color: var(--accent); }
 
 </style>
 </head><body>
@@ -2155,7 +2157,7 @@ const TIPS = [
   { k: 'tyre', t: 'Un pneu sous-gonflé chauffe plus, s’use plus vite sur les épaules et augmente la consommation. Il allonge aussi le freinage sur le mouillé.', src: 'Recommandation des manufacturiers' },
   { k: 'tyre', t: 'Permuter les pneus avant et arrière égalise l’usure, surtout sur une traction où l’avant s’use plus vite. Respecte le sens de roulement si le pneu en a un.', src: 'Recommandation des manufacturiers' }
 ];
-const TIP_CAT = { law: ['⚖️', 'Code de la route'], tyre: ['🛞', 'Pneus'], meteo: ['🌦️', 'Météo'], drive: ['🚗', 'Conduite'], car: ['🔧', 'Voiture'] };
+const TIP_CAT = { live: ['⚡', 'En direct'], law: ['⚖️', 'Code de la route'], tyre: ['🛞', 'Pneus'], meteo: ['🌦️', 'Météo'], drive: ['🚗', 'Conduite'], car: ['🔧', 'Voiture'] };
 let TIP_OFF = 0;
 function tipCtx() {
   const c = {}; if (!CX) return c;
@@ -2171,21 +2173,74 @@ function tipCtx() {
   c.summer = TCARS().some(car => effType(car) === 'summer');
   return c;
 }
+
+// astuces en direct : calculées à partir des vraies données du moment (lieu affiché, voitures, station)
+function liveTips() {
+  if (!CX) return [];
+  const { m, sum24 } = CX, n = m.nowI, hs = m.hs, out = [], l = curLoc(), ln = l ? l.name.split(' /')[0] : 'ici';
+  const nx = hs.slice(n, n + 24).filter(Boolean), at = x => x.t.slice(11, 16);
+  const add = (t, src, lv) => out.push({ k: 'live', t, src: 'Données en direct · ' + src, lv: lv || 0 });
+  const today = m.nowStr.slice(0, 10), day = m.days.find(d => d.date === today) || {};
+  // pluie imminente (prévision au quart d'heure)
+  if (m.nc && m.nc.startIn != null && m.nc.startIn <= 90) add(`${m.nc.snow ? 'Neige' : 'Pluie'} attendue dans ${m.nc.startIn} min à ${ln}. Pense aux feux de croisement et allonge les distances dès les premières gouttes : la route est la plus glissante au début de la pluie.`, 'prévision au quart d’heure', 1);
+  else if (m.nc && m.nc.nowWet) add(`${m.nc.snow ? 'Il neige' : 'Il pleut'} en ce moment à ${ln}${m.nc.stopAt ? ', fin probable vers ' + m.nc.stopAt : ''}. Vitesses abaissées sur autoroute (110) et voie express (100).`, 'prévision au quart d’heure', 1);
+  // mesure réelle de la station
+  if (m.obs && m.obs.T != null) {
+    const ago = Math.round((Date.now() - Date.parse(m.obs.t)) / 60000);
+    add(`Mesuré il y a ${ago} min à la station ${m.obs.name} : ${f1(m.obs.T)} °C${m.obs.vis != null && m.obs.vis < 5000 ? ', visibilité ' + m.obs.vis + ' m' : ''}${m.obs.wx ? ' (' + wxFr(m.obs.wx) + ')' : ''}. Les prévisions de l’appli sont recalées sur cette mesure.`, 'station ' + m.obs.id);
+  }
+  // chaussée sous 0 °C
+  const ice = nx.find(x => x.Tr != null && x.Tr <= 0);
+  if (ice) add(`Chaussée estimée à ${f1(ice.Tr)} °C vers ${at(ice)} à ${ln}. Prévois 5 minutes de dégivrage et méfie-toi des ponts et des zones d’ombre.`, 'chaussée estimée (± 2 °C)', 2);
+  // brouillard
+  const fog = nx.find(x => x.vis != null && x.vis < 1000);
+  if (fog) add(`Visibilité prévue à ${f0(fog.vis)} m vers ${at(fog)}. Feux de brouillard arrière seulement si elle tombe vraiment bas, jamais sous la simple pluie.`, 'prévision de visibilité', fog.vis < 200 ? 3 : 2);
+  else { const x = hs[n]; if (x && x.T != null && x.Td != null && x.T - x.Td < 2 && (x.wind == null || x.wind < 10)) add(`Écart température / point de rosée de seulement ${f1(x.T - x.Td)} °C et peu de vent : brume ou brouillard possibles dans les prochaines heures.`, 'analyse air et rosée', 1); }
+  // rafales
+  const g = nx.reduce((a, x) => x.gust != null && x.gust >= 60 && (!a || x.gust > a.gust) ? x : a, null);
+  if (g) add(`Rafales jusqu’à ${f0(g.gust)} km/h vers ${at(g)}. Tiens fermement le volant en sortie de forêt, sur les ponts et en doublant un camion.`, 'prévision de vent', g.gust >= 80 ? 2 : 1);
+  // chute de température
+  const T0 = hs[n] && hs[n].T, tmin = nx.reduce((a, x) => x.T != null && (!a || x.T < a.T) ? x : a, null);
+  if (T0 != null && tmin && T0 - tmin.T >= 5 && tmin.T <= 7) add(`La température va chuter de ${f0(T0 - tmin.T)} °C d’ici ${at(tmin)} (${f1(tmin.T)} °C). ${tmin.T <= 3 ? 'Si tu pars à ce moment-là, prévois de quoi dégivrer.' : 'Les pneus été passent sous leur zone de confort et la pression baisse avec le froid.'}`, 'prévision horaire');
+  // UV
+  const pk = uvToday(m); if (pk && pk.uv >= 3 && pk.t >= m.nowStr.slice(0, 13)) add(`Indice UV maximal de ${f0(pk.uv)} vers ${at(pk)} aujourd’hui. Lunettes de soleil dans la voiture, surtout avec le soleil bas.`, 'indice UV (OMS)');
+  // départ et retour de nuit
+  if (day.sunrise && S.work.dep && day.sunrise.slice(11, 16) > S.work.dep) add(`Lever du soleil à ${day.sunrise.slice(11, 16)}, après ton départ de ${S.work.dep} : trajet de nuit. Vérifie que tes feux et ton pare-brise sont propres.`, 'éphéméride');
+  if (day.sunset && S.work.ret) { const s0 = day.sunset.slice(11, 16), r = toMin(S.work.ret) - toMin(s0); if (r >= -45 && r <= 30) add(`Coucher du soleil à ${s0}, autour de ton retour de ${S.work.ret} : soleil rasant puis pénombre. Lunettes de soleil et feux allumés tôt.`, 'éphéméride'); }
+  // voitures : pression, pneus été au froid, âge, montage hiver
+  TCARS().forEach(car => {
+    const t = car.tire, pc = t.pchk, tgt = pressTarget(t.press);
+    if (pc && pc.T != null && tmin && pc.T - tmin.T >= 8) add(`${car.short} : pression contrôlée à ${f0(pc.T)} °C. À ${f1(tmin.T)} °C vers ${at(tmin)}, elle aura perdu environ ${f1(pressLoss(tgt, pc.T, tmin.T))} bar. Recontrôle à froid.`, 'ton contrôle du ' + fmtDay(pc.date), 1);
+    if (effType(car) === 'summer') { const dh = (S.work.dep || '06:30').slice(0, 5), later = m.nowStr.slice(11, 16) < dh, dd = later ? today : addMin(today + 'T00:00', 1440).slice(0, 10);
+      const dep = m.byTime.get(dd + 'T' + dh.slice(0, 2) + ':00'), x = dep != null ? hs[dep] : null;
+      if (x && x.T != null && x.T < 7) add(`${later ? 'Ce matin' : 'Demain'} à ${dh} : ${f1(x.T)} °C, sous le seuil de 7 °C des pneus été de la ${car.short}. Freinages plus longs, surtout sur le mouillé.`, 'prévision horaire', 1); }
+    const age = dotAge(t.dot, m.nowStr); if (age != null && age >= 5) add(`${car.short} : pneus de ${f1(age)} ans (DOT ${t.dot}). À partir de 5 ans, fais-les inspecter chaque année.`, 'code DOT', age >= 8 ? 2 : 1);
+    if (car.plan && car.plan.on && car.plan.date && effType(car) !== 'winter') { const j = dayDiff(today, car.plan.date); if (j >= 0 && j <= 21) add(`${car.short} : montage des pneus hiver dans ${j} jour${j > 1 ? 's' : ''} (${fmtDay(car.plan.date)}). Pense à confirmer le rendez-vous et à vérifier l’état des pneus stockés.`, 'ton planning', 1); }
+  });
+  // air et pollens
+  const aq = AQRAW[UI.loc], a = !DEMO.on && aq ? airSummary(aq.p, m.nowStr) : null;
+  if (a && a.aqi && a.aqi.v >= 60) add(`Qualité de l’air ${a.aqi.name.toLowerCase()} (indice ${a.aqi.v}) : dans les bouchons, passe la ventilation en recyclage.`, 'Copernicus CAMS', 1);
+  if (a && a.polMax >= 3) { const p = a.pol.filter(x => Math.max(x.lv || 0, x.pkLv || 0) >= 3).map(x => x.name.toLowerCase()).join(', '); add(`Pollens élevés (${p}) : vitres fermées en roulant, et un filtre d’habitacle propre fait vraiment la différence.`, 'Copernicus CAMS', 1); }
+  return out.sort((x, y) => y.lv - x.lv);
+}
 function tipList() {
   const c = tipCtx(), hot = TIPS.filter(t => t.w && t.w(c)), rest = TIPS.filter(t => !hot.includes(t));
   // astuces liées à la météo du moment en priorité : elles reviennent 2 fois plus souvent
-  return hot.length ? [...hot, ...rest.filter((_, i) => i % 2 === 0), ...hot, ...rest.filter((_, i) => i % 2 === 1)] : rest;
+  const base = hot.length ? [...hot, ...rest.filter((_, i) => i % 2 === 0), ...hot, ...rest.filter((_, i) => i % 2 === 1)] : rest;
+  // astuces en direct : une sur deux (les plus urgentes d'abord)
+  const lv = liveTips(); if (!lv.length) return base;
+  const out = []; base.forEach((t, i) => { out.push(lv[i % lv.length]); out.push(t); }); return out;
 }
 const tipSlot = () => Math.floor(Date.now() / 600e3);
 function renderTip() {
   const el = $('#secTip'); if (!el) return;
   const list = tipList(); if (!list.length) { el.hidden = true; return; } el.hidden = false;
   const i = ((tipSlot() + TIP_OFF) % list.length + list.length) % list.length, tp = list[i], cat = TIP_CAT[tp.k] || ['💡', 'Astuce'];
-  const ctx = tp.w && tp.w(tipCtx());
+  const ctx = tp.k !== 'live' && tp.w && tp.w(tipCtx());
   const next = new Date((tipSlot() + 1) * 600e3);
-  el.innerHTML = `<div class="tip"><div class="tip-h"><span class="tip-c">${cat[0]} ${esc(cat[1])}${ctx ? ' · <b>en lien avec la météo ou la saison</b>' : ''}</span>
+  el.innerHTML = `<div class="tip${tp.k === 'live' ? ' live lv' + Math.min(3, tp.lv || 0) : ''}"><div class="tip-h"><span class="tip-c">${cat[0]} ${esc(cat[1])}${ctx ? ' · <b>en lien avec la météo ou la saison</b>' : ''}</span>
       <span class="tip-n"><button class="btn sm" data-act="tip" data-d="-1" aria-label="Astuce précédente">‹</button><button class="btn sm" data-act="tip" data-d="1" aria-label="Astuce suivante">›</button></span></div>
-    <p class="tip-t">💡 ${esc(tp.t)}</p><div class="tip-s">Source : ${esc(tp.src)} · nouvelle astuce à ${pad(next.getHours())}:${pad(next.getMinutes())}</div></div>`;
+    <p class="tip-t">${tp.k === 'live' ? '⚡' : '💡'} ${esc(tp.t)}</p><div class="tip-s">Source : ${esc(tp.src)} · nouvelle astuce à ${pad(next.getHours())}:${pad(next.getMinutes())}</div></div>`;
   renderTip.slot = tipSlot();
 }
 setInterval(() => { if (!document.hidden && renderTip.slot !== tipSlot()) renderTip(); }, 20e3);
