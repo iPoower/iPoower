@@ -4,6 +4,7 @@ name: Race Control · tests
 #  - confidentialite : seul job qui reçoit les vrais secrets, uniquement pour vérifier qu'aucune donnée réelle n'est publiée.
 #    Frontière des secrets : il ne tourne JAMAIS sur une pull request, seulement sur du code déjà fusionné dans main
 #    (push sur main, ou retour arrière lancé depuis main). Les PR sont testées avec des données et des clés fictives.
+#    Avant fusion, les données personnelles d'une PR sont cherchées par pr-privacy.yml (scanner de main, PR lue comme données).
 #    Aucun navigateur, aucun build de l'app, aucun affichage de donnée.
 #  - tests : AUCUN secret. L'app est construite avec un préréglage, un agenda et une clé 100 % fictifs, puis testée
 #    sur Chromium et sur WebKit (moteur de Safari, profil iPhone), réseau extérieur bloqué.
@@ -108,6 +109,8 @@ jobs:
         run: node tests/relay-smoke.js
       - name: "Outils de clés : rotation et contrôle de séparation (clés fictives, sans aucun secret)"
         run: node tests/keys-tools.js
+      - name: "Confidentialité des PR : scanner de confiance, PR lue comme données (fictif, sans aucun secret)"
+        run: node tests/pr-privacy.js
   deploy:
     needs: [version, confidentialite, tests, relay-smoke]
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '')
