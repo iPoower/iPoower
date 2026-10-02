@@ -442,6 +442,14 @@ html { scroll-behavior: smooth; }
 .title { font-size: clamp(20px, 5.3vw, 28px); white-space: normal; }
 .gauge { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--lv) 35%, transparent)); }
 .brf { box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 14px 32px -16px color-mix(in srgb, var(--lv, var(--accent)) 60%, transparent), 0 4px 10px rgba(0,0,0,.35); transition: border-color .2s ease, box-shadow .2s ease, background .2s ease; }
+.cal-l { display: flex; flex-direction: column; gap: 10px; }
+.cal-e { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: linear-gradient(165deg, var(--panel2), var(--panel)); }
+.cal-h { display: flex; flex-direction: column; gap: 1px; }
+.cal-d { font-family: var(--f-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.cal-t { font-size: 15px; }
+.cal-v { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cal-k { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--fg2); }
+.cal-k b { color: var(--fg); font-weight: 600; }
 
 </style>
 </head><body>
@@ -459,6 +467,7 @@ html { scroll-behavior: smooth; }
     <nav class="jump" id="jump" aria-label="Aller à une section"></nav></div>
   <div id="banners" class="notes"></div>
   <section class="mod brf" id="secBrf" aria-label="Briefing du trajet"></section>
+  <section class="mod" id="secCal" aria-label="Trajets de l’agenda" hidden></section>
   <section class="mod" id="secCur" aria-label="Météo actuelle"></section>
   <section class="mod tipm" id="secTip" aria-label="Astuce"></section>
   <div class="grid2" id="secCars"></div>
@@ -1670,7 +1679,7 @@ async function refreshAll() {
   });
   if (ok) lastOk = Date.now();
   busy = false; rebuild(); renderAll();
-  fetchVigi(); refreshEns(); radarRefresh();
+  fetchVigi(); refreshEns(); radarRefresh(); loadCalendar();
 }
 function startDemo(scn) {
   DEMO = { on: true, scn }; busy = false; MIDP = {};
@@ -1969,8 +1978,8 @@ function renderView() {
     : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secSeason', 'Saison'], ['secJournal', 'Journal'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
   const order = vm
-    ? ['hdrMore', 'banners', 'secCur', 'secTip', 'secBrf', 'secRadar', 'secAir', 'secChart', 'secDays', 'secIce', 'secAlerts', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
-    : ['secBrf', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'];
+    ? ['hdrMore', 'banners', 'secCur', 'secTip', 'secBrf', 'secCal', 'secRadar', 'secAir', 'secChart', 'secDays', 'secIce', 'secAlerts', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
+    : ['secBrf', 'secCal', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'];
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#notice');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
@@ -2197,7 +2206,7 @@ const TIPS = [
   { k: 'tyre', t: 'Sous environ 7 °C, la gomme d’un pneu été durcit et accroche moins. Ce seuil est une règle pratique : la perte d’adhérence est progressive.', src: 'Règle pratique des manufacturiers', w: c => c.cold && c.summer },
   { k: 'tyre', t: 'Le symbole 3PMSF (montagne à 3 pics et flocon) prouve des tests sur neige. Le marquage M+S seul ne suffit plus pour la Loi Montagne.', src: 'Loi Montagne · décret 2020-1264', w: c => c.winter },
   { k: 'law', t: 'Loi Montagne : du 1er novembre au 31 mars, dans les communes concernées de 34 départements, 4 pneus 3PMSF ou des chaînes / chaussettes dans le coffre sont obligatoires. Sinon 135 €.', src: 'Décret 2020-1264', w: c => c.winter },
-  { k: 'drive', t: 'Les chaînes et les chaussettes se montent sur les roues motrices. Sur une traction (i20 N, 308), c’est l’avant.', src: 'Notices des équipementiers' },
+  { k: 'drive', t: 'Les chaînes et les chaussettes se montent sur les roues motrices. Sur une traction (la grande majorité des citadines et compactes), c’est l’avant.', src: 'Notices des équipementiers' },
   { k: 'tyre', t: 'Un pneu vieillit même s’il roule peu : fais-le contrôler à partir de 5 ans. Les manufacturiers conseillent de ne pas dépasser 10 ans.', src: 'Recommandation Michelin, Goodyear, Continental' },
   { k: 'tyre', t: 'Stocke les pneus hors saison au frais, au sec et à l’abri de la lumière. Sur jantes : empilés à plat. Sans jantes : debout, tournés de temps en temps.', src: 'Recommandation des manufacturiers' },
   { k: 'tyre', t: 'Quand tu n’as que 2 pneus neufs, ils se montent à l’arrière : c’est l’essieu arrière qui évite le tête-à-queue sur sol glissant.', src: 'Recommandation Michelin et des manufacturiers' },
@@ -2388,6 +2397,73 @@ function renderBrf() {
     ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
     ${ob && ob.T != null ? `<div class="brf-obs"><i class="tag obs">mesuré</i> ${esc(ob.name)} · ${new Date(ob.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · <b>${f1(ob.T)} °C</b>${ob.vis != null && ob.vis < 5000 ? ' · visibilité ' + ob.vis + ' m' : ''}${ob.wx ? ' · ' + esc(wxFr(ob.wx)) : ''}</div>` : ''}
     <div class="brf-n"><span class="k">Prochain risque</span>${nr ? `<span class="lv${nr.lv}"><b style="color:var(--lv-t)">${nr.lv >= 3 ? '🔴' : nr.lv >= 2 ? '🟠' : '🟡'} ${nr.day} ${nr.t.slice(11, 16)}</b> · ${esc(nr.why)}</span>` : '<span>🟢 Rien à signaler sur 72 h</span>'}</div>`;
+}
+
+
+/* ---------- agenda Google : trajets des rendez-vous (fichier chiffré publié par le relais) ---------- */
+let CAL = null; const CALM = {}, CALBUSY = new Set();
+async function openSealed(S0, pass) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(S0.s), iterations: S0.it, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(S0.i) }, key, b64(S0.c))));
+}
+async function loadCalendar() {
+  const pass = lsGet('twrc.key'); if (!pass || location.protocol !== 'https:' || !crypto.subtle) return;
+  try {
+    const S0 = await fetchJSON('calendar.sealed.json?t=' + Math.floor(Date.now() / 300e3), 8000); if (!S0 || !S0.c) return;
+    if (CAL && CAL.c === S0.c) return;
+    const d = await openSealed(S0, String(pass).trim().toLowerCase()); CAL = { ...d, c: S0.c }; renderCal();
+  } catch (e) { /* pas d'agenda publié, ou code différent */ }
+}
+async function calModel(ev) {
+  const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2);
+  if (CALM[id] && Date.now() - CALM[id].t < 30 * 60e3) return CALM[id].m;
+  if (CALBUSY.has(id)) return null; CALBUSY.add(id);
+  try { const p = await fetchJSON(`${API}?latitude=${ev.lat}&longitude=${ev.lon}&hourly=${Q_HR}&daily=${Q_DY}&timezone=auto&past_days=1&forecast_days=10`, 12000); CALM[id] = { t: Date.now(), m: makeModel(p, 'live', { id, lat: ev.lat, lon: ev.lon, name: ev.label || ev.loc }) }; }
+  catch (e) { CALM[id] = { t: Date.now() - 25 * 60e3, m: null }; }
+  CALBUSY.delete(id); renderCal(); return CALM[id].m;
+}
+function calTrip(ev) {
+  const home = M[S.locs[0].id]; if (!home || ev.lat == null) return null;
+  const km = distKm(S.locs[0], ev), dur = Math.round(km * 1.3 / (km < 25 ? 55 : km < 60 ? 70 : 90) * 60) + 10;
+  if (km < 3) return { km, near: true };
+  const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2), B = CALM[id] && CALM[id].m;
+  if (!B) { if (!CALM[id]) calModel(ev); return { km, dur, loading: true }; }
+  const startMin = ev.allDay ? toMin('09:00') : toMin(ev.s.slice(11, 16)), day = ev.s.slice(0, 10);
+  const dep = addMin(day + 'T00:00', startMin - dur - 10), arr = addMin(dep, dur), seq = [];
+  for (let t = dep.slice(0, 13) + ':00'; t <= arr.slice(0, 13) + ':00'; t = addMin(t, 60)) { const a = home.byTime.get(t), b = B.byTime.get(t); if (a != null) seq.push({ hs: home.hs, i: a }); if (b != null) seq.push({ hs: B.hs, i: b }); }
+  if (!seq.length) return { km, dur, dep, beyond: true };
+  const res = TCARS().map(c => ({ c, w: windowAssess(c, seq, 'trip') })).filter(r => r.w);
+  return { km, dur, dep, arr, sum: summarize(seq), res, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0) };
+}
+function renderCal() {
+  const el = $('#secCal'); if (!el) return;
+  if (!CAL || !CX) { el.hidden = true; el.innerHTML = ''; return; }
+  const now = CX.m.nowStr, evs = (CAL.events || []).filter(e => (e.allDay ? e.s.slice(0, 10) >= now.slice(0, 10) : e.s > now)).slice(0, 8);
+  el.hidden = false;
+  const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  if (!evs.length) { el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda</span></div><p class="sub">Aucun rendez-vous avec un lieu sur les 8 prochains jours. Ajoute une adresse ou une ville dans le champ « Lieu » de tes rendez-vous Google Agenda.</p><div class="disc">Agenda synchronisé le ${up}.</div>`; return; }
+  const rows = evs.map(e => {
+    const d = new Date(e.s.slice(0, 10) + 'T12:00:00Z'), dd = dayDiff(now.slice(0, 10), e.s.slice(0, 10)), dl = dd === 0 ? 'auj.' : dd === 1 ? 'demain' : DAYN[d.getUTCDay()] + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1);
+    const tr = calTrip(e);
+    let body;
+    if (e.lat == null) body = `<span class="sub">Lieu introuvable sur la carte : précise l’adresse ou la ville dans le rendez-vous.</span>`;
+    else if (!tr) body = '<span class="sub">Météo en attente…</span>';
+    else if (tr.near) body = `<span class="sub">À moins de 3 km de chez toi : pas de trajet à analyser.</span>`;
+    else if (tr.loading) body = `<span class="sub">${f0(tr.km)} km · analyse de la météo du trajet…</span>`;
+    else if (tr.beyond) body = `<span class="sub">${f0(tr.km)} km · départ ≈ ${tr.dep.slice(11, 16)} · trop loin pour les prévisions horaires.</span>`;
+    else {
+      const fb = frostBand(tr.sum.TrMin), lvw = tr.worst;
+      body = `<div class="cal-v"><span class="pill lv${lvw}">${LV[lvw].emoji} ${LV[lvw].name}${tr.res[0] ? ' ' + tr.res[0].w.score : ''}</span>
+        <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span></div>
+        <div class="cal-k"><span>Route <b>${f1(tr.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(tr.sum.Tmin)} °C</b></span><span>Pluie <b>${(tr.sum.Pmax || 0) >= 0.1 ? f1(tr.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(tr.sum.visMin)}</b></span></div>
+        ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
+        ${tr.res.length > 1 ? `<span class="sub">${tr.res.map(r => `${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}`).join(' · ')}</span>` : ''}`;
+    }
+    return `<div class="cal-e"><div class="cal-h"><span class="cal-d">${dl} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(e.label || e.loc)}</span></div>${body}</div>`;
+  }).join('');
+  el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · prévision</span></div><div class="cal-l">${rows}</div>
+    <div class="disc">Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Départ estimé depuis ${esc(S.locs[0].name)} : distance × 1,3 à 55–90 km/h selon la longueur + 10 min de marge, sans trafic. Les rendez-vous « journée entière » sont calculés pour une arrivée à 09:00.</div>`;
 }
 
 /* ---------- rendu : voitures ---------- */
@@ -2892,7 +2968,7 @@ function renderSettings(force) {
     <div class="set-sec"><h3>Widget écran d’accueil</h3>
       <p class="sub">1. Installe l’app gratuite <b>Scriptable</b> (App Store). 2. Dans Scriptable, <b>+</b> → colle le script (bouton ci-dessous) → nomme-le « Race Control ». 3. Écran d’accueil : appui long → <b>+</b> → Scriptable → taille <b>moyenne</b> → touche le widget → Script : « Race Control ». Le widget se met à jour seul (iOS décide du rythme, en général toutes les 15 à 30 min).</p>
       <div class="chips"><button class="btn" data-act="copy-widget">Copier le script du widget</button><a class="btn" href="widget.js" target="_blank" rel="noopener">Voir le script</a></div></div>
-    <div class="set-sec"><h3>Vigilance Météo-France</h3><div class="frow">${bindIn('dept.code', S.dept.code, { label: 'Département (numéro)', ph: 'ex. 80' })}${bindIn('dept.name', S.dept.name, { label: 'Nom du département', ph: 'ex. Somme' })}</div></div>
+    <div class="set-sec"><h3>Vigilance Météo-France</h3><div class="frow">${bindIn('dept.code', S.dept.code, { label: 'Département (numéro)', ph: 'ex. 33' })}${bindIn('dept.name', S.dept.name, { label: 'Nom du département', ph: 'ex. Gironde' })}</div></div>
     <div class="set-sec"><h3>Ouverture automatique le matin</h3>
       <p class="sub">Sur iPhone : app <b>Raccourcis</b> → <b>Automatisation</b> → <b>+</b> → <b>Heure de la journée</b> (ex. 06:45, jours de semaine) → <b>Exécuter immédiatement</b> → action <b>Ouvrir les URL</b> avec l’adresse ci-dessous. La page s’ouvre seule chaque matin avec les verdicts à jour.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="autoUrl" readonly value="${esc(location.href.split('#')[0].split('?')[0])}" style="flex:1;min-width:160px"><button class="btn" data-act="copy" data-for="autoUrl" data-v="${esc(location.href.split('#')[0].split('?')[0])}">Copier</button></div></div>
@@ -2912,10 +2988,10 @@ function renderSettings(force) {
 function renderAll() {
   recordJournal();
   CX = computeCtx();
-  renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderBrf(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+  renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderBrf(); renderCal(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
 }
 function softRender() { // après un réglage : tout sauf le panneau de paramètres
-  CX = computeCtx(); renderBanners(); renderBrf(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
+  CX = computeCtx(); renderBanners(); renderBrf(); renderCal(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
 }
 
 /* ---------- événements ---------- */
