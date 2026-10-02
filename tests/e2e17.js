@@ -1,7 +1,7 @@
 const {chromium}=require('playwright');const fs=require('fs'),vm=require('vm');
 const src=fs.readFileSync('engine.js','utf8')+fs.readFileSync('demo.js','utf8');const ctx={console,Math,Date,Intl,Map,Set,JSON};vm.createContext(ctx);vm.runInContext(src+';this.mk=makeDemoPayload;this.me=makeDemoEnsemble;this.mn=makeDemoNowcast;this.ma=makeDemoAir;',ctx);
 const PW=fs.readFileSync('.passphrase','utf8').trim(), SP=process.env.SP;const html=fs.readFileSync('site/index.html','utf8');
-(async()=>{const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']});
+(async()=>{const b=await require('./lib/browser').launch();
 const mkPage=async()=>{const c=await b.newContext({viewport:{width:414,height:896},isMobile:true,hasTouch:true,timezoneId:'Europe/Paris',acceptDownloads:true});const p=await c.newPage();p.errs=[];p.on('pageerror',x=>p.errs.push(x.message));p.on('dialog',d=>d.accept());
  await p.route('**/*',r=>{const u=r.request().url();const J=o=>r.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify(o)});
  if(u.includes('air-quality-api')){const q=new URL(u).searchParams;return J(ctx.ma(ctx.mk('doux',{lat:+q.get('latitude'),lon:+q.get('longitude')},'Europe/Paris',0)));}

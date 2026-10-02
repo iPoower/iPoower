@@ -1,0 +1,45 @@
+name: Race Control · tests
+# Étape 1 : chaque modification est vérifiée (confidentialité, build, moteur, parcours navigateur) sur Chromium et sur WebKit (moteur de Safari, profil iPhone).
+# Ne déploie rien. Aucune capture ni journal détaillé n'est publié : le dépôt est public.
+on:
+  push:
+    branches: [main]
+    paths: ['src/**', 'tools/**', 'tests/**', 'encrypted/**', 'package.json', 'package-lock.json', '.github/workflows/ci.yml']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Dépendances exactes (package-lock.json)
+        run: npm ci --no-audit --no-fund
+      - name: Navigateur ${{ matrix.browser }}
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Aucune donnée personnelle dans le dépôt
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          RC_KEY: ${{ secrets.RC_KEY }}
+          GCAL_ICS: ${{ secrets.GCAL_ICS }}
+        run: node tools/check-secrets.js
+      - name: Build
+        run: node tools/build.js
+      - name: Tests (moteur + parcours ${{ matrix.browser }})
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          BROWSER: ${{ matrix.browser }}
+        run: node tests/run-ci.js

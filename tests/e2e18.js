@@ -3,7 +3,7 @@ const src=fs.readFileSync('engine.js','utf8')+fs.readFileSync('demo.js','utf8');
 const PW=fs.readFileSync('.passphrase','utf8').trim(), SP=process.env.SP;
 const png=(r,g,b,a)=>{const {PNG}=(()=>{try{return require('pngjs')}catch(e){return {}}})();return null};
 const PX=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==','base64');
-(async()=>{const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']});
+(async()=>{const b=await require('./lib/browser').launch();
 const c=await b.newContext({viewport:{width:414,height:896},deviceScaleFactor:2,isMobile:true,hasTouch:true,timezoneId:'Europe/Paris',colorScheme:'dark'});
 const p=await c.newPage();await p.clock.install();const e=[];p.on('pageerror',x=>e.push(x.message));const reqs={rv:0,tile:0,aq:0};
 const html=fs.readFileSync('site/index.html','utf8');const now=Math.floor(Date.now()/600000)*600;

@@ -4,7 +4,7 @@ const mkCtx=T0=>{const RD=Date;const FD=class extends RD{constructor(...a){super
 const PW=fs.readFileSync('.passphrase','utf8').trim(), SP=process.env.SP;
 const png=(r,g,b,a)=>{const {PNG}=(()=>{try{return require('pngjs')}catch(e){return {}}})();return null};
 const PX=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==','base64');
-(async()=>{const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']});
+(async()=>{const b=await require('./lib/browser').launch();
 const SC=[
  ['TT ven. 10:00 avec agenda ce soir','2026-10-02T10:00:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*aujourd’hui · \d\d:\d\d.*Aller · Spectacle.*Ensuite.*Retour · Spectacle/i,/Prochain trajet domicile-travail.*lun\. 05\/10 · 06:30/i,/Aucun risque identifié sur les trajets prévus/i],['domicile-travail ·']],
  ['TT ven. 23:30, plus rien aujourd’hui (agenda demain)','2026-10-02T23:30:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*demain · 06:12.*Réunion fournisseur/i],['Aucun trajet prévu']],

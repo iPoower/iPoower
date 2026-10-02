@@ -15,3 +15,4 @@ standalone.html
 !src/static/*.png
 test-results/
 node_modules/
+.ci/

@@ -4,7 +4,7 @@ const mkCtx=T0=>{const RD=Date;const FD=class extends RD{constructor(...a){super
 const PW=fs.readFileSync('.passphrase','utf8').trim(), SP=process.env.SP;
 const png=(r,g,b,a)=>{const {PNG}=(()=>{try{return require('pngjs')}catch(e){return {}}})();return null};
 const PX=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==','base64');
-(async()=>{const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']});
+(async()=>{const b=await require('./lib/browser').launch();
 const SC=[['Ven. 17:00 (TT, après le retour)','2026-10-02T17:00:00+02:00','aller','lun.','06:30'],['Ven. 10:00 (TT)','2026-10-02T10:00:00+02:00','aller','lun.','06:30'],
  ['Jeu. 07:00 (TT)','2026-10-01T07:00:00+02:00','aller','lun.','06:30'],['Sam. 10:00','2026-10-03T10:00:00+02:00','aller','lun.','06:30'],['Dim. 21:00','2026-10-04T21:00:00+02:00','aller','demain','06:30'],
  ['Lun. 05:30','2026-10-05T05:30:00+02:00','aller','aujourd’hui','06:30'],['Lun. 10:00','2026-10-05T10:00:00+02:00','retour','aujourd’hui','16:00'],['Mer. 17:00','2026-10-07T17:00:00+02:00','aller','lun.','06:30']];

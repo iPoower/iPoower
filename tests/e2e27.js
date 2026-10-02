@@ -4,7 +4,7 @@ const mkCtx=T0=>{const RD=Date;const FD=class extends RD{constructor(...a){super
 const PW=fs.readFileSync('.passphrase','utf8').trim(), SP=process.env.SP;
 const png=(r,g,b,a)=>{const {PNG}=(()=>{try{return require('pngjs')}catch(e){return {}}})();return null};
 const PX=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==','base64');
-(async()=>{const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']});
+(async()=>{const b=await require('./lib/browser').launch();
 const SC=[
  ['ordi · Sam. 15:30 agenda en cours','2026-10-03T15:30:00+02:00',1,'doux'],
  ['ordi · Lun. 05:30 trajet boulot','2026-10-05T05:30:00+02:00',1,'doux'],
