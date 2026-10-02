@@ -45,7 +45,8 @@ if(W){ok=s.inW&&s.lines>=3&&s.gauge&&s.kpis===5&&!s.btn;
  if(SCN==='froid'){ok=ok&&s.lines>=4;}else ok=ok&&s.lines===3;
 }else{const before=s;ok=!before.leaflet&&!before.map&&before.btn&&before.gauge&&before.kpis===5&&!before.wVisible;console.log('   iPhone avant ouverture :',JSON.stringify(before),'| requêtes Leaflet :',reqs.lf||0);
  await p.click('[data-act=tripmap]');await settle();s=await st();ok=ok&&s.inM&&s.lines>=3;
- await p.reload();await p.clock.runFor(8000);await p.waitForTimeout(1200);await p.waitForFunction(()=>typeof CALDONE!=='undefined'&&CALDONE,null,{timeout:20000}).catch(()=>{});await settle();const s2=await st();console.log('   après rechargement (carte restée ouverte) :',s2.inM);ok=ok&&s2.inM;}
+ await p.reload();for(let k=0;k<60;k++){if(await p.evaluate(()=>typeof CAL!=='undefined'&&!!CAL).catch(()=>false))break;await p.clock.runFor(200);await p.waitForTimeout(300);}   /* pas de saut d'horloge de 8 s : il interromprait le chargement de l'agenda */
+await p.waitForFunction(()=>typeof CALDONE!=='undefined'&&CALDONE,null,{timeout:20000}).catch(()=>{});await settle();const s2=await st();console.log('   après rechargement (carte restée ouverte) :',s2.inM);ok=ok&&s2.inM;}
 if(reqs.osrm)console.log('   appel OSRM depuis le téléphone :',reqs.osrm.join(' | '),'| coordonnées arrondies à 0,01° :',reqs.osrm.every(x=>x.split(/[;,]/).every(v=>/^-?\d+(\.\d{1,2})?$/.test(v))));
 if(ok)okN++;console.log((ok?'✅':'❌')+' '+lbl+' | '+head+'\n   '+JSON.stringify(s));
 await (await p.$('#secBrf')).screenshot({path:SP+'/map-'+SC.findIndex(x=>x[0]===lbl)+'.png'});
