@@ -2022,6 +2022,61 @@ function radarCenter(force) {
 }
 function radarRefresh() { if (RADAR.state === 'ready' && Date.now() - RADAR.t > 9 * 60e3) radarFrames().catch(() => {}); }
 
+
+/* ---------- sauvegarde chiffrée (export / import entre téléphones) ---------- */
+const b64e = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+async function bkKey(pass, salt, it, use) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: it, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, [use]);
+}
+const bkMsg = t => { const e = $('#bkMsg'); if (e) e.textContent = t; };
+function bkPass() { const v = (($('#bkPw') || {}).value || '').trim(); return v || lsGet('twrc.key') || ''; }
+async function backupExport() {
+  const pass = bkPass();
+  if (pass.length < 8) { bkMsg('Entre un code d’au moins 8 caractères : il sera demandé à l’import.'); return; }
+  if (!crypto || !crypto.subtle) { bkMsg('Chiffrement indisponible sur ce navigateur.'); return; }
+  bkMsg('Chiffrement…');
+  try {
+    const data = { app: 'twrc', v: 1, at: new Date().toISOString(), settings: S, view: UI.view };
+    const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)), it = 600000;
+    const key = await bkKey(pass, salt, it, 'encrypt');
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(data))));
+    const txt = JSON.stringify({ app: 'twrc-backup', v: 1, kdf: 'PBKDF2-SHA256', it, s: b64e(salt), i: b64e(iv), c: b64e(ct) });
+    const day = new Date().toISOString().slice(0, 10), name = `race-control-sauvegarde-${day}.json`;
+    const file = new File([txt], name, { type: 'application/json' });
+    let done = false;
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Sauvegarde Race Control' }); done = true; }
+      catch (e) { if (e && e.name === 'AbortError') { bkMsg('Export annulé.'); return; } }
+    }
+    if (!done) { const u = URL.createObjectURL(file), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+    lsSet('twrc.lastbackup', day);
+    bkMsg(`✅ Sauvegarde prête (${Math.max(1, Math.round(txt.length / 1024))} Ko). Range-la dans Fichiers ou iCloud Drive.`);
+    const p = $('#bkSec .sub b'); if (p) p.textContent = fmtDay(day);
+  } catch (e) { bkMsg('Échec de la sauvegarde : ' + (e.message || e)); }
+}
+async function backupImport(f) {
+  bkMsg('Lecture du fichier…');
+  let o; try { o = JSON.parse(await f.text()); } catch (e) { bkMsg('Fichier illisible.'); return; }
+  if (!o || o.app !== 'twrc-backup' || !o.c) { bkMsg('Ce fichier n’est pas une sauvegarde Race Control.'); return; }
+  const pass = bkPass(); if (!pass) { bkMsg('Entre le code utilisé pour la sauvegarde, puis réessaie.'); return; }
+  bkMsg('Déchiffrement…');
+  let data;
+  try {
+    const key = await bkKey(pass, b64(o.s), o.it || 600000, 'decrypt');
+    data = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(o.i) }, key, b64(o.c))));
+  } catch (e) { bkMsg('Code incorrect : entre le code utilisé lors de la sauvegarde.'); return; }
+  if (!data || data.app !== 'twrc' || !data.settings) { bkMsg('Sauvegarde incomplète.'); return; }
+  const when = new Date(data.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  if (!confirm(`Remplacer les données de ce téléphone par la sauvegarde du ${when} ?`)) { bkMsg('Import annulé.'); return; }
+  lsSet('twrc.settings.v1', JSON.stringify({ ...data.settings, configured: 1 }));
+  if (window.TWRC_PRESET_V) lsSet('twrc.presetv', window.TWRC_PRESET_V);
+  if (data.view) lsSet('twrc.view', data.view);
+  lsSet('twrc.lastbackup', String(data.at).slice(0, 10));
+  bkMsg('✅ Sauvegarde restaurée. Redémarrage…');
+  setTimeout(() => location.reload(), 600);
+}
+
 /* ---------- rendu : voitures ---------- */
 const tireTxt = car => {
   const t = car.tire, a = [t.brand, t.model].filter(Boolean).join(' ');
@@ -2519,7 +2574,7 @@ function renderSettings(force) {
     <div class="set-sec"><h3>Ma position</h3><p class="sub">${GPS ? `Dernière position : <b>${esc(GPS.name)}</b>${GPS.sub ? ', ' + esc(GPS.sub) : ''} (±${GPS.acc || '?'} m, ${new Date(GPS.t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}). L’app s’ouvre sur ta position et se recale quand tu te déplaces de plus de 3 km. La position reste sur ce téléphone.` : 'Touche « 📍 Ma position » en haut pour suivre la météo de l’endroit où tu es.'}</p>
       ${GPS ? '<div class="chips"><button class="btn sm" data-act="locate">Actualiser ma position</button><button class="btn sm" data-act="gps-forget">Oublier ma position</button></div>' : ''}</div>
     <div class="set-sec"><h3>Notifications du matin</h3>
-      <p class="sub">Chaque matin entre 05:25 et 06:15, un relais automatique (GitHub) calcule le verdict du trajet de ${esc(S.work.dep)} depuis tes deux points de départ. Il t’envoie une notification si une voiture passe en 🟠 ou 🔴, s’il y a un risque de verglas ou du brouillard sous 500 m. 1. Installe l’app gratuite <b>ntfy</b> (App Store). 2. <b>+</b> → sujet ci-dessous, serveur ntfy.sh. 3. Autorise les notifications.</p>
+      <p class="sub">Chaque matin, de 90 à 5 minutes avant ton départ de ${esc(S.work.dep)}, un relais automatique (GitHub) recalcule le verdict du trajet toutes les 15 minutes depuis tes deux points de départ. Il t’envoie une notification si une voiture passe en 🟠 ou 🔴, s’il y a un risque de verglas ou du brouillard sous 500 m, puis une nouvelle uniquement si la situation s’aggrave (3 au maximum). Aucun nom de lieu n’apparaît dans les notifications. 1. Installe l’app gratuite <b>ntfy</b> (App Store). 2. <b>+</b> → sujet ci-dessous, serveur ntfy.sh. 3. Autorise les notifications.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="ntfyTopic" readonly value="${esc(window.TWRC_NTFY || '')}" style="flex:1;min-width:160px"><button class="btn" data-act="copy" data-for="ntfyTopic" data-v="${esc(window.TWRC_NTFY || '')}">Copier</button><button class="btn" data-act="ntfy-test">Envoyer un test</button></div></div>
     <div class="set-sec"><h3>Widget écran d’accueil</h3>
       <p class="sub">1. Installe l’app gratuite <b>Scriptable</b> (App Store). 2. Dans Scriptable, <b>+</b> → colle le script (bouton ci-dessous) → nomme-le « Race Control ». 3. Écran d’accueil : appui long → <b>+</b> → Scriptable → taille <b>moyenne</b> → touche le widget → Script : « Race Control ». Le widget se met à jour seul (iOS décide du rythme, en général toutes les 15 à 30 min).</p>
@@ -2530,6 +2585,11 @@ function renderSettings(force) {
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="autoUrl" readonly value="${esc(location.href.split('#')[0].split('?')[0])}" style="flex:1;min-width:160px"><button class="btn" data-act="copy" data-for="autoUrl" data-v="${esc(location.href.split('#')[0].split('?')[0])}">Copier</button></div></div>
     <div class="set-sec"><h3>Trajet</h3><div class="frow">${bindIn('work.dep', S.work.dep, { label: 'Départ aller', type: 'time' })}${bindIn('work.ret', S.work.ret, { label: 'Départ retour', type: 'time' })}${bindIn('work.durMin', S.work.durMin, { label: 'Durée (min)', type: 'number', num: 1, attrs: 'min="5" max="1200" step="5"' })}</div></div>
     <div class="set-sec"><h3>Analyse</h3><div class="frow"><div class="fld"><label for="f-horizon">Horizon des verdicts</label><select id="f-horizon" data-bind="horizon" data-num="1">${[6, 12, 24].map(h => `<option value="${h}" ${S.horizon === h ? 'selected' : ''}>${h} h</option>`).join('')}</select></div>${bindIn('rainThr', S.rainThr, { label: 'Forte pluie (mm/h)', type: 'number', num: 1, attrs: 'min="1" max="30" step="0.5"' })}</div></div>
+    <div class="set-sec" id="bkSec"><h3>💾 Sauvegarde</h3>
+      <p class="sub">Journal, DOT, usure, kilométrage, pressions, photos, calibration et réglages, dans un seul fichier <b>chiffré avec ton code</b>. À faire avant de changer de téléphone ou de vider Safari. Sur le nouveau téléphone : Importer, puis le même code. Dernière sauvegarde : <b>${lsGet('twrc.lastbackup') ? fmtDay(lsGet('twrc.lastbackup')) : 'jamais'}</b>.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="password" id="bkPw" autocomplete="current-password" placeholder="${lsGet('twrc.key') ? 'code (vide = code de déverrouillage)' : 'code, 8 caractères minimum'}" style="flex:1;min-width:160px">
+        <button class="btn pri" data-act="bk-export">Exporter</button><label class="btn" for="bkFile">Importer</label><input type="file" id="bkFile" accept=".json,application/json,text/plain" hidden></div>
+      <p class="sub" id="bkMsg" aria-live="polite"></p></div>
     <div class="set-sec"><h3>Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}</div>
       <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>`;
@@ -2558,6 +2618,7 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'lock') { ['twrc.plain', 'twrc.plain.v', 'twrc.key'].forEach(k => { try { localStorage.removeItem(k); } catch (err) { /* stockage */ } }); location.reload(); }
   else if (a === 'locate') locate(true);
+  else if (a === 'bk-export') backupExport();
   else if (a === 'view') { UI.view = t.dataset.v === 'meteo' ? 'meteo' : 'pneus'; lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
@@ -2634,6 +2695,7 @@ function resizePhoto(file, maxW) {
 }
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t.id === 'bkFile') { if (t.files && t.files[0]) backupImport(t.files[0]); t.value = ''; return; }
   if (t.dataset.photo != null && t.files && t.files[0]) {
     const car = S.cars[+t.dataset.photo];
     resizePhoto(t.files[0], 360).then(url => { car.photo = url; saveSettings(); renderSettings(); softRender(); }).catch(() => {});

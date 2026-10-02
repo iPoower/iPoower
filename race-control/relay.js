@@ -83,10 +83,10 @@ async function getJSON(u) { const r = await fetch(u, { headers: { 'User-Agent': 
       if (go) {
         const st = Object.values(out.stations).find(s => s.last && s.last.T != null);
         const tag = !force && !first ? '⚠️ Aggravation · ' : '';
-        const title = `${tag}${E.LV[worst].emoji} ${E.LV[worst].name} · départ ${cfg.dep} (${origins.map(o => o.name.split(' ')[0].split('-')[0]).join(' / ')})`;
+        const title = `${tag}${E.LV[worst].emoji} ${E.LV[worst].name} · départ ${cfg.dep} · trajet du matin`;  // aucun nom de lieu (ntfy.sh est un serveur public)
         const lines = res.map(r => `${r.c.short} (${E.TYPE_LABEL[r.c.tire.type]}) : ${E.LV[r.w.level].name} ${r.w.score}/100`);
         lines.push(`Min ${E.f1(sum.Tmin)} °C · chaussée est. ${E.f1(sum.TrMin)} °C · verglas ${E.ICE_LV[ice].toLowerCase()}${fog ? ' · brouillard ' + E.f0(sum.visMin) + ' m' : ''}`);
-        if (st) lines.push(`Mesuré ${st.name} : ${E.f1(st.last.T)} °C${st.last.vis != null && st.last.vis < 5000 ? ', visibilité ' + st.last.vis + ' m' : ''}${st.last.wx ? ' · ' + E.wxFr(st.last.wx) : ''}`);
+        if (st) lines.push(`Mesuré station proche : ${E.f1(st.last.T)} °C${st.last.vis != null && st.last.vis < 5000 ? ', visibilité ' + st.last.vis + ' m' : ''}${st.last.wx ? ' · ' + E.wxFr(st.last.wx) : ''}`);
         const r = await fetch('https://ntfy.sh/', { method: 'POST', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ topic: cfg.ntfy, title, message: lines.join('\n'), priority: worst >= 3 ? 5 : worst >= 2 || !first ? 4 : 3, tags: ['car'], click: cfg.site }) });
         console.log('ntfy', r.status); out.relay.ntfy = r.status;
