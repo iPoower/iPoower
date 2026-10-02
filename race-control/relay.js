@@ -113,8 +113,9 @@ function sealWith(pass, obj) {
   return { v: 1, kdf: 'PBKDF2-SHA256', it: 600000, s: salt.toString('base64'), i: iv.toString('base64'), c: ct.toString('base64') };
 }
 async function calendarSync(out) {
-  const url = (process.env.GCAL_ICS || '').trim(), pass = (process.env.APP_KEY || process.env.RC_KEY || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();
+  const url = (process.env.GCAL_ICS || '').trim().replace(/^["'<«\s]+|["'>»\s]+$/g, '').replace(/^webcal:\/\//i, 'https://'), pass = (process.env.APP_KEY || process.env.RC_KEY || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();
   out.relay.cal = !url ? 'absent' : !pass ? 'sans clé' : 'ok';
+  if (url) { let h = 'invalide'; try { const U = new URL(url); h = U.hostname + ' · ' + (/\/private-[0-9a-f]+\//.test(U.pathname) ? 'adresse secrète' : /\/public\//.test(U.pathname) ? 'adresse publique' : /\.ics$/.test(U.pathname) ? 'fichier ics' : 'pas un lien ics') + ' · ' + url.length + ' car.'; } catch (e) { h = 'pas une adresse web'; } out.relay.calUrl = h; }  // diagnostic sans la partie secrète
   if (!url || !pass) return null;
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error('agenda ' + r.status);
