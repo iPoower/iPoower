@@ -57,7 +57,8 @@ for (const [file, what, browser] of SUITE) {
   const out = (r.stdout || '') + (r.stderr || ''), why = r.error ? String(r.error.message) : verdict(r.status, out);
   fs.writeFileSync(path.join(OUT, file.replace('.js', '.log')), out);
   rows.push(`${why ? '❌' : '✅'} ${file.padEnd(17)} ${what}${browser ? ` [${BROWSER}]` : ''} · ${Math.round((Date.now() - t0) / 1000)} s${why ? ' · ' + why : ''}`);
-  if (why) { fail++; console.log(scrub(out.split('\n').slice(-25).join('\n'))); }   // détail seulement en cas d'échec, données personnelles masquées
+  if (why) { fail++; console.log(scrub(out.split('\n').slice(-25).join('\n')));   // détail seulement en cas d'échec, données personnelles masquées
+    if (process.env.GITHUB_ACTIONS) console.log(`::error title=${file} (${BROWSER})::${scrub(why + ' | ' + out.split('\n').filter(l => /❌|Error|Timeout|errors \[|scénarios OK/.test(l)).slice(0, 6).join(' / ')).replace(/[\r\n%]/g, ' ').slice(0, 900)}`); }
 }
 console.log('\n' + rows.join('\n') + `\n\n${fail ? `❌ ${fail} test(s) en échec` : `✅ ${SUITE.length} tests au vert`} (${BROWSER})`);
 process.exit(fail ? 1 : 0);
