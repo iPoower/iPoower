@@ -369,6 +369,7 @@ html { scroll-behavior: smooth; }
 .pips.dm { flex-direction: column; align-items: flex-end; gap: 0; font-family: var(--f-mono); font-size: 11px; color: var(--fg2); line-height: 1.3; display: block; text-align: right; }
 .osm-dark { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.4); }
 .locs-more { flex-basis: 100%; padding: 6px 0 0 10px; border-left: 2px solid var(--line2); }
+.upd .auto { color: var(--fg3); font-size: .85em; }
 
 </style>
 </head><body>
@@ -1743,7 +1744,7 @@ function renderStatus() {
   const b = mode === 'demo' ? '<span class="badge demo"><i></i>DÉMO</span>' : mode === 'live' ? '<span class="badge live"><i></i>LIVE</span>' : mode === 'cache' ? '<span class="badge cache"><i></i>CACHE</span>' : '<span class="badge"><i></i>HORS LIGNE</span>';
   let u;
   if (mode === 'demo') u = 'Simulation : aucune donnée réelle';
-  else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(lastOk);
+  else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(lastOk) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
   else if (mode === 'cache') u = 'Cache du ' + hmLocal(RAW[UI.loc].t) + ' · réseau indisponible';
   else u = 'Aucune donnée météo';
   $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
@@ -2752,8 +2753,17 @@ document.addEventListener('change', e => {
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#cfg=')) location.reload(); });
 let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (CX) drawChart(); }, 150); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.gpsAuto && location.protocol === 'https:') locate(false); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !DEMO.on && (!lastOk || Date.now() - lastOk > 5 * 60e3)) refreshAll(); });
-setInterval(() => { if (!DEMO.on && !document.hidden) refreshAll(); }, 10 * 60e3);
+// actualisation automatique : toutes les 5 min tant que l'app est à l'écran, et dès le retour dans l'app
+// (vérification toutes les 30 s : résiste à la mise en veille des minuteurs par iOS)
+const AUTO_MS = 5 * 60e3;
+function autoTick() {
+  if (DEMO.on || document.hidden || busy || (navigator.onLine === false)) return;
+  const ref = Math.max(lastOk || 0, lastTry || 0);
+  if (Date.now() - ref >= AUTO_MS) refreshAll();
+}
+setInterval(autoTick, 30e3);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });
+['pageshow', 'focus', 'online'].forEach(ev => window.addEventListener(ev, () => setTimeout(autoTick, 300)));
 
 /* ---------- démarrage ---------- */
 function registerSW() {
