@@ -7,13 +7,13 @@ const PX=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42m
 (async()=>{const b=await require('./lib/browser').launch();
 const SC=[
  ['TT ven. 10:00 avec agenda ce soir','2026-10-02T10:00:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*aujourd’hui · \d\d:\d\d.*Aller · Spectacle.*Ensuite.*Retour · Spectacle/i,/Prochain trajet domicile-travail.*lun\. 05\/10 · 06:30/i,/Aucun risque identifié sur les trajets prévus/i],['domicile-travail ·']],
- ['TT ven. 23:30, plus rien aujourd’hui (agenda demain)','2026-10-02T23:30:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*demain · 06:12.*Réunion fournisseur/i],['Aucun trajet prévu']],
- ['Sam. 14:36, 1 min avant départ','2026-10-03T14:36:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*aujourd’hui · 14:37.*Aller · Assurance/i,/départ dans 1 min/i]],
- ['Sam. 14:38, 1 min après départ','2026-10-03T14:38:00+02:00',[/^🏎️ TRAJET EN COURS · AGENDA.*parti à 14:37.*arrivée prévue 16:50.*Aller · Assurance/i,/Ensuite.*23:25/i]],
- ['Sam. 15:30, pendant le trajet','2026-10-03T15:30:00+02:00',[/^🏎️ TRAJET EN COURS · AGENDA.*arrivée prévue 16:50/i]],
+ ['TT ven. 23:45, plus rien aujourd’hui (agenda demain)','2026-10-02T23:45:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*demain · 06:16.*Réunion fournisseur/i],['Aucun trajet prévu']],
+ ['Sam. 15:32, 1 min avant départ','2026-10-03T15:32:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*aujourd’hui · 15:33.*Aller · Assurance/i,/départ dans 1 min/i]],
+ ['Sam. 15:34, 1 min après départ','2026-10-03T15:34:00+02:00',[/^🏎️ TRAJET EN COURS · AGENDA.*parti à 15:33.*arrivée prévue 16:50.*Aller · Assurance/i,/Ensuite.*23:25/i]],
+ ['Sam. 16:10, pendant le trajet','2026-10-03T16:10:00+02:00',[/^🏎️ TRAJET EN COURS · AGENDA.*arrivée prévue 16:50/i]],
  ['Sam. 16:51, 1 min après arrivée','2026-10-03T16:51:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*23:25.*Retour · Concert/i],['Trajet en cours','Assurance']],
  ['Dim. 10:00, rien aujourd’hui','2026-10-04T10:00:00+02:00',[/Aucun trajet prévu aujourd’hui/i,/Prochain trajet domicile-travail.*demain · 06:30/i]],
- ['Dim. 21:00, veille du lundi, froid','2026-10-04T21:00:00+02:00',[/^🏁 PROCHAIN TRAJET · DOMICILE-TRAVAIL.*Aller domicile-travail/i,/Prochain risque sur mes trajets.*demain 06:43.*Journée Lille/i],[],'froid'],
+ ['Dim. 21:00, veille du lundi, froid','2026-10-04T21:00:00+02:00',[/^🏁 PROCHAIN TRAJET · DOMICILE-TRAVAIL.*Aller domicile-travail/i,/Prochain risque sur mes trajets.*demain 06:46.*Journée Lille/i],[],'froid'],
  ['Lun. 06:31, trajet boulot en cours','2026-10-05T06:31:00+02:00',[/^🏎️ TRAJET EN COURS · DOMICILE-TRAVAIL.*arrivée prévue 07:10/i,/Ensuite.*16:00 · 🏁 Retour domicile-travail/i]],
  ['Lun. 07:11, arrivé au travail (journée Lille en cours dans le jeu de test)','2026-10-05T07:11:00+02:00',[/^🏎️ TRAJET EN COURS · AGENDA.*Journée Lille/i,/Ensuite.*16:00 · 🏁 Retour domicile-travail/i],['en cours · domicile-travail']],
  ['Mar. 10:00, boulot + agenda le même jour','2026-10-06T10:00:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*Aller · Sport.*Ensuite.*16:00 · 🏁 Retour domicile-travail.*17:10 · 📅 Retour · Sport/i]]];
@@ -46,6 +46,6 @@ const pass=must.every(r=>r.test(txt.replace(/^\s+/,'')))&&(mustNot||[]).every(s=
 console.log((pass?'✅':'❌')+' '+lbl+'\n   1er bloc : '+first+'\n   '+txt.slice(0,520));
 if(lbl.startsWith('Mar.'))console.log('   ordre des blocs :',await p.$$eval('#secBrf > .db, #secBrf > .brf-h, #secBrf .db-after',x=>x.map(y=>y.className)));
 if(lbl.startsWith('TT ven. 10'))await p.screenshot({path:SP+'/brf-tt.png'});
-if(lbl.startsWith('Sam. 15:30'))await p.screenshot({path:SP+'/brf-sam.png'});
+if(lbl.startsWith('Sam. 16:10'))await p.screenshot({path:SP+'/brf-sam.png'});
 await c.close();}
 console.log(ok+'/'+SC.length+' scénarios OK · erreurs JS :',e.length?e:'aucune');await b.close();})();

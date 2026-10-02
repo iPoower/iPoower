@@ -6,10 +6,10 @@ const png=(r,g,b,a)=>{const {PNG}=(()=>{try{return require('pngjs')}catch(e){ret
 const PX=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==','base64');
 (async()=>{const b=await require('./lib/browser').launch();
 const SC=[
- ['ordi · Sam. 15:30 agenda en cours','2026-10-03T15:30:00+02:00',1,'doux'],
+ ['ordi · Sam. 16:10 agenda en cours','2026-10-03T16:10:00+02:00',1,'doux'],
  ['ordi · Lun. 05:30 trajet boulot','2026-10-05T05:30:00+02:00',1,'doux'],
  ['ordi · Sam. 05:00 froid (point critique)','2026-10-03T05:00:00+02:00',1,'froid'],
- ['iPhone · Sam. 15:30 carte fermée puis ouverte','2026-10-03T15:30:00+02:00',0,'doux']];
+ ['iPhone · Sam. 16:10 carte fermée puis ouverte','2026-10-03T16:10:00+02:00',0,'doux']];
 let okN=0;const e=[];
 for(const [lbl,iso,W,scn] of SC){const SCN=scn||'doux';const T0=new Date(iso).getTime();mkCtx(T0);
 const c=await b.newContext({viewport:W?{width:1160,height:900}:{width:414,height:896},deviceScaleFactor:W?1:2,isMobile:!W,hasTouch:!W,timezoneId:'Europe/Paris',colorScheme:'dark'});

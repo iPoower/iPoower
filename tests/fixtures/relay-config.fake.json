@@ -1,0 +1,55 @@
+{
+ "site": "https://example.invalid/race-control/",
+ "ntfy": "ci-test-topic-not-real",
+ "home": {
+  "id": "home",
+  "name": "Maison test",
+  "lat": 48.85,
+  "lon": 2.35
+ },
+ "work": {
+  "id": "work",
+  "name": "Travail test",
+  "lat": 48.9,
+  "lon": 2.25
+ },
+ "dep": "06:30",
+ "durMin": 40,
+ "days": [
+  1,
+  2,
+  3
+ ],
+ "cars": [
+  {
+   "id": "carA",
+   "short": "Test A",
+   "sporty": 1,
+   "tire": {
+    "type": "summer",
+    "size": "215/40 ZR18 89Y XL",
+    "dot": "1023",
+    "tread": null
+   }
+  },
+  {
+   "id": "carB",
+   "short": "Test B",
+   "sporty": 0,
+   "tire": {
+    "type": "none",
+    "size": "225/45 R17 94W",
+    "dot": "",
+    "tread": null
+   }
+  }
+ ],
+ "origins": [
+  {
+   "id": "home",
+   "name": "Maison test",
+   "lat": 48.85,
+   "lon": 2.35
+  }
+ ]
+}

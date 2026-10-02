@@ -1,6 +1,10 @@
 name: Race Control · tests
-# Étape 1 : chaque modification est vérifiée (confidentialité, build, moteur, parcours navigateur) sur Chromium et sur WebKit (moteur de Safari, profil iPhone).
-# Ne déploie rien. Aucune capture ni journal détaillé n'est publié : le dépôt est public.
+# Étape 1 : chaque modification est vérifiée avant tout déploiement.
+#  - confidentialite : seul job qui reçoit les vrais secrets, uniquement pour vérifier qu'aucune donnée réelle n'est publiée.
+#    Aucun navigateur, aucun build de l'app, aucun affichage de donnée.
+#  - tests : AUCUN secret. L'app est construite avec un préréglage, un agenda et une clé 100 % fictifs, puis testée
+#    sur Chromium et sur WebKit (moteur de Safari, profil iPhone), réseau extérieur bloqué.
+# Ne déploie rien. Aucune capture ni sortie brute n'est publiée : le dépôt est public.
 on:
   push:
     branches: [main]
@@ -13,6 +17,20 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  confidentialite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Aucune donnée personnelle dans le dépôt
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          RC_KEY: ${{ secrets.RC_KEY }}
+          GCAL_ICS: ${{ secrets.GCAL_ICS }}
+        run: node tools/check-secrets.js
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -30,17 +48,7 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Navigateur ${{ matrix.browser }}
         run: npx playwright install --with-deps ${{ matrix.browser }}
-      - name: Aucune donnée personnelle dans le dépôt
+      - name: Tests (données fictives, sans aucun secret)
         env:
-          APP_KEY: ${{ secrets.APP_KEY }}
-          RC_KEY: ${{ secrets.RC_KEY }}
-          GCAL_ICS: ${{ secrets.GCAL_ICS }}
-        run: node tools/check-secrets.js
-      - name: Build
-        run: node tools/build.js
-      - name: Tests (moteur + parcours ${{ matrix.browser }})
-        env:
-          APP_KEY: ${{ secrets.APP_KEY }}
-          RC_KEY: ${{ secrets.RC_KEY }}
           BROWSER: ${{ matrix.browser }}
         run: node tests/run-ci.js

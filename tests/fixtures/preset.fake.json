@@ -1,0 +1,80 @@
+{
+ "locs": [
+  {
+   "id": "home",
+   "name": "Maison test",
+   "sub": "Île-de-France",
+   "lat": 48.85,
+   "lon": 2.35
+  },
+  {
+   "id": "work",
+   "name": "Travail test",
+   "sub": "Île-de-France",
+   "lat": 48.9,
+   "lon": 2.25
+  }
+ ],
+ "work": {
+  "from": "home",
+  "to": "work",
+  "durMin": 40,
+  "dep": "06:30",
+  "ret": "16:00",
+  "days": [
+   1,
+   2,
+   3
+  ]
+ },
+ "cars": [
+  {
+   "id": "carA",
+   "name": "Voiture test A",
+   "short": "Test A",
+   "spec": "",
+   "sporty": 1,
+   "tire": {
+    "type": "summer",
+    "size": "215/40 ZR18 89Y XL",
+    "dot": "1023",
+    "press": "2,3 AV / 2,3 AR",
+    "info": ""
+   },
+   "plan": {
+    "on": 0
+   }
+  },
+  {
+   "id": "carB",
+   "name": "Voiture test B",
+   "short": "Test B",
+   "spec": "",
+   "sporty": 0,
+   "tire": {
+    "type": "none",
+    "size": "225/45 R17 94W",
+    "press": "",
+    "info": "",
+    "dot": ""
+   },
+   "plan": {
+    "on": 0
+   }
+  }
+ ],
+ "dept": {
+  "code": "75",
+  "name": "Paris"
+ },
+ "customs": [
+  {
+   "id": "lieu3",
+   "name": "Lieu test",
+   "sub": "Île-de-France",
+   "dept": "Paris",
+   "lat": 48.8,
+   "lon": 2.45
+  }
+ ]
+}
