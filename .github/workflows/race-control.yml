@@ -32,10 +32,11 @@ jobs:
         env:
           FORCE_PUSH: ${{ github.event.inputs.force_push }}
           RC_KEY: ${{ secrets.RC_KEY }}
+          GCAL_ICS: ${{ secrets.GCAL_ICS }}
         run: node race-control/relay.js
       - name: Publier obs.json
         run: |
           git config user.name "race-control-bot"
           git config user.email "race-control-bot@users.noreply.github.com"
-          git add race-control/obs.json
-          git diff --cached --quiet || (git commit -m "Observations $(date -u +%H:%M)" && git push)
+          git add race-control/obs.json; [ -f race-control/calendar.sealed.json ] && git add race-control/calendar.sealed.json
+          git diff --cached --quiet || (git commit -m "Observations $(date -u +%H:%M)" && (git push || (git pull --rebase && git push)))
