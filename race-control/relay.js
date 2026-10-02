@@ -4,15 +4,29 @@
 //    puis nouvelle notification seulement en cas d'aggravation (3 par matin maximum)
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const dir = __dirname, crypto = require('crypto');
-// configuration personnelle chiffrée : clé fournie par le secret GitHub RC_KEY
-function openCfg() {
-  const plainFile = path.join(dir, 'relay-config.json');
-  if (fs.existsSync(plainFile)) return JSON.parse(fs.readFileSync(plainFile, 'utf8'));
-  const S = JSON.parse(fs.readFileSync(path.join(dir, 'relay-config.sealed.json'), 'utf8')), pass = (process.env.RC_KEY || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();
-  if (!pass) { console.log('Secret RC_KEY absent : observations seules, pas de notification'); return null; }
+// Deux clés indépendantes, sans repli de l'une sur l'autre :
+//  - RC_KEY  (secret GitHub) : ouvre uniquement la configuration du relais (relay-config.sealed.json) ;
+//    pendant une rotation (transitoire), RC_KEY_NEXT est essayée après RC_KEY ;
+//  - APP_KEY (secret GitHub, = code de déverrouillage de l'app) : chiffre uniquement l'agenda (calendar.sealed.json), que l'app ouvre avec le même code.
+const normKey = s => String(s || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();
+function unsealWith(S, pass) {
   const key = crypto.pbkdf2Sync(pass, Buffer.from(S.s, 'base64'), S.it, 32, 'sha256'), buf = Buffer.from(S.c, 'base64');
   const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(S.i, 'base64')); d.setAuthTag(buf.subarray(buf.length - 16));
   return JSON.parse(Buffer.concat([d.update(buf.subarray(0, buf.length - 16)), d.final()]).toString('utf8'));
+}
+function openCfg() {
+  const plainFile = path.join(dir, 'relay-config.json');
+  if (fs.existsSync(plainFile)) return JSON.parse(fs.readFileSync(plainFile, 'utf8'));
+  const S = JSON.parse(fs.readFileSync(path.join(dir, 'relay-config.sealed.json'), 'utf8')), app = normKey(process.env.APP_KEY);
+  // clés du relais uniquement : RC_KEY, puis RC_KEY_NEXT (TRANSITOIRE, rotation Phase B, supprimée au nettoyage final).
+  // Jamais APP_KEY : une clé du relais égale au code de l'app est refusée, même par valeur.
+  const keys = [['RC_KEY', normKey(process.env.RC_KEY)], ['RC_KEY_NEXT', normKey(process.env.RC_KEY_NEXT)]].filter(([, k]) => k);
+  if (!keys.length) { console.log('Secret RC_KEY absent : observations seules, pas de notification'); return null; }
+  for (const [name, k] of keys) {
+    if (app && k === app) { console.log(`${name} identique à APP_KEY : refusée (les clés doivent être séparées)`); continue; }
+    try { const c = unsealWith(S, k); console.log(`Configuration du relais ouverte avec ${name}`); return c; } catch (e) { console.log(`${name} n'ouvre pas la configuration du relais`); }
+  }
+  return null;
 }
 const STATIONS = [{ id: 'LFAQ', name: 'Albert-Bray', lat: 49.9715, lon: 2.6976 }, { id: 'LFAY', name: 'Amiens-Glisy', lat: 49.8730, lon: 2.3870 }];
 let cfg = null; try { cfg = openCfg(); } catch (e) { console.log('Configuration illisible', e.message); }
@@ -217,8 +231,9 @@ async function planLegs(events, home) {
   }
 }
 async function calendarSync(out) {
-  const url = (process.env.GCAL_ICS || '').trim().replace(/^["'<«\s]+|["'>»\s]+$/g, '').replace(/^webcal:\/\//i, 'https://'), pass = (process.env.APP_KEY || process.env.RC_KEY || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();
+  const url = (process.env.GCAL_ICS || '').trim().replace(/^["'<«\s]+|["'>»\s]+$/g, '').replace(/^webcal:\/\//i, 'https://'), pass = (process.env.APP_KEY || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();   // APP_KEY seule : jamais RC_KEY
   out.relay.cal = !url ? 'absent' : !pass ? 'sans clé' : 'ok';
+  if (url && !pass) console.log('Secret APP_KEY absent : agenda non synchronisé');
   if (url) { let h = 'invalide'; try { const U = new URL(url); h = U.hostname + ' · ' + (/\/private-[0-9a-f]+\//.test(U.pathname) ? 'adresse secrète' : /\/public\//.test(U.pathname) ? 'adresse publique' : /\.ics$/.test(U.pathname) ? 'fichier ics' : 'pas un lien ics') + ' · ' + url.length + ' car.'; } catch (e) { h = 'pas une adresse web'; } out.relay.calUrlDiag = h; }  // diagnostic sans la partie secrète, publié seulement en cas d'erreur
   if (!url || !pass) return null;
   try {
@@ -256,7 +271,7 @@ async function calendarSync(out) {
   const now = E.nowIn('Europe/Paris'), hm = E.toMin(now.slice(11, 16)), today = now.slice(0, 10);
   const force = process.env.FORCE_PUSH === '1';
   // diagnostic public, sans aucune donnée personnelle
-  out.relay = { cfg: cfg ? 'ok' : (process.env.RC_KEY ? 'illisible' : 'absent'), force, at: now };
+  out.relay = { cfg: cfg ? 'ok' : (process.env.RC_KEY || process.env.RC_KEY_NEXT ? 'illisible' : 'absent'), force, at: now };
   // état du matin : on garde le pire constaté du jour pour ne notifier qu'en cas d'aggravation
   const pm = prev.morning && prev.morning.date === today ? prev.morning : null;
   out.morning = pm || { date: today, w: -1, i: -1, f: false, sent: 0, checks: 0 };
