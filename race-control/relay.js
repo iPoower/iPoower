@@ -124,7 +124,7 @@ function sealWith(pass, obj) {
 async function calendarSync(out) {
   const url = (process.env.GCAL_ICS || '').trim().replace(/^["'<«\s]+|["'>»\s]+$/g, '').replace(/^webcal:\/\//i, 'https://'), pass = (process.env.APP_KEY || process.env.RC_KEY || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();
   out.relay.cal = !url ? 'absent' : !pass ? 'sans clé' : 'ok';
-  if (url) { let h = 'invalide'; try { const U = new URL(url); h = U.hostname + ' · ' + (/\/private-[0-9a-f]+\//.test(U.pathname) ? 'adresse secrète' : /\/public\//.test(U.pathname) ? 'adresse publique' : /\.ics$/.test(U.pathname) ? 'fichier ics' : 'pas un lien ics') + ' · ' + url.length + ' car.'; } catch (e) { h = 'pas une adresse web'; } out.relay.calUrl = h; }  // diagnostic sans la partie secrète
+  if (url) { let h = 'invalide'; try { const U = new URL(url); h = U.hostname + ' · ' + (/\/private-[0-9a-f]+\//.test(U.pathname) ? 'adresse secrète' : /\/public\//.test(U.pathname) ? 'adresse publique' : /\.ics$/.test(U.pathname) ? 'fichier ics' : 'pas un lien ics') + ' · ' + url.length + ' car.'; } catch (e) { h = 'pas une adresse web'; } out.relay.calUrlDiag = h; }  // diagnostic sans la partie secrète, publié seulement en cas d'erreur
   if (!url || !pass) return null;
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error('agenda ' + r.status);
@@ -136,9 +136,10 @@ async function calendarSync(out) {
       events.push({ t: e.title || 'Rendez-vous', s: e.s, e: e.e, allDay: !!e.start.allDay, loc: e.loc, lat: g ? g.lat : null, lon: g ? g.lon : null, label: g ? g.label : null });
     }
     out.relay.calN = events.length; out.relay.calGeo = events.filter(x => x.lat != null).length;
+    delete out.relay.calUrlDiag;
     fs.writeFileSync(path.join(dir, 'calendar.sealed.json'), JSON.stringify(sealWith(pass, { updated: new Date().toISOString(), events })));
     return events;
-  } catch (e) { out.relay.calErr = String(e.message || e).replace(/https?:\S+/g, 'url').slice(0, 120); return null; }
+  } catch (e) { out.relay.calErr = String(e.message || e).replace(/https?:\S+/g, 'url').slice(0, 120); out.relay.calUrl = out.relay.calUrlDiag; delete out.relay.calUrlDiag; return null; }
 }
 
 (async () => {
