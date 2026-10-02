@@ -7,7 +7,7 @@
 'use strict';
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..'), CI = path.join(ROOT, '.ci-relay'), FAKE = path.join(CI, 'fake'), H = path.join(CI, 'h');
-const { APP_KEY_TEST, RC_KEY_TEST, RC_KEY_NEXT_TEST } = require('./lib/test-keys');   // clés publiques de test : ne protègent que des données fictives
+const { APP_KEY_TEST, RC_KEY_TEST } = require('./lib/test-keys');   // clés publiques de test : ne protègent que des données fictives
 fs.rmSync(CI, { recursive: true, force: true }); [FAKE, H].forEach(d => fs.mkdirSync(d, { recursive: true }));
 const cp = (a, b) => fs.copyFileSync(path.join(ROOT, a), b);
 cp('tests/fixtures/preset.fake.json', path.join(FAKE, 'preset.json')); cp('tests/fixtures/relay-config.fake.json', path.join(FAKE, 'relay-config.json'));
@@ -66,21 +66,13 @@ const k1 = ck(KEYS), k2 = ck({ APP_KEY: RC_KEY_TEST, RC_KEY: APP_KEY_TEST }), k3
 check('check-keys : vert avec les deux bonnes clés', k1.status === 0 && !/❌|⚪/.test(k1.stdout), (k1.stdout.match(/✅/g) || []).length + ' contrôles');
 check('check-keys : rouge si clés inversées, identiques ou APP_KEY absente', k2.status === 1 && k3.status === 1 && k4.status === 1);
 check('check-keys : aucune clé affichée', ![k1, k2, k3, k4].some(k => (k.stdout + k.stderr).includes(APP_KEY_TEST) || (k.stdout + k.stderr).includes(RC_KEY_TEST)));
-// 6. TRANSITOIRE (Phase B) : relais pendant la rotation (les outils de rotation sont testés par tests/keys-tools.js).
-//    Cas réel : ancienne config chiffrée avec une RC_KEY ÉGALE au code de l'app, nouvelle config chiffrée avec RC_KEY_NEXT.
+// 6. garde-fou permanent : une clé du relais égale au code de l'app est refusée, même si elle ouvrirait la config
 const plainCfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/relay-config.fake.json'), 'utf8'));
-const legacy = seal(plainCfg, APP_KEY_TEST), rotated = seal(plainCfg, RC_KEY_NEXT_TEST);
+const legacy = seal(plainCfg, APP_KEY_TEST);   // config chiffrée avec le code de l'app (état d'avant la séparation)
 const cfgWith = (S, keys) => { fs.writeFileSync(path.join(H, 'relay-config.sealed.json'), JSON.stringify(S)); fs.rmSync(path.join(H, 'obs.json'), { force: true });
   const x = run('2026-10-05T05:35:00+02:00', 'fog', keys); return x.code === 0 && x.obs ? x.obs.relay.cfg : 'erreur'; };
-const t1 = cfgWith(rotated, { APP_KEY: APP_KEY_TEST, RC_KEY: APP_KEY_TEST, RC_KEY_NEXT: RC_KEY_NEXT_TEST }),
-  t2 = cfgWith(rotated, { APP_KEY: APP_KEY_TEST, RC_KEY: RC_KEY_NEXT_TEST, RC_KEY_NEXT: RC_KEY_NEXT_TEST }), t3 = cfgWith(rotated, { APP_KEY: APP_KEY_TEST, RC_KEY: RC_KEY_NEXT_TEST }),
-  t4 = cfgWith(rotated, { RC_KEY: APP_KEY_TEST });   // sans APP_KEY : seul le chiffrement décide
-check('transition : prod-9 lue via RC_KEY_NEXT pendant que RC_KEY vaut encore l’ancienne clé', t1 === 'ok', t1);
-check('transition : RC_KEY remplacée par la nouvelle valeur, puis RC_KEY_NEXT supprimée', t2 === 'ok' && t3 === 'ok', t2 + '/' + t3);
-check('transition : l’ancienne clé seule ne lit plus la config', t4 === 'illisible', t4);
-// garde-fou permanent : une clé du relais égale au code de l'app est refusée, même si elle ouvrirait la config
-const g1 = cfgWith(legacy, { APP_KEY: APP_KEY_TEST, RC_KEY: APP_KEY_TEST }), g2 = cfgWith(legacy, { APP_KEY: APP_KEY_TEST, RC_KEY_NEXT: APP_KEY_TEST }), g3 = cfgWith(legacy, { APP_KEY: APP_KEY_TEST });
-check('garde-fou : RC_KEY ou RC_KEY_NEXT égale à APP_KEY refusée ; APP_KEY seule n’ouvre jamais la config', g1 === 'illisible' && g2 === 'illisible' && g3 === 'absent', [g1, g2, g3].join('/'));
+const g1 = cfgWith(legacy, { APP_KEY: APP_KEY_TEST, RC_KEY: APP_KEY_TEST }), g2 = cfgWith(legacy, { APP_KEY: APP_KEY_TEST });
+check('garde-fou : RC_KEY égale à APP_KEY refusée ; APP_KEY seule n’ouvre jamais la config', g1 === 'illisible' && g2 === 'absent', [g1, g2].join('/'));
 console.log(rows.join('\n') + `\n\n${fail ? `❌ ${fail} contrôle(s) en échec` : `✅ ${rows.length} contrôles du relais au vert`}`);
 if (fail && process.env.GITHUB_ACTIONS) console.log(`::error title=relay-smoke::${rows.filter(r => r.startsWith('❌')).join(' / ')}`);
 process.exit(fail ? 1 : 0);

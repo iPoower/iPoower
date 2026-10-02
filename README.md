@@ -31,7 +31,7 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
 
 ## Frontière des secrets
 
-Les vrais secrets (`APP_KEY`, `RC_KEY`, `GCAL_ICS`, et `RC_KEY_NEXT` pendant une rotation) ne sont donnés qu'à du code **déjà fusionné dans `main`** :
+Les vrais secrets (`APP_KEY`, `RC_KEY`, `GCAL_ICS`) ne sont donnés qu'à du code **déjà fusionné dans `main`** :
 
 | Workflow | Secrets | Quand |
 |---|---|---|
@@ -40,17 +40,12 @@ Les vrais secrets (`APP_KEY`, `RC_KEY`, `GCAL_ICS`, et `RC_KEY_NEXT` pendant une
 | `pr-privacy.yml` | oui | chaque PR **de ce dépôt** : workflow et scanner de `main`, la PR est lue comme des fichiers et jamais exécutée ; jamais pour un fork (sinon le rouge/vert servirait à deviner une valeur) |
 | `race-control.yml` (relais) | oui | uniquement depuis `main` ; exécute le relais publié sur `gh-pages` |
 | `sources-check.yml` | oui | uniquement depuis `main` |
-| `rc-key-rotation.yml` (transitoire) | oui | lancé à la main depuis `main` ; la branche cible ne reçoit qu'un fichier chiffré, son code n'est jamais exécuté |
 
-## Rotation de `RC_KEY` (transitoire, sans coupure)
+## Rotation de `RC_KEY`
 
-La nouvelle clé est générée par le propriétaire du dépôt et n'existe que dans les secrets GitHub (jamais dans un fichier, un log ou une IA).
-
-1. Créer le secret `RC_KEY_NEXT` (≥ 32 caractères, ≠ `APP_KEY`).
-2. Actions → « Race Control · rotation de RC_KEY » → Run workflow **depuis `main`**, branche cible = la PR de rotation : le code de `main` prend la config chiffrée de `main` (vérifiée identique à la production), l'ouvre avec `RC_KEY`, la rechiffre avec `RC_KEY_NEXT` en mémoire (`tools/rotate-rc-key.js`) et ne dépose que ce fichier chiffré sur la branche de la PR (son code n'est jamais exécuté).
-3. CI complète, puis fusion : le relais lit la nouvelle config via `RC_KEY_NEXT` (essayée après `RC_KEY`, jamais `APP_KEY`).
-4. Copier la valeur de `RC_KEY_NEXT` dans `RC_KEY`, vérifier le relais, supprimer `RC_KEY_NEXT`.
-5. Nettoyage : suppression de `RC_KEY_NEXT`, du workflow et de l'outil de rotation.
+Effectuée le 2 octobre 2026 sans coupure du relais (PR #8 et #9) : nouvelle clé générée par le propriétaire, jamais vue hors de GitHub ;
+config du relais rechiffrée par un workflow de confiance exécuté depuis `main` ; double lecture temporaire `RC_KEY` / `RC_KEY_NEXT`,
+puis bascule et suppression de tout le code transitoire. Pour une future rotation, ce mécanisme est à restaurer depuis l'historique Git.
 
 ## Build
 

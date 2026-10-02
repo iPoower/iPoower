@@ -11,7 +11,7 @@ name: Race Control · tests
 #    sur Chromium et sur WebKit (moteur de Safari, profil iPhone), réseau extérieur bloqué.
 #  - relay-smoke : AUCUN secret. Le vrai relay.js tourne sur une configuration, un agenda et une géographie fictifs
 #    (alerte du matin, absence de doublon, télétravail, agenda chiffré avec tracés, obs.json sans donnée de trajet,
-#    séparation des clés, transition de rotation, garde-fou RC_KEY ≠ APP_KEY).
+#    séparation des clés, garde-fou RC_KEY ≠ APP_KEY).
 #  - deploy : seulement si confidentialite, relay-smoke ET les deux navigateurs sont verts, pour un push sur main ou un retour arrière.
 #    Publie le build sur gh-pages sans jamais toucher aux fichiers du relais, étiquette la version (prod-N), vérifie la version en ligne.
 #    Un déploiement commencé n'est jamais annulé.
@@ -72,7 +72,6 @@ jobs:
         env:
           APP_KEY: ${{ secrets.APP_KEY }}
           RC_KEY: ${{ secrets.RC_KEY }}
-          RC_KEY_NEXT: ${{ secrets.RC_KEY_NEXT }}   # TRANSITOIRE (rotation Phase B)
         run: node tools/check-keys.js
   tests:
     needs: version
@@ -115,7 +114,7 @@ jobs:
           node-version: 20
       - name: Relais de bout en bout (données fictives, sans aucun secret)
         run: node tests/relay-smoke.js
-      - name: "Outils de clés : rotation et contrôle de séparation (clés fictives, sans aucun secret)"
+      - name: "Outils de clés : contrôle de séparation (clés fictives, sans aucun secret)"
         run: node tests/keys-tools.js
       - name: "Confidentialité des PR : scanner de confiance, PR lue comme données (fictif, sans aucun secret)"
         run: node tests/pr-privacy.js
