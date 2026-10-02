@@ -33,6 +33,7 @@ jobs:
           FORCE_PUSH: ${{ github.event.inputs.force_push }}
           RC_KEY: ${{ secrets.RC_KEY }}
           GCAL_ICS: ${{ secrets.GCAL_ICS }}
+          APP_KEY: ${{ secrets.APP_KEY }}
         run: node race-control/relay.js
       - name: Publier obs.json
         run: |
