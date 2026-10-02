@@ -370,6 +370,15 @@ html { scroll-behavior: smooth; }
 .osm-dark { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.4); }
 .locs-more { flex-basis: 100%; padding: 6px 0 0 10px; border-left: 2px solid var(--line2); }
 .upd .auto { color: var(--fg3); font-size: .85em; }
+.tipm { padding: 12px 14px; border-left: 3px solid var(--accent); }
+.tip { display: flex; flex-direction: column; gap: 6px; }
+.tip-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tip-c { font-family: var(--f-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.tip-c b { font-weight: 600; color: var(--cau-t); }
+.tip-n { display: inline-flex; gap: 4px; }
+.tip-n .btn { min-height: 32px !important; min-width: 36px; padding: 2px 8px; font-size: 16px; }
+.tip-t { font-size: 14.5px; line-height: 1.45; margin: 0; }
+.tip-s { font-size: 11.5px; color: var(--fg3); }
 
 </style>
 </head><body>
@@ -386,6 +395,7 @@ html { scroll-behavior: smooth; }
   <div id="notice"></div>
   <div id="banners" class="notes"></div>
   <section class="mod" id="secCur" aria-label="Météo actuelle"></section>
+  <section class="mod tipm" id="secTip" aria-label="Astuce"></section>
   <div class="grid2" id="secCars"></div>
   <section class="mod" id="secBrief" aria-label="Briefing départ"></section>
   <section class="mod" id="secCmp" aria-label="Comparateur des deux voitures"></section>
@@ -1891,8 +1901,8 @@ function renderView() {
     : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secSeason', 'Saison'], ['secJournal', 'Journal'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
   const order = vm
-    ? ['secCur', 'secRadar', 'secAir', 'secChart', 'secDays', 'secIce', 'secAlerts', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
-    : ['secCur', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'];
+    ? ['secCur', 'secTip', 'secRadar', 'secAir', 'secChart', 'secDays', 'secIce', 'secAlerts', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
+    : ['secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'];
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#banners');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
@@ -2099,6 +2109,86 @@ async function backupImport(f) {
   bkMsg('✅ Sauvegarde restaurée. Redémarrage…');
   setTimeout(() => location.reload(), 600);
 }
+
+
+/* ---------- astuces : faits vérifiés, renouvelés toutes les 10 minutes, choisis selon la météo du moment ---------- */
+// k = catégorie · w = condition (facultative) qui rend l'astuce prioritaire · src = source
+const TIPS = [
+  { k: 'law', t: 'Sous la pluie, les limites baissent : 110 km/h au lieu de 130 sur autoroute, 100 au lieu de 110 sur voie express, 80 au lieu de 90 là où le 90 s’applique.', src: 'Code de la route, art. R413-2', w: c => c.rain },
+  { k: 'law', t: 'Visibilité de 50 m ou moins (brouillard, pluie, neige) : vitesse limitée à 50 km/h sur toutes les routes, autoroute comprise.', src: 'Code de la route, art. R413-2', w: c => c.fog },
+  { k: 'law', t: 'Les feux de brouillard arrière ne s’allument que par brouillard ou chute de neige. Sous la pluie, ils éblouissent : 135 € d’amende.', src: 'Code de la route, art. R416-7', w: c => c.fog || c.rain },
+  { k: 'law', t: 'Distance de sécurité : au moins 2 secondes avec le véhicule devant. Sur autoroute, cela fait 2 traits de la bande d’arrêt d’urgence.', src: 'Code de la route, art. R412-12 · Bison Futé' },
+  { k: 'drive', t: 'Sur route mouillée, augmente nettement l’écart (3 à 4 secondes au lieu de 2) : la distance de freinage s’allonge sur chaussée humide.', src: 'Sécurité routière', w: c => c.rain },
+  { k: 'law', t: 'Profondeur minimale légale des sculptures : 1,6 mm sur toute la bande de roulement. Les témoins d’usure (repère TWI sur le flanc) sont justement à 1,6 mm.', src: 'Code de la route, art. R314-1' },
+  { k: 'law', t: 'Pneus usés sous 1,6 mm : 135 € d’amende, et l’assureur peut réduire l’indemnisation en cas d’accident.', src: 'Code de la route, art. R314-1' },
+  { k: 'tyre', t: 'Lis le code DOT de ton pneu : les 4 derniers chiffres donnent la semaine et l’année de fabrication. « 2124 » = 21ᵉ semaine de 2024.', src: 'Marquage DOT, norme fabricants' },
+  { k: 'tyre', t: 'La pression baisse d’environ 0,1 bar à chaque baisse de 10 °C. Un pneu réglé en été est souvent sous-gonflé au premier froid.', src: 'Pneus-online · règle physique des gaz', w: c => c.cold },
+  { k: 'tyre', t: 'Contrôle la pression à froid : avant de rouler, ou après au moins 2 h d’arrêt. À chaud, la mesure est faussée vers le haut.', src: 'Recommandation des manufacturiers' },
+  { k: 'tyre', t: 'La pression recommandée est sur l’étiquette du montant de porte conducteur, dans la trappe à carburant ou dans le carnet. Jamais celle gravée sur le flanc : c’est un maximum.', src: 'Recommandation des manufacturiers' },
+  { k: 'tyre', t: 'Voiture chargée (vacances, coffre plein) : applique la pression « charge » de l’étiquette, souvent 0,2 à 0,3 bar de plus.', src: 'Étiquette constructeur' },
+  { k: 'tyre', t: 'Sous environ 7 °C, la gomme d’un pneu été durcit et accroche moins. Ce seuil est une règle pratique : la perte d’adhérence est progressive.', src: 'Règle pratique des manufacturiers', w: c => c.cold && c.summer },
+  { k: 'tyre', t: 'Le symbole 3PMSF (montagne à 3 pics et flocon) prouve des tests sur neige. Le marquage M+S seul ne suffit plus pour la Loi Montagne.', src: 'Loi Montagne · décret 2020-1264', w: c => c.winter },
+  { k: 'law', t: 'Loi Montagne : du 1er novembre au 31 mars, dans les communes concernées de 34 départements, 4 pneus 3PMSF ou des chaînes / chaussettes dans le coffre sont obligatoires. Sinon 135 €.', src: 'Décret 2020-1264', w: c => c.winter },
+  { k: 'drive', t: 'Les chaînes et les chaussettes se montent sur les roues motrices. Sur une traction (i20 N, 308), c’est l’avant.', src: 'Notices des équipementiers' },
+  { k: 'tyre', t: 'Un pneu vieillit même s’il roule peu : fais-le contrôler à partir de 5 ans. Les manufacturiers conseillent de ne pas dépasser 10 ans.', src: 'Recommandation Michelin, Goodyear, Continental' },
+  { k: 'tyre', t: 'Stocke les pneus hors saison au frais, au sec et à l’abri de la lumière. Sur jantes : empilés à plat. Sans jantes : debout, tournés de temps en temps.', src: 'Recommandation des manufacturiers' },
+  { k: 'tyre', t: 'Quand tu n’as que 2 pneus neufs, ils se montent à l’arrière : c’est l’essieu arrière qui évite le tête-à-queue sur sol glissant.', src: 'Recommandation Michelin et des manufacturiers' },
+  { k: 'tyre', t: 'L’aquaplaning arrive quand le pneu ne chasse plus l’eau assez vite. Le risque monte avec la vitesse, l’usure et l’épaisseur d’eau : lève le pied dès les flaques.', src: 'Sécurité routière', w: c => c.rain },
+  { k: 'meteo', t: 'Le verglas peut se former sans pluie : une chaussée humide qui passe sous 0 °C gèle. Le matin après une nuit claire, c’est le piège classique.', src: 'Météo-France', w: c => c.freeze },
+  { k: 'meteo', t: 'La pluie verglaçante tombe liquide sous 0 °C et gèle au contact du sol. Elle crée une glace transparente, presque invisible.', src: 'Météo-France', w: c => c.freeze },
+  { k: 'meteo', t: 'Ponts et viaducs gèlent souvent avant le reste de la route : ils sont refroidis par-dessus et par-dessous. Même chose pour les zones à l’ombre.', src: 'Bison Futé · Météo-France', w: c => c.freeze },
+  { k: 'meteo', t: 'Nuit claire et vent faible : la route perd sa chaleur vers le ciel et peut être plus froide que l’air de quelques degrés. Un 2 °C annoncé peut cacher une route à 0 °C.', src: 'Physique du rayonnement nocturne', w: c => c.freeze || c.cold },
+  { k: 'meteo', t: 'Quand la température et le point de rosée sont à moins de 2 °C d’écart, sans vent, le brouillard guette. L’appli affiche cet écart dans la météo actuelle.', src: 'Météo-France', w: c => c.fog },
+  { k: 'meteo', t: 'Vigilance orange neige-verglas : limite tes déplacements et équipe la voiture. Vigilance rouge : reste chez toi sauf urgence.', src: 'Météo-France, vigilance', w: c => c.freeze },
+  { k: 'drive', t: 'Sur verglas avec ABS : freine fort et maintiens la pédale. Le grondement dans la pédale est normal, c’est l’ABS qui travaille.', src: 'Sécurité routière', w: c => c.freeze },
+  { k: 'drive', t: 'Sur neige, démarre en 2ᵉ et accélère tout en douceur : moins de couple aux roues, moins de patinage.', src: 'Sécurité routière · auto-écoles', w: c => c.snow },
+  { k: 'drive', t: 'Par vent fort, tiens bien le volant en sortie de tunnel, de forêt ou au dépassement d’un camion : la rafale arrive d’un coup.', src: 'Sécurité routière', w: c => c.wind },
+  { k: 'car', t: 'Une batterie perd une bonne partie de sa capacité par grand froid. Si la voiture démarre mal à l’automne, fais-la tester avant l’hiver.', src: 'Constructeurs et équipementiers', w: c => c.cold },
+  { k: 'car', t: 'Passe au lave-glace antigel avant les premières gelées : un lave-glace été gèle dans les gicleurs et sur le pare-brise.', src: 'Constructeurs', w: c => c.cold },
+  { k: 'car', t: 'Ne verse jamais d’eau chaude sur un pare-brise givré : le choc thermique peut le fissurer. Grattoir, ou dégivrage par la ventilation.', src: 'Assureurs et vitrage auto' },
+  { k: 'car', t: 'Avant de partir, dégivre toutes les vitres, rétroviseurs et feux, pas seulement un hublot devant toi : rouler sans visibilité est verbalisable.', src: 'Sécurité routière', w: c => c.freeze },
+  { k: 'car', t: 'Sans contrôle de pression automatique (TPMS), vérifie au moins une fois par mois et avant chaque long trajet.', src: 'Sécurité routière' },
+  { k: 'meteo', t: 'Indice UV de 3 ou plus : protection conseillée (lunettes, crème), même par temps frais. En voiture, le pare-brise feuilleté filtre l’essentiel des UV, mais les vitres latérales laissent passer une partie des UVA.', src: 'OMS · indice UV', w: c => c.uv },
+  { k: 'meteo', t: 'Soleil rasant le matin ou le soir : garde un pare-brise propre dedans et dehors. Le voile gras intérieur multiplie l’éblouissement.', src: 'Sécurité routière' },
+  { k: 'meteo', t: 'AROME, le modèle de Météo-France utilisé par l’appli, calcule la météo sur une grille d’environ 1,3 km : il voit les orages et brouillards locaux que les modèles mondiaux ratent.', src: 'Météo-France' },
+  { k: 'meteo', t: 'Une probabilité de pluie de 30 % ne veut pas dire « pluie 30 % du temps » : c’est la chance qu’il pleuve au moins un peu sur ce lieu et à cette heure.', src: 'Météo-France' },
+  { k: 'tyre', t: 'Un pneu sous-gonflé chauffe plus, s’use plus vite sur les épaules et augmente la consommation. Il allonge aussi le freinage sur le mouillé.', src: 'Recommandation des manufacturiers' },
+  { k: 'tyre', t: 'Permuter les pneus avant et arrière égalise l’usure, surtout sur une traction où l’avant s’use plus vite. Respecte le sens de roulement si le pneu en a un.', src: 'Recommandation des manufacturiers' }
+];
+const TIP_CAT = { law: ['⚖️', 'Code de la route'], tyre: ['🛞', 'Pneus'], meteo: ['🌦️', 'Météo'], drive: ['🚗', 'Conduite'], car: ['🔧', 'Voiture'] };
+let TIP_OFF = 0;
+function tipCtx() {
+  const c = {}; if (!CX) return c;
+  const { m, sum24 } = CX, x = m.hs[m.nowI] || {}, mo = +m.nowStr.slice(5, 7);
+  c.rain = (sum24.Pmax || 0) >= 0.3 || (x.P || 0) > 0;
+  c.fog = sum24.visMin != null && sum24.visMin < 1000;
+  c.freeze = (sum24.TrMin != null && sum24.TrMin <= 1) || (sum24.Tmin != null && sum24.Tmin <= 1) || (sum24.iceLevel || 0) >= 1;
+  c.cold = sum24.Tmin != null && sum24.Tmin < 7;
+  c.snow = (sum24.snowSum || 0) > 0 || !!sum24.snowCode;
+  c.wind = (sum24.gustMax || 0) >= 60;
+  c.uv = (x.uv || 0) >= 3 || m.hs.some(h => h.date === m.nowStr.slice(0, 10) && (h.uv || 0) >= 3);
+  c.winter = mo >= 10 || mo <= 3;
+  c.summer = TCARS().some(car => effType(car) === 'summer');
+  return c;
+}
+function tipList() {
+  const c = tipCtx(), hot = TIPS.filter(t => t.w && t.w(c)), rest = TIPS.filter(t => !hot.includes(t));
+  // astuces liées à la météo du moment en priorité : elles reviennent 2 fois plus souvent
+  return hot.length ? [...hot, ...rest.filter((_, i) => i % 2 === 0), ...hot, ...rest.filter((_, i) => i % 2 === 1)] : rest;
+}
+const tipSlot = () => Math.floor(Date.now() / 600e3);
+function renderTip() {
+  const el = $('#secTip'); if (!el) return;
+  const list = tipList(); if (!list.length) { el.hidden = true; return; } el.hidden = false;
+  const i = ((tipSlot() + TIP_OFF) % list.length + list.length) % list.length, tp = list[i], cat = TIP_CAT[tp.k] || ['💡', 'Astuce'];
+  const ctx = tp.w && tp.w(tipCtx());
+  const next = new Date((tipSlot() + 1) * 600e3);
+  el.innerHTML = `<div class="tip"><div class="tip-h"><span class="tip-c">${cat[0]} ${esc(cat[1])}${ctx ? ' · <b>en lien avec la météo ou la saison</b>' : ''}</span>
+      <span class="tip-n"><button class="btn sm" data-act="tip" data-d="-1" aria-label="Astuce précédente">‹</button><button class="btn sm" data-act="tip" data-d="1" aria-label="Astuce suivante">›</button></span></div>
+    <p class="tip-t">💡 ${esc(tp.t)}</p><div class="tip-s">Source : ${esc(tp.src)} · nouvelle astuce à ${pad(next.getHours())}:${pad(next.getMinutes())}</div></div>`;
+  renderTip.slot = tipSlot();
+}
+setInterval(() => { if (!document.hidden && renderTip.slot !== tipSlot()) renderTip(); }, 20e3);
 
 /* ---------- rendu : voitures ---------- */
 const tireTxt = car => {
@@ -2622,10 +2712,10 @@ function renderSettings(force) {
 function renderAll() {
   recordJournal();
   CX = computeCtx();
-  renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderCurrent(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+  renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
 }
 function softRender() { // après un réglage : tout sauf le panneau de paramètres
-  CX = computeCtx(); renderBanners(); renderCurrent(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
+  CX = computeCtx(); renderBanners(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
 }
 
 /* ---------- événements ---------- */
@@ -2641,6 +2731,7 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'lock') { ['twrc.plain', 'twrc.plain.v', 'twrc.key'].forEach(k => { try { localStorage.removeItem(k); } catch (err) { /* stockage */ } }); location.reload(); }
   else if (a === 'locate') locate(true);
+  else if (a === 'tip') { TIP_OFF += +t.dataset.d || 1; renderTip(); }
   else if (a === 'nocode') { lsSet('twrc.nocode', '1'); renderNotice(); const d = $('#settings'); if (d) { d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
   else if (a === 'withcode') { try { localStorage.removeItem('twrc.nocode'); } catch (err) { /* stockage */ } renderNotice(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   else if (a === 'bk-export') backupExport();
