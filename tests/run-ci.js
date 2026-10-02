@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 // Suite de tests de la CI : construit l'app avec des réglages fictifs, prépare un dossier de travail,
 // génère les jeux de test de l'agenda avec le harnais du relais (données fictives), puis exécute chaque test et contrôle son verdict.
-// Tout est fictif (préréglage, relais, agenda, clé) : aucun secret ni donnée réelle n'est nécessaire. Rien n'est écrit en dehors de .ci/ (ignoré par Git).
+// Tout est fictif (préréglage, relais, agenda, deux clés distinctes) : aucun secret ni donnée réelle n'est nécessaire. Rien n'est écrit en dehors de .ci/ (ignoré par Git).
 'use strict';
 const fs = require('fs'), path = require('path'), crypto = require('crypto'), { spawnSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..'), CI = path.join(ROOT, '.ci'), W = path.join(CI, 'w'), H = path.join(CI, 'h'), OUT = path.join(CI, 'out');
 const BROWSER = (process.env.BROWSER || 'chromium').toLowerCase();
 const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8'), cp = (a, b) => fs.copyFileSync(path.join(ROOT, a), b);
-// Les tests n'utilisent AUCUNE donnée ni clé réelle : préréglage, configuration du relais, agenda et clé sont fictifs.
-// La clé ci-dessous est publique par construction : elle ne protège que des données de test.
-const KEY = 'race-control-ci-test-only';
+// Les tests n'utilisent AUCUNE donnée ni clé réelle : préréglage, configuration du relais, agenda et clés sont fictifs.
+// Deux clés de test distinctes, comme en production : APP_KEY_TEST (app, agenda) et RC_KEY_TEST (configuration du relais).
+const { APP_KEY_TEST, RC_KEY_TEST } = require('./lib/test-keys');
 const FAKE = path.join(CI, 'fake'), DIST = path.join(CI, 'dist');
 fs.rmSync(CI, { recursive: true, force: true }); [W, path.join(W, 'site'), H, OUT, FAKE].forEach(d => fs.mkdirSync(d, { recursive: true }));
 cp('tests/fixtures/preset.fake.json', path.join(FAKE, 'preset.json')); cp('tests/fixtures/relay-config.fake.json', path.join(FAKE, 'relay-config.json'));
-fs.writeFileSync(path.join(FAKE, '.passphrase'), KEY);
+fs.writeFileSync(path.join(FAKE, '.passphrase'), APP_KEY_TEST); fs.writeFileSync(path.join(FAKE, '.rc_key'), RC_KEY_TEST);
 // build du même code source, avec les réglages fictifs (sortie et chiffrés de test dans .ci/, jamais dans dist/ ni encrypted/)
 const b = spawnSync(process.execPath, [path.join(ROOT, 'tools/build.js')], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, RC_PRIVATE: '.ci/fake', RC_OUT: '.ci/dist', RC_ENCRYPTED: '.ci/enc' } });
 if (b.status !== 0) { console.error('Build de test en échec :\n' + (b.stdout || '') + (b.stderr || '')); process.exit(1); }
@@ -21,7 +21,7 @@ const scrub = t => t;   // plus rien de réel à masquer : tout est fictif
 // dossier de travail des tests (même disposition que l'atelier d'origine)
 for (const f of fs.readdirSync(DIST)) fs.copyFileSync(path.join(DIST, f), path.join(W, 'site', f));
 ['engine.js', 'demo.js', 'relay.js'].forEach(f => cp('src/' + f, path.join(W, f)));
-fs.writeFileSync(path.join(W, '.passphrase'), KEY);
+fs.writeFileSync(path.join(W, '.passphrase'), APP_KEY_TEST);   // code saisi dans l'app par les tests
 cp('tests/fixtures/preset.fake.json', path.join(W, 'preset.json'));
 // widget : configuration fictive pour le test (le widget public n'en contient pas)
 fs.writeFileSync(path.join(W, 'widget.js'), rd('src/widget.js').replace(/const CFG = null;[^\n]*/, 'const CFG = ' + JSON.stringify({ home: { id: 'home', name: 'Maison test', lat: 48.85, lon: 2.35 }, work: { id: 'work', name: 'Travail test', lat: 48.9, lon: 2.25 }, dep: '06:30', durMin: 40, days: [1, 2, 3], cars: [{ short: 'Test A', sporty: 1, tire: { type: 'summer', size: '215/40 R18', tread: null, dot: '1023' }, plan: { on: 0 } }] }) + ';'));
@@ -32,7 +32,7 @@ if (NM) fs.symlinkSync(NM, path.join(W, 'node_modules'), 'dir');
 fs.readdirSync(path.join(ROOT, 'tests/relay-harness')).forEach(f => cp('tests/relay-harness/' + f, path.join(H, f)));
 fs.copyFileSync(path.join(DIST, 'relay-config.sealed.json'), path.join(H, 'relay-config.sealed.json'));
 const rel = spawnSync(process.execPath, ['-r', './mock_tt.js', 'relay.js'], { cwd: H, encoding: 'utf8', timeout: 180e3,
-  env: { ...process.env, FAKE: '2026-10-02T08:00:00+02:00', SCN: 'doux', GCAL_ICS: 'https://calendar.google.com/test.ics', APP_KEY: KEY, RC_KEY: KEY } });
+  env: { ...process.env, FAKE: '2026-10-02T08:00:00+02:00', SCN: 'doux', GCAL_ICS: 'https://calendar.google.com/test.ics', APP_KEY: APP_KEY_TEST, RC_KEY: RC_KEY_TEST } });
 if (!fs.existsSync(path.join(H, 'calendar.sealed.json'))) { console.error('Harnais du relais en échec :\n' + (rel.stdout || '') + (rel.stderr || '')); process.exit(1); }
 fs.copyFileSync(path.join(H, 'calendar.sealed.json'), path.join(OUT, 'cal.fake.json'));
 // suite : tests unitaires du moteur et du widget, puis parcours navigateur (horloge et réseau simulés)

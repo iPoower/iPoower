@@ -2,14 +2,16 @@ name: Race Control · tests
 # Chaque modification est vérifiée avant tout déploiement.
 #  - version : en retour arrière (lancement manuel), vérifie que l'étiquette prod-N demandée existe.
 #  - confidentialite : seul job qui reçoit les vrais secrets, uniquement pour vérifier qu'aucune donnée réelle n'est publiée.
+#    Vérifie aussi la séparation des clés (APP_KEY : préréglage, RC_KEY : config du relais ; jamais l'une pour l'autre).
 #    Frontière des secrets : il ne tourne JAMAIS sur une pull request, seulement sur du code déjà fusionné dans main
 #    (push sur main, ou retour arrière lancé depuis main). Les PR sont testées avec des données et des clés fictives.
 #    Avant fusion, les données personnelles d'une PR sont cherchées par pr-privacy.yml (scanner de main, PR lue comme données).
 #    Aucun navigateur, aucun build de l'app, aucun affichage de donnée.
-#  - tests : AUCUN secret. L'app est construite avec un préréglage, un agenda et une clé 100 % fictifs, puis testée
+#  - tests : AUCUN secret. L'app est construite avec un préréglage, un agenda et deux clés distinctes 100 % fictifs, puis testée
 #    sur Chromium et sur WebKit (moteur de Safari, profil iPhone), réseau extérieur bloqué.
 #  - relay-smoke : AUCUN secret. Le vrai relay.js tourne sur une configuration, un agenda et une géographie fictifs
-#    (alerte du matin, absence de doublon, télétravail, agenda chiffré avec tracés, obs.json sans donnée de trajet).
+#    (alerte du matin, absence de doublon, télétravail, agenda chiffré avec tracés, obs.json sans donnée de trajet,
+#    séparation des clés, transition de rotation, garde-fou RC_KEY ≠ APP_KEY).
 #  - deploy : seulement si confidentialite, relay-smoke ET les deux navigateurs sont verts, pour un push sur main ou un retour arrière.
 #    Publie le build sur gh-pages sans jamais toucher aux fichiers du relais, étiquette la version (prod-N), vérifie la version en ligne.
 #    Un déploiement commencé n'est jamais annulé.
@@ -66,6 +68,12 @@ jobs:
           RC_KEY: ${{ secrets.RC_KEY }}
           GCAL_ICS: ${{ secrets.GCAL_ICS }}
         run: node tools/check-secrets.js
+      - name: Séparation des clés (APP_KEY ≠ RC_KEY, chacune n'ouvre que ses fichiers)
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          RC_KEY: ${{ secrets.RC_KEY }}
+          RC_KEY_NEXT: ${{ secrets.RC_KEY_NEXT }}   # TRANSITOIRE (rotation Phase B)
+        run: node tools/check-keys.js
   tests:
     needs: version
     runs-on: ubuntu-latest
