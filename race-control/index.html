@@ -368,6 +368,7 @@ html { scroll-behavior: smooth; }
 .airp { flex-wrap: wrap; }
 .pips.dm { flex-direction: column; align-items: flex-end; gap: 0; font-family: var(--f-mono); font-size: 11px; color: var(--fg2); line-height: 1.3; display: block; text-align: right; }
 .osm-dark { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.4); }
+.locs-more { flex-basis: 100%; padding: 6px 0 0 10px; border-left: 2px solid var(--line2); }
 
 </style>
 </head><body>
@@ -1751,8 +1752,17 @@ function renderStatus() {
 function renderLocChips() {
   const gpsChip = GPS ? `<button class="chip gpsc" data-act="loc" data-id="gps" aria-pressed="${UI.loc === 'gps'}">📍 ${esc(GPS.name)}${GPS.acc ? ` <small>±${GPS.acc < 1000 ? GPS.acc + ' m' : (GPS.acc / 1000).toFixed(1) + ' km'}</small>` : ''}</button>`
     : `<button class="chip gpsc" data-act="locate">📍 Ma position</button>`;
-  $('#locChips').innerHTML = gpsChip + allLocs().filter(l => !l.gps).map(l => `<button class="chip" data-act="loc" data-id="${esc(l.id)}" aria-pressed="${l.id === UI.loc}">${esc(l.name)}</button>`).join('') +
-    `<button class="chip" data-act="goset">+ Destination</button>${GPS ? '<button class="chip" data-act="locate" aria-label="Actualiser ma position">↻ 📍</button>' : ''}<span class="sub" id="locMsg" hidden></span>`;
+  const fixed = allLocs().filter(l => !l.gps), chips = fixed.map(l => `<button class="chip" data-act="loc" data-id="${esc(l.id)}" aria-pressed="${l.id === UI.loc}">${esc(l.name)}</button>`).join('');
+  const refresh = GPS ? '<button class="chip" data-act="locate" aria-label="Actualiser ma position">↻ 📍</button>' : '';
+  if (UI.view === 'meteo') {
+    // mode Météo : ma position en avant, les lieux fixes repliés dans un seul bouton
+    const sel = fixed.find(l => l.id === UI.loc);
+    $('#locChips').innerHTML = gpsChip + refresh +
+      `<button class="chip${sel ? ' on' : ''}" data-act="locs-toggle" aria-expanded="${!!UI.locsOpen}">📌 ${sel ? esc(sel.name) : 'Mes lieux'} ${UI.locsOpen ? '▴' : '▾'}</button>` +
+      (UI.locsOpen ? `<div class="chips locs-more">${chips}<button class="chip" data-act="goset">+ Destination</button></div>` : '') + '<span class="sub" id="locMsg" hidden></span>';
+    return;
+  }
+  $('#locChips').innerHTML = gpsChip + chips + `<button class="chip" data-act="goset">+ Destination</button>${refresh}<span class="sub" id="locMsg" hidden></span>`;
 }
 function renderSrc() {
   const m = M[UI.loc], l = allLocs().find(x => x.id === UI.loc) || allLocs()[0];
@@ -2623,7 +2633,8 @@ document.addEventListener('click', async e => {
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
   else if (a === 'gps-forget') { GPS = null; S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } if (gpsWatch != null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; } UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
-  else if (a === 'loc') { UI.loc = t.dataset.id; UI.chartIdx = null; renderAll(); }
+  else if (a === 'loc') { UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false; renderAll(); }
+  else if (a === 'locs-toggle') { UI.locsOpen = !UI.locsOpen; renderLocChips(); }
   else if (a === 'tire') { const c = S.cars.find(x => x.id === t.dataset.car); switchTire(c, t.dataset.type); saveSettings(); renderSettings(); softRender(); }
   else if (a === 'fb') {
     const m = M[UI.loc]; if (!m || m.nowI < 0) return;
