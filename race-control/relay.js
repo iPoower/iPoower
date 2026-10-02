@@ -131,6 +131,10 @@ async function cityAt(lat, lon) {   // commune traversée (nom du tronçon criti
   const k = lat.toFixed(2) + ',' + lon.toFixed(2); if (CITY[k] !== undefined) return CITY[k];
   let n = null;
   try { const j = await getJSON(`https://data.geopf.fr/geocodage/reverse?limit=1&lon=${lon}&lat=${lat}`); const f = j && j.features && j.features[0]; n = f && f.properties ? (f.properties.city || f.properties.name || null) : null; } catch (e) { n = null; }
+  if (!n) {   // hors agglomération (autoroute, champs) : commune la plus proche via OpenStreetMap, 1 requête/s maximum
+    await new Promise(r => setTimeout(r, 1100));
+    try { const j = await getJSON(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=fr&lat=${lat}&lon=${lon}`); const ad = j && j.address; n = ad ? (ad.city || ad.town || ad.village || ad.municipality || null) : null; } catch (e) { n = null; }
+  }
   return (CITY[k] = n);
 }
 async function routeLeg(a, b) {
