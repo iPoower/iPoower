@@ -1,3 +1,16 @@
-Welcome to my GitHub profile! 🌟 I'm passionate about the vibrant world of computing and diving into it with boundless enthusiasm. 🚀 I have a special fondness for Rust and Python, exploring the endless possibilities they offer. 💻 With aspirations to become a Data Engineer, I'm constantly seeking new knowledge and relishing technical challenges.
+# About iPoower
 
-Beyond coding, I'm also a devoted fan of Formula 1. 🏎️ The adrenaline of the races and the cutting-edge technological innovation in this sport fascinate and inspire me in my own projects. 🏁 discovery and learning! 🌈
+Cloud / DevSecOps / Cybersecurity learner building practical projects around automation, reliability and security.
+
+My main project is **Tyre Weather Race Control**, a progressive web app combining weather data, routing, geolocation and tyre-risk analysis with an automated GitHub Actions CI/CD pipeline.
+
+Current focus:
+- Linux and systems fundamentals
+- Git / GitHub and CI/CD
+- Cloud and IAM
+- Security automation and secrets management
+- Containers, Infrastructure as Code and observability
+
+I learn best by building, testing, breaking and improving real systems.
+
+Formula 1 fan 🏎️ — engineering, telemetry and continuous improvement are a big source of inspiration.
