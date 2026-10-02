@@ -33,9 +33,11 @@ jobs:
       - name: Relais
         env:
           FORCE_PUSH: ${{ github.event.inputs.force_push }}
+          # deux clés indépendantes : RC_KEY ouvre la config du relais, APP_KEY (code de l'app) chiffre l'agenda
           RC_KEY: ${{ secrets.RC_KEY }}
           GCAL_ICS: ${{ secrets.GCAL_ICS }}
           APP_KEY: ${{ secrets.APP_KEY }}
+          RC_KEY_NEXT: ${{ secrets.RC_KEY_NEXT }}   # TRANSITOIRE (rotation Phase B) : essayée après RC_KEY, jamais APP_KEY
         run: node race-control/relay.js
       - name: Publier obs.json
         run: |

@@ -1,6 +1,7 @@
 # Données privées : jamais dans Git (dépôt public)
 private/
 .passphrase
+.rc_key
 preset.json
 relay-config.json
 .sealed-cache.json

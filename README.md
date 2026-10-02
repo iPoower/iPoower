@@ -10,7 +10,7 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
 | Dossier | Contenu |
 |---|---|
 | `src/` | Code source : `engine.js` (moteur partagé page + relais), `app.js` (interface), `demo.js`, `style.css`, `shell.html`, `sw.js`, `relay.js`, `widget.js`, `tiredb.json`, `static/` (icônes) |
-| `tools/` | `build.js` (assemble `dist/`), `check-secrets.js` (garde-fou de confidentialité), `deploy-copy.js` (publication), `pre-commit` |
+| `tools/` | `build.js` (assemble `dist/`), `check-secrets.js` (garde-fou de confidentialité), `check-keys.js` (séparation des clés), `keys.js` (chiffrement partagé), `deploy-copy.js` (publication), `pre-commit` |
 | `tests/` | Tests Playwright de bout en bout (horloge et réseau simulés) et harnais du relais (`relay-harness/`) |
 | `encrypted/` | Réglages **déjà chiffrés** (AES-256-GCM, PBKDF2-SHA256 600 000 itérations) |
 
@@ -18,6 +18,15 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
 
 - Jamais dans Git : code de déverrouillage, configuration du relais ou préréglage en clair, adresse iCal, coordonnées du domicile, captures d'écran.
 - Ces éléments vivent dans `private/` (ignoré par Git) sur le poste de travail, ou dans les secrets GitHub (`APP_KEY`, `RC_KEY`, `GCAL_ICS`).
+- **Deux clés indépendantes, sans repli de l'une sur l'autre** :
+
+  | Clé | Local | Ouvre | Utilisée par |
+  |---|---|---|---|
+  | `APP_KEY` (code de déverrouillage) | `private/.passphrase` | préréglage de l'app, agenda chiffré | l'app (code saisi), le relais (chiffre l'agenda) |
+  | `RC_KEY` (clé du relais) | `private/.rc_key` | configuration du relais uniquement | le relais |
+
+  Le relais refuse toute clé de relais égale à `APP_KEY`, même si elle ouvrirait la configuration.
+  Une fuite de `RC_KEY` n'ouvre ni l'app ni l'agenda. `tools/check-keys.js` vérifie, sans rien afficher, que chaque clé n'ouvre que ses fichiers (CI : job `confidentialite` ; en ligne : « contrôle des sources » lancé à la main).
 - `tools/check-secrets.js` compare chaque fichier aux valeurs privées (lues localement ou déchiffrées avec les secrets) et bloque le commit (`tools/pre-commit`) ou le build.
 
 ## Frontière des secrets
@@ -32,6 +41,16 @@ Les vrais secrets (`APP_KEY`, `RC_KEY`, `GCAL_ICS`, et `RC_KEY_NEXT` pendant une
 | `race-control.yml` (relais) | oui | uniquement depuis `main` ; exécute le relais publié sur `gh-pages` |
 | `sources-check.yml` | oui | uniquement depuis `main` |
 | `rc-key-rotation.yml` (transitoire) | oui | lancé à la main depuis `main` ; la branche cible ne reçoit qu'un fichier chiffré, son code n'est jamais exécuté |
+
+## Rotation de `RC_KEY` (transitoire, sans coupure)
+
+La nouvelle clé est générée par le propriétaire du dépôt et n'existe que dans les secrets GitHub (jamais dans un fichier, un log ou une IA).
+
+1. Créer le secret `RC_KEY_NEXT` (≥ 32 caractères, ≠ `APP_KEY`).
+2. Actions → « Race Control · rotation de RC_KEY » → Run workflow **depuis `main`**, branche cible = la PR de rotation : le code de `main` prend la config chiffrée de `main` (vérifiée identique à la production), l'ouvre avec `RC_KEY`, la rechiffre avec `RC_KEY_NEXT` en mémoire (`tools/rotate-rc-key.js`) et ne dépose que ce fichier chiffré sur la branche de la PR (son code n'est jamais exécuté).
+3. CI complète, puis fusion : le relais lit la nouvelle config via `RC_KEY_NEXT` (essayée après `RC_KEY`, jamais `APP_KEY`).
+4. Copier la valeur de `RC_KEY_NEXT` dans `RC_KEY`, vérifier le relais, supprimer `RC_KEY_NEXT`.
+5. Nettoyage : suppression de `RC_KEY_NEXT`, du workflow et de l'outil de rotation.
 
 ## Build
 
