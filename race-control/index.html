@@ -462,6 +462,19 @@ html { scroll-behavior: smooth; }
 .leg-src { margin-top: -2px; }
 .alt { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px dashed var(--line2); border-radius: 6px; }
 .alt .btn { align-self: flex-start; }
+.cd { font-family: var(--f-mono); font-size: 11.5px; color: var(--fg2); white-space: nowrap; }
+.cd.now { color: var(--cau-t); font-weight: 700; letter-spacing: .04em; }
+.cd.past { color: var(--fg3); }
+.trend { font-size: 12.5px; color: var(--fg2); }
+.trend.ok { color: var(--go-t); }
+.trend.bad { color: var(--risk-t); font-weight: 600; }
+.trend.good { color: var(--go-t); }
+.brf-t:empty { display: none; }
+.db { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; margin-bottom: 4px; border-radius: 6px; border: 1px solid var(--lv); background: var(--lv-soft); }
+.db-h b { font-family: var(--f-disp); font-size: 19px; letter-spacing: .04em; text-transform: uppercase; }
+.db-w, .db-n, .db-c { font-size: 13.5px; }
+.db-l { display: flex; flex-direction: column; font-size: 13px; padding-left: 8px; border-left: 2px solid var(--line2); }
+.db-after { margin-top: 6px; }
 
 </style>
 </head><body>
@@ -2418,7 +2431,9 @@ function renderBrf() {
   const iceS = ['Faible', 'Modéré', 'Élevé', 'Max'];
   const ob = td.A.obs;
   el.className = 'mod brf lv' + lv;
-  el.innerHTML = `<div class="brf-h"><span class="brf-k">🏁 Briefing ${td.dir === 'go' ? 'aller' : 'retour'}</span><span class="brf-w">${when}</span></div>
+  const trC = trendOf('commute|' + td.dep + '|' + td.dir, td.dep, snapOf(res, sum, td.seq));
+  const dbh = dayBriefHtml(td, lv), dbTop = dbh && dayBriefHtml.day <= td.dep.slice(0, 10);   // journée agenda avant (ou le même jour que) le trajet domicile-travail : en haut
+  el.innerHTML = `${dbTop ? dbh : ''}<div class="brf-h"><span class="brf-k">🏁 Briefing ${td.dir === 'go' ? 'aller' : 'retour'}</span><span class="brf-w">${when} · ${cdSpan(td.dep)}</span></div>
     <div class="brf-r">${esc(td.fromName)} <span>→</span> ${esc(td.toName)}</div>
     <div class="brf-m">${gaugeSvg(top.w.score, lv)}
       <div class="brf-v"><span class="brf-lv">${LV[lv].emoji} ${LV[lv].name}</span>
@@ -2434,7 +2449,9 @@ function renderBrf() {
     </div>
     ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
     ${ob && ob.T != null ? `<div class="brf-obs"><i class="tag obs">mesuré</i> ${esc(ob.name)} · ${new Date(ob.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · <b>${f1(ob.T)} °C</b>${ob.vis != null && ob.vis < 5000 ? ' · visibilité ' + ob.vis + ' m' : ''}${ob.wx ? ' · ' + esc(wxFr(ob.wx)) : ''}</div>` : ''}
-    <div class="brf-n"><span class="k">Prochain risque</span>${nr ? `<span class="lv${nr.lv}"><b style="color:var(--lv-t)">${nr.lv >= 3 ? '🔴' : nr.lv >= 2 ? '🟠' : '🟡'} ${nr.day} ${nr.t.slice(11, 16)}</b> · ${esc(nr.why)}</span>` : '<span>🟢 Rien à signaler sur 72 h</span>'}</div>`;
+    <div class="brf-t">${trendHtml(trC)}</div>
+    <div class="brf-n"><span class="k">Prochain risque</span>${nr ? `<span class="lv${nr.lv}"><b style="color:var(--lv-t)">${nr.lv >= 3 ? '🔴' : nr.lv >= 2 ? '🟠' : '🟡'} ${nr.day} ${nr.t.slice(11, 16)}</b> · ${esc(nr.why)}</span>` : '<span>🟢 Rien à signaler sur 72 h</span>'}</div>
+    ${dbh && !dbTop ? `<div class="db-after">${dbh}</div>` : ''}`;
 }
 
 
@@ -2450,7 +2467,7 @@ async function loadCalendar() {
   try {
     const S0 = await fetchJSON('calendar.sealed.json?t=' + Math.floor(Date.now() / 300e3), 8000); if (!S0 || !S0.c) return;
     if (CAL && CAL.c === S0.c) return;
-    const d = await openSealed(S0, String(pass).trim().toLowerCase()); CAL = { ...d, c: S0.c }; renderCal();
+    const d = await openSealed(S0, String(pass).trim().toLowerCase()); CAL = { ...d, c: S0.c }; renderCal(); renderBrf();
   } catch (e) { /* pas d'agenda publié, ou code différent */ }
 }
 async function calModel(ev) {
@@ -2486,7 +2503,7 @@ async function fetchLeg(leg) {
     if (!Array.isArray(js)) js = [js];
     LEGM[k] = { t: Date.now(), models: js.map((p, i) => { try { return makeModel(p, 'live', pts[i]); } catch (e) { return null; } }) };
   } catch (e) { LEGM[k] = { t: Date.now() - 25 * 60e3, models: null }; }
-  LEGBUSY.delete(k); renderCal();
+  LEGBUSY.delete(k); clearTimeout(fetchLeg.t); fetchLeg.t = setTimeout(() => { renderCal(); renderBrf(); }, 150);
 }
 function legEval(leg) {
   const k = legKey(leg), c = LEGM[k];
@@ -2505,15 +2522,17 @@ function effLegs(e, all) {
   return legs;
 }
 function altHtml(e) {
+  if (e.mode === 'conflit') return '<div class="alt"><span class="sub">⚠️ <b>#maison</b> et <b>#direct</b> sont tous les deux dans ce rendez-vous : règle par défaut appliquée. Garde un seul mot-clé.</span></div>';
+  if (e.mode === 'direct' || e.mode === 'maison') return `<div class="alt"><span class="sub">📌 Selon ton agenda (<b>#${e.mode}</b>) : ${e.mode === 'direct' ? 'enchaîné directement depuis le rendez-vous précédent' : 'retour maison avant ce rendez-vous'}. Appli et notifications suivent ce choix.</span></div>`;
   if (!e.alt || !e.alt.direct) return '';
   const on = !!calDirectSet()[e.alt.key], d = e.alt.direct, v = e.alt.viaHome, dk = v.km - d.km, dm = v.min - d.min;
   const cmp = `Retour maison : ${f0(v.km)} km · ${v.min} min · Direct : ${f0(d.km)} km · ${d.min} min (${dk >= 0 ? '−' : '+'}${f0(Math.abs(dk))} km, ${dm >= 0 ? '−' : '+'}${Math.abs(dm)} min)`;
   return `<div class="alt"><span class="sub">${on ? '↪ Enchaîné directement depuis ' + esc(e.alt.fromLabel || 'le rendez-vous précédent') : 'Plus de 3 h depuis le rendez-vous précédent : retour maison supposé.'} ${cmp}</span>
     <button class="btn sm" data-act="caldirect" data-k="${esc(e.alt.key)}">${on ? '🏠 Repasser par la maison' : '↪ Je ne rentre pas : enchaîner directement'}</button></div>`;
 }
-function legHtml(leg) {
+function legHtml(leg, ev) {
   const r = legEval(leg), go = leg.k === 'go';
-  const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${leg.dep.slice(11, 16)}</b> → ${leg.arr.slice(11, 16)} · ${f0(leg.km)} km · ${leg.min} min${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''}</div>
+  const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${leg.dep.slice(11, 16)}</b> → ${leg.arr.slice(11, 16)} · ${f0(leg.km)} km · ${leg.min} min${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''} · ${cdSpan(leg.dep)}</div>
     <div class="leg-src">${leg.routed ? '<i class="tag prev">🛣 route · OSRM</i>' : '<i class="tag est">≈ route estimée</i>'}</div>
     <div class="leg-o">${go ? (leg.fromKind === 'prev' ? '↪ depuis ' + esc(leg.from.label || 'le rendez-vous précédent') + (leg.chosen ? ' (enchaînement choisi)' : ' (rendez-vous précédent)') : '🏠 depuis le domicile') : '🏠 vers le domicile'}</div>`;
   const plans = `<a class="btn sm" href="https://maps.apple.com/?daddr=${leg.to.lat},${leg.to.lon}&dirflg=d" target="_blank" rel="noopener">🧭 Plans</a>`;
@@ -2533,6 +2552,7 @@ function legHtml(leg) {
     }
     body = `<div class="cal-v"><span class="pill lv${r.worst}">${LV[r.worst].emoji} ${LV[r.worst].name}${r.res[0] ? ' ' + r.res[0].w.score : ''}</span>${plans}</div>
       <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
+      ${ev ? trendHtml(trendOf('leg|' + leg.dep + '|' + leg.k + '|' + ev.s, leg.dep, snapOf(r.res, r.sum, r.seq))) : ''}
       ${crit}${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
       ${r.res.length > 1 ? `<span class="sub">${r.res.map(x => `${esc(x.c.short)} : ${LV[x.w.level].name} ${x.w.score}`).join(' · ')}</span>` : ''}`;
   }
@@ -2554,7 +2574,8 @@ function renderCal() {
   if (!CAL || !CX) { el.hidden = true; el.innerHTML = ''; return; }
   const now = CX.m.nowStr, home = S.locs[0], fut = (CAL.events || []).filter(e => (e.allDay ? e.s.slice(0, 10) >= now.slice(0, 10) : e.s > now));
   // rendez-vous à moins de 3 km de chez toi : pas de trajet, on les masque
-  const near = fut.filter(e => e.lat != null && distKm(home, e) < 3), evs = fut.filter(e => !near.includes(e)).slice(0, 8);
+  const skip = fut.filter(e => e.mode === 'pasdetrajet'), fut2 = fut.filter(e => e.mode !== 'pasdetrajet');
+  const near = fut2.filter(e => e.lat != null && distKm(home, e) < 3), evs = fut2.filter(e => !near.includes(e)).slice(0, 8);
   el.hidden = false;
   const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   if (!evs.length) { el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda</span></div><p class="sub">Aucun rendez-vous avec un lieu sur les 8 prochains jours. Ajoute une adresse ou une ville dans le champ « Lieu » de tes rendez-vous Google Agenda.</p><div class="disc">Agenda synchronisé le ${up}.</div>`; return; }
@@ -2562,7 +2583,7 @@ function renderCal() {
     const d = new Date(e.s.slice(0, 10) + 'T12:00:00Z'), dd = dayDiff(now.slice(0, 10), e.s.slice(0, 10)), dl = dd === 0 ? 'auj.' : dd === 1 ? 'demain' : DAYN[d.getUTCDay()] + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1);
     const tr = e.legs ? null : calTrip(e);
     let body;
-    if (e.legs && e.lat != null) { const L = effLegs(e); body = altHtml(e) + (!e.allDay && L.length && !L.some(l => l.k === 'go') ? '<span class="sub">↪ Enchaîné avec le rendez-vous précédent, même lieu : pas de trajet aller.</span>' : '') + (L.length ? L.map(legHtml).join('') : '<span class="sub">Même lieu que le rendez-vous précédent : pas de trajet.</span>'); }
+    if (e.legs && e.lat != null) { const L = effLegs(e); body = altHtml(e) + (!e.allDay && L.length && !L.some(l => l.k === 'go') ? '<span class="sub">↪ Enchaîné avec le rendez-vous précédent, même lieu : pas de trajet aller.</span>' : '') + (L.length ? L.map(l => legHtml(l, e)).join('') : '<span class="sub">Même lieu que le rendez-vous précédent : pas de trajet.</span>'); }
     else if (e.lat == null) body = `<span class="sub">Lieu introuvable sur la carte : précise l’adresse ou la ville dans le rendez-vous.</span>`;
     else if (!tr) body = '<span class="sub">Météo en attente…</span>';
     else if (tr.near) body = `<span class="sub">À moins de 3 km de chez toi : pas de trajet à analyser.</span>`;
@@ -2578,8 +2599,66 @@ function renderCal() {
     }
     return `<div class="cal-e"><div class="cal-h"><span class="cal-d">${dl} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(e.label || e.loc)}</span></div>${body}</div>`;
   }).join('');
-  el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · prévision</span></div>${daySummary(evs, now)}<div class="cal-l">${rows}</div>
-    <div class="disc">${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, durée + 10 % et 10 min de marge, sans trafic : touche 🧭 Plans pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
+  el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · prévision</span></div><div class="cal-l">${rows}</div>
+    <div class="disc">${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Mots-clés dans le titre ou la description Google Agenda : <b>#direct</b> (enchaîner), <b>#maison</b> (repasser par chez toi), <b>#pasdetrajet</b> ou 📺 (ignorer). Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, durée + 10 % et 10 min de marge, sans trafic : touche 🧭 Plans pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
+}
+
+
+/* ---------- V3.2 : compte à rebours, tendance locale, briefing de la journée ---------- */
+// compte à rebours vivant : tout élément .cd[data-dep] est mis à jour toutes les 30 s
+function cdText(dep) {
+  const now = nowIn('Europe/Paris').slice(0, 16), m = Math.round((tsToDate(dep) - tsToDate(now)) / 60000);
+  if (m < -5) return { t: 'départ passé', cls: 'past' };
+  if (m <= 0) return { t: 'DÉPART MAINTENANT', cls: 'now' };
+  if (m <= 20) return { t: `DÉPART DANS ${m} MIN`, cls: 'now' };
+  return { t: m < 60 ? `départ dans ${m} min` : m < 24 * 60 ? `départ dans ${Math.floor(m / 60)} h ${pad(m % 60)}` : `départ dans ${Math.floor(m / 1440)} j`, cls: '' };
+}
+const cdSpan = dep => { const c = cdText(dep); return `<span class="cd ${c.cls}" data-dep="${dep}">${c.t}</span>`; };
+setInterval(() => { document.querySelectorAll('.cd[data-dep]').forEach(el => { const c = cdText(el.dataset.dep); el.textContent = c.t; el.className = 'cd ' + c.cls; }); }, 30e3);
+// tendance : première prévision vue pour un trajet (sur ce téléphone uniquement), comparée à l'actuelle
+let TREND = null;
+function trendStore() { if (!TREND) { try { TREND = JSON.parse(lsGet('twrc.trend') || '{}'); } catch (e) { TREND = {}; } } return TREND; }
+function trendOf(key, dep, snap) {
+  const T = trendStore(), now = nowIn('Europe/Paris').slice(0, 16);
+  Object.keys(T).forEach(k => { if (T[k].dep < addMin(now, -1440)) delete T[k]; });
+  if (!T[key]) { T[key] = { dep, at: now, ...snap }; lsSet('twrc.trend', JSON.stringify(T)); return { first: true, at: now }; }
+  const r = T[key], at = r.at.slice(11, 16) + (r.at.slice(0, 10) !== now.slice(0, 10) ? ' (veille)' : ''), ch = [];
+  if (r.lv != null && snap.lv != null && snap.lv !== r.lv) ch.push({ w: snap.lv > r.lv ? 1 : -1, t: `${LV[r.lv].name} → ${LV[snap.lv].name}` });
+  if (r.pp != null && snap.pp != null && Math.abs(snap.pp - r.pp) >= 20) ch.push({ w: snap.pp > r.pp ? 1 : -1, t: `pluie ${snap.pp > r.pp ? '+' : '−'}${Math.round(Math.abs(snap.pp - r.pp))} pts` });
+  if (r.vis != null && snap.vis != null && r.vis < 20000 && snap.vis <= r.vis / 2) ch.push({ w: 1, t: 'visibilité divisée par ' + Math.max(2, Math.round(r.vis / Math.max(snap.vis, 1))) });
+  else if (r.vis != null && snap.vis != null && snap.vis < 20000 && snap.vis >= r.vis * 2) ch.push({ w: -1, t: 'visibilité en hausse' });
+  if (r.tr != null && snap.tr != null && Math.abs(snap.tr - r.tr) >= 2) ch.push({ w: snap.tr < r.tr ? 1 : -1, t: `chaussée ${snap.tr < r.tr ? '−' : '+'}${f1(Math.abs(snap.tr - r.tr))} °C` });
+  return { at, ch, worse: ch.some(c => c.w > 0), better: ch.length && ch.every(c => c.w < 0) };
+}
+function trendHtml(tr) {
+  if (!tr) return '';
+  if (tr.first) return `<span class="trend">📈 suivi démarré à ${tr.at.slice(11, 16)}</span>`;
+  if (!tr.ch.length) return `<span class="trend ok">→ conditions stables depuis ${tr.at}</span>`;
+  return `<span class="trend ${tr.worse ? 'bad' : 'good'}">${tr.worse ? '↘ se dégrade' : '↗ s’améliore'} depuis ${tr.at} : ${tr.ch.map(c => esc(c.t)).join(' · ')}</span>`;
+}
+const snapOf = (res, sum, seq) => ({ lv: res.reduce((m, r) => Math.max(m, r.w.level), 0), pp: Math.max(0, ...seq.map(q => q.hs[q.i].pp || 0)), vis: sum.visMin, tr: sum.TrMin });
+// briefing de la journée : trajets agenda + trajet domicile/travail, prochain départ, trajet critique
+function dayBriefHtml(td, tdLv) {
+  if (!CAL || !CAL.events) return '';
+  const now = CX.m.nowStr.slice(0, 16), legs = [];
+  CAL.events.filter(e => e.mode !== 'pasdetrajet').forEach(e => effLegs(e).forEach(l => { if (l.dep >= now) legs.push({ l, e }); }));
+  if (!legs.length) return '';
+  const day = legs.map(x => x.l.dep.slice(0, 10)).sort()[0], L = legs.filter(x => x.l.dep.slice(0, 10) === day).sort((a, b) => a.l.dep < b.l.dep ? -1 : 1);
+  const R = L.map(x => ({ ...x, r: legEval(x.l) })), ready = R.filter(x => x.r && x.r.res);
+  const worst = ready.reduce((a, x) => !a || x.r.worst > a.r.worst ? x : a, null);
+  const km = L.reduce((a, x) => a + (x.l.km || 0), 0), dd = dayDiff(now.slice(0, 10), day), lbl = dd === 0 ? 'Aujourd’hui' : dd === 1 ? 'Demain' : fmtDay(day);
+  const nx = R[0], nm = x => `${x.l.k === 'ret' ? 'retour' : 'aller'} ${esc(x.e.t)}`;
+  const tr = x => { if (!x.r || !x.r.res) return null; return trendOf('leg|' + x.l.dep + '|' + x.l.k + '|' + x.e.s, x.l.dep, snapOf(x.r.res, x.r.sum, x.r.seq)); };
+  // tendance affichée seulement quand elle change quelque chose ; sinon une seule ligne « stable »
+  const T = R.slice(0, 4).map(x => ({ x, t: tr(x) })), anyCh = T.some(o => o.t && !o.t.first && o.t.ch.length), ref = (T.find(o => o.t) || {}).t;
+  const lines = T.map(o => `<div class="db-l"><span>${o.x.r && o.x.r.res ? LV[o.x.r.worst].emoji : '⏳'} ${o.x.l.dep.slice(11, 16)} · ${nm(o.x)}</span>${o.t && !o.t.first && o.t.ch.length ? trendHtml(o.t) : ''}</div>`).join('')
+    + (!anyCh && ref ? `<div class="db-n">${trendHtml(ref.first ? ref : { ...ref, ch: [] })}</div>` : '');
+  const car = TCARS()[0];
+  dayBriefHtml.day = day;
+  return `<div class="db lv${worst ? worst.r.worst : 0}"><div class="db-h"><b>${lbl} · ${L.length} trajet${L.length > 1 ? 's' : ''} agenda · ${f0(km)} km</b></div>
+    ${worst && worst.r.worst >= 1 ? `<div class="db-w">${LV[worst.r.worst].emoji} <b>${nm(worst)} (${worst.l.dep.slice(11, 16)})</b> = trajet critique</div>` : ready.length === L.length ? '<div class="db-w">🟢 aucun trajet à risque</div>' : ''}
+    <div class="db-n">⏱ Prochain départ agenda : <b>${nx.l.dep.slice(11, 16)}</b> · ${cdSpan(nx.l.dep)} · ${nm(nx)}</div>
+    ${lines}${car ? `<div class="db-c">🚗 ${esc(car.short)} · ${esc(TYPE_LABEL[effType(car)] || '')}</div>` : ''}</div>`;
 }
 
 /* ---------- rendu : voitures ---------- */
@@ -3123,7 +3202,7 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'lock') { ['twrc.plain', 'twrc.plain.v', 'twrc.key'].forEach(k => { try { localStorage.removeItem(k); } catch (err) { /* stockage */ } }); location.reload(); }
   else if (a === 'locate') locate(true);
-  else if (a === 'caldirect') { const k = t.dataset.k; S.calDirect = { ...(S.calDirect || {}) }; if (S.calDirect[k]) delete S.calDirect[k]; else S.calDirect[k] = 1; markEdit('calDirect'); saveSettings(); renderCal(); }
+  else if (a === 'caldirect') { const k = t.dataset.k; S.calDirect = { ...(S.calDirect || {}) }; if (S.calDirect[k]) delete S.calDirect[k]; else S.calDirect[k] = 1; markEdit('calDirect'); saveSettings(); renderCal(); renderBrf(); }
   else if (a === 'tip') { TIP_OFF += +t.dataset.d || 1; renderTip(); }
   else if (a === 'nocode') { lsSet('twrc.nocode', '1'); renderNotice(); const d = $('#settings'); if (d) { d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
   else if (a === 'withcode') { try { localStorage.removeItem('twrc.nocode'); } catch (err) { /* stockage */ } renderNotice(); window.scrollTo({ top: 0, behavior: 'smooth' }); }

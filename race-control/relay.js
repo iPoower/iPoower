@@ -48,6 +48,15 @@ function icsDate(v, params) {
   return { s: m[7] ? toParis(new Date(iso + ':00Z')) : iso, allDay: false }; // TZID : traité comme heure de Paris
 }
 const unesc = t => String(t || '').replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim();
+// mots-clés de l'agenda : #pasdetrajet (ou 📺 dans le titre) > conflit #maison + #direct > #maison / #direct
+function modeOf(text, prev) {
+  const t = String(text || '').toLowerCase(), has = k => t.includes(k);
+  let m = prev || null;
+  if (has('#pasdetrajet') || has('#pas-de-trajet') || String(text || '').includes('📺')) return 'pasdetrajet';
+  if (m === 'pasdetrajet') return m;
+  const mai = has('#maison') || m === 'maison', dir = has('#direct') || m === 'direct';
+  return mai && dir ? 'conflit' : mai ? 'maison' : dir ? 'direct' : (m === 'conflit' ? m : null);
+}
 function parseIcs(txt) {
   const lines = txt.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '').split(/\r?\n/), evs = []; let cur = null;
   for (const ln of lines) {
@@ -58,8 +67,9 @@ function parseIcs(txt) {
     const head = ln.slice(0, i), val = ln.slice(i + 1), [name, ...pr] = head.split(';'), params = pr.join(';');
     if (name === 'DTSTART') cur.start = icsDate(val, params);
     else if (name === 'DTEND') cur.end = icsDate(val, params);
-    else if (name === 'SUMMARY') cur.title = unesc(val);
+    else if (name === 'SUMMARY') { cur.title = unesc(val); cur.mode = modeOf(cur.title, cur.mode); }
     else if (name === 'LOCATION') cur.loc = unesc(val);
+    else if (name === 'DESCRIPTION') cur.mode = modeOf(unesc(val), cur.mode);
     else if (name === 'UID') cur.uid = val;
     else if (name === 'STATUS') cur.status = val;
     else if (name === 'RRULE') cur.rrule = Object.fromEntries(val.split(';').map(x => x.split('=')));
@@ -175,7 +185,7 @@ async function planLegs(events, home) {
   const mkRet = async (e, leave, assumed) => { const r = await routeLeg(e, H);
     return { k: 'ret', from: P(e), to: { lat: H.lat, lon: H.lon, label: H.label, city: H.label }, fromKind: 'event', km: r.km, min: Math.round(r.min * 1.1), dep: leave, arr: shift(leave, Math.round(r.min * 1.1)), pts: r.pts, routed: r.routed, byTime: r.byTime, assumed: !!assumed }; };
   const days = {};
-  events.filter(e => e.lat != null).forEach(e => (days[e.s.slice(0, 10)] = days[e.s.slice(0, 10)] || []).push(e));
+  events.filter(e => e.lat != null && e.mode !== 'pasdetrajet').forEach(e => (days[e.s.slice(0, 10)] = days[e.s.slice(0, 10)] || []).push(e));
   for (const d of Object.keys(days).sort()) {
     const list = days[d].sort((a, b) => a.s < b.s ? -1 : 1);
     let prev = null;
@@ -185,10 +195,13 @@ async function planLegs(events, home) {
       if (e.allDay) { if (!near) { e.legs.push(await mkGo(H, e, 'home', d + 'T09:00')); e.legs.push(await mkRet(e, d + 'T18:00', true)); } continue; }
       if (near) { if (prev && !prev.near) prev.ev.legs.push(await mkRet(prev.ev, shift(prev.ev.e, 10))); prev = { ev: e, near: true }; continue; }
       const gap = prev && !prev.near ? (Date.parse(e.s + ':00Z') - Date.parse(prev.ev.e + ':00Z')) / 60000 : null;
-      if (gap != null && gap >= 0 && gap <= 180 && E.distKm(prev.ev, e) >= 1) e.legs.push(await mkGo(P(prev.ev), e, 'prev', e.s));
-      else if (gap != null && gap >= 0 && gap <= 180) { /* même lieu : pas de trajet */ }
+      // mots-clés : #direct enchaîne quel que soit l'écart, #maison force le retour ; en cas de conflit, règle par défaut
+      const chain = gap != null && gap >= 0 && (e.mode === 'direct' ? true : e.mode === 'maison' ? false : gap <= 180);
+      if (chain && E.distKm(prev.ev, e) >= 1) { const g = await mkGo(P(prev.ev), e, 'prev', e.s); if (e.mode === 'direct') g.byKey = true; e.legs.push(g); }
+      else if (chain) { /* même lieu : pas de trajet */ }
+      else if (e.mode === 'maison' && prev && !prev.near) { const r = await mkRet(prev.ev, shift(prev.ev.e, 10)); r.byKey = true; prev.ev.legs.push(r); const g = await mkGo(H, e, 'home', e.s); g.byKey = true; e.legs.push(g); }
       else {
-        if (prev && !prev.near && gap != null && gap > 180) {
+        if (prev && !prev.near && gap != null && gap > 180 && !e.mode) {
           // écart de plus de 3 h : retour maison par défaut, avec l'option « enchaîner directement » préparée
           const ret = await mkRet(prev.ev, shift(prev.ev.e, 10)), go = await mkGo(H, e, 'home', e.s), direct = await mkGo(P(prev.ev), e, 'prev', e.s);
           ret.brk = go.brk = keyOf(e); prev.ev.legs.push(ret); e.legs.push(go);
@@ -211,9 +224,10 @@ async function calendarSync(out) {
     const occ = expand(parseIcs(await r.text()), from.slice(0, 10) + 'T00:00', to).filter(e => e.loc && e.loc.length > 2).slice(0, 25);
     const geo = {}, events = [];
     for (const e of occ) {
-      const g = geo[e.loc] !== undefined ? geo[e.loc] : (geo[e.loc] = await geocodeLoc(e.loc));
-      events.push({ t: e.title || 'Rendez-vous', s: e.s, e: e.e, allDay: !!e.start.allDay, loc: e.loc, lat: g ? g.lat : null, lon: g ? g.lon : null, label: g ? g.label : null });
+      const g = e.mode === 'pasdetrajet' ? null : geo[e.loc] !== undefined ? geo[e.loc] : (geo[e.loc] = await geocodeLoc(e.loc));
+      events.push({ t: e.title || 'Rendez-vous', s: e.s, e: e.e, allDay: !!e.start.allDay, loc: e.loc, lat: g ? g.lat : null, lon: g ? g.lon : null, label: g ? g.label : null, mode: e.mode || null });
     }
+    out.relay.calSkip = events.filter(x => x.mode === 'pasdetrajet').length;
     out.relay.calN = events.length; out.relay.calGeo = events.filter(x => x.lat != null).length;
     if (cfg) { try { await planLegs(events, (cfg.origins && cfg.origins[0]) || cfg.home); out.relay.calLegs = events.reduce((n, e) => n + (e.legs || []).length, 0); out.relay.calRouted = events.reduce((n, e) => n + (e.legs || []).filter(l => l.routed).length, 0); } catch (e) { out.relay.calLegErr = String(e.message || e).slice(0, 80); } }
     delete out.relay.calUrlDiag;
