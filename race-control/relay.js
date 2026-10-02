@@ -1,6 +1,7 @@
 // Relais Race Control (GitHub Actions, toutes les 30 min) :
 // 1) observations réelles des stations (METAR) -> obs.json
-// 2) entre 05:25 et 06:15 (heure de Paris), verdict du trajet -> notification ntfy si orange ou rouge
+// 2) de 90 à 5 min avant le départ, verdict du trajet toutes les 15 min -> notification si orange/rouge, brouillard ou verglas,
+//    puis nouvelle notification seulement en cas d'aggravation (3 par matin maximum)
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const dir = __dirname, crypto = require('crypto');
 // configuration personnelle chiffrée : clé fournie par le secret GitHub RC_KEY
@@ -51,7 +52,11 @@ async function getJSON(u) { const r = await fetch(u, { headers: { 'User-Agent': 
   const force = process.env.FORCE_PUSH === '1';
   // diagnostic public, sans aucune donnée personnelle
   out.relay = { cfg: cfg ? 'ok' : (process.env.RC_KEY ? 'illisible' : 'absent'), force, at: now };
-  if (cfg && (force || (hm >= 5 * 60 + 25 && hm <= 6 * 60 + 15)) && (force || out.notified !== today)) {
+  // état du matin : on garde le pire constaté du jour pour ne notifier qu'en cas d'aggravation
+  const pm = prev.morning && prev.morning.date === today ? prev.morning : null;
+  out.morning = pm || { date: today, w: -1, i: -1, f: false, sent: 0, checks: 0 };
+  const depMin = cfg ? E.toMin(cfg.dep) : 390, inWin = hm >= depMin - 90 && hm <= depMin - 5;
+  if (cfg && (force || inWin)) {
     try {
       const API = 'https://api.open-meteo.com/v1/forecast';
       const Q = 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,weather_code,pressure_msl,cloud_cover,visibility,wind_speed_10m,wind_gusts_10m,shortwave_radiation';
@@ -69,17 +74,25 @@ async function getJSON(u) { const r = await fetch(u, { headers: { 'User-Agent': 
       const sum = E.summarize(seq);
       const res = cfg.cars.filter(E.hasTires).map(c => ({ c, w: E.windowAssess(c, seq, 'trip') })).filter(r => r.w);
       const worst = res.reduce((m, r) => Math.max(m, r.w.level), 0);
-      const fog = sum.visMin != null && sum.visMin < 500, ice = (sum.iceLevel || 0) >= 1;
-      const st = Object.values(out.stations).find(s => s.last && s.last.T != null);
-      if (force || worst >= 2 || fog || ice) {
-        const title = `${E.LV[worst].emoji} ${E.LV[worst].name} · départ ${cfg.dep} (${origins.map(o => o.name.split(' ')[0].split('-')[0]).join(' / ')})`;
+      const fog = sum.visMin != null && sum.visMin < 500, ice = sum.iceLevel || 0;
+      const alert = worst >= 2 || fog || ice >= 1, M = out.morning;
+      // première alerte du jour, ou aggravation nette par rapport au pire déjà signalé (3 maximum)
+      const first = M.sent === 0, worse = worst > M.w || ice > M.i || (fog && !M.f);
+      const go = force || (alert && (first || worse) && M.sent < 3);
+      M.checks++;
+      if (go) {
+        const st = Object.values(out.stations).find(s => s.last && s.last.T != null);
+        const tag = !force && !first ? '⚠️ Aggravation · ' : '';
+        const title = `${tag}${E.LV[worst].emoji} ${E.LV[worst].name} · départ ${cfg.dep} (${origins.map(o => o.name.split(' ')[0].split('-')[0]).join(' / ')})`;
         const lines = res.map(r => `${r.c.short} (${E.TYPE_LABEL[r.c.tire.type]}) : ${E.LV[r.w.level].name} ${r.w.score}/100`);
-        lines.push(`Min ${E.f1(sum.Tmin)} °C · chaussée est. ${E.f1(sum.TrMin)} °C · verglas ${E.ICE_LV[sum.iceLevel || 0].toLowerCase()}${fog ? ' · brouillard ' + E.f0(sum.visMin) + ' m' : ''}`);
+        lines.push(`Min ${E.f1(sum.Tmin)} °C · chaussée est. ${E.f1(sum.TrMin)} °C · verglas ${E.ICE_LV[ice].toLowerCase()}${fog ? ' · brouillard ' + E.f0(sum.visMin) + ' m' : ''}`);
         if (st) lines.push(`Mesuré ${st.name} : ${E.f1(st.last.T)} °C${st.last.vis != null && st.last.vis < 5000 ? ', visibilité ' + st.last.vis + ' m' : ''}${st.last.wx ? ' · ' + E.wxFr(st.last.wx) : ''}`);
         const r = await fetch('https://ntfy.sh/', { method: 'POST', signal: AbortSignal.timeout(20000), headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ topic: cfg.ntfy, title, message: lines.join('\n'), priority: worst >= 3 ? 5 : worst >= 2 ? 4 : 3, tags: ['car'], click: cfg.site }) });
-        console.log('ntfy', r.status); out.relay.ntfy = r.status; out.lastPush = { at: now, level: worst };
-      } else { console.log('Conditions sans alerte, pas de notification'); out.relay.ntfy = 'rien'; }
+          body: JSON.stringify({ topic: cfg.ntfy, title, message: lines.join('\n'), priority: worst >= 3 ? 5 : worst >= 2 || !first ? 4 : 3, tags: ['car'], click: cfg.site }) });
+        console.log('ntfy', r.status); out.relay.ntfy = r.status;
+        if (r.ok) { out.lastPush = { at: now, level: worst }; if (!force) M.sent++; }
+      } else { console.log(alert ? 'Alerte déjà signalée, pas d\'aggravation' : 'Conditions sans alerte'); out.relay.ntfy = 'rien'; }
+      if (!force && (alert || go)) { M.w = Math.max(M.w, worst); M.i = Math.max(M.i, ice); M.f = M.f || fog; }
       out.notified = today;
     } catch (e) { console.log('Verdict impossible', e.message); out.relay.err = String(e.message || e).replace(/https?:\S+/g, 'url').slice(0, 120); }
   }
