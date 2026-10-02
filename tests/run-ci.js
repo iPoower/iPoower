@@ -37,8 +37,6 @@ const rel = spawnSync(process.execPath, ['-r', './mock_tt.js', 'relay.js'], { cw
   env: { ...process.env, FAKE: '2026-10-02T08:00:00+02:00', SCN: 'doux', GCAL_ICS: 'https://calendar.google.com/test.ics', APP_KEY: KEY, RC_KEY: KEY } });
 if (!fs.existsSync(path.join(H, 'calendar.sealed.json'))) { console.error('Harnais du relais en échec :\n' + (rel.stdout || '') + (rel.stderr || '')); process.exit(1); }
 fs.copyFileSync(path.join(H, 'calendar.sealed.json'), path.join(OUT, 'cal.fake.json'));
-if (process.env.GITHUB_ACTIONS) { try { const C = JSON.parse(unseal(JSON.parse(fs.readFileSync(path.join(H, 'calendar.sealed.json'), 'utf8'))));   // agenda fictif : horaires seulement
-  console.log('::notice title=Jeu de test agenda (fictif)::TZ=' + (process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone) + ' | ' + C.events.map(e => e.t.slice(0, 12) + ' ' + (e.legs || []).map(l => l.k + ' ' + l.dep.slice(5)).join(',')).join(' ; ')); } catch (e) { console.log('::notice::agenda illisible ' + e.message); } }
 // suite : tests unitaires du moteur et du widget, puis parcours navigateur (horloge et réseau simulés)
 const SUITE = [
   ['test_engine.js', 'moteur : verdicts, chaussée, verglas', false], ['test_examples.js', 'moteur : cas de référence', false], ['test_widget.js', 'widget iPhone (Scriptable simulé)', false],
@@ -59,8 +57,10 @@ for (const [file, what, browser] of SUITE) {
   const out = (r.stdout || '') + (r.stderr || ''), why = r.error ? String(r.error.message) : verdict(r.status, out);
   fs.writeFileSync(path.join(OUT, file.replace('.js', '.log')), out);
   rows.push(`${why ? '❌' : '✅'} ${file.padEnd(17)} ${what}${browser ? ` [${BROWSER}]` : ''} · ${Math.round((Date.now() - t0) / 1000)} s${why ? ' · ' + why : ''}`);
-  if (why) { fail++; console.log(scrub(out.split('\n').slice(-25).join('\n')));   // détail seulement en cas d'échec, données personnelles masquées
-    if (process.env.GITHUB_ACTIONS) console.log(`::error title=${file} (${BROWSER})::${scrub(why + ' | ' + out.split('\n').map((l, i, A) => /❌/.test(l) ? l + ' ⏎ ' + (A[i + 1] || '').slice(0, 160) + ' ⏎ ' + (A[i + 2] || '').slice(0, 200) : /Error|Timeout|errors \[|scénarios OK/.test(l) ? l : null).filter(Boolean).slice(0, 4).join(' / ')).replace(/[\r\n%]/g, ' ').slice(0, 900)}`); }
+  if (why) { fail++;
+    const labels = out.split('\n').filter(l => /^\s*❌/.test(l)).map(l => l.split(/ \| | → |\t/)[0].trim().slice(0, 90)).slice(0, 8).join(' / ');
+    if (process.env.GITHUB_ACTIONS) console.log(`::error title=${file} (${BROWSER})::${scrub(why + (labels ? ' | ' + labels : '')).replace(/[\r\n%]/g, ' ')}`);   // dépôt public : jamais la sortie brute (elle peut contenir l'agenda)
+    else console.log(out.split('\n').slice(-25).join('\n')); }
 }
 console.log('\n' + rows.join('\n') + `\n\n${fail ? `❌ ${fail} test(s) en échec` : `✅ ${SUITE.length} tests au vert`} (${BROWSER})`);
 process.exit(fail ? 1 : 0);
