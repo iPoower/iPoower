@@ -52,3 +52,15 @@ Chaque modification poussée sur `main` passe par `ci.yml` : `confidentialite` �
 - Les fichiers du relais (`obs.json`, `calendar.sealed.json`) ne sont jamais touchés. La base pneus n'est remplacée que par une version plus récente.
 - Chaque mise en production reçoit une étiquette `prod-N`, qui sert de point de retour arrière, et un `version.json` affiché dans Réglages → Version.
 - Plus aucune publication manuelle sur `gh-pages` : tout passe par `main` et la CI.
+
+## Retour arrière
+
+Actions → **Race Control · tests** → **Run workflow** → `version` = `prod-N` (par exemple `prod-7`).
+
+- L'étiquette est vérifiée, puis l'ancien code repasse **les mêmes contrôles** (confidentialité, Chromium, WebKit) avant d'être redéployé.
+- Ce n'est jamais un reset de `gh-pages` : seuls les fichiers de l'app sont remplacés, les données fraîches du relais (`obs.json`, agenda) sont conservées.
+- Réglages → Version affiche alors « prod-N · retour arrière ». Pour revenir à la dernière version, relancer avec l'étiquette la plus récente.
+
+## Mises à jour des dépendances
+
+Dependabot (`.github/dependabot.yml`) propose chaque samedi les mises à jour des actions GitHub et de Playwright sous forme de pull request, testées par la CI. Leaflet reste manuel : son empreinte SRI est fixée dans l'app.

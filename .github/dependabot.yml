@@ -1,0 +1,21 @@
+# Dependabot : propose chaque semaine les mises à jour sous forme de pull request.
+# Chaque proposition passe par la CI (confidentialité + tests Chromium et WebKit) ; rien n'est déployé avant fusion dans main.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+    commit-message:
+      prefix: "Actions"
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+    commit-message:
+      prefix: "Tests"
+    ignore:
+      # Leaflet est chargé dans l'app avec une empreinte de sécurité (SRI) fixée : sa mise à jour reste manuelle et volontaire
+      - dependency-name: leaflet

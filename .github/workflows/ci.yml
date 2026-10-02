@@ -1,11 +1,15 @@
 name: Race Control · tests
-# Étape 1 : chaque modification est vérifiée avant tout déploiement.
+# Chaque modification est vérifiée avant tout déploiement.
+#  - version : en retour arrière (lancement manuel), vérifie que l'étiquette prod-N demandée existe.
 #  - confidentialite : seul job qui reçoit les vrais secrets, uniquement pour vérifier qu'aucune donnée réelle n'est publiée.
 #    Aucun navigateur, aucun build de l'app, aucun affichage de donnée.
 #  - tests : AUCUN secret. L'app est construite avec un préréglage, un agenda et une clé 100 % fictifs, puis testée
 #    sur Chromium et sur WebKit (moteur de Safari, profil iPhone), réseau extérieur bloqué.
-#  - deploy (étape 2) : seulement sur main, seulement si confidentialite ET les deux navigateurs sont verts.
-#    Publie le build sur gh-pages sans jamais toucher aux fichiers du relais, étiquette la version (prod-N), puis vérifie la version en ligne.
+#  - deploy : seulement si confidentialite ET les deux navigateurs sont verts, pour un push sur main ou un retour arrière.
+#    Publie le build sur gh-pages sans jamais toucher aux fichiers du relais, étiquette la version (prod-N), vérifie la version en ligne.
+#    Un déploiement commencé n'est jamais annulé.
+# Retour arrière : Actions → « Race Control · tests » → Run workflow → version = prod-N. C'est un NOUVEAU déploiement contrôlé
+# de l'ancien code (mêmes contrôles, mêmes tests), jamais un reset de gh-pages : les données fraîches du relais sont conservées.
 # Aucune capture ni sortie brute n'est publiée : le dépôt est public.
 on:
   push:
@@ -13,17 +17,38 @@ on:
     paths: ['src/**', 'tools/**', 'tests/**', 'encrypted/**', 'package.json', 'package-lock.json', '.github/workflows/ci.yml']
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Retour arrière : étiquette à redéployer (ex. prod-7). Laisser vide pour seulement tester main.'
+        required: false
+        default: ''
 permissions:
   contents: read
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      ref: ${{ steps.v.outputs.ref }}
+    steps:
+      - id: v
+        env:
+          WANT: ${{ github.event.inputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$WANT" ]; then echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"; exit 0; fi
+          case "$WANT" in prod-[0-9]*) ;; *) echo "::error::Version invalide : $WANT (attendu prod-N)"; exit 1;; esac
+          sha=$(git ls-remote "https://github.com/$REPO.git" "refs/tags/$WANT" | cut -f1)
+          if [ -z "$sha" ]; then echo "::error::L'étiquette $WANT n'existe pas"; exit 1; fi
+          echo "Retour arrière vers $WANT ($sha)"; echo "ref=$sha" >> "$GITHUB_OUTPUT"
   confidentialite:
+    needs: version
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -34,14 +59,21 @@ jobs:
           GCAL_ICS: ${{ secrets.GCAL_ICS }}
         run: node tools/check-secrets.js
   tests:
+    needs: version
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # seuls les tests d'une modification remplacée par une plus récente sont annulés (jamais un déploiement)
+    concurrency:
+      group: ci-tests-${{ github.ref }}-${{ github.event.inputs.version }}-${{ matrix.browser }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
         browser: [chromium, webkit]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -55,8 +87,8 @@ jobs:
           BROWSER: ${{ matrix.browser }}
         run: node tests/run-ci.js
   deploy:
-    needs: [confidentialite, tests]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [version, confidentialite, tests]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -66,6 +98,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -77,18 +111,23 @@ jobs:
           path: pages
       - name: Publier sur gh-pages
         id: pub
+        env:
+          ROLLBACK: ${{ github.event.inputs.version }}
+          SRC_SHA: ${{ needs.version.outputs.ref }}
         run: |
-          DEPLOY_RUN=${{ github.run_number }} DEPLOY_SHA=$GITHUB_SHA node tools/deploy-copy.js dist pages/race-control
+          if [ -n "$ROLLBACK" ]; then N="${ROLLBACK#prod-}"; MSG="Retour arrière vers $ROLLBACK (${SRC_SHA::7}, tests verts, run ${{ github.run_number }})";
+          else N="${{ github.run_number }}"; MSG="Déploiement ${SRC_SHA::7} (tests verts, run ${{ github.run_number }})"; fi
+          DEPLOY_RUN="$N" DEPLOY_SHA="$SRC_SHA" DEPLOY_ROLLBACK="$ROLLBACK" node tools/deploy-copy.js dist pages/race-control
           cd pages
           git config user.name "race-control-deploy"
           git config user.email "race-control-deploy@users.noreply.github.com"
           git add race-control
           if git diff --cached --quiet; then echo "Production déjà à jour"; echo "done=0" >> "$GITHUB_OUTPUT"; exit 0; fi
-          git commit -q -m "Déploiement ${GITHUB_SHA::7} (tests verts, run ${{ github.run_number }})"
+          git commit -q -m "$MSG"
           for i in 1 2 3 4 5; do git push -q && break; sleep 3; git pull -q --rebase; done
           echo "done=1" >> "$GITHUB_OUTPUT"
-      - name: Étiquette de version (retour arrière possible)
-        if: steps.pub.outputs.done == '1'
+      - name: Étiquette de version (point de retour arrière)
+        if: steps.pub.outputs.done == '1' && github.event.inputs.version == ''
         run: |
           git tag "prod-${{ github.run_number }}" "$GITHUB_SHA"
           git push -q origin "prod-${{ github.run_number }}"
