@@ -17,3 +17,4 @@ test-results/
 node_modules/
 .ci/
 .ci-relay/
+.ci-keys/

@@ -2,6 +2,8 @@ name: Race Control · tests
 # Chaque modification est vérifiée avant tout déploiement.
 #  - version : en retour arrière (lancement manuel), vérifie que l'étiquette prod-N demandée existe.
 #  - confidentialite : seul job qui reçoit les vrais secrets, uniquement pour vérifier qu'aucune donnée réelle n'est publiée.
+#    Frontière des secrets : il ne tourne JAMAIS sur une pull request, seulement sur du code déjà fusionné dans main
+#    (push sur main, ou retour arrière lancé depuis main). Les PR sont testées avec des données et des clés fictives.
 #    Aucun navigateur, aucun build de l'app, aucun affichage de donnée.
 #  - tests : AUCUN secret. L'app est construite avec un préréglage, un agenda et une clé 100 % fictifs, puis testée
 #    sur Chromium et sur WebKit (moteur de Safari, profil iPhone), réseau extérieur bloqué.
@@ -45,6 +47,9 @@ jobs:
           echo "Retour arrière vers $WANT ($sha)"; echo "ref=$sha" >> "$GITHUB_OUTPUT"
   confidentialite:
     needs: version
+    # frontière des secrets : jamais sur une pull request (son code n'est pas encore approuvé).
+    # Uniquement sur main (push après fusion) ou un retour arrière lancé depuis main (étiquette prod-N = ancien code de main).
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.inputs.version != '')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -101,6 +106,8 @@ jobs:
           node-version: 20
       - name: Relais de bout en bout (données fictives, sans aucun secret)
         run: node tests/relay-smoke.js
+      - name: Outils de clés : rotation et contrôle de séparation (clés fictives, sans aucun secret)
+        run: node tests/keys-tools.js
   deploy:
     needs: [version, confidentialite, tests, relay-smoke]
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '')
