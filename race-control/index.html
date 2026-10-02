@@ -1778,7 +1778,7 @@ function renderNotice() {
     <select id="demoScn" data-act-change="demoScn" aria-label="Scénario de démo">${Object.keys(DEMO_SCN).map(k => `<option value="${k}" ${k === DEMO.scn ? 'selected' : ''}>${esc(DEMO_SCN[k].name)}</option>`).join('')}</select>
     <button class="btn sm" data-act="demo-off">Quitter la démo</button></div>` : '';
   const lock = LOCKED() ? `<div class="note lvx unlock"><b>🔒 CONFIGURATION</b><span>Réglages personnels chiffrés. Entre ton code une seule fois sur cet appareil.
-      <span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="password" id="unlockPw" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" data-act="unlock">Déverrouiller</button></span><span class="sub" id="unlockMsg"></span></span></div>` : '';
+      <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button></form><span class="sub">Accepte « Enregistrer le mot de passe » : l’iPhone le remplira ensuite avec Face ID.</span><span class="sub" id="unlockMsg"></span></span></div>` : '';
   const setup = lock || (CFG_IMPORTED ? `<div class="note lv0"><b>CONFIGURÉ</b><span>Tes lieux et tes voitures sont enregistrés sur cet appareil. Ajoute la page à l’écran d’accueil depuis ce lien.</span></div>`
     : !S.configured ? `<div class="note lvx"><b>À CONFIGURER</b><span>Renseigne tes lieux et tes voitures dans les paramètres. Ils restent sur cet appareil. <button class="btn sm" data-act="goset-cfg">Ouvrir les paramètres</button></span></div>` : '');
   if (m && CX) { el.innerHTML = setup; return; }
@@ -2704,6 +2704,12 @@ function resizePhoto(file, maxW) {
     rd.onerror = rej; rd.readAsDataURL(file);
   });
 }
+document.addEventListener('submit', async e => {
+  if (!e.target || e.target.id !== 'unlockForm') return;
+  e.preventDefault();
+  const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
+  const ok = await unseal(pw.trim()); if (ok) { try { localStorage.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } location.reload(); } else if (msg) msg.textContent = 'Code incorrect.';
+});
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.id === 'bkFile') { if (t.files && t.files[0]) backupImport(t.files[0]); t.value = ''; return; }
