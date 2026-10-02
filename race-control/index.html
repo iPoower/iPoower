@@ -3320,7 +3320,17 @@ function renderSettings(force) {
       <p class="sub" id="bkMsg" aria-live="polite"></p></div>
     <div class="set-sec"><h3>Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
-      <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>`;
+      <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>
+    <div class="set-sec"><h3>Version</h3><p class="sub" id="verLine">${verLine()}</p></div>`;
+  loadVersion();
+}
+// version en production (version.json écrit par le déploiement automatique : n° de mise en production, date, commit)
+let VER = null;
+const verLine = () => VER ? `En ligne : <b>prod-${esc(String(VER.run))}</b> du ${new Date(VER.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · commit <span class="mono">${esc(String(VER.sha).slice(0, 7))}</span> · déployée après tests verts.` : 'Version de production : information indisponible.';
+async function loadVersion() {
+  if (VER || loadVersion.busy) return; loadVersion.busy = 1;
+  try { const v = await fetchJSON('version.json?t=' + Date.now(), 6000); if (v && v.run && v.sha && v.at) { VER = v; const e = $('#verLine'); if (e) e.innerHTML = verLine(); } } catch (e) { /* pas encore publiée */ }
+  loadVersion.busy = 0;
 }
 
 /* ---------- orchestration du rendu ---------- */
