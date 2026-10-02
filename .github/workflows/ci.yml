@@ -41,5 +41,6 @@ jobs:
       - name: Tests (moteur + parcours ${{ matrix.browser }})
         env:
           APP_KEY: ${{ secrets.APP_KEY }}
+          RC_KEY: ${{ secrets.RC_KEY }}
           BROWSER: ${{ matrix.browser }}
         run: node tests/run-ci.js

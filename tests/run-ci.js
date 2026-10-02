@@ -10,8 +10,8 @@ const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8'), cp = (a, b) => fs.c
 fs.rmSync(CI, { recursive: true, force: true }); [W, path.join(W, 'site'), H, OUT].forEach(d => fs.mkdirSync(d, { recursive: true }));
 if (!fs.existsSync(path.join(ROOT, 'dist/index.html'))) { console.error('dist/ absent : lance d’abord node tools/build.js'); process.exit(2); }
 const norm = s => String(s || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();
-let KEY = ''; try { KEY = norm(rd('private/.passphrase')); } catch (e) { KEY = norm(process.env.APP_KEY); }
-if (!KEY) { console.error('Clé absente (private/.passphrase ou secret APP_KEY) : impossible de déverrouiller l’app dans les tests.'); process.exit(2); }
+let KEY = ''; try { KEY = norm(rd('private/.passphrase')); } catch (e) { KEY = norm(process.env.APP_KEY || process.env.RC_KEY); }   // le code de l'app est aujourd'hui aussi la clé du relais
+if (!KEY) { console.error('Clé absente (private/.passphrase, ou secret APP_KEY / RC_KEY) : impossible de déverrouiller l’app dans les tests.'); process.exit(2); }
 function unseal(S) { const k = crypto.pbkdf2Sync(KEY, Buffer.from(S.s, 'base64'), S.it, 32, 'sha256'), b = Buffer.from(S.c, 'base64');
   const d = crypto.createDecipheriv('aes-256-gcm', k, Buffer.from(S.i, 'base64')); d.setAuthTag(b.subarray(b.length - 16));
   return Buffer.concat([d.update(b.subarray(0, b.length - 16)), d.final()]).toString('utf8'); }

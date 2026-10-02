@@ -12,7 +12,7 @@ function unseal(S, pass) {
   const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(S.i, 'base64')); d.setAuthTag(b.subarray(b.length - 16));
   return JSON.parse(Buffer.concat([d.update(b.subarray(0, b.length - 16)), d.final()]).toString('utf8'));
 }
-const appKey = norm(read(priv('.passphrase')) || process.env.APP_KEY || ''), rcKey = norm(process.env.RC_KEY || '') || appKey;
+const appKey = norm(read(priv('.passphrase')) || process.env.APP_KEY || process.env.RC_KEY || ''), rcKey = norm(process.env.RC_KEY || '') || appKey;
 let preset = JSON.parse(read(priv('preset.json')) || 'null'), relay = JSON.parse(read(priv('relay-config.json')) || 'null');
 try { if (!preset && appKey) preset = unseal(JSON.parse(read(path.join(root, 'encrypted/preset.sealed.json'))).sealed, appKey); } catch (e) { /* clé absente ou différente */ }
 try { if (!relay && rcKey) relay = unseal(JSON.parse(read(path.join(root, 'encrypted/relay-config.sealed.json'))).sealed, rcKey); } catch (e) { /* idem */ }
