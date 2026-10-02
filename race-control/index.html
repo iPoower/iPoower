@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Race Control"><meta name="theme-color" content="#080c11"><meta name="robots" content="noindex,nofollow"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" type="image/png" href="icon-192.png">
+<html lang="fr" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Race Control"><meta name="theme-color" content="#080c11"><meta name="robots" content="noindex,nofollow"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" type="image/png" href="icon-192.png"><link rel="manifest" href="manifest.webmanifest">
 <title>TYRE WEATHER RACE CONTROL</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>html{color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}[hidden]{display:none!important}</style>
@@ -382,20 +382,83 @@ html { scroll-behavior: smooth; }
 .tip.live .tip-c { color: var(--lv-t); }
 .tip.live.lv0 .tip-c { color: var(--accent); }
 
+/* ---------- V2 : en-tête compact, briefing 2,5D ---------- */
+.title { font-size: clamp(24px, 6.6vw, 34px); line-height: 1; }
+.srcline details > summary { cursor: pointer; list-style: none; font-size: 12.5px; color: var(--fg3); }
+.srcline details > summary::-webkit-details-marker { display: none; }
+.srcline details[open] > summary { margin-bottom: 6px; color: var(--fg2); }
+.brf { position: relative; overflow: hidden; gap: 12px;
+  background: radial-gradient(120% 80% at 85% -10%, var(--lv-soft, var(--accent-soft)), transparent 60%), linear-gradient(165deg, var(--panel2), var(--panel));
+  border: 1px solid color-mix(in srgb, var(--lv, var(--accent)) 45%, var(--line));
+  box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 10px 28px -14px color-mix(in srgb, var(--lv, var(--accent)) 55%, transparent), 0 2px 6px rgba(0,0,0,.25); }
+.brf-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.brf-k { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+.brf-w { font-family: var(--f-mono); font-size: 12px; color: var(--fg2); }
+.brf-r { font-family: var(--f-disp); font-weight: 700; font-size: clamp(20px, 5.6vw, 26px); letter-spacing: .03em; text-transform: uppercase; line-height: 1.05; }
+.brf-r span { color: var(--lv-t, var(--accent)); }
+.brf-m { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 14px; align-items: center; }
+.gauge { width: 118px; height: 118px; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--lv) 45%, transparent)); }
+.g-bg { fill: none; stroke: var(--line); stroke-width: 10; }
+.g-fg { fill: none; stroke: var(--lv); stroke-width: 10; stroke-linecap: round; transition: stroke-dasharray .8s cubic-bezier(.2,.8,.2,1); }
+.g-n { text-anchor: middle; font-family: var(--f-disp); font-weight: 700; font-size: 38px; fill: var(--fg); }
+.g-l { text-anchor: middle; font-family: var(--f-mono); font-size: 11px; fill: var(--fg3); }
+.brf-v { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.brf-lv { font-family: var(--f-disp); font-weight: 700; font-size: 28px; letter-spacing: .04em; color: var(--lv-t); line-height: 1; }
+.brf-car { font-family: var(--f-mono); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--fg2); }
+.brf-why { font-size: 13.5px; line-height: 1.35; }
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.kpi { --lv: var(--line2); --lv-t: var(--fg); display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-radius: 6px; background: color-mix(in srgb, var(--panel) 70%, transparent);
+  border: 1px solid var(--line); box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 3px 8px -6px rgba(0,0,0,.6); min-width: 0; }
+.kpi.lv1, .kpi.lv2, .kpi.lv3 { border-color: var(--lv); background: var(--lv-soft); }
+.kpi .k { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--fg2); display: flex; flex-direction: column; gap: 2px; }
+.kpi .v { font-family: var(--f-disp); font-weight: 700; font-size: 19px; color: var(--lv-t); line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .v small { font-family: var(--f-mono); font-size: 9.5px; font-weight: 400; color: var(--fg3); margin-left: 2px; }
+.tag { font-style: normal; font-family: var(--f-mono); font-size: 8.5px; letter-spacing: .06em; text-transform: uppercase; padding: 1px 4px; border-radius: 3px; width: max-content; }
+.tag.est { color: var(--c-road); border: 1px solid color-mix(in srgb, var(--c-road) 50%, transparent); }
+.tag.prev { color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+.tag.obs { color: var(--go-t); border: 1px solid color-mix(in srgb, var(--go-t) 50%, transparent); }
+.frost { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--lv); background: var(--lv-soft); font-size: 13px; }
+.frost b { font-family: var(--f-mono); font-size: 12px; letter-spacing: .08em; color: var(--lv-t); }
+.brf-obs { font-size: 12.5px; color: var(--fg2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.brf-obs b { color: var(--fg); }
+.brf-n { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 13px; border-top: 1px dashed var(--line); padding-top: 9px; }
+.brf-n .k { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg3); }
+.mod { box-shadow: 0 1px 0 rgba(255,255,255,.035) inset, 0 6px 16px -12px rgba(0,0,0,.7); }
+@media (max-width: 380px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .brf-m { grid-template-columns: 100px minmax(0, 1fr); } .gauge { width: 100px; height: 100px; } }
+@media (prefers-reduced-motion: reduce) { .g-fg { transition: none; } }
+#locChips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+#locChips::-webkit-scrollbar { display: none; }
+#locChips .chip { flex: none; }
+#locChips .locs-more { flex-wrap: nowrap; flex-basis: auto; border-left: 0; padding: 0; }
+.hdr-more { display: flex; flex-direction: column; gap: 8px; }
+.top { gap: 8px; padding-top: 10px; }
+.title small { font-size: 10px; margin-bottom: 4px; }
+.kpi .v { font-size: 18px; }
+.kpi.wd .v { font-size: 15px; }
+.title { font-size: clamp(22px, 6vw, 30px); white-space: nowrap; }
+.kpi.wd .v { font-size: 14px; letter-spacing: -.01em; padding-top: 3px; }
+.kpis { gap: 5px; }
+.kpi { padding: 8px 5px; }
+.title { font-size: clamp(20px, 5.3vw, 28px); white-space: normal; }
+.gauge { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--lv) 35%, transparent)); }
+.brf { box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 14px 32px -16px color-mix(in srgb, var(--lv, var(--accent)) 60%, transparent), 0 4px 10px rgba(0,0,0,.35); transition: border-color .2s ease, box-shadow .2s ease, background .2s ease; }
+
 </style>
 </head><body>
+<script>document.documentElement.dataset.theme = 'dark';</script>
 <div class="statusbar"><div class="in" id="statusbar"></div></div>
 <main class="wrap">
   <header class="top">
-    <h1 class="title"><small>CENTRE DE CONTRÔLE MÉTÉO · PNEUMATIQUES</small>Tyre Weather<br>Race Control</h1>
+    <h1 class="title"><small>CENTRE DE CONTRÔLE MÉTÉO · PNEUMATIQUES</small>Tyre Weather Race Control</h1>
     <div id="viewSeg"></div>
     <div class="chips" id="locChips"></div>
-    <div class="srcline" id="srcline"></div>
-    <nav class="jump" id="jump" aria-label="Aller à une section"></nav>
   </header>
   <div id="demoBar"></div>
   <div id="notice"></div>
+  <div id="hdrMore" class="hdr-more"><div class="srcline" id="srcline"></div>
+    <nav class="jump" id="jump" aria-label="Aller à une section"></nav></div>
   <div id="banners" class="notes"></div>
+  <section class="mod brf" id="secBrf" aria-label="Briefing du trajet"></section>
   <section class="mod" id="secCur" aria-label="Météo actuelle"></section>
   <section class="mod tipm" id="secTip" aria-label="Astuce"></section>
   <div class="grid2" id="secCars"></div>
@@ -1792,9 +1855,11 @@ function renderSrc() {
   const m = M[UI.loc], l = allLocs().find(x => x.id === UI.loc) || allLocs()[0];
   if (!m) { $('#srcline').innerHTML = 'Source : Open-Meteo (aucune donnée chargée).'; return; }
   const obs = m.cur.time ? m.cur.time.slice(11, 16) : '—';
-  $('#srcline').innerHTML = DEMO.on
+  const srcHtml = DEMO.on
     ? `Source : <b>scénario simulé « ${esc(DEMO_SCN[DEMO.scn].name)} »</b>. Les valeurs ne viennent d’aucun capteur ni d’aucun service météo.`
     : `${lastOk && m.mode === 'live' ? 'Dernière mise à jour : <b>' + hmLocal(lastOk) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : ' (modèle de base, AROME indisponible)'} · modèles météo, pas une station · dernière observation : <b>${obs}</b> heure locale (valeurs actuelles du modèle, renouvelées toutes les 15 min) · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
+  const el = $('#srcline'), open = el.querySelector('details') && el.querySelector('details').open;
+  el.innerHTML = `<details${open ? ' open' : ''}><summary>ⓘ Sources et fraîcheur des données${lastOk && m.mode === 'live' ? ' · MAJ ' + hmLocal(lastOk) : ''}</summary><div>${srcHtml}</div></details>`;
 }
 function renderNotice() {
   const m = M[UI.loc], el = $('#notice');
@@ -1885,6 +1950,7 @@ function renderCurrent() {
     <div class="mt lv${c.ice && c.ice.level != null ? c.ice.level : 'x'}"><span class="k">❄️ Risque verglas · risque estimé</span><span class="v" style="color:var(--lv-t)">${iceName(c.ice ? c.ice.level : null)}</span><span class="n">pic sur 24 h : ${iceName(sum24.iceLevel)} vers ${hhmm(sum24.iceI)}</span></div>
     <div class="mt"><span class="k">Risque de neige</span><span class="v" style="font-size:14px">${esc(snowTxt)}</span><span class="n">${sum24.sleet && !(sum24.snowSum > 0) ? 'estimé (thermomètre mouillé ≤ 1 °C)' : 'prévision météo'}</span></div>
   </div>
+  ${(() => { const fb = frostBand(c.Tr); return fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t} · maintenant</b><span>${fb.d}</span></div>` : ''; })()}
   ${obsBlock(m)}
   ${ncBlock(m)}
   <div><div class="sub" style="margin-bottom:6px">ÉVOLUTION · PRÉVISIONS</div><div class="evo">${ev}</div></div>`;
@@ -1903,10 +1969,10 @@ function renderView() {
     : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secSeason', 'Saison'], ['secJournal', 'Journal'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
   const order = vm
-    ? ['secCur', 'secTip', 'secRadar', 'secAir', 'secChart', 'secDays', 'secIce', 'secAlerts', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
-    : ['secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'];
+    ? ['hdrMore', 'banners', 'secCur', 'secTip', 'secBrf', 'secRadar', 'secAir', 'secChart', 'secDays', 'secIce', 'secAlerts', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
+    : ['secBrf', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'];
   if (renderView.last === UI.view) return; renderView.last = UI.view;
-  let prev = $('#banners');
+  let prev = $('#notice');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
   if (RADAR.map) setTimeout(() => RADAR.map.invalidateSize(), 60);
 }
@@ -2244,6 +2310,85 @@ function renderTip() {
   renderTip.slot = tipSlot();
 }
 setInterval(() => { if (!document.hidden && renderTip.slot !== tipSlot()) renderTip(); }, 20e3);
+
+
+/* ---------- V2 : briefing du matin (verdict → paramètres critiques → détail) ---------- */
+// plage d'incertitude de la chaussée estimée (± 2 °C) : affichage seulement, le moteur n'est pas modifié
+function frostBand(Tr) {
+  if (Tr == null) return null;
+  const lo = Tr - 2, hi = Tr + 2, rng = `plage plausible ${f1(lo)} → ${f1(hi)} °C`;
+  if (hi < 0) return { lv: 3, t: 'SURFACE SOUS 0 °C — QUASI CERTAIN', d: `Chaussée estimée ${f1(Tr)} °C ± 2 · ${rng}. Toute humidité présente au sol peut geler (risque de glace : voir Verglas).` };
+  if (lo < 0) return { lv: 2, t: 'INCERTITUDE GEL', d: `Chaussée estimée ${f1(Tr)} °C ± 2 · ${rng}. Le gel est possible : ponts, ombres et creux d’abord.` };
+  if (lo < 2) return { lv: 1, t: 'MARGE DE GEL FAIBLE', d: `Chaussée estimée ${f1(Tr)} °C ± 2 · ${rng}. Ponts et zones ombragées peuvent être plus froids.` };
+  return null;
+}
+function nextTrip() {
+  const m = M[S.work.from] || M[S.locs[0].id]; if (!m) return null;
+  const now = toMin(m.nowStr.slice(11, 16)), dep = toMin(S.work.dep), ret = toMin(S.work.ret);
+  const dir = now >= dep && now < ret ? 'ret' : 'go';
+  const td = tripData(dir, 'auto'); return td && !td.err ? td : null;
+}
+// prochaine heure à risque sur 72 h (lieu de départ du matin)
+function nextRisk(afterTs) {
+  const m = M[S.work.from] || M[S.locs[0].id]; if (!m) return null;
+  for (let i = Math.max(m.nowI, 0); i < Math.min(m.hs.length, m.nowI + 72); i++) {
+    const x = m.hs[i]; if (afterTs && x.t <= afterTs) continue;
+    const fb = frostBand(x.Tr), v = TCARS().map(c => hourVerdict(c, m.hs, i)).filter(Boolean).reduce((a, b) => Math.max(a, b.level), 0);
+    let why = null, lv = 0;
+    if (fb && fb.lv >= 2) { why = `chaussée ${f1(x.Tr)} °C (${fb.t.toLowerCase()})`; lv = fb.lv; }
+    else if (x.vis != null && x.vis < 1000) { why = `brouillard ${f0(x.vis)} m`; lv = x.vis < 200 ? 3 : 2; }
+    else if ((x.P || 0) >= 2) { why = `forte pluie ${f1(x.P)} mm/h`; lv = 2; }
+    else if ((x.gust || 0) >= 70) { why = `rafales ${f0(x.gust)} km/h`; lv = 2; }
+    else if (v >= 2) { const c = TCARS().find(cc => { const h = hourVerdict(cc, m.hs, i); return h && h.level === v; }), a = c ? tireAssess(c, m.hs, i) : null, pt = a && a.parts.slice().sort((p, q) => q.v - p.v)[0];
+      why = `${c ? c.short + ' ' : ''}${LV[v].name}${pt ? ' (' + pt.label + ')' : ''}`; lv = v; }
+    else if (fb) { why = `chaussée ${f1(x.Tr)} °C (marge de gel faible)`; lv = 1; }
+    if (why) { const d = new Date(x.t.slice(0, 10) + 'T12:00:00Z'); return { lv, t: x.t, day: dayDiff(m.nowStr.slice(0, 10), x.date) === 0 ? 'auj.' : DAYN[d.getUTCDay()], why }; }
+  }
+  return null;
+}
+function gaugeSvg(score, lv) {
+  const r = 46, c = 2 * Math.PI * r, f = Math.max(0, Math.min(100, score || 0)) / 100;
+  return `<svg class="gauge lv${lv}" viewBox="0 0 120 120" role="img" aria-label="Score ${score} sur 100">
+    <circle cx="60" cy="60" r="${r}" class="g-bg"/><circle cx="60" cy="60" r="${r}" class="g-fg" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 60 60)"/>
+    <text x="60" y="58" class="g-n">${score == null ? '—' : score}</text><text x="60" y="78" class="g-l">/ 100</text></svg>`;
+}
+function renderBrf() {
+  const el = $('#secBrf'); if (!el) return;
+  if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
+  const td = nextTrip(), cars = TCARS();
+  if (!td || !cars.length) { el.hidden = true; return; }
+  const res = cars.map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w);
+  if (!res.length) { el.hidden = true; return; }
+  const sum = summarize(td.seq), top = res[0], lv = top.w.level, xs = td.seq.map(q => q.hs[q.i]);
+  const ppMax = Math.max(...xs.map(x => x.pp || 0)), Pmax = Math.max(...xs.map(x => x.P || 0));
+  const parts = ((top.w.worst && top.w.worst.parts) || []).slice().sort((a, b) => b.v - a.v).slice(0, 2).map(p => p.label);
+  const fb = frostBand(sum.TrMin), nr = nextRisk(td.arr.slice(0, 13) + ':00');
+  const dd = new Date(td.dep.slice(0, 10) + 'T12:00:00Z'), today = CX.m.nowStr.slice(0, 10);
+  const when = `${dayDiff(today, td.dep.slice(0, 10)) === 0 ? 'aujourd’hui' : dayDiff(today, td.dep.slice(0, 10)) === 1 ? 'demain' : DAYN[dd.getUTCDay()]} · ${td.dep.slice(11, 16)} → ${td.arr.slice(11, 16)}`;
+  const k = (lbl, v, unit, tag, cls) => `<div class="kpi ${cls || ''}"><span class="k">${lbl}<i class="tag ${tag}">${tag === 'est' ? 'estimé' : tag === 'obs' ? 'mesuré' : 'prévu'}</i></span><span class="v num">${v}<small>${unit}</small></span></div>`;
+  const deg = v => v == null ? '—' : String(Math.round(v)).replace('-', '−') + '°';
+  const visV = v => v == null ? '—' : v >= 10000 ? '>10' : v >= 1000 ? f0(v / 1000) : f0(v), visU = v => v == null ? '' : v >= 1000 ? 'km' : 'm';
+  const iceS = ['Faible', 'Modéré', 'Élevé', 'Max'];
+  const ob = td.A.obs;
+  el.className = 'mod brf lv' + lv;
+  el.innerHTML = `<div class="brf-h"><span class="brf-k">🏁 Briefing ${td.dir === 'go' ? 'aller' : 'retour'}</span><span class="brf-w">${when}</span></div>
+    <div class="brf-r">${esc(td.fromName)} <span>→</span> ${esc(td.toName)}</div>
+    <div class="brf-m">${gaugeSvg(top.w.score, lv)}
+      <div class="brf-v"><span class="brf-lv">${LV[lv].emoji} ${LV[lv].name}</span>
+        <span class="brf-car">${esc(top.c.short)} · ${esc(TYPE_LABEL[effType(top.c)] || '')}</span>
+        <span class="brf-why">${parts.length ? 'Points d’attention : ' + parts.map(esc).join(' · ') : '✓ Pneus actuels adaptés au trajet'}</span>
+        ${res.slice(1).map(r => `<span class="brf-why">${LV[r.w.level].emoji} ${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}/100</span>`).join('')}</div></div>
+    <div class="kpis">
+      ${k('Route', deg(sum.TrMin), '±2', 'est', fb ? 'lv' + fb.lv : '')}
+      ${k('Air', deg(sum.Tmin), '', 'prev')}
+      ${k('Pluie', Pmax >= 0.1 ? f1(Pmax) : f0(ppMax), Pmax >= 0.1 ? 'mm' : '%', 'prev', Pmax >= 2 ? 'lv2' : '')}
+      ${k('Verglas', iceS[Math.min(3, sum.iceLevel || 0)], '', 'est', (sum.iceLevel || 0) >= 1 ? 'lv' + Math.min(3, sum.iceLevel + 1) + ' wd' : 'wd')}
+      ${k('Visib.', visV(sum.visMin), visU(sum.visMin), 'prev', (sum.visMin != null && sum.visMin < 1000 ? 'lv2' : ''))}
+    </div>
+    ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
+    ${ob && ob.T != null ? `<div class="brf-obs"><i class="tag obs">mesuré</i> ${esc(ob.name)} · ${new Date(ob.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · <b>${f1(ob.T)} °C</b>${ob.vis != null && ob.vis < 5000 ? ' · visibilité ' + ob.vis + ' m' : ''}${ob.wx ? ' · ' + esc(wxFr(ob.wx)) : ''}</div>` : ''}
+    <div class="brf-n"><span class="k">Prochain risque</span>${nr ? `<span class="lv${nr.lv}"><b style="color:var(--lv-t)">${nr.lv >= 3 ? '🔴' : nr.lv >= 2 ? '🟠' : '🟡'} ${nr.day} ${nr.t.slice(11, 16)}</b> · ${esc(nr.why)}</span>` : '<span>🟢 Rien à signaler sur 72 h</span>'}</div>`;
+}
 
 /* ---------- rendu : voitures ---------- */
 const tireTxt = car => {
@@ -2767,10 +2912,10 @@ function renderSettings(force) {
 function renderAll() {
   recordJournal();
   CX = computeCtx();
-  renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+  renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderBrf(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
 }
 function softRender() { // après un réglage : tout sauf le panneau de paramètres
-  CX = computeCtx(); renderBanners(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
+  CX = computeCtx(); renderBanners(); renderBrf(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
 }
 
 /* ---------- événements ---------- */
