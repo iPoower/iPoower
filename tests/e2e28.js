@@ -138,7 +138,8 @@ const osrmFromGps = S => S.osrm.filter(x => GPS_MARK.some(v => x.includes(v)));
     await s.to('2026-10-03T17:04:00+02:00'); await s.fix(G.amiens, { acc: 40 }); await s.settle(4); t = await s.txt();
     check('A8 · un seul relevé à moins de 300 m : pas encore arrivé', /Assurance/.test(t));
     await s.to('2026-10-03T17:04:20+02:00'); await s.fix(G.amiens, { acc: 40 }); await s.settle(6); t = await s.txt();
-    check('A8 · deux relevés précis consécutifs : arrivé, trajet suivant affiché', !/Assurance/.test(t) && /Concert/.test(t) && nMa(t) === 0, t.slice(0, 160));
+    const tA = t.replace(/✓ Arrivé[^⏎]*/, '');   // la ligne « ✓ Arrivé · … · Annuler l'arrivée » rappelle le trajet terminé
+    check('A8 · deux relevés précis consécutifs : arrivé, trajet suivant affiché', !/Assurance/.test(tA) && /✓ Arrivé · Aller · Assurance/.test(t) && /Concert/.test(tA) && nMa(tA) === 0, t.slice(0, 160));
     const w = await p.evaluate(() => window.__geoWatches());
     check('A8 · après l\'arrivée : retour au seul suivi basse consommation', w.length === 1 && w[0] === false, JSON.stringify(w));
   }
