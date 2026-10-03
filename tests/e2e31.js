@@ -48,7 +48,7 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
     await p.click('[data-act=outfit-occasion][data-v=walk]');
     check('Promenade adapte les chaussures et le confort de marche', /semelle gomme/.test(await txt()) && /marcher longtemps/.test(await txt()));
     await p.click('[data-act=outfit-day][data-v="0"]'); await p.evaluate(() => startDemo('pluie'));
-    check('pluie et rafales : imperméable et capuche', /imperméable/.test(await txt()) && /capuche/.test(await txt()) && !/Parapluie à emporter/.test(await txt()));
+    check('pluie et rafales : imperméable et capuche', /imperméable/i.test(await txt()) && /capuche/i.test(await txt()) && !/Parapluie à emporter/i.test(await txt()));
     await p.evaluate(() => startDemo('froid')); await p.click('[data-act=outfit-day][data-v="1"]');
     check('matin glacial : manteau et accessoires chauds', /Grand froid/.test(await txt()) && /gants/.test(await txt()));
     await p.click('[data-act=outfit-day][data-v="0"]');
@@ -62,7 +62,7 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
     check('météo absente : aucun vêtement prétendument calculé', /Météo insuffisante/.test(await txt()) && await p.locator('.outfit-piece').count() === 0);
     await p.evaluate(() => startDemo('doux'));
     await p.click('[data-act=loc][data-id=work]');
-    check('le lieu choisi met à jour le panneau Tenue', /Travail test/.test(await p.locator('#secTenue h2').innerText()));
+    check('le lieu choisi met à jour le panneau Tenue', /Travail test/i.test(await p.locator('#secTenue h2').innerText()));
     for (const width of [320, 414, 1280]) {
       await p.setViewportSize({ width, height: 896 }); await settle();
       check('mise en page sans débordement à ' + width + ' px', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
