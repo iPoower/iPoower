@@ -30,7 +30,6 @@ jobs:
         env:
           APP_KEY: ${{ secrets.APP_KEY }}
           RC_KEY: ${{ secrets.RC_KEY }}
-          RC_KEY_NEXT: ${{ secrets.RC_KEY_NEXT }}   # TRANSITOIRE (rotation Phase B)
         run: node tools/check-keys.js
       - name: Build depuis les sources (fichiers chiffrés seuls, aucun secret)
         run: node tools/build.js
@@ -42,13 +41,11 @@ jobs:
             if cmp -s dist/$f /tmp/prod_$f; then echo "identique : $f"; else echo "::warning::$f diffère de la production (normal si une modification n'est pas encore publiée)"; fi
           done
       # lancement manuel uniquement (après un changement de secret) : les fichiers EN LIGNE s'ouvrent avec la bonne clé
-      # (config du relais <- RC_KEY / RC_KEY_NEXT, agenda <- APP_KEY). Aucune valeur affichée.
       - name: Séparation des clés (production)
         if: github.event_name == 'workflow_dispatch'
         env:
           APP_KEY: ${{ secrets.APP_KEY }}
           RC_KEY: ${{ secrets.RC_KEY }}
-          RC_KEY_NEXT: ${{ secrets.RC_KEY_NEXT }}   # TRANSITOIRE (rotation Phase B)
         run: |
           mkdir -p /tmp/prod
           for f in relay-config.sealed.json calendar.sealed.json; do git show origin/gh-pages:race-control/$f > /tmp/prod/$f 2>/dev/null || rm -f /tmp/prod/$f; done

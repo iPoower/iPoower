@@ -17,16 +17,14 @@ const root = path.resolve(opt('--root') || path.join(__dirname, '..')), scanRoot
 const read = f => { try { return fs.readFileSync(f, 'utf8'); } catch (e) { return null; } };
 const sealedIn = f => { try { return JSON.parse(read(path.join(root, 'encrypted', f))).sealed; } catch (e) { return null; } };
 const appKey = norm(read(priv('.passphrase')) || process.env.APP_KEY || ''), rcKey = norm(read(priv('.rc_key')) || process.env.RC_KEY || '');
-const rcNext = norm(process.env.RC_KEY_NEXT || '');   // TRANSITOIRE (rotation Phase B) : deuxième génération de la clé du RELAIS, jamais APP_KEY
 let preset = JSON.parse(read(priv('preset.json')) || 'null'), relay = JSON.parse(read(priv('relay-config.json')) || 'null');
 if (!preset && appKey) preset = tryUnseal(sealedIn('preset.sealed.json'), appKey);
-if (!relay) for (const k of [rcKey, rcNext]) if (!relay && k) relay = tryUnseal(sealedIn('relay-config.sealed.json'), k);
+if (!relay && rcKey) relay = tryUnseal(sealedIn('relay-config.sealed.json'), rcKey);
 if (!preset && !relay && !appKey && !rcKey) { console.log('⚠️  Aucune clé ni fichier privé : seuls les motifs génériques sont contrôlés.'); }
 // valeurs sensibles
 const T = new Map(), add = (v, why) => { v = String(v == null ? '' : v).trim(); if (v.length >= 4) T.set(v.toLowerCase(), why); };
 if (appKey) add(appKey, 'code de déverrouillage');
 if (rcKey) add(rcKey, 'clé du relais');
-if (rcNext) add(rcNext, 'clé du relais');
 if (process.env.GCAL_ICS) add(process.env.GCAL_ICS.trim(), 'adresse iCal');
 // nom complet + commune principale (la grande ville citée en second, ex. « X / Grande-Ville », n'est pas personnelle)
 const place = (l, why) => { if (!l) return; add(l.name, why); add(String(l.name || '').split(/\s*\/\s*/)[0], why); if (l.label && l.label !== 'Domicile') add(l.label, why);

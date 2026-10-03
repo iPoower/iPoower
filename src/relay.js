@@ -6,7 +6,6 @@ const fs = require('fs'), path = require('path'), vm = require('vm');
 const dir = __dirname, crypto = require('crypto');
 // Deux clés indépendantes, sans repli de l'une sur l'autre :
 //  - RC_KEY  (secret GitHub) : ouvre uniquement la configuration du relais (relay-config.sealed.json) ;
-//    pendant une rotation (transitoire), RC_KEY_NEXT est essayée après RC_KEY ;
 //  - APP_KEY (secret GitHub, = code de déverrouillage de l'app) : chiffre uniquement l'agenda (calendar.sealed.json), que l'app ouvre avec le même code.
 const normKey = s => String(s || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();
 function unsealWith(S, pass) {
@@ -18,9 +17,8 @@ function openCfg() {
   const plainFile = path.join(dir, 'relay-config.json');
   if (fs.existsSync(plainFile)) return JSON.parse(fs.readFileSync(plainFile, 'utf8'));
   const S = JSON.parse(fs.readFileSync(path.join(dir, 'relay-config.sealed.json'), 'utf8')), app = normKey(process.env.APP_KEY);
-  // clés du relais uniquement : RC_KEY, puis RC_KEY_NEXT (TRANSITOIRE, rotation Phase B, supprimée au nettoyage final).
-  // Jamais APP_KEY : une clé du relais égale au code de l'app est refusée, même par valeur.
-  const keys = [['RC_KEY', normKey(process.env.RC_KEY)], ['RC_KEY_NEXT', normKey(process.env.RC_KEY_NEXT)]].filter(([, k]) => k);
+  // clé du relais uniquement (RC_KEY), jamais APP_KEY : une clé du relais égale au code de l'app est refusée, même par valeur.
+  const keys = [['RC_KEY', normKey(process.env.RC_KEY)]].filter(([, k]) => k);
   if (!keys.length) { console.log('Secret RC_KEY absent : observations seules, pas de notification'); return null; }
   for (const [name, k] of keys) {
     if (app && k === app) { console.log(`${name} identique à APP_KEY : refusée (les clés doivent être séparées)`); continue; }
@@ -271,7 +269,7 @@ async function calendarSync(out) {
   const now = E.nowIn('Europe/Paris'), hm = E.toMin(now.slice(11, 16)), today = now.slice(0, 10);
   const force = process.env.FORCE_PUSH === '1';
   // diagnostic public, sans aucune donnée personnelle
-  out.relay = { cfg: cfg ? 'ok' : (process.env.RC_KEY || process.env.RC_KEY_NEXT ? 'illisible' : 'absent'), force, at: now };
+  out.relay = { cfg: cfg ? 'ok' : (process.env.RC_KEY ? 'illisible' : 'absent'), force, at: now };
   // état du matin : on garde le pire constaté du jour pour ne notifier qu'en cas d'aggravation
   const pm = prev.morning && prev.morning.date === today ? prev.morning : null;
   out.morning = pm || { date: today, w: -1, i: -1, f: false, sent: 0, checks: 0 };

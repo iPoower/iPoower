@@ -40,6 +40,5 @@ jobs:
         env:
           APP_KEY: ${{ secrets.APP_KEY }}
           RC_KEY: ${{ secrets.RC_KEY }}
-          RC_KEY_NEXT: ${{ secrets.RC_KEY_NEXT }}   # TRANSITOIRE (rotation Phase B)
           GCAL_ICS: ${{ secrets.GCAL_ICS }}
         run: node trusted/tools/check-secrets.js --root trusted --scan target
