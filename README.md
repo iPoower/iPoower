@@ -64,6 +64,20 @@ de l'utilisateur ; aucune origine ni position GPS transmise (Waze part de la pos
 Retour au domicile : Waze reçoit le **domicile local exact** (préréglage de l'appareil), pas le domicile arrondi à 0,01° du relais —
 cet arrondi reste en place pour tous les appels OSRM, le relais et l'agenda chiffré.
 
+## Tenue sartoriale
+
+L’onglet **👔 Tenue**, à côté de Pneus et Météo, réutilise les prévisions du lieu sélectionné. Il propose une veste ou une protection,
+une chemise ou de la maille, un pantalon, des chaussures et des accessoires pour **aujourd’hui** (heure courante → 20 h, ou l’heure courante après 20 h)
+ou **demain** (08 h → 20 h). Les usages Bureau, Sortie et Promenade adaptent les accessoires et le confort de marche.
+
+`src/wardrobe.js` applique des repères de confort au minimum de température ressentie du créneau (repli sur l’air si le ressenti manque),
+avec couches amovibles en cas d’amplitude importante. Le vent n’est pas soustrait une seconde fois du ressenti. Pluie, neige et rafales adaptent
+la protection et les semelles ; les UV adaptent les accessoires. Les pièces et couleurs sont des suggestions, pas un inventaire personnel.
+Absence de température : aucun conseil inventé. Données en cache, anciennes ou partielles : indication explicite.
+
+Aucun nouvel appel météo, service, clé ou donnée GPS. L’onglet choisi et l’usage sont conservés sur l’appareil ; le jour revient à Aujourd’hui au rechargement.
+Pneus, Météo, le relais et les réglages des véhicules gardent leur fonctionnement. Tests : `test_wardrobe.js` et `e2e31.js` dans la CI Chromium/WebKit.
+
 ## Frontière des secrets
 
 Les vrais secrets (`APP_KEY`, `RC_KEY`, `GCAL_ICS`) vivent **uniquement dans l'Environment GitHub `production`**, dont la règle

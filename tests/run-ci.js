@@ -42,6 +42,7 @@ const SUITE = [
   ['e2e25.js', 'timeline : prochain trajet, en cours, arrivée', true], ['e2e26.js', 'lieux et Ma position', true], ['e2e27.js', 'mini-carte ordinateur et iPhone', true],
   ['e2e28.js', 'GPS dynamique : trajet vivant depuis la position', true],
   ['e2e29.js', 'navigation : ouvrir le trajet affiché dans Waze', true]];
+SUITE.push(['test_wardrobe.js', 'tenue : confort, pluie, vent et jours locaux', false], ['e2e31.js', 'onglet Tenue sartoriale et interface mobile', true]);
 const verdict = (code, out) => {
   if (code !== 0) return 'code de sortie ' + code;
   if (/❌|ERR |Error:|TimeoutError/.test(out)) return 'échec signalé dans la sortie';
