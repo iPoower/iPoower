@@ -1076,7 +1076,7 @@ function liveTrip(b, now) {
   if (!a && LIVE.last && Date.now() - LIVE.lastOk <= LIVE_GRACE) { a = LIVE.last; old = fresh ? 'route' : 'gps'; }   // dernière analyse, marquée ancienne
   if (!a) return LIVE.last ? { ...b, liveLost: true } : b;   // repli explicite après un premier résultat ; sinon trajet planifié, sans mention
   const { leg, r } = a, hm = new Date(LIVE.lastOk).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-  return { ...b, live: LIVE.phase, liveGen: a.gen, planDep: b.dep, adv: a.adv, dep: leg.dep, arr: leg.arr, running: run, from: '📍 Ma position', l: leg, obs: null,
+  return { ...b, live: LIVE.phase, liveGen: a.gen, planDep: b.dep, planL: b.l, adv: a.adv, dep: leg.dep, arr: leg.arr, running: run, from: '📍 Ma position', l: leg, obs: null,
     res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.worst, wait: false,
     gpsTxt: old === 'gps' ? `📍 GPS ancien · dernière analyse ${hm}` : old === 'route' ? `📍 Itinéraire non actualisé · dernière analyse ${hm}` : `📍 GPS · actualisé il y a ${liveAgo(Date.now() - fix.ts)}` };
 }
@@ -1177,6 +1177,16 @@ function renderBrf() {
   el.innerHTML = briefCard(main, dayLbl) + tail;
   if (main.res && !(LOCKED() && !lsGet('twrc.nocode'))) tripMapMount(main);   // pas de carte (ni d'appel externe) avant le déverrouillage
 }
+// navigation externe : Waze (lien universel), ouvert UNIQUEMENT par un geste de l'utilisateur. Seule la destination est transmise :
+// Waze part lui-même de la position courante de l'appareil (aucune origine, aucune position GPS envoyée) ; rien n'est stocké.
+const wazeUrl = p => p && p.lat != null && p.lon != null && isFinite(+p.lat) && isFinite(+p.lon) ? `https://waze.com/ul?ll=${+p.lat},${+p.lon}&navigate=yes` : null;
+const wazeBtn = p => { const u = wazeUrl(p); return u ? `<a class="btn sm" href="${u}" target="_blank" rel="noopener noreferrer">🚙 Ouvrir dans Waze</a>` : ''; };
+// domicile local EXACT (préréglage de l'appareil). Le relais n'a qu'un domicile arrondi à 0,01° (confidentialité des appels OSRM) :
+// pour Waze, ouvert par l'utilisateur, un retour vise le vrai domicile. L'arrondi OSRM, le relais et l'agenda chiffré ne changent pas.
+const homeExact = () => { const L = S.locs || [], h = L.find(l => l.id === 'home') || L[0]; return h && h.lat != null ? h : null; };
+const legNavTo = leg => leg && leg.k === 'ret' ? (homeExact() || leg.to) : leg && leg.to;
+// destination du trajet AFFICHÉ (vivant, adaptatif, agenda ou boulot) ; planL = trajet agenda d'origine d'un trajet vivant
+const tripTo = t => t.src === 'cal' ? ((t.planL || t.l || {}).k === 'ret' ? homeExact() || (t.l && t.l.to) : (t.l && t.l.to)) : (t.td && t.td.LB) || (t.l && t.l.to) || null;
 // carte de briefing complète, identique pour un trajet domicile-travail et un trajet agenda
 function briefCard(t, dayLbl) {
   const src = t.src === 'work' ? 'domicile-travail' : 'agenda';
@@ -1188,7 +1198,7 @@ function briefCard(t, dayLbl) {
     : `<span class="brf-k">🏁 Prochain trajet · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">${dayLbl(t.dep)} · ${t.dep.slice(11, 16)} → ${(t.arr || '').slice(11, 16)} · ${cdSpan(t.dep)}</span>`}</div>
     <div class="brf-ev">${t.src === 'cal' ? '📅' : '🏁'} <b>${esc(t.name)}</b>${t.l ? ` · ${f0(t.l.km)} km · ${t.l.min} min${t.live ? ' depuis ici' : ''}${t.l.routed ? ' · route analysée' : ' (estimé)'}` : ''}</div>
     <div class="brf-r">${esc(t.from)} <span>→</span> ${esc(t.to)}</div>${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
-  if (!t.res) return head + `<p class="muted">${t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>`;
+  if (!t.res) return head + `<p class="muted">${t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;
   const sum = t.sum, top = t.res[0], lv = top.w.level, xs = t.seq.map(q => q.hs[q.i]);
   const ppMax = Math.max(...xs.map(x => x.pp || 0)), Pmax = Math.max(...xs.map(x => x.P || 0));
   const parts = ((top.w.worst && top.w.worst.parts) || []).slice().sort((a, b) => b.v - a.v).slice(0, 2).map(p => p.label);
@@ -1217,7 +1227,7 @@ function briefCard(t, dayLbl) {
     ${cr && cr.q.f > 0 && cr.q.f < 1 && cr.sc >= 20 ? `<div class="brf-why">📍 Point le plus délicat : km ${f0(cr.q.f * t.l.km)}${cr.q.name ? ' (' + esc(cr.q.name) + ')' : ''} vers ${cr.q.t.slice(11, 16)}</div>` : ''}
     ${ob && ob.T != null ? `<div class="brf-obs"><i class="tag obs">mesuré</i> ${esc(ob.name)} · ${new Date(ob.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · <b>${f1(ob.T)} °C</b>${ob.vis != null && ob.vis < 5000 ? ' · visibilité ' + ob.vis + ' m' : ''}${ob.wx ? ' · ' + esc(wxFr(ob.wx)) : ''}</div>` : ''}
     <div class="brf-t">${trendHtml(tr)}</div>
-    <button class="btn sm brf-mapt" data-act="tripmap" aria-expanded="${mOpen}">🗺️ ${mOpen ? 'Masquer le trajet ▴' : 'Voir le trajet ▾'}</button>
+    <div class="cal-v"><button class="btn sm brf-mapt" data-act="tripmap" aria-expanded="${mOpen}">🗺️ ${mOpen ? 'Masquer le trajet ▴' : 'Voir le trajet ▾'}</button>${wazeBtn(tripTo(t))}</div>
     <div class="brf-mapm" id="tmapM" ${mOpen ? '' : 'hidden'}></div>`;
 }
 
@@ -1358,11 +1368,11 @@ function legHtml(leg, ev) {
   const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${leg.dep.slice(11, 16)}</b> → ${leg.arr.slice(11, 16)} · ${f0(leg.km)} km · ${leg.min} min${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''} · ${cdSpan(leg.dep)}</div>
     <div class="leg-src">${leg.routed ? '<i class="tag prev">🛣 route · OSRM</i>' : '<i class="tag est">≈ route estimée</i>'}</div>
     <div class="leg-o">${go ? (leg.fromKind === 'prev' ? '↪ depuis ' + esc(leg.from.label || 'le rendez-vous précédent') + (leg.chosen ? ' (enchaînement choisi)' : ' (rendez-vous précédent)') : '🏠 depuis le domicile') : '🏠 vers le domicile'}</div>`;
-  const plans = `<a class="btn sm" href="https://maps.apple.com/?daddr=${leg.to.lat},${leg.to.lon}&dirflg=d" target="_blank" rel="noopener">🧭 Plans</a>`;
+  const nav = wazeBtn(legNavTo(leg));
   let body;
-  if (r.loading) body = '<span class="sub">Analyse de la météo le long de la route…</span>';
-  else if (r.err) body = '<span class="sub">Météo indisponible pour ce trajet.</span>';
-  else if (r.beyond) body = '<span class="sub">Trop loin pour les prévisions horaires.</span>';
+  if (r.loading) body = `<div class="cal-v"><span class="sub">Analyse de la météo le long de la route…</span>${nav}</div>`;
+  else if (r.err) body = `<div class="cal-v"><span class="sub">Météo indisponible pour ce trajet.</span>${nav}</div>`;
+  else if (r.beyond) body = `<div class="cal-v"><span class="sub">Trop loin pour les prévisions horaires.</span>${nav}</div>`;
   else {
     const fb = frostBand(r.sum.TrMin), c = r.crit;
     let crit = '';
@@ -1373,7 +1383,7 @@ function legHtml(leg, ev) {
       const seg = c.q.name && a.name && b.name && a.name !== b.name ? `${esc(a.name)} → ${esc(b.name)}` : `vers ${esc(nm(c.q))}`;
       crit = `<div class="leg-c lv${Math.max(1, c.lv)}">⚠️ Tronçon critique : <b>${seg}</b> · ${a.t.slice(11, 16)}–${b.t.slice(11, 16)} · ${esc(why)}${c.q.km != null ? ` <span class="muted">(km ${f0(c.q.km)})</span>` : ''}</div>`;
     }
-    body = `<div class="cal-v"><span class="pill lv${r.worst}">${LV[r.worst].emoji} ${LV[r.worst].name}${r.res[0] ? ' ' + r.res[0].w.score : ''}</span>${plans}</div>
+    body = `<div class="cal-v"><span class="pill lv${r.worst}">${LV[r.worst].emoji} ${LV[r.worst].name}${r.res[0] ? ' ' + r.res[0].w.score : ''}</span>${nav}</div>
       <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
       ${ev ? trendHtml(trendOf('leg|' + leg.dep + '|' + leg.k + '|' + ev.s, leg.dep, snapOf(r.res, r.sum, r.seq))) : ''}
       ${crit}${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
@@ -1415,7 +1425,7 @@ function renderCal() {
     else {
       const fb = frostBand(tr.sum.TrMin), lvw = tr.worst;
       body = `<div class="cal-v"><span class="pill lv${lvw}">${LV[lvw].emoji} ${LV[lvw].name}${tr.res[0] ? ' ' + tr.res[0].w.score : ''}</span>
-        <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span></div>
+        <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span>${wazeBtn(e)}</div>
         <div class="cal-k"><span>Route <b>${f1(tr.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(tr.sum.Tmin)} °C</b></span><span>Pluie <b>${(tr.sum.Pmax || 0) >= 0.1 ? f1(tr.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(tr.sum.visMin)}</b></span></div>
         ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
         ${tr.res.length > 1 ? `<span class="sub">${tr.res.map(r => `${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}`).join(' · ')}</span>` : ''}`;
@@ -1423,7 +1433,7 @@ function renderCal() {
     return `<div class="cal-e"><div class="cal-h"><span class="cal-d">${dl} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(e.label || e.loc)}</span></div>${body}</div>`;
   }).join('');
   el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · prévision</span></div><div class="cal-l">${rows}</div>
-    <div class="disc">${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Mots-clés dans le titre ou la description Google Agenda : <b>#direct</b> (enchaîner), <b>#maison</b> (repasser par chez toi), <b>#pasdetrajet</b> ou 📺 (ignorer). Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, durée + 10 % et 10 min de marge, sans trafic : touche 🧭 Plans pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
+    <div class="disc">${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Mots-clés dans le titre ou la description Google Agenda : <b>#direct</b> (enchaîner), <b>#maison</b> (repasser par chez toi), <b>#pasdetrajet</b> ou 📺 (ignorer). Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, durée + 10 % et 10 min de marge, sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
 }
 
 
