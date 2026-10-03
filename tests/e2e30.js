@@ -33,7 +33,8 @@ async function session(b, iso, opt = {}) {
     window.__geoPush = () => W.forEach(w => w.ok(mk()));
     window.__geoWatches = () => [...W.values()].map(w => w.hi);
   });
-  const p = await c.newPage(); await p.clock.install({ time: T0 }); p.on('pageerror', x => errs.push(iso + ': ' + x.message + (process.env.STK ? ' @ ' + x.stack : '')));
+  const p = await c.newPage(); await p.clock.install({ time: T0 }); p.on('pageerror', x => { if (S.reloading && /access control checks/.test(x.message)) return;   // WebKit : requête annulée par le rechargement de la page (pas une erreur de l'app)
+    errs.push(iso + ': ' + x.message + (process.env.STK ? ' @ ' + x.stack : '')); });
   const S = { now: T0, reqs: [], osrm: [], hold: null, osrmDown: !!opt.osrmDown, meteoDownLat: opt.meteoDownLat || null };
   await p.route('**/*', async r => {
     const req = r.request(), u = req.url(); S.reqs.push({ u, m: req.method() });
@@ -97,7 +98,7 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
     check('8 · le retour suivant (Concert) n\'est pas supprimé', /Retour · Concert/.test(t));
     const ls = await p.evaluate(() => localStorage.getItem('twrc.tripdone') || '');
     check('7 · arrivée mémorisée : clé du trajet seulement, aucune coordonnée', /leg\|2026-10-03T15:33\|go/.test(ls) && !/\d\.\d/.test(ls), ls);
-    await p.reload(); for (let k = 0; k < 40; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(300); await p.waitForTimeout(200); }
+    s.S.reloading = true; await p.reload(); for (let k = 0; k < 40; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(300); await p.waitForTimeout(200); } s.S.reloading = false;
     await s.settle(6); t = await s.txt();
     check('7 · après rechargement : le trajet terminé ne réapparaît pas', !/Assurance/.test(t) && /Concert/.test(t), t.slice(0, 140));
   }
@@ -199,7 +200,7 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
     await s.to('2026-10-03T14:10:00+02:00'); t = await s.waitFor(/✓ Arrivé · Aller · Assurance/, 30);
     check('15 · entrée dans la fenêtre vivante, toujours sur place : arrivée automatique', /✓ Arrivé · Aller · Assurance/.test(t) && !/Assurance/.test(main(t)), t.slice(0, 160));
     // ===== 16. twrc.tripdone réellement purgé au chargement =====
-    const reload = async () => { await p.reload(); for (let k = 0; k < 40; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(300); await p.waitForTimeout(200); } await s.settle(3); };
+    const reload = async () => { s.S.reloading = true; await p.reload(); for (let k = 0; k < 40; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(300); await p.waitForTimeout(200); } s.S.reloading = false; await s.settle(3); };
     await p.evaluate(() => { const o = JSON.parse(localStorage.getItem('twrc.tripdone') || '{}'); o['leg|2026-09-30T08:00|go|vieux'] = { how: 'auto', at: Date.now() - 25 * 3600e3, exp: Date.now() - 3600e3 }; localStorage.setItem('twrc.tripdone', JSON.stringify(o)); });
     await reload(); const ls1 = await p.evaluate(() => localStorage.getItem('twrc.tripdone') || '');
     check('16 · entrée expirée effacée du stockage au chargement, entrée valide conservée', !/vieux/.test(ls1) && /15:33\|go/.test(ls1), ls1);
