@@ -575,35 +575,67 @@ function renderView() {
 }
 
 /* ---------- tenue sartoriale : mêmes lieux et mêmes données météo ---------- */
+function outfitInput() {
+  const selected = curLoc(), model = M[UI.loc], locations = allLocs(), sources = [];
+  const source = (m, place, fetchedAt) => { if (m) sources.push({ model: m, place: place || m.loc, fetchedAt, utcOffset: m.payload && m.payload.utc_offset_seconds }); };
+  locations.forEach(l => source(M[l.id], l, RAW[l.id] && RAW[l.id].t));
+  Object.keys(MIDM).forEach(id => source(MIDM[id], MIDP[id] && MIDP[id].pt, MIDP[id] && MIDP[id].t));
+  const legs = [];
+  if (!DEMO.on) {
+    Object.values(CALM).forEach(c => source(c.m, null, c.t));
+    Object.values(LEGM).forEach(c => (c.models || []).forEach(m => source(m, null, c.t)));
+    if (CAL) (CAL.events || []).filter(e => e.mode !== 'pasdetrajet').forEach(e => effLegs(e).forEach(l => legs.push({ ...l,
+      label: (l.k === 'ret' ? 'Retour' : 'Aller') + ' · ' + e.t,
+      points: legPoints(l).map(p => ({ f: p.f, place: { ...p, name: p.name } })) })));
+  }
+  const from = locations.find(l => l.id === S.work.from), to = locations.find(l => l.id === S.work.to);
+  return { now: nowIn(model ? model.tz : 'Europe/Paris'), nowMs: Date.now(), dayOffset: UI.outfitDay, occasion: UI.outfitOccasion,
+    selected, locations, sources, calendar: DEMO.on ? null : CAL, calendarDone: DEMO.on || CALDONE, legs,
+    work: S.configured ? S.work : null, workPoints: from && to ? midPoints(from, to) : [],
+    utcOffset: model && model.payload && model.payload.utc_offset_seconds };
+}
+function outfitTimelineHtml(plan) {
+  const range = (low, high, unit) => low == null ? '—' : f1(low) + (high != null && high !== low ? ' → ' + f1(high) : '') + ' ' + unit;
+  return `<ol class="outfit-timeline" aria-label="Timeline de confort">${plan.timeline.map(p => {
+    const w = p.weather, uncertain = w.partial || w.stale || p.assumed || p.conflict;
+    const precip = w.freezing ? 'Pluie verglaçante' : w.snow ? 'Neige' : w.storm ? 'Orage' : w.wet ? (w.P >= .1 ? 'Pluie prévue' : 'Pluie possible') : w.precipKnown ? 'Sec · pas de neige prévue' : 'Pluie/neige inconnue';
+    return `<li class="outfit-period${uncertain ? ' uncertain' : ''}"><div class="outfit-period-head"><time datetime="${esc(p.s)}">${p.s.slice(11, 16)}–${p.e.slice(11, 16)}${p.e.slice(0, 10) !== plan.date ? ' (+1 j)' : ''}</time><b>${esc(p.placeName)}</b></div>
+      <span class="outfit-label">${esc(p.label)}${p.e <= plan.now ? ' · Passé' : p.s <= plan.now && p.e > plan.now ? ' · En ce moment' : ''}</span>
+      <div class="outfit-period-weather"><span>Air <b>${range(w.Tlow, w.Thigh, '°C')}</b> · Ressenti <b>${range(w.low, w.high, '°C')}</b></span>
+        <span>${esc(precip)} · ${w.pp == null ? 'prob. —' : f0(w.pp) + ' %'} · ${w.P == null ? 'pluie —' : f1(w.P) + ' mm/h'} · ${w.snowAmount == null ? 'neige —' : f1(w.snowAmount) + ' cm/h'}${!w.precipKnown && w.wet ? ' · informations partielles' : ''}</span>
+        <span>Vent <b>${w.wind == null ? '—' : f0(w.wind) + ' km/h'}</b> · Rafales <b>${w.gust == null ? '—' : f0(w.gust) + ' km/h'}</b>${w.strongWind ? ' · vent fort, capuche' : ''}</span></div>
+      ${uncertain ? `<span class="outfit-uncertainty">${[w.missing ? 'Météo manquante' : w.partial ? 'Données partielles' : '', w.stale ? 'Données anciennes' : '', p.assumed ? 'Horaire supposé' : '', p.conflict ? 'Horaires en conflit' : ''].filter(Boolean).join(' · ')} · à confirmer</span>` : ''}
+      <p class="outfit-layers"><b>Couche recommandée</b><br>${esc(p.layerText)}</p>
+      ${p.transition ? `<p class="outfit-transition">${esc(p.transition)}</p>` : ''}
+      ${p.actions.length ? `<ul class="outfit-actions">${p.actions.map(a => `<li data-outfit-action="${a.type}">${esc(a.text)}</li>`).join('')}</ul>` : '<span class="outfit-label">Conserver les couches.</span>'}</li>`;
+  }).join('')}</ol>`;
+}
 function renderTenue() {
   const el = $('#secTenue'); el.hidden = UI.view !== 'tenue'; if (el.hidden) return;
   const m = M[UI.loc], l = curLoc(), tomorrow = UI.outfitDay === 1;
   const controls = `<div class="outfit-controls"><div class="seg" role="group" aria-label="Jour de la tenue">${[[0, 'Aujourd’hui'], [1, 'Demain']].map(([v, t]) => `<button data-act="outfit-day" data-v="${v}" aria-pressed="${UI.outfitDay === v}">${t}</button>`).join('')}</div>
     <div class="seg" role="group" aria-label="Usage de la tenue">${[['office', 'Bureau'], ['outing', 'Sortie'], ['walk', 'Promenade']].map(([v, t]) => `<button data-act="outfit-occasion" data-v="${v}" aria-pressed="${UI.outfitOccasion === v}">${t}</button>`).join('')}</div></div>`;
   const head = `<div class="mod-h"><h2>👔 Tenue · ${esc(l.name)}</h2><span class="src obs">Sartorial</span></div>${controls}`;
-  const win = wardrobeWindow(m, UI.outfitDay, m ? nowIn(m.tz) : null), a = win ? sartorialAdvice(win.samples, UI.outfitOccasion) : null;
+  const plan = outfitDayPlan(outfitInput()), a = plan && plan.base;
+  const timeline = plan ? `<div class="outfit-plan"><h3>Plan de tenue de la journée</h3>${a ? `<span class="outfit-status" data-confirmed="${plan.confirmed}">${esc(plan.status)}${plan.confirmed ? '' : ' · à confirmer'}</span>${!plan.confirmed ? '<p>Indicateur calculé sur les créneaux connus ; la couverture de la journée reste à confirmer.</p>' : ''}` : '<p>Adaptations non calculables sans température.</p>'}${outfitTimelineHtml(plan)}</div>` : '';
   if (!a) {
-    el.innerHTML = `${head}<div class="outfit-empty" role="status"><h3>${busy ? 'Météo en cours de chargement' : 'Météo insuffisante pour cette tenue'}</h3><p>${tomorrow ? 'Les prévisions de demain ne sont pas encore disponibles pour ce lieu.' : 'Il faut une température pour proposer des couches adaptées.'}</p><button class="btn" data-act="refresh" ${busy ? 'disabled' : ''}>Actualiser la météo</button></div>`; return;
+    el.innerHTML = `${head}<div class="outfit-empty" role="status"><h3>${busy ? 'Météo en cours de chargement' : 'Météo insuffisante pour cette tenue'}</h3><p>${tomorrow ? 'Les prévisions de demain ne sont pas encore disponibles pour les lieux connus.' : 'Il faut une température pour proposer des couches adaptées.'}</p><button class="btn" data-act="refresh" ${busy ? 'disabled' : ''}>Actualiser la météo</button></div>${timeline}<div class="outfit-extra"><ul>${(plan ? plan.notes : []).map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`; return;
   }
-  const raw = RAW[UI.loc], sourceAge = m.cur.time ? (tsToDate(nowIn(m.tz)) - tsToDate(m.cur.time.slice(0, 16))) / 60000 : Infinity;
-  const stale = m.mode === 'cache' || (m.mode !== 'demo' && (!raw || Date.now() - raw.t > 60 * 60e3 || sourceAge > 90 || sourceAge < -15));
-  const state = m.mode === 'demo' ? 'Simulation · aucune donnée réelle' : stale ? 'Données anciennes · tenue à confirmer' : 'Prévisions météo · conseil de confort';
-  const interval = `${fmtDay(win.date)} · ${win.start}–${win.end}`;
+  const stale = plan.quality.stale;
+  const state = stale ? 'Données anciennes · tenue à confirmer' : DEMO.on ? 'Simulation · aucune donnée réelle' : 'Prévisions météo · conseil de confort';
+  const interval = `${fmtDay(plan.date)} · ${plan.start.slice(11, 16)}–${plan.end.slice(11, 16)}`;
   const metric = (k, v) => `<div><span>${k}</span><b>${v}</b></div>`;
-  const detail = [...a.notes];
-  if (a.partial || win.incomplete) detail.push('Données partielles : certains créneaux, le ressenti, la pluie ou les rafales manquent.');
-  const hourly = win.samples.filter((x, i) => i === 0 || i === win.samples.length - 1 || x.hh % 3 === 0).map(x => {
-    const f = num(x.Tapp) ?? num(x.T);
-    return `<div><span>${x.t.slice(11, 16)}</span><b>${f1(f)} °C</b><span>${x.pp == null ? 'Pluie —' : 'Pluie ' + f0(x.pp) + ' %'}</span></div>`;
-  }).join('');
+  const detail = [...plan.notes]; if (UI.outfitOccasion === 'office') detail.push('Cravate sobre ou légère, selon le rendez-vous, avec cette même tenue de base.');
   el.innerHTML = `${head}<div class="outfit-context${stale ? ' old' : ''}"><span>${esc(state)}</span><b>${esc(interval)}</b></div>
-    <div class="outfit-verdict"><span class="outfit-label">${tomorrow ? 'Ta tenue de demain' : 'Ta tenue pour la suite de la journée'}</span><h3>${esc(a.title)}</h3><p>Choisie pour le créneau le plus frais ; retire une couche quand il fait plus doux.</p></div>
+    <div class="outfit-verdict"><span class="outfit-label">${tomorrow ? 'Ta tenue de demain' : 'Ta tenue d’aujourd’hui'}</span><h3>${esc(a.title)}</h3><p>Une tenue de base cohérente, avec les mêmes chemise, pantalon et chaussures. Seules les couches amovibles s’adaptent aux lieux et aux horaires connus.</p></div>
     <div class="outfit-metrics">${metric('Ressenti' + (a.tempFallback ? ' / air' : ''), f0(a.low) + ' à ' + f0(a.high) + ' °C')}${metric('Pluie · max', a.pp == null ? '—' : f0(a.pp) + ' %')}${metric('Rafales · max', a.gust == null ? '—' : f0(a.gust) + ' km/h')}</div>
+    <h3 class="outfit-base-title">Tenue de base · ${tomorrow ? 'demain' : 'aujourd’hui'}</h3>
     <div class="outfit-pieces">${a.pieces.map((p, i) => `<div class="outfit-piece"><span class="outfit-no mono">0${i + 1}</span><div><span class="outfit-label">${esc(p.label)}</span><h4>${esc(p.item)}</h4><p>${esc(p.detail)}</p></div></div>`).join('')}</div>
-    <div class="outfit-extra"><h3>À emporter</h3><ul>${a.accessories.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>
+    <div class="outfit-extra outfit-carry"><h3>À emporter · pièces supplémentaires</h3>${plan.extras.length ? `<ul>${plan.extras.map(x => `<li data-outfit-piece="${x.id}"><b>${esc(x.item)}</b><br>${esc(x.detail)}</li>`).join('')}</ul>` : `<p>Aucune pièce supplémentaire nécessaire${plan.confirmed ? '.' : ' sur les créneaux connus ; à confirmer.'}</p>`}</div>
     <div class="outfit-palette"><span class="outfit-label">Accord de couleurs suggéré</span><div>${a.palette.map(t => `<span>${esc(t)}</span>`).join('')}</div></div>
+    ${timeline}
     ${detail.length ? `<div class="outfit-extra"><h3>À prévoir</h3><ul>${detail.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
-    <details class="outfit-evolution"><summary>Évolution sur le créneau</summary><div class="evo">${hourly}</div></details>
+    <details class="outfit-evolution"><summary>Repères du plan de journée</summary><p>Le plan privilégie le confort et la protection, puis le minimum de pièces supplémentaires et d’adaptations. Une protection de pluie déjà emportée sert aussi contre les rafales : aucun deuxième manteau ni parapluie imposé.</p></details>
     <p class="outfit-method">Suggestions de pièces, à adapter à ce que tu possèdes et à ta sensibilité au froid. Les seuils sont des repères de confort. Le ressenti météo intègre déjà le vent ; aucune température de chaussée ni score pneus n’intervient ici.</p>`;
 }
 
@@ -1397,9 +1429,9 @@ async function loadCalendar() {
   try {
     const S0 = await fetchJSON('calendar.sealed.json?t=' + Math.floor(Date.now() / 300e3), 8000); if (!S0 || !S0.c) return;
     if (CAL && CAL.c === S0.c) return;
-    const d = await openSealed(S0, String(pass).trim().toLowerCase()); CAL = { ...d, c: S0.c }; CALDONE = true; renderCal(); renderBrf();
+    const d = await openSealed(S0, String(pass).trim().toLowerCase()); CAL = { ...d, c: S0.c }; CALDONE = true; renderCal(); renderBrf(); renderTenue();
   } catch (e) { /* pas d'agenda publié, ou code différent */ }
-  finally { if (!CALDONE) { CALDONE = true; renderBrf(); } }
+  finally { if (!CALDONE) { CALDONE = true; renderBrf(); } renderTenue(); }
 }
 async function calModel(ev) {
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2);
@@ -1407,7 +1439,7 @@ async function calModel(ev) {
   if (CALBUSY.has(id)) return null; CALBUSY.add(id);
   try { const p = await fetchJSON(`${API}?latitude=${ev.lat}&longitude=${ev.lon}&hourly=${Q_HR}&daily=${Q_DY}&timezone=auto&past_days=1&forecast_days=10`, 12000); CALM[id] = { t: Date.now(), m: makeModel(p, 'live', { id, lat: ev.lat, lon: ev.lon, name: ev.label || ev.loc }) }; }
   catch (e) { CALM[id] = { t: Date.now() - 25 * 60e3, m: null }; }
-  CALBUSY.delete(id); renderCal(); return CALM[id].m;
+  CALBUSY.delete(id); renderCal(); renderTenue(); return CALM[id].m;
 }
 function calTrip(ev) {
   const home = M[S.locs[0].id]; if (!home || ev.lat == null) return null;
@@ -1434,7 +1466,7 @@ async function fetchLeg(leg) {
     if (!Array.isArray(js)) js = [js];
     LEGM[k] = { t: Date.now(), models: js.map((p, i) => { try { return makeModel(p, 'live', pts[i]); } catch (e) { return null; } }) };
   } catch (e) { LEGM[k] = { t: Date.now() - 25 * 60e3, models: null }; }
-  LEGBUSY.delete(k); clearTimeout(fetchLeg.t); fetchLeg.t = setTimeout(() => { renderCal(); renderBrf(); }, 150);
+  LEGBUSY.delete(k); clearTimeout(fetchLeg.t); fetchLeg.t = setTimeout(() => { renderCal(); renderBrf(); renderTenue(); }, 150);
 }
 function legEval(leg) {
   const k = legKey(leg), c = LEGM[k];
@@ -1709,7 +1741,7 @@ async function ensureMids(pts) {
   await Promise.allSettled(todo.map(async p => {
     try {
       const pl = DEMO.on ? makeDemoPayload(DEMO.scn, p, 'Europe/Paris', 0.3) : await fetchJSON(urlFor(p));
-      MIDP[p.id] = { p: pl, mode: DEMO.on ? 'demo' : 'live', pt: p }; MIDM[p.id] = makeModel(pl, MIDP[p.id].mode, p);
+      MIDP[p.id] = { p: pl, mode: DEMO.on ? 'demo' : 'live', pt: p, t: Date.now() }; MIDM[p.id] = makeModel(pl, MIDP[p.id].mode, p);
     } catch (e) { MIDP[p.id] = null; MIDM[p.id] = null; }
     finally { MIDPENDING.delete(p.id); }
   }));
@@ -2150,7 +2182,7 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'lock') { ['twrc.plain', 'twrc.plain.v', 'twrc.key'].forEach(k => { try { localStorage.removeItem(k); } catch (err) { /* stockage */ } }); location.reload(); }
   else if (a === 'locate') locate(true);
-  else if (a === 'caldirect') { const k = t.dataset.k; S.calDirect = { ...(S.calDirect || {}) }; if (S.calDirect[k]) delete S.calDirect[k]; else S.calDirect[k] = 1; markEdit('calDirect'); saveSettings(); renderCal(); renderBrf(); }
+  else if (a === 'caldirect') { const k = t.dataset.k; S.calDirect = { ...(S.calDirect || {}) }; if (S.calDirect[k]) delete S.calDirect[k]; else S.calDirect[k] = 1; markEdit('calDirect'); saveSettings(); renderCal(); renderBrf(); renderTenue(); }
   else if (a === 'tip') { TIP_OFF += +t.dataset.d || 1; renderTip(); }
   else if (a === 'nocode') { lsSet('twrc.nocode', '1'); renderNotice(); const d = $('#settings'); if (d) { d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
   else if (a === 'withcode') { try { localStorage.removeItem('twrc.nocode'); } catch (err) { /* stockage */ } renderNotice(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
