@@ -424,7 +424,7 @@ function renderStatus() {
   let u;
   if (mode === 'demo') u = 'Simulation : aucune donnée réelle';
   else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(lastOk) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
-  else if (mode === 'cache') u = 'Cache du ' + hmLocal(RAW[UI.loc].t) + ' · réseau indisponible';
+  else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · réseau indisponible';   // lieu GPS pas encore chargé : pas d'horodatage
   else u = 'Aucune donnée météo';
   $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
     <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${busy ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
@@ -958,8 +958,17 @@ function gaugeSvg(score, lv) {
 // référence et phase vivent en mémoire et disparaissent à la fermeture. Aucun nouveau fournisseur externe : en mode trajet vivant,
 // la position courante arrondie à 0,001° est en plus transmise à OSRM pour calculer le trajet restant.
 const LIVE_WIN = 90, LIVE_ADV = 240, LIVE_ADV_KM = 5, LIVE_ADV_AGE = 30 * 60e3, LIVE_ACC = 250, LIVE_ACC_ARR = 150, LIVE_ARR_KM = 0.3, LIVE_AGE_IMM = 5 * 60e3, LIVE_AGE_RUN = 2 * 60e3, LIVE_GRACE = 5 * 60e3;
-const LIVE = { key: null, phase: 'idle', base: null, startFix: null, arrN: 0, arrTs: 0, gen: 0, route: null, routeAt: 0, routeOrigin: null, routeTry: 0, routeErr: false,
-  last: null, lastOk: 0, hiAt: 0, loAt: 0, done: {} };
+const LIVE = { key: null, phase: 'idle', base: null, startFix: null, lastFix: null, carN: 0, near: null, arrN: 0, arrTs: 0, gen: 0, route: null, routeAt: 0, routeOrigin: null, routeTry: 0, routeErr: false,
+  last: null, lastOk: 0, hiAt: 0, loAt: 0, nowAt: 0, done: {}, noAuto: {}, lastDone: null };
+// trajets terminés (arrivée) mémorisés sur l'appareil : uniquement clé du trajet (heures, sens), mode, heure et expiration — AUCUNE coordonnée
+const TRIPDONE = 'twrc.tripdone';
+function liveDonePersist(key, how) {
+  let o = {}; try { o = JSON.parse(lsGet(TRIPDONE) || '{}') || {}; } catch (e) { o = {}; }
+  const n = Date.now(); Object.keys(o).forEach(k => { if (!(o[k] && o[k].exp > n)) delete o[k]; });
+  if (how) o[key] = { how, at: n, exp: n + 24 * 3600e3 }; else delete o[key];
+  lsSet(TRIPDONE, JSON.stringify(o));
+}
+(function liveDoneLoad() { try { const o = JSON.parse(lsGet(TRIPDONE) || '{}') || {}, n = Date.now(); Object.keys(o).forEach(k => { if (o[k] && o[k].exp > n) LIVE.done[k] = 'arrivé'; }); } catch (e) { /* stockage */ } })();
 let FIX = null, FIXPREV = null;   // derniers relevés bruts ; ts = pos.timestamp (heure réelle du relevé, pas l'heure de réception)
 const liveNow = () => nowIn('Europe/Paris');
 const liveMin = (a, b) => (tsToDate(b) - tsToDate(a)) / 60e3;
@@ -984,28 +993,57 @@ const liveEffDep = b => LIVE.route && LIVE.route.key === LIVE.key && liveAdapt(b
 const liveFirst = (a, b) => a < b ? a : b;
 function liveReset(reason) {
   if (LIVE.key && reason) LIVE.done[LIVE.key] = reason;
-  Object.assign(LIVE, { key: null, phase: 'idle', base: null, startFix: null, arrN: 0, arrTs: 0, route: null, routeAt: 0, routeOrigin: null, routeTry: 0, routeErr: false, last: null, lastOk: 0, hiAt: 0, loAt: 0 });
+  Object.assign(LIVE, { key: null, phase: 'idle', base: null, startFix: null, lastFix: null, carN: 0, near: null, arrN: 0, arrTs: 0, route: null, routeAt: 0, routeOrigin: null, routeTry: 0, routeErr: false, last: null, lastOk: 0, hiAt: 0, loAt: 0, nowAt: 0 });
   LIVE.gen++;   // toute réponse encore en route est désormais ignorée
   if (gpsWatch != null && gpsWatchHi) startWatch(false);   // retour au suivi basse consommation
 }
-// chaque nouveau relevé : référence de départ, mouvement, arrivée (jamais au rendu : un rendu ne recrée rien).
-// Aucune transition d'état sur un relevé périmé (pos.timestamp) : un relevé précis mais ancien, rendu par le cache d'iOS, est ignoré.
-//   référence avant départ : relevé ≤ 5 min · départ (late → active) : relevé courant ET relevé précédent (vitesse) ≤ 2 min · arrivée : ≤ 2 min
+// destination pour l'ARRIVÉE : un retour vise le domicile local exact (le relais n'a qu'un domicile arrondi à 0,01°)
+const liveArrDest = b => b.src === 'cal' && b.l && b.l.k === 'ret' ? (homeExact() || liveDest(b)) : liveDest(b);
+// vitesse entre deux relevés (m/s) : vitesse GPS si fournie, sinon déduite (distance / Δt) — seulement si le déplacement dépasse
+// deux fois l'incertitude cumulée des deux relevés (le bruit GPS ne crée aucune vitesse) ; null si non mesurable
+const LIVE_CAR = 2;
+function liveSpeed(a, b) {
+  if (!a || !b || b.ts <= a.ts) return null;
+  if (b.speed != null) return b.speed;
+  const dt = (b.ts - a.ts) / 1000, d = distKm(a, b) * 1000;
+  if (dt < 5) return null;
+  return d <= 2 * (a.acc + b.acc) ? 0 : d / dt;
+}
+function liveArrive(how) {
+  const k = LIVE.key, b = LIVE.base; if (!k) return;
+  liveDonePersist(k, how); LIVE.lastDone = { key: k, name: b ? b.name : '', at: Date.now() };
+  liveReset('arrivé'); renderBrf();
+}
+// relevé de confirmation demandé tout de suite (arrivée à confirmer), au plus un toutes les 10 s ; jamais de haute précision en aperçu
+function liveAskNow() {
+  if (Date.now() - LIVE.nowAt < 10e3) return;
+  LIVE.nowAt = Date.now();
+  try { navigator.geolocation.getCurrentPosition(p => onPos(p, false), () => {}, { enableHighAccuracy: LIVE.phase !== 'advice', timeout: 15000, maximumAge: 0 }); } catch (e) { /* indisponible */ }
+}
+// chaque nouveau relevé : arrivée (dans TOUTES les phases), puis départ. L'heure conseille QUAND partir ; seul le mouvement décide
+// SI le trajet a commencé. Aucune transition sur un relevé périmé (pos.timestamp) ou imprécis. Jamais au rendu : un rendu ne recrée rien.
+//   arrivée : 2 relevés frais (≤ 2 min), précis (≤ 150 m), distincts, à ≤ 300 m → arrivé ; ≤ 1,5 km → « arrivée probable » (confirmation manuelle)
+//   départ : référence figée une seule fois + déplacement > max(300 m, 2 × incertitude) + vitesse automobile (> 2 m/s) sur 2 relevés successifs,
+//            mesurée ou déduite ; dès la fenêtre vivante (90 min avant le plus tôt des départs prévu / conseillé), sans attendre l'heure
 function liveOnFix(fix) {
   if (!LIVE.key || !LIVE.base) { if (liveAllowed()) { clearTimeout(liveOnFix.t); liveOnFix.t = setTimeout(renderBrf, 300); } return; }
-  if (LIVE.phase === 'active') {
-    const d = liveDest(LIVE.base);
-    if (d && fix.ts !== LIVE.arrTs && liveFresh(fix, LIVE_AGE_RUN)) {   // un relevé périmé ne compte pas et n'interrompt pas la série
-      LIVE.arrTs = fix.ts;
-      LIVE.arrN = fix.acc <= LIVE_ACC_ARR && distKm(fix, d) <= LIVE_ARR_KM ? LIVE.arrN + 1 : 0;
-      if (LIVE.arrN >= 2) { liveReset('arrivé'); renderBrf(); return; }   // deux relevés précis, récents et distincts à moins de 300 m
+  const ad = liveArrDest(LIVE.base);
+  if (ad && fix.ts !== LIVE.arrTs && liveFresh(fix, LIVE_AGE_RUN)) {   // un relevé périmé ne compte pas et n'interrompt pas la série
+    LIVE.arrTs = fix.ts;
+    const d = distKm(fix, ad), sure = fix.acc <= LIVE_ACC_ARR;
+    LIVE.arrN = sure && d <= LIVE_ARR_KM ? LIVE.arrN + 1 : 0;
+    LIVE.near = sure && d <= 1.5 ? d : null;
+    if (LIVE.arrN >= 2 && !(LIVE.noAuto[LIVE.key] > Date.now())) { liveArrive('auto'); return; }
+    if (LIVE.arrN === 1) liveAskNow();
+  }
+  if (LIVE.phase !== 'active') {
+    if (!LIVE.startFix) { if (liveFresh(fix, LIVE_AGE_IMM)) LIVE.startFix = LIVE.lastFix = fix; }   // référence figée une seule fois
+    else if (liveFresh(fix, LIVE_AGE_RUN) && fix.ts !== (LIVE.lastFix && LIVE.lastFix.ts)) {
+      const v = liveSpeed(LIVE.lastFix, fix); if (v != null) LIVE.carN = v > LIVE_CAR ? LIVE.carN + 1 : 0;
+      const sf = LIVE.startFix, thr = Math.max(0.3, 2 * Math.max(fix.acc, sf.acc) / 1000);
+      if (LIVE.phase !== 'advice' && LIVE.carN >= 2 && distKm(sf, fix) > thr) { LIVE.phase = 'active'; startWatch(true); }   // suivi haute précision continu
+      LIVE.lastFix = fix;
     }
-  } else if (liveNow() < liveEffDep(LIVE.base) || !LIVE.startFix) {
-    if (liveFresh(fix, LIVE_AGE_IMM)) LIVE.startFix = fix;   // avant l'heure : la référence suit le dernier relevé précis et récent
-  } else if (liveFresh(fix, LIVE_AGE_RUN)) {
-    const sf = LIVE.startFix, thr = Math.max(0.3, 2 * Math.max(fix.acc, sf.acc) / 1000);
-    const fast = fix.speed != null && fix.speed > 2 && FIXPREV && FIXPREV !== sf && FIXPREV.ts !== fix.ts && liveFresh(FIXPREV, LIVE_AGE_RUN) && FIXPREV.speed != null && FIXPREV.speed > 2;
-    if (distKm(sf, fix) > thr || fast) { LIVE.phase = 'active'; startWatch(true); }   // mouvement confirmé : suivi haute précision continu
   }
   clearTimeout(liveOnFix.t); liveOnFix.t = setTimeout(renderBrf, 300);
 }
@@ -1104,7 +1142,9 @@ function liveApply(T, now) {
     else if (liveOut(nxt) && nxt.arr && liveMin(now, nxt.dep) <= LIVE_ADV && liveFresh(FIX, LIVE_AGE_IMM) && livePlanFrom(nxt) && distKm(FIX, livePlanFrom(nxt)) > 1) ph = 'advice';
     if (!ph) return T;
     Object.assign(LIVE, { key: nxt.key, base: nxt, phase: ph }); cur = nxt;
-    if (liveFresh(FIX, LIVE_AGE_IMM)) LIVE.startFix = FIX;
+    if (liveFresh(FIX, LIVE_AGE_IMM)) LIVE.startFix = LIVE.lastFix = FIX;
+    setTimeout(() => { if (LIVE.key === nxt.key) { if (LIVE.phase === 'advice') liveAskLow(); else { LIVE.hiAt = 0; liveAskFix(); } } }, 0);   // ne pas attendre le suivi passif
+    if (FIX) setTimeout(() => { if (LIVE.key === nxt.key) liveOnFix(FIX); }, 0);   // le dernier relevé compte aussi pour l'arrivée (réouverture sur place)
   }
   if (LIVE.phase !== 'active') {   // suivi vivant dès min(départ prévu, départ conseillé) − 90 min ; jamais plus tard que la règle des 90 min
     const eff = liveEffDep(LIVE.base);
@@ -1170,13 +1210,19 @@ function renderBrf() {
   if (!main) {   // plus aucun trajet aujourd'hui : seulement des lignes discrètes vers la suite
     el.className = 'mod brf lv0';
     const msg = !CAL && !CALDONE && lsGet('twrc.key') ? '⏳ Lecture de l’agenda…' : `💤 ${isCommuteDay(today, S.work.days) && wk && wk.dep.slice(0, 10) > today ? 'Plus de trajet prévu aujourd’hui' : 'Aucun trajet prévu aujourd’hui'}`;
-    el.innerHTML = `<div class="brf-h"><span class="brf-k">${msg}</span></div>${tail}`;
+    el.innerHTML = `${liveUndoHtml()}<div class="brf-h"><span class="brf-k">${msg}</span></div>${tail}`;
     return;
   }
   el.className = 'mod brf lv' + (main.res ? main.res[0].w.level : 0);
-  el.innerHTML = briefCard(main, dayLbl) + tail;
+  el.innerHTML = liveUndoHtml() + briefCard(main, dayLbl) + tail;
   if (main.res && !(LOCKED() && !lsGet('twrc.nocode'))) tripMapMount(main);   // pas de carte (ni d'appel externe) avant le déverrouillage
 }
+// « arrivée probable » : relevé frais et précis à ≤ 1,5 km de la destination, sans arrivée automatique (au-delà de 300 m, ou arrivée annulée)
+function liveProbable(t) {
+  if (!t || t.key !== LIVE.key || LIVE.near == null || LIVE.phase === 'advice' || !liveFresh(FIX, LIVE_AGE_RUN)) return null;
+  return LIVE.near > LIVE_ARR_KM || LIVE.noAuto[t.key] > Date.now() ? Math.max(LIVE.near, 0.001) : null;
+}
+const liveUndoHtml = () => LIVE.lastDone && Date.now() - LIVE.lastDone.at < 10 * 60e3 ? `<div class="brf-why">✓ Arrivé · ${esc(LIVE.lastDone.name)} <button class="btn sm" data-act="trip-undo">Annuler l’arrivée</button></div>` : '';
 // navigation externe : Waze (lien universel), ouvert UNIQUEMENT par un geste de l'utilisateur. Seule la destination est transmise :
 // Waze part lui-même de la position courante de l'appareil (aucune origine, aucune position GPS envoyée) ; rien n'est stocké.
 const wazeUrl = p => p && p.lat != null && p.lon != null && isFinite(+p.lat) && isFinite(+p.lon) ? `https://waze.com/ul?ll=${+p.lat},${+p.lon}&navigate=yes` : null;
@@ -1197,7 +1243,7 @@ function briefCard(t, dayLbl) {
     : t.running ? `<span class="brf-k">🏎️ Trajet en cours · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">parti à ${t.dep.slice(11, 16)} · arrivée prévue <b>${(t.arr || '').slice(11, 16)}</b></span>`
     : `<span class="brf-k">🏁 Prochain trajet · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">${dayLbl(t.dep)} · ${t.dep.slice(11, 16)} → ${(t.arr || '').slice(11, 16)} · ${cdSpan(t.dep)}</span>`}</div>
     <div class="brf-ev">${t.src === 'cal' ? '📅' : '🏁'} <b>${esc(t.name)}</b>${t.l ? ` · ${f0(t.l.km)} km · ${t.l.min} min${t.live ? ' depuis ici' : ''}${t.l.routed ? ' · route analysée' : ' (estimé)'}` : ''}</div>
-    <div class="brf-r">${esc(t.from)} <span>→</span> ${esc(t.to)}</div>${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
+    <div class="brf-r">${esc(t.from)} <span>→</span> ${esc(t.to)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
   if (!t.res) return head + `<p class="muted">${t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;
   const sum = t.sum, top = t.res[0], lv = top.w.level, xs = t.seq.map(q => q.hs[q.i]);
   const ppMax = Math.max(...xs.map(x => x.pp || 0)), Pmax = Math.max(...xs.map(x => x.P || 0));
@@ -2100,6 +2146,8 @@ document.addEventListener('click', async e => {
   else if (a === 'from') { if (UI.dir === 'go') { S.work.from = t.dataset.id; markEdit('work.from'); } else { S.work.to = t.dataset.id; markEdit('work.to'); } saveSettings(); softRender(); }
   else if (a === 'dir') { UI.dir = t.dataset.d; UI.dayOff = null; softRender(); }
   else if (a === 'day') { UI.dayOff = +t.dataset.off; softRender(); }
+  else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
+  else if (a === 'trip-undo') { const d = LIVE.lastDone; if (d) { delete LIVE.done[d.key]; liveDonePersist(d.key, null); LIVE.noAuto[d.key] = Date.now() + 10 * 60e3; LIVE.lastDone = null; renderBrf(); } }
   else if (a === 'tripmap') { lsSet('twrc.tripmap', lsGet('twrc.tripmap') === '1' ? '0' : '1'); renderBrf(); }
   else if (a === 'wday') {
     const d = +t.dataset.d, cur = commuteDays(S.work.days).slice(), k = cur.indexOf(d);

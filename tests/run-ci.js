@@ -41,7 +41,8 @@ const SUITE = [
   ['e2e17.js', 'réglages conservés lors d’une mise à jour', true], ['e2e18.js', 'astuces et mode Météo', true], ['e2e24.js', 'jours de trajet domicile-travail', true],
   ['e2e25.js', 'timeline : prochain trajet, en cours, arrivée', true], ['e2e26.js', 'lieux et Ma position', true], ['e2e27.js', 'mini-carte ordinateur et iPhone', true],
   ['e2e28.js', 'GPS dynamique : trajet vivant depuis la position', true],
-  ['e2e29.js', 'navigation : ouvrir le trajet affiché dans Waze', true]];
+  ['e2e29.js', 'navigation : ouvrir le trajet affiché dans Waze', true],
+  ['e2e30.js', 'automate du trajet : départ par le mouvement, arrivée à froid', true]];
 const verdict = (code, out) => {
   if (code !== 0) return 'code de sortie ' + code;
   if (/❌|ERR |Error:|TimeoutError/.test(out)) return 'échec signalé dans la sortie';
