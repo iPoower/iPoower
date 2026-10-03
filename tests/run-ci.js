@@ -41,10 +41,12 @@ const SUITE = [
   ['e2e17.js', 'réglages conservés lors d’une mise à jour', true], ['e2e18.js', 'astuces et mode Météo', true], ['e2e24.js', 'jours de trajet domicile-travail', true],
   ['e2e25.js', 'timeline : prochain trajet, en cours, arrivée', true], ['e2e26.js', 'lieux et Ma position', true], ['e2e27.js', 'mini-carte ordinateur et iPhone', true],
   ['e2e28.js', 'GPS dynamique : trajet vivant depuis la position', true],
-  ['e2e29.js', 'navigation : ouvrir le trajet affiché dans Waze', true]];
+  ['e2e29.js', 'navigation : ouvrir le trajet affiché dans Waze', true],
+  ['e2e30.js', 'automate du trajet : départ par le mouvement, arrivée à froid', true]];
 SUITE.push(['test_wardrobe.js', 'tenue : confort, pluie, vent et jours locaux', false], ['e2e31.js', 'onglet Tenue sartoriale et interface mobile', true]);
 const verdict = (code, out) => {
-  if (code !== 0) return 'code de sortie ' + code;
+  const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
+  if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');
   if (/❌|ERR |Error:|TimeoutError/.test(out)) return 'échec signalé dans la sortie';
   const sc = [...out.matchAll(/(\d+)\/(\d+) scénarios OK/g)]; if (sc.some(m => m[1] !== m[2])) return 'scénarios incomplets';
   const er = out.match(/errors (\[.*\])/); if (er && er[1] !== '[]') return 'erreurs JavaScript : ' + er[1].slice(0, 200);
