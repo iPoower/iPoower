@@ -37,6 +37,9 @@ puis score pneus, chaussée, pluie, visibilité, verglas et point critique sur c
 
 | Règle | Valeur |
 |---|---|
+| Départ adaptatif | **Aller** : l'arrivée prévue est la contrainte (marge du rendez-vous déjà incluse par le relais) → départ conseillé = arrivée prévue − durée OSRM × 1,1 depuis la position, **seulement à plus de 1 km de l'origine prévue** (chez soi, heure planifiée et durée choisie pour le boulot inchangées). **Retour** : le départ prévu reste la contrainte, l'arrivée est recalculée. Départ conseillé dépassé : arrivée estimée = maintenant + durée, avec retard estimé |
+| Aperçu (avant la fenêtre vivante) | prochain aller seulement, jusqu'à 4 h avant le départ prévu, GPS frais (≤ 5 min, ≤ 250 m) et à plus de 1 km de l'origine prévue ; relevés **basse consommation uniquement** ; recalcul après 5 km ou 30 min ; même bascule atomique route + météo |
+| Fenêtre vivante | dès min(départ prévu, départ conseillé) − 90 min : peut avancer le suivi, jamais le retarder |
 | Position utilisable | précision ≤ 250 m ; relevé (`pos.timestamp`) ≤ 5 min avant départ, ≤ 2 min en trajet. **Aucune transition d'état sur un relevé périmé** (référence ≤ 5 min ; départ, vitesse et arrivée ≤ 2 min) |
 | Phases | imminent → départ prévu dépassé (aucun mouvement) → en cours (mouvement confirmé : > max(300 m, 2 × incertitude), ou > 2 m/s sur deux relevés précis) → arrivé (deux relevés ≤ 150 m de précision à moins de 300 m) |
 | Recalcul | après ~1 km ou 10 min, jamais plus d'une fois par 30 s. Réponses tardives : OSRM est protégé par un compteur de génération (`LIVE.gen`) ; la météo est isolée par la clé géographique de chaque route (`legKey` / `LEGM`), une réponse d'une ancienne route n'est jamais lue pour la route courante |
@@ -50,6 +53,8 @@ météo de route, phase ou relevé de référence — n'est persistée** (ni `lo
 relais et GitHub Actions inchangés). Le stockage local `twrc.gps` existant (dernière position, pour la puce « Ma position ») reste inchangé. Aucun nouveau fournisseur externe : en mode trajet vivant,
 la position courante arrondie à 0,001° est en plus transmise à OSRM pour calculer le trajet restant (domicile et travail
 restent arrondis à 0,01° comme destination).
+Les **notifications du relais** restent calculées depuis le trajet planifié : l'app ouverte corrige l'heure selon la position réelle,
+mais la position n'est jamais envoyée à GitHub pour synchroniser une notification.
 
 ## Frontière des secrets
 
