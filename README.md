@@ -56,6 +56,12 @@ restent arrondis à 0,01° comme destination).
 Les **notifications du relais** restent calculées depuis le trajet planifié : l'app ouverte corrige l'heure selon la position réelle,
 mais la position n'est jamais envoyée à GitHub pour synchroniser une notification.
 
+## Navigation (Waze)
+
+« 🚙 Ouvrir dans Waze » sur le trajet affiché (briefing, y compris trajet vivant ou adaptatif) et sur chaque trajet de l'agenda :
+lien universel `https://waze.com/ul?ll=LAT,LON&navigate=yes` vers la **destination** du trajet. Ouverture uniquement après un geste
+de l'utilisateur ; aucune origine ni position GPS transmise (Waze part de la position courante de l'appareil) ; rien n'est stocké.
+
 ## Frontière des secrets
 
 Les vrais secrets (`APP_KEY`, `RC_KEY`, `GCAL_ICS`) vivent **uniquement dans l'Environment GitHub `production`**, dont la règle
