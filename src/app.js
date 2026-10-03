@@ -1016,10 +1016,13 @@ function liveParse(j) {
   const km = r.distance != null ? r.distance / 1000 : totD, sec = r.duration != null ? r.duration : totT;
   return { km: Math.round(km * 10) / 10, min: Math.max(1, Math.round(sec / 60 * 1.1)), pts, g };   // durée × 1,1, sans la marge de 10 min des rendez-vous
 }
+// une route n'est « courante » que pour le relevé qui la justifie : même trajet, origine à ≤ 1 km du relevé, calculée il y a ≤ 10 min.
+// Sinon elle est périmée : un recalcul est demandé, et elle ne peut plus produire d'analyse présentée comme actuelle.
+const liveOrigin = fix => ({ lat: +fix.lat.toFixed(3), lon: +fix.lon.toFixed(3) });
+const liveRouteCurrent = (R, o) => !!R && R.key === LIVE.key && distKm(R.o, o) <= 1 && Date.now() - LIVE.routeAt <= 10 * 60e3;
 function liveRoute(fix, b) {
-  const o = { lat: +fix.lat.toFixed(3), lon: +fix.lon.toFixed(3) }, R = LIVE.route;
-  const need = !R || R.key !== LIVE.key || distKm(R.o, o) > 1 || Date.now() - LIVE.routeAt > 10 * 60e3;
-  if (!need || Date.now() - LIVE.routeTry < 30e3) return;   // recalcul seulement après ~1 km ou 10 min, jamais en rafale
+  const o = liveOrigin(fix);
+  if (liveRouteCurrent(LIVE.route, o) || Date.now() - LIVE.routeTry < 30e3) return;   // recalcul seulement après ~1 km ou 10 min, jamais en rafale
   const d = liveDest(b); if (!d) return;
   const dd = d.priv ? { lat: rc2(d.lat), lon: rc2(d.lon) } : { lat: +(+d.lat).toFixed(3), lon: +(+d.lon).toFixed(3) };
   LIVE.routeTry = Date.now(); const gen = ++LIVE.gen, key = LIVE.key;
@@ -1033,26 +1036,28 @@ function liveRoute(fix, b) {
     .catch(() => { if (gen === LIVE.gen && key === LIVE.key) { LIVE.routeErr = true; renderBrf(); } });
 }
 const liveAgo = ms => { const s = Math.round(ms / 1000); return s < 60 ? `${s} s` : `${Math.round(s / 60)} min`; };
-// version vivante du trajet ; tant qu'aucune analyse vivante complète (route + météo) n'existe, le trajet planifié reste affiché
+// version vivante du trajet ; tant qu'aucune analyse vivante complète (route + météo) n'existe, le trajet planifié reste affiché.
+// Une analyse n'est COURANTE que si : relevé frais + route courante pour ce relevé + météo de cette route prête. Seule une analyse
+// courante est présentée comme actuelle et fait avancer lastOk ; sinon la dernière analyse est affichée, marquée ancienne, 5 min au plus.
 function liveTrip(b, now) {
   const run = LIVE.phase === 'active', fix = FIX, fresh = liveFresh(fix, run ? LIVE_AGE_RUN : LIVE_AGE_IMM);
   if (fresh) liveRoute(fix, b);
   if (!fresh || LIVE.phase === 'late') liveAskFix();
-  let a = null, gpsOld = !fresh;
-  if (fresh && LIVE.route && LIVE.route.key === LIVE.key) {
+  let a = null;
+  if (fresh && liveRouteCurrent(LIVE.route, liveOrigin(fix))) {
     const R = LIVE.route, dep = LIVE.phase === 'imminent' ? b.dep : now;
     const leg = { k: 'live', from: { lat: R.o.lat, lon: R.o.lon, label: 'Ma position', city: 'Ma position' }, to: { lat: R.d.lat, lon: R.d.lon, label: R.d.name, city: R.d.name },
       km: R.km, min: R.min, dep, arr: addMin(dep, R.min), pts: R.pts, g: R.g, routed: true };
     const r = legEval(leg);
-    if (r.res) { a = { leg, r, fixTs: fix.ts, gen: R.gen }; LIVE.last = a; LIVE.lastOk = Date.now(); }
+    if (r.res) { a = { leg, r, fixTs: fix.ts, gen: R.gen }; LIVE.last = a; LIVE.lastOk = Date.now(); }   // bascule atomique : route ET météo prêtes
   }
-  if (!a && LIVE.last && Date.now() - LIVE.lastOk <= LIVE_GRACE) a = LIVE.last;   // panne passagère : dernière analyse, signalée
-  else if (!a && LIVE.last) gpsOld = true;
+  let old = null;
+  if (!a && LIVE.last && Date.now() - LIVE.lastOk <= LIVE_GRACE) { a = LIVE.last; old = fresh ? 'route' : 'gps'; }   // dernière analyse, marquée ancienne
   if (!a) return LIVE.last ? { ...b, liveLost: true } : b;   // repli explicite après un premier résultat ; sinon trajet planifié, sans mention
-  const { leg, r } = a, age = Date.now() - (gpsOld ? a.fixTs : fix.ts);
+  const { leg, r } = a, hm = new Date(LIVE.lastOk).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
   return { ...b, live: LIVE.phase, liveGen: a.gen, planDep: b.dep, dep: leg.dep, arr: leg.arr, running: run, from: '📍 Ma position', l: leg, obs: null,
     res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.worst, wait: false,
-    gpsTxt: gpsOld ? `📍 GPS ancien · dernière analyse ${new Date(LIVE.lastOk).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}` : `📍 GPS · actualisé il y a ${liveAgo(age)}` };
+    gpsTxt: old === 'gps' ? `📍 GPS ancien · dernière analyse ${hm}` : old === 'route' ? `📍 Itinéraire non actualisé · dernière analyse ${hm}` : `📍 GPS · actualisé il y a ${liveAgo(Date.now() - fix.ts)}` };
 }
 // appliqué à la timeline : retire les trajets terminés, garde le trajet commencé après son heure prévue, rend vivant un seul trajet
 function liveApply(T, now) {

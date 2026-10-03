@@ -52,6 +52,7 @@ async function session(b, iso, opt = {}) {
     if (u.includes('open-meteo.com')) {
       const q = new URL(u).searchParams, lats = String(q.get('latitude')).split(','), lons = String(q.get('longitude')).split(',');
       if (S.meteoDownLat && lats.some(v => v.startsWith(S.meteoDownLat))) return r.abort();
+      if (S.meteoHoldLat && S.meteoHold && lats.some(v => v.startsWith(S.meteoHoldLat))) { S.meteoHeld = (S.meteoHeld || 0) + 1; await S.meteoHold; }
       const one = i => ctx.mk('doux', { lat: +lats[i], lon: +lons[i] }, 'Europe/Paris', 0);
       if (lats.length > 1) return J(lats.map((_, i) => one(i)));
       const base = one(0); if (u.includes('ensemble')) return J(ctx.me(base)); if (q.get('minutely_15')) return J(ctx.mn(base)); return J(base);
@@ -164,6 +165,33 @@ const osrmFromGps = S => S.osrm.filter(x => GPS_MARK.some(v => x.includes(v)));
     const o = await p.evaluate(() => LIVE.routeOrigin), t = await s.waitFor(/Ma position/);
     check('D · réponse ancienne ignorée : la route reste celle de la position la plus récente', o && o.lat === 49.399 && o.lon === 3.333 && S.osrm.length >= 2, JSON.stringify(o));
     check('D · affichage cohérent après le chevauchement', /Ma position\s*→\s*Amiens/i.test(t));
+  }
+  // ===== G. route A réussie, déplacement > 1 km, OSRM B en panne : A n'est jamais présentée comme fraîche, lastOk figé, repli à 5 min =====
+  {
+    const s = await session(b, '2026-10-03T14:30:00+02:00'); const { p, S } = s; all.push(s);
+    await s.enableGps(G.lille); let t = await s.waitFor(/GPS · actualisé/);
+    check('G1 · route A calculée : analyse actuelle', /Ma position\s*→\s*Amiens/i.test(t) && /GPS · actualisé/.test(t));
+    S.osrmDown = true; await s.to('2026-10-03T14:31:00+02:00'); await s.fix(G.autre); await s.settle(6); t = await s.txt();
+    const ok0 = await p.evaluate(() => LIVE.lastOk);
+    check('G2 · GPS B frais mais route B en panne : A jamais présentée comme fraîche', !/GPS · actualisé/.test(t) && /Itinéraire non actualisé · dernière analyse 14:3\d/.test(t) && /Ma position/i.test(t), t.slice(0, 220));
+    await s.to('2026-10-03T14:32:30+02:00'); await s.fix(G.autre); await s.settle(6); await s.fix(G.autre); await s.settle(4);
+    const ok1 = await p.evaluate(() => LIVE.lastOk);
+    check('G3 · nouveaux relevés et rendus : lastOk n\'avance pas', ok1 === ok0, `${ok0} → ${ok1}`);
+    await s.to('2026-10-03T14:36:30+02:00'); await s.fix(G.autre); await s.settle(6); t = await s.txt();
+    check('G4 · au-delà de 5 min : « Suivi GPS indisponible · trajet planifié affiché »', /Suivi GPS indisponible · trajet planifié affiché/.test(t) && !/GPS · actualisé|Itinéraire non actualisé/.test(t), t.slice(0, 200));
+  }
+  // ===== H. route B réussie mais météo B en retard : B n'est promue qu'une fois route ET météo complètes =====
+  {
+    const s = await session(b, '2026-10-03T14:30:00+02:00'); const { p, S } = s; all.push(s);
+    await s.enableGps(G.lille); let t = await s.waitFor(/GPS · actualisé/);
+    const genA = await p.evaluate(() => LIVE.last && LIVE.last.gen);
+    let release; S.meteoHold = new Promise(r => { release = r; }); S.meteoHoldLat = '49.399';
+    await s.to('2026-10-03T14:31:00+02:00'); await s.fix(G.autre); await s.settle(5); t = await s.txt();
+    const st = await p.evaluate(() => ({ route: LIVE.route && LIVE.route.gen, last: LIVE.last && LIVE.last.gen, o: LIVE.routeOrigin }));
+    check('H1 · route B prête, météo B en attente : l\'analyse A reste affichée, marquée non actualisée', !!S.meteoHeld && st.route !== genA && st.last === genA && /Itinéraire non actualisé/.test(t) && !/GPS · actualisé/.test(t), JSON.stringify(st));
+    release(); S.meteoHoldLat = null; await s.settle(6); t = await s.waitFor(/GPS · actualisé/);
+    const st2 = await p.evaluate(() => ({ route: LIVE.route && LIVE.route.gen, last: LIVE.last && LIVE.last.gen }));
+    check('H2 · météo B arrivée : bascule atomique vers B', st2.last === st2.route && st2.last !== genA && /GPS · actualisé/.test(t), JSON.stringify(st2));
   }
   // ===== E. lundi 05:30 : boulot 06:30 et agenda 06:46 dans la même fenêtre → un seul trajet vivant =====
   {

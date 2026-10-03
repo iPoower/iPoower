@@ -40,7 +40,8 @@ puis score pneus, chaussée, pluie, visibilité, verglas et point critique sur c
 | Position utilisable | précision ≤ 250 m ; relevé (`pos.timestamp`) ≤ 5 min avant départ, ≤ 2 min en trajet. **Aucune transition d'état sur un relevé périmé** (référence ≤ 5 min ; départ, vitesse et arrivée ≤ 2 min) |
 | Phases | imminent → départ prévu dépassé (aucun mouvement) → en cours (mouvement confirmé : > max(300 m, 2 × incertitude), ou > 2 m/s sur deux relevés précis) → arrivé (deux relevés ≤ 150 m de précision à moins de 300 m) |
 | Recalcul | après ~1 km ou 10 min, jamais plus d'une fois par 30 s. Réponses tardives : OSRM est protégé par un compteur de génération (`LIVE.gen`) ; la météo est isolée par la clé géographique de chaque route (`legKey` / `LEGM`), une réponse d'une ancienne route n'est jamais lue pour la route courante |
-| Pannes | trajet planifié tant qu'aucune analyse vivante n'existe ; ensuite dernière analyse « GPS ancien » pendant 5 min, puis repli explicite |
+| Analyse « actuelle » | seulement si relevé frais + route **courante pour ce relevé** (même trajet, origine ≤ 1 km, calculée il y a ≤ 10 min) + météo de **cette** route prête. Bascule atomique : une nouvelle route n'est affichée qu'avec sa météo |
+| Pannes | trajet planifié tant qu'aucune analyse vivante n'existe ; ensuite dernière analyse marquée « GPS ancien » (relevé périmé) ou « Itinéraire non actualisé » (GPS frais, route ou météo pas à jour), `lastOk` figé, 5 min au plus, puis repli explicite |
 | Durée de vie | jamais parti : arrivée prévue + 30 min ; parti : jusqu'à l'arrivée (coupe-circuit : arrivée prévue + max(60 min, 2 × durée)) |
 | Batterie | basse consommation hors trajet ; demande ponctuelle précise avant le départ ; haute précision continue seulement en trajet |
 
