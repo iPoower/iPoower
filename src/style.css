@@ -339,7 +339,7 @@ html { scroll-behavior: smooth; }
 
 /* ---------- mode Météo, radar, air ---------- */
 .seg.view { align-self: flex-start; }
-.seg.view button { padding: 7px 16px; font-size: 13.5px; min-height: 38px; }
+.seg.view button { padding: 7px 16px; font-size: 13.5px; min-height: 44px; min-width: 44px; }
 .vm #secCars, .vm #secBrief, .vm #secCmp, .vm #secSeason, .vm #secJournal { display: none !important; }
 /* Tenue conserve le cockpit et utilise uniquement son propre panneau. */
 .vt .wrap > .mod:not(#secTenue):not(#settings), .vt #secCars, .vt #banners, .vt .foot { display: none !important; }
@@ -372,6 +372,23 @@ html { scroll-behavior: smooth; }
 .outfit-evolution .evo > div, .outfit-evolution .evo b { font-size: 14px; }
 .outfit-method { border-top: 1px solid var(--line); padding-top: 12px; }
 .outfit-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.outfit-base-title, .outfit-plan > h3 { font-size: 18px; font-weight: 600; margin: 0 0 10px; }
+.outfit-status { display: inline-block; font-size: 14px; padding: 8px 12px; color: var(--accent); border: 1px solid var(--line2); border-radius: 4px; }
+.outfit-status[data-confirmed="false"], .outfit-uncertainty { color: var(--risk-t); }
+.outfit-timeline { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 12px; }
+.outfit-period { min-width: 0; padding: 14px; background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 4px; overflow-wrap: anywhere; }
+.outfit-period.uncertain { border-left-color: var(--risk-t); }
+.outfit-period-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 5px; }
+.outfit-period-head time { font: 500 14px var(--f-mono); color: var(--accent); }
+.outfit-period-head b { font-size: 16px; min-width: 0; }
+.outfit-period-weather { display: grid; gap: 6px; margin-top: 12px; font-size: 14px; color: var(--fg2); }
+.outfit-period-weather b { color: var(--fg); font-weight: 500; }
+.outfit-uncertainty { display: block; margin-top: 10px; font-size: 14px; }
+.outfit-layers { margin-block: 12px; }
+.outfit-layers > b { color: var(--fg); }
+.outfit-actions { margin: 10px 0 0; padding-left: 19px; font-size: 14px; line-height: 1.55; }
+.outfit-actions li + li { margin-top: 5px; }
+.outfit-carry li { overflow-wrap: anywhere; }
 @media (max-width: 560px) { .outfit-pieces { grid-template-columns: minmax(0, 1fr); } .seg.view button { padding-inline: 12px; min-height: 44px; } }
 @media (max-width: 360px) { .outfit-metrics { grid-template-columns: minmax(0, 1fr); } .outfit-metrics > div + div { border-left: 0; border-top: 1px solid var(--line); } .outfit-controls .seg button { padding-inline: 9px; } }
 .radar { position: relative; }
