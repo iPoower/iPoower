@@ -966,9 +966,17 @@ function liveDonePersist(key, how) {
   let o = {}; try { o = JSON.parse(lsGet(TRIPDONE) || '{}') || {}; } catch (e) { o = {}; }
   const n = Date.now(); Object.keys(o).forEach(k => { if (!(o[k] && o[k].exp > n)) delete o[k]; });
   if (how) o[key] = { how, at: n, exp: n + 24 * 3600e3 }; else delete o[key];
-  lsSet(TRIPDONE, JSON.stringify(o));
+  if (Object.keys(o).length) lsSet(TRIPDONE, JSON.stringify(o)); else { try { localStorage.removeItem(TRIPDONE); } catch (e) { /* stockage indisponible */ } }
 }
-(function liveDoneLoad() { try { const o = JSON.parse(lsGet(TRIPDONE) || '{}') || {}, n = Date.now(); Object.keys(o).forEach(k => { if (o[k] && o[k].exp > n) LIVE.done[k] = 'arrivé'; }); } catch (e) { /* stockage */ } })();
+// chargement : les entrées expirées sont réellement effacées du stockage (clé supprimée si plus rien n'est à garder)
+function liveDoneLoad() {
+  let o = null; try { o = JSON.parse(lsGet(TRIPDONE) || 'null'); } catch (e) { o = null; }
+  if (o === null && lsGet(TRIPDONE) == null) return;
+  const n = Date.now(), keep = {};
+  if (o && typeof o === 'object') Object.keys(o).forEach(k => { if (o[k] && o[k].exp > n) { keep[k] = o[k]; LIVE.done[k] = 'arrivé'; } });
+  try { if (Object.keys(keep).length) localStorage.setItem(TRIPDONE, JSON.stringify(keep)); else localStorage.removeItem(TRIPDONE); } catch (e) { /* stockage indisponible */ }
+}
+liveDoneLoad();
 let FIX = null, FIXPREV = null;   // derniers relevés bruts ; ts = pos.timestamp (heure réelle du relevé, pas l'heure de réception)
 const liveNow = () => nowIn('Europe/Paris');
 const liveMin = (a, b) => (tsToDate(b) - tsToDate(a)) / 60e3;
@@ -1004,9 +1012,9 @@ const liveArrDest = b => b.src === 'cal' && b.l && b.l.k === 'ret' ? (homeExact(
 const LIVE_CAR = 2;
 function liveSpeed(a, b) {
   if (!a || !b || b.ts <= a.ts) return null;
-  if (b.speed != null) return b.speed;
+  if (b.speed != null) return b.speed;   // vitesse mesurée par le GPS : propre à ce relevé
   const dt = (b.ts - a.ts) / 1000, d = distKm(a, b) * 1000;
-  if (dt < 5) return null;
+  if (dt < 5 || b.ts - a.ts > LIVE_AGE_IMM) return null;   // intervalle trop court ou de plus de 5 min : vitesse non mesurable
   return d <= 2 * (a.acc + b.acc) ? 0 : d / dt;
 }
 function liveArrive(how) {
@@ -1022,13 +1030,14 @@ function liveAskNow() {
 }
 // chaque nouveau relevé : arrivée (dans TOUTES les phases), puis départ. L'heure conseille QUAND partir ; seul le mouvement décide
 // SI le trajet a commencé. Aucune transition sur un relevé périmé (pos.timestamp) ou imprécis. Jamais au rendu : un rendu ne recrée rien.
-//   arrivée : 2 relevés frais (≤ 2 min), précis (≤ 150 m), distincts, à ≤ 300 m → arrivé ; ≤ 1,5 km → « arrivée probable » (confirmation manuelle)
+//   arrivée (fenêtre vivante seulement, jamais en aperçu) : 2 relevés frais (≤ 2 min), précis (≤ 150 m), distincts, à ≤ 300 m → arrivé ; ≤ 1,5 km → « arrivée probable » (confirmation manuelle)
 //   départ : référence figée une seule fois + déplacement > max(300 m, 2 × incertitude) + vitesse automobile (> 2 m/s) sur 2 relevés successifs,
 //            mesurée ou déduite ; dès la fenêtre vivante (90 min avant le plus tôt des départs prévu / conseillé), sans attendre l'heure
 function liveOnFix(fix) {
   if (!LIVE.key || !LIVE.base) { if (liveAllowed()) { clearTimeout(liveOnFix.t); liveOnFix.t = setTimeout(renderBrf, 300); } return; }
   const ad = liveArrDest(LIVE.base);
-  if (ad && fix.ts !== LIVE.arrTs && liveFresh(fix, LIVE_AGE_RUN)) {   // un relevé périmé ne compte pas et n'interrompt pas la série
+  if (LIVE.phase === 'advice') { LIVE.arrN = 0; LIVE.near = null; }   // aperçu (jusqu'à 4 h avant) : ni arrivée automatique, ni arrivée probable
+  else if (ad && fix.ts !== LIVE.arrTs && liveFresh(fix, LIVE_AGE_RUN)) {   // un relevé périmé ne compte pas et n'interrompt pas la série
     LIVE.arrTs = fix.ts;
     const d = distKm(fix, ad), sure = fix.acc <= LIVE_ACC_ARR;
     LIVE.arrN = sure && d <= LIVE_ARR_KM ? LIVE.arrN + 1 : 0;
@@ -1039,7 +1048,8 @@ function liveOnFix(fix) {
   if (LIVE.phase !== 'active') {
     if (!LIVE.startFix) { if (liveFresh(fix, LIVE_AGE_IMM)) LIVE.startFix = LIVE.lastFix = fix; }   // référence figée une seule fois
     else if (liveFresh(fix, LIVE_AGE_RUN) && fix.ts !== (LIVE.lastFix && LIVE.lastFix.ts)) {
-      const v = liveSpeed(LIVE.lastFix, fix); if (v != null) LIVE.carN = v > LIVE_CAR ? LIVE.carN + 1 : 0;
+      const v = liveSpeed(LIVE.lastFix, fix), gap = fix.ts - LIVE.lastFix.ts > LIVE_AGE_IMM;
+      LIVE.carN = v != null && v > LIVE_CAR ? (gap ? 1 : LIVE.carN + 1) : 0;   // mesure impossible = série cassée ; plus de 5 min d'écart = nouvelle série
       const sf = LIVE.startFix, thr = Math.max(0.3, 2 * Math.max(fix.acc, sf.acc) / 1000);
       if (LIVE.phase !== 'advice' && LIVE.carN >= 2 && distKm(sf, fix) > thr) { LIVE.phase = 'active'; startWatch(true); }   // suivi haute précision continu
       LIVE.lastFix = fix;
@@ -1149,7 +1159,12 @@ function liveApply(T, now) {
   if (LIVE.phase !== 'active') {   // suivi vivant dès min(départ prévu, départ conseillé) − 90 min ; jamais plus tard que la règle des 90 min
     const eff = liveEffDep(LIVE.base);
     if (LIVE.phase === 'advice' && liveMin(now, liveFirst(LIVE.base.dep, eff)) > LIVE_WIN) { /* reste en aperçu */ }
-    else LIVE.phase = now < eff ? 'imminent' : 'late';
+    else {
+      const wasAdv = LIVE.phase === 'advice', k = LIVE.key; LIVE.phase = now < eff ? 'imminent' : 'late';
+      if (wasAdv) {   // entrée dans la fenêtre vivante : l'arrivée devient possible → relevé demandé, dernier relevé réexaminé
+        setTimeout(() => { if (LIVE.key === k) { LIVE.hiAt = 0; liveAskFix(); if (FIX) liveOnFix(FIX); } }, 0);
+      }
+    }
   }
   const lt = liveTrip(LIVE.base, now);
   return T.map(t => t.key === LIVE.key ? lt : t);

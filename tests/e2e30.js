@@ -115,9 +115,10 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
   {
     const s = await session(b, '2026-10-03T14:00:00+02:00'); all.push(s);
     await s.enableGps(G.lille); await s.waitFor(/départ conseillé/i);
-    await s.to('2026-10-03T14:20:00+02:00'); await s.fix(G.roule, { speed: 22 }); await s.settle(2); await s.to('2026-10-03T14:20:15+02:00'); await s.fix(G.roule, { speed: 22 });
+    await s.to('2026-10-03T14:20:00+02:00'); await s.settle(2);   // relevés sollicités à l'arrêt traités avant le mouvement (horodatages distincts)
+    await s.to('2026-10-03T14:20:10+02:00'); await s.fix(G.roule, { speed: 22 }); await s.settle(2); await s.to('2026-10-03T14:20:25+02:00'); await s.fix(G.roule, { speed: 22 });
     let t = await s.waitFor(/TRAJET EN COURS/i);
-    check('2 · départ 90 min en avance : « en cours » dès le mouvement, sans attendre l\'heure conseillée', /TRAJET EN COURS/i.test(t) && (await ph(s)) === 'active', t.slice(0, 140));
+    check('2 · départ 90 min en avance : « en cours » dès le mouvement, sans attendre l\'heure conseillée', /TRAJET EN COURS/i.test(t) && (await ph(s)) === 'active', t.slice(0, 140) + ' · ' + await s.p.evaluate(() => JSON.stringify({ ph: LIVE.phase, carN: LIVE.carN, key: LIVE.key, sf: LIVE.startFix && [LIVE.startFix.lat, LIVE.startFix.lon, new Date(LIVE.startFix.ts).toISOString()], lf: LIVE.lastFix && new Date(LIVE.lastFix.ts).toISOString(), fix: FIX && [FIX.lat, FIX.lon, FIX.speed, new Date(FIX.ts).toISOString()] })));
     await s.to('2026-10-03T15:20:00+02:00'); await s.fix(G.amiens, { acc: 20 }); await s.settle(2); await s.to('2026-10-03T15:20:20+02:00'); await s.fix(G.amiens, { acc: 20 }); await s.settle(5); t = await s.txt();
     check('2 · arrivée détectée (même largement avant l\'heure cible)', /✓ Arrivé · Aller · Assurance/.test(t) && !/Assurance/.test(main(t)), t.slice(0, 120));
   }
@@ -187,6 +188,43 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
     await s.enableGps(G.loin); await s.waitFor(/départ conseillé/i);
     await s.to('2026-10-03T12:10:00+02:00'); await s.fix(G.loin2, { speed: 14 }); await s.settle(2); await s.to('2026-10-03T12:10:20+02:00'); await s.fix(G.loin3, { speed: 14 }); await s.settle(4);
     check('14 · course en voiture 3 h 30 avant (aperçu) : pas de faux départ, pas de haute précision continue', (await ph(s)) === 'advice' && !(await s.p.evaluate(() => window.__geoWatches())).includes(true), await ph(s));
+  }
+  // ===== 15. aperçu (3 h 30 avant) : deux relevés précis À la destination → ni arrivée, ni arrivée probable ; arrivée dès la fenêtre vivante =====
+  {
+    const s = await session(b, '2026-10-03T12:00:00+02:00'); const { p } = s; all.push(s);
+    await s.enableGps(G.amiens, { acc: 10 }); await s.settle(3);
+    await s.to('2026-10-03T12:00:20+02:00'); await s.fix(G.amiens, { acc: 10 }); await s.settle(2); await s.to('2026-10-03T12:00:40+02:00'); await s.fix(G.amiens, { acc: 10 }); await s.settle(4);
+    let t = await s.txt(); const ls0 = await p.evaluate(() => localStorage.getItem('twrc.tripdone'));
+    check('15 · 3 h 30 avant, deux relevés précis à destination : trajet présent, phase aperçu, aucune arrivée', (await ph(s)) === 'advice' && /Assurance/.test(main(t)) && !/✓ Arrivé/.test(t) && !/Arrivée probable/.test(t) && !ls0, `${await ph(s)} · ${t.slice(0, 120)}`);
+    await s.to('2026-10-03T14:10:00+02:00'); t = await s.waitFor(/✓ Arrivé · Aller · Assurance/, 30);
+    check('15 · entrée dans la fenêtre vivante, toujours sur place : arrivée automatique', /✓ Arrivé · Aller · Assurance/.test(t) && !/Assurance/.test(main(t)), t.slice(0, 160));
+    // ===== 16. twrc.tripdone réellement purgé au chargement =====
+    const reload = async () => { await p.reload(); for (let k = 0; k < 40; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(300); await p.waitForTimeout(200); } await s.settle(3); };
+    await p.evaluate(() => { const o = JSON.parse(localStorage.getItem('twrc.tripdone') || '{}'); o['leg|2026-09-30T08:00|go|vieux'] = { how: 'auto', at: Date.now() - 25 * 3600e3, exp: Date.now() - 3600e3 }; localStorage.setItem('twrc.tripdone', JSON.stringify(o)); });
+    await reload(); const ls1 = await p.evaluate(() => localStorage.getItem('twrc.tripdone') || '');
+    check('16 · entrée expirée effacée du stockage au chargement, entrée valide conservée', !/vieux/.test(ls1) && /15:33\|go/.test(ls1), ls1);
+    await p.evaluate(() => localStorage.setItem('twrc.tripdone', JSON.stringify({ 'leg|2026-09-30T08:00|go|vieux': { how: 'auto', at: Date.now() - 25 * 3600e3, exp: Date.now() - 3600e3 } })));
+    await reload(); const ls2 = await p.evaluate(() => localStorage.getItem('twrc.tripdone'));
+    check('16 · uniquement des entrées expirées : clé twrc.tripdone supprimée', ls2 === null, String(ls2));
+  }
+  // ===== 17. deux vitesses CONSÉCUTIVES : un intervalle non mesurable (< 5 s, sans speed) casse la série =====
+  {
+    const s = await session(b, '2026-10-03T14:20:00+02:00'); all.push(s);
+    await s.enableGps(G.lille); await s.settle(3);
+    await s.to('2026-10-03T14:20:30+02:00'); await s.fix(P(G.lille, 0, -0.0062), { speed: null }); await s.settle(1);   // rapide (~15 m/s)
+    await s.to('2026-10-03T14:20:32+02:00'); await s.fix(P(G.lille, 0, -0.0065), { speed: null }); await s.settle(1);   // 2 s : non mesurable
+    await s.to('2026-10-03T14:21:02+02:00'); await s.fix(P(G.lille, 0, -0.0124), { speed: null }); await s.settle(2);   // rapide
+    const p1 = await ph(s);
+    await s.to('2026-10-03T14:21:32+02:00'); await s.fix(P(G.lille, 0, -0.0186), { speed: null }); await s.settle(3);   // rapide : vraie 2e mesure consécutive
+    check('17 · rapide → intervalle non mesurable → rapide : pas encore parti ; mesure consécutive suivante : parti', p1 !== 'active' && (await ph(s)) === 'active', `${p1} → ${await ph(s)}`);
+  }
+  // ===== 17b. deux mesures rapides séparées de plus de 5 min : pas consécutives =====
+  {
+    const s = await session(b, '2026-10-03T14:20:00+02:00'); all.push(s);
+    await s.enableGps(G.lille); await s.settle(3);
+    await s.to('2026-10-03T14:20:30+02:00'); await s.fix(P(G.lille, 0, -0.0062), { speed: 14, max: 0 }); await s.settle(1);   // max 0 : aucun relevé intermédiaire
+    await s.to('2026-10-03T14:26:30+02:00'); await s.fix(P(G.lille, 0, -0.0300), { speed: 14, max: 0 }); await s.settle(2);
+    check('17 · deux relevés rapides à 6 min d\'intervalle : pas une série consécutive, pas parti', (await ph(s)) !== 'active', await ph(s));
   }
   for (const s of all) await s.c.close();
   console.log(rows.join('\n') + `\n\n${rows.length - fail}/${rows.length} scénarios OK · erreurs JS : ${errs.length ? errs.join(' | ') : 'aucune'}`);
