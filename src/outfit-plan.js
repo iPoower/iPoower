@@ -216,7 +216,7 @@ function outfitDayPlan(input) {
       prev.e = p.e; prev.readings.push(...p.readings); prev.weather = outfitWeather(prev.readings);
     } else timeline.push({ ...p, readings: [...p.readings] });
   });
-  const title = advice && (advice.low <= 7 && !(layers.used & 2) ? advice.low <= 0 ? 'Grand froid · manteau et couches chaudes' : 'Froid · manteau amovible' : advice.title);
+  const title = advice && advice.title.split(' · ')[0] + ' · couches amovibles';
   const base = advice ? { ...advice, title, pieces: [
     { label: 'Veste · base amovible', item: layers.labels.jacket, detail: 'La même veste sur la journée ; la timeline indique quand la porter ou la retirer.' },
     { label: 'Chemise', item: advice.high > 25 ? 'Chemise légère en lin' : advice.high > 19 ? 'Chemise légère en coton ou lin' : 'Chemise en coton', detail: 'Une seule chemise, avec les couches amovibles prévues par-dessus.' },

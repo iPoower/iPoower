@@ -88,6 +88,7 @@ test('froid → doux → soir froid : plusieurs adaptations, toujours une seule 
 test('seuils voisins : la couche reste stable pour éviter des allers-retours inutiles', () => {
   const p = ctx.plan(input(h => ({ T: h % 2 ? 12.9 : 13.1, Tapp: h % 2 ? 12.9 : 13.1 })));
   assert.equal(p.adaptations, 0); assert.equal(p.minimalPieces, 1);
+  if (!p.extras.some(x => x.id === 'knit')) assert(!/maille/.test(p.base.title));
 });
 test('données partielles : repli sur l’air sans inventer pluie et rafales', () => {
   const p = ctx.plan(input(() => ({ Tapp: null, pp: null, P: null, gust: null, snow: null, code: null })));
