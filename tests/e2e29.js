@@ -85,19 +85,23 @@ async function session(b, iso, opt = {}) {
 }
 const W = 'a[href^="https://waze.com/ul?"]';
 const links = (p, sel) => p.$$eval(sel + ' ' + W, a => a.map(x => ({ h: x.getAttribute('href'), t: x.getAttribute('target'), r: x.getAttribute('rel') || '' }))).catch(() => []);
+// domicile local exact simulé : le relais (et donc l'agenda) ne connaît que le domicile arrondi 48.85,2.35
+const HOME = { lat: 48.84627, lon: 2.34478 };   // à ~600 m du point arrondi du relais, sans fragment commun avec les positions GPS simulées
+const exactHome = async s => { await s.p.evaluate(h => { const L = S.locs, x = L.find(l => l.id === 'home') || L[0]; x.lat = h.lat; x.lon = h.lon; renderCal(); renderBrf(); }, HOME); await s.settle(3); };
 const ll = h => (/ll=([-\d.]+),([-\d.]+)/.exec(h) || []).slice(1).join(',');
 (async () => {
   const b = await require('./lib/browser').launch(); const all = [];
   // ===== 1. samedi 15:00, trajet agenda planifié (Assurance → Amiens), sans GPS =====
   {
     const s = await session(b, '2026-10-03T15:00:00+02:00'); const { p, S } = s; all.push(s); let popups = 0; p.on('popup', () => popups++);
-    await s.waitFor(/Assurance/); await s.settle(6);
+    await s.waitFor(/Assurance/); await exactHome(s); await s.settle(6);
     const L = await links(p, '#secBrf');
     check('1 · briefing : « Ouvrir dans Waze » vers la destination du trajet affiché (Amiens)', L.length === 1 && ll(L[0].h) === '49.207,2.586' && /navigate=yes/.test(L[0].h), JSON.stringify(L));
     check('1 · lien externe sûr : nouvel onglet, noopener', L[0] && L[0].t === '_blank' && /noopener/.test(L[0].r));
     check('1 · aucune ouverture automatique : aucune requête vers Waze, aucune fenêtre', !S.waze && popups === 0);
     const A = (await links(p, '#secCal')).map(x => ll(x.h));
-    check('1 · agenda : aller vers le rendez-vous, retour vers le domicile', A.includes('49.207,2.586') && A.includes('48.85,2.35'), A.join(' | '));
+    check('1 · agenda : aller vers le rendez-vous', A.includes('49.207,2.586') && A.includes('49.381,3.323'), A.join(' | '));
+    check('1 · agenda : retour vers le domicile local EXACT, jamais le domicile arrondi du relais', A.includes('48.84627,2.34478') && !A.includes('48.85,2.35'), A.join(' | '));
     check('1 · plus aucun lien Apple Plans', !(await p.content()).includes('maps.apple.com'));
     // la fenêtre ouverte par le clic est une nouvelle page : Waze est simulé au niveau du contexte (sinon le filet de sécurité la bloque)
     await s.c.route('https://waze.com/**', r => { S.reqs.push({ u: r.request().url(), m: r.request().method() }); S.waze = (S.waze || []).concat(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>waze</body></html>' }); });
@@ -108,7 +112,12 @@ const ll = h => (/ll=([-\d.]+),([-\d.]+)/.exec(h) || []).slice(1).join(',');
   {
     const s = await session(b, '2026-10-05T05:30:00+02:00'); all.push(s);
     await s.waitFor(/DOMICILE-TRAVAIL/i); await s.settle(4); const L = await links(s.p, '#secBrf');
-    check('2 · boulot : destination = travail', L.length === 1 && ll(L[0].h) === '48.9,2.25', JSON.stringify(L));
+    check('2 · boulot aller : destination = travail', L.length === 1 && ll(L[0].h) === '48.9,2.25', JSON.stringify(L));
+  }
+  {
+    const s = await session(b, '2026-10-05T15:30:00+02:00'); all.push(s);
+    await s.waitFor(/Retour domicile-travail/i); await exactHome(s); await s.settle(4); const L = await links(s.p, '#secBrf');
+    check('2 · boulot retour : destination = domicile local exact', L.length === 1 && ll(L[0].h) === '48.84627,2.34478', JSON.stringify(L));
   }
   // ===== 3. ordinateur : bouton visible (le bouton « Voir le trajet » y est masqué, Waze non) =====
   {
@@ -125,8 +134,9 @@ const ll = h => (/ll=([-\d.]+),([-\d.]+)/.exec(h) || []).slice(1).join(',');
   // ===== 5. retour vivant (Concert → domicile, départ 23:25) =====
   {
     const s = await session(b, '2026-10-03T22:30:00+02:00'); all.push(s);
-    await s.enableGps(G.loin); await s.waitFor(/Ma position/i); await s.settle(4); const L = await links(s.p, '#secBrf');
-    check('5 · retour vivant : Waze vers le domicile', L.length === 1 && ll(L[0].h) === '48.85,2.35' && !GPS_MARK.some(v => L[0].h.includes(v)), JSON.stringify(L));
+    await exactHome(s); await s.enableGps(G.loin); await s.waitFor(/Ma position/i); await s.settle(4); const L = await links(s.p, '#secBrf');
+    check('5 · retour vivant : Waze vers le domicile local exact, aucune coordonnée GPS', L.length === 1 && ll(L[0].h) === '48.84627,2.34478' && !GPS_MARK.some(v => L[0].h.includes(v)), JSON.stringify(L));
+    check('5 · OSRM garde le domicile arrondi à 0,01° (confidentialité inchangée)', s.S.osrm.some(x => x.endsWith(';2.35,48.85')) && !s.S.osrm.some(x => x.includes('2.345') && x.includes('48.846')), s.S.osrm.join(' | '));
   }
   const reqs = all.flatMap(s => s.S.reqs);
   check('Confidentialité · seule requête Waze : celle du clic de l\'utilisateur', reqs.filter(r => r.u.startsWith('https://waze.com/')).length === 1);

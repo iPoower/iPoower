@@ -1076,7 +1076,7 @@ function liveTrip(b, now) {
   if (!a && LIVE.last && Date.now() - LIVE.lastOk <= LIVE_GRACE) { a = LIVE.last; old = fresh ? 'route' : 'gps'; }   // dernière analyse, marquée ancienne
   if (!a) return LIVE.last ? { ...b, liveLost: true } : b;   // repli explicite après un premier résultat ; sinon trajet planifié, sans mention
   const { leg, r } = a, hm = new Date(LIVE.lastOk).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-  return { ...b, live: LIVE.phase, liveGen: a.gen, planDep: b.dep, adv: a.adv, dep: leg.dep, arr: leg.arr, running: run, from: '📍 Ma position', l: leg, obs: null,
+  return { ...b, live: LIVE.phase, liveGen: a.gen, planDep: b.dep, planL: b.l, adv: a.adv, dep: leg.dep, arr: leg.arr, running: run, from: '📍 Ma position', l: leg, obs: null,
     res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.worst, wait: false,
     gpsTxt: old === 'gps' ? `📍 GPS ancien · dernière analyse ${hm}` : old === 'route' ? `📍 Itinéraire non actualisé · dernière analyse ${hm}` : `📍 GPS · actualisé il y a ${liveAgo(Date.now() - fix.ts)}` };
 }
@@ -1181,8 +1181,12 @@ function renderBrf() {
 // Waze part lui-même de la position courante de l'appareil (aucune origine, aucune position GPS envoyée) ; rien n'est stocké.
 const wazeUrl = p => p && p.lat != null && p.lon != null && isFinite(+p.lat) && isFinite(+p.lon) ? `https://waze.com/ul?ll=${+p.lat},${+p.lon}&navigate=yes` : null;
 const wazeBtn = p => { const u = wazeUrl(p); return u ? `<a class="btn sm" href="${u}" target="_blank" rel="noopener noreferrer">🚙 Ouvrir dans Waze</a>` : ''; };
-// destination du trajet AFFICHÉ (vivant, adaptatif, agenda ou boulot)
-const tripTo = t => (t.l && t.l.to && t.l.to.lat != null) ? t.l.to : (t.td && t.td.LB) || null;
+// domicile local EXACT (préréglage de l'appareil). Le relais n'a qu'un domicile arrondi à 0,01° (confidentialité des appels OSRM) :
+// pour Waze, ouvert par l'utilisateur, un retour vise le vrai domicile. L'arrondi OSRM, le relais et l'agenda chiffré ne changent pas.
+const homeExact = () => { const L = S.locs || [], h = L.find(l => l.id === 'home') || L[0]; return h && h.lat != null ? h : null; };
+const legNavTo = leg => leg && leg.k === 'ret' ? (homeExact() || leg.to) : leg && leg.to;
+// destination du trajet AFFICHÉ (vivant, adaptatif, agenda ou boulot) ; planL = trajet agenda d'origine d'un trajet vivant
+const tripTo = t => t.src === 'cal' ? ((t.planL || t.l || {}).k === 'ret' ? homeExact() || (t.l && t.l.to) : (t.l && t.l.to)) : (t.td && t.td.LB) || (t.l && t.l.to) || null;
 // carte de briefing complète, identique pour un trajet domicile-travail et un trajet agenda
 function briefCard(t, dayLbl) {
   const src = t.src === 'work' ? 'domicile-travail' : 'agenda';
@@ -1364,7 +1368,7 @@ function legHtml(leg, ev) {
   const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${leg.dep.slice(11, 16)}</b> → ${leg.arr.slice(11, 16)} · ${f0(leg.km)} km · ${leg.min} min${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''} · ${cdSpan(leg.dep)}</div>
     <div class="leg-src">${leg.routed ? '<i class="tag prev">🛣 route · OSRM</i>' : '<i class="tag est">≈ route estimée</i>'}</div>
     <div class="leg-o">${go ? (leg.fromKind === 'prev' ? '↪ depuis ' + esc(leg.from.label || 'le rendez-vous précédent') + (leg.chosen ? ' (enchaînement choisi)' : ' (rendez-vous précédent)') : '🏠 depuis le domicile') : '🏠 vers le domicile'}</div>`;
-  const nav = wazeBtn(leg.to);
+  const nav = wazeBtn(legNavTo(leg));
   let body;
   if (r.loading) body = `<div class="cal-v"><span class="sub">Analyse de la météo le long de la route…</span>${nav}</div>`;
   else if (r.err) body = `<div class="cal-v"><span class="sub">Météo indisponible pour ce trajet.</span>${nav}</div>`;

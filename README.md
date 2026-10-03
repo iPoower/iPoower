@@ -61,6 +61,8 @@ mais la position n'est jamais envoyée à GitHub pour synchroniser une notificat
 « 🚙 Ouvrir dans Waze » sur le trajet affiché (briefing, y compris trajet vivant ou adaptatif) et sur chaque trajet de l'agenda :
 lien universel `https://waze.com/ul?ll=LAT,LON&navigate=yes` vers la **destination** du trajet. Ouverture uniquement après un geste
 de l'utilisateur ; aucune origine ni position GPS transmise (Waze part de la position courante de l'appareil) ; rien n'est stocké.
+Retour au domicile : Waze reçoit le **domicile local exact** (préréglage de l'appareil), pas le domicile arrondi à 0,01° du relais —
+cet arrondi reste en place pour tous les appels OSRM, le relais et l'agenda chiffré.
 
 ## Frontière des secrets
 
