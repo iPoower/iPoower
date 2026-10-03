@@ -29,6 +29,26 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
   Une fuite de `RC_KEY` n'ouvre ni l'app ni l'agenda. `tools/check-keys.js` vérifie, sans rien afficher, que chaque clé n'ouvre que ses fichiers (CI : job `confidentialite` ; en ligne : « contrôle des sources » lancé à la main).
 - `tools/check-secrets.js` compare chaque fichier aux valeurs privées (lues localement ou déchiffrées avec les secrets) et bloque le commit (`tools/pre-commit`) ou le build.
 
+## GPS dynamique (trajet vivant)
+
+Pour **un seul** trajet à la fois (celui en cours, sinon le prochain qui part dans 90 min ou moins), l'app remplace l'origine
+planifiée par la position réelle : itinéraire restant (OSRM, points météo placés selon le temps de parcours : départ, 25, 50, 75 %, arrivée),
+puis score pneus, chaussée, pluie, visibilité, verglas et point critique sur ce trajet restant.
+
+| Règle | Valeur |
+|---|---|
+| Position utilisable | précision ≤ 250 m ; relevé (`pos.timestamp`) ≤ 5 min avant départ, ≤ 2 min en trajet |
+| Phases | imminent → départ prévu dépassé (aucun mouvement) → en cours (mouvement confirmé : > max(300 m, 2 × incertitude), ou > 2 m/s sur deux relevés précis) → arrivé (deux relevés ≤ 150 m de précision à moins de 300 m) |
+| Recalcul | après ~1 km ou 10 min, jamais plus d'une fois par 30 s ; une réponse plus ancienne que la dernière demande est ignorée |
+| Pannes | trajet planifié tant qu'aucune analyse vivante n'existe ; ensuite dernière analyse « GPS ancien » pendant 5 min, puis repli explicite |
+| Durée de vie | jamais parti : arrivée prévue + 30 min ; parti : jusqu'à l'arrivée (coupe-circuit : arrivée prévue + max(60 min, 2 × durée)) |
+| Batterie | basse consommation hors trajet ; demande ponctuelle précise avant le départ ; haute précision continue seulement en trajet |
+
+**Confidentialité.** Tout se passe dans le navigateur, en mémoire : rien n'est stocké (ni `localStorage`, ni `twrc.croute`)
+ni publié (`obs.json`, agenda, relais et GitHub Actions inchangés). Aucun nouveau fournisseur externe : en mode trajet vivant,
+la position courante arrondie à 0,001° est en plus transmise à OSRM pour calculer le trajet restant (domicile et travail
+restent arrondis à 0,01° comme destination).
+
 ## Frontière des secrets
 
 Les vrais secrets (`APP_KEY`, `RC_KEY`, `GCAL_ICS`) vivent **uniquement dans l'Environment GitHub `production`**, dont la règle
