@@ -11,7 +11,8 @@ const PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4
 const U = 'https://ipoower.github.io/iPoower/race-control/', html = fs.readFileSync('site/index.html', 'utf8');
 // positions GPS fictives, aux décimales reconnaissables (pour suivre où elles partent)
 const G = { lille: { lat: 49.38471, lon: 3.30617 }, autre: { lat: 49.39913, lon: 3.33281 }, roule: { lat: 49.36752, lon: 3.27419 }, roule2: { lat: 49.36601, lon: 3.27163 },
-  milieu: { lat: 49.29183, lon: 2.95137 }, amiens: { lat: 49.20779, lon: 2.58743 }, maison: { lat: 48.85073, lon: 2.35119 } };
+  milieu: { lat: 49.29183, lon: 2.95137 }, amiens: { lat: 49.20779, lon: 2.58743 }, maison: { lat: 48.85073, lon: 2.35119 },
+  loin: { lat: 49.47213, lon: 2.71131 }, loin2: { lat: 49.47213, lon: 2.79437 }, loin3: { lat: 49.47213, lon: 2.82219 }, origine: { lat: 49.38127, lon: 3.32213 } };
 const GPS_MARK = Object.values(G).flatMap(g => [g.lat.toFixed(3), g.lon.toFixed(3)]).filter(v => !['49.207', '2.587'].includes(v));   // fragments propres au GPS
 const ALLOWED = /^(router\.project-osrm\.org|[a-z-]*api\.open-meteo\.com|api\.bigdatacloud\.net)$/;
 const rows = []; let fail = 0; const errs = [];
@@ -85,35 +86,43 @@ const osrmFromGps = S => S.osrm.filter(x => GPS_MARK.some(v => x.includes(v)));
 (async () => {
   const b = await require('./lib/browser').launch(); const all = [];
   // ===== A. samedi, « Assurance » Lille → Amiens (départ prévu 15:33, arrivée prévue 16:50) : le parcours complet =====
+  // position GPS à ~1,3 km de l'origine prévue : départ conseillé = 16:50 − 61 min (route simulée) = 15:49 ; suivi vivant dès min(15:33, 15:49) − 90 = 14:03
   {
-    const s = await session(b, '2026-10-03T13:30:00+02:00'); const { p, S } = s; all.push(s);
+    const s = await session(b, '2026-10-03T11:00:00+02:00'); const { p, S } = s; all.push(s);
     await s.enableGps(G.lille);
     let t = await s.waitFor(/Assurance/);
-    check('A1 · 13:30, départ dans 2 h : trajet planifié, aucun appel OSRM depuis le GPS', /Assurance/.test(t) && nMa(t) === 0 && osrmFromGps(S).length === 0);
+    check('A1 · 11:00, départ prévu dans plus de 4 h : trajet planifié, aucun appel OSRM depuis le GPS', /Assurance/.test(t) && nMa(t) === 0 && osrmFromGps(S).length === 0);
     check('A1 · hors trajet : aucun suivi haute précision', !(await p.evaluate(() => window.__geoWatches())).includes(true));
+    const hi0 = await p.evaluate(() => window.__geoLog.length);   // (l'activation manuelle « Ma position » du test demande déjà la haute précision : comportement existant)
+    await s.to('2026-10-03T13:30:00+02:00'); await s.fix(G.lille);
+    t = await s.waitFor(/départ conseillé/i);
+    check('A1b · 13:30, aperçu : départ conseillé 15:49 · arrivée cible 16:50', /départ conseillé 15:49/i.test(t) && /arrivée cible 16:50/i.test(t) && /Ma position/i.test(t) && (await p.evaluate(() => LIVE.phase)) === 'advice', t.slice(0, 200));
+    check('A1b · aperçu : aucune demande ni suivi haute précision', !(await p.evaluate(n => window.__geoLog.slice(n).some(x => x.hi), hi0)));
     await s.to('2026-10-03T14:30:00+02:00'); await s.fix(G.lille);
     t = await s.waitFor(/Ma position.*Amiens/i);
-    check('A2 · 14:30, départ dans 63 min : 📍 Ma position → Amiens', /PROCHAIN TRAJET/i.test(t) && /Ma position\s*→\s*Amiens/i.test(t) && /GPS · actualisé il y a/.test(t), t.slice(0, 160));
+    check('A2 · 14:30, suivi vivant (dès 14:03) : 📍 Ma position → Amiens, départ conseillé', /PROCHAIN TRAJET/i.test(t) && /départ conseillé 15:49/i.test(t) && /Ma position\s*→\s*Amiens/i.test(t) && /GPS · actualisé il y a/.test(t) && (await p.evaluate(() => LIVE.phase)) === 'imminent', t.slice(0, 160));
     check('A2 · un seul trajet vivant', nMa(t) === 1);
     const o1 = osrmFromGps(S)[0] || '';
     check('A2 · OSRM : origine GPS arrondie à 0,001°, destination agenda à 0,001°', /^3\.306,49\.385;2\.586,49\.207$/.test(o1), o1);
     check('A2 · avant le départ : pas de suivi haute précision continu', !(await p.evaluate(() => window.__geoWatches())).includes(true));
     const live = await p.evaluate(() => ({ k: Object.keys(localStorage).join(','), lv: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
     check('A2 · rien du trajet vivant dans le stockage local', !/live|route(?!s?\b)/i.test(live.k.replace('twrc.croute', '')) && !GPS_MARK.some(v => live.lv.includes(v)));
-    await s.to('2026-10-03T15:40:00+02:00'); await s.fix(G.lille);
-    t = await s.waitFor(/Départ prévu dépassé/i);
-    check('A3 · 15:40, heure passée sans mouvement : « Départ prévu dépassé »', /Départ prévu dépassé/i.test(t) && /prévu 15:33/.test(t) && !/TRAJET EN COURS/i.test(t), t.slice(0, 140));
+    await s.to('2026-10-03T15:40:00+02:00'); await s.fix(G.lille); await s.settle(4); t = await s.txt();
+    check('A3a · 15:40 : départ prévu (15:33) passé mais départ conseillé (15:49) à venir : pas « dépassé »', /départ conseillé 15:49/i.test(t) && !/dépassé/i.test(t), t.slice(0, 140));
+    await s.to('2026-10-03T15:52:00+02:00'); await s.fix(G.lille);
+    t = await s.waitFor(/Départ conseillé dépassé/i);
+    check('A3 · 15:52, départ conseillé passé sans mouvement : arrivée estimée 16:53 · retard estimé +3 min', /Départ conseillé dépassé/i.test(t) && /arrivée estimée 16:53/.test(t) && /retard estimé \+3 min/.test(t) && !/TRAJET EN COURS/i.test(t), t.slice(0, 140));
     check('A3 · départ dépassé : demande ponctuelle haute précision', (await p.evaluate(() => window.__geoLog.filter(x => x.t === 'get' && x.hi).length)) >= 1);
     // relevé précis mais PÉRIMÉ (6 min, cache iOS), à plusieurs km, en mouvement : ne doit jamais faire passer « en cours »
-    await s.to('2026-10-03T15:42:00+02:00'); await s.fix(G.milieu, { speed: 25, acc: 15, age: 6 * 60e3 }); await s.settle(4); await s.fix(G.milieu, { speed: 25, acc: 15, age: 5 * 60e3 }); await s.settle(6);
+    await s.to('2026-10-03T15:53:00+02:00'); await s.fix(G.milieu, { speed: 25, acc: 15, age: 6 * 60e3 }); await s.settle(4); await s.fix(G.milieu, { speed: 25, acc: 15, age: 5 * 60e3 }); await s.settle(6);
     t = await s.txt();
-    check('A3b · relevés précis mais périmés, à plusieurs km et rapides : jamais « en cours »', /Départ prévu dépassé/i.test(t) && !/TRAJET EN COURS/i.test(t) && (await p.evaluate(() => LIVE.phase)) === 'late', await p.evaluate(() => LIVE.phase));
-    await s.to('2026-10-03T15:45:00+02:00'); await s.fix(G.roule, { speed: 22 }); await s.settle(4); await s.fix(G.roule, { speed: 22, acc: 20 });
+    check('A3b · relevés précis mais périmés, à plusieurs km et rapides : jamais « en cours »', /Départ conseillé dépassé/i.test(t) && !/TRAJET EN COURS/i.test(t) && (await p.evaluate(() => LIVE.phase)) === 'late', await p.evaluate(() => LIVE.phase));
+    await s.to('2026-10-03T15:56:00+02:00'); await s.fix(G.roule, { speed: 22 }); await s.settle(4); await s.fix(G.roule, { speed: 22, acc: 20 });
     t = await s.waitFor(/TRAJET EN COURS.*km restants/i);
-    check('A4 · 15:45, mouvement confirmé : 🏎️ Trajet en cours, km restants, arrivée estimée', /TRAJET EN COURS/i.test(t) && /km restants/.test(t) && /arrivée estimée/.test(t), t.slice(0, 160));
+    check('A4 · 15:56, mouvement confirmé : 🏎️ Trajet en cours, km restants, arrivée estimée', /TRAJET EN COURS/i.test(t) && /km restants/.test(t) && /arrivée estimée/.test(t), t.slice(0, 160));
     check('A4 · en trajet : suivi haute précision continu', (await p.evaluate(() => window.__geoWatches())).includes(true));
     const nO = S.osrm.length;
-    await s.to('2026-10-03T15:46:00+02:00'); await s.fix(G.roule2, { speed: 22 }); await s.settle(6);
+    await s.to('2026-10-03T15:57:00+02:00'); await s.fix(G.roule2, { speed: 22 }); await s.settle(6);
     check('A5 · déplacement de 200 m : aucun nouvel appel OSRM', S.osrm.length === nO, `${S.osrm.length - nO} appel(s)`);
     await s.to('2026-10-03T16:55:00+02:00'); await s.fix(G.milieu, { speed: 25 }); await s.settle(8);
     t = await s.waitFor(/TRAJET EN COURS.*km restants/i);
@@ -193,11 +202,52 @@ const osrmFromGps = S => S.osrm.filter(x => GPS_MARK.some(v => x.includes(v)));
     const st2 = await p.evaluate(() => ({ route: LIVE.route && LIVE.route.gen, last: LIVE.last && LIVE.last.gen }));
     check('H2 · météo B arrivée : bascule atomique vers B', st2.last === st2.route && st2.last !== genA && /GPS · actualisé/.test(t), JSON.stringify(st2));
   }
+  // ===== I. départ adaptatif loin de l'origine prévue (cas réel : rendez-vous loin, on n'est pas chez soi) =====
+  {
+    const s = await session(b, '2026-10-03T12:00:00+02:00'); const { p, S } = s; all.push(s);
+    await s.enableGps(G.loin); const hi0 = await p.evaluate(() => window.__geoLog.length); let t = await s.waitFor(/départ conseillé/i);
+    const m1 = await p.evaluate(() => LIVE.route && LIVE.route.min), exp = new Date(new Date('2026-10-03T16:50:00+02:00').getTime() - m1 * 60e3).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+    check('I1 · 12:00, à 30 km de l\'origine prévue : départ conseillé = arrivée cible − durée depuis ici', new RegExp('départ conseillé ' + exp, 'i').test(t) && /arrivée cible 16:50/i.test(t) && /depuis ici/.test(t) && nMa(t) === 1 && (await p.evaluate(() => LIVE.phase)) === 'advice', exp + ' · ' + t.slice(0, 200));
+    const n1 = osrmFromGps(S).length;
+    await s.to('2026-10-03T12:10:00+02:00'); await s.fix(G.loin2); await s.settle(6);
+    check('I2 · aperçu : déplacement de 6 km → itinéraire recalculé', osrmFromGps(S).length === n1 + 1, `${osrmFromGps(S).length - n1}`);
+    await s.to('2026-10-03T12:20:00+02:00'); await s.fix(G.loin3); await s.settle(6);
+    check('I3 · aperçu : déplacement de 2 km → aucun recalcul (seuil 5 km)', osrmFromGps(S).length === n1 + 1);
+    await s.to('2026-10-03T12:45:00+02:00'); await s.fix(G.loin3); await s.settle(6);
+    check('I4 · aperçu : route de plus de 30 min → recalcul', osrmFromGps(S).length === n1 + 2);
+    check('I4 · aperçu : jamais de haute précision (ni demande, ni suivi)', !(await p.evaluate(n => window.__geoLog.slice(n).some(x => x.hi), hi0)) && !(await p.evaluate(() => window.__geoWatches())).includes(true));
+    const ls = await p.evaluate(() => Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps)$/.test(k)).map(k => k + '=' + localStorage.getItem(k)).join('|'));
+    check('I4 · aperçu : rien dans le stockage local', !/live/i.test(ls) && !GPS_MARK.some(v => ls.includes(v)));
+    await s.to('2026-10-03T14:10:00+02:00'); await s.fix(G.loin3); await s.settle(6);
+    check('I5 · 14:10 : suivi vivant activé dès min(départ prévu, départ conseillé) − 90 min', (await p.evaluate(() => LIVE.phase)) === 'imminent');
+  }
+  // ===== J. aperçu : route prête mais météo de cette route en retard → briefing planifié intégralement conservé =====
+  {
+    const s = await session(b, '2026-10-03T12:00:00+02:00'); const { p, S } = s; all.push(s);
+    let release; S.meteoHold = new Promise(r => { release = r; }); S.meteoHoldLat = '49.472';
+    await s.enableGps(G.loin); await s.settle(6); let t = await s.waitFor(/Assurance/);
+    check('J1 · route prête, météo en attente : briefing planifié intact (aucun mélange nouvelle heure + ancienne météo)', !!S.meteoHeld && osrmFromGps(S).length >= 1 && nMa(t) === 0 && !/départ conseillé/i.test(t) && /15:33/.test(t), t.slice(0, 160));
+    release(); S.meteoHoldLat = null; t = await s.waitFor(/départ conseillé/i);
+    check('J2 · météo arrivée : bascule atomique vers l\'aperçu', /départ conseillé/i.test(t) && /Ma position/i.test(t));
+  }
+  // ===== K. à moins de 1 km de l'origine prévue : planification inchangée =====
+  {
+    const s = await session(b, '2026-10-03T13:30:00+02:00'); all.push(s);
+    await s.enableGps(G.origine); await s.settle(6); const t = await s.waitFor(/Assurance/);
+    check('K · à 1 km de l\'origine prévue, 2 h avant : trajet planifié, aucun appel OSRM', nMa(t) === 0 && osrmFromGps(s.S).length === 0 && /15:33/.test(t), t.slice(0, 120));
+  }
+  // ===== L. retour (« Concert », départ prévu 23:25) : le départ reste la contrainte =====
+  {
+    const s = await session(b, '2026-10-03T22:30:00+02:00'); all.push(s);
+    await s.enableGps(G.loin); const t = await s.waitFor(/Ma position/i);
+    check('L · retour : départ prévu 23:25 conservé, arrivée adaptée, aucun « départ conseillé »', /23:25/.test(t) && !/départ conseillé/i.test(t) && /Retour · Concert/.test(t), t.slice(0, 160));
+  }
   // ===== E. lundi 05:30 : boulot 06:30 et agenda 06:46 dans la même fenêtre → un seul trajet vivant =====
   {
     const s = await session(b, '2026-10-05T05:30:00+02:00'); const { S } = s; all.push(s);
     await s.enableGps(G.maison); const t = await s.waitFor(/Ma position/);
     check('E · deux trajets dans les 90 min : seul le premier (boulot 06:30) devient vivant', nMa(t) === 1 && /DOMICILE-TRAVAIL/i.test(t) && /Journée Lille/.test(t), t.slice(0, 200));
+    check('E · chez soi (à moins de 1 km de l\'origine) : heure de départ planifiée inchangée (06:30), aucun départ conseillé', /06:30/.test(t) && !/départ conseillé/i.test(t));
     const o = osrmFromGps(S)[0] || '';
     check('E · destination « travail » arrondie à 0,01° avant l\'envoi', /^2\.351,48\.851;2\.25,48\.9$/.test(o), o);
   }
