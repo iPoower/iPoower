@@ -1712,20 +1712,26 @@ async function reverseName(lat, lon) {
     return { name: n || 'Ma position', sub };
   } catch (e) { return { name: 'Ma position', sub: '' }; }
 }
-let gpsWatch = null, gpsBusy = false;
+let gpsWatch = null, gpsWatchHi = false, gpsBusy = false;
 function locate(manual) {
   if (!('geolocation' in navigator)) { if (manual) alertLoc('Localisation indisponible sur ce navigateur.'); return; }
   if (gpsBusy) return; gpsBusy = true; if (manual) alertLoc('Recherche de ta position…');
-  navigator.geolocation.getCurrentPosition(pos => { gpsBusy = false; onPos(pos, true); startWatch(); },
+  navigator.geolocation.getCurrentPosition(pos => { gpsBusy = false; onPos(pos, true); startWatch(LIVE.phase === 'active'); },
     err => { gpsBusy = false; if (manual) alertLoc(err.code === 1 ? 'Localisation refusée : Réglages iPhone → Confidentialité → Service de localisation → Safari → « Lorsque l’app est active ».' : 'Position introuvable pour le moment.'); },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 120000 });
 }
-function startWatch() {
-  if (gpsWatch != null || !('geolocation' in navigator)) return;
-  try { gpsWatch = navigator.geolocation.watchPosition(p => onPos(p, false), () => {}, { enableHighAccuracy: false, maximumAge: 300000 }); } catch (e) { /* non disponible */ }
+// hi = false : suivi basse consommation (normal) ; hi = true : haute précision continue, seulement pendant un trajet réellement commencé
+function startWatch(hi) {
+  hi = !!hi; if (!('geolocation' in navigator) || (gpsWatch != null && gpsWatchHi === hi)) return;
+  if (gpsWatch != null) { try { navigator.geolocation.clearWatch(gpsWatch); } catch (e) { /* déjà arrêté */ } gpsWatch = null; }
+  gpsWatchHi = hi;
+  try { gpsWatch = navigator.geolocation.watchPosition(p => onPos(p, false), () => {}, hi ? { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 } : { enableHighAccuracy: false, maximumAge: 300000 }); } catch (e) { /* non disponible */ }
 }
 async function onPos(pos, focus) {
   const c = pos.coords, np = { lat: +c.latitude.toFixed(4), lon: +c.longitude.toFixed(4) };
+  // relevé brut pour le trajet vivant (mémoire uniquement) : horodatage réel du relevé, pas l'heure de réception
+  FIXPREV = FIX; FIX = { lat: c.latitude, lon: c.longitude, acc: c.accuracy == null ? Infinity : c.accuracy, ts: pos.timestamp || Date.now(), speed: c.speed == null || isNaN(c.speed) ? null : c.speed };
+  liveOnFix(FIX);
   const moved = !GPS || distKm(GPS, np) > 3;
   const prevName = GPS && !moved ? { name: GPS.name, sub: GPS.sub } : null;
   GPS = { id: 'gps', gps: true, ...np, acc: Math.round(c.accuracy), t: Date.now(), name: prevName ? prevName.name : 'Ma position', sub: prevName ? prevName.sub : '' };
@@ -2436,6 +2442,143 @@ function gaugeSvg(score, lv) {
     <circle cx="60" cy="60" r="${r}" class="g-bg"/><circle cx="60" cy="60" r="${r}" class="g-fg" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 60 60)"/>
     <text x="60" y="58" class="g-n">${score == null ? '—' : score}</text><text x="60" y="78" class="g-l">/ 100</text></svg>`;
 }
+/* ===================== TRAJET VIVANT : origine GPS réelle (navigateur uniquement, mémoire uniquement) ===================== */
+// Un seul trajet vivant à la fois : le trajet commencé, sinon le prochain trajet qui part dans 90 min ou moins.
+// Automate : imminent (avant l'heure) → late (heure passée, aucun mouvement constaté) → active (mouvement confirmé) → arrivé / expiré.
+// Rien n'est stocké (ni localStorage, ni twrc.croute) ni publié (ni obs.json, ni agenda, ni relais) : route, météo, relevé de
+// référence et phase vivent en mémoire et disparaissent à la fermeture. Aucun nouveau fournisseur externe : en mode trajet vivant,
+// la position courante arrondie à 0,001° est en plus transmise à OSRM pour calculer le trajet restant.
+const LIVE_WIN = 90, LIVE_ACC = 250, LIVE_ACC_ARR = 150, LIVE_ARR_KM = 0.3, LIVE_AGE_IMM = 5 * 60e3, LIVE_AGE_RUN = 2 * 60e3, LIVE_GRACE = 5 * 60e3;
+const LIVE = { key: null, phase: 'idle', base: null, startFix: null, arrN: 0, arrTs: 0, gen: 0, route: null, routeAt: 0, routeOrigin: null, routeTry: 0, routeErr: false,
+  last: null, lastOk: 0, hiAt: 0, done: {} };
+let FIX = null, FIXPREV = null;   // derniers relevés bruts ; ts = pos.timestamp (heure réelle du relevé, pas l'heure de réception)
+const liveNow = () => nowIn('Europe/Paris');
+const liveMin = (a, b) => (tsToDate(b) - tsToDate(a)) / 60e3;
+const liveAge = f => f ? Math.max(0, Date.now() - f.ts) : Infinity;
+const liveFresh = (f, maxAge) => !!f && f.acc <= LIVE_ACC && liveAge(f) <= maxAge && f.ts - Date.now() < 60e3;
+function liveAllowed() {
+  return !DEMO.on && !!S.gpsAuto && location.protocol === 'https:' && ('geolocation' in navigator) && !(LOCKED() && !lsGet('twrc.nocode'));
+}
+// destination réelle (jamais envoyée telle quelle : domicile et travail arrondis à 0,01°, comme pour la mini-carte)
+function liveDest(t) {
+  if (t.src === 'cal' && t.l && t.l.to && t.l.to.lat != null) return { lat: t.l.to.lat, lon: t.l.to.lon, name: t.to, priv: t.l.k === 'ret' };
+  if (t.src === 'work' && t.td && t.td.LB && t.td.LB.lat != null) return { lat: t.td.LB.lat, lon: t.td.LB.lon, name: t.to, priv: true };
+  return null;
+}
+function liveReset(reason) {
+  if (LIVE.key && reason) LIVE.done[LIVE.key] = reason;
+  Object.assign(LIVE, { key: null, phase: 'idle', base: null, startFix: null, arrN: 0, arrTs: 0, route: null, routeAt: 0, routeOrigin: null, routeTry: 0, routeErr: false, last: null, lastOk: 0, hiAt: 0 });
+  LIVE.gen++;   // toute réponse encore en route est désormais ignorée
+  if (gpsWatch != null && gpsWatchHi) startWatch(false);   // retour au suivi basse consommation
+}
+// chaque nouveau relevé : référence de départ, mouvement, arrivée (jamais au rendu : un rendu ne recrée rien).
+// Aucune transition d'état sur un relevé périmé (pos.timestamp) : un relevé précis mais ancien, rendu par le cache d'iOS, est ignoré.
+//   référence avant départ : relevé ≤ 5 min · départ (late → active) : relevé courant ET relevé précédent (vitesse) ≤ 2 min · arrivée : ≤ 2 min
+function liveOnFix(fix) {
+  if (!LIVE.key || !LIVE.base) return;
+  if (LIVE.phase === 'active') {
+    const d = liveDest(LIVE.base);
+    if (d && fix.ts !== LIVE.arrTs && liveFresh(fix, LIVE_AGE_RUN)) {   // un relevé périmé ne compte pas et n'interrompt pas la série
+      LIVE.arrTs = fix.ts;
+      LIVE.arrN = fix.acc <= LIVE_ACC_ARR && distKm(fix, d) <= LIVE_ARR_KM ? LIVE.arrN + 1 : 0;
+      if (LIVE.arrN >= 2) { liveReset('arrivé'); renderBrf(); return; }   // deux relevés précis, récents et distincts à moins de 300 m
+    }
+  } else if (liveNow() < LIVE.base.dep || !LIVE.startFix) {
+    if (liveFresh(fix, LIVE_AGE_IMM)) LIVE.startFix = fix;   // avant l'heure : la référence suit le dernier relevé précis et récent
+  } else if (liveFresh(fix, LIVE_AGE_RUN)) {
+    const sf = LIVE.startFix, thr = Math.max(0.3, 2 * Math.max(fix.acc, sf.acc) / 1000);
+    const fast = fix.speed != null && fix.speed > 2 && FIXPREV && FIXPREV !== sf && FIXPREV.ts !== fix.ts && liveFresh(FIXPREV, LIVE_AGE_RUN) && FIXPREV.speed != null && FIXPREV.speed > 2;
+    if (distKm(sf, fix) > thr || fast) { LIVE.phase = 'active'; startWatch(true); }   // mouvement confirmé : suivi haute précision continu
+  }
+  clearTimeout(liveOnFix.t); liveOnFix.t = setTimeout(renderBrf, 300);
+}
+// demande ponctuelle haute précision (fenêtre avant départ ou départ dépassé), au plus une par minute
+function liveAskFix() {
+  if (LIVE.phase === 'active' || Date.now() - LIVE.hiAt < 60e3) return;
+  LIVE.hiAt = Date.now();
+  try { navigator.geolocation.getCurrentPosition(p => onPos(p, false), () => {}, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }); } catch (e) { /* indisponible */ }
+}
+// itinéraire depuis la position : comme le relais (géométrie complète + durées, points placés selon le TEMPS de parcours)
+function liveParse(j) {
+  const r = j && j.routes && j.routes[0]; if (!r || !r.geometry || !r.geometry.coordinates || r.geometry.coordinates.length < 2) return null;
+  const co = r.geometry.coordinates, dur = (r.legs && r.legs[0] && r.legs[0].annotation && r.legs[0].annotation.duration) || null;
+  const hv = (p, q) => distKm({ lat: p[1], lon: p[0] }, { lat: q[1], lon: q[0] }), cumD = [0], cumT = [0];
+  for (let i = 1; i < co.length; i++) { cumD.push(cumD[i - 1] + hv(co[i - 1], co[i])); cumT.push(cumT[i - 1] + (dur && dur[i - 1] != null ? dur[i - 1] : 0)); }
+  const totT = cumT[cumT.length - 1], totD = cumD[cumD.length - 1] || 1, byTime = totT > 0;
+  const pts = [0.25, 0.5, 0.75].map(f => { let i = (byTime ? cumT : cumD).findIndex(c => c >= f * (byTime ? totT : totD)); if (i < 0) i = co.length - 1;
+    return { f, lat: +co[i][1].toFixed(3), lon: +co[i][0].toFixed(3), km: Math.round(cumD[i] * 10) / 10, name: null }; });
+  const g = [], step = totD / 80; let nxt = 0;
+  for (let i = 0; i < co.length; i++) if (cumD[i] >= nxt || i === co.length - 1) { g.push([+co[i][1].toFixed(3), +co[i][0].toFixed(3)]); nxt = cumD[i] + step; }
+  const km = r.distance != null ? r.distance / 1000 : totD, sec = r.duration != null ? r.duration : totT;
+  return { km: Math.round(km * 10) / 10, min: Math.max(1, Math.round(sec / 60 * 1.1)), pts, g };   // durée × 1,1, sans la marge de 10 min des rendez-vous
+}
+// une route n'est « courante » que pour le relevé qui la justifie : même trajet, origine à ≤ 1 km du relevé, calculée il y a ≤ 10 min.
+// Sinon elle est périmée : un recalcul est demandé, et elle ne peut plus produire d'analyse présentée comme actuelle.
+const liveOrigin = fix => ({ lat: +fix.lat.toFixed(3), lon: +fix.lon.toFixed(3) });
+const liveRouteCurrent = (R, o) => !!R && R.key === LIVE.key && distKm(R.o, o) <= 1 && Date.now() - LIVE.routeAt <= 10 * 60e3;
+function liveRoute(fix, b) {
+  const o = liveOrigin(fix);
+  if (liveRouteCurrent(LIVE.route, o) || Date.now() - LIVE.routeTry < 30e3) return;   // recalcul seulement après ~1 km ou 10 min, jamais en rafale
+  const d = liveDest(b); if (!d) return;
+  const dd = d.priv ? { lat: rc2(d.lat), lon: rc2(d.lon) } : { lat: +(+d.lat).toFixed(3), lon: +(+d.lon).toFixed(3) };
+  LIVE.routeTry = Date.now(); const gen = ++LIVE.gen, key = LIVE.key;
+  fetchJSON(`https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${dd.lon},${dd.lat}?overview=full&geometries=geojson&annotations=duration`, 10000)
+    .then(j => {
+      if (gen !== LIVE.gen || key !== LIVE.key) return;   // OSRM : réponse d'une ancienne position ou d'un autre trajet, ignorée (génération)
+      // (météo : chaque route a sa propre clé géographique legKey/LEGM ; une réponse tardive d'une ancienne route n'est jamais lue pour la route courante)
+      const p = liveParse(j); if (!p) throw new Error('itinéraire vide');
+      LIVE.route = { ...p, key, gen, o, d: { lat: d.lat, lon: d.lon, name: d.name } }; LIVE.routeAt = Date.now(); LIVE.routeOrigin = o; LIVE.routeErr = false; renderBrf();
+    })
+    .catch(() => { if (gen === LIVE.gen && key === LIVE.key) { LIVE.routeErr = true; renderBrf(); } });
+}
+const liveAgo = ms => { const s = Math.round(ms / 1000); return s < 60 ? `${s} s` : `${Math.round(s / 60)} min`; };
+// version vivante du trajet ; tant qu'aucune analyse vivante complète (route + météo) n'existe, le trajet planifié reste affiché.
+// Une analyse n'est COURANTE que si : relevé frais + route courante pour ce relevé + météo de cette route prête. Seule une analyse
+// courante est présentée comme actuelle et fait avancer lastOk ; sinon la dernière analyse est affichée, marquée ancienne, 5 min au plus.
+function liveTrip(b, now) {
+  const run = LIVE.phase === 'active', fix = FIX, fresh = liveFresh(fix, run ? LIVE_AGE_RUN : LIVE_AGE_IMM);
+  if (fresh) liveRoute(fix, b);
+  if (!fresh || LIVE.phase === 'late') liveAskFix();
+  let a = null;
+  if (fresh && liveRouteCurrent(LIVE.route, liveOrigin(fix))) {
+    const R = LIVE.route, dep = LIVE.phase === 'imminent' ? b.dep : now;
+    const leg = { k: 'live', from: { lat: R.o.lat, lon: R.o.lon, label: 'Ma position', city: 'Ma position' }, to: { lat: R.d.lat, lon: R.d.lon, label: R.d.name, city: R.d.name },
+      km: R.km, min: R.min, dep, arr: addMin(dep, R.min), pts: R.pts, g: R.g, routed: true };
+    const r = legEval(leg);
+    if (r.res) { a = { leg, r, fixTs: fix.ts, gen: R.gen }; LIVE.last = a; LIVE.lastOk = Date.now(); }   // bascule atomique : route ET météo prêtes
+  }
+  let old = null;
+  if (!a && LIVE.last && Date.now() - LIVE.lastOk <= LIVE_GRACE) { a = LIVE.last; old = fresh ? 'route' : 'gps'; }   // dernière analyse, marquée ancienne
+  if (!a) return LIVE.last ? { ...b, liveLost: true } : b;   // repli explicite après un premier résultat ; sinon trajet planifié, sans mention
+  const { leg, r } = a, hm = new Date(LIVE.lastOk).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+  return { ...b, live: LIVE.phase, liveGen: a.gen, planDep: b.dep, dep: leg.dep, arr: leg.arr, running: run, from: '📍 Ma position', l: leg, obs: null,
+    res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.worst, wait: false,
+    gpsTxt: old === 'gps' ? `📍 GPS ancien · dernière analyse ${hm}` : old === 'route' ? `📍 Itinéraire non actualisé · dernière analyse ${hm}` : `📍 GPS · actualisé il y a ${liveAgo(Date.now() - fix.ts)}` };
+}
+// appliqué à la timeline : retire les trajets terminés, garde le trajet commencé après son heure prévue, rend vivant un seul trajet
+function liveApply(T, now) {
+  if (!liveAllowed()) { if (LIVE.key) liveReset(); return T; }
+  T = T.filter(t => !LIVE.done[t.key]);
+  let cur = LIVE.key ? T.find(t => t.key === LIVE.key) : null;
+  if (cur) LIVE.base = cur;
+  else if (LIVE.key && LIVE.base && (LIVE.phase === 'active' || LIVE.last)) { cur = LIVE.base; T.push(cur); }   // trajet suivi en direct : reste affiché
+  else if (LIVE.key) liveReset();
+  if (LIVE.key) {   // expiration : jamais parti → arrivée prévue + 30 min ; parti → coupe-circuit arrivée prévue + max(60 min, 2 × durée)
+    const b = LIVE.base, dur = Math.max(1, liveMin(b.dep, b.arr || b.dep));
+    if (liveMin(b.arr || b.dep, now) > (LIVE.phase === 'active' ? Math.max(60, 2 * dur) : 30)) { const k = b.key; liveReset(LIVE.phase === 'active' ? 'coupe-circuit' : 'expiré'); T = T.filter(t => t.key !== k); cur = null; }
+  }
+  if (!LIVE.key) {
+    const cand = T.slice().sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : 0).find(t => liveMin(now, t.dep) <= LIVE_WIN && liveDest(t));
+    if (!cand) return T;
+    Object.assign(LIVE, { key: cand.key, base: cand, phase: 'imminent' }); cur = cand;
+    if (liveFresh(FIX, LIVE_AGE_IMM)) LIVE.startFix = FIX;
+  }
+  if (LIVE.phase !== 'active') LIVE.phase = now < LIVE.base.dep ? 'imminent' : 'late';
+  const lt = liveTrip(LIVE.base, now);
+  return T.map(t => t.key === LIVE.key ? lt : t);
+}
+setInterval(() => { if (LIVE.key && !document.hidden) renderBrf(); }, 15e3);
+
 function renderBrf() {
   const el = $('#secBrf'); if (!el) return;
   if (!CX) { el.innerHTML = ''; el.hidden = true; return; }
@@ -2448,7 +2591,7 @@ function renderBrf() {
   const dayLbl = d => { const n = dayDiff(today, d.slice(0, 10)); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(d.slice(0, 10)); };
   // une seule timeline : trajet domicile-travail + trajets agenda, triés par heure réelle de départ
   // modèle commun Trip : { src: 'work' | 'cal', carId (choix de voiture par trajet, prévu, pas encore utilisé), dep, arr, running, from, to, res, sum, seq, worst }
-  const T = [], workT = (td, running) => {
+  let T = []; const workT = (td, running) => {
     const res = cars.map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w); if (!res.length) return;
     T.push({ src: 'work', carId: null, dep: td.dep, arr: td.arr, running, name: `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail`, from: td.fromName, to: td.toName,
       res, sum: summarize(td.seq), seq: td.seq, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0), key: 'commute|' + td.dep + '|' + td.dir, obs: td.A.obs, td });
@@ -2463,6 +2606,7 @@ function renderBrf() {
     T.push({ src: 'cal', carId: null, dep: l.dep, arr: l.arr, running: l.dep <= now, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.from.city || l.from.label, to: l.to.city || l.to.label, l, e,
       res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading, key: 'leg|' + l.dep + '|' + l.k + '|' + e.s });
   }));
+  T = liveApply(T, now);   // trajet vivant (position GPS réelle) : un seul, en mémoire uniquement
   T.sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : a.src === 'work' ? -1 : 1);
   const full = T.filter(t => fullFor(t.dep)), main = full[0], rest = full.slice(1);
   const wk = T.find(t => t.src === 'work'), ag = T.find(t => t.src === 'cal');
@@ -2498,10 +2642,13 @@ function renderBrf() {
 }
 // carte de briefing complète, identique pour un trajet domicile-travail et un trajet agenda
 function briefCard(t, dayLbl) {
-  const head = `<div class="brf-h">${t.running ? `<span class="brf-k">🏎️ Trajet en cours · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">parti à ${t.dep.slice(11, 16)} · arrivée prévue <b>${(t.arr || '').slice(11, 16)}</b></span>`
+  const src = t.src === 'work' ? 'domicile-travail' : 'agenda';
+  const head = `<div class="brf-h">${t.live === 'active' ? `<span class="brf-k">🏎️ Trajet en cours · ${src}</span><span class="brf-w">${f0(t.l.km)} km restants · ${t.l.min} min · arrivée estimée <b>${t.arr.slice(11, 16)}</b></span>`
+    : t.live === 'late' ? `<span class="brf-k">⏱ Départ prévu dépassé · ${src}</span><span class="brf-w">prévu ${t.planDep.slice(11, 16)} · itinéraire depuis ma position</span>`
+    : t.running ? `<span class="brf-k">🏎️ Trajet en cours · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">parti à ${t.dep.slice(11, 16)} · arrivée prévue <b>${(t.arr || '').slice(11, 16)}</b></span>`
     : `<span class="brf-k">🏁 Prochain trajet · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">${dayLbl(t.dep)} · ${t.dep.slice(11, 16)} → ${(t.arr || '').slice(11, 16)} · ${cdSpan(t.dep)}</span>`}</div>
     <div class="brf-ev">${t.src === 'cal' ? '📅' : '🏁'} <b>${esc(t.name)}</b>${t.l ? ` · ${f0(t.l.km)} km · ${t.l.min} min${t.l.routed ? ' · route analysée' : ' (estimé)'}` : ''}</div>
-    <div class="brf-r">${esc(t.from)} <span>→</span> ${esc(t.to)}</div>`;
+    <div class="brf-r">${esc(t.from)} <span>→</span> ${esc(t.to)}</div>${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
   if (!t.res) return head + `<p class="muted">${t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>`;
   const sum = t.sum, top = t.res[0], lv = top.w.level, xs = t.seq.map(q => q.hs[q.i]);
   const ppMax = Math.max(...xs.map(x => x.pp || 0)), Pmax = Math.max(...xs.map(x => x.P || 0));
@@ -2511,7 +2658,7 @@ function briefCard(t, dayLbl) {
   const deg = v => v == null ? '—' : String(Math.round(v)).replace('-', '−') + '°';
   const visV = v => v == null ? '—' : v >= 10000 ? '>10' : v >= 1000 ? f0(v / 1000) : f0(v), visU = v => v == null ? '' : v >= 1000 ? 'km' : 'm';
   const iceS = ['Faible', 'Modéré', 'Élevé', 'Max'];
-  const tr = trendOf(t.key, t.dep, snapOf(t.res, sum, t.seq)), cr = t.crit;
+  const tr = trendOf(t.key, t.planDep || t.dep, snapOf(t.res, sum, t.seq)), cr = t.crit;
   const mOpen = lsGet('twrc.tripmap') === '1';
   return head + `
     <div class="brf-m hasmap">${gaugeSvg(top.w.score, lv)}
@@ -2540,7 +2687,7 @@ const TMAP = { node: null, map: null, key: '' };
 const wideScreen = () => matchMedia('(min-width: 760px)').matches;
 const rc2 = v => Math.round(v * 100) / 100;   // domicile et travail arrondis à ~1 km avant tout appel externe
 async function tripGeo(t) {
-  if (t.src === 'cal') {
+  if (t.src === 'cal' || t.live) {   // trajet agenda, ou trajet vivant (route restante depuis la position, mémoire uniquement)
     const P = legPoints(t.l), pts = t.l.g && t.l.g.length > 1 ? t.l.g : P.map(p => [p.lat, p.lon]), cr = t.crit;
     // point critique : seulement en cas de vrai risque (verdict orange ou rouge, verglas, brouillard)
     const cp = cr && (cr.lv >= 2 || cr.ice >= 1 || cr.fog) && P[cr.q.k] ? { at: [P[cr.q.k].lat, P[cr.q.k].lon], lv: Math.max(2, cr.lv), t: cr.q.t } : null;
@@ -2560,7 +2707,7 @@ async function tripGeo(t) {
 function tripMapMount(t) {
   const wide = wideScreen(), slot = wide ? $('#tmapW') : lsGet('twrc.tripmap') === '1' ? $('#tmapM') : null;
   if (!slot) return;
-  const key = `${t.key}|${t.worst}|${wide ? 'w' : 'm'}`;
+  const key = `${t.key}|${t.worst}|${t.live ? 'L' + t.liveGen : ''}|${wide ? 'w' : 'm'}`;
   if (TMAP.node && TMAP.key === key) { slot.appendChild(TMAP.node); if (TMAP.map) setTimeout(() => TMAP.map.invalidateSize(), 0); return; }
   if (TMAP.map) { try { TMAP.map.remove(); } catch (e) { /* déjà retirée */ } TMAP.map = null; }
   const node = document.createElement('div'); node.className = 'tmap'; node.setAttribute('role', 'img'); node.setAttribute('aria-label', `Carte du trajet ${t.from} → ${t.to}`);
@@ -3364,7 +3511,7 @@ document.addEventListener('click', async e => {
   else if (a === 'view') { UI.view = t.dataset.v === 'meteo' ? 'meteo' : 'pneus'; lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
-  else if (a === 'gps-forget') { GPS = null; S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } if (gpsWatch != null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; } UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
+  else if (a === 'gps-forget') { GPS = null; S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } if (gpsWatch != null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; } FIX = FIXPREV = null; liveReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
   else if (a === 'loc') { UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false; renderAll(); }
   else if (a === 'locs-toggle') { UI.locsOpen = !UI.locsOpen; renderLocChips(); }
   else if (a === 'tire') { const c = S.cars.find(x => x.id === t.dataset.car); switchTire(c, t.dataset.type); const ci = S.cars.indexOf(c); markEdit(`cars.${ci}.tire`); markEdit(`cars.${ci}.sets`); saveSettings(); renderSettings(); softRender(); }
