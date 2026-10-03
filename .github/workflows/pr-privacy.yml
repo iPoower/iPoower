@@ -17,6 +17,11 @@ concurrency:
   cancel-in-progress: true
 jobs:
   scan:
+    # frontière GitHub : secrets dans l'Environment « production », accessible uniquement depuis main (règle côté GitHub,
+    # indépendante de ce fichier) ; deployment: false = aucune entrée de déploiement créée
+    environment:
+      name: production
+      deployment: false
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5

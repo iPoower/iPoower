@@ -50,6 +50,11 @@ jobs:
           echo "Retour arrière vers $WANT ($sha)"; echo "ref=$sha" >> "$GITHUB_OUTPUT"
   confidentialite:
     needs: version
+    # frontière GitHub : secrets dans l'Environment « production », accessible uniquement depuis main (règle côté GitHub,
+    # indépendante de ce fichier) ; deployment: false = aucune entrée de déploiement créée
+    environment:
+      name: production
+      deployment: false
     # frontière des secrets : jamais sur une pull request (son code n'est pas encore approuvé).
     # Uniquement sur main (push après fusion) ou un retour arrière lancé depuis main (étiquette prod-N = ancien code de main).
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.inputs.version != '')
