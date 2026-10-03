@@ -11,6 +11,11 @@ permissions:
   contents: read
 jobs:
   check:
+    # frontière GitHub : secrets dans l'Environment « production », accessible uniquement depuis main (règle côté GitHub,
+    # indépendante de ce fichier) ; deployment: false = aucune entrée de déploiement créée
+    environment:
+      name: production
+      deployment: false
     # frontière des secrets : uniquement depuis main (jamais lancé depuis une autre branche)
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

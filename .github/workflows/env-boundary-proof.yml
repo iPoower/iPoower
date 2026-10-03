@@ -1,0 +1,52 @@
+name: Race Control · preuve de la frontière des secrets
+# Démonstration, à la demande : pousser une branche « preuve/… » (jamais main).
+# Ce workflow tourne alors depuis la BRANCHE (code non approuvé) et vérifie que :
+#  1. il ne peut pas entrer dans l'Environment « production » (refus par GitHub, règle « main uniquement ») ;
+#  2. aucun secret de dépôt n'existe plus en dehors de l'Environment (APP_KEY, RC_KEY, GCAL_ICS vides).
+# Aucune valeur n'est jamais affichée : uniquement oui / non.
+on:
+  push:
+    branches: ['preuve/**']
+permissions:
+  contents: read
+jobs:
+  tentative-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    continue-on-error: true   # l'échec est le résultat attendu
+    environment:
+      name: production
+      deployment: false
+    outputs:
+      entered: ${{ steps.e.outputs.entered }}
+    steps:
+      # ne s'exécute QUE si GitHub laisse entrer la branche (ce qui ne doit pas arriver)
+      - id: e
+        run: echo "entered=oui" >> "$GITHUB_OUTPUT"
+  secrets-hors-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      present: ${{ steps.s.outputs.present }}
+    steps:
+      - id: s
+        env:
+          A: ${{ secrets.APP_KEY }}
+          R: ${{ secrets.RC_KEY }}
+          G: ${{ secrets.GCAL_ICS }}
+        run: if [ -n "$A$R$G" ]; then echo "present=oui" >> "$GITHUB_OUTPUT"; else echo "present=non" >> "$GITHUB_OUTPUT"; fi
+  verdict:
+    needs: [tentative-environment, secrets-hors-environment]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - env:
+          ENTERED: ${{ needs.tentative-environment.outputs.entered }}
+          ENV_RESULT: ${{ needs.tentative-environment.result }}
+          REPO_SECRETS: ${{ needs.secrets-hors-environment.outputs.present }}
+        run: |
+          ok=1
+          if [ "$ENTERED" = "oui" ]; then echo "❌ la branche est entrée dans l'Environment production"; ok=0; else echo "✅ Environment production refusé à une branche (job : $ENV_RESULT)"; fi
+          if [ "$REPO_SECRETS" = "non" ]; then echo "✅ aucun secret de dépôt accessible hors de l'Environment"; else echo "❌ des secrets de dépôt restent accessibles à une branche"; ok=0; fi
+          if [ $ok = 1 ]; then echo "::notice title=Frontière des secrets::✅ une branche n'accède à aucun secret de production"; else echo "::error title=Frontière des secrets::la frontière n'est pas étanche"; exit 1; fi

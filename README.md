@@ -31,13 +31,16 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
 
 ## Frontière des secrets
 
-Les vrais secrets (`APP_KEY`, `RC_KEY`, `GCAL_ICS`) ne sont donnés qu'à du code **déjà fusionné dans `main`** :
+Les vrais secrets (`APP_KEY`, `RC_KEY`, `GCAL_ICS`) vivent **uniquement dans l'Environment GitHub `production`**, dont la règle
+« branches autorisées : `main` » est appliquée par GitHub lui-même (une branche qui modifierait un workflow ne peut pas y entrer).
+Les jobs l'utilisent avec `deployment: false` (aucune entrée de déploiement créée). Ils ne sont donnés qu'à du code **déjà fusionné dans `main`** :
 
 | Workflow | Secrets | Quand |
 |---|---|---|
 | `ci.yml` · `confidentialite` | oui | push sur `main`, retour arrière lancé depuis `main` ; **jamais sur une pull request** |
 | `ci.yml` · `tests`, `relay-smoke` | non | partout (données et clés fictives) |
 | `pr-privacy.yml` | oui | chaque PR **de ce dépôt** : workflow et scanner de `main`, la PR est lue comme des fichiers et jamais exécutée ; jamais pour un fork (sinon le rouge/vert servirait à deviner une valeur) |
+| `env-boundary-proof.yml` | non | branche `preuve/…` poussée à la demande : démontre qu'une branche ne peut ni entrer dans `production` ni lire un secret |
 | `race-control.yml` (relais) | oui | uniquement depuis `main` ; exécute le relais publié sur `gh-pages` |
 | `sources-check.yml` | oui | uniquement depuis `main` |
 
