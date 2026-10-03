@@ -103,6 +103,10 @@ const osrmFromGps = S => S.osrm.filter(x => GPS_MARK.some(v => x.includes(v)));
     t = await s.waitFor(/Départ prévu dépassé/i);
     check('A3 · 15:40, heure passée sans mouvement : « Départ prévu dépassé »', /Départ prévu dépassé/i.test(t) && /prévu 15:33/.test(t) && !/TRAJET EN COURS/i.test(t), t.slice(0, 140));
     check('A3 · départ dépassé : demande ponctuelle haute précision', (await p.evaluate(() => window.__geoLog.filter(x => x.t === 'get' && x.hi).length)) >= 1);
+    // relevé précis mais PÉRIMÉ (6 min, cache iOS), à plusieurs km, en mouvement : ne doit jamais faire passer « en cours »
+    await s.to('2026-10-03T15:42:00+02:00'); await s.fix(G.milieu, { speed: 25, acc: 15, age: 6 * 60e3 }); await s.settle(4); await s.fix(G.milieu, { speed: 25, acc: 15, age: 5 * 60e3 }); await s.settle(6);
+    t = await s.txt();
+    check('A3b · relevés précis mais périmés, à plusieurs km et rapides : jamais « en cours »', /Départ prévu dépassé/i.test(t) && !/TRAJET EN COURS/i.test(t) && (await p.evaluate(() => LIVE.phase)) === 'late', await p.evaluate(() => LIVE.phase));
     await s.to('2026-10-03T15:45:00+02:00'); await s.fix(G.roule, { speed: 22 }); await s.settle(4); await s.fix(G.roule, { speed: 22, acc: 20 });
     t = await s.waitFor(/TRAJET EN COURS.*km restants/i);
     check('A4 · 15:45, mouvement confirmé : 🏎️ Trajet en cours, km restants, arrivée estimée', /TRAJET EN COURS/i.test(t) && /km restants/.test(t) && /arrivée estimée/.test(t), t.slice(0, 160));
@@ -118,6 +122,9 @@ const osrmFromGps = S => S.osrm.filter(x => GPS_MARK.some(v => x.includes(v)));
     check('A7 · GPS muet depuis plus de 2 min : dernière analyse signalée « GPS ancien »', /GPS ancien · dernière analyse \d\d:\d\d/.test(t), t.slice(0, 200));
     await s.to('2026-10-03T17:03:30+02:00'); await s.settle(3); t = await s.txt();
     check('A7 · au-delà de 5 min : repli explicite, jamais présenté comme du temps réel', /Suivi GPS indisponible · trajet planifié affiché/.test(t) && !/GPS · actualisé/.test(t), t.slice(0, 200));
+    // deux relevés précis à la destination mais PÉRIMÉS (3 min) : ne valident jamais l'arrivée
+    await s.to('2026-10-03T17:03:40+02:00'); await s.fix(G.amiens, { acc: 40, age: 3 * 60e3 }); await s.settle(3); await s.fix(G.amiens, { acc: 40, age: 3 * 60e3 + 5000 }); await s.settle(4); t = await s.txt();
+    check('A8a · deux relevés périmés à la destination : arrivée jamais validée', /Assurance/.test(t) && (await p.evaluate(() => LIVE.phase)) === 'active' && (await p.evaluate(() => LIVE.arrN)) === 0, `${await p.evaluate(() => LIVE.phase)} / ${await p.evaluate(() => LIVE.arrN)}`);
     await s.to('2026-10-03T17:04:00+02:00'); await s.fix(G.amiens, { acc: 40 }); await s.settle(4); t = await s.txt();
     check('A8 · un seul relevé à moins de 300 m : pas encore arrivé', /Assurance/.test(t));
     await s.to('2026-10-03T17:04:20+02:00'); await s.fix(G.amiens, { acc: 40 }); await s.settle(6); t = await s.txt();

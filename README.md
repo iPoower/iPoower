@@ -37,15 +37,16 @@ puis score pneus, chaussée, pluie, visibilité, verglas et point critique sur c
 
 | Règle | Valeur |
 |---|---|
-| Position utilisable | précision ≤ 250 m ; relevé (`pos.timestamp`) ≤ 5 min avant départ, ≤ 2 min en trajet |
+| Position utilisable | précision ≤ 250 m ; relevé (`pos.timestamp`) ≤ 5 min avant départ, ≤ 2 min en trajet. **Aucune transition d'état sur un relevé périmé** (référence ≤ 5 min ; départ, vitesse et arrivée ≤ 2 min) |
 | Phases | imminent → départ prévu dépassé (aucun mouvement) → en cours (mouvement confirmé : > max(300 m, 2 × incertitude), ou > 2 m/s sur deux relevés précis) → arrivé (deux relevés ≤ 150 m de précision à moins de 300 m) |
-| Recalcul | après ~1 km ou 10 min, jamais plus d'une fois par 30 s ; une réponse plus ancienne que la dernière demande est ignorée |
+| Recalcul | après ~1 km ou 10 min, jamais plus d'une fois par 30 s. Réponses tardives : OSRM est protégé par un compteur de génération (`LIVE.gen`) ; la météo est isolée par la clé géographique de chaque route (`legKey` / `LEGM`), une réponse d'une ancienne route n'est jamais lue pour la route courante |
 | Pannes | trajet planifié tant qu'aucune analyse vivante n'existe ; ensuite dernière analyse « GPS ancien » pendant 5 min, puis repli explicite |
 | Durée de vie | jamais parti : arrivée prévue + 30 min ; parti : jusqu'à l'arrivée (coupe-circuit : arrivée prévue + max(60 min, 2 × durée)) |
 | Batterie | basse consommation hors trajet ; demande ponctuelle précise avant le départ ; haute précision continue seulement en trajet |
 
-**Confidentialité.** Tout se passe dans le navigateur, en mémoire : rien n'est stocké (ni `localStorage`, ni `twrc.croute`)
-ni publié (`obs.json`, agenda, relais et GitHub Actions inchangés). Aucun nouveau fournisseur externe : en mode trajet vivant,
+**Confidentialité.** Le trajet vivant est calculé dans le navigateur, en mémoire : **aucune donnée supplémentaire du trajet vivant — route,
+météo de route, phase ou relevé de référence — n'est persistée** (ni `localStorage`, ni `twrc.croute`) ni publiée (`obs.json`, agenda,
+relais et GitHub Actions inchangés). Le stockage local `twrc.gps` existant (dernière position, pour la puce « Ma position ») reste inchangé. Aucun nouveau fournisseur externe : en mode trajet vivant,
 la position courante arrondie à 0,001° est en plus transmise à OSRM pour calculer le trajet restant (domicile et travail
 restent arrondis à 0,01° comme destination).
 

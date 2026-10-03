@@ -975,23 +975,24 @@ function liveReset(reason) {
   LIVE.gen++;   // toute réponse encore en route est désormais ignorée
   if (gpsWatch != null && gpsWatchHi) startWatch(false);   // retour au suivi basse consommation
 }
-// chaque nouveau relevé : référence de départ, mouvement, arrivée (jamais au rendu : un rendu ne recrée rien)
+// chaque nouveau relevé : référence de départ, mouvement, arrivée (jamais au rendu : un rendu ne recrée rien).
+// Aucune transition d'état sur un relevé périmé (pos.timestamp) : un relevé précis mais ancien, rendu par le cache d'iOS, est ignoré.
+//   référence avant départ : relevé ≤ 5 min · départ (late → active) : relevé courant ET relevé précédent (vitesse) ≤ 2 min · arrivée : ≤ 2 min
 function liveOnFix(fix) {
   if (!LIVE.key || !LIVE.base) return;
   if (LIVE.phase === 'active') {
     const d = liveDest(LIVE.base);
-    if (d && fix.ts !== LIVE.arrTs) {
+    if (d && fix.ts !== LIVE.arrTs && liveFresh(fix, LIVE_AGE_RUN)) {   // un relevé périmé ne compte pas et n'interrompt pas la série
       LIVE.arrTs = fix.ts;
       LIVE.arrN = fix.acc <= LIVE_ACC_ARR && distKm(fix, d) <= LIVE_ARR_KM ? LIVE.arrN + 1 : 0;
-      if (LIVE.arrN >= 2) { liveReset('arrivé'); renderBrf(); return; }   // deux relevés précis consécutifs à moins de 300 m
+      if (LIVE.arrN >= 2) { liveReset('arrivé'); renderBrf(); return; }   // deux relevés précis, récents et distincts à moins de 300 m
     }
-  } else if (fix.acc <= LIVE_ACC) {
-    if (liveNow() < LIVE.base.dep || !LIVE.startFix) LIVE.startFix = fix;   // avant l'heure : la référence suit le dernier relevé précis
-    else {
-      const sf = LIVE.startFix, thr = Math.max(0.3, 2 * Math.max(fix.acc, sf.acc) / 1000);
-      const fast = fix.speed != null && fix.speed > 2 && FIXPREV && FIXPREV !== sf && FIXPREV.ts !== fix.ts && FIXPREV.acc <= LIVE_ACC && FIXPREV.speed != null && FIXPREV.speed > 2;
-      if (distKm(sf, fix) > thr || fast) { LIVE.phase = 'active'; startWatch(true); }   // mouvement confirmé : suivi haute précision continu
-    }
+  } else if (liveNow() < LIVE.base.dep || !LIVE.startFix) {
+    if (liveFresh(fix, LIVE_AGE_IMM)) LIVE.startFix = fix;   // avant l'heure : la référence suit le dernier relevé précis et récent
+  } else if (liveFresh(fix, LIVE_AGE_RUN)) {
+    const sf = LIVE.startFix, thr = Math.max(0.3, 2 * Math.max(fix.acc, sf.acc) / 1000);
+    const fast = fix.speed != null && fix.speed > 2 && FIXPREV && FIXPREV !== sf && FIXPREV.ts !== fix.ts && liveFresh(FIXPREV, LIVE_AGE_RUN) && FIXPREV.speed != null && FIXPREV.speed > 2;
+    if (distKm(sf, fix) > thr || fast) { LIVE.phase = 'active'; startWatch(true); }   // mouvement confirmé : suivi haute précision continu
   }
   clearTimeout(liveOnFix.t); liveOnFix.t = setTimeout(renderBrf, 300);
 }
@@ -1024,7 +1025,8 @@ function liveRoute(fix, b) {
   LIVE.routeTry = Date.now(); const gen = ++LIVE.gen, key = LIVE.key;
   fetchJSON(`https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${dd.lon},${dd.lat}?overview=full&geometries=geojson&annotations=duration`, 10000)
     .then(j => {
-      if (gen !== LIVE.gen || key !== LIVE.key) return;   // réponse d'une ancienne position ou d'un autre trajet : ignorée
+      if (gen !== LIVE.gen || key !== LIVE.key) return;   // OSRM : réponse d'une ancienne position ou d'un autre trajet, ignorée (génération)
+      // (météo : chaque route a sa propre clé géographique legKey/LEGM ; une réponse tardive d'une ancienne route n'est jamais lue pour la route courante)
       const p = liveParse(j); if (!p) throw new Error('itinéraire vide');
       LIVE.route = { ...p, key, gen, o, d: { lat: d.lat, lon: d.lon, name: d.name } }; LIVE.routeAt = Date.now(); LIVE.routeOrigin = o; LIVE.routeErr = false; renderBrf();
     })
@@ -1068,7 +1070,7 @@ function liveApply(T, now) {
     const cand = T.slice().sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : 0).find(t => liveMin(now, t.dep) <= LIVE_WIN && liveDest(t));
     if (!cand) return T;
     Object.assign(LIVE, { key: cand.key, base: cand, phase: 'imminent' }); cur = cand;
-    if (FIX && FIX.acc <= LIVE_ACC) LIVE.startFix = FIX;
+    if (liveFresh(FIX, LIVE_AGE_IMM)) LIVE.startFix = FIX;
   }
   if (LIVE.phase !== 'active') LIVE.phase = now < LIVE.base.dep ? 'imminent' : 'late';
   const lt = liveTrip(LIVE.base, now);
