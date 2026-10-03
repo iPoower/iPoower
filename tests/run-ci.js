@@ -44,7 +44,8 @@ const SUITE = [
   ['e2e29.js', 'navigation : ouvrir le trajet affiché dans Waze', true],
   ['e2e30.js', 'automate du trajet : départ par le mouvement, arrivée à froid', true]];
 const verdict = (code, out) => {
-  if (code !== 0) return 'code de sortie ' + code;
+  const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
+  if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');
   if (/❌|ERR |Error:|TimeoutError/.test(out)) return 'échec signalé dans la sortie';
   const sc = [...out.matchAll(/(\d+)\/(\d+) scénarios OK/g)]; if (sc.some(m => m[1] !== m[2])) return 'scénarios incomplets';
   const er = out.match(/errors (\[.*\])/); if (er && er[1] !== '[]') return 'erreurs JavaScript : ' + er[1].slice(0, 200);
