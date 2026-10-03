@@ -182,7 +182,9 @@ function applyCalib() { const c = calibBias(S.calib); setRoadBias(c.bias); retur
 const locById = id => allLocs().find(l => l.id === id);
 let lastOk = null, lastTry = null, busy = false, CX = null;
 applyCalib();
-const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null, view: lsGet('twrc.view') === 'meteo' ? 'meteo' : 'pneus' };
+const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
+  view: ['meteo', 'tenue'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0,
+  outfitOccasion: ['office', 'walk'].includes(lsGet('twrc.outfit.occasion')) ? lsGet('twrc.outfit.occasion') : 'outing' };
 
 async function fetchJSON(url, ms) {
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms || 12000);
@@ -554,20 +556,55 @@ function renderCurrent() {
 const TIRE_ALERTS = ['press', 'age', 'mont'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
 function renderView() {
-  const vm = UI.view === 'meteo';
+  const vm = UI.view === 'meteo', vt = UI.view === 'tenue';
   document.body.classList.toggle('vm', vm);
-  $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="pneus" aria-pressed="${!vm}">🛞 Pneus</button><button data-act="view" data-v="meteo" aria-pressed="${vm}">🌦️ Météo</button></div>`;
-  const links = vm
+  document.body.classList.toggle('vt', vt);
+  $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="pneus" aria-pressed="${!vm && !vt}">🛞 Pneus</button><button data-act="view" data-v="meteo" aria-pressed="${vm}">🌦️ Météo</button><button data-act="view" data-v="tenue" aria-pressed="${vt}">👔 Tenue</button></div>`;
+  const links = vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
     ? [['secCur', 'Actuel'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
     : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secSeason', 'Saison'], ['secJournal', 'Journal'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
-  const order = vm
+  const order = vt
+    ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'] : vm
     ? ['hdrMore', 'banners', 'secCur', 'secTip', 'secBrf', 'secCal', 'secRadar', 'secAir', 'secChart', 'secDays', 'secIce', 'secAlerts', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
     : ['secBrf', 'secCal', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'];
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#notice');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
   if (RADAR.map) setTimeout(() => RADAR.map.invalidateSize(), 60);
+}
+
+/* ---------- tenue sartoriale : mêmes lieux et mêmes données météo ---------- */
+function renderTenue() {
+  const el = $('#secTenue'); el.hidden = UI.view !== 'tenue'; if (el.hidden) return;
+  const m = M[UI.loc], l = curLoc(), tomorrow = UI.outfitDay === 1;
+  const controls = `<div class="outfit-controls"><div class="seg" role="group" aria-label="Jour de la tenue">${[[0, 'Aujourd’hui'], [1, 'Demain']].map(([v, t]) => `<button data-act="outfit-day" data-v="${v}" aria-pressed="${UI.outfitDay === v}">${t}</button>`).join('')}</div>
+    <div class="seg" role="group" aria-label="Usage de la tenue">${[['office', 'Bureau'], ['outing', 'Sortie'], ['walk', 'Promenade']].map(([v, t]) => `<button data-act="outfit-occasion" data-v="${v}" aria-pressed="${UI.outfitOccasion === v}">${t}</button>`).join('')}</div></div>`;
+  const head = `<div class="mod-h"><h2>👔 Tenue · ${esc(l.name)}</h2><span class="src obs">Sartorial</span></div>${controls}`;
+  const win = wardrobeWindow(m, UI.outfitDay, m ? nowIn(m.tz) : null), a = win ? sartorialAdvice(win.samples, UI.outfitOccasion) : null;
+  if (!a) {
+    el.innerHTML = `${head}<div class="outfit-empty" role="status"><h3>${busy ? 'Météo en cours de chargement' : 'Météo insuffisante pour cette tenue'}</h3><p>${tomorrow ? 'Les prévisions de demain ne sont pas encore disponibles pour ce lieu.' : 'Il faut une température pour proposer des couches adaptées.'}</p><button class="btn" data-act="refresh" ${busy ? 'disabled' : ''}>Actualiser la météo</button></div>`; return;
+  }
+  const raw = RAW[UI.loc], sourceAge = m.cur.time ? (tsToDate(nowIn(m.tz)) - tsToDate(m.cur.time.slice(0, 16))) / 60000 : Infinity;
+  const stale = m.mode === 'cache' || (m.mode !== 'demo' && (!raw || Date.now() - raw.t > 60 * 60e3 || sourceAge > 90 || sourceAge < -15));
+  const state = m.mode === 'demo' ? 'Simulation · aucune donnée réelle' : stale ? 'Données anciennes · tenue à confirmer' : 'Prévisions météo · conseil de confort';
+  const interval = `${fmtDay(win.date)} · ${win.start}–${win.end}`;
+  const metric = (k, v) => `<div><span>${k}</span><b>${v}</b></div>`;
+  const detail = [...a.notes];
+  if (a.partial || win.incomplete) detail.push('Données partielles : certains créneaux, le ressenti, la pluie ou les rafales manquent.');
+  const hourly = win.samples.filter((x, i) => i === 0 || i === win.samples.length - 1 || x.hh % 3 === 0).map(x => {
+    const f = num(x.Tapp) ?? num(x.T);
+    return `<div><span>${x.t.slice(11, 16)}</span><b>${f1(f)} °C</b><span>${x.pp == null ? 'Pluie —' : 'Pluie ' + f0(x.pp) + ' %'}</span></div>`;
+  }).join('');
+  el.innerHTML = `${head}<div class="outfit-context${stale ? ' old' : ''}"><span>${esc(state)}</span><b>${esc(interval)}</b></div>
+    <div class="outfit-verdict"><span class="outfit-label">${tomorrow ? 'Ta tenue de demain' : 'Ta tenue pour la suite de la journée'}</span><h3>${esc(a.title)}</h3><p>Choisie pour le créneau le plus frais ; retire une couche quand il fait plus doux.</p></div>
+    <div class="outfit-metrics">${metric('Ressenti' + (a.tempFallback ? ' / air' : ''), f0(a.low) + ' à ' + f0(a.high) + ' °C')}${metric('Pluie · max', a.pp == null ? '—' : f0(a.pp) + ' %')}${metric('Rafales · max', a.gust == null ? '—' : f0(a.gust) + ' km/h')}</div>
+    <div class="outfit-pieces">${a.pieces.map((p, i) => `<div class="outfit-piece"><span class="outfit-no mono">0${i + 1}</span><div><span class="outfit-label">${esc(p.label)}</span><h4>${esc(p.item)}</h4><p>${esc(p.detail)}</p></div></div>`).join('')}</div>
+    <div class="outfit-extra"><h3>À emporter</h3><ul>${a.accessories.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>
+    <div class="outfit-palette"><span class="outfit-label">Accord de couleurs suggéré</span><div>${a.palette.map(t => `<span>${esc(t)}</span>`).join('')}</div></div>
+    ${detail.length ? `<div class="outfit-extra"><h3>À prévoir</h3><ul>${detail.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
+    <details class="outfit-evolution"><summary>Évolution sur le créneau</summary><div class="evo">${hourly}</div></details>
+    <p class="outfit-method">Suggestions de pièces, à adapter à ce que tu possèdes et à ta sensibilité au froid. Les seuils sont des repères de confort. Le ressenti météo intègre déjà le vent ; aucune température de chaussée ni score pneus n’intervient ici.</p>`;
 }
 
 /* ---------- UV ---------- */
@@ -2094,10 +2131,10 @@ async function loadVersion() {
 function renderAll() {
   recordJournal();
   CX = computeCtx();
-  renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderBrf(); renderCal(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+  renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderBrf(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
 }
 function softRender() { // après un réglage : tout sauf le panneau de paramètres
-  CX = computeCtx(); renderBanners(); renderBrf(); renderCal(); renderCurrent(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
+  CX = computeCtx(); renderBanners(); renderBrf(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
 }
 
 /* ---------- événements ---------- */
@@ -2118,7 +2155,9 @@ document.addEventListener('click', async e => {
   else if (a === 'nocode') { lsSet('twrc.nocode', '1'); renderNotice(); const d = $('#settings'); if (d) { d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
   else if (a === 'withcode') { try { localStorage.removeItem('twrc.nocode'); } catch (err) { /* stockage */ } renderNotice(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   else if (a === 'bk-export') backupExport();
-  else if (a === 'view') { UI.view = t.dataset.v === 'meteo' ? 'meteo' : 'pneus'; lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  else if (a === 'view') { UI.view = ['meteo', 'tenue'].includes(t.dataset.v) ? t.dataset.v : 'pneus'; lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  else if (a === 'outfit-day') { UI.outfitDay = t.dataset.v === '1' ? 1 : 0; renderTenue(); }
+  else if (a === 'outfit-occasion') { UI.outfitOccasion = ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing'; lsSet('twrc.outfit.occasion', UI.outfitOccasion); renderTenue(); }
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
   else if (a === 'gps-forget') { GPS = null; S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } if (gpsWatch != null) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null; } FIX = FIXPREV = null; liveReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
