@@ -37,7 +37,7 @@ if (!fs.existsSync(path.join(H, 'calendar.sealed.json'))) { console.error('Harna
 fs.copyFileSync(path.join(H, 'calendar.sealed.json'), path.join(OUT, 'cal.fake.json'));
 // suite : tests unitaires du moteur et du widget, puis parcours navigateur (horloge et réseau simulés)
 const SUITE = [
-  ['test_engine.js', 'moteur : verdicts, chaussée, verglas', false], ['test_examples.js', 'moteur : cas de référence', false], ['test_widget.js', 'widget iPhone (Scriptable simulé)', false],
+  ['test_engine.js', 'moteur : verdicts, chaussée, verglas', false], ['test_examples.js', 'moteur : cas de référence', false], ['test_widget.js', 'widget iPhone (Scriptable simulé)', false],\n  ['test_flight_recorder.js', 'observabilité : confidentialité, rétention et états', false],
   ['e2e17.js', 'réglages conservés lors d’une mise à jour', true], ['e2e18.js', 'astuces et mode Météo', true], ['e2e24.js', 'jours de trajet domicile-travail', true],
   ['e2e25.js', 'timeline : prochain trajet, en cours, arrivée', true], ['e2e26.js', 'lieux et Ma position', true], ['e2e27.js', 'mini-carte ordinateur et iPhone', true],
   ['e2e28.js', 'GPS dynamique : trajet vivant depuis la position', true],
