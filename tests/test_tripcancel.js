@@ -73,11 +73,21 @@ test('expiration agenda = fin locale + deux heures, indépendante du fuseau navi
   assert.equal(api.eventExpiration({ s: day + 'T10:00', e: day + 'T11:00' }, now, 'UTC'), Date.parse(day + 'T13:00:00Z'));
 });
 test('annulation travail expire à minuit locale, y compris changements d’heure', () => {
-  assert.equal(api.workExpiration(day), Date.parse('2026-10-04T22:00:00Z'));
-  assert.equal(api.workExpiration('2026-10-25'), Date.parse('2026-10-25T23:00:00Z'));
-  assert.equal(api.workExpiration('2026-03-29'), Date.parse('2026-03-29T22:00:00Z'));
+  assert.equal(api.workExpiration(day, now), Date.parse('2026-10-04T22:00:00Z'));
+  assert.equal(api.workExpiration('2026-10-25', Date.parse('2026-10-25T08:00:00Z')), Date.parse('2026-10-25T23:00:00Z'));
+  assert.equal(api.workExpiration('2026-03-29', Date.parse('2026-03-29T08:00:00Z')), Date.parse('2026-03-29T22:00:00Z'));
+  assert.equal(api.workExpiration('2026-10-25', Date.parse('2026-10-25T22:55:00Z')), Date.parse('2026-10-25T23:05:00Z'));
   assert.equal(api.workId(day), 'work-' + day);
 });
+function workUndoWindow(a) {
+  const at = Date.parse('2026-10-05T21:55:00Z'), id = a.workId('2026-10-05'), exp = a.workExpiration('2026-10-05', at);
+  assert.equal(exp, at + a.UNDO_MS);
+  const state = a.cancel({}, id, exp, at);
+  assert.equal(a.undoable(state, Date.parse('2026-10-05T22:04:00Z')).length, 1);
+  assert.equal(a.undoable(state, at + a.UNDO_MS + 1).length, 0);
+  assert.equal(a.has(state, a.workId('2026-10-06'), Date.parse('2026-10-05T22:04:00Z')), false);
+}
+test('travail annulé à 23:55 : dix minutes d’Undo complètes sans masquer le lendemain', () => workUndoWindow(api));
 test('événement journée entière sans fin expire le lendemain plus marge', () => {
   assert.equal(api.eventExpiration({ s: day, allDay: true }, now), Date.parse('2026-10-05T00:00:00Z'));
 });
@@ -184,7 +194,7 @@ test('annulation legacy ambiguë ne masque aucune des deux occurrences', () => {
 test('travail annulé : un ancien aller depuis travail se reconstruit depuis domicile', () => {
   const [e] = chain(), work = { id: 'work', lat: 49.1, lon: 2.8, label: 'Travail' };
   e.legs = [leg('go', work, A, '09:10', '09:50', 'work'), leg('ret', A, H, '11:10', '11:50', 'event')];
-  const snapshot = JSON.stringify(e), state = api.cancel({}, api.workId(day), api.workExpiration(day), now), calls = [];
+  const snapshot = JSON.stringify(e), state = api.cancel({}, api.workId(day), api.workExpiration(day, now), now), calls = [];
   const map = api.rebuild([e], H, {}, state, now, { beforeFirst(event) { calls.push(event.id); return H; } });
   const go = map.get(e).find(l => l.k === 'go');
   assert.deepEqual(calls, ['event-a']); assert.equal(go.from.lat, H.lat); assert.equal(go.fromKind, 'home'); assert.equal(go.originPending, true);
@@ -199,4 +209,5 @@ function caught(name, text, proof) {
 }
 caught('une annulation ne peut être convertie en arrivée', source.replace('out[id] = { at: now, exp };', "out[id] = { at: now, exp, how: 'arrivé' };"), noArrival);
 caught('ancienne route d’un rendez-vous annulé interdite', source.replace('same(l.from, from) && same(l.to, to)', 'same(l.to, to)'), noOldOrigin);
-console.log(count + '/' + count + ' scénarios OK (dont deux mutations détectées)');
+caught('la fenêtre Undo travail ne peut pas être coupée à minuit', source.replace('Math.max(midnight, now + UNDO_MS)', 'midnight'), workUndoWindow);
+console.log(count + '/' + count + ' scénarios OK (dont trois mutations détectées)');
