@@ -36,9 +36,9 @@ const tripOnly=await p.evaluate(()=>{
   CAL.events.push({id:'event-tech-bad-place',t:'Rendez-vous adresse à corriger',s:addMin(s,30),e:addMin(e,30),allDay:false,loc:'Adresse fictive introuvable',lat:null,lon:null,label:null,mode:null,legs:[]});
   renderCal();
   const x=document.querySelector('#secCal').innerText;
-  return !x.includes('Rappel technique sans trajet')&&x.includes('Rendez-vous adresse à corriger')&&/Lieu introuvable/.test(x);
+  return !x.includes('Rappel technique sans trajet')&&!x.includes('Rendez-vous adresse à corriger')&&/1 rendez-vous au lieu non reconnu masqué/.test(x)&&/1 rappel sans lieu masqué/.test(x);
 });
-check('36.1d · Agenda trajets : rappel sans lieu masqué, vraie adresse invalide signalée',tripOnly);
+check('36.1d · Agenda trajets : rappel sans lieu masqué, lieu non reconnu masqué mais compté (sans titre)',tripOnly);
 
 cut=true;const before=external;await p.evaluate(()=>window.__setOffline(true));await settle(3);t=await p.locator('body').innerText();
 check('36.2 · perte réseau : HORS LIGNE, jamais LIVE, données conservées',/HORS LIGNE/.test(t)&&!/\bLIVE\b/.test((await p.locator('#statusbar').innerText()))&&/Assurance/.test(t));

@@ -2185,12 +2185,13 @@ function renderCal() {
   const el = $('#secCal'); if (!el) return;
   if (!CAL) { el.hidden = true; el.innerHTML = ''; return; }
   const now = DEMO.on && CX ? CX.m.nowStr : liveNow(), home = S.locs[0], fut = (CAL.events || []).filter(e => (e.allDay ? e.s.slice(0, 10) >= now.slice(0, 10) : e.s > now));
-  // Agenda · trajets : lieu reconnu (coordonnées ou lieu configuré, #21), déplacement déclaré (#trajet, #direct, #maison)
-  // ou adresse saisie mais introuvable (main). Un vrai rendez-vous ne disparaît jamais sans bruit ; sans lieu reconnu,
-  // aucun itinéraire, météo, Waze ni Tenue n'est inventé (calendarSpatial). Les rappels sans lieu restent exclus.
-  const listed = e => calendarRelevant(e) || (e.mode !== 'pasdetrajet' && calendarHasDeclaredPlace(e));
-  const skip = fut.filter(e => e.mode === 'pasdetrajet'), relevant = fut.filter(listed),
-    noPlace = fut.filter(e => e.mode !== 'pasdetrajet' && !listed(e)), located = relevant.filter(calendarSpatial);
+  // Agenda · trajets : lieu reconnu (coordonnées ou lieu configuré) ou déplacement déclaré (#trajet, #direct, #maison).
+  // Un « Lieu » rempli mais non reconnu (« Teams », faute de frappe) est masqué mais compté, sans titre : rien ne
+  // disparaît sans bruit. Sans lieu reconnu, aucun itinéraire, météo, Waze ni Tenue n'est inventé (calendarSpatial).
+  const skip = fut.filter(e => e.mode === 'pasdetrajet'), relevant = fut.filter(calendarRelevant),
+    hidden = fut.filter(e => e.mode !== 'pasdetrajet' && !calendarRelevant(e)),
+    unknownPlace = hidden.filter(calendarHasDeclaredPlace), noPlace = hidden.filter(e => !calendarHasDeclaredPlace(e)),
+    located = relevant.filter(calendarSpatial);
   const near = located.filter(e => locHasCoords(home) && distKm(home, calendarEventPlace(e, calendarPlaces())) < 3);
   const evs = located.filter(e => !near.includes(e)).slice(0, 8).concat(relevant.filter(e => !calendarSpatial(e)).slice(0, 8));
   const dateLabel = e => {
@@ -2237,7 +2238,7 @@ function renderCal() {
     return `<div class="cal-e" data-event-id="${esc(e.id || '')}"><div class="cal-h"><span class="cal-d">${dateLabel(e)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(calendarEventPlace(e, calendarPlaces())?.name || e.label || e.loc || 'Lieu inconnu')}</span></div>${body}</div>`;
   }).join('');
   el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calState}</span></div>${calWarn}${evs.length ? `<div class="cal-l">${rows}</div>` : '<p class="sub">Aucun déplacement à analyser sur les 8 prochains jours.</p>'}
-    <div class="disc">${calCached ? '<b>Hors connexion : dernier agenda chiffré disponible.</b> ' : ''}${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${noPlace.length ? noPlace.length + ' rappel' + (noPlace.length > 1 ? 's' : '') + ' sans lieu masqué' + (noPlace.length > 1 ? 's' : '') + '. ' : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Race Control utilise les rendez-vous avec un lieu reconnu. Les rappels sans lieu et les éléments <b>#pasdetrajet</b> ou 📺 sont exclus. Pour signaler un vrai déplacement dont le lieu reste à préciser, ajoute <b>#trajet</b> dans le titre ou la description Google Agenda. <b>#direct</b> enchaîne les rendez-vous ; <b>#maison</b> prévoit un passage par chez toi. Agenda sur 8 jours, synchronisé le ${up} (chiffré avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, avec une marge totale plafonnée à 15 min pour un rendez-vous (dont 10 min d’arrivée anticipée), sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
+    <div class="disc">${calCached ? '<b>Hors connexion : dernier agenda chiffré disponible.</b> ' : ''}${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${noPlace.length ? noPlace.length + ' rappel' + (noPlace.length > 1 ? 's' : '') + ' sans lieu masqué' + (noPlace.length > 1 ? 's' : '') + '. ' : ''}${unknownPlace.length ? `<b>${unknownPlace.length} rendez-vous au lieu non reconnu masqué${unknownPlace.length > 1 ? 's' : ''}</b> : précise l’adresse, ou ajoute #trajet si c’est un déplacement. ` : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Race Control utilise les rendez-vous avec un lieu reconnu. Les rappels sans lieu et les éléments <b>#pasdetrajet</b> ou 📺 sont exclus. Pour signaler un vrai déplacement dont le lieu reste à préciser, ajoute <b>#trajet</b> dans le titre ou la description Google Agenda. <b>#direct</b> enchaîne les rendez-vous ; <b>#maison</b> prévoit un passage par chez toi. Agenda sur 8 jours, synchronisé le ${up} (chiffré avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, avec une marge totale plafonnée à 15 min pour un rendez-vous (dont 10 min d’arrivée anticipée), sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
 }
 
 
