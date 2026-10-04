@@ -14,7 +14,8 @@ const mutations = [
   { name: 'pire heure du trajet ignorée', from: 'if (a.pen > pMax) { pMax = a.pen; kMax = k; }', to: 'if (k === 0) { pMax = a.pen; kMax = k; }' },
   { name: 'courbe froid des pneus été non monotone', from: '[0, 60], [1, 48]', to: '[0, 20], [1, 48]' },
   { name: 'profondeur illégale oubliée', from: "if (tread != null && tread < 1.6) add('Profondeur sous le minimum légal (1,6 mm)', 40, 'tyre');", to: '' },
-  { name: '« maintenant » repris d’une réponse obsolète', from: "Math.abs(Date.parse(curS + 'Z') - Date.parse(clockNow + 'Z')) <= 3600e3", to: 'true' },
+  { name: '« maintenant » repris d’une réponse obsolète', from: "Math.abs(Date.parse(curS + 'Z') - Date.parse(clockNow + 'Z')) <= 3600e3 || !clockInData", to: 'true' },
+  { name: 'horloge aberrante imposée au modèle', from: "Math.abs(Date.parse(curS + 'Z') - Date.parse(clockNow + 'Z')) <= 3600e3 || !clockInData", to: "Math.abs(Date.parse(curS + 'Z') - Date.parse(clockNow + 'Z')) <= 3600e3" },
   { name: 'prévision tronquée acceptée', from: "if (!Array.isArray(t) || t.length < 24) return 'moins de 24 heures de prévision';", to: "if (!Array.isArray(t)) return 'x';" },
   { name: 'températures trouées acceptées', from: "if (T.filter(v => typeof v === 'number' && isFinite(v)).length < t.length / 2) return", to: "if (false) return" },
   { name: 'gomme usée favorisée sous la pluie', from: 'tread < 3 ? 1.6 : tread < 4 ? 1.25 : 1', to: 'tread < 3 ? 0.5 : tread < 4 ? 1.25 : 1' }

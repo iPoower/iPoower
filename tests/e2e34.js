@@ -378,9 +378,9 @@ const privacy = async s => {
     // Le calendrier du trajet doit suivre la date réelle même avant qu'une nouvelle météo n'arrive.
     let weatherRelease; s.S.forecastHold = new Promise(r => { weatherRelease = r; });
     await s.to('2026-10-06T05:00:00+02:00'); await p.evaluate(() => { rebuild(); renderAll(); }); await s.settle(3); t = await s.txt();
-    const workState = await p.evaluate(() => ({ browser: new Date(Date.now()).toISOString(), model: M[S.work.from].nowStr, days: S.work.days, cancelled: TRIPCANCEL,
+    const workState = await p.evaluate(() => ({ browser: new Date(Date.now()).toISOString(), model: M[S.work.from].nowStr, mode: M[S.work.from].mode, hours: M[S.work.from].hs.length, days: S.work.days, cancelled: TRIPCANCEL,
       trips: BRF_TRIPS.filter(x => x.src === 'work').map(x => ({ dep: x.dep, direction: x.td.dir })) }));
-    check('7 · scénario cache valide : météo du lundi conservée, nouvelles prévisions réellement en attente', s.S.forecastHeld > 0 && workState.model.slice(0, 10) === '2026-10-05', JSON.stringify({ held: s.S.forecastHeld, model: workState.model }));
+    check('7 · scénario cache valide : météo du lundi conservée en cache daté, « maintenant » = horloge, nouvelles prévisions en attente', s.S.forecastHeld > 0 && workState.hours >= 24 && workState.mode === 'cache' && workState.model.slice(0, 10) === '2026-10-06', JSON.stringify({ held: s.S.forecastHeld, model: workState.model, mode: workState.mode }));
     check('7 · lendemain : trajet travail rétabli, jours configurés inchangés', /aujourd’hui/i.test(t) && /domicile-travail/i.test(t) && workState.trips.some(x => x.dep.slice(0, 10) === '2026-10-06') && JSON.stringify(workState.days) === days, JSON.stringify({ text: short(t), ...workState }));
     weatherRelease(); s.S.forecastHold = null; await s.settle(3);
     await s.c.close();
@@ -407,10 +407,10 @@ const privacy = async s => {
     const s = await session(browser, '2026-10-09T05:00:00+02:00', { work: true }); const { p } = s;
     let weatherRelease; s.S.forecastHold = new Promise(r => { weatherRelease = r; });
     await s.to('2026-10-10T05:00:00+02:00'); await p.evaluate(() => { UI.dayOff = null; rebuild(); renderAll(); }); await s.settle(3);
-    const weekend = await p.evaluate(() => ({ model: M[S.work.from].nowStr,
+    const weekend = await p.evaluate(() => ({ model: M[S.work.from].nowStr, mode: M[S.work.from].mode,
       buttons: [...document.querySelectorAll('#secBrief [data-act="day"]')].map(x => ({ off: +x.dataset.off, text: x.textContent, selected: x.getAttribute('aria-pressed') === 'true' })),
       date: tripData().dep.slice(0, 10), briefing: document.querySelector('#secBrief').innerText }));
-    check('7b · veille vendredi→samedi, météo encore vendredi : choix et analyse commencent lundi 12/10', s.S.forecastHeld > 0 && weekend.model.slice(0, 10) === '2026-10-09' &&
+    check('7b · veille vendredi→samedi, météo encore vendredi (cache daté, « maintenant » = horloge) : choix et analyse commencent lundi 12/10', s.S.forecastHeld > 0 && weekend.mode === 'cache' && weekend.model.slice(0, 10) === '2026-10-10' &&
       weekend.buttons.map(x => x.off).join(',') === '2,3,4' && /lun\.?\s*12\/10/i.test(weekend.buttons[0].text) && weekend.buttons[0].selected &&
       weekend.buttons.every(x => !/Aujourd’hui|dim\.?\s*11\/10/i.test(x.text)) && weekend.date === '2026-10-12' && /départ\s*06:30\s*le\s*lun\.?\s*12\/10/i.test(weekend.briefing), JSON.stringify(weekend));
     weatherRelease(); s.S.forecastHold = null; await s.settle(3); await s.c.close();

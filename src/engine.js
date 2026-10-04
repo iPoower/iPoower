@@ -177,10 +177,12 @@ function makeModel(payload, mode, loc) {
   const hs = buildHours(payload);
   const tz = payload.timezone || 'Europe/Paris';
   const curT = payload.current && payload.current.time;
-  // L'heure du fournisseur n'est retenue que si elle concorde avec l'horloge (± 1 h) : une réponse obsolète (cache CDN,
-  // relais en retard) ne décale jamais « maintenant » dans le passé.
-  const clockNow = nowIn(tz), curS = curT ? String(curT).slice(0, 16) : null;
-  const nowStr = mode === 'live' && curS && Math.abs(Date.parse(curS + 'Z') - Date.parse(clockNow + 'Z')) <= 3600e3 ? curS : clockNow;
+  // « Maintenant » : l'horloge de l'appareil fait foi dès qu'elle tombe dans les données ; l'heure du fournisseur n'est retenue
+  // que si elle concorde (± 1 h) ou si l'horloge est hors des données (horloge aberrante). Une réponse obsolète (cache CDN,
+  // relais en retard) ne décale donc jamais « maintenant » dans le passé, et une horloge fausse ne vide jamais l'analyse.
+  const clockNow = nowIn(tz), curS = curT ? String(curT).slice(0, 16) : null, clockH = clockNow.slice(0, 13) + ':00';
+  const clockInData = hs.length > 0 && clockH >= hs[0].t && clockH <= hs[hs.length - 1].t;
+  const nowStr = mode === 'live' && curS && (Math.abs(Date.parse(curS + 'Z') - Date.parse(clockNow + 'Z')) <= 3600e3 || !clockInData) ? curS : clockNow;
   const nowHour = nowStr.slice(0, 13) + ':00';
   let nowI = -1;
   for (let i = 0; i < hs.length; i++) { if (hs[i].t <= nowHour) nowI = i; else break; }

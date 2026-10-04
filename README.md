@@ -160,6 +160,25 @@ n'exécute jamais le code de la PR et la lit uniquement comme des fichiers. Aujo
 | `race-control.yml` (relais) | oui | uniquement depuis `main` ; exécute le relais publié sur `gh-pages` |
 | `sources-check.yml` | oui | uniquement depuis `main` |
 
+## Robustesse : fraîcheur, pannes, hors connexion
+
+| Invariant | Mécanisme | Test |
+|---|---|---|
+| Une donnée ancienne n'est jamais présentée comme temps réel | « LIVE » est dérivé de l'âge réel (≤ 15 min) à chaque reconstruction et à chaque reprise iOS (`expireLive`) ; au-delà : badge CACHE daté et « maintenant » = horloge. L'heure du fournisseur n'est retenue que si elle concorde avec l'horloge (± 1 h) | `e2e38-resume.js`, `test_engine_verdicts.js` |
+| Une réponse invalide ne remplace jamais la dernière donnée valide | `validForecast` (≥ 24 h, horodatages croissants, températures présentes) avant toute écriture en mémoire ou en cache (lieux, route, événements, cache relu) ; agenda mis en cache seulement après déchiffrement ; copie plus ancienne ignorée | `e2e40-network.js` |
+| Le relais ne se tait jamais sur une panne | prévision invalide ou séquence vide → `relay.err` dans `obs.json`, jamais « Conditions sans alerte » | `relay-smoke.js` |
+| Démarrage à froid hors ligne | Service Worker : shell et données publiques en cache ; navigation réseau d'abord avec délai de 3 s si une copie existe (réseau muet), mise à jour poursuivie en arrière-plan ; déverrouillage possible sans météo | `e2e41-sw-coldstart.js` (vrai SW, navigateur fermé puis relancé hors ligne) |
+| Une seule actualisation à la fois | `refreshAll` mono-vol (`busy`), réponses GPS tardives écartées par génération ; reprise automatique au cycle de 5 min, sans boucle de nouvelles tentatives | `e2e38-resume.js`, `e2e40-network.js` |
+
+États de fraîcheur affichés dans **Réglages → Diagnostic** : `FRESH` ≤ 15 min · `AGING` ≤ 60 min · `STALE` au-delà · `UNAVAILABLE`.
+Le diagnostic (copiable) donne version de l'app et du Service Worker, réseau, dernière actualisation, météo du lieu affiché
+(état, mode, erreur), relais `obs.json`, agenda, stockage local et phase du trajet vivant, sans coordonnée, lieu ni rendez-vous.
+
+**Une seule interface** sur iPhone 11 Pro Max et PC : mêmes sections, mêmes composants ; seules la largeur et la densité changent.
+Gouttières `max(16 px, safe-area-inset)` (encoche en paysage), voile opaque sous l'horloge iOS, cibles ≥ 44 pt au doigt,
+alertes qui passent à la ligne au lieu d'élargir la page. Test : `e2e39-layout.js` (414×896 et 896×414 @3x, 1280, 1920 ;
+zones de sécurité émulées sous Chromium).
+
 ## Horloge du relais
 
 Le planificateur `schedule` de GitHub Actions retarde ou abandonne des exécutions aux heures chargées. Mesuré du 2 au 4 octobre 2026

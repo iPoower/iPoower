@@ -115,8 +115,10 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     }
   });
   // — « maintenant » du modèle : jamais dans le passé à cause d'une réponse obsolète
-  const payloadAt = cur => ({ timezone: 'Europe/Paris', current: { time: cur }, hourly: { time: [], temperature_2m: [] } });
   const shift = (ts, min) => new Date(Date.parse(ts + 'Z') + min * 60000).toISOString().slice(0, 16);
+  // 48 h de données horaires autour de l'horloge, comme une vraie réponse
+  const payloadAt = (cur, around = E.nowIn('Europe/Paris')) => { const time = [], temperature_2m = [], h0 = around.slice(0, 13) + ':00';
+    for (let h = -24; h < 24; h++) { time.push(shift(h0, h * 60)); temperature_2m.push(10); } return { timezone: 'Europe/Paris', current: { time: cur }, hourly: { time, temperature_2m } }; };
   test('réponse live concordante : l’heure du fournisseur est retenue', () => {
     const now = E.nowIn('Europe/Paris'), cur = shift(now, -15);
     assert.equal(E.makeModel(payloadAt(cur), 'live', {}).nowStr, cur);
@@ -124,6 +126,10 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   test('réponse live obsolète (3 h) : « maintenant » reste l’horloge', () => {
     const now = E.nowIn('Europe/Paris'), m = E.makeModel(payloadAt(shift(now, -180)), 'live', {});
     assert(Math.abs(Date.parse(m.nowStr + 'Z') - Date.parse(now + 'Z')) <= 60e3, m.nowStr + ' vs ' + now);
+  });
+  test('horloge de l’appareil hors des données (horloge aberrante) : l’heure du fournisseur est conservée', () => {
+    const now = E.nowIn('Europe/Paris'), far = shift(now, 30 * 24 * 60), m = E.makeModel(payloadAt(far, far), 'live', {});
+    assert.equal(m.nowStr, far); assert(m.nowI >= 0, 'index « maintenant » dans les données');
   });
   test('cache : « maintenant » est toujours l’horloge', () => {
     const now = E.nowIn('Europe/Paris'), m = E.makeModel(payloadAt(shift(now, -15)), 'cache', {});
