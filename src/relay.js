@@ -262,13 +262,17 @@ async function calendarSync(out) {
     // sans lieu/#pasdetrajet ne déclenchent aucun géocodage et les caches geo,
     // ROUTES et CITY existants mutualisent les calculs des autres événements.
     const occ = expand(parseIcs(await r.text()), from.slice(0, 10) + 'T00:00', to);
-    const geo = {}, events = [];
+    const geo = {}, events = []; let calNoPlace = 0;
     for (const e of occ) {
       const loc = typeof e.loc === 'string' ? e.loc.trim() : '';
-      // Garder les rendez-vous sans lieu pour le plan du jour, sans météo ni trajet inventés.
-      const g = e.mode === 'pasdetrajet' || loc.length <= 2 ? null : geo[loc] !== undefined ? geo[loc] : (geo[loc] = await geocodeLoc(loc));
+      // Race Control est un moteur de trajets : un rappel/note sans champ Lieu ne doit jamais
+      // devenir un rendez-vous de déplacement ni perturber l'alerte de fraîcheur de l'Agenda.
+      if (loc.length <= 2) { calNoPlace++; continue; }
+      // #pasdetrajet peut garder son lieu dans le programme chiffré, mais ne déclenche ni géocodage ni route.
+      const g = e.mode === 'pasdetrajet' ? null : geo[loc] !== undefined ? geo[loc] : (geo[loc] = await geocodeLoc(loc));
       events.push({ id: calendarEventId(e), t: e.title || 'Rendez-vous', s: e.s, e: e.e, allDay: !!e.start.allDay, loc, lat: g ? g.lat : null, lon: g ? g.lon : null, label: g ? g.label : null, mode: e.mode || null });
     }
+    out.relay.calNoPlace = calNoPlace;
     out.relay.calSkip = events.filter(x => x.mode === 'pasdetrajet').length;
     out.relay.calN = events.length; out.relay.calGeo = events.filter(x => x.lat != null).length;
     if (cfg) { try { await planLegs(events, (cfg.origins && cfg.origins[0]) || cfg.home); out.relay.calLegs = events.reduce((n, e) => n + (e.legs || []).length, 0); out.relay.calRouted = events.reduce((n, e) => n + (e.legs || []).filter(l => l.routed).length, 0); } catch (e) { out.relay.calLegErr = String(e.message || e).slice(0, 80); } }
