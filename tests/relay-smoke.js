@@ -16,6 +16,16 @@ const b = spawnSync(process.execPath, [path.join(ROOT, 'tools/build.js')], { cwd
 if (b.status !== 0) { console.error('Build de test en échec'); process.exit(1); }
 ['relay.js', 'engine.js', 'demo.js'].forEach(f => cp('src/' + f, path.join(H, f)));
 fs.readdirSync(path.join(ROOT, 'tests/relay-harness')).forEach(f => cp('tests/relay-harness/' + f, path.join(H, f)));
+// Observer uniquement les appels fictifs de géocodage, sans modifier le harnais partagé.
+fs.appendFileSync(path.join(H, 'mock_tt.js'), `
+const fetchForGeoCheck = global.fetch, geoRequests = [];
+global.fetch = (u, o) => {
+  const url = String(u);
+  if (url.includes('geocodage/search') || url.includes('geocoding-api')) geoRequests.push(url);
+  return fetchForGeoCheck(u, o);
+};
+process.on('exit', () => fs.writeFileSync(path.join(__dirname, 'geocodes.json'), JSON.stringify(geoRequests)));
+`);
 fs.copyFileSync(path.join(CI, 'dist/relay-config.sealed.json'), path.join(H, 'relay-config.sealed.json'));
 const KEYS = { APP_KEY: APP_KEY_TEST, RC_KEY: RC_KEY_TEST };
 const run = (fake, scn, keys = KEYS) => { const env = { PATH: process.env.PATH, FAKE: fake, SCN: scn, GCAL_ICS: 'https://calendar.google.com/test.ics' };
@@ -38,6 +48,10 @@ check('alerte du matin envoyée (jour de trajet, brouillard)', morningPushes(a.o
 const calS = readJ(path.join(H, 'calendar.sealed.json')), cal = tryUnseal(calS, APP_KEY_TEST);
 const legs = cal ? cal.events.flatMap(e => e.legs || []) : [];
 check('agenda chiffré lisible avec APP_KEY, tracés présents', legs.length > 0 && legs.every(l => Array.isArray(l.g) && l.g.length > 1), `${legs.length} trajets`);
+const calendarIds = cal ? cal.events.map(e => e.id) : [];
+check('occurrences agenda avec identifiants opaques distincts', calendarIds.length > 0 && calendarIds.every(id => /^event-[0-9a-f]{32}$/.test(id)) && new Set(calendarIds).size === calendarIds.length);
+check('UID brut absent de l’agenda transmis', !!cal && cal.events.every(e => !Object.prototype.hasOwnProperty.call(e, 'uid') && !Object.prototype.hasOwnProperty.call(e, 'UID')));
+check('identifiants agenda absents d’obs.json et des diagnostics', !!a.obs && calendarIds.length > 0 && calendarIds.every(id => !JSON.stringify(a.obs).includes(id) && !a.out.includes(id)));
 check('agenda refusé avec RC_KEY', !!calS && !tryUnseal(calS, RC_KEY_TEST));
 const relS = readJ(path.join(H, 'relay-config.sealed.json')), preS = (readJ(path.join(CI, 'enc/preset.sealed.json')) || {}).sealed;
 check('config du relais : s’ouvre avec RC_KEY, refusée avec APP_KEY', !!tryUnseal(relS, RC_KEY_TEST) && !tryUnseal(relS, APP_KEY_TEST));
@@ -50,6 +64,15 @@ check('pas de doublon 15 min plus tard', b2.code === 0 && morningPushes(b2.out) 
 fs.rmSync(path.join(H, 'obs.json'), { force: true });
 const c = run('2026-10-01T05:35:00+02:00', 'fog');
 check('jour de télétravail : aucune alerte du matin', c.code === 0 && morningPushes(c.out) === 0 && c.obs.morning.sent === 0);
+const calWithUnknownS = readJ(path.join(H, 'calendar.sealed.json')), calWithUnknown = tryUnseal(calWithUnknownS, APP_KEY_TEST);
+const unknown = calWithUnknown && calWithUnknown.events.find(ev => ev.t === 'Appel sans lieu' && ev.s === '2026-10-04T11:00');
+check('rendez-vous sans adresse conservé chiffré, sans coordonnées ni trajet', !!unknown && unknown.loc === '' && unknown.lat === null && unknown.lon === null && unknown.label === null && !(unknown.legs || []).length);
+const geoRequests = readJ(path.join(H, 'geocodes.json'));
+check('aucun géocodage sans localisation exploitable', Array.isArray(geoRequests) && geoRequests.length > 0 && geoRequests.every(url => {
+  const q = new URL(url).searchParams, location = q.get('q') || q.get('name') || '';
+  return location.trim().length > 2 && location !== 'undefined' && location !== 'null';
+}));
+check('titre sans adresse absent des sorties publiques', !!unknown && !JSON.stringify(calWithUnknownS).includes(unknown.t) && !JSON.stringify(c.obs).includes(unknown.t) && !c.out.includes(unknown.t));
 // 4. séparation des clés côté relais
 // 4a. RC_KEY = code de l'app (ancienne configuration) : la configuration du relais doit rester fermée, aucune alerte
 fs.rmSync(path.join(H, 'obs.json'), { force: true });

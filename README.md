@@ -68,19 +68,63 @@ de l'utilisateur ; aucune origine ni position GPS transmise (Waze part de la pos
 Retour au domicile : Waze reçoit le **domicile local exact** (préréglage de l'appareil), pas le domicile arrondi à 0,01° du relais —
 cet arrondi reste en place pour tous les appels OSRM, le relais et l'agenda chiffré.
 
+## Origine réelle et annulation locale
+
+Avant la fenêtre adaptative de quatre heures, un trajet agenda conserve son origine planifiée.
+Si le GPS est frais, précis et à plus de 1 km de cette origine, le briefing affiche « Origine planifiée »
+et l’heure à partir de laquelle la position réelle sera prise en compte. Le bouton « Calculer depuis ici maintenant »
+demande à chaque appui un nouveau relevé GPS (`maximumAge: 0`) et crée un aperçu ponctuel : route et météo basculent ensemble, sans démarrer LIVE,
+sans suivi continu haute précision et sans écrire dans `twrc.croute`. L’aperçu expire après 30 minutes,
+un déplacement supérieur à 1 km ou une modification du trajet ; la fenêtre adaptative reprend toujours la main.
+
+« Je n’y vais pas » ignore localement les déplacements du rendez-vous, après confirmation, en conservant Google Agenda.
+Les trajets suivants sont reconstruits depuis le dernier lieu valide ; tant qu’une nouvelle origine ou sa météo
+n’est pas fiable, le briefing affiche « Origine à confirmer après annulation du trajet précédent » sans ancienne route,
+risque ou lien Waze. « Pas de trajet aujourd’hui » masque les deux sens domicile-travail pour la date locale seulement.
+« Annuler l’annulation » reste disponible pendant dix minutes. Annuler le trajet suivi arrête LIVE sans enregistrer une arrivée.
+
+`twrc.tripcancel` conserve uniquement des identifiants techniques et les timestamps d’annulation et d’expiration.
+Les entrées expirées sont réellement purgées au chargement et pendant l’utilisation ; aucun titre, adresse ou GPS n’y est stocké.
+Le relais déjà existant ajoute un identifiant opaque dérivé de l’UID et de l’occurrence dans l’agenda chiffré,
+pour distinguer des rendez-vous simultanés. Les anciens agendas ambigus doivent être actualisés avant une annulation séparée.
+Le relais ne reçoit aucune annulation locale : une notification cloud déjà planifiée peut encore arriver.
+
+Le suivi GPS renouvelle aussi le nom de commune et la météo après plusieurs petits déplacements cumulés,
+reprend après la veille et ignore les réponses anciennes après déplacement ou oubli. Les origines de référence restent en mémoire.
+Tests : `test_tripcancel.js`, `test_calendar_ids.js`, `test_gps_requests.js`, `e2e33.js` et `e2e34.js`.
+
 ## Tenue sartoriale
 
-L’onglet **👔 Tenue**, à côté de Pneus et Météo, réutilise les prévisions du lieu sélectionné. Il propose une veste ou une protection,
-une chemise ou de la maille, un pantalon, des chaussures et des accessoires pour **aujourd’hui** (heure courante → 20 h, ou l’heure courante après 20 h)
-ou **demain** (08 h → 20 h). Les usages Bureau, Sortie et Promenade adaptent les accessoires et le confort de marche.
+L’onglet **👔 Tenue**, à côté de Pneus et Météo, affiche le plan de la journée : kit de couches amovibles,
+pièces à emporter et adaptations avec leurs heures et lieux. **Aujourd’hui** commence à la minute courante et finit à 23 h
+(ou à minuit après 23 h) ; **demain** couvre 07 h–23 h. Bureau, Sortie et Promenade adaptent les accessoires et les chaussures.
 
-`src/wardrobe.js` applique des repères de confort au minimum de température ressentie du créneau (repli sur l’air si le ressenti manque),
-avec couches amovibles en cas d’amplitude importante. Le vent n’est pas soustrait une seconde fois du ressenti. Pluie, neige et rafales adaptent
-la protection et les semelles ; les UV adaptent les accessoires. Les pièces et couleurs sont des suggestions, pas un inventaire personnel.
-Absence de température : aucun conseil inventé. Données en cache, anciennes ou partielles : indication explicite.
+`buildTenueDay` lit les modèles météo, les horaires de travail, l’agenda déchiffré et les trajets déjà en mémoire.
+Il construit la journée effective de cet appareil : un rendez-vous annulé et une journée travail annulée
+disparaissent aussi de Tenue. Le rétablissement et l’expiration les rendent immédiatement disponibles à nouveau.
+Une chaîne reconstruite ne réutilise aucune météo d’une ancienne origine ; sa portion reste inconnue tant que
+la route effective n’est pas prête. Afficher Tenue ne lance aucune requête pour reconstruire cette route.
+Entre deux activités, le dernier lieu connu est conservé ; seuls les retours planifiés ramènent au domicile.
+Le « Kit complet de la journée » indique le niveau maximal à couvrir. Les couches nécessaires plus tard
+sont à emporter ; la timeline indique ce qui est porté à chaque moment.
+Les heures de l’agenda et des modèles sont converties dans le fuseau de la journée. Sans programme localisé,
+le lieu sélectionné, y compris la position GPS, reste le lieu de base.
+Les rendez-vous sans localisation exploitable sont conservés dans l’agenda chiffré et signalés
+« Lieu inconnu · météo locale non calculée », sans substituer la météo du domicile ni créer d’adaptation.
 
-Aucun nouvel appel météo, service, clé ou donnée GPS. L’onglet choisi et l’usage sont conservés sur l’appareil ; le jour revient à Aujourd’hui au rechargement.
-Pneus, Météo, le relais et les réglages des véhicules gardent leur fonctionnement. Tests : `test_wardrobe.js` et `e2e31.js` dans la CI Chromium/WebKit.
+`src/dayplan.js` est un moteur déterministe sans réseau, stockage ni horloge implicite. Son résultat alimente
+la frise **et** la carte détaillée « Ta tenue » : un seul kit, couvrant le moment le plus froid retenu.
+Les seuils de ressenti de `wardrobe.js` restent 0, 7, 13, 19 et 25 °C, avec repli explicite sur l’air.
+Une marge de 1 °C et une durée de 2 h limitent les oscillations de confort ; un rendez-vous peut justifier une adaptation plus courte.
+Pluie, neige, pluie verglaçante, orage et vent fort restent immédiats, même pour un créneau de 30 minutes.
+Les semelles sont choisies pour la pire météo de la journée. Le conseil suppose des passages dehors et rappelle
+de retirer la maille dans les lieux chauffés. Les pièces et couleurs restent des suggestions.
+
+Absence de température : aucun conseil inventé. Données anciennes, partielles, lieux inconnus et agenda indisponible : indication explicite.
+Le plan n’ajoute aucun appel externe ni stockage de rendez-vous, de titres ou de coordonnées.
+L’onglet et l’usage gardent leur stockage existant ; le jour revient à Aujourd’hui au rechargement.
+Tests : `test_wardrobe.js`, `test_dayplan.js`, trois mutations métier dans `dayplan-countertests.js`,
+et `e2e31.js` / `e2e32.js` sur Chromium et WebKit, à 320, 414 et 1280 px avec commandes d’au moins 44 px.
 
 ## Frontière des secrets
 

@@ -344,11 +344,31 @@ html { scroll-behavior: smooth; }
 /* Tenue conserve le cockpit et utilise uniquement son propre panneau. */
 .vt .wrap > .mod:not(#secTenue):not(#settings), .vt #secCars, .vt #banners, .vt .foot { display: none !important; }
 .outfit { border-color: var(--line2); gap: 18px; }
+.outfit button { min-height: 44px; }
 .outfit-controls { display: flex; flex-wrap: wrap; gap: 10px; }
 .outfit-controls .seg button { font-size: 14px; min-height: 44px; padding: 9px 12px; }
+.seg.view button { min-height: 44px; }
 .outfit-context { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px 12px; color: var(--fg2); font-size: 14px; }
 .outfit-context b { font-weight: 500; }
 .outfit-context.old { color: var(--risk-t); }
+.outfit-dayplan { display: grid; gap: 16px; min-width: 0; }
+.outfit-plan-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.outfit-plan-heading h3 { font-family: var(--f-disp); font-size: 23px; line-height: 1.2; }
+.outfit-indicator { padding: 7px 10px; border: 1px solid var(--line2); border-radius: 4px; font-size: 14px; color: var(--accent); }
+.outfit-indicator[data-level="multiple"], .outfit-indicator[data-level="warning"] { color: var(--risk-t); border-color: var(--risk-t); }
+.outfit-base { padding: 14px; border: 1px solid var(--line2); border-radius: 4px; background: var(--panel2); }
+.outfit-base p { margin-top: 6px; color: var(--fg); }
+.outfit-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.outfit-moment { border-left: 2px solid var(--line2); padding: 12px 14px; min-width: 0; background: var(--panel2); border-radius: 0 4px 4px 0; }
+.outfit-moment-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.outfit-moment-heading time { font-family: var(--f-mono); font-size: 14px; color: var(--accent); }
+.outfit-moment-heading b { font-size: 15px; overflow-wrap: anywhere; }
+.outfit-moment-weather { display: flex; flex-wrap: wrap; gap: 5px 14px; margin-top: 8px; font-size: 13px; color: var(--fg2); }
+.outfit-moment .outfit-moment-layers { margin-top: 8px; color: var(--fg); }
+.outfit-moment .outfit-moment-status { margin-top: 7px; color: var(--fg2); }
+.outfit-moment .outfit-moment-status.old { color: var(--risk-t); }
+.outfit-moment-actions { padding-left: 18px; margin: 8px 0 0; color: var(--accent); font-size: 14px; line-height: 1.5; }
+.outfit-actions li { line-height: 1.5; }
 .outfit-verdict { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; }
 .outfit-label { font-size: 13px; color: var(--fg2); }
 .outfit-verdict h3 { font-family: var(--f-disp); font-size: clamp(26px, 6vw, 34px); line-height: 1.15; margin: 5px 0 7px; }
@@ -511,3 +531,13 @@ html { scroll-behavior: smooth; }
 .db-w, .db-n, .db-c { font-size: 13.5px; }
 .db-l { display: flex; flex-direction: column; font-size: 13px; padding-left: 8px; border-left: 2px solid var(--line2); }
 .db-after { margin-top: 6px; }
+
+/* Actions de trajet utilisables au doigt, y compris sur écran étroit. */
+.brf .btn, .brf button { min-width: 44px; min-height: 44px; white-space: normal; }
+button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], button.btn.sm[data-act="trip-cancel-undo"] { min-width: 44px; min-height: 44px !important; white-space: normal; }
+.brf .cal-v { flex-wrap: wrap; }
+.brf .brf-why, .brf .brf-r { overflow-wrap: anywhere; }
+.brf-r small { display: block; font-family: var(--f-body); font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--fg2); }
+/* Les badges de source longs doivent rentrer même avec une police monospace de repli. */
+.mod-h .src { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 380px) { .iceHead { grid-template-columns: minmax(0, 1fr); } }
