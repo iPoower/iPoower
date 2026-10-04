@@ -54,7 +54,7 @@ SUITE.push(['test_dayplan.js', 'plan de tenue : couches, transitions et dangers 
   ['e2e32.js', 'plan de tenue : agenda, lieux, météo et interface', true]);
 SUITE.push(['e2e35.js', 'intégration : annulations, Tenue et aperçu GPS frais', true],
   ['e2e36.js', 'hors connexion : cache météo, agenda chiffré et reconnexion', true],
-  ['e2e37-sw.js', 'service worker réel : Cache Storage, panne serveur et redémarrage offline', true]);
+  ['e2e37-sw.js', 'service worker réel : Cache Storage, panne serveur et redémarrage offline', true, 'chromium']);
 const verdict = (code, out) => {
   const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
   if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');
@@ -65,8 +65,9 @@ const verdict = (code, out) => {
   if (/perdus [1-9]/.test(out)) return 'réglages perdus';
   return null;
 };
-let fail = 0; const rows = [];
-for (const [file, what, browser] of SUITE) {
+let fail = 0, skipped = 0; const rows = [];
+for (const [file, what, browser, only] of SUITE) {
+  if (only && BROWSER !== only) { skipped++; rows.push(`↪️ ${file.padEnd(17)} ${what} [${BROWSER}] · non applicable (Playwright Service Worker : Chromium uniquement)`); continue; }
   const t0 = Date.now(), r = spawnSync(process.execPath, [path.join(ROOT, 'tests', file)], { cwd: W, encoding: 'utf8', timeout: 20 * 60e3, env: { ...process.env, SP: OUT, BROWSER } });
   const out = (r.stdout || '') + (r.stderr || ''), why = r.error ? String(r.error.message) : verdict(r.status, out);
   fs.writeFileSync(path.join(OUT, file.replace('.js', '.log')), out);
@@ -76,5 +77,5 @@ for (const [file, what, browser] of SUITE) {
     if (process.env.GITHUB_ACTIONS) console.log(`::error title=${file} (${BROWSER})::${scrub(why + (labels ? ' | ' + labels : '')).replace(/[\r\n%]/g, ' ')}`);   // dépôt public : jamais la sortie brute (elle peut contenir l'agenda)
     else console.log(out.split('\n').slice(-25).join('\n')); }
 }
-console.log('\n' + rows.join('\n') + `\n\n${fail ? `❌ ${fail} test(s) en échec` : `✅ ${SUITE.length} tests au vert`} (${BROWSER})`);
+console.log('\n' + rows.join('\n') + `\n\n${fail ? `❌ ${fail} test(s) en échec` : `✅ ${SUITE.length - skipped} tests au vert${skipped ? ` + ${skipped} non applicable` : ''}`} (${BROWSER})`);
 process.exit(fail ? 1 : 0);
