@@ -1,4 +1,5 @@
 // Vrai Service Worker : installation, Cache Storage, fallback 503/offline, confidentialité cross-origin et reprise réseau.
+// Playwright ne pilote les Service Workers que sous Chromium ; WebKit garde e2e36 pour le comportement applicatif offline.
 'use strict';
 const fs=require('fs'),http=require('http'),path=require('path'),pw=require('playwright');
 const NAME=(process.env.BROWSER||'chromium').toLowerCase(),ROOT=process.cwd(),SITE=path.join(ROOT,'site');
