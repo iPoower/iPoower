@@ -574,68 +574,228 @@ function renderView() {
   if (RADAR.map) setTimeout(() => RADAR.map.invalidateSize(), 60);
 }
 
-/* ---------- tenue sartoriale : mêmes lieux et mêmes données météo ---------- */
-function outfitInput() {
-  const selected = curLoc(), model = M[UI.loc], locations = allLocs(), sources = [];
-  const source = (m, place, fetchedAt) => { if (m) sources.push({ model: m, place: place || m.loc, fetchedAt, utcOffset: m.payload && m.payload.utc_offset_seconds }); };
-  locations.forEach(l => source(M[l.id], l, RAW[l.id] && RAW[l.id].t));
-  Object.keys(MIDM).forEach(id => source(MIDM[id], MIDP[id] && MIDP[id].pt, MIDP[id] && MIDP[id].t));
-  const legs = [];
-  if (!DEMO.on) {
-    Object.values(CALM).forEach(c => source(c.m, null, c.t));
-    Object.values(LEGM).forEach(c => (c.models || []).forEach(m => source(m, null, c.t)));
-    if (CAL) (CAL.events || []).filter(e => e.mode !== 'pasdetrajet').forEach(e => effLegs(e).forEach(l => legs.push({ ...l,
-      label: (l.k === 'ret' ? 'Retour' : 'Aller') + ' · ' + e.t,
-      points: legPoints(l).map(p => ({ f: p.f, place: { ...p, name: p.name } })) })));
+/* ---------- tenue : adaptation en mémoire, sans réseau ni nouveau stockage ---------- */
+// Les horodatages du moteur sont locaux et naïfs. L'agenda publié est en heure de
+// Paris ; les prévisions d'une destination peuvent utiliser un autre fuseau.
+function tenueZoneTime(ts, fromZone, toZone) {
+  if (!ts || fromZone === toZone) return ts;
+  const nominal = tsToDate(ts.slice(0, 16)).getTime();
+  let instant = nominal;
+  const local = (n, zone) => new Date(n).toLocaleString('sv-SE', { timeZone: zone, hour12: false }).replace(' ', 'T').slice(0, 16);
+  // Résolution du décalage à la date du créneau, y compris autour du changement d'heure.
+  for (let k = 0; k < 3; k++) {
+    const delta = nominal - tsToDate(local(instant, fromZone)).getTime();
+    if (!delta) break;
+    instant += delta;
   }
-  const from = locations.find(l => l.id === S.work.from), to = locations.find(l => l.id === S.work.to);
-  return { now: nowIn(model ? model.tz : 'Europe/Paris'), nowMs: Date.now(), dayOffset: UI.outfitDay, occasion: UI.outfitOccasion,
-    selected, locations, sources, calendar: DEMO.on ? null : CAL, calendarDone: DEMO.on || CALDONE, legs,
-    work: S.configured ? S.work : null, workPoints: from && to ? midPoints(from, to) : [],
-    utcOffset: model && model.payload && model.payload.utc_offset_seconds };
+  return local(instant, toZone);
 }
-function outfitTimelineHtml(plan) {
-  const range = (low, high, unit) => low == null ? '—' : f1(low) + (high != null && high !== low ? ' → ' + f1(high) : '') + ' ' + unit;
-  return `<ol class="outfit-timeline" aria-label="Timeline de confort">${plan.timeline.map(p => {
-    const w = p.weather, uncertain = w.partial || w.stale || p.assumed || p.conflict;
-    const precip = w.freezing ? 'Pluie verglaçante' : w.snow ? 'Neige' : w.storm ? 'Orage' : w.wet ? (w.P >= .1 ? 'Pluie prévue' : 'Pluie possible') : w.precipKnown ? 'Sec · pas de neige prévue' : 'Pluie/neige inconnue';
-    return `<li class="outfit-period${uncertain ? ' uncertain' : ''}"><div class="outfit-period-head"><time datetime="${esc(p.s)}">${p.s.slice(11, 16)}–${p.e.slice(11, 16)}${p.e.slice(0, 10) !== plan.date ? ' (+1 j)' : ''}</time><b>${esc(p.placeName)}</b></div>
-      <span class="outfit-label">${esc(p.label)}${p.e <= plan.now ? ' · Passé' : p.s <= plan.now && p.e > plan.now ? ' · En ce moment' : ''}</span>
-      <div class="outfit-period-weather"><span>Air <b>${range(w.Tlow, w.Thigh, '°C')}</b> · Ressenti <b>${range(w.low, w.high, '°C')}</b></span>
-        <span>${esc(precip)} · ${w.pp == null ? 'prob. —' : f0(w.pp) + ' %'} · ${w.P == null ? 'pluie —' : f1(w.P) + ' mm/h'} · ${w.snowAmount == null ? 'neige —' : f1(w.snowAmount) + ' cm/h'}${!w.precipKnown && w.wet ? ' · informations partielles' : ''}</span>
-        <span>Vent <b>${w.wind == null ? '—' : f0(w.wind) + ' km/h'}</b> · Rafales <b>${w.gust == null ? '—' : f0(w.gust) + ' km/h'}</b>${w.strongWind ? ' · vent fort, capuche' : ''}</span></div>
-      ${uncertain ? `<span class="outfit-uncertainty">${[w.missing ? 'Météo manquante' : w.partial ? 'Données partielles' : '', w.stale ? 'Données anciennes' : '', p.assumed ? 'Horaire supposé' : '', p.conflict ? 'Horaires en conflit' : ''].filter(Boolean).join(' · ')} · à confirmer</span>` : ''}
-      <p class="outfit-layers"><b>Couche recommandée</b><br>${esc(p.layerText)}</p>
-      ${p.transition ? `<p class="outfit-transition">${esc(p.transition)}</p>` : ''}
-      ${p.actions.length ? `<ul class="outfit-actions">${p.actions.map(a => `<li data-outfit-action="${a.type}">${esc(a.text)}</li>`).join('')}</ul>` : '<span class="outfit-label">Conserver les couches.</span>'}</li>`;
-  }).join('')}</ol>`;
+function buildTenueDay(options = {}) {
+  const settings = options.settings || S, models = options.models || M, raw = options.raw || RAW;
+  const calendar = Object.prototype.hasOwnProperty.call(options, 'calendar') ? options.calendar : CAL;
+  const calendarModels = options.calendarModels || CALM, legModels = options.legModels || LEGM, midModels = options.midModels || MIDM;
+  const gps = Object.prototype.hasOwnProperty.call(options, 'gps') ? options.gps : GPS;
+  const locs = [...(gps ? [gps] : []), ...(settings.locs || []), ...(settings.customs || [])];
+  const selected = typeof options.currentLoc === 'object' ? options.currentLoc : locs.find(x => x.id === (options.currentLoc || UI.loc)) || locs[0];
+  const ref = selected && models[selected.id], zone = options.timezone || (ref && ref.tz) || 'Europe/Paris';
+  const localNow = (options.localNow || nowIn(zone)).slice(0, 16), offset = options.dayOffset == null ? UI.outfitDay : options.dayOffset;
+  const date = addMin(localNow.slice(0, 10) + 'T00:00', offset === 1 ? 1440 : 0).slice(0, 10);
+  const midnight = date + 'T00:00', start = offset === 1 ? date + 'T07:00' : localNow;
+  // Après 23 h, on couvre encore la fin de l'heure courante jusqu'à minuit.
+  const end = start < date + 'T23:00' ? date + 'T23:00' : addMin(midnight, 1440);
+  const retrievalNow = options.retrievalNow == null ? Date.now() : options.retrievalNow;
+  const agendaZone = options.calendarTimezone || 'Europe/Paris', agendaTime = ts => tenueZoneTime(ts.slice(0, 16), agendaZone, zone);
+  const warnings = [], finite = v => typeof v === 'number' && Number.isFinite(v);
+  const coords = x => x && finite(x.lat) && finite(x.lon) && Math.abs(x.lat) <= 90 && Math.abs(x.lon) <= 180;
+  const norm = s => String(s || '').trim().toLocaleLowerCase('fr-FR');
+  const byId = id => locs.find(x => x.id === id);
+  const home = (settings.locs || [])[0], work = settings.work || {};
+  const samePlace = (a, b) => a && b && ((a.id && a.id === b.id) || (coords(a) && coords(b) && distKm(a, b) < 1.5));
+  const knownModel = p => {
+    if (!p) return { m: null, t: null };
+    const candidates = [];
+    const known = p.id && models[p.id] ? p : p.id && byId(p.id) || (p.home || norm(p.label) === 'domicile' ? home : null) || locs.find(l => samePlace(l, p));
+    if (known && models[known.id]) candidates.push({ m: models[known.id], t: raw[known.id] && raw[known.id].t });
+    if (coords(p)) {
+      const c = calendarModels['cal' + p.lat.toFixed(2) + '_' + p.lon.toFixed(2)];
+      if (c && c.m) candidates.push({ m: c.m, t: c.t });
+      for (const c of Object.values(legModels)) {
+        const m = c && c.models && c.models.find(m => m && samePlace(m.loc, p));
+        if (m) candidates.push({ m, t: c.t });
+      }
+    }
+    const eligible = ref && ref.mode === 'demo' ? candidates.filter(source => source.m.mode === 'demo') : candidates;
+    eligible.sort((a, b) => Number(sourceStale(a)) - Number(sourceStale(b)) || (finite(b.t) ? b.t : -Infinity) - (finite(a.t) ? a.t : -Infinity));
+    return eligible[0] || { m: null, t: null };
+  };
+  const place = p => p ? { ...p, name: p.name || p.city || p.label || p.loc || 'Lieu connu' } : null;
+  const resolveEvent = e => {
+    if (coords(e)) return place({ lat: e.lat, lon: e.lon, name: e.label || e.loc || e.t });
+    const names = [e.loc, e.label, e.location].map(norm).filter(Boolean);
+    const match = locs.find(l => names.some(n => n === norm(l.id) || n === norm(l.name)));
+    if (match) return place(match);
+    const endpoint = (e.legs || []).map(l => l.k === 'ret' ? l.from : l.to).find(coords);
+    return endpoint ? place(endpoint) : null;
+  };
+  const sourceStale = source => {
+    const m = source.m; if (!m || m.mode === 'demo') return false;
+    if (ref && ref.mode === 'demo') return false;
+    if (m.mode === 'cache' || !finite(source.t) || retrievalNow - source.t > 60 * 60e3 || source.t > retrievalNow + 15 * 60e3) return true;
+    // Les modèles horaires agenda n'ont pas de valeur « current » : leur âge de
+    // récupération suffit. Un modèle avec current doit aussi avoir une observation récente.
+    const current = m.cur && m.cur.time;
+    if (current) {
+      const currentNow = tenueZoneTime(localNow, zone, m.tz || zone);
+      const age = (tsToDate(currentNow) - tsToDate(current.slice(0, 16))) / 60000;
+      if (age > 90 || age < -15) return true;
+    }
+    return false;
+  };
+  const sample = (source, ts) => {
+    const m = source && source.m; if (!m || !Array.isArray(m.hs)) return null;
+    if (ref && ref.mode === 'demo' && m.mode !== 'demo') return null;
+    const local = tenueZoneTime(ts, zone, m.tz || zone), hour = local.slice(0, 13) + ':00';
+    const i = m.byTime ? m.byTime.get(hour) : m.hs.findIndex(x => x.t === hour);
+    const h = i != null && i >= 0 ? m.hs[i] : null; if (!h) return null;
+    const c = m.cur, age = c && c.time ? (tsToDate(tenueZoneTime(localNow, zone, m.tz || zone)) - tsToDate(c.time.slice(0, 16))) / 60000 : Infinity;
+    const current = offset !== 1 && ts.slice(0, 13) === localNow.slice(0, 13) && c && c.time && c.time.slice(0, 13) === local.slice(0, 13) && age >= -15 && age <= 90;
+    return current ? { ...h, ...c, uv: h.uv, t: ts } : { ...h, t: ts };
+  };
+  const segments = [];
+  const trip = (from, to, dep, arr, kind, priority, sources, key) => {
+    if (!dep || !arr || arr <= dep || arr <= midnight || dep >= end) return;
+    segments.push({ start: dep, end: arr, from: place(from), to: place(to), kind: 'trip', origin: kind, priority, sources, key, location: `${(place(from) || {}).name || 'Lieu inconnu'} → ${(place(to) || {}).name || 'Lieu inconnu'}` });
+  };
+  const commute = day => {
+    const from = byId(work.from), to = byId(work.to); if (!from || !to) return;
+    const dur = +work.durMin || 30;
+    [['go', from, to, work.dep], ['ret', to, from, work.ret]].forEach(([dir, a, b, time]) => {
+      if (!/^\d{2}:\d{2}$/.test(time || '')) return;
+      const sourceZone = models[a.id] && models[a.id].tz || zone;
+      const sourceDay = tenueZoneTime(day + 'T12:00', zone, sourceZone).slice(0, 10);
+      if (!isCommuteDay(sourceDay, work.days)) return;
+      const dep = tenueZoneTime(sourceDay + 'T' + time, sourceZone, zone), pts = [{ f: 0, ...knownModel(a) }, ...midPoints(a, b).filter(p => midModels[p.id]).map(p => ({ f: p.f, m: midModels[p.id], t: midModels[p.id].retrievedAt ?? null })), { f: 1, ...knownModel(b) }];
+      trip(a, b, dep, addMin(dep, dur), dir === 'go' ? 'work-go' : 'work-ret', 10, pts, null);
+    });
+  };
+  commute(addMin(midnight, -1440).slice(0, 10)); commute(date); commute(addMin(midnight, 1440).slice(0, 10));
+  const direct = settings.calDirect || {};
+  for (const e of (calendar && calendar.events || [])) {
+    if (!e.s) continue;
+    const begin = agendaTime(e.allDay ? e.s.slice(0, 10) + 'T09:00' : e.s);
+    const finish = agendaTime(e.allDay ? e.s.slice(0, 10) + 'T18:00' : e.e || addMin(e.s, 60));
+    const p = resolveEvent(e);
+    if (finish > midnight && begin < end && finish > begin) {
+      segments.push({ start: begin, end: finish, kind: 'event', priority: 30, to: p, title: e.t || 'Rendez-vous', location: p ? `${e.t || 'Rendez-vous'} · ${p.name}` : 'Lieu inconnu · météo locale non calculée', unknown: !p });
+      if (e.allDay) warnings.push('Événement sur la journée entière : créneau 09:00–18:00 supposé, à confirmer.');
+    }
+    // Même choix d'enchaînement que effLegs, sans déclencher legEval/fetchLeg.
+    let legs = (e.mode === 'pasdetrajet' ? [] : e.legs || []).filter(l => !(l.k === 'ret' && l.brk && direct[l.brk]));
+    if (e.alt && direct[e.alt.key]) legs = legs.map(l => l.k === 'go' && l.brk === e.alt.key ? e.alt.direct : l);
+    for (const l of legs) {
+      if (!l.from || !l.to || !l.dep) continue;
+      const dep = agendaTime(l.dep), arr = agendaTime(l.arr || addMin(l.dep, +l.min || 0));
+      const c = legModels[legKey(l)], pts = legPoints(l).map((p, i) => ({ f: p.f, ...(c && c.models && c.models[i] ? { m: c.models[i], t: c.t } : knownModel(p)) }));
+      trip(l.from, l.to, dep, arr, 'agenda', 40, pts, l.k);
+    }
+  }
+  if (!calendar) warnings.push('Agenda indisponible : le plan suit les lieux et trajets déjà connus.');
+  else if (calendar.updated && retrievalNow - Date.parse(calendar.updated) > 24 * 60 * 60e3) warnings.push('Agenda ancien : lieux et horaires à confirmer.');
+  const boundaries = new Set([midnight, start, end]);
+  for (let t = midnight; t < end; t = addMin(t, 60)) boundaries.add(t);
+  segments.forEach(s => {
+    boundaries.add(s.start); boundaries.add(s.end);
+    const sources = s.sources || [knownModel(s.to)];
+    sources.forEach(source => {
+      const m = source.m; if (!m) return;
+      // Fuseaux à décalage de demi-heure : couper aussi aux heures du modèle.
+      m.hs.forEach(x => { const t = tenueZoneTime(x.t, m.tz || zone, zone); if (t > s.start && t < s.end) boundaries.add(t); });
+    });
+    if (s.kind === 'trip') {
+      const duration = (tsToDate(s.end) - tsToDate(s.start)) / 60000;
+      (s.sources || []).forEach((p, i, pts) => { if (i) boundaries.add(addMin(s.start, Math.round(duration * (pts[i - 1].f + p.f) / 2))); });
+    }
+  });
+  // Tous les changements de météo du lieu de base restent visibles, même si
+  // le modèle se trouve dans un fuseau à décalage non entier.
+  Object.values(models).forEach(m => { if (m && m.hs) m.hs.forEach(x => { const t = tenueZoneTime(x.t, m.tz || zone, zone); if (t > midnight && t < end) boundaries.add(t); }); });
+  const times = [...boundaries].filter(t => t <= end).sort(), moments = [];
+  let current = place(segments.some(s => s.kind === 'trip' || s.to) ? home : selected || home);
+  for (let i = 0; i < times.length - 1; i++) {
+    const at = times[i], until = times[i + 1];
+    // Un rendez-vous sans lieu peut masquer la frise du trajet, mais ne peut
+    // effacer son arrivée connue. Une diversion localisée prioritaire remplace
+    // en revanche le trajet prévu et conserve son dernier lieu.
+    segments.filter(s => !s.cancelled && s.kind === 'trip' && s.end === at && s.to)
+      .sort((a, b) => a.priority - b.priority).forEach(s => {
+        const diverted = segments.some(other => !other.cancelled && other !== s && other.to && !other.unknown &&
+          other.priority > s.priority && other.start < s.end && other.end > s.start);
+        if (!diverted) current = s.to;
+      });
+    const starting = segments.filter(s => s.start === at).sort((a, b) => a.priority - b.priority);
+    starting.forEach(s => {
+      if (s.origin === 'work-ret' && current && !samePlace(current, s.from)) { s.cancelled = true; warnings.push('Retour domicile-travail non retenu : le dernier lieu connu est ailleurs.'); }
+      if (s.origin === 'agenda' && current && s.from && !samePlace(current, s.from)) warnings.push(`Origine du trajet agenda à confirmer : départ prévu depuis ${s.from.name}, dernier lieu connu ${current.name}.`);
+      if (!s.cancelled && s.kind === 'event' && s.to) current = s.to;
+    });
+    const active = segments.filter(s => !s.cancelled && s.start <= at && s.end > at).sort((a, b) => b.priority - a.priority)[0];
+    if (at < start || at >= end || until <= at) continue;
+    let source, location, kind, unknown = false;
+    if (active && active.kind === 'trip') {
+      const duration = tsToDate(active.end) - tsToDate(active.start), f = duration ? (tsToDate(at) - tsToDate(active.start)) / duration : 0;
+      source = (active.sources || []).reduce((best, p) => !best || Math.abs(p.f - f) < Math.abs(best.f - f) ? p : best, null) || { m: null, t: null };
+      location = active.location; kind = 'trip'; unknown = !coords(active.from) || !coords(active.to);
+    } else if (active) {
+      unknown = active.unknown; source = unknown ? { m: null, t: null } : knownModel(active.to); location = active.location; kind = 'event';
+    } else {
+      source = knownModel(current); location = current ? current.name : 'Lieu inconnu · météo locale non calculée'; unknown = !current;
+      kind = samePlace(current, home) ? 'home' : samePlace(current, byId(work.to)) ? 'work' : 'gap';
+    }
+    const weather = unknown ? null : sample(source, at);
+    moments.push({ start: at, end: until > end ? end : until, location, kind, event: kind === 'event', weather, unknown, stale: sourceStale(source) });
+  }
+  return { date, start, end, occasion: options.occasion || UI.outfitOccasion, moments, warnings: [...new Set(warnings)] };
 }
+/* ---------- vue du plan : le détail lit exactement le conseil du moteur ---------- */
 function renderTenue() {
   const el = $('#secTenue'); el.hidden = UI.view !== 'tenue'; if (el.hidden) return;
   const m = M[UI.loc], l = curLoc(), tomorrow = UI.outfitDay === 1;
   const controls = `<div class="outfit-controls"><div class="seg" role="group" aria-label="Jour de la tenue">${[[0, 'Aujourd’hui'], [1, 'Demain']].map(([v, t]) => `<button data-act="outfit-day" data-v="${v}" aria-pressed="${UI.outfitDay === v}">${t}</button>`).join('')}</div>
     <div class="seg" role="group" aria-label="Usage de la tenue">${[['office', 'Bureau'], ['outing', 'Sortie'], ['walk', 'Promenade']].map(([v, t]) => `<button data-act="outfit-occasion" data-v="${v}" aria-pressed="${UI.outfitOccasion === v}">${t}</button>`).join('')}</div></div>`;
   const head = `<div class="mod-h"><h2>👔 Tenue · ${esc(l.name)}</h2><span class="src obs">Sartorial</span></div>${controls}`;
-  const plan = outfitDayPlan(outfitInput()), a = plan && plan.base;
-  const timeline = plan ? `<div class="outfit-plan"><h3>Plan de tenue de la journée</h3>${a ? `<span class="outfit-status" data-confirmed="${plan.confirmed}">${esc(plan.status)}${plan.confirmed ? '' : ' · à confirmer'}</span>${!plan.confirmed ? '<p>Indicateur calculé sur les créneaux connus ; la couverture de la journée reste à confirmer.</p>' : ''}` : '<p>Adaptations non calculables sans température.</p>'}${outfitTimelineHtml(plan)}</div>` : '';
+  const input = buildTenueDay({ currentLoc: l }), plan = dayplan(input), a = plan && plan.advice;
   if (!a) {
-    el.innerHTML = `${head}<div class="outfit-empty" role="status"><h3>${busy ? 'Météo en cours de chargement' : 'Météo insuffisante pour cette tenue'}</h3><p>${tomorrow ? 'Les prévisions de demain ne sont pas encore disponibles pour les lieux connus.' : 'Il faut une température pour proposer des couches adaptées.'}</p><button class="btn" data-act="refresh" ${busy ? 'disabled' : ''}>Actualiser la météo</button></div>${timeline}<div class="outfit-extra"><ul>${(plan ? plan.notes : []).map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`; return;
+    el.innerHTML = `${head}<div class="outfit-empty" role="status"><h3>${busy ? 'Météo en cours de chargement' : 'Météo insuffisante pour cette tenue'}</h3><p>${tomorrow ? 'Les prévisions de demain ne sont pas encore disponibles pour ce lieu.' : 'Il faut une température pour proposer des couches adaptées.'}</p><button class="btn" data-act="refresh" ${busy ? 'disabled' : ''}>Actualiser la météo</button></div>`; return;
   }
-  const stale = plan.quality.stale;
-  const state = stale ? 'Données anciennes · tenue à confirmer' : DEMO.on ? 'Simulation · aucune donnée réelle' : 'Prévisions météo · conseil de confort';
+  const stale = input.moments.some(x => x.stale), state = m && m.mode === 'demo' ? 'Simulation · aucune donnée réelle' : stale ? 'Données anciennes · tenue à confirmer' : 'Prévisions météo · conseil de confort';
   const interval = `${fmtDay(plan.date)} · ${plan.start.slice(11, 16)}–${plan.end.slice(11, 16)}`;
   const metric = (k, v) => `<div><span>${k}</span><b>${v}</b></div>`;
-  const detail = [...plan.notes]; if (UI.outfitOccasion === 'office') detail.push('Cravate sobre ou légère, selon le rendez-vous, avec cette même tenue de base.');
+  const detail = [...new Set([...a.notes, ...plan.notes, ...plan.warnings])];
+  if (a.partial || input.moments.some(x => !x.weather && !x.unknown)) detail.push('Données partielles : certains créneaux, le ressenti, la pluie ou les rafales manquent.');
+  const timeline = plan.timeline.map(x => {
+    const w = x.weather, f = w && (num(w.Tapp) ?? num(w.T));
+    const range = x.temperatureRange;
+    const feels = range && range.low != null && range.high != null && range.low !== range.high ? `${f1(range.low)} à ${f1(range.high)} °C` : f == null ? '—' : `${f1(f)} °C`;
+    const rain = !w ? 'Pluie —' : w.pp != null ? `Pluie ${f0(w.pp)} %${w.P != null ? ' · ' + f1(w.P) + ' mm' : ''}` : w.P != null ? `Pluie ${f1(w.P)} mm` : 'Pluie —';
+    const wind = !w ? 'Vent —' : w.gust != null ? `Rafales ${f0(w.gust)} km/h` : w.wind != null ? `Vent ${f0(w.wind)} km/h` : 'Vent —';
+    return `<li class="outfit-moment" data-kind="${esc(x.kind)}" data-start="${esc(x.start)}"><div class="outfit-moment-heading"><time>${esc(x.start.slice(11, 16))}–${esc(x.end.slice(11, 16))}</time><b>${esc(x.location)}</b></div>
+      ${x.unknown ? '' : `<div class="outfit-moment-weather"><span>Ressenti ${esc(feels)}${w && w.Tapp == null && w.T != null ? ' · air' : ''}</span><span>${esc(rain)}</span><span>${esc(wind)}</span></div>`}
+      ${x.status && (!x.unknown || x.status !== x.location) ? `<p class="outfit-moment-status${x.stale || x.unknown || !w ? ' old' : ''}">${esc(x.status)}</p>` : ''}
+      ${x.layers.length ? `<p class="outfit-moment-layers">N${x.level} · ${x.layers.map(esc).join(' + ')}</p>` : ''}
+      ${x.actions.length ? `<ul class="outfit-moment-actions">${x.actions.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}</li>`;
+  }).join('');
+  const carry = [...new Set([...plan.carry, ...a.accessories])];
   el.innerHTML = `${head}<div class="outfit-context${stale ? ' old' : ''}"><span>${esc(state)}</span><b>${esc(interval)}</b></div>
-    <div class="outfit-verdict"><span class="outfit-label">${tomorrow ? 'Ta tenue de demain' : 'Ta tenue d’aujourd’hui'}</span><h3>${esc(a.title)}</h3><p>Une tenue de base cohérente, avec les mêmes chemise, pantalon et chaussures. Seules les couches amovibles s’adaptent aux lieux et aux horaires connus.</p></div>
+    <div class="outfit-dayplan"><div class="outfit-plan-heading"><h3>Plan de tenue de la journée</h3><span class="outfit-indicator" data-level="${esc(plan.indicator.level)}">${esc(plan.indicator.text)}</span></div>
+      <div class="outfit-base"><span class="outfit-label">Tenue de base · N${plan.base.level}</span><p>${plan.base.layers.map(esc).join(' + ')}</p></div>
+      <div class="outfit-extra outfit-carry"><h3>À emporter</h3>${carry.length ? `<ul>${carry.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p>Aucune pièce supplémentaire prévue.</p>'}</div>
+      ${plan.actions.length ? `<div class="outfit-extra outfit-actions"><h3>Adaptations prévues</h3><ul>${plan.actions.map(x => `<li data-time="${esc(x.time)}"><b>${esc(x.time.slice(11, 16))}</b> · ${esc(x.text)}</li>`).join('')}</ul></div>` : ''}
+      <ol class="outfit-timeline" aria-label="Heures, lieux et adaptations de la tenue">${timeline}</ol></div>
+    <div class="outfit-verdict"><span class="outfit-label">${tomorrow ? 'Ta tenue de demain' : 'Ta tenue pour la suite de la journée'}</span><h3>${esc(a.title)}</h3><p>Détail de la tenue de base du plan ; adapte les couches aux moments indiqués.</p></div>
     <div class="outfit-metrics">${metric('Ressenti' + (a.tempFallback ? ' / air' : ''), f0(a.low) + ' à ' + f0(a.high) + ' °C')}${metric('Pluie · max', a.pp == null ? '—' : f0(a.pp) + ' %')}${metric('Rafales · max', a.gust == null ? '—' : f0(a.gust) + ' km/h')}</div>
-    <h3 class="outfit-base-title">Tenue de base · ${tomorrow ? 'demain' : 'aujourd’hui'}</h3>
     <div class="outfit-pieces">${a.pieces.map((p, i) => `<div class="outfit-piece"><span class="outfit-no mono">0${i + 1}</span><div><span class="outfit-label">${esc(p.label)}</span><h4>${esc(p.item)}</h4><p>${esc(p.detail)}</p></div></div>`).join('')}</div>
-    <div class="outfit-extra outfit-carry"><h3>À emporter · pièces supplémentaires</h3>${plan.extras.length ? `<ul>${plan.extras.map(x => `<li data-outfit-piece="${x.id}"><b>${esc(x.item)}</b><br>${esc(x.detail)}</li>`).join('')}</ul>` : `<p>Aucune pièce supplémentaire nécessaire${plan.confirmed ? '.' : ' sur les créneaux connus ; à confirmer.'}</p>`}</div>
     <div class="outfit-palette"><span class="outfit-label">Accord de couleurs suggéré</span><div>${a.palette.map(t => `<span>${esc(t)}</span>`).join('')}</div></div>
-    ${timeline}
     ${detail.length ? `<div class="outfit-extra"><h3>À prévoir</h3><ul>${detail.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
-    <details class="outfit-evolution"><summary>Repères du plan de journée</summary><p>Le plan privilégie le confort et la protection, puis le minimum de pièces supplémentaires et d’adaptations. Une protection de pluie déjà emportée sert aussi contre les rafales : aucun deuxième manteau ni parapluie imposé.</p></details>
     <p class="outfit-method">Suggestions de pièces, à adapter à ce que tu possèdes et à ta sensibilité au froid. Les seuils sont des repères de confort. Le ressenti météo intègre déjà le vent ; aucune température de chaussée ni score pneus n’intervient ici.</p>`;
 }
 
@@ -1431,7 +1591,7 @@ async function loadCalendar() {
     if (CAL && CAL.c === S0.c) return;
     const d = await openSealed(S0, String(pass).trim().toLowerCase()); CAL = { ...d, c: S0.c }; CALDONE = true; renderCal(); renderBrf(); renderTenue();
   } catch (e) { /* pas d'agenda publié, ou code différent */ }
-  finally { if (!CALDONE) { CALDONE = true; renderBrf(); } renderTenue(); }
+  finally { if (!CALDONE) { CALDONE = true; renderBrf(); } }
 }
 async function calModel(ev) {
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2);
@@ -1741,7 +1901,7 @@ async function ensureMids(pts) {
   await Promise.allSettled(todo.map(async p => {
     try {
       const pl = DEMO.on ? makeDemoPayload(DEMO.scn, p, 'Europe/Paris', 0.3) : await fetchJSON(urlFor(p));
-      MIDP[p.id] = { p: pl, mode: DEMO.on ? 'demo' : 'live', pt: p, t: Date.now() }; MIDM[p.id] = makeModel(pl, MIDP[p.id].mode, p);
+      MIDP[p.id] = { p: pl, mode: DEMO.on ? 'demo' : 'live', pt: p, t: Date.now() }; MIDM[p.id] = makeModel(pl, MIDP[p.id].mode, p); MIDM[p.id].retrievedAt = MIDP[p.id].t;
     } catch (e) { MIDP[p.id] = null; MIDM[p.id] = null; }
     finally { MIDPENDING.delete(p.id); }
   }));

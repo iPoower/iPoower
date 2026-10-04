@@ -1,144 +1,199 @@
-// Plan de tenue dans la vraie page : météo, lieux, agenda, horloge et réseau entièrement fictifs.
-// La CI exécute le même fichier sous Chromium et WebKit, sans accès au site ni à l'agenda réel.
+// Plan de tenue dans l'application construite : mémoires météo/agenda fictives,
+// horloge contrôlée et réseau fermé, Chromium et WebKit via tests/lib/browser.
+// Les assertions portent sur les conseils visibles, jamais sur le calcul du moteur.
 const fs = require('fs'), vm = require('vm');
-const T0 = Date.parse('2026-10-03T06:00:00+02:00'), RD = Date;
+const T0 = Date.parse('2026-10-03T08:00:00+02:00'), RD = Date;
 class FD extends RD { constructor(...a) { super(...(a.length ? a : [T0])); } static now() { return T0; } }
 const ctx = { console, Date: FD, Math, Intl, Map, Set, JSON }; vm.createContext(ctx);
 vm.runInContext(fs.readFileSync('engine.js', 'utf8') + fs.readFileSync('demo.js', 'utf8') + ';this.mk=makeDemoPayload;this.me=makeDemoEnsemble;this.mn=makeDemoNowcast;this.ma=makeDemoAir;', ctx);
 const html = fs.readFileSync('site/index.html', 'utf8'), PW = fs.readFileSync('.passphrase', 'utf8').trim();
 const U = 'https://ipoower.github.io/iPoower/race-control/';
-const rows = [], errors = []; let failures = 0, requests = 0;
+const rows = [], errors = [], requests = []; let failures = 0;
 const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok) failures++; };
+const PRIVATE = 'PRIVE_TENUE_FICTIF_31B', DAY = '2026-10-03';
+const home = { id: 'home', name: 'Maison test', lat: 48.85, lon: 2.35 };
+const work = { id: 'work', name: 'Travail test', lat: 48.9, lon: 2.25 };
+const gps = { id: 'gps', name: 'Ma position test', lat: 49.4, lon: 2.8, accuracy: 8 };
+const venue = { label: 'Salle test', loc: 'Salle test', lat: 49.02, lon: 2.52 };
+const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e: DAY + 'T' + end, allDay: false, legs: [], ...extra });
+
 (async () => {
   const b = await require('./lib/browser').launch();
   try {
     const c = await b.newContext({ viewport: { width: 414, height: 896 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, timezoneId: 'Europe/Paris', colorScheme: 'dark' });
+    await c.addInitScript(() => {
+      window.__tenueWrites = [];
+      for (const name of ['setItem', 'removeItem']) {
+        const original = Storage.prototype[name];
+        Storage.prototype[name] = function(...args) { window.__tenueWrites.push({ method: name, key: String(args[0]), value: args[1] == null ? '' : String(args[1]) }); return original.apply(this, args); };
+      }
+    });
     const p = await c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.clock.install({ time: T0 });
     await p.route('**/*', r => {
-      requests++; const u = r.request().url(), J = v => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(v) });
-      if (u.includes('air-quality-api')) return J(ctx.ma(ctx.mk('doux', { lat: 48.85, lon: 2.35 }, 'Europe/Paris', 0)));
+      const req = r.request(), u = req.url(); requests.push({ url: u, method: req.method(), body: req.postData() || '' });
+      const J = v => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(v) });
+      if (u.includes('air-quality-api')) return J(ctx.ma(ctx.mk('doux', home, 'Europe/Paris', 0)));
       if (u.includes('open-meteo.com')) {
-        const q = new URL(u).searchParams, latitudes = (q.get('latitude') || '48.85').split(','), longitudes = (q.get('longitude') || '2.35').split(',');
-        const models = latitudes.map((lat, i) => ctx.mk('doux', { lat: +lat, lon: +longitudes[i] }, 'Europe/Paris', 0));
-        if (u.includes('ensemble')) return J(ctx.me(models[0])); if (q.get('minutely_15')) return J(ctx.mn(models[0]));
-        return J(models.length > 1 ? models : models[0]);
+        const q = new URL(u).searchParams, lats = String(q.get('latitude')).split(','), lons = String(q.get('longitude')).split(',');
+        const base = i => ctx.mk('doux', { lat: +lats[i], lon: +lons[i] }, 'Europe/Paris', 0);
+        if (lats.length > 1) return J(lats.map((_, i) => base(i)));
+        const one = base(0); if (u.includes('ensemble')) return J(ctx.me(one)); if (q.get('minutely_15')) return J(ctx.mn(one)); return J(one);
       }
       if (u.includes('/obs.json')) return J({ stations: {} });
       if (u.includes('/tiredb.json')) return J(JSON.parse(fs.readFileSync('site/tiredb.json', 'utf8')));
-      if (u.includes('/calendar.sealed.json')) return r.fulfill({ status: 404, body: '' });
+      // L'agenda chargé au démarrage est vide. Chaque scénario fournit ensuite une
+      // mémoire CAL/CALM fictive, comme après déchiffrement et récupération météo.
+      if (u.includes('/calendar.sealed.json')) return J({});
       if (u.includes('/sw.js')) return r.fulfill({ status: 200, contentType: 'text/javascript', body: '//' });
       if (u === U) return r.fulfill({ status: 200, contentType: 'text/html', body: html });
       return r.abort();
     });
     const settle = async () => { for (let k = 0; k < 6; k++) { await p.clock.runFor(500); await p.waitForTimeout(70); } };
+    const txt = async selector => { const node = p.locator(selector || '#secTenue'); return await node.count() ? node.innerText() : ''; };
+    const timeline = () => p.locator('.outfit-timeline .outfit-moment').evaluateAll(a => a.map(x => ({ start: x.dataset.start, end: (x.querySelector('time').innerText.split('–')[1] || '').trim(), kind: x.dataset.kind, text: x.innerText })));
+    // On remplit uniquement les mémoires déjà utilisées par l'app. Aucun appel
+    // à buildTenueDay/dayplan dans les assertions, ni météo/agenda réellement lus.
+    const scenario = opt => p.evaluate(o => {
+      DEMO.on = false; GPS = o.gps || null; S.locs = o.locs; S.customs = [];
+      S.work = { from: 'home', to: 'work', dep: '08:00', ret: '18:00', durMin: 30, days: [1, 2, 3, 4, 5], ...(o.work || {}) };
+      S.calDirect = o.direct || {}; UI.loc = o.loc || 'home'; UI.view = 'tenue'; UI.outfitDay = 0; UI.outfitOccasion = 'outing';
+      M = {}; for (const k of Object.keys(RAW)) delete RAW[k];
+      for (const k of Object.keys(CALM)) delete CALM[k];
+      const create = (loc, changes, mode) => {
+        const payload = makeDemoPayload('doux', loc, 'Europe/Paris', 0), model = makeModel(payload, mode || 'live', loc);
+        for (const h of model.hs) {
+          Object.assign(h, { T: 22, Tapp: 22, pp: 0, P: 0, snow: 0, code: 0, gust: 10, wind: 5, uv: 0 });
+          for (const patch of changes || []) if (h.hh >= patch.from && h.hh < patch.to && (!patch.day || h.date === patch.day)) Object.assign(h, patch.values);
+        }
+        const current = model.hs.find(h => h.t.slice(0, 13) === model.nowStr.slice(0, 13));
+        if (current && model.cur) Object.assign(model.cur, current, { time: model.cur.time });
+        return { payload, model };
+      };
+      for (const loc of o.noWeather ? [] : [...(o.gps ? [o.gps] : []), ...o.locs]) {
+        const v = create(loc, o.weather && o.weather[loc.id], o.modes && o.modes[loc.id]);
+        M[loc.id] = v.model; RAW[loc.id] = { p: v.payload, mode: v.model.mode, t: Date.now() - (o.ages && o.ages[loc.id] || 0) };
+      }
+      CAL = o.events ? { events: o.events } : null; CALDONE = true;
+      for (const item of o.eventWeather || []) {
+        const id = 'cal' + item.loc.lat.toFixed(2) + '_' + item.loc.lon.toFixed(2);
+        const v = create({ ...item.loc, id, name: item.loc.label || item.loc.loc }, item.changes, item.mode);
+        CALM[id] = { t: Date.now() - (item.age || 0), m: v.model };
+      }
+      renderTenue();
+    }, { locs: [home, work], ...opt });
+    const patch = (from, to, values) => ({ from, to, values, day: DAY });
     await p.goto(U); await settle(); await p.fill('#unlockPw', PW);
     await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); await settle();
     await p.click('[data-act=view][data-v=tenue]'); await settle();
-    await p.evaluate(() => {
-      window.setOutfitFixture = scenario => {
-        DEMO.on = false; M = {}; [RAW, CALM, LEGM, MIDM, MIDP].forEach(o => Object.keys(o).forEach(k => delete o[k]));
-        S.work.days = []; S.configured = 1; UI.loc = S.locs[0].id; UI.outfitDay = 0; UI.outfitOccasion = 'outing'; CAL = null; CALDONE = true;
-        const places = [...S.locs, ...S.customs], date = nowIn('Europe/Paris').slice(0, 10), home = S.locs[0], work = S.locs[1], other = S.customs[0];
-        for (const l of places) {
-          const payload = makeDemoPayload('doux', l, 'Europe/Paris', 0), m = makeModel(payload, 'live', l);
-          m.hs.forEach(x => {
-            const hour = x.hh; let T = 18;
-            if (scenario === 'cold-mild' || scenario === 'several') T = hour < 12 || scenario === 'several' && hour >= 18 ? 5 : 21;
-            if (scenario === 'rain-stops') T = hour < 12 ? 18 : 24;
-            if (scenario === 'evening' && l.id === other.id) T = 8;
-            if (scenario === 'places' && l.id === work.id) T = 11;
-            if (scenario === 'places' && l.id === other.id) T = 24;
-            if (scenario === 'snow' || scenario === 'freezing') T = -2;
-            const wet = scenario === 'return-rain' && l.id === home.id && hour >= 17 || scenario === 'rain-stops' && hour < 12;
-            Object.assign(x, { T, Tapp: T, pp: wet ? 90 : 0, P: wet ? 1 : 0, snow: scenario === 'snow' ? 1 : 0,
-              code: scenario === 'snow' ? 73 : scenario === 'freezing' ? 66 : wet ? 61 : 0,
-              wind: scenario === 'wind' ? 42 : 8, gust: scenario === 'wind' ? 65 : 12, uv: 0 });
-            if (scenario === 'partial') Object.assign(x, { Tapp: null, pp: null, P: null, snow: null, code: null, gust: null });
-            if (scenario === 'no-temperature') Object.assign(x, { T: null, Tapp: null });
-          });
-          if (scenario === 'missing-hour') m.hs = m.hs.filter(x => x.t !== date + 'T12:00');
-          const current = m.hs.find(x => x.t === nowIn('Europe/Paris').slice(0, 13) + ':00');
-          m.cur = { ...m.cur, ...(current || {}), time: nowIn('Europe/Paris') };
-          RAW[l.id] = { p: payload, mode: 'live', t: Date.now() - (scenario === 'stale' ? 120 * 60000 : 0) }; M[l.id] = m;
-          if (scenario === 'stale') Object.assign(m.cur, { T: -40, Tapp: -45 });
-        }
-        const event = (l, start, end, title) => ({ ...l, t: title, s: date + 'T' + start, e: date + 'T' + end });
-        if (scenario === 'return-rain') Object.assign(S.work, { from: home.id, to: work.id, dep: '07:00', ret: '17:00', durMin: 40, days: [6] });
-        if (scenario === 'evening') CAL = { events: [event(other, '20:00', '22:00', 'Événement du soir fictif')] };
-        if (scenario === 'places') CAL = { events: [event(work, '09:15', '11:45', 'Rendez-vous du matin fictif'), event(other, '14:00', '16:00', 'Sortie fictive')] };
-        if (scenario === 'unknown-event') CAL = { events: [event({ lat: null, lon: null, loc: '' }, '12:00', '13:00', 'Événement sans lieu fictif')] };
-        if (scenario === 'cached-event') CAL = { updated: new Date().toISOString(), events: [event({ lat: 48.75, lon: 2.55, label: 'Ville fictive de l’agenda' }, '11:00', '12:00', 'Rendez-vous météo à charger')] };
-        if (scenario === 'missing-all') M = {};
-        renderTenue();
-      };
-    });
-    const fixture = name => p.evaluate(name => window.setOutfitFixture(name), name);
-    const text = () => p.locator('#secTenue').innerText();
-    const period = time => p.locator('.outfit-period').filter({ has: p.locator(`time[datetime$="T${time}"]`) });
-    const status = () => p.locator('.outfit-status').innerText();
-    await fixture('cold-mild');
-    check('matin froid puis doux : une base de quatre pièces et une seule adaptation', await p.locator('.outfit-piece').count() === 4 && await status() === '1 adaptation nécessaire');
-    check('le manteau est porté puis retiré, sans trois tenues différentes', /Manteau/.test(await period('06:00').innerText()) && /Enlever : Manteau/.test(await period('12:00').innerText()) && await p.locator('.outfit-carry [data-outfit-piece=outer]').count() === 1);
-    check('la timeline affiche lieu, air, ressenti, précipitations, vent, rafales et couches', await p.locator('.outfit-period').evaluateAll(a => a.every(x => ['Air', 'Ressenti', 'Vent', 'Rafales', 'Couche recommandée'].every(k => x.textContent.includes(k)))));
-    await fixture('stable');
-    check('journée stable : tenue valable et aucune pièce supplémentaire obligatoire', await status() === 'Tenue valable toute la journée' && /Aucune pièce supplémentaire/.test(await p.locator('.outfit-carry').innerText()));
-    await fixture('return-rain');
-    check('pluie seulement au retour : emporter la protection le matin', /Emporter : Trench/.test(await period('06:00').innerText()));
-    check('protection ajoutée au retour, météo propre aux deux lieux du trajet', /Retour habituel/.test(await period('17:00').innerText()) && /Ajouter : Trench/.test(await period('17:00').innerText()) && /Maison test/.test(await period('17:00').innerText()) && /Travail test/.test(await period('17:00').innerText()));
-    check('une seule protection et une adaptation pour la pluie du retour', await p.locator('.outfit-carry [data-outfit-piece=outer]').count() === 1 && await status() === '1 adaptation nécessaire');
-    await fixture('rain-stops');
-    check('pluie qui cesse : retrait et transition explicitement affichés', /Enlever : Trench/.test(await period('12:00').innerText()) && /non prévue/.test(await period('12:00').innerText()));
-    await fixture('evening');
-    check('événement du soir plus froid : timeline prolongée après 20 h', /Événement du soir fictif/.test(await text()) && /22:00/.test(await text()) && /8,0 °C/.test(await period('20:00').innerText()));
-    check('pièce du soir à emporter dès le départ, ajout au bon créneau', /À emporter dès le départ pour 20:00/.test(await p.locator('.outfit-carry').innerText()) && /Ajouter/.test(await period('20:00').innerText()));
-    await fixture('places');
-    check('plusieurs lieux et horaires précis : chaque prévision garde son lieu', /11,0 °C/.test(await period('09:15').innerText()) && /24,0 °C/.test(await period('14:00').innerText()));
-    check('plusieurs lieux conservent une seule tenue de base', await p.locator('.outfit-piece').count() === 4 && await p.locator('.outfit-base-title').count() === 1);
-    await fixture('several');
-    check('froid, douceur, froid : indicateur plusieurs adaptations', await status() === 'plusieurs adaptations');
-    await fixture('wind');
-    check('vent fort : protection coupe-vent avec capuche, sans parapluie supplémentaire', /vent fort, capuche/.test(await text()) && /imperméable léger avec capuche/.test(await p.locator('.outfit-carry').innerText()) && !/Parapluie à emporter/.test(await text()));
-    for (const name of ['snow', 'freezing']) {
-      await fixture(name);
-      check(name === 'snow' ? 'neige : quantité et semelles crantées' : 'pluie verglaçante : alerte explicite et semelles crantées', /crantée/.test(await text()) && (name === 'snow' ? /1,0 cm\/h/.test(await text()) : /Pluie verglaçante/.test(await text())));
+    let networkAt = requests.length;
+    const writesAt = await p.evaluate(() => window.__tenueWrites.length);
+
+    await scenario({ weather: { home: [patch(8, 12, { T: 5, Tapp: 5 })] } });
+    check('matin froid : tenue de base avec manteau et maille', /manteau/i.test(await txt('.outfit-base')) && /maille/i.test(await txt('.outfit-base')));
+    check('après-midi doux : une adaptation retire une couche', /retir|enlèv|allég/i.test(await txt('.outfit-actions')));
+    check('carte détaillée cohérente avec la base froide', /manteau/i.test(await txt('.outfit-base')) && /manteau/i.test(await txt('.outfit-pieces')));
+    check('hypothèse extérieur et lieux chauffés expliquée', /chauffés/i.test(await txt()) && /extérieur/i.test(await txt()));
+
+    await scenario({ weather: { home: [patch(8, 12, { T: 10, Tapp: 10 })] } });
+    check('base N3 : la carte nomme la maille chaude dans la pièce principale', /N3/.test(await txt('.outfit-base')) && /maille chaude/i.test(await txt('.outfit-piece:nth-child(2) h4')) && /maille fine/i.test(await txt('.outfit-piece:nth-child(2) h4')));
+    check('base N3 : titre et couche extérieure décrivent le même kit', /Fraîcheur.*mailles amovibles/i.test(await txt('.outfit-verdict h3')) && /veste légère/i.test(await txt('.outfit-piece:nth-child(1) h4')) && !/manteau/i.test(await txt('.outfit-piece:nth-child(1)')));
+
+    await scenario({ weather: { home: [patch(13, 14, { T: 5, Tapp: 5 })] } });
+    check('une heure fraîche isolée ne crée pas de changement de confort', !/maille|manteau|ajout|enfil/i.test(await txt('.outfit-actions')));
+
+    await scenario({ work: { days: [6] }, weather: { work: [patch(18, 19, { pp: 90, P: 2, code: 63 })] } });
+    check('retour pluvieux de 30 min : protection à emporter', /imperméable|pluie|parapluie/i.test(await txt('.outfit-carry')));
+    check('retour pluvieux de 30 min : action à 18 h malgré la règle des 2 h', /18:00/.test(await txt('.outfit-actions')) && /pluie|imperméable|parapluie/i.test(await txt('.outfit-actions')));
+    await scenario({ work: { days: [6] }, weather: { work: [patch(18, 19, { T: -1, Tapp: -2, pp: 95, P: 0.5, code: 67 })] } });
+    check('pluie verglaçante de 30 min : avertissement et action conservés', /verglaç|gliss/i.test(await txt()) && /18:00/.test(await txt('.outfit-actions')));
+    check('pluie verglaçante : chaussures adaptées visibles', /crantée|adhéren/i.test(await txt('.outfit-pieces')));
+    for (const danger of [
+      { label: 'neige', weather: { code: 71, snow: 0.3 }, text: /neige/i },
+      { label: 'orage', weather: { code: 95 }, text: /orage/i },
+      { label: 'vent fort', weather: { gust: 60 }, text: /vent fort|coupe.vent/i }
+    ]) {
+      await scenario({ work: { days: [6] }, weather: { work: [patch(18, 19, danger.weather)] } });
+      check(danger.label + ' au retour de 30 min : action immédiate conservée', /18:00/.test(await txt('.outfit-actions')) && danger.text.test(await txt('.outfit-actions')));
+      if (danger.label === 'vent fort') check('vent fort : le détail de la carte affiche le coupe-vent du plan', /coupe.vent/i.test(await txt('.outfit-carry')) && /coupe.vent/i.test(await txt('.outfit-piece:nth-child(1) h4')));
     }
-    await fixture('partial');
-    check('données partielles : températures disponibles, pluie et rafales inconnues', /Données partielles/.test(await text()) && /Pluie\/neige inconnue/.test(await text()) && await p.locator('.outfit-status').getAttribute('data-confirmed') === 'false');
-    await fixture('missing-hour');
-    check('heure manquante conservée avec couches à confirmer', /Météo manquante/.test(await period('12:00').innerText()) && /Couches à confirmer/.test(await period('12:00').innerText()));
-    await fixture('stale');
-    check('stale data : ancienne météo signalée sans observation périmée injectée', /Données anciennes/.test(await text()) && /à confirmer/.test(await status()) && !/-45/.test(await text()));
-    await fixture('unknown-event');
-    check('événement sans localisation : timeline explicite sans météo empruntée', /Lieu non précisé/.test(await period('12:00').innerText()) && /Météo manquante/.test(await period('12:00').innerText()) && /Événement sans localisation/.test(await text()));
-    await fixture('cached-event');
-    check('ville de l’agenda sans météo : ne pas emprunter la prévision du domicile', /Météo manquante/.test(await period('11:00').innerText()));
-    await p.evaluate(() => calModel(CAL.events[0]));
-    check('météo d’événement reçue par le flux existant : timeline actualisée automatiquement', /Ville fictive de l’agenda/.test(await period('11:00').innerText()) && !/Météo manquante/.test(await period('11:00').innerText()));
-    await fixture('stable');
-    check('aucun agenda : plan météo du lieu choisi avec explication', /Aucun agenda disponible/.test(await text()) && await p.locator('.outfit-period').count() > 0);
-    const n = requests;
-    await p.click('[data-act=outfit-day][data-v="1"]'); await p.click('[data-act=outfit-occasion][data-v=office]');
-    check('aujourd’hui et demain réutilisent les données sans nouvel appel externe', requests === n && /04\/10/.test(await text()) && /Cravate/.test(await text()));
-    await p.click('[data-act=outfit-day][data-v="0"]');
-    check('retour à aujourd’hui avec la même navigation', /03\/10/.test(await text()) && await p.locator('#viewSeg button').evaluateAll(a => a.map(x => x.dataset.v).join(',') === 'pneus,meteo,tenue'));
-    await fixture('no-temperature');
-    check('température entièrement absente : aucun vêtement prétendument calculé', await p.locator('.outfit-piece').count() === 0 && /Adaptations non calculables/.test(await text()));
-    await fixture('missing-all');
-    check('météo entièrement absente : timeline et bouton de récupération présents', /Météo insuffisante/.test(await text()) && await p.locator('#secTenue [data-act=refresh]').isVisible() && await p.locator('.outfit-period').count() > 0);
-    await fixture('places');
-    await p.evaluate(() => { S.customs[0].name = 'LieuAvecUnNomTrèsLongPourVérifierLaMiseEnPageSansDébordementSurPetitÉcran'; renderTenue(); });
+
+    await scenario({ events: [event('18:00', '20:00', venue)], eventWeather: [{ loc: venue, changes: [patch(18, 21, { T: 2, Tapp: 2 })] }] });
+    check('rendez-vous du soir froid : manteau à emporter et adaptation du soir', /manteau/i.test(await txt('.outfit-carry')) && /18:00/.test(await txt('.outfit-actions')));
+    check('la carte détaille le même kit amovible, y compris le manteau du soir', /manteau/i.test(await txt('.outfit-base')) && /manteau/i.test(await txt('.outfit-pieces')) && /chemise/i.test(await txt('.outfit-base')) && /chemise/i.test(await txt('.outfit-pieces')));
+
+    await scenario({ work: { days: [6], ret: '18:00' }, weather: { home: [patch(8, 21, { T: -5, Tapp: -5 })], work: [patch(8, 21, { T: 22, Tapp: 22 })] }, events: [event('15:00', '16:00', venue)], eventWeather: [{ loc: venue }] });
+    const moments = await timeline(), noon = moments.find(x => x.start && x.start.slice(11, 16) <= '12:00' && x.end > '12:00');
+    check('trou dans l’agenda à midi : continuité du travail', !!noon && /Travail test/.test(noon.text) && !/Maison test/.test(noon.text));
+    check('la météo du travail douce est utilisée dans le trou', !!noon && /22(?:,0)?\s*°/.test(noon.text) && !/−5|-5/.test(noon.text));
+    check('plusieurs lieux réellement connus sont présents dans la timeline', /Travail test/.test(await txt('.outfit-timeline')) && /Salle test/.test(await txt('.outfit-timeline')));
+
+    await scenario({ work: { days: [6] }, weather: { home: [patch(8, 23, { T: -5, Tapp: -5 })], work: [patch(8, 23, { T: 22, Tapp: 22 })] }, events: [event('08:15', '09:00', { loc: '', lat: null, lon: null })] });
+    const overlap = await timeline(), atHour = hour => overlap.find(x => x.start.slice(11, 16) <= hour && x.end > hour);
+    check('événement inconnu chevauchant le trajet : sa météo reste non calculée', overlap.some(x => x.kind === 'event' && x.start.slice(11, 16) === '08:15' && /Lieu inconnu.*météo locale non calculée/is.test(x.text) && !/Ressenti/i.test(x.text)));
+    check('arrivée travail masquée par un lieu inconnu : continuité à 9 h et midi', ['09:00', '12:00'].every(hour => { const row = atHour(hour); return row && row.kind === 'work' && /Travail test/.test(row.text) && /22(?:,0)?\s*°/.test(row.text) && !/Maison test|−5|-5/.test(row.text); }));
+    check('arrivée travail masquée : retour connu de 18 h conservé', overlap.some(x => x.kind === 'trip' && x.start.slice(11, 16) === '18:00' && /Travail test.*Maison test/is.test(x.text)) && atHour('19:00') && /Maison test/.test(atHour('19:00').text));
+
+    await scenario({ gps, loc: 'gps', weather: { home: [patch(8, 23, { T: -5, Tapp: -5 })], gps: [patch(8, 23, { T: 22, Tapp: 22 })] } });
+    const gpsMoments = await timeline();
+    check('Ma position sans programme : sa météo et son lieu sont conservés', /Ma position test/i.test(await txt('#secTenue h2')) && gpsMoments.length > 0 && gpsMoments.every(x => /Ma position test/.test(x.text) && /22(?:,0)?\s*°/.test(x.text) && !/Maison test|−5|-5/.test(x.text)));
+    check('Ma position sans programme : base légère issue du GPS', /N1/.test(await txt('.outfit-base')) && !/manteau/i.test(await txt('.outfit-piece:nth-child(1) h4')));
+
+    const unsafeTitle = PRIVATE + ' <img id="tenue-title-injection" src="x" onerror="window.__titleRan=1">';
+    await scenario({ weather: { home: [patch(15, 16, { T: -5, Tapp: -5 })] }, events: [event('15:00', '16:00', { t: unsafeTitle, loc: '', lat: null, lon: null })] });
+    const unknown = (await timeline()).filter(x => /Lieu inconnu/i.test(x.text));
+    check('événement sans localisation : météo locale explicitement non calculée', unknown.length > 0 && unknown.every(x => /météo locale non calculée/i.test(x.text)));
+    check('événement inconnu : aucune adaptation météo inventée', unknown.length > 0 && unknown.every(x => !/retir|enfil|imperméable|manteau|ressenti|22(?:,0)?\s*°/i.test(x.text)));
+    await scenario({ weather: { work: [patch(15, 17, { T: 5, Tapp: 5 })] }, events: [event('15:00', '16:00', { loc: 'Travail test', lat: null, lon: null })] });
+    check('localisation sans coordonnées mais reconnue : météo du travail', (await timeline()).some(x => x.kind === 'event' && /Travail test/.test(x.text) && /5(?:,0)?\s*°/.test(x.text) && !/Lieu inconnu/.test(x.text)));
+    await scenario({ events: [event('15:00', '16:00', { ...venue, t: unsafeTitle })], eventWeather: [{ loc: venue }] });
+    check('le titre de rendez-vous reste du texte sans injection HTML', await p.locator('#tenue-title-injection').count() === 0 && !(await p.evaluate(() => window.__titleRan)) && (await txt('.outfit-timeline')).includes('<img'));
+
+    await scenario({ events: [event('18:00', '20:00', venue)] });
+    const unavailable = (await timeline()).filter(x => /Salle test/.test(x.text));
+    check('lieu connu sans modèle : météo indisponible sans repli sur le domicile', unavailable.length > 0 && unavailable.every(x => /météo locale non calculée|météo indisponible/i.test(x.text) && !/22(?:,0)?\s*°|manteau/i.test(x.text)));
+    check('tous les premiers plans sont rendus sans appel météo ou agenda', requests.length === networkAt);
+    // Une récupération déjà prévue par l'agenda termine : son vrai callback
+    // doit actualiser aussi la vue Tenue, qui ne lance pas sa propre récupération.
+    await p.evaluate(e => calModel(e), event('18:00', '20:00', venue)); await settle();
+    check('réception de la météo agenda : le plan se met à jour immédiatement', (await timeline()).some(x => x.kind === 'event' && /Salle test/.test(x.text) && /Ressenti \d/.test(x.text) && !/météo locale non calculée/i.test(x.text)));
+    check('seule la récupération existante de l’agenda est appelée', requests.length === networkAt + 1 && requests[networkAt].url.includes('open-meteo.com'));
+    networkAt = requests.length;
+
+    await scenario({ weather: { home: [patch(8, 21, { Tapp: null, pp: null, gust: null })] } });
+    check('données partielles : limites et repli sur température de l’air visibles', /Données partielles/i.test(await txt()) && /Ressenti \/ air|température de l.air|ressenti indisponible/i.test(await txt()) && await p.locator('.outfit-piece').count() === 4);
+    await scenario({ modes: { home: 'cache' }, ages: { home: 2 * 3600e3 } });
+    check('météo ancienne : plan explicitement à confirmer', /Données anciennes/i.test(await txt()) && /confirmer/i.test(await txt()));
+    await scenario({ events: [event('18:00', '20:00', venue)], eventWeather: [{ loc: venue, age: 2 * 3600e3 }] });
+    check('météo ancienne au rendez-vous : l’incertitude reste visible', /anciennes|confirmer/i.test(await txt('.outfit-timeline')));
+    await scenario({ noWeather: true });
+    check('aucune météo disponible : état vide sans tenue ni timeline inventées', /Météo insuffisante/i.test(await txt()) && await p.locator('.outfit-piece, .outfit-moment').count() === 0);
+
+    await scenario({ events: [event('18:00', '20:00', { ...venue, t: PRIVATE + ' ' + 'Rendezvous'.repeat(70) })], eventWeather: [{ loc: venue }] });
     for (const width of [320, 414, 1280]) {
       await p.setViewportSize({ width, height: 896 });
-      check('responsive sans débordement, timeline complète à ' + width + ' px', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1) && await p.locator('.outfit-period').count() >= 3);
-      check('cibles tactiles ≥44 × 44 px à ' + width + ' px', await p.locator('#viewSeg button, .outfit-controls button, .outfit-evolution summary').evaluateAll(a => a.every(x => { const r = x.getBoundingClientRect(); return r.width >= 44 && r.height >= 44; })));
+      check('plan de tenue sans débordement à ' + width + ' px', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      const undersized = await p.locator('[data-act=view][data-v=tenue], #secTenue button, #secTenue a, #secTenue summary, #secTenue input, #secTenue select').evaluateAll(a => a.filter(x => x.getClientRects().length).map(x => ({ label: x.innerText, action: x.dataset.act, height: x.getBoundingClientRect().height, width: x.getBoundingClientRect().width })).filter(x => x.height < 44 || x.width < 44));
+      check('toutes les commandes Tenue atteignent 44 px à ' + width + ' px', undersized.length === 0);
+      if (undersized.length) console.log('Commandes sous 44 px à ' + width + ' px : ' + JSON.stringify(undersized));
     }
-    await p.setViewportSize({ width: 414, height: 896 }); await fixture('cold-mild');
-    if (process.env.RC_OUTFIT_PLAN_SHOT) await p.locator('#secTenue').screenshot({ path: process.env.RC_OUTFIT_PLAN_SHOT });
-    await fixture('stable'); await p.click('[data-act=view][data-v=meteo]');
-    check('aucune régression Météo : données météo visibles et Tenue masquée', await p.locator('#secCur').isVisible() && !(await p.locator('#secTenue').isVisible()));
+    await p.setViewportSize({ width: 414, height: 896 });
+    await p.click('[data-act=outfit-day][data-v="1"]');
+    check('Demain sélectionne une journée locale distincte', /04\/10/.test(await txt()) && /demain/i.test(await txt()));
+    await p.click('[data-act=outfit-occasion][data-v=office]');
+    check('Bureau conserve le plan et ajoute le conseil cravate', /Cravate/.test(await txt()) && await p.locator('.outfit-dayplan').count() === 1);
+    await p.click('[data-act=outfit-occasion][data-v=walk]');
+    check('Promenade conserve le plan et les chaussures de marche', /semelle gomme|marcher longtemps/.test(await txt()) && await p.locator('.outfit-dayplan').count() === 1);
+    await p.click('[data-act=outfit-day][data-v="0"]');
+    check('rendus et réglages Tenue sans nouvelle requête météo ou agenda', requests.length === networkAt);
+    const writes = await p.evaluate(n => window.__tenueWrites.slice(n), writesAt);
+    check('aucun stockage du plan, des événements ou des coordonnées', writes.every(x => ['twrc.outfit.occasion', 'twrc.view'].includes(x.key)) && !JSON.stringify(writes).includes(PRIVATE));
+    check('aucun titre d’agenda transmis ou publié', !JSON.stringify(requests).includes(PRIVATE) && requests.every(x => ['GET', 'HEAD'].includes(x.method)));
+    await scenario({});
+    await p.click('[data-act=view][data-v=meteo]');
+    check('Météo reste utilisable après le plan de tenue', await p.locator('#secCur').isVisible() && !(await p.locator('#secTenue').isVisible()));
     await p.click('[data-act=view][data-v=pneus]');
-    check('aucune régression Pneus : voitures et cockpit restent disponibles', await p.locator('#secCars').isVisible() && !(await p.locator('#secTenue').isVisible()));
-    check('aucune erreur JavaScript', errors.length === 0);
+    check('Pneus reste utilisable après le plan de tenue', await p.locator('#secCars').isVisible() && await p.locator('#secCars .car').count() > 0 && !(await p.locator('#secTenue').isVisible()));
+    check('aucune erreur JavaScript dans tous les scénarios', errors.length === 0);
     console.log(rows.join('\n')); console.log('errors', JSON.stringify(errors)); console.log((rows.length - failures) + '/' + rows.length + ' scénarios OK');
     process.exitCode = failures ? 1 : 0;
   } finally { await b.close(); }

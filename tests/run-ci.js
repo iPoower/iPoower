@@ -44,7 +44,9 @@ const SUITE = [
   ['e2e29.js', 'navigation : ouvrir le trajet affiché dans Waze', true],
   ['e2e30.js', 'automate du trajet : départ par le mouvement, arrivée à froid', true]];
 SUITE.push(['test_wardrobe.js', 'tenue : confort, pluie, vent et jours locaux', false], ['e2e31.js', 'onglet Tenue sartoriale et interface mobile', true]);
-SUITE.push(['test_outfit_plan.js', 'plan de tenue : transitions, lieux, agenda et incertitudes', false], ['e2e32.js', 'plan de journée déterministe et responsive', true]);
+SUITE.push(['test_dayplan.js', 'plan de tenue : couches, transitions et dangers courts', false],
+  ['dayplan-countertests.js', 'plan de tenue : mutations détectées par les contre-tests', false],
+  ['e2e32.js', 'plan de tenue : agenda, lieux, météo et interface', true]);
 const verdict = (code, out) => {
   const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
   if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');

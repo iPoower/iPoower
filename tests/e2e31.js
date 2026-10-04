@@ -47,6 +47,14 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
     check('Bureau propose une cravate', /Cravate/.test(await txt()));
     await p.click('[data-act=outfit-occasion][data-v=walk]');
     check('Promenade adapte les chaussures et le confort de marche', /semelle gomme/.test(await txt()) && /marcher longtemps/.test(await txt()));
+    // Ces scénarios historiques vérifient la météo du seul lieu sélectionné.
+    // L'agenda déchiffré du harnais couvre plusieurs lieux : on l'isole ici,
+    // les enchaînements agenda/travail restant couverts par e2e32.
+    await p.evaluate(() => {
+      CAL = { events: [] }; S.work.days = [1, 2, 3, 4, 5];
+      for (const id of Object.keys(CALM)) delete CALM[id];
+      for (const id of Object.keys(LEGM)) delete LEGM[id];
+    });
     await p.click('[data-act=outfit-day][data-v="0"]'); await p.evaluate(() => startDemo('pluie'));
     check('pluie et rafales : imperméable et capuche', /imperméable/i.test(await txt()) && /capuche/i.test(await txt()) && !/Parapluie à emporter/i.test(await txt()));
     await p.evaluate(() => startDemo('froid')); await p.click('[data-act=outfit-day][data-v="1"]');

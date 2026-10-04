@@ -237,11 +237,13 @@ async function calendarSync(out) {
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error('agenda ' + r.status);
     const from = toParis(new Date()), to = toParis(new Date(Date.now() + 8 * 864e5));
-    const occ = expand(parseIcs(await r.text()), from.slice(0, 10) + 'T00:00', to).filter(e => e.loc && e.loc.length > 2).slice(0, 25);
+    const occ = expand(parseIcs(await r.text()), from.slice(0, 10) + 'T00:00', to).slice(0, 25);
     const geo = {}, events = [];
     for (const e of occ) {
-      const g = e.mode === 'pasdetrajet' ? null : geo[e.loc] !== undefined ? geo[e.loc] : (geo[e.loc] = await geocodeLoc(e.loc));
-      events.push({ t: e.title || 'Rendez-vous', s: e.s, e: e.e, allDay: !!e.start.allDay, loc: e.loc, lat: g ? g.lat : null, lon: g ? g.lon : null, label: g ? g.label : null, mode: e.mode || null });
+      const loc = typeof e.loc === 'string' ? e.loc.trim() : '';
+      // Garder les rendez-vous sans lieu pour le plan du jour, sans météo ni trajet inventés.
+      const g = e.mode === 'pasdetrajet' || loc.length <= 2 ? null : geo[loc] !== undefined ? geo[loc] : (geo[loc] = await geocodeLoc(loc));
+      events.push({ t: e.title || 'Rendez-vous', s: e.s, e: e.e, allDay: !!e.start.allDay, loc, lat: g ? g.lat : null, lon: g ? g.lon : null, label: g ? g.label : null, mode: e.mode || null });
     }
     out.relay.calSkip = events.filter(x => x.mode === 'pasdetrajet').length;
     out.relay.calN = events.length; out.relay.calGeo = events.filter(x => x.lat != null).length;

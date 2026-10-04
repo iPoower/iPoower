@@ -70,17 +70,30 @@ cet arrondi reste en place pour tous les appels OSRM, le relais et l'agenda chif
 
 ## Tenue sartoriale
 
-L’onglet **👔 Tenue**, à côté de Pneus et Météo, réutilise les prévisions du lieu sélectionné. Il propose une veste ou une protection,
-une chemise ou de la maille, un pantalon, des chaussures et des accessoires pour **aujourd’hui** (heure courante → 20 h, ou l’heure courante après 20 h)
-ou **demain** (08 h → 20 h). Les usages Bureau, Sortie et Promenade adaptent les accessoires et le confort de marche.
+L’onglet **👔 Tenue**, à côté de Pneus et Météo, affiche le plan de la journée : kit de couches amovibles,
+pièces à emporter et adaptations avec leurs heures et lieux. **Aujourd’hui** commence à la minute courante et finit à 23 h
+(ou à minuit après 23 h) ; **demain** couvre 07 h–23 h. Bureau, Sortie et Promenade adaptent les accessoires et les chaussures.
 
-`src/wardrobe.js` applique des repères de confort au minimum de température ressentie du créneau (repli sur l’air si le ressenti manque),
-avec couches amovibles en cas d’amplitude importante. Le vent n’est pas soustrait une seconde fois du ressenti. Pluie, neige et rafales adaptent
-la protection et les semelles ; les UV adaptent les accessoires. Les pièces et couleurs sont des suggestions, pas un inventaire personnel.
-Absence de température : aucun conseil inventé. Données en cache, anciennes ou partielles : indication explicite.
+`buildTenueDay` lit les modèles météo, les horaires de travail, l’agenda déchiffré et les trajets déjà en mémoire.
+Entre deux activités, le dernier lieu connu est conservé ; seuls les retours planifiés ramènent au domicile.
+Les heures de l’agenda et des modèles sont converties dans le fuseau de la journée. Sans programme localisé,
+le lieu sélectionné, y compris la position GPS, reste le lieu de base.
+Les rendez-vous sans localisation exploitable sont conservés dans l’agenda chiffré et signalés
+« Lieu inconnu · météo locale non calculée », sans substituer la météo du domicile ni créer d’adaptation.
 
-Aucun nouvel appel météo, service, clé ou donnée GPS. L’onglet choisi et l’usage sont conservés sur l’appareil ; le jour revient à Aujourd’hui au rechargement.
-Pneus, Météo, le relais et les réglages des véhicules gardent leur fonctionnement. Tests : `test_wardrobe.js` et `e2e31.js` dans la CI Chromium/WebKit.
+`src/dayplan.js` est un moteur déterministe sans réseau, stockage ni horloge implicite. Son résultat alimente
+la frise **et** la carte détaillée « Ta tenue » : un seul kit, couvrant le moment le plus froid retenu.
+Les seuils de ressenti de `wardrobe.js` restent 0, 7, 13, 19 et 25 °C, avec repli explicite sur l’air.
+Une marge de 1 °C et une durée de 2 h limitent les oscillations de confort ; un rendez-vous peut justifier une adaptation plus courte.
+Pluie, neige, pluie verglaçante, orage et vent fort restent immédiats, même pour un créneau de 30 minutes.
+Les semelles sont choisies pour la pire météo de la journée. Le conseil suppose des passages dehors et rappelle
+de retirer la maille dans les lieux chauffés. Les pièces et couleurs restent des suggestions.
+
+Absence de température : aucun conseil inventé. Données anciennes, partielles, lieux inconnus et agenda indisponible : indication explicite.
+Le plan n’ajoute aucun appel externe ni stockage de rendez-vous, de titres ou de coordonnées.
+L’onglet et l’usage gardent leur stockage existant ; le jour revient à Aujourd’hui au rechargement.
+Tests : `test_wardrobe.js`, `test_dayplan.js`, trois mutations métier dans `dayplan-countertests.js`,
+et `e2e31.js` / `e2e32.js` sur Chromium et WebKit, à 320, 414 et 1280 px avec commandes d’au moins 44 px.
 
 ## Frontière des secrets
 

@@ -339,16 +339,36 @@ html { scroll-behavior: smooth; }
 
 /* ---------- mode Météo, radar, air ---------- */
 .seg.view { align-self: flex-start; }
-.seg.view button { padding: 7px 16px; font-size: 13.5px; min-height: 44px; min-width: 44px; }
+.seg.view button { padding: 7px 16px; font-size: 13.5px; min-height: 38px; }
 .vm #secCars, .vm #secBrief, .vm #secCmp, .vm #secSeason, .vm #secJournal { display: none !important; }
 /* Tenue conserve le cockpit et utilise uniquement son propre panneau. */
 .vt .wrap > .mod:not(#secTenue):not(#settings), .vt #secCars, .vt #banners, .vt .foot { display: none !important; }
 .outfit { border-color: var(--line2); gap: 18px; }
+.outfit button { min-height: 44px; }
 .outfit-controls { display: flex; flex-wrap: wrap; gap: 10px; }
 .outfit-controls .seg button { font-size: 14px; min-height: 44px; padding: 9px 12px; }
+.seg.view button { min-height: 44px; }
 .outfit-context { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 5px 12px; color: var(--fg2); font-size: 14px; }
 .outfit-context b { font-weight: 500; }
 .outfit-context.old { color: var(--risk-t); }
+.outfit-dayplan { display: grid; gap: 16px; min-width: 0; }
+.outfit-plan-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.outfit-plan-heading h3 { font-family: var(--f-disp); font-size: 23px; line-height: 1.2; }
+.outfit-indicator { padding: 7px 10px; border: 1px solid var(--line2); border-radius: 4px; font-size: 14px; color: var(--accent); }
+.outfit-indicator[data-level="multiple"], .outfit-indicator[data-level="warning"] { color: var(--risk-t); border-color: var(--risk-t); }
+.outfit-base { padding: 14px; border: 1px solid var(--line2); border-radius: 4px; background: var(--panel2); }
+.outfit-base p { margin-top: 6px; color: var(--fg); }
+.outfit-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.outfit-moment { border-left: 2px solid var(--line2); padding: 12px 14px; min-width: 0; background: var(--panel2); border-radius: 0 4px 4px 0; }
+.outfit-moment-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.outfit-moment-heading time { font-family: var(--f-mono); font-size: 14px; color: var(--accent); }
+.outfit-moment-heading b { font-size: 15px; overflow-wrap: anywhere; }
+.outfit-moment-weather { display: flex; flex-wrap: wrap; gap: 5px 14px; margin-top: 8px; font-size: 13px; color: var(--fg2); }
+.outfit-moment .outfit-moment-layers { margin-top: 8px; color: var(--fg); }
+.outfit-moment .outfit-moment-status { margin-top: 7px; color: var(--fg2); }
+.outfit-moment .outfit-moment-status.old { color: var(--risk-t); }
+.outfit-moment-actions { padding-left: 18px; margin: 8px 0 0; color: var(--accent); font-size: 14px; line-height: 1.5; }
+.outfit-actions li { line-height: 1.5; }
 .outfit-verdict { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; }
 .outfit-label { font-size: 13px; color: var(--fg2); }
 .outfit-verdict h3 { font-family: var(--f-disp); font-size: clamp(26px, 6vw, 34px); line-height: 1.15; margin: 5px 0 7px; }
@@ -372,23 +392,6 @@ html { scroll-behavior: smooth; }
 .outfit-evolution .evo > div, .outfit-evolution .evo b { font-size: 14px; }
 .outfit-method { border-top: 1px solid var(--line); padding-top: 12px; }
 .outfit-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
-.outfit-base-title, .outfit-plan > h3 { font-size: 18px; font-weight: 600; margin: 0 0 10px; }
-.outfit-status { display: inline-block; font-size: 14px; padding: 8px 12px; color: var(--accent); border: 1px solid var(--line2); border-radius: 4px; }
-.outfit-status[data-confirmed="false"], .outfit-uncertainty { color: var(--risk-t); }
-.outfit-timeline { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 12px; }
-.outfit-period { min-width: 0; padding: 14px; background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 4px; overflow-wrap: anywhere; }
-.outfit-period.uncertain { border-left-color: var(--risk-t); }
-.outfit-period-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin-bottom: 5px; }
-.outfit-period-head time { font: 500 14px var(--f-mono); color: var(--accent); }
-.outfit-period-head b { font-size: 16px; min-width: 0; }
-.outfit-period-weather { display: grid; gap: 6px; margin-top: 12px; font-size: 14px; color: var(--fg2); }
-.outfit-period-weather b { color: var(--fg); font-weight: 500; }
-.outfit-uncertainty { display: block; margin-top: 10px; font-size: 14px; }
-.outfit-layers { margin-block: 12px; }
-.outfit-layers > b { color: var(--fg); }
-.outfit-actions { margin: 10px 0 0; padding-left: 19px; font-size: 14px; line-height: 1.55; }
-.outfit-actions li + li { margin-top: 5px; }
-.outfit-carry li { overflow-wrap: anywhere; }
 @media (max-width: 560px) { .outfit-pieces { grid-template-columns: minmax(0, 1fr); } .seg.view button { padding-inline: 12px; min-height: 44px; } }
 @media (max-width: 360px) { .outfit-metrics { grid-template-columns: minmax(0, 1fr); } .outfit-metrics > div + div { border-left: 0; border-top: 1px solid var(--line); } .outfit-controls .seg button { padding-inline: 9px; } }
 .radar { position: relative; }
