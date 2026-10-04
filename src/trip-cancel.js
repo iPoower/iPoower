@@ -73,7 +73,10 @@ const TripCancel = (() => {
     const epoch = localEpoch(end, timezone);
     return Number.isFinite(epoch) ? Math.max(epoch + EVENT_MARGIN_MS, now + UNDO_MS) : now + EVENT_MARGIN_MS;
   }
-  const workExpiration = (date, timezone = 'Europe/Paris') => localEpoch(shift(date + 'T00:00', 1440), timezone);
+  function workExpiration(date, now = Date.now(), timezone = 'Europe/Paris') {
+    const midnight = localEpoch(shift(date + 'T00:00', 1440), timezone);
+    return Number.isFinite(midnight) ? Math.max(midnight, now + UNDO_MS) : now + UNDO_MS;
+  }
   const distance = (a, b) => {
     const r = Math.PI / 180, x = Math.sin((b.lat - a.lat) * r / 2), y = Math.sin((b.lon - a.lon) * r / 2);
     return 12742 * Math.asin(Math.min(1, Math.sqrt(x * x + Math.cos(a.lat * r) * Math.cos(b.lat * r) * y * y)));
