@@ -1283,6 +1283,11 @@ function gaugeSvg(score, lv) {
 // Rien n'est stocké (ni localStorage, ni twrc.croute) ni publié (ni obs.json, ni agenda, ni relais) : route, météo, relevé de
 // référence et phase vivent en mémoire et disparaissent à la fermeture. Aucun nouveau fournisseur externe : en mode trajet vivant,
 // la position courante arrondie à 0,001° est en plus transmise à OSRM pour calculer le trajet restant.
+const ROUTE_MARGIN_MAX = 15;
+const routeTravelMin = (raw, reserved = 0) => {
+  const base = Math.max(1, Number(raw) || 1), cap = Math.max(0, ROUTE_MARGIN_MAX - Math.max(0, reserved));
+  return Math.max(1, Math.round(base + Math.min(base * 0.1, cap)));
+};
 const LIVE_WIN = 90, LIVE_ADV = 240, LIVE_ADV_KM = 5, LIVE_ADV_AGE = 30 * 60e3, LIVE_ACC = 250, LIVE_ACC_ARR = 150, LIVE_ARR_KM = 0.3, LIVE_AGE_IMM = 5 * 60e3, LIVE_AGE_RUN = 2 * 60e3, LIVE_GRACE = 5 * 60e3;
 const LIVE = { key: null, phase: 'idle', base: null, startFix: null, lastFix: null, carN: 0, near: null, arrN: 0, arrTs: 0, gen: 0, route: null, routeAt: 0, routeOrigin: null, routeTry: 0, routeErr: false,
   last: null, lastOk: 0, hiAt: 0, loAt: 0, nowAt: 0, done: {}, noAuto: {}, lastDone: null };
@@ -1346,7 +1351,8 @@ const livePlanFrom = t => t.src === 'cal' ? (t.l && t.l.from) : (t.td && t.td.LA
 // départ adaptatif seulement pour un aller, et seulement si la route part à plus de 1 km de l'origine prévue : chez soi, l'heure
 // planifiée (et, pour le boulot, la durée choisie dans les réglages) n'est jamais modifiée
 const liveAdapt = (b, R) => liveOut(b) && !!b.arr && !!R && !!livePlanFrom(b) && distKm(R.o, livePlanFrom(b)) > 1;
-const liveEffDep = b => LIVE.route && LIVE.route.key === LIVE.key && liveAdapt(b, LIVE.route) ? addMin(b.arr, -LIVE.route.min) : b.dep;
+const liveRouteMin = (b, R) => routeTravelMin(R && (R.rawMin ?? R.min), liveOut(b) ? 10 : 0);
+const liveEffDep = b => LIVE.route && LIVE.route.key === LIVE.key && liveAdapt(b, LIVE.route) ? addMin(b.arr, -liveRouteMin(b, LIVE.route)) : b.dep;
 const liveFirst = (a, b) => a < b ? a : b;
 function liveReset(reason) {
   if (LIVE.key && reason) LIVE.done[LIVE.key] = reason;
@@ -1429,8 +1435,8 @@ function liveParse(j) {
     return { f, lat: +co[i][1].toFixed(3), lon: +co[i][0].toFixed(3), km: Math.round(cumD[i] * 10) / 10, name: null }; });
   const g = [], step = totD / 80; let nxt = 0;
   for (let i = 0; i < co.length; i++) if (cumD[i] >= nxt || i === co.length - 1) { g.push([+co[i][1].toFixed(3), +co[i][0].toFixed(3)]); nxt = cumD[i] + step; }
-  const km = r.distance != null ? r.distance / 1000 : totD, sec = r.duration != null ? r.duration : totT;
-  return { km: Math.round(km * 10) / 10, min: Math.max(1, Math.round(sec / 60 * 1.1)), pts, g };   // durée × 1,1, sans la marge de 10 min des rendez-vous
+  const km = r.distance != null ? r.distance / 1000 : totD, sec = r.duration != null ? r.duration : totT, rawMin = Math.max(1, sec / 60);
+  return { km: Math.round(km * 10) / 10, rawMin, min: routeTravelMin(rawMin), pts, g };   // marge routière plafonnée ; l'aller réserve séparément 10 min avant le rendez-vous
 }
 function tripPreviewReset() {
   const gen = TRIPPREVIEW.gen + 1;
@@ -1496,9 +1502,9 @@ function tripPreviewApply(T, now) {
   }
   TRIPPREVIEW.base = b;
   const R = TRIPPREVIEW.route; if (!R || TRIPPREVIEW.phase === 'error') return T;
-  const dep = liveAdapt(b, R) ? addMin(b.arr, -R.min) : b.dep;
+  const routeMin = liveRouteMin(b, R), dep = liveAdapt(b, R) ? addMin(b.arr, -routeMin) : b.dep;
   const leg = { k: 'preview', from: { lat: R.o.lat, lon: R.o.lon, label: 'Ma position', city: 'Ma position' }, to: { lat: R.d.lat, lon: R.d.lon, label: R.d.name, city: R.d.name },
-    km: R.km, min: R.min, dep, arr: addMin(dep, R.min), pts: R.pts, g: R.g, routed: true };
+    km: R.km, min: routeMin, dep, arr: addMin(dep, routeMin), pts: R.pts, g: R.g, routed: true };
   const r = legEval(leg);
   if (r.err || r.beyond) { TRIPPREVIEW.phase = 'error'; TRIPPREVIEW.message = 'Météo de l’aperçu indisponible · trajet planifié affiché.'; return T; }
   if (!r.res) return T;   // route ET météo prêtes : jamais de résultat partiel
@@ -1549,9 +1555,9 @@ function liveTrip(b, now) {
   let a = null;
   if (fresh && liveRouteCurrent(LIVE.route, liveOrigin(fix))) {
     // aller : départ conseillé = arrivée prévue − durée depuis ici ; retour : départ prévu ; parti ou en retard : maintenant
-    const R = LIVE.route, out = liveAdapt(b, R), adep = out ? addMin(b.arr, -R.min) : b.dep, dep = LIVE.phase === 'imminent' || LIVE.phase === 'advice' ? adep : now;
+    const R = LIVE.route, out = liveAdapt(b, R), routeMin = liveRouteMin(b, R), adep = out ? addMin(b.arr, -routeMin) : b.dep, dep = LIVE.phase === 'imminent' || LIVE.phase === 'advice' ? adep : now;
     const leg = { k: 'live', from: { lat: R.o.lat, lon: R.o.lon, label: 'Ma position', city: 'Ma position' }, to: { lat: R.d.lat, lon: R.d.lon, label: R.d.name, city: R.d.name },
-      km: R.km, min: R.min, dep, arr: addMin(dep, R.min), pts: R.pts, g: R.g, routed: true };
+      km: R.km, min: routeMin, dep, arr: addMin(dep, routeMin), pts: R.pts, g: R.g, routed: true };
     const r = legEval(leg);
     if (r.res) { a = { leg, r, fixTs: fix.ts, gen: R.gen, adv: out ? { target: b.arr, dep: adep } : null }; LIVE.last = a; LIVE.lastOk = Date.now(); }   // bascule atomique : route ET météo prêtes
   }
@@ -1887,7 +1893,7 @@ async function calModel(ev) {
 }
 function calTrip(ev) {
   const home = M[S.locs[0].id]; if (!home || !locHasCoords(S.locs[0]) || !locHasCoords(ev)) return null;
-  const km = distKm(S.locs[0], ev), dur = Math.round(km * 1.3 / (km < 25 ? 55 : km < 60 ? 70 : 90) * 60) + 10;
+  const km = distKm(S.locs[0], ev), rawDur = km * 1.3 / (km < 25 ? 55 : km < 60 ? 70 : 90) * 60, dur = routeTravelMin(rawDur, 10);
   if (km < 3) return { km, near: true };
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2), B = CALM[id] && CALM[id].m;
   if (!B) { if (!CALM[id]) calModel(ev); return { km, dur, loading: true }; }
@@ -1956,8 +1962,9 @@ function tripCancelRouteLeg(e, leg) {
       .then(j => {
         if (gen !== CANCELROUTEGEN || calendarCancelled(e)) return;
         const route = liveParse(j); if (!route) throw new Error('itinéraire vide');
-        const dep = leg.k === 'go' && leg.targetArr ? addMin(leg.targetArr, -route.min) : leg.dep;
-        entry.leg = { ...leg, ...route, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, dep, arr: addMin(dep, route.min), routed: true, byTime: true, rebuilt: true };
+        const routeMin = routeTravelMin(route.rawMin ?? route.min, leg.k === 'go' && leg.targetArr ? 10 : 0);
+        const dep = leg.k === 'go' && leg.targetArr ? addMin(leg.targetArr, -routeMin) : leg.dep;
+        entry.leg = { ...leg, ...route, min: routeMin, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, dep, arr: addMin(dep, routeMin), routed: true, byTime: true, rebuilt: true };
         delete entry.leg.originPending; delete entry.leg.originUncertain; delete entry.leg.rebuildFrom;
         entry.phase = 'weather'; renderCal(); renderBrf(); renderTenue();
       })

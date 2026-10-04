@@ -121,6 +121,8 @@ const privacy = async s => {
   {
     const s = await session(browser, '2026-10-03T10:00:00+02:00'); const { p, S } = s;
     await s.enableGps(); let t = await s.txt();
+    const margins = await p.evaluate(() => ({ go: routeTravelMin(200, 10) - 200 + 10, ret: routeTravelMin(200, 0) - 200 }));
+    check('0 · marge : plafond total de 15 min, avance rendez-vous comprise', margins.go === 15 && margins.ret === 15, JSON.stringify(margins));
     check('1 · GPS ailleurs, départ >4 h : origine planifiée explicite, sans fausse origine GPS', /Origine planifiée\s*:\s*Domicile\s*→\s*Alpha/i.test(t) && !/Ma position\s*→/i.test(t), short(t));
     check('1 · recalcul annoncé à 11:30, nom local ; aucun OSRM ni géocodage supplémentaire au rendu', /Tu es actuellement ailleurs/i.test(t) && /11:30/.test(t) && gpsRoutes(s).length === 0 && (await phase(s)) === 'idle');
     const source = await p.evaluate(() => JSON.stringify(CAL.events)), storedRoute = await p.evaluate(() => localStorage.getItem('twrc.croute'));
@@ -138,7 +140,7 @@ const privacy = async s => {
     await p.locator('#secBrf [data-act="trip-preview"]').first().click(); await s.settle(7); await s.to('2026-10-03T10:35:00+02:00'); await s.fix(G.moved); t = await s.txt();
     check('4 · déplacement >1 km : aperçu supprimé et retour au trajet planifié', !/Aperçu depuis ma position/i.test(t) && /Origine planifiée/i.test(t), short(t));
     await s.to('2026-10-03T11:31:00+02:00'); await s.fix(G.here); t = await s.waitFor(/départ conseillé/);
-    const route = await p.evaluate(() => LIVE.route && { min: LIVE.route.min, key: LIVE.route.key });
+    const route = await p.evaluate(() => LIVE.route && { min: liveRouteMin(LIVE.base, LIVE.route), key: LIVE.route.key });
     const expected = route && new Date(clock('2026-10-03T16:50:00+02:00') - route.min * 60e3).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
     check('2 · entrée dans les 4 h : départ adaptatif existant, arrivée cible inchangée', (await phase(s)) === 'advice' && /Ma position\s*→\s*Alpha/i.test(t) && new RegExp(`départ conseillé\\s*${expected}`, 'i').test(t) && /arrivée cible 16:50/i.test(t) && !/Aperçu depuis ma position/i.test(t), short(t));
     const pr = await privacy(s);
