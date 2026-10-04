@@ -2743,6 +2743,78 @@ function renderAlerts() {
 
 /* ---------- paramètres ---------- */
 const bindIn = (path, val, o = {}) => `<div class="fld${o.wide ? ' wide' : ''}"><label for="f-${path.replace(/\./g, '-')}">${o.label}</label><input type="${o.type || 'text'}" id="f-${path.replace(/\./g, '-')}" data-bind="${path}" ${o.num ? 'data-num="1"' : ''} ${o.attrs || ''} value="${esc(val == null ? '' : val)}" ${o.ph ? `placeholder="${esc(o.ph)}"` : ''}></div>`;
+
+const DIAG_META = {
+  ok: ['🟢', 'OK'], degraded: ['🟠', 'DÉGRADÉ'], error: ['🔴', 'ERREUR'],
+  offline: ['🟠', 'HORS LIGNE'], unknown: ['⚪', 'ATTENTE']
+};
+const diagAge = ms => FLIGHT && FLIGHT.ageText ? FLIGHT.ageText(ms) : (Number.isFinite(ms) ? Math.round(ms / 60000) + ' min' : 'inconnue');
+const diagRow = (name, status, detail) => {
+  const m = DIAG_META[status] || DIAG_META.unknown;
+  return `<div class="diag-row"><span class="diag-name">${esc(name)}</span><span class="diag-state ${status}">${m[0]} ${m[1]}</span><span class="diag-detail">${esc(detail || '—')}</span></div>`;
+};
+function diagnosticHtml() {
+  const now = Date.now(), mode = mainMode(), weatherAge = lastOk ? now - lastOk : null;
+  const online = !offlineNow();
+  const weatherStatus = !online ? (Object.values(RAW).some(r => r && r.mode === 'cache') ? 'degraded' : 'offline')
+    : mode === 'live' ? (weatherAge != null && weatherAge <= 10 * 60e3 ? 'ok' : 'degraded')
+      : mode === 'cache' ? 'degraded' : 'unknown';
+  const calTs = CAL && Date.parse(CAL.updated || ''), calAge = Number.isFinite(calTs) ? Math.max(0, now - calTs) : null;
+  const calStatus = !CAL ? 'unknown' : (CAL.offline || (calAge != null && calAge > RELAY_WARN_MIN * 60e3) ? 'degraded' : 'ok');
+  const gpsAge = GPS && Number.isFinite(GPS.t) ? Math.max(0, now - GPS.t) : null;
+  const gpsStatus = !GPS ? 'unknown' : gpsAge <= LIVE_AGE_IMM ? 'ok' : 'degraded';
+  const routeAge = LIVE.routeAt ? Math.max(0, now - LIVE.routeAt) : null;
+  const routeLimit = LIVE.phase === 'advice' ? LIVE_ADV_AGE : 10 * 60e3;
+  const routeStatus = LIVE.phase === 'idle' ? 'unknown' : LIVE.routeErr ? 'error' : LIVE.routeAt && routeAge <= routeLimit ? 'ok' : 'degraded';
+  const swOk = typeof navigator !== 'undefined' && navigator.serviceWorker && navigator.serviceWorker.controller;
+  const cacheN = Object.values(RAW).filter(r => r && (r.mode === 'cache' || r.mode === 'live')).length;
+  const snap = FLIGHT ? FLIGHT.snapshot() : { count: 0, errors24h: 0, fallbacks24h: 0, events: [], lastDecision: null };
+  const rows = [
+    diagRow('Réseau', online ? 'ok' : 'offline', online ? 'connecté' : 'cache/fallback uniquement'),
+    diagRow('Météo', weatherStatus, mode === 'live' ? 'fraîcheur ' + diagAge(weatherAge) : mode === 'cache' ? 'cache actif' : 'aucune donnée courante'),
+    diagRow('Agenda / relais', calStatus, CAL ? ((CAL.offline ? 'cache chiffré · ' : '') + 'âge ' + diagAge(calAge)) : 'pas encore chargé'),
+    diagRow('GPS', gpsStatus, GPS ? 'fix ' + diagAge(gpsAge) + (GPS.acc ? ' · ±' + GPS.acc + ' m' : '') : 'non utilisé'),
+    diagRow('Route vivante', routeStatus, LIVE.phase === 'idle' ? 'inactive' : LIVE.routeErr ? 'OSRM indisponible · trajet planifié conservé' : LIVE.routeAt ? 'âge ' + diagAge(routeAge) : 'calcul en attente'),
+    diagRow('Cache météo', cacheN ? 'ok' : 'unknown', cacheN ? cacheN + ' zone(s) disponible(s)' : 'pas encore constitué'),
+    diagRow('Service Worker', swOk ? 'ok' : 'unknown', swOk ? 'contrôle cette page' : 'pas de contrôleur actif'),
+    diagRow('Flight recorder', FLIGHT ? 'ok' : 'error', FLIGHT ? snap.count + ' événement(s) · ' + snap.fallbacks24h + ' fallback(s) / 24 h' : 'module indisponible')
+  ].join('');
+  const d = snap.lastDecision && snap.lastDecision.data ? snap.lastDecision.data : null;
+  const decision = d ? `Niveau ${d.level == null ? '—' : d.level} · score ${d.score == null ? '—' : d.score}${d.reasons && d.reasons.length ? ' · ' + d.reasons.join(', ') : ''}` : 'Aucune décision enregistrée.';
+  const recent = (snap.events || []).slice(-6).reverse().map(e => {
+    const data = e.data || {}, state = data.status || e.type, why = data.reason ? ' · ' + data.reason : '', fb = data.fallback && data.fallback !== 'none' ? ' · fallback ' + data.fallback : '';
+    return `<div class="diag-log"><span class="mono">${hmLocal(e.ts)}</span><b>${esc(e.domain)}</b><span>${esc(state + why + fb)}</span></div>`;
+  }).join('') || '<p class="sub">Le journal se remplira à la prochaine actualisation.</p>';
+  return `<div class="set-sec" id="diagSec"><h3>🩺 Diagnostic Race Control</h3>
+    <p class="sub">Santé du système et causes des replis. Le flight recorder reste sur cet appareil, conserve au plus 180 événements pendant 7 jours et exclut coordonnées, adresses et titres Agenda.</p>
+    <div class="diag-grid">${rows}</div>
+    <p class="sub"><b>Dernière décision :</b> ${esc(decision)}</p>
+    <details class="diag-events"><summary>Derniers événements techniques · ${snap.errors24h} erreur(s) / 24 h</summary><div>${recent}</div></details>
+    <div class="chips"><button class="btn sm" data-act="diag-clear">Effacer le journal diagnostic</button></div></div>`;
+}
+function recordFlightDecision() {
+  if (!FLIGHT || !CX || DEMO.on) return;
+  const assessed = (CX.cars || []).filter(x => x && x.w);
+  if (!assessed.length) return;
+  const worst = assessed.slice().sort((a, b) => (b.w.level - a.w.level) || ((a.w.score ?? 100) - (b.w.score ?? 100)))[0];
+  const cur = CX.m && CX.m.cur ? CX.m.cur : {}, reasons = [];
+  if (cur.ice && (cur.ice.level || 0) >= 1) reasons.push('ice');
+  if ((cur.P || 0) > 0 || (cur.Pl || 0) > 0) reasons.push('wet');
+  if (cur.vis != null && cur.vis < 1000) reasons.push('fog');
+  if (cur.Tr != null && cur.Tr < 2) reasons.push('cold-road');
+  if (mainMode() === 'cache') reasons.push('cache-data');
+  const payload = {
+    level: worst.w.level, score: worst.w.score ?? null,
+    iceLevel: cur.ice ? cur.ice.level ?? null : null,
+    roadTempC: cur.Tr == null ? null : Math.round(cur.Tr * 10) / 10,
+    rainMm: cur.P == null ? null : Math.round(cur.P * 10) / 10,
+    visibilityM: cur.vis == null ? null : Math.round(cur.vis),
+    mode: mainMode() || 'none', livePhase: LIVE.phase, reasons
+  };
+  const sig = JSON.stringify(payload);
+  if (sig !== FLIGHT_DECISION_SIG) { FLIGHT_DECISION_SIG = sig; flightDecision('current-verdict', payload); }
+}
+
 function renderSettings(force) {
   const el = $('#settingsBody'); if (!el) return;
   const d = $('#settings'); if (!force && d && !d.open) { el.innerHTML = ''; el.dataset.stale = '1'; return; }
@@ -2794,7 +2866,7 @@ function renderSettings(force) {
       <div class="fld"><span class="l">Jours de trajet domicile-travail</span><div class="seg wdays">${WDN.map((n, k) => `<button data-act="wday" data-d="${k + 1}" aria-pressed="${commuteDays(S.work.days).includes(k + 1)}">${n}</button>`).join('')}</div></div>
       <p class="sub">Les autres jours (télétravail, repos) : pas de briefing domicile-travail, le briefing passe directement au prochain jour de trajet. L’agenda reste actif 7 j/7. Les notifications du matin suivent la configuration chiffrée du relais : si ton rythme change, fais-la mettre à jour aussi.</p></div>
     <div class="set-sec"><h3>Analyse</h3><div class="frow"><div class="fld"><label for="f-horizon">Horizon des verdicts</label><select id="f-horizon" data-bind="horizon" data-num="1">${[6, 12, 24].map(h => `<option value="${h}" ${S.horizon === h ? 'selected' : ''}>${h} h</option>`).join('')}</select></div>${bindIn('rainThr', S.rainThr, { label: 'Forte pluie (mm/h)', type: 'number', num: 1, attrs: 'min="1" max="30" step="0.5"' })}</div></div>
-    <div class="set-sec" id="bkSec"><h3>💾 Sauvegarde</h3>
+    ${diagnosticHtml()}\n    <div class="set-sec" id="bkSec"><h3>💾 Sauvegarde</h3>
       <p class="sub">Journal, DOT, usure, kilométrage, pressions, photos, calibration et réglages, dans un seul fichier <b>chiffré avec ton code</b>. À faire avant de changer de téléphone ou de vider Safari. Sur le nouveau téléphone : Importer, puis le même code. Dernière sauvegarde : <b>${lsGet('twrc.lastbackup') ? fmtDay(lsGet('twrc.lastbackup')) : 'jamais'}</b>.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="password" id="bkPw" autocomplete="current-password" placeholder="${lsGet('twrc.key') ? 'code (vide = code de déverrouillage)' : 'code, 8 caractères minimum'}" style="flex:1;min-width:160px">
         <button class="btn pri" data-act="bk-export">Exporter</button><label class="btn" for="bkFile">Importer</label><input type="file" id="bkFile" accept=".json,application/json,text/plain" hidden></div>
@@ -2818,10 +2890,11 @@ async function loadVersion() {
 function renderAll() {
   recordJournal();
   CX = computeCtx();
+  recordFlightDecision();
   renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderBrf(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
 }
 function softRender() { // après un réglage : tout sauf le panneau de paramètres
-  CX = computeCtx(); renderBanners(); renderBrf(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
+  CX = computeCtx(); recordFlightDecision(); renderBanners(); renderBrf(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
 }
 
 /* ---------- événements ---------- */
@@ -2848,6 +2921,7 @@ document.addEventListener('click', async e => {
   else if (a === 'nocode') { lsSet('twrc.nocode', '1'); renderNotice(); const d = $('#settings'); if (d) { d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
   else if (a === 'withcode') { try { localStorage.removeItem('twrc.nocode'); } catch (err) { /* stockage */ } renderNotice(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   else if (a === 'bk-export') backupExport();
+  else if (a === 'diag-clear') { if (FLIGHT) { FLIGHT.clear(); FLIGHT_DECISION_SIG = ''; recordFlightDecision(); } renderSettings(true); }
   else if (a === 'view') { UI.view = ['meteo', 'tenue'].includes(t.dataset.v) ? t.dataset.v : 'pneus'; lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   else if (a === 'outfit-day') { UI.outfitDay = t.dataset.v === '1' ? 1 : 0; renderTenue(); }
   else if (a === 'outfit-occasion') { UI.outfitOccasion = ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing'; lsSet('twrc.outfit.occasion', UI.outfitOccasion); renderTenue(); }
