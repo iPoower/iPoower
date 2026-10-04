@@ -94,6 +94,12 @@ L’agenda conserve toutes les occurrences de la fenêtre de huit jours, sans pl
 Les événements sans lieu et `#pasdetrajet` ne peuvent donc pas évincer un rendez-vous routable plus tardif.
 L’ordre est chronologique, avec un départage stable des heures identiques ; les caches existants mutualisent
 les lieux et routes. Le temps de traitement dépend du nombre de lieux et déplacements de cette fenêtre.
+Dans l’application, les rappels sans lieu reconnu et les événements `#pasdetrajet` sont exclus de l’Agenda,
+de Tenue et du briefing, sans modifier Google Agenda. Un lieu est reconnu par des coordonnées valides
+ou par une correspondance exacte du champ « Lieu » avec un lieu configuré ; le titre et d’anciennes routes ne suffisent pas.
+Pour signaler un vrai déplacement dont le lieu reste à préciser, ajouter `#trajet` au titre ou à la description.
+Il reste alors signalé comme inconnu, sans route, météo locale ou présence physique inventées.
+Les anciennes chaînes en cache sont réparées depuis le dernier lieu valide ; un rappel exclu ne devient jamais une origine.
 
 Le suivi GPS renouvelle aussi le nom de commune et la météo après plusieurs petits déplacements cumulés,
 reprend après la veille et ignore les réponses anciennes après déplacement ou oubli. Les origines de référence restent en mémoire.
@@ -111,7 +117,7 @@ disparaissent aussi de Tenue. Le rétablissement et l’expiration les rendent i
 Une chaîne reconstruite ne réutilise aucune météo d’une ancienne origine ; sa portion reste inconnue tant que
 la route effective n’est pas prête. Afficher Tenue ne lance aucune requête pour reconstruire cette route.
 Entre deux activités, le dernier lieu connu est conservé ; seuls les retours planifiés ramènent au domicile.
-Un événement `#pasdetrajet` reste visible comme activité sans déplacement : il ne change pas le lieu physique,
+Un événement `#pasdetrajet` ou un rappel sans lieu reconnu est absent du plan : il ne change pas le lieu physique,
 n’utilise pas la météo de son adresse et ne devient jamais l’origine du trajet suivant, même dans un ancien agenda.
 Le « Kit complet de la journée » indique le niveau maximal à couvrir. Les couches nécessaires plus tard
 sont à emporter ; la timeline indique ce qui est porté à chaque moment.
@@ -120,8 +126,9 @@ est sélectionnée avec un GPS fiable (≤ 5 min, précision ≤ 250 m), le plan
 un programme futur. Aucun trajet vers le domicile n’est inventé, et les segments antérieurs ne remplacent pas
 cette observation. Une météo GPS ancienne ou manquante est signalée à ce lieu, sans lui substituer le domicile.
 Sans programme localisé, le lieu sélectionné reste le lieu de base.
-Les rendez-vous sans localisation exploitable sont conservés dans l’agenda chiffré et signalés
-« Lieu inconnu · météo locale non calculée », sans substituer la météo du domicile ni créer d’adaptation.
+Les occurrences sans localisation exploitable restent dans l’agenda chiffré. Les déplacements explicitement
+signalés par `#trajet`, `#direct` ou `#maison` affichent « Lieu inconnu · météo locale non calculée »,
+sans substituer la météo du domicile ni créer d’adaptation ; les simples rappels restent exclus du plan.
 
 `src/dayplan.js` est un moteur déterministe sans réseau, stockage ni horloge implicite. Son résultat alimente
 la frise **et** la carte détaillée « Ta tenue » : un seul kit, couvrant le moment le plus froid retenu.

@@ -4,6 +4,10 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* stockage indisponible */ } };
 const locHasCoords = l => !!l && Number.isFinite(l.lat) && Number.isFinite(l.lon) && Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180;
+const calendarPlaces = (settings = S) => [...(settings.locs || []), ...(settings.customs || [])];
+const calendarRelevant = e => calendarEventRelevant(e, calendarPlaces());
+const calendarPlace = e => calendarEventPlace(e, calendarPlaces());
+const calendarSpatial = e => !!calendarPlace(e);
 
 /* ---------- réglages (code neutre : aucune donnée personnelle par défaut) ---------- */
 const BASE = {
@@ -723,14 +727,7 @@ function buildTenueDay(options = {}) {
     return eligible[0] || { m: null, t: null };
   };
   const place = p => p ? { ...p, name: p.name || p.city || p.label || p.loc || 'Lieu connu' } : null;
-  const resolveEvent = e => {
-    if (coords(e)) return place({ lat: e.lat, lon: e.lon, name: e.label || e.loc || e.t });
-    const names = [e.loc, e.label, e.location].map(norm).filter(Boolean);
-    const match = locs.find(l => names.some(n => n === norm(l.id) || n === norm(l.name)));
-    if (match) return place(match);
-    const endpoint = (e.legs || []).map(l => l.k === 'ret' ? l.from : l.to).find(coords);
-    return endpoint ? place(endpoint) : null;
-  };
+  const resolveEvent = e => place(calendarEventPlace(e, calendarPlaces(settings)));
   const sourceStale = source => {
     const m = source.m; if (!m || m.mode === 'demo') return false;
     if (ref && ref.mode === 'demo') return false;
@@ -777,19 +774,21 @@ function buildTenueDay(options = {}) {
   // Même chaîne effective que les trajets, mais seulement des lectures : effLegs
   // peut lancer OSRM/legEval. Le plan de tenue ne lance aucun appel réseau.
   const effective = TripCancel.rebuild(events, home, direct, cancelState, cancelNow, {
-    beforeFirst: e => tripCancelBeforeFirst(e, settings, cancelState, cancelNow)
+    beforeFirst: e => tripCancelBeforeFirst(e, settings, cancelState, cancelNow),
+    relevant: e => !!calendarEventPlace(e, calendarPlaces(settings)),
+    place: e => calendarEventPlace(e, calendarPlaces(settings))
   });
   for (const e of events) {
-    if (eventCancelled(e)) continue;
+    if (!calendarEventRelevant(e, calendarPlaces(settings)) || eventCancelled(e)) continue;
     const begin = agendaTime(e.allDay ? e.s.slice(0, 10) + 'T09:00' : e.s);
     const finish = agendaTime(e.allDay ? e.s.slice(0, 10) + 'T18:00' : e.e || addMin(e.s, 60));
-    const nonSpatial = e.mode === 'pasdetrajet', p = nonSpatial ? null : resolveEvent(e);
+    const p = resolveEvent(e);
     if (finish > midnight && begin < end && finish > begin) {
-      segments.push({ start: begin, end: finish, kind: 'event', priority: 30, to: p, title: e.t || 'Rendez-vous', nonSpatial,
-        location: nonSpatial ? `${e.t || 'Rendez-vous'} · Sans déplacement` : p ? `${e.t || 'Rendez-vous'} · ${p.name}` : 'Lieu inconnu · météo locale non calculée', unknown: !nonSpatial && !p });
+      segments.push({ start: begin, end: finish, kind: 'event', priority: 30, to: p, title: e.t || 'Rendez-vous',
+        location: p ? `${e.t || 'Rendez-vous'} · ${p.name}` : 'Lieu inconnu · météo locale non calculée', unknown: !p });
       if (e.allDay) warnings.push('Événement sur la journée entière : créneau 09:00–18:00 supposé, à confirmer.');
     }
-    const legs = e.mode === 'pasdetrajet' ? [] : effective.get(e) || [];
+    const legs = p ? effective.get(e) || [] : [];
     for (let l of legs) {
       // Le briefing peut avoir déjà publié la route ET sa météo. Sinon les
       // heures et l'ancienne géométrie ne justifient aucune adaptation Tenue.
@@ -1683,6 +1682,12 @@ function liveTrip(b, now) {
 }
 // appliqué à la timeline : retire les trajets terminés, garde le trajet commencé après son heure prévue, rend vivant un seul trajet
 function liveApply(T, now) {
+  // Une ancienne route ne rend jamais un rappel éligible au suivi vivant.
+  // Garder l'absence d'agenda temporaire distincte d'un événement exclu connu.
+  if (CAL && CAL.events && LIVE.base && LIVE.base.src === 'cal') {
+    const e = CAL.events.find(e => e === LIVE.base.e || LIVE.base.e && TripCancel.eventId(e) === TripCancel.eventId(LIVE.base.e));
+    if (!e || !calendarSpatial(e)) liveReset();
+  }
   // Un trajet déjà terminé reste terminé même si le GPS est désactivé au rechargement.
   const beforeDone = T; T = T.filter(t => !liveDoneHas(t, beforeDone));
   if (!liveAllowed()) { if (LIVE.key) liveReset(); return T; }
@@ -1749,7 +1754,7 @@ function renderBrf() {
   if (isCommuteDay(today, S.work.days)) ['go', 'ret'].forEach(d => { const t0 = toMin(d === 'go' ? S.work.dep : S.work.ret), n = toMin(nowHm);
     if (n >= t0 && n < t0 + (+S.work.durMin || 30)) { const r = tripData(d, 0); if (r && !r.err) workT(r, true); } });
   const td = nextTrip(); if (td) workT(td, false);
-  if (CAL && CAL.events) CAL.events.filter(e => e.mode !== 'pasdetrajet').forEach(e => effLegs(e).forEach(l => {
+  if (CAL && CAL.events) CAL.events.filter(calendarSpatial).forEach(e => effLegs(e).forEach(l => {
     if ((l.arr || l.dep) < now) return;   // gardé jusqu'à l'arrivée
     const r = legEval(l);
     T.push({ src: 'cal', carId: null, dep: l.dep, arr: l.arr, running: !l.originPending && l.dep <= now, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
@@ -1815,7 +1820,7 @@ function tripCancelSchedulePurge() {
     if (changed) tripCancelChanged();
   }, delay);
 }
-const cancelAffectedDay = e => workCancelled(e.s.slice(0, 10)) || !!(CAL && CAL.events && CAL.events.some(other => other.s.slice(0, 10) === e.s.slice(0, 10) && (TripCancel.nonSpatialNeedsRebuild(other) || calendarCancelled(other))));
+const cancelAffectedDay = e => workCancelled(e.s.slice(0, 10)) || !!(CAL && CAL.events && CAL.events.some(other => other.s.slice(0, 10) === e.s.slice(0, 10) && (TripCancel.nonSpatialNeedsRebuild(other, calendarSpatial, calendarPlace) || calendarCancelled(other))));
 function tripCancelButton(t) {
   const allowed = t && (t.src === 'cal' && t.e || t.src === 'work' && t.dep.slice(0, 10) === liveNow().slice(0, 10));
   return allowed ? `<button class="btn sm" data-act="trip-cancel" data-key="${esc(t.key)}">${t.src === 'work' ? '✕ Pas de trajet aujourd’hui' : '✕ Je n’y vais pas'}</button>` : '';
@@ -1831,9 +1836,9 @@ function tripCancelChanged() {
     if (t.src === 'work') return workCancelled(t.dep.slice(0, 10));
     if (!t.e || !CAL || !CAL.events) return false;
     const e = CAL.events.find(e => e === t.e || TripCancel.eventId(e) === TripCancel.eventId(t.e));
-    if (!e || calendarCancelled(e)) return true;
+    if (!e || !calendarSpatial(e) || calendarCancelled(e)) return true;
     const old = t.planL || t.l;
-    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), TRIPCANCEL, Date.now(), { beforeFirst: tripCancelBeforeFirst });
+    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), TRIPCANCEL, Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
     const next = (chains.get(e) || []).find(l => l.k === (old && old.k));
     if (!old || !next || next.originUncertain) return true;
     const same = (a, b, privatePoint) => a && b && Number.isFinite(a.lat) && Number.isFinite(a.lon) && Number.isFinite(b.lat) && Number.isFinite(b.lon) && (privatePoint ? rc2(a.lat) === rc2(b.lat) && rc2(a.lon) === rc2(b.lon) : +a.lat.toFixed(3) === +b.lat.toFixed(3) && +a.lon.toFixed(3) === +b.lon.toFixed(3));
@@ -2018,7 +2023,7 @@ async function loadCalendar() {
   finally { if (!CALDONE) { CALDONE = true; renderBrf(); } }
 }
 async function calModel(ev) {
-  if (!locHasCoords(ev)) return null;
+  if (!calendarSpatial(ev) || !locHasCoords(ev)) return null;
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2);
   if (CALM[id] && Date.now() - CALM[id].t < 30 * 60e3) return CALM[id].m;
   if (CALBUSY.has(id)) return null; CALBUSY.add(id);
@@ -2027,7 +2032,7 @@ async function calModel(ev) {
   CALBUSY.delete(id); renderCal(); renderTenue(); return CALM[id].m;
 }
 function calTrip(ev) {
-  const home = M[S.locs[0].id]; if (!home || !locHasCoords(S.locs[0]) || !locHasCoords(ev)) return null;
+  const home = M[S.locs[0].id]; if (!calendarSpatial(ev) || !home || !locHasCoords(S.locs[0]) || !locHasCoords(ev)) return null;
   const km = distKm(S.locs[0], ev), rawDur = km * 1.3 / (km < 25 ? 55 : km < 60 ? 70 : 90) * 60, dur = routeTravelMin(rawDur, 10);
   if (km < 3) return { km, near: true };
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2), B = CALM[id] && CALM[id].m;
@@ -2110,9 +2115,9 @@ function tripCancelRouteLeg(e, leg) {
   return { ...leg, from: null, min: null, km: null, pts: [], g: [], routed: false, originPending: true };
 }
 function effLegs(e, all) {
-  if (e.mode === 'pasdetrajet' || calendarCancelled(e)) return [];
+  if (!calendarSpatial(e) || calendarCancelled(e)) return [];
   if (cancelAffectedDay(e)) {
-    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), TRIPCANCEL, Date.now(), { beforeFirst: tripCancelBeforeFirst });
+    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), TRIPCANCEL, Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
     return (chains.get(e) || chains.get(TripCancel.eventId(e)) || []).map(leg => tripCancelRouteLeg(e, leg));
   }
   const D = calDirectSet(); let legs = (e.legs || []).slice();
@@ -2180,12 +2185,18 @@ function renderCal() {
   const el = $('#secCal'); if (!el) return;
   if (!CAL) { el.hidden = true; el.innerHTML = ''; return; }
   const now = DEMO.on && CX ? CX.m.nowStr : liveNow(), home = S.locs[0], fut = (CAL.events || []).filter(e => (e.allDay ? e.s.slice(0, 10) >= now.slice(0, 10) : e.s > now));
-  // « Agenda · trajets » ne montre que des rendez-vous pouvant réellement impliquer un déplacement.
-  // Les rappels/notes sans champ Lieu sont ignorés ; un lieu renseigné mais non géocodable reste visible pour être corrigé.
-  const skip = fut.filter(e => e.mode === 'pasdetrajet'),
-    noPlace = fut.filter(e => e.mode !== 'pasdetrajet' && !calendarHasDeclaredPlace(e)),
-    fut2 = fut.filter(e => e.mode !== 'pasdetrajet' && calendarHasDeclaredPlace(e));
-  const near = fut2.filter(e => locHasCoords(home) && locHasCoords(e) && distKm(home, e) < 3), evs = fut2.filter(e => !near.includes(e)).slice(0, 8);
+  // Agenda · trajets : lieu reconnu (coordonnées ou lieu configuré, #21), déplacement déclaré (#trajet, #direct, #maison)
+  // ou adresse saisie mais introuvable (main). Un vrai rendez-vous ne disparaît jamais sans bruit ; sans lieu reconnu,
+  // aucun itinéraire, météo, Waze ni Tenue n'est inventé (calendarSpatial). Les rappels sans lieu restent exclus.
+  const listed = e => calendarRelevant(e) || (e.mode !== 'pasdetrajet' && calendarHasDeclaredPlace(e));
+  const skip = fut.filter(e => e.mode === 'pasdetrajet'), relevant = fut.filter(listed),
+    noPlace = fut.filter(e => e.mode !== 'pasdetrajet' && !listed(e)), located = relevant.filter(calendarSpatial);
+  const near = located.filter(e => locHasCoords(home) && distKm(home, calendarEventPlace(e, calendarPlaces())) < 3);
+  const evs = located.filter(e => !near.includes(e)).slice(0, 8).concat(relevant.filter(e => !calendarSpatial(e)).slice(0, 8));
+  const dateLabel = e => {
+    const d = new Date(e.s.slice(0, 10) + 'T12:00:00Z'), dd = dayDiff(now.slice(0, 10), e.s.slice(0, 10));
+    return `${dd === 0 ? 'auj.' : dd === 1 ? 'demain' : DAYN[d.getUTCDay()] + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1)} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}`;
+  };
   el.hidden = false;
   const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }), calCached = !!CAL.offline,
     calAge = relayAgeMin(CAL.updated), calStale = !calCached && calAge > RELAY_WARN_MIN,
@@ -2193,7 +2204,7 @@ function renderCal() {
   // Un relais vieux ne doit pas monopoliser l'écran. Alerte forte seulement si un départ Agenda
   // peut arriver dans les 4 h ; sinon une ligne compacte suffit jusqu'au rattrapage.
   const depTimes = [];
-  fut2.forEach(e => {
+  relevant.forEach(e => {
     if (e.legs) effLegs(e).forEach(l => { if (l && l.dep && l.dep >= now.slice(0, 16)) depTimes.push(l.dep); });
     else if (!e.allDay && e.s >= now.slice(0, 16)) depTimes.push(e.s);
   });
@@ -2203,14 +2214,14 @@ function renderCal() {
     calWarn = !calStale ? '' : calUrgent
       ? `<div class="note lv1" role="status"><b>⚠️ Agenda à vérifier avant le prochain trajet</b><span>Relais vieux de ${relayAgeTxt(calAge)}. Une modification récente de Google Agenda peut manquer ; dernier plan connu conservé.</span></div>`
       : `<div class="disc" role="status"><b>⚠ Agenda : relais vieux de ${relayAgeTxt(calAge)}</b> · aucun départ Agenda imminent ; dernier plan connu conservé en attendant le rattrapage.</div>`;
-  if (!evs.length) { el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calState}</span></div>${calWarn}<p class="sub">Aucun rendez-vous avec un lieu sur les 8 prochains jours. Ajoute une adresse ou une ville dans le champ « Lieu » de tes rendez-vous Google Agenda.</p><div class="disc">Agenda synchronisé le ${up}.</div>`; return; }
   const rows = evs.map(e => {
-    const d = new Date(e.s.slice(0, 10) + 'T12:00:00Z'), dd = dayDiff(now.slice(0, 10), e.s.slice(0, 10)), dl = dd === 0 ? 'auj.' : dd === 1 ? 'demain' : DAYN[d.getUTCDay()] + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1);
-    const tr = e.legs ? null : calTrip(e);
+    const spatial = calendarSpatial(e), effectiveRoute = spatial && (e.legs || cancelAffectedDay(e)), tr = spatial && !effectiveRoute ? calTrip(e) : null;
     let body;
     if (calendarCancelled(e)) body = '<span class="sub">Aller et retour annulés sur cet appareil. Le rendez-vous reste dans Google Agenda.</span>';
-    else if (e.legs && e.lat != null) { const L = effLegs(e); body = altHtml(e) + (!e.allDay && L.length && !L.some(l => l.k === 'go') ? '<span class="sub">↪ Enchaîné avec le rendez-vous précédent, même lieu : pas de trajet aller.</span>' : '') + (L.length ? L.map(l => legHtml(l, e)).join('') : '<span class="sub">Même lieu que le rendez-vous précédent : pas de trajet.</span>'); }
-    else if (e.lat == null) body = `<span class="sub">Lieu introuvable sur la carte : précise l’adresse ou la ville dans le rendez-vous.</span>`;
+    else if (!spatial) body = calendarHasDeclaredPlace(e)
+      ? '<span class="sub">Lieu introuvable sur la carte : précise l’adresse ou la ville dans le rendez-vous. Itinéraire et météo locale non calculés.</span>'
+      : '<span class="sub">Lieu inconnu · météo locale non calculée. Précise le lieu de ce déplacement dans Google Agenda. Itinéraire non calculé.</span>';
+    else if (effectiveRoute) { const L = effLegs(e); body = altHtml(e) + (!e.allDay && L.length && !L.some(l => l.k === 'go') ? '<span class="sub">↪ Enchaîné avec le rendez-vous précédent, même lieu : pas de trajet aller.</span>' : '') + (L.length ? L.map(l => legHtml(l, e)).join('') : '<span class="sub">Même lieu que le rendez-vous précédent : pas de trajet.</span>'); }
     else if (!tr) body = '<span class="sub">Météo en attente…</span>';
     else if (tr.near) body = `<span class="sub">À moins de 3 km de chez toi : pas de trajet à analyser.</span>`;
     else if (tr.loading) body = `<span class="sub">${f0(tr.km)} km · analyse de la météo du trajet…</span>`;
@@ -2223,10 +2234,10 @@ function renderCal() {
         ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
         ${tr.res.length > 1 ? `<span class="sub">${tr.res.map(r => `${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}`).join(' · ')}</span>` : ''}`;
     }
-    return `<div class="cal-e"><div class="cal-h"><span class="cal-d">${dl} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(e.label || e.loc)}</span></div>${body}</div>`;
+    return `<div class="cal-e" data-event-id="${esc(e.id || '')}"><div class="cal-h"><span class="cal-d">${dateLabel(e)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(calendarEventPlace(e, calendarPlaces())?.name || e.label || e.loc || 'Lieu inconnu')}</span></div>${body}</div>`;
   }).join('');
-  el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calState}</span></div>${calWarn}<div class="cal-l">${rows}</div>
-    <div class="disc">${calCached ? '<b>Hors connexion : dernier agenda chiffré disponible.</b> ' : ''}${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${noPlace.length ? noPlace.length + ' rappel' + (noPlace.length > 1 ? 's' : '') + ' sans lieu masqué' + (noPlace.length > 1 ? 's' : '') + '. ' : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Mots-clés dans le titre ou la description Google Agenda : <b>#direct</b> (enchaîner), <b>#maison</b> (repasser par chez toi), <b>#pasdetrajet</b> ou 📺 (ignorer). Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, avec une marge totale plafonnée à 15 min pour un rendez-vous (dont 10 min d’arrivée anticipée), sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
+  el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calState}</span></div>${calWarn}${evs.length ? `<div class="cal-l">${rows}</div>` : '<p class="sub">Aucun déplacement à analyser sur les 8 prochains jours.</p>'}
+    <div class="disc">${calCached ? '<b>Hors connexion : dernier agenda chiffré disponible.</b> ' : ''}${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${noPlace.length ? noPlace.length + ' rappel' + (noPlace.length > 1 ? 's' : '') + ' sans lieu masqué' + (noPlace.length > 1 ? 's' : '') + '. ' : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Race Control utilise les rendez-vous avec un lieu reconnu. Les rappels sans lieu et les éléments <b>#pasdetrajet</b> ou 📺 sont exclus. Pour signaler un vrai déplacement dont le lieu reste à préciser, ajoute <b>#trajet</b> dans le titre ou la description Google Agenda. <b>#direct</b> enchaîne les rendez-vous ; <b>#maison</b> prévoit un passage par chez toi. Agenda sur 8 jours, synchronisé le ${up} (chiffré avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, avec une marge totale plafonnée à 15 min pour un rendez-vous (dont 10 min d’arrivée anticipée), sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
 }
 
 
@@ -2268,7 +2279,7 @@ function dayBriefHtml(td, tdLv) {
   dayBriefHtml.day = dayBriefHtml.first = dayBriefHtml.next = null; dayBriefHtml.lv = 0;
   if (!CAL || !CAL.events) return '';
   const now = CX.m.nowStr.slice(0, 16), legs = [];
-  CAL.events.filter(e => e.mode !== 'pasdetrajet').forEach(e => effLegs(e).forEach(l => { if (l.dep >= now) legs.push({ l, e }); }));
+  CAL.events.filter(calendarSpatial).forEach(e => effLegs(e).forEach(l => { if (l.dep >= now) legs.push({ l, e }); }));
   if (!legs.length) return '';
   const day = legs.map(x => x.l.dep.slice(0, 10)).sort()[0], L = legs.filter(x => x.l.dep.slice(0, 10) === day).sort((a, b) => a.l.dep < b.l.dep ? -1 : 1);
   const R = L.map(x => ({ ...x, r: legEval(x.l) })), ready = R.filter(x => x.r && x.r.res);

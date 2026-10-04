@@ -60,14 +60,16 @@ function icsDate(v, params) {
   return { s: m[7] ? toParis(new Date(iso + ':00Z')) : iso, allDay: false }; // TZID : traité comme heure de Paris
 }
 const unesc = t => String(t || '').replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim();
-// mots-clés de l'agenda : #pasdetrajet (ou 📺 dans le titre) > conflit #maison + #direct > #maison / #direct
+// mots-clés de l'agenda : #pasdetrajet (ou 📺) > conflit #maison + #direct > #maison / #direct > #trajet
 function modeOf(text, prev) {
   const t = String(text || '').toLowerCase(), has = k => t.includes(k);
+  // #trajet est un choix explicite, pas le début d'un autre hashtag ou mot.
+  const travel = /(^|[^\p{L}\p{N}_#])#trajet(?=$|[^\p{L}\p{N}_-])/u.test(t);
   let m = prev || null;
   if (has('#pasdetrajet') || has('#pas-de-trajet') || String(text || '').includes('📺')) return 'pasdetrajet';
   if (m === 'pasdetrajet') return m;
   const mai = has('#maison') || m === 'maison', dir = has('#direct') || m === 'direct';
-  return mai && dir ? 'conflit' : mai ? 'maison' : dir ? 'direct' : (m === 'conflit' ? m : null);
+  return m === 'conflit' || (mai && dir) ? 'conflit' : mai ? 'maison' : dir ? 'direct' : travel || m === 'trajet' ? 'trajet' : null;
 }
 function parseIcs(txt) {
   const lines = txt.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '').split(/\r?\n/), evs = []; let cur = null;

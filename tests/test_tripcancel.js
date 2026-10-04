@@ -248,6 +248,160 @@ test('#pasdetrajet conserve une origine initiale fiable fournie par le contexte'
   assert.equal(go.from.lat, work.lat); assert.equal(go.from.lon, work.lon);
   assert.equal(go.fromKind, 'work'); assert.equal(go.originPending, true);
 });
+// Le classement appartient à l'app. Ici le prédicat fictif autorise seulement
+// les occurrences dont le lieu physique est connu, sans jamais utiliser leurs titres.
+const spatialEvent = e => Number.isFinite(e.lat) && Number.isFinite(e.lon);
+const withoutPlace = e => ({ ...e, lat: null, lon: null, loc: '', label: '', t: 'Rappel privé sans lieu' });
+function noExcludedOrigin(a) {
+  const events = chain().slice(1); events[0] = withoutPlace(events[0]);
+  const ignored = events[0], retained = events[1], snapshot = JSON.stringify(events);
+  const map = a.rebuild(events, H, {}, {}, now, { relevant: spatialEvent });
+  assert.deepEqual(plain(map.get(ignored)), []);
+  assert.deepEqual(plain(map.get(a.eventId(ignored))), []);
+  const go = map.get(retained).find(l => l.k === 'go');
+  assert.equal(go.from.lat, H.lat); assert.equal(go.from.lon, H.lon); assert.equal(go.fromKind, 'home');
+  assert.equal(go.originPending, true); assert.equal(go.min, null); assert.equal(go.km, null);
+  assert.deepEqual(plain(go.g), []); assert.deepEqual(plain(go.pts), []);
+  assert.equal(JSON.stringify(events), snapshot);
+}
+test('événement exclu sans lieu : aucune ancienne origine B ni géométrie pour C', () => noExcludedOrigin(api));
+test('réparation d’un événement exclu dépend du prédicat spatial, sans changer le défaut', () => {
+  const e = withoutPlace(chain()[1]);
+  assert.equal(api.nonSpatialNeedsRebuild(e), false);
+  assert.equal(api.nonSpatialNeedsRebuild(e, spatialEvent), true);
+  assert.equal(api.nonSpatialNeedsRebuild({ ...e, legs: [], alt: null }, spatialEvent), false);
+  assert.equal(api.nonSpatialNeedsRebuild({ ...e, legs: [], alt: { direct: e.legs[0] } }, spatialEvent), true);
+  assert.equal(api.nonSpatialNeedsRebuild(chain()[1], spatialEvent), false);
+});
+function harmlessReminders(a) {
+  const events = chain(), reminders = Array.from({ length: 30 }, (_, i) => ({
+    id: 'clean-reminder-' + i, s: day + 'T08:' + String(i).padStart(2, '0'), e: day + 'T08:' + String(i + 1).padStart(2, '0'),
+    t: 'Rappel fictif ' + i, lat: null, lon: null, loc: '', legs: []
+  }));
+  const exactHome = { ...H, lat: H.lat - .00373, lon: H.lon - .00522 }, snapshot = JSON.stringify([...reminders, ...events]);
+  let requested = false;
+  const map = a.rebuild([...reminders, ...events], exactHome, {}, {}, now, {
+    relevant: spatialEvent, beforeFirst() { requested = true; return exactHome; }
+  });
+  assert.equal(requested, false);
+  reminders.forEach(e => { assert.deepEqual(plain(map.get(e)), []); assert.deepEqual(plain(map.get(a.eventId(e))), []); });
+  events.forEach(e => assert.deepEqual(plain(map.get(e)), e.legs));
+  assert.deepEqual(plain(map.get(events[0])[0].from), H);
+  assert.equal(JSON.stringify([...reminders, ...events]), snapshot);
+}
+test('trente rappels exclus sains ne recalculent ni la chaîne ni l’ancre du relais', () => harmlessReminders(api));
+function noExcludedSpareRoute(a) {
+  const events = chain().slice(1); events[0] = withoutPlace(events[0]);
+  events[0].legs = []; events[0].alt = { key: 'ignored-alternative', direct: leg('go', H, C, '13:10', '13:50') };
+  const map = a.rebuild(events, H, {}, {}, now, { relevant: spatialEvent });
+  assert.deepEqual(plain(map.get(events[0])), []);
+  const go = map.get(events[1]).find(l => l.k === 'go');
+  assert.equal(go.from.lat, H.lat); assert.equal(go.from.lon, H.lon); assert.equal(go.originPending, true);
+  assert.equal(go.min, null); assert.equal(go.km, null); assert.deepEqual(plain(go.g), []);
+}
+test('alternative d’un rappel exclu ne fournit jamais une route de remplacement', () => noExcludedSpareRoute(api));
+test('rappels exclus puis annulation et undo conservent le dernier vrai lieu', () => {
+  const events = chain(); events[1] = withoutPlace(events[1]);
+  const snapshot = JSON.stringify(events), state = cancelEvent(api, {}, events[0]);
+  const context = { relevant: spatialEvent };
+  const cancelled = api.rebuild(events, H, {}, state, now, context);
+  assert.deepEqual(plain(cancelled.get(events[0])), []); assert.deepEqual(plain(cancelled.get(events[1])), []);
+  const afterCancel = cancelled.get(events[2]).find(l => l.k === 'go');
+  assert.equal(afterCancel.from.lat, H.lat); assert.equal(afterCancel.from.lon, H.lon);
+  const restoredState = api.undo(state, api.eventId(events[0]), now + 1000);
+  const restored = api.rebuild(events, H, {}, restoredState, now + 1000, context);
+  assert.deepEqual(plain(restored.get(events[1])), []);
+  const go = restored.get(events[2]).find(l => l.k === 'go');
+  assert.equal(go.from.lat, A.lat); assert.equal(go.from.lon, A.lon); assert.equal(go.fromKind, 'prev');
+  assert.equal(go.originPending, true); assert.deepEqual(plain(go.g), []);
+  assert.equal(JSON.stringify(events), snapshot);
+});
+test('déplacement explicite au lieu inconnu reste exclu de la chaîne physique', () => {
+  const events = chain().slice(1); events[0] = { ...withoutPlace(events[0]), mode: 'trajet' };
+  const map = api.rebuild(events, H, {}, {}, now, { relevant: spatialEvent });
+  assert.deepEqual(plain(map.get(events[0])), []);
+  const go = map.get(events[1]).find(l => l.k === 'go');
+  assert.equal(go.from.lat, H.lat); assert.equal(go.from.lon, H.lon);
+});
+test('identification compte encore les occurrences brutes même lorsqu’une est exclue', () => {
+  const original = chain()[0], ignored = { ...withoutPlace(original), legs: [] }, events = [original, ignored];
+  const state = cancelEvent(api, {}, original);
+  const map = api.rebuild(events, H, {}, state, now, { relevant: spatialEvent });
+  assert.deepEqual(plain(map.get(original)), original.legs);
+  assert.deepEqual(plain(map.get(ignored)), []);
+  assert.equal(map.get(api.eventId(original)), undefined);
+});
+function configuredWorkFixture(empty = false) {
+  const work = Object.freeze({ id: 'work', name: 'Bureau configuré', lat: 49.1, lon: 2.25, priv: true, kind: 'work' });
+  const events = chain().slice(1); events[0] = { ...withoutPlace(events[0]), loc: 'work' };
+  if (empty) events[0].legs = [];
+  const place = e => e.loc === 'work' ? work : spatialEvent(e) ? e : null;
+  return { events, work, context: { place, relevant: e => !!place(e) } };
+}
+function noWrongConfiguredDestination(a) {
+  const { events, work, context } = configuredWorkFixture(), snapshot = JSON.stringify([events, work]);
+  const map = a.rebuild(events, H, {}, {}, now, context), go = map.get(events[0]).find(l => l.k === 'go');
+  assert.equal(go.to.lat, work.lat); assert.equal(go.to.lon, work.lon); assert.equal(go.to.id, 'work');
+  assert.equal(go.to.priv, true); assert.equal(go.to.label, work.name);
+  assert.equal(go.originPending, true); assert.equal(go.km, null); assert.deepEqual(plain(go.g), []); assert.deepEqual(plain(go.pts), []);
+  const following = map.get(events[1]).find(l => l.k === 'go');
+  assert.equal(following.from.lat, work.lat); assert.equal(following.from.lon, work.lon); assert.equal(following.from.id, 'work');
+  assert.equal(following.fromKind, 'prev'); assert.equal(following.originPending, true); assert.deepEqual(plain(following.g), []);
+  assert.strictEqual(map.get(a.eventId(events[0])), map.get(events[0]));
+  assert.equal(JSON.stringify([events, work]), snapshot);
+}
+test('LOCATION travail configuré remplace une ancienne destination Beta et pilote la suite', () => noWrongConfiguredDestination(api));
+test('lieu configuré sans jambes rend le départ suivant cohérent et conserve son identité privée', () => {
+  const { events, work, context } = configuredWorkFixture(true), before = JSON.stringify(events);
+  assert.equal(api.nonSpatialNeedsRebuild(events[0], context.relevant), false);
+  assert.equal(api.nonSpatialNeedsRebuild(events[0], context.relevant, context.place), true);
+  const map = api.rebuild(events, H, {}, {}, now, context);
+  assert(map.get(events[0]).some(l => l.k === 'go' && l.to.id === work.id && l.to.lat === work.lat && l.originPending));
+  const following = map.get(events[1]).find(l => l.k === 'go');
+  assert.equal(following.from.id, work.id); assert.equal(following.from.lat, work.lat); assert.equal(following.from.lon, work.lon);
+  assert.equal(following.originPending, true); assert.deepEqual(plain(following.g), []); assert.equal(following.min, null);
+  assert.equal(JSON.stringify(events), before);
+});
+test('coordonnées legacy hors bornes ne masquent pas le vrai LOCATION configuré', () => {
+  for (const bad of [{ lat: 91, lon: 2 }, { lat: 49, lon: 181 }]) {
+    const { events, work, context } = configuredWorkFixture();
+    Object.assign(events[0], bad); const before = JSON.stringify(events);
+    assert.equal(api.nonSpatialNeedsRebuild(events[0], context.relevant, context.place), true);
+    const map = api.rebuild(events, H, {}, {}, now, context);
+    const go = map.get(events[0]).find(l => l.k === 'go'), next = map.get(events[1]).find(l => l.k === 'go');
+    assert.equal(go.to.id, work.id); assert.equal(go.to.lat, work.lat); assert.equal(go.to.lon, work.lon);
+    assert.equal(next.from.id, work.id); assert.equal(next.from.lat, work.lat); assert.equal(next.from.lon, work.lon);
+    assert.equal(go.originPending, true); assert.equal(next.originPending, true);
+    assert.deepEqual(plain(go.g), []); assert.deepEqual(plain(next.g), []);
+    assert.equal(JSON.stringify(events), before);
+  }
+});
+test('annulation et undo du lieu configuré ne restaurent jamais la destination Beta', () => {
+  const { events, work, context } = configuredWorkFixture(), before = JSON.stringify(events);
+  const state = cancelEvent(api, {}, events[0]), cancelled = api.rebuild(events, H, {}, state, now, context);
+  assert.deepEqual(plain(cancelled.get(events[0])), []);
+  const afterCancel = cancelled.get(events[1]).find(l => l.k === 'go');
+  assert.equal(afterCancel.from.lat, H.lat); assert.equal(afterCancel.from.lon, H.lon);
+  const restored = api.rebuild(events, H, {}, api.undo(state, api.eventId(events[0]), now + 1000), now + 1000, context);
+  const go = restored.get(events[0]).find(l => l.k === 'go'), following = restored.get(events[1]).find(l => l.k === 'go');
+  assert.equal(go.to.id, work.id); assert.equal(go.to.lat, work.lat); assert.equal(go.to.lon, work.lon);
+  assert.equal(following.from.id, work.id); assert.equal(following.from.lat, work.lat);
+  assert.equal(go.originPending, true); assert.equal(following.originPending, true); assert.deepEqual(plain(go.g), []);
+  assert.equal(JSON.stringify(events), before);
+});
+test('résolveur sur coordonnées déjà connues conserve toutes les ancres relay', () => {
+  const events = chain(), exactHome = { ...H, lat: H.lat - .00373, lon: H.lon - .00522 }, before = JSON.stringify(events);
+  const place = e => spatialEvent(e) ? e : null; let asked = false;
+  const map = api.rebuild(events, exactHome, {}, {}, now, { relevant: spatialEvent, place, beforeFirst() { asked = true; return exactHome; } });
+  assert.equal(asked, false); events.forEach(e => assert.deepEqual(plain(map.get(e)), e.legs));
+  assert.equal(api.nonSpatialNeedsRebuild(events[0], spatialEvent, place), false);
+  assert.equal(JSON.stringify(events), before);
+});
+test('résolveur null ne retient ni coordonnées ni route d’un événement spatial exclu', () => {
+  const [event] = chain(), context = { relevant: () => false, place: () => null };
+  const map = api.rebuild([event], H, {}, {}, now, context);
+  assert.deepEqual(plain(map.get(event)), []); assert.deepEqual(plain(map.get(api.eventId(event))), []);
+});
 // Contre-tests : appliquer une faute réelle au moteur doit faire échouer une preuve ci-dessus.
 function caught(name, text, proof) {
   assert.notEqual(text, source, 'Mutation absente : ' + name); let rejected = false;
@@ -257,6 +411,10 @@ function caught(name, text, proof) {
 caught('une annulation ne peut être convertie en arrivée', source.replace('out[id] = { at: now, exp };', "out[id] = { at: now, exp, how: 'arrivé' };"), noArrival);
 caught('ancienne route d’un rendez-vous annulé interdite', source.replace('same(l.from, from) && same(l.to, to)', 'same(l.to, to)'), noOldOrigin);
 caught('la fenêtre Undo travail ne peut pas être coupée à minuit', source.replace('Math.max(midnight, now + UNDO_MS)', 'midnight'), workUndoWindow);
-caught('#pasdetrajet ne peut redevenir l’origine suivante', source.replace('dayEvents.some(e => cancelled(e) || nonSpatialNeedsRebuild(e))', 'dayEvents.some(cancelled)'), noNonSpatialOrigin);
-caught('#pasdetrajet sain ne peut remplacer les ancres du relais', source.replace('dayEvents.some(e => cancelled(e) || nonSpatialNeedsRebuild(e))', "dayEvents.some(e => cancelled(e) || e.mode === 'pasdetrajet')"), harmlessNonSpatial);
-console.log(count + '/' + count + ' scénarios OK (dont cinq mutations détectées)');
+caught('#pasdetrajet ne peut redevenir l’origine suivante', source.replace('dayEvents.some(e => cancelled(e) || nonSpatialNeedsRebuild(e, relevant, context.place))', 'dayEvents.some(cancelled)'), noNonSpatialOrigin);
+caught('#pasdetrajet sain ne peut remplacer les ancres du relais', source.replace('dayEvents.some(e => cancelled(e) || nonSpatialNeedsRebuild(e, relevant, context.place))', "dayEvents.some(e => cancelled(e) || e.mode === 'pasdetrajet')"), harmlessNonSpatial);
+caught('un événement exclu ne peut conserver ses anciennes jambes', source.replace('cancelled(e) || !relevant(e) ? []', 'cancelled(e) ? []'), noExcludedOrigin);
+caught('trente rappels sains ne peuvent remplacer les ancres du relais', source.replace('dayEvents.some(e => cancelled(e) || nonSpatialNeedsRebuild(e, relevant, context.place))', 'dayEvents.some(e => cancelled(e) || !relevant(e))'), harmlessReminders);
+caught('une alternative exclue ne peut être réutilisée comme route', source.replace('dayEvents.filter(relevant).flatMap', 'dayEvents.flatMap'), noExcludedSpareRoute);
+caught('LOCATION configuré ne peut garder l’ancienne destination Beta', source.replace('nonSpatialNeedsRebuild(e, relevant, context.place)', 'nonSpatialNeedsRebuild(e, relevant)'), noWrongConfiguredDestination);
+console.log(count + '/' + count + ' scénarios OK (dont neuf mutations détectées)');
