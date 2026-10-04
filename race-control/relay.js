@@ -29,7 +29,7 @@ function openCfg() {
 const STATIONS = [{ id: 'LFAQ', name: 'Albert-Bray', lat: 49.9715, lon: 2.6976 }, { id: 'LFAY', name: 'Amiens-Glisy', lat: 49.8730, lon: 2.3870 }];
 let cfg = null; try { cfg = openCfg(); } catch (e) { console.log('Configuration illisible', e.message); }
 const ctx = { console, Math, Date, Intl, Map, Set, JSON }; vm.createContext(ctx);
-vm.runInContext(fs.readFileSync(path.join(dir, 'engine.js'), 'utf8') + ';this.E={makeModel,mergeArome,summarize,windowAssess,LV,ICE_LV,TYPE_LABEL,hasTires,f1,f0,addMin,toMin,nowIn,distKm,applyObs,wxFr,legPoints,legSeq,legCritical,isCommuteDay};', ctx);
+vm.runInContext(fs.readFileSync(path.join(dir, 'engine.js'), 'utf8') + ';this.E={makeModel,mergeArome,summarize,windowAssess,LV,ICE_LV,TYPE_LABEL,hasTires,f1,f0,addMin,toMin,nowIn,distKm,applyObs,wxFr,legPoints,legSeq,legCritical,isCommuteDay,validForecast};', ctx);
 const E = ctx.E;
 const obsFile = path.join(dir, 'obs.json');
 const prev = fs.existsSync(obsFile) ? JSON.parse(fs.readFileSync(obsFile, 'utf8')) : { stations: {}, notified: null };
@@ -60,14 +60,16 @@ function icsDate(v, params) {
   return { s: m[7] ? toParis(new Date(iso + ':00Z')) : iso, allDay: false }; // TZID : traité comme heure de Paris
 }
 const unesc = t => String(t || '').replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim();
-// mots-clés de l'agenda : #pasdetrajet (ou 📺 dans le titre) > conflit #maison + #direct > #maison / #direct
+// mots-clés de l'agenda : #pasdetrajet (ou 📺) > conflit #maison + #direct > #maison / #direct > #trajet
 function modeOf(text, prev) {
   const t = String(text || '').toLowerCase(), has = k => t.includes(k);
+  // #trajet est un choix explicite, pas le début d'un autre hashtag ou mot.
+  const travel = /(^|[^\p{L}\p{N}_#])#trajet(?=$|[^\p{L}\p{N}_-])/u.test(t);
   let m = prev || null;
   if (has('#pasdetrajet') || has('#pas-de-trajet') || String(text || '').includes('📺')) return 'pasdetrajet';
   if (m === 'pasdetrajet') return m;
   const mai = has('#maison') || m === 'maison', dir = has('#direct') || m === 'direct';
-  return mai && dir ? 'conflit' : mai ? 'maison' : dir ? 'direct' : (m === 'conflit' ? m : null);
+  return m === 'conflit' || (mai && dir) ? 'conflit' : mai ? 'maison' : dir ? 'direct' : travel || m === 'trajet' ? 'trajet' : null;
 }
 function parseIcs(txt) {
   const lines = txt.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '').split(/\r?\n/), evs = []; let cur = null;
@@ -311,7 +313,9 @@ async function calendarSync(out) {
       const API = 'https://api.open-meteo.com/v1/forecast';
       const Q = 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation_probability,precipitation,rain,showers,snowfall,weather_code,pressure_msl,cloud_cover,visibility,wind_speed_10m,wind_gusts_10m,shortwave_radiation';
       const QA = 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,showers,snowfall,weather_code,pressure_msl,cloud_cover,wind_speed_10m,wind_gusts_10m,shortwave_radiation';
+      // une prévision invalide est une erreur visible (relay.err), jamais un silence interprété comme « sans alerte »
       const model = async l => { const b = await getJSON(`${API}?latitude=${l.lat}&longitude=${l.lon}&hourly=${Q}&timezone=auto&past_days=1&forecast_days=2`);
+        const bad = E.validForecast(b); if (bad) throw new Error('prévision invalide : ' + bad);
         let a = null; try { a = await getJSON(`${API}?latitude=${l.lat}&longitude=${l.lon}&hourly=${QA}&models=meteofrance_seamless&timezone=auto&past_days=1&forecast_days=2`); } catch (e) { a = null; }
         const m = E.makeModel(E.mergeArome(b, a), 'relay', l); E.applyObs(m, out.stations, 35); return m; };
       const origins = cfg.origins && cfg.origins.length ? cfg.origins : [cfg.home];
@@ -321,6 +325,7 @@ async function calendarSync(out) {
       for (let t = dep.slice(0, 13) + ':00'; t <= arr.slice(0, 13) + ':00'; t = E.addMin(t, 60)) {
         As.forEach(A => { const a = A.byTime.get(t); if (a != null) seq.push({ hs: A.hs, i: a }); });
         const b = B.byTime.get(t); if (b != null) seq.push({ hs: B.hs, i: b }); }
+      if (!seq.length) throw new Error('aucune heure du trajet dans la prévision');
       const sum = E.summarize(seq);
       const res = cfg.cars.filter(E.hasTires).map(c => ({ c, w: E.windowAssess(c, seq, 'trip') })).filter(r => r.w);
       const worst = res.reduce((m, r) => Math.max(m, r.w.level), 0);
@@ -359,7 +364,7 @@ async function calendarSync(out) {
         const pts = E.legPoints(leg);
         let js = await getJSON(`${API}?latitude=${pts.map(p => p.lat).join(',')}&longitude=${pts.map(p => p.lon).join(',')}&hourly=${Q}&timezone=Europe%2FParis&past_days=1&forecast_days=3`);
         if (!Array.isArray(js)) js = [js];
-        const models = js.map((p, k) => { try { return E.makeModel(p, 'relay', pts[k]); } catch (e) { return null; } });
+        const models = js.map((p, k) => { try { return E.validForecast(p) ? null : E.makeModel(p, 'relay', pts[k]); } catch (e) { return null; } });
         const seq = E.legSeq(models, pts, leg.dep, leg.min); if (!seq.length) continue;
         const res = cars.map(c => ({ c, w: E.windowAssess(c, seq, 'trip') })).filter(r => r.w), worst = res.reduce((m, r) => Math.max(m, r.w.level), 0), sum = E.summarize(seq);
         const key = leg.dep + '|' + leg.k, fog = sum.visMin != null && sum.visMin < 500, ice = sum.iceLevel || 0;
