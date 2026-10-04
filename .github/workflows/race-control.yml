@@ -1,5 +1,6 @@
 name: Race Control · relais météo
 # Observations réelles des stations proches -> race-control/obs.json (objectif ~10 min ; tentative toutes les 5 min pour absorber les retards du scheduler GitHub)
+# Horloge principale : tools/relay-clock (Cloudflare, toutes les 5 min, workflow_dispatch source=horloge) ; le cron GitHub ci-dessous reste un filet de secours
 # De 90 à 5 min avant le départ : verdict du trajet toutes les 15 min -> notification si orange/rouge, brouillard ou verglas,
 # puis nouvelle notification uniquement en cas d'aggravation (3 par matin maximum)
 on:
@@ -10,6 +11,9 @@ on:
       force_push:
         description: 'Envoyer une notification de test maintenant (1 = oui)'
         default: '0'
+      source:
+        description: 'manuel = relais forcé ; horloge = horloge externe (tools/relay-clock), relais seulement s''il est dû'
+        default: 'manuel'
 permissions:
   contents: write
 concurrency:
@@ -36,7 +40,8 @@ jobs:
       - name: Vérifier si une vraie synchronisation est due
         id: fresh
         env:
-          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+          # l'horloge externe garde le contrôle de fraîcheur ; un lancement manuel force toujours le relais
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.source != 'horloge' }}
           FORCE_PUSH: ${{ github.event.inputs.force_push }}
         run: |
           node - <<'NODE'

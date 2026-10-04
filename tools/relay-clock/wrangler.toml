@@ -1,0 +1,8 @@
+# Horloge externe du relais Race Control : voir README.md, section « Horloge du relais ».
+# Déploiement : npx wrangler deploy (depuis ce dossier) ; secret : npx wrangler secret put GH_TOKEN
+name = "race-control-relay-clock"
+main = "worker.mjs"
+compatibility_date = "2026-10-01"
+
+[triggers]
+crons = ["*/5 * * * *"]

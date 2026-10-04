@@ -4,13 +4,14 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
 
 - **Production** : https://ipoower.github.io/iPoower/race-control/ (branche `gh-pages`, dossier `race-control/`)
 - **Relais** : `.github/workflows/race-control.yml` exécute `race-control/relay.js` (observations, agenda chiffré, notifications)
+- **Horloge du relais** : `tools/relay-clock/` (Cloudflare Workers, toutes les 5 min) lance le relais ; le cron GitHub reste un filet de secours
 
 ## Structure
 
 | Dossier | Contenu |
 |---|---|
 | `src/` | Code source : `engine.js` (moteur partagé page + relais), `app.js` (interface), `demo.js`, `style.css`, `shell.html`, `sw.js`, `relay.js`, `widget.js`, `tiredb.json`, `static/` (icônes) |
-| `tools/` | `build.js` (assemble `dist/`), `check-secrets.js` (garde-fou de confidentialité), `check-keys.js` (séparation des clés), `keys.js` (chiffrement partagé), `deploy-copy.js` (publication), `pre-commit` |
+| `tools/` | `build.js` (assemble `dist/`), `check-secrets.js` (garde-fou de confidentialité), `check-keys.js` (séparation des clés), `keys.js` (chiffrement partagé), `deploy-copy.js` (publication), `pre-commit`, `relay-clock/` (horloge externe du relais), `relay-freshness.js` (mesure de fraîcheur) |
 | `tests/` | Tests Playwright de bout en bout (horloge et réseau simulés) et harnais du relais (`relay-harness/`) |
 | `encrypted/` | Réglages **déjà chiffrés** (AES-256-GCM, PBKDF2-SHA256 600 000 itérations) |
 
@@ -159,6 +160,38 @@ n'exécute jamais le code de la PR et la lit uniquement comme des fichiers. Aujo
 | `race-control.yml` (relais) | oui | uniquement depuis `main` ; exécute le relais publié sur `gh-pages` |
 | `sources-check.yml` | oui | uniquement depuis `main` |
 
+## Horloge du relais
+
+Le planificateur `schedule` de GitHub Actions retarde ou abandonne des exécutions aux heures chargées. Mesuré du 2 au 4 octobre 2026
+(`node tools/relay-freshness.js 3`) : écart médian de 39 min entre deux relais, maximum 5 h 55, et **obs.json frais (< 15 min)
+seulement 9,6 % du temps pendant les matinées de semaine** — la fenêtre des notifications du trajet.
+
+L'horloge principale est donc externe : `tools/relay-clock/worker.mjs`, un Cron Trigger Cloudflare Workers toutes les 5 min.
+
+| Étape | Comportement |
+|---|---|
+| Lecture | âge public de `obs.json` sur GitHub Pages (`?t=` contre le cache CDN), sans jeton |
+| Décision | relais lancé si l'âge est ≥ 8 min, si `obs.json` est illisible ou si la lecture échoue (une panne de lecture n'empêche jamais le relais) |
+| Lancement | `workflow_dispatch` de `race-control.yml` sur `main` avec `source=horloge` : le workflow garde son contrôle de fraîcheur, la frontière `main` et l'Environment `production` |
+| Échec | toute réponse GitHub hors 2xx (jeton expiré, droits insuffisants) fait échouer l'invocation, visible dans les journaux Cloudflare |
+| Diagnostic | l'URL du Worker renvoie en lecture seule `{ age_min, due, why }`, sans rien déclencher |
+
+Le Worker ne lit et n'envoie aucune donnée personnelle. Son seul secret, `GH_TOKEN`, est un jeton GitHub *fine-grained*
+limité au dépôt `iPoower/iPoower` avec la seule permission **Actions : Read and write** (aucun accès au contenu ni aux secrets).
+Un lancement manuel depuis GitHub (`source=manuel`, valeur par défaut) force toujours le relais, comme avant.
+
+Mise en service (une fois, par le propriétaire) :
+
+```sh
+cd tools/relay-clock
+npx wrangler login
+npx wrangler secret put GH_TOKEN     # coller le jeton fine-grained (Actions : Read and write)
+npx wrangler deploy
+```
+
+Vérification : `git fetch origin gh-pages && node tools/relay-freshness.js 7` ; objectif ≥ 95 % des minutes de matinée de semaine
+avec `obs.json` < 15 min. Tests : `test_relay_clock.js` (réseau simulé, jeton fictif).
+
 ## Rotation de `RC_KEY`
 
 Effectuée le 2 octobre 2026 sans coupure du relais (PR #8 et #9) : nouvelle clé générée par le propriétaire, jamais vue hors de GitHub ;
@@ -183,6 +216,7 @@ node tests/run-ci.js              # Chromium
 BROWSER=webkit node tests/run-ci.js   # WebKit (moteur de Safari), profil iPhone
 ```
 
+- Moteur GO / NO GO : `test_engine_verdicts.js` fige des vérités de sécurité (pluie verglaçante, neige et verglas en pneus été, brouillard, rafales, usure, monotonie au froid, pneu inconnu traité comme été) ; `engine-countertests.js` vérifie que dix régressions volontaires du moteur sont rejetées.
 - Moteur (verdicts, chaussée, verglas), widget, puis parcours navigateur avec horloge et réseau simulés : jours de trajet, timeline (avant départ, en cours, après arrivée), lieux, mini-carte, GPS dynamique, Waze, automate du trajet (départ par le mouvement, arrivée à froid, marche, jitter, vitesse dérivée).
 - Isolement réseau strict : proxy inexistant, service workers bloqués, refus par défaut. Aucun test ne peut joindre le vrai site ni le vrai agenda.
 - Les tests n'utilisent **aucun secret ni donnée réelle** : préréglage, configuration du relais, agenda, géographie et clé sont fictifs (`tests/fixtures/`, `tests/relay-harness/mock_tt.js`, clé publique `race-control-ci-test-only`). L'agenda de test est produit par le vrai relais.
