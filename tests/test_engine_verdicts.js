@@ -1,0 +1,121 @@
+// Scénarios métier du verdict GO / NO GO : chaque cas fige une vérité de sécurité, pas un score exact.
+// Météo horaire construite à la main (aucun hasard, aucune horloge implicite) ; également utilisés par les contre-tests.
+const fs = require('fs'), path = require('path'), vm = require('vm'), assert = require('assert');
+const sourcePath = path.join(__dirname, '../src/engine.js');
+function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
+  const ctx = { Math, Date, Intl, Map, Set, JSON }; vm.createContext(ctx);
+  vm.runInContext(source + '\nthis.E = { buildHours, windowAssess, hourVerdict, iceRisk, LV };', ctx);
+  const E = ctx.E;
+  const GO = 0, CAUTION = 1, RISK = 2, NOGO = 3;
+  // 24 h d'historique (inertie de la chaussée) puis 12 h évaluées ; `at(h)` décrit l'heure h (négative = passé).
+  const FIELDS = { T: 'temperature_2m', RH: 'relative_humidity_2m', P: 'precipitation', snow: 'snowfall', code: 'weather_code',
+    cloud: 'cloud_cover', vis: 'visibility', wind: 'wind_speed_10m', gust: 'wind_gusts_10m', rad: 'shortwave_radiation' };
+  const BASE = { T: 15, RH: 70, P: 0, snow: 0, code: 3, cloud: 80, vis: 20000, wind: 10, gust: 20, rad: null };
+  const hours = at => {
+    const hourly = { time: [] }; Object.values(FIELDS).forEach(k => { hourly[k] = []; });
+    for (let h = -24; h <= 12; h++) {
+      const d = new Date(Date.UTC(2026, 0, 15, 8 + h));
+      hourly.time.push(d.toISOString().slice(0, 13) + ':00');
+      const x = { ...BASE, ...at(h) };
+      for (const [k, name] of Object.entries(FIELDS)) hourly[name].push(x[k]);
+    }
+    return E.buildHours({ hourly });
+  };
+  const seq = (hs, n = 3) => Array.from({ length: n + 1 }, (_, k) => ({ hs, i: 24 + k }));
+  const car = (type, extra = {}) => ({ id: type, short: type, sporty: false, tire: { type, size: '205/55 R16 91V', tread: null, ...extra } });
+  const verdict = (type, at, opts = {}) => E.windowAssess(car(type, opts.tire), seq(hours(at), opts.n), opts.mode || 'trip');
+  const level = (type, at, opts) => verdict(type, at, opts).level;
+  const TYPES = ['summer', 'allseason', 'winter'];
+  let count = 0;
+  const test = (name, fn) => {
+    try { fn(); } catch (error) { error.scenario = name; throw error; }
+    count++; if (!options.quiet) console.log('✅ ' + name);
+  };
+
+  // — référence : aucune alerte inventée
+  test('doux et sec : GO en pneus été et 4 saisons', () => {
+    for (const type of ['summer', 'allseason']) assert.equal(level(type, () => ({})), GO, type);
+  });
+  test('doux et sec : pneus hiver jamais au-delà de CAUTION', () => assert(level('winter', () => ({})) <= CAUTION));
+  test('sans pneus montés : aucun verdict', () => assert.equal(verdict('none', () => ({})), null));
+
+  // — dangers absolus : quel que soit le pneu
+  test('pluie verglaçante imminente : NO GO pour tous les pneus', () => {
+    for (const type of TYPES) assert.equal(level(type, () => ({ T: -1, RH: 95, P: 0.4, code: 66 })), NOGO, type);
+  });
+  test('pluie verglaçante au-delà de 6 h : au moins HIGH RISK', () => {
+    for (const type of TYPES) assert(level(type, h => h === 8 ? { T: -1, RH: 95, P: 0.4, code: 66 } : {}, { n: 10 }) >= RISK, type);
+  });
+  test('brouillard < 200 m : au moins HIGH RISK pour tous les pneus', () => {
+    for (const type of TYPES) assert(level(type, h => h >= 0 ? { vis: 150, code: 45 } : {}) >= RISK, type);
+  });
+  test('rafales ≥ 90 km/h : au moins HIGH RISK pour tous les pneus', () => {
+    for (const type of TYPES) assert(level(type, h => h >= 0 ? { gust: 95, wind: 50 } : {}) >= RISK, type);
+  });
+
+  // — pneus été : le cœur du risque
+  const snow = () => ({ T: -1, RH: 95, P: 1, snow: 1.2, code: 73, cloud: 100 });
+  test('neige : NO GO en pneus été', () => assert.equal(level('summer', snow), NOGO));
+  test('neige : les pneus hiver restent sous NO GO', () => assert(level('winter', snow) < NOGO));
+  test('neige : ordre de sécurité hiver ≥ 4 saisons ≥ été', () => {
+    const s = type => verdict(type, snow).score;
+    assert(s('winter') >= s('allseason') && s('allseason') >= s('summer'), [s('winter'), s('allseason'), s('summer')].join(' / '));
+  });
+  const rainOnFrozen = h => h < 0 ? { T: -3, RH: 80, cloud: 0, wind: 2 } : { T: 0.5, RH: 95, P: 0.6, code: 61, cloud: 100, wind: 5 };
+  test('pluie sur chaussée gelée : verglas probable (≥ 70/100)', () => {
+    const hs = hours(rainOnFrozen); assert(hs[24].Tr <= -0.5, 'chaussée ' + hs[24].Tr); assert(E.iceRisk(hs, 24).score >= 70, 'score ' + E.iceRisk(hs, 24).score);
+  });
+  test('pluie sur chaussée gelée : NO GO en pneus été', () => assert.equal(level('summer', rainOnFrozen), NOGO));
+  const coldWet = () => ({ T: 2, RH: 95, P: 1, code: 61, cloud: 100 });
+  test('froid humide (2 °C, pluie) : pneus été au moins HIGH RISK', () => assert(level('summer', coldWet) >= RISK));
+  test('froid humide : ordre de sécurité hiver ≥ 4 saisons ≥ été', () => {
+    const s = type => verdict(type, coldWet).score;
+    assert(s('winter') >= s('allseason') && s('allseason') >= s('summer'), [s('winter'), s('allseason'), s('summer')].join(' / '));
+  });
+  test('pneus été : refroidir l’air n’améliore jamais le verdict (15 → −5 °C, sec)', () => {
+    let prev = null;
+    for (let T = 15; T >= -5; T--) {
+      const w = verdict('summer', () => ({ T, RH: 60 }));
+      if (prev) assert(w.score <= prev.score && w.level >= prev.level, `${T} °C : ${w.score} après ${prev.score}`);
+      prev = w;
+    }
+  });
+  test('pneus été : mouiller la chaussée froide n’améliore jamais le verdict', () => {
+    const dry = verdict('summer', () => ({ T: 3, RH: 60 })), wet = verdict('summer', () => ({ T: 3, RH: 95, P: 1, code: 61 }));
+    assert(wet.score <= dry.score, `${wet.score} > ${dry.score}`);
+  });
+  test('type de pneu inconnu : analysé aussi prudemment que des pneus été', () => {
+    for (const at of [snow, rainOnFrozen, coldWet]) assert.equal(level('unknown', at), level('summer', at));
+  });
+
+  // — usure
+  test('profondeur sous 1,6 mm : jamais GO', () => {
+    for (const type of TYPES) assert(level(type, () => ({}), { tire: { tread: 1.4 } }) >= CAUTION, type);
+  });
+  test('profondeur < 3 mm sous la pluie : verdict jamais meilleur qu’avec une gomme neuve', () => {
+    const rain = () => ({ T: 12, RH: 90, P: 5, code: 63, cloud: 100 });
+    for (const type of TYPES) assert(verdict(type, rain, { tire: { tread: 2.5 } }).score <= verdict(type, rain, { tire: { tread: 7 } }).score, type);
+  });
+
+  // — cohérence du score et du niveau
+  test('le score affiché reste dans la bande de son niveau', () => {
+    const band = [[80, 100], [60, 79], [40, 59], [0, 39]];
+    for (const at of [() => ({}), snow, rainOnFrozen, coldWet, () => ({ T: -1, code: 66, P: 0.4 }), () => ({ vis: 150 })])
+      for (const type of TYPES) { const w = verdict(type, at), [lo, hi] = band[w.level]; assert(w.score >= lo && w.score <= hi, `${type} ${w.score} niveau ${w.level}`); }
+  });
+  test('trajet : la pire heure décide, même en fin de fenêtre', () => {
+    const late = h => h === 3 ? snow() : {};
+    assert.equal(level('summer', late), NOGO);
+    assert(verdict('summer', late).kMax === 3);
+  });
+  test('verdict horaire cohérent avec le trajet d’une seule heure', () => {
+    for (const at of [() => ({}), snow, coldWet]) {
+      const hs = hours(at), one = E.windowAssess(car('summer'), [{ hs, i: 24 }], 'trip'), hv = E.hourVerdict(car('summer'), hs, 24);
+      assert.equal(one.level, hv.level); assert.equal(one.score, hv.score);
+    }
+  });
+  if (!options.quiet) console.log(count + '/' + count + ' scénarios OK');
+  return count;
+}
+module.exports = { runTests, sourcePath };
+if (require.main === module) runTests();
