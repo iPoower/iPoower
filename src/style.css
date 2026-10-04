@@ -549,16 +549,16 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .diag-row{display:grid;grid-template-columns:minmax(110px,1fr) auto minmax(150px,1.4fr);gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:color-mix(in srgb,var(--panel) 84%,transparent)}
 .diag-name{font-weight:600}
 .diag-state{font-family:"IBM Plex Mono",monospace;font-size:.78rem;white-space:nowrap}
-.diag-state.ok{color:var(--good)}
-.diag-state.degraded,.diag-state.offline{color:var(--warn)}
-.diag-state.error{color:var(--bad)}
-.diag-state.unknown{color:var(--muted)}
-.diag-detail{font-size:.86rem;color:var(--muted);text-align:right;min-width:0;overflow-wrap:anywhere}
+.diag-state.ok{color:var(--go-t)}
+.diag-state.degraded,.diag-state.offline{color:var(--cau-t)}
+.diag-state.error{color:var(--nogo-t)}
+.diag-state.unknown{color:var(--fg2)}
+.diag-detail{font-size:.86rem;color:var(--fg2);text-align:right;min-width:0;overflow-wrap:anywhere}
 .diag-events{margin:10px 0}
-.diag-events>summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+.diag-events>summary{cursor:pointer;color:var(--fg2);font-size:.9rem}
 .diag-log{display:grid;grid-template-columns:auto minmax(90px,.7fr) minmax(150px,1.5fr);gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:.82rem}
 .diag-log:last-child{border-bottom:0}
-.diag-log span:last-child{color:var(--muted);overflow-wrap:anywhere}
+.diag-log span:last-child{color:var(--fg2);overflow-wrap:anywhere}
 @media(max-width:620px){
   .diag-row{grid-template-columns:1fr auto}
   .diag-detail{grid-column:1/-1;text-align:left}
