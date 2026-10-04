@@ -3334,6 +3334,67 @@ const LIVE = { key: null, phase: 'idle', base: null, startFix: null, lastFix: nu
 const TRIPPREVIEW = { key: null, phase: 'idle', gen: 0, base: null, planSignature: null, fix: null, origin: null, route: null, requestedAt: 0, readyAt: 0, exp: 0, message: '' };
 const TRIPPREVIEW_AGE = 30 * 60e3, TRIPPREVIEW_KM = 1;
 let BRF_TRIPS = [];
+const RETURNHOME_KEY = 'twrc.returnhome.v1';
+let RETURNHOME = null;
+function returnHomeLoad() {
+  try {
+    const x = JSON.parse(lsGet(RETURNHOME_KEY) || 'null');
+    if (x && typeof x.key === 'string' && Number.isFinite(x.at) && Number.isFinite(x.exp) && x.exp > Date.now()) { RETURNHOME = x; return; }
+    localStorage.removeItem(RETURNHOME_KEY);
+  } catch (e) { try { localStorage.removeItem(RETURNHOME_KEY); } catch (_) {} }
+  RETURNHOME = null;
+}
+function returnHomeSave(x) {
+  RETURNHOME = x || null;
+  try { if (RETURNHOME) localStorage.setItem(RETURNHOME_KEY, JSON.stringify(RETURNHOME)); else localStorage.removeItem(RETURNHOME_KEY); } catch (e) { /* état en mémoire seulement */ }
+}
+function returnHomeClear(key) {
+  if (!RETURNHOME || (key && RETURNHOME.key !== key)) return;
+  returnHomeSave(null);
+}
+function returnHomeActive(key) {
+  if (RETURNHOME && RETURNHOME.exp <= Date.now()) returnHomeClear();
+  return !!RETURNHOME && RETURNHOME.key === key;
+}
+returnHomeLoad();
+// « Je rentre chez moi maintenant » avance seulement l'intention de départ.
+// Le passage ACTIVE reste exclusivement piloté par le mouvement automobile confirmé.
+function returnHomeApply(T, now) {
+  if (!RETURNHOME || RETURNHOME.exp <= Date.now()) { if (RETURNHOME) returnHomeClear(); return T; }
+  return T.map(t => {
+    if (t.key !== RETURNHOME.key || t.src !== 'cal' || !t.l || t.l.k !== 'ret') return t;
+    const min = Math.max(1, Number(t.l.min) || Math.round(Math.max(1, liveMin(t.dep, t.arr || t.dep))));
+    const dep = now, arr = addMin(dep, min), l = { ...t.l, dep, arr, assumed: false };
+    const r = legEval(l);
+    return { ...t, manualReturn: true, planDep: t.dep, dep, arr, running: false, l,
+      res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading };
+  });
+}
+function returnHomeStart(key) {
+  const t = BRF_TRIPS.find(x => x.key === key && x.src === 'cal' && x.l && x.l.k === 'ret');
+  if (!t) return;
+  returnHomeSave({ key, at: Date.now(), exp: Date.now() + 6 * 3600e3 });
+  if (LIVE.key) liveReset();
+  if (TRIPPREVIEW.key) tripPreviewReset();
+  renderAll();
+  if (liveAllowed()) { LIVE.hiAt = 0; liveAskFix(); }
+}
+function returnHomeUndo() {
+  const key = RETURNHOME && RETURNHOME.key;
+  if (key && LIVE.key === key && LIVE.phase !== 'active') liveReset();
+  returnHomeClear(); renderAll();
+}
+function returnHomeButtonForTrip(t) {
+  const plan = t && (t.planL || t.l);
+  if (!t || t.src !== 'cal' || !t.e || !plan || plan.k !== 'ret') return '';
+  const now = liveNow(), planDep = t.planDep || plan.dep || t.dep, sameDay = planDep.slice(0, 10) === now.slice(0, 10), started = t.e.allDay || !t.e.s || t.e.s <= now;
+  if (!sameDay || !started) return '';
+  if (returnHomeActive(t.key)) {
+    if (LIVE.key === t.key && LIVE.phase === 'active') return '<span class="sub">🏠 Retour maison en cours</span>';
+    return '<span class="sub">✓ Retour maison demandé</span> <button class="btn sm" data-act="return-home-undo">Annuler</button>';
+  }
+  return `<button class="btn sm" data-act="return-home" data-key="${esc(t.key)}">🏠 Je rentre chez moi maintenant</button>`;
+}
 // Deux rendez-vous simultanés restent deux cibles d'action. Les anciennes clés
 // restent valides quand l'agenda ne fournit aucun identifiant et n'est pas ambigu.
 function calendarTripKey(e, l) {
@@ -3413,6 +3474,7 @@ function liveSpeed(a, b) {
 function liveArrive(how) {
   const k = LIVE.key, b = LIVE.base; if (!k) return;
   liveDonePersist(k, how); LIVE.lastDone = { key: k, name: b ? b.name : '', at: Date.now() };
+  returnHomeClear(k);
   liveReset('arrivé'); renderBrf();
 }
 // relevé de confirmation demandé tout de suite (arrivée à confirmer), au plus un toutes les 10 s ; jamais de haute précision en aperçu
@@ -3683,6 +3745,7 @@ function renderBrf() {
       res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading, key: calendarTripKey(e, l) });
   }));
   BRF_TRIPS = T.slice();   // cibles des actions explicites, uniquement en mémoire
+  T = returnHomeApply(T, now);   // action explicite : le retour choisi devient le prochain départ, sans déclarer la voiture partie
   T = liveApply(T, now);   // trajet vivant (position GPS réelle) : un seul, en mémoire uniquement
   T = tripPreviewApply(T, now);
   T.sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : a.src === 'work' ? -1 : 1);
@@ -3809,13 +3872,14 @@ function briefCard(t, dayLbl) {
   if (t.l && t.l.originPending) return `<div class="brf-h"><span class="brf-k">🏁 Prochain trajet · ${src}</span></div><div class="brf-ev">📅 <b>${esc(t.name)}</b></div><p class="brf-why" role="status">Origine à confirmer après annulation du trajet précédent</p><div class="cal-v">${tripCancelButton(t)}</div>`;
   const head = `<div class="brf-h">${t.manualPreview ? `<span class="brf-k">📍 Aperçu depuis ma position · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · départ estimé <b>${t.previewDep.slice(11, 16)}</b> · arrivée estimée ${t.previewArr.slice(11, 16)}</span>`
     : t.live === 'active' ? `<span class="brf-k">🏎️ Trajet en cours · ${src}</span><span class="brf-w">${f0(t.l.km)} km restants · ${t.l.min} min · arrivée estimée <b>${t.arr.slice(11, 16)}</b></span>`
+    : t.manualReturn ? `<span class="brf-k">🏠 Retour maison demandé · ${src}</span><span class="brf-w">départ maintenant · le trajet passe « en cours » uniquement après mouvement confirmé</span>`
     : t.live === 'late' && t.adv ? `<span class="brf-k">⏱ Départ conseillé dépassé · ${src}</span><span class="brf-w">arrivée estimée <b>${t.arr.slice(11, 16)}</b> · ${liveMin(t.adv.target, t.arr) > 0 ? `retard estimé +${Math.round(liveMin(t.adv.target, t.arr))} min` : `dans les temps (cible ${t.adv.target.slice(11, 16)})`}</span>`
     : t.live === 'late' ? `<span class="brf-k">⏱ Départ prévu dépassé · ${src}</span><span class="brf-w">prévu ${t.planDep.slice(11, 16)} · itinéraire depuis ma position</span>`
     : t.adv && (t.live === 'imminent' || t.live === 'advice') ? `<span class="brf-k">🏁 Prochain trajet · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · départ conseillé <b>${t.adv.dep.slice(11, 16)}</b> · arrivée cible ${t.adv.target.slice(11, 16)} · ${cdSpan(t.adv.dep)}</span>`
     : t.running ? `<span class="brf-k">🏎️ Trajet en cours · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">parti à ${t.dep.slice(11, 16)} · arrivée prévue <b>${(t.arr || '').slice(11, 16)}</b></span>`
     : `<span class="brf-k">🏁 Prochain trajet · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">${dayLbl(t.dep)} · ${t.dep.slice(11, 16)} → ${(t.arr || '').slice(11, 16)} · ${cdSpan(t.dep)}</span>`}</div>
     <div class="brf-ev">${t.src === 'cal' ? '📅' : '🏁'} <b>${esc(t.name)}</b>${t.l ? ` · ${f0(t.l.km)} km · ${t.l.min} min${t.live ? ' depuis ici' : ''}${t.l.routed ? ' · route analysée' : ' (estimé)'}` : ''}</div>
-    ${tripOriginHtml(t)}<div class="cal-v">${tripCancelButton(t)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
+    ${tripOriginHtml(t)}<div class="cal-v">${tripCancelButton(t)}${returnHomeButtonForTrip(t)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
   if (!t.res) return head + `<p class="muted">${t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;
   const sum = t.sum, top = t.res[0], lv = top.w.level, xs = t.seq.map(q => q.hs[q.i]);
   const ppMax = Math.max(...xs.map(x => x.pp || 0)), Pmax = Math.max(...xs.map(x => x.P || 0));
@@ -4053,8 +4117,10 @@ function altHtml(e) {
     <button class="btn sm" data-act="caldirect" data-k="${esc(e.alt.key)}">${on ? '🏠 Repasser par la maison' : '↪ Je ne rentre pas : enchaîner directement'}</button></div>`;
 }
 function legHtml(leg, ev) {
-  const action = ev && (leg.arr || leg.dep) >= liveNow() ? tripCancelButton({ src: 'cal', e: ev, dep: leg.dep, key: calendarTripKey(ev, leg) }) : '';
-  const cancel = action ? `<div class="cal-v">${action}</div>` : '';
+  const trip = ev ? { src: 'cal', e: ev, dep: leg.dep, arr: leg.arr, l: leg, key: calendarTripKey(ev, leg) } : null;
+  const action = trip && (leg.arr || leg.dep) >= liveNow() ? tripCancelButton(trip) : '';
+  const homeAction = trip ? returnHomeButtonForTrip(trip) : '';
+  const cancel = action || homeAction ? `<div class="cal-v">${action}${homeAction}</div>` : '';
   if (leg.originPending) return `<div class="leg lvx"><div class="leg-h"><b>${leg.k === 'go' ? 'ALLER' : 'RETOUR'}</b></div><p class="sub" role="status">Origine à confirmer après annulation du trajet précédent</p>${cancel}</div>`;
   const r = legEval(leg), go = leg.k === 'go';
   const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${leg.dep.slice(11, 16)}</b> → ${leg.arr.slice(11, 16)} · ${f0(leg.km)} km · ${leg.min} min${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''} · ${cdSpan(leg.dep)}</div>
@@ -4751,6 +4817,8 @@ document.addEventListener('click', async e => {
   else if (a === 'trip-preview') tripPreviewStart(t.dataset.key);
   else if (a === 'trip-cancel') tripCancelStart(t.dataset.key);
   else if (a === 'trip-cancel-undo') tripCancelUndo(t.dataset.id);
+  else if (a === 'return-home') returnHomeStart(t.dataset.key);
+  else if (a === 'return-home-undo') returnHomeUndo();
   else if (a === 'caldirect') { const k = t.dataset.k; S.calDirect = { ...(S.calDirect || {}) }; if (S.calDirect[k]) delete S.calDirect[k]; else S.calDirect[k] = 1; markEdit('calDirect'); saveSettings(); renderCal(); renderBrf(); renderTenue(); }
   else if (a === 'tip') { TIP_OFF += +t.dataset.d || 1; renderTip(); }
   else if (a === 'nocode') { lsSet('twrc.nocode', '1'); renderNotice(); const d = $('#settings'); if (d) { d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
