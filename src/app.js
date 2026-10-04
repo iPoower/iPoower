@@ -321,9 +321,9 @@ async function refreshAll() {
   if (busy) return;
   const refreshStarted = Date.now();
   if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
-  const prevNetworkStatus = flightStatus('network');
-  flightSource('network', { status: 'ok', reason: 'online' });
-  if (prevNetworkStatus && prevNetworkStatus !== 'ok') flightRecovery('network', { status: 'ok', reason: 'online-restored' });
+  const prevNetworkStatus = typeof flightStatus === 'function' ? flightStatus('network') : null;
+  if (typeof flightSource === 'function') flightSource('network', { status: 'ok', reason: 'online' });
+  if (prevNetworkStatus && prevNetworkStatus !== 'ok' && typeof flightRecovery === 'function') flightRecovery('network', { status: 'ok', reason: 'online-restored' });
   busy = true; DEMO.on = false; MIDP = {}; lastTry = Date.now(); renderStatus();
   const locs = allLocs(), gpsStart = gpsWeatherGen, generations = new Map();
   try { if (location.protocol === 'https:') OBS = await fetchJSON('obs.json?t=' + Math.floor(Date.now() / 300e3), 8000); } catch (e) { /* pas d'observation */ }
@@ -343,8 +343,8 @@ async function refreshAll() {
   const expected = locs.filter(locHasCoords).length;
   const hasCache = Object.values(RAW).some(r => r && r.mode === 'cache');
   const weatherStatus = ok && ok >= expected ? 'ok' : ok ? 'degraded' : 'error';
-  const prevWeatherStatus = flightStatus('weather');
-  flightSource('weather', {
+  const prevWeatherStatus = typeof flightStatus === 'function' ? flightStatus('weather') : null;
+  if (typeof flightSource === 'function') flightSource('weather', {
     status: weatherStatus,
     ageMs: ok ? 0 : (lastOk ? Date.now() - lastOk : null),
     latencyMs: Date.now() - refreshStarted,
@@ -353,7 +353,7 @@ async function refreshAll() {
     available: ok,
     expected
   });
-  if (weatherStatus === 'ok' && prevWeatherStatus && prevWeatherStatus !== 'ok') flightRecovery('weather', { status: 'ok', reason: 'refresh-restored' });
+  if (weatherStatus === 'ok' && prevWeatherStatus && prevWeatherStatus !== 'ok' && typeof flightRecovery === 'function') flightRecovery('weather', { status: 'ok', reason: 'refresh-restored' });
   busy = false; rebuild(); renderAll();
   fetchVigi(); refreshEns(); radarRefresh(); loadCalendar();
 }
@@ -2753,6 +2753,7 @@ function renderAlerts() {
 /* ---------- paramètres ---------- */
 const bindIn = (path, val, o = {}) => `<div class="fld${o.wide ? ' wide' : ''}"><label for="f-${path.replace(/\./g, '-')}">${o.label}</label><input type="${o.type || 'text'}" id="f-${path.replace(/\./g, '-')}" data-bind="${path}" ${o.num ? 'data-num="1"' : ''} ${o.attrs || ''} value="${esc(val == null ? '' : val)}" ${o.ph ? `placeholder="${esc(o.ph)}"` : ''}></div>`;
 
+const DIAG_RELAY_WARN_MS = 20 * 60e3;
 const DIAG_META = {
   ok: ['🟢', 'OK'], degraded: ['🟠', 'DÉGRADÉ'], error: ['🔴', 'ERREUR'],
   offline: ['🟠', 'HORS LIGNE'], unknown: ['⚪', 'ATTENTE']
@@ -2769,7 +2770,7 @@ function diagnosticHtml() {
     : mode === 'live' ? (weatherAge != null && weatherAge <= 10 * 60e3 ? 'ok' : 'degraded')
       : mode === 'cache' ? 'degraded' : 'unknown';
   const calTs = CAL && Date.parse(CAL.updated || ''), calAge = Number.isFinite(calTs) ? Math.max(0, now - calTs) : null;
-  const calStatus = !CAL ? 'unknown' : (CAL.offline || (calAge != null && calAge > RELAY_WARN_MIN * 60e3) ? 'degraded' : 'ok');
+  const calStatus = !CAL ? 'unknown' : (CAL.offline || (calAge != null && calAge > DIAG_RELAY_WARN_MS) ? 'degraded' : 'ok');
   const gpsAge = GPS && Number.isFinite(GPS.t) ? Math.max(0, now - GPS.t) : null;
   const gpsStatus = !GPS ? 'unknown' : gpsAge <= LIVE_AGE_IMM ? 'ok' : 'degraded';
   const routeAge = LIVE.routeAt ? Math.max(0, now - LIVE.routeAt) : null;
@@ -2818,7 +2819,7 @@ function recordFlightDecision() {
     roadTempC: cur.Tr == null ? null : Math.round(cur.Tr * 10) / 10,
     rainMm: cur.P == null ? null : Math.round(cur.P * 10) / 10,
     visibilityM: cur.vis == null ? null : Math.round(cur.vis),
-    mode: mainMode() || 'none', livePhase: LIVE.phase, reasons
+    dataFreshness: mainMode() === 'live' ? 'current' : (mainMode() || 'none'), reasons
   };
   const sig = JSON.stringify(payload);
   if (sig !== FLIGHT_DECISION_SIG) { FLIGHT_DECISION_SIG = sig; flightDecision('current-verdict', payload); }
