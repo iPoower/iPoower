@@ -511,3 +511,10 @@ html { scroll-behavior: smooth; }
 .db-w, .db-n, .db-c { font-size: 13.5px; }
 .db-l { display: flex; flex-direction: column; font-size: 13px; padding-left: 8px; border-left: 2px solid var(--line2); }
 .db-after { margin-top: 6px; }
+
+/* Actions de trajet utilisables au doigt, y compris sur écran étroit. */
+.brf .btn, .brf button { min-width: 44px; min-height: 44px; white-space: normal; }
+button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], button.btn.sm[data-act="trip-cancel-undo"] { min-width: 44px; min-height: 44px !important; white-space: normal; }
+.brf .cal-v { flex-wrap: wrap; }
+.brf .brf-why, .brf .brf-r { overflow-wrap: anywhere; }
+.brf-r small { display: block; font-family: var(--f-body); font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--fg2); }

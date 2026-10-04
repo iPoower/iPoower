@@ -38,6 +38,10 @@ check('alerte du matin envoyée (jour de trajet, brouillard)', morningPushes(a.o
 const calS = readJ(path.join(H, 'calendar.sealed.json')), cal = tryUnseal(calS, APP_KEY_TEST);
 const legs = cal ? cal.events.flatMap(e => e.legs || []) : [];
 check('agenda chiffré lisible avec APP_KEY, tracés présents', legs.length > 0 && legs.every(l => Array.isArray(l.g) && l.g.length > 1), `${legs.length} trajets`);
+const calendarIds = cal ? cal.events.map(e => e.id) : [];
+check('occurrences agenda avec identifiants opaques distincts', calendarIds.length > 0 && calendarIds.every(id => /^event-[0-9a-f]{32}$/.test(id)) && new Set(calendarIds).size === calendarIds.length);
+check('UID brut absent de l’agenda transmis', !!cal && cal.events.every(e => !Object.prototype.hasOwnProperty.call(e, 'uid') && !Object.prototype.hasOwnProperty.call(e, 'UID')));
+check('identifiants agenda absents d’obs.json et des diagnostics', !!a.obs && calendarIds.length > 0 && calendarIds.every(id => !JSON.stringify(a.obs).includes(id) && !a.out.includes(id)));
 check('agenda refusé avec RC_KEY', !!calS && !tryUnseal(calS, RC_KEY_TEST));
 const relS = readJ(path.join(H, 'relay-config.sealed.json')), preS = (readJ(path.join(CI, 'enc/preset.sealed.json')) || {}).sealed;
 check('config du relais : s’ouvre avec RC_KEY, refusée avec APP_KEY', !!tryUnseal(relS, RC_KEY_TEST) && !tryUnseal(relS, APP_KEY_TEST));

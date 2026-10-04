@@ -68,6 +68,31 @@ de l'utilisateur ; aucune origine ni position GPS transmise (Waze part de la pos
 Retour au domicile : Waze reçoit le **domicile local exact** (préréglage de l'appareil), pas le domicile arrondi à 0,01° du relais —
 cet arrondi reste en place pour tous les appels OSRM, le relais et l'agenda chiffré.
 
+## Origine réelle et annulation locale
+
+Avant la fenêtre adaptative de quatre heures, un trajet agenda conserve son origine planifiée.
+Si le GPS est frais, précis et à plus de 1 km de cette origine, le briefing affiche « Origine planifiée »
+et l’heure à partir de laquelle la position réelle sera prise en compte. Le bouton « Calculer depuis ici maintenant »
+crée, par geste utilisateur, un aperçu ponctuel : route et météo basculent ensemble, sans démarrer LIVE,
+sans suivi continu haute précision et sans écrire dans `twrc.croute`. L’aperçu expire après 30 minutes,
+un déplacement supérieur à 1 km ou une modification du trajet ; la fenêtre adaptative reprend toujours la main.
+
+« Je n’y vais pas » ignore localement les déplacements du rendez-vous, après confirmation, en conservant Google Agenda.
+Les trajets suivants sont reconstruits depuis le dernier lieu valide ; tant qu’une nouvelle origine ou sa météo
+n’est pas fiable, le briefing affiche « Origine à confirmer après annulation du trajet précédent » sans ancienne route,
+risque ou lien Waze. « Pas de trajet aujourd’hui » masque les deux sens domicile-travail pour la date locale seulement.
+« Annuler l’annulation » reste disponible pendant dix minutes. Annuler le trajet suivi arrête LIVE sans enregistrer une arrivée.
+
+`twrc.tripcancel` conserve uniquement des identifiants techniques et les timestamps d’annulation et d’expiration.
+Les entrées expirées sont réellement purgées au chargement ; aucun titre, adresse ou GPS n’y est stocké.
+Le relais déjà existant ajoute un identifiant opaque dérivé de l’UID et de l’occurrence dans l’agenda chiffré,
+pour distinguer des rendez-vous simultanés. Les anciens agendas ambigus doivent être actualisés avant une annulation séparée.
+Le relais ne reçoit aucune annulation locale : une notification cloud déjà planifiée peut encore arriver.
+
+Le suivi GPS renouvelle aussi le nom de commune et la météo après plusieurs petits déplacements cumulés,
+reprend après la veille et ignore les réponses anciennes après déplacement ou oubli. Les origines de référence restent en mémoire.
+Tests : `test_tripcancel.js`, `test_calendar_ids.js`, `test_gps_requests.js`, `e2e33.js` et `e2e34.js`.
+
 ## Tenue sartoriale
 
 L’onglet **👔 Tenue**, à côté de Pneus et Météo, réutilise les prévisions du lieu sélectionné. Il propose une veste ou une protection,

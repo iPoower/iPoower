@@ -44,6 +44,11 @@ const SUITE = [
   ['e2e29.js', 'navigation : ouvrir le trajet affiché dans Waze', true],
   ['e2e30.js', 'automate du trajet : départ par le mouvement, arrivée à froid', true]];
 SUITE.push(['test_wardrobe.js', 'tenue : confort, pluie, vent et jours locaux', false], ['e2e31.js', 'onglet Tenue sartoriale et interface mobile', true]);
+SUITE.push(['test_gps_requests.js', 'GPS : réponses réseau tardives après déplacement ou oubli', false],
+  ['test_calendar_ids.js', 'agenda : identifiants techniques opaques et stables', false],
+  ['test_tripcancel.js', 'annulation locale : purge, chaîne et contre-tests', false],
+  ['e2e33.js', 'GPS : déplacements successifs, reprise iOS et réponses anciennes', true],
+  ['e2e34.js', 'trajets : origine, aperçu volontaire et annulations locales', true]);
 const verdict = (code, out) => {
   const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
   if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');
