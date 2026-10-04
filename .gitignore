@@ -20,3 +20,5 @@ node_modules/
 .ci-relay/
 .ci-keys/
 .ci-privacy/
+.wrangler/
+.dev.vars

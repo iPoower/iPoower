@@ -27,9 +27,12 @@ module.exports = { freshness, parisMinute, SLO_MIN };
 if (require.main === module) {
   const days = +(process.argv[2] || 7), to = Date.now(), from = to - days * 86400e3;
   const log = require('child_process').execSync(`git log origin/gh-pages --since=${Math.floor(from / 1000)} --format=%ct%x09%s`, { encoding: 'utf8' });
-  const times = log.split('\n').filter(l => /\t(Observations|Relais watchdog)/.test(l)).map(l => +l.split('\t')[0] * 1000);
+  const lines = log.split('\n').filter(l => /\t(Observations|Relais watchdog)/.test(l)), times = lines.map(l => +l.split('\t')[0] * 1000);
+  // source du relais (commit « Observations HH:MM · horloge|schedule|manuel », ou watchdog GitHub)
+  const by = {}; lines.forEach(l => { const k = /Relais watchdog/.test(l) ? 'watchdog GitHub' : (/ · (\S+)$/.exec(l) || [, 'non indiquée'])[1]; by[k] = (by[k] || 0) + 1; });
   const r = freshness(times, from, to), f = x => x == null ? '—' : x.toFixed(0) + ' min';
   console.log(`Relais sur ${days} j : ${r.runs} synchronisations · écart médian ${f(r.p50)} · p90 ${f(r.p90)} · max ${f(r.max)}`);
+  console.log('Par source : ' + Object.entries(by).map(([k, n]) => `${k} ${n}`).join(' · '));
   console.log(r.morningMinutes ? `Matinées de semaine (05:00–09:30) : ${(100 * r.morningFresh).toFixed(1)} % du temps avec obs.json < ${SLO_MIN} min`
     : 'Aucune matinée de semaine dans la période');
 }

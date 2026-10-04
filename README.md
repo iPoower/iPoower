@@ -4,7 +4,7 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
 
 - **Production** : https://ipoower.github.io/iPoower/race-control/ (branche `gh-pages`, dossier `race-control/`)
 - **Relais** : `.github/workflows/race-control.yml` exécute `race-control/relay.js` (observations, agenda chiffré, notifications)
-- **Horloge du relais** : `tools/relay-clock/` (Cloudflare Workers, toutes les 5 min) lance le relais ; le cron GitHub reste un filet de secours
+- **Horloge du relais** : `tools/relay-clock/` (Cloudflare Workers, chaque minute, garde anti-tempête) lance le relais ; les crons GitHub restent le filet de secours
 
 ## Structure
 
@@ -189,34 +189,52 @@ zones de sécurité émulées sous Chromium).
 ## Horloge du relais
 
 Le planificateur `schedule` de GitHub Actions retarde ou abandonne des exécutions aux heures chargées. Mesuré du 2 au 4 octobre 2026
-(`node tools/relay-freshness.js 3`) : écart médian de 39 min entre deux relais, maximum 5 h 55, et **obs.json frais (< 15 min)
-seulement 9,6 % du temps pendant les matinées de semaine** — la fenêtre des notifications du trajet.
+(`node tools/relay-freshness.js 3`) : écart médian de 40 min entre deux relais, maximum 5 h 55, et **obs.json frais (< 15 min)
+seulement 9,6 % du temps pendant les matinées de semaine**. Le 4 octobre, aucun relais de 17:33 à 20:23 UTC.
 
-L'horloge principale est donc externe : `tools/relay-clock/worker.mjs`, un Cron Trigger Cloudflare Workers toutes les 5 min.
+**Cloudflare est l'horloge, GitHub Actions reste le moteur.** `tools/relay-clock/worker.mjs` (Cloudflare Workers, offre gratuite)
+est un chien de garde exécuté **chaque minute** :
 
-| Étape | Comportement |
-|---|---|
-| Lecture | âge public de `obs.json` sur GitHub Pages (`?t=` contre le cache CDN), sans jeton |
-| Décision | relais lancé si l'âge est ≥ 8 min, si `obs.json` est illisible ou si la lecture échoue (une panne de lecture n'empêche jamais le relais) |
-| Lancement | `workflow_dispatch` de `race-control.yml` sur `main` avec `source=horloge` : le workflow garde son contrôle de fraîcheur, la frontière `main` et l'Environment `production` |
-| Échec | toute réponse GitHub hors 2xx (jeton expiré, droits insuffisants) fait échouer l'invocation, visible dans les journaux Cloudflare |
-| Diagnostic | l'URL du Worker renvoie en lecture seule `{ age_min, due, why }`, sans rien déclencher |
-
-Le Worker ne lit et n'envoie aucune donnée personnelle. Son seul secret, `GH_TOKEN`, est un jeton GitHub *fine-grained*
-limité au dépôt `iPoower/iPoower` avec la seule permission **Actions : Read and write** (aucun accès au contenu ni aux secrets).
-Un lancement manuel depuis GitHub (`source=manuel`, valeur par défaut) force toujours le relais, comme avant.
-
-Mise en service (une fois, par le propriétaire) :
-
-```sh
-cd tools/relay-clock
-npx wrangler login
-npx wrangler secret put GH_TOKEN     # coller le jeton fine-grained (Actions : Read and write)
-npx wrangler deploy
+```
+Cron Cloudflare (1 min) ──► lit l'âge public d'obs.json (Pages, sans jeton)
+   │ fresh  (< 8 min)          → rien (aucun appel à GitHub)
+   │ stale / invalid / unreachable
+   ▼
+garde anti-tempête (API GitHub, runs de race-control.yml et race-control-watchdog.yml)
+   │ run en file ou en cours             → skipped « relais déjà en cours »
+   │ run démarré après le passage à « dû », il y a < 6 min → skipped « cooldown » (publication Pages)
+   ▼
+workflow_dispatch race-control.yml (main, source=horloge)
+   → le workflow refait son contrôle de fraîcheur (≥ 8 min), concurrency race-control-relay, puis relais
 ```
 
-Vérification : `git fetch origin gh-pages && node tools/relay-freshness.js 7` ; objectif ≥ 95 % des minutes de matinée de semaine
-avec `obs.json` < 15 min. Tests : `test_relay_clock.js` (réseau simulé, jeton fictif).
+| Propriété | Garantie | Test (`test_relay_clock.js`) |
+|---|---|---|
+| Un seul dispatch par épisode de retard | garde basée sur l'état réel des runs GitHub, sans stockage | ticks chaque minute, 3 h sans cron GitHub : 18 dispatches, âge max 11 min |
+| Pas de tempête si le relais est cassé | au plus un dispatch par période de 6 min | 60 min de relais cassé |
+| Pas de dispatch à l'aveugle | liste des runs indisponible → erreur, aucun dispatch | panne de l'API GitHub |
+| Panne GitHub visible | dispatch refusé (401/403/422/5xx) → invocation en échec | erreurs propres, sans secret |
+| Aucune donnée personnelle | journal : `t`, `decision`, `age_min`, `action`, `reason`, `status` uniquement | contrôle des clés et du contenu des journaux |
+
+**Observabilité, sans donnée personnelle :**
+- Cloudflare → Workers → `race-control-relay-clock` → **Logs** (Workers Logs, offre gratuite) : une ligne JSON par minute,
+  par exemple `{"decision":"stale","age_min":8.4,"action":"dispatched","status":204}`. Onglet **Triggers → Cron events** : exécutions.
+- `https://race-control-relay-clock.<compte>.workers.dev/status` : âge observé d'obs.json et décision (lecture seule, sans appel à GitHub).
+- GitHub → Actions : les runs lancés par le Worker s'appellent **« Relais · horloge »** ; les commits du relais finissent par
+  `· horloge`, `· schedule` ou `· manuel`. `node tools/relay-freshness.js 7` donne la fraîcheur et la répartition par source.
+
+**Sécurité.** Le seul secret, `GH_TOKEN`, vit dans Cloudflare (Settings → Variables and Secrets) : jeton GitHub *fine-grained*
+limité au dépôt `iPoower/iPoower`, permission **Actions : Read and write** uniquement. Aucun secret dans ce dépôt. Un lancement
+manuel depuis GitHub (`source=manuel`, valeur par défaut) force toujours le relais, comme avant.
+
+**Si Cloudflare tombe :** rien ne casse. Les crons GitHub (`race-control.yml` et `race-control-watchdog.yml`) restent le filet
+de secours, l'application continue d'afficher l'âge réel des données (relais périmé signalé). Le Worker ne fait que s'ajouter.
+
+**Coût :** offre gratuite. ~1 440 exécutions/jour (quota 100 000 requêtes/jour), 1 sous-requête par minute quand tout est frais,
+3 au plus lors d'un dispatch ; ~1 440 lignes de journal/jour (quota Workers Logs 200 000/jour).
+
+Mise en service (une fois, par le propriétaire) : Cloudflare **Workers Builds** relié à ce dépôt (dossier racine
+`tools/relay-clock`, branche `main`), puis le secret `GH_TOKEN`. Chaque push sur `main` redéploie le Worker depuis ce dossier.
 
 ## Rotation de `RC_KEY`
 
