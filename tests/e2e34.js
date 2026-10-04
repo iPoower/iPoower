@@ -200,6 +200,24 @@ const privacy = async s => {
     await undo.click(); await s.settle(5); t = await s.txt();
     const back = await p.evaluate(() => ({ stored: localStorage.getItem('twrc.returnhome.v1'), phase: LIVE.phase }));
     check('18 · annuler : horaire planifié restauré, aucune arrivée/départ artificiels', back.stored === null && /18:10/.test(t) && back.phase !== 'active' && !/✓ Arrivé/.test(t), short(t));
+
+    const already = p.locator('#secBrf [data-act="return-home-done"]').first();
+    check('18b · touche « Déjà rentré » disponible même avant l’heure de retour planifiée', await already.count() === 1 && /Déjà rentré/i.test(await already.innerText()));
+    const retKey = await already.getAttribute('data-key');
+    await already.click(); await s.settle(5); t = await s.txt();
+    const done = await p.evaluate(key => ({
+      stored: localStorage.getItem('twrc.tripdone'),
+      marked: !!LIVE.done[key],
+      present: liveApply(BRF_TRIPS.slice(), liveNow()).some(x => x.key === key),
+      home: localStorage.getItem('twrc.returnhome.v1'),
+      phase: LIVE.phase
+    }), retKey);
+    const doneObj = JSON.parse(done.stored || '{}'), doneEntry = doneObj[retKey];
+    check('18b · « Déjà rentré » clôt uniquement le retour, sans faux mouvement', done.marked && !done.present && done.phase !== 'active' && /✓ Arrivé/.test(t) && /Annuler l’arrivée/.test(t), short(t));
+    check('18b · arrivée manuelle : stockage minimal, aucune coordonnée/titre/adresse', !!doneEntry && Object.keys(doneEntry).sort().join(',') === 'at,exp,how' && doneEntry.how === 'confirmé' && done.home === null && !/Titre|Adresse|Alpha|Beta|lat|lon|49\.|2\./.test(done.stored || ''), done.stored || '');
+    await p.locator('#secBrf [data-act="trip-undo"]').first().click(); await s.settle(5);
+    const undone = await p.evaluate(key => ({ stored: localStorage.getItem('twrc.tripdone'), marked: !!LIVE.done[key] }), retKey);
+    check('18b · Annuler l’arrivée restaure le retour immédiatement', undone.stored === null && !undone.marked && /18:10/.test(await s.txt()));
     await s.c.close();
   }
   // 5, 8–10 : confirmation, aller/retour associés, undo et persistance opaque ; le rendez-vous Agenda reste intact.

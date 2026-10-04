@@ -1358,16 +1358,28 @@ function returnHomeUndo() {
   if (key && LIVE.key === key && LIVE.phase !== 'active') liveReset();
   returnHomeClear(); renderAll();
 }
+// Confirmation manuelle a posteriori : l'utilisateur affirme qu'il est déjà rentré.
+// Aucun mouvement n'est inventé ; seul le trajet retour ciblé est marqué terminé.
+function returnHomeDone(key) {
+  const t = BRF_TRIPS.find(x => x.key === key && x.src === 'cal' && x.l && x.l.k === 'ret');
+  if (!t) return;
+  liveDonePersist(key, 'confirmé');
+  if (LIVE.key === key) liveReset('arrivé'); else LIVE.done[key] = 'arrivé';
+  if (TRIPPREVIEW.key === key) tripPreviewReset();
+  returnHomeClear(key);
+  LIVE.lastDone = { key, name: t.name || 'Retour maison', at: Date.now() };
+  renderAll();
+}
 function returnHomeButtonForTrip(t) {
   const plan = t && (t.planL || t.l);
   if (!t || t.src !== 'cal' || !t.e || !plan || plan.k !== 'ret') return '';
   const now = liveNow(), planDep = t.planDep || plan.dep || t.dep, sameDay = planDep.slice(0, 10) === now.slice(0, 10), started = t.e.allDay || !t.e.s || t.e.s <= now;
   if (!sameDay || !started) return '';
-  if (returnHomeActive(t.key)) {
-    if (LIVE.key === t.key && LIVE.phase === 'active') return '<span class="sub">🏠 Retour maison en cours</span>';
-    return '<span class="sub">✓ Retour maison demandé</span> <button class="btn sm" data-act="return-home-undo">Annuler</button>';
-  }
-  return `<button class="btn sm" data-act="return-home" data-key="${esc(t.key)}">🏠 Je rentre chez moi maintenant</button>`;
+  if (LIVE.done[t.key]) return '<span class="sub">✓ Déjà rentré confirmé</span>';
+  const done = `<button class="btn sm" data-act="return-home-done" data-key="${esc(t.key)}">🏠 Déjà rentré</button>`;
+  if (LIVE.key === t.key && LIVE.phase === 'active') return '<span class="sub">🏠 Retour maison en cours</span> ' + done;
+  if (returnHomeActive(t.key)) return '<span class="sub">✓ Retour maison demandé</span> <button class="btn sm" data-act="return-home-undo">Annuler</button> ' + done;
+  return `<button class="btn sm" data-act="return-home" data-key="${esc(t.key)}">🏠 Je rentre chez moi maintenant</button> ${done}`;
 }
 // Deux rendez-vous simultanés restent deux cibles d'action. Les anciennes clés
 // restent valides quand l'agenda ne fournit aucun identifiant et n'est pas ambigu.
@@ -2792,6 +2804,7 @@ document.addEventListener('click', async e => {
   else if (a === 'trip-cancel') tripCancelStart(t.dataset.key);
   else if (a === 'trip-cancel-undo') tripCancelUndo(t.dataset.id);
   else if (a === 'return-home') returnHomeStart(t.dataset.key);
+  else if (a === 'return-home-done') returnHomeDone(t.dataset.key);
   else if (a === 'return-home-undo') returnHomeUndo();
   else if (a === 'caldirect') { const k = t.dataset.k; S.calDirect = { ...(S.calDirect || {}) }; if (S.calDirect[k]) delete S.calDirect[k]; else S.calDirect[k] = 1; markEdit('calDirect'); saveSettings(); renderCal(); renderBrf(); renderTenue(); }
   else if (a === 'tip') { TIP_OFF += +t.dataset.d || 1; renderTip(); }
@@ -2844,7 +2857,7 @@ document.addEventListener('click', async e => {
   else if (a === 'dir') { UI.dir = t.dataset.d; UI.dayOff = null; softRender(); }
   else if (a === 'day') { UI.dayOff = +t.dataset.off; softRender(); }
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
-  else if (a === 'trip-undo') { const d = LIVE.lastDone; if (d) { delete LIVE.done[d.key]; liveDonePersist(d.key, null); LIVE.noAuto[d.key] = Date.now() + 10 * 60e3; LIVE.lastDone = null; renderBrf(); } }
+  else if (a === 'trip-undo') { const d = LIVE.lastDone; if (d) { delete LIVE.done[d.key]; liveDonePersist(d.key, null); LIVE.noAuto[d.key] = Date.now() + 10 * 60e3; LIVE.lastDone = null; renderAll(); } }
   else if (a === 'tripmap') { lsSet('twrc.tripmap', lsGet('twrc.tripmap') === '1' ? '0' : '1'); renderBrf(); }
   else if (a === 'wday') {
     const d = +t.dataset.d, cur = commuteDays(S.work.days).slice(), k = cur.indexOf(d);
