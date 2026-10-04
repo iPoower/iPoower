@@ -183,6 +183,25 @@ const privacy = async s => {
     check('3c · même trajet/mêmes horaires, origine modifiée : réponse tardive ignorée, aucun ancien aperçu réactivé', S.routeReleased === 1 && late.sameTrip && !late.key && !late.route && late.gen > pending.gen && !/Aperçu depuis ma position/i.test(await s.txt()) && /Autre origine\s*→\s*Gamma/i.test(await s.txt()));
     await s.c.close();
   }
+  // Retour manuel : un tap rend le retour maison imminent, mais ne simule jamais un départ.
+  {
+    const s = await session(browser, '2026-10-03T17:10:00+02:00'); const { p } = s;
+    await s.enableGps(G.a); await s.settle(5);
+    const btn = p.locator('#secBrf [data-act="return-home"]').first();
+    check('18 · retour : touche « Je rentre chez moi maintenant » visible après le début du rendez-vous', await btn.count() === 1 && /rentre chez moi/i.test(await btn.innerText()));
+    await btn.click(); await s.settle(8);
+    let t = await s.txt();
+    const state = await p.evaluate(() => ({ phase: LIVE.phase, key: LIVE.key, home: RETURNHOME, done: localStorage.getItem('twrc.tripdone') }));
+    check('18 · appui : retour maison devient immédiat sans faux départ', /Retour maison demandé/i.test(t) && state.phase !== 'active' && !!state.key && state.home && state.home.key === state.key && state.done === null, short(t));
+    const raw = await p.evaluate(() => localStorage.getItem('twrc.returnhome.v1') || '');
+    check('18 · stockage retour minimal : clé technique + at/exp, aucune coordonnée ni titre', !!raw && Object.keys(JSON.parse(raw)).sort().join(',') === 'at,exp,key' && !/Titre|Adresse|Alpha|Beta|lat|lon|49\.|2\./.test(raw), raw);
+    const undo = p.locator('#secBrf [data-act="return-home-undo"]').first();
+    check('18 · annulation de l’intention proposée avant le départ réel', await undo.count() === 1);
+    await undo.click(); await s.settle(5); t = await s.txt();
+    const back = await p.evaluate(() => ({ stored: localStorage.getItem('twrc.returnhome.v1'), phase: LIVE.phase }));
+    check('18 · annuler : horaire planifié restauré, aucune arrivée/départ artificiels', back.stored === null && /18:10/.test(t) && back.phase !== 'active' && !/✓ Arrivé/.test(t), short(t));
+    await s.c.close();
+  }
   // 5, 8–10 : confirmation, aller/retour associés, undo et persistance opaque ; le rendez-vous Agenda reste intact.
   {
     const s = await session(browser, '2026-10-03T10:00:00+02:00'); const { p } = s;
