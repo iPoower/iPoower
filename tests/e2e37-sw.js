@@ -29,8 +29,10 @@ const external=http.createServer((req,res)=>{extHits++;res.writeHead(200,{'conte
 const listen=s=>new Promise((ok,ko)=>s.listen(0,'127.0.0.1',()=>ok(s.address().port)).on('error',ko));
 (async()=>{
   const port=await listen(server),extPort=await listen(external),base='http://localhost:'+port+'/race-control/';
-  const proxy={server:'http://127.0.0.1:9',bypass:'localhost,127.0.0.1'};
-  const launch={proxy};
+  // Ce test n'exécute aucun contenu réseau en ligne : installation depuis les deux serveurs loopback,
+  // puis index.html uniquement lorsque le contexte est explicitement hors connexion.
+  // Pas de proxy ici : WebKit ne gère pas de manière portable le bypass loopback du proxy Playwright.
+  const launch={};
   if(NAME==='chromium'&&fs.existsSync(LOCAL))Object.assign(launch,{executablePath:LOCAL,args:['--no-sandbox']});
   const browser=NAME==='webkit'?await pw.webkit.launch(launch):await pw.chromium.launch(launch);
   const c=await browser.newContext({serviceWorkers:'allow'}),p=await c.newPage();
