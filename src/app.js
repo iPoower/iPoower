@@ -1359,8 +1359,9 @@ function returnHomeUndo() {
   returnHomeClear(); renderAll();
 }
 function returnHomeButtonForTrip(t) {
-  if (!t || t.src !== 'cal' || !t.e || !t.l || t.l.k !== 'ret') return '';
-  const now = liveNow(), sameDay = t.dep.slice(0, 10) === now.slice(0, 10), started = t.e.allDay || !t.e.s || t.e.s <= now;
+  const plan = t && (t.planL || t.l);
+  if (!t || t.src !== 'cal' || !t.e || !plan || plan.k !== 'ret') return '';
+  const now = liveNow(), planDep = t.planDep || plan.dep || t.dep, sameDay = planDep.slice(0, 10) === now.slice(0, 10), started = t.e.allDay || !t.e.s || t.e.s <= now;
   if (!sameDay || !started) return '';
   if (returnHomeActive(t.key)) {
     if (LIVE.key === t.key && LIVE.phase === 'active') return '<span class="sub">🏠 Retour maison en cours</span>';
