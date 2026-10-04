@@ -193,15 +193,23 @@ async function routeLeg(a, b) {
   return (ROUTES[key] = res);
 }
 const shift = (ts, m) => new Date(Date.parse(ts + ':00Z') + m * 60000).toISOString().slice(0, 16);
+// Marge maximale : 15 min au total au-dessus du temps routier. Pour un aller,
+// 10 min sont déjà réservées à l'arrivée avant le rendez-vous, donc le temps
+// de conduite ne peut ajouter que 5 min au maximum.
+const ROUTE_MARGIN_MAX = 15;
+const routeTravelMin = (raw, reserved = 0) => {
+  const base = Math.max(1, Number(raw) || 1), cap = Math.max(0, ROUTE_MARGIN_MAX - Math.max(0, reserved));
+  return Math.max(1, Math.round(base + Math.min(base * 0.1, cap)));
+};
 // aller (depuis le domicile ou le rendez-vous précédent s'il finit moins de 3 h avant) et retour (après le dernier rendez-vous enchaîné)
 async function planLegs(events, home) {
   const H = { lat: rc(home.lat), lon: rc(home.lon), label: 'Domicile', home: true };
   const P = e => ({ lat: e.lat, lon: e.lon, label: e.label || e.loc, city: cityOf(e.label || e.loc) });
   const keyOf = e => e.s + '|' + (e.t || '');
-  const mkGo = async (from, e, fromKind, arrive) => { const r = await routeLeg(from, e), need = Math.round(r.min * 1.1) + 10;
-    return { k: 'go', from: { lat: from.lat, lon: from.lon, label: from.label, city: from.city || from.label }, to: P(e), fromKind, km: r.km, min: Math.round(r.min * 1.1), dep: shift(arrive, -need), arr: shift(arrive, -10), pts: r.pts, g: r.g, routed: r.routed, byTime: r.byTime }; };
-  const mkRet = async (e, leave, assumed) => { const r = await routeLeg(e, H);
-    return { k: 'ret', from: P(e), to: { lat: H.lat, lon: H.lon, label: H.label, city: H.label }, fromKind: 'event', km: r.km, min: Math.round(r.min * 1.1), dep: leave, arr: shift(leave, Math.round(r.min * 1.1)), pts: r.pts, g: r.g, routed: r.routed, byTime: r.byTime, assumed: !!assumed }; };
+  const mkGo = async (from, e, fromKind, arrive) => { const r = await routeLeg(from, e), min = routeTravelMin(r.min, 10), need = min + 10;
+    return { k: 'go', from: { lat: from.lat, lon: from.lon, label: from.label, city: from.city || from.label }, to: P(e), fromKind, km: r.km, min, dep: shift(arrive, -need), arr: shift(arrive, -10), pts: r.pts, g: r.g, routed: r.routed, byTime: r.byTime }; };
+  const mkRet = async (e, leave, assumed) => { const r = await routeLeg(e, H), min = routeTravelMin(r.min);
+    return { k: 'ret', from: P(e), to: { lat: H.lat, lon: H.lon, label: H.label, city: H.label }, fromKind: 'event', km: r.km, min, dep: leave, arr: shift(leave, min), pts: r.pts, g: r.g, routed: r.routed, byTime: r.byTime, assumed: !!assumed }; };
   const days = {};
   events.filter(e => e.lat != null && e.mode !== 'pasdetrajet').forEach(e => (days[e.s.slice(0, 10)] = days[e.s.slice(0, 10)] || []).push(e));
   for (const d of Object.keys(days).sort()) {
