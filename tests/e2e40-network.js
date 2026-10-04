@@ -50,5 +50,11 @@ const newer=seal({...plain,updated:new Date(Date.parse(plain.updated)+3600e3).to
 calBody=JSON.stringify(newer);await p.evaluate(()=>loadCalendar());await settle(10);const cal2=await calState();
 calBody=JSON.stringify(older);await p.evaluate(()=>loadCalendar());await settle(10);const cal3=await calState();
 check('40.9 · agenda plus récent adopté, copie plus ancienne ignorée (affichage et cache)',cal2.c===newer.c&&cal3.c===newer.c&&cal3.stored&&cal3.stored.c===newer.c,JSON.stringify({adopt:cal2.c===newer.c,kept:cal3.c===newer.c,stored:cal3.stored&&cal3.stored.c===newer.c}));
+// diagnostic : états lisibles, sans aucune donnée personnelle
+fault='503';await p.evaluate(()=>{lastOk=0;lastTry=0;refreshAll();});await settle(6);fault=null;
+await p.evaluate(()=>{const s=document.getElementById('settings');s.open=true;renderSettings(true);});await settle(4);
+const diag=await p.evaluate(()=>({html:document.querySelector('#diagBox').innerText,text:diagText()}));
+check('40.10 · diagnostic : réseau, météo datée avec son erreur, relais, agenda, stockage, trajet',/Réseau/.test(diag.text)&&/Météo du lieu affiché : (FRESH|AGING|STALE) · cache · .*erreur : HTTP 503/.test(diag.text)&&/Agenda : (FRESH|AGING|STALE)/.test(diag.text)&&/Stockage local : \d+ clés/.test(diag.text)&&/Trajet vivant/.test(diag.text)&&/Météo du lieu/.test(diag.html),diag.text.replace(/\n/g,' | ').slice(0,400));
+check('40.11 · diagnostic sans coordonnée, lieu ni rendez-vous',!/\d+[.,]\d{3,}/.test(diag.text.replace(/diagnostic du \S+/,''))&&!/Maison test|Travail test|Lieu test|Assurance|Concert|Lille|Amiens/i.test(diag.text),diag.text.replace(/\n/g,' | ').slice(0,300));
 console.log(rows.join('\n')+'\n\n'+(rows.length-fail)+'/'+rows.length+' scénarios OK · erreurs JS : '+(rows.some(x=>x.startsWith('ERR '))?'présentes':'aucune'));
 await c.close();await b.close();process.exit(fail||rows.some(x=>x.startsWith('ERR '))?1:0);})();

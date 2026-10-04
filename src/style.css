@@ -555,3 +555,8 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
   .tip-n .btn, .cal-v .btn.sm, .rctr { min-height: 44px !important; min-width: 44px; }
 }
 @media (pointer: coarse) { input[type=range] { min-height: 44px; } }
+/* diagnostic : même grille sur iPhone et PC, deux colonnes dès qu'il y a la place */
+.diag { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 14px; margin: 6px 0 10px; font-size: 12.5px; }
+.diag dt { color: var(--fg3); font-family: var(--f-mono); font-size: 11px; letter-spacing: .04em; margin-top: 6px; }
+.diag dd { margin: 0; overflow-wrap: anywhere; font-family: var(--f-mono); }
+@media (min-width: 560px) { .diag { grid-template-columns: max-content minmax(0, 1fr); } .diag dt { margin-top: 0; } }

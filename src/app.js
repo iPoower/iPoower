@@ -321,6 +321,7 @@ async function refreshAll() {
       // Les observations stations sont un enrichissement du modèle live : si le relais est trop vieux,
       // on les ignore plutôt que d'injecter une pseudo-observation périmée dans une météo fraîche.
       OBS = relayAgeMin(o && o.updated) <= RELAY_OBS_MAX_MIN ? o : null;
+      RELAY_SEEN = true; RELAY_AT = o && o.updated ? o.updated : null; RELAY_ERR = o && o.relay && o.relay.err ? String(o.relay.err).slice(0, 120) : null;
     }
   } catch (e) { OBS = null; }
   const res = await Promise.allSettled(locs.map(l => {
@@ -412,6 +413,7 @@ async function geocode(q) {
 /* ---------- formats ---------- */
 const hmLocal = ms => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 const RELAY_WARN_MIN = 20, RELAY_OBS_MAX_MIN = 35;
+let RELAY_AT = null, RELAY_ERR = null, RELAY_SEEN = false;   // dernier obs.json lu (même trop vieux pour enrichir la météo) : diagnostic uniquement
 const relayAgeMin = ts => { const t = Date.parse(ts || ''); return Number.isFinite(t) ? Math.max(0, (Date.now() - t) / 60000) : Infinity; };
 const relayAgeTxt = m => !Number.isFinite(m) ? 'inconnue' : m < 60 ? Math.max(1, Math.round(m)) + ' min' : Math.floor(m / 60) + ' h ' + Math.round(m % 60) + ' min';
 const CARD = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
@@ -508,6 +510,7 @@ function renderStatus() {
   else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
   else u = 'Aucune donnée météo';
   if (busy && !off && mode !== 'demo') u += ' <span class="sync">· actualisation…</span>';   // HORS LIGNE → actualisation → LIVE
+  if (typeof renderDiag === 'function') renderDiag();
   $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
     <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${busy ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
 }
@@ -2811,9 +2814,47 @@ function renderSettings(force) {
     <div class="set-sec"><h3>Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
       <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>
-    <div class="set-sec"><h3>Version</h3><p class="sub" id="verLine">${verLine()}</p></div>`;
-  loadVersion();
+    <div class="set-sec"><h3>Version</h3><p class="sub" id="verLine">${verLine()}</p></div>
+    <div class="set-sec"><h3>Diagnostic</h3><p class="sub">État interne, sans aucune coordonnée, adresse ni titre de rendez-vous : à copier pour signaler une anomalie.</p>
+      <dl class="diag" id="diagBox">${diagHtml()}</dl><div class="chips"><button class="btn" data-act="diag-copy">Copier le diagnostic</button></div></div>`;
+  loadVersion(); loadSwVersion();
 }
+/* ---------- diagnostic (observabilité) ---------- */
+// FRESH ≤ 15 min (décision possible) · AGING ≤ 60 min (à confirmer) · STALE au-delà · UNAVAILABLE sans donnée
+const freshState = ageMin => ageMin == null || !Number.isFinite(ageMin) ? 'UNAVAILABLE' : ageMin <= 15 ? 'FRESH' : ageMin <= 60 ? 'AGING' : 'STALE';
+const ageOf = t => { const v = typeof t === 'number' ? t : Date.parse(t || ''); return Number.isFinite(v) ? Math.max(0, (Date.now() - v) / 60000) : null; };
+const ageTxt = m => m == null ? '—' : m < 1 ? '< 1 min' : m < 90 ? Math.round(m) + ' min' : (m / 60).toFixed(1).replace('.', ',') + ' h';
+const noUrl = t => String(t || '').replace(/https?:\S+/g, 'url').slice(0, 120);
+let SWV = null;
+async function loadSwVersion() {
+  try {
+    const ctl = navigator.serviceWorker && navigator.serviceWorker.controller;
+    if (!ctl) { SWV = 'aucun (page non contrôlée)'; return; }
+    const ch = new MessageChannel();
+    SWV = await new Promise(res => { ch.port1.onmessage = e => res(e.data && e.data.static || 'inconnu'); setTimeout(() => res('sans réponse'), 1500); ctl.postMessage({ type: 'twrc-version' }, [ch.port2]); });
+  } catch (e) { SWV = 'indisponible'; }
+  renderDiag();
+}
+function diagRows() {
+  const r = RAW[UI.loc], wAge = r ? ageOf(r.t) : null, withData = allLocs().filter(l => RAW[l.id]).length;
+  let n = 0, bytes = 0; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^twrc\./.test(k)) { n++; bytes += k.length + (localStorage.getItem(k) || '').length; } } } catch (e) { /* stockage bloqué */ }
+  const calAge = CAL ? ageOf(CAL.updated) : null, relayAge = ageOf(RELAY_AT);
+  return [
+    ['Application', VER ? `prod-${VER.run} · ${String(VER.sha).slice(0, 7)}` : 'version locale'],
+    ['Service Worker', SWV || '…'],
+    ['Réseau', DEMO.on ? 'démo (aucune donnée réelle)' : offlineNow() ? 'hors ligne' : busy ? 'en ligne · actualisation en cours' : 'en ligne'],
+    ['Dernière actualisation', lastOk ? `${hmLocal(lastOk)} (il y a ${ageTxt(ageOf(lastOk))})` : 'aucune réussie' + (lastTry ? ` · tentative ${hmLocal(lastTry)}` : '')],
+    ['Météo du lieu affiché', r ? `${freshState(wAge)} · ${r.mode === 'live' ? 'LIVE' : r.mode === 'cache' ? 'cache' : r.mode} · ${ageTxt(wAge)}${ERR[UI.loc] ? ' · erreur : ' + noUrl(ERR[UI.loc]) : ''}` : 'UNAVAILABLE' + (ERR[UI.loc] ? ' · ' + noUrl(ERR[UI.loc]) : '')],
+    ['Lieux avec météo', `${withData}/${allLocs().length}`],
+    ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
+    ['Agenda', CAL ? `${freshState(calAge)} · relais il y a ${ageTxt(calAge)} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}` : CALDONE ? 'indisponible' : 'chargement…'],
+    ['Stockage local', `${n} clés · ${Math.round(bytes / 1024)} Ko`],
+    ['Trajet vivant', `${LIVE.phase}${FIX ? ` · dernier relevé GPS il y a ${ageTxt(ageOf(FIX.ts))} (±${Math.round(FIX.acc)} m)` : ' · aucun relevé GPS'}`]
+  ];
+}
+const diagHtml = () => diagRows().map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+const diagText = () => `Race Control · diagnostic du ${new Date().toISOString()}\n` + diagRows().map(([k, v]) => `${k} : ${v}`).join('\n');
+function renderDiag() { const el = $('#diagBox'); if (el && $('#settings') && $('#settings').open) el.innerHTML = diagHtml(); }
 // version en production (version.json écrit par le déploiement automatique : n° de mise en production, date, commit)
 let VER = null;
 const verLine = () => VER ? `En ligne : <b>prod-${esc(String(VER.run))}</b> du ${new Date(VER.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · commit <span class="mono">${esc(String(VER.sha).slice(0, 7))}</span> · ${VER.rollback ? '<b>retour arrière</b> après tests verts' : 'déployée après tests verts'}.` : 'Version de production : information indisponible.';
@@ -2898,6 +2939,7 @@ document.addEventListener('click', async e => {
     }
     catch (err) { t.textContent = 'Copie impossible : ouvre « Voir le script »'; }
   }
+  else if (a === 'diag-copy') { renderDiag(); try { await navigator.clipboard.writeText(diagText()); t.textContent = 'Copié'; } catch (err) { t.textContent = 'Copie impossible'; } }
   else if (a === 'copy') { const v = t.dataset.v; try { await navigator.clipboard.writeText(v); t.textContent = 'Copié'; } catch (err) { const i = document.getElementById(t.dataset.for); if (i) { i.focus(); i.select(); } } }
   else if (a === 'from') { if (UI.dir === 'go') { S.work.from = t.dataset.id; markEdit('work.from'); } else { S.work.to = t.dataset.id; markEdit('work.to'); } saveSettings(); softRender(); }
   else if (a === 'dir') { UI.dir = t.dataset.d; UI.dayOff = null; softRender(); }
