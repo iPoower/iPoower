@@ -57,6 +57,7 @@ SUITE.push(['test_dayplan.js', 'plan de tenue : couches, transitions et dangers 
 SUITE.push(['e2e35.js', 'intégration : annulations, Tenue et aperçu GPS frais', true],
   ['e2e36.js', 'hors connexion : cache météo, agenda chiffré et reconnexion', true],
   ['e2e38-resume.js', 'reprise iOS : fraîcheur réelle, horloge, actualisation unique', true],
+  ['e2e39-layout.js', 'iPhone 11 Pro Max et PC : débordement, cibles 44 pt, encoche, mêmes sections', true],
   ['e2e37-sw.js', 'service worker réel : Cache Storage, panne serveur et redémarrage offline', true, 'chromium']);
 const verdict = (code, out) => {
   const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
