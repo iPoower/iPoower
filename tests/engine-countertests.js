@@ -14,6 +14,7 @@ const mutations = [
   { name: 'pire heure du trajet ignorée', from: 'if (a.pen > pMax) { pMax = a.pen; kMax = k; }', to: 'if (k === 0) { pMax = a.pen; kMax = k; }' },
   { name: 'courbe froid des pneus été non monotone', from: '[0, 60], [1, 48]', to: '[0, 20], [1, 48]' },
   { name: 'profondeur illégale oubliée', from: "if (tread != null && tread < 1.6) add('Profondeur sous le minimum légal (1,6 mm)', 40, 'tyre');", to: '' },
+  { name: '« maintenant » repris d’une réponse obsolète', from: "Math.abs(Date.parse(curS + 'Z') - Date.parse(clockNow + 'Z')) <= 3600e3", to: 'true' },
   { name: 'gomme usée favorisée sous la pluie', from: 'tread < 3 ? 1.6 : tread < 4 ? 1.25 : 1', to: 'tread < 3 ? 0.5 : tread < 4 ? 1.25 : 1' }
 ];
 for (const mutation of mutations) {

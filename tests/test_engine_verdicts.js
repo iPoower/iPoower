@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm'), assert = r
 const sourcePath = path.join(__dirname, '../src/engine.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = { Math, Date, Intl, Map, Set, JSON }; vm.createContext(ctx);
-  vm.runInContext(source + '\nthis.E = { buildHours, windowAssess, hourVerdict, iceRisk, LV };', ctx);
+  vm.runInContext(source + '\nthis.E = { buildHours, windowAssess, hourVerdict, iceRisk, LV, makeModel, nowIn };', ctx);
   const E = ctx.E;
   const GO = 0, CAUTION = 1, RISK = 2, NOGO = 3;
   // 24 h d'historique (inertie de la chaussée) puis 12 h évaluées ; `at(h)` décrit l'heure h (négative = passé).
@@ -113,6 +113,21 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
       const hs = hours(at), one = E.windowAssess(car('summer'), [{ hs, i: 24 }], 'trip'), hv = E.hourVerdict(car('summer'), hs, 24);
       assert.equal(one.level, hv.level); assert.equal(one.score, hv.score);
     }
+  });
+  // — « maintenant » du modèle : jamais dans le passé à cause d'une réponse obsolète
+  const payloadAt = cur => ({ timezone: 'Europe/Paris', current: { time: cur }, hourly: { time: [], temperature_2m: [] } });
+  const shift = (ts, min) => new Date(Date.parse(ts + 'Z') + min * 60000).toISOString().slice(0, 16);
+  test('réponse live concordante : l’heure du fournisseur est retenue', () => {
+    const now = E.nowIn('Europe/Paris'), cur = shift(now, -15);
+    assert.equal(E.makeModel(payloadAt(cur), 'live', {}).nowStr, cur);
+  });
+  test('réponse live obsolète (3 h) : « maintenant » reste l’horloge', () => {
+    const now = E.nowIn('Europe/Paris'), m = E.makeModel(payloadAt(shift(now, -180)), 'live', {});
+    assert(Math.abs(Date.parse(m.nowStr + 'Z') - Date.parse(now + 'Z')) <= 60e3, m.nowStr + ' vs ' + now);
+  });
+  test('cache : « maintenant » est toujours l’horloge', () => {
+    const now = E.nowIn('Europe/Paris'), m = E.makeModel(payloadAt(shift(now, -15)), 'cache', {});
+    assert(Math.abs(Date.parse(m.nowStr + 'Z') - Date.parse(now + 'Z')) <= 60e3, m.nowStr + ' vs ' + now);
   });
   if (!options.quiet) console.log(count + '/' + count + ' scénarios OK');
   return count;

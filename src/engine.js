@@ -177,7 +177,10 @@ function makeModel(payload, mode, loc) {
   const hs = buildHours(payload);
   const tz = payload.timezone || 'Europe/Paris';
   const curT = payload.current && payload.current.time;
-  const nowStr = (mode === 'live' && curT) ? curT.slice(0, 16) : nowIn(tz);
+  // L'heure du fournisseur n'est retenue que si elle concorde avec l'horloge (± 1 h) : une réponse obsolète (cache CDN,
+  // relais en retard) ne décale jamais « maintenant » dans le passé.
+  const clockNow = nowIn(tz), curS = curT ? String(curT).slice(0, 16) : null;
+  const nowStr = mode === 'live' && curS && Math.abs(Date.parse(curS + 'Z') - Date.parse(clockNow + 'Z')) <= 3600e3 ? curS : clockNow;
   const nowHour = nowStr.slice(0, 13) + ':00';
   let nowI = -1;
   for (let i = 0; i < hs.length; i++) { if (hs[i].t <= nowHour) nowI = i; else break; }

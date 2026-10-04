@@ -191,6 +191,14 @@ function applyCalib() { const c = calibBias(S.calib); setRoadBias(c.bias); retur
 const locById = id => allLocs().find(l => l.id === id);
 let lastOk = null, lastTry = null, busy = false, CX = null;
 const offlineNow = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+// Fraîcheur dérivée de l'âge réel, jamais d'une étiquette posée au téléchargement : après une suspension iOS ou un
+// réseau qui ne répond plus, une météo « live » trop ancienne redevient un cache daté (badge CACHE, « maintenant » = horloge).
+const LIVE_MAX_MS = 15 * 60e3;
+function expireLive(now = Date.now()) {
+  let n = 0;
+  Object.values(RAW).forEach(r => { if (r && r.mode === 'live' && !(now - r.t <= LIVE_MAX_MS)) { r.mode = 'cache'; n++; } });
+  return n > 0;
+}
 function markOfflineCache() {
   Object.values(RAW).forEach(r => { if (r && r.mode === 'live') r.mode = 'cache'; });
   OBS = null;   // une observation de station ne doit jamais rester présentée comme « actuelle » hors connexion
@@ -334,7 +342,7 @@ function startDemo(scn) {
   rebuild(); renderAll();
 }
 function rebuild() {
-  M = {}; MIDM = {};
+  M = {}; MIDM = {}; expireLive();
   Object.keys(MIDP).forEach(id => { const r = MIDP[id]; try { MIDM[id] = r ? makeModel(r.p, r.mode, r.pt) : null; } catch (e) { MIDM[id] = null; } });
   allLocs().forEach((l, k) => {
     if (!locHasCoords(l)) return;
@@ -497,6 +505,7 @@ function renderStatus() {
   else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(lastOk) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
   else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
   else u = 'Aucune donnée météo';
+  if (busy && !off && mode !== 'demo') u += ' <span class="sync">· actualisation…</span>';   // HORS LIGNE → actualisation → LIVE
   $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
     <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${busy ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
 }
@@ -2983,7 +2992,9 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sto
 // (vérification toutes les 30 s : résiste à la mise en veille des minuteurs par iOS)
 const AUTO_MS = 5 * 60e3;
 function autoTick() {
-  if (DEMO.on || document.hidden || busy || (navigator.onLine === false)) return;
+  if (document.hidden) return;
+  if (!DEMO.on && expireLive()) { rebuild(); renderAll(); }   // reprise : la donnée vieillie est requalifiée avant toute requête
+  if (DEMO.on || busy || (navigator.onLine === false)) return;
   const ref = Math.max(lastOk || 0, lastTry || 0);
   if (Date.now() - ref >= AUTO_MS) refreshAll();
 }
