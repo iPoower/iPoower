@@ -194,10 +194,18 @@ async function refreshTireDB() {
 function applyCalib() { const c = calibBias(S.calib); setRoadBias(c.bias); return c; }
 const locById = id => allLocs().find(l => l.id === id);
 let lastOk = null, lastTry = null, busy = false, CX = null;
+const FLIGHT = typeof window !== 'undefined' && window.RC_OBS ? window.RC_OBS : null;
+let FLIGHT_DECISION_SIG = '';
+function flightSource(domain, data) { try { if (FLIGHT) FLIGHT.source(domain, data); } catch (e) { /* diagnostic non bloquant */ } }
+function flightDecision(domain, data) { try { if (FLIGHT) FLIGHT.decision(domain, data); } catch (e) { /* diagnostic non bloquant */ } }
+function flightRecovery(domain, data) { try { if (FLIGHT) FLIGHT.recovery(domain, data); } catch (e) { /* diagnostic non bloquant */ } }
 const offlineNow = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 function markOfflineCache() {
   Object.values(RAW).forEach(r => { if (r && r.mode === 'live') r.mode = 'cache'; });
   OBS = null;   // une observation de station ne doit jamais rester présentée comme « actuelle » hors connexion
+  const hasCache = Object.values(RAW).some(r => r && r.mode === 'cache');
+  flightSource('network', { status: 'offline', reason: 'navigator-offline' });
+  flightSource('weather', { status: hasCache ? 'degraded' : 'offline', fallback: hasCache ? 'cache' : 'none', reason: 'offline' });
 }
 applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
@@ -259,7 +267,7 @@ function liveGpsRequest(options) {
 function locate(manual, fresh) {
   if (!('geolocation' in navigator)) { if (manual) alertLoc('Localisation indisponible sur ce navigateur.'); return; }
   if (gpsBusy) return; gpsBusy = true; const gen = ++gpsRequestGen; if (manual) alertLoc('Recherche de ta position…');
-  const error = err => { if (gen !== gpsRequestGen) return; gpsBusy = false; if (manual) alertLoc(err.code === 1 ? 'Localisation refusée : Réglages iPhone → Confidentialité → Service de localisation → Safari → « Lorsque l’app est active ».' : 'Position introuvable pour le moment.'); };
+  const error = err => { if (gen !== gpsRequestGen) return; gpsBusy = false; flightSource('gps', { status: 'error', reason: err && err.code === 1 ? 'permission-denied' : 'position-unavailable' }); if (manual) alertLoc(err.code === 1 ? 'Localisation refusée : Réglages iPhone → Confidentialité → Service de localisation → Safari → « Lorsque l’app est active ».' : 'Position introuvable pour le moment.'); };
   try {
     navigator.geolocation.getCurrentPosition(pos => { if (gen !== gpsRequestGen) return; gpsBusy = false; if (manual) alertLoc(''); onPos(pos, true); startWatch(LIVE.phase === 'active'); },
       error, { enableHighAccuracy: !!manual || LIVE.phase === 'active', timeout: 15000, maximumAge: manual || fresh ? 0 : 120000 });
@@ -284,6 +292,7 @@ async function onPos(pos, focus) {
   const nameMoved = !gpsNameOrigin || distKm(gpsNameOrigin, np) > 3, weatherMoved = !gpsWeatherOrigin || distKm(gpsWeatherOrigin, np) > 3;
   const prevName = GPS && !nameMoved ? { name: GPS.name, sub: GPS.sub } : null;
   GPS = { id: 'gps', gps: true, ...np, acc: Math.round(c.accuracy), t: ts, name: prevName ? prevName.name : 'Ma position', sub: prevName ? prevName.sub : '' };
+  flightSource('gps', { status: 'ok', ageMs: Math.max(0, Date.now() - ts), accuracyM: Number.isFinite(c.accuracy) ? Math.round(c.accuracy) : null, reason: 'fix' });
   if (!S.gpsAuto) { S.gpsAuto = 1; saveSettings(); }
   if (focus) UI.loc = 'gps';
   lsSet('twrc.gps', JSON.stringify(GPS)); renderStatus(); renderLocChips(); renderSrc();
@@ -306,7 +315,9 @@ async function onPos(pos, focus) {
 function alertLoc(msg) { const el = $('#locMsg'); if (el) { el.textContent = msg; el.hidden = !msg; } }
 async function refreshAll() {
   if (busy) return;
+  const refreshStarted = Date.now();
   if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
+  flightSource('network', { status: 'ok', reason: 'online' });
   busy = true; DEMO.on = false; MIDP = {}; lastTry = Date.now(); renderStatus();
   const locs = allLocs(), gpsStart = gpsWeatherGen, generations = new Map();
   try { if (location.protocol === 'https:') OBS = await fetchJSON('obs.json?t=' + Math.floor(Date.now() / 300e3), 8000); } catch (e) { /* pas d'observation */ }
@@ -323,6 +334,17 @@ async function refreshAll() {
     else { ERR[l.id] = (r.reason && r.reason.message) || 'réponse invalide'; if (RAW[l.id]) RAW[l.id].mode = 'cache'; }
   });
   if (ok) lastOk = Date.now();
+  const expected = locs.filter(locHasCoords).length;
+  const hasCache = Object.values(RAW).some(r => r && r.mode === 'cache');
+  flightSource('weather', {
+    status: ok && ok >= expected ? 'ok' : ok ? 'degraded' : 'error',
+    ageMs: ok ? 0 : (lastOk ? Date.now() - lastOk : null),
+    latencyMs: Date.now() - refreshStarted,
+    fallback: ok < expected && hasCache ? 'cache' : 'none',
+    reason: ok ? (ok >= expected ? 'refresh-complete' : 'refresh-partial') : 'provider-unavailable',
+    available: ok,
+    expected
+  });
   busy = false; rebuild(); renderAll();
   fetchVigi(); refreshEns(); radarRefresh(); loadCalendar();
 }
@@ -1615,20 +1637,22 @@ const liveOrigin = fix => ({ lat: +fix.lat.toFixed(3), lon: +fix.lon.toFixed(3) 
 const liveRouteCurrent = (R, o) => { const adv = LIVE.phase === 'advice';
   return !!R && R.key === LIVE.key && distKm(R.o, o) <= (adv ? LIVE_ADV_KM : 1) && Date.now() - LIVE.routeAt <= (adv ? LIVE_ADV_AGE : 10 * 60e3); };
 function liveRoute(fix, b) {
-  if (offlineNow()) { LIVE.routeErr = true; return; }
+  if (offlineNow()) { LIVE.routeErr = true; flightSource('route', { status: 'degraded', fallback: 'planned-route', reason: 'offline' }); return; }
   const o = liveOrigin(fix);
   if (liveRouteCurrent(LIVE.route, o) || Date.now() - LIVE.routeTry < 30e3) return;   // recalcul après ~1 km / 10 min (aperçu : 5 km / 30 min), jamais en rafale
   const d = liveDest(b); if (!d) return;
   const dd = d.priv ? { lat: rc2(d.lat), lon: rc2(d.lon) } : { lat: +(+d.lat).toFixed(3), lon: +(+d.lon).toFixed(3) };
-  LIVE.routeTry = Date.now(); const gen = ++LIVE.gen, key = LIVE.key;
+  LIVE.routeTry = Date.now(); const routeStarted = LIVE.routeTry, gen = ++LIVE.gen, key = LIVE.key;
   fetchJSON(`https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${dd.lon},${dd.lat}?overview=full&geometries=geojson&annotations=duration`, 10000)
     .then(j => {
       if (gen !== LIVE.gen || key !== LIVE.key) return;   // OSRM : réponse d'une ancienne position ou d'un autre trajet, ignorée (génération)
       // (météo : chaque route a sa propre clé géographique legKey/LEGM ; une réponse tardive d'une ancienne route n'est jamais lue pour la route courante)
       const p = liveParse(j); if (!p) throw new Error('itinéraire vide');
-      LIVE.route = { ...p, key, gen, o, d: { lat: d.lat, lon: d.lon, name: d.name } }; LIVE.routeAt = Date.now(); LIVE.routeOrigin = o; LIVE.routeErr = false; renderBrf();
+      LIVE.route = { ...p, key, gen, o, d: { lat: d.lat, lon: d.lon, name: d.name } }; LIVE.routeAt = Date.now(); LIVE.routeOrigin = o; LIVE.routeErr = false;
+      flightSource('route', { status: 'ok', ageMs: 0, latencyMs: Date.now() - routeStarted, reason: 'osrm-current' });
+      renderBrf();
     })
-    .catch(() => { if (gen === LIVE.gen && key === LIVE.key) { LIVE.routeErr = true; renderBrf(); } });
+    .catch(() => { if (gen === LIVE.gen && key === LIVE.key) { LIVE.routeErr = true; flightSource('route', { status: 'error', fallback: 'planned-route', latencyMs: Date.now() - routeStarted, reason: 'osrm-unavailable' }); renderBrf(); } });
 }
 const liveAgo = ms => { const s = Math.round(ms / 1000); return s < 60 ? `${s} s` : `${Math.round(s / 60)} min`; };
 // version vivante du trajet ; tant qu'aucune analyse vivante complète (route + météo) n'existe, le trajet planifié reste affiché.
@@ -1985,12 +2009,15 @@ async function loadCalendar() {
     if (!S0 || !S0.c) return;
     const cached = offlineNow() || !!fallback;
     if (CAL && CAL.c === S0.c) {
-      CAL.offline = cached; CAL.cacheAt = fallback ? fallback.t : Date.now(); CALDONE = true; renderCal(); renderBrf(); renderTenue(); return;
+      CAL.offline = cached; CAL.cacheAt = fallback ? fallback.t : Date.now(); CALDONE = true;
+      flightSource('calendar', { status: cached ? 'degraded' : 'ok', ageMs: CAL.updated ? Math.max(0, Date.now() - Date.parse(CAL.updated)) : null, fallback: cached ? 'encrypted-cache' : 'none', reason: cached ? 'relay-fallback' : 'relay-current' });
+      renderCal(); renderBrf(); renderTenue(); return;
     }
     const d = await openSealed(S0, String(pass).trim().toLowerCase());
     CAL = { ...d, c: S0.c, offline: cached, cacheAt: fallback ? fallback.t : Date.now() };
+    flightSource('calendar', { status: cached ? 'degraded' : 'ok', ageMs: CAL.updated ? Math.max(0, Date.now() - Date.parse(CAL.updated)) : null, fallback: cached ? 'encrypted-cache' : 'none', reason: cached ? 'relay-fallback' : 'relay-current' });
     CALDONE = true; renderCal(); renderBrf(); renderTenue();
-  } catch (e) { /* code différent ou cache illisible */ }
+  } catch (e) { flightSource('calendar', { status: 'error', fallback: fallback ? 'encrypted-cache' : 'none', reason: 'decrypt-or-cache-invalid' }); }
   finally { if (!CALDONE) { CALDONE = true; renderBrf(); } }
 }
 async function calModel(ev) {
