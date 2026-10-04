@@ -211,6 +211,18 @@ function noNonSpatialOrigin(a) {
   assert.equal(go.originPending, true); assert.deepEqual(plain(go.g), []);
   assert.deepEqual(plain(go.pts), []); assert.equal(JSON.stringify(events), snapshot);
 }
+function harmlessNonSpatial(a) {
+  const events = chain(), logical = { id: 'event-logical', s: day + 'T11:30', e: day + 'T11:45', mode: 'pasdetrajet', lat: null, lon: null, legs: [] };
+  events.splice(1, 0, logical);
+  const exactHome = { ...H, lat: H.lat - .00373, lon: H.lon - .00522 };
+  let requested = false;
+  const map = a.rebuild(events, exactHome, {}, {}, now, { beforeFirst() { requested = true; return exactHome; } });
+  assert.equal(requested, false);
+  for (const e of events) assert.deepEqual(plain(map.get(e)), e.legs);
+  const go = map.get(events[0]).find(l => l.k === 'go');
+  assert.deepEqual(plain(go.from), H); assert.notEqual(go.from.lon, exactHome.lon);
+}
+test('#pasdetrajet sain conserve les routes et l’ancre arrondie du relais', () => harmlessNonSpatial(api));
 test('#pasdetrajet sans annulation : aucune jambe ni ancienne origine B pour C', () => noNonSpatialOrigin(api));
 test('#pasdetrajet legacy sans coordonnées : aucune ancienne jambe réinjectée', () => {
   const events = chain().slice(1); events[0].mode = 'pasdetrajet';
@@ -245,5 +257,6 @@ function caught(name, text, proof) {
 caught('une annulation ne peut être convertie en arrivée', source.replace('out[id] = { at: now, exp };', "out[id] = { at: now, exp, how: 'arrivé' };"), noArrival);
 caught('ancienne route d’un rendez-vous annulé interdite', source.replace('same(l.from, from) && same(l.to, to)', 'same(l.to, to)'), noOldOrigin);
 caught('la fenêtre Undo travail ne peut pas être coupée à minuit', source.replace('Math.max(midnight, now + UNDO_MS)', 'midnight'), workUndoWindow);
-caught('#pasdetrajet ne peut redevenir l’origine suivante', source.replace("dayEvents.some(e => cancelled(e) || e.mode === 'pasdetrajet')", 'dayEvents.some(cancelled)'), noNonSpatialOrigin);
-console.log(count + '/' + count + ' scénarios OK (dont quatre mutations détectées)');
+caught('#pasdetrajet ne peut redevenir l’origine suivante', source.replace('dayEvents.some(e => cancelled(e) || nonSpatialNeedsRebuild(e))', 'dayEvents.some(cancelled)'), noNonSpatialOrigin);
+caught('#pasdetrajet sain ne peut remplacer les ancres du relais', source.replace('dayEvents.some(e => cancelled(e) || nonSpatialNeedsRebuild(e))', "dayEvents.some(e => cancelled(e) || e.mode === 'pasdetrajet')"), harmlessNonSpatial);
+console.log(count + '/' + count + ' scénarios OK (dont cinq mutations détectées)');

@@ -85,6 +85,10 @@ const TripCancel = (() => {
   function selectedLegs(e, directSet) {
     return (e.legs || []).filter(l => !(l.k === 'ret' && l.brk && directSet[l.brk])).map(l => e.alt && directSet[e.alt.key] && l.k === 'go' && l.brk === e.alt.key ? { ...e.alt.direct, chosen: true } : { ...l });
   }
+  // Le relais actuel omet déjà les données spatiales de #pasdetrajet. Ne pas
+  // reconstruire ses routes saines ni remplacer leur ancre domicile arrondie.
+  const nonSpatialNeedsRebuild = e => !!e && e.mode === 'pasdetrajet' &&
+    (point(e) || !!(e.legs || []).length || !!(e.alt && e.alt.direct));
   function rebuild(events, home, directSet, state, now, context = {}) {
     directSet = directSet || {};
     const result = new Map(), byDay = new Map(), counts = new Map();
@@ -104,7 +108,7 @@ const TripCancel = (() => {
     for (const [day, dayEvents] of byDay) {
       // Un ancien agenda peut encore rattacher la route suivante à un événement
       // désormais non spatial. Reconstruire ce jour même sans annulation locale.
-      if (!dayEvents.some(e => cancelled(e) || e.mode === 'pasdetrajet') && !has(state, workId(day), now)) continue;
+      if (!dayEvents.some(e => cancelled(e) || nonSpatialNeedsRebuild(e)) && !has(state, workId(day), now)) continue;
       const remaining = dayEvents.filter(e => !cancelled(e) && e.mode !== 'pasdetrajet' && point(e)).sort((a, b) => a.s.localeCompare(b.s));
       // Toute route réutilisée a exactement les mêmes extrémités ; ni géométrie ni météo d'une vieille origine.
       const routes = dayEvents.flatMap(e => [...(e.legs || []), ...(e.alt && e.alt.direct ? [e.alt.direct] : [])]);
@@ -155,5 +159,5 @@ const TripCancel = (() => {
     }
     return result;
   }
-  return { KEY, UNDO_MS, EVENT_MARGIN_MS, eventId, workId, identifiable, clean, save, load, has, cancel, undo, undoable, eventExpiration, workExpiration, localEpoch, rebuild, selectedLegs };
+  return { KEY, UNDO_MS, EVENT_MARGIN_MS, eventId, workId, identifiable, clean, save, load, has, cancel, undo, undoable, eventExpiration, workExpiration, localEpoch, rebuild, selectedLegs, nonSpatialNeedsRebuild };
 })();

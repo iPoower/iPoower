@@ -1696,7 +1696,7 @@ function tripCancelSchedulePurge() {
     if (changed) tripCancelChanged();
   }, delay);
 }
-const cancelAffectedDay = e => workCancelled(e.s.slice(0, 10)) || !!(CAL && CAL.events && CAL.events.some(other => other.s.slice(0, 10) === e.s.slice(0, 10) && (other.mode === 'pasdetrajet' || calendarCancelled(other))));
+const cancelAffectedDay = e => workCancelled(e.s.slice(0, 10)) || !!(CAL && CAL.events && CAL.events.some(other => other.s.slice(0, 10) === e.s.slice(0, 10) && (TripCancel.nonSpatialNeedsRebuild(other) || calendarCancelled(other))));
 function tripCancelButton(t) {
   const allowed = t && (t.src === 'cal' && t.e || t.src === 'work' && t.dep.slice(0, 10) === liveNow().slice(0, 10));
   return allowed ? `<button class="btn sm" data-act="trip-cancel" data-key="${esc(t.key)}">${t.src === 'work' ? '✕ Pas de trajet aujourd’hui' : '✕ Je n’y vais pas'}</button>` : '';
