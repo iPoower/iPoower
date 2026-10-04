@@ -1,10 +1,10 @@
 name: Race Control · relais météo
-# Observations réelles des stations proches -> race-control/obs.json (lancé par des tâches planifiées externes)
+# Observations réelles des stations proches -> race-control/obs.json (synchronisation principale toutes les 10 min)
 # De 90 à 5 min avant le départ : verdict du trajet toutes les 15 min -> notification si orange/rouge, brouillard ou verglas,
 # puis nouvelle notification uniquement en cas d'aggravation (3 par matin maximum)
 on:
   schedule:
-    - cron: '7,37 * * * *'
+    - cron: '7,17,27,37,47,57 * * * *'
     # matin renforcé : un passage toutes les 15 min de 03:00 à 05:59 UTC (couvre l'heure d'été et d'hiver)
     - cron: '22,52 3-5 * * *'
   workflow_dispatch:
