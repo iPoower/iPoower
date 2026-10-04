@@ -305,7 +305,14 @@ async function refreshAll() {
   if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
   busy = true; DEMO.on = false; MIDP = {}; lastTry = Date.now(); renderStatus();
   const locs = allLocs(), gpsStart = gpsWeatherGen, generations = new Map();
-  try { if (location.protocol === 'https:') OBS = await fetchJSON('obs.json?t=' + Math.floor(Date.now() / 300e3), 8000); } catch (e) { /* pas d'observation */ }
+  try {
+    if (location.protocol === 'https:') {
+      const o = await fetchJSON('obs.json?t=' + Math.floor(Date.now() / 300e3), 8000);
+      // Les observations stations sont un enrichissement du modèle live : si le relais est trop vieux,
+      // on les ignore plutôt que d'injecter une pseudo-observation périmée dans une météo fraîche.
+      OBS = relayAgeMin(o && o.updated) <= RELAY_OBS_MAX_MIN ? o : null;
+    }
+  } catch (e) { OBS = null; }
   const res = await Promise.allSettled(locs.map(l => {
     // Une position remplacée pendant la lecture des observations ne relance pas une ancienne météo.
     if (l.gps && !gpsSourceCurrent(l, gpsStart)) return Promise.resolve(null);
@@ -394,6 +401,9 @@ async function geocode(q) {
 
 /* ---------- formats ---------- */
 const hmLocal = ms => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+const RELAY_WARN_MIN = 20, RELAY_OBS_MAX_MIN = 35;
+const relayAgeMin = ts => { const t = Date.parse(ts || ''); return Number.isFinite(t) ? Math.max(0, (Date.now() - t) / 60000) : Infinity; };
+const relayAgeTxt = m => !Number.isFinite(m) ? 'inconnue' : m < 60 ? Math.max(1, Math.round(m)) + ' min' : Math.floor(m / 60) + ' h ' + Math.round(m % 60) + ' min';
 const CARD = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
 const card = d => d == null ? '' : CARD[Math.round(d / 45) % 8];
 const wx = c => WMO[c] || (c == null ? '—' : 'Code ' + c);
@@ -2154,8 +2164,11 @@ function renderCal() {
   const skip = fut.filter(e => e.mode === 'pasdetrajet'), fut2 = fut.filter(e => e.mode !== 'pasdetrajet');
   const near = fut2.filter(e => locHasCoords(home) && locHasCoords(e) && distKm(home, e) < 3), evs = fut2.filter(e => !near.includes(e)).slice(0, 8);
   el.hidden = false;
-  const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }), calCached = !!CAL.offline;
-  if (!evs.length) { el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda</span></div><p class="sub">Aucun rendez-vous avec un lieu sur les 8 prochains jours. Ajoute une adresse ou une ville dans le champ « Lieu » de tes rendez-vous Google Agenda.</p><div class="disc">Agenda synchronisé le ${up}.</div>`; return; }
+  const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }), calCached = !!CAL.offline,
+    calAge = relayAgeMin(CAL.updated), calStale = !calCached && calAge > RELAY_WARN_MIN,
+    calState = calCached ? 'cache chiffré' : calStale ? '⚠ relais en retard' : 'prévision',
+    calWarn = calStale ? `<div class="note lv1" role="status"><b>⚠️ Relais Agenda en retard</b><span>Dernière synchronisation il y a ${relayAgeTxt(calAge)}. Les modifications récentes de Google Agenda peuvent ne pas encore apparaître ; Race Control conserve le dernier plan connu.</span></div>` : '';
+  if (!evs.length) { el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calState}</span></div>${calWarn}<p class="sub">Aucun rendez-vous avec un lieu sur les 8 prochains jours. Ajoute une adresse ou une ville dans le champ « Lieu » de tes rendez-vous Google Agenda.</p><div class="disc">Agenda synchronisé le ${up}.</div>`; return; }
   const rows = evs.map(e => {
     const d = new Date(e.s.slice(0, 10) + 'T12:00:00Z'), dd = dayDiff(now.slice(0, 10), e.s.slice(0, 10)), dl = dd === 0 ? 'auj.' : dd === 1 ? 'demain' : DAYN[d.getUTCDay()] + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1);
     const tr = e.legs ? null : calTrip(e);
@@ -2177,7 +2190,7 @@ function renderCal() {
     }
     return `<div class="cal-e"><div class="cal-h"><span class="cal-d">${dl} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(e.label || e.loc)}</span></div>${body}</div>`;
   }).join('');
-  el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calCached ? 'cache chiffré' : 'prévision'}</span></div><div class="cal-l">${rows}</div>
+  el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calState}</span></div>${calWarn}<div class="cal-l">${rows}</div>
     <div class="disc">${calCached ? '<b>Hors connexion : dernier agenda chiffré disponible.</b> ' : ''}${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Mots-clés dans le titre ou la description Google Agenda : <b>#direct</b> (enchaîner), <b>#maison</b> (repasser par chez toi), <b>#pasdetrajet</b> ou 📺 (ignorer). Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, avec une marge totale plafonnée à 15 min pour un rendez-vous (dont 10 min d’arrivée anticipée), sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
 }
 

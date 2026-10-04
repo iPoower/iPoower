@@ -27,6 +27,9 @@ await p.goto(U);await p.clock.runFor(2500);await p.fill('#unlockPw',PW);await Pr
 let t=await p.locator('body').innerText();
 const cached=await p.evaluate(()=>({weather:Object.keys(localStorage).some(k=>k.startsWith('twrc.cache.')),cal:!!localStorage.getItem('twrc.calendar.sealed.v1')}));
 check('36.1 · en ligne : météo + agenda chiffré mis en cache',cached.weather&&cached.cal&&/Assurance/.test(t),JSON.stringify(cached));
+await p.evaluate(()=>{ if (CAL) { CAL.updated = new Date(Date.now() - 65 * 60e3).toISOString(); renderCal(); } }); await settle(2); t=await p.locator('body').innerText();
+check('36.1b · relais Agenda vieux : retard explicite, jamais présenté comme prévision fraîche',/Relais Agenda en retard/.test(t)&&/1 h/.test(t)&&!/Google Agenda · prévision/.test(t),t.slice(0,220));
+check('36.1c · observations relais sans horodatage fiable : ignorées',await p.evaluate(()=>OBS===null));
 
 cut=true;const before=external;await p.evaluate(()=>window.__setOffline(true));await settle(3);t=await p.locator('body').innerText();
 check('36.2 · perte réseau : HORS LIGNE, jamais LIVE, données conservées',/HORS LIGNE/.test(t)&&!/\bLIVE\b/.test((await p.locator('#statusbar').innerText()))&&/Assurance/.test(t));

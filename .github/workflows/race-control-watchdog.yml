@@ -1,9 +1,11 @@
 name: Race Control · watchdog relais
-# Filet de sécurité indépendant du cron principal. Il ne fait rien tant que obs.json a moins de 10 min.
-# S'il constate un relais en retard, il exécute exactement le même relay.js et conserve ses anti-doublons.
+# Second filet de sécurité dans GitHub Actions. Il ne garantit pas une horloge stricte (le scheduler GitHub peut retarder/supprimer des runs),
+# mais multiplie les occasions de rattrapage et vérifie aussi la fraîcheur à chaque push sur main. Il conserve les anti-doublons du relais.
 on:
   schedule:
     - cron: '4,14,24,34,44,54 * * * *'
+  push:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: write
