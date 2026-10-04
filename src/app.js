@@ -190,6 +190,11 @@ async function refreshTireDB() {
 function applyCalib() { const c = calibBias(S.calib); setRoadBias(c.bias); return c; }
 const locById = id => allLocs().find(l => l.id === id);
 let lastOk = null, lastTry = null, busy = false, CX = null;
+const offlineNow = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+function markOfflineCache() {
+  Object.values(RAW).forEach(r => { if (r && r.mode === 'live') r.mode = 'cache'; });
+  OBS = null;   // une observation de station ne doit jamais rester présentée comme « actuelle » hors connexion
+}
 applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
   view: ['meteo', 'tenue'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0,
@@ -280,20 +285,25 @@ async function onPos(pos, focus) {
   lsSet('twrc.gps', JSON.stringify(GPS)); renderStatus(); renderLocChips(); renderSrc();
   if (focus && !weatherMoved && M.gps) renderAll();
   const tasks = [];
-  if (nameMoved) {
+  if (nameMoved && !offlineNow()) {
     gpsNameOrigin = np; const gen = ++gpsNameGen;
     tasks.push(reverseName(np.lat, np.lon).then(nm => { if (!GPS || gen !== gpsNameGen || distKm(np, GPS) > 3) return; Object.assign(GPS, nm); lsSet('twrc.gps', JSON.stringify(GPS)); renderLocChips(); }));
   }
   if (weatherMoved) {
     delete ENSRAW.gps; delete NOWRAW.gps; delete RAW.gps; delete AQRAW.gps;
-    const request = loadLoc(GPS), gen = gpsWeatherGen;
-    tasks.push(request.then(() => { if (GPS && gen === gpsWeatherGen) lastOk = Date.now(); }, e => { if (GPS && gen === gpsWeatherGen) ERR.gps = e.message; }));
+    if (offlineNow()) { gpsWeatherOrigin = null; ERR.gps = 'hors connexion : aucune météo récente pour cette nouvelle position'; }
+    else {
+      const request = loadLoc(GPS), gen = gpsWeatherGen;
+      tasks.push(request.then(() => { if (GPS && gen === gpsWeatherGen) lastOk = Date.now(); }, e => { if (GPS && gen === gpsWeatherGen) ERR.gps = e.message; }));
+    }
   }
   if (tasks.length) { await Promise.all(tasks); if (!GPS) return; rebuild(); renderAll(); if (weatherMoved) refreshEns(); }
 }
 function alertLoc(msg) { const el = $('#locMsg'); if (el) { el.textContent = msg; el.hidden = !msg; } }
 async function refreshAll() {
-  if (busy) return; busy = true; DEMO.on = false; MIDP = {}; lastTry = Date.now(); renderStatus();
+  if (busy) return;
+  if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
+  busy = true; DEMO.on = false; MIDP = {}; lastTry = Date.now(); renderStatus();
   const locs = allLocs(), gpsStart = gpsWeatherGen, generations = new Map();
   try { if (location.protocol === 'https:') OBS = await fetchJSON('obs.json?t=' + Math.floor(Date.now() / 300e3), 8000); } catch (e) { /* pas d'observation */ }
   const res = await Promise.allSettled(locs.map(l => {
@@ -468,12 +478,14 @@ function computeCtx() {
 /* ---------- rendu : statut, lieux, bandeaux ---------- */
 function mainMode() { const m = M[UI.loc]; return locHasCoords(allLocs().find(l => l.id === UI.loc)) && m ? m.mode : null; }
 function renderStatus() {
-  const mode = DEMO.on ? 'demo' : mainMode();
-  const b = mode === 'demo' ? '<span class="badge demo"><i></i>DÉMO</span>' : mode === 'live' ? '<span class="badge live"><i></i>LIVE</span>' : mode === 'cache' ? '<span class="badge cache"><i></i>CACHE</span>' : '<span class="badge"><i></i>HORS LIGNE</span>';
+  const mode = DEMO.on ? 'demo' : mainMode(), off = !DEMO.on && offlineNow();
+  const b = mode === 'demo' ? '<span class="badge demo"><i></i>DÉMO</span>' : off ? '<span class="badge"><i></i>HORS LIGNE</span>' : mode === 'live' ? '<span class="badge live"><i></i>LIVE</span>' : mode === 'cache' ? '<span class="badge cache"><i></i>CACHE</span>' : '<span class="badge"><i></i>HORS LIGNE</span>';
   let u;
   if (mode === 'demo') u = 'Simulation : aucune donnée réelle';
+  else if (off && RAW[UI.loc]) u = 'Données en cache du ' + hmLocal(RAW[UI.loc].t) + ' · figées jusqu’au retour du réseau';
+  else if (off) u = 'Aucune donnée météo en cache · reconnexion automatique';
   else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(lastOk) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
-  else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · réseau indisponible';   // lieu GPS pas encore chargé : pas d'horodatage
+  else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
   else u = 'Aucune donnée météo';
   $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
     <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${busy ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
@@ -1448,7 +1460,7 @@ function tripPlanSignature(t) {
   return JSON.stringify([t.key, t.e && (t.e.id || t.e.uid || t.e.UID) || '', from && [from.lat, from.lon], to && [to.lat, to.lon, !!to.priv]]);
 }
 const tripPreviewMatches = t => !!t && tripPlanSignature(t) === TRIPPREVIEW.planSignature;
-const tripPreviewAllowed = () => !DEMO.on && location.protocol === 'https:' && ('geolocation' in navigator) && !(LOCKED() && !lsGet('twrc.nocode'));
+const tripPreviewAllowed = () => !DEMO.on && !offlineNow() && location.protocol === 'https:' && ('geolocation' in navigator) && !(LOCKED() && !lsGet('twrc.nocode'));
 const tripPreviewFuture = (t, now) => !!t && !t.live && !t.manualPreview && !!liveDest(t) && liveMin(now, t.dep) > LIVE_ADV;
 function tripPreviewStart(key) {
   const b = BRF_TRIPS.find(t => t.key === key), now = liveNow();
@@ -1530,6 +1542,7 @@ const liveOrigin = fix => ({ lat: +fix.lat.toFixed(3), lon: +fix.lon.toFixed(3) 
 const liveRouteCurrent = (R, o) => { const adv = LIVE.phase === 'advice';
   return !!R && R.key === LIVE.key && distKm(R.o, o) <= (adv ? LIVE_ADV_KM : 1) && Date.now() - LIVE.routeAt <= (adv ? LIVE_ADV_AGE : 10 * 60e3); };
 function liveRoute(fix, b) {
+  if (offlineNow()) { LIVE.routeErr = true; return; }
   const o = liveOrigin(fix);
   if (liveRouteCurrent(LIVE.route, o) || Date.now() - LIVE.routeTry < 30e3) return;   // recalcul après ~1 km / 10 min (aperçu : 5 km / 30 min), jamais en rafale
   const d = liveDest(b); if (!d) return;
@@ -1868,6 +1881,11 @@ function drawTripMap(node, t, geo) {
 
 /* ---------- agenda Google : trajets des rendez-vous (fichier chiffré publié par le relais) ---------- */
 let CAL = null, CALDONE = false; const CALM = {}, CALBUSY = new Set();   // CALDONE : première lecture de l'agenda terminée (avec ou sans agenda)
+const CAL_CACHE_KEY = 'twrc.calendar.sealed.v1';
+function calendarSealedCache() {
+  try { const x = JSON.parse(lsGet(CAL_CACHE_KEY) || 'null'); return x && x.sealed && x.sealed.c && Date.now() - x.t < 9 * 24 * 3600e3 ? x : null; }
+  catch (e) { return null; }
+}
 async function openSealed(S0, pass) {
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(S0.s), iterations: S0.it, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
@@ -1875,11 +1893,23 @@ async function openSealed(S0, pass) {
 }
 async function loadCalendar() {
   const pass = lsGet('twrc.key'); if (!pass || location.protocol !== 'https:' || !crypto.subtle) return;
+  let S0 = null, fallback = null;
   try {
-    const S0 = await fetchJSON('calendar.sealed.json?t=' + Math.floor(Date.now() / 300e3), 8000); if (!S0 || !S0.c) return;
-    if (CAL && CAL.c === S0.c) return;
-    const d = await openSealed(S0, String(pass).trim().toLowerCase()); CAL = { ...d, c: S0.c }; CALDONE = true; renderCal(); renderBrf(); renderTenue();
-  } catch (e) { /* pas d'agenda publié, ou code différent */ }
+    S0 = await fetchJSON('calendar.sealed.json?t=' + Math.floor(Date.now() / 300e3), 8000);
+    if (S0 && S0.c) lsSet(CAL_CACHE_KEY, JSON.stringify({ t: Date.now(), sealed: S0 }));   // chiffré uniquement
+  } catch (e) {
+    fallback = calendarSealedCache(); S0 = fallback && fallback.sealed;
+  }
+  try {
+    if (!S0 || !S0.c) return;
+    const cached = offlineNow() || !!fallback;
+    if (CAL && CAL.c === S0.c) {
+      CAL.offline = cached; CAL.cacheAt = fallback ? fallback.t : Date.now(); CALDONE = true; renderCal(); renderBrf(); renderTenue(); return;
+    }
+    const d = await openSealed(S0, String(pass).trim().toLowerCase());
+    CAL = { ...d, c: S0.c, offline: cached, cacheAt: fallback ? fallback.t : Date.now() };
+    CALDONE = true; renderCal(); renderBrf(); renderTenue();
+  } catch (e) { /* code différent ou cache illisible */ }
   finally { if (!CALDONE) { CALDONE = true; renderBrf(); } }
 }
 async function calModel(ev) {
@@ -2046,7 +2076,7 @@ function renderCal() {
   const skip = fut.filter(e => e.mode === 'pasdetrajet'), fut2 = fut.filter(e => e.mode !== 'pasdetrajet');
   const near = fut2.filter(e => locHasCoords(home) && locHasCoords(e) && distKm(home, e) < 3), evs = fut2.filter(e => !near.includes(e)).slice(0, 8);
   el.hidden = false;
-  const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }), calCached = !!CAL.offline;
   if (!evs.length) { el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda</span></div><p class="sub">Aucun rendez-vous avec un lieu sur les 8 prochains jours. Ajoute une adresse ou une ville dans le champ « Lieu » de tes rendez-vous Google Agenda.</p><div class="disc">Agenda synchronisé le ${up}.</div>`; return; }
   const rows = evs.map(e => {
     const d = new Date(e.s.slice(0, 10) + 'T12:00:00Z'), dd = dayDiff(now.slice(0, 10), e.s.slice(0, 10)), dl = dd === 0 ? 'auj.' : dd === 1 ? 'demain' : DAYN[d.getUTCDay()] + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1);
@@ -2069,8 +2099,8 @@ function renderCal() {
     }
     return `<div class="cal-e"><div class="cal-h"><span class="cal-d">${dl} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(e.label || e.loc)}</span></div>${body}</div>`;
   }).join('');
-  el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · prévision</span></div><div class="cal-l">${rows}</div>
-    <div class="disc">${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Mots-clés dans le titre ou la description Google Agenda : <b>#direct</b> (enchaîner), <b>#maison</b> (repasser par chez toi), <b>#pasdetrajet</b> ou 📺 (ignorer). Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, durée + 10 % et 10 min de marge, sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
+  el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calCached ? 'cache chiffré' : 'prévision'}</span></div><div class="cal-l">${rows}</div>
+    <div class="disc">${calCached ? '<b>Hors connexion : dernier agenda chiffré disponible.</b> ' : ''}${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Mots-clés dans le titre ou la description Google Agenda : <b>#direct</b> (enchaîner), <b>#maison</b> (repasser par chez toi), <b>#pasdetrajet</b> ou 📺 (ignorer). Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, avec une marge totale plafonnée à 15 min pour un rendez-vous (dont 10 min d’arrivée anticipée), sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
 }
 
 
@@ -2849,7 +2879,13 @@ function autoTick() {
 }
 setInterval(autoTick, 30e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });
-['pageshow', 'focus', 'online'].forEach(ev => window.addEventListener(ev, () => setTimeout(autoTick, 300)));
+function networkChanged() {
+  if (offlineNow()) { markOfflineCache(); rebuild(); renderAll(); loadCalendar(); }
+  else { renderStatus(); refreshAll(); }
+}
+window.addEventListener('offline', networkChanged);
+window.addEventListener('online', networkChanged);
+['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => setTimeout(autoTick, 300)));
 
 /* ---------- démarrage ---------- */
 function registerSW() {
@@ -2861,6 +2897,6 @@ document.addEventListener('toggle', e => { if (e.target && e.target.id === 'sett
   registerSW(); refreshTireDB(); tripCancelSchedulePurge();
   if (S.gpsAuto && GPS) UI.loc = 'gps';
   if (S.gpsAuto && location.protocol === 'https:') setTimeout(() => locate(false), 400);
-  loadCache(); rebuild(); renderSettings(); renderAll();
-  refreshAll();
+  loadCache(); if (offlineNow()) markOfflineCache(); rebuild(); renderSettings(); renderAll();
+  if (offlineNow()) loadCalendar(); else refreshAll();
 })();

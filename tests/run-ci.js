@@ -52,7 +52,8 @@ SUITE.push(['test_gps_requests.js', 'GPS : réponses réseau tardives après dé
 SUITE.push(['test_dayplan.js', 'plan de tenue : couches, transitions et dangers courts', false],
   ['dayplan-countertests.js', 'plan de tenue : mutations détectées par les contre-tests', false],
   ['e2e32.js', 'plan de tenue : agenda, lieux, météo et interface', true]);
-SUITE.push(['e2e35.js', 'intégration : annulations, Tenue et aperçu GPS frais', true]);
+SUITE.push(['e2e35.js', 'intégration : annulations, Tenue et aperçu GPS frais', true],
+  ['e2e36.js', 'hors connexion : cache météo, agenda chiffré et reconnexion', true]);
 const verdict = (code, out) => {
   const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
   if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');
