@@ -2166,8 +2166,20 @@ function renderCal() {
   el.hidden = false;
   const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }), calCached = !!CAL.offline,
     calAge = relayAgeMin(CAL.updated), calStale = !calCached && calAge > RELAY_WARN_MIN,
-    calState = calCached ? 'cache chiffré' : calStale ? '⚠ relais en retard' : 'prévision',
-    calWarn = calStale ? `<div class="note lv1" role="status"><b>⚠️ Relais Agenda en retard</b><span>Dernière synchronisation il y a ${relayAgeTxt(calAge)}. Les modifications récentes de Google Agenda peuvent ne pas encore apparaître ; Race Control conserve le dernier plan connu.</span></div>` : '';
+    calState = calCached ? 'cache chiffré' : calStale ? `⚠ relais ${relayAgeTxt(calAge)}` : 'prévision';
+  // Un relais vieux ne doit pas monopoliser l'écran. Alerte forte seulement si un départ Agenda
+  // peut arriver dans les 4 h ; sinon une ligne compacte suffit jusqu'au rattrapage.
+  const depTimes = [];
+  fut.forEach(e => {
+    if (e.legs) effLegs(e).forEach(l => { if (l && l.dep && l.dep >= now.slice(0, 16)) depTimes.push(l.dep); });
+    else if (!e.allDay && e.s >= now.slice(0, 16)) depTimes.push(e.s);
+  });
+  depTimes.sort();
+  const nextDepMin = depTimes.length ? Math.round((tsToDate(depTimes[0]) - tsToDate(now.slice(0, 16))) / 60000) : Infinity,
+    calUrgent = calStale && nextDepMin <= 240,
+    calWarn = !calStale ? '' : calUrgent
+      ? `<div class="note lv1" role="status"><b>⚠️ Agenda à vérifier avant le prochain trajet</b><span>Relais vieux de ${relayAgeTxt(calAge)}. Une modification récente de Google Agenda peut manquer ; dernier plan connu conservé.</span></div>`
+      : `<div class="disc" role="status"><b>⚠ Agenda : relais vieux de ${relayAgeTxt(calAge)}</b> · aucun départ Agenda imminent ; dernier plan connu conservé en attendant le rattrapage.</div>`;
   if (!evs.length) { el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calState}</span></div>${calWarn}<p class="sub">Aucun rendez-vous avec un lieu sur les 8 prochains jours. Ajoute une adresse ou une ville dans le champ « Lieu » de tes rendez-vous Google Agenda.</p><div class="disc">Agenda synchronisé le ${up}.</div>`; return; }
   const rows = evs.map(e => {
     const d = new Date(e.s.slice(0, 10) + 'T12:00:00Z'), dd = dayDiff(now.slice(0, 10), e.s.slice(0, 10)), dl = dd === 0 ? 'auj.' : dd === 1 ? 'demain' : DAYN[d.getUTCDay()] + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1);
