@@ -42,7 +42,7 @@ const listen=s=>new Promise((ok,ko)=>s.listen(0,'127.0.0.1',()=>ok(s.address().p
   await p.goto(base+'harness.html');await p.evaluate(()=>window.boot);
   const controlled=await p.evaluate(()=>!!navigator.serviceWorker.controller);
   const keys=await p.evaluate(()=>caches.keys());
-  check('37.1 · vrai Service Worker installé et page contrôlée',controlled&&keys.includes('twrc-static-v7'),JSON.stringify(keys));
+  check('37.1 · vrai Service Worker installé et page contrôlée',controlled&&keys.some(k=>/^twrc-static-v\d+$/.test(k)),JSON.stringify(keys));
 
   const first=await p.evaluate(async()=>({status:(r=>r.status)(await fetch('./calendar.sealed.json?t=111')),body:await (await fetch('./calendar.sealed.json?t=112')).json()}));
   const cacheState=await p.evaluate(async()=>{

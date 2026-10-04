@@ -548,7 +548,8 @@ function renderNotice() {
     : !S.configured ? `<div class="note lvx"><b>À CONFIGURER</b><span>Renseigne tes lieux et tes voitures dans les paramètres. Ils restent sur cet appareil. <button class="btn sm" data-act="goset-cfg">Ouvrir les paramètres</button></span></div>` : '');
   if (m && CX) { el.innerHTML = setup; return; }
   const err = ERR[UI.loc];
-  el.innerHTML = `<div class="notice"><h3>${busy ? 'Chargement de la météo…' : 'Météo indisponible'}</h3>
+  // le déverrouillage reste possible quand la météo manque (premier lancement hors ligne, fournisseur en panne)
+  el.innerHTML = setup + `<div class="notice"><h3>${busy ? 'Chargement de la météo…' : 'Météo indisponible'}</h3>
     <p class="muted">${busy ? 'Interrogation d’Open-Meteo.' : `Open-Meteo n’a pas répondu${err ? ' (' + esc(err) + ')' : ''}. Aucune valeur n’est inventée : l’analyse reste vide tant que les données réelles manquent. Cela arrive hors ligne ou quand le réseau bloque l’accès aux services externes.`}</p>
     ${window.TWRC_LIVE_URL ? `<p><a href="${esc(window.TWRC_LIVE_URL)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Ouvrir la version en temps réel ↗</a></p>` : ''}
     <div class="chips"><button class="btn pri" data-act="refresh">Réessayer</button><button class="btn" data-act="demo" data-scn="froid">Voir la démo (données simulées)</button></div></div>`;
