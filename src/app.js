@@ -196,7 +196,7 @@ const offlineNow = () => typeof navigator !== 'undefined' && navigator.onLine ==
 const LIVE_MAX_MS = 15 * 60e3;
 function expireLive(now = Date.now()) {
   let n = 0;
-  Object.values(RAW).forEach(r => { if (r && r.mode === 'live' && !(now - r.t <= LIVE_MAX_MS)) { r.mode = 'cache'; n++; } });
+  [...Object.values(RAW), ...Object.values(MIDP)].forEach(r => { if (r && r.mode === 'live' && !(now - r.t <= LIVE_MAX_MS)) { r.mode = 'cache'; n++; } });
   return n > 0;
 }
 function markOfflineCache() {
@@ -221,7 +221,7 @@ function loadCache() {
     if (!locHasCoords(l)) return;
     try {
       const c = JSON.parse(lsGet('twrc.cache.' + l.id) || 'null');
-      if (c && c.p && (l.gps ? distKm(c, l) <= 3 : Math.abs(c.lat - l.lat) < 1e-6 && Math.abs(c.lon - l.lon) < 1e-6) && Date.now() - c.t < 36 * 3600e3) {
+      if (c && c.p && !validForecast(c.p) && Number.isFinite(c.t) && (l.gps ? distKm(c, l) <= 3 : Math.abs(c.lat - l.lat) < 1e-6 && Math.abs(c.lon - l.lon) < 1e-6) && Date.now() - c.t < 36 * 3600e3) {
         RAW[l.id] = { p: c.p, mode: 'cache', t: c.t, lat: c.lat, lon: c.lon };
         if (l.gps) gpsWeatherOrigin = { lat: c.lat, lon: c.lon };
       }
@@ -233,7 +233,9 @@ async function loadLoc(l) {
   const origin = { lat: l.lat, lon: l.lon }, gen = l.gps ? ++gpsWeatherGen : null;
   if (l.gps) gpsWeatherOrigin = origin;
   const [b, ar, nc] = await Promise.allSettled([fetchJSON(urlFor(l)), fetchJSON(urlArome(l)), fetchJSON(urlNow(l))]);
-  if (b.status !== 'fulfilled') { if (l.gps && gen === gpsWeatherGen) gpsWeatherOrigin = null; throw b.reason; }
+  // Validation AVANT toute écriture : une réponse 200 vide, tronquée ou d'un portail ne remplace jamais la dernière météo valide.
+  const invalid = b.status === 'fulfilled' ? validForecast(b.value) : null;
+  if (b.status !== 'fulfilled' || invalid) { if (l.gps && gen === gpsWeatherGen) gpsWeatherOrigin = null; throw b.status !== 'fulfilled' ? b.reason : new Error('réponse météo invalide : ' + invalid); }
   const p = mergeArome(b.value, ar.status === 'fulfilled' ? ar.value : null);
   // Un ancien lieu GPS ne remplace jamais la météo d'une position plus récente, ni un GPS oublié.
   if (l.gps && (gen !== gpsWeatherGen || !GPS || distKm(origin, GPS) > 3)) return p;
@@ -1991,17 +1993,21 @@ async function loadCalendar() {
   let S0 = null, fallback = null;
   try {
     S0 = await fetchJSON('calendar.sealed.json?t=' + Math.floor(Date.now() / 300e3), 8000);
-    if (S0 && S0.c) lsSet(CAL_CACHE_KEY, JSON.stringify({ t: Date.now(), sealed: S0 }));   // chiffré uniquement
   } catch (e) {
     fallback = calendarSealedCache(); S0 = fallback && fallback.sealed;
   }
   try {
     if (!S0 || !S0.c) return;
     const cached = offlineNow() || !!fallback;
+    // Le cache chiffré n'est remplacé qu'après un déchiffrement réussi : un fichier corrompu ne détruit jamais le dernier agenda valide.
+    const keep = () => { if (!fallback) lsSet(CAL_CACHE_KEY, JSON.stringify({ t: Date.now(), sealed: S0 })); };   // chiffré uniquement
     if (CAL && CAL.c === S0.c) {
-      CAL.offline = cached; CAL.cacheAt = fallback ? fallback.t : Date.now(); CALDONE = true; renderCal(); renderBrf(); renderTenue(); return;
+      keep(); CAL.offline = cached; CAL.cacheAt = fallback ? fallback.t : Date.now(); CALDONE = true; renderCal(); renderBrf(); renderTenue(); return;
     }
     const d = await openSealed(S0, String(pass).trim().toLowerCase());
+    // une copie plus ancienne (cache CDN, réponse tardive) n'écrase jamais un agenda plus récent
+    if (CAL && CAL.updated && d.updated && Date.parse(d.updated) < Date.parse(CAL.updated)) return;
+    keep();
     CAL = { ...d, c: S0.c, offline: cached, cacheAt: fallback ? fallback.t : Date.now() };
     CALDONE = true; renderCal(); renderBrf(); renderTenue();
   } catch (e) { /* code différent ou cache illisible */ }
@@ -2012,7 +2018,7 @@ async function calModel(ev) {
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2);
   if (CALM[id] && Date.now() - CALM[id].t < 30 * 60e3) return CALM[id].m;
   if (CALBUSY.has(id)) return null; CALBUSY.add(id);
-  try { const p = await fetchJSON(`${API}?latitude=${ev.lat}&longitude=${ev.lon}&hourly=${Q_HR}&daily=${Q_DY}&timezone=auto&past_days=1&forecast_days=10`, 12000); CALM[id] = { t: Date.now(), m: makeModel(p, 'live', { id, lat: ev.lat, lon: ev.lon, name: ev.label || ev.loc }) }; }
+  try { const p = await fetchJSON(`${API}?latitude=${ev.lat}&longitude=${ev.lon}&hourly=${Q_HR}&daily=${Q_DY}&timezone=auto&past_days=1&forecast_days=10`, 12000); const bad = validForecast(p); if (bad) throw new Error(bad); CALM[id] = { t: Date.now(), m: makeModel(p, 'live', { id, lat: ev.lat, lon: ev.lon, name: ev.label || ev.loc }) }; }
   catch (e) { CALM[id] = { t: Date.now() - 25 * 60e3, m: null }; }
   CALBUSY.delete(id); renderCal(); renderTenue(); return CALM[id].m;
 }
@@ -2039,7 +2045,7 @@ async function fetchLeg(leg) {
   try {
     let js = await fetchJSON(`${API}?latitude=${pts.map(p => p.lat).join(',')}&longitude=${pts.map(p => p.lon).join(',')}&hourly=${Q_HR}&timezone=Europe%2FParis&past_days=1&forecast_days=10`, 15000);
     if (!Array.isArray(js)) js = [js];
-    LEGM[k] = { t: Date.now(), models: js.map((p, i) => { try { return makeModel(p, 'live', pts[i]); } catch (e) { return null; } }) };
+    LEGM[k] = { t: Date.now(), models: js.map((p, i) => { try { return validForecast(p) ? null : makeModel(p, 'live', pts[i]); } catch (e) { return null; } }) };
   } catch (e) { LEGM[k] = { t: Date.now() - 25 * 60e3, models: null }; }
   LEGBUSY.delete(k); clearTimeout(fetchLeg.t); fetchLeg.t = setTimeout(() => { renderCal(); renderBrf(); renderTenue(); }, 150);
 }
@@ -2395,6 +2401,7 @@ async function ensureMids(pts) {
   await Promise.allSettled(todo.map(async p => {
     try {
       const pl = DEMO.on ? makeDemoPayload(DEMO.scn, p, 'Europe/Paris', 0.3) : await fetchJSON(urlFor(p));
+      const bad = validForecast(pl); if (bad) throw new Error(bad);
       MIDP[p.id] = { p: pl, mode: DEMO.on ? 'demo' : 'live', pt: p, t: Date.now() }; MIDM[p.id] = makeModel(pl, MIDP[p.id].mode, p); MIDM[p.id].retrievedAt = MIDP[p.id].t;
     } catch (e) { MIDP[p.id] = null; MIDM[p.id] = null; }
     finally { MIDPENDING.delete(p.id); }

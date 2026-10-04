@@ -63,6 +63,8 @@ check('configuration chiffrée lue', a.obs && a.obs.relay && a.obs.relay.cfg ===
 check('agenda synchronisé', a.obs && a.obs.relay.cal === 'ok' && a.obs.relay.calLegs > 0, a.obs && `${a.obs.relay.calLegs} trajets`);
 check('tous les trajets routés', a.obs && a.obs.relay.calRouted === a.obs.relay.calLegs);
 check('alerte du matin envoyée (jour de trajet, brouillard)', morningPushes(a.out) === 1 && a.obs.morning.sent === 1);
+const inv = run('2026-10-05T05:50:00+02:00', 'invalide');
+check('prévision invalide : erreur visible dans obs.json, jamais « sans alerte » silencieux', inv.code === 0 && !!inv.obs && /prévision invalide/.test(inv.obs.relay.err || '') && morningPushes(inv.out) === 0 && !/Conditions sans alerte/.test(inv.out), inv.obs && inv.obs.relay.err);
 const calS = readJ(path.join(H, 'calendar.sealed.json')), cal = tryUnseal(calS, APP_KEY_TEST);
 const legs = cal ? cal.events.flatMap(e => e.legs || []) : [];
 check('agenda chiffré lisible avec APP_KEY, tracés présents', legs.length > 0 && legs.every(l => Array.isArray(l.g) && l.g.length > 1), `${legs.length} trajets`);

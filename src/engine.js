@@ -548,16 +548,28 @@ function montagneInfo(loc, dateStr, elev) {
 }
 
 /* ===================== AJOUTS 2 : AROME, ensemble, pluie 15 min, calibration ===================== */
+// Réponse de prévision exploitable ? null si oui, sinon la raison. Une réponse refusée ne remplace jamais la dernière météo valide.
+const TS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+function validForecast(p) {
+  const H = p && typeof p === 'object' ? p.hourly : null;
+  if (!H || typeof H !== 'object') return 'prévision horaire absente';
+  const t = H.time, T = H.temperature_2m;
+  if (!Array.isArray(t) || t.length < 24) return 'moins de 24 heures de prévision';
+  for (let i = 0; i < t.length; i++) if (typeof t[i] !== 'string' || !TS_RE.test(t[i]) || (i && t[i] <= t[i - 1])) return 'horodatages invalides';
+  if (!Array.isArray(T) || T.length !== t.length) return 'températures absentes ou incomplètes';
+  if (T.filter(v => typeof v === 'number' && isFinite(v)).length < t.length / 2) return 'températures majoritairement manquantes';
+  return null;
+}
 function mergeArome(base, ar) {
   base.__arome = { hours: 0, until: null };
-  if (!ar || !ar.hourly || !ar.hourly.time || !base.hourly) return base;
+  if (!ar || !ar.hourly || !Array.isArray(ar.hourly.time) || !base.hourly) return base;
   const H = base.hourly, A = ar.hourly, idx = new Map(H.time.map((t, i) => [t, i]));
   const ct = (base.current && base.current.time) || (ar.current && ar.current.time);
   const limit = ct ? addMin(ct.slice(0, 13) + ':00', 48 * 60) : null;
   A.time.forEach((t, j) => {
     const i = idx.get(t); if (i == null || (limit && t > limit)) return;
     let any = false;
-    Object.keys(A).forEach(k => { if (k === 'time' || !H[k]) return; const v = A[k][j]; if (typeof v === 'number' && isFinite(v)) { H[k][i] = v; any = true; } });
+    Object.keys(A).forEach(k => { if (k === 'time' || !Array.isArray(H[k]) || !Array.isArray(A[k])) return; const v = A[k][j]; if (typeof v === 'number' && isFinite(v)) { H[k][i] = v; any = true; } });
     if (any) { base.__arome.hours++; base.__arome.until = t; }
   });
   if (ar.current && base.current) Object.keys(ar.current).forEach(k => { const v = ar.current[k]; if (k !== 'time' && k !== 'interval' && typeof v === 'number' && isFinite(v)) base.current[k] = v; });

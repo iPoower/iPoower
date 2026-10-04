@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm'), assert = r
 const sourcePath = path.join(__dirname, '../src/engine.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = { Math, Date, Intl, Map, Set, JSON }; vm.createContext(ctx);
-  vm.runInContext(source + '\nthis.E = { buildHours, windowAssess, hourVerdict, iceRisk, LV, makeModel, nowIn };', ctx);
+  vm.runInContext(source + '\nthis.E = { buildHours, windowAssess, hourVerdict, iceRisk, LV, makeModel, nowIn, validForecast, mergeArome };', ctx);
   const E = ctx.E;
   const GO = 0, CAUTION = 1, RISK = 2, NOGO = 3;
   // 24 h d'historique (inertie de la chaussée) puis 12 h évaluées ; `at(h)` décrit l'heure h (négative = passé).
@@ -128,6 +128,21 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   test('cache : « maintenant » est toujours l’horloge', () => {
     const now = E.nowIn('Europe/Paris'), m = E.makeModel(payloadAt(shift(now, -15)), 'cache', {});
     assert(Math.abs(Date.parse(m.nowStr + 'Z') - Date.parse(now + 'Z')) <= 60e3, m.nowStr + ' vs ' + now);
+  });
+  // — validation des réponses : une réponse inexploitable ne remplace jamais la dernière météo valide
+  const good = () => { const time = [], t2 = []; for (let h = 0; h < 48; h++) { time.push(new Date(Date.UTC(2026, 9, 3, h)).toISOString().slice(0, 16)); t2.push(10 + h % 5); } return { hourly: { time, temperature_2m: t2 } }; };
+  test('prévision complète : acceptée', () => assert.equal(E.validForecast(good()), null));
+  test('réponses vides, tronquées ou d’un portail : refusées', () => {
+    const cut = good(); cut.hourly.time = cut.hourly.time.slice(0, 10); cut.hourly.temperature_2m = cut.hourly.temperature_2m.slice(0, 10);
+    const holes = good(); holes.hourly.temperature_2m = holes.hourly.temperature_2m.map((v, i) => i % 3 ? null : v);
+    const order = good(); order.hourly.time[5] = order.hourly.time[4];
+    const short = good(); short.hourly.temperature_2m.pop();
+    for (const [what, p] of [['null', null], ['{}', {}], ['texte', '<html>'], ['heures vides', { hourly: { time: [] } }], ['10 h', cut], ['températures trouées', holes], ['heures non croissantes', order], ['colonne plus courte', short]])
+      assert.notEqual(E.validForecast(p), null, what);
+  });
+  test('AROME malformé : ignoré sans casser la prévision de base', () => {
+    const b = good(); E.mergeArome(b, { hourly: { time: 'x' } }); E.mergeArome(b, { hourly: { time: b.hourly.time, temperature_2m: null } });
+    assert.equal(E.validForecast(b), null); assert.equal(b.hourly.temperature_2m[0], 10);
   });
   if (!options.quiet) console.log(count + '/' + count + ' scénarios OK');
   return count;
