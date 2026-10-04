@@ -98,6 +98,7 @@ function loadSettings() {
 let S = loadSettings();
 const saveSettings = () => { S.configured = 1; lsSet('twrc.settings.v1', JSON.stringify(S)); };
 let TRIPCANCEL = {}; try { TRIPCANCEL = TripCancel.load(localStorage, Date.now()); } catch (e) { /* stockage indisponible */ }
+let TRIPCANCELTIMER = null;
 // position réelle (GPS du téléphone) : reste sur l'appareil
 let GPS = null; try { GPS = JSON.parse(lsGet('twrc.gps') || 'null'); } catch (e) { GPS = null; }
 const allLocs = () => [...(GPS ? [GPS] : []), ...S.locs, ...S.customs];
@@ -1076,6 +1077,15 @@ function calendarTripKey(e, l) {
   const events = CAL && CAL.events || [];
   return TripCancel.identifiable(events, e) ? key : key + '|duplicate|' + events.indexOf(e);
 }
+// Compatibilité d'une version : les anciennes arrivées agenda utilisaient une clé sans ID d'occurrence.
+function calendarTripLegacyKey(e, l) { return e && l ? 'leg|' + l.dep + '|' + l.k + '|' + e.s : null; }
+function liveDoneHas(t, all) {
+  if (!t || LIVE.done[t.key]) return !!t;
+  const l = t.planL || t.l, legacy = t.src === 'cal' && t.e ? calendarTripLegacyKey(t.e, l) : null;
+  if (!legacy || !LIVE.done[legacy]) return false;
+  // L'ancienne clé était ambiguë pour deux occurrences strictement simultanées : ne jamais en masquer plusieurs pendant la migration.
+  return (all || []).filter(x => x && x.src === 'cal' && x.e && calendarTripLegacyKey(x.e, x.planL || x.l) === legacy).length === 1;
+}
 // trajets terminés (arrivée) mémorisés sur l'appareil : uniquement clé du trajet (heures, sens), mode, heure et expiration — AUCUNE coordonnée
 const TRIPDONE = 'twrc.tripdone';
 function liveDonePersist(key, how) {
@@ -1336,7 +1346,7 @@ function liveTrip(b, now) {
 // appliqué à la timeline : retire les trajets terminés, garde le trajet commencé après son heure prévue, rend vivant un seul trajet
 function liveApply(T, now) {
   if (!liveAllowed()) { if (LIVE.key) liveReset(); return T; }
-  T = T.filter(t => !LIVE.done[t.key]);
+  const beforeDone = T; T = T.filter(t => !liveDoneHas(t, beforeDone));
   let cur = LIVE.key ? T.find(t => t.key === LIVE.key) : null;
   if (cur) LIVE.base = cur;
   else if (LIVE.key && LIVE.base && (LIVE.phase === 'active' || LIVE.last)) { cur = LIVE.base; T.push(cur); }   // trajet suivi en direct : reste affiché
@@ -1451,6 +1461,20 @@ const liveUndoHtml = () => LIVE.lastDone && Date.now() - LIVE.lastDone.at < 10 *
 const workCancelled = date => TripCancel.has(TRIPCANCEL, TripCancel.workId(date), Date.now());
 const calendarCancelled = e => TripCancel.identifiable(CAL && CAL.events || [e], e) && TripCancel.has(TRIPCANCEL, TripCancel.eventId(e), Date.now());
 let TRIPCANCELNOTICE = '';
+function tripCancelSchedulePurge() {
+  if (TRIPCANCELTIMER != null) { clearTimeout(TRIPCANCELTIMER); TRIPCANCELTIMER = null; }
+  const exps = Object.values(TRIPCANCEL || {}).map(e => e && e.exp).filter(Number.isFinite);
+  if (!exps.length) return;
+  const delay = Math.max(1, Math.min(0x7fffffff, Math.min(...exps) - Date.now() + 25));
+  TRIPCANCELTIMER = setTimeout(() => {
+    TRIPCANCELTIMER = null;
+    const before = Object.keys(TRIPCANCEL || {}).length;
+    TRIPCANCEL = TripCancel.save(localStorage, TRIPCANCEL, Date.now());
+    const changed = Object.keys(TRIPCANCEL || {}).length !== before;
+    tripCancelSchedulePurge();
+    if (changed) tripCancelChanged();
+  }, delay);
+}
 const cancelAffectedDay = e => workCancelled(e.s.slice(0, 10)) || !!(CAL && CAL.events && CAL.events.some(other => other.s.slice(0, 10) === e.s.slice(0, 10) && calendarCancelled(other)));
 function tripCancelButton(t) {
   const allowed = t && (t.src === 'cal' && t.e || t.src === 'work' && t.dep.slice(0, 10) === liveNow().slice(0, 10));
@@ -1479,6 +1503,7 @@ function tripCancelChanged() {
   CANCELROUTEGEN++; CANCELROUTES.clear();
   if (resetLive) liveReset();
   if (resetPreview) tripPreviewReset();
+  tripCancelSchedulePurge();
   renderAll();
 }
 function tripCancelStart(key) {
@@ -1488,7 +1513,7 @@ function tripCancelStart(key) {
     if (!TripCancel.identifiable(CAL && CAL.events || [], t.e)) { TRIPCANCELNOTICE = 'Actualise l’agenda pour annuler séparément ces rendez-vous simultanés.'; renderBrf(); return; }
     id = TripCancel.eventId(t.e); exp = TripCancel.eventExpiration(t.e, now);
   }
-  else if (t.src === 'work' && t.dep.slice(0, 10) === liveNow().slice(0, 10)) { id = TripCancel.workId(t.dep.slice(0, 10)); exp = TripCancel.workExpiration(t.dep.slice(0, 10)); }
+  else if (t.src === 'work' && t.dep.slice(0, 10) === liveNow().slice(0, 10)) { id = TripCancel.workId(t.dep.slice(0, 10)); exp = TripCancel.workExpiration(t.dep.slice(0, 10), now); }
   else return;
   if (!window.confirm(t.src === 'work' ? 'Annuler les trajets aller et retour domicile-travail pour aujourd’hui sur cet appareil ?' : 'Annuler les trajets aller et retour de ce rendez-vous sur cet appareil ? Le rendez-vous reste dans Google Agenda.')) return;
   TRIPCANCELNOTICE = '';
@@ -2578,8 +2603,8 @@ function resumeGps() {
   gpsResumeAt = Date.now(); stopGps(); startWatch(LIVE.phase === 'active', true); locate(false, true);
 }
 // iOS peut abandonner le watch et une demande ponctuelle pendant la veille : recréer les deux à la reprise.
-document.addEventListener('visibilitychange', () => { if (document.hidden) { stopGps(); gpsResumeAt = -Infinity; } else resumeGps(); });
-['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, resumeGps));
+document.addEventListener('visibilitychange', () => { if (document.hidden) { stopGps(); gpsResumeAt = -Infinity; } else { tripCancelSchedulePurge(); resumeGps(); } });
+['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { tripCancelSchedulePurge(); resumeGps(); }));
 // actualisation automatique : toutes les 5 min tant que l'app est à l'écran, et dès le retour dans l'app
 // (vérification toutes les 30 s : résiste à la mise en veille des minuteurs par iOS)
 const AUTO_MS = 5 * 60e3;
@@ -2599,7 +2624,7 @@ function registerSW() {
 document.addEventListener('toggle', e => { if (e.target && e.target.id === 'settings' && e.target.open) renderSettings(true); }, true);
 (function init() {
   if (LOCKED() && lsGet('twrc.key')) unseal(lsGet('twrc.key')).then(ok => { if (ok) location.reload(); });
-  registerSW(); refreshTireDB();
+  registerSW(); refreshTireDB(); tripCancelSchedulePurge();
   if (S.gpsAuto && GPS) UI.loc = 'gps';
   if (S.gpsAuto && location.protocol === 'https:') setTimeout(() => locate(false), 400);
   loadCache(); rebuild(); renderSettings(); renderAll();
