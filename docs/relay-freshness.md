@@ -1,0 +1,11 @@
+# Fraîcheur météo et relais
+
+Lorsque l’application reste visible et connectée, les prévisions sont relues après quatre minutes, avec un contrôle toutes les quinze secondes. La reprise de l’application ou du réseau relance la vérification. Les prévisions Open-Meteo démarrent en parallèle de la lecture du relais : une réponse lente du relais ne retarde plus leur affichage.
+
+Le relais principal et son watchdog ont des déclenchements de cinq minutes décalés de deux minutes. Ils partagent le même verrou et recalculent dès que la dernière synchronisation a deux minutes. Le cache des géocodages et des géométries de routes évite de refaire les appels inchangés ; il reste dans l’agenda chiffré avec `APP_KEY`. Les horaires, les modes et la chaîne de trajets sont reconstruits à chaque synchronisation. Une route est indexée par ses extrémités exactes après les arrondis existants et expire après 24 heures ; une estimation après échec du routeur n’est jamais conservée dans ce cache.
+
+Les trois horloges restent distinctes : fin de synchronisation du relais (`completedAt`), dernière récupération réussie des observations (`observationsFetchedAt`), et heure de mesure de chaque station (`last.t`). Une panne METAR conserve les deux dernières horloges ; une réponse HTTP récente ne rajeunit aucune mesure. L’agenda conserve son propre horodatage. L’application signale un relais en retard à partir de cinq minutes et continue à lire directement les prévisions locales.
+
+**Cinq minutes est un objectif de récupération, pas une garantie cloud.** GitHub Actions peut retarder ou supprimer un déclenchement planifié. Les deux cron restent dépendants de ce même ordonnanceur. Une garantie indépendante lorsque l’application est fermée demanderait un ordonnanceur externe surveillé et autorisé. Aucun service, compte ou jeton supplémentaire n’est ajouté par cette correction. Les modèles et les stations conservent leur cadence réelle de publication ; la nouvelle fréquence de lecture ne crée pas de nouvelles mesures.
+
+Hors réseau, les données en cache restent datées et signalées comme figées. Une nouvelle adresse ou position ne reçoit jamais la météo d’un ancien lieu. Safari peut suspendre les minuteurs en arrière-plan : la reprise déclenche le rattrapage.

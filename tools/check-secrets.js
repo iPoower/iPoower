@@ -27,7 +27,7 @@ if (appKey) add(appKey, 'code de déverrouillage');
 if (rcKey) add(rcKey, 'clé du relais');
 if (process.env.GCAL_ICS) add(process.env.GCAL_ICS.trim(), 'adresse iCal');
 // nom complet + commune principale (la grande ville citée en second, ex. « X / Grande-Ville », n'est pas personnelle)
-const place = (l, why) => { if (!l) return; add(l.name, why); add(String(l.name || '').split(/\s*\/\s*/)[0], why); if (l.label && l.label !== 'Domicile') add(l.label, why);
+const place = (l, why) => { if (!l) return; add(l.name, why); add(String(l.name || '').split(/\s*\/\s*/)[0], why); if (l.label && l.label !== 'Domicile') add(l.label, why); if (l.address) add(l.address, why + ' (adresse)');
   ['lat', 'lon'].forEach(k => { if (typeof l[k] === 'number') add(l[k].toFixed(3), why + ' (coordonnée)'); }); };
 if (preset) { (preset.locs || []).forEach(l => place(l, 'lieu personnel')); (preset.customs || []).forEach(l => place(l, 'lieu personnel'));
   (preset.cars || []).forEach(c => { if (c.photo) add(c.photo.slice(30, 90), 'photo de la voiture'); }); if (preset.ntfy) add(preset.ntfy, 'canal de notification'); }

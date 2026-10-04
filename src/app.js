@@ -72,6 +72,7 @@ function hashCfg() {
 function loadSettings() {
   let saved = null;
   try { saved = JSON.parse(lsGet('twrc.settings.v1') || 'null'); } catch (e) { saved = null; }
+  const priorLocRevisions = saved && saved.locRevisions || {};
   // nouveau préréglage publié : il remplace une fois les anciens réglages de l'appareil
   if (window.TWRC_PRESET && window.TWRC_PRESET_V && lsGet('twrc.presetv') !== window.TWRC_PRESET_V) {
     // on garde ce qui ne se trouve que sur le téléphone : contrôles de pression, DOT, profondeurs, jeux de pneus
@@ -86,6 +87,25 @@ function loadSettings() {
       const oldCalib = keep.calib;
       saved = { ...fresh, configured: 1, calib: oldCalib || [], journal: keep.journal || {} }; reapplyEdits(saved, old); lsSet('twrc.settings.v1', JSON.stringify(saved));
     }
+  }
+  // Une correction privée d'un lieu s'applique une fois, même si une ancienne
+  // édition manuelle aurait rétabli son adresse. Les autres réglages restent intacts.
+  const revisions = window.TWRC_PRESET && window.TWRC_PRESET.locRevisions;
+  if (revisions && typeof revisions === 'object') {
+    let changed = false;
+    const next = saved || normalize(null, DEFAULTS), fields = ['name', 'sub', 'address', 'lat', 'lon'];
+    for (const [id, revision] of Object.entries(revisions)) {
+      if (typeof revision !== 'string' || !/^[a-f0-9]{32}$/.test(revision) || priorLocRevisions[id] === revision) continue;
+      const source = [...DEFAULTS.locs, ...DEFAULTS.customs].find(l => l.id === id);
+      if (!source || !locHasCoords(source)) continue;
+      for (const list of ['locs', 'customs']) {
+        const index = (next[list] || []).findIndex(l => l.id === id); if (index < 0) continue;
+        const target = next[list][index];
+        fields.forEach(field => { if (Object.prototype.hasOwnProperty.call(source, field)) target[field] = clone(source[field]); else delete target[field]; if (next.edits) delete next.edits[list + '.' + index + '.' + field]; });
+        next.locRevisions = { ...(next.locRevisions || {}), [id]: revision }; changed = true;
+      }
+    }
+    if (changed) { saved = next; lsSet('twrc.settings.v1', JSON.stringify(saved)); }
   }
   const hc = hashCfg();
   // on importe le lien s'il est nouveau, ou si cet appareil n'a encore aucun réglage
@@ -151,6 +171,9 @@ const MIDPENDING = new Set();
 let VIGI = { state: 'none', items: [], t: null };
 const ENSRAW = {}, NOWRAW = {};
 let OBS = null;   // observations réelles publiées par le relais (obs.json)
+// Réception du relais, récupération METAR et mesure station gardent chacune leur heure.
+// Une réponse HTTP récente ne transforme jamais des observations anciennes en mesures fraîches.
+let RELAYSYNC = { state: 'none', updated: null, observationsFetchedAt: null }, relayObsGen = 0;
 const ENS_MODELS = ['ecmwf_ifs025', 'icon_seamless_eps', 'icon_seamless'];
 const ENS_LABEL = { ecmwf_ifs025: 'ECMWF ENS', icon_seamless_eps: 'DWD ICON-EPS', icon_seamless: 'DWD ICON-EPS', demo: 'scénarios simulés' };
 const urlEns = (l, mdl) => `https://ensemble-api.open-meteo.com/v1/ensemble?latitude=${l.lat}&longitude=${l.lon}&hourly=temperature_2m,relative_humidity_2m,precipitation,cloud_cover,wind_speed_10m&models=${mdl}&timezone=auto&past_days=1&forecast_days=2`;
@@ -162,15 +185,17 @@ async function fetchEns(l) {
   }
   return null;
 }
-const gpsSourceCurrent = (l, gen) => !l.gps || (GPS && gen === gpsWeatherGen && distKm(l, GPS) <= 3);
+const gpsSourceCurrent = (l, gen) => l.gps ? !!(GPS && gen === gpsWeatherGen && distKm(l, GPS) <= 3)
+  : allLocs().some(current => !current.gps && current.id === l.id && current.lat === l.lat && current.lon === l.lon);
+const sameWeatherPlace = (l, origin) => !!origin && (l.gps ? distKm(l, origin) <= 3 : l.lat === origin.lat && l.lon === origin.lon);
 let ensBusy = false, ensAgain = false, ensForce = false;
 async function refreshEns(force) {
   if (DEMO.on) return;
   if (ensBusy) { ensAgain = true; ensForce = ensForce || !!force; return; } ensBusy = true;
-  const todo = allLocs().filter(l => Number.isFinite(l.lat) && Number.isFinite(l.lon) && (force || !ENSRAW[l.id] || Date.now() - ENSRAW[l.id].t > 60 * 60e3));
+  const todo = allLocs().filter(l => Number.isFinite(l.lat) && Number.isFinite(l.lon) && (force || !ENSRAW[l.id] || !sameWeatherPlace(l, ENSRAW[l.id].origin) || Date.now() - ENSRAW[l.id].t > 60 * 60e3)).map(l => ({ ...l }));
   const gen = gpsWeatherGen;
   const res = await Promise.allSettled(todo.map(l => fetchEns(l)));
-  res.forEach((r, k) => { if (r.status === 'fulfilled' && r.value && gpsSourceCurrent(todo[k], gen)) ENSRAW[todo[k].id] = r.value; });
+  res.forEach((r, k) => { if (r.status === 'fulfilled' && r.value && gpsSourceCurrent(todo[k], gen)) ENSRAW[todo[k].id] = { ...r.value, origin: todo[k] }; });
   ensBusy = false;
   if (todo.length) { rebuild(); softRender(); }
   const again = ensAgain, queuedForce = ensForce; ensAgain = ensForce = false;
@@ -189,10 +214,11 @@ async function refreshTireDB() {
 }
 function applyCalib() { const c = calibBias(S.calib); setRoadBias(c.bias); return c; }
 const locById = id => allLocs().find(l => l.id === id);
-let lastOk = null, lastTry = null, busy = false, CX = null;
+let lastOk = null, lastTry = null, busy = false, refreshAgain = false, CX = null;
 const offlineNow = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 function markOfflineCache() {
   Object.values(RAW).forEach(r => { if (r && r.mode === 'live') r.mode = 'cache'; });
+  relayObsGen++; RELAYSYNC = { ...RELAYSYNC, state: 'offline' };
   OBS = null;   // une observation de station ne doit jamais rester présentée comme « actuelle » hors connexion
 }
 applyCalib();
@@ -222,9 +248,11 @@ function loadCache() {
 }
 async function loadLoc(l) {
   if (!locHasCoords(l)) throw new Error('Coordonnées du lieu à renseigner.');
-  const origin = { lat: l.lat, lon: l.lon }, gen = l.gps ? ++gpsWeatherGen : null;
+  const origin = { id: l.id, gps: !!l.gps, lat: l.lat, lon: l.lon }, gen = l.gps ? ++gpsWeatherGen : null;
   if (l.gps) gpsWeatherOrigin = origin;
   const [b, ar, nc] = await Promise.allSettled([fetchJSON(urlFor(l)), fetchJSON(urlArome(l)), fetchJSON(urlNow(l))]);
+  // Un lieu fixe peut lui aussi être corrigé pendant les appels météo.
+  if (!gpsSourceCurrent(origin, gen)) return null;
   if (b.status !== 'fulfilled') { if (l.gps && gen === gpsWeatherGen) gpsWeatherOrigin = null; throw b.reason; }
   const p = mergeArome(b.value, ar.status === 'fulfilled' ? ar.value : null);
   // Un ancien lieu GPS ne remplace jamais la météo d'une position plus récente, ni un GPS oublié.
@@ -300,34 +328,48 @@ async function onPos(pos, focus) {
   if (tasks.length) { await Promise.all(tasks); if (!GPS) return; rebuild(); renderAll(); if (weatherMoved) refreshEns(); }
 }
 function alertLoc(msg) { const el = $('#locMsg'); if (el) { el.textContent = msg; el.hidden = !msg; } }
+async function refreshObservations(gen) {
+  if (location.protocol !== 'https:') return;
+  try {
+    const o = await fetchJSON('obs.json?t=' + Math.floor(Date.now() / 60e3), 8000);
+    if (gen !== relayObsGen || offlineNow() || DEMO.on) return;
+    const measured = relayObservationTime(o);
+    RELAYSYNC = { state: 'ready', updated: o && (o.completedAt || o.updated) || null,
+      observationsFetchedAt: measured, metarError: !!(o && o.metarError) };
+    // Les stations enrichissent le modèle direct ; un ancien cache METAR ne le recale pas.
+    OBS = relayAgeMin(measured) <= RELAY_OBS_MAX_MIN ? o : null;
+  } catch (e) {
+    if (gen !== relayObsGen || offlineNow() || DEMO.on) return;
+    RELAYSYNC = { ...RELAYSYNC, state: 'unavailable' }; OBS = null;
+  }
+  // Si les prévisions arrivent d'abord, elles ont déjà été rendues. La réponse du
+  // relais ne fait qu'ajouter son état et, si elles sont fraîches, ses observations.
+  if (!busy) { rebuild(); softRender(); } else renderSrc();
+}
 async function refreshAll() {
-  if (busy) return;
+  if (busy) { refreshAgain = true; return; }
+  refreshAgain = false;
   if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
   busy = true; DEMO.on = false; MIDP = {}; lastTry = Date.now(); renderStatus();
-  const locs = allLocs(), gpsStart = gpsWeatherGen, generations = new Map();
-  try {
-    if (location.protocol === 'https:') {
-      const o = await fetchJSON('obs.json?t=' + Math.floor(Date.now() / 300e3), 8000);
-      // Les observations stations sont un enrichissement du modèle live : si le relais est trop vieux,
-      // on les ignore plutôt que d'injecter une pseudo-observation périmée dans une météo fraîche.
-      OBS = relayAgeMin(o && o.updated) <= RELAY_OBS_MAX_MIN ? o : null;
-    }
-  } catch (e) { OBS = null; }
+  const locs = allLocs().map(l => ({ ...l })), gpsStart = gpsWeatherGen, generations = new Map();
+  RELAYSYNC = { ...RELAYSYNC, state: 'loading' };
+  refreshObservations(++relayObsGen);   // indépendant des prévisions : un relais lent ne les bloque pas
   const res = await Promise.allSettled(locs.map(l => {
-    // Une position remplacée pendant la lecture des observations ne relance pas une ancienne météo.
-    if (l.gps && !gpsSourceCurrent(l, gpsStart)) return Promise.resolve(null);
+    // Une position remplacée depuis le début du rafraîchissement n'est jamais relancée.
+    if (!gpsSourceCurrent(l, gpsStart)) return Promise.resolve(null);
     const request = loadLoc(l); if (l.gps) generations.set(l.id, gpsWeatherGen); return request;
   }));
   let ok = 0;
   res.forEach((r, k) => {
     const l = locs[k];
-    if (l.gps && (!generations.has(l.id) || !gpsSourceCurrent(l, generations.get(l.id)))) return;
+    if (l.gps && !generations.has(l.id) || !gpsSourceCurrent(l, generations.get(l.id))) return;
     if (r.status === 'fulfilled' && r.value && r.value.hourly && r.value.hourly.time) ok++;
     else { ERR[l.id] = (r.reason && r.reason.message) || 'réponse invalide'; if (RAW[l.id]) RAW[l.id].mode = 'cache'; }
   });
   if (ok) lastOk = Date.now();
   busy = false; rebuild(); renderAll();
   fetchVigi(); refreshEns(); radarRefresh(); loadCalendar();
+  if (refreshAgain) { refreshAgain = false; if (!DEMO.on && !offlineNow()) return refreshAll(); }
 }
 function startDemo(scn) {
   DEMO = { on: true, scn }; busy = false; MIDP = {};
@@ -342,12 +384,12 @@ function rebuild() {
       const pl = makeDemoPayload(DEMO.scn, l, 'Europe/Paris', [0, -0.3, 0.6, -0.8, 0.4, 0][k % 6]), m = makeModel(pl, 'demo', l);
       m.ens = ensembleStats(makeDemoEnsemble(pl), m); m.ensModel = 'demo'; m.nc = nowcast(makeDemoNowcast(pl), m.nowStr); M[l.id] = m; return;
     }
-    const r = RAW[l.id]; if (!r) return;
+    const r = RAW[l.id]; if (!r || !sameWeatherPlace(l, r)) return;
     try {
       const m = makeModel(r.p, r.mode, l);
-      const en = ENSRAW[l.id]; if (en) { m.ens = ensembleStats(en.p, m); m.ensModel = en.model; }
+      const en = ENSRAW[l.id]; if (en && sameWeatherPlace(l, en.origin)) { m.ens = ensembleStats(en.p, m); m.ensModel = en.model; }
       if (NOWRAW[l.id] && r.mode === 'live') m.nc = nowcast(NOWRAW[l.id], m.nowStr);
-      if (OBS && r.mode === 'live') m.obs = applyObs(m, OBS.stations, 35);
+      if (OBS && relayAgeMin(relayObservationTime(OBS)) <= RELAY_OBS_MAX_MIN && r.mode === 'live') m.obs = applyObs(m, OBS.stations, 35);
       M[l.id] = m;
     } catch (e) { ERR[l.id] = 'données illisibles'; }
   });
@@ -401,9 +443,19 @@ async function geocode(q) {
 
 /* ---------- formats ---------- */
 const hmLocal = ms => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-const RELAY_WARN_MIN = 20, RELAY_OBS_MAX_MIN = 35;
-const relayAgeMin = ts => { const t = Date.parse(ts || ''); return Number.isFinite(t) ? Math.max(0, (Date.now() - t) / 60000) : Infinity; };
+const RELAY_WARN_MIN = 5, RELAY_OBS_MAX_MIN = 35;
+const relayAgeMin = ts => { const t = Date.parse(ts || ''), now = Date.now(); return Number.isFinite(t) && t <= now + 60e3 ? Math.max(0, (now - t) / 60000) : Infinity; };
+const relayObservationTime = o => o && (o.observationsFetchedAt || (!o.metarError && o.updated)) || null;
 const relayAgeTxt = m => !Number.isFinite(m) ? 'inconnue' : m < 60 ? Math.max(1, Math.round(m)) + ' min' : Math.floor(m / 60) + ' h ' + Math.round(m % 60) + ' min';
+function relaySyncText() {
+  const age = relayAgeMin(RELAYSYNC.updated), measuredAge = relayAgeMin(RELAYSYNC.observationsFetchedAt);
+  const late = age >= RELAY_WARN_MIN, unavailable = RELAYSYNC.state === 'unavailable';
+  const title = RELAYSYNC.state === 'offline' ? 'Relais hors connexion' : unavailable ? 'Relais indisponible' : RELAYSYNC.state === 'loading' && !RELAYSYNC.updated ? 'Relais en cours de lecture' : !Number.isFinite(age) ? 'Synchro relais inconnue' : late ? 'Relais en retard · ' + relayAgeTxt(age) : 'Relais · ' + relayAgeTxt(age);
+  const stamp = Number.isFinite(age) ? hmLocal(Date.parse(RELAYSYNC.updated)) + ' · il y a ' + relayAgeTxt(age) : 'heure inconnue';
+  const observations = Number.isFinite(measuredAge) ? 'Observations stations récupérées il y a ' + relayAgeTxt(measuredAge) + '.' : 'Heure de récupération des observations stations inconnue.';
+  const warning = late || unavailable || RELAYSYNC.metarError || measuredAge > RELAY_OBS_MAX_MIN;
+  return { title, warning, detail: `Synchro relais : ${stamp}. ${observations}${warning ? ' Données relais à confirmer ; la météo locale est actualisée directement.' : ''}` };
+}
 const CARD = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
 const card = d => d == null ? '' : CARD[Math.round(d / 45) % 8];
 const wx = c => WMO[c] || (c == null ? '—' : 'Code ' + c);
@@ -494,7 +546,7 @@ function renderStatus() {
   if (mode === 'demo') u = 'Simulation : aucune donnée réelle';
   else if (off && RAW[UI.loc]) u = 'Données en cache du ' + hmLocal(RAW[UI.loc].t) + ' · figées jusqu’au retour du réseau';
   else if (off) u = 'Aucune donnée météo en cache · reconnexion automatique';
-  else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(lastOk) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
+  else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(lastOk) + ' <span class="auto" title="Actualisation automatique toutes les 4 minutes quand l’app est visible">· auto 4 min</span>';
   else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
   else u = 'Aucune donnée météo';
   $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
@@ -522,9 +574,10 @@ function renderSrc() {
   const obs = m.cur.time ? m.cur.time.slice(11, 16) : '—';
   const srcHtml = DEMO.on
     ? `Source : <b>scénario simulé « ${esc(DEMO_SCN[DEMO.scn].name)} »</b>. Les valeurs ne viennent d’aucun capteur ni d’aucun service météo.`
-    : `${lastOk && m.mode === 'live' ? 'Dernière mise à jour : <b>' + hmLocal(lastOk) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : ' (modèle de base, AROME indisponible)'} · modèles météo, pas une station · dernière observation : <b>${obs}</b> heure locale (valeurs actuelles du modèle, renouvelées toutes les 15 min) · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
+    : `${lastOk && m.mode === 'live' ? 'Dernière mise à jour : <b>' + hmLocal(lastOk) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : ' (modèle de base, AROME indisponible)'} · modèles météo, pas une station · heure des valeurs du modèle : <b>${obs}</b> heure locale (renouvelées toutes les 15 min) · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
   const el = $('#srcline'), open = el.querySelector('details') && el.querySelector('details').open;
-  el.innerHTML = `<details${open ? ' open' : ''}><summary>ⓘ Sources et fraîcheur des données${lastOk && m.mode === 'live' ? ' · MAJ ' + hmLocal(lastOk) : ''}</summary><div>${srcHtml}</div></details>`;
+  const relay = !DEMO.on && location.protocol === 'https:' ? relaySyncText() : null;
+  el.innerHTML = `<details${open ? ' open' : ''}><summary>ⓘ Sources et fraîcheur des données${lastOk && m.mode === 'live' ? ' · MAJ ' + hmLocal(lastOk) : ''}${relay ? ' · <span class="relay-sync' + (relay.warning ? ' old' : '') + '" role="status">' + esc(relay.title) + '</span>' : ''}</summary><div>${srcHtml}${relay ? '<p class="relay-sync-detail">' + esc(relay.detail) + '</p>' : ''}</div></details>`;
 }
 function renderNotice() {
   const m = M[UI.loc], el = $('#notice');
@@ -675,7 +728,7 @@ function buildTenueDay(options = {}) {
   const end = start < date + 'T23:00' ? date + 'T23:00' : addMin(midnight, 1440);
   const retrievalNow = options.retrievalNow == null ? Date.now() : options.retrievalNow;
   const cancelState = options.cancelState || TRIPCANCEL, cancelNow = options.cancelNow == null ? Date.now() : options.cancelNow;
-  const events = (calendar && calendar.events || []).filter(e => e.s);
+  const events = (calendar && calendar.events || []).filter(e => e.s && (e.mode === 'pasdetrajet' || calendarHasDeclaredPlace(e) || locHasCoords(e) || (e.legs || []).some(l => locHasCoords(l.from) || locHasCoords(l.to))));
   const eventCancelled = e => calendarCancelled(e, events, cancelState, cancelNow);
   const commuteCancelled = day => workCancelled(day, cancelState, cancelNow);
   const agendaZone = options.calendarTimezone || 'Europe/Paris', agendaTime = ts => tenueZoneTime(ts.slice(0, 16), agendaZone, zone);
@@ -917,12 +970,12 @@ const urlAQ = l => `https://air-quality-api.open-meteo.com/v1/air-quality?latitu
 async function fetchAQ(l) {
   if (!l || !Number.isFinite(l.lat) || !Number.isFinite(l.lon)) return;
   const previous = AQREQ.get(l.id), gen = gpsWeatherGen;
-  if (AQBUSY.has(l.id) && (!l.gps || previous && gpsSourceCurrent(previous.origin, previous.gen))) return;
+  if (AQBUSY.has(l.id) && previous && gpsSourceCurrent(previous.origin, previous.gen)) return;
   const request = { origin: { ...l }, gen }; AQREQ.set(l.id, request); AQBUSY.add(l.id);
   try {
     const p = await fetchJSON(urlAQ(l), 12000); if (!p || !p.hourly) throw new Error('réponse invalide');
-    if (gpsSourceCurrent(request.origin, gen)) { AQRAW[l.id] = { p, t: Date.now() }; delete AQERR[l.id]; }
-  } catch (e) { if (gpsSourceCurrent(request.origin, gen)) AQERR[l.id] = { t: Date.now(), msg: e.message }; }
+    if (gpsSourceCurrent(request.origin, gen)) { AQRAW[l.id] = { p, t: Date.now(), origin: request.origin }; delete AQERR[l.id]; }
+  } catch (e) { if (gpsSourceCurrent(request.origin, gen)) AQERR[l.id] = { t: Date.now(), msg: e.message, origin: request.origin }; }
   finally {
     // Une ancienne requête ne libère pas le verrou de celle qui la remplace.
     if (AQREQ.get(l.id) === request) { AQREQ.delete(l.id); AQBUSY.delete(l.id); if (UI.loc === l.id) renderAir(); }
@@ -931,7 +984,8 @@ async function fetchAQ(l) {
 const polCls = l => l == null || l === 0 ? 'lvx' : 'lv' + Math.min(3, l - 1);
 function renderAir() {
   const el = $('#secAir'); if (!el) return; if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
-  const m = CX.m, l = curLoc(), id = l.id, r = AQRAW[id], er = AQERR[id];
+  const m = CX.m, l = curLoc(), id = l.id, r = AQRAW[id] && sameWeatherPlace(l, AQRAW[id].origin) ? AQRAW[id] : null,
+    er = AQERR[id] && sameWeatherPlace(l, AQERR[id].origin) ? AQERR[id] : null;
   if (!DEMO.on && (!r || Date.now() - r.t > 30 * 60e3) && !(er && Date.now() - er.t < 5 * 60e3)) fetchAQ(l);
   const a = DEMO.on ? airSummary(makeDemoAir(m.payload), m.nowStr) : r ? airSummary(r.p, m.nowStr) : null;
   const day = m.days.find(d => d.date === m.nowStr.slice(0, 10)) || {};
@@ -1217,7 +1271,7 @@ function liveTips() {
     if (car.plan && car.plan.on && car.plan.date && effType(car) !== 'winter') { const j = dayDiff(today, car.plan.date); if (j >= 0 && j <= 21) add(`${car.short} : montage des pneus hiver dans ${j} jour${j > 1 ? 's' : ''} (${fmtDay(car.plan.date)}). Pense à confirmer le rendez-vous et à vérifier l’état des pneus stockés.`, 'ton planning', 1); }
   });
   // air et pollens
-  const aq = AQRAW[UI.loc], a = !DEMO.on && aq ? airSummary(aq.p, m.nowStr) : null;
+  const aq = AQRAW[UI.loc], a = !DEMO.on && aq && sameWeatherPlace(curLoc(), aq.origin) ? airSummary(aq.p, m.nowStr) : null;
   if (a && a.aqi && a.aqi.v >= 60) add(`Qualité de l’air ${a.aqi.name.toLowerCase()} (indice ${a.aqi.v}) : dans les bouchons, passe la ventilation en recyclage.`, 'Copernicus CAMS', 1);
   if (a && a.polMax >= 3) { const p = a.pol.filter(x => Math.max(x.lv || 0, x.pkLv || 0) >= 3).map(x => x.name.toLowerCase()).join(', '); add(`Pollens élevés (${p}) : vitres fermées en roulant, et un filtre d’habitacle propre fait vraiment la différence.`, 'Copernicus CAMS', 1); }
   return out.sort((x, y) => y.lv - x.lv);
@@ -2169,7 +2223,7 @@ function renderCal() {
   const near = fut2.filter(e => locHasCoords(home) && locHasCoords(e) && distKm(home, e) < 3), evs = fut2.filter(e => !near.includes(e)).slice(0, 8);
   el.hidden = false;
   const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }), calCached = !!CAL.offline,
-    calAge = relayAgeMin(CAL.updated), calStale = !calCached && calAge > RELAY_WARN_MIN,
+    calAge = relayAgeMin(CAL.updated), calStale = !calCached && calAge >= RELAY_WARN_MIN,
     calState = calCached ? 'cache chiffré' : calStale ? `⚠ relais ${relayAgeTxt(calAge)}` : 'prévision';
   // Un relais vieux ne doit pas monopoliser l'écran. Alerte forte seulement si un départ Agenda
   // peut arriver dans les 4 h ; sinon une ligne compacte suffit jusqu'au rattrapage.
@@ -2979,15 +3033,15 @@ function resumeGps() {
 // iOS peut abandonner le watch et une demande ponctuelle pendant la veille : recréer les deux à la reprise.
 document.addEventListener('visibilitychange', () => { if (document.hidden) { stopGps(); gpsResumeAt = -Infinity; } else { tripCancelSchedulePurge(); resumeGps(); } });
 ['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { tripCancelSchedulePurge(); resumeGps(); }));
-// actualisation automatique : toutes les 5 min tant que l'app est à l'écran, et dès le retour dans l'app
-// (vérification toutes les 30 s : résiste à la mise en veille des minuteurs par iOS)
-const AUTO_MS = 5 * 60e3;
+// Actualisation toutes les 4 min tant que l'app est visible, et dès sa reprise.
+// La vérification toutes les 15 s laisse une marge sous 5 min quand iOS exécute les minuteurs.
+const AUTO_MS = 4 * 60e3;
 function autoTick() {
   if (DEMO.on || document.hidden || busy || (navigator.onLine === false)) return;
   const ref = Math.max(lastOk || 0, lastTry || 0);
   if (Date.now() - ref >= AUTO_MS) refreshAll();
 }
-setInterval(autoTick, 30e3);
+setInterval(autoTick, 15e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });
 function networkChanged() {
   if (offlineNow()) { markOfflineCache(); rebuild(); renderAll(); loadCalendar(); }

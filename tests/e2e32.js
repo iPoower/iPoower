@@ -127,7 +127,7 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
     check('la météo du travail douce est utilisée dans le trou', !!noon && /22(?:,0)?\s*°/.test(noon.text) && !/−5|-5/.test(noon.text));
     check('plusieurs lieux réellement connus sont présents dans la timeline', /Travail test/.test(await txt('.outfit-timeline')) && /Salle test/.test(await txt('.outfit-timeline')));
 
-    await scenario({ work: { days: [6] }, weather: { home: [patch(8, 23, { T: -5, Tapp: -5 })], work: [patch(8, 23, { T: 22, Tapp: 22 })] }, events: [event('08:15', '09:00', { loc: '', lat: null, lon: null })] });
+    await scenario({ work: { days: [6] }, weather: { home: [patch(8, 23, { T: -5, Tapp: -5 })], work: [patch(8, 23, { T: 22, Tapp: 22 })] }, events: [event('08:15', '09:00', { loc: 'Adresse fictive introuvable', lat: null, lon: null })] });
     const overlap = await timeline(), atHour = hour => overlap.find(x => x.start.slice(11, 16) <= hour && x.end > hour);
     check('événement inconnu chevauchant le trajet : sa météo reste non calculée', overlap.some(x => x.kind === 'event' && x.start.slice(11, 16) === '08:15' && /Lieu inconnu.*météo locale non calculée/is.test(x.text) && !/Ressenti/i.test(x.text)));
     check('arrivée travail masquée par un lieu inconnu : continuité à 9 h et midi', ['09:00', '12:00'].every(hour => { const row = atHour(hour); return row && row.kind === 'work' && /Travail test/.test(row.text) && /22(?:,0)?\s*°/.test(row.text) && !/Maison test|−5|-5/.test(row.text); }));
@@ -139,7 +139,7 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
     check('Ma position sans programme : base légère issue du GPS', /N1/.test(await txt('.outfit-base')) && !/manteau/i.test(await txt('.outfit-piece:nth-child(1) h4')));
 
     const unsafeTitle = PRIVATE + ' <img id="tenue-title-injection" src="x" onerror="window.__titleRan=1">';
-    await scenario({ weather: { home: [patch(15, 16, { T: -5, Tapp: -5 })] }, events: [event('15:00', '16:00', { t: unsafeTitle, loc: '', lat: null, lon: null })] });
+    await scenario({ weather: { home: [patch(15, 16, { T: -5, Tapp: -5 })] }, events: [event('15:00', '16:00', { t: unsafeTitle, loc: 'Adresse fictive introuvable', lat: null, lon: null })] });
     const unknown = (await timeline()).filter(x => /Lieu inconnu/i.test(x.text));
     check('événement sans localisation : météo locale explicitement non calculée', unknown.length > 0 && unknown.every(x => /météo locale non calculée/i.test(x.text)));
     check('événement inconnu : aucune adaptation météo inventée', unknown.length > 0 && unknown.every(x => !/retir|enfil|imperméable|manteau|ressenti|22(?:,0)?\s*°/i.test(x.text)));

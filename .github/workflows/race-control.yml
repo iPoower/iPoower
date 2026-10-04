@@ -1,5 +1,6 @@
 name: Race Control · relais météo
-# Observations réelles des stations proches -> race-control/obs.json (objectif ~10 min ; tentative toutes les 5 min pour absorber les retards du scheduler GitHub)
+# Observations réelles des stations proches -> race-control/obs.json. Avec le watchdog décalé, tentative toutes les 2–3 min ;
+# GitHub peut retarder ses cron : cette cadence est un objectif de synchronisation, pas une garantie ni la cadence de mesure des stations.
 # De 90 à 5 min avant le départ : verdict du trajet toutes les 15 min -> notification si orange/rouge, brouillard ou verglas,
 # puis nouvelle notification uniquement en cas d'aggravation (3 par matin maximum)
 on:
@@ -41,8 +42,8 @@ jobs:
         run: |
           node - <<'NODE'
           const fs=require('fs'),p='race-control/obs.json';
-          let age=Infinity;try{const j=JSON.parse(fs.readFileSync(p,'utf8'));const t=Date.parse(j.updated);if(Number.isFinite(t))age=(Date.now()-t)/60000;}catch(e){}
-          const due=process.env.MANUAL==='true'||process.env.FORCE_PUSH==='1'||!Number.isFinite(age)||age>=8;
+          let age=Infinity;try{const j=JSON.parse(fs.readFileSync(p,'utf8'));const t=Date.parse(j.updated),now=Date.now();if(Number.isFinite(t)&&t>0&&t<=now+60000)age=Math.max(0,(now-t)/60000);}catch(e){}
+          const due=process.env.MANUAL==='true'||process.env.FORCE_PUSH==='1'||!Number.isFinite(age)||age>=2;
           fs.appendFileSync(process.env.GITHUB_OUTPUT,'due='+(due?'1':'0')+'\n');
           console.log(Number.isFinite(age)?('Dernière synchro il y a '+age.toFixed(1)+' min'): 'Aucune synchro valide',due?'→ exécuter':'→ encore fraîche, ne rien écrire');
           NODE

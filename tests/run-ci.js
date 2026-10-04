@@ -55,6 +55,9 @@ SUITE.push(['test_dayplan.js', 'plan de tenue : couches, transitions et dangers 
 SUITE.push(['e2e35.js', 'intégration : annulations, Tenue et aperçu GPS frais', true],
   ['e2e36.js', 'hors connexion : cache météo, agenda chiffré et reconnexion', true],
   ['e2e37-sw.js', 'service worker réel : Cache Storage, panne serveur et redémarrage offline', true, 'chromium']);
+SUITE.push(['test_work_location.js', 'lieu de travail : mise à jour privée et deux chiffrés cohérents', false],
+  ['test_relay_freshness.js', 'relais : fraîcheur réelle, cache privé et invalidations', false],
+  ['e2e38.js', 'fraîcheur : météo directe, reprise, lieu de travail et anciens rappels', true]);
 const verdict = (code, out) => {
   const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
   if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');

@@ -3,7 +3,7 @@ name: Race Control · watchdog relais
 # mais multiplie les occasions de rattrapage et vérifie aussi la fraîcheur à chaque push sur main. Il conserve les anti-doublons du relais.
 on:
   schedule:
-    - cron: '4,14,24,34,44,54 * * * *'
+    - cron: '4,9,14,19,24,29,34,39,44,49,54,59 * * * *'
   push:
     branches: [main]
   workflow_dispatch:
@@ -29,8 +29,8 @@ jobs:
         run: |
           node - <<'NODE'
           const fs=require('fs'),p='race-control/obs.json';
-          let age=Infinity;try{const j=JSON.parse(fs.readFileSync(p,'utf8'));const t=Date.parse(j.updated);if(Number.isFinite(t))age=(Date.now()-t)/60000;}catch(e){}
-          const due=!Number.isFinite(age)||age>=10;
+          let age=Infinity;try{const j=JSON.parse(fs.readFileSync(p,'utf8'));const t=Date.parse(j.updated),now=Date.now();if(Number.isFinite(t)&&t>0&&t<=now+60000)age=Math.max(0,(now-t)/60000);}catch(e){}
+          const due=!Number.isFinite(age)||age>=2;
           fs.appendFileSync(process.env.GITHUB_OUTPUT,'due='+(due?'1':'0')+'\n');
           console.log(Number.isFinite(age)?('Dernier relais : '+age.toFixed(1)+' min'): 'Dernier relais illisible',due?'→ rattrapage':'→ OK');
           NODE

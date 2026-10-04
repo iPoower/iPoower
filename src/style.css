@@ -432,7 +432,9 @@ html { scroll-behavior: smooth; }
 
 /* ---------- V2 : en-tête compact, briefing 2,5D ---------- */
 .title { font-size: clamp(24px, 6.6vw, 34px); line-height: 1; }
-.srcline details > summary { cursor: pointer; list-style: none; font-size: 12.5px; color: var(--fg3); }
+.srcline details > summary { cursor: pointer; list-style: none; font-size: 12.5px; color: var(--fg3); display: block; min-height: 44px; padding-block: 8px; overflow-wrap: anywhere; }
+.unlock { flex-wrap: wrap; }
+.unlock > span { flex: 1 1 220px; min-width: 0; }
 .srcline details > summary::-webkit-details-marker { display: none; }
 .srcline details[open] > summary { margin-bottom: 6px; color: var(--fg2); }
 .brf { position: relative; overflow: hidden; gap: 12px;

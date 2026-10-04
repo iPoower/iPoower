@@ -1,4 +1,4 @@
-// Relais Race Control (GitHub Actions, objectif ~10 min avec watchdog de rattrapage) :
+// Relais Race Control (GitHub Actions, tentatives décalées de 2–3 min ; cron sans garantie de délai) :
 // 1) observations réelles des stations (METAR) -> obs.json
 // 2) de 90 à 5 min avant le départ, verdict du trajet toutes les 15 min -> notification si orange/rouge, brouillard ou verglas,
 //    puis nouvelle notification seulement en cas d'aggravation (3 par matin maximum)
@@ -151,6 +151,56 @@ function sealWith(pass, obj) {
 const hav = (a, b) => { const R = x => x * Math.PI / 180, dLa = R(b[1] - a[1]), dLo = R(b[0] - a[0]); return 6371 * 2 * Math.asin(Math.sqrt(Math.sin(dLa / 2) ** 2 + Math.cos(R(a[1])) * Math.cos(R(b[1])) * Math.sin(dLo / 2) ** 2)); };
 const rc = v => Math.round(v * 100) / 100;   // domicile arrondi à ~1 km avant tout envoi à un service externe
 const ROUTES = {}, CITY = {};
+// Cache inter-runs exclusivement dans calendar.sealed.json, ouvert avec APP_KEY.
+// Aucune jambe planifiée n'est réutilisée : horaires, modes et chaîne sont reconstruits.
+// Les clés de route utilisent les deux extrémités exactes déjà autorisées au routeur.
+const RELAY_CACHE_TTL = 24 * 3600e3, RELAY_NEGATIVE_TTL = 5 * 60e3;
+const RELAY_GEO_LIMIT = 128, RELAY_ROUTE_LIMIT = 256;
+const PRIVATE_CACHE = { geo: new Map(), routes: new Map() };
+const locationKey = q => String(q || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const routeCacheKey = (a, b) => JSON.stringify([a.lat, a.lon, b.lat, b.lon]);
+const cachedAtValid = (at, ttl) => Number.isFinite(at) && at > 0 && at <= Date.now() + 60000 && Date.now() - at < ttl;
+const cacheCoordsValid = p => p && Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180;
+const cachedGeoValid = g => g === null || (cacheCoordsValid(g) && typeof g.label === 'string' && g.label.length <= 1000);
+function cachedRouteValid(r) {
+  return r && r.routed === true && typeof r.byTime === 'boolean' && Number.isFinite(r.km) && r.km >= 0 &&
+    Number.isFinite(r.min) && r.min > 0 && Array.isArray(r.pts) && r.pts.length === 3 &&
+    r.pts.every(p => cacheCoordsValid(p) && Number.isFinite(p.f) && p.f > 0 && p.f < 1 && Number.isFinite(p.km)) &&
+    Array.isArray(r.g) && r.g.length >= 2 && r.g.length <= 200 && r.g.every(p => Array.isArray(p) && p.length === 2 && cacheCoordsValid({ lat: p[0], lon: p[1] }));
+}
+function boundedCache(entries, limit) {
+  return entries.sort((a, b) => b.at - a.at || String(a.q || a.key).localeCompare(String(b.q || b.key))).slice(0, limit);
+}
+function loadRelayCache(pass) {
+  PRIVATE_CACHE.geo.clear(); PRIVATE_CACHE.routes.clear();
+  Object.keys(ROUTES).forEach(k => { delete ROUTES[k]; });
+  try {
+    const sealed = JSON.parse(fs.readFileSync(path.join(dir, 'calendar.sealed.json'), 'utf8'));
+    const cache = unsealWith(sealed, pass).relayCache;
+    if (!cache || cache.v !== 1) return;
+    const geo = (Array.isArray(cache.geo) ? cache.geo : []).filter(x => x && typeof x.q === 'string' && x.q.length <= 1000 &&
+      x.q === locationKey(x.q) && cachedGeoValid(x.g) && cachedAtValid(x.at, x.g === null ? RELAY_NEGATIVE_TTL : RELAY_CACHE_TTL));
+    boundedCache(geo, RELAY_GEO_LIMIT).forEach(x => PRIVATE_CACHE.geo.set(x.q, x));
+    const routes = (Array.isArray(cache.routes) ? cache.routes : []).filter(x => {
+      if (!x || typeof x.key !== 'string' || x.key.length > 150 || !cachedAtValid(x.at, RELAY_CACHE_TTL) || !cachedRouteValid(x.r)) return false;
+      try { const p = JSON.parse(x.key); return Array.isArray(p) && p.length === 4 && JSON.stringify(p) === x.key &&
+        cacheCoordsValid({ lat: p[0], lon: p[1] }) && cacheCoordsValid({ lat: p[2], lon: p[3] }); } catch (e) { return false; }
+    });
+    boundedCache(routes, RELAY_ROUTE_LIMIT).forEach(x => { PRIVATE_CACHE.routes.set(x.key, x); ROUTES[x.key] = x.r; });
+  } catch (e) { /* absent, expiré ou autre code : cache ignoré, aucun repli sur RC_KEY */ }
+}
+async function geocodeCached(q) {
+  const key = locationKey(q), old = PRIVATE_CACHE.geo.get(key);
+  if (old && cachedAtValid(old.at, old.g === null ? RELAY_NEGATIVE_TTL : RELAY_CACHE_TTL)) return old.g;
+  const g = await geocodeLoc(q);
+  PRIVATE_CACHE.geo.set(key, { q: key, at: Date.now(), g });
+  return g;
+}
+function saveRelayCache() {
+  return { v: 1,
+    geo: boundedCache([...PRIVATE_CACHE.geo.values()].filter(x => cachedAtValid(x.at, x.g === null ? RELAY_NEGATIVE_TTL : RELAY_CACHE_TTL)), RELAY_GEO_LIMIT),
+    routes: boundedCache([...PRIVATE_CACHE.routes.values()].filter(x => cachedAtValid(x.at, RELAY_CACHE_TTL)), RELAY_ROUTE_LIMIT) };
+}
 const cityOf = label => { const m = /\b\d{5}\s+(.+)$/.exec(String(label || '')); return m ? m[1].trim() : String(label || '').split(',')[0].trim(); };
 async function cityAt(lat, lon) {   // commune traversée (nom du tronçon critique)
   const k = lat.toFixed(2) + ',' + lon.toFixed(2); if (CITY[k] !== undefined) return CITY[k];
@@ -163,7 +213,7 @@ async function cityAt(lat, lon) {   // commune traversée (nom du tronçon criti
   return (CITY[k] = n);
 }
 async function routeLeg(a, b) {
-  const key = [a.lat, a.lon, b.lat, b.lon].join(',');
+  const key = routeCacheKey(a, b);
   if (ROUTES[key]) return ROUTES[key];
   let res = null;
   try {
@@ -190,6 +240,7 @@ async function routeLeg(a, b) {
     const km0 = E.distKm(a, b), km = Math.round(km0 * 13) / 10;
     res = { km, min: Math.round(km / (km0 < 25 ? 55 : km0 < 60 ? 70 : 90) * 60), pts: [0.25, 0.5, 0.75].map(f => ({ f, lat: +(a.lat + (b.lat - a.lat) * f).toFixed(3), lon: +(a.lon + (b.lon - a.lon) * f).toFixed(3), km: Math.round(km * f * 10) / 10, name: null })), routed: false, byTime: false };
   }
+  if (res.routed) PRIVATE_CACHE.routes.set(key, { key, at: Date.now(), r: res });
   return (ROUTES[key] = res);
 }
 const shift = (ts, m) => new Date(Date.parse(ts + ':00Z') + m * 60000).toISOString().slice(0, 16);
@@ -252,6 +303,7 @@ async function calendarSync(out) {
   if (url) { let h = 'invalide'; try { const U = new URL(url); h = U.hostname + ' · ' + (/\/private-[0-9a-f]+\//.test(U.pathname) ? 'adresse secrète' : /\/public\//.test(U.pathname) ? 'adresse publique' : /\.ics$/.test(U.pathname) ? 'fichier ics' : 'pas un lien ics') + ' · ' + url.length + ' car.'; } catch (e) { h = 'pas une adresse web'; } out.relay.calUrlDiag = h; }  // diagnostic sans la partie secrète, publié seulement en cas d'erreur
   if (!url || !pass) return null;
   try {
+    loadRelayCache(pass);
     const r = await fetch(url, { signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error('agenda ' + r.status);
     const from = toParis(new Date()), to = toParis(new Date(Date.now() + 8 * 864e5));
     // La fenêtre de huit jours borne le programme, pas un nombre arbitraire
@@ -269,7 +321,7 @@ async function calendarSync(out) {
       // devenir un rendez-vous de déplacement ni perturber l'alerte de fraîcheur de l'Agenda.
       if (loc.length <= 2) { calNoPlace++; continue; }
       // #pasdetrajet peut garder son lieu dans le programme chiffré, mais ne déclenche ni géocodage ni route.
-      const g = e.mode === 'pasdetrajet' ? null : geo[loc] !== undefined ? geo[loc] : (geo[loc] = await geocodeLoc(loc));
+      const g = e.mode === 'pasdetrajet' ? null : geo[loc] !== undefined ? geo[loc] : (geo[loc] = await geocodeCached(loc));
       events.push({ id: calendarEventId(e), t: e.title || 'Rendez-vous', s: e.s, e: e.e, allDay: !!e.start.allDay, loc, lat: g ? g.lat : null, lon: g ? g.lon : null, label: g ? g.label : null, mode: e.mode || null });
     }
     out.relay.calNoPlace = calNoPlace;
@@ -277,23 +329,25 @@ async function calendarSync(out) {
     out.relay.calN = events.length; out.relay.calGeo = events.filter(x => x.lat != null).length;
     if (cfg) { try { await planLegs(events, (cfg.origins && cfg.origins[0]) || cfg.home); out.relay.calLegs = events.reduce((n, e) => n + (e.legs || []).length, 0); out.relay.calRouted = events.reduce((n, e) => n + (e.legs || []).filter(l => l.routed).length, 0); } catch (e) { out.relay.calLegErr = String(e.message || e).slice(0, 80); } }
     delete out.relay.calUrlDiag;
-    fs.writeFileSync(path.join(dir, 'calendar.sealed.json'), JSON.stringify(sealWith(pass, { v: 2, updated: new Date().toISOString(), events })));
+    fs.writeFileSync(path.join(dir, 'calendar.sealed.json'), JSON.stringify(sealWith(pass, { v: 2, updated: new Date().toISOString(), events, relayCache: saveRelayCache() })));
     return events;
   } catch (e) { out.relay.calErr = String(e.message || e).replace(/https?:\S+/g, 'url').slice(0, 120); out.relay.calUrl = out.relay.calUrlDiag; delete out.relay.calUrlDiag; return null; }
 }
 
 (async () => {
   // obs.json est public : on n'y garde ni lieu ni titre de notification
-  const out = { updated: new Date().toISOString(), stations: {}, notified: prev.notified || null, calNotified: prev.calNotified || {}, lastPush: prev.lastPush ? { at: prev.lastPush.at, level: prev.lastPush.level } : null };
+  const out = { updated: new Date().toISOString(), observationsFetchedAt: prev.observationsFetchedAt || (!prev.metarError ? prev.updated || null : null), stations: {}, notified: prev.notified || null, calNotified: prev.calNotified || {}, lastPush: prev.lastPush ? { at: prev.lastPush.at, level: prev.lastPush.level } : null };
   // 1) METAR
   try {
     const ids = STATIONS.map(s => s.id).join(',');
     const list = await getJSON(`https://aviationweather.gov/api/data/metar?ids=${ids}&format=json&hours=6`);
+    if (!Array.isArray(list)) throw new Error('Réponse METAR invalide');
     STATIONS.forEach(st => {
       const obs = list.filter(x => x.icaoId === st.id && x.rawOb).sort((a, b) => b.obsTime - a.obsTime);
       const hist = obs.slice(0, 12).map(x => ({ t: new Date(x.obsTime * 1000).toISOString(), ...parseMetar(x.rawOb), raw: x.rawOb }));
       out.stations[st.id] = { ...st, last: hist[0] || null, hist };
     });
+    out.observationsFetchedAt = new Date().toISOString();
   } catch (e) { console.log('METAR indisponible', e.message); out.stations = prev.stations || {}; out.metarError = e.message; }
   // 2) notification du matin
   const now = E.nowIn('Europe/Paris'), hm = E.toMin(now.slice(11, 16)), today = now.slice(0, 10);
@@ -376,6 +430,7 @@ async function calendarSync(out) {
       }
     } catch (e) { out.relay.calAlertErr = String(e.message || e).replace(/https?:\S+/g, 'url').slice(0, 120); }
   }
+  out.completedAt = new Date().toISOString();
   fs.writeFileSync(obsFile, JSON.stringify(out));
   console.log('Terminé');
   process.exit(0);
