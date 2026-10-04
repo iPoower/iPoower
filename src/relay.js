@@ -114,7 +114,10 @@ function expand(evs, from, to) {
       push(ds);
     }
   });
-  return out.sort((a, b) => a.s < b.s ? -1 : 1);
+  // À heure identique, l'UID d'occurrence fixe l'ordre indépendamment de
+  // l'ordre d'export du fournisseur ; la stabilité conserve les doublons sans UID.
+  const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+  return out.sort((a, b) => compare(a.s, b.s) || compare(String(a.uid || ''), String(b.uid || '')) || compare(a.e, b.e));
 }
 async function geocodeLoc(q) {
   const COUNTRY = /^(france|belgique|belgium|suisse|switzerland|luxembourg|deutschland|allemagne|españa|espagne|italia|italie|united kingdom|royaume-uni)$/i;
@@ -243,7 +246,14 @@ async function calendarSync(out) {
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error('agenda ' + r.status);
     const from = toParis(new Date()), to = toParis(new Date(Date.now() + 8 * 864e5));
-    const occ = expand(parseIcs(await r.text()), from.slice(0, 10) + 'T00:00', to).slice(0, 25);
+    // La fenêtre de huit jours borne le programme, pas un nombre arbitraire
+    // d'occurrences. Couper avant le géocodage peut laisser 25 appels sans lieu
+    // masquer un déplacement utile ; couper seulement les lieux connus peut
+    // aussi inventer une origine/retour en sautant un maillon de la chaîne.
+    // On conserve donc toute la fenêtre en ordre chronologique. Les événements
+    // sans lieu/#pasdetrajet ne déclenchent aucun géocodage et les caches geo,
+    // ROUTES et CITY existants mutualisent les calculs des autres événements.
+    const occ = expand(parseIcs(await r.text()), from.slice(0, 10) + 'T00:00', to);
     const geo = {}, events = [];
     for (const e of occ) {
       const loc = typeof e.loc === 'string' ? e.loc.trim() : '';

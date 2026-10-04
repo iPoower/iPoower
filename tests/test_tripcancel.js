@@ -201,6 +201,41 @@ test('travail annulé : un ancien aller depuis travail se reconstruit depuis dom
   assert.deepEqual(plain(go.pts), []); assert.deepEqual(plain(go.g), []); assert.equal(go.min, null); assert.equal(go.km, null);
   assert.strictEqual(map.get(e), map.get(api.eventId(e))); assert.equal(JSON.stringify(e), snapshot);
 });
+function noNonSpatialOrigin(a) {
+  const events = chain().slice(1);
+  events[0].mode = 'pasdetrajet';
+  const snapshot = JSON.stringify(events), map = a.rebuild(events, H, {}, {}, now);
+  assert.deepEqual(plain(map.get(events[0])), []);
+  const go = map.get(events[1]).find(l => l.k === 'go');
+  assert.equal(go.from.lat, H.lat); assert.equal(go.from.lon, H.lon);
+  assert.equal(go.originPending, true); assert.deepEqual(plain(go.g), []);
+  assert.deepEqual(plain(go.pts), []); assert.equal(JSON.stringify(events), snapshot);
+}
+test('#pasdetrajet sans annulation : aucune jambe ni ancienne origine B pour C', () => noNonSpatialOrigin(api));
+test('#pasdetrajet legacy sans coordonnées : aucune ancienne jambe réinjectée', () => {
+  const events = chain().slice(1); events[0].mode = 'pasdetrajet';
+  events[0].lat = null; events[0].lon = null;
+  const map = api.rebuild(events, H, {}, {}, now);
+  assert.deepEqual(plain(map.get(events[0])), []);
+  assert.deepEqual(plain(map.get(api.eventId(events[0]))), []);
+  assert.equal(map.get(events[1]).find(l => l.k === 'go').from.lat, H.lat);
+});
+test('#pasdetrajet entre A et C : le dernier lieu physique A reste l’origine', () => {
+  const events = chain(); events[1].mode = 'pasdetrajet';
+  const map = api.rebuild(events, H, {}, {}, now), go = map.get(events[2]).find(l => l.k === 'go');
+  assert.deepEqual(plain(map.get(events[1])), []);
+  assert.equal(go.from.lat, A.lat); assert.equal(go.from.lon, A.lon);
+  assert.equal(go.fromKind, 'prev'); assert.equal(go.originPending, true);
+  assert.deepEqual(plain(go.g), []);
+});
+test('#pasdetrajet conserve une origine initiale fiable fournie par le contexte', () => {
+  const events = chain().slice(1); events[0].mode = 'pasdetrajet';
+  const work = { id: 'work', lat: 49.1, lon: 2.8, label: 'Travail' };
+  const map = api.rebuild(events, H, {}, {}, now, { beforeFirst: () => work });
+  const go = map.get(events[1]).find(l => l.k === 'go');
+  assert.equal(go.from.lat, work.lat); assert.equal(go.from.lon, work.lon);
+  assert.equal(go.fromKind, 'work'); assert.equal(go.originPending, true);
+});
 // Contre-tests : appliquer une faute réelle au moteur doit faire échouer une preuve ci-dessus.
 function caught(name, text, proof) {
   assert.notEqual(text, source, 'Mutation absente : ' + name); let rejected = false;
@@ -210,4 +245,5 @@ function caught(name, text, proof) {
 caught('une annulation ne peut être convertie en arrivée', source.replace('out[id] = { at: now, exp };', "out[id] = { at: now, exp, how: 'arrivé' };"), noArrival);
 caught('ancienne route d’un rendez-vous annulé interdite', source.replace('same(l.from, from) && same(l.to, to)', 'same(l.to, to)'), noOldOrigin);
 caught('la fenêtre Undo travail ne peut pas être coupée à minuit', source.replace('Math.max(midnight, now + UNDO_MS)', 'midnight'), workUndoWindow);
-console.log(count + '/' + count + ' scénarios OK (dont trois mutations détectées)');
+caught('#pasdetrajet ne peut redevenir l’origine suivante', source.replace("dayEvents.some(e => cancelled(e) || e.mode === 'pasdetrajet')", 'dayEvents.some(cancelled)'), noNonSpatialOrigin);
+console.log(count + '/' + count + ' scénarios OK (dont quatre mutations détectées)');

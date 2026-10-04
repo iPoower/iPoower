@@ -7,7 +7,9 @@ const count = runTests(original, { quiet: true });
 const mutations = [
   { name: 'suppression du filtre thermique de 2 h', from: 'if (duration < 120 && !hasEvent)', to: 'if (false)' },
   { name: 'oubli des pièces du soir à emporter', from: 'const carry = unique([...baseLayers.filter(layer => !firstLayers.includes(layer)), ...hazardCarry]);', to: 'const carry = unique(hazardCarry);' },
-  { name: 'utilisation d’une température pour un lieu inconnu', from: 'if (moment.unknown || !moment.weather) return null;', to: 'if (!moment.weather) return null;' }
+  { name: 'utilisation d’une température pour un lieu inconnu', from: 'if (moment.unknown || !moment.weather) return null;', to: 'if (!moment.weather) return null;' },
+  { name: 'snow:0 utilisé comme preuve de fin de pluie', from: 'const knownPrecipitation = freshKnown && (knownCode || validAmounts);', to: 'const knownPrecipitation = freshKnown && (knownCode || validAmounts || finite(weather.snow));' },
+  { name: 'danger remplace les trois états de l’indicateur', from: "const indicatorLevel = adaptationCount > 1 ? 'multiple' : adaptationCount === 1 ? 'adapt' : 'stable';", to: "const indicatorLevel = danger ? 'warning' : adaptationCount > 1 ? 'multiple' : adaptationCount === 1 ? 'adapt' : 'stable';" }
 ];
 for (const mutation of mutations) {
   assert(original.includes(mutation.from), 'Mutation introuvable : ' + mutation.name);

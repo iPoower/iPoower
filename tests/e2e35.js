@@ -142,7 +142,9 @@ async function program(s, options = {}) {
   await s.p.evaluate(o => {
     liveReset(); tripPreviewReset(); TRIPCANCEL = {}; TripCancel.save(localStorage, TRIPCANCEL, Date.now()); tripCancelSchedulePurge();
     S.locs = o.locs; S.customs = []; S.calDirect = {}; S.work = { from: 'home', to: 'work', dep: '08:00', ret: '18:00', durMin: 30, days: [1, 2, 3, 4, 5] };
-    GPS = FIX = FIXPREV = null; UI.loc = 'home'; UI.view = 'pneus'; UI.outfitDay = 0; UI.outfitOccasion = 'outing';
+    GPS = o.gps ? { ...o.gps, t: Date.now(), acc: 25, gps: true } : null;
+    FIX = GPS ? { lat: GPS.lat, lon: GPS.lon, ts: Date.now(), acc: 25, speed: null } : null;
+    FIXPREV = null; UI.loc = GPS ? 'gps' : 'home'; UI.view = 'pneus'; UI.outfitDay = 0; UI.outfitOccasion = 'outing';
     M = {}; Object.keys(RAW).forEach(k => delete RAW[k]); Object.keys(CALM).forEach(k => delete CALM[k]); Object.keys(LEGM).forEach(k => delete LEGM[k]);
     const model = (l, cold) => {
       const payload = makeDemoPayload('doux', l, 'Europe/Paris', 0);
@@ -152,12 +154,18 @@ async function program(s, options = {}) {
         h.precipitation_probability[k] = cold ? 95 : 0; h.precipitation[k] = cold ? 2 : 0;
         h.rain[k] = cold ? 2 : 0; h.showers[k] = 0; h.snowfall[k] = 0; h.weather_code[k] = cold ? 63 : 0;
         h.wind_gusts_10m[k] = 10; h.wind_speed_10m[k] = 5; h.uv_index[k] = 0;
+        const hour = +h.time[k].slice(11, 13), fields = { T: 'temperature_2m', Tapp: 'apparent_temperature', pp: 'precipitation_probability', P: 'precipitation', rain: 'rain', snow: 'snowfall', code: 'weather_code', gust: 'wind_gusts_10m', wind: 'wind_speed_10m' };
+        for (const patch of (o.weatherPatches || {})[l.id] || []) {
+          if (hour < patch.from || hour >= patch.to || patch.date && patch.date !== h.time[k].slice(0, 10)) continue;
+          for (const [field, value] of Object.entries(patch.values)) h[fields[field]][k] = value;
+        }
       }
-      for (const k of ['temperature_2m', 'apparent_temperature', 'precipitation', 'rain', 'showers', 'snowfall', 'weather_code', 'wind_gusts_10m', 'wind_speed_10m']) payload.current[k] = payload.hourly[k][0];
+      const currentIndex = Math.max(0, payload.hourly.time.findIndex(t => t === payload.current.time));
+      for (const k of ['temperature_2m', 'apparent_temperature', 'precipitation', 'rain', 'showers', 'snowfall', 'weather_code', 'wind_gusts_10m', 'wind_speed_10m']) payload.current[k] = payload.hourly[k][currentIndex];
       const m = makeModel(payload, 'live', l);
       return { payload, m };
     };
-    for (const l of o.locs) { const v = model(l, o.coldWork && l.id === 'work'); M[l.id] = v.m; RAW[l.id] = { p: v.payload, mode: 'live', t: Date.now() }; }
+    for (const l of [...o.locs, ...(GPS ? [GPS] : [])]) { const v = model(l, o.coldWork && l.id === 'work' || o.coldHome && l.id === 'home'); M[l.id] = v.m; RAW[l.id] = { p: v.payload, mode: 'live', t: Date.now() }; }
     CAL = { events: o.events, updated: new Date(Date.now()).toISOString(), c: CAL && CAL.c }; CALDONE = true;
     for (const e of o.events) {
       const id = 'cal' + e.lat.toFixed(2) + '_' + e.lon.toFixed(2), v = model({ ...e, id, name: e.label }, o.coldIds.includes(e.id));
@@ -168,7 +176,7 @@ async function program(s, options = {}) {
   await s.settle(6);
 }
 const outfit = s => s.p.locator('#secTenue').innerText();
-const timeline = s => s.p.locator('.outfit-moment').evaluateAll(xs => xs.map(x => ({ start: x.dataset.start, kind: x.dataset.kind, text: x.innerText })));
+const timeline = s => s.p.locator('.outfit-moment').evaluateAll(xs => xs.map(x => ({ start: x.dataset.start, end: (x.querySelector('time').innerText.split('–')[1] || '').trim(), location: x.querySelector('.outfit-moment-heading b').innerText, kind: x.dataset.kind, text: x.innerText })));
 const view = async (s, name) => { await s.p.locator('[data-act="view"][data-v="' + name + '"]').click(); await s.settle(2); };
 const outfitSnapshot = async s => ({ text: await outfit(s), base: await s.p.locator('.outfit-base').innerText(), carry: await s.p.locator('.outfit-carry').innerText(), timeline: await timeline(s), pieces: await s.p.locator('.outfit-pieces').innerText() });
 const same = (a, b) => a && b && Math.abs(a.lat - b.lat) < .011 && Math.abs(a.lon - b.lon) < .011;
@@ -260,6 +268,83 @@ const same = (a, b) => a && b && Math.abs(a.lat - b.lat) < .011 && Math.abs(a.lo
       check('35.22 · « maintenant » avec GPS vieux de ' + age + ' min : getCurrentPosition maximumAge 0 systématique', log.filter(x => x.kind === 'get').length === 1 && log.some(x => x.kind === 'get' && x.options.maximumAge === 0), JSON.stringify(log));
       check('35.23 · aperçu ' + age + ' min : route/météo depuis nouveau GPS arrondi, ancien point inutilisé', preview.phase === 'ready' && preview.fix && preview.fix.lat === G.moved.lat && preview.fix.lon === G.moved.lon && routes.length === 1 && /driving\/3\.333,49\.399;/.test(routes[0]) && !/driving\/3\.306,49\.385;/.test(routes[0]) && /Aperçu depuis ma position/i.test(await s.txt()), JSON.stringify({ preview, routes }));
       check('35.24 · aperçu ponctuel ' + age + ' min : LIVE idle, zéro watch haute précision, zéro route persistée', preview.live === 'idle' && !preview.watches.includes(true) && !log.some(x => x.kind === 'watch' && x.hi) && preview.stored === stored);
+      await s.c.close();
+    }
+    // #pasdetrajet décrit du programme, sans déplacer la personne vers les coordonnées du rendez-vous.
+    {
+      const date = '2026-10-03';
+      const noMove = { id: 'tech-audit-no-move', t: 'Audit non spatial B', s: date + 'T12:00', e: date + 'T14:00', loc: 'Adresse fictive Beta', ...B, mode: 'pasdetrajet', legs: [] };
+      const next = { id: 'tech-audit-after-no-move', t: 'Audit déplacement Gamma', s: date + 'T18:00', e: date + 'T19:00', loc: 'Adresse fictive Gamma', ...C,
+        legs: [route('go', H, C, date + 'T17:20', date + 'T17:50'), route('ret', C, H, date + 'T19:10', date + 'T19:40')] };
+      const s = await session(browser, '2026-10-03T08:00:00+02:00', { coldNetwork: B }); await program(s, { events: [noMove, next], coldIds: [noMove.id] }); await view(s, 'tenue');
+      const noMovePlan = await outfitSnapshot(s), actual = await s.p.evaluate(() => ({
+        cold: CALM['cal49.55_2.20'].m.hs.find(h => h.t === '2026-10-03T12:00'),
+        during: buildTenueDay().moments.filter(x => x.start < '2026-10-03T17:20' && x.end > '2026-10-03T12:00'),
+        following: effLegs(CAL.events[1]).filter(l => l.k === 'go').map(l => ({ from: l.from, to: l.to, pending: !!l.originPending }))
+      }));
+      check('35.audit1 · fixture #pasdetrajet : coordonnées Beta et météo 4 °C/pluie réellement disponibles', actual.cold.T === 4 && actual.cold.Tapp === 4 && actual.cold.pp === 95 && actual.cold.P === 2);
+      check('35.audit2 · #pasdetrajet : programme de midi conserve Maison et sa météo 22 °C jusqu’au vrai départ', actual.during.length > 0 && actual.during.every(x => /Maison intégration/.test(x.location) && !/Lieu Beta/.test(x.location) && x.weather && x.weather.T === 22 && x.weather.Tapp === 22), JSON.stringify(actual.during.map(x => ({ start: x.start, end: x.end, location: x.location, temperature: x.weather && x.weather.T }))));
+      check('35.audit3 · #pasdetrajet froid/pluvieux : aucune couche ni protection inventée pour Beta', /N1 max/.test(noMovePlan.base) && !/manteau|maille chaude|imperméable|parapluie/i.test([noMovePlan.base, noMovePlan.carry, noMovePlan.pieces].join(' ')) && noMovePlan.timeline.every(x => !/Lieu Beta/.test(x.location)));
+      check('35.audit4 · rendez-vous suivant : origine fiable Maison, jamais Beta', actual.following.length === 1 && same(actual.following[0].from, H) && !same(actual.following[0].from, B) && noMovePlan.timeline.some(x => x.kind === 'trip' && /Maison intégration.*Lieu Gamma/is.test(x.location)));
+      const networkAt = s.S.reqs.length; await s.p.evaluate(() => { renderTenue(); renderTenue(); }); await s.settle(1);
+      check('35.audit5 · #pasdetrajet : consulter la météo déjà injectée ne déclenche aucun appel réseau', s.S.reqs.length === networkAt);
+      // Un ancien relais peut avoir conservé Beta comme origine de Gamma : cette route ne doit jamais redevenir crédible.
+      await s.p.evaluate(b => {
+        const go = CAL.events[1].legs.find(l => l.k === 'go'); go.from = { ...b }; go.fromKind = 'prev';
+        go.g = [[b.lat, b.lon], [go.to.lat, go.to.lon]];
+        go.pts = [{ f: .5, lat: (b.lat + go.to.lat) / 2, lon: (b.lon + go.to.lon) / 2, km: 22.5 }];
+        renderAll();
+      }, B); await s.settle(7);
+      const legacy = await outfitSnapshot(s), following = await s.p.evaluate(() => effLegs(CAL.events[1]).filter(l => l.k === 'go').map(l => ({ from: l.from, pending: !!l.originPending, g: l.g })));
+      check('35.audit5b · ancienne origine #pasdetrajet : trajet suivant reconstruit depuis Maison ou explicitement en attente', following.length === 1 && following.every(l => !same(l.from, B) && (l.pending || same(l.from, H))), JSON.stringify(following));
+      check('35.audit5c · ancienne route Beta→Gamma : Tenue ne reprend ni le lieu froid ni sa météo', /N1 max/.test(legacy.base) && !legacy.timeline.some(x => /Lieu Beta/.test(x.location)) && !/manteau|maille chaude|imperméable|parapluie/i.test([legacy.base, legacy.carry, legacy.pieces].join(' ')));
+      await s.c.close();
+    }
+    // Un GPS actuellement connu prime sur l'historique planifié, jusqu'au prochain déplacement réel du programme.
+    {
+      const date = '2026-10-03', gps = { id: 'gps', name: 'Ma position audit', ...G.here };
+      const past = { id: 'tech-audit-past', t: 'Audit programme passé', s: date + 'T08:00', e: date + 'T09:00', loc: 'Adresse fictive Alpha', ...A,
+        legs: [route('go', H, A, date + 'T07:20', date + 'T07:50'), route('ret', A, H, date + 'T09:10', date + 'T09:40')] };
+      const future = { id: 'tech-audit-future', t: 'Audit programme futur', s: date + 'T18:00', e: date + 'T19:00', loc: 'Adresse fictive Gamma', ...C,
+        legs: [route('go', H, C, date + 'T17:20', date + 'T17:50'), route('ret', C, H, date + 'T19:10', date + 'T19:40')] };
+      const s = await session(browser, '2026-10-03T10:00:00+02:00'); await program(s, { gps, coldHome: true, events: [past, future], coldIds: [past.id] }); await view(s, 'tenue');
+      const plan = await outfitSnapshot(s), position = await s.p.evaluate(() => ({ selected: UI.loc, age: Date.now() - GPS.t, accuracy: GPS.acc, now: M.gps.cur, beforeDeparture: buildTenueDay().moments.filter(x => x.start < '2026-10-03T17:20') }));
+      check('35.audit6 · fixture GPS fiable sélectionné, météo disponible et programme passé/futur présents', position.selected === 'gps' && position.age >= 0 && position.age < 5 * 60e3 && position.accuracy === 25 && position.now.T === 22 && await s.p.evaluate(() => CAL.events.length) === 2);
+      check('35.audit7 · GPS + programme futur : premier moment à Ma position, N1 et 22 °C', plan.timeline.length > 0 && /Ma position audit/.test(plan.timeline[0].location) && /N1/.test(plan.timeline[0].text) && /22(?:,0)?\s*°/.test(plan.timeline[0].text) && !/Maison intégration|Lieu Alpha/.test(plan.timeline[0].location));
+      check('35.audit8 · ancien retour Maison n’écrase pas le GPS actuel avant le premier déplacement futur', position.beforeDeparture.length > 0 && position.beforeDeparture.every(x => /Ma position audit/.test(x.location) && x.weather && x.weather.T === 22 && x.weather.Tapp === 22), JSON.stringify(position.beforeDeparture.map(x => ({ start: x.start, location: x.location, temperature: x.weather && x.weather.T }))));
+      check('35.audit9 · après le prochain déplacement connu : Gamma apparaît et le plan sort du lieu GPS', plan.timeline.some(x => x.kind === 'event' && x.start === date + 'T18:00' && /Lieu Gamma/.test(x.location)) && plan.timeline.some(x => x.kind === 'trip' && /Lieu Gamma/.test(x.location)));
+      // L'agenda est à la minute, le GPS à la seconde : 10:00 ne peut déplacer un GPS constaté à 10:00:30.
+      await s.to(date + 'T10:00:30+02:00');
+      const currentEvent = { id: 'tech-audit-same-minute-event', t: 'Audit lieu planifié même minute', s: date + 'T10:00', e: date + 'T10:30', loc: 'Adresse fictive Alpha', ...A, legs: [] };
+      await s.p.evaluate(e => { GPS.t = Date.now(); FIX.ts = GPS.t; CAL.events.push(e); renderTenue(); }, currentEvent);
+      const sameMinuteEvent = await outfitSnapshot(s), eventFixture = await s.p.evaluate(() => ({ start: buildTenueDay().start, event: CAL.events[2].s, seconds: new Date(GPS.t).getSeconds(), first: buildTenueDay().moments[0] }));
+      check('35.audit9b · GPS observé après le début de la minute : événement spatial à cette minute n’écrase ni lieu ni météo', eventFixture.start === currentEvent.s && eventFixture.event === eventFixture.start && eventFixture.seconds > 0 && /Ma position audit/.test(sameMinuteEvent.timeline[0].location) && /N1/.test(sameMinuteEvent.timeline[0].text) && /22(?:,0)?\s*°/.test(sameMinuteEvent.timeline[0].text) && eventFixture.first.weather.T === 22 && !/Lieu Alpha/.test(eventFixture.first.location), JSON.stringify(eventFixture));
+      const currentTrip = { id: 'tech-audit-same-minute-trip', t: 'Audit déplacement planifié même minute', s: date + 'T10:40', e: date + 'T11:00', loc: 'Adresse fictive Alpha', ...A,
+        legs: [route('go', H, A, date + 'T10:00', date + 'T10:30')] };
+      await s.p.evaluate(e => { CAL.events.pop(); CAL.events.push(e); GPS.t = Date.now(); FIX.ts = GPS.t; renderTenue(); }, currentTrip);
+      const sameMinuteTrip = await outfitSnapshot(s), tripFixture = await s.p.evaluate(() => ({ start: buildTenueDay().start, departure: CAL.events[2].legs[0].dep, seconds: new Date(GPS.t).getSeconds(), first: buildTenueDay().moments[0] }));
+      check('35.audit9c · GPS observé après le début de la minute : trajet à cette minute n’écrase ni lieu ni météo', tripFixture.start === currentTrip.legs[0].dep && tripFixture.departure === tripFixture.start && tripFixture.seconds > 0 && /Ma position audit/.test(sameMinuteTrip.timeline[0].location) && /N1/.test(sameMinuteTrip.timeline[0].text) && /22(?:,0)?\s*°/.test(sameMinuteTrip.timeline[0].text) && tripFixture.first.weather.T === 22 && tripFixture.first.kind !== 'trip', JSON.stringify(tripFixture));
+      await s.c.close();
+    }
+    // Les dangers météo restent un avertissement séparé du nombre d'adaptations à effectuer.
+    {
+      const s = await session(browser, '2026-10-03T08:00:00+02:00');
+      const cases = [
+        { count: 0, level: 'stable', text: 'Tenue valable toute la journée', thermal: [] },
+        { count: 1, level: 'adapt', text: '1 adaptation nécessaire', thermal: [{ from: 18, to: 24, values: { T: 4, Tapp: 4 } }] },
+        { count: 2, level: 'multiple', text: 'Plusieurs adaptations', thermal: [{ from: 0, to: 11, values: { T: 4, Tapp: 4 } }, { from: 17, to: 24, values: { T: 4, Tapp: 4 } }] }
+      ];
+      for (const item of cases) {
+        await program(s, { weatherPatches: { home: [{ from: 0, to: 24, values: { gust: 60 } }, ...item.thermal] } }); await view(s, 'tenue');
+        const indicator = await s.p.locator('.outfit-indicator').evaluate(x => ({ level: x.dataset.level, text: x.innerText }));
+        const warning = s.p.locator('.outfit-weather-warning'), count = await s.p.evaluate(() => dayplan(buildTenueDay()).indicator.count);
+        check('35.audit10 · rafales + ' + item.count + ' adaptation(s) : niveau et libellé produit conservés', indicator.level === item.level && indicator.text === item.text && count === item.count, JSON.stringify({ indicator, count }));
+        check('35.audit11 · rafales + ' + item.count + ' adaptation(s) : avertissement météo distinct de l’indicateur', await warning.count() === 1 && /Protection météo nécessaire/i.test(await warning.innerText()) && await warning.getAttribute('data-risks') === 'wind' && await s.p.locator('.outfit-indicator[data-level="warning"]').count() === 0);
+      }
+      for (const width of [320, 414, 1280]) {
+        await s.p.setViewportSize({ width, height: 896 });
+        check('35.audit12 · indicateur et avertissement sans débordement à ' + width + ' px', await s.p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      }
       await s.c.close();
     }
     check('35.25 · produit combiné : aucune erreur JavaScript', errors.length === 0, errors.join(' | '));

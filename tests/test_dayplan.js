@@ -104,6 +104,80 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
       assert(!result.actions.some(action => /jusqu’à|range l.imperméable/.test(action.text)), JSON.stringify(extra));
     }
   });
+  test('snow:0 seul ne prouve pas la fin de pluie et garde la mémoire jusqu’à confirmation', () => {
+    const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { P: 1 }) }),
+      moment('09:00', '10:00', 22, { weather: sample(22, { P: null, pp: null, snow: 0, code: null }) }),
+      moment('10:00', '20:00', 22)]);
+    const endings = result.actions.filter(action => /jusqu’à|range l.imperméable/.test(action.text));
+    assert.equal(endings.length, 1); assert.equal(endings[0].time, time('10:00'));
+    assert(!result.timeline.find(row => row.start === time('09:00')).actions.length);
+  });
+  test('quantité ou probabilité isolées et code inconnu ne prouvent pas un temps sec', () => {
+    for (const partial of [{ P: 0, pp: null }, { P: null, pp: 0 }, { P: null, pp: null, code: 999 }]) {
+      const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { P: 1 }) }),
+        moment('09:00', '10:00', 22, { weather: sample(22, { P: null, pp: null, snow: null, code: null, ...partial }) }),
+        moment('10:00', '20:00', 22)]);
+      const endings = result.actions.filter(action => /range l.imperméable/.test(action.text));
+      assert.equal(endings.length, 1); assert.equal(endings[0].time, time('10:00'), JSON.stringify(partial));
+    }
+  });
+  test('code WMO sec reconnu confirme la fin même sans quantité ni probabilité', () => {
+    for (const code of [0, 1, 2, 3, 45, 48]) {
+      const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { P: 1 }) }),
+        moment('09:00', '20:00', 22, { weather: sample(22, { P: null, pp: null, snow: null, code }) })]);
+      assert(result.actions.some(action => action.time === time('09:00') && /range l.imperméable/.test(action.text)), String(code));
+    }
+  });
+  test('quantité et probabilité sèches ensemble confirment la fin de pluie ordinaire', () => {
+    const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { P: 1 }) }),
+      moment('09:00', '20:00', 22, { weather: sample(22, { P: 0, pp: 0, snow: null, code: null }) })]);
+    assert(result.actions.some(action => action.time === time('09:00') && /range l.imperméable/.test(action.text)));
+  });
+  test('données sèches contradictoires avec un danger ne rangent pas la protection', () => {
+    for (const weather of [{ P: 1, pp: 0, code: 0 }, { P: 0, pp: 60, code: 0 }, { P: 0, pp: 0, code: 66 }, { P: 0, pp: 0, snow: 1, code: 0 }]) {
+      const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { P: 1 }) }),
+        moment('09:00', '20:00', 22, { weather: sample(22, weather) })]);
+      assert(!result.actions.some(action => /range l.imperméable/.test(action.text)), JSON.stringify(weather));
+    }
+  });
+  test('trou, lieu inconnu ou météo ancienne gardent le danger jusqu’à confirmation fraîche', () => {
+    for (const extra of [{ unknown: true, weather: sample(22) }, { weather: null }, { stale: true, weather: sample(22) }]) {
+      const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { P: 1 }) }),
+        moment('09:00', '10:00', 22, extra), moment('10:00', '20:00', 22)]);
+      const endings = result.actions.filter(action => /range l.imperméable/.test(action.text));
+      assert.equal(endings.length, 1); assert.equal(endings[0].time, time('10:00'), JSON.stringify(extra));
+    }
+  });
+  test('pluie identique après un trou ne crée pas une reprise artificielle', () => {
+    const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { P: 1 }) }),
+      moment('09:00', '10:00', 22, { weather: null }),
+      moment('10:00', '20:00', 22, { weather: sample(22, { P: 1 }) })]);
+    const starts = result.actions.filter(action => /Pluie :/.test(action.text));
+    assert.equal(starts.length, 1); assert.equal(starts[0].time, time('08:00'));
+  });
+  test('après neige, verglas ou orage, des quantités sèches sans code ne confirment pas la fin du danger', () => {
+    for (const code of [73, 66, 95]) {
+      const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { code }) }),
+        moment('09:00', '10:00', 22, { weather: sample(22, { code: null, snow: 0, P: 0, pp: 0 }) }),
+        moment('10:00', '20:00', 22)]);
+      const endings = result.actions.filter(action => /range l.imperméable/.test(action.text));
+      assert.equal(endings.length, 1); assert.equal(endings[0].time, time('10:00'), String(code));
+      assert(result.weatherWarning);
+    }
+  });
+  test('fin de pluie avec vent fort maintenu : garder la couche extérieure', () => {
+    const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { P: 1, gust: 60 }) }),
+      moment('09:00', '20:00', 22, { weather: sample(22, { gust: 60 }) })]);
+    assert(result.actions.some(action => action.time === time('09:00') && /garde la couche extérieure contre le vent/.test(action.text)));
+    assert(!result.actions.some(action => /range l.imperméable/.test(action.text)));
+  });
+  test('fin de pluie ne range pas le coupe-vent après un trou de données de vent', () => {
+    const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { P: 1, gust: 60 }) }),
+      moment('09:00', '10:00', 22, { weather: null }),
+      moment('10:00', '20:00', 22, { weather: sample(22, { gust: null, wind: null }) })]);
+    assert(result.actions.some(action => action.time === time('10:00') && /garde la couche extérieure contre le vent/.test(action.text)));
+    assert(!result.actions.some(action => /range l.imperméable/.test(action.text)));
+  });
   test('les cinq dangers restent immédiats pendant 30 min', () => {
     for (const weather of [{ P: 1 }, { code: 73 }, { code: 66 }, { code: 95 }, { gust: 50 }, { wind: 50 }]) {
       const result = plan([moment('08:00', '18:00', 22), moment('18:00', '18:30', 22, { weather: sample(22, weather) }), moment('18:30', '21:00', 22)]);
@@ -129,7 +203,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   test('rafales fortes : capuche et absence de parapluie en sac', () => {
     const result = plan([moment('08:00', '18:00', 22), moment('18:00', '18:30', 22, { weather: sample(22, { P: 1, gust: 58 }) })]);
     assert(result.carry.some(layer => /capuche/.test(layer))); assert(!result.carry.includes('Parapluie'));
-    assert.equal(result.indicator.level, 'warning');
+    assert.equal(result.indicator.level, 'adapt'); assert(result.weatherWarning.risks.includes('wind'));
   });
   test('49 km/h seuls ne deviennent pas un danger à 50 km/h', () => {
     const result = plan([moment('08:00', '20:00', 22, { weather: sample(22, { gust: 49 }) })]);
@@ -222,6 +296,39 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(stable.indicator.count, 0); assert.equal(stable.indicator.text, 'Tenue valable toute la journée');
     assert.equal(one.indicator.count, 1); assert.equal(one.indicator.text, '1 adaptation nécessaire');
     assert.equal(multiple.indicator.count, 2); assert.equal(multiple.indicator.text, 'Plusieurs adaptations');
+    assert.equal(stable.weatherWarning, null); assert.equal(one.weatherWarning, null); assert.equal(multiple.weatherWarning, null);
+  });
+  test('danger avec zéro adaptation : indicateur stable et avertissement séparé', () => {
+    const result = plan([moment('08:00', '20:00', 22, { weather: sample(22, { gust: 60 }) })]);
+    assert.equal(result.indicator.level, 'stable'); assert.equal(result.indicator.count, 0);
+    assert.equal(result.indicator.text, 'Tenue valable toute la journée');
+    assert.equal(result.weatherWarning.text, 'Protection météo nécessaire'); assert(result.weatherWarning.risks.includes('wind'));
+  });
+  test('danger avec une adaptation : indicateur adapt et avertissement séparé', () => {
+    const result = plan([moment('08:00', '18:00', 22, { weather: sample(22, { gust: 60 }) }),
+      moment('18:00', '21:00', 4, { weather: sample(4, { gust: 60 }) })]);
+    assert.equal(result.indicator.level, 'adapt'); assert.equal(result.indicator.count, 1);
+    assert.equal(result.indicator.text, '1 adaptation nécessaire'); assert(result.weatherWarning.risks.includes('wind'));
+  });
+  test('danger avec plusieurs adaptations : indicateur multiple et avertissement séparé', () => {
+    const result = plan([moment('08:00', '11:00', 4, { weather: sample(4, { gust: 60 }) }),
+      moment('11:00', '17:00', 22, { weather: sample(22, { gust: 60 }) }),
+      moment('17:00', '21:00', 4, { weather: sample(4, { gust: 60 }) })]);
+    assert.equal(result.indicator.level, 'multiple'); assert.equal(result.indicator.count, 2);
+    assert.equal(result.indicator.text, 'Plusieurs adaptations'); assert(result.weatherWarning.risks.includes('wind'));
+  });
+  test('la pluie figure aussi dans l’avertissement séparé sans modifier les trois états', () => {
+    const rainy = (start, end, T) => moment(start, end, T, { weather: sample(T, { P: 1 }) });
+    for (const [moments, level, count] of [
+      [[rainy('08:00', '20:00', 22)], 'stable', 0],
+      [[rainy('08:00', '18:00', 22), rainy('18:00', '21:00', 4)], 'adapt', 1],
+      [[rainy('08:00', '11:00', 4), rainy('11:00', '17:00', 22), rainy('17:00', '21:00', 4)], 'multiple', 2]
+    ]) {
+      const result = plan(moments);
+      assert.equal(result.indicator.level, level); assert.equal(result.indicator.count, count);
+      assert.equal(result.weatherWarning.text, 'Protection météo nécessaire');
+      assert.deepEqual(plain(result.weatherWarning.risks), ['rain']);
+    }
   });
   test('protection déjà portée au départ ne devient pas une adaptation ultérieure', () => {
     const result = plan([moment('08:00', '20:00', 22, { weather: sample(22, { P: 1 }) })]);

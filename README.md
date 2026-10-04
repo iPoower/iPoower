@@ -89,6 +89,11 @@ Le relais déjà existant ajoute un identifiant opaque dérivé de l’UID et de
 pour distinguer des rendez-vous simultanés. Les anciens agendas ambigus doivent être actualisés avant une annulation séparée.
 Le relais ne reçoit aucune annulation locale : une notification cloud déjà planifiée peut encore arriver.
 
+L’agenda conserve toutes les occurrences de la fenêtre de huit jours, sans plafond de 25 événements.
+Les événements sans lieu et `#pasdetrajet` ne peuvent donc pas évincer un rendez-vous routable plus tardif.
+L’ordre est chronologique, avec un départage stable des heures identiques ; les caches existants mutualisent
+les lieux et routes. Le temps de traitement dépend du nombre de lieux et déplacements de cette fenêtre.
+
 Le suivi GPS renouvelle aussi le nom de commune et la météo après plusieurs petits déplacements cumulés,
 reprend après la veille et ignore les réponses anciennes après déplacement ou oubli. Les origines de référence restent en mémoire.
 Tests : `test_tripcancel.js`, `test_calendar_ids.js`, `test_gps_requests.js`, `e2e33.js` et `e2e34.js`.
@@ -105,10 +110,15 @@ disparaissent aussi de Tenue. Le rétablissement et l’expiration les rendent i
 Une chaîne reconstruite ne réutilise aucune météo d’une ancienne origine ; sa portion reste inconnue tant que
 la route effective n’est pas prête. Afficher Tenue ne lance aucune requête pour reconstruire cette route.
 Entre deux activités, le dernier lieu connu est conservé ; seuls les retours planifiés ramènent au domicile.
+Un événement `#pasdetrajet` reste visible comme activité sans déplacement : il ne change pas le lieu physique,
+n’utilise pas la météo de son adresse et ne devient jamais l’origine du trajet suivant, même dans un ancien agenda.
 Le « Kit complet de la journée » indique le niveau maximal à couvrir. Les couches nécessaires plus tard
 sont à emporter ; la timeline indique ce qui est porté à chaque moment.
-Les heures de l’agenda et des modèles sont converties dans le fuseau de la journée. Sans programme localisé,
-le lieu sélectionné, y compris la position GPS, reste le lieu de base.
+Les heures de l’agenda et des modèles sont converties dans le fuseau de la journée. Aujourd’hui, si « Ma position »
+est sélectionnée avec un GPS fiable (≤ 5 min, précision ≤ 250 m), le plan commence au lieu observé même avec
+un programme futur. Aucun trajet vers le domicile n’est inventé, et les segments antérieurs ne remplacent pas
+cette observation. Une météo GPS ancienne ou manquante est signalée à ce lieu, sans lui substituer le domicile.
+Sans programme localisé, le lieu sélectionné reste le lieu de base.
 Les rendez-vous sans localisation exploitable sont conservés dans l’agenda chiffré et signalés
 « Lieu inconnu · météo locale non calculée », sans substituer la météo du domicile ni créer d’adaptation.
 
@@ -117,6 +127,10 @@ la frise **et** la carte détaillée « Ta tenue » : un seul kit, couvrant le m
 Les seuils de ressenti de `wardrobe.js` restent 0, 7, 13, 19 et 25 °C, avec repli explicite sur l’air.
 Une marge de 1 °C et une durée de 2 h limitent les oscillations de confort ; un rendez-vous peut justifier une adaptation plus courte.
 Pluie, neige, pluie verglaçante, orage et vent fort restent immédiats, même pour un créneau de 30 minutes.
+L’indicateur principal reste « Tenue valable toute la journée », « 1 adaptation nécessaire » ou « Plusieurs adaptations » ;
+les protections météo ont un avertissement séparé. L’absence de neige seule ne confirme pas la fin de la pluie :
+un code météo sec connu ou un couple quantité/probabilité valide doit la confirmer, avec des données fraîches.
+Les données partielles, inconnues ou anciennes conservent le besoin de protection ; un vent persistant impose de garder la couche extérieure.
 Les semelles sont choisies pour la pire météo de la journée. Le conseil suppose des passages dehors et rappelle
 de retirer la maille dans les lieux chauffés. Les pièces et couleurs restent des suggestions.
 

@@ -96,13 +96,15 @@ const TripCancel = (() => {
       if (counts.get(eventId(e)) === 1) result.set(eventId(e), legs);
     };
     (events || []).forEach(e => {
-      set(e, cancelled(e) ? [] : selectedLegs(e, directSet));
+      set(e, cancelled(e) || e.mode === 'pasdetrajet' ? [] : selectedLegs(e, directSet));
       const d = (e.s || '').slice(0, 10); if (!byDay.has(d)) byDay.set(d, []); byDay.get(d).push(e);
     });
     const H = home ? { ...home, label: 'Domicile', city: 'Domicile' } : null;
     const eventPoint = e => point(e) ? { lat: e.lat, lon: e.lon, label: e.label || e.loc || 'Rendez-vous', city: e.label || e.loc || 'Rendez-vous' } : null;
     for (const [day, dayEvents] of byDay) {
-      if (!dayEvents.some(cancelled) && !has(state, workId(day), now)) continue;
+      // Un ancien agenda peut encore rattacher la route suivante à un événement
+      // désormais non spatial. Reconstruire ce jour même sans annulation locale.
+      if (!dayEvents.some(e => cancelled(e) || e.mode === 'pasdetrajet') && !has(state, workId(day), now)) continue;
       const remaining = dayEvents.filter(e => !cancelled(e) && e.mode !== 'pasdetrajet' && point(e)).sort((a, b) => a.s.localeCompare(b.s));
       // Toute route réutilisée a exactement les mêmes extrémités ; ni géométrie ni météo d'une vieille origine.
       const routes = dayEvents.flatMap(e => [...(e.legs || []), ...(e.alt && e.alt.direct ? [e.alt.direct] : [])]);
@@ -143,7 +145,7 @@ const TripCancel = (() => {
       }
       if (prev && !prev.near) add(prev.e, 'ret', prev.p, H, 'event', shift(prev.e.e, 10));
       // Événement sans lieu : aucune route ne peut être reconstruite depuis une origine annulée.
-      dayEvents.filter(e => !cancelled(e) && !point(e)).forEach(e => {
+      dayEvents.filter(e => !cancelled(e) && e.mode !== 'pasdetrajet' && !point(e)).forEach(e => {
         const invalid = selectedLegs(e, directSet).some(l => l.fromKind === 'prev');
         if (invalid) set(e, selectedLegs(e, directSet).map(l => l.fromKind === 'prev' ? {
           k: l.k, dep: l.dep, arr: l.arr, from: null, to: copyPoint(l.to), fromKind: 'unknown', originPending: true, originUncertain: true,

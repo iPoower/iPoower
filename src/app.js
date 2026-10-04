@@ -662,6 +662,11 @@ function buildTenueDay(options = {}) {
   const norm = s => String(s || '').trim().toLocaleLowerCase('fr-FR');
   const byId = id => locs.find(x => x.id === id);
   const home = (settings.locs || [])[0], work = settings.work || {};
+  // La position observée reste le lieu physique même si sa météo manque ou
+  // provient du cache. Son âge et sa précision suivent les critères de LIVE.
+  const gpsTime = gps && (gps.t ?? gps.ts), gpsAge = retrievalNow - gpsTime;
+  const gpsSeed = offset !== 1 && selected && (selected.id === 'gps' || selected.gps) && coords(gps) &&
+    finite(gpsTime) && gpsAge <= LIVE_AGE_IMM && gpsAge > -60e3 && finite(gps.acc) && gps.acc >= 0 && gps.acc <= LIVE_ACC;
   const samePlace = (a, b) => a && b && ((a.id && a.id === b.id) || (coords(a) && coords(b) && distKm(a, b) < 1.5));
   const knownModel = p => {
     if (!p) return { m: null, t: null };
@@ -741,9 +746,10 @@ function buildTenueDay(options = {}) {
     if (eventCancelled(e)) continue;
     const begin = agendaTime(e.allDay ? e.s.slice(0, 10) + 'T09:00' : e.s);
     const finish = agendaTime(e.allDay ? e.s.slice(0, 10) + 'T18:00' : e.e || addMin(e.s, 60));
-    const p = resolveEvent(e);
+    const nonSpatial = e.mode === 'pasdetrajet', p = nonSpatial ? null : resolveEvent(e);
     if (finish > midnight && begin < end && finish > begin) {
-      segments.push({ start: begin, end: finish, kind: 'event', priority: 30, to: p, title: e.t || 'Rendez-vous', location: p ? `${e.t || 'Rendez-vous'} · ${p.name}` : 'Lieu inconnu · météo locale non calculée', unknown: !p });
+      segments.push({ start: begin, end: finish, kind: 'event', priority: 30, to: p, title: e.t || 'Rendez-vous', nonSpatial,
+        location: nonSpatial ? `${e.t || 'Rendez-vous'} · Sans déplacement` : p ? `${e.t || 'Rendez-vous'} · ${p.name}` : 'Lieu inconnu · météo locale non calculée', unknown: !nonSpatial && !p });
       if (e.allDay) warnings.push('Événement sur la journée entière : créneau 09:00–18:00 supposé, à confirmer.');
     }
     const legs = e.mode === 'pasdetrajet' ? [] : effective.get(e) || [];
@@ -763,6 +769,11 @@ function buildTenueDay(options = {}) {
   }
   if (!calendar) warnings.push('Agenda indisponible : le plan suit les lieux et trajets déjà connus.');
   else if (calendar.updated && retrievalNow - Date.parse(calendar.updated) > 24 * 60 * 60e3) warnings.push('Agenda ancien : lieux et horaires à confirmer.');
+  // Au présent, une observation GPS fiable prévaut sur un programme commencé
+  // auparavant. Aucun trajet implicite vers son ancienne origine n'est ajouté.
+  // start est arrondi à la minute : l'observation peut déjà être postérieure à
+  // un départ/événement de cette même minute, qui ne remplace donc pas le GPS.
+  if (gpsSeed) segments.forEach(s => { if (!s.nonSpatial && s.start <= start) s.beforeGps = true; });
   const boundaries = new Set([midnight, start, end]);
   for (let t = midnight; t < end; t = addMin(t, 60)) boundaries.add(t);
   segments.forEach(s => {
@@ -782,25 +793,28 @@ function buildTenueDay(options = {}) {
   // le modèle se trouve dans un fuseau à décalage non entier.
   Object.values(models).forEach(m => { if (m && m.hs) m.hs.forEach(x => { const t = tenueZoneTime(x.t, m.tz || zone, zone); if (t > midnight && t < end) boundaries.add(t); }); });
   const times = [...boundaries].filter(t => t <= end).sort(), moments = [];
-  let current = place(segments.some(s => s.kind === 'trip' || s.to) ? home : selected || home);
+  let current = place(gpsSeed ? gps : segments.some(s => s.kind === 'trip' || s.to) ? home : selected || home);
   for (let i = 0; i < times.length - 1; i++) {
     const at = times[i], until = times[i + 1];
+    if (gpsSeed && at < start) continue;
     // Un rendez-vous sans lieu peut masquer la frise du trajet, mais ne peut
     // effacer son arrivée connue. Une diversion localisée prioritaire remplace
     // en revanche le trajet prévu et conserve son dernier lieu.
-    segments.filter(s => !s.cancelled && s.kind === 'trip' && s.end === at && s.to)
+    segments.filter(s => !s.cancelled && !s.beforeGps && s.kind === 'trip' && s.end === at && s.to)
       .sort((a, b) => a.priority - b.priority).forEach(s => {
-        const diverted = segments.some(other => !other.cancelled && other !== s && other.to && !other.unknown &&
+        const diverted = segments.some(other => !other.cancelled && !other.beforeGps && other !== s && other.to && !other.unknown &&
           other.priority > s.priority && other.start < s.end && other.end > s.start);
         if (!diverted) current = s.to;
       });
-    const starting = segments.filter(s => s.start === at).sort((a, b) => a.priority - b.priority);
+    const starting = segments.filter(s => !s.beforeGps && s.start === at).sort((a, b) => a.priority - b.priority);
     starting.forEach(s => {
       if (s.origin === 'work-ret' && current && !samePlace(current, s.from)) { s.cancelled = true; warnings.push('Retour domicile-travail non retenu : le dernier lieu connu est ailleurs.'); }
       if (s.origin === 'agenda' && current && s.from && !samePlace(current, s.from)) warnings.push(`Origine du trajet agenda à confirmer : départ prévu depuis ${s.from.name}, dernier lieu connu ${current.name}.`);
       if (!s.cancelled && s.kind === 'event' && s.to) current = s.to;
     });
-    const active = segments.filter(s => !s.cancelled && s.start <= at && s.end > at).sort((a, b) => b.priority - a.priority)[0];
+    const candidates = segments.filter(s => !s.cancelled && !s.beforeGps && s.start <= at && s.end > at).sort((a, b) => b.priority - a.priority);
+    const logical = candidates[0] && candidates[0].nonSpatial ? candidates[0] : null;
+    const active = logical ? candidates.find(s => !s.nonSpatial) : candidates[0];
     if (at < start || at >= end || until <= at) continue;
     let source, location, kind, unknown = false;
     if (active && active.kind === 'trip') {
@@ -813,8 +827,10 @@ function buildTenueDay(options = {}) {
       source = knownModel(current); location = current ? current.name : 'Lieu inconnu · météo locale non calculée'; unknown = !current;
       kind = samePlace(current, home) ? 'home' : samePlace(current, byId(work.to)) ? 'work' : 'gap';
     }
+    const physicalEvent = kind === 'event';
+    if (logical) { location = `${logical.location} · ${location}`; kind = 'event'; }
     const weather = unknown ? null : sample(source, at);
-    moments.push({ start: at, end: until > end ? end : until, location, kind, event: kind === 'event', weather, unknown, stale: sourceStale(source) });
+    moments.push({ start: at, end: until > end ? end : until, location, kind, event: physicalEvent, weather, unknown, stale: sourceStale(source) });
   }
   return { date, start, end, occasion: options.occasion || UI.outfitOccasion, moments, warnings: [...new Set(warnings)] };
 }
@@ -848,7 +864,7 @@ function renderTenue() {
   }).join('');
   const carry = [...new Set([...plan.carry, ...a.accessories])];
   el.innerHTML = `${head}<div class="outfit-context${stale ? ' old' : ''}"><span>${esc(state)}</span><b>${esc(interval)}</b></div>
-    <div class="outfit-dayplan"><div class="outfit-plan-heading"><h3>Plan de tenue de la journée</h3><span class="outfit-indicator" data-level="${esc(plan.indicator.level)}">${esc(plan.indicator.text)}</span></div>
+    <div class="outfit-dayplan"><div class="outfit-plan-heading"><h3>Plan de tenue de la journée</h3><span class="outfit-indicator" data-level="${esc(plan.indicator.level)}">${esc(plan.indicator.text)}</span>${plan.weatherWarning ? `<span class="outfit-weather-warning" data-level="warning" data-risks="${esc(plan.weatherWarning.risks.join(' '))}" role="status">${esc(plan.weatherWarning.text)}</span>` : ''}</div>
       <div class="outfit-base"><span class="outfit-label">Kit complet de la journée · N${plan.base.level} max</span><p>${plan.base.layers.map(esc).join(' + ')}</p></div>
       <div class="outfit-extra outfit-carry"><h3>À emporter</h3>${carry.length ? `<ul>${carry.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p>Aucune pièce supplémentaire prévue.</p>'}</div>
       ${plan.actions.length ? `<div class="outfit-extra outfit-actions"><h3>Adaptations prévues</h3><ul>${plan.actions.map(x => `<li data-time="${esc(x.time)}"><b>${esc(x.time.slice(11, 16))}</b> · ${esc(x.text)}</li>`).join('')}</ul></div>` : ''}
@@ -1680,7 +1696,7 @@ function tripCancelSchedulePurge() {
     if (changed) tripCancelChanged();
   }, delay);
 }
-const cancelAffectedDay = e => workCancelled(e.s.slice(0, 10)) || !!(CAL && CAL.events && CAL.events.some(other => other.s.slice(0, 10) === e.s.slice(0, 10) && calendarCancelled(other)));
+const cancelAffectedDay = e => workCancelled(e.s.slice(0, 10)) || !!(CAL && CAL.events && CAL.events.some(other => other.s.slice(0, 10) === e.s.slice(0, 10) && (other.mode === 'pasdetrajet' || calendarCancelled(other))));
 function tripCancelButton(t) {
   const allowed = t && (t.src === 'cal' && t.e || t.src === 'work' && t.dep.slice(0, 10) === liveNow().slice(0, 10));
   return allowed ? `<button class="btn sm" data-act="trip-cancel" data-key="${esc(t.key)}">${t.src === 'work' ? '✕ Pas de trajet aujourd’hui' : '✕ Je n’y vais pas'}</button>` : '';
@@ -1952,7 +1968,7 @@ function tripCancelRouteLeg(e, leg) {
   return { ...leg, from: null, min: null, km: null, pts: [], g: [], routed: false, originPending: true };
 }
 function effLegs(e, all) {
-  if (calendarCancelled(e)) return [];
+  if (e.mode === 'pasdetrajet' || calendarCancelled(e)) return [];
   if (cancelAffectedDay(e)) {
     const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), TRIPCANCEL, Date.now(), { beforeFirst: tripCancelBeforeFirst });
     return (chains.get(e) || chains.get(TripCancel.eventId(e)) || []).map(leg => tripCancelRouteLeg(e, leg));

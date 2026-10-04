@@ -114,6 +114,9 @@ function dayplan(input) {
     advice.pieces[0].detail += ' Ferme la couche extérieure pendant les passages exposés au vent.';
   }
   const actions = [], removed = new Set();
+  const precipitation = ['rain', 'snow', 'freezing', 'storm'];
+  const dryCodes = [0, 1, 2, 3, 45, 48];
+  const wetCodes = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 71, 73, 75, 77, 80, 81, 82, 85, 86, 95, 96, 99];
   let previousLevel = effective[first], previousHazards = [];
   const timeline = moments.map((moment, index) => {
     const rowActions = [], level = effective[index];
@@ -145,14 +148,27 @@ function dayplan(input) {
       if (onset.includes('wind')) texts.push('Vent fort : ferme une couche coupe-vent et préfère la capuche au parapluie.');
       addAction(texts.join(' '), 'weather');
     }
-    const precipitation = ['rain', 'snow', 'freezing', 'storm'];
-    const hasPrecipitationData = moment.weather && (['P', 'pp', 'snow', 'code'].some(key => finite(moment.weather[key])));
-    if (!moment.unknown && hasPrecipitationData && previousHazards.some(hazard => precipitation.includes(hazard)) &&
-      !localHazards.some(hazard => precipitation.includes(hazard))) {
+    // Une absence de neige n'est pas une preuve d'absence de pluie. Pour
+    // confirmer les précipitations, il faut un code météo reconnu ou le couple
+    // quantité/probabilité. Les trous et les anciennes données gardent l'état
+    // précédent : ils peuvent appeler à protéger, jamais autoriser à ranger.
+    const weather = moment.weather, freshKnown = !moment.unknown && !moment.stale && !!weather;
+    const validAmounts = weather && finite(weather.P) && weather.P >= 0 && finite(weather.pp) && weather.pp >= 0 && weather.pp <= 100;
+    const knownCode = freshKnown && [...dryCodes, ...wetCodes].includes(weather.code);
+    const knownPrecipitation = freshKnown && (knownCode || validAmounts);
+    // Quantité et probabilité suffisent pour la pluie ordinaire. Après neige,
+    // verglas ou orage, un code météo connu doit confirmer la fin du danger.
+    const canResolve = hazard => hazard === 'rain' ? knownPrecipitation : knownCode;
+    const confirmedDry = knownPrecipitation && !localHazards.some(hazard => precipitation.includes(hazard)) &&
+      previousHazards.filter(hazard => precipitation.includes(hazard)).every(canResolve);
+    const knownWind = freshKnown && finite(weather.gust) && weather.gust >= 0 && finite(weather.wind) && weather.wind >= 0;
+    const windPersists = localHazards.includes('wind') || (previousHazards.includes('wind') && !knownWind);
+    if (confirmedDry && previousHazards.some(hazard => precipitation.includes(hazard))) {
       addAction('Protection de pluie utile jusqu’à ' + moment.start.slice(11, 16) +
-        ' ; range l’imperméable si les conditions se confirment.', 'weather');
+        (windPersists ? ' ; garde la couche extérieure contre le vent.' : ' ; range l’imperméable si les conditions se confirment.'), 'weather');
     }
-    previousHazards = localHazards;
+    previousHazards = unique([...localHazards, ...previousHazards.filter(hazard =>
+      precipitation.includes(hazard) ? !canResolve(hazard) : hazard === 'wind' && !knownWind)]);
     const status = moment.unknown ? 'Lieu inconnu · météo locale non calculée' : !moment.weather ? 'Météo locale non calculée' : moment.stale ? 'Données anciennes · à confirmer' : temps[index] == null ? 'Température indisponible' : 'Prévision locale';
     return { ...moment, weather: moment.unknown ? null : moment.weather, level, layers: stack(level), actions: rowActions, status,
       temperatureRange: temps[index] == null ? null : { low: temps[index], high: temps[index] } };
@@ -187,10 +203,11 @@ function dayplan(input) {
     'Niveaux additifs : chemise légère, puis veste légère, maille fine, maille chaude, manteau et accessoires grand froid. Les couches se retirent selon la timeline.'];
   if (advice.high - advice.low >= 10) notes.push('Amplitude de ressenti d’au moins 10 °C : privilégie des couches amovibles.');
   if (ignoredThermal) notes.push('Les variations de confort thermique de moins de 2 h sont lissées ; les dangers météo restent immédiats.');
-  const danger = allHazards.some(hazard => ['freezing', 'snow', 'storm', 'wind'].includes(hazard));
+  const danger = allHazards.length > 0;
   const adaptationCount = unique(actions.filter(action => action.time !== moments[0].start).map(action => action.time)).length;
-  const indicatorLevel = danger ? 'warning' : adaptationCount > 1 ? 'multiple' : adaptationCount === 1 ? 'adapt' : 'stable';
+  const indicatorLevel = adaptationCount > 1 ? 'multiple' : adaptationCount === 1 ? 'adapt' : 'stable';
   return { date: input.date, start: input.start, end: input.end, base: { level: baseLevel, layers: baseLayers }, carry, actions,
-    indicator: { level: indicatorLevel, text: danger ? 'Protection météo nécessaire' : adaptationCount > 1 ? 'Plusieurs adaptations' : adaptationCount === 1 ? '1 adaptation nécessaire' : 'Tenue valable toute la journée', count: adaptationCount },
+    indicator: { level: indicatorLevel, text: adaptationCount > 1 ? 'Plusieurs adaptations' : adaptationCount === 1 ? '1 adaptation nécessaire' : 'Tenue valable toute la journée', count: adaptationCount },
+    weatherWarning: danger ? { text: 'Protection météo nécessaire', risks: [...allHazards] } : null,
     notes, warnings, advice, timeline: grouped };
 }
