@@ -189,6 +189,11 @@ const privacy = async s => {
     check('5 · confirmation explicite demandée avant annulation', await s.cancel(true));
     let t = await s.txt(); const cancelled = await p.evaluate(() => ({ value: localStorage.getItem('twrc.tripcancel'), done: localStorage.getItem('twrc.tripdone'), a: effLegs(CAL.events[0]), cal: JSON.stringify(CAL.events) }));
     check('5 · annuler l’aller : aller + retour associés disparaissent du briefing et des jambes effectives', !/Titre privé Alpha/.test(t) && cancelled.a.length === 0 && /Titre privé Beta/.test(t), short(t));
+    const nextAfterA = await p.evaluate(() => {
+      const q = liveApply(BRF_TRIPS.slice(), liveNow()).filter(x => x.src === 'cal').sort((x, y) => x.dep.localeCompare(y.dep));
+      return { name: q[0] && q[0].name, phase: LIVE.phase, done: localStorage.getItem('twrc.tripdone') };
+    });
+    check('15 · A annulé : Beta devient immédiatement le prochain trajet, sans active ni arrivée artificielle', /Beta/.test(nextAfterA.name || '') && nextAfterA.phase !== 'active' && nextAfterA.done === null, JSON.stringify(nextAfterA));
     check('5 · le rendez-vous est conservé et l’annulation ne ressemble jamais à une arrivée', cancelled.cal === original && !cancelled.done && !/✓ Arrivé|Annuler l’arrivée/.test(t));
     const object = JSON.parse(cancelled.value || '{}');
     check('10 · stockage minimal : ID technique opaque + at/exp seulement, aucun titre/adresse/GPS', Object.keys(object).length === 1 && Object.keys(object).every(k => /^cal-[a-f0-9]{32}$/.test(k)) && Object.values(object).every(v => Object.keys(v).sort().join(',') === 'at,exp' && v.exp > v.at) && !/Titre|Adresse|Alpha|Beta|lat|lon|49\.|2\./.test(cancelled.value || ''));
@@ -196,6 +201,8 @@ const privacy = async s => {
     const undo = p.locator('[data-act="trip-cancel-undo"]').first(); check('8 · annuler l’annulation proposé pendant dix minutes', await undo.count() === 1);
     await undo.click(); await s.settle(5); t = await s.txt();
     check('8 · undo immédiat : aller et retour rétablis, mémoire supprimée', /Titre privé Alpha/.test(t) && await p.evaluate(() => effLegs(CAL.events[0]).length) === 2 && await p.evaluate(() => localStorage.getItem('twrc.tripcancel')) === null);
+    const restoredFirst = await p.evaluate(() => liveApply(BRF_TRIPS.slice(), liveNow()).filter(x => x.src === 'cal').sort((x, y) => x.dep.localeCompare(y.dep))[0]?.name || '');
+    check('15 · undo de A : l’ordre initial est recalculé et Alpha redevient le prochain trajet', /Alpha/.test(restoredFirst), restoredFirst);
     await s.cancel(true); await s.to('2026-10-03T10:12:00+02:00'); await p.evaluate(() => renderBrf());
     check('8 · après dix minutes : undo retiré, annulation toujours appliquée', await p.locator('[data-act="trip-cancel-undo"]').count() === 0 && !/Titre privé Alpha/.test(await s.txt()));
     await s.reload(); check('5 · après rechargement : annulation locale conservée sans supprimer l’événement', !/Titre privé Alpha/.test(await s.txt()) && await p.evaluate(() => CAL.events.length) === 2);
@@ -207,6 +214,21 @@ const privacy = async s => {
     await s.reload(); ls = await p.evaluate(() => localStorage.getItem('twrc.tripcancel'));
     check('9 · aucune entrée valide : clé réellement supprimée du localStorage', ls === null);
     const pr = await privacy(s); check('14 · annulation locale : aucun appel fournisseur nouveau ni écriture réseau', pr.providers && pr.readOnly, pr.detail);
+    await s.c.close();
+  }
+  // Purge physique sans rechargement : l'expiration réactive le programme d'origine et efface vraiment la clé.
+  {
+    const s = await session(browser, '2026-10-03T10:00:00+02:00'); const { p } = s;
+    await s.cancel(true);
+    await p.evaluate(() => {
+      const id = Object.keys(TRIPCANCEL)[0];
+      TRIPCANCEL[id] = { ...TRIPCANCEL[id], exp: Date.now() + 1500 };
+      TRIPCANCEL = TripCancel.save(localStorage, TRIPCANCEL, Date.now());
+      tripCancelSchedulePurge(); renderAll();
+    });
+    await s.to('2026-10-03T10:00:03+02:00'); await s.settle(5);
+    const purged = await p.evaluate(() => ({ stored: localStorage.getItem('twrc.tripcancel'), ids: Object.keys(TRIPCANCEL), done: localStorage.getItem('twrc.tripdone') }));
+    check('9b · application restée ouverte : expiration purge physiquement twrc.tripcancel et restaure le trajet sans arrivée', purged.stored === null && purged.ids.length === 0 && purged.done === null && /Titre privé Alpha/.test(await s.txt()), JSON.stringify(purged));
     await s.c.close();
   }
   // Deux occurrences distinctes peuvent partager horaires ET route : la cible d'une action reste l'événement exact.
@@ -273,6 +295,37 @@ const privacy = async s => {
     check('6 · origine fiable absente : avertissement explicite, aucune ancienne route présentée', /Origine à confirmer après annulation du trajet précédent/i.test(unknown) && !/Alpha\s*→\s*Beta/i.test(unknown), short(unknown));
     await s.c.close();
   }
+  // Plusieurs annulations successives sautent chaque trajet non éligible et prennent le premier suivant.
+  {
+    const s = await session(browser, '2026-10-03T10:00:00+02:00'); const { p } = s;
+    await p.evaluate(() => {
+      const home = { ...CAL.events[0].legs[0].from }, beta = CAL.events[1], gamma = JSON.parse(JSON.stringify(beta));
+      const g = { lat: 49.8, lon: 2.8, label: 'Destination Gamma', city: 'Gamma' };
+      gamma.id = 'tech-gamma'; gamma.t = 'Titre privé Gamma'; gamma.s = '2026-10-03T22:30'; gamma.e = '2026-10-03T23:00';
+      gamma.loc = 'Adresse privée Gamma'; gamma.label = 'Gamma'; gamma.lat = g.lat; gamma.lon = g.lon; gamma.mode = null;
+      gamma.legs = [
+        { ...beta.legs[0], from: home, to: g, fromKind: 'home', dep: '2026-10-03T21:00', arr: '2026-10-03T22:20', pts: [], g: [[home.lat, home.lon], [g.lat, g.lon]] },
+        { ...beta.legs[1], from: g, to: home, fromKind: 'event', dep: '2026-10-03T23:10', arr: '2026-10-04T00:20', pts: [], g: [[g.lat, g.lon], [home.lat, home.lon]] }
+      ];
+      CAL.events.push(gamma); renderAll();
+    }); await s.settle(4);
+    await s.cancel(true); let t = await s.txt();
+    check('15 · A annulé : B est sélectionné avant C', /Titre privé Beta/.test(t) && !/Titre privé Alpha/.test(t), short(t));
+    await s.cancel(true); await s.settle(7); t = await s.txt();
+    const seq = await p.evaluate(() => ({ phase: LIVE.phase, done: localStorage.getItem('twrc.tripdone'), ids: Object.keys(TRIPCANCEL), first: liveApply(BRF_TRIPS.slice(), liveNow()).filter(x => x.src === 'cal').sort((x, y) => x.dep.localeCompare(y.dep))[0]?.name || '' }));
+    check('15 · A puis B annulés : C devient automatiquement le premier trajet éligible', /Gamma/.test(seq.first) && /Titre privé Gamma/.test(t) && !/Titre privé Alpha|Titre privé Beta/.test(t) && seq.phase !== 'active' && seq.done === null && seq.ids.length === 2, JSON.stringify(seq));
+    await s.c.close();
+  }
+  // L'annulation du travail du jour donne immédiatement la priorité à l'agenda encore valide aujourd'hui.
+  {
+    const s = await session(browser, '2026-10-03T05:00:00+02:00'); const { p } = s;
+    await p.evaluate(() => { S.work.days = [6]; UI.dayOff = null; renderAll(); }); await s.settle(5);
+    check('15 · scénario travail : le briefing principal est bien le trajet domicile-travail du jour', /domicile-travail/i.test(await s.txt()) && /Pas de trajet aujourd’hui/.test(await p.locator('#secBrf [data-act="trip-cancel"]').first().innerText()));
+    await s.cancel(true); await s.settle(6);
+    const afterWork = await p.evaluate(() => ({ todayWork: BRF_TRIPS.filter(x => x.src === 'work' && x.dep.slice(0, 10) === '2026-10-03').length, firstCal: BRF_TRIPS.filter(x => x.src === 'cal').sort((x, y) => x.dep.localeCompare(y.dep))[0]?.name || '', phase: LIVE.phase }));
+    check('15 · travail annulé : Alpha agenda devient immédiatement prioritaire, sans modifier les jours ni passer active', afterWork.todayWork === 0 && /Alpha/.test(afterWork.firstCal) && afterWork.phase !== 'active' && /Titre privé Alpha/.test(await s.txt()), JSON.stringify(afterWork));
+    await s.c.close();
+  }
   // 7 : domicile-travail est annulé pour une date locale, sans toucher aux jours configurés.
   {
     const s = await session(browser, '2026-10-05T05:00:00+02:00', { work: true }); const { p } = s;
@@ -293,6 +346,23 @@ const privacy = async s => {
     weatherRelease(); s.S.forecastHold = null; await s.settle(3);
     await s.c.close();
   }
+  // Annulation travail juste avant minuit : Undo complet, mais le lendemain reste éligible ; purge sans reload.
+  {
+    const s = await session(browser, '2026-10-05T23:55:00+02:00', { work: true }); const { p } = s;
+    await p.evaluate(() => {
+      const now = Date.now(), date = liveNow().slice(0, 10), id = TripCancel.workId(date), exp = TripCancel.workExpiration(date, now);
+      TRIPCANCEL = TripCancel.cancel(TRIPCANCEL, id, exp, now);
+      TRIPCANCEL = TripCancel.save(localStorage, TRIPCANCEL, now);
+      tripCancelChanged();
+    }); await s.settle(3);
+    await s.to('2026-10-06T00:04:00+02:00'); await s.settle(4);
+    const m4 = await p.evaluate(() => ({ undo: TripCancel.undoable(TRIPCANCEL, Date.now()).length, next: BRF_TRIPS.filter(x => x.src === 'work').map(x => x.dep.slice(0, 10)), stored: localStorage.getItem('twrc.tripcancel') }));
+    check('7c · annulation 23:55 : Undo encore disponible à 00:04 et trajet du lendemain visible', m4.undo === 1 && m4.next.includes('2026-10-06') && !!m4.stored, JSON.stringify(m4));
+    await s.to('2026-10-06T00:06:00+02:00'); await s.settle(5);
+    const m6 = await p.evaluate(() => ({ undo: TripCancel.undoable(TRIPCANCEL, Date.now()).length, stored: localStorage.getItem('twrc.tripcancel'), next: BRF_TRIPS.filter(x => x.src === 'work').map(x => x.dep.slice(0, 10)) }));
+    check('7c · après dix minutes : Undo expiré, clé purgée physiquement, lendemain toujours programmé', m6.undo === 0 && m6.stored === null && m6.next.includes('2026-10-06'), JSON.stringify(m6));
+    await s.c.close();
+  }
   // Après la veille, les jours de départ suivent l'horloge réelle même si la météo est encore celle du vendredi.
   {
     const s = await session(browser, '2026-10-09T05:00:00+02:00', { work: true }); const { p } = s;
@@ -306,6 +376,26 @@ const privacy = async s => {
       weekend.buttons.every(x => !/Aujourd’hui|dim\.?\s*11\/10/i.test(x.text)) && weekend.date === '2026-10-12' && /départ\s*06:30\s*le\s*lun\.?\s*12\/10/i.test(weekend.briefing), JSON.stringify(weekend));
     weatherRelease(); s.S.forecastHold = null; await s.settle(3); await s.c.close();
   }
+  // Migration des anciennes clés twrc.tripdone : un trajet déjà arrivé ne réapparaît pas après l'ajout des IDs agenda.
+  {
+    const s = await session(browser, '2026-10-03T10:00:00+02:00'); const { p } = s;
+    const migration = await p.evaluate(() => {
+      const ev = CAL.events[0], leg = ev.legs.find(l => l.k === 'go'), legacy = calendarTripLegacyKey(ev, leg), current = calendarTripKey(ev, leg);
+      localStorage.setItem('twrc.tripdone', JSON.stringify({ [legacy]: { how: 'auto', at: Date.now(), exp: Date.now() + 24 * 3600e3 } }));
+      LIVE.done = {}; liveDoneLoad();
+      const filtered = liveApply(BRF_TRIPS.slice(), liveNow());
+      return { legacy, current, visible: filtered.some(t => t.key === current), raw: localStorage.getItem('twrc.tripdone') };
+    });
+    check('16 · migration tripdone : ancienne clé reconnue pour l’occurrence unique, sans donnée privée', migration.legacy !== migration.current && !migration.visible && !/Titre|Adresse|49\.|2\./.test(migration.raw || ''), JSON.stringify(migration));
+    const ambiguous = await p.evaluate(() => {
+      const first = CAL.events[0], clone = JSON.parse(JSON.stringify(first)); clone.id = 'tech-alpha-simultaneous'; clone.t = 'Autre occurrence simultanée';
+      CAL.events = [first, clone, CAL.events[1]]; renderAll();
+      const legacy = calendarTripLegacyKey(first, first.legs[0]);
+      return liveApply(BRF_TRIPS.slice(), liveNow()).filter(t => t.src === 'cal' && calendarTripLegacyKey(t.e, t.planL || t.l) === legacy).length;
+    });
+    check('16 · migration legacy ambiguë : une ancienne clé ne masque jamais plusieurs occurrences simultanées', ambiguous === 2, String(ambiguous));
+    await s.c.close();
+  }
   // 11–13 : annulation en suivi réel, Waze, onglets et tailles tactiles.
   {
     const s = await session(browser, '2026-10-03T14:20:00+02:00'); const { p } = s;
@@ -315,6 +405,8 @@ const privacy = async s => {
     check('11 · scénario valide : trajet active, suivi haute précision continu', (await phase(s)) === 'active' && (await p.evaluate(() => window.__geoWatches())).includes(true));
     await s.cancel(true); await s.settle(5); let t = await s.txt();
     check('11 · annulation pendant LIVE : idle, retour basse consommation, aucune arrivée', (await phase(s)) === 'idle' && !(await p.evaluate(() => window.__geoWatches())).includes(true) && !/Titre privé Alpha|✓ Arrivé/.test(t) && await p.evaluate(() => localStorage.getItem('twrc.tripdone')) === null, short(t));
+    const liveNext = await p.evaluate(() => ({ phase: LIVE.phase, first: liveApply(BRF_TRIPS.slice(), liveNow()).filter(x => x.src === 'cal').sort((x, y) => x.dep.localeCompare(y.dep))[0]?.name || '', done: localStorage.getItem('twrc.tripdone') }));
+    check('15 · A annulé pendant LIVE : Beta devient le suivant, sans transfert artificiel de active', /Beta/.test(liveNext.first) && liveNext.phase !== 'active' && liveNext.done === null && /Titre privé Beta/.test(t), JSON.stringify(liveNext));
     await p.locator('[data-act="trip-cancel-undo"]').first().click(); await s.settle(5);
     const nav = await p.locator('#secBrf a').evaluateAll(xs => xs.filter(x => /Waze/.test(x.textContent)).map(x => x.href));
     check('12 · Waze préserve la destination du trajet affiché', nav.some(u => /(?:ll=49\.208%2C2\.587|ll=49\.208,2\.587|ll=49\.20779%2C2\.58743|ll=49\.20779,2\.58743)/.test(u)), nav.join(' | '));
