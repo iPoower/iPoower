@@ -340,7 +340,7 @@ async function refreshAll() {
     else { ERR[l.id] = (r.reason && r.reason.message) || 'réponse invalide'; if (RAW[l.id]) RAW[l.id].mode = 'cache'; }
   });
   if (ok) lastOk = Date.now();
-  const expected = locs.filter(locHasCoords).length;
+  const expected = locs.length;
   const hasCache = Object.values(RAW).some(r => r && r.mode === 'cache');
   const weatherStatus = ok && ok >= expected ? 'ok' : ok ? 'degraded' : 'error';
   const prevWeatherStatus = typeof flightStatus === 'function' ? flightStatus('weather') : null;
