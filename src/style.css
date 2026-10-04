@@ -542,3 +542,26 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 /* Les badges de source longs doivent rentrer même avec une police monospace de repli. */
 .mod-h .src { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 380px) { .iceHead { grid-template-columns: minmax(0, 1fr); } }
+
+
+/* ---------- diagnostic / flight recorder ---------- */
+.diag-grid{display:grid;gap:7px;margin:10px 0 12px}
+.diag-row{display:grid;grid-template-columns:minmax(110px,1fr) auto minmax(150px,1.4fr);gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:color-mix(in srgb,var(--panel) 84%,transparent)}
+.diag-name{font-weight:600}
+.diag-state{font-family:"IBM Plex Mono",monospace;font-size:.78rem;white-space:nowrap}
+.diag-state.ok{color:var(--good)}
+.diag-state.degraded,.diag-state.offline{color:var(--warn)}
+.diag-state.error{color:var(--bad)}
+.diag-state.unknown{color:var(--muted)}
+.diag-detail{font-size:.86rem;color:var(--muted);text-align:right;min-width:0;overflow-wrap:anywhere}
+.diag-events{margin:10px 0}
+.diag-events>summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+.diag-log{display:grid;grid-template-columns:auto minmax(90px,.7fr) minmax(150px,1.5fr);gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:.82rem}
+.diag-log:last-child{border-bottom:0}
+.diag-log span:last-child{color:var(--muted);overflow-wrap:anywhere}
+@media(max-width:620px){
+  .diag-row{grid-template-columns:1fr auto}
+  .diag-detail{grid-column:1/-1;text-align:left}
+  .diag-log{grid-template-columns:auto 1fr}
+  .diag-log span:last-child{grid-column:1/-1}
+}
