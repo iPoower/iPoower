@@ -199,6 +199,10 @@ let FLIGHT_DECISION_SIG = '';
 function flightSource(domain, data) { try { if (FLIGHT) FLIGHT.source(domain, data); } catch (e) { /* diagnostic non bloquant */ } }
 function flightDecision(domain, data) { try { if (FLIGHT) FLIGHT.decision(domain, data); } catch (e) { /* diagnostic non bloquant */ } }
 function flightRecovery(domain, data) { try { if (FLIGHT) FLIGHT.recovery(domain, data); } catch (e) { /* diagnostic non bloquant */ } }
+function flightStatus(domain) {
+  try { const e = FLIGHT && FLIGHT.snapshot().sources[domain]; return e && e.data ? e.data.status || null : null; }
+  catch (e) { return null; }
+}
 const offlineNow = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 function markOfflineCache() {
   Object.values(RAW).forEach(r => { if (r && r.mode === 'live') r.mode = 'cache'; });
@@ -317,7 +321,9 @@ async function refreshAll() {
   if (busy) return;
   const refreshStarted = Date.now();
   if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
+  const prevNetworkStatus = flightStatus('network');
   flightSource('network', { status: 'ok', reason: 'online' });
+  if (prevNetworkStatus && prevNetworkStatus !== 'ok') flightRecovery('network', { status: 'ok', reason: 'online-restored' });
   busy = true; DEMO.on = false; MIDP = {}; lastTry = Date.now(); renderStatus();
   const locs = allLocs(), gpsStart = gpsWeatherGen, generations = new Map();
   try { if (location.protocol === 'https:') OBS = await fetchJSON('obs.json?t=' + Math.floor(Date.now() / 300e3), 8000); } catch (e) { /* pas d'observation */ }
@@ -336,8 +342,10 @@ async function refreshAll() {
   if (ok) lastOk = Date.now();
   const expected = locs.filter(locHasCoords).length;
   const hasCache = Object.values(RAW).some(r => r && r.mode === 'cache');
+  const weatherStatus = ok && ok >= expected ? 'ok' : ok ? 'degraded' : 'error';
+  const prevWeatherStatus = flightStatus('weather');
   flightSource('weather', {
-    status: ok && ok >= expected ? 'ok' : ok ? 'degraded' : 'error',
+    status: weatherStatus,
     ageMs: ok ? 0 : (lastOk ? Date.now() - lastOk : null),
     latencyMs: Date.now() - refreshStarted,
     fallback: ok < expected && hasCache ? 'cache' : 'none',
@@ -345,6 +353,7 @@ async function refreshAll() {
     available: ok,
     expected
   });
+  if (weatherStatus === 'ok' && prevWeatherStatus && prevWeatherStatus !== 'ok') flightRecovery('weather', { status: 'ok', reason: 'refresh-restored' });
   busy = false; rebuild(); renderAll();
   fetchVigi(); refreshEns(); radarRefresh(); loadCalendar();
 }
