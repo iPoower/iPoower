@@ -26,6 +26,22 @@ const WMO = {
 const num = v => (typeof v === 'number' && isFinite(v)) ? v : null;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const pad = n => String(n).padStart(2, '0');
+// Lieu réel d'un événement : ni titre, ni label, ni anciennes jambes d'un cache
+// ne remplacent LOCATION. Le choix explicite #trajet ne crée pas de coordonnées.
+function calendarEventPlace(event, places = []) {
+  if (!event || event.mode === 'pasdetrajet') return null;
+  const coords = place => !!place && Number.isFinite(place.lat) && Number.isFinite(place.lon) && Math.abs(place.lat) <= 90 && Math.abs(place.lon) <= 180;
+  if (coords(event)) return event;
+  const normalize = value => typeof value === 'string' ? value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase() : '';
+  const locations = [event.loc, event.location].map(normalize).filter(Boolean);
+  return locations.length && Array.isArray(places) ? places.find(place => coords(place) &&
+    [place.id, place.name].some(value => { const name = normalize(value); return name && locations.includes(name); })) || null : null;
+}
+// Un événement explicitement spatial reste pertinent si son lieu attend encore
+// une confirmation. On peut ainsi signaler #trajet inconnu sans inventer sa route.
+function calendarEventRelevant(event, places = []) {
+  return !!calendarEventPlace(event, places) || !!event && ['trajet', 'direct', 'maison', 'conflit'].includes(event.mode);
+}
 function pw(x, pts) {
   if (x <= pts[0][0]) return pts[0][1];
   for (let k = 1; k < pts.length; k++) {
@@ -177,7 +193,12 @@ function makeModel(payload, mode, loc) {
   const hs = buildHours(payload);
   const tz = payload.timezone || 'Europe/Paris';
   const curT = payload.current && payload.current.time;
-  const nowStr = (mode === 'live' && curT) ? curT.slice(0, 16) : nowIn(tz);
+  // « Maintenant » : l'horloge de l'appareil fait foi dès qu'elle tombe dans les données ; l'heure du fournisseur n'est retenue
+  // que si elle concorde (± 1 h) ou si l'horloge est hors des données (horloge aberrante). Une réponse obsolète (cache CDN,
+  // relais en retard) ne décale donc jamais « maintenant » dans le passé, et une horloge fausse ne vide jamais l'analyse.
+  const clockNow = nowIn(tz), curS = curT ? String(curT).slice(0, 16) : null, clockH = clockNow.slice(0, 13) + ':00';
+  const clockInData = hs.length > 0 && clockH >= hs[0].t && clockH <= hs[hs.length - 1].t;
+  const nowStr = mode === 'live' && curS && (Math.abs(Date.parse(curS + 'Z') - Date.parse(clockNow + 'Z')) <= 3600e3 || !clockInData) ? curS : clockNow;
   const nowHour = nowStr.slice(0, 13) + ':00';
   let nowI = -1;
   for (let i = 0; i < hs.length; i++) { if (hs[i].t <= nowHour) nowI = i; else break; }
@@ -545,16 +566,28 @@ function montagneInfo(loc, dateStr, elev) {
 }
 
 /* ===================== AJOUTS 2 : AROME, ensemble, pluie 15 min, calibration ===================== */
+// Réponse de prévision exploitable ? null si oui, sinon la raison. Une réponse refusée ne remplace jamais la dernière météo valide.
+const TS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+function validForecast(p) {
+  const H = p && typeof p === 'object' ? p.hourly : null;
+  if (!H || typeof H !== 'object') return 'prévision horaire absente';
+  const t = H.time, T = H.temperature_2m;
+  if (!Array.isArray(t) || t.length < 24) return 'moins de 24 heures de prévision';
+  for (let i = 0; i < t.length; i++) if (typeof t[i] !== 'string' || !TS_RE.test(t[i]) || (i && t[i] <= t[i - 1])) return 'horodatages invalides';
+  if (!Array.isArray(T) || T.length !== t.length) return 'températures absentes ou incomplètes';
+  if (T.filter(v => typeof v === 'number' && isFinite(v)).length < t.length / 2) return 'températures majoritairement manquantes';
+  return null;
+}
 function mergeArome(base, ar) {
   base.__arome = { hours: 0, until: null };
-  if (!ar || !ar.hourly || !ar.hourly.time || !base.hourly) return base;
+  if (!ar || !ar.hourly || !Array.isArray(ar.hourly.time) || !base.hourly) return base;
   const H = base.hourly, A = ar.hourly, idx = new Map(H.time.map((t, i) => [t, i]));
   const ct = (base.current && base.current.time) || (ar.current && ar.current.time);
   const limit = ct ? addMin(ct.slice(0, 13) + ':00', 48 * 60) : null;
   A.time.forEach((t, j) => {
     const i = idx.get(t); if (i == null || (limit && t > limit)) return;
     let any = false;
-    Object.keys(A).forEach(k => { if (k === 'time' || !H[k]) return; const v = A[k][j]; if (typeof v === 'number' && isFinite(v)) { H[k][i] = v; any = true; } });
+    Object.keys(A).forEach(k => { if (k === 'time' || !Array.isArray(H[k]) || !Array.isArray(A[k])) return; const v = A[k][j]; if (typeof v === 'number' && isFinite(v)) { H[k][i] = v; any = true; } });
     if (any) { base.__arome.hours++; base.__arome.until = t; }
   });
   if (ar.current && base.current) Object.keys(ar.current).forEach(k => { const v = ar.current[k]; if (k !== 'time' && k !== 'interval' && typeof v === 'number' && isFinite(v)) base.current[k] = v; });

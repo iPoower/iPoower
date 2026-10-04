@@ -22,4 +22,5 @@ global.fetch=async(u,o)=>{u=String(u);
  if(u.includes('geocoding-api')){const n=decodeURIComponent(u.split('name=')[1]);const C={Paris:[49.443,1.099],Lille:[49.381,3.323],Amiens:[49.207,2.586]};/* géographie fictive autour du domicile de test : distances comparables à un vrai usage */const c=C[n];return{ok:true,status:200,json:async()=>({results:c?[{latitude:c[0],longitude:c[1],name:n,admin1:n==='Paris'?'Île-de-France':'Hauts-de-France',country_code:'FR'}]:[]})};}
  if(u.includes('aviationweather'))return{ok:true,status:200,json:async()=>[]};
  if(u.includes('ntfy')){const b=JSON.parse(o.body);console.log('>>> PUSH',b.title,'|',b.message.replace(/\n/g,' / '));return{ok:true,status:200}}
+ if(process.env.SCN==='invalide'&&u.includes('api.open-meteo.com/v1/forecast'))return{ok:true,status:200,json:async()=>({})};   // réponse 200 vide (proxy, panne partielle)
  const q=new URL(u).searchParams,la=q.get('latitude').split(','),lo=q.get('longitude').split(',');const P=la.map((x,k)=>ctx.D.makeDemoPayload(process.env.SCN,{lat:+x,lon:+lo[k]},'Europe/Paris'));return{ok:true,status:200,json:async()=>P.length>1?P:P[0]}};

@@ -270,7 +270,7 @@ const same = (a, b) => a && b && Math.abs(a.lat - b.lat) < .011 && Math.abs(a.lo
       check('35.24 · aperçu ponctuel ' + age + ' min : LIVE idle, zéro watch haute précision, zéro route persistée', preview.live === 'idle' && !preview.watches.includes(true) && !log.some(x => x.kind === 'watch' && x.hi) && preview.stored === stored);
       await s.c.close();
     }
-    // #pasdetrajet décrit du programme, sans déplacer la personne vers les coordonnées du rendez-vous.
+    // #pasdetrajet est exclu du plan, sans déplacer la personne vers les coordonnées du rendez-vous.
     {
       const date = '2026-10-03';
       const noMove = { id: 'tech-audit-no-move', t: 'Audit non spatial B', s: date + 'T12:00', e: date + 'T14:00', loc: 'Adresse fictive Beta', ...B, mode: 'pasdetrajet', legs: [] };
@@ -283,7 +283,7 @@ const same = (a, b) => a && b && Math.abs(a.lat - b.lat) < .011 && Math.abs(a.lo
         following: effLegs(CAL.events[1]).filter(l => l.k === 'go').map(l => ({ from: l.from, to: l.to, pending: !!l.originPending }))
       }));
       check('35.audit1 · fixture #pasdetrajet : coordonnées Beta et météo 4 °C/pluie réellement disponibles', actual.cold.T === 4 && actual.cold.Tapp === 4 && actual.cold.pp === 95 && actual.cold.P === 2);
-      check('35.audit2 · #pasdetrajet : programme de midi conserve Maison et sa météo 22 °C jusqu’au vrai départ', actual.during.length > 0 && actual.during.every(x => /Maison intégration/.test(x.location) && !/Lieu Beta/.test(x.location) && x.weather && x.weather.T === 22 && x.weather.Tapp === 22), JSON.stringify(actual.during.map(x => ({ start: x.start, end: x.end, location: x.location, temperature: x.weather && x.weather.T }))));
+      check('35.audit2 · #pasdetrajet absent : Maison et sa météo 22 °C restent continues jusqu’au vrai départ', actual.during.length > 0 && actual.during.every(x => x.kind === 'home' && /Maison intégration/.test(x.location) && !/Lieu Beta|Audit non spatial B/.test(x.location) && x.weather && x.weather.T === 22 && x.weather.Tapp === 22), JSON.stringify(actual.during.map(x => ({ start: x.start, end: x.end, kind: x.kind, location: x.location, temperature: x.weather && x.weather.T }))));
       check('35.audit3 · #pasdetrajet froid/pluvieux : aucune couche ni protection inventée pour Beta', /N1 max/.test(noMovePlan.base) && !/manteau|maille chaude|imperméable|parapluie/i.test([noMovePlan.base, noMovePlan.carry, noMovePlan.pieces].join(' ')) && noMovePlan.timeline.every(x => !/Lieu Beta/.test(x.location)));
       check('35.audit4 · rendez-vous suivant : origine fiable Maison, jamais Beta', actual.following.length === 1 && same(actual.following[0].from, H) && !same(actual.following[0].from, B) && noMovePlan.timeline.some(x => x.kind === 'trip' && /Maison intégration.*Lieu Gamma/is.test(x.location)));
       const networkAt = s.S.reqs.length; await s.p.evaluate(() => { renderTenue(); renderTenue(); }); await s.settle(1);

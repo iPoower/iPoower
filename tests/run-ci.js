@@ -37,7 +37,9 @@ if (!fs.existsSync(path.join(H, 'calendar.sealed.json'))) { console.error('Harna
 fs.copyFileSync(path.join(H, 'calendar.sealed.json'), path.join(OUT, 'cal.fake.json'));
 // suite : tests unitaires du moteur et du widget, puis parcours navigateur (horloge et réseau simulés)
 const SUITE = [
-  ['test_engine.js', 'moteur : verdicts, chaussée, verglas', false], ['test_examples.js', 'moteur : cas de référence', false], ['test_widget.js', 'widget iPhone (Scriptable simulé)', false],
+  ['test_engine.js', 'moteur : verdicts, chaussée, verglas', false], ['test_examples.js', 'moteur : cas de référence', false],
+  ['test_engine_verdicts.js', 'moteur : vérités de sécurité GO / NO GO', false], ['engine-countertests.js', 'moteur : régressions de sécurité rejetées par les contre-tests', false],
+  ['test_widget.js', 'widget iPhone (Scriptable simulé)', false], ['test_relay_clock.js', 'relais : horloge externe et mesure de fraîcheur', false],
   ['e2e17.js', 'réglages conservés lors d’une mise à jour', true], ['e2e18.js', 'astuces et mode Météo', true], ['e2e24.js', 'jours de trajet domicile-travail', true],
   ['e2e25.js', 'timeline : prochain trajet, en cours, arrivée', true], ['e2e26.js', 'lieux et Ma position', true], ['e2e27.js', 'mini-carte ordinateur et iPhone', true],
   ['e2e28.js', 'GPS dynamique : trajet vivant depuis la position', true],
@@ -54,7 +56,12 @@ SUITE.push(['test_dayplan.js', 'plan de tenue : couches, transitions et dangers 
   ['e2e32.js', 'plan de tenue : agenda, lieux, météo et interface', true]);
 SUITE.push(['e2e35.js', 'intégration : annulations, Tenue et aperçu GPS frais', true],
   ['e2e36.js', 'hors connexion : cache météo, agenda chiffré et reconnexion', true],
+  ['e2e38-resume.js', 'reprise iOS : fraîcheur réelle, horloge, actualisation unique', true],
+  ['e2e39-layout.js', 'iPhone 11 Pro Max et PC : débordement, cibles 44 pt, encoche, mêmes sections', true],
+  ['e2e40-network.js', 'pannes fournisseur : 200 invalide, 503, délai, agenda corrompu ou ancien', true],
+  ['e2e41-sw-coldstart.js', 'service worker réel : démarrage à froid hors ligne, ancien cache, réseau muet', true, 'chromium'],
   ['e2e37-sw.js', 'service worker réel : Cache Storage, panne serveur et redémarrage offline', true, 'chromium']);
+SUITE.push(['e2e37.js', 'agenda : rappels exclus des trajets et de Tenue, cache ancien et mobile', true]);
 const verdict = (code, out) => {
   const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
   if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');

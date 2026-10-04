@@ -4,13 +4,14 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
 
 - **Production** : https://ipoower.github.io/iPoower/race-control/ (branche `gh-pages`, dossier `race-control/`)
 - **Relais** : `.github/workflows/race-control.yml` exécute `race-control/relay.js` (observations, agenda chiffré, notifications)
+- **Horloge du relais** : `tools/relay-clock/` (Cloudflare Workers, toutes les 5 min) lance le relais ; le cron GitHub reste un filet de secours
 
 ## Structure
 
 | Dossier | Contenu |
 |---|---|
 | `src/` | Code source : `engine.js` (moteur partagé page + relais), `app.js` (interface), `demo.js`, `style.css`, `shell.html`, `sw.js`, `relay.js`, `widget.js`, `tiredb.json`, `static/` (icônes) |
-| `tools/` | `build.js` (assemble `dist/`), `check-secrets.js` (garde-fou de confidentialité), `check-keys.js` (séparation des clés), `keys.js` (chiffrement partagé), `deploy-copy.js` (publication), `pre-commit` |
+| `tools/` | `build.js` (assemble `dist/`), `check-secrets.js` (garde-fou de confidentialité), `check-keys.js` (séparation des clés), `keys.js` (chiffrement partagé), `deploy-copy.js` (publication), `pre-commit`, `relay-clock/` (horloge externe du relais), `relay-freshness.js` (mesure de fraîcheur) |
 | `tests/` | Tests Playwright de bout en bout (horloge et réseau simulés) et harnais du relais (`relay-harness/`) |
 | `encrypted/` | Réglages **déjà chiffrés** (AES-256-GCM, PBKDF2-SHA256 600 000 itérations) |
 
@@ -93,6 +94,12 @@ L’agenda conserve toutes les occurrences de la fenêtre de huit jours, sans pl
 Les événements sans lieu et `#pasdetrajet` ne peuvent donc pas évincer un rendez-vous routable plus tardif.
 L’ordre est chronologique, avec un départage stable des heures identiques ; les caches existants mutualisent
 les lieux et routes. Le temps de traitement dépend du nombre de lieux et déplacements de cette fenêtre.
+Dans l’application, les rappels sans lieu reconnu et les événements `#pasdetrajet` sont exclus de l’Agenda,
+de Tenue et du briefing, sans modifier Google Agenda. Un lieu est reconnu par des coordonnées valides
+ou par une correspondance exacte du champ « Lieu » avec un lieu configuré ; le titre et d’anciennes routes ne suffisent pas.
+Pour signaler un vrai déplacement dont le lieu reste à préciser, ajouter `#trajet` au titre ou à la description.
+Il reste alors signalé comme inconnu, sans route, météo locale ou présence physique inventées.
+Les anciennes chaînes en cache sont réparées depuis le dernier lieu valide ; un rappel exclu ne devient jamais une origine.
 
 Le suivi GPS renouvelle aussi le nom de commune et la météo après plusieurs petits déplacements cumulés,
 reprend après la veille et ignore les réponses anciennes après déplacement ou oubli. Les origines de référence restent en mémoire.
@@ -110,7 +117,7 @@ disparaissent aussi de Tenue. Le rétablissement et l’expiration les rendent i
 Une chaîne reconstruite ne réutilise aucune météo d’une ancienne origine ; sa portion reste inconnue tant que
 la route effective n’est pas prête. Afficher Tenue ne lance aucune requête pour reconstruire cette route.
 Entre deux activités, le dernier lieu connu est conservé ; seuls les retours planifiés ramènent au domicile.
-Un événement `#pasdetrajet` reste visible comme activité sans déplacement : il ne change pas le lieu physique,
+Un événement `#pasdetrajet` ou un rappel sans lieu reconnu est absent du plan : il ne change pas le lieu physique,
 n’utilise pas la météo de son adresse et ne devient jamais l’origine du trajet suivant, même dans un ancien agenda.
 Le « Kit complet de la journée » indique le niveau maximal à couvrir. Les couches nécessaires plus tard
 sont à emporter ; la timeline indique ce qui est porté à chaque moment.
@@ -119,8 +126,9 @@ est sélectionnée avec un GPS fiable (≤ 5 min, précision ≤ 250 m), le plan
 un programme futur. Aucun trajet vers le domicile n’est inventé, et les segments antérieurs ne remplacent pas
 cette observation. Une météo GPS ancienne ou manquante est signalée à ce lieu, sans lui substituer le domicile.
 Sans programme localisé, le lieu sélectionné reste le lieu de base.
-Les rendez-vous sans localisation exploitable sont conservés dans l’agenda chiffré et signalés
-« Lieu inconnu · météo locale non calculée », sans substituer la météo du domicile ni créer d’adaptation.
+Les occurrences sans localisation exploitable restent dans l’agenda chiffré. Les déplacements explicitement
+signalés par `#trajet`, `#direct` ou `#maison` affichent « Lieu inconnu · météo locale non calculée »,
+sans substituer la météo du domicile ni créer d’adaptation ; les simples rappels restent exclus du plan.
 
 `src/dayplan.js` est un moteur déterministe sans réseau, stockage ni horloge implicite. Son résultat alimente
 la frise **et** la carte détaillée « Ta tenue » : un seul kit, couvrant le moment le plus froid retenu.
@@ -159,6 +167,57 @@ n'exécute jamais le code de la PR et la lit uniquement comme des fichiers. Aujo
 | `race-control.yml` (relais) | oui | uniquement depuis `main` ; exécute le relais publié sur `gh-pages` |
 | `sources-check.yml` | oui | uniquement depuis `main` |
 
+## Robustesse : fraîcheur, pannes, hors connexion
+
+| Invariant | Mécanisme | Test |
+|---|---|---|
+| Une donnée ancienne n'est jamais présentée comme temps réel | « LIVE » est dérivé de l'âge réel (≤ 15 min) à chaque reconstruction et à chaque reprise iOS (`expireLive`) ; au-delà : badge CACHE daté et « maintenant » = horloge. L'heure du fournisseur n'est retenue que si elle concorde avec l'horloge (± 1 h) | `e2e38-resume.js`, `test_engine_verdicts.js` |
+| Une réponse invalide ne remplace jamais la dernière donnée valide | `validForecast` (≥ 24 h, horodatages croissants, températures présentes) avant toute écriture en mémoire ou en cache (lieux, route, événements, cache relu) ; agenda mis en cache seulement après déchiffrement ; copie plus ancienne ignorée | `e2e40-network.js` |
+| Le relais ne se tait jamais sur une panne | prévision invalide ou séquence vide → `relay.err` dans `obs.json`, jamais « Conditions sans alerte » | `relay-smoke.js` |
+| Démarrage à froid hors ligne | Service Worker : shell et données publiques en cache ; navigation réseau d'abord avec délai de 3 s si une copie existe (réseau muet), mise à jour poursuivie en arrière-plan ; déverrouillage possible sans météo | `e2e41-sw-coldstart.js` (vrai SW, navigateur fermé puis relancé hors ligne) |
+| Une seule actualisation à la fois | `refreshAll` mono-vol (`busy`), réponses GPS tardives écartées par génération ; reprise automatique au cycle de 5 min, sans boucle de nouvelles tentatives | `e2e38-resume.js`, `e2e40-network.js` |
+
+États de fraîcheur affichés dans **Réglages → Diagnostic** : `FRESH` ≤ 15 min · `AGING` ≤ 60 min · `STALE` au-delà · `UNAVAILABLE`.
+Le diagnostic (copiable) donne version de l'app et du Service Worker, réseau, dernière actualisation, météo du lieu affiché
+(état, mode, erreur), relais `obs.json`, agenda, stockage local et phase du trajet vivant, sans coordonnée, lieu ni rendez-vous.
+
+**Une seule interface** sur iPhone 11 Pro Max et PC : mêmes sections, mêmes composants ; seules la largeur et la densité changent.
+Gouttières `max(16 px, safe-area-inset)` (encoche en paysage), voile opaque sous l'horloge iOS, cibles ≥ 44 pt au doigt,
+alertes qui passent à la ligne au lieu d'élargir la page. Test : `e2e39-layout.js` (414×896 et 896×414 @3x, 1280, 1920 ;
+zones de sécurité émulées sous Chromium).
+
+## Horloge du relais
+
+Le planificateur `schedule` de GitHub Actions retarde ou abandonne des exécutions aux heures chargées. Mesuré du 2 au 4 octobre 2026
+(`node tools/relay-freshness.js 3`) : écart médian de 39 min entre deux relais, maximum 5 h 55, et **obs.json frais (< 15 min)
+seulement 9,6 % du temps pendant les matinées de semaine** — la fenêtre des notifications du trajet.
+
+L'horloge principale est donc externe : `tools/relay-clock/worker.mjs`, un Cron Trigger Cloudflare Workers toutes les 5 min.
+
+| Étape | Comportement |
+|---|---|
+| Lecture | âge public de `obs.json` sur GitHub Pages (`?t=` contre le cache CDN), sans jeton |
+| Décision | relais lancé si l'âge est ≥ 8 min, si `obs.json` est illisible ou si la lecture échoue (une panne de lecture n'empêche jamais le relais) |
+| Lancement | `workflow_dispatch` de `race-control.yml` sur `main` avec `source=horloge` : le workflow garde son contrôle de fraîcheur, la frontière `main` et l'Environment `production` |
+| Échec | toute réponse GitHub hors 2xx (jeton expiré, droits insuffisants) fait échouer l'invocation, visible dans les journaux Cloudflare |
+| Diagnostic | l'URL du Worker renvoie en lecture seule `{ age_min, due, why }`, sans rien déclencher |
+
+Le Worker ne lit et n'envoie aucune donnée personnelle. Son seul secret, `GH_TOKEN`, est un jeton GitHub *fine-grained*
+limité au dépôt `iPoower/iPoower` avec la seule permission **Actions : Read and write** (aucun accès au contenu ni aux secrets).
+Un lancement manuel depuis GitHub (`source=manuel`, valeur par défaut) force toujours le relais, comme avant.
+
+Mise en service (une fois, par le propriétaire) :
+
+```sh
+cd tools/relay-clock
+npx wrangler login
+npx wrangler secret put GH_TOKEN     # coller le jeton fine-grained (Actions : Read and write)
+npx wrangler deploy
+```
+
+Vérification : `git fetch origin gh-pages && node tools/relay-freshness.js 7` ; objectif ≥ 95 % des minutes de matinée de semaine
+avec `obs.json` < 15 min. Tests : `test_relay_clock.js` (réseau simulé, jeton fictif).
+
 ## Rotation de `RC_KEY`
 
 Effectuée le 2 octobre 2026 sans coupure du relais (PR #8 et #9) : nouvelle clé générée par le propriétaire, jamais vue hors de GitHub ;
@@ -183,6 +242,7 @@ node tests/run-ci.js              # Chromium
 BROWSER=webkit node tests/run-ci.js   # WebKit (moteur de Safari), profil iPhone
 ```
 
+- Moteur GO / NO GO : `test_engine_verdicts.js` fige des vérités de sécurité (pluie verglaçante, neige et verglas en pneus été, brouillard, rafales, usure, monotonie au froid, pneu inconnu traité comme été) ; `engine-countertests.js` vérifie que dix régressions volontaires du moteur sont rejetées.
 - Moteur (verdicts, chaussée, verglas), widget, puis parcours navigateur avec horloge et réseau simulés : jours de trajet, timeline (avant départ, en cours, après arrivée), lieux, mini-carte, GPS dynamique, Waze, automate du trajet (départ par le mouvement, arrivée à froid, marche, jitter, vitesse dérivée).
 - Isolement réseau strict : proxy inexistant, service workers bloqués, refus par défaut. Aucun test ne peut joindre le vrai site ni le vrai agenda.
 - Les tests n'utilisent **aucun secret ni donnée réelle** : préréglage, configuration du relais, agenda, géographie et clé sont fictifs (`tests/fixtures/`, `tests/relay-harness/mock_tt.js`, clé publique `race-control-ci-test-only`). L'agenda de test est produit par le vrai relais.

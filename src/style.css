@@ -37,7 +37,8 @@
   --c-air: #0a6fa3; --c-road: #b85d00; --c-dew: #62758c; --c-rain: #2f5bd8; --c-ice: #3aa9d8; --c-demo: #8a2fc4;
   color-scheme: light;
 }
-body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 14px; line-height: 1.45; padding-inline: 16px; padding-block: 0 40px; -webkit-text-size-adjust: 100%; }
+:root { --gut-l: max(16px, env(safe-area-inset-left, 0px)); --gut-r: max(16px, env(safe-area-inset-right, 0px)); }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 14px; line-height: 1.45; padding: 0 var(--gut-r) 40px var(--gut-l); -webkit-text-size-adjust: 100%; }
 * { box-sizing: border-box; }
 .wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 h1, h2, h3, h4, p { margin: 0; }
@@ -51,7 +52,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .lvx { --lv: var(--line2); --lv-on: var(--fg); --lv-soft: var(--panel2); --lv-t: var(--fg2); }
 
 /* bandeau de statut */
-.statusbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; margin-inline: -16px; padding: 8px 16px; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+/* zone de l'horloge iOS (barre translucide, viewport-fit=cover) : le contenu défilé n'y passe jamais ; hauteur nulle hors iPhone */
+html::before { content: ''; position: fixed; inset: 0 0 auto 0; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 30; pointer-events: none; }
+.statusbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; margin-inline: calc(-1 * var(--gut-l)) calc(-1 * var(--gut-r)); padding: 8px var(--gut-r) 8px var(--gut-l); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
 .statusbar .in { max-width: 1080px; margin: 0 auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .badge { font-family: var(--f-mono); font-size: 11px; letter-spacing: .08em; padding: 3px 8px; border: 1px solid var(--line2); border-radius: 3px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .badge i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; }
@@ -61,6 +64,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 :root[data-theme="light"] .badge.demo { color: #fff; }
 .statusbar .upd { font-family: var(--f-mono); font-size: 12px; color: var(--fg2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn { border: 1px solid var(--line2); background: var(--panel2); border-radius: 4px; padding: 7px 12px; font-size: 13px; font-weight: 500; min-height: 36px; }
+a.btn { display: inline-flex; align-items: center; justify-content: center; }
 .btn:hover { border-color: var(--accent); }
 .btn.pri { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
 .btn.sm { padding: 4px 9px; min-height: 30px; font-size: 12px; }
@@ -115,8 +119,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .banner .thr span { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 3px; border: 1px solid currentColor; opacity: .55; }
 .banner .thr span.on { opacity: 1; background: var(--lv-on); color: var(--lv); font-weight: 600; border-color: var(--lv-on); }
 .notes { display: flex; flex-direction: column; gap: 6px; }
-.note { display: flex; gap: 10px; align-items: baseline; padding: 8px 10px; border: 1px solid var(--lv); background: var(--lv-soft); border-radius: 4px; font-size: 13px; }
-.note b { color: var(--lv-t); font-family: var(--f-mono); font-size: 11px; letter-spacing: .06em; white-space: nowrap; }
+.note { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; min-width: 0; padding: 8px 10px; border: 1px solid var(--lv); background: var(--lv-soft); border-radius: 4px; font-size: 13px; }
+.note b { color: var(--lv-t); font-family: var(--f-mono); font-size: 11px; letter-spacing: .06em; max-width: 100%; overflow-wrap: anywhere; }
+.note > span { flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; }
 .notice { border: 1px dashed var(--line2); border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: var(--panel); }
 .notice h3 { font-family: var(--f-disp); font-size: 22px; letter-spacing: .05em; text-transform: uppercase; }
 .demo-bar { background: var(--c-demo); color: #fff; padding: 8px 12px; border-radius: 4px; font-family: var(--f-mono); font-size: 12px; letter-spacing: .04em; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
@@ -318,7 +323,7 @@ button, .chip, .seg button, label.thumb, summary, a.btn { touch-action: manipula
   .btn:active, .chip:active, .seg button:active { transform: scale(.98); }
 }
 
-.jump { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; margin-inline: -16px; padding-inline: 16px; }
+.jump { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; margin-inline: calc(-1 * var(--gut-l)) calc(-1 * var(--gut-r)); padding-inline: var(--gut-l) var(--gut-r); }
 .jump::-webkit-scrollbar { display: none; }
 .jump a { flex: none; font-size: 12.5px; color: var(--fg2); text-decoration: none; border: 1px solid var(--line); border-radius: 3px; padding: 7px 10px; min-height: 36px; display: inline-flex; align-items: center; background: var(--panel); }
 .jump a:active { border-color: var(--accent); color: var(--accent); }
@@ -417,7 +422,7 @@ html { scroll-behavior: smooth; }
 .pips.dm { flex-direction: column; align-items: flex-end; gap: 0; font-family: var(--f-mono); font-size: 11px; color: var(--fg2); line-height: 1.3; display: block; text-align: right; }
 .osm-dark { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.4); }
 .locs-more { flex-basis: 100%; padding: 6px 0 0 10px; border-left: 2px solid var(--line2); }
-.upd .auto { color: var(--fg3); font-size: .85em; }
+.upd .auto, .upd .sync { color: var(--fg3); font-size: .85em; }
 .tipm { padding: 12px 14px; border-left: 3px solid var(--accent); }
 .tip { display: flex; flex-direction: column; gap: 6px; }
 .tip-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -542,3 +547,16 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 /* Les badges de source longs doivent rentrer même avec une police monospace de repli. */
 .mod-h .src { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 380px) { .iceHead { grid-template-columns: minmax(0, 1fr); } }
+
+/* iPhone : cibles tactiles d'au moins 44 pt (recommandation Apple), y compris les boutons compacts ; la souris garde la densité du PC */
+@media (pointer: coarse) {
+  .btn.sm, summary, details summary, .tinfo summary, details.mod > summary, .jump a { min-height: 44px; }
+  .btn.sm { min-width: 44px; }
+  .tip-n .btn, .cal-v .btn.sm, .rctr { min-height: 44px !important; min-width: 44px; }
+}
+@media (pointer: coarse) { input[type=range] { min-height: 44px; } }
+/* diagnostic : même grille sur iPhone et PC, deux colonnes dès qu'il y a la place */
+.diag { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 14px; margin: 6px 0 10px; font-size: 12.5px; }
+.diag dt { color: var(--fg3); font-family: var(--f-mono); font-size: 11px; letter-spacing: .04em; margin-top: 6px; }
+.diag dd { margin: 0; overflow-wrap: anywhere; font-family: var(--f-mono); }
+@media (min-width: 560px) { .diag { grid-template-columns: max-content minmax(0, 1fr); } .diag dt { margin-top: 0; } }
