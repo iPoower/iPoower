@@ -36,9 +36,10 @@ for(const [name,f] of FAULTS){
   fault=null;await p.evaluate(()=>refreshAll());await settle(8);
 }
 // reprise automatique sans geste : le minuteur d'actualisation (5 min) relance seul après une panne
-// (pas de 30 s : le délai réseau de 12 s n'est jamais sauté d'un bloc)
+// (pas de 5 s, plus courts que le plus petit délai réseau de 8 s, et chaque actualisation terminée en temps réel
+//  avant le pas suivant : un délai réseau n'expire jamais en temps simulé, même sur un runner lent)
 fault='503';await p.evaluate(()=>{lastOk=0;lastTry=0;refreshAll();});await settle(6);fault=null;
-for(let k=1;k<=13;k++){TNOW=T0+k*30e3+60e3;await p.clock.runFor(30e3);await p.waitForTimeout(150);}await settle(8);const back=await st();
+for(let k=1;k<=78;k++){TNOW=T0+60e3+k*5e3;await p.clock.runFor(5e3);await p.waitForFunction(()=>!busy,null,{timeout:20000});}await settle(8);const back=await st();
 check('40.7 · panne passagère : retour LIVE automatique au cycle suivant, sans recharger',/LIVE/.test(back.bar)&&back.hours===ref.hours,JSON.stringify(back));
 // agenda chiffré : un fichier corrompu ou une copie plus ancienne ne remplace jamais le dernier agenda valide
 const {seal,tryUnseal}=require('../tools/keys'),good=JSON.parse(calBody),plain=tryUnseal(good,PW.toLowerCase());
