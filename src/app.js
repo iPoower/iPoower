@@ -1345,8 +1345,9 @@ function liveTrip(b, now) {
 }
 // appliqué à la timeline : retire les trajets terminés, garde le trajet commencé après son heure prévue, rend vivant un seul trajet
 function liveApply(T, now) {
-  if (!liveAllowed()) { if (LIVE.key) liveReset(); return T; }
+  // Un trajet déjà terminé reste terminé même si le GPS est désactivé au rechargement.
   const beforeDone = T; T = T.filter(t => !liveDoneHas(t, beforeDone));
+  if (!liveAllowed()) { if (LIVE.key) liveReset(); return T; }
   let cur = LIVE.key ? T.find(t => t.key === LIVE.key) : null;
   if (cur) LIVE.base = cur;
   else if (LIVE.key && LIVE.base && (LIVE.phase === 'active' || LIVE.last)) { cur = LIVE.base; T.push(cur); }   // trajet suivi en direct : reste affiché
