@@ -30,7 +30,8 @@ let fail=0;const rows=[],check=(n,ok,d)=>{rows.push((ok?'✅':'❌')+' '+n+(d?' 
  await p.goto(U);await p.clock.runFor(2200);await p.fill('#unlockPw',PW);await Promise.all([p.waitForNavigation({timeout:60000}),p.click('#unlockForm button[type=submit]')]);await settle(12);
  await p.evaluate(()=>{const d=document.querySelector('#settings');d.open=true;renderSettings(true);});
  let txt=await p.locator('#diagSec').innerText();
- check('38.1 · panneau Diagnostic présent',/Diagnostic Race Control/.test(txt)&&/Agenda \/ relais/.test(txt)&&/Service Worker/.test(txt));
+ const diag=await p.evaluate(()=>({title:(document.querySelector('#diagSec h3')||{}).textContent||'',names:[...document.querySelectorAll('#diagSec .diag-name')].map(x=>x.textContent),rows:document.querySelectorAll('#diagSec .diag-row').length}));
+ check('38.1 · panneau Diagnostic présent',/Diagnostic Race Control/.test(diag.title)&&diag.names.includes('Agenda / relais')&&diag.names.includes('Service Worker')&&diag.rows===8,JSON.stringify(diag));
  const snap=await p.evaluate(()=>RC_OBS.snapshot());
  check('38.2 · sources météo/réseau enregistrées',snap.count>0&&snap.sources.weather&&snap.sources.network,JSON.stringify({count:snap.count,sources:Object.keys(snap.sources)}));
  check('38.3 · dernière décision déterministe enregistrée',!!snap.lastDecision&&snap.lastDecision.domain==='current-verdict',snap.lastDecision&&JSON.stringify(snap.lastDecision.data));
