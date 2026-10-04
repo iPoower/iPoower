@@ -518,3 +518,6 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .brf .cal-v { flex-wrap: wrap; }
 .brf .brf-why, .brf .brf-r { overflow-wrap: anywhere; }
 .brf-r small { display: block; font-family: var(--f-body); font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--fg2); }
+/* Les badges de source longs doivent rentrer même avec une police monospace de repli. */
+.mod-h .src { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 380px) { .iceHead { grid-template-columns: minmax(0, 1fr); } }

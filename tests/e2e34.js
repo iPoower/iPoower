@@ -319,11 +319,36 @@ const privacy = async s => {
     const nav = await p.locator('#secBrf a').evaluateAll(xs => xs.filter(x => /Waze/.test(x.textContent)).map(x => x.href));
     check('12 · Waze préserve la destination du trajet affiché', nav.some(u => /(?:ll=49\.208%2C2\.587|ll=49\.208,2\.587|ll=49\.20779%2C2\.58743|ll=49\.20779,2\.58743)/.test(u)), nav.join(' | '));
     check('12 · agenda demeure visible avec ses rendez-vous', await p.locator('#secCal').isVisible() && /Titre privé Alpha|Titre privé Beta/.test(await p.locator('#secCal').innerText()));
+    const inspectLayout = () => p.evaluate(() => {
+      const escapesViewport = x => {
+        if (!x.getClientRects().length || getComputedStyle(x).visibility === 'hidden') return false;
+        const r = x.getBoundingClientRect(); if (r.width <= 0 || r.right <= innerWidth + 1) return false;
+        // Un ruban horizontal contenu dans son module ne déborde pas du document.
+        for (let ancestor = x.parentElement; ancestor; ancestor = ancestor.parentElement) {
+          if (!/^(auto|scroll|hidden|clip)$/.test(getComputedStyle(ancestor).overflowX)) continue;
+          const clip = ancestor.getBoundingClientRect();
+          if (clip.width > 0 && clip.left >= -1 && clip.right <= innerWidth + 1) return false;
+        }
+        return true;
+      };
+      const overflows = innerWidth === 320 ? [...document.querySelectorAll('body *')].filter(escapesViewport).map(x => {
+        const r = x.getBoundingClientRect(), style = getComputedStyle(x);
+        return { tag: x.tagName.toLowerCase(), class: x.getAttribute('class') || '', id: x.id || '', left: +r.left.toFixed(2), right: +r.right.toFixed(2), width: +r.width.toFixed(2), fontFamily: style.fontFamily, whiteSpace: style.whiteSpace, minWidth: style.minWidth, text: (x.innerText || x.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 100) };
+      }).sort((a, b) => b.right - a.right || a.width - b.width).slice(0, 12) : [];
+      return { overflow: document.documentElement.scrollWidth - innerWidth, overflows,
+        buttons: [...document.querySelectorAll('#secBrf [data-act="trip-cancel"], #secBrf [data-act="trip-preview"], #secCal [data-act="trip-cancel"], [data-act="trip-cancel-undo"]')].filter(x => x.getClientRects().length).map(x => ({ h: x.getBoundingClientRect().height, w: x.getBoundingClientRect().width, text: x.textContent })) };
+    });
     for (const width of [320, 414, 1280]) {
       await p.setViewportSize({ width, height: 896 }); await s.settle(2);
-      const layout = await p.evaluate(() => ({ overflow: document.documentElement.scrollWidth - innerWidth,
-        buttons: [...document.querySelectorAll('#secBrf [data-act="trip-cancel"], #secBrf [data-act="trip-preview"], #secCal [data-act="trip-cancel"], [data-act="trip-cancel-undo"]')].filter(x => x.getClientRects().length).map(x => ({ h: x.getBoundingClientRect().height, w: x.getBoundingClientRect().width, text: x.textContent })) }));
+      const layout = await inspectLayout();
       check(`13 · ${width}px : aucun débordement, boutons trajet ≥44px`, layout.overflow <= 1 && layout.buttons.length > 0 && layout.buttons.every(x => x.h >= 44 && x.w >= 44), JSON.stringify(layout));
+      if (width === 320) {
+        // Ubuntu utilise notamment DejaVu Sans comme repli : ses glyphes plus larges doivent également rentrer.
+        const fallbackStyle = await p.addStyleTag({ content: ':root { --f-body: "DejaVu Sans", sans-serif; --f-disp: "DejaVu Sans", sans-serif; --f-mono: "DejaVu Sans Mono", monospace; }' }); await s.settle(2);
+        const fallbackLayout = await inspectLayout();
+        check('13 · 320px avec DejaVu Sans : aucun débordement, boutons trajet ≥44px', fallbackLayout.overflow <= 1 && fallbackLayout.buttons.length > 0 && fallbackLayout.buttons.every(x => x.h >= 44 && x.w >= 44), JSON.stringify(fallbackLayout));
+        await fallbackStyle.evaluate(x => x.remove()); await s.settle(2);
+      }
     }
     await p.locator('[data-act="view"][data-v="meteo"]').click(); await s.settle(2);
     check('12 · Météo reste utilisable', await p.locator('#secCur').isVisible());
