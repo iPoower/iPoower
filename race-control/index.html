@@ -4182,12 +4182,16 @@ function daySummary(evs, now) {
   return `<div class="cal-sum lv${worst ? worst.r.worst : 0}"><b>${lbl} · ${L.length} trajet${L.length > 1 ? 's' : ''} · ${f0(km)} km</b>
     <span>${worst && worst.r.worst >= 1 ? `${LV[worst.r.worst].emoji} ${worst.x.l.k === 'ret' ? 'retour' : 'aller'} ${esc(worst.x.e.t)} (${worst.x.l.dep.slice(11, 16)}) à surveiller` : ev.length === L.length ? '🟢 pneus adaptés à tous les trajets prévus' : 'analyse en cours…'}</span></div>`;
 }
+const calendarHasDeclaredPlace = e => !!e && typeof e.loc === 'string' && e.loc.trim().length > 2;
 function renderCal() {
   const el = $('#secCal'); if (!el) return;
   if (!CAL) { el.hidden = true; el.innerHTML = ''; return; }
   const now = DEMO.on && CX ? CX.m.nowStr : liveNow(), home = S.locs[0], fut = (CAL.events || []).filter(e => (e.allDay ? e.s.slice(0, 10) >= now.slice(0, 10) : e.s > now));
-  // rendez-vous à moins de 3 km de chez toi : pas de trajet, on les masque
-  const skip = fut.filter(e => e.mode === 'pasdetrajet'), fut2 = fut.filter(e => e.mode !== 'pasdetrajet');
+  // « Agenda · trajets » ne montre que des rendez-vous pouvant réellement impliquer un déplacement.
+  // Les rappels/notes sans champ Lieu sont ignorés ; un lieu renseigné mais non géocodable reste visible pour être corrigé.
+  const skip = fut.filter(e => e.mode === 'pasdetrajet'),
+    noPlace = fut.filter(e => e.mode !== 'pasdetrajet' && !calendarHasDeclaredPlace(e)),
+    fut2 = fut.filter(e => e.mode !== 'pasdetrajet' && calendarHasDeclaredPlace(e));
   const near = fut2.filter(e => locHasCoords(home) && locHasCoords(e) && distKm(home, e) < 3), evs = fut2.filter(e => !near.includes(e)).slice(0, 8);
   el.hidden = false;
   const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }), calCached = !!CAL.offline,
@@ -4196,7 +4200,7 @@ function renderCal() {
   // Un relais vieux ne doit pas monopoliser l'écran. Alerte forte seulement si un départ Agenda
   // peut arriver dans les 4 h ; sinon une ligne compacte suffit jusqu'au rattrapage.
   const depTimes = [];
-  fut.forEach(e => {
+  fut2.forEach(e => {
     if (e.legs) effLegs(e).forEach(l => { if (l && l.dep && l.dep >= now.slice(0, 16)) depTimes.push(l.dep); });
     else if (!e.allDay && e.s >= now.slice(0, 16)) depTimes.push(e.s);
   });
@@ -4229,7 +4233,7 @@ function renderCal() {
     return `<div class="cal-e"><div class="cal-h"><span class="cal-d">${dl} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(e.label || e.loc)}</span></div>${body}</div>`;
   }).join('');
   el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calState}</span></div>${calWarn}<div class="cal-l">${rows}</div>
-    <div class="disc">${calCached ? '<b>Hors connexion : dernier agenda chiffré disponible.</b> ' : ''}${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Mots-clés dans le titre ou la description Google Agenda : <b>#direct</b> (enchaîner), <b>#maison</b> (repasser par chez toi), <b>#pasdetrajet</b> ou 📺 (ignorer). Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, avec une marge totale plafonnée à 15 min pour un rendez-vous (dont 10 min d’arrivée anticipée), sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
+    <div class="disc">${calCached ? '<b>Hors connexion : dernier agenda chiffré disponible.</b> ' : ''}${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${noPlace.length ? noPlace.length + ' rappel' + (noPlace.length > 1 ? 's' : '') + ' sans lieu masqué' + (noPlace.length > 1 ? 's' : '') + '. ' : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Mots-clés dans le titre ou la description Google Agenda : <b>#direct</b> (enchaîner), <b>#maison</b> (repasser par chez toi), <b>#pasdetrajet</b> ou 📺 (ignorer). Rendez-vous avec un lieu sur 8 jours, synchronisés le ${up} (chiffrés avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, avec une marge totale plafonnée à 15 min pour un rendez-vous (dont 10 min d’arrivée anticipée), sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
 }
 
 
