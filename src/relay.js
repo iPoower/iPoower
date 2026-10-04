@@ -1,4 +1,4 @@
-// Relais Race Control (GitHub Actions, toutes les 30 min) :
+// Relais Race Control (GitHub Actions, objectif ~10 min avec watchdog de rattrapage) :
 // 1) observations réelles des stations (METAR) -> obs.json
 // 2) de 90 à 5 min avant le départ, verdict du trajet toutes les 15 min -> notification si orange/rouge, brouillard ou verglas,
 //    puis nouvelle notification seulement en cas d'aggravation (3 par matin maximum)

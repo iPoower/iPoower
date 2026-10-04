@@ -1,0 +1,53 @@
+name: Race Control · watchdog relais
+# Filet de sécurité indépendant du cron principal. Il ne fait rien tant que obs.json a moins de 10 min.
+# S'il constate un relais en retard, il exécute exactement le même relay.js et conserve ses anti-doublons.
+on:
+  schedule:
+    - cron: '4,14,24,34,44,54 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: race-control-relay
+  cancel-in-progress: false
+jobs:
+  watchdog:
+    environment:
+      name: production
+      deployment: false
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: gh-pages
+      - name: Mesurer l’âge du dernier relais
+        id: stale
+        run: |
+          node - <<'NODE'
+          const fs=require('fs'),p='race-control/obs.json';
+          let age=Infinity;try{const j=JSON.parse(fs.readFileSync(p,'utf8'));const t=Date.parse(j.updated);if(Number.isFinite(t))age=(Date.now()-t)/60000;}catch(e){}
+          const due=!Number.isFinite(age)||age>=10;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,'due='+(due?'1':'0')+'\n');
+          console.log(Number.isFinite(age)?('Dernier relais : '+age.toFixed(1)+' min'): 'Dernier relais illisible',due?'→ rattrapage':'→ OK');
+          NODE
+      - uses: actions/setup-node@v7
+        if: steps.stale.outputs.due == '1'
+        with:
+          node-version: 20
+      - name: Rattraper le relais
+        if: steps.stale.outputs.due == '1'
+        env:
+          FORCE_PUSH: '0'
+          RC_KEY: ${{ secrets.RC_KEY }}
+          GCAL_ICS: ${{ secrets.GCAL_ICS }}
+          APP_KEY: ${{ secrets.APP_KEY }}
+        run: node race-control/relay.js
+      - name: Publier le rattrapage
+        if: steps.stale.outputs.due == '1'
+        run: |
+          git config user.name "race-control-watchdog"
+          git config user.email "race-control-watchdog@users.noreply.github.com"
+          git add race-control/obs.json; [ -f race-control/calendar.sealed.json ] && git add race-control/calendar.sealed.json
+          git diff --cached --quiet || (git commit -m "Relais watchdog $(date -u +%H:%M)" && (git push || (git pull --rebase && git push)))

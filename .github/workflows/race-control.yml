@@ -1,12 +1,10 @@
 name: Race Control · relais météo
-# Observations réelles des stations proches -> race-control/obs.json (synchronisation principale toutes les 10 min)
+# Observations réelles des stations proches -> race-control/obs.json (objectif ~10 min ; tentative toutes les 5 min pour absorber les retards du scheduler GitHub)
 # De 90 à 5 min avant le départ : verdict du trajet toutes les 15 min -> notification si orange/rouge, brouillard ou verglas,
 # puis nouvelle notification uniquement en cas d'aggravation (3 par matin maximum)
 on:
   schedule:
-    - cron: '7,17,27,37,47,57 * * * *'
-    # matin renforcé : un passage toutes les 15 min de 03:00 à 05:59 UTC (couvre l'heure d'été et d'hiver)
-    - cron: '22,52 3-5 * * *'
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 * * * *'
   workflow_dispatch:
     inputs:
       force_push:
@@ -35,7 +33,21 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 20
+      - name: Vérifier si une vraie synchronisation est due
+        id: fresh
+        env:
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+          FORCE_PUSH: ${{ github.event.inputs.force_push }}
+        run: |
+          node - <<'NODE'
+          const fs=require('fs'),p='race-control/obs.json';
+          let age=Infinity;try{const j=JSON.parse(fs.readFileSync(p,'utf8'));const t=Date.parse(j.updated);if(Number.isFinite(t))age=(Date.now()-t)/60000;}catch(e){}
+          const due=process.env.MANUAL==='true'||process.env.FORCE_PUSH==='1'||!Number.isFinite(age)||age>=8;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,'due='+(due?'1':'0')+'\n');
+          console.log(Number.isFinite(age)?('Dernière synchro il y a '+age.toFixed(1)+' min'): 'Aucune synchro valide',due?'→ exécuter':'→ encore fraîche, ne rien écrire');
+          NODE
       - name: Relais
+        if: steps.fresh.outputs.due == '1'
         env:
           FORCE_PUSH: ${{ github.event.inputs.force_push }}
           # deux clés indépendantes : RC_KEY ouvre la config du relais, APP_KEY (code de l'app) chiffre l'agenda
@@ -44,6 +56,7 @@ jobs:
           APP_KEY: ${{ secrets.APP_KEY }}
         run: node race-control/relay.js
       - name: Publier obs.json
+        if: steps.fresh.outputs.due == '1'
         run: |
           git config user.name "race-control-bot"
           git config user.email "race-control-bot@users.noreply.github.com"

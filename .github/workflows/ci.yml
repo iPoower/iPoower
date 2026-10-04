@@ -21,7 +21,7 @@ name: Race Control · tests
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'tools/**', 'tests/**', 'encrypted/**', 'package.json', 'package-lock.json', '.github/workflows/ci.yml', '.github/workflows/race-control.yml']
+    paths: ['src/**', 'tools/**', 'tests/**', 'encrypted/**', 'package.json', 'package-lock.json', '.github/workflows/ci.yml', '.github/workflows/race-control.yml', '.github/workflows/race-control-watchdog.yml']
   pull_request:
   workflow_dispatch:
     inputs:

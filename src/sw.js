@@ -1,18 +1,21 @@
 // Tyre Weather Race Control : shell PWA hors ligne + dernières données publiques chiffrées
 // Les requêtes vers OSRM, Open-Meteo, BigDataCloud, RainViewer et les tuiles externes ne sont JAMAIS mises en Cache Storage.
-const STATIC = 'twrc-static-v6', DATA = 'twrc-data-v2';
+const STATIC = 'twrc-static-v7', DATA = 'twrc-data-v3';
 const SHELL = ['./', './index.html', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './manifest.webmanifest', './tiredb.json'];
 const DATA_PATHS = /\/(calendar\.sealed\.json|obs\.json|tiredb\.json|version\.json)$/;
 
 const canonical = u => new Request(u.origin + u.pathname, { method: 'GET' });
 async function networkFirst(req, cacheName, key, fallback) {
-  const cache = await caches.open(cacheName);
+  const cache = await caches.open(cacheName), k = key || req;
   try {
     const r = await fetch(req, { cache: 'no-store' });
-    if (r && r.ok) await cache.put(key || req, r.clone());
-    return r;
+    if (r && r.ok) { await cache.put(k, r.clone()); return r; }
+    // GitHub Pages/CDN peut répondre 5xx sans être techniquement « hors réseau » :
+    // dans ce cas on préfère la dernière copie valide plutôt qu'une panne visible.
+    const old = await cache.match(k, { ignoreSearch: true }) || (fallback ? await caches.match(fallback) : null);
+    return old || r;
   } catch (e) {
-    return (await cache.match(key || req, { ignoreSearch: true })) || (fallback ? caches.match(fallback) : undefined) || Promise.reject(e);
+    return (await cache.match(k, { ignoreSearch: true })) || (fallback ? caches.match(fallback) : undefined) || Promise.reject(e);
   }
 }
 self.addEventListener('install', e => {
