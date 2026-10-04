@@ -1,8 +1,65 @@
-const fs=require('fs'),vm=require('vm');
-const src=fs.readFileSync('engine.js','utf8')+fs.readFileSync('demo.js','utf8');
+const fs=require('fs'),vm=require('vm'),path=require('path'),assert=require('assert');
+const src=fs.readFileSync(path.join(__dirname,'../src/engine.js'),'utf8')+fs.readFileSync(path.join(__dirname,'../src/demo.js'),'utf8');
 const ctx={console,Math,Date,Intl,Map,Set};vm.createContext(ctx);vm.runInContext(src+`
-this.api={makeDemoPayload,makeModel,windowAssess,summarize,seqOf,narrate,seasonAnalysis,computeAlerts,LV,ICE_LV,hourVerdict,estRoad,iceRisk};`,ctx);
+this.api={makeDemoPayload,makeModel,windowAssess,summarize,seqOf,narrate,seasonAnalysis,computeAlerts,LV,ICE_LV,hourVerdict,estRoad,iceRisk,calendarEventRelevant,calendarEventPlace};`,ctx);
 const A=ctx.api;
+let relevantCount=0;
+const relevantTest=(name,fn)=>{fn();relevantCount++;console.log('✅ '+name);};
+const places=[{id:'home',name:'Maison fictive',lat:49,lon:2},{id:'work',name:'Bureau fictif',lat:48,lon:3}];
+relevantTest('rappel sans lieu, titre seul ou anciennes jambes ne sont pas des déplacements',()=>{
+  for(const event of [null,{}, {t:'Chargeur'}, {title:'Rendez-vous important'}, {t:'#trajet'}, {label:'Maison fictive'}, {legs:[{from:places[0],to:places[1]}]}]) assert.equal(A.calendarEventRelevant(event,places),false);
+});
+relevantTest('coordonnées numériques finies et bornées rendent le lieu exploitable',()=>{
+  for(const event of [{lat:0,lon:0},{lat:90,lon:-180},{lat:-90,lon:180},{lat:49,lon:2,t:'Chargeur'}]) assert.equal(A.calendarEventRelevant(event,places),true);
+});
+relevantTest('chaînes, null, NaN, infini et coordonnées hors bornes ne deviennent pas des lieux',()=>{
+  for(const event of [{lat:'49',lon:'2'},{lat:null,lon:null},{lat:NaN,lon:2},{lat:49,lon:Infinity},{lat:91,lon:2},{lat:49,lon:-181}]) assert.equal(A.calendarEventRelevant(event,places),false);
+});
+relevantTest('LOCATION correspond exactement à un id ou nom de lieu configuré après normalisation',()=>{
+  for(const event of [{loc:' HOME '},{location:'bureau FICTIF'},{loc:' Maison   fictive '}]) assert.equal(A.calendarEventRelevant(event,places),true);
+  assert.equal(A.calendarEventRelevant({loc:'Maison fictive annexe'},places),false);
+  assert.equal(A.calendarEventRelevant({loc:'Lieu inconnu'},places),false);
+});
+relevantTest('équivalence Unicode du nom accepté sans élargir à un autre lieu',()=>{
+  const configured=[{id:'cafe',name:'Café fictif',lat:49,lon:2}];
+  assert.equal(A.calendarEventRelevant({loc:'Cafe\u0301 fictif'},configured),true);
+  assert.equal(A.calendarEventRelevant({loc:'Cafe fictif'},configured),false);
+});
+relevantTest('lieu configuré sans coordonnées fiables et label seul ne suffisent pas',()=>{
+  assert.equal(A.calendarEventRelevant({loc:'Bureau fictif'},[{id:'work',name:'Bureau fictif',lat:null,lon:null}]),false);
+  assert.equal(A.calendarEventRelevant({loc:'Alias'},[{id:'home',name:'Maison fictive',label:'Alias',lat:49,lon:2}]),false);
+  assert.equal(A.calendarEventRelevant({label:'Maison fictive'},places),false);
+});
+relevantTest('modes explicites gardent un vrai déplacement de destination encore inconnue',()=>{
+  for(const mode of ['trajet','direct','maison','conflit']) assert.equal(A.calendarEventRelevant({mode,loc:'Lieu introuvable'},places),true);
+  for(const mode of [null,'','rappel','trajetbidon']) assert.equal(A.calendarEventRelevant({mode},places),false);
+});
+relevantTest('#pasdetrajet prime même sur coordonnées et lieu configuré',()=>{
+  assert.equal(A.calendarEventRelevant({mode:'pasdetrajet',loc:'home',lat:49,lon:2},places),false);
+});
+relevantTest('la pertinence reste déterministe et ne modifie aucun événement ou lieu',()=>{
+  const event=Object.freeze({loc:'Home',legs:Object.freeze([])}), configured=Object.freeze(places.map(place=>Object.freeze({...place})));
+  const before=JSON.stringify([event,configured]);
+  assert.equal(A.calendarEventRelevant(event,configured),true);assert.equal(A.calendarEventRelevant(event,configured),true);
+  assert.equal(JSON.stringify([event,configured]),before);
+});
+relevantTest('le lieu spatial retourne l’événement valide ou le lieu configuré reconnu, sans copie ni mutation',()=>{
+  const spatial=Object.freeze({lat:0,lon:0,t:'Lieu fictif'});
+  assert.strictEqual(A.calendarEventPlace(spatial,places),spatial);
+  assert.strictEqual(A.calendarEventPlace({loc:' Maison   FICTIVE '},places),places[0]);
+  assert.strictEqual(A.calendarEventPlace({location:'WORK'},places),places[1]);
+});
+relevantTest('#trajet inconnu reste pertinent mais ses anciennes jambes ne créent pas un lieu',()=>{
+  const unknown=Object.freeze({mode:'trajet',loc:'Destination à confirmer',legs:Object.freeze([{from:places[0],to:places[1]}])});
+  assert.equal(A.calendarEventRelevant(unknown,places),true);
+  assert.equal(A.calendarEventPlace(unknown,places),null);
+  for(const mode of ['direct','maison','conflit']) assert.equal(A.calendarEventPlace({...unknown,mode},places),null);
+});
+relevantTest('le lieu spatial ne devine rien du titre, label, coordonnées invalides ou rappel',()=>{
+  for(const event of [null,{}, {t:'Maison fictive'},{label:'Maison fictive'},{lat:'49',lon:'2'},{lat:91,lon:2},{lat:49,lon:-181},{lat:NaN,lon:2},{mode:'pasdetrajet',loc:'home',lat:49,lon:2}]) assert.equal(A.calendarEventPlace(event,places),null);
+  assert.equal(A.calendarEventPlace({loc:'Bureau fictif'},[{name:'Bureau fictif',lat:null,lon:null}]),null);
+});
+console.log(relevantCount+'/'+relevantCount+' scénarios pertinence agenda OK');
 const cars=[
  {id:'i20',short:'i20 N',sporty:true,tire:{type:'summer',size:'215/40 R18 89Y XL',tread:null},plan:{on:true,date:''}},
  {id:'308',short:'308',sporty:false,tire:{type:'allseason',size:'225/45 R17 94W',tread:null},plan:{on:false}}];

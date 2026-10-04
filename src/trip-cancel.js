@@ -2,7 +2,7 @@
 const TripCancel = (() => {
   const KEY = 'twrc.tripcancel', UNDO_MS = 10 * 60e3, EVENT_MARGIN_MS = 2 * 3600e3;
   const validId = id => typeof id === 'string' && /^(cal-[0-9a-f]{32}|work-\d{4}-\d{2}-\d{2})$/.test(id);
-  const point = p => !!p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
+  const point = p => !!p && Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180;
   const copyPoint = p => p ? { ...p } : null;
   const hash = s => [2166136261, 2246822507, 3266489909, 668265263].map(seed => {
     let h = seed; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
@@ -85,12 +85,20 @@ const TripCancel = (() => {
   function selectedLegs(e, directSet) {
     return (e.legs || []).filter(l => !(l.k === 'ret' && l.brk && directSet[l.brk])).map(l => e.alt && directSet[e.alt.key] && l.k === 'go' && l.brk === e.alt.key ? { ...e.alt.direct, chosen: true } : { ...l });
   }
-  // Le relais actuel omet déjà les données spatiales de #pasdetrajet. Ne pas
-  // reconstruire ses routes saines ni remplacer leur ancre domicile arrondie.
-  const nonSpatialNeedsRebuild = e => !!e && e.mode === 'pasdetrajet' &&
-    (point(e) || !!(e.legs || []).length || !!(e.alt && e.alt.direct));
+  // Les rappels exclus sans données spatiales ne changent pas une chaîne saine.
+  // Le prédicat de l'app peut exclure aussi les anciens événements sans lieu ;
+  // leurs jambes/alternatives obsolètes imposent alors une réparation locale.
+  const nonSpatialNeedsRebuild = (e, relevant, resolvePlace) => {
+    if (!e) return false;
+    const excluded = e.mode === 'pasdetrajet' || typeof relevant === 'function' && !relevant(e);
+    if (excluded) return point(e) || !!(e.legs || []).length || !!(e.alt && e.alt.direct);
+    // LOCATION peut désigner un lieu configuré même si l'ancien agenda n'a
+    // pas de coordonnées. Ses anciennes jambes ne prouvent pas ce nouveau lieu.
+    return !point(e) && typeof resolvePlace === 'function' && point(resolvePlace(e));
+  };
   function rebuild(events, home, directSet, state, now, context = {}) {
     directSet = directSet || {};
+    const relevant = e => e.mode !== 'pasdetrajet' && (typeof context.relevant !== 'function' || !!context.relevant(e));
     const result = new Map(), byDay = new Map(), counts = new Map();
     (events || []).forEach(e => { const id = eventId(e); counts.set(id, (counts.get(id) || 0) + 1); });
     const cancelled = e => counts.get(eventId(e)) === 1 && has(state, eventId(e), now);
@@ -100,18 +108,26 @@ const TripCancel = (() => {
       if (counts.get(eventId(e)) === 1) result.set(eventId(e), legs);
     };
     (events || []).forEach(e => {
-      set(e, cancelled(e) || e.mode === 'pasdetrajet' ? [] : selectedLegs(e, directSet));
+      set(e, cancelled(e) || !relevant(e) ? [] : selectedLegs(e, directSet));
       const d = (e.s || '').slice(0, 10); if (!byDay.has(d)) byDay.set(d, []); byDay.get(d).push(e);
     });
     const H = home ? { ...home, label: 'Domicile', city: 'Domicile' } : null;
-    const eventPoint = e => point(e) ? { lat: e.lat, lon: e.lon, label: e.label || e.loc || 'Rendez-vous', city: e.label || e.loc || 'Rendez-vous' } : null;
+    const eventPoint = e => {
+      const p = typeof context.place === 'function' ? context.place(e) : e;
+      if (!point(p)) return null;
+      // Conserver les identifiants/attributs du lieu configuré pour l'arrondi
+      // domicile-travail. L'identifiant technique de l'événement reste distinct.
+      if (p === e) return { lat: e.lat, lon: e.lon, label: e.label || e.loc || 'Rendez-vous', city: e.label || e.loc || 'Rendez-vous' };
+      return { ...p, lat: p.lat, lon: p.lon,
+        label: p.label || p.name || e.label || e.loc || 'Rendez-vous', city: p.city || p.name || p.label || e.label || e.loc || 'Rendez-vous' };
+    };
     for (const [day, dayEvents] of byDay) {
       // Un ancien agenda peut encore rattacher la route suivante à un événement
       // désormais non spatial. Reconstruire ce jour même sans annulation locale.
-      if (!dayEvents.some(e => cancelled(e) || nonSpatialNeedsRebuild(e)) && !has(state, workId(day), now)) continue;
-      const remaining = dayEvents.filter(e => !cancelled(e) && e.mode !== 'pasdetrajet' && point(e)).sort((a, b) => a.s.localeCompare(b.s));
+      if (!dayEvents.some(e => cancelled(e) || nonSpatialNeedsRebuild(e, relevant, context.place)) && !has(state, workId(day), now)) continue;
+      const remaining = dayEvents.filter(e => !cancelled(e) && relevant(e) && eventPoint(e)).sort((a, b) => a.s.localeCompare(b.s));
       // Toute route réutilisée a exactement les mêmes extrémités ; ni géométrie ni météo d'une vieille origine.
-      const routes = dayEvents.flatMap(e => [...(e.legs || []), ...(e.alt && e.alt.direct ? [e.alt.direct] : [])]);
+      const routes = dayEvents.filter(relevant).flatMap(e => [...(e.legs || []), ...(e.alt && e.alt.direct ? [e.alt.direct] : [])]);
       remaining.forEach(e => set(e, []));
       const add = (e, k, from, to, fromKind, anchor, assumed = false) => {
         const old = routes.find(l => l.k === k && same(l.from, from) && same(l.to, to) && Number.isFinite(l.min) && l.min > 0);
@@ -149,7 +165,7 @@ const TripCancel = (() => {
       }
       if (prev && !prev.near) add(prev.e, 'ret', prev.p, H, 'event', shift(prev.e.e, 10));
       // Événement sans lieu : aucune route ne peut être reconstruite depuis une origine annulée.
-      dayEvents.filter(e => !cancelled(e) && e.mode !== 'pasdetrajet' && !point(e)).forEach(e => {
+      dayEvents.filter(e => !cancelled(e) && relevant(e) && !eventPoint(e)).forEach(e => {
         const invalid = selectedLegs(e, directSet).some(l => l.fromKind === 'prev');
         if (invalid) set(e, selectedLegs(e, directSet).map(l => l.fromKind === 'prev' ? {
           k: l.k, dep: l.dep, arr: l.arr, from: null, to: copyPoint(l.to), fromKind: 'unknown', originPending: true, originUncertain: true,

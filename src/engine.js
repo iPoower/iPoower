@@ -26,6 +26,22 @@ const WMO = {
 const num = v => (typeof v === 'number' && isFinite(v)) ? v : null;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const pad = n => String(n).padStart(2, '0');
+// Lieu réel d'un événement : ni titre, ni label, ni anciennes jambes d'un cache
+// ne remplacent LOCATION. Le choix explicite #trajet ne crée pas de coordonnées.
+function calendarEventPlace(event, places = []) {
+  if (!event || event.mode === 'pasdetrajet') return null;
+  const coords = place => !!place && Number.isFinite(place.lat) && Number.isFinite(place.lon) && Math.abs(place.lat) <= 90 && Math.abs(place.lon) <= 180;
+  if (coords(event)) return event;
+  const normalize = value => typeof value === 'string' ? value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase() : '';
+  const locations = [event.loc, event.location].map(normalize).filter(Boolean);
+  return locations.length && Array.isArray(places) ? places.find(place => coords(place) &&
+    [place.id, place.name].some(value => { const name = normalize(value); return name && locations.includes(name); })) || null : null;
+}
+// Un événement explicitement spatial reste pertinent si son lieu attend encore
+// une confirmation. On peut ainsi signaler #trajet inconnu sans inventer sa route.
+function calendarEventRelevant(event, places = []) {
+  return !!calendarEventPlace(event, places) || !!event && ['trajet', 'direct', 'maison', 'conflit'].includes(event.mode);
+}
 function pw(x, pts) {
   if (x <= pts[0][0]) return pts[0][1];
   for (let k = 1; k < pts.length; k++) {
