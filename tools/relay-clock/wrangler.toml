@@ -1,8 +1,14 @@
 # Horloge externe du relais Race Control : voir README.md, section « Horloge du relais ».
-# Déploiement : npx wrangler deploy (depuis ce dossier) ; secret : npx wrangler secret put GH_TOKEN
+# Déployé par Cloudflare Workers Builds (dépôt GitHub connecté, dossier racine tools/relay-clock), ou à la main : npx wrangler deploy.
+# Le seul secret, GH_TOKEN, est défini dans Cloudflare (Settings → Variables and Secrets), jamais dans ce dépôt.
 name = "race-control-relay-clock"
 main = "worker.mjs"
 compatibility_date = "2026-10-01"
+workers_dev = true   # https://race-control-relay-clock.<compte>.workers.dev/status : diagnostic public en lecture seule
 
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["* * * * *"]   # chaque minute : ~1 440 exécutions/jour, très loin du quota gratuit (100 000 requêtes/jour)
+
+[observability]
+enabled = true          # Workers Logs (offre gratuite) : une ligne JSON par exécution, sans donnée personnelle
+head_sampling_rate = 1

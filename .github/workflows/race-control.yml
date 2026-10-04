@@ -1,6 +1,8 @@
 name: Race Control · relais météo
+# Source visible dans la liste des runs : horloge (Cloudflare), manuel, schedule (cron GitHub)
+run-name: "Relais · ${{ github.event_name == 'workflow_dispatch' && inputs.source || github.event_name }}"
 # Observations réelles des stations proches -> race-control/obs.json (objectif ~10 min ; tentative toutes les 5 min pour absorber les retards du scheduler GitHub)
-# Horloge principale : tools/relay-clock (Cloudflare, toutes les 5 min, workflow_dispatch source=horloge) ; le cron GitHub ci-dessous reste un filet de secours
+# Horloge principale : tools/relay-clock (Cloudflare, chaque minute, garde anti-tempête, workflow_dispatch source=horloge) ; le cron GitHub ci-dessous reste un filet de secours
 # De 90 à 5 min avant le départ : verdict du trajet toutes les 15 min -> notification si orange/rouge, brouillard ou verglas,
 # puis nouvelle notification uniquement en cas d'aggravation (3 par matin maximum)
 on:
@@ -62,8 +64,10 @@ jobs:
         run: node race-control/relay.js
       - name: Publier obs.json
         if: steps.fresh.outputs.due == '1'
+        env:
+          SRC: ${{ github.event_name == 'workflow_dispatch' && inputs.source || github.event_name }}
         run: |
           git config user.name "race-control-bot"
           git config user.email "race-control-bot@users.noreply.github.com"
           git add race-control/obs.json; [ -f race-control/calendar.sealed.json ] && git add race-control/calendar.sealed.json
-          git diff --cached --quiet || (git commit -m "Observations $(date -u +%H:%M)" && (git push || (git pull --rebase && git push)))
+          git diff --cached --quiet || (git commit -m "Observations $(date -u +%H:%M) · ${SRC}" && (git push || (git pull --rebase && git push)))
