@@ -16,9 +16,9 @@ const b = spawnSync(process.execPath, [path.join(ROOT, 'tools/build.js')], { cwd
 if (b.status !== 0) { console.error('Build de test en échec'); process.exit(1); }
 ['relay.js', 'engine.js', 'demo.js'].forEach(f => cp('src/' + f, path.join(H, f)));
 fs.readdirSync(path.join(ROOT, 'tests/relay-harness')).forEach(f => cp('tests/relay-harness/' + f, path.join(H, f)));
-// Programme dense entièrement fictif : 30 appels sans lieu/#pasdetrajet avant
-// 27 rendez-vous localisés. Aucun rang numérique ne doit cacher un déplacement
-// ni tronquer sa chaîne ; seuls les événements hors de la fenêtre sont exclus.
+// Programme dense entièrement fictif : 15 rappels sans lieu + 15 #pasdetrajet avant
+// 27 rendez-vous localisés. Les rappels sans lieu doivent être éliminés sans
+// cacher un déplacement ni tronquer sa chaîne ; seuls les événements hors fenêtre sont exclus.
 const densePrefix = 'PRIVE_AGENDA_DENSE', noTripLocation = 'NEVER_GEOCODE_DENSE';
 const denseEvent = (uid, day, start, end, title, location, mode) => ['BEGIN:VEVENT', 'UID:' + uid,
   'DTSTART;TZID=Europe/Paris:' + day + 'T' + start + '00', 'DTEND;TZID=Europe/Paris:' + day + 'T' + end + '00',
@@ -84,19 +84,19 @@ const c = run('2026-10-01T05:35:00+02:00', 'fog');
 check('jour de télétravail : aucune alerte du matin', c.code === 0 && morningPushes(c.out) === 0 && c.obs.morning.sent === 0);
 const calWithUnknownS = readJ(path.join(H, 'calendar.sealed.json')), calWithUnknown = tryUnseal(calWithUnknownS, APP_KEY_TEST);
 const unknown = calWithUnknown && calWithUnknown.events.find(ev => ev.t === 'Appel sans lieu' && ev.s === '2026-10-04T11:00');
-check('rendez-vous sans adresse conservé chiffré, sans coordonnées ni trajet', !!unknown && unknown.loc === '' && unknown.lat === null && unknown.lon === null && unknown.label === null && !(unknown.legs || []).length);
+check('rappel sans adresse exclu de l’agenda trajet', !unknown && c.obs.relay.calNoPlace >= 1);
 const geoRequests = readJ(path.join(H, 'geocodes.json'));
 check('aucun géocodage sans localisation exploitable', Array.isArray(geoRequests) && geoRequests.length > 0 && geoRequests.every(url => {
   const q = new URL(url).searchParams, location = q.get('q') || q.get('name') || '';
   return location.trim().length > 2 && location !== 'undefined' && location !== 'null';
 }));
-check('titre sans adresse absent des sorties publiques', !!unknown && !JSON.stringify(calWithUnknownS).includes(unknown.t) && !JSON.stringify(c.obs).includes(unknown.t) && !c.out.includes(unknown.t));
+check('titre sans adresse absent du programme chiffré et des sorties publiques', !!calWithUnknown && !calWithUnknown.events.some(ev => ev.t === 'Appel sans lieu') && !JSON.stringify(c.obs).includes('Appel sans lieu') && !c.out.includes('Appel sans lieu'));
 // 3b. Le programme complet des huit jours remplace le plafond global de 25.
 fs.rmSync(path.join(H, 'obs.json'), { force: true });
 const dense = run('2026-10-05T05:35:00+02:00', 'doux', KEYS, true);
 const denseS = readJ(path.join(H, 'calendar.sealed.json')), denseCal = tryUnseal(denseS, APP_KEY_TEST), denseEvents = denseCal && denseCal.events || [];
 const denseLocal = denseEvents.filter(ev => ev.t.startsWith(densePrefix + ' local ')), denseTrips = denseEvents.filter(ev => ev.t.startsWith(densePrefix + ' trajet '));
-check('agenda dense : 57 occurrences conservées, sans-lieu et #pasdetrajet compris', dense.code === 0 && denseEvents.length === 57 && denseLocal.length === 30 && dense.obs.relay.calN === 57 && dense.obs.relay.calSkip === 15);
+check('agenda dense : rappels sans lieu éliminés, #pasdetrajet conservés', dense.code === 0 && denseEvents.length === 42 && denseLocal.length === 15 && dense.obs.relay.calN === 42 && dense.obs.relay.calSkip === 15 && dense.obs.relay.calNoPlace === 15);
 check('agenda dense : 27 rendez-vous localisés après le rang 25 restent tous routés', denseTrips.length === 27 && denseTrips.every(ev => ev.lat !== null && (ev.legs || []).some(l => l.k === 'go' && l.routed)) && dense.obs.relay.calGeo === 27);
 const denseFirst = denseTrips.find(ev => ev.t === densePrefix + ' trajet 0'), denseSecond = denseTrips.find(ev => ev.t === densePrefix + ' trajet 1');
 const denseFirstGo = denseFirst && (denseFirst.legs || []).find(l => l.k === 'go'), denseSecondGo = denseSecond && (denseSecond.legs || []).find(l => l.k === 'go');
@@ -105,8 +105,9 @@ check('agenda dense : premier déplacement depuis domicile puis chaîne depuis l
 const denseGeocodes = readJ(path.join(H, 'geocodes.json'));
 check('agenda dense : inconnus sans route, aucun géocodage #pasdetrajet, lieux répétés mutualisés', denseLocal.every(ev => ev.lat === null && ev.lon === null && !(ev.legs || []).length) &&
   Array.isArray(denseGeocodes) && denseGeocodes.length === 4 && denseGeocodes.every(url => !url.includes(noTripLocation)));
-check('agenda dense : ordre chronologique, événements hors fenêtre exclus et identifiants opaques distincts', denseEvents.every((ev, i) => !i || denseEvents[i - 1].s <= ev.s) &&
-  !denseEvents.some(ev => ev.t.includes('hors fenêtre')) && denseEvents.every(ev => /^event-[0-9a-f]{32}$/.test(ev.id)) && new Set(denseEvents.map(ev => ev.id)).size === 57);
+check('agenda dense : ordre chronologique, événements hors fenêtre/sans lieu exclus et identifiants opaques distincts', denseEvents.every((ev, i) => !i || denseEvents[i - 1].s <= ev.s) &&
+  !denseEvents.some(ev => ev.t.includes('hors fenêtre')) && !denseEvents.some(ev => ev.t.endsWith(' local 0') || ev.t.endsWith(' local 2')) &&
+  denseEvents.every(ev => /^event-[0-9a-f]{32}$/.test(ev.id)) && new Set(denseEvents.map(ev => ev.id)).size === 42);
 check('agenda dense : aucun titre, UID ou trajet ajouté aux sorties publiques', !JSON.stringify(denseS).includes(densePrefix) && !JSON.stringify(dense.obs).includes(densePrefix) && !dense.out.includes(densePrefix) &&
   !JSON.stringify(dense.obs).includes('dense-trip-') && denseEvents.every(ev => !Object.prototype.hasOwnProperty.call(ev, 'uid')) && !JSON.stringify(dense.obs).includes('"g":'));
 const relaySource = fs.readFileSync(path.join(ROOT, 'src/relay.js'), 'utf8');
