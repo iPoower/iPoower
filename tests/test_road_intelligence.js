@@ -35,13 +35,26 @@ check('situation longue en cours à distance zéro ; section quittée par l’it
   const long = e({ geometry: { type: 'LineString', coordinates: [F.coordinates[2], F.coordinates[8]] } });
   const a = filter([long], { ...F.fix, lat: F.coordinates[5][1] }).events[0]; assert.equal(a.distanceAhead, 0); assert.equal(a.etaToEvent, 0);
   const j = JSON.parse(JSON.stringify(F.routeJSON)); j.routes[0].legs[0].steps = [
-    { ref: 'A1', geometry: { coordinates: [F.coordinates[0]] } }, { ref: 'D2', geometry: { coordinates: [F.coordinates[4]] } }, { ref: 'A1', geometry: { coordinates: [F.coordinates[7]] } }];
+    { ref: 'A1', geometry: { coordinates: F.coordinates.slice(0, 5) } }, { ref: 'D2', geometry: { coordinates: F.coordinates.slice(4, 8) } }, { ref: 'A1', geometry: { coordinates: F.coordinates.slice(7) } }];
   assert.equal(filter([long], F.fix, Road.fromOSRM(j)).rejected[0].reason, 'non_used_section');
 });
 check('boucle ou croisement ambigu : la projection ne crée pas de fausse alerte', () => {
   const j = JSON.parse(JSON.stringify(F.routeJSON)); j.routes[0].geometry.coordinates = [...F.coordinates, ...F.coordinates.slice().reverse(), ...F.coordinates];
+  j.routes[0].legs[0].steps[0].geometry.coordinates = j.routes[0].geometry.coordinates;
   j.routes[0].legs[0].annotation.duration = Array(32).fill(60);
   assert.equal(filter([e()], F.fix, Road.fromOSRM(j)).events.length, 0);
+});
+check('step après une boucle : les axes suivent la géométrie complète et la fin précédente', () => {
+  const A = [2, 48.85], B = [2, 48.854], C = [2.004, 48.854], D = [2.004, 48.85];
+  const j = { routes: [{ geometry: { coordinates: [A, B, C, A, D] }, legs: [{ steps: [
+    { ref: 'A1', geometry: { coordinates: [A, B, C, A] } }, { ref: 'D2', geometry: { coordinates: [A, D] } }
+  ] }] }] };
+  const r = Road.fromOSRM(j); assert.deepEqual(r.segments.map(s => s.roads), [['A1'], ['A1'], ['A1'], ['D2']]);
+  const fix = { ...F.fix, lon: A[0], lat: A[1] }, at = { type: 'Point', coordinates: [2, 48.853] };
+  assert.equal(filter([e({ roadNumber: 'D2', geometry: at })], fix, r).events.length, 0);
+  assert.equal(filter([e({ roadNumber: 'A1', geometry: at })], fix, r).events.length, 1);
+  j.routes[0].legs[0].steps[1].geometry.coordinates = [A, [2.1, 48.9]];
+  assert.equal(Road.fromOSRM(j), null);
 });
 check('fusion multi-source conservatrice, pas de doublons ni fusion des vitesses et accidents', () => {
   const a = filter([e(), Road.normalize(F.event({ sourceId: 'b' }), 'other')]).events; assert.equal(a.length, 1); assert.equal(a[0].provenance.length, 2);

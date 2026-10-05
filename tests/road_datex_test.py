@@ -29,7 +29,7 @@ def publication(situations='', cursor=100, method='snapshot', date='2026-10-05T0
 
 def ingest(snapshot=None, deltas=(), previous=None):
     data = {'index.txt': str(100 + len(deltas)).encode(), 'content.xml': publication(situation()) if snapshot is None else snapshot}
-    data.update({str(101 + i) + '.xml': x for i, x in enumerate(deltas)})
+    data.update({str(100 + i) + '.xml': x for i, x in enumerate(deltas)})
     return D.sync(data.__getitem__, previous, NOW)
 
 class Datex(unittest.TestCase):
@@ -40,10 +40,17 @@ class Datex(unittest.TestCase):
         self.assertIsNone(j['events'][0]['currentSpeed']); self.assertIsNone(j['events'][0]['freeFlowSpeed'])
 
     def test_delta_replace_and_ended(self):
-        replacement = publication(situation(record('r2')), 101, 'allElementUpdate')
+        replacement = publication(situation(record('r2')), 100, 'allElementUpdate')
         self.assertEqual([e['sourceId'] for e in ingest(deltas=[replacement])['events']], ['r2'])
-        ended = publication(situation(record('r2', extra='<end>true</end>')), 102, 'allElementUpdate')
+        ended = publication(situation(record('r2', extra='<end>true</end>')), 101, 'allElementUpdate')
         self.assertEqual(ingest(deltas=[replacement, ended])['events'], [])
+
+    def test_next_cursor_replays_first_delta_and_excludes_index(self):
+        first = publication(situation(record('first'), ident='s2'), 100, 'allElementUpdate')
+        last = publication(situation(record('last'), ident='s3'), 101, 'allElementUpdate')
+        result = ingest(deltas=[first, last])
+        self.assertEqual(result['cursor'], 102)
+        self.assertEqual([e['sourceId'] for e in result['events']], ['first', 'last', 'r1'])
 
     def test_expiry_suspend_future(self):
         for r in [record(end='<overallEndTime>2026-10-05T10:00:00Z</overallEndTime>'),
@@ -51,19 +58,48 @@ class Datex(unittest.TestCase):
                   record().replace('09:00:00Z', '11:00:00Z')]:
             self.assertEqual(ingest(publication(situation(r)))['events'], [])
 
+    def test_exception_period_validity_and_boundaries(self):
+        for start, end, active in [('09:30:00', '10:30:00', False),
+                                   ('10:00:00', '10:30:00', False),
+                                   ('09:00:00', '09:30:00', True),
+                                   ('09:30:00', '10:00:00', True),
+                                   ('10:30:00', '11:00:00', True)]:
+            with self.subTest(start=start, end=end):
+                exclusion = f'<exceptionPeriod><startOfPeriod>2026-10-05T{start}Z</startOfPeriod><endOfPeriod>2026-10-05T{end}Z</endOfPeriod></exceptionPeriod>'
+                r = record().replace('</validity>', exclusion + '</validity>')
+                self.assertEqual(len(ingest(publication(situation(r)))['events']), int(active))
+        for exclusion in ['<exceptionPeriod/>',
+                          '<exceptionPeriod><startOfPeriod>2026-10-05T09:30:00Z</startOfPeriod></exceptionPeriod>',
+                          '<exceptionPeriod><startOfPeriod>invalid</startOfPeriod><endOfPeriod>2026-10-05T10:30:00Z</endOfPeriod></exceptionPeriod>',
+                          '<exceptionPeriod><startOfPeriod>2026-10-05T10:30:00Z</startOfPeriod><endOfPeriod>2026-10-05T09:30:00Z</endOfPeriod></exceptionPeriod>']:
+            with self.subTest(exclusion=exclusion):
+                r = record().replace('</validity>', exclusion + '</validity>')
+                self.assertEqual(ingest(publication(situation(r)))['events'], [])
+
     def test_future_activates_without_delta(self):
         # Un précédent JSON filtré vide ne doit jamais effacer la vérité du snapshot.
         previous = ingest(publication(situation(record().replace('09:00:00Z', '11:00:00Z'))))
         self.assertEqual(previous['events'], []); self.assertEqual(len(ingest(previous=previous)['events']), 1)
 
     def test_empty_situation_tombstone(self):
-        self.assertEqual(ingest(deltas=[publication(situation(''), 101, 'allElementUpdate')])['events'], [])
+        self.assertEqual(ingest(deltas=[publication(situation(''), 100, 'allElementUpdate')])['events'], [])
 
     def test_partial_missing_gap_and_index(self):
         with self.assertRaises(ValueError): ingest(deltas=[publication(situation(), 101, 'singleElementUpdate')])
         with self.assertRaises(KeyError): D.sync({'index.txt': b'101', 'content.xml': publication(situation())}.__getitem__, now=NOW)
         for target in [b'1000', b'bad', b'-1']:
             with self.assertRaises(ValueError): D.sync({'index.txt': target, 'content.xml': publication(situation())}.__getitem__, now=NOW)
+
+    def test_delta_cursor_must_match_requested_sequence(self):
+        for cursor in [99, 101, 999, 'invalid', '']:
+            with self.subTest(cursor=cursor):
+                delta = publication(situation(record('r2')), cursor, 'allElementUpdate')
+                with self.assertRaises(ValueError): ingest(deltas=[delta])
+        delta = publication(situation(record('r2')), '0100', 'allElementUpdate')
+        self.assertEqual(ingest(deltas=[delta])['cursor'], 101)
+        # Les fichiers incrémentaux DIR réels n'ont aucun feedType.
+        delta = publication(situation(record('r2')), 100, 'allElementUpdate').replace(b'<feedType>100</feedType>', b'')
+        self.assertEqual(ingest(deltas=[delta])['events'][0]['sourceId'], 'r2')
 
     def test_snapshot_ahead_resync_index(self):
         reads = iter([b'100', b'101'])
@@ -103,6 +139,8 @@ class Datex(unittest.TestCase):
             p = Path(folder); out = p / 'road.json'; out.write_text('previous valid file')
             (p / 'index.txt').write_text('bad'); (p / 'content.xml').write_bytes(publication(situation()))
             command = ['python3', str(SCRIPT), '--output', str(out), '--fixture-dir', folder, '--now', '2026-10-05T10:00:00Z']
+            self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0); self.assertEqual(out.read_text(), 'previous valid file')
+            (p / 'index.txt').write_text('101'); (p / '100.xml').write_bytes(publication(situation(), 999, 'allElementUpdate'))
             self.assertNotEqual(subprocess.run(command, capture_output=True).returncode, 0); self.assertEqual(out.read_text(), 'previous valid file')
             (p / 'index.txt').write_text('100'); self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
             self.assertEqual(len(json.loads(out.read_text())['events']), 1); self.assertFalse((p / 'road.tmp').exists())

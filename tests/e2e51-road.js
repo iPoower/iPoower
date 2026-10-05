@@ -15,14 +15,21 @@ let n = 0; const check = (label, ok) => { assert(ok, label); n++; console.log('�
         if (mode === 'xss') feed.events[0].title = '<img src=x onerror="window.__roadXss=1">';
         return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(feed) });
       });
-      await p.route('**/router.project-osrm.org/**', r => { osrm.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(F.routeJSON) }); });
-      await p.evaluate(() => { CAL.events = []; S.work.dep = '12:20'; S.work.ret = '17:30'; S.work.days = [1, 2, 3, 4, 5]; rebuild(); renderAll(); document.querySelector('#settings').open = true; });
+      await p.route('**/router.project-osrm.org/**', r => {
+        const url = r.request().url(), query = new URL(url).searchParams, route = JSON.parse(JSON.stringify(F.routeJSON));
+        if (query.get('overview') === 'full') osrm.push(url);
+        if (query.get('steps') !== 'true') route.routes[0].legs.forEach(leg => { leg.steps = []; });
+        return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(route) });
+      });
+      // Départ hors de la fenêtre d'aperçu : le seul calcul OSRM doit venir du clic de départ actif.
+      await p.evaluate(() => { CAL = { events: [] }; CALDONE = true; S.work.dep = '17:20'; S.work.ret = '18:30'; S.work.days = [1, 2, 3, 4, 5]; rebuild(); renderAll(); document.querySelector('#settings').open = true; });
       await settle(2); await p.locator('[data-act=locate]').first().click(); await settle(6);
+      check(prefix + ' · aucun aperçu OSRM complet avant le départ manuel', osrm.length === 0 && await p.evaluate(() => LIVE.phase === 'idle' && TRIPPREVIEW.key === null));
       await p.locator('#secBrf [data-act=trip-start]').first().click(); await settle(6);
       const text = () => p.locator('#secRoad').innerText();
       const st = await p.evaluate(() => ({ phase: LIVE.phase, route: !!(LIVE.route && LIVE.route.road), fix: FIX && FIX.acc, source: ROAD.manager.snapshot().events.length }));
       check(prefix + ' · un vrai clic démarre le trajet, route OSRM et signalement corrélé', st.phase === 'active' && st.route && st.source === 1);
-      check(prefix + ' · requête OSRM enrichie, aucune seconde route ; DATEX sans coordonnées', osrm.some(u => u.includes('steps=true')) && requests.length > 0 && requests.every(u => /\/road-datex\.json$/.test(u)));
+      check(prefix + ' · trajet actif : unique requête OSRM enrichie ; DATEX sans coordonnées', osrm.length === 1 && new URL(osrm[0]).searchParams.get('steps') === 'true' && requests.length > 0 && requests.every(u => /\/road-datex\.json$/.test(u)));
       let t = await text(); check(prefix + ' · cockpit : axe, distance, ETA OSRM, source, âge et couverture', /Accident signalé/.test(t) && /A1/.test(t) && /devant/.test(t) && /OSRM/.test(t) && /DIR/.test(t) && /partielle/.test(t) && /LIVE/.test(t));
       check(prefix + ' · alerte visuelle nouvelle et sévère, aucune ETA trafic inventée', await p.locator('#secRoad .road-alert').count() === 1 && /trafic non inclus/.test(t) && /Vitesses trafic indisponibles/.test(t));
       const layout = await p.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth, height: document.querySelector('#secRoad').getBoundingClientRect().height, target: document.querySelector('#secRoad summary').getBoundingClientRect().height }));
@@ -46,7 +53,7 @@ let n = 0; const check = (label, ok) => { assert(ok, label); n++; console.log('�
       await p.locator('#f-road-on').selectOption('1');
       await p.evaluate(() => { liveReset(); S.work.days = []; CAL.events = []; renderAll(); });
       check(prefix + ' · arrivée/annulation/sans trajet : aucun contexte ou événement résiduel', await p.locator('#secRoad').isHidden() && await p.evaluate(() => ROAD.manager.context === null && ROAD.alert === null));
-      for (const view of ['meteo', 'tenue', 'analyse', 'pneus']) { await p.locator(`[data-act=view][data-v=${view}]`).click(); check(prefix + ' · commande ' + view + ' toujours active', await p.locator(`[data-act=view][data-v=${view}]`).getAttribute('aria-pressed') === 'true'); }
+      for (const view of ['meteo', 'tenue', 'analyse', 'pneus']) { const tab = p.locator(`[data-act=view][data-v=${view}][aria-pressed]`); await tab.click(); check(prefix + ' · commande ' + view + ' toujours active', await tab.getAttribute('aria-pressed') === 'true'); }
       check(prefix + ' · pas de débordement, JavaScript ou secret dans le cache trafic', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && !/trip-fictif|"fix"|"route"|"distanceAhead"/.test(localStorage.getItem('twrc.road.datex') || '')) && s.errors.length === 0);
       await c.close();
     }

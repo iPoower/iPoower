@@ -56,11 +56,21 @@
     const byTime = durations.length === co.length - 1 && durations.every(x => finite(x) && x >= 0);
     const index = new Map(), segments = [], refs = new Map();
     co.forEach((p, i) => { const key = p.join(','); if (!refs.has(key)) refs.set(key, []); refs.get(key).push(i); });
-    const names = []; let lastStart = 0;
+    const names = []; let lastEnd = 0;
     for (const leg of r.legs || []) for (const s of leg.steps || []) {
-      const pts = s.geometry && s.geometry.coordinates, candidates = pts && pts[0] && refs.get(pts[0].join(','));
-      const start = candidates && candidates.find(i => i >= lastStart);
-      if (start != null) { names.push({ start, roads: roadNumber(s.ref || s.name), name: text(s.name) }); lastStart = start; }
+      const pts = s.geometry && s.geometry.coordinates;
+      if (!Array.isArray(pts) || !pts.length || !pts.every(point)) return null;
+      // Le step d'arrivée peut répéter son unique point ; il ne couvre aucun segment.
+      const path = pts.every(p => p[0] === pts[0][0] && p[1] === pts[0][1]) ? [pts[0]] : pts;
+      const candidates = (refs.get(path[0].join(',')) || []).filter(i => i >= lastEnd && i + path.length <= co.length &&
+        path.every((p, k) => p[0] === co[i + k][0] && p[1] === co[i + k][1]));
+      const start = candidates.includes(lastEnd) ? lastEnd : candidates.length === 1 ? candidates[0] : null;
+      // Une géométrie de step ambiguë ou absente ne prolonge jamais le nom du précédent.
+      if (start == null) return null;
+      if (start > lastEnd) names.push({ start: lastEnd, roads: [], name: null });
+      names.push({ start, roads: roadNumber(s.ref || s.name), name: text(s.name) });
+      lastEnd = start + path.length - 1;
+      if (path.length > 1) names.push({ start: lastEnd, roads: [], name: null });
     }
     names.sort((a, b) => a.start - b.start);
     let distance = 0, seconds = 0, nameAt = 0, axisRun = 0, previousAxis = null;

@@ -19,7 +19,7 @@
     }
   }
   class Manager {
-    constructor({ providers, now = Date.now, onChange = () => {}, storage = null, setTimer = setTimeout, clearTimer = clearTimeout }) {
+    constructor({ providers, now = Date.now, onChange = () => {}, storage = null, setTimer = (...args) => setTimeout(...args), clearTimer = id => clearTimeout(id) }) {
       if (new Set(providers.map(p => p.id)).size !== providers.length || providers.length > 8) throw new Error('Providers invalides');
       this.now = now; this.onChange = onChange; this.storage = storage; this.setTimer = setTimer; this.clearTimer = clearTimer;
       this.generation = 0; this.context = null; this.seen = new Set(); this.lastAlert = -Infinity; this.progress = null;

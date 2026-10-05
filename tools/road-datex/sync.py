@@ -89,6 +89,14 @@ def normalize(record, situation, now):
         return None
     if any(local(n).startswith("recurring") for n in record.iter()):
         return None
+    # Les périodes d'exception retirent des fenêtres à la validité générale.
+    # Une exclusion incomplète ne permet pas d'affirmer que l'événement est actif.
+    for period in nodes(record, "exceptionPeriod"):
+        excluded_start = timestamp(value(period, "startOfPeriod"))
+        excluded_end = timestamp(value(period, "endOfPeriod"))
+        if (excluded_start is None or excluded_end is None or excluded_start >= excluded_end or
+                excluded_start <= now < excluded_end):
+            return None
     periods = nodes(record, "validPeriod")
     if periods and not any(timestamp(value(p, "startOfPeriod")) is not None and
                            timestamp(value(p, "endOfPeriod")) is not None and
@@ -223,12 +231,19 @@ def sync(fetch=download, previous=None, now=None):
         target = index()
     if cursor > target or target - cursor > MAX_GAP:
         raise ValueError("Incremental gap exceeds bounded ingestion")
-    names = [str(i) + ".xml" for i in range(cursor + 1, target + 1)]
+    # Les curseurs DIR désignent le prochain delta : celui du snapshot est
+    # publié après le snapshot, et index.txt dépasse le dernier fichier listé.
+    # Rejouer le premier curseur inclus jusqu'à l'index exclu.
+    names = [str(i) + ".xml" for i in range(cursor, target)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
-        for data in pool.map(bounded_fetch, names):
-            changes, date, _, method = publication(data, clock())
+        for expected_cursor, data in enumerate(pool.map(bounded_fetch, names), cursor):
+            changes, date, sequence, method = publication(data, clock())
             if method != "allElementUpdate":
                 raise ValueError("Unsupported or partial update method")
+            # Le flux réel réserve feedType au snapshot. Contrôler le curseur
+            # lorsqu'un delta le fournit, sans inventer ce champ s'il est absent.
+            if sequence is not None and (not re.fullmatch(r"\d{1,10}", sequence) or int(sequence) != expected_cursor):
+                raise ValueError("Incremental cursor does not match requested update")
             situations.update(changes)
             if timestamp(date) > timestamp(updated):
                 updated = date

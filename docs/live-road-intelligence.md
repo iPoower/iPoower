@@ -1,6 +1,6 @@
 # Live Road Intelligence — revue de livraison
 
-Base : `main` à `7c7a0d59b4c39963f2e65d1a412e38997b3b399a` (prod-32 vérifiée). Branche : `feat/live-road-intelligence`. Recherche effectuée le 5 octobre 2026. La PR est indépendante de #36 et sa fusion nécessite la validation de Bryan.
+Base : `main` à `7c7a0d59b4c39963f2e65d1a412e38997b3b399a` (prod-32 vérifiée). Branche : `feat/live-road-intelligence`. Recherche effectuée le 5 octobre 2026. La livraison nécessite la réussite du registre complet et des contrôles de confidentialité.
 
 ## Fournisseurs examinés
 
@@ -26,15 +26,15 @@ Sources primaires : [DATEX et conditions Bison Futé](https://www.bison-fute.gou
 
 ## Architecture et vérité des données
 
-`tools/road-datex/sync.py` lit `index.txt`, reconstruit le snapshot `content.xml`, puis applique chaque fichier numéroté jusqu’à l’index cible, dans l’ordre. Le snapshot est reconstruit à chaque ingestion pour conserver correctement les situations futures ou suspendues absentes du JSON filtré. Les XML restent côté serveur. Un trou, une date impossible, une méthode partielle inconnue, un dépassement du budget de 180 s ou des bornes de taille provoquent un échec : le dernier fichier publié garde ses anciens horodatages.
+`tools/road-datex/sync.py` lit `index.txt`, reconstruit le snapshot `content.xml`, puis applique chaque fichier numéroté dans l’ordre. Les curseurs DIR désignent le prochain delta : le curseur du snapshot est inclus, l’index cible est exclu. Un delta déclarant un curseur incohérent est rejeté ; les deltas DIR réels peuvent omettre ce champ. Le snapshot est reconstruit à chaque ingestion pour conserver correctement les situations futures ou suspendues absentes du JSON filtré. Les XML restent côté serveur. Un trou, une date impossible, une méthode partielle inconnue, un dépassement du budget de 180 s ou des bornes de taille provoquent un échec : le dernier fichier publié garde ses anciens horodatages.
 
-Les deltas `allElementUpdate` remplacent la situation complète. Une situation vide, terminée, suspendue ou expirée disparaît. La validité est évaluée après l’application des deltas. Les fenêtres récurrentes non interprétables et les restrictions réservées à d’autres véhicules sont masquées. Les mises à jour partielles `singleElementUpdate` ne sont pas interprétées : elles bloquent la publication, au lieu d’effacer arbitrairement d’autres enregistrements.
+Les deltas `allElementUpdate` remplacent la situation complète. Une situation vide, terminée, suspendue ou expirée disparaît. La validité est évaluée après l’application des deltas ; une période d’exclusion active ou impossible à interpréter masque l’événement. Les fenêtres récurrentes non interprétables et les restrictions réservées à d’autres véhicules sont masquées. Les mises à jour partielles `singleElementUpdate` ne sont pas interprétées : elles bloquent la publication, au lieu d’effacer arbitrairement d’autres enregistrements.
 
 Le workflow `road-datex.yml`, uniquement sur `main`, publie le seul fichier public `road-datex.json` sur `gh-pages`, sans toucher aux fichiers météo ou agenda. Le déploiement de l’application et ses retours arrière conservent ce flux. Le relais Cloudflare existant n’est ni modifié ni redéployé. Aucun Worker supplémentaire n’est déployé : le parsing XML est exécuté sur GitHub, ce qui évite de supposer qu’il tient dans un budget CPU gratuit de Worker.
 
 Dans le navigateur, `RoadProvider` et `Manager` isolent activation, erreurs HTTP, quota, timeout de 8 s, retry, circuit, annulation et cache autorisé. `DatexRoadProvider` demande uniquement le fichier public global : aucune position, agenda, destination ou clé dans la requête. Chaque fournisseur peut être remplacé sans modifier le moteur OSRM. Le cache est interdit par défaut et n’est autorisé que pour DATEX dans cette livraison.
 
-`liveParse` conserve les sorties existantes du trajet météo et ajoute un index spatial de la géométrie complète OSRM. Le même appel OSRM reçoit `steps=true` pour connaître les axes ; aucun second calcul de route. La corrélation exige un GPS frais et précis, une proximité de la polyline, un axe connu et concordant, un sens compatible, la validité et la progression. Un point dépassé, une route voisine, un croisement ambigu ou une section non empruntée est rejeté. Une géométrie DATEX linéaire représente ses bornes, pas une polyline à interpoler aveuglément.
+`liveParse` conserve les sorties existantes du trajet météo et ajoute un index spatial de la géométrie complète OSRM. Le même appel OSRM, en aperçu comme en trajet actif, reçoit `steps=true` pour connaître les axes ; aucun calcul de route supplémentaire pour DATEX. Les axes suivent la géométrie complète de chaque étape, y compris après une boucle ; une étape incohérente invalide la corrélation. La corrélation exige un GPS frais et précis, une proximité de la polyline, un axe connu et concordant, un sens compatible, la validité et la progression. Un point dépassé, une route voisine, un croisement ambigu ou une section non empruntée est rejeté. Une géométrie DATEX linéaire représente ses bornes, pas une polyline à interpoler aveuglément.
 
 Les événements conservent les identifiants, producteur, horodatages et référence source. Une fusion entre fournisseurs nécessite type/axe/sens compatibles, proximité, dates et validités concordantes ; elle conserve chaque provenance. Les vitesses sont traitées séparément des incidents. Une vitesse faible ne crée jamais un accident. Les valeurs absentes restent `null`.
 
@@ -62,19 +62,19 @@ Le SW passe de `twrc-static-v9` à `twrc-static-v10` pour ce nouveau shell et co
 
 `twrc.road.datex` ne contient que le flux public non filtré. GPS, progression, itinéraire, ETA personnelle et historique d’alerte restent en mémoire. Aucun secret, donnée d’agenda, position privée ou notification personnelle n’est ajouté au dépôt public. L’ajout du réglage `road.on` utilise la normalisation de paramètres existante, sans modifier le chiffrement ou les migrations antérieures.
 
-Essai serveur réel du 5 octobre : **472 événements**, curseur **3571159**, publication **2026-10-05T21:17:05.974+02:00**, JSON **492 755 octets**, ingestion **98,46 s**. C’est une observation ponctuelle, pas une garantie de fréquence. Aucun de ces événements réels n’est commité comme fixture. Le client reçoit le JSON compact, pas les ~3,8 Mo du snapshot XML.
+Essai serveur réel après revue du 5 octobre : **494 événements**, curseur **3571271** (prochain delta), publication **2026-10-05T22:31:33.052+02:00**, JSON **515 554 octets**, ingestion **14,45 s**. C’est une observation ponctuelle, pas une garantie de fréquence. Aucun de ces événements réels n’est commité comme fixture. Le client reçoit le JSON compact, pas les ~4,3 Mo du snapshot XML.
 
 Le filtre utilise des cellules spatiales, des bornes de géométrie et un nombre limité de résultats visibles. Le polling visible varie de 10 min avant départ à 2 min imminent, puis 60 s en trajet et 30 s près d’un événement. Le cron GitHub est une relève toutes les 8 min, **sans garantie de ponctualité**. Il ne justifie jamais à lui seul le mot LIVE : l’âge de la publication réelle décide. Les retards du cron ou du fournisseur dégradent l’affichage.
 
 ## Validation et limites de livraison
 
 - Build sans données privées et syntaxe JavaScript validés localement.
-- **25 suites unitaires au vert**, incluant 38 nouveaux scénarios routiers/DATEX ; suites historiques conservées.
+- **25 suites unitaires au vert**, incluant 42 scénarios routiers/DATEX ; suites historiques conservées.
 - Registre complet : **57 suites**, **86 exécutions** prévues (25 unitaires, 32 Chromium, 29 WebKit).
 - Nouveaux E2E : cockpit PC et iPhone 11 Pro Max 414×896 sur Chromium/WebKit ; SW réel Chromium, migration, cache, offline, 503, invalidité et protection de futurs bridges.
-- Le lancement local d’un navigateur est bloqué par l’environnement. Les preuves de navigateur doivent venir du run GitHub Actions de la PR ; aucun résultat n’est présenté comme vérifié avant ce run.
+- Les navigateurs Chromium et WebKit peuvent maintenant être exécutés localement ; la revue finale vérifie aussi la CI de la PR.
 - iPhone physique/Safari réel non testé ; WebKit avec viewport iPhone ne remplace pas un essai sur appareil.
 
 Limites connues : couverture DIR partielle ; événements récurrents ou direction/axe inconnus masqués ; pas de garantie d’identification verticale pont/tunnel lorsque les données ne permettent pas de distinguer la chaussée ; pas de vitesse trafic, pas d’ETA trafic ; cache récent ne prouve pas l’état actuel ; cadence de publication GitHub non garantie. Les fournisseurs commerciaux sont non activés.
 
-**Décision de revue : GO avec limites pour la PR DATEX/OSRM après CI complète verte ; aucune fusion ni mise en production de cette fonctionnalité pendant cette tâche.**
+**Décision de revue : GO avec limites pour la PR DATEX/OSRM après registre complet et CI de la PR au vert.**
