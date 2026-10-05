@@ -58,7 +58,7 @@ SUITE.push(['e2e35.js', 'intégration : annulations, Tenue et aperçu GPS frais'
   ['e2e36.js', 'hors connexion : cache météo, agenda chiffré et reconnexion', true],
   ['e2e38-resume.js', 'reprise iOS : fraîcheur réelle, horloge, actualisation unique', true],
   ['e2e39-layout.js', 'iPhone 11 Pro Max et PC : débordement, cibles 44 pt, encoche, mêmes sections', true],
-  ['e2e40-network.js', 'pannes fournisseur : 200 invalide, 503, délai, agenda corrompu ou ancien', true],
+  ['e2e40-network.js', 'pannes fournisseur : 200 invalide, 429, 503, délai, agenda corrompu ou ancien', true],
   ['e2e41-sw-coldstart.js', 'service worker réel : démarrage à froid hors ligne, ancien cache, réseau muet', true, 'chromium'],
   ['e2e37-sw.js', 'service worker réel : Cache Storage, panne serveur et redémarrage offline', true, 'chromium']);
 SUITE.push(['e2e37.js', 'agenda : rappels exclus des trajets et de Tenue, cache ancien et mobile', true]);
@@ -76,8 +76,11 @@ SUITE.push(['e2e48-tripstart.js', '« Je pars maintenant » : avant départ, en 
 SUITE.push(['e2e47-autorefresh.js', 'auto 5 min : nouvelle météo dans Pneus, Météo, Tenue et Analyse, sans clic, onglets masqués compris', true]);
 SUITE.push(['test_settings_work.js', 'réparation de l’ancien ajout de destination, choix explicites préservés', false],
   ['test_weather_requests.js', 'API météo : concurrence, doublons, HTTP 429, reprise et délai réseau', false]);
+// Retour rapide sur la file réseau : GPS remplacé, lieux et reprise HTTP 429 avant les longs parcours.
+const FIRST = ['test_weather_requests.js', 'test_gps_requests.js', 'e2e33.js', 'e2e30.js', 'e2e44-place.js', 'e2e40-network.js'];
+SUITE.sort((a, b) => (FIRST.includes(a[0]) ? FIRST.indexOf(a[0]) : FIRST.length) - (FIRST.includes(b[0]) ? FIRST.indexOf(b[0]) : FIRST.length));
 const verdict = (code, out) => {
-  const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
+  const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^(?:\w*Error|(?:page|locator|browserContext)\.\w+):[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
   if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');
   if (/❌|ERR |Error:|TimeoutError/.test(out)) return 'échec signalé dans la sortie';
   const sc = [...out.matchAll(/(\d+)\/(\d+) scénarios OK/g)]; if (sc.some(m => m[1] !== m[2])) return 'scénarios incomplets';

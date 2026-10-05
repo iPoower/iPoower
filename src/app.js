@@ -183,7 +183,7 @@ const urlNow = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&minutely_15=pre
 async function fetchEns(l) {
   if (!locHasCoords(l)) return null;
   for (const mdl of ENS_MODELS) {
-    try { const p = await fetchJSON(urlEns(l, mdl), 20000); if (p && p.hourly && Object.keys(p.hourly).some(k => /_member\d+$/.test(k))) return { p, model: mdl, t: Date.now() }; } catch (e) { if (e.status === 429) return null; /* modèle suivant */ }
+    try { const p = await fetchJSON(urlEns(l, mdl), 20000, l.gps ? 'gps' : 'shared'); if (p && p.hourly && Object.keys(p.hourly).some(k => /_member\d+$/.test(k))) return { p, model: mdl, t: Date.now() }; } catch (e) { if (e.status === 429 || e.cancelled) return null; /* modèle suivant */ }
   }
   return null;
 }
@@ -235,8 +235,8 @@ const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, cha
 
 const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
   read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
-async function fetchJSON(url, ms) {
-  if (WEATHER_REQUESTS.owns(url)) return WEATHER_REQUESTS.get(url, ms || 12000);
+async function fetchJSON(url, ms, group = 'shared') {
+  if (WEATHER_REQUESTS.owns(url)) return WEATHER_REQUESTS.get(url, ms || 12000, group);
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms || 12000);
   try {
     const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
@@ -259,8 +259,9 @@ function loadCache() {
 async function loadLoc(l) {
   if (!locHasCoords(l)) throw new Error('Coordonnées du lieu à renseigner.');
   const origin = { lat: l.lat, lon: l.lon }, gen = l.gps ? ++gpsWeatherGen : null;
-  if (l.gps) gpsWeatherOrigin = origin;
-  const [b, ar, nc] = await Promise.allSettled([fetchJSON(urlFor(l)), fetchJSON(urlArome(l)), fetchJSON(urlNow(l))]);
+  if (l.gps) { WEATHER_REQUESTS.cancelGroup('gps'); gpsWeatherOrigin = origin; }
+  const group = l.gps ? 'gps' : 'shared';
+  const [b, ar, nc] = await Promise.allSettled([fetchJSON(urlFor(l), 12000, group), fetchJSON(urlArome(l), 12000, group), fetchJSON(urlNow(l), 12000, group)]);
   // Validation AVANT toute écriture : une réponse 200 vide, tronquée ou d'un portail ne remplace jamais la dernière météo valide.
   const invalid = b.status === 'fulfilled' ? validForecast(b.value) : null;
   if (b.status !== 'fulfilled' || invalid) { if (l.gps && gen === gpsWeatherGen) gpsWeatherOrigin = null; throw b.status !== 'fulfilled' ? b.reason : new Error('réponse météo invalide : ' + invalid); }
@@ -1381,7 +1382,7 @@ async function fetchAQ(l) {
   if (AQBUSY.has(l.id) && (!l.gps || previous && gpsSourceCurrent(previous.origin, previous.gen))) return;
   const request = { origin: { ...l }, gen }; AQREQ.set(l.id, request); AQBUSY.add(l.id);
   try {
-    const p = await fetchJSON(urlAQ(l), 12000); if (!p || !p.hourly) throw new Error('réponse invalide');
+    const p = await fetchJSON(urlAQ(l), 12000, l.gps ? 'gps' : 'shared'); if (!p || !p.hourly) throw new Error('réponse invalide');
     if (gpsSourceCurrent(request.origin, gen)) { AQRAW[l.id] = { p, t: Date.now() }; delete AQERR[l.id]; }
   } catch (e) { if (gpsSourceCurrent(request.origin, gen)) AQERR[l.id] = { t: Date.now(), msg: e.message }; }
   finally {
@@ -3408,7 +3409,7 @@ document.addEventListener('click', async e => {
   else if (a === 'outfit-occasion') { UI.outfitOccasion = ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing'; lsSet('twrc.outfit.occasion', UI.outfitOccasion); renderTenue(); }
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
-  else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
+  else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
   else if (a === 'loc') { UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false; renderAll(); }
   else if (a === 'locs-toggle') { UI.locsOpen = !UI.locsOpen; renderLocChips(); }
   else if (a === 'tire') { const c = S.cars.find(x => x.id === t.dataset.car); switchTire(c, t.dataset.type); const ci = S.cars.indexOf(c); markEdit(`cars.${ci}.tire`); markEdit(`cars.${ci}.sets`); saveSettings(); renderSettings(); softRender(); }

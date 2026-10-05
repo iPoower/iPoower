@@ -33,6 +33,21 @@ async function test(name, fn) { await fn(); count++; console.log('✅ ' + name);
     const { c, calls } = setup(), a = c.get(U + 'same'), b = c.get(U + 'same');
     assert.equal(a, b); assert.equal(calls.length, 1); calls[0].resolve(reply()); await Promise.all([a, b]);
   });
+  await test('un GPS remplacé libère les deux transports ; son appel en attente ne part jamais', async () => {
+    const s = setup(), old = Array.from({ length: 3 }, (_, i) => s.c.get(U + 'old' + i, 12000, 'gps'));
+    const result = Promise.allSettled(old); s.c.cancelGroup('gps');
+    const current = [s.c.get(U + 'new1', 12000, 'gps'), s.c.get(U + 'new2', 12000, 'gps')];
+    await turn(); assert.equal(s.calls.length, 4); assert.equal(s.c.state().active, 2);
+    assert.ok(s.calls.slice(0, 2).every(c => c.options.signal.aborted));
+    assert.ok((await result).every(r => r.status === 'rejected' && r.reason.cancelled));
+    assert.ok(!s.calls.some(c => c.url.includes('old2')));
+    s.calls.slice(2).forEach(c => c.resolve(reply())); await Promise.all(current); assert.equal(s.c.state().active, 0);
+  });
+  await test('oublier le GPS conserve une requête identique aussi demandée par un lieu enregistré', async () => {
+    const s = setup(), saved = s.c.get(U + 'shared'), gps = s.c.get(U + 'shared', 12000, 'gps');
+    assert.equal(saved, gps); s.c.cancelGroup('gps'); assert.equal(s.calls.length, 1);
+    assert.equal(s.calls[0].options.signal.aborted, false); s.calls[0].resolve(reply()); await Promise.all([saved, gps]);
+  });
   await test('la météo actuelle passe avant les enrichissements encore en attente', async () => {
     const s = setup(), requests = [s.c.get(U + 'active1'), s.c.get(U + 'active2'), s.c.get(U + 'background'), s.c.get(U + 'current&current=temperature_2m')];
     s.calls[0].resolve(reply()); await turn(); assert.ok(s.calls[2].url.includes('current='));

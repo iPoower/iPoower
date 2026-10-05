@@ -19,7 +19,7 @@ function weatherRequestManager(options) {
     const e = new Error('HTTP 429 · fournisseur météo limité · nouvelle tentative après la pause');
     e.status = 429; e.retryAt = state().until; return e;
   }
-  function abortError() { const e = new Error('Délai météo dépassé'); e.name = 'AbortError'; return e; }
+  function abortError(replaced = false) { const e = new Error(replaced ? 'Requête météo remplacée' : 'Délai météo dépassé'); e.name = 'AbortError'; if (replaced) e.cancelled = true; return e; }
   const priority = url => { const u = new URL(url); return u.pathname === '/v1/forecast' && u.searchParams.has('current') ? 0 : u.searchParams.has('minutely_15') ? 1 : 2; };
   async function refuse(response) {
     const at = now(), previous = state(); let reason = '', header = null;
@@ -40,7 +40,7 @@ function weatherRequestManager(options) {
   }
   function finish(job, error, value) {
     if (job.done) return; job.done = true; cancel(job.timer);
-    if (pending.get(job.url) === job.promise) pending.delete(job.url);
+    if (pending.get(job.url) === job) pending.delete(job.url);
     if (error) job.reject(error); else job.resolve(value);
   }
   async function run(job) {
@@ -65,15 +65,22 @@ function weatherRequestManager(options) {
       active++; run(job);
     }
   }
-  function get(url, ms = 12000) {
-    if (pending.has(url)) return pending.get(url);
+  function cancelGroup(group) {
+    for (const job of pending.values()) {
+      if (!job.groups.delete(group) || job.groups.size) continue;
+      job.ctl.abort(); finish(job, abortError(true));
+    }
+    pump();
+  }
+  function get(url, ms = 12000, group = 'shared') {
+    if (pending.has(url)) { const job = pending.get(url); job.groups.add(group); return job.promise; }
     if (state().until > now()) return Promise.reject(limitedError());
-    const job = { url, priority: priority(url), ctl: new AbortController(), done: false };
+    const job = { url, priority: priority(url), ctl: new AbortController(), done: false, groups: new Set([group]) };
     job.promise = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject; });
-    pending.set(url, job.promise);
+    pending.set(url, job);
     // Le délai couvre aussi la file d'attente : une panne ne bloque pas busy indéfiniment.
     job.timer = later(() => { job.ctl.abort(); finish(job, abortError()); pump(); }, ms);
     queue.push(job); queue.sort((a, b) => a.priority - b.priority); pump(); return job.promise;
   }
-  return { owns, get, state };
+  return { owns, get, state, cancelGroup };
 }
