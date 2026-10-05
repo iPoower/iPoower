@@ -21,6 +21,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const r = desk({ now: '2026-10-06T10:20', hours: H(), cur: { T: 12.4, Tapp: 11.2 } });
     assert.equal(r.level, 0); assert.equal(r.hero.title, 'CONDITIONS NORMALES'); assert.equal(r.hero.emoji, '🟢');
     assert.match(r.hero.lines[0], /^12 °C · ressenti 11 °C$/); assert.match(r.hero.lines[1], /Aucun phénomène notable jusqu’à 23:00/);
+    assert.deepEqual(r.current, { T: 12.4, Tapp: 11.2, source: 'current' });
     assert.equal(r.matters.length, 1); assert.match(r.matters[0].text, /Rien de notable/);
     assert.equal(r.road.score, 100); assert.equal(r.road.level, 0); assert.equal(r.trip, null);
   });
@@ -34,6 +35,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const hs = H().map(x => ({ t: x.t }));
     const r = desk({ now: '2026-10-06T10:20', hours: hs, cur: {} });
     assert.equal(r.level, 0); assert.match(r.hero.lines[0], /^— °C · ressenti — °C$/);
+    assert.deepEqual(r.current, { T: null, Tapp: null, source: 'hourly' });
     assert.equal(r.phen.find(p => p.id === 'fog').line, 'Visibilité non fournie');
     assert.equal(r.road.factors.find(f => f.id === 'fog').why, 'non fournie');
   });
