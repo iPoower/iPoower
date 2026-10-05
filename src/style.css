@@ -655,6 +655,10 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .lab-sp ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
 .lab-sp a { color: var(--accent); }
 .lab-foot { margin-top: 2px; }
+.lab-drive-fields { border: 0; margin: 0; padding: 0; display: grid; gap: 12px; min-width: 0; }
+.lab-drive-fields label { display: grid; gap: 5px; color: var(--fg2); }
+.lab-drive-fields input, .lab-drive-fields select { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; min-height: 44px; }
+.lab-drive-fields:disabled { opacity: .65; }
 @media (min-width: 760px) {
   .lab { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
   .lab > * { grid-column: 1 / -1; }

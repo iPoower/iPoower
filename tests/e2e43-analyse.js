@@ -138,6 +138,28 @@ const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
     check('7 · météo absente : pneu affiché, « aucune estimation thermique », aucune barre', a.shown && /Météo indisponible : aucune estimation thermique/.test(a.hero) && a.bars === 0, a.hero);
     await s.c.close();
 
+    // 9. dernier roulage déclaré : interface réelle, mémoire par voiture, reprise et garde sur les dates.
+    for (const dev of ['iphone', 'pc']) {
+      s = await session(b, { at: '2026-10-05T09:30:00+02:00', dev }); await toLab(s);
+      await s.p.locator('[data-k=last-drive] > summary').click();
+      await s.p.fill('#labDriveAt', '2026-10-05T09:00'); await s.p.fill('#labDriveMinutes', '40'); await s.p.selectOption('#labDriveKind', 'route');
+      await s.p.evaluate(() => renderAll());
+      check(`9 · ${dev} : saisie conservée pendant une actualisation`, await s.p.inputValue('#labDriveAt') === '2026-10-05T09:00' && await s.p.inputValue('#labDriveMinutes') === '40');
+      const formLayout = await layout(s.p, dev === 'iphone');
+      check(`9 · ${dev} : formulaire ouvert sans débordement, cibles ≥ 44 pt`, formLayout.sw <= formLayout.W && !formLayout.wide.length && !formLayout.small.length, JSON.stringify(formLayout));
+      await s.p.locator('#labLastDriveForm button[type=submit]').click(); await s.settle(2); a = await lab(s.p);
+      const stored = await s.p.evaluate(() => JSON.parse(localStorage.getItem('twrc.tyretherm.v1')));
+      check(`9 · ${dev} : historique déclaré enregistré, à l’arrêt, sans fausse mesure`, /À L’ARRÊT/i.test(a.hero) && /Saisi par vous/i.test(a.all) && stored.carA.source === 'manual' && stored.carA.minutes === 40 && stored.carA.kind === 'route' && !stored.carB && !/lat|lon/.test(JSON.stringify(stored)), JSON.stringify(stored));
+      await s.p.reload(); await s.settle(10); await toLab(s); await s.p.locator('[data-k=last-drive] > summary').click();
+      check(`9 · ${dev} : déclaration reprise après rechargement`, /Saisi par vous/i.test(await s.p.locator('[data-k=last-drive]').innerText()) && /À L’ARRÊT/i.test((await lab(s.p)).hero));
+      const before = await s.p.evaluate(() => localStorage.getItem('twrc.tyretherm.v1'));
+      await s.p.fill('#labDriveAt', '2026-10-05T10:00');
+      await s.p.evaluate(() => document.getElementById('labLastDriveForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+      check(`9 · ${dev} : arrivée future refusée sans écraser l’historique`, /pas dans le futur/.test(await s.p.locator('[data-k=last-drive] [role=alert]').innerText()) && before === await s.p.evaluate(() => localStorage.getItem('twrc.tyretherm.v1')));
+      await s.p.click('[data-act=lab-drive-forget]'); await s.settle(2);
+      check(`9 · ${dev} : oubli volontaire rétablit « Historique inconnu »`, /HISTORIQUE INCONNU/.test((await lab(s.p)).hero) && !await s.p.evaluate(() => JSON.parse(localStorage.getItem('twrc.tyretherm.v1') || '{}').carA));
+      await s.c.close();
+    }
     const extra = [...hosts].filter(h => !KNOWN.test(h));
     check('8 · aucun fournisseur externe supplémentaire', !extra.length, extra.join(', '));
     check('8 · aucune erreur JavaScript', !errors.length, errors.slice(0, 3).join(' | '));
