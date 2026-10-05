@@ -567,6 +567,63 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .diag dd { margin: 0; overflow-wrap: anywhere; font-family: var(--f-mono); }
 @media (min-width: 560px) { .diag { grid-template-columns: max-content minmax(0, 1fr); } .diag dt { margin-top: 0; } }
 
+/* ---------- onglet Météo : poste météo (synthèse en 5 secondes, détails au toucher) ---------- */
+.wx { gap: 10px; }
+.wx h3 { font-family: var(--f-disp); font-size: 15px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--fg2); }
+.wx-hero { border-radius: 8px; padding: 12px 14px; border: 1px solid var(--lv); background: radial-gradient(120% 90% at 90% -20%, var(--lv-soft), transparent 65%), linear-gradient(165deg, var(--panel2), var(--panel)); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.wx-hk { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-family: var(--f-mono); font-size: 11px; letter-spacing: .06em; color: var(--fg2); text-transform: uppercase; }
+.wx-hk span { min-width: 0; overflow-wrap: anywhere; }
+.wx-ht { font-family: var(--f-disp); font-weight: 700; font-size: clamp(24px, 7vw, 32px); line-height: 1.05; letter-spacing: .03em; color: var(--lv-t); text-transform: uppercase; margin: 2px 0 2px; overflow-wrap: anywhere; }
+.wx-hl { font-size: 14px; color: var(--fg); }
+.wx-h1 { font-family: var(--f-mono); font-size: 15px; }
+.wx-stale { margin-top: 4px; font-size: 12.5px; color: var(--cau-t); }
+.wx-blk { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; background: color-mix(in srgb, var(--panel2) 55%, transparent); }
+.wx-blk.lv1, .wx-blk.lv2, .wx-blk.lv3 { border-left: 3px solid var(--lv); }
+.wx-route { font-size: 16px; overflow-wrap: anywhere; }
+.wx-when { font-size: 13px; color: var(--fg2); }
+.wx-pts, .wx-mat, .wx-rf, .wx-tl, .wx-pc ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.wx-pts li { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; font-size: 13.5px; align-items: baseline; }
+.wx-pts .k { color: var(--fg2); font-size: 12px; } .wx-pts .k i { font-style: normal; }
+.wx-pts li.lv1 > span:last-child, .wx-pts li.lv2 > span:last-child, .wx-pts li.lv3 > span:last-child { color: var(--lv-t); }
+.wx-crit { font-weight: 600; color: var(--lv-t); font-size: 14px; }
+.wx-tl li { display: grid; grid-template-columns: 84px 22px minmax(0, 1fr); gap: 6px; align-items: baseline; font-size: 13.5px; padding: 2px 0; border-bottom: 1px dashed var(--line); }
+.wx-tl li:last-child { border-bottom: 0; }
+.wx-tl time { color: var(--fg2); font-size: 12.5px; } .wx-tl li.trip { font-weight: 600; } .wx-tl li.lv2 > span:last-child, .wx-tl li.lv3 > span:last-child { color: var(--lv-t); }
+.wx-strip { list-style: none; margin: 4px 0 0; padding: 0 0 4px; display: flex; gap: 3px; overflow-x: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.wx-strip li { flex: 0 0 46px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 0; border-radius: 4px; border: 1px solid var(--line); border-top: 3px solid transparent; background: var(--panel); font-size: 11px; position: relative; }
+.wx-strip li.lv1, .wx-strip li.lv2, .wx-strip li.lv3 { border-top-color: var(--lv); background: var(--lv-soft); }
+.wx-strip li.now { outline: 1px solid var(--accent); outline-offset: -1px; }
+.wx-strip li.trip { box-shadow: inset 0 -3px 0 var(--accent); }
+.wx-strip .hh { color: var(--fg2); font-size: 10.5px; } .wx-strip .ic { font-size: 15px; line-height: 1.2; } .wx-strip b { font-size: 13px; font-weight: 500; }
+.wx-strip .rb { width: 8px; height: 22px; background: var(--line); border-radius: 2px; display: flex; align-items: flex-end; overflow: hidden; }
+.wx-strip .rb i { display: block; width: 100%; background: #4ea3ff; }
+.wx-strip .pp { min-height: 13px; color: var(--fg2); font-size: 10px; } .wx-strip .tm { font-size: 11px; line-height: 1; }
+.wx-mat li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; font-size: 14px; align-items: baseline; }
+.wx-mat li.lv2 > span:last-child, .wx-mat li.lv3 > span:last-child { color: var(--lv-t); font-weight: 600; }
+.wx-ph { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 6px; }
+.wx-pc { border: 1px solid var(--line); border-left: 3px solid var(--lv); border-radius: 5px; background: var(--panel); min-width: 0; }
+.wx-pc.lv0 { border-left-color: var(--line2); }
+.wx-pc summary { display: grid; grid-template-columns: 24px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 6px; padding: 6px 10px; min-height: 44px; cursor: pointer; list-style: none; align-items: center; }
+.wx-pc summary::-webkit-details-marker { display: none; }
+.wx-pc summary .ic { grid-row: 1 / 3; font-size: 18px; } .wx-pc summary .tt { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg2); }
+.wx-pc summary .ln { font-size: 14px; font-weight: 500; color: var(--fg); overflow-wrap: anywhere; } .wx-pc.lv2 summary .ln, .wx-pc.lv3 summary .ln { color: var(--lv-t); }
+.wx-pc ul { padding: 0 10px 8px 40px; font-size: 12.5px; color: var(--fg2); }
+.wx-rs { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.wx-rs b { font-family: var(--f-disp); font-size: 44px; line-height: .9; color: var(--lv-t); } .wx-rs > span:first-of-type { font-family: var(--f-mono); font-size: 14px; }
+.wx-rf li { display: grid; grid-template-columns: 22px 96px minmax(0, 1fr) 36px; gap: 6px; font-size: 13px; align-items: baseline; }
+.wx-rf li .num { text-align: right; color: var(--fg2); } .wx-rf li.lv1 .num, .wx-rf li.lv2 .num, .wx-rf li.lv3 .num { color: var(--lv-t); font-weight: 600; }
+.wx-how summary { font-size: 12.5px; color: var(--accent); cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.wx-tire { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 8px; font-size: 14px; }
+.wx-tire .btn { min-height: 44px; }
+.wx-foot a { color: var(--accent); }
+@media (min-width: 760px) {
+  /* PC : même contenu ; le prochain trajet et « ce qui compte » côte à côte sous le verdict */
+  .wx { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; }
+  .wx > * { grid-column: 1 / -1; order: 5; }
+  .wx > .wx-hero { order: 0; } .wx > .wx-trip { grid-column: auto; order: 1; } .wx > .wx-matb { grid-column: auto; order: 2; } .wx > .wx-tlb { order: 3; }
+}
+@media (max-width: 380px) { .wx-pts li { grid-template-columns: 92px minmax(0, 1fr); } .wx-rf li { grid-template-columns: 22px 80px minmax(0, 1fr) 32px; } }
+
 </style>
 </head><body>
 <script>document.documentElement.dataset.theme = 'dark';</script>
@@ -582,6 +639,7 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
   <div id="hdrMore" class="hdr-more"><div class="srcline" id="srcline"></div>
     <nav class="jump" id="jump" aria-label="Aller à une section"></nav></div>
   <div id="banners" class="notes"></div>
+  <section class="mod wx" id="secWx" aria-label="Poste météo : verdict, trajet, chronologie et conditions route" hidden></section>
   <section class="mod outfit" id="secTenue" aria-label="Tenue sartoriale selon la météo" hidden></section>
   <section class="mod brf" id="secBrf" aria-label="Briefing du trajet"></section>
   <section class="mod" id="secCal" aria-label="Trajets de l’agenda" hidden></section>
@@ -1911,6 +1969,337 @@ function dayplan(input) {
     notes, warnings, advice, timeline: grouped };
 }
 
+/* Poste météo de l'onglet Météo : moteur pur (aucun réseau, stockage ni horloge : mêmes entrées, même résultat).
+   Il répond à « quoi, quand, où, quel impact pour moi » à partir des heures déjà calculées par le moteur (air, pluie,
+   visibilité, rafales, chaussée estimée Tr, risque de verglas) et des trajets déjà connus de Race Control.
+   Météo = environnement : aucun verdict pneumatique ici (l'onglet Pneus garde l'adhérence, la gomme et la saison).
+
+   Seuils, alignés sur ceux déjà utilisés par l'app (bandeau brouillard, prochain risque, briefing, rafales) :
+     pluie      : ≥ 0,2 mm/h (ou probabilité ≥ 60 % avec ≥ 0,1 mm/h) 🟡 · ≥ 2 mm/h ou orage 🟠
+     neige      : chute de neige > 0,05 cm/h ou code neige 🟠
+     brouillard : visibilité < 1 000 m 🟡 · < 500 m 🟠 · < 200 m 🔴 (code brouillard sans visibilité : 🟡)
+     vent       : rafales ≥ 55 km/h 🟡 · ≥ 70 km/h 🟠 · ≥ 90 km/h 🔴
+     gel        : chaussée estimée − 2 °C < 0 🟡 · + 2 °C < 0 🟠 · verglas MODÉRÉ 🟠 · ÉLEVÉ ou plus, pluie verglaçante 🔴
+     température: air ≥ 35 °C ou ressenti ≤ −10 °C 🟡
+     soleil     : soleil bas dans l'axe d'un trajet (calcul géométrique fourni par l'app) 🟡
+   Conditions route : 100 − pénalités listées une à une (voir ROAD_PEN) ; le niveau affiché n'est jamais plus doux
+   que le pire facteur. Aucune note opaque : chaque point retiré est expliqué. */
+function wxDesk(input) {
+  const finite = v => typeof v === 'number' && Number.isFinite(v);
+  const n = v => finite(v) ? v : null;
+  const mins = ts => typeof ts === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(ts) ? Date.parse(ts.slice(0, 16) + ':00Z') / 60000 : NaN;
+  const hm = ts => String(ts || '').slice(11, 16);
+  const atMin = m => new Date(m * 60000).toISOString().slice(0, 16);
+  const r0 = v => v == null ? '—' : String(Math.round(v)).replace('-', '−');
+  const r1 = v => v == null ? '—' : (Math.round(v * 10) / 10).toFixed(1).replace('.', ',').replace('-', '−');
+  const EMO = ['🟢', '🟡', '🟠', '🔴'];
+  const ORDER = ['ice', 'snow', 'fog', 'rain', 'wind', 'temp', 'sun'];
+  const SNOW = new Set([71, 73, 75, 77, 85, 86]), FZ = new Set([56, 57, 66, 67]), FOG = new Set([45, 48]);
+  const now = input && input.now, nowM = mins(now);
+  const all = ((input && input.hours) || []).filter(x => x && Number.isFinite(mins(x.t))).slice().sort((a, b) => mins(a.t) - mins(b.t));
+  if (!Number.isFinite(nowM) || !all.length) return null;
+  const hour0 = Math.floor(nowM / 60) * 60;
+  const known = all.filter(x => mins(x.t) >= hour0);
+  if (!known.length || mins(known[0].t) > hour0 + 60) return null;   // pas de prévision pour l'heure en cours : rien d'inventé
+  const tripsIn = ((input && input.trips) || []).filter(t => t && Number.isFinite(mins(t.dep)) && mins(t.arr || t.dep) >= nowM - 1 && mins(t.dep) <= nowM + 24 * 60)
+    .slice().sort((a, b) => mins(a.dep) - mins(b.dep));
+  // fenêtre : 12 h, prolongée jusqu'à l'arrivée du dernier trajet des 24 h à venir
+  const want = Math.max(nowM + 12 * 60, ...tripsIn.map(t => mins(t.arr || t.dep)));
+  const hours = known.filter(x => mins(x.t) <= Math.min(want, hour0 + 24 * 60));
+  const lastM = mins(hours[hours.length - 1].t), endM = lastM + 60, endTs = atMin(endM);
+
+  /* ---------- niveau de chaque phénomène pour une heure ---------- */
+  function haz(x) {
+    const Pl = n(x.Pl) ?? n(x.P) ?? 0, P = n(x.P) ?? 0, pp = n(x.pp), vis = n(x.vis), gust = n(x.gust), Tr = n(x.Tr), code = n(x.code);
+    const iceLv = x.ice && finite(x.ice.level) ? x.ice.level : 0, snowy = (n(x.snow) || 0) > 0.05 || SNOW.has(code);
+    const storm = code != null && code >= 95;
+    const wet = Pl >= 0.2 || (pp != null && pp >= 60 && P >= 0.1);
+    const o = { rain: 0, snow: 0, fog: 0, wind: 0, ice: 0, temp: 0 };
+    if (!snowy) o.rain = storm || Pl >= 2 ? 2 : wet ? 1 : 0;
+    if (snowy) o.snow = 2;
+    o.fog = vis != null ? (vis < 200 ? 3 : vis < 500 ? 2 : vis < 1000 ? 1 : 0) : FOG.has(code) ? 1 : 0;
+    o.wind = gust == null ? 0 : gust >= 90 ? 3 : gust >= 70 ? 2 : gust >= 55 ? 1 : 0;
+    const frost = Tr == null ? 0 : Tr + 2 < 0 ? 2 : Tr - 2 < 0 ? 1 : 0;
+    o.ice = Math.max(FZ.has(code) ? 3 : iceLv >= 2 ? 3 : iceLv === 1 ? 2 : 0, frost);
+    const T = n(x.T), Ta = n(x.Tapp);
+    o.temp = (T != null && T >= 35) || (Ta != null && Ta <= -10) ? 1 : 0;
+    return o;
+  }
+  const H = hours.map(x => ({ x, t: x.t, m: mins(x.t), h: haz(x) }));
+  H.forEach(r => { r.lv = Math.max(...Object.values(r.h)); });
+  const at = m => { let best = null; H.forEach(r => { if (r.m <= m && (!best || r.m > best.m)) best = r; }); return best; };
+  const nowRow = at(nowM) || H[0];
+
+  /* ---------- épisodes : début, fin, pic ---------- */
+  const spans = [];
+  for (const id of ['rain', 'snow', 'fog', 'wind', 'ice', 'temp']) {
+    let cur = null;
+    H.forEach(r => {
+      const lv = r.h[id];
+      if (lv > 0) {
+        if (!cur) { cur = { id, start: r.m, end: r.m + 60, lv, peakRow: r, rows: [] }; spans.push(cur); }
+        cur.end = r.m + 60; cur.rows.push(r);
+        if (lv > cur.lv || (lv === cur.lv && worse(id, r.x, cur.peakRow.x))) { cur.lv = lv; cur.peakRow = r; }
+      } else cur = null;
+    });
+  }
+  function worse(id, a, b) {
+    if (id === 'rain' || id === 'snow') return (n(a.Pl) ?? n(a.P) ?? 0) + (n(a.snow) || 0) > (n(b.Pl) ?? n(b.P) ?? 0) + (n(b.snow) || 0);
+    if (id === 'fog') return (n(a.vis) ?? 1e9) < (n(b.vis) ?? 1e9);
+    if (id === 'wind') return (n(a.gust) ?? 0) > (n(b.gust) ?? 0);
+    if (id === 'ice') return (n(a.Tr) ?? 99) < (n(b.Tr) ?? 99);
+    return false;
+  }
+  // la pluie au quart d'heure (2 h) précise le début ou la fin de la pluie quand elle est disponible
+  const nc = input && input.nowcast;
+  const rainFirst = spans.find(s => s.id === 'rain');
+  if (nc && rainFirst) {
+    if (!nc.nowWet && finite(nc.startIn) && rainFirst.start > nowM && rainFirst.start - nowM <= 180) rainFirst.start = Math.max(nowM, Math.round((nowM + nc.startIn) / 5) * 5), rainFirst.precise = true;
+    else if (nc.nowWet && rainFirst.start <= nowM && typeof nc.stopAt === 'string') { const s = mins(now.slice(0, 11) + nc.stopAt); if (Number.isFinite(s) && s > nowM && s < rainFirst.end) rainFirst.end = s, rainFirst.precise = true; }
+  }
+  spans.sort((a, b) => a.start - b.start || ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
+  const active = s => s.start <= nowM && s.end > nowM;
+
+  /* ---------- trajets : points datés (départ, passages, arrivée) ---------- */
+  const tripList = tripsIn.map(t => {
+    const pts = (t.points || []).filter(p => p && p.x && Number.isFinite(mins(p.t || p.x.t))).map(p => ({ ...p, t: p.t || p.x.t, m: mins(p.t || p.x.t), h: haz(p.x) }));
+    pts.forEach(p => { p.lv = Math.max(...Object.values(p.h)); });
+    const glare = t.glare && Number.isFinite(mins(t.glare.ts)) ? { ts: t.glare.ts } : null;
+    return { ...t, pts, glare, depM: mins(t.dep), arrM: mins(t.arr || t.dep) };
+  });
+  const tripsOf = s => tripList.filter(t => t.depM < s.end && t.arrM >= s.start);
+  const glareTrips = tripList.filter(t => t.glare);
+  if (glareTrips.length) spans.push(...glareTrips.map(t => ({ id: 'sun', start: mins(t.glare.ts), end: mins(t.glare.ts) + 30, lv: 1, trip: t })));
+  spans.sort((a, b) => a.start - b.start || ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
+
+  /* ---------- textes ---------- */
+  const rainTxt = x => { const P = n(x.Pl) ?? n(x.P) ?? 0, code = n(x.code); return code != null && code >= 95 ? 'orage' : P >= 7.6 ? 'pluie forte' : P >= 2 ? 'pluie modérée' : 'pluie faible'; };
+  const visTxt = v => v == null ? '—' : v >= 10000 ? '> 10 km' : v >= 1000 ? r0(v / 1000) + ' km' : r0(Math.round(v / 10) * 10) + ' m';
+  const sky = code => code == null ? null : code <= 1 ? 'ciel dégagé' : code === 2 ? 'éclaircies' : code === 3 ? 'couvert' : FOG.has(code) ? 'brouillard' : code <= 57 ? 'bruine' : code <= 67 ? 'pluie' : code <= 77 ? 'neige' : code <= 82 ? 'averses' : code <= 86 ? 'averses de neige' : 'orage';
+  const NAME = { rain: 'pluie', snow: 'neige', fog: 'brouillard', wind: 'rafales', ice: 'verglas', temp: 'température', sun: 'soleil rasant' };
+  // gel : 🟡 chaussée proche de 0 °C (marge faible) · 🟠 gel de surface probable ou verglas modéré · 🔴 verglas possible
+  const ICE_TXT = ['', 'chaussée proche du gel', 'gel de surface probable', 'verglas possible'];
+  function condTxt(x) {   // conditions d'un point : le phénomène le plus marquant, sinon le ciel
+    const h = haz(x), top = ORDER.filter(id => h[id] > 0).sort((a, b) => h[b] - h[a])[0];
+    if (top === 'ice') return n(x.Tr) != null ? `chaussée ${r1(x.Tr)} °C (gel possible)` : 'gel possible';
+    if (top === 'snow') return 'neige';
+    if (top === 'fog') return `brouillard (${visTxt(n(x.vis))})`;
+    if (top === 'rain') return rainTxt(x);
+    if (top === 'wind') return `rafales ${r0(x.gust)} km/h`;
+    return sky(n(x.code)) || 'sec';
+  }
+  const where = s => {
+    const ts = tripsOf(s); if (!ts.length) return '';
+    const t = ts[0];
+    return `${t.label || 'trajet'} de ${hm(t.dep)}${ts.length > 1 ? ' et ' + (ts.length - 1) + ' autre' + (ts.length > 2 ? 's' : '') : ''}`;
+  };
+
+  /* ---------- changements significatifs ---------- */
+  const changes = [];
+  spans.forEach(s => {
+    if (s.id === 'sun') { changes.push({ m: s.start, id: 'sun', lv: 1, text: 'soleil rasant' }); return; }
+    const pk = s.peakRow.x;
+    const txt = { rain: rainTxt(pk), snow: 'neige', fog: `brouillard · ${visTxt(n(pk.vis))}`, wind: `rafales ${r0(pk.gust)} km/h`, ice: ICE_TXT[s.lv], temp: n(pk.T) >= 35 ? 'forte chaleur' : 'froid intense' }[s.id];
+    if (s.start > nowM) changes.push({ m: s.start, id: s.id, lv: s.lv, text: txt });
+    if (s.end < endM) changes.push({ m: s.end, id: s.id, lv: 0, text: { rain: 'fin de la pluie', snow: 'fin de la neige', fog: 'dissipation du brouillard', wind: 'vent en baisse', ice: 'fin du risque de gel', temp: 'température plus douce' }[s.id], end: true });
+  });
+  // amélioration générale : première heure sans aucun phénomène après une période agitée
+  for (let i = 1; i < H.length; i++) if (H[i].m > nowM && H[i - 1].lv > 0 && H[i].lv === 0 && H.slice(i).every(r => r.lv === 0)) { changes.push({ m: H[i].m, id: 'better', lv: 0, text: 'amélioration' }); break; }
+  // passage de l'air sous 0 °C (ou au-dessus)
+  for (let i = 1; i < H.length; i++) {
+    const a = n(H[i - 1].x.T), b = n(H[i].x.T);
+    if (a != null && b != null && H[i].m > nowM && (a > 0) !== (b > 0)) { changes.push({ m: H[i].m, id: 'zero', lv: b <= 0 ? 1 : 0, text: b <= 0 ? 'air sous 0 °C' : 'air au-dessus de 0 °C' }); break; }
+  }
+  changes.sort((a, b) => a.m - b.m || b.lv - a.lv);
+  const nextChange = changes.find(c => c.m > nowM) || null;
+
+  /* ---------- verdict (Weather Hero) ---------- */
+  const real = spans.filter(s => s.lv > 0);
+  const dominant = real.slice().sort((a, b) => b.lv - a.lv || (active(b) - active(a)) || a.start - b.start || ORDER.indexOf(a.id) - ORDER.indexOf(b.id))[0] || null;
+  const level = dominant ? dominant.lv : 0;
+  const cur = (input && input.cur) || {};
+  const T = n(cur.T) ?? n(nowRow.x.T), Tapp = n(cur.Tapp) ?? n(nowRow.x.Tapp);
+  const tempLine = `${T == null ? '—' : r0(T)} °C · ressenti ${Tapp == null ? '—' : r0(Tapp)} °C`;
+  let title, lines = [];
+  const inMin = m => { const d = Math.max(0, Math.round(m - nowM)); return d < 60 ? `dans ${d} min` : `dans ${Math.floor(d / 60)} h${d % 60 ? ' ' + String(d % 60).padStart(2, '0') : ''}`; };
+  if (!dominant) {
+    title = 'CONDITIONS NORMALES';
+    lines.push(tempLine, `Aucun phénomène notable jusqu’à ${hm(endTs)}`);
+  } else {
+    const s = dominant, now_ = active(s), pk = s.peakRow ? s.peakRow.x : null, span = `${hm(atMin(s.start))}–${hm(atMin(s.end))}`;
+    if (s.id === 'ice') {
+      title = s.lv >= 3 ? 'RISQUE DE VERGLAS' : s.lv === 2 ? 'GEL DE SURFACE PROBABLE' : 'CHAUSSÉE PROCHE DU GEL';
+      lines.push(`Fenêtre critique ${now_ ? 'maintenant' : hm(atMin(s.start))}–${hm(atMin(s.end))}`, `Chaussée estimée ${r1(pk.Tr)} °C ± 2`, tempLine);
+    } else if (s.id === 'sun') {
+      title = 'SOLEIL RASANT'; lines.push(`Vers ${hm(atMin(s.start))} pendant le ${s.trip.label || 'trajet'}`, tempLine);
+    } else {
+      const label = { rain: rainTxt(pk).toUpperCase(), snow: 'NEIGE', fog: 'BROUILLARD', wind: 'RAFALES', temp: n(pk.T) >= 35 ? 'FORTE CHALEUR' : 'FROID INTENSE' }[s.id];
+      title = now_ ? `${label} EN COURS` : `${label} À PARTIR DE ${hm(atMin(s.start))}`;
+      if (now_) lines.push(s.end < endM ? `Fin probable vers ${hm(atMin(s.end))}` : `Jusqu’à au moins ${hm(endTs)}`);
+      else lines.push(`Début estimé ${inMin(s.start)}${s.precise ? '' : ' (prévision horaire)'}`);
+      if (s.id === 'fog') lines.push(`Visibilité minimale ${visTxt(n(pk.vis))} · ${span}`);
+      if (s.id === 'wind') lines.push(`Rafales jusqu’à ${r0(pk.gust)} km/h`);
+      lines.push(tempLine);
+    }
+    const w = s.id === 'sun' ? '' : where(s);
+    if (w) lines.splice(1, 0, `${w[0].toUpperCase() + w.slice(1)} potentiellement concerné${tripsOf(s).length > 1 ? 's' : ''}`);
+  }
+  if (nextChange && !(dominant && nextChange.m === dominant.start && nextChange.id === dominant.id)) lines.push(`Prochain changement : ${hm(atMin(nextChange.m))} · ${nextChange.text}`);
+  const ageMin = input && finite(input.ageMin) ? input.ageMin : null, stale = ageMin != null && ageMin > 180;
+  const hero = { level, emoji: EMO[level], title, lines: lines.slice(0, 4), dominant: dominant ? dominant.id : null, stale };
+
+  /* ---------- timeline : moments clés (météo + trajets) et bande horaire ---------- */
+  const moments = [];
+  real.filter(active).forEach(s => moments.push({ m: nowM, kind: 'wx', id: s.id, lv: s.lv, text: s.id === 'ice' ? ICE_TXT[s.lv] : `${NAME[s.id]} en cours`, now: true }));
+  changes.forEach(c => moments.push({ m: c.m, kind: 'wx', id: c.id, lv: c.lv, text: c.text }));
+  tripList.forEach(t => {
+    const lv = t.pts.reduce((a, p) => Math.max(a, p.lv), 0);
+    moments.push({ m: t.depM, kind: 'dep', lv, text: `départ · ${t.label || 'trajet'}`, trip: t.id });
+    if (t.arrM > t.depM) moments.push({ m: t.arrM, kind: 'arr', lv, text: `arrivée${t.to ? ' · ' + t.to : ''}`, trip: t.id });
+  });
+  const tl = moments.filter(x => x.m >= nowM - 1 && x.m <= endM).sort((a, b) => a.m - b.m || (a.kind === 'wx') - (b.kind === 'wx'))
+    .slice(0, 12).map(x => ({ t: x.now ? 'maintenant' : hm(atMin(x.m)), ts: atMin(x.m), kind: x.kind, id: x.id || null, lv: x.lv, text: x.text, trip: x.trip || null }));
+  const strip = H.map(r => {
+    const x = r.x, trip = tripList.find(t => r.m + 60 > t.depM && r.m <= t.arrM);
+    const ic = r.h.ice >= 2 ? 'ice' : r.h.snow ? 'snow' : r.h.fog ? 'fog' : r.h.rain ? 'rain' : r.h.wind ? 'wind' : null;
+    return { t: r.t, hh: hm(r.t), T: n(x.T), P: n(x.Pl) ?? n(x.P), pp: n(x.pp), gust: n(x.gust), vis: n(x.vis), lv: r.lv, ic, code: n(x.code), trip: trip ? trip.id : null, now: r === nowRow };
+  });
+
+  /* ---------- phénomènes ---------- */
+  const first = id => real.find(s => s.id === id) || null;
+  const vals = (k) => H.map(r => n(r.x[k])).filter(v => v != null);
+  const maxOf = k => { const v = vals(k); return v.length ? Math.max(...v) : null; }, minOf = k => { const v = vals(k); return v.length ? Math.min(...v) : null; };
+  const rowMax = (k, sign = 1) => H.reduce((b, r) => n(r.x[k]) == null ? b : !b || sign * r.x[k] > sign * b.x[k] ? r : b, null);
+  const phen = [];
+  { const s = first('rain') || first('snow'), Psum = H.reduce((a, r) => a + (n(r.x.Pl) ?? n(r.x.P) ?? 0), 0), ppM = maxOf('pp');
+    const line = !s ? `Aucune avant ${hm(endTs)}` : active(s) ? `${s.id === 'snow' ? 'Neige' : cap(rainTxt(s.peakRow.x))} en cours${s.end < endM ? ' · fin vers ' + hm(atMin(s.end)) : ' · au moins jusqu’à ' + hm(endTs)}` : `${s.id === 'snow' ? 'Neige' : cap(rainTxt(s.peakRow.x))} à partir de ${hm(atMin(s.start))}`;
+    phen.push({ id: 'rain', icon: s && s.id === 'snow' ? '🌨' : '🌧', title: s && s.id === 'snow' ? 'Neige' : 'Pluie', lv: s ? s.lv : 0, line,
+      detail: [`Cumul ${r1(Psum)} mm jusqu’à ${hm(endTs)}`, ppM != null ? `Probabilité maximale ${r0(ppM)} %` : null, s ? `Intensité maximale ${r1(n(s.peakRow.x.Pl) ?? n(s.peakRow.x.P))} mm/h vers ${hm(s.peakRow.t)}` : null,
+        nc ? (nc.nowWet ? `Au quart d’heure : ${nc.snow ? 'neige' : 'pluie'} en cours${nc.stopAt ? ', fin vers ' + nc.stopAt : ''}` : finite(nc.startIn) ? `Au quart d’heure : début dans ${nc.startIn} min` : 'Au quart d’heure : rien d’ici 2 h') : null].filter(Boolean) }); }
+  { const s = first('fog'), vmin = rowMax('vis', -1);
+    phen.push({ id: 'fog', icon: '🌫', title: 'Brouillard · visibilité', lv: s ? s.lv : 0,
+      line: s ? `${EMO[s.lv]} Visibilité ${visTxt(n(s.peakRow.x.vis))} · ${active(s) ? 'maintenant' : 'vers ' + hm(s.peakRow.t)}` : vmin ? `Visibilité ${visTxt(n(vmin.x.vis))} au plus bas` : 'Visibilité non fournie',
+      detail: [s ? `Épisode ${active(s) ? 'en cours' : 'de ' + hm(atMin(s.start))} jusqu’à ${hm(atMin(s.end))}` : null, vmin ? `Minimum ${visTxt(n(vmin.x.vis))} vers ${hm(vmin.t)}` : null, 'Visibilité : modèle de base (pas une mesure)'].filter(Boolean) }); }
+  { const s = first('wind'), g = rowMax('gust'), w = maxOf('wind');
+    phen.push({ id: 'wind', icon: '💨', title: 'Vent · rafales', lv: s ? s.lv : 0,
+      line: g ? `Rafales ${r0(g.x.gust)} km/h${s ? ' · ' + (active(s) ? 'maintenant' : 'vers ' + hm(s.peakRow.t)) : ''}` : 'Vent non fourni',
+      detail: [w != null ? `Vent moyen jusqu’à ${r0(w)} km/h` : null, g ? `Pic de rafales vers ${hm(g.t)}` : null, s ? `Au-dessus de 55 km/h de ${hm(atMin(s.start))} à ${hm(atMin(s.end))}` : null].filter(Boolean) }); }
+  { const s = first('ice'), tr = rowMax('Tr', -1), ta = minOf('T');
+    phen.push({ id: 'ice', icon: '❄️', title: 'Gel · verglas', lv: s ? s.lv : 0,
+      line: s ? `${cap(ICE_TXT[s.lv])} · ${active(s) ? 'maintenant' : hm(atMin(s.start))}–${hm(atMin(s.end))}` : 'Aucun risque estimé',
+      detail: [tr ? `Chaussée estimée minimale ${r1(tr.x.Tr)} °C ± 2 vers ${hm(tr.t)}` : null, ta != null ? `Air minimal ${r1(ta)} °C` : null, 'Estimation sans capteur routier : ponts et zones d’ombre d’abord'].filter(Boolean) }); }
+  { const tmin = minOf('T'), tmax = maxOf('T'), s = first('temp'), z = changes.find(c => c.id === 'zero');
+    phen.push({ id: 'temp', icon: '🌡', title: 'Température', lv: s ? s.lv : 0, line: `${T == null ? '—' : r0(T)} °C · min ${r0(tmin)} / max ${r0(tmax)}`,
+      detail: [`Ressenti ${Tapp == null ? '—' : r1(Tapp)} °C maintenant`, z ? `${cap(z.text)} vers ${hm(atMin(z.m))}` : null].filter(Boolean) }); }
+  { const g = glareTrips[0], sun = (input && input.sun) || {};
+    phen.push({ id: 'sun', icon: '🌅', title: 'Soleil rasant', lv: g ? 1 : 0,
+      line: g ? `Vers ${hm(g.glare.ts)} · ${g.label || 'trajet'}` : 'Pas dans l’axe des trajets prévus',
+      detail: [sun.sunrise ? `Lever ${hm(sun.sunrise)} · coucher ${hm(sun.sunset)}` : null, g ? 'Soleil bas (moins de 15°) à moins de 30° du cap de la route, ciel peu couvert' : 'Calcul fait uniquement pour les trajets connus'].filter(Boolean) }); }
+  const roadNow = roadState(nowRow), roadWorst = H.map(r => roadState(r)).sort((a, b) => b.rank - a.rank)[0];
+  // l'état actuel, puis le pire état à venir s'il est plus délicat : la couleur correspond toujours au texte affiché
+  phen.push({ id: 'road', icon: '🛣', title: 'Chaussée estimée', lv: Math.min(3, roadWorst.lv), line: `${cap(roadNow.text)}${n(nowRow.x.Tr) != null ? ' ' + r1(nowRow.x.Tr) + ' °C' : ''}${roadWorst.rank > roadNow.rank ? ' → ' + roadWorst.text + ' ' + hm(roadWorst.t) : ''}`,
+    detail: [roadWorst.rank > roadNow.rank ? `Au pire : ${roadWorst.text} vers ${hm(roadWorst.t)}` : 'État stable sur la période', 'Estimation (air, pluie récente, rosée, rayonnement) : pas un capteur routier'] });
+  function roadState(r) {
+    const x = r.x, prev = all.some(p => { const m = mins(p.t); return m < r.m && m >= r.m - 180 && (n(p.Pl) ?? n(p.P) ?? 0) >= 0.2; });   // pluie des 3 h précédentes
+    const humid = n(x.RH) != null && n(x.RH) >= 95 && n(x.T) != null && n(x.Td) != null && x.T - x.Td < 1;
+    if (r.h.snow) return { rank: 5, lv: 2, text: 'enneigée possible', t: r.t };
+    if (r.h.ice >= 3) return { rank: 4, lv: 3, text: 'verglas possible', t: r.t };
+    if (r.h.ice === 2 && (r.h.rain || prev || humid)) return { rank: 4, lv: 2, text: 'givre possible', t: r.t };
+    if (r.h.rain) return { rank: 3, lv: r.h.rain, text: 'mouillée', t: r.t };
+    if (prev || humid) return { rank: 2, lv: 1, text: 'humide', t: r.t };
+    if (r.h.ice) return { rank: 1, lv: 1, text: 'sèche, froide', t: r.t };
+    return { rank: 0, lv: 0, text: 'sèche', t: r.t };
+  }
+
+  /* ---------- conditions route : score explicable ---------- */
+  const next = tripList.find(t => t.depM >= nowM - 1 && t.depM - nowM <= 12 * 60 && t.pts.length) || tripList.find(t => t.depM < nowM && t.arrM > nowM && t.pts.length);
+  const wRows = next ? next.pts.map(p => ({ x: p.x, h: p.h, t: p.t })) : H.filter(r => r.m <= nowM + 6 * 60);
+  const road = roadScore(wRows, next ? !!next.glare : false);
+  road.window = next ? { kind: 'trip', label: `sur le ${next.label || 'trajet'} ${hm(next.dep)}–${hm(next.arr || next.dep)}` } : { kind: 'hours', label: `maintenant → ${hm(atMin(Math.min(endM, nowM + 6 * 60)))}` };
+  function roadScore(rows, glare) {
+    const mx = id => rows.reduce((a, r) => Math.max(a, r.h[id]), 0), xs = rows.map(r => r.x);
+    const max = k => { const v = xs.map(x => n(x[k])).filter(v => v != null); return v.length ? Math.max(...v) : null; }, min = k => { const v = xs.map(x => n(x[k])).filter(v => v != null); return v.length ? Math.min(...v) : null; };
+    const Pm = Math.max(0, ...xs.map(x => n(x.Pl) ?? n(x.P) ?? 0)), ppm = max('pp'), vm = min('vis'), gm = max('gust'), Tm = min('T'), TM = max('T'), Trm = min('Tr');
+    const iceLv = mx('ice'), fz = xs.some(x => FZ.has(n(x.code)) || (x.ice && x.ice.level >= 2)), iceMod = xs.some(x => x.ice && x.ice.level === 1);
+    const humid = !mx('rain') && xs.some(x => n(x.RH) != null && x.RH >= 95);
+    const F = [];
+    const add = (id, label, lv, pen, why) => F.push({ id, label, lv, pen, why });
+    add('temp', 'Température', Tm != null && (Tm <= 3 || (TM != null && TM >= 35)) ? 1 : 0, Tm != null && (Tm <= 3 || (TM != null && TM >= 35)) ? ROAD_PEN.temp : 0,
+      Tm == null ? 'non fournie' : Tm <= 3 ? `air jusqu’à ${r1(Tm)} °C : chaussée froide` : TM >= 35 ? `air jusqu’à ${r0(TM)} °C` : `air ${r0(Tm)} → ${r0(TM)} °C`);
+    add('wind', 'Vent', mx('wind'), gm == null ? 0 : gm >= 90 ? ROAD_PEN.wind[0] : gm >= 70 ? ROAD_PEN.wind[1] : gm >= 55 ? ROAD_PEN.wind[2] : 0, gm == null ? 'non fourni' : `rafales ${r0(gm)} km/h`);
+    add('humid', 'Humidité', humid ? 1 : 0, humid ? ROAD_PEN.humid : 0, humid ? 'air saturé : chaussée humide possible' : 'pas d’humidité notable sans pluie');
+    const rp = mx('snow') ? 0 : Pm >= 7.6 ? ROAD_PEN.rain[0] : Pm >= 2 ? ROAD_PEN.rain[1] : Pm >= 0.2 ? ROAD_PEN.rain[2] : ppm != null && ppm >= 60 ? ROAD_PEN.rain[3] : 0;
+    add('rain', 'Pluie', mx('rain') || (rp ? 1 : 0), rp, Pm >= 0.2 ? `jusqu’à ${r1(Pm)} mm/h` : ppm != null && ppm >= 60 ? `probabilité ${r0(ppm)} %` : 'sec');
+    if (mx('snow')) add('snow', 'Neige', 2, ROAD_PEN.snow, 'chute de neige prévue');
+    const gp = fz ? ROAD_PEN.ice[0] : iceMod ? ROAD_PEN.ice[1] : iceLv >= 2 ? ROAD_PEN.ice[2] : iceLv === 1 ? ROAD_PEN.ice[3] : 0;
+    add('ice', 'Gel', iceLv, gp, iceLv ? `chaussée estimée jusqu’à ${r1(Trm)} °C ± 2${fz ? ', verglas élevé' : iceMod ? ', verglas modéré' : ''}` : Trm != null ? `chaussée ≥ ${r0(Trm)} °C` : 'non estimé');
+    add('fog', 'Visibilité', mx('fog'), vm == null ? 0 : vm < 200 ? ROAD_PEN.fog[0] : vm < 500 ? ROAD_PEN.fog[1] : vm < 1000 ? ROAD_PEN.fog[2] : 0, vm == null ? 'non fournie' : `minimum ${visTxt(vm)}`);
+    if (glare) add('sun', 'Soleil rasant', 1, ROAD_PEN.sun, 'soleil bas dans l’axe de la route');
+    const score = Math.max(0, 100 - F.reduce((a, f) => a + f.pen, 0)), sl = score >= 80 ? 0 : score >= 60 ? 1 : score >= 40 ? 2 : 3;
+    return { score, level: Math.max(sl, ...F.map(f => f.lv)), factors: F };
+  }
+
+  /* ---------- prochain trajet ---------- */
+  let trip = null;
+  const tt = tripList.find(t => t.arrM > nowM) || null;
+  if (tt) {
+    const P = tt.pts, mid = P.length > 2 ? P.reduce((b, p) => Math.abs((p.f ?? 0.5) - 0.5) < Math.abs((b.f ?? 0.5) - 0.5) ? p : b, P[1]) : null;
+    const pt = (p, lbl) => p ? { label: lbl, t: hm(p.t), T: n(p.x.T), text: condTxt(p.x), lv: p.lv, place: p.name || null } : null;
+    const worst = P.reduce((b, p) => !b || p.lv > b.lv ? p : b, null);
+    let crit = null;
+    if (worst && worst.lv > 0) {
+      const id = ORDER.filter(k => worst.h[k] === worst.lv)[0], i = P.indexOf(worst), firstIdx = P.findIndex(p => p.h[id] > 0), fp = P[firstIdx], prev = firstIdx > 0 ? P[firstIdx - 1] : null;
+      const kmTxt = fp && finite(fp.km) && fp.km > 0 ? (prev && finite(prev.km) && prev.km < fp.km ? ` après environ ${r0(prev.km)}–${r0(fp.km)} km` : ` vers le km ${r0(fp.km)}`) : firstIdx === 0 ? ' dès le départ' : fp ? ` vers ${hm(fp.t)}` : '';
+      crit = { lv: worst.lv, id, text: `${cap(id === 'rain' ? (worst.lv >= 2 ? rainTxt(worst.x) : 'pluie probable') : id === 'ice' ? ICE_TXT[worst.lv] : id === 'fog' ? 'brouillard ' + visTxt(n(worst.x.vis)) : id === 'wind' ? 'rafales ' + r0(worst.x.gust) + ' km/h' : NAME[id])}${kmTxt}`, at: hm(P[i].t) };
+    }
+    if (!crit && tt.glare) crit = { lv: 1, id: 'sun', text: `Soleil rasant vers ${hm(tt.glare.ts)}`, at: hm(tt.glare.ts) };
+    const later = tripList.filter(t => t !== tt && t.depM > tt.depM).slice(0, 3).map(t => ({ dep: hm(t.dep), label: t.label || 'trajet', lv: t.pts.reduce((a, p) => Math.max(a, p.lv), 0), day: t.dep.slice(0, 10) }));
+    trip = { id: tt.id || null, label: tt.label || 'trajet', from: tt.from || null, to: tt.to || null, dep: hm(tt.dep), arr: hm(tt.arr || tt.dep), day: tt.dep.slice(0, 10), durMin: Math.max(0, Math.round(tt.arrM - tt.depM)),
+      running: tt.depM <= nowM, km: finite(tt.km) ? tt.km : null, waiting: !P.length,
+      points: P.length ? [pt(P[0], 'Départ'), mid && mid !== P[0] && mid !== P[P.length - 1] ? pt(mid, 'Mi-parcours') : null, P.length > 1 ? pt(P[P.length - 1], 'Arrivée') : null].filter(Boolean) : [],
+      crit, lv: P.reduce((a, p) => Math.max(a, p.lv), tt.glare ? 1 : 0), later };
+  }
+
+  /* ---------- ce qui compte aujourd'hui (3 à 5 lignes, jamais du remplissage) ---------- */
+  const items = [];
+  const push = (lv, text, m, key) => { if (!items.some(i => i.key === key)) items.push({ lv, text, m, key }); };
+  tripList.forEach(t => {
+    const w = t.pts.reduce((b, p) => !b || p.lv > b.lv ? p : b, null); if (!w || !w.lv) return;
+    const id = ORDER.filter(k => w.h[k] === w.lv)[0], what = { rain: w.lv >= 2 ? cap(rainTxt(w.x)) : 'Pluie probable', snow: 'Neige', fog: 'Brouillard', wind: 'Rafales', ice: cap(ICE_TXT[w.lv]), temp: 'Température extrême' }[id];
+    push(w.lv, `${what} pendant le ${t.label || 'trajet'} (${hm(t.dep)})`, t.depM, id + '@trip');
+  });
+  real.forEach(s => {
+    if (s.id === 'sun') { push(1, `Soleil rasant vers ${hm(atMin(s.start))} (${s.trip.label || 'trajet'})`, s.start, 'sun'); return; }
+    if (items.some(i => i.key === s.id + '@trip') && s.lv <= 1) return;
+    const pk = s.peakRow.x, a = active(s) ? 'maintenant' : hm(atMin(s.start)), b = hm(atMin(s.end));
+    const txt = {
+      rain: active(s) ? `${cap(rainTxt(pk))} en cours ${s.end < endM ? 'jusqu’à ' + b : 'au moins jusqu’à ' + b}` : `${cap(rainTxt(pk))} probable ${s.end < endM ? `de ${a} à ${b}` : 'à partir de ' + a}`,
+      snow: `Neige possible ${active(s) ? 'dès maintenant' : 'à partir de ' + a}`,
+      fog: active(s) || s.start - nowM <= 60 ? `Brouillard ${active(s) ? 'jusqu’à' : 'possible avant'} ${b} · visibilité ${visTxt(n(pk.vis))}` : `Brouillard possible ${a}–${b} · visibilité ${visTxt(n(pk.vis))}`,
+      wind: `Rafales jusqu’à ${r0(pk.gust)} km/h (vers ${hm(s.peakRow.t)})`,
+      ice: `${s.lv >= 3 ? 'Risque de verglas' : cap(ICE_TXT[s.lv])} ${a}–${b} · chaussée ${r1(pk.Tr)} °C`,
+      temp: n(pk.T) >= 35 ? `Forte chaleur : jusqu’à ${r0(pk.T)} °C` : `Froid intense : ressenti ${r0(pk.Tapp)} °C`
+    }[s.id];
+    push(s.lv, txt, s.start, s.id);
+  });
+  items.sort((a, b) => b.lv - a.lv || a.m - b.m);
+  const matters = items.slice(0, 4).map(({ lv, text }) => ({ lv, text }));
+  // rassurances utiles seulement quand la question se pose réellement
+  const tmin = minOf('T');
+  if (matters.length < 5 && !first('ice') && tmin != null && tmin <= 5) matters.push({ lv: 0, text: `Pas de risque de gel estimé (air jusqu’à ${r0(tmin)} °C)` });
+  if (matters.length < 5 && !first('rain') && !first('snow') && tripList.length) matters.push({ lv: 0, text: `Pas de pluie attendue sur les trajets d’ici ${hm(endTs)}` });
+  // conseil pratique seulement si la pluie touche un trajet ou tombe dans les 12 h
+  if (matters.length < 5 && real.some(s => (s.id === 'rain' || s.id === 'snow') && (s.start - nowM <= 12 * 60 || tripsOf(s).length))) matters.push({ lv: 0, text: 'Prévoir une couche imperméable' });
+  if (!matters.length) matters.push({ lv: 0, text: `Rien de notable d’ici ${hm(endTs)} : conditions stables` });
+
+  return { level, hero, nextChange: nextChange ? { t: hm(atMin(nextChange.m)), text: nextChange.text, lv: nextChange.lv } : null,
+    window: { from: hm(now), to: hm(endTs), end: endTs }, timeline: { moments: tl, strip }, matters: matters.slice(0, 5), phen, road, trip };
+  function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+}
+// Pénalités des conditions route (points retirés de 100), dans l'ordre des seuils de l'en-tête.
+const ROAD_PEN = { temp: 5, humid: 5, sun: 5, snow: 35, wind: [30, 20, 10], rain: [30, 20, 10, 5], ice: [45, 25, 15, 8], fog: [35, 25, 15] };
+const WXD_EMO = ['🟢', '🟡', '🟠', '🔴'];
+
 /* Annulations locales : état technique, jamais une arrivée. Aucun réseau ni coordonnée persistée. */
 const TripCancel = (() => {
   const KEY = 'twrc.tripcancel', UNDO_MS = 10 * 60e3, EVENT_MARGIN_MS = 2 * 3600e3;
@@ -2733,6 +3122,93 @@ function renderCurrent() {
   <div><div class="sub" style="margin-bottom:6px">ÉVOLUTION · PRÉVISIONS</div><div class="evo">${ev}</div></div>`;
 }
 
+/* ---------- onglet Météo : poste météo (verdict, prochain trajet, chronologie, ce qui compte, phénomènes, route) ---------- */
+// Toute la décision vient de wxDesk (src/wxdesk.js, pur et testé) ; ici, seulement l'adaptation des données déjà chargées et le rendu.
+// Trajets : ceux du briefing (domicile-travail + rendez-vous de l'agenda reconnus comme trajets), jamais tous les événements de l'agenda.
+const WX_IC = { rain: '🌧', snow: '🌨', fog: '🌫', wind: '💨', ice: '❄️', temp: '🌡', sun: '🌅', better: '🌤', zero: '🧊', dep: '🚗', arr: '🏁' };
+function wxTrips(clockModel) {
+  const offSec = clockModel && clockModel.payload && clockModel.payload.utc_offset_seconds != null ? clockModel.payload.utc_offset_seconds : 7200;
+  return BRF_SHOWN.filter(t => !t.originPending && t.dep).map((t, k) => {
+    const seq = t.seq || [], last = seq.length - 1;
+    const points = seq.map((q, j) => {
+      const x = q.hs && q.hs[q.i]; if (!x) return null;
+      // agenda : heure et kilomètre de passage calculés par le relais ; domicile-travail : départ, heures pleines, arrivée
+      const at = q.t || (j === 0 ? t.dep : j === last && t.arr ? t.arr : x.t);
+      return { t: at, f: q.f != null ? q.f : last > 0 ? j / last : 0, km: q.km != null ? q.km : null, name: q.name || q.loc || null, x };
+    }).filter(Boolean);
+    let glare = t.td && t.td.glare ? { ts: t.td.glare.ts } : null;
+    if (!glare && t.l && locHasCoords(t.l.from) && locHasCoords(t.l.to) && t.l.min) {
+      const cloudAt = ts => { const p = points.reduce((b, q) => !b || Math.abs(tsToDate(q.t) - tsToDate(ts)) < Math.abs(tsToDate(b.t) - tsToDate(ts)) ? q : b, null); return p ? p.x.cloud : null; };
+      const g = glareCheck(t.l.from, t.l.to, t.dep, t.l.min, offSec, cloudAt).glare; if (g) glare = { ts: g.ts };
+    }
+    const label = t.src === 'work' ? (t.td && t.td.dir === 'ret' ? 'trajet retour' : 'trajet aller') : t.l && t.l.k === 'ret' ? 'trajet retour' : `trajet vers ${t.to || 'le rendez-vous'}`;
+    return { id: t.key || 'trip' + k, label, from: t.from || null, to: t.to || null, dep: t.dep, arr: t.arr || t.dep, km: t.l && t.l.km != null ? t.l.km : null, glare, points };
+  });
+}
+function wxInput() {
+  const m = CX.m, now = DEMO.on ? m.nowStr.slice(0, 16) : nowIn(m.tz || 'Europe/Paris');
+  const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Math.max(0, (Date.now() - raw.t) / 60e3);
+  const day = m.days.find(d => d.date === now.slice(0, 10)) || {};
+  // valeurs « actuelles » d'une réponse ancienne : on préfère l'heure prévue pour maintenant
+  const cur = ageMin != null && ageMin > 90 ? {} : { T: m.cur.T, Tapp: m.cur.Tapp };
+  return { now, hours: m.hs.slice(Math.max(0, m.nowI - 4)), cur, trips: wxTrips(m), nowcast: ageMin != null && ageMin > 30 ? null : m.nc || null,
+    sun: { sunrise: day.sunrise || null, sunset: day.sunset || null }, ageMin };
+}
+function renderWx() {
+  const el = $('#secWx'); if (!el) return;
+  if (UI.view !== 'meteo' || !CX) { if (!el.hidden || el.innerHTML) { el.hidden = true; el.innerHTML = ''; renderWx.last = ''; } return; }
+  const input = wxInput(), d = wxDesk(input);
+  if (!d) { el.hidden = true; el.innerHTML = ''; renderWx.last = ''; return; }
+  el.hidden = false;
+  const m = CX.m, l = curLoc(), today = input.now.slice(0, 10), E = WXD_EMO;
+  const dayLbl = day => { const n = dayDiff(today, day); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(day); };
+  const mode = DEMO.on ? 'DÉMO · simulé' : offlineNow() ? 'HORS LIGNE' : m.mode === 'live' ? 'LIVE' : 'CACHE';
+  const age = input.ageMin == null ? '' : ` · ${freshState(input.ageMin)} · ${ageTxt(input.ageMin)}`;
+  const h = d.hero;
+  const hero = `<div class="wx-hero lv${h.level}" role="status" aria-live="polite">
+    <div class="wx-hk"><span>${esc(l ? l.name : '')}</span><span class="wx-age">${mode}${age}</span></div>
+    <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.title)}</h2>
+    ${h.lines.map((x, i) => `<p class="${i ? 'wx-hl' : 'wx-hl wx-h1'}">${esc(x)}</p>`).join('')}
+    ${h.stale ? `<p class="wx-stale">⚠ Prévisions reçues il y a ${esc(ageTxt(input.ageMin))} : verdict indicatif, actualise dès que possible.</p>` : ''}</div>`;
+  // prochain trajet
+  const t = d.trip;
+  const tripHtml = !t ? `<div class="wx-blk wx-trip wx-none"><h3>Prochain trajet</h3><p class="sub">Aucun trajet prévu dans les 24 h. Les rendez-vous sans lieu reconnu ne sont pas des trajets.</p></div>`
+    : `<div class="wx-blk wx-trip lv${t.lv}"><h3>Prochain trajet${t.running ? ' · en cours' : ' · ' + esc(dayLbl(t.day))}</h3>
+      <p class="wx-route"><b>${esc(t.from || 'Départ')} → ${esc(t.to || 'Arrivée')}</b></p>
+      <p class="wx-when num">${t.dep} → ${t.arr} · ${t.durMin} min${t.km != null ? ' · ' + f0(t.km) + ' km' : ''}</p>
+      ${t.waiting ? '<p class="sub">⏳ Météo du trajet en cours de chargement…</p>' : `<ul class="wx-pts">${t.points.map(p => `<li class="lv${p.lv}"><span class="k">${esc(p.label)} <i class="num">${esc(p.t)}</i></span><span>${p.T != null ? '<b class="num">' + f0(p.T) + ' °C</b> · ' : ''}${esc(p.text)}${p.place && p.label === 'Mi-parcours' ? ' · ' + esc(p.place) : ''}</span></li>`).join('')}</ul>`}
+      ${t.crit ? `<p class="wx-crit lv${t.crit.lv}">${E[t.crit.lv]} ${esc(t.crit.text)}</p>` : t.waiting ? '' : '<p class="wx-crit lv0">🟢 Aucun phénomène critique sur le trajet</p>'}
+      ${t.later.length ? `<p class="sub">Ensuite : ${t.later.map(x => `${E[x.lv]} ${x.day !== today ? esc(dayLbl(x.day)) + ' ' : ''}${esc(x.dep)} ${esc(x.label)}`).join(' · ')}</p>` : ''}</div>`;
+  // chronologie : moments clés, puis bande horaire défilante
+  const tday = x => x.ts.slice(0, 10) !== today && x.t !== 'maintenant' ? (dayDiff(today, x.ts) === 1 ? 'dem. ' : fmtDay(x.ts.slice(0, 10)) + ' ') : '';
+  const mom = d.timeline.moments.map(x => `<li class="lv${x.lv}${x.kind !== 'wx' ? ' trip' : ''}" data-ts="${esc(x.ts)}"><time class="num">${esc(tday(x) + x.t)}</time><span aria-hidden="true">${WX_IC[x.kind === 'wx' ? x.id : x.kind] || '•'}</span><span>${esc(x.text)}</span></li>`).join('');
+  const skyIc = x => { const dd = m.days.find(z => z.date === x.t.slice(0, 10)) || {}, night = dd.sunrise && dd.sunset && (x.t < dd.sunrise.slice(0, 13) + ':00' || x.t > dd.sunset);
+    return x.code == null ? '·' : x.code <= 1 ? (night ? '🌙' : '☀️') : x.code === 2 ? (night ? '☁️' : '⛅') : '☁️'; };
+  const strip = d.timeline.strip.map(x => {
+    const bar = x.P == null ? 0 : Math.min(100, Math.round(x.P / 4 * 100));
+    return `<li class="lv${x.lv}${x.trip ? ' trip' : ''}${x.now ? ' now' : ''}"><span class="hh num">${x.now ? 'maint.' : x.t.slice(0, 10) !== today && x.hh === '00:00' ? 'dem.' : esc(x.hh)}</span><span class="ic" aria-hidden="true">${x.ic ? WX_IC[x.ic] : skyIc(x)}</span><b class="num">${x.T == null ? '—' : f0(x.T) + '°'}</b><span class="rb" title="${x.P == null ? '' : f1(x.P) + ' mm/h'}"><i style="height:${bar}%"></i></span><span class="pp num">${x.pp != null && x.pp >= 20 ? f0(x.pp) + '%' : ''}</span>${x.trip ? '<span class="tm" aria-label="trajet">🚗</span>' : ''}</li>`;
+  }).join('');
+  const tl = `<div class="wx-blk wx-tlb"><h3>Chronologie · jusqu’à ${esc(d.window.to)}</h3><ol class="wx-tl">${mom || '<li class="lv0"><time>—</time><span></span><span>Aucun changement notable</span></li>'}</ol>
+    <ol class="wx-strip" aria-label="Heure par heure : température, pluie, phénomènes, trajets">${strip}</ol>
+    <p class="sub">Barre bleue : pluie (pleine à 4 mm/h) · % : probabilité de pluie · 🚗 : heure de trajet.</p></div>`;
+  const matters = `<div class="wx-blk wx-matb"><h3>Ce qui compte aujourd’hui</h3><ul class="wx-mat">${d.matters.map(x => `<li class="lv${x.lv}"><span aria-hidden="true">${E[x.lv]}</span><span>${esc(x.text)}</span></li>`).join('')}</ul></div>`;
+  const open = new Set([...el.querySelectorAll('details[open][data-k]')].map(x => x.dataset.k));
+  const ph = `<div class="wx-blk"><h3>Phénomènes</h3><div class="wx-ph">${d.phen.map(p => `<details class="wx-pc lv${p.lv}" data-k="${p.id}"${open.has(p.id) ? ' open' : ''}><summary><span class="ic" aria-hidden="true">${p.icon}</span><span class="tt">${esc(p.title)}</span><span class="ln">${p.lv ? E[p.lv] + ' ' : ''}${esc(p.line)}</span></summary><ul>${p.detail.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`).join('')}</div></div>`;
+  // conditions route + lien court vers Pneus (aucune analyse pneumatique ici)
+  const r = d.road, tires = (CX.cars || []).filter(c => hasTires(c.car) && c.w), tl2 = tires.length ? tires.reduce((a, c) => Math.max(a, c.w.level), 0) : null;
+  const road = `<div class="wx-blk wx-road lv${r.level}"><h3>Conditions route</h3>
+    <div class="wx-rs"><b class="num">${r.score}</b><span>/ 100 ${E[r.level]}</span><span class="sub">${esc(r.window.label)}</span></div>
+    <ul class="wx-rf">${r.factors.map(f => `<li class="lv${f.lv}"><span aria-hidden="true">${E[f.lv]}</span><b>${esc(f.label)}</b><span class="sub">${esc(f.why)}</span><span class="num">${f.pen ? '−' + f.pen : '0'}</span></li>`).join('')}</ul>
+    <details class="wx-how" data-k="how"${open.has('how') ? ' open' : ''}><summary>Comment ce score est calculé</summary><p class="sub">100 moins les points listés : gel jusqu’à −45 (verglas élevé ou pluie verglaçante), neige −35, visibilité −15 à −35 (sous 1 000, 500 et 200 m), pluie −5 à −30 (probabilité ≥ 60 %, 0,2, 2 et 7,6 mm/h), rafales −10 à −30 (55, 70 et 90 km/h), froid ou chaleur −5, air saturé −5, soleil rasant −5. La couleur n’est jamais plus douce que le pire facteur. Environnement seulement : l’adhérence des pneus est dans l’onglet Pneus.</p></details>
+    ${tl2 != null ? `<div class="wx-tire"><span>Impact pneus : <b>${['faible', 'modéré', 'élevé', 'critique'][tl2]}</b> ${E[tl2]}</span><button class="btn sm" data-act="view" data-v="pneus">Voir analyse Pneus →</button></div>` : ''}</div>`;
+  const foot = `<p class="sub wx-foot">Détails techniques plus bas : <a href="#secCur">mesures</a> · <a href="#secChart">graphique 24 h</a> · <a href="#hdrMore">sources et fraîcheur</a>.</p>`;
+  const html = hero + tripHtml + tl + matters + ph + road + foot;
+  if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
+  const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
+  el.className = 'mod wx lv' + d.level; el.innerHTML = html; renderWx.last = html;
+  const ns = el.querySelector('.wx-strip'); if (ns && left) ns.scrollLeft = left;
+}
+
 
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 const TIRE_ALERTS = ['press', 'age', 'mont'];
@@ -2743,13 +3219,14 @@ function renderView() {
   document.body.classList.toggle('vt', vt);
   $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="pneus" aria-pressed="${!vm && !vt}">🛞 Pneus</button><button data-act="view" data-v="meteo" aria-pressed="${vm}">🌦️ Météo</button><button data-act="view" data-v="tenue" aria-pressed="${vt}">👔 Tenue</button></div>`;
   const links = vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
-    ? [['secCur', 'Actuel'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
+    ? [['secWx', 'Synthèse'], ['secRadar', 'Radar'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secCur', 'Détails'], ['secAir', 'Air · UV'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
     : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secSeason', 'Saison'], ['secJournal', 'Journal'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
   const order = vt
-    ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'] : vm
-    ? ['hdrMore', 'banners', 'secCur', 'secTip', 'secBrf', 'secCal', 'secRadar', 'secAir', 'secChart', 'secDays', 'secIce', 'secAlerts', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
-    : ['secBrf', 'secCal', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'];
+    ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx'] : vm
+    // Météo : synthèse d'abord (verdict, trajet, chronologie, phénomènes, route), puis cartes et graphiques, puis les détails techniques
+    ? ['secWx', 'banners', 'hdrMore', 'secRadar', 'secChart', 'secDays', 'secCur', 'secAir', 'secIce', 'secAlerts', 'secTip', 'secCal', 'secBrf', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
+    : ['secBrf', 'secCal', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx'];
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#notice');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
@@ -3424,7 +3901,7 @@ const LIVE = { key: null, phase: 'idle', base: null, startFix: null, lastFix: nu
 // Il ne peut constater ni un départ ni une arrivée et ne demande aucun suivi GPS continu.
 const TRIPPREVIEW = { key: null, phase: 'idle', gen: 0, base: null, planSignature: null, fix: null, origin: null, route: null, requestedAt: 0, readyAt: 0, exp: 0, message: '' };
 const TRIPPREVIEW_AGE = 30 * 60e3, TRIPPREVIEW_KM = 1;
-let BRF_TRIPS = [];
+let BRF_TRIPS = [], BRF_SHOWN = [];
 const RETURNHOME_KEY = 'twrc.returnhome.v1';
 let RETURNHOME = null;
 function returnHomeLoad() {
@@ -3823,7 +4300,9 @@ function liveApply(T, now) {
 }
 setInterval(() => { if ((LIVE.key || TRIPPREVIEW.key) && !document.hidden) renderBrf(); }, 15e3);
 
-function renderBrf() {
+// Le poste météo (onglet Météo) suit chaque mise à jour du briefing : mêmes trajets, mêmes modèles, aucun appel en plus.
+function renderBrf() { BRF_SHOWN = []; try { renderBrfCore(); } finally { renderWx(); } }
+function renderBrfCore() {
   const el = $('#secBrf'); if (!el) return;
   // La météo du GPS peut être en cours de chargement ; les trajets ont leurs propres modèles.
   const clockModel = (CX && CX.m) || M[S.locs[0].id] || Object.values(M).find(Boolean);
@@ -3858,6 +4337,7 @@ function renderBrf() {
   T = liveApply(T, now);   // trajet vivant (position GPS réelle) : un seul, en mémoire uniquement
   T = tripPreviewApply(T, now);
   T.sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : a.src === 'work' ? -1 : 1);
+  BRF_SHOWN = T.slice();   // trajets réellement affichés (travail + agenda reconnus), relus par le poste météo
   const full = T.filter(t => fullFor(t.dep)), main = full[0], rest = full.slice(1);
   const wk = T.find(t => t.src === 'work'), ag = T.find(t => t.src === 'cal');
   const emo = t => t.worst == null ? (t.wait ? '⏳' : '·') : LV[t.worst].emoji;
