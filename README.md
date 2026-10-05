@@ -233,8 +233,11 @@ de secours, l'application continue d'afficher l'âge réel des données (relais 
 **Coût :** offre gratuite. ~1 440 exécutions/jour (quota 100 000 requêtes/jour), 1 sous-requête par minute quand tout est frais,
 3 au plus lors d'un dispatch ; ~1 440 lignes de journal/jour (quota Workers Logs 200 000/jour).
 
-Mise en service (une fois, par le propriétaire) : Cloudflare **Workers Builds** relié à ce dépôt (dossier racine
-`tools/relay-clock`, branche `main`), puis le secret `GH_TOKEN`. Chaque push sur `main` redéploie le Worker depuis ce dossier.
+Mise en service (faite le 5 octobre 2026) : Cloudflare **Workers Builds** relié à ce dépôt (chemin `tools/relay-clock`, branche
+`main`, builds d'aperçu désactivés), puis le secret `GH_TOKEN`. Chaque push sur `main` redéploie le Worker depuis ce dossier.
+⚠️ `GH_TOKEN` se place dans **Paramètres → Variables et secrets du Worker** (type Secret), **pas** dans les variables du build :
+celles-ci ne sont visibles que pendant la compilation. Symptôme : journal `"reason":"GH_TOKEN absent (secret du Worker)"`.
+Premier déclenchement réel : run « Relais · horloge » 37253059962 (5 octobre 2026, 01:51 UTC, obs.json alors vieux de 2 h 32).
 
 ## Rotation de `RC_KEY`
 

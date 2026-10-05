@@ -61,7 +61,10 @@ async function relayRuns(env, fetchImpl) {
 
 // Une exécution du chien de garde. Retourne un résumé technique (sans donnée personnelle) et le journalise en une ligne JSON.
 export async function tick(env, { fetchImpl = fetch, now = Date.now(), log = console.log } = {}) {
-  if (!env || !env.GH_TOKEN) throw new Error('Secret GH_TOKEN absent : relais non déclenché');
+  if (!env || !env.GH_TOKEN) {   // ex. secret placé par erreur dans les variables de build : une ligne lisible, sans aucun appel réseau
+    log(JSON.stringify({ t: new Date(now).toISOString(), decision: null, age_min: null, action: 'error', reason: 'GH_TOKEN absent (secret du Worker)', status: null }));
+    throw new Error('Secret GH_TOKEN absent : relais non déclenché');
+  }
   const d = decide(await readObs(fetchImpl, now), now), out = { decision: d.decision, age: d.age, action: 'none', reason: 'données fraîches', status: null };
   const emit = () => log(JSON.stringify({ t: new Date(now).toISOString(), decision: out.decision, age_min: out.age == null ? null : Math.round(out.age * 10) / 10, action: out.action, reason: out.reason, status: out.status }));
   try {
