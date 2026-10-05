@@ -287,6 +287,18 @@ async function onPos(pos, focus) {
   const c = pos.coords, ts = Number.isFinite(pos.timestamp) && pos.timestamp > 0 ? pos.timestamp : Date.now();
   if (!Number.isFinite(c.latitude) || !Number.isFinite(c.longitude) || Math.abs(c.latitude) > 90 || Math.abs(c.longitude) > 180 || (FIX && ts < FIX.ts) || (!FIX && GPS && ts < GPS.t)) return;
   const np = { lat: +c.latitude.toFixed(4), lon: +c.longitude.toFixed(4) };
+  // garde de confiance : une position réseau (IP, VPN, > 1,5 km) ou incohérente avec un lieu confirmé n'est jamais la position
+  // physique ; elle ne nourrit ni « Ma position », ni la météo, ni le trajet vivant (donnée technique seulement)
+  const raw = { lat: c.latitude, lon: c.longitude, acc: c.accuracy == null ? Infinity : c.accuracy, ts }, refused = placeGate(raw);
+  if (refused) {
+    if (refused === 'réseau') {
+      const moved = !NETLOC || distKm(NETLOC, raw) > 3; NETLOC = { ...raw, name: moved ? null : NETLOC.name };
+      if (moved && !offlineNow()) reverseName(np.lat, np.lon).then(nm => { if (NETLOC && distKm(NETLOC, raw) <= 3 && nm.name !== 'Ma position') { NETLOC.name = nm.name; renderPlace(); } });
+    } else PLACE_REJ = { source: placeFixClass(raw) === 'gps' ? 'GPS' : 'position approximative', reason: refused };
+    if (focus) alertLoc(refused === 'réseau' ? `Position réseau seulement (± ${Math.round(raw.acc / 1000)} km) : localisation physique indisponible, VPN possible.` : 'Position ignorée : incohérente avec le lieu confirmé.');
+    renderPlace(); if (typeof renderDiag === 'function') renderDiag(); return;
+  }
+  PLACE_REJ = null;
   // relevé brut pour le trajet vivant (mémoire uniquement) : horodatage réel du relevé, pas l'heure de réception
   FIXPREV = FIX; FIX = { lat: c.latitude, lon: c.longitude, acc: c.accuracy == null ? Infinity : c.accuracy, ts, speed: c.speed == null || isNaN(c.speed) ? null : c.speed };
   liveOnFix(FIX);
@@ -295,7 +307,7 @@ async function onPos(pos, focus) {
   const prevName = GPS && !nameMoved ? { name: GPS.name, sub: GPS.sub } : null;
   GPS = { id: 'gps', gps: true, ...np, acc: Math.round(c.accuracy), t: ts, name: prevName ? prevName.name : 'Ma position', sub: prevName ? prevName.sub : '' };
   if (!S.gpsAuto) { S.gpsAuto = 1; saveSettings(); }
-  if (focus) UI.loc = 'gps';
+  if (focus && !PLACE.conf) UI.loc = 'gps';   // un lieu confirmé reste le contexte, même après « Ma position »
   lsSet('twrc.gps', JSON.stringify(GPS)); renderStatus(); renderLocChips(); renderSrc();
   if (focus && !weatherMoved && M.gps) renderAll();
   const tasks = [];
@@ -312,6 +324,93 @@ async function onPos(pos, focus) {
     }
   }
   if (tasks.length) { await Promise.all(tasks); if (!GPS) return; rebuild(); renderAll(); if (weatherMoved) refreshEns(); }
+}
+/* ===================== LIEU COURANT (localisation métier, une seule source de vérité) ===================== */
+// Tout est décidé par placeContext (src/placectx.js, pur et testé). Ici : stockage local, relevés du navigateur, actions et rendu.
+// twrc.place.v1 = { conf: { placeId, at, how, day } | null, last: { placeId, at, source } | null } : identifiants de lieux et heures,
+// AUCUNE coordonnée. NETLOC (mémoire seulement) : dernière position réseau écartée (IP, VPN), pour le badge et le diagnostic.
+const PLACE_KEY = 'twrc.place.v1';
+let PLACE = { conf: null, last: null }; try { PLACE = Object.assign({ conf: null, last: null }, JSON.parse(lsGet(PLACE_KEY) || '{}') || {}); } catch (e) { PLACE = { conf: null, last: null }; }
+let NETLOC = null, PLACE_REJ = null;
+const placeSave = () => lsSet(PLACE_KEY, JSON.stringify({ conf: PLACE.conf, last: PLACE.last }));
+const placeToday = () => nowIn('Europe/Paris').slice(0, 10);
+function placeList() {
+  const home = S.locs[0];
+  return [...S.locs, ...S.customs].filter(locHasCoords).map(l => ({ id: l.id, name: l.name, lat: l.lat, lon: l.lon, kind: l.id === S.work.to ? 'work' : l === home ? 'home' : 'custom' }));
+}
+function placeInput(extra) {
+  const precise = FIX && placeFixClass(FIX) !== 'network' ? FIX : GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null;
+  return { now: Date.now(), today: placeToday(), places: placeList(), conf: PLACE.conf, last: PLACE.last, fix: precise, net: NETLOC,
+    moving: LIVE.phase === 'active', movingSince: LIVE.startFix ? LIVE.startFix.ts : null, fmt: hmLocal, ...(extra || {}) };
+}
+// contexte courant ; une confirmation terminée (départ, GPS précis ailleurs, fin de journée) est effacée une seule fois
+function placeNow() {
+  const c = placeContext(placeInput());
+  if (c.ended && PLACE.conf) { PLACE.last = { placeId: PLACE.conf.placeId, at: Date.now(), source: 'fin : ' + c.ended.reason }; PLACE.conf = null; placeSave(); }
+  if (!PLACE.conf && c.source === 'gps' && c.place && (!PLACE.last || PLACE.last.placeId !== c.place.id || Date.now() - PLACE.last.at > 10 * 60e3)) { PLACE.last = { placeId: c.place.id, at: Date.now(), source: 'gps' }; placeSave(); }
+  return c;
+}
+// garde à l'entrée des relevés du navigateur : renvoie la raison d'un refus, ou null si le relevé peut être utilisé
+function placeGate(fix) {
+  if (placeFixClass(fix) === 'network') return 'réseau';
+  const c = placeContext(placeInput({ fix, net: null }));
+  const r = c.rejected.find(x => x.source !== 'réseau');
+  return r ? r.reason : null;
+}
+// trajet aller (domicile-travail ou agenda) vers ce lieu, en cours ou arrivé depuis moins de 2 h
+function placeArrivalTrip(placeId, now = liveNow()) {
+  const p = placeList().find(x => x.id === placeId); if (!p) return null;
+  return BRF_SHOWN.find(t => {
+    const d = liveDest(t); if (!d || distKm(d, p) > 1.5 || !t.dep || t.dep > now) return false;
+    return liveMin(t.arr || t.dep, now) <= 120;
+  }) || (LIVE.key && LIVE.base && liveDest(LIVE.base) && distKm(liveDest(LIVE.base), p) <= 1.5 ? LIVE.base : null);
+}
+function placeArriveBtn(t) {
+  if (PLACE.conf || !t || !t.dep || t.dep > liveNow()) return '';
+  const d = liveDest(t), p = d && placeList().find(x => distKm(x, d) <= 1.5 && x.kind !== 'custom'); if (!p) return '';
+  return `<button class="btn sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="arrival">✅ ${esc((PLACE_KIND[p.kind] || PLACE_KIND.custom).arrive)}</button>`;
+}
+function placeConfirm(placeId, how) {
+  const p = placeList().find(x => x.id === placeId); if (!p) return;
+  const now = Date.now();
+  PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' }; placeSave();
+  // la machine de trajet existante termine proprement l'aller : arrivée du trajet vivant, sinon trajet planifié marqué arrivé
+  const t = placeArrivalTrip(placeId);
+  if (LIVE.key && t && LIVE.key === t.key) liveArrive('confirmé');
+  else if (t && t.key) { liveDonePersist(t.key, 'confirmé'); LIVE.done[t.key] = 'arrivé'; LIVE.lastDone = { key: t.key, name: t.name || p.name, at: now }; if (TRIPPREVIEW.key === t.key) tripPreviewReset(); }
+  UI.loc = placeId; rebuild(); renderAll();
+}
+function placeLeave() {
+  if (!PLACE.conf) return;
+  PLACE.last = { placeId: PLACE.conf.placeId, at: Date.now(), source: 'départ annoncé' }; PLACE.conf = null; placeSave();
+  // prépare le retour sans l'inventer : la détection de déplacement reprend, le trajet prévu reste celui du planning ou de l'agenda
+  if (liveAllowed()) { LIVE.hiAt = 0; liveAskFix(); }
+  renderAll();
+}
+function renderPlace() {
+  const el = $('#placeBar'); if (!el) return;
+  const c = placeNow(), K = PLACE_KIND, pl = placeList(), work = pl.find(p => p.kind === 'work'), home = pl.find(p => p.kind === 'home');
+  let h;
+  if (c.source === 'manual') {
+    const k = K[c.place.kind] || K.custom;
+    h = `<div class="place on" role="status"><b>${esc(c.title)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}<button class="btn sm" data-act="place-leave">🚗 ${esc(k.leave)}</button></div>`;
+  } else {
+    const arr = [work, home].filter(Boolean).map(p => ({ p, t: placeArrivalTrip(p.id) })).find(x => x.t);
+    const btns = arr ? `<button class="btn pri sm" data-act="place-confirm" data-place="${esc(arr.p.id)}" data-how="arrival">✅ ${esc((K[arr.p.kind] || K.custom).arrive)}</button>`
+      : [work, home].filter(Boolean).map(p => `<button class="btn sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="manual">${(K[p.kind] || K.custom).icon} ${esc((K[p.kind] || K.custom).already)}</button>`).join('');
+    h = `<div class="place${arr ? ' arr' : ''}">${arr ? `<b>ARRIVÉE · ${(K[arr.p.kind] || K.custom).icon} ${esc(arr.p.name)}</b>` : `<span class="pl-src"><b>${esc(c.title)}</b> · ${esc(c.trust)}${c.badge ? ' · ' + esc(c.badge) : ''}</span>`}<span class="pl-act">${btns}</span></div>`;
+  }
+  if (el.innerHTML !== h) el.innerHTML = h;
+}
+// diagnostic interne : brut navigateur, réseau, lieu logique, source gagnante et sources écartées (coordonnées arrondies à ~1 km)
+function placeDiagRows() {
+  const c = placeContext(placeInput()), rd = v => (Math.round(v * 100) / 100).toFixed(2);
+  const raw = FIX ? `${rd(FIX.lat)}, ${rd(FIX.lon)} · ±${Math.round(FIX.acc)} m · ${placeFixClass(FIX)} · il y a ${ageTxt(ageOf(FIX.ts))}` : 'aucun relevé';
+  const net = NETLOC ? `${NETLOC.name || 'nom inconnu'} · ±${Math.round(NETLOC.acc / 1000)} km · il y a ${ageTxt(ageOf(NETLOC.ts))}` : 'aucune';
+  const rej = c.rejected.concat(PLACE_REJ ? [PLACE_REJ] : []);
+  return [['Géolocalisation navigateur (brute)', raw], ['Position réseau / IP', net],
+    ['Lieu logique Race Control', `${c.place ? c.place.name : c.title.replace(/^\S+ /, '')} · ${c.trust}`], ['Source retenue', `${c.source}${c.originLock ? ' · origine verrouillée : ' + c.originLock : ''}`],
+    ['Sources écartées', rej.length ? rej.map(x => `${x.source} : ${x.reason}`).join(' | ') : 'aucune']];
 }
 function alertLoc(msg) { const el = $('#locMsg'); if (el) { el.textContent = msg; el.hidden = !msg; } }
 async function refreshAll() {
@@ -529,9 +628,10 @@ function renderLocChips() {
     $('#locChips').innerHTML = gpsChip + refresh +
       `<button class="chip${sel ? ' on' : ''}" data-act="locs-toggle" aria-expanded="${!!UI.locsOpen}">📌 ${sel ? esc(sel.name) : 'Mes lieux'} ${UI.locsOpen ? '▴' : '▾'}</button>` +
       (UI.locsOpen ? `<div class="chips locs-more">${chips}<button class="chip" data-act="goset">+ Destination</button></div>` : '') + '<span class="sub" id="locMsg" hidden></span>';
-    return;
+    renderPlace(); return;
   }
   $('#locChips').innerHTML = gpsChip + chips + `<button class="chip" data-act="goset">+ Destination</button>${refresh}<span class="sub" id="locMsg" hidden></span>`;
+  renderPlace();
 }
 function renderSrc() {
   const m = M[UI.loc], l = allLocs().find(x => x.id === UI.loc) || allLocs()[0];
@@ -2091,7 +2191,7 @@ function briefCard(t, dayLbl) {
     : t.running ? `<span class="brf-k">🏎️ Trajet en cours · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">parti à ${t.dep.slice(11, 16)} · arrivée prévue <b>${(t.arr || '').slice(11, 16)}</b></span>`
     : `<span class="brf-k">🏁 Prochain trajet · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">${dayLbl(t.dep)} · ${t.dep.slice(11, 16)} → ${(t.arr || '').slice(11, 16)} · ${cdSpan(t.dep)}</span>`}</div>
     <div class="brf-ev">${t.src === 'cal' ? '📅' : '🏁'} <b>${esc(t.name)}</b>${t.l ? ` · ${f0(t.l.km)} km · ${t.l.min} min${t.live ? ' depuis ici' : ''}${t.l.routed ? ' · route analysée' : ' (estimé)'}` : ''}</div>
-    ${tripOriginHtml(t)}<div class="cal-v">${tripCancelButton(t)}${returnHomeButtonForTrip(t)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
+    ${tripOriginHtml(t)}<div class="cal-v">${tripCancelButton(t)}${returnHomeButtonForTrip(t)}${placeArriveBtn(t)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
   if (!t.res) return head + `<p class="muted">${t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;
   const sum = t.sum, top = t.res[0], lv = top.w.level, xs = t.seq.map(q => q.hs[q.i]);
   const ppMax = Math.max(...xs.map(x => x.pp || 0)), Pmax = Math.max(...xs.map(x => x.P || 0));
@@ -3057,6 +3157,7 @@ function diagRows() {
     ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
     ['Agenda', CAL ? `${freshState(calAge)} · relais il y a ${ageTxt(calAge)} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}` : CALDONE ? 'indisponible' : 'chargement…'],
     ['Stockage local', `${n} clés · ${Math.round(bytes / 1024)} Ko`],
+    ...placeDiagRows(),
     ['Trajet vivant', `${LIVE.phase}${FIX ? ` · dernier relevé GPS il y a ${ageTxt(ageOf(FIX.ts))} (${Number.isFinite(FIX.acc) ? '±' + Math.round(FIX.acc) + ' m' : 'précision inconnue'})` : ' · aucun relevé GPS'}`]
   ];
 }
@@ -3153,6 +3254,8 @@ document.addEventListener('click', async e => {
   else if (a === 'dir') { UI.dir = t.dataset.d; UI.dayOff = null; softRender(); }
   else if (a === 'day') { UI.dayOff = +t.dataset.off; softRender(); }
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
+  else if (a === 'place-confirm') placeConfirm(t.dataset.place, t.dataset.how);
+  else if (a === 'place-leave') placeLeave();
   else if (a === 'trip-undo') { const d = LIVE.lastDone; if (d) { delete LIVE.done[d.key]; liveDonePersist(d.key, null); LIVE.noAuto[d.key] = Date.now() + 10 * 60e3; LIVE.lastDone = null; renderAll(); } }
   else if (a === 'tripmap') { lsSet('twrc.tripmap', lsGet('twrc.tripmap') === '1' ? '0' : '1'); renderBrf(); }
   else if (a === 'wday') {
@@ -3275,7 +3378,9 @@ document.addEventListener('toggle', e => { if (e.target && e.target.id === 'sett
 (function init() {
   if (LOCKED() && lsGet('twrc.key')) unseal(lsGet('twrc.key')).then(ok => { if (ok) location.reload(); });
   registerSW(); refreshTireDB(); tripCancelSchedulePurge();
+  if (GPS && !(Number.isFinite(GPS.acc) && GPS.acc <= PLACE_ACC_APPROX)) { GPS = null; try { localStorage.removeItem('twrc.gps'); } catch (e) { /* stockage */ } }   // ancienne position réseau : jamais une position
   if (S.gpsAuto && GPS) UI.loc = 'gps';
+  { const c = placeNow(); if (c.source === 'manual') UI.loc = c.place.id; }   // lieu confirmé : contexte de tous les modules (origine verrouillée)
   if (S.gpsAuto && location.protocol === 'https:') setTimeout(() => locate(false), 400);
   loadCache(); if (offlineNow()) markOfflineCache(); rebuild(); renderSettings(); renderAll();
   if (offlineNow()) loadCalendar(); else refreshAll();

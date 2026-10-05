@@ -66,6 +66,8 @@ SUITE.push(['test_wxdesk.js', 'onglet Météo : verdict, chronologie, phénomèn
   ['e2e42-meteo.js', 'onglet Météo : iPhone, PC, hors ligne, panne, données anciennes, 0 ou plusieurs trajets', true]);
 SUITE.push(['test_tyrelab.js', 'onglet Analyse : thermique, chauffe, refroidissement, adhérence, freinage, pression, confiance et contre-tests', false],
   ['e2e43-analyse.js', 'onglet Analyse : monte réelle, mémoire thermique, roulage, hors ligne, iPhone et PC', true]);
+SUITE.push(['test_placectx.js', 'lieu courant : hiérarchie de confiance, garde VPN, fin de confirmation et contre-tests', false],
+  ['e2e44-place.js', 'lieu courant : PC au travail + VPN, hors ligne, rechargement, départ, retour, GPS légitime', true]);
 const verdict = (code, out) => {
   const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
   if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');
