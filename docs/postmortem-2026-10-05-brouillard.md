@@ -42,7 +42,8 @@ possible) · fournisseur (visibilité modèle, probable mais non vérifiée). Fr
   sous vent faible ou plafond ≤ 300 ft = brouillard local probable ; contradiction modèle / observation visible ; pire condition
   crédible le long du trajet ; confiance par phénomène, plafonnée par la localisation ; décote par distance, âge, altitude, échéance.
   Rejeu du 5 octobre : **BROUILLARD LOCAL PROBABLE**, contradiction détectée (test automatique).
-- **Mode fantôme** : v2 tourne à côté de v1 (app et relais), verdicts inchangés ; le relais écrit `morning.v2` dans
+- **App : v2 actif par défaut** (Réglages → Moteur météo v2 : Actif / Observation / Désactivé) : un brouillard prouvé passe en tête
+  de l’onglet Météo et en bandeau, même sous un score pneus élevé. **Relais : mode fantôme**, notifications inchangées ; le relais écrit `morning.v2` dans
   `obs.json` (niveaux seuls, aucun lieu) : l’historique de `gh-pages` devient le journal de comparaison.
 - **Signalement terrain** (« 🌫 Brouillard », « 🧊 Verglas »…) : observation utilisateur non officielle, journal prévision / observation.
 - **Lieu courant de confiance** : une position réseau/VPN n’est plus jamais la position physique.

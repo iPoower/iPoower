@@ -269,13 +269,13 @@ function tyreLab(input) {
   let press;
   if (target == null) press = { known: false, text: 'Pression cible non renseignée : aucune estimation de pression (Réglages → voiture).' };
   else {
-    const cold = coldAt(eNow.Tenv), hot = cold == null ? null : (cold + pAbs) * (273.15 + T) / (273.15 + eNow.Tenv) - pAbs;
+    const cold = coldAt(eNow.Tenv);   // à chaud : ordre de grandeur constructeur (+0,1 à +0,3 bar en roulage), jamais tiré de la gomme estimée
     const notes = [`Cible saisie : ${r1(target)} bar à froid (pression enregistrée par l’utilisateur)`];
     if (Tchk == null) notes.push('Température du dernier contrôle inconnue : variation non estimée');
     else {
       notes.push(`Dernier contrôle : ${pc.date || 'date inconnue'} à ${r1(Tchk)} °C`);
       notes.push(`À froid maintenant (${r1(eNow.Tenv)} °C) : ≈ ${r1(cold - 0.05)}–${r1(cold + 0.05)} bar (estimation, loi des gaz : ≈ 0,1 bar par 10 °C)`);
-      if (phase === 'driving') notes.push(`À chaud (gomme ≈ ${r0(range[0])} à ${r0(range[1])} °C) : ≈ ${r1(hot - 0.1)}–${r1(hot + 0.1)} bar ; une hausse à chaud est normale, ne jamais dégonfler à chaud`);
+      if (phase === 'driving') notes.push(`En roulage : ≈ ${r1(cold + 0.1)}–${r1(cold + 0.3)} bar (ordre de grandeur : +0,1 à +0,3 bar à chaud, aucun capteur) ; une hausse à chaud est normale, ne jamais dégonfler à chaud`);
       if (Tchk - eNow.Tenv >= 10) notes.push('Contrôlée par temps plus chaud : la pression baisse avec la saison, à revérifier à froid');
     }
     press = { known: true, target, cold, low: cold != null && cold < target - 0.2, notes, src: 'saisie utilisateur + estimation Race Control (aucun capteur)' };
@@ -296,7 +296,11 @@ function tyreLab(input) {
   if (st0 && st0.tread && st0.tread.fresh === 'stale') { score -= 0.5; reasons.push(`Profondeur mesurée il y a ${st0.tread.ageD} j`); }
   if (st0 && st0.dot) reasons.push(`Âge : ${st0.dot.txt.replace(/^DOT \d{4} · /, '')} (surveillance, sans effet calculé sur l’adhérence)`);
   if (!drv) score = Math.min(score, 2.4);   // sans roulage suivi au GPS, l'état thermique reste une hypothèse : confiance au plus moyenne
-  const confidence = { level: score >= 2.5 ? 'élevée' : score >= 1.5 ? 'moyenne' : 'faible', score, reasons };
+  // axes séparés ; niveau global plafonné à « moyenne » : modèle thermique générique, aucun capteur de pression ni de température
+  const axes = [['Données pneu', modelKnown && target != null && tread != null ? 'renseignées dans Pneus' : 'incomplètes'],
+    ['Trajet', drv ? (drv.kmSrc === 'route' ? 'roulage suivi, progression sur l’itinéraire' : 'roulage suivi, distance estimée (vol d’oiseau ×1,2)') : tripKind ? 'trajet prévu (agenda)' : 'supposé'],
+    ['Météo', stale ? 'ancienne' : 'récente'], ['Modèle thermique', 'générique (estimation Race Control)'], ['Capteur direct', 'non']];
+  const confidence = { level: score >= 1.5 ? 'moyenne' : 'faible', score, reasons, axes };
   /* ---------- 12. verdict principal ---------- */
   const limiting = gNow.dom ? (gNow.dom.k.startsWith('Gomme') ? ['gomme froide', 'gomme encore froide', 'gomme dans sa fenêtre', 'gomme chaude', 'gomme très chaude'][st] : gNow.dom.k.toLowerCase()) : 'aucun';
   const lvl = Math.max(stLv(st), gNow.lv);

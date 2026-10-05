@@ -1,4 +1,4 @@
-// Moteur de preuves météo v2 dans l'app : carte « Preuves » (mode observation par défaut), contradiction modèles / observation,
+// Moteur de preuves météo v2 dans l'app : carte « Preuves » (moteur v2 actif par défaut, mode observation en option), contradiction modèles / observation,
 // signalement terrain (brouillard, verglas…), journal fantôme v1 / v2, mode actif, hors connexion, iPhone.
 // Station fictive « Station test » à ~2 km du lieu principal fictif (48,85 ; 2,35) : METAR de brume saturée, vent faible.
 const fs = require('fs'), vm = require('vm');
@@ -62,7 +62,9 @@ const toMeteo = async s => { await s.p.click('[data-act=view][data-v=meteo]'); a
   try {
     // 1. modèle « doux » (visibilité bonne) + station proche en brume saturée → v2 : brouillard local probable, contradiction
     let s = await session(b, { at: T, scn: 'doux', obs: OBS_FOG }); await toMeteo(s); let x = await ev(s.p);
-    check('1 · carte « Preuves météo · moteur v2 (mode observation) » présente par défaut', x.shown && /moteur v2 \(mode observation\)/i.test(x.txt), x.txt.slice(0, 200));
+    check('1 · carte « Preuves météo · moteur v2 » active par défaut', x.shown && /moteur v2/i.test(x.txt) && !/mode observation/i.test(x.txt), x.txt.slice(0, 200));
+    check('1 · actif par défaut : la carte v2 critique passe avant le verdict v1, bandeau brouillard v2 affiché', /\bev\b/.test(x.first) && await s.p.evaluate(() => /BROUILLARD LOCAL PROBABLE/.test((document.querySelector('#banners [data-k=ev]') || { innerText: '' }).innerText)), x.first);
+    await s.p.evaluate(() => { S.flags.weatherEvidenceV2 = 'shadow'; saveSettings(); renderAll(); }); await toMeteo(s); x = await ev(s.p);
     check('1 · v2 : BROUILLARD LOCAL PROBABLE avec preuve observée (brume saturée, distance et âge)', /BROUILLARD LOCAL PROBABLE/.test(x.txt) && /Station test \(\d+ km, il y a 10 min\) : visibilité 2,4 km · BR · T − Td 0/.test(x.txt), x.txt.slice(0, 400));
     check('1 · contradiction visible, jamais moyennée', /CONTRADICTION DÉTECTÉE · Les modèles sous-estiment probablement un phénomène local de visibilité/.test(x.txt), x.txt.slice(0, 400));
     check('1 · confiance par phénomène (sept lignes), aucun pourcentage de « confiance »', /Température/.test(x.txt) && /Brouillard/.test(x.txt) && /Visibilité/.test(x.txt) && /Localisation/.test(x.txt) && !/confiance \d+ ?%/i.test(x.txt));

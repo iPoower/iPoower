@@ -18,7 +18,7 @@ const BASE = {
   ],
   customs: [],
   work: { from: 'home', to: 'work', durMin: 40, dep: '07:30', ret: '17:30', days: [1, 2, 3, 4, 5] },
-  horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'shadow' },
+  horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on' },
   alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
   cars: [
     { id: 'car1', name: 'Voiture 1', short: 'Voiture 1', spec: '', sporty: 0,
@@ -674,6 +674,8 @@ function renderBanners() {
       <div class="thr"><span class="${vmin < 1000 ? 'on' : ''}">&lt; 1 000 m</span><span class="${vmin < 500 ? 'on' : ''}">&lt; 500 m</span><span class="${vmin < 200 ? 'on' : ''}">&lt; 200 m</span></div>
       <span style="font-size:13px">La météo elle-même impose une prudence particulière : distances de sécurité allongées, feux adaptés, vitesse réduite, quels que soient les pneus.</span></div>`;
   }
+  // moteur v2 actif : un brouillard / visibilité prouvé par observation s'affiche même quand le modèle reste clair (score pneus inclus)
+  if (!h && EV_FLAG() === 'on') { const v = evNow(), w = v && v.r.worst; if (w && w.lv >= 2 && v.r.headline) h += `<div class="banner lv${w.lv}" role="alert" data-k="ev"><h3>⚠ ${esc(v.r.headline.text)}</h3><span style="font-size:13px">Preuve observée (moteur v2) : prudence quels que soient les pneus. Détail dans l’onglet Météo.</span></div>`; }
   const top = Object.values(alerts).filter(a => S.alerts[a.id] && a.sev >= 2 && a.id !== 'fog' && a.id !== 'vis' && !(UI.view === 'meteo' && TIRE_ALERTS.includes(a.id))).sort((a, b) => b.sev - a.sev).slice(0, 3);
   if (top.length) h += '<div class="notes">' + top.map(a => `<div class="note lv${a.sev}"><b>${a.sev >= 3 ? 'DANGER' : 'ATTENTION'}</b><span>${esc(a.title)}</span></div>`).join('') + '</div>';
   el.innerHTML = h;
@@ -828,12 +830,12 @@ function renderWx() {
   el.className = 'mod wx lv' + d.level; el.innerHTML = html; renderWx.last = html;
   const ns = el.querySelector('.wx-strip'); if (ns && left) ns.scrollLeft = left;
 }
-/* ---------- moteur de preuves météo v2 (weatherEvidenceV2) : mode fantôme par défaut ---------- */
-// Réglage S.flags.weatherEvidenceV2 : 'shadow' (défaut) calcule, journalise et montre la carte « Preuves » marquée expérimentale
+/* ---------- moteur de preuves météo v2 (weatherEvidenceV2) : actif par défaut ---------- */
+// Réglage S.flags.weatherEvidenceV2 : 'on' (défaut) ; 'shadow' calcule, journalise et montre la carte « Preuves » marquée expérimentale
 // sans toucher aux verdicts ; 'on' place en plus le phénomène critique v2 en tête de l'onglet Météo ; 'off' n'affiche rien.
 // Signalements terrain : twrc.reports.v1 (type, heure, lieu arrondi à ~1 km, gardés 6 h). Journal fantôme : twrc.shadow.v1
 // (200 entrées max : heure, identifiant du lieu affiché, brouillard v1, brouillard v2 et confiance, observation éventuelle).
-const EV_FLAG = () => { const f = S.flags && S.flags.weatherEvidenceV2; return ['on', 'off'].includes(f) ? f : 'shadow'; };
+const EV_FLAG = () => { const f = S.flags && S.flags.weatherEvidenceV2; return ['shadow', 'off'].includes(f) ? f : 'on'; };
 const REPORT_KEY = 'twrc.reports.v1', SHADOW_KEY = 'twrc.shadow.v1';
 const REPORT_KINDS = { fog: '🌫 Brouillard', lowvis: '👁 Visibilité très réduite', rain: '🌧 Pluie', wet: '💧 Route humide', snow: '❄️ Neige', ice: '🧊 Verglas', slippery: '⚠️ Route glissante' };
 let REPORTS = []; try { REPORTS = JSON.parse(lsGet(REPORT_KEY) || '[]') || []; } catch (e) { REPORTS = []; }
@@ -932,8 +934,11 @@ function labInput(car) {
   const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Math.max(0, (Date.now() - raw.t) / 60e3);
   let drive = null;
   if (!DEMO.on && LIVE.phase === 'active' && LIVE.startFix) {
-    const sf = LIVE.startFix, lf = FIX || LIVE.lastFix || sf, dmin = Math.max(0, (lf.ts - sf.ts) / 60e3), km = distKm(sf, lf) * 1.2;   // ×1,2 : détours de la route
-    drive = { active: true, since: localTs(sf.ts, tz), km, speedKmh: dmin >= 2 ? km / dmin * 60 : null };
+    const sf = LIVE.startFix, lf = FIX || LIVE.lastFix || sf, dmin = Math.max(0, (lf.ts - sf.ts) / 60e3);
+    // progression le long de l'itinéraire OSRM (km du premier itinéraire − km restants) ; sinon vol d'oiseau ×1,2, signalé comme estimation
+    const R0 = LIVE.route0, R = LIVE.route, onRoute = R0 && R && R0.key === LIVE.key && R.key === LIVE.key && R0.km >= R.km;
+    const km = onRoute ? (R0.km - R.km) + (distKm(sf, R0.o) + distKm(R.o, lf)) * 1.2 : distKm(sf, lf) * 1.2;
+    drive = { active: true, since: localTs(sf.ts, tz), km, kmSrc: onRoute ? 'route' : 'estimate', speedKmh: dmin >= 2 ? km / dmin * 60 : null };
   }
   // prochain trajet réellement prévu (briefing) : points datés, kilomètres de l'agenda ou distance domicile-travail ×1,3
   const trips = wxTrips(m).filter(t => t.arr > now && t.points.length), t0 = trips[0] || null;
@@ -1014,7 +1019,7 @@ function renderLab() {
       const tr = r.trip ? `<div class="wx-blk lab-trip"><h3>Analyse du trajet · ${esc(r.trip.label)} ${esc(r.trip.dep)} → ${esc(r.trip.arr)}</h3><ol class="lab-tl">${r.trip.rows.map(x => `${x.events.map(ev => `<li class="ev lv2"><time class="num">${esc(x.t)}</time><span>${ev.ic} ${esc(ev.text)}<br><span class="sub">Impact : ${esc(ev.impact.join(' · '))}</span></span></li>`).join('')}<li class="${lvc(x.lv)}"><time class="num">${esc(x.t)}</time><span><b>${esc(x.name || (x.km != null ? 'km ' + x.km : 'point de passage'))}</b>${x.km != null && x.name ? ` <span class="sub">km ${x.km}</span>` : ''}<br>${E[x.lv]} ${esc(x.state)} · ≈ ${rg(x.range)} · freinage ${esc(x.brake.toLowerCase())}</span></li>`).join('')}</ol></div>`
         : `<div class="wx-blk lab-trip"><h3>Analyse du trajet</h3><p class="sub">Aucun trajet prévu : l’analyse suppose un départ sur route (≈ 70 km/h).</p></div>`;
       const p = r.press, press = `<div class="wx-blk lab-pr ${p.known && p.low ? 'lv2' : ''}"><h3>Pression</h3>${p.known ? `<ul class="lab-why">${p.notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="sub">Source : ${esc(p.src)}.</p>` : `<p class="sub">${esc(p.text)}</p>`}</div>`;
-      const conf = `<details class="wx-pc lab-d" data-k="conf"><summary><span class="ic" aria-hidden="true">🎯</span><span class="tt">Niveau de confiance</span><span class="ln">${esc(cf.level[0].toUpperCase() + cf.level.slice(1))}</span></summary><ul>${cf.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
+      const conf = `<details class="wx-pc lab-d" data-k="conf"><summary><span class="ic" aria-hidden="true">🎯</span><span class="tt">Niveau de confiance</span><span class="ln">${esc(cf.level[0].toUpperCase() + cf.level.slice(1))}</span></summary><ul>${(cf.axes || []).map(([k, v]) => `<li><b>${esc(k)}</b> : ${esc(v)}</li>`).join('')}${cf.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
       html = cars + hero + win + brake + grip + aqua + cmp + tr + press + stHtml + fiche + conf;
     }
   }
@@ -2040,7 +2045,7 @@ function liveRoute(fix, b) {
       if (gen !== LIVE.gen || key !== LIVE.key) return;   // OSRM : réponse d'une ancienne position ou d'un autre trajet, ignorée (génération)
       // (météo : chaque route a sa propre clé géographique legKey/LEGM ; une réponse tardive d'une ancienne route n'est jamais lue pour la route courante)
       const p = liveParse(j); if (!p) throw new Error('itinéraire vide');
-      LIVE.route = { ...p, key, gen, o, d: { lat: d.lat, lon: d.lon, name: d.name } }; LIVE.routeAt = Date.now(); LIVE.routeOrigin = o; LIVE.routeErr = false; renderBrf();
+      LIVE.route = { ...p, key, gen, o, d: { lat: d.lat, lon: d.lon, name: d.name } }; if (!LIVE.route0 || LIVE.route0.key !== key) LIVE.route0 = { key, km: p.km, o }; LIVE.routeAt = Date.now(); LIVE.routeOrigin = o; LIVE.routeErr = false; renderBrf();
     })
     .catch(() => { if (gen === LIVE.gen && key === LIVE.key) { LIVE.routeErr = true; renderBrf(); } });
 }

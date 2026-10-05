@@ -136,11 +136,12 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const u = lab({ now: ts('07:00'), car: car({ press: '' }), hours: H() });
     assert.equal(u.press.known, false); assert.match(u.press.text, /non renseignée/);
   });
-  test('données manquantes ou anciennes : confiance plus faible ; GPS et données complètes : élevée', () => {
+  test('données manquantes ou anciennes : confiance plus faible ; GPS et données complètes : moyenne au plus (aucun capteur), axes séparés', () => {
     const full = lab({ now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), drive: drive('10:00', 'route'), ageMin: 10 });
     const poor = lab({ now: ts('10:20'), car: car({ brand: '', model: '', press: '', tread: null }), hours: H(), ageMin: 240 });
     const parked = lab({ now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), history: { at: ts('09:00'), T: 30 }, trip: null, ageMin: 10 });
-    assert.equal(full.confidence.level, 'élevée'); assert.equal(poor.confidence.level, 'faible'); assert.notEqual(parked.confidence.level, 'élevée');
+    assert.equal(full.confidence.level, 'moyenne'); assert.deepEqual(full.confidence.axes.map(x => x[0]), ['Données pneu', 'Trajet', 'Météo', 'Modèle thermique', 'Capteur direct']); assert.equal(full.confidence.axes[4][1], 'non');
+    assert(full.press.notes.some(x => /En roulage : ≈ [\d,]+–[\d,]+ bar \(ordre de grandeur : \+0,1 à \+0,3 bar/.test(x)), full.press.notes.join(' | ')); assert.equal(poor.confidence.level, 'faible'); assert.notEqual(parked.confidence.level, 'élevée');
     assert(poor.thermal.range[1] - poor.thermal.range[0] > full.thermal.range[1] - full.thermal.range[0]);
     assert(full.confidence.reasons[0].includes('aucun capteur'));
     const noHist = lab({ now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), ageMin: 10 });
