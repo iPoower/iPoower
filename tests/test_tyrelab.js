@@ -171,12 +171,18 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const input = { now: ts('10:20'), car: car(), hours: H(), drive: drive('10:00', 'route'), history: { at: ts('09:00'), T: 25 } };
     const before = JSON.stringify(input); assert.deepEqual(plain(ctx.lab(input)), plain(ctx.lab(input))); assert.equal(JSON.stringify(input), before);
   });
+  test('départ à chaud : la mémoire enregistrée pendant le roulage est reprise (pas de retour au pneu froid)', () => {
+    const c = car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), base = { now: ts('10:20'), car: c, hours: H(), drive: drive('10:00', 'route'), ageMin: 10 };
+    const cold = lab(base), warm = lab({ ...base, history: { at: ts('10:15'), T: 45 } });
+    assert(warm.thermal.T > cold.thermal.T + 3, `${cold.thermal.T} → ${warm.thermal.T}`);
+  });
   return count;
 }
 module.exports = { runTests, sourcePath };
 if (require.main === module) {
   const original = fs.readFileSync(sourcePath, 'utf8'), count = runTests(original);
   const mutations = [
+    { name: 'mémoire du roulage en cours ignorée', from: 'else if (hist && mins(hist.at) <= nowM) { T0 = hist.T; t0 = mins(hist.at); }', to: '' },
     { name: 'refroidissement 10× plus lent (mémoire éternelle)', from: 'const TL_TAU_PARK = 50;', to: 'const TL_TAU_PARK = 500;' },
     { name: 'ville et autoroute identiques', from: "ville: { dT: 14, tauKm: 7, v: 30", to: "ville: { dT: 26, tauKm: 10, v: 115" },
     { name: 'la pluie ne refroidit plus la gomme', from: "{ dry: 1, damp: 0.85, rain: 0.65, heavy: 0.5, pool: 0.5, snow: 0.5, ice: 0.6 }[e.surf]", to: '1' },

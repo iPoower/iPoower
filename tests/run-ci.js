@@ -72,6 +72,7 @@ SUITE.push(['test_evidence.js', 'moteur de preuves v2 : brouillard, contradictio
   ['e2e45-evidence.js', 'moteur de preuves v2 : carte, signalement terrain, mode fantôme ou actif, hors ligne, iPhone', true]);
 SUITE.push(['test_tyrestate.js', 'état pneumatique unique : profondeur, pression, DOT, jeux, essieux, mémoire et contre-tests', false],
   ['e2e46-tyrelink.js', 'liaison Pneus → Analyse : saisie reprise, changement de jeu, rechargement, hors ligne', true]);
+SUITE.push(['e2e48-tripstart.js', '« Je pars maintenant » : avant départ, en cours hors ligne, rechargement, arrivée et historique thermique', true]);
 SUITE.push(['e2e47-autorefresh.js', 'auto 5 min : nouvelle météo dans Pneus, Météo, Tenue et Analyse, sans clic, onglets masqués compris', true]);
 const verdict = (code, out) => {
   const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché

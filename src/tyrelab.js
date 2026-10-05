@@ -117,8 +117,9 @@ function tyreLab(input) {
   if (drv) {
     const since = mins(drv.since), v = n(drv.speedKmh), kind = drv.kind && TL_KIND[drv.kind] ? drv.kind : kindOf(v) || 'route';
     // avant le départ : depuis la mémoire si elle existe, sinon froid
-    let T0 = env(since).Tenv; if (hist && mins(hist.at) <= since) T0 = evolve(hist.T, mins(hist.at), since, null).T;
-    const r = evolve(T0, since, nowM, { kind, v: v || TL_KIND[kind].v });
+    let T0 = env(since).Tenv, t0 = since; if (hist && mins(hist.at) <= since) T0 = evolve(hist.T, mins(hist.at), since, null).T;
+    else if (hist && mins(hist.at) <= nowM) { T0 = hist.T; t0 = mins(hist.at); }   // mémoire enregistrée pendant ce roulage : on repart d'elle (départ à chaud conservé)
+    const r = evolve(T0, t0, nowM, { kind, v: v || TL_KIND[kind].v });
     T = r.T; phase = 'driving'; drivenMin = nowM - since; drivenKm = n(drv.km) ?? r.km; driveKind = kind;
     why.push(`En roulage depuis ${Math.round(drivenMin)} min (≈ ${r1(drivenKm)} km, ${TL_KIND[kind].label}${v ? ' ≈ ' + r0(v) + ' km/h' : ', vitesse supposée'})`);
   } else if (hist) {
