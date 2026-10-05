@@ -815,11 +815,19 @@ function renderWx() {
   const dayLbl = day => { const n = dayDiff(today, day); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(day); };
   const mode = DEMO.on ? 'DÉMO · simulé' : offlineNow() ? 'HORS LIGNE' : m.mode === 'live' ? 'LIVE' : 'CACHE';
   const age = input.ageMin == null ? '' : ` · ${freshState(input.ageMin)} · ${ageTxt(input.ageMin)}`;
-  const h = d.hero;
+  const h = d.hero, nowWx = d.current || {}, hasNowTemp = Number.isFinite(nowWx.T);
+  const heroLines = h.lines.filter(x => !(hasNowTemp && /°C · ressenti .* °C/.test(x)));
+  const currentCard = hasNowTemp ? `<div class="wx-now" aria-label="Température actuelle">
+      <div class="wx-now-main"><span class="wx-now-v num">${f1(nowWx.T)}</span><span class="wx-now-u">°C</span></div>
+      <div class="wx-now-side"><span class="wx-now-k">Température actuelle</span>
+        <b class="wx-now-feel">Ressenti ${Number.isFinite(nowWx.Tapp) ? f1(nowWx.Tapp) + ' °C' : '—'}</b>
+        <span class="wx-now-src">${nowWx.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours'}</span></div>
+    </div>` : '';
   const hero = `<div class="wx-hero lv${h.level}" role="status" aria-live="polite">
     <div class="wx-hk"><span>${esc(l ? l.name : '')}</span><span class="wx-age">${mode}${age}</span></div>
+    ${currentCard}
     <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.title)}</h2>
-    ${h.lines.map((x, i) => `<p class="${i ? 'wx-hl' : 'wx-hl wx-h1'}">${esc(x)}</p>`).join('')}
+    ${heroLines.map((x, i) => `<p class="${i ? 'wx-hl' : 'wx-hl wx-h1'}">${esc(x)}</p>`).join('')}
     ${h.stale ? `<p class="wx-stale">⚠ Prévisions reçues il y a ${esc(ageTxt(input.ageMin))} : verdict indicatif, actualise dès que possible.</p>` : ''}</div>`;
   // prochain trajet
   const t = d.trip;

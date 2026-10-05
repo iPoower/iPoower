@@ -148,6 +148,7 @@ function wxDesk(input) {
   const level = dominant ? dominant.lv : 0;
   const cur = (input && input.cur) || {};
   const T = n(cur.T) ?? n(nowRow.x.T), Tapp = n(cur.Tapp) ?? n(nowRow.x.Tapp);
+  const currentSource = n(cur.T) != null || n(cur.Tapp) != null ? 'current' : 'hourly';
   const tempLine = `${T == null ? '—' : r0(T)} °C · ressenti ${Tapp == null ? '—' : r0(Tapp)} °C`;
   let title, lines = [];
   const inMin = m => { const d = Math.max(0, Math.round(m - nowM)); return d < 60 ? `dans ${d} min` : `dans ${Math.floor(d / 60)} h${d % 60 ? ' ' + String(d % 60).padStart(2, '0') : ''}`; };
@@ -321,7 +322,7 @@ function wxDesk(input) {
   if (matters.length < 5 && real.some(s => (s.id === 'rain' || s.id === 'snow') && (s.start - nowM <= 12 * 60 || tripsOf(s).length))) matters.push({ lv: 0, text: 'Prévoir une couche imperméable' });
   if (!matters.length) matters.push({ lv: 0, text: `Rien de notable d’ici ${hm(endTs)} : conditions stables` });
 
-  return { level, hero, nextChange: nextChange ? { t: hm(atMin(nextChange.m)), text: nextChange.text, lv: nextChange.lv } : null,
+  return { level, hero, current: { T, Tapp, source: currentSource }, nextChange: nextChange ? { t: hm(atMin(nextChange.m)), text: nextChange.text, lv: nextChange.lv } : null,
     window: { from: hm(now), to: hm(endTs), end: endTs }, timeline: { moments: tl, strip }, matters: matters.slice(0, 5), phen, road, trip };
   function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 }

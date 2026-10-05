@@ -54,6 +54,7 @@ const wx = p => p.evaluate(() => {
   const q = s => el ? [...el.querySelectorAll(s)] : [], t = s => q(s).map(x => x.innerText.replace(/\s+/g, ' ').trim());
   const first = [...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details')].filter(vis)[0];
   return { shown: vis(el), first: first ? first.id : null, hero: t('.wx-hero')[0] || '', title: t('.wx-ht')[0] || '', heroLv: (q('.wx-hero')[0] || { className: '' }).className,
+    current: t('.wx-now')[0] || '',
     trip: t('.wx-trip')[0] || '', moments: t('.wx-tl li'), ts: q('.wx-tl li[data-ts]').map(x => x.dataset.ts), strip: q('.wx-strip li').length, matters: t('.wx-mat li'), phen: q('.wx-pc:not(.ev)').map(x => x.dataset.k),
     road: t('.wx-road')[0] || '', score: (q('.wx-rs b')[0] || {}).textContent || '', factors: t('.wx-rf li'), tireBtn: q('.wx-tire [data-act=view][data-v=pneus]').length,
     gauges: q('.gauge').length, notice: (document.getElementById('notice').innerText || '').replace(/\s+/g, ' '),
@@ -77,7 +78,9 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     // capture locale facultative (jamais dans la CI)
     if (process.env.WX_SHOT) { await s.p.locator('#secWx').screenshot({ path: process.env.WX_SHOT + '-iphone.png' }); await s.p.evaluate(() => window.scrollTo(0, 0)); }
     check('1 · Météo : le poste météo est la première section, avant les mesures détaillées', w.shown && w.first === 'secWx' && w.beforeCur, JSON.stringify({ first: w.first, shown: w.shown }));
-    check('1 · verdict lisible : niveau 🟢🟡🟠🔴, titre, température et ressenti', /lv[0-3]/.test(w.heroLv) && w.title.length > 4 && /°C · ressenti .* °C/.test(w.hero), w.hero);
+    // innerText restitue les majuscules de text-transform : le libellé reste le même.
+    check('1 · verdict lisible : niveau 🟢🟡🟠🔴, titre, température et ressenti', /lv[0-3]/.test(w.heroLv) && w.title.length > 4 && /Température actuelle/i.test(w.hero) && /Ressenti .* °C/.test(w.hero), w.hero);
+    check('1 · température actuelle : carte blanche dédiée et immédiatement lisible', /Température actuelle/i.test(w.current) && /°C/.test(w.current) && /Ressenti/.test(w.current), w.current);
     check('1 · prochain trajet de l’agenda : origine → destination, horaires, départ et arrivée', /Prochain trajet/i.test(w.trip) && /→/.test(w.trip) && /Départ/.test(w.trip) && /Arrivée/.test(w.trip), w.trip);
     check('1 · plusieurs trajets : la chronologie montre plusieurs départs, triés', w.moments.filter(x => /départ/.test(x)).length >= 2, w.moments.join(' | '));
     check('1 · chronologie dans l’ordre des heures, lendemain signalé', w.ts.length > 2 && w.ts.every((x, i) => !i || w.ts[i - 1] <= x) && w.moments.filter((x, i) => w.ts[i].slice(0, 10) > '2026-10-03').every(x => /^dem\. /.test(x)), w.moments.join(' | '));
