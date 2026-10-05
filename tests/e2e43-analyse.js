@@ -100,7 +100,7 @@ const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
     check('1 · modèle connu : DONNÉE CONSTRUCTEUR avec liens vers les pages Michelin, rubriques manquantes signalées', /Michelin Pilot Sport 4S/.test(a.hero) && a.links.length >= 3 && a.links.every(h => /^https:\/\/www\.michelin/.test(h)) && /Étiquette UE : non disponible/.test(a.all), JSON.stringify(a.links));
     // 2. mémoire thermique : arrêt de 10 min après un trajet, puis nuit entière
     const setMem = (min, T) => s.p.evaluate(([min, T]) => { const now = DEMO.on ? M[UI.loc].nowStr : nowIn('Europe/Paris'), at = new Date(Date.parse(now.slice(0, 16) + ':00Z') - min * 60e3).toISOString().slice(0, 16);
-      localStorage.setItem('twrc.tyretherm.v1', JSON.stringify({ carA: { at, T } })); TT = null; renderAll(); }, [min, T]);
+      localStorage.setItem('twrc.tyretherm.v1', JSON.stringify({ carA: { at, T, sig: tyreStateOf(S.cars[0]).sig } })); TT = null; renderAll(); }, [min, T]);
     await setMem(10, 40); await s.settle(1); a = await lab(s.p);
     check('2 · arrêt de 10 min après un trajet : « À l’arrêt », température conservée', /À L’ARRÊT/i.test(a.hero) && /Température conservée/.test(a.all), a.hero + ' | ' + a.all.slice(0, 400));
     await setMem(14 * 60, 40); await s.settle(1); a = await lab(s.p);
@@ -109,7 +109,7 @@ const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
     const mem = await s.p.evaluate(() => { const l = allLocs()[0]; LIVE.phase = 'active'; LIVE.key = 'test'; LIVE.startFix = { ts: Date.now() - 14 * 60e3, lat: l.lat, lon: l.lon, acc: 20 }; FIX = { ts: Date.now(), lat: l.lat + 0.12, lon: l.lon, acc: 20 };
       labThermTick.at = 0; renderAll(); const r = localStorage.getItem('twrc.tyretherm.v1'); LIVE.phase = 'idle'; LIVE.key = null; LIVE.startFix = null; FIX = null; return r; });
     a = await lab(s.p);
-    const memOk = (() => { try { const o = JSON.parse(mem).carA; return Object.keys(o).sort().join(',') === 'T,at' && !/lat|lon|\d{2}\.\d{3}/.test(mem); } catch (e) { return false; } })();
+    const memOk = (() => { try { const o = JSON.parse(mem).carA; return Object.keys(o).sort().join(',') === 'T,at,sig' && !/lat|lon|\d{2}\.\d{3}/.test(mem); } catch (e) { return false; } })();
     check('3 · roulage suivi : mémoire thermique écrite (heure + température seulement, aucune position)', memOk, mem);
     // 4. données anciennes puis hors connexion : l'analyse reste disponible, confiance réduite
     await s.p.evaluate(() => { RAW[UI.loc].t = Date.now() - 4 * 3600e3; M[UI.loc].mode = 'cache'; renderAll(); }); await s.settle(1); a = await lab(s.p);

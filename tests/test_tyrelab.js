@@ -136,11 +136,12 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const u = lab({ now: ts('07:00'), car: car({ press: '' }), hours: H() });
     assert.equal(u.press.known, false); assert.match(u.press.text, /non renseignée/);
   });
-  test('données manquantes ou anciennes : confiance plus faible ; GPS et données complètes : élevée', () => {
+  test('données manquantes ou anciennes : confiance plus faible ; GPS et données complètes : moyenne au plus (aucun capteur), axes séparés', () => {
     const full = lab({ now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), drive: drive('10:00', 'route'), ageMin: 10 });
     const poor = lab({ now: ts('10:20'), car: car({ brand: '', model: '', press: '', tread: null }), hours: H(), ageMin: 240 });
     const parked = lab({ now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), history: { at: ts('09:00'), T: 30 }, trip: null, ageMin: 10 });
-    assert.equal(full.confidence.level, 'élevée'); assert.equal(poor.confidence.level, 'faible'); assert.notEqual(parked.confidence.level, 'élevée');
+    assert.equal(full.confidence.level, 'moyenne'); assert.deepEqual(full.confidence.axes.map(x => x[0]), ['Données pneu', 'Trajet', 'Météo', 'Modèle thermique', 'Capteur direct']); assert.equal(full.confidence.axes[4][1], 'non');
+    assert(full.press.notes.some(x => /En roulage : ≈ [\d,]+–[\d,]+ bar \(ordre de grandeur : \+0,1 à \+0,3 bar/.test(x)), full.press.notes.join(' | ')); assert.equal(poor.confidence.level, 'faible'); assert.notEqual(parked.confidence.level, 'élevée');
     assert(poor.thermal.range[1] - poor.thermal.range[0] > full.thermal.range[1] - full.thermal.range[0]);
     assert(full.confidence.reasons[0].includes('aucun capteur'));
     const noHist = lab({ now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), ageMin: 10 });
@@ -157,6 +158,14 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const s = lab({ now: ts('08:00'), car: car(), hours: snow }), a = lab({ now: ts('08:00'), car: car({ type: 'allseason' }), hours: snow, db: { pmsf: true } }), w = lab({ now: ts('08:00'), car: car({ type: 'winter' }), hours: snow });
     assert.equal(s.env.surf, 'snow'); assert.equal(s.grip.dist, null);   // neige : indice relatif seulement
     assert(s.grip.mu < a.grip.mu && a.grip.mu <= w.grip.mu);
+  });
+  test('signalement terrain : verglas signalé aggrave la surface, brouillard = humidité accrue seulement', () => {
+    const ice = lab({ now: ts('07:00'), car: car(), hours: H({ T: 3, Tr: 2 }), reports: [{ kind: 'ice', at: ts('06:50') }] });
+    assert.equal(ice.env.surf, 'ice'); assert.equal(ice.grip.word, 'Très dégradé'); assert(ice.thermal.why.some(x => /signalée par vous/.test(x)));
+    const fog = lab({ now: ts('07:00'), car: car(), hours: H({ T: 8, Tr: 8 }), reports: [{ kind: 'fog', at: ts('06:55') }] });
+    assert.equal(fog.env.surf, 'damp');
+    const old = lab({ now: ts('09:00'), car: car(), hours: H({ T: 8, Tr: 8 }), reports: [{ kind: 'ice', at: ts('06:50') }] });
+    assert.equal(old.env.surf, 'dry');
   });
   test('déterminisme : mêmes entrées, même résultat, entrées intactes', () => {
     const input = { now: ts('10:20'), car: car(), hours: H(), drive: drive('10:00', 'route'), history: { at: ts('09:00'), T: 25 } };
