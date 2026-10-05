@@ -42,7 +42,7 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
     const u = r.request().url(); requests.push(u);
     const J = o => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
     const q = new URL(u).searchParams;
-    if (hold && q.get('latitude') === hold.lat && /api\.bigdatacloud\.net|api\.open-meteo\.com/.test(u)) { hold.count++; await hold.wait; }
+    if (hold && q.get('latitude') === hold.lat && /api\.bigdatacloud\.net|api\.open-meteo\.com/.test(u)) { if (u.includes('api.bigdatacloud.net')) hold.geocode++; else hold.weather++; await hold.wait; }
     if (u.includes('api.bigdatacloud.net')) return J({ locality: 'Ville ' + Number(q.get('latitude')).toFixed(4), principalSubdivision: 'Région test' });
     if (u.includes('open-meteo.com')) {
       const base = ctx.mk('doux', { lat: +q.get('latitude'), lon: +q.get('longitude') }, 'Europe/Paris', 0);
@@ -62,7 +62,7 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
   const state = () => p.evaluate(() => ({ gps: GPS && { ...GPS }, raw: RAW.gps && { lat: RAW.gps.lat, lon: RAW.gps.lon }, fix: FIX && { ...FIX }, busy: gpsBusy, loc: UI.loc }));
   const move = async (g, o = {}) => { await p.clock.runFor(1000); await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { ...g, age: 0, ...o }); await settle(); };
   const gpsRequests = () => requests.filter(u => { const q = new URL(u).searchParams; return Number(q.get('longitude')) === rounded(A).lon && /api\.bigdatacloud\.net|\/v1\/forecast/.test(u); });
-  const pauseNetwork = g => { let release; hold = { lat: g.lat.toFixed(4), count: 0, wait: new Promise(r => { release = r; }), release: () => release() }; return hold; };
+  const pauseNetwork = g => { let release; hold = { lat: g.lat.toFixed(4), geocode: 0, weather: 0, wait: new Promise(r => { release = r; }), release: () => release() }; return hold; };
   await p.goto(U); await p.clock.runFor(3000);
   await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
   for (let i = 0; i < 60; i++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE)) break; await p.clock.runFor(200); await p.waitForTimeout(150); }
@@ -98,7 +98,8 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
   const delayed = pauseNetwork(G(8)); await move(G(8));
   await move(G(12)); const current = await state();
   delayed.release(); hold = null; await settle(8); s = await state();
-  check('9 · géocode/météo dans le désordre : la dernière ville et ses coordonnées gagnent', delayed.count >= 4 && eq(current.raw, G(12)) && eq(s.raw, G(12)) && eq(s.gps, G(12)) && s.gps.name === city(G(12)));
+  // La limite de deux appels ne lance plus les trois modèles ensemble ; les deux sources anciennes doivent bien être retardées.
+  check('9 · géocode/météo dans le désordre : la dernière ville et ses coordonnées gagnent', delayed.geocode >= 1 && delayed.weather >= 1 && eq(current.raw, G(12)) && eq(s.raw, G(12)) && eq(s.gps, G(12)) && s.gps.name === city(G(12)));
   // Le cache météo reste valide après un petit mouvement, même si ses coordonnées ne sont pas celles du dernier fix.
   await move(G(13));
   const cached = await p.evaluate(() => { delete RAW.gps; loadCache(); return RAW.gps && { mode: RAW.gps.mode, lat: RAW.gps.lat, lon: RAW.gps.lon }; });

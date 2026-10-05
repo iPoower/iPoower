@@ -9,12 +9,14 @@ const PW=fs.readFileSync('.passphrase','utf8').trim(),SP=process.env.SP,html=fs.
 const U='https://ipoower.github.io/iPoower/race-control/';
 let fail=0;const rows=[],check=(n,ok,d)=>{rows.push((ok?'✅':'❌')+' '+n+(d?' · '+d:''));if(!ok)fail++};
 (async()=>{const b=await require('./lib/browser').launch(),c=await b.newContext({viewport:{width:414,height:896},isMobile:true,hasTouch:true,timezoneId:'Europe/Paris'});
-const p=await c.newPage();await p.clock.install({time:T0});let fault=null,calBody=fs.readFileSync(SP+'/cal.fake.json','utf8');
+const p=await c.newPage();await p.clock.install({time:T0});let fault=null,meteoCalls=0,calBody=fs.readFileSync(SP+'/cal.fake.json','utf8');
 p.on('pageerror',e=>rows.push('ERR '+e.message));
 await p.route('**/*',r=>{const u=r.request().url(),H={'access-control-allow-origin':'*'},J=o=>r.fulfill({status:200,contentType:'application/json',headers:H,body:JSON.stringify(o)});
+ if(u.includes('api.open-meteo.com/v1/forecast'))meteoCalls++;
  if(fault&&u.includes('api.open-meteo.com/v1/forecast')){
    if(fault==='timeout')return;   // jamais de réponse : l'AbortController de fetchJSON doit trancher
    if(fault==='503')return r.fulfill({status:503,contentType:'text/plain',headers:H,body:'Service Unavailable'});
+   if(fault==='429')return r.fulfill({status:429,contentType:'application/json',headers:{...H,'retry-after':'120','access-control-expose-headers':'Retry-After'},body:JSON.stringify({error:true,reason:'Too many concurrent requests'})});
    return r.fulfill({status:200,contentType:fault.startsWith('<')?'text/html':'application/json',headers:H,body:fault});}
  if(u.includes('open-meteo.com')){const q=new URL(u).searchParams,lats=String(q.get('latitude')).split(','),lons=String(q.get('longitude')).split(','),one=i=>ctx.mk('doux',{lat:+lats[i],lon:+lons[i]},'Europe/Paris',0);if(lats.length>1)return J(lats.map((_,i)=>one(i)));const base=one(0);return J(u.includes('ensemble')?ctx.me(base):q.get('minutely_15')?ctx.mn(base):base);}
  if(u.includes('/race-control/calendar.sealed.json'))return r.fulfill({status:200,contentType:'application/json',body:calBody});
@@ -57,5 +59,20 @@ await p.evaluate(()=>{const s=document.getElementById('settings');s.open=true;re
 const diag=await p.evaluate(()=>({html:document.querySelector('#diagBox').innerText,text:diagText()}));
 check('40.10 · diagnostic : réseau, météo datée avec son erreur, relais, agenda, stockage, trajet',/Réseau/.test(diag.text)&&/Météo du lieu affiché : (FRESH|AGING|STALE) · cache · .*erreur : HTTP 503/.test(diag.text)&&/Agenda : (FRESH|AGING|STALE)/.test(diag.text)&&/Stockage local : \d+ clés/.test(diag.text)&&/Trajet vivant/.test(diag.text)&&/Météo du lieu/.test(diag.html),diag.text.replace(/\n/g,' | ').slice(0,400));
 check('40.11 · diagnostic sans coordonnée, lieu ni rendez-vous',!/\d+[.,]\d{3,}/.test(diag.text.replace(/diagnostic du \S+/,''))&&!/Maison test|Travail test|Lieu test|Assurance|Concert|Lille|Amiens/i.test(diag.text),diag.text.replace(/\n/g,' | ').slice(0,300));
+// Incident PC : HTTP 429 malgré une page à jour et un réseau disponible. La pause survit au rechargement.
+await p.setViewportSize({width:1280,height:800});fault='429';
+await p.evaluate(()=>{lastOk=0;lastTry=0;refreshAll();});await settle(8);let limited=await st();
+check('40.12 · HTTP 429 sur PC : cache intact et daté, jamais LIVE, synchronisation terminée',limited.hours===ref.hours&&limited.cache===ref.cache&&/CACHE/.test(limited.bar)&&!/LIVE/.test(limited.bar)&&!limited.busy&&/fournisseur météo limité/.test(limited.bar),JSON.stringify(limited));
+const pausedCalls=meteoCalls;
+await p.evaluate(()=>{refreshAll();refreshAll();autoTick();window.dispatchEvent(new Event('focus'));});await settle(8);
+check('40.13 · pendant Retry-After : aucun nouvel appel malgré actualiser et reprise de l’onglet',meteoCalls===pausedCalls,`${pausedCalls} → ${meteoCalls}`);
+check('40.14 · diagnostic : pause HTTP 429 et bouton Actualiser suspendu',await p.evaluate(()=>/API météo : HTTP 429 · pause jusqu’à/.test(diagText())&&document.querySelector('[data-act=refresh]').disabled));
+await p.reload();await settle(14);limited=await st();
+check('40.15 · rechargement : même pause et même cache, sans nouvel appel au fournisseur',meteoCalls===pausedCalls&&/CACHE/.test(limited.bar)&&/fournisseur météo limité/.test(limited.bar)&&!limited.busy,JSON.stringify(limited));
+// Le fournisseur répond de nouveau ; seul le minuteur existant relance la météo, sans clic.
+fault=null;const resumeAt=await p.evaluate(()=>Date.now());
+for(let k=1;k<=78;k++){TNOW=resumeAt+k*5e3;await p.clock.runFor(5e3);await p.waitForFunction(()=>!busy,null,{timeout:20000});}await settle(8);
+const recovered=await st();
+check('40.16 · après la pause : retour LIVE automatique, appels autorisés de nouveau',meteoCalls>pausedCalls&&/LIVE/.test(recovered.bar)&&recovered.hours===ref.hours&&!recovered.busy&&!/fournisseur météo limité/.test(recovered.bar),JSON.stringify(recovered));
 console.log(rows.join('\n')+'\n\n'+(rows.length-fail)+'/'+rows.length+' scénarios OK · erreurs JS : '+(rows.some(x=>x.startsWith('ERR '))?'présentes':'aucune'));
 await c.close();await b.close();process.exit(fail||rows.some(x=>x.startsWith('ERR '))?1:0);})();

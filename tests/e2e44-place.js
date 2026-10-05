@@ -171,4 +171,4 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
   } finally { await b.close(); }
   console.log(rows.join('\n')); console.log('erreurs JS : ' + (errors.length ? errors.slice(0, 3).join(' | ') : 'aucune'));
   console.log(`${rows.length - fail}/${rows.length} scénarios OK`); process.exitCode = fail ? 1 : 0;
-})().catch(e => { console.error(e); process.exitCode = 1; });
+})().catch(e => { console.log(rows.join('\n')); console.error(e); process.exitCode = 1; });
