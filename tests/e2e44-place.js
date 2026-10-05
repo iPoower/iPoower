@@ -134,6 +134,30 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     check('11 bis · « + Destination » : destination ajoutée, lieu de travail inchangé', w.added && w.after === w.before && w.work === w.before, JSON.stringify(w));
     await s.c.close();
 
+
+    // 11 ter. ancien bug déjà enregistré : réparer au rechargement, sans confirmer un faux lieu.
+    s = await session(b, { at: '2026-10-05T09:30:00+02:00', geo: null });
+    await s.p.evaluate(() => {
+      S.customs.push({ id: 'c-legacy', name: 'Destination ancienne test', lat: 48.7, lon: 1 });
+      S.work.to = 'c-legacy'; markEdit('customs'); delete (S.edits || {})['work.to']; saveSettings();
+      localStorage.setItem('twrc.place.v1', JSON.stringify({ conf: { placeId: 'c-legacy', at: Date.now(), how: 'manual', day: '2026-10-05' }, last: { placeId: 'c-legacy', at: Date.now(), source: 'manual' } }));
+    });
+    await s.p.reload(); await s.settle(10);
+    let repaired = await s.p.evaluate(() => ({ work: S.work.to, custom: S.customs.some(l => l.id === 'c-legacy'), conf: PLACE.conf, last: PLACE.last }));
+    check('11 ter · ancien ajout : Travail rétabli, destination conservée, fausse confirmation effacée', repaired.work === 'work' && repaired.custom && !repaired.conf && !repaired.last, JSON.stringify(repaired));
+    // Ce cas vérifie le domicile-travail : l’agenda fictif est couvert par les autres scénarios.
+    await s.p.evaluate(() => { CAL = { events: [] }; renderAll(); });
+    await s.p.locator('#placeBar [data-act=place-confirm][data-place=work]').click(); await s.settle(2);
+    await s.p.locator('[data-act=view][data-v=pneus]').click(); await s.settle(2); x = await st(s.p);
+    const route = await s.p.locator('#secBrf .brf-r').innerText();
+    check('11 ter · lieu confirmé nommé, retour depuis le vrai Travail', /AU TRAVAIL · Travail test/.test(x.bar) && route.replace(/\s+/g, ' ').trim().toLowerCase() === 'travail test → maison test', route + ' | ' + x.bar);
+    const labels = await s.p.locator('#locChips [data-act=loc]').evaluateAll(els => els.map(e => e.getAttribute('aria-label') || '').join(' | '));
+    check('11 ter · lieux météo : domicile, travail et destination identifiés', /Météo : Travail test · 🏢 Travail/.test(labels) && /Météo : Destination ancienne test · 📌 Destination/.test(labels), labels);
+    await s.p.evaluate(() => { S.work.to = 'c-legacy'; markEdit('work.to'); saveSettings(); });
+    await s.p.reload(); await s.settle(10);
+    check('11 ter · choix explicite d’un travail personnalisé conservé après rechargement', await s.p.evaluate(() => S.work.to === 'c-legacy'));
+    await s.c.close();
+
     // 12. iPhone : barre lisible, sans débordement, cibles ≥ 44 pt
     s = await session(b, { at: '2026-10-05T06:50:00+02:00', dev: 'iphone' });
     const L = await s.p.evaluate(() => { const W = document.documentElement.clientWidth, small = []; document.querySelectorAll('#placeBar button').forEach(e => { const r = e.getBoundingClientRect(); if (r.height < 43.5) small.push(Math.round(r.height)); });
