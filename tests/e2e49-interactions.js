@@ -30,8 +30,9 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         await click('[data-act=dir][data-d=go]');
       });
       await check(tag + ' · monte et contrôle pression dans les cartes pneus', async () => {
-        await click('[data-act=tire][data-car=carA][data-type=winter]'); assert.equal(await p.evaluate(() => S.cars[0].tire.type), 'winter');
-        await click('[data-act=tire][data-car=carA][data-type=summer]'); await click('[data-act=pchk][data-car=carA]'); assert(await p.evaluate(() => !!S.cars[0].tire.pchk.date));
+        await open(); await p.selectOption('[data-bind="cars.0.tire.type"]', 'winter'); await s.settle(1); assert.equal(await p.evaluate(() => S.cars[0].tire.type), 'winter');
+        await p.selectOption('[data-bind="cars.0.tire.type"]', 'summer'); await s.settle(1); await p.locator('#settings > summary').click();
+        await click('[data-act=pchk][data-car=carA]'); assert(await p.evaluate(() => !!S.cars[0].tire.pchk.date));
       });
       await check(tag + ' · retour terrain et switch alerte', async () => {
         await click('[data-act=fb]'); assert(await p.evaluate(() => S.calib.length > 0));

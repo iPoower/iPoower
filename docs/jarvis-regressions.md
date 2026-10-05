@@ -1,6 +1,6 @@
 # Audit des interactions et de la localisation
 
-Périmètre : les 57 actions visibles déclarées dans la page, les contrôles natifs et les commandes dynamiques. Données de test exclusivement fictives. Les clics ajoutés utilisent Playwright sans `force`, sur PC et profil iPhone 11 Pro Max. Une ligne relie la commande à son résultat et à la suite qui vérifie le parcours. Le contrat dans `test_app_source.js` refuse une commande nouvelle sans entrée d’audit ou une commande sans handler.
+Périmètre : les 56 actions déclarées dans les rendus de la page, les contrôles natifs et les commandes dynamiques. Données de test exclusivement fictives. Les clics ajoutés utilisent Playwright sans `force`, sur PC et profil iPhone 11 Pro Max. Une ligne relie la commande à son résultat et à la suite qui vérifie le parcours. Le contrat dans `test_app_source.js` refuse une commande nouvelle sans entrée d’audit ou une commande sans handler. L’ancien segment `tire` était calculé sans être inséré dans la carte ; sa déclaration inutilisée est retirée. Le changement de monte est testé par le select réellement affiché dans Réglages, sans réintroduire d’ancienne UX.
 
 ## Causes reproduites avant modification
 
@@ -64,7 +64,6 @@ Les événements `click` sont délégués sur `document` : le rerender ne détru
 | `rot` | permutation datée avec compteur | `e2e49-interactions.js` |
 | `rplay` | lecture / pause radar | `e2e49-interactions.js` |
 | `tip` | astuce suivante | `e2e49-interactions.js` |
-| `tire` | monte changée et Analyse recalculée | `e2e49-interactions.js` |
 | `tread-add` | profondeur enregistrée ou erreur visible | `e2e49-interactions.js` |
 | `trip-arrived` | arrivée confirmée, moteur terminé | `e2e30.js` |
 | `trip-cancel` | annulation locale du trajet et de sa chaîne | `e2e34.js` |

@@ -2607,7 +2607,6 @@ function renderCars() {
     const strip = []; for (let k = 0; k <= 24; k++) { const v = hourVerdict(car, m.hs, i + k); strip.push(v ? `<i class="lv${v.level}" title="${m.hs[i + k].t.slice(11, 16)} · ${LV[v.level].name} · ${v.score}/100"></i>` : ''); }
     const labels = [0, 6, 12, 18, 24].map(k => `<span>${m.hs[i + k] ? m.hs[i + k].t.slice(11, 16) : ''}</span>`).join('');
     const wi = w.worst;
-    const segs = ['summer', 'winter', 'allseason', 'unknown'].map(t => `<button data-act="tire" data-car="${esc(car.id)}" data-type="${t}" aria-pressed="${car.tire.type === t}">${t === 'summer' ? 'Été' : t === 'winter' ? 'Hiver' : t === 'allseason' ? '4 saisons' : 'Inconnu'}</button>`).join('');
     return `<article class="car lv${w.level}">
       <div class="car-h"><div class="car-top"><div><h3>${esc(car.name)}</h3><span class="spec">${esc(car.spec)}</span></div>${carThumb(car)}</div>
         <div class="tirebox"><span><b>Pneus montés : ${TYPE_LABEL[car.tire.type]}</b></span><span>${tireTxt(car)}</span></div>

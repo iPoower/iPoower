@@ -179,10 +179,6 @@
     "suite": "e2e49-interactions.js",
     "result": "astuce suivante"
   },
-  "tire": {
-    "suite": "e2e49-interactions.js",
-    "result": "monte changée et Analyse recalculée"
-  },
   "tread-add": {
     "suite": "e2e49-interactions.js",
     "result": "profondeur enregistrée ou erreur visible"
