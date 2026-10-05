@@ -1,105 +1,50 @@
 #!/usr/bin/env node
-// Suite de tests de la CI : construit l'app avec des réglages fictifs, prépare un dossier de travail,
-// génère les jeux de test de l'agenda avec le harnais du relais (données fictives), puis exécute chaque test et contrôle son verdict.
-// Tout est fictif (préréglage, relais, agenda, deux clés distinctes) : aucun secret ni donnée réelle n'est nécessaire. Rien n'est écrit en dehors de .ci/ (ignoré par Git).
+// Validation locale complète, lane rapide ou shard E2E : même registre, mêmes tests et mêmes verdicts.
+// Les artifacts partagés ne contiennent que les fixtures fictives ; chaque lane copie son workspace.
 'use strict';
-const fs = require('fs'), path = require('path'), crypto = require('crypto'), { spawnSync } = require('child_process');
-const ROOT = path.resolve(__dirname, '..'), CI = path.join(ROOT, '.ci'), W = path.join(CI, 'w'), H = path.join(CI, 'h'), OUT = path.join(CI, 'out');
-const BROWSER = (process.env.BROWSER || 'chromium').toLowerCase();
-const rd = f => fs.readFileSync(path.join(ROOT, f), 'utf8'), cp = (a, b) => fs.copyFileSync(path.join(ROOT, a), b);
-// Les tests n'utilisent AUCUNE donnée ni clé réelle : préréglage, configuration du relais, agenda et clés sont fictifs.
-// Deux clés de test distinctes, comme en production : APP_KEY_TEST (app, agenda) et RC_KEY_TEST (configuration du relais).
-const { APP_KEY_TEST, RC_KEY_TEST } = require('./lib/test-keys');
-const FAKE = path.join(CI, 'fake'), DIST = path.join(CI, 'dist');
-fs.rmSync(CI, { recursive: true, force: true }); [W, path.join(W, 'site'), H, OUT, FAKE].forEach(d => fs.mkdirSync(d, { recursive: true }));
-cp('tests/fixtures/preset.fake.json', path.join(FAKE, 'preset.json')); cp('tests/fixtures/relay-config.fake.json', path.join(FAKE, 'relay-config.json'));
-fs.writeFileSync(path.join(FAKE, '.passphrase'), APP_KEY_TEST); fs.writeFileSync(path.join(FAKE, '.rc_key'), RC_KEY_TEST);
-// build du même code source, avec les réglages fictifs (sortie et chiffrés de test dans .ci/, jamais dans dist/ ni encrypted/)
-const b = spawnSync(process.execPath, [path.join(ROOT, 'tools/build.js')], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, RC_PRIVATE: '.ci/fake', RC_OUT: '.ci/dist', RC_ENCRYPTED: '.ci/enc' } });
-if (b.status !== 0) { console.error('Build de test en échec :\n' + (b.stdout || '') + (b.stderr || '')); process.exit(1); }
-const scrub = t => t;   // plus rien de réel à masquer : tout est fictif
-// dossier de travail des tests (même disposition que l'atelier d'origine)
-for (const f of fs.readdirSync(DIST)) fs.copyFileSync(path.join(DIST, f), path.join(W, 'site', f));
-['engine.js', 'demo.js', 'relay.js'].forEach(f => cp('src/' + f, path.join(W, f)));
-fs.writeFileSync(path.join(W, '.passphrase'), APP_KEY_TEST);   // code saisi dans l'app par les tests
-cp('tests/fixtures/preset.fake.json', path.join(W, 'preset.json'));
-// widget : configuration fictive pour le test (le widget public n'en contient pas)
-fs.writeFileSync(path.join(W, 'widget.js'), rd('src/widget.js').replace(/const CFG = null;[^\n]*/, 'const CFG = ' + JSON.stringify({ home: { id: 'home', name: 'Maison test', lat: 48.85, lon: 2.35 }, work: { id: 'work', name: 'Travail test', lat: 48.9, lon: 2.25 }, dep: '06:30', durMin: 40, days: [1, 2, 3], cars: [{ short: 'Test A', sporty: 1, tire: { type: 'summer', size: '215/40 R18', tread: null, dot: '1023' }, plan: { on: 0 } }] }) + ';'));
-const NM = fs.existsSync(path.join(ROOT, 'node_modules')) ? path.join(ROOT, 'node_modules') : process.env.NODE_MODULES_DIR;
-if (NM) fs.symlinkSync(NM, path.join(W, 'node_modules'), 'dir');
-// jeu de test de l'agenda : le vrai relais tourne sur un agenda fictif, avec la date simulée du scénario
-['relay.js', 'engine.js', 'demo.js', 'evidence.js'].forEach(f => cp('src/' + f, path.join(H, f)));
-fs.readdirSync(path.join(ROOT, 'tests/relay-harness')).forEach(f => cp('tests/relay-harness/' + f, path.join(H, f)));
-fs.copyFileSync(path.join(DIST, 'relay-config.sealed.json'), path.join(H, 'relay-config.sealed.json'));
-const rel = spawnSync(process.execPath, ['-r', './mock_tt.js', 'relay.js'], { cwd: H, encoding: 'utf8', timeout: 180e3,
-  env: { ...process.env, FAKE: '2026-10-02T08:00:00+02:00', SCN: 'doux', GCAL_ICS: 'https://calendar.google.com/test.ics', APP_KEY: APP_KEY_TEST, RC_KEY: RC_KEY_TEST } });
-if (!fs.existsSync(path.join(H, 'calendar.sealed.json'))) { console.error('Harnais du relais en échec :\n' + (rel.stdout || '') + (rel.stderr || '')); process.exit(1); }
-fs.copyFileSync(path.join(H, 'calendar.sealed.json'), path.join(OUT, 'cal.fake.json'));
-// suite : tests unitaires du moteur et du widget, puis parcours navigateur (horloge et réseau simulés)
-const SUITE = [
-  ['test_engine.js', 'moteur : verdicts, chaussée, verglas', false], ['test_examples.js', 'moteur : cas de référence', false],
-  ['test_engine_verdicts.js', 'moteur : vérités de sécurité GO / NO GO', false], ['engine-countertests.js', 'moteur : régressions de sécurité rejetées par les contre-tests', false],
-  ['test_widget.js', 'widget iPhone (Scriptable simulé)', false], ['test_relay_clock.js', 'relais : horloge externe et mesure de fraîcheur', false],
-  ['e2e17.js', 'réglages conservés lors d’une mise à jour', true], ['e2e18.js', 'astuces et mode Météo', true], ['e2e24.js', 'jours de trajet domicile-travail', true],
-  ['e2e25.js', 'timeline : prochain trajet, en cours, arrivée', true], ['e2e26.js', 'lieux et Ma position', true], ['e2e27.js', 'mini-carte ordinateur et iPhone', true],
-  ['e2e28.js', 'GPS dynamique : trajet vivant depuis la position', true],
-  ['e2e29.js', 'navigation : ouvrir le trajet affiché dans Waze', true],
-  ['e2e30.js', 'automate du trajet : départ par le mouvement, arrivée à froid', true]];
-SUITE.push(['test_wardrobe.js', 'tenue : confort, pluie, vent et jours locaux', false], ['e2e31.js', 'onglet Tenue sartoriale et interface mobile', true]);
-SUITE.push(['test_gps_requests.js', 'GPS : réponses réseau tardives après déplacement ou oubli', false],
-  ['test_calendar_ids.js', 'agenda : identifiants techniques opaques et stables', false],
-  ['test_tripcancel.js', 'annulation locale : purge, chaîne et contre-tests', false],
-  ['e2e33.js', 'GPS : déplacements successifs, reprise iOS et réponses anciennes', true],
-  ['e2e34.js', 'trajets : origine, aperçu volontaire et annulations locales', true]);
-SUITE.push(['test_dayplan.js', 'plan de tenue : couches, transitions et dangers courts', false],
-  ['dayplan-countertests.js', 'plan de tenue : mutations détectées par les contre-tests', false],
-  ['e2e32.js', 'plan de tenue : agenda, lieux, météo et interface', true]);
-SUITE.push(['e2e35.js', 'intégration : annulations, Tenue et aperçu GPS frais', true],
-  ['e2e36.js', 'hors connexion : cache météo, agenda chiffré et reconnexion', true],
-  ['e2e38-resume.js', 'reprise iOS : fraîcheur réelle, horloge, actualisation unique', true],
-  ['e2e39-layout.js', 'iPhone 11 Pro Max et PC : débordement, cibles 44 pt, encoche, mêmes sections', true],
-  ['e2e40-network.js', 'pannes fournisseur : 200 invalide, 429, 503, délai, agenda corrompu ou ancien', true],
-  ['e2e41-sw-coldstart.js', 'service worker réel : démarrage à froid hors ligne, ancien cache, réseau muet', true, 'chromium'],
-  ['e2e37-sw.js', 'service worker réel : Cache Storage, panne serveur et redémarrage offline', true, 'chromium']);
-SUITE.push(['e2e37.js', 'agenda : rappels exclus des trajets et de Tenue, cache ancien et mobile', true]);
-SUITE.push(['test_wxdesk.js', 'onglet Météo : verdict, chronologie, phénomènes, score route et contre-tests', false],
-  ['e2e42-meteo.js', 'onglet Météo : iPhone, PC, hors ligne, panne, données anciennes, 0 ou plusieurs trajets', true]);
-SUITE.push(['test_tyrelab.js', 'onglet Analyse : thermique, chauffe, refroidissement, adhérence, freinage, pression, confiance et contre-tests', false],
-  ['e2e43-analyse.js', 'onglet Analyse : monte réelle, mémoire thermique, roulage, hors ligne, iPhone et PC', true]);
-SUITE.push(['test_placectx.js', 'lieu courant : hiérarchie de confiance, garde VPN, fin de confirmation et contre-tests', false],
-  ['e2e44-place.js', 'lieu courant : PC au travail + VPN, hors ligne, rechargement, départ, retour, GPS légitime', true]);
-SUITE.push(['test_evidence.js', 'moteur de preuves v2 : brouillard, contradictions, pire crédible, confiance par phénomène, incident du 5 octobre', false],
-  ['e2e45-evidence.js', 'moteur de preuves v2 : carte, signalement terrain, mode fantôme ou actif, hors ligne, iPhone', true]);
-SUITE.push(['test_tyrestate.js', 'état pneumatique unique : profondeur, pression, DOT, jeux, essieux, mémoire et contre-tests', false],
-  ['e2e46-tyrelink.js', 'liaison Pneus → Analyse : saisie reprise, changement de jeu, rechargement, hors ligne', true]);
-SUITE.push(['e2e48-tripstart.js', '« Je pars maintenant » : avant départ, en cours hors ligne, rechargement, arrivée et historique thermique', true]);
-SUITE.push(['e2e47-autorefresh.js', 'auto 5 min : nouvelle météo dans Pneus, Météo, Tenue et Analyse, sans clic, onglets masqués compris', true]);
-SUITE.push(['test_settings_work.js', 'réparation de l’ancien ajout de destination, choix explicites préservés', false],
-  ['test_weather_requests.js', 'API météo : concurrence, doublons, HTTP 429, reprise et délai réseau', false]);
-// Retour rapide sur la file réseau : GPS remplacé, lieux et reprise HTTP 429 avant les longs parcours.
-const FIRST = ['test_weather_requests.js', 'test_gps_requests.js', 'e2e33.js', 'e2e30.js', 'e2e44-place.js', 'e2e40-network.js'];
-SUITE.sort((a, b) => (FIRST.includes(a[0]) ? FIRST.indexOf(a[0]) : FIRST.length) - (FIRST.includes(b[0]) ? FIRST.indexOf(b[0]) : FIRST.length));
-const verdict = (code, out) => {
-  const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^(?:\w*Error|(?:page|locator|browserContext)\.\w+):[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
-  if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');
-  if (/❌|ERR |Error:|TimeoutError/.test(out)) return 'échec signalé dans la sortie';
-  const sc = [...out.matchAll(/(\d+)\/(\d+) scénarios OK/g)]; if (sc.some(m => m[1] !== m[2])) return 'scénarios incomplets';
-  const er = out.match(/errors (\[.*\])/); if (er && er[1] !== '[]') return 'erreurs JavaScript : ' + er[1].slice(0, 200);
-  if (/erreurs JS : (?!aucune)/.test(out)) return 'erreurs JavaScript';
-  if (/perdus [1-9]/.test(out)) return 'réglages perdus';
-  return null;
-};
-let fail = 0, skipped = 0; const rows = [];
-for (const [file, what, browser, only] of SUITE) {
-  if (only && BROWSER !== only) { skipped++; rows.push(`↪️ ${file.padEnd(17)} ${what} [${BROWSER}] · non applicable (Playwright Service Worker : Chromium uniquement)`); continue; }
-  const t0 = Date.now(), r = spawnSync(process.execPath, [path.join(ROOT, 'tests', file)], { cwd: W, encoding: 'utf8', timeout: 20 * 60e3, env: { ...process.env, SP: OUT, BROWSER } });
-  const out = (r.stdout || '') + (r.stderr || ''), why = r.error ? String(r.error.message) : verdict(r.status, out);
-  fs.writeFileSync(path.join(OUT, file.replace('.js', '.log')), out);
-  rows.push(`${why ? '❌' : '✅'} ${file.padEnd(17)} ${what}${browser ? ` [${BROWSER}]` : ''} · ${Math.round((Date.now() - t0) / 1000)} s${why ? ' · ' + why : ''}`);
-  if (why) { fail++;
-    const labels = out.split('\n').map((l, i, A) => /^\s*❌/.test(l) ? l.trim().slice(0, 160) + ' ⏎ ' + (A[i + 1] || '').trim().slice(0, 260) : null).filter(Boolean).slice(0, 6).join(' / ');   // données 100 % fictives : le contexte peut être affiché
-    if (process.env.GITHUB_ACTIONS) console.log(`::error title=${file} (${BROWSER})::${scrub(why + (labels ? ' | ' + labels : '')).replace(/[\r\n%]/g, ' ')}`);   // dépôt public : jamais la sortie brute (elle peut contenir l'agenda)
-    else console.log(out.split('\n').slice(-25).join('\n')); }
-}
-console.log('\n' + rows.join('\n') + `\n\n${fail ? `❌ ${fail} test(s) en échec` : `✅ ${SUITE.length - skipped} tests au vert${skipped ? ` + ${skipped} non applicable` : ''}`} (${BROWSER})`);
-process.exit(fail ? 1 : 0);
+const fs = require('node:fs'), path = require('node:path'), { spawnSync } = require('node:child_process');
+const { SUITE } = require('./ci/suites'), { select } = require('./ci/plan'), { verdict } = require('./ci/verdict');
+const { ROOT, CI, prepare, workspace } = require('./ci/workspace');
+const started = Date.now(), options = { lane: 'all', browser: (process.env.BROWSER || 'chromium').toLowerCase(), index: 1, total: 1, files: [] };
+let reuse = false, list = false, prepareOnly = false;
+try {
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const [flag, inline] = argv[i].split('='), value = () => inline === undefined ? argv[++i] : inline;
+    if (flag === '--lane') options.lane = value();
+    else if (flag === '--shard') { const m = /^(\d+)\/(\d+)$/.exec(value() || ''); if (!m) throw new Error('Shard attendu : 1/3'); options.index = +m[1]; options.total = +m[2]; }
+    else if (flag === '--suite') options.files.push(value());
+    else if (flag === '--reuse') reuse = true;
+    else if (flag === '--list') list = true;
+    else if (flag === '--prepare-only') prepareOnly = true;
+    else throw new Error('Option CI inconnue : ' + flag);
+  }
+  if (options.lane === 'unit') options.browser = 'chromium';
+  const suites = select(options);
+  if (list) { console.log(JSON.stringify(suites.map(s => s[0]), null, 2)); process.exit(0); }
+  if (!reuse) prepare();
+  if (prepareOnly) { console.log('✅ Fixtures fictives prêtes.'); process.exit(0); }
+  const key = options.lane === 'browser' ? `${options.browser}-${options.index}-of-${options.total}` : options.lane === 'all' ? 'all-' + options.browser : 'unit';
+  const { w, out, meta } = workspace(key);
+  const report = { schema: 1, selection: options.files.length ? 'targeted' : 'full', sourceHash: meta.sourceHash, lane: options.lane, browser: options.browser, index: options.index, total: options.total, startedAt: new Date(started).toISOString(), prepare: { buildMs: meta.buildMs, fixtureMs: meta.fixtureMs, prepareMs: meta.prepareMs }, results: [] };
+  let fail = 0;
+  for (const [file, what, browser] of suites) {
+    const t0 = Date.now(), r = spawnSync(process.execPath, [path.join(ROOT, 'tests', file)], { cwd: w, encoding: 'utf8', timeout: 20 * 60e3, env: { ...process.env, SP: out, BROWSER: options.browser } });
+    const output = (r.stdout || '') + (r.stderr || ''), why = r.error ? String(r.error.message) : verdict(r.status, output), ms = Date.now() - t0;
+    fs.writeFileSync(path.join(out, file.replace('.js', '.log')), output);
+    report.results.push({ file, ms, ok: !why, ...(why ? { error: why } : {}) });
+    console.log(`${why ? '❌' : '✅'} ${file.padEnd(17)} ${what}${browser ? ` [${options.browser}]` : ''} · ${Math.round(ms / 1000)} s${why ? ' · ' + why : ''}`);
+    if (why) {
+      fail++;
+      const labels = output.split('\n').map((l, i, a) => /^\s*❌/.test(l) ? l.trim().slice(0, 160) + ' ⏎ ' + (a[i + 1] || '').trim().slice(0, 260) : null).filter(Boolean).slice(0, 6).join(' / ');
+      if (process.env.GITHUB_ACTIONS) console.log(`::error title=${file} (${options.browser})::${(why + (labels ? ' | ' + labels : '')).replace(/[\r\n%]/g, ' ')}`);
+      else console.log(output.split('\n').slice(-25).join('\n'));
+    }
+  }
+  report.completedAt = new Date().toISOString(); report.durationMs = Date.now() - started;
+  fs.mkdirSync(path.join(CI, 'results'), { recursive: true });
+  fs.writeFileSync(path.join(CI, 'results', 'report-' + key + '.json'), JSON.stringify(report, null, 2));
+  const skipped = options.lane === 'all' && !options.files.length ? SUITE.filter(s => s[3] && s[3] !== options.browser).length : 0;
+  console.log(`\n${fail ? `❌ ${fail} test(s) en échec` : `✅ ${suites.length} tests au vert${skipped ? ` + ${skipped} non applicable (Service Worker Chromium)` : ''}`} (${key}) · ${(report.durationMs / 1000).toFixed(1)} s`);
+  process.exit(fail ? 1 : 0);
+} catch (e) { console.error('❌ CI : ' + String(e.message).replace(/https?:\S+/g, 'url')); process.exit(1); }

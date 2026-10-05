@@ -7,12 +7,13 @@ name: Race Control · tests
 #    (push sur main, ou retour arrière lancé depuis main). Les PR sont testées avec des données et des clés fictives.
 #    Avant fusion, les données personnelles d'une PR sont cherchées par pr-privacy.yml (scanner de main, PR lue comme données).
 #    Aucun navigateur, aucun build de l'app, aucun affichage de donnée.
-#  - tests : AUCUN secret. L'app est construite avec un préréglage, un agenda et deux clés distinctes 100 % fictifs, puis testée
-#    sur Chromium et sur WebKit (moteur de Safari, profil iPhone), réseau extérieur bloqué.
+#  - unit + tests : AUCUN secret. L'app est construite avec un préréglage, un agenda et deux clés distinctes 100 % fictifs, puis testée
+#    Unitaires une fois, E2E Chromium et WebKit (profil iPhone) en 3 shards chacun, réseau extérieur bloqué.
+#  - validation : verdict unique ; chaque contrôle, chaque shard et chaque suite applicable doivent être présents et verts.
 #  - relay-smoke : AUCUN secret. Le vrai relay.js tourne sur une configuration, un agenda et une géographie fictifs
 #    (alerte du matin, absence de doublon, télétravail, agenda chiffré avec tracés, obs.json sans donnée de trajet,
 #    séparation des clés, garde-fou RC_KEY ≠ APP_KEY).
-#  - deploy : seulement si confidentialite, relay-smoke ET les deux navigateurs sont verts, pour un push sur main ou un retour arrière.
+#  - deploy : seulement si confidentialite, relay-smoke ET validation sont verts, pour un push sur main ou un retour arrière.
 #    Publie le build sur gh-pages sans jamais toucher aux fichiers du relais, étiquette la version (prod-N), vérifie la version en ligne.
 #    Un déploiement commencé n'est jamais annulé.
 # Retour arrière : Actions → « Race Control · tests » → Run workflow → version = prod-N. C'est un NOUVEAU déploiement contrôlé
@@ -61,10 +62,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.version.outputs.ref }}
-      - uses: actions/setup-node@v7
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 20
       - name: Aucune donnée personnelle dans le dépôt
@@ -78,23 +80,115 @@ jobs:
           APP_KEY: ${{ secrets.APP_KEY }}
           RC_KEY: ${{ secrets.RC_KEY }}
         run: node tools/check-keys.js
-  tests:
+  unit:
     needs: version
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.version == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: ci-unit-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 20
+          cache: npm
+      - name: Dépendances exactes (package-lock.json)
+        run: npm ci --no-audit --no-fund
+      - name: Syntaxe et scanner sans secrets
+        run: |
+          node tests/ci/syntax.js
+          node tools/check-secrets.js
+      - name: Unitaires, contre-tests et préparation fictive unique
+        run: node tests/run-ci.js --lane unit
+      - name: Build et agenda fictifs partagés (aucune clé dans cet artifact)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-fixtures
+          path: .ci/prepared/
+          if-no-files-found: error
+          include-hidden-files: false
+          overwrite: true
+          retention-days: 1
+      - name: Rapport unitaire et durées (aucune sortie brute)
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-results-unit
+          path: .ci/results/report-unit.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+  tests:
+    needs: [version, unit]
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.version == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Chaque job a son navigateur, son runner et son workspace. Aucun shard n'annule un autre shard.
+    concurrency:
+      group: ci-tests-${{ github.ref }}-${{ matrix.browser }}-${{ matrix.shard }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 20
+          cache: npm
+      - name: Dépendances exactes (package-lock.json)
+        run: npm ci --no-audit --no-fund
+      - name: Navigateur ${{ matrix.browser }}
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Fixtures fictives du même run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ci-fixtures
+          path: .ci/prepared
+          digest-mismatch: error
+      - name: E2E complets du shard ${{ matrix.shard }}/3
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: node tests/run-ci.js --lane browser --shard ${{ matrix.shard }}/3 --reuse
+      - name: Rapport du shard et durées (aucune sortie brute)
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-results-${{ matrix.browser }}-${{ matrix.shard }}
+          path: .ci/results/report-*.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+  tests-rollback:
+    needs: version
+    # Les anciens tags n'ont pas les helpers de sharding : conserver leur runner intégral.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # seuls les tests d'une modification remplacée par une plus récente sont annulés (jamais un déploiement)
     concurrency:
-      group: ci-tests-${{ github.ref }}-${{ github.event.inputs.version }}-${{ matrix.browser }}
+      group: ci-rollback-${{ github.ref }}-${{ github.event.inputs.version }}-${{ matrix.browser }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
         browser: [chromium, webkit]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.version.outputs.ref }}
-      - uses: actions/setup-node@v7
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 20
           cache: npm
@@ -111,10 +205,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.version.outputs.ref }}
-      - uses: actions/setup-node@v7
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 20
       - name: Relais de bout en bout (données fictives, sans aucun secret)
@@ -123,9 +218,45 @@ jobs:
         run: node tests/keys-tools.js
       - name: "Confidentialité des PR : scanner de confiance, PR lue comme données (fictif, sans aucun secret)"
         run: node tests/pr-privacy.js
+  validation:
+    needs: [version, unit, tests, tests-rollback, relay-smoke, confidentialite]
+    # Même en cas d'échec d'un parent, le verdict doit être rouge, jamais sauté en silence.
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CI_NEEDS: ${{ toJSON(needs) }}
+      CI_ROLLBACK: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version != '' }}
+      CI_PRODUCTION: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.inputs.version != '') }}
+    steps:
+      # Sur rollback, le vérificateur vient du workflow actuel, pas de l'ancien tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 20
+      - name: Tous les contrôles requis doivent être verts
+        run: node tests/ci/verify-results.js --gates-only
+      - name: Rassembler tous les rapports du même run
+        if: env.CI_ROLLBACK != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ci-results-*
+          path: .ci/all-results
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Couverture exacte et timings des sept lanes
+        if: env.CI_ROLLBACK != 'true'
+        run: node tests/ci/verify-results.js .ci/all-results
+      - name: Retour arrière validé par les suites historiques complètes
+        if: env.CI_ROLLBACK == 'true'
+        run: echo 'Retour arrière validé sur Chromium et WebKit, avec confidentialité et relay-smoke. Le runner historique du tag reste intégral ; son timing peut dépasser celui de la nouvelle CI.' >> "$GITHUB_STEP_SUMMARY"
   deploy:
-    needs: [version, confidentialite, tests, relay-smoke]
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '')
+    needs: [version, confidentialite, validation, relay-smoke]
+    # Le verdict gère les skips attendus de rollback ; aucune dépendance échouée ne permet de publier.
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.confidentialite.result == 'success' && needs.validation.result == 'success' && needs.relay-smoke.result == 'success' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -134,15 +265,15 @@ jobs:
       group: race-control-deploy
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.version.outputs.ref }}
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 20
       - name: Build de production (réglages déjà chiffrés, aucun secret)
         run: node tools/build.js
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: gh-pages
           path: pages
