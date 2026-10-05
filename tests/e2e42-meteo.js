@@ -54,7 +54,7 @@ const wx = p => p.evaluate(() => {
   const q = s => el ? [...el.querySelectorAll(s)] : [], t = s => q(s).map(x => x.innerText.replace(/\s+/g, ' ').trim());
   const first = [...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details')].filter(vis)[0];
   return { shown: vis(el), first: first ? first.id : null, hero: t('.wx-hero')[0] || '', title: t('.wx-ht')[0] || '', heroLv: (q('.wx-hero')[0] || { className: '' }).className,
-    trip: t('.wx-trip')[0] || '', moments: t('.wx-tl li'), ts: q('.wx-tl li[data-ts]').map(x => x.dataset.ts), strip: q('.wx-strip li').length, matters: t('.wx-mat li'), phen: q('.wx-pc').map(x => x.dataset.k),
+    trip: t('.wx-trip')[0] || '', moments: t('.wx-tl li'), ts: q('.wx-tl li[data-ts]').map(x => x.dataset.ts), strip: q('.wx-strip li').length, matters: t('.wx-mat li'), phen: q('.wx-pc:not(.ev)').map(x => x.dataset.k),
     road: t('.wx-road')[0] || '', score: (q('.wx-rs b')[0] || {}).textContent || '', factors: t('.wx-rf li'), tireBtn: q('.wx-tire [data-act=view][data-v=pneus]').length,
     gauges: q('.gauge').length, notice: (document.getElementById('notice').innerText || '').replace(/\s+/g, ' '),
     beforeCur: el && document.getElementById('secCur') ? !!(el.compareDocumentPosition(document.getElementById('secCur')) & Node.DOCUMENT_POSITION_FOLLOWING) : false };
