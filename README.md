@@ -10,7 +10,7 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
 
 | Dossier | Contenu |
 |---|---|
-| `src/` | Code source : `engine.js` (moteur partagé page + relais), `app.js` (interface), `wxdesk.js` (poste météo de l’onglet Météo), `demo.js`, `style.css`, `shell.html`, `sw.js`, `relay.js`, `widget.js`, `tiredb.json`, `static/` (icônes) |
+| `src/` | Code source : `engine.js` (moteur partagé page + relais), `app.js` (interface), `wxdesk.js` (poste météo de l’onglet Météo), `tyrelab.js` et `tirespecs.js` (onglet Analyse), `demo.js`, `style.css`, `shell.html`, `sw.js`, `relay.js`, `widget.js`, `tiredb.json`, `static/` (icônes) |
 | `tools/` | `build.js` (assemble `dist/`), `check-secrets.js` (garde-fou de confidentialité), `check-keys.js` (séparation des clés), `keys.js` (chiffrement partagé), `deploy-copy.js` (publication), `pre-commit`, `relay-clock/` (horloge externe du relais), `relay-freshness.js` (mesure de fraîcheur) |
 | `tests/` | Tests Playwright de bout en bout (horloge et réseau simulés) et harnais du relais (`relay-harness/`) |
 | `encrypted/` | Réglages **déjà chiffrés** (AES-256-GCM, PBKDF2-SHA256 600 000 itérations) |
@@ -138,6 +138,40 @@ et rendez-vous de l’agenda reconnus comme trajets, jamais les rappels sans lie
 La couleur du score n’est jamais plus douce que son pire facteur. Hors connexion ou avec un cache de plus de 3 h,
 le dernier verdict reste affiché, marqué indicatif. Sans météo (premier lancement hors ligne, fournisseur en panne),
 le poste météo reste masqué : aucune valeur n’est inventée. Aucun nouveau fournisseur externe.
+
+## Onglet Analyse : ingénieur pneumatique embarqué
+
+L’onglet **🔬 Analyse** répond à « comment mes pneus se comportent-ils maintenant, sur ce trajet et dans ces conditions ? ».
+Il n’analyse que la **monte active** du véhicule choisi (type, marque, modèle, dimension saisis dans Réglages). Sans monte connue :
+« Monte active inconnue — sélectionner les pneus montés. » Pneus garde l’état, les références, le montage et les recommandations.
+
+```
+DONNÉES  météo (heures déjà chargées) · chaussée estimée · trajet du briefing · véhicule et monte · mémoire thermique
+   ↓
+MOTEUR   src/tyrelab.js (pur, déterministe, testé) + src/tirespecs.js (fiches constructeur sourcées)
+   ↓     température estimée · mise en température · refroidissement · adhérence · freinage · aquaplaning · pression · confiance
+INTERFACE  verdict, fenêtre, freinage, adhérence, aquaplaning, comparaison, trajet, pression, fiche, confiance (détails au toucher)
+```
+
+**Aucun capteur** : toutes les valeurs sont des estimations en plages (jamais « vos pneus sont à 42 °C »), et l’état affiché
+est le plus prudent de la plage. Modèle thermique du premier ordre avec mémoire :
+
+| Règle | Valeur | Origine |
+|---|---|---|
+| Environnement du pneu | ½ air + ½ chaussée estimée | hypothèse Race Control |
+| Échauffement à l’équilibre | ville +14 °C, route +20 °C, autoroute +26 °C | cohérent avec ≈ +0,3 bar à chaud (Michelin) ≈ +25 °C de gaz |
+| Eau, vent, pression, gomme | sec ×1 · humide ×0,85 · pluie ×0,65 · pluie forte/neige ×0,5 · rafales ≥ 50 km/h ×0,92 · sous-gonflage ×1,12 · 4 saisons ×1,05 · hiver ×1,1 | hypothèses Race Control |
+| Montée en température | constante de 10 km (7 km en ville) | « froid » tant que moins de 3 km roulés (Michelin) |
+| Refroidissement à l’arrêt | constante de 50 min (×0,8 sous la pluie) | « froid » après 2 h d’arrêt (Michelin) |
+| Incertitude | ±3 °C + 25 % de l’écart + 3 °C sans historique (s’estompe en roulant) + 3 °C si météo > 90 min | hypothèse Race Control |
+| Fenêtres (froid / chauffe / favorable / chaud) | été 10 / 20 / 50 / 65 °C (+5 °C pour W, Y, ZR) · 4 saisons 5 / 15 / 45 / 60 · hiver −5 / 5 / 35 / 50 | hypothèses Race Control |
+| Adhérence relative | surface × gomme × ambiance (été < 7 °C ×0,9, hiver > 20 °C ×0,92) × profondeur (mouillé < 3 mm ×0,85, < 1,6 mm ×0,7) × pression | hypothèses Race Control |
+| Distances (ordre de grandeur) | d = v² / (2 µ g), µ sec 0,7–0,9, mouillé 0,4–0,55, réaction 1 s à part ; jamais sur neige ou verglas | [Distance d’arrêt](https://fr.wikipedia.org/wiki/Distance_d%27arr%C3%AAt) |
+
+**Mémoire thermique** : `twrc.tyretherm.v1` garde, par voiture, la dernière heure et la température estimée (aucune position,
+aucun trajet), écrite pendant un trajet suivi au GPS et à l’arrivée. Sans historique, le pneu est supposé froid.
+**Fiches constructeur** : uniquement des données publiées, chacune reliée à sa page source ; les rubriques sans source restent
+« non disponible ». Étiquette UE : dépend de la dimension exacte (registre EPREL), jamais déduite du modèle.
 
 ## Tenue sartoriale
 
@@ -297,6 +331,7 @@ node tests/run-ci.js              # Chromium
 BROWSER=webkit node tests/run-ci.js   # WebKit (moteur de Safari), profil iPhone
 ```
 
+- Onglet Analyse : `test_tyrelab.js` (26 scénarios physiques : nuit, trajet récent, arrêt court ou long, 2 °C contre 20 °C, pluie froide, ville contre autoroute, été contre hiver, chaleur, 0 °C, pluie forte, trajet court ou long, sans trajet, sans météo, pression ou pneu inconnus, fiche partielle ; 8 régressions rejetées) ; `e2e43-analyse.js` (iPhone 11 Pro Max et PC, monte inconnue, mémoire thermique, roulage suivi, hors ligne, données anciennes, météo absente, autres onglets intacts).
 - Onglet Météo : `test_wxdesk.js` (28 scénarios du moteur pur et 8 régressions volontaires rejetées) ; `e2e42-meteo.js` (iPhone 11 Pro Max, PC 1280 et 1920, hors connexion, cache ancien, fournisseur en panne ou absent puis rétabli, aucun ou plusieurs trajets, lien vers Pneus, aucun nouveau fournisseur).
 - Moteur GO / NO GO : `test_engine_verdicts.js` fige des vérités de sécurité (pluie verglaçante, neige et verglas en pneus été, brouillard, rafales, usure, monotonie au froid, pneu inconnu traité comme été) ; `engine-countertests.js` vérifie que dix régressions volontaires du moteur sont rejetées.
 - Moteur (verdicts, chaussée, verglas), widget, puis parcours navigateur avec horloge et réseau simulés : jours de trajet, timeline (avant départ, en cours, après arrivée), lieux, mini-carte, GPS dynamique, Waze, automate du trajet (départ par le mouvement, arrivée à froid, marche, jitter, vitesse dérivée).
