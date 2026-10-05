@@ -617,3 +617,47 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
   .wx > .wx-hero { order: 0; } .wx > .wx-trip { grid-column: auto; order: 1; } .wx > .wx-matb { grid-column: auto; order: 2; } .wx > .wx-tlb { order: 3; }
 }
 @media (max-width: 380px) { .wx-pts li { grid-template-columns: 92px minmax(0, 1fr); } .wx-rf li { grid-template-columns: 22px 80px minmax(0, 1fr) 32px; } }
+
+/* ---------- onglet Analyse : ingénieur pneumatique embarqué (verdict d'abord, explications au toucher) ---------- */
+.va .wrap > .mod:not(#secLab):not(#settings), .va #secCars, .va #banners, .va .foot { display: none !important; }
+.lab { gap: 10px; }
+.lab h3 { font-family: var(--f-disp); font-size: 15px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--fg2); }
+.lab-cars { margin-bottom: 2px; }
+.lab-hero { border-radius: 8px; padding: 12px 14px; border: 1px solid var(--lv); background: radial-gradient(120% 90% at 90% -20%, var(--lv-soft), transparent 65%), linear-gradient(165deg, var(--panel2), var(--panel)); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.lab-tyre { font-size: 15px; overflow-wrap: anywhere; }
+.lab-big { font-family: var(--f-disp); font-weight: 700; font-size: 24px; letter-spacing: .04em; color: var(--lv-t, var(--fg)); line-height: 1.05; }
+.lab-scale { position: relative; display: flex; height: 16px; border-radius: 4px; overflow: visible; margin: 6px 0 2px; }
+.lab-scale i { display: block; height: 100%; }
+.lab-scale .z0 { background: #3b6fd8; border-radius: 4px 0 0 4px; } .lab-scale .z1 { background: #3fa3c9; } .lab-scale .z2 { background: var(--go); } .lab-scale .z3 { background: var(--cau); } .lab-scale .z4 { background: var(--nogo); border-radius: 0 4px 4px 0; }
+.lab-mk { position: absolute; top: -5px; width: 4px; height: 26px; margin-left: -2px; background: var(--fg); border-radius: 2px; box-shadow: 0 0 0 2px var(--bg); }
+.lab-sl { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 10px; letter-spacing: .06em; color: var(--fg2); }
+.lab-why { list-style: none; margin: 0; padding: 0 0 4px; display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--fg2); }
+.lab-bar { border-bottom: 1px dashed var(--line); }
+.lab-bar:last-child { border-bottom: 0; }
+.lab-bar summary { display: grid; grid-template-columns: 96px minmax(0, 1fr) 84px; gap: 8px; align-items: center; min-height: 44px; cursor: pointer; list-style: none; font-size: 13.5px; }
+.lab-bar summary::-webkit-details-marker { display: none; }
+.lab-bar .bars { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 2px; }
+.lab-bar .bars i { height: 10px; border-radius: 2px; background: var(--line); }
+.lab-bar .bars i.on { background: var(--lv); }
+.lab-bar b { text-align: right; color: var(--lv-t); font-size: 13px; }
+.lab-bar .lab-why { padding-left: 4px; }
+.lab-t { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.lab-t th, .lab-t td { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: left; overflow-wrap: anywhere; }
+.lab-t thead th { font-family: var(--f-mono); font-size: 11px; color: var(--fg2); font-weight: 500; }
+.lab-t tbody th { font-weight: 500; color: var(--fg2); }
+.lab-tl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
+.lab-tl li { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; padding: 6px 0 6px 10px; border-left: 3px solid var(--lv); font-size: 13.5px; margin-left: 4px; }
+.lab-tl li.ev { background: var(--lv-soft); border-radius: 0 4px 4px 0; }
+.lab-tl time { color: var(--fg2); font-size: 12.5px; }
+.lab-tag { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .1em; margin: 6px 0 2px; }
+.lab-tag.fab { color: var(--accent); } .lab-tag.est { color: var(--cau-t); }
+.lab-sp { padding: 0 10px 8px 10px; font-size: 13px; }
+.lab-sp ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.lab-sp a { color: var(--accent); }
+.lab-foot { margin-top: 2px; }
+@media (min-width: 760px) {
+  .lab { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .lab > * { grid-column: 1 / -1; }
+  .lab > .lab-brk, .lab > .lab-aq, .lab > .lab-grip, .lab > .lab-cmp { grid-column: auto; }
+}
+@media (max-width: 380px) { .lab-bar summary { grid-template-columns: 80px minmax(0, 1fr) 72px; } }
