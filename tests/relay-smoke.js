@@ -14,7 +14,7 @@ cp('tests/fixtures/preset.fake.json', path.join(FAKE, 'preset.json')); cp('tests
 fs.writeFileSync(path.join(FAKE, '.passphrase'), APP_KEY_TEST); fs.writeFileSync(path.join(FAKE, '.rc_key'), RC_KEY_TEST);
 const b = spawnSync(process.execPath, [path.join(ROOT, 'tools/build.js')], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, RC_PRIVATE: '.ci-relay/fake', RC_OUT: '.ci-relay/dist', RC_ENCRYPTED: '.ci-relay/enc' } });
 if (b.status !== 0) { console.error('Build de test en échec'); process.exit(1); }
-['relay.js', 'engine.js', 'demo.js'].forEach(f => cp('src/' + f, path.join(H, f)));
+['relay.js', 'engine.js', 'demo.js', 'evidence.js'].forEach(f => cp('src/' + f, path.join(H, f)));
 fs.readdirSync(path.join(ROOT, 'tests/relay-harness')).forEach(f => cp('tests/relay-harness/' + f, path.join(H, f)));
 // Programme dense entièrement fictif : 15 rappels sans lieu + 15 #pasdetrajet avant
 // 27 rendez-vous localisés. Les rappels sans lieu doivent être éliminés sans
@@ -63,6 +63,8 @@ check('configuration chiffrée lue', a.obs && a.obs.relay && a.obs.relay.cfg ===
 check('agenda synchronisé', a.obs && a.obs.relay.cal === 'ok' && a.obs.relay.calLegs > 0, a.obs && `${a.obs.relay.calLegs} trajets`);
 check('tous les trajets routés', a.obs && a.obs.relay.calRouted === a.obs.relay.calLegs);
 check('alerte du matin envoyée (jour de trajet, brouillard)', morningPushes(a.out) === 1 && a.obs.morning.sent === 1);
+{ const v2 = a.obs && a.obs.morning && a.obs.morning.v2, keys = v2 ? Object.keys(v2).sort().join(',') : '';
+  check('mode fantôme v2 : verdict brouillard enregistré (niveaux seuls, aucun lieu), notification inchangée', !!v2 && v2.fog >= 2 && keys === 'at,contra,fog,trust,v1fog' && a.obs.morning.v2max >= 2 && morningPushes(a.out) === 1 && /Fantôme v2 : brouillard/.test(a.out), JSON.stringify(v2)); }
 const inv = run('2026-10-05T05:50:00+02:00', 'invalide');
 check('prévision invalide : erreur visible dans obs.json, jamais « sans alerte » silencieux', inv.code === 0 && !!inv.obs && /prévision invalide/.test(inv.obs.relay.err || '') && morningPushes(inv.out) === 0 && !/Conditions sans alerte/.test(inv.out), inv.obs && inv.obs.relay.err);
 const calS = readJ(path.join(H, 'calendar.sealed.json')), cal = tryUnseal(calS, APP_KEY_TEST);

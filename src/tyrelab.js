@@ -77,7 +77,10 @@ function tyreLab(input) {
     const iceLv = x.ice && finite(x.ice.level) ? x.ice.level : 0, fz = [56, 57, 66, 67].includes(n(x.code)), acc = recentRain(m);
     const surf = fz || iceLv >= 2 || (Tr != null && Tr <= 0 && (Pl >= 0.1 || acc >= 0.3)) ? 'ice' : snow ? 'snow' : Pl >= 2 && acc >= 6 ? 'pool' : Pl >= 2 ? 'heavy' : Pl >= 0.2 ? 'rain'
       : acc >= 0.3 || (n(x.RH) != null && x.RH >= 95) ? 'damp' : 'dry';
-    return { x, Ta, Tr, Tenv: (Ta + Tr) / 2, Pl, acc, surf, gust: n(x.gust), rad: n(x.rad), RH: n(x.RH), t: x.t };
+    // signalement terrain de l'utilisateur (≤ 60 min) : aggrave l'état de surface, jamais ne l'améliore ; brouillard = humidité accrue
+    const RK = { ice: 'ice', snow: 'snow', rain: 'rain', wet: 'damp', slippery: 'damp', fog: 'damp', lowvis: 'damp' }, ORD = ['dry', 'damp', 'rain', 'heavy', 'pool', 'snow', 'ice'];
+    let sf = surf; (inp.reports || []).forEach(r => { const t = mins(r.at), k = RK[r.kind]; if (k && Number.isFinite(t) && Math.abs(m - t) <= 60 && ORD.indexOf(k) > ORD.indexOf(sf)) sf = k; });
+    return { x, Ta, Tr, Tenv: (Ta + Tr) / 2, Pl, acc, surf: sf, reported: sf !== surf, gust: n(x.gust), rad: n(x.rad), RH: n(x.RH), t: x.t };
   }
   const SURF_TXT = { dry: 'sec', damp: 'humide', rain: 'pluie', heavy: 'pluie forte', pool: 'eau stagnante probable', snow: 'neige', ice: 'verglas possible' };
   /* ---------- 3. pression (saisie ou estimée, jamais « réelle ») ---------- */
@@ -123,7 +126,7 @@ function tyreLab(input) {
     why.push(`À l’arrêt depuis ${parkedMin < 90 ? Math.round(parkedMin) + ' min' : r1(parkedMin / 60) + ' h'} (dernier état estimé ${r0(hist.T)} °C)`);
   } else { T = eNow.Tenv; phase = 'unknown'; why.push('Historique de roulage inconnu : pneu supposé froid (hypothèse prudente)'); }
   why.unshift(`Air : ${r1(eNow.Ta)} °C`, `Chaussée estimée : ${r1(eNow.Tr)} °C`);
-  why.push(`Pneu ${TYPES[type]}${uhp ? ' haute performance (indice ' + (d.si || 'ZR') + ')' : ''}`, `Chaussée : ${SURF_TXT[eNow.surf]}`);
+  why.push(`Pneu ${TYPES[type]}${uhp ? ' haute performance (indice ' + (d.si || 'ZR') + ')' : ''}`, `Chaussée : ${SURF_TXT[eNow.surf]}${eNow.reported ? ' (signalée par vous)' : ''}`);
   /* ---------- 5. incertitude, état, fenêtre ---------- */
   const stale = finite(inp.ageMin) && inp.ageMin > 90;
   // l'incertitude sur l'état de départ inconnu s'estompe avec la distance roulée (même constante que l'échauffement)

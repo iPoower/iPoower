@@ -158,6 +158,14 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(s.env.surf, 'snow'); assert.equal(s.grip.dist, null);   // neige : indice relatif seulement
     assert(s.grip.mu < a.grip.mu && a.grip.mu <= w.grip.mu);
   });
+  test('signalement terrain : verglas signalé aggrave la surface, brouillard = humidité accrue seulement', () => {
+    const ice = lab({ now: ts('07:00'), car: car(), hours: H({ T: 3, Tr: 2 }), reports: [{ kind: 'ice', at: ts('06:50') }] });
+    assert.equal(ice.env.surf, 'ice'); assert.equal(ice.grip.word, 'Très dégradé'); assert(ice.thermal.why.some(x => /signalée par vous/.test(x)));
+    const fog = lab({ now: ts('07:00'), car: car(), hours: H({ T: 8, Tr: 8 }), reports: [{ kind: 'fog', at: ts('06:55') }] });
+    assert.equal(fog.env.surf, 'damp');
+    const old = lab({ now: ts('09:00'), car: car(), hours: H({ T: 8, Tr: 8 }), reports: [{ kind: 'ice', at: ts('06:50') }] });
+    assert.equal(old.env.surf, 'dry');
+  });
   test('déterminisme : mêmes entrées, même résultat, entrées intactes', () => {
     const input = { now: ts('10:20'), car: car(), hours: H(), drive: drive('10:00', 'route'), history: { at: ts('09:00'), T: 25 } };
     const before = JSON.stringify(input); assert.deepEqual(plain(ctx.lab(input)), plain(ctx.lab(input))); assert.equal(JSON.stringify(input), before);

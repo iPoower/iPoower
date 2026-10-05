@@ -28,7 +28,7 @@ fs.writeFileSync(path.join(W, 'widget.js'), rd('src/widget.js').replace(/const C
 const NM = fs.existsSync(path.join(ROOT, 'node_modules')) ? path.join(ROOT, 'node_modules') : process.env.NODE_MODULES_DIR;
 if (NM) fs.symlinkSync(NM, path.join(W, 'node_modules'), 'dir');
 // jeu de test de l'agenda : le vrai relais tourne sur un agenda fictif, avec la date simulée du scénario
-['relay.js', 'engine.js', 'demo.js'].forEach(f => cp('src/' + f, path.join(H, f)));
+['relay.js', 'engine.js', 'demo.js', 'evidence.js'].forEach(f => cp('src/' + f, path.join(H, f)));
 fs.readdirSync(path.join(ROOT, 'tests/relay-harness')).forEach(f => cp('tests/relay-harness/' + f, path.join(H, f)));
 fs.copyFileSync(path.join(DIST, 'relay-config.sealed.json'), path.join(H, 'relay-config.sealed.json'));
 const rel = spawnSync(process.execPath, ['-r', './mock_tt.js', 'relay.js'], { cwd: H, encoding: 'utf8', timeout: 180e3,
@@ -68,6 +68,8 @@ SUITE.push(['test_tyrelab.js', 'onglet Analyse : thermique, chauffe, refroidisse
   ['e2e43-analyse.js', 'onglet Analyse : monte réelle, mémoire thermique, roulage, hors ligne, iPhone et PC', true]);
 SUITE.push(['test_placectx.js', 'lieu courant : hiérarchie de confiance, garde VPN, fin de confirmation et contre-tests', false],
   ['e2e44-place.js', 'lieu courant : PC au travail + VPN, hors ligne, rechargement, départ, retour, GPS légitime', true]);
+SUITE.push(['test_evidence.js', 'moteur de preuves v2 : brouillard, contradictions, pire crédible, confiance par phénomène, incident du 5 octobre', false],
+  ['e2e45-evidence.js', 'moteur de preuves v2 : carte, signalement terrain, mode fantôme ou actif, hors ligne, iPhone', true]);
 const verdict = (code, out) => {
   const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
   if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');

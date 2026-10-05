@@ -7,7 +7,7 @@
 const fs = require('fs'), path = require('path');
 const [src, dst] = process.argv.slice(2);
 if (!src || !dst || !fs.existsSync(path.join(src, 'index.html')) || !fs.existsSync(dst)) { console.error('usage : deploy-copy.js <dist> <gh-pages/race-control>'); process.exit(2); }
-const SITE = ['index.html', 'engine.js', 'relay.js', 'sw.js', 'widget.js', 'manifest.webmanifest', 'relay-config.sealed.json', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png'];
+const SITE = ['index.html', 'engine.js', 'evidence.js', 'relay.js', 'sw.js', 'widget.js', 'manifest.webmanifest', 'relay-config.sealed.json', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png'];
 const RELAY_OWNED = ['obs.json', 'calendar.sealed.json'];
 const same = (a, b) => fs.existsSync(b) && fs.readFileSync(a).equals(fs.readFileSync(b));
 const changed = [];

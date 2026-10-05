@@ -673,3 +673,16 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .place .pl-src b { color: var(--fg); }
 .place .pl-act { display: flex; flex-wrap: wrap; gap: 6px; }
 .place > span { min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- moteur de preuves v2 : carte expérimentale de l'onglet Météo ---------- */
+.ev .ev-b { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+.ev-crit { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--lv); border-left-width: 4px; border-radius: 5px; background: var(--lv-soft); }
+.ev-crit b { color: var(--lv-t); font-family: var(--f-disp); font-size: 18px; letter-spacing: .04em; }
+.ev-contra { padding: 6px 10px; border: 1px dashed var(--risk); border-radius: 5px; color: var(--risk-t); font-size: 13px; font-weight: 600; }
+.ev-ph { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.ev-ph li { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, 0.9fr); gap: 6px; font-size: 13px; align-items: baseline; border-bottom: 1px dashed var(--line); padding: 3px 0; }
+.ev-ph li b { font-weight: 500; overflow-wrap: anywhere; } .ev-ph li.lv2 b, .ev-ph li.lv3 b { color: var(--lv-t); }
+.ev-t { font-size: 12px; color: var(--fg2); }
+.ev-l { display: inline-block; min-width: 16px; text-align: center; font-family: var(--f-mono); font-size: 10.5px; border: 1px solid var(--line2); border-radius: 3px; }
+.ev-rep .chips { gap: 6px; }
+.ev .btn, .ev summary { min-height: 44px; }
