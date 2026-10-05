@@ -602,6 +602,8 @@ function computeCtx() {
 }
 
 /* ---------- rendu : statut, lieux, bandeaux ---------- */
+// heure de la météo réellement utilisée pour le lieu affiché (et non du dernier succès sur un autre lieu)
+const dataAt = () => (RAW[UI.loc] && RAW[UI.loc].t) || lastOk;
 function mainMode() { const m = M[UI.loc]; return locHasCoords(allLocs().find(l => l.id === UI.loc)) && m ? m.mode : null; }
 function renderStatus() {
   const mode = DEMO.on ? 'demo' : mainMode(), off = !DEMO.on && offlineNow();
@@ -610,7 +612,7 @@ function renderStatus() {
   if (mode === 'demo') u = 'Simulation : aucune donnée réelle';
   else if (off && RAW[UI.loc]) u = 'Données en cache du ' + hmLocal(RAW[UI.loc].t) + ' · figées jusqu’au retour du réseau';
   else if (off) u = 'Aucune donnée météo en cache · reconnexion automatique';
-  else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(lastOk) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
+  else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(dataAt()) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
   else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
   else u = 'Aucune donnée météo';
   if (busy && !off && mode !== 'demo') u += ' <span class="sync">· actualisation…</span>';   // HORS LIGNE → actualisation → LIVE
@@ -641,7 +643,7 @@ function renderSrc() {
   const obs = m.cur.time ? m.cur.time.slice(11, 16) : '—';
   const srcHtml = DEMO.on
     ? `Source : <b>scénario simulé « ${esc(DEMO_SCN[DEMO.scn].name)} »</b>. Les valeurs ne viennent d’aucun capteur ni d’aucun service météo.`
-    : `${lastOk && m.mode === 'live' ? 'Dernière mise à jour : <b>' + hmLocal(lastOk) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : ' (modèle de base, AROME indisponible)'} · modèles météo, pas une station · dernière observation : <b>${obs}</b> heure locale (valeurs actuelles du modèle, renouvelées toutes les 15 min) · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
+    : `${lastOk && m.mode === 'live' ? 'Dernière mise à jour : <b>' + hmLocal(dataAt()) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : ' (modèle de base, AROME indisponible)'} · modèles météo, pas une station · dernière observation : <b>${obs}</b> heure locale (valeurs actuelles du modèle, renouvelées toutes les 15 min) · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
   const el = $('#srcline'), open = el.querySelector('details') && el.querySelector('details').open;
   el.innerHTML = `<details${open ? ' open' : ''}><summary>ⓘ Sources et fraîcheur des données${lastOk && m.mode === 'live' ? ' · MAJ ' + hmLocal(lastOk) : ''}</summary><div>${srcHtml}</div></details>`;
 }
@@ -2419,13 +2421,15 @@ async function loadCalendar() {
   } catch (e) { /* code différent ou cache illisible */ }
   finally { if (!CALDONE) { CALDONE = true; renderBrf(); } }
 }
+// météo des lieux d'agenda et des points de trajet : renouvelée à chaque cycle « auto 5 min » (même état que le lieu affiché)
+const PT_TTL = 4 * 60e3;
 async function calModel(ev) {
   if (!calendarSpatial(ev) || !locHasCoords(ev)) return null;
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2);
-  if (CALM[id] && Date.now() - CALM[id].t < 30 * 60e3) return CALM[id].m;
+  if (CALM[id] && Date.now() - CALM[id].t < PT_TTL) return CALM[id].m;
   if (CALBUSY.has(id)) return null; CALBUSY.add(id);
   try { const p = await fetchJSON(`${API}?latitude=${ev.lat}&longitude=${ev.lon}&hourly=${Q_HR}&daily=${Q_DY}&timezone=auto&past_days=1&forecast_days=10`, 12000); const bad = validForecast(p); if (bad) throw new Error(bad); CALM[id] = { t: Date.now(), m: makeModel(p, 'live', { id, lat: ev.lat, lon: ev.lon, name: ev.label || ev.loc }) }; }
-  catch (e) { CALM[id] = { t: Date.now() - 25 * 60e3, m: null }; }
+  catch (e) { CALM[id] = { t: Date.now() - PT_TTL + 2 * 60e3, m: null }; }
   CALBUSY.delete(id); renderCal(); renderTenue(); return CALM[id].m;
 }
 function calTrip(ev) {
@@ -2452,13 +2456,13 @@ async function fetchLeg(leg) {
     let js = await fetchJSON(`${API}?latitude=${pts.map(p => p.lat).join(',')}&longitude=${pts.map(p => p.lon).join(',')}&hourly=${Q_HR}&timezone=Europe%2FParis&past_days=1&forecast_days=10`, 15000);
     if (!Array.isArray(js)) js = [js];
     LEGM[k] = { t: Date.now(), models: js.map((p, i) => { try { return validForecast(p) ? null : makeModel(p, 'live', pts[i]); } catch (e) { return null; } }) };
-  } catch (e) { LEGM[k] = { t: Date.now() - 25 * 60e3, models: null }; }
+  } catch (e) { LEGM[k] = { t: Date.now() - PT_TTL + 2 * 60e3, models: null }; }
   LEGBUSY.delete(k); clearTimeout(fetchLeg.t); fetchLeg.t = setTimeout(() => { renderCal(); renderBrf(); renderTenue(); }, 150);
 }
 function legEval(leg) {
   if (leg.originPending || !locHasCoords(leg.from) || !locHasCoords(leg.to)) return { loading: true, originPending: true };
   const k = legKey(leg), c = LEGM[k];
-  if (!c || Date.now() - c.t > 30 * 60e3) { fetchLeg(leg); if (!c) return { loading: true }; }
+  if (!c || Date.now() - c.t > PT_TTL) { fetchLeg(leg); if (!c) return { loading: true }; }
   if (!c.models) return { err: true };
   const seq = legSeq(c.models, legPoints(leg), leg.dep, leg.min); if (!seq.length) return { beyond: true };
   const res = TCARS().map(car => ({ c: car, w: windowAssess(car, seq, 'trip') })).filter(r => r.w);
