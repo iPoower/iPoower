@@ -573,6 +573,19 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .wx-hero { border-radius: 8px; padding: 12px 14px; border: 1px solid var(--lv); background: radial-gradient(120% 90% at 90% -20%, var(--lv-soft), transparent 65%), linear-gradient(165deg, var(--panel2), var(--panel)); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .wx-hk { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-family: var(--f-mono); font-size: 11px; letter-spacing: .06em; color: var(--fg2); text-transform: uppercase; }
 .wx-hk span { min-width: 0; overflow-wrap: anywhere; }
+.wx-now { margin: 5px 0 7px; padding: 11px 13px; border-radius: 10px; background: #fff; color: #111827; border: 1px solid rgba(17, 24, 39, .10); box-shadow: 0 5px 16px rgba(0, 0, 0, .12); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
+.wx-now-main { display: flex; align-items: flex-start; min-width: 0; }
+.wx-now-v { font-family: var(--f-disp); font-size: clamp(50px, 14vw, 68px); line-height: .82; font-weight: 700; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.wx-now-u { font-family: var(--f-disp); font-size: 21px; line-height: 1; font-weight: 600; margin: 1px 0 0 3px; color: #374151; }
+.wx-now-side { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wx-now-k { font-size: 10.5px; line-height: 1.2; letter-spacing: .09em; text-transform: uppercase; color: #6b7280; font-weight: 700; }
+.wx-now-feel { font-family: var(--f-mono); font-size: 14px; color: #111827; font-weight: 600; }
+.wx-now-src { font-size: 10.5px; line-height: 1.25; color: #6b7280; }
+@media (max-width: 360px) {
+  .wx-now { gap: 9px; padding: 10px 11px; }
+  .wx-now-v { font-size: 48px; }
+  .wx-now-u { font-size: 18px; }
+}
 .wx-ht { font-family: var(--f-disp); font-weight: 700; font-size: clamp(24px, 7vw, 32px); line-height: 1.05; letter-spacing: .03em; color: var(--lv-t); text-transform: uppercase; margin: 2px 0 2px; overflow-wrap: anywhere; }
 .wx-hl { font-size: 14px; color: var(--fg); }
 .wx-h1 { font-family: var(--f-mono); font-size: 15px; }
@@ -2190,6 +2203,7 @@ function wxDesk(input) {
   const level = dominant ? dominant.lv : 0;
   const cur = (input && input.cur) || {};
   const T = n(cur.T) ?? n(nowRow.x.T), Tapp = n(cur.Tapp) ?? n(nowRow.x.Tapp);
+  const currentSource = n(cur.T) != null || n(cur.Tapp) != null ? 'current' : 'hourly';
   const tempLine = `${T == null ? '—' : r0(T)} °C · ressenti ${Tapp == null ? '—' : r0(Tapp)} °C`;
   let title, lines = [];
   const inMin = m => { const d = Math.max(0, Math.round(m - nowM)); return d < 60 ? `dans ${d} min` : `dans ${Math.floor(d / 60)} h${d % 60 ? ' ' + String(d % 60).padStart(2, '0') : ''}`; };
@@ -2363,7 +2377,7 @@ function wxDesk(input) {
   if (matters.length < 5 && real.some(s => (s.id === 'rain' || s.id === 'snow') && (s.start - nowM <= 12 * 60 || tripsOf(s).length))) matters.push({ lv: 0, text: 'Prévoir une couche imperméable' });
   if (!matters.length) matters.push({ lv: 0, text: `Rien de notable d’ici ${hm(endTs)} : conditions stables` });
 
-  return { level, hero, nextChange: nextChange ? { t: hm(atMin(nextChange.m)), text: nextChange.text, lv: nextChange.lv } : null,
+  return { level, hero, current: { T, Tapp, source: currentSource }, nextChange: nextChange ? { t: hm(atMin(nextChange.m)), text: nextChange.text, lv: nextChange.lv } : null,
     window: { from: hm(now), to: hm(endTs), end: endTs }, timeline: { moments: tl, strip }, matters: matters.slice(0, 5), phen, road, trip };
   function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 }
@@ -3228,6 +3242,93 @@ const TripCancel = (() => {
   return { KEY, UNDO_MS, EVENT_MARGIN_MS, eventId, workId, identifiable, clean, save, load, has, cancel, undo, undoable, eventExpiration, workExpiration, localEpoch, rebuild, selectedLegs, nonSpatialNeedsRebuild };
 })();
 
+// Accès aux API Open-Meteo : concurrence bornée, requêtes identiques partagées et pause HTTP 429.
+// Seuls le délai, sa catégorie et le nombre de refus sont persistés : aucune URL ni coordonnée.
+function weatherRequestManager(options) {
+  const net = options.fetch, now = options.now || (() => Date.now());
+  const later = options.setTimeout || setTimeout, cancel = options.clearTimeout || clearTimeout;
+  const read = options.read || (() => null), write = options.write || (() => {});
+  const queue = [], pending = new Map(); let active = 0, limit = { until: 0, failures: 0, kind: '' };
+  const owns = url => { try { return /(^|\.)open-meteo\.com$/.test(new URL(url).hostname); } catch (e) { return false; } };
+  function state() {
+    try {
+      const s = JSON.parse(read() || 'null');
+      if (s && Number.isFinite(s.until) && s.until > limit.until && s.until <= now() + 7 * 86400e3)
+        limit = { until: s.until, failures: Math.max(1, Math.min(8, Math.floor(+s.failures || 1))), kind: ['minute', 'hour', 'day', 'concurrent', 'limited'].includes(s.kind) ? s.kind : 'limited' };
+    } catch (e) { /* stockage indisponible ou illisible : la pause en mémoire reste valable */ }
+    return { ...limit, active, queued: queue.filter(j => !j.done).length };
+  }
+  function save() { try { write(JSON.stringify(limit)); } catch (e) { /* stockage indisponible */ } }
+  function limitedError() {
+    const e = new Error('HTTP 429 · fournisseur météo limité · nouvelle tentative après la pause');
+    e.status = 429; e.retryAt = state().until; return e;
+  }
+  function abortError(replaced = false) { const e = new Error(replaced ? 'Requête météo remplacée' : 'Délai météo dépassé'); e.name = 'AbortError'; if (replaced) e.cancelled = true; return e; }
+  const priority = url => { const u = new URL(url); return u.pathname === '/v1/forecast' && u.searchParams.has('current') ? 0 : u.searchParams.has('minutely_15') ? 1 : 2; };
+  async function refuse(response) {
+    const at = now(), previous = state(); let reason = '', header = null;
+    try { header = response.headers.get('Retry-After'); } catch (e) { /* non exposé par CORS */ }
+    const failures = previous.until > at ? previous.failures : Math.min(8, previous.failures + 1);
+    let delay = null;
+    if (header != null && /^\d+$/.test(String(header).trim())) delay = Number(header) * 1000;
+    else if (header) { const date = Date.parse(header); if (Number.isFinite(date) && date > at) delay = date - at; }
+    if (!Number.isFinite(delay) || delay < 0) delay = null;
+    const backoff = Math.min(15 * 60e3, 60e3 * 2 ** (failures - 1));
+    // Ferme la porte dès le statut 429, avant de lire un éventuel corps lent ou absent.
+    limit = { until: Math.max(previous.until, at + Math.max(1000, delay == null ? backoff : delay)), failures, kind: 'limited' }; save();
+    try { const body = await response.json(); reason = typeof body.reason === 'string' ? body.reason.toLowerCase() : ''; } catch (e) { /* corps absent */ }
+    const kind = /daily|per day|tomorrow/.test(reason) ? 'day' : /hourly|next hour/.test(reason) ? 'hour' : /minutely|next minute/.test(reason) ? 'minute' : /concurrent/.test(reason) ? 'concurrent' : 'limited';
+    const fallback = kind === 'day' ? 86400e3 : kind === 'hour' ? 3600e3 : backoff;
+    limit = { until: Math.max(state().until, at + Math.max(1000, delay == null ? fallback : delay)), failures, kind }; save();
+    throw limitedError();
+  }
+  function finish(job, error, value) {
+    if (job.done) return; job.done = true; cancel(job.timer);
+    if (pending.get(job.url) === job) pending.delete(job.url);
+    if (error) job.reject(error); else job.resolve(value);
+  }
+  async function run(job) {
+    try {
+      if (state().until > now()) throw limitedError();
+      const r = await net(job.url, { signal: job.ctl.signal, cache: 'no-store' });
+      if (job.done || job.ctl.signal.aborted) throw abortError();
+      if (r.status === 429) await refuse(r);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const value = await r.json();
+      if (job.done || job.ctl.signal.aborted) throw abortError();
+      // Une réponse lancée avant le refus ne doit pas effacer une pause encore active.
+      if (state().until <= now() && limit.failures) { limit = { until: 0, failures: 0, kind: '' }; save(); }
+      finish(job, null, value);
+    } catch (e) { finish(job, e); }
+    finally { active--; pump(); }
+  }
+  function pump() {
+    while (queue.length && active < 2) {
+      const job = queue.shift(); if (job.done) continue;
+      if (state().until > now()) { finish(job, limitedError()); continue; }
+      active++; run(job);
+    }
+  }
+  function cancelGroup(group) {
+    for (const job of pending.values()) {
+      if (!job.groups.delete(group) || job.groups.size) continue;
+      job.ctl.abort(); finish(job, abortError(true));
+    }
+    pump();
+  }
+  function get(url, ms = 12000, group = 'shared') {
+    if (pending.has(url)) { const job = pending.get(url); job.groups.add(group); return job.promise; }
+    if (state().until > now()) return Promise.reject(limitedError());
+    const job = { url, priority: priority(url), ctl: new AbortController(), done: false, groups: new Set([group]) };
+    job.promise = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject; });
+    pending.set(url, job);
+    // Le délai couvre aussi la file d'attente : une panne ne bloque pas busy indéfiniment.
+    job.timer = later(() => { job.ctl.abort(); finish(job, abortError()); pump(); }, ms);
+    queue.push(job); queue.sort((a, b) => a.priority - b.priority); pump(); return job.promise;
+  }
+  return { owns, get, state, cancelGroup };
+}
+
 /* ===================== APPLICATION ===================== */
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3413,7 +3514,7 @@ const urlNow = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&minutely_15=pre
 async function fetchEns(l) {
   if (!locHasCoords(l)) return null;
   for (const mdl of ENS_MODELS) {
-    try { const p = await fetchJSON(urlEns(l, mdl), 20000); if (p && p.hourly && Object.keys(p.hourly).some(k => /_member\d+$/.test(k))) return { p, model: mdl, t: Date.now() }; } catch (e) { /* modèle suivant */ }
+    try { const p = await fetchJSON(urlEns(l, mdl), 20000, l.gps ? 'gps' : 'shared'); if (p && p.hourly && Object.keys(p.hourly).some(k => /_member\d+$/.test(k))) return { p, model: mdl, t: Date.now() }; } catch (e) { if (e.status === 429 || e.cancelled) return null; /* modèle suivant */ }
   }
   return null;
 }
@@ -3463,7 +3564,10 @@ const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, cha
   view: ['meteo', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
   outfitOccasion: ['office', 'walk'].includes(lsGet('twrc.outfit.occasion')) ? lsGet('twrc.outfit.occasion') : 'outing' };
 
-async function fetchJSON(url, ms) {
+const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
+  read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
+async function fetchJSON(url, ms, group = 'shared') {
+  if (WEATHER_REQUESTS.owns(url)) return WEATHER_REQUESTS.get(url, ms || 12000, group);
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms || 12000);
   try {
     const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
@@ -3486,8 +3590,9 @@ function loadCache() {
 async function loadLoc(l) {
   if (!locHasCoords(l)) throw new Error('Coordonnées du lieu à renseigner.');
   const origin = { lat: l.lat, lon: l.lon }, gen = l.gps ? ++gpsWeatherGen : null;
-  if (l.gps) gpsWeatherOrigin = origin;
-  const [b, ar, nc] = await Promise.allSettled([fetchJSON(urlFor(l)), fetchJSON(urlArome(l)), fetchJSON(urlNow(l))]);
+  if (l.gps) { WEATHER_REQUESTS.cancelGroup('gps'); gpsWeatherOrigin = origin; }
+  const group = l.gps ? 'gps' : 'shared';
+  const [b, ar, nc] = await Promise.allSettled([fetchJSON(urlFor(l), 12000, group), fetchJSON(urlArome(l), 12000, group), fetchJSON(urlNow(l), 12000, group)]);
   // Validation AVANT toute écriture : une réponse 200 vide, tronquée ou d'un portail ne remplace jamais la dernière météo valide.
   const invalid = b.status === 'fulfilled' ? validForecast(b.value) : null;
   if (b.status !== 'fulfilled' || invalid) { if (l.gps && gen === gpsWeatherGen) gpsWeatherOrigin = null; throw b.status !== 'fulfilled' ? b.reason : new Error('réponse météo invalide : ' + invalid); }
@@ -3865,10 +3970,12 @@ function renderStatus() {
   else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(dataAt()) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
   else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
   else u = 'Aucune donnée météo';
+  const pause = WEATHER_REQUESTS.state(), limited = !DEMO.on && pause.until > Date.now();
+  if (limited && !off) u += ' · fournisseur météo limité · reprise automatique après ' + new Date(pause.until).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
   if (busy && !off && mode !== 'demo') u += ' <span class="sync">· actualisation…</span>';   // HORS LIGNE → actualisation → LIVE
   if (typeof renderDiag === 'function') renderDiag();
   $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
-    <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${busy ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
+    <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${busy || limited ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
 }
 function renderLocChips() {
   const gpsChip = GPS ? `<button class="chip gpsc" data-act="loc" data-id="gps" aria-pressed="${UI.loc === 'gps'}">📍 ${esc(GPS.name)}${GPS.acc ? ` <small>±${GPS.acc < 1000 ? GPS.acc + ' m' : (GPS.acc / 1000).toFixed(1) + ' km'}</small>` : ''}</button>`
@@ -3908,13 +4015,22 @@ function renderNotice() {
       <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button></form><span class="sub">Accepte « Enregistrer le mot de passe » : l’iPhone le remplira ensuite avec Face ID.</span><span class="sub">Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button></span><span class="sub" id="unlockMsg"></span></span></div>` : '';
   const setup = lock || (CFG_IMPORTED ? `<div class="note lv0"><b>CONFIGURÉ</b><span>Tes lieux et tes voitures sont enregistrés sur cet appareil. Ajoute la page à l’écran d’accueil depuis ce lien.</span></div>`
     : !S.configured ? `<div class="note lvx"><b>À CONFIGURER</b><span>Renseigne tes lieux et tes voitures dans les paramètres. Ils restent sur cet appareil. <button class="btn sm" data-act="goset-cfg">Ouvrir les paramètres</button></span></div>` : '');
-  if (m && CX) { el.innerHTML = setup; return; }
+  // Une réponse météo peut arriver entre la saisie et la validation du code.
+  // Garder le formulaire en place conserve la valeur, le focus et le remplissage du gestionnaire de mots de passe.
+  const setContent = extra => {
+    const form = el.querySelector('.unlock');
+    if (lock && form) {
+      Array.from(el.childNodes).forEach(node => { if (node !== form) node.remove(); });
+      if (extra) form.insertAdjacentHTML('afterend', extra);
+    } else el.innerHTML = setup + extra;
+  };
+  if (m && CX) { setContent(''); return; }
   const err = ERR[UI.loc];
   // le déverrouillage reste possible quand la météo manque (premier lancement hors ligne, fournisseur en panne)
-  el.innerHTML = setup + `<div class="notice"><h3>${busy ? 'Chargement de la météo…' : 'Météo indisponible'}</h3>
+  setContent(`<div class="notice"><h3>${busy ? 'Chargement de la météo…' : 'Météo indisponible'}</h3>
     <p class="muted">${busy ? 'Interrogation d’Open-Meteo.' : `Open-Meteo n’a pas répondu${err ? ' (' + esc(err) + ')' : ''}. Aucune valeur n’est inventée : l’analyse reste vide tant que les données réelles manquent. Cela arrive hors ligne ou quand le réseau bloque l’accès aux services externes.`}</p>
     ${window.TWRC_LIVE_URL ? `<p><a href="${esc(window.TWRC_LIVE_URL)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Ouvrir la version en temps réel ↗</a></p>` : ''}
-    <div class="chips"><button class="btn pri" data-act="refresh">Réessayer</button><button class="btn" data-act="demo" data-scn="froid">Voir la démo (données simulées)</button></div></div>`;
+    <div class="chips"><button class="btn pri" data-act="refresh">Réessayer</button><button class="btn" data-act="demo" data-scn="froid">Voir la démo (données simulées)</button></div></div>`);
 }
 function renderBanners() {
   const el = $('#banners'); if (!CX) { el.innerHTML = ''; return; }
@@ -4039,11 +4155,19 @@ function renderWx() {
   const dayLbl = day => { const n = dayDiff(today, day); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(day); };
   const mode = DEMO.on ? 'DÉMO · simulé' : offlineNow() ? 'HORS LIGNE' : m.mode === 'live' ? 'LIVE' : 'CACHE';
   const age = input.ageMin == null ? '' : ` · ${freshState(input.ageMin)} · ${ageTxt(input.ageMin)}`;
-  const h = d.hero;
+  const h = d.hero, nowWx = d.current || {}, hasNowTemp = Number.isFinite(nowWx.T);
+  const heroLines = h.lines.filter(x => !(hasNowTemp && /°C · ressenti .* °C/.test(x)));
+  const currentCard = hasNowTemp ? `<div class="wx-now" aria-label="Température actuelle">
+      <div class="wx-now-main"><span class="wx-now-v num">${f1(nowWx.T)}</span><span class="wx-now-u">°C</span></div>
+      <div class="wx-now-side"><span class="wx-now-k">Température actuelle</span>
+        <b class="wx-now-feel">Ressenti ${Number.isFinite(nowWx.Tapp) ? f1(nowWx.Tapp) + ' °C' : '—'}</b>
+        <span class="wx-now-src">${nowWx.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours'}</span></div>
+    </div>` : '';
   const hero = `<div class="wx-hero lv${h.level}" role="status" aria-live="polite">
     <div class="wx-hk"><span>${esc(l ? l.name : '')}</span><span class="wx-age">${mode}${age}</span></div>
+    ${currentCard}
     <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.title)}</h2>
-    ${h.lines.map((x, i) => `<p class="${i ? 'wx-hl' : 'wx-hl wx-h1'}">${esc(x)}</p>`).join('')}
+    ${heroLines.map((x, i) => `<p class="${i ? 'wx-hl' : 'wx-hl wx-h1'}">${esc(x)}</p>`).join('')}
     ${h.stale ? `<p class="wx-stale">⚠ Prévisions reçues il y a ${esc(ageTxt(input.ageMin))} : verdict indicatif, actualise dès que possible.</p>` : ''}</div>`;
   // prochain trajet
   const t = d.trip;
@@ -4606,7 +4730,7 @@ async function fetchAQ(l) {
   if (AQBUSY.has(l.id) && (!l.gps || previous && gpsSourceCurrent(previous.origin, previous.gen))) return;
   const request = { origin: { ...l }, gen }; AQREQ.set(l.id, request); AQBUSY.add(l.id);
   try {
-    const p = await fetchJSON(urlAQ(l), 12000); if (!p || !p.hourly) throw new Error('réponse invalide');
+    const p = await fetchJSON(urlAQ(l), 12000, l.gps ? 'gps' : 'shared'); if (!p || !p.hourly) throw new Error('réponse invalide');
     if (gpsSourceCurrent(request.origin, gen)) { AQRAW[l.id] = { p, t: Date.now() }; delete AQERR[l.id]; }
   } catch (e) { if (gpsSourceCurrent(request.origin, gen)) AQERR[l.id] = { t: Date.now(), msg: e.message }; }
   finally {
@@ -6568,6 +6692,7 @@ function diagRows() {
     ['Dernière actualisation', lastOk ? `${hmLocal(lastOk)} (il y a ${ageTxt(ageOf(lastOk))})` : 'aucune réussie' + (lastTry ? ` · tentative ${hmLocal(lastTry)}` : '')],
     ['Météo du lieu affiché', r ? `${freshState(wAge)} · ${r.mode === 'live' ? 'LIVE' : r.mode === 'cache' ? 'cache' : r.mode} · ${ageTxt(wAge)}${ERR[UI.loc] ? ' · erreur : ' + noUrl(ERR[UI.loc]) : ''}` : 'UNAVAILABLE' + (ERR[UI.loc] ? ' · ' + noUrl(ERR[UI.loc]) : '')],
     ['Lieux avec météo', `${withData}/${allLocs().length}`],
+    ['API météo', (() => { const p = WEATHER_REQUESTS.state(); return p.until > Date.now() ? `HTTP 429 · pause jusqu’à ${hmLocal(p.until)} · ${p.kind}` : `disponible · ${p.active}/2 requêtes actives · ${p.queued} en attente`; })()],
     ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
     ['Agenda', CAL ? `${freshState(calAge)} · relais il y a ${ageTxt(calAge)} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}` : CALDONE ? 'indisponible' : 'chargement…'],
     ['Stockage local', `${n} clés · ${Math.round(bytes / 1024)} Ko`],
@@ -6632,7 +6757,7 @@ document.addEventListener('click', async e => {
   else if (a === 'outfit-occasion') { UI.outfitOccasion = ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing'; lsSet('twrc.outfit.occasion', UI.outfitOccasion); renderTenue(); }
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
-  else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
+  else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
   else if (a === 'loc') { UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false; renderAll(); }
   else if (a === 'locs-toggle') { UI.locsOpen = !UI.locsOpen; renderLocChips(); }
   else if (a === 'tire') { const c = S.cars.find(x => x.id === t.dataset.car); switchTire(c, t.dataset.type); const ci = S.cars.indexOf(c); markEdit(`cars.${ci}.tire`); markEdit(`cars.${ci}.sets`); saveSettings(); renderSettings(); softRender(); }
