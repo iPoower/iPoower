@@ -31,6 +31,8 @@ let cfg = null; try { cfg = openCfg(); } catch (e) { console.log('Configuration 
 const ctx = { console, Math, Date, Intl, Map, Set, JSON }; vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(dir, 'engine.js'), 'utf8') + ';this.E={makeModel,mergeArome,summarize,windowAssess,LV,ICE_LV,TYPE_LABEL,hasTires,f1,f0,addMin,toMin,nowIn,distKm,applyObs,wxFr,legPoints,legSeq,legCritical,isCommuteDay,validForecast};', ctx);
 const E = ctx.E;
+// moteur de preuves v2 (mode fantôme) : chargé s'il est publié avec le relais ; son absence ne change rien au relais
+let EV = null; try { const f = path.join(dir, 'evidence.js'); if (fs.existsSync(f)) { vm.runInContext(fs.readFileSync(f, 'utf8') + ';this.EV={evidenceEngine};', ctx); EV = ctx.EV; } } catch (e) { console.log('Moteur v2 indisponible', e.message); }
 const obsFile = path.join(dir, 'obs.json');
 const prev = fs.existsSync(obsFile) ? JSON.parse(fs.readFileSync(obsFile, 'utf8')) : { stations: {}, notified: null };
 
@@ -330,6 +332,16 @@ async function calendarSync(out) {
       const res = cfg.cars.filter(E.hasTires).map(c => ({ c, w: E.windowAssess(c, seq, 'trip') })).filter(r => r.w);
       const worst = res.reduce((m, r) => Math.max(m, r.w.level), 0);
       const fog = sum.visMin != null && sum.visMin < 500, ice = sum.iceLevel || 0;
+      // MODE FANTÔME v2 : verdict brouillard par preuves (observations + physique + modèle), enregistré dans obs.json (niveaux seuls,
+      // aucun lieu), sans effet sur les notifications. L'historique de gh-pages devient le journal de comparaison v1 / v2.
+      if (EV) try {
+        const off = (B.payload && B.payload.utc_offset_seconds) || 0, hDep = dep.slice(0, 13) + ':00';
+        const points = [...As, B].map((Mx, k) => { const i = Mx.byTime.get(hDep); return i == null ? null : { lat: Mx.loc.lat, lon: Mx.loc.lon, t: hDep, ms: Date.parse(hDep + ':00Z') - off * 1000, label: k === As.length ? 'arrivée' : 'départ', x: Mx.hs[i] }; }).filter(Boolean);
+        const stations = Object.values(out.stations).map(st => ({ id: st.id, name: st.name, lat: st.lat, lon: st.lon, obs: st.hist || [] }));
+        const v2 = EV.evidenceEngine({ now: Date.now(), points, stations, reports: [], location: { trust: 'Fiable' }, fresh: { modelAgeMin: 0 }, onTrip: true });
+        if (v2) { const M0 = out.morning, w = v2.worst; M0.v2 = { at: now, fog: w.lv, trust: ['faible', 'moyenne', 'élevée'][w.trust], contra: !!v2.contradiction, v1fog: fog ? 2 : (sum.visMin != null && sum.visMin < 1000 ? 1 : 0) };
+          M0.v2max = Math.max(M0.v2max == null ? -1 : M0.v2max, w.lv); console.log(`Fantôme v2 : brouillard ${w.lv} (${M0.v2.trust})${v2.contradiction ? ' · contradiction' : ''} · v1 ${M0.v2.v1fog}`); }
+      } catch (e) { console.log('Fantôme v2 en erreur', String(e.message || e).slice(0, 80)); }
       const alert = worst >= 2 || fog || ice >= 1, M = out.morning;
       // première alerte du jour, ou aggravation nette par rapport au pire déjà signalé (3 maximum)
       const first = M.sent === 0, worse = worst > M.w || ice > M.i || (fog && !M.f);
