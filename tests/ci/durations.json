@@ -46,7 +46,9 @@
     "e2e46-tyrelink.js": 6,
     "e2e48-tripstart.js": 8,
     "e2e47-autorefresh.js": 7,
-    "test_settings_work.js": 0
+    "test_settings_work.js": 0,
+    "e2e49-interactions.js": 45,
+    "e2e50-geolocation.js": 30
   },
   "webkit": {
     "test_weather_requests.js": 0,
@@ -93,6 +95,8 @@
     "e2e46-tyrelink.js": 9,
     "e2e48-tripstart.js": 11,
     "e2e47-autorefresh.js": 9,
-    "test_settings_work.js": 0
+    "test_settings_work.js": 0,
+    "e2e49-interactions.js": 75,
+    "e2e50-geolocation.js": 50
   }
 }

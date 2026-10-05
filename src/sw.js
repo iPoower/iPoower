@@ -1,6 +1,6 @@
 // Tyre Weather Race Control : shell PWA hors ligne + dernières données publiques chiffrées
 // Les requêtes vers OSRM, Open-Meteo, BigDataCloud, RainViewer et les tuiles externes ne sont JAMAIS mises en Cache Storage.
-const STATIC = 'twrc-static-v8', DATA = 'twrc-data-v3';
+const STATIC = 'twrc-static-v9', DATA = 'twrc-data-v3';
 const NAV_WAIT_MS = 3000;   // réseau qui ne répond pas (parking, tunnel) : shell en cache au-delà, mise à jour poursuivie en arrière-plan
 const SHELL = ['./', './index.html', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './manifest.webmanifest', './tiredb.json'];
 const DATA_PATHS = /\/(calendar\.sealed\.json|obs\.json|tiredb\.json|version\.json)$/;

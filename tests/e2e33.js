@@ -87,7 +87,7 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
   const resume = await p.evaluate(() => ({ watches: window.__geoWatches(), logs: window.__geoLog }));
   check('5 · sortie de veille : demande débloquée, watch recréé et coordonnées fraîches', stopped === 0 && !s.busy && resume.watches.length === 1 && resume.watches[0] !== oldWatch && eq(s.gps, G(5)));
   const gets = resume.logs.filter(x => x.kind === 'get');
-  check('6 · reprise fraîche, basse consommation ; événements rapprochés regroupés', gets.at(-1).options.maximumAge === 0 && !gets.at(-1).options.enableHighAccuracy && resume.logs.filter(x => x.kind === 'watch').every(x => !x.options.enableHighAccuracy));
+  check('6 · reprise fraîche, acquisition précise puis suivi économique ; événements rapprochés regroupés', gets.at(-1).options.maximumAge === 0 && gets.at(-1).options.enableHighAccuracy && resume.logs.filter(x => x.kind === 'watch').every(x => !x.options.enableHighAccuracy));
   const latest = await state();
   await p.evaluate(({ id, g }) => { window.__geoFlushGets(); window.__geoOldWatch(id, g); }, { id: oldWatch, g: G(-30) }); await settle(2); s = await state();
   check('7 · ancienne demande et ancien watch : callbacks ignorés après la reprise', JSON.stringify(s.gps) === JSON.stringify(latest.gps) && s.fix.ts === latest.fix.ts);

@@ -1,0 +1,230 @@
+{
+  "bcar": {
+    "suite": "e2e49-interactions.js",
+    "result": "véhicule du trajet retenu"
+  },
+  "bk-export": {
+    "suite": "e2e49-interactions.js",
+    "result": "export chiffré ou erreur de saisie visible"
+  },
+  "caldirect": {
+    "suite": "e2e32.js",
+    "result": "enchaînement agenda direct recalculé"
+  },
+  "calib-reset": {
+    "suite": "e2e49-interactions.js",
+    "result": "calibration effacée"
+  },
+  "copy": {
+    "suite": "e2e49-interactions.js",
+    "result": "presse-papiers ou sélection manuelle expliquée"
+  },
+  "copy-widget": {
+    "suite": "e2e49-interactions.js",
+    "result": "script valide copié, erreur HTTP expliquée"
+  },
+  "day": {
+    "suite": "e2e49-interactions.js",
+    "result": "jour de trajet sélectionné"
+  },
+  "demo": {
+    "suite": "e2e40-network.js",
+    "result": "simulation disponible en cas de panne"
+  },
+  "demo-off": {
+    "suite": "e2e49-interactions.js",
+    "result": "retour aux données réelles"
+  },
+  "demo-sel": {
+    "suite": "e2e49-interactions.js",
+    "result": "scénario de démo démarré"
+  },
+  "diag-copy": {
+    "suite": "e2e49-interactions.js",
+    "result": "diagnostic copié ou refus expliqué"
+  },
+  "dir": {
+    "suite": "e2e49-interactions.js",
+    "result": "sens du trajet modifié"
+  },
+  "ev-flag": {
+    "suite": "e2e49-interactions.js",
+    "result": "mode du moteur de preuves enregistré"
+  },
+  "ev-report": {
+    "suite": "e2e45-evidence.js",
+    "result": "preuve terrain datée et résultat visible"
+  },
+  "fb": {
+    "suite": "e2e49-interactions.js",
+    "result": "retour terrain enregistré"
+  },
+  "from": {
+    "suite": "e2e49-interactions.js",
+    "result": "origine du trajet enregistrée"
+  },
+  "geo-add": {
+    "suite": "e2e49-interactions.js",
+    "result": "destination ajoutée ou limite expliquée"
+  },
+  "geo-search": {
+    "suite": "e2e49-interactions.js",
+    "result": "résultats actuels ou erreur visible"
+  },
+  "goset": {
+    "suite": "e2e49-interactions.js",
+    "result": "paramètres ouverts et champ destination ciblé"
+  },
+  "goset-cfg": {
+    "suite": "e2e49-interactions.js",
+    "result": "paramètres accessibles sans préréglage"
+  },
+  "gps-forget": {
+    "suite": "e2e50-geolocation.js",
+    "result": "suivi arrêté, anciens callbacks ignorés"
+  },
+  "labcar": {
+    "suite": "e2e49-interactions.js",
+    "result": "véhicule Analyse retenu"
+  },
+  "loc": {
+    "suite": "e2e49-interactions.js",
+    "result": "météo du lieu choisi"
+  },
+  "loc-del": {
+    "suite": "e2e49-interactions.js",
+    "result": "destination supprimée"
+  },
+  "locate": {
+    "suite": "e2e50-geolocation.js",
+    "result": "demande bornée, résultat ou erreur distincte"
+  },
+  "lock": {
+    "suite": "e2e49-interactions.js",
+    "result": "réglages personnels verrouillés"
+  },
+  "locs-toggle": {
+    "suite": "e2e49-interactions.js",
+    "result": "liste des lieux dépliée"
+  },
+  "nocode": {
+    "suite": "e2e49-interactions.js",
+    "result": "réglages personnels manuels accessibles"
+  },
+  "ntfy-test": {
+    "suite": "e2e49-interactions.js",
+    "result": "POST simulé et résultat visible"
+  },
+  "odo": {
+    "suite": "e2e49-interactions.js",
+    "result": "compteur enregistré ou saisie expliquée"
+  },
+  "outfit-day": {
+    "suite": "e2e49-interactions.js",
+    "result": "jour Tenue choisi"
+  },
+  "outfit-occasion": {
+    "suite": "e2e49-interactions.js",
+    "result": "usage Tenue choisi"
+  },
+  "pchk": {
+    "suite": "e2e49-interactions.js",
+    "result": "contrôle de pression daté"
+  },
+  "photo-del": {
+    "suite": "e2e49-interactions.js",
+    "result": "photo supprimée"
+  },
+  "place-confirm": {
+    "suite": "e2e50-geolocation.js",
+    "result": "override enregistré et contexte mis à jour"
+  },
+  "place-leave": {
+    "suite": "e2e50-geolocation.js",
+    "result": "confirmation terminée, aucun départ inventé"
+  },
+  "rcenter": {
+    "suite": "e2e49-interactions.js",
+    "result": "radar recentré"
+  },
+  "refresh": {
+    "suite": "e2e49-interactions.js",
+    "result": "météo actualisée ou cache offline conservé"
+  },
+  "reset": {
+    "suite": "e2e49-interactions.js",
+    "result": "réglages par défaut rétablis"
+  },
+  "return-home": {
+    "suite": "e2e35.js",
+    "result": "retour domicile ajouté à la chaîne"
+  },
+  "return-home-done": {
+    "suite": "e2e35.js",
+    "result": "retour terminé"
+  },
+  "return-home-undo": {
+    "suite": "e2e35.js",
+    "result": "retour restauré"
+  },
+  "rot": {
+    "suite": "e2e49-interactions.js",
+    "result": "permutation datée avec compteur"
+  },
+  "rplay": {
+    "suite": "e2e49-interactions.js",
+    "result": "lecture / pause radar"
+  },
+  "tip": {
+    "suite": "e2e49-interactions.js",
+    "result": "astuce suivante"
+  },
+  "tire": {
+    "suite": "e2e49-interactions.js",
+    "result": "monte changée et Analyse recalculée"
+  },
+  "tread-add": {
+    "suite": "e2e49-interactions.js",
+    "result": "profondeur enregistrée ou erreur visible"
+  },
+  "trip-arrived": {
+    "suite": "e2e30.js",
+    "result": "arrivée confirmée, moteur terminé"
+  },
+  "trip-cancel": {
+    "suite": "e2e34.js",
+    "result": "annulation locale du trajet et de sa chaîne"
+  },
+  "trip-cancel-undo": {
+    "suite": "e2e34.js",
+    "result": "annulation restaurée"
+  },
+  "trip-preview": {
+    "suite": "e2e34.js",
+    "result": "aperçu GPS frais, sans départ inventé"
+  },
+  "trip-start": {
+    "suite": "e2e48-tripstart.js",
+    "result": "trajet démarré par action explicite"
+  },
+  "trip-undo": {
+    "suite": "e2e30.js",
+    "result": "arrivée annulée sans arrivée automatique immédiate"
+  },
+  "tripmap": {
+    "suite": "e2e27.js",
+    "result": "mini-carte ouverte / refermée"
+  },
+  "view": {
+    "suite": "e2e49-interactions.js",
+    "result": "onglet affiché et état aria-pressed"
+  },
+  "wday": {
+    "suite": "e2e49-interactions.js",
+    "result": "jours enregistrés, dernier jour protégé"
+  },
+  "withcode": {
+    "suite": "e2e49-interactions.js",
+    "result": "formulaire de déverrouillage rétabli"
+  }
+}

@@ -37,7 +37,9 @@ const sealedV=PRIV?hash(preset):prevSealed.v;
 // même contenu ET même clé : même chiffré (pas de faux changement de version) ; sinon rechiffré avec APP_KEY
 const sealed=(prevSealed&&prevSealed.v===sealedV&&(!PRIV||tryUnseal(prevSealed.sealed,PASS)))?prevSealed.sealed:seal(presetObj,PASS);
 w(ENC+'/preset.sealed.json',JSON.stringify({v:sealedV,sealed}));
-const boot=`<script>window.TWRC_TIREDB=${tdb};window.TWRC_SEALED=${JSON.stringify(sealed)};window.TWRC_SEALED_V=${JSON.stringify(sealedV)};
+// Identité de l'application effectivement chargée : version.json peut être plus récent que le shell offline.
+const buildId=crypto.createHash('sha256').update(js).update(style).update(r('src/shell.html')).digest('hex').slice(0,12);
+const boot=`<script>window.TWRC_BUILD=${JSON.stringify(buildId)};window.TWRC_TIREDB=${tdb};window.TWRC_SEALED=${JSON.stringify(sealed)};window.TWRC_SEALED_V=${JSON.stringify(sealedV)};
 (function(){try{var v=localStorage.getItem('twrc.plain.v'),p=localStorage.getItem('twrc.plain');if(p&&v===window.TWRC_SEALED_V){var o=JSON.parse(p);window.TWRC_PRESET=o;window.TWRC_PRESET_V=v;window.TWRC_NTFY=o.ntfy||'';}}catch(e){}})();</script>\n`;
 const head='<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Race Control"><meta name="theme-color" content="#080c11"><meta name="robots" content="noindex,nofollow"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" type="image/png" href="icon-192.png">';
 const reset='<style>html{color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}[hidden]{display:none!important}</style>';
