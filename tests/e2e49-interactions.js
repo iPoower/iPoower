@@ -1,14 +1,15 @@
 // Clics réels (sans force), contrôles natifs et assertions d'état/résultat, avant et après rerender.
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), BR = require('./lib/browser'), { session } = require('./lib/jarvis-session');
-let count = 0;
-async function check(name, fn) { await fn(); count++; console.log('✅ ' + name); }
+let count = 0, step = '';
+async function check(name, fn) { step = name; await fn(); count++; console.log('✅ ' + name); }
 (async () => {
   const browser = await BR.launch();
   try {
     for (const iphone of [false, true]) {
       const s = await session(browser, { iphone }), p = s.p, tag = iphone ? 'iPhone' : 'PC';
       const click = async selector => {
+        step = step.split(' · clic ')[0] + ' · clic ' + selector;
         const button = p.locator(selector).first(), parents = button.locator('xpath=ancestor::details[not(@open)]');
         while (await parents.count()) { await parents.first().locator(':scope > summary').click(); await s.settle(1); }
         await button.click(); await s.settle(1);
@@ -34,7 +35,7 @@ async function check(name, fn) { await fn(); count++; console.log('✅ ' + name)
       });
       await check(tag + ' · retour terrain et switch alerte', async () => {
         await click('[data-act=fb]'); assert(await p.evaluate(() => S.calib.length > 0));
-        const alert = p.locator('input[data-alert]').first(), name = await alert.getAttribute('data-alert'), old = await alert.isChecked(); await alert.setChecked(!old);
+        const alert = p.locator('input[data-alert]').first(), name = await alert.getAttribute('data-alert'), old = await alert.isChecked(); await alert.locator('xpath=..').click();
         assert.equal(await p.evaluate(name => S.alerts[name], name), old ? 0 : 1);
       });
       await check(tag + ' · photo valide puis image illisible : résultat visible', async () => {
@@ -148,4 +149,4 @@ async function check(name, fn) { await fn(); count++; console.log('✅ ' + name)
     assert.deepEqual(locked.errors, []); await locked.c.close();
   } finally { await browser.close(); }
   console.log(`${count}/${count} scénarios OK · erreurs JS : aucune`);
-})().catch(e => { console.error(e); process.exit(1); });
+})().catch(e => { console.log('❌ ' + step); console.log(e.message.replace(/\n/g, ' ').slice(0,700)); console.error(e); process.exit(1); });

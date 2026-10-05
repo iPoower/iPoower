@@ -63,9 +63,9 @@ function placeContext(input) {
   const R = Math.PI / 180, km = (a, b) => { const h = Math.sin((b.lat - a.lat) * R / 2) ** 2 + Math.cos(a.lat * R) * Math.cos(b.lat * R) * Math.sin((b.lon - a.lon) * R / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); };
   const byId = id => places.find(p => p.id === id) || null;
   const hm = ms => inp.fmt ? inp.fmt(ms) : new Date(ms).toISOString().slice(11, 16);
-  const rejected = [], fix = inp.fix && Number.isFinite(inp.fix.lat) && Number.isFinite(inp.fix.lon) && Number.isFinite(inp.fix.ts) ? inp.fix : null;
+  const rejected = [], fix = inp.fix && Number.isFinite(inp.fix.lat) && Number.isFinite(inp.fix.lon) && Number.isFinite(inp.fix.ts) && inp.fix.ts <= now + 60e3 ? inp.fix : null;
   const cls = placeFixClass(fix), age = fix ? now - fix.ts : Infinity;
-  const net = inp.net && Number.isFinite(inp.net.ts) ? inp.net : null;
+  const net = inp.net && Number.isFinite(inp.net.ts) && inp.net.ts <= now + 60e3 && now - inp.net.ts <= PLACE_APPROX_AGE ? inp.net : null;
   if (net && (!fix || net.ts >= fix.ts - 1)) rejected.push({ source: 'réseau', name: net.name || null, acc: net.acc, reason: 'position réseau approximative : ne permet pas de reconnaître un lieu' });
   // vitesse implicite entre un état fiable (lieu connu à l'instant t) et un relevé
   const speedFrom = (place, t, f) => { const h = Math.max(1 / 60, (f.ts - t) / 3600e3); return Math.max(0, km(place, f) - Math.max(0, (f.acc || 0) / 1000)) / h; };

@@ -19,6 +19,7 @@ function run(code = source) {
   test('900 m ne remplace pas 18 m encore valide', () => { const r = O({ previous: old, logical: old, context: ctx, fix: fix(work, 0, 900) }); assert(!r.accept); assert.equal(r.logical, old); });
   test('mesure périmée', () => assert(!O({ fix: fix(home, -11 * 60e3) }).accept));
   test('horodatage futur', () => assert(!O({ fix: fix(home, 2 * 60e3) }).accept));
+  test('état persistant futur ne devient pas un lieu fiable, réseau périmé ignoré', () => { assert.equal(c.context({ now, places, fix: fix(home, 2 * 60e3) }).source, 'none'); assert.equal(c.context({ now, places, net: fix(home, -60 * 60e3, 6000) }).source, 'none'); });
   test('réponse antérieure', () => assert(!O({ previous: fix(home), fix: fix(home, -1000) }).accept));
   test('coordonnées et précision invalides', () => { for (const f of [{ ...fix(), lat: 91 }, { ...fix(), lon: NaN }, { ...fix(), acc: -1 }, { ...fix(), acc: Infinity }]) assert(!O({ fix: f }).accept); });
   test('vitesse mesurée impossible', () => assert(!O({ fix: { ...fix(), speed: 80 } }).accept));

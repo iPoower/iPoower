@@ -296,11 +296,13 @@ function geoFailure(err) {
 }
 function readGeoPermission() {
   if (!navigator.permissions || !navigator.permissions.query || geoPermission) return;
+  try {
   navigator.permissions.query({ name: 'geolocation' }).then(p => {
     geoPermission = p;
     const update = () => { GEO.permission = p.state === 'granted' ? 'autorisée' : p.state === 'denied' ? 'refusée' : GEO.raw ? 'autorisée' : 'à demander'; renderDiag(); };
     update(); p.onchange = () => { update(); if (p.state === 'denied') { stopGps(); geoFailure({ code: 1 }); } else if (p.state === 'granted' && S.gpsAuto) resumeGps(); };
   }).catch(() => { /* Safari : Permissions API optionnelle ; le résultat de la demande fait foi. */ });
+  } catch (e) { /* Ancien navigateur : query peut aussi lever une exception synchrone. */ }
 }
 function receivePosition(pos, focus) {
   onPos(pos, focus).catch(() => { GEO.status = 'traitement interrompu'; alertLoc('Position reçue, traitement interrompu : réessaie.'); renderDiag(); });
@@ -675,11 +677,13 @@ function renderStatus() {
   else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
   else u = 'Aucune donnée météo';
   const pause = WEATHER_REQUESTS.state(), limited = !DEMO.on && pause.until > Date.now();
+  const blocked = busy || limited && !off;
+  document.querySelectorAll('[data-act="refresh"]').forEach(button => { button.disabled = blocked; button.title = busy ? 'Actualisation en cours' : limited && !off ? 'Reprise automatique après la pause du fournisseur météo' : ''; });
   if (limited && !off) u += ' · fournisseur météo limité · reprise automatique après ' + new Date(pause.until).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
   if (busy && !off && mode !== 'demo') u += ' <span class="sync">· actualisation…</span>';   // HORS LIGNE → actualisation → LIVE
   if (typeof renderDiag === 'function') renderDiag();
   $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
-    <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${busy || limited ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
+    <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${blocked ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
 }
 function renderLocChips() {
   const gpsChip = GPS ? `<button class="chip gpsc" data-act="loc" data-id="gps" aria-pressed="${UI.loc === 'gps'}">📍 ${esc(GPS.name)}${GPS.acc ? ` <small>±${GPS.acc < 1000 ? GPS.acc + ' m' : (GPS.acc / 1000).toFixed(1) + ' km'}</small>` : ''}</button>`

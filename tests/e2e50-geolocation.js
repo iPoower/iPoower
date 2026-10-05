@@ -1,8 +1,8 @@
 'use strict';
 const assert = require('node:assert/strict'), BR = require('./lib/browser'), { session, HOME, WORK } = require('./lib/jarvis-session');
-let count = 0;
+let count = 0, step = '';
 const state = p => p.evaluate(() => ({ context: placeContext(placeInput()), fix: FIX, gps: GPS, raw: GEO.raw, geo: { permission: GEO.permission, status: GEO.status, error: GEO.error }, pending: PLACE_PENDING, network: NETLOC, auto: S.gpsAuto, watches: window.__watchCount(), phase: LIVE.phase, diag: Object.fromEntries(placeDiagRows()), message: document.querySelector('#locMsg').textContent }));
-async function check(name, fn) { await fn(); count++; console.log('✅ ' + name); }
+async function check(name, fn) { step = name; await fn(); count++; console.log('✅ ' + name); }
 (async () => {
   const browser = await BR.launch();
   try {
@@ -20,7 +20,7 @@ async function check(name, fn) { await fn(); count++; console.log('✅ ' + name)
       await check(tag + ' · GPS domicile automatique sans clic de confirmation', async () => { const x = await state(p); assert.equal(x.context.place.id, 'home'); assert.equal(x.context.source, 'gps'); assert.equal(x.context.originLock, 'home'); assert.equal(x.geo.permission, 'autorisée'); assert.match(x.diag['Géolocalisation navigateur (brute)'], /±18 m.*source : API navigateur/); assert.match(x.diag['Distance domicile'], /^2[0-9] m$/); });
       await p.evaluate(w => { NETLOC = { ...w, acc: 6000, ts: Date.now(), name: 'Réseau test' }; __geoPush({ ...w, acc: 900 }); }, WORK); await s.settle();
       await check(tag + ' · GPS conservé malgré IP divergente et navigateur à 900 m', async () => { const x = await state(p); assert.equal(x.fix.acc, 18); assert.equal(x.context.place.id, 'home'); assert.equal(x.context.source, 'gps'); assert.match(x.diag['Position réseau / IP'], /±6 km/); });
-      await p.clock.runFor(20 * 60e3); await p.evaluate(w => __geoPush(w), WORK); await s.settle();
+      await p.clock.setSystemTime(new Date(await p.evaluate(() => Date.now()) + 20 * 60e3)); await p.evaluate(w => __geoPush(w), WORK); await s.settle();
       await check(tag + ' · un point au travail ne suffit pas', async () => { const x = await state(p); assert.equal(x.context.place.id, 'home'); assert(x.pending); });
       await p.reload(); await p.evaluate(w => Object.assign(__geo, w), WORK); await s.settle(4);
       await check(tag + ' · reload pendant confirmation : ne valide pas le point isolé', async () => { const x = await state(p); assert.equal(x.context.place.id, 'home'); assert(x.pending); });
@@ -60,10 +60,12 @@ async function check(name, fn) { await fn(); count++; console.log('✅ ' + name)
       assert.deepEqual(s.errors, []); await s.c.close();
       async function cOffline(value) { await s.c.setOffline(value); await p.evaluate(value => window.dispatchEvent(new Event(value ? 'offline' : 'online')), value); }
     }
+    const unsupported = await session(browser, { permissionAPI: 'throws' }); await unsupported.p.locator('[data-act=locate]').first().click(); await unsupported.settle(6);
+    await check('Permissions API · exception synchrone : application et GPS fonctionnels', async () => { assert.equal((await state(unsupported.p)).context.place.id, 'home'); assert.deepEqual(unsupported.errors, []); }); await unsupported.c.close();
     // Permission et API du moteur navigateur, en complément des erreurs/horodatages contrôlés ci-dessus.
     const real = await session(browser, { nativeGeo: true }); await real.p.locator('[data-act=locate]').first().click(); await real.settle(8);
     await check('API native du moteur · position autorisée reconnue au domicile', async () => assert.equal((await real.p.evaluate(() => placeNow())).place.id, 'home'));
     assert.deepEqual(real.errors, []); await real.c.close();
   } finally { await browser.close(); }
   console.log(`${count}/${count} scénarios OK · erreurs JS : aucune`);
-})().catch(e => { console.error(e); process.exit(1); });
+})().catch(e => { console.log('❌ ' + step); console.log(e.message.replace(/\n/g, ' ').slice(0,700)); console.error(e); process.exit(1); });

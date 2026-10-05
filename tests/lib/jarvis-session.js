@@ -27,7 +27,7 @@ async function session(browser, { iphone = false, permissionAPI = true, locked =
     window.__geoPush = data => { Object.assign(window.__geo, data); [...watches.values()].forEach(w => reply(w.ok, w.err)); };
     window.__geoOldPush = data => { Object.assign(window.__geo, data); [...old.values()].forEach(w => reply(w.ok, w.err)); };
     window.__watchCount = () => watches.size;
-    if (!nativeGeo) Object.defineProperty(navigator, 'permissions', { configurable: true, value: permissionAPI ? { query: async () => window.__permission } : undefined });
+    if (!nativeGeo) Object.defineProperty(navigator, 'permissions', { configurable: true, value: permissionAPI ? { query: () => { if (permissionAPI === 'throws') throw new TypeError('fixture unsupported permission'); return Promise.resolve(window.__permission); } } : undefined });
     window.__permission = { state: 'prompt', onchange: null };
     window.__permissionSet = state => { window.__permission.state = state; if (window.__permission.onchange) window.__permission.onchange(); };
   }, { preset: PRESET, version: VERSION, locked, permissionAPI, nativeGeo, home: HOME });

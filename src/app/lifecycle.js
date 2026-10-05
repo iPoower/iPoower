@@ -35,7 +35,7 @@ document.addEventListener('toggle', e => { if (e.target && e.target.id === 'sett
 (function init() {
   if (LOCKED() && lsGet('twrc.key')) unseal(lsGet('twrc.key')).then(ok => { if (ok) location.reload(); });
   registerSW(); readGeoPermission(); refreshTireDB(); tripCancelSchedulePurge();
-  if (GPS && !(Number.isFinite(GPS.acc) && GPS.acc <= PLACE_ACC_APPROX)) { GPS = null; try { localStorage.removeItem('twrc.gps'); } catch (e) { /* stockage */ } }   // ancienne position réseau : jamais une position
+  if (GPS && !(locHasCoords(GPS) && Number.isFinite(GPS.t) && GPS.t <= Date.now() + 60e3 && Number.isFinite(GPS.acc) && GPS.acc >= 0 && GPS.acc <= PLACE_ACC_APPROX)) { GPS = null; try { localStorage.removeItem('twrc.gps'); } catch (e) { /* stockage */ } }   // ancienne position imprécise ou invalide : jamais un lieu fiable
   if (S.gpsAuto && GPS) UI.loc = 'gps';
   { const c = placeNow(); if (c.source === 'manual') UI.loc = c.place.id; }   // lieu confirmé : contexte de tous les modules (origine verrouillée)
   if (S.gpsAuto && location.protocol === 'https:') setTimeout(() => locate(false), 400);
