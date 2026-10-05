@@ -3303,9 +3303,29 @@ function hashCfg() {
     return { raw, cfg: JSON.parse(json) };
   } catch (e) { return null; }
 }
+// Réparer le reste de l'ancien « + Destination » : seule la dernière destination ajoutée sans choix explicite du travail.
+// Un travail sélectionné volontairement (edits work.to / work) ou un préréglage personnalisé reste intact.
+function repairStoredWork(saved) {
+  const edits = saved && saved.edits || {}, last = saved && Array.isArray(saved.customs) && saved.customs[saved.customs.length - 1];
+  const work = saved && saved.work, expected = DEFAULTS.work && DEFAULTS.work.to;
+  if (!work || !last || !edits.customs || edits['work.to'] || edits.work || work.to !== last.id || work.to === expected ||
+      !DEFAULTS.locs.some(l => l.id === expected)) return false;
+  const previous = work.to; work.to = expected;
+  // L'ancienne confirmation peut viser le faux travail : demander une nouvelle confirmation, sans inventer une position.
+  try {
+    const place = JSON.parse(lsGet('twrc.place.v1') || 'null');
+    if (place) {
+      if (place.conf && place.conf.placeId === previous) place.conf = null;
+      if (place.last && place.last.placeId === previous) place.last = null;
+      lsSet('twrc.place.v1', JSON.stringify(place));
+    }
+  } catch (e) { /* confirmation illisible : sans effet sur les autres réglages */ }
+  lsSet('twrc.settings.v1', JSON.stringify(saved)); return true;
+}
 function loadSettings() {
   let saved = null;
   try { saved = JSON.parse(lsGet('twrc.settings.v1') || 'null'); } catch (e) { saved = null; }
+  repairStoredWork(saved);
   // nouveau préréglage publié : il remplace une fois les anciens réglages de l'appareil
   if (window.TWRC_PRESET && window.TWRC_PRESET_V && lsGet('twrc.presetv') !== window.TWRC_PRESET_V) {
     // on garde ce qui ne se trouve que sur le téléphone : contrôles de pression, DOT, profondeurs, jeux de pneus
@@ -3624,11 +3644,11 @@ function renderPlace() {
   let h;
   if (c.source === 'manual') {
     const k = K[c.place.kind] || K.custom;
-    h = `<div class="place on" role="status"><b>${esc(c.title)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}<button class="btn sm" data-act="place-leave">🚗 ${esc(k.leave)}</button></div>`;
+    h = `<div class="place on" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}<button class="btn sm" data-act="place-leave">🚗 ${esc(k.leave)}</button></div>`;
   } else {
     const arr = [work, home].filter(Boolean).map(p => ({ p, t: placeArrivalTrip(p.id) })).find(x => x.t);
     const btns = arr ? `<button class="btn pri sm" data-act="place-confirm" data-place="${esc(arr.p.id)}" data-how="arrival">✅ ${esc((K[arr.p.kind] || K.custom).arrive)}</button>`
-      : [work, home].filter(Boolean).map(p => `<button class="btn sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="manual">${(K[p.kind] || K.custom).icon} ${esc((K[p.kind] || K.custom).already)}</button>`).join('');
+      : [work, home].filter(Boolean).map(p => `<button class="btn sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="manual">${(K[p.kind] || K.custom).icon} ${esc((K[p.kind] || K.custom).already)} · ${esc(p.name)}</button>`).join('');
     h = `<div class="place${arr ? ' arr' : ''}">${arr ? `<b>ARRIVÉE · ${(K[arr.p.kind] || K.custom).icon} ${esc(arr.p.name)}</b>` : `<span class="pl-src"><b>${esc(c.title)}</b> · ${esc(c.trust)}${c.badge ? ' · ' + esc(c.badge) : ''}</span>`}<span class="pl-act">${btns}</span></div>`;
   }
   if (el.innerHTML !== h) el.innerHTML = h;
@@ -3853,7 +3873,7 @@ function renderStatus() {
 function renderLocChips() {
   const gpsChip = GPS ? `<button class="chip gpsc" data-act="loc" data-id="gps" aria-pressed="${UI.loc === 'gps'}">📍 ${esc(GPS.name)}${GPS.acc ? ` <small>±${GPS.acc < 1000 ? GPS.acc + ' m' : (GPS.acc / 1000).toFixed(1) + ' km'}</small>` : ''}</button>`
     : `<button class="chip gpsc" data-act="locate">📍 Ma position</button>`;
-  const fixed = allLocs().filter(l => !l.gps), chips = fixed.map(l => `<button class="chip" data-act="loc" data-id="${esc(l.id)}" aria-pressed="${l.id === UI.loc}">${esc(l.name)}</button>`).join('');
+  const fixed = allLocs().filter(l => !l.gps), chips = fixed.map(l => { const role = l.id === S.work.to ? '🏢 Travail' : l.id === S.locs[0].id ? '🏠 Domicile' : '📌 Destination'; return `<button class="chip" data-act="loc" data-id="${esc(l.id)}" aria-label="Météo : ${esc(l.name)} · ${role}" aria-pressed="${l.id === UI.loc}">${role.split(' ')[0]} ${esc(l.name)}</button>`; }).join('');
   const refresh = GPS ? '<button class="chip" data-act="locate" aria-label="Actualiser ma position">↻ 📍</button>' : '';
   if (UI.view === 'meteo') {
     // mode Météo : ma position en avant, les lieux fixes repliés dans un seul bouton
@@ -3864,6 +3884,8 @@ function renderLocChips() {
     renderPlace(); return;
   }
   $('#locChips').innerHTML = gpsChip + chips + `<button class="chip" data-act="goset">+ Destination</button>${refresh}<span class="sub" id="locMsg" hidden></span>`;
+  const selected = allLocs().find(l => l.id === UI.loc);
+  if (selected) $('#locChips').insertAdjacentHTML('beforeend', `<span class="sub" style="flex-basis:100%">Météo affichée : ${esc(selected.name)}</span>`);
   renderPlace();
 }
 function renderSrc() {
