@@ -183,7 +183,7 @@ const urlNow = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&minutely_15=pre
 async function fetchEns(l) {
   if (!locHasCoords(l)) return null;
   for (const mdl of ENS_MODELS) {
-    try { const p = await fetchJSON(urlEns(l, mdl), 20000); if (p && p.hourly && Object.keys(p.hourly).some(k => /_member\d+$/.test(k))) return { p, model: mdl, t: Date.now() }; } catch (e) { /* modèle suivant */ }
+    try { const p = await fetchJSON(urlEns(l, mdl), 20000); if (p && p.hourly && Object.keys(p.hourly).some(k => /_member\d+$/.test(k))) return { p, model: mdl, t: Date.now() }; } catch (e) { if (e.status === 429) return null; /* modèle suivant */ }
   }
   return null;
 }
@@ -233,7 +233,10 @@ const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, cha
   view: ['meteo', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
   outfitOccasion: ['office', 'walk'].includes(lsGet('twrc.outfit.occasion')) ? lsGet('twrc.outfit.occasion') : 'outing' };
 
+const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
+  read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
 async function fetchJSON(url, ms) {
+  if (WEATHER_REQUESTS.owns(url)) return WEATHER_REQUESTS.get(url, ms || 12000);
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms || 12000);
   try {
     const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
@@ -635,10 +638,12 @@ function renderStatus() {
   else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(dataAt()) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
   else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
   else u = 'Aucune donnée météo';
+  const pause = WEATHER_REQUESTS.state(), limited = !DEMO.on && pause.until > Date.now();
+  if (limited && !off) u += ' · fournisseur météo limité · reprise automatique après ' + new Date(pause.until).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
   if (busy && !off && mode !== 'demo') u += ' <span class="sync">· actualisation…</span>';   // HORS LIGNE → actualisation → LIVE
   if (typeof renderDiag === 'function') renderDiag();
   $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
-    <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${busy ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
+    <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${busy || limited ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
 }
 function renderLocChips() {
   const gpsChip = GPS ? `<button class="chip gpsc" data-act="loc" data-id="gps" aria-pressed="${UI.loc === 'gps'}">📍 ${esc(GPS.name)}${GPS.acc ? ` <small>±${GPS.acc < 1000 ? GPS.acc + ' m' : (GPS.acc / 1000).toFixed(1) + ' km'}</small>` : ''}</button>`
@@ -3338,6 +3343,7 @@ function diagRows() {
     ['Dernière actualisation', lastOk ? `${hmLocal(lastOk)} (il y a ${ageTxt(ageOf(lastOk))})` : 'aucune réussie' + (lastTry ? ` · tentative ${hmLocal(lastTry)}` : '')],
     ['Météo du lieu affiché', r ? `${freshState(wAge)} · ${r.mode === 'live' ? 'LIVE' : r.mode === 'cache' ? 'cache' : r.mode} · ${ageTxt(wAge)}${ERR[UI.loc] ? ' · erreur : ' + noUrl(ERR[UI.loc]) : ''}` : 'UNAVAILABLE' + (ERR[UI.loc] ? ' · ' + noUrl(ERR[UI.loc]) : '')],
     ['Lieux avec météo', `${withData}/${allLocs().length}`],
+    ['API météo', (() => { const p = WEATHER_REQUESTS.state(); return p.until > Date.now() ? `HTTP 429 · pause jusqu’à ${hmLocal(p.until)} · ${p.kind}` : `disponible · ${p.active}/2 requêtes actives · ${p.queued} en attente`; })()],
     ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
     ['Agenda', CAL ? `${freshState(calAge)} · relais il y a ${ageTxt(calAge)} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}` : CALDONE ? 'indisponible' : 'chargement…'],
     ['Stockage local', `${n} clés · ${Math.round(bytes / 1024)} Ko`],
