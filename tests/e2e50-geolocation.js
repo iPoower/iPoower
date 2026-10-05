@@ -18,6 +18,9 @@ async function tripCycle(browser, iphone) {
     await check(tag + ' · un intervalle de mouvement ne suffit pas', async () => assert.notEqual((await state(p)).phase, 'active'));
     await advance(20e3); await push({ ...HOME, lat: HOME.lat + .007 }, 10); await s.settle(2);
     await check(tag + ' · domicile → trajet par deux vitesses cohérentes', async () => { const x = await state(p); assert.equal(x.phase, 'active'); assert.equal(x.context.source, 'trip'); assert.equal(await p.evaluate(() => LIVE.base.td.dir), 'go'); });
+    const before = await p.evaluate(() => ({ lat: FIX.lat, lon: FIX.lon }));
+    await advance(6 * 60e3); await push({ ...HOME, lat: HOME.lat + 2 }, null); await s.settle(1);
+    await check(tag + ' · six minutes sans GPS : saut de 222 km toujours refusé', async () => { assert.deepEqual(await p.evaluate(() => ({ lat: FIX.lat, lon: FIX.lon })), before); assert.match((await state(p)).diag['Sources écartées'], /impossible/); });
     await advance(15 * 60e3); await push(WORK, 0); await s.settle(1); await advance(5e3); await push(WORK, 0); await s.settle(2);
     await check(tag + ' · trajet → travail et arrivée enregistrée', async () => { const x = await state(p); assert.equal(x.context.place.id, 'work'); assert.equal(x.context.source, 'gps'); assert.notEqual(x.phase, 'active'); assert.equal(await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('twrc.tripdone'))).length), 1); });
     await advance(40e3); await push({ ...WORK, lat: WORK.lat - .005 }, 10); await advance(20e3); await push({ ...WORK, lat: WORK.lat - .007 }, 10); await s.settle(2);
@@ -94,8 +97,13 @@ async function tripCycle(browser, iphone) {
     const unsupported = await session(browser, { permissionAPI: 'throws' }); await unsupported.p.locator('[data-act=locate]').first().click(); await unsupported.settle(6);
     await check('Permissions API · exception synchrone : application et GPS fonctionnels', async () => { assert.equal((await state(unsupported.p)).context.place.id, 'home'); assert.deepEqual(unsupported.errors, []); }); await unsupported.c.close();
     // Permission et API du moteur navigateur, en complément des erreurs/horodatages contrôlés ci-dessus.
-    const real = await session(browser, { nativeGeo: true }); await real.p.locator('[data-act=locate]').first().click(); await real.settle(8);
-    await check('API native du moteur · position autorisée reconnue au domicile', async () => assert.equal((await real.p.evaluate(() => placeNow())).place.id, 'home'));
+    const real = await session(browser, { nativeGeo: true });
+    await check('API native du moteur · position autorisée reconnue au domicile', async () => {
+      await real.p.locator('[data-act=locate]').first().click();
+      await real.c.setGeolocation({ latitude: HOME.lat, longitude: HOME.lon, accuracy: HOME.acc });
+      await real.settle(8); await real.p.waitForFunction(() => GEO.raw || GEO.error, null, { timeout: 5000 });
+      const x = await state(real.p); assert.equal(x.context.place && x.context.place.id, 'home', JSON.stringify({ geo: x.geo, raw: x.raw, source: x.context.source, reason: x.diag['Raison localisation'], now: await real.p.evaluate(() => Date.now()) }));
+    });
     assert.deepEqual(real.errors, []); await real.c.close();
   } finally { await browser.close(); }
   console.log(`${count}/${count} scénarios OK · erreurs JS : aucune`);

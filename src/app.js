@@ -60,7 +60,7 @@ async function unseal(pass) {
 }
 const LOCKED = () => !!window.TWRC_SEALED && !window.TWRC_PRESET;
 // Préréglage éventuel injecté à la construction (version privée uniquement)
-const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET) ? normalize(window.TWRC_PRESET, BASE) : clone(BASE);
+const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET) ? normalize({ ...window.TWRC_PRESET, configured: 1 }, BASE) : clone(BASE);
 // Configuration privée transmise dans le fragment d'URL (#cfg=...) : jamais envoyée au serveur
 let CFG_IMPORTED = false;
 function hashCfg() {
@@ -2961,7 +2961,7 @@ function recordJournal() {
     if (JSON.stringify(J[date]) !== JSON.stringify(rec)) { J[date] = rec; changed = true; }
   });
   const keys = Object.keys(J).sort(); if (keys.length > 400) keys.slice(0, keys.length - 400).forEach(k => delete J[k]);
-  if (changed) saveSettings();
+  if (changed) lsSet('twrc.settings.v1', JSON.stringify(S));   // un journal automatique ne configure pas les lieux et voitures
 }
 function renderJournal() {
   const el = $('#secJournal'); if (!el) return; if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
@@ -3057,7 +3057,7 @@ function renderSettings(force) {
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
       <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>
     <div class="set-sec"><h3>Version</h3><p class="sub" id="verLine">${verLine()}</p></div>
-    <div class="set-sec"><h3>Diagnostic</h3><p class="sub">État interne, sans aucune coordonnée, adresse ni titre de rendez-vous : à copier pour signaler une anomalie.</p>
+    <div class="set-sec"><h3>Diagnostic</h3><p class="sub">Sources et précision à l’écran ; positions arrondies à environ 1 km dans la copie, sans adresse ni titre de rendez-vous.</p>
       <dl class="diag" id="diagBox">${diagHtml()}</dl><div class="chips"><button class="btn" data-act="diag-copy">Copier le diagnostic</button></div></div>`;
   loadVersion(); loadSwVersion();
 }

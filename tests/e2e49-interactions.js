@@ -137,6 +137,7 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
     assert.deepEqual(radar.errors, []); await radar.c.close();
     const locked = await session(browser, { locked: true }), p = locked.p;
     await check('premier lancement · CTA sans code et retour au formulaire', async () => {
+      assert.equal(await p.evaluate(() => S.configured), 0); assert(await p.evaluate(() => Object.keys(S.journal).length > 0));
       await p.locator('[data-act=nocode]').click(); await locked.settle(2); assert.equal(await p.evaluate(() => lsGet('twrc.nocode')), '1');
       await p.locator('[data-act=goset-cfg]').click(); assert.equal(await p.locator('#settings').getAttribute('open'), '');
       await p.locator('[data-act=withcode]').click(); await locked.settle(2); assert.equal(await p.locator('#unlockPw').count(), 1);

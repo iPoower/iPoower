@@ -24,6 +24,11 @@ function run(code = source) {
   test('coordonnées et précision invalides', () => { for (const f of [{ ...fix(), lat: 91 }, { ...fix(), lon: NaN }, { ...fix(), acc: -1 }, { ...fix(), acc: Infinity }]) assert(!O({ fix: f }).accept); });
   test('vitesse mesurée impossible', () => assert(!O({ fix: { ...fix(), speed: 80 } }).accept));
   test('saut physique impossible', () => assert(!O({ previous: old, fix: fix(work) }).accept));
+  test('interruption de six minutes en trajet : le garde de vitesse reste actif', () => {
+    const f = fix({ lat: 50.85, lon: 2.35 });
+    assert(!O({ previous: fix(home, -6 * 60e3), fix: f, context: { source: 'trip', place: null } }).accept);
+    assert(O({ previous: fix(home, -3 * 3600e3), fix: f, context: { source: 'trip', place: null } }).accept);
+  });
   const later = now + 20 * 60e3, target = fix(work, 20 * 60e3);
   const first = O({ now: later, previous: old, logical: old, context: ctx, fix: target });
   test('un seul point ne déplace pas le lieu', () => { assert(first.accept && first.hold); assert.equal(first.logical, old); assert(first.pending); });

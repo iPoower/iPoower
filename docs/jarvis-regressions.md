@@ -12,6 +12,8 @@ Périmètre : les 56 actions déclarées dans les rendus de la page, les contrô
 - Réponses de recherche écrivant dans un panneau détaché ou remplaçant une recherche plus récente.
 - Radar : commandes actives avant chargement ; aucune reprise après une panne initiale.
 - Copie du widget acceptant le corps d’une réponse HTTP en erreur.
+- Garde de saut GPS bornée à cinq minutes : en trajet, une interruption de six minutes permettait un saut de 222 km. Le temps réellement écoulé sert désormais au contrôle, sans couper cette garde après cinq minutes.
+- Premier lancement : la sauvegarde automatique du journal appelait celle des réglages et passait `configured` à 1 ; le CTA de configuration disparaissait avant toute saisie. Le journal conserve désormais ce statut, tandis qu’un préréglage réellement déverrouillé est reconnu comme configuré.
 
 ## Chaîne UI → événement → handler → état → résultat
 
@@ -100,6 +102,33 @@ Les événements `click` sont délégués sur `document` : le rerender ne détru
 ## PWA et cache
 
 Le shell contient ensemble HTML, JavaScript et CSS. Navigation network-first ; secours après 3 s si le réseau ne répond plus. `skipWaiting`, `clients.claim` et purge des anciennes générations sont déjà présents. La génération statique passe à v9 pour précharger le correctif ; le cache des données chiffrées reste v3. Le diagnostic distingue le hash de l’application réellement chargée et `version.json` du serveur, qui peut être plus récent que le shell offline. Les suites réelles `e2e37-sw` et `e2e41-sw-coldstart` vérifient Cache Storage, caches précédents, réseau muet et reprise hors ligne.
+
+## Scénarios demandés et preuves
+
+| Cas | Suite Chromium et WebKit |
+| --- | --- |
+| 1. Lancement et configuration | `e2e49-interactions`, `e2e50-geolocation` |
+| 2. Tous les onglets | `e2e49-interactions` |
+| 3. Commandes principales | Tableau d’audit ci-dessus |
+| 4. Boutons dynamiques | `e2e49-interactions`, `e2e32`, `e2e34`, `e2e35` |
+| 5. GPS autorisé | `e2e50-geolocation` (API simulée et API native du moteur) |
+| 6. Permission refusée | `e2e50-geolocation` |
+| 7. Timeout GPS | `e2e50-geolocation` |
+| 8. GPS précis au domicile | `e2e50-geolocation` |
+| 9. GPS précis au travail | `e2e50-geolocation` |
+| 10. IP seule | `e2e50-geolocation`, `test_geolocation` |
+| 11. GPS et IP divergents | `e2e50-geolocation`, `test_geolocation` |
+| 12. Arrière-plan et reprise | `e2e50-geolocation`, `e2e33`, `e2e38-resume` |
+| 13. Refresh et reload | `e2e49-interactions`, `e2e50-geolocation` |
+| 14. Offline | `e2e36`, `e2e49-interactions`, `e2e50-geolocation` |
+| 15. Retour online | Mêmes suites, plus `e2e40-network` |
+| 16. Domicile → trajet | Cycle complet `e2e50-geolocation`, automate `e2e30` |
+| 17. Trajet → destination | Mêmes suites, plus `e2e28` |
+| 18. Retour domicile | Cycle complet `e2e50-geolocation`, `e2e44-place` |
+| 19. GPS drift et sauts impossibles | `e2e50-geolocation`, `test_geolocation`, `e2e30` |
+| 20. Override domicile | `e2e50-geolocation`, `e2e44-place` |
+
+Les deux suites de Service Worker réel sont exécutées sous Chromium ; le fonctionnement applicatif hors ligne reste testé sous les deux moteurs. WebKit mobile est une simulation navigateur, et non une validation matérielle iOS.
 
 ## Limites de vérification
 

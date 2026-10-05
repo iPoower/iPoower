@@ -38,7 +38,7 @@ function placeObserve({ fix, previous, logical, context, pending, places, now })
   if (cls === 'coarse') return no('précision insuffisante pour reconnaître un lieu ou suivre un trajet');
   if (previous && now - previous.ts <= PLACE_GPS_AGE && placeFixClass(previous) === 'gps' && cls !== 'gps') return no('relevé précis récent conservé : nouvelle position moins précise');
   if (Number.isFinite(fix.speed) && (fix.speed < 0 || fix.speed * 3.6 > PLACE_VMAX)) return no('vitesse navigateur incohérente');
-  if (previous && cls === 'gps' && placeFixClass(previous) === 'gps' && fix.ts > previous.ts && fix.ts - previous.ts <= 5 * 60e3) {
+  if (previous && cls === 'gps' && placeFixClass(previous) === 'gps' && fix.ts > previous.ts) {
     const d = Math.max(0, placeDistance(previous, fix) - 2 * (previous.acc + fix.acc) / 1000);
     if (d / ((fix.ts - previous.ts) / 3600e3) > PLACE_VMAX) return no('saut GPS impossible entre deux observations');
   }
