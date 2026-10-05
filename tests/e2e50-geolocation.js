@@ -97,12 +97,18 @@ async function tripCycle(browser, iphone) {
     const unsupported = await session(browser, { permissionAPI: 'throws' }); await unsupported.p.locator('[data-act=locate]').first().click(); await unsupported.settle(6);
     await check('Permissions API · exception synchrone : application et GPS fonctionnels', async () => { assert.equal((await state(unsupported.p)).context.place.id, 'home'); assert.deepEqual(unsupported.errors, []); }); await unsupported.c.close();
     // Permission et API du moteur navigateur, en complément des erreurs/horodatages contrôlés ci-dessus.
-    const real = await session(browser, { nativeGeo: true });
+    const real = await session(browser, { nativeGeo: true, webkitNativeGeoClock: BR.NAME === 'webkit' });
     await check('API native du moteur · position autorisée reconnue au domicile', async () => {
       await real.p.locator('[data-act=locate]').first().click();
       await real.c.setGeolocation({ latitude: HOME.lat, longitude: HOME.lon, accuracy: HOME.acc });
       await real.settle(8); await real.p.waitForFunction(() => GEO.raw || GEO.error, null, { timeout: 5000 });
       const x = await state(real.p); assert.equal(x.context.place && x.context.place.id, 'home', JSON.stringify({ geo: x.geo, raw: x.raw, source: x.context.source, reason: x.diag['Raison localisation'], now: await real.p.evaluate(() => Date.now()) }));
+      assert.equal(x.geo.permission, 'autorisée'); assert.equal(x.raw.lat, HOME.lat); assert.equal(x.raw.lon, HOME.lon); assert.equal(x.raw.acc, HOME.acc);
+      if (BR.NAME === 'webkit') {
+        const samples = await real.p.evaluate(() => __nativeGeoSamples); assert(samples.length > 0);
+        for (const sample of samples) { assert.equal(sample.timestamp, sample.scaled ? sample.raw / 1000 : sample.raw); assert(Math.abs(sample.timestamp - await real.p.evaluate(() => Date.now())) < 60e3); }
+        console.log('  Émulation WebKit · horodatage ms : ' + (samples.some(sample => sample.scaled) ? 'conversion protocole s → ms corrigée dans la fixture' : 'protocole déjà cohérent'));
+      }
     });
     assert.deepEqual(real.errors, []); await real.c.close();
   } finally { await browser.close(); }

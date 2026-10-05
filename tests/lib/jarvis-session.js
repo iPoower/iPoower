@@ -6,12 +6,12 @@ const HTML = fs.readFileSync('site/index.html', 'utf8'), PRESET = JSON.parse(fs.
 const VERSION = JSON.parse(/window\.TWRC_SEALED_V=("[^"]+")/.exec(HTML)[1]);
 const HOME = { lat: 48.8502, lon: 2.3501, acc: 18 }, WORK = { lat: 48.9005, lon: 2.2502, acc: 25 };
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
-async function session(browser, { iphone = false, permissionAPI = true, locked = false, nativeGeo = false } = {}) {
+async function session(browser, { iphone = false, permissionAPI = true, locked = false, nativeGeo = false, webkitNativeGeoClock = false } = {}) {
   const time = Date.parse('2026-10-05T12:00:00+02:00'), fake = { console, Math, Date: class extends Date { constructor(...a) { super(...(a.length ? a : [time])); } static now() { return time; } }, Intl, Map, Set, JSON };
   vm.createContext(fake); vm.runInContext(fs.readFileSync('engine.js', 'utf8') + fs.readFileSync('demo.js', 'utf8') + ';this.mk=makeDemoPayload;this.me=makeDemoEnsemble;this.mn=makeDemoNowcast;', fake);
   const c = await browser.newContext({ viewport: iphone ? { width: 414, height: 896 } : { width: 1280, height: 900 }, ...(iphone ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}), timezoneId: 'Europe/Paris', locale: 'fr-FR' });
   if (nativeGeo) { await c.grantPermissions(['geolocation']); await c.setGeolocation({ latitude: HOME.lat, longitude: HOME.lon, accuracy: HOME.acc }); }
-  await c.addInitScript(({ preset, version, locked, permissionAPI, nativeGeo, home }) => {
+  await c.addInitScript(({ preset, version, locked, permissionAPI, nativeGeo, webkitNativeGeoClock, home }) => {
     if (!locked) { localStorage.setItem('twrc.plain', JSON.stringify(preset)); localStorage.setItem('twrc.plain.v', version); }
     window.__clipboard = []; window.__copyDenied = false;
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { if (window.__copyDenied) throw new Error('fixture clipboard denied'); window.__clipboard.push(text); } } });
@@ -24,13 +24,30 @@ async function session(browser, { iphone = false, permissionAPI = true, locked =
       watchPosition(ok, err, options) { const n = ++id; watches.set(n, { ok, err }); old.set(n, { ok, err }); window.__geoLog.push({ kind: 'watch', id: n, options }); return n; },
       clearWatch(n) { watches.delete(n); window.__geoLog.push({ kind: 'clear', id: n }); }
     } });
+    // Playwright 1.63 transmet Date.now() à un protocole WebKit exprimé en secondes.
+    // Adapter uniquement l'horodatage de cette émulation connue, jamais le code produit.
+    // Coordonnées, permissions, erreurs, options et identifiants restent ceux du moteur.
+    if (nativeGeo && webkitNativeGeoClock) {
+      const api = navigator.geolocation; window.__nativeGeoSamples = [];
+      const callback = ok => position => {
+        const raw = position.timestamp, scaled = Math.abs(raw / 1000 - Date.now()) < 60e3;
+        const timestamp = scaled ? raw / 1000 : raw;
+        window.__nativeGeoSamples.push({ raw, timestamp, scaled });
+        ok({ coords: position.coords, timestamp });
+      };
+      Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
+        getCurrentPosition(ok, err, options) { return api.getCurrentPosition(callback(ok), err, options); },
+        watchPosition(ok, err, options) { return api.watchPosition(callback(ok), err, options); },
+        clearWatch(n) { return api.clearWatch(n); }
+      } });
+    }
     window.__geoPush = data => { Object.assign(window.__geo, data); [...watches.values()].forEach(w => reply(w.ok, w.err)); };
     window.__geoOldPush = data => { Object.assign(window.__geo, data); [...old.values()].forEach(w => reply(w.ok, w.err)); };
     window.__watchCount = () => watches.size;
     if (!nativeGeo) Object.defineProperty(navigator, 'permissions', { configurable: true, value: permissionAPI ? { query: () => { if (permissionAPI === 'throws') throw new TypeError('fixture unsupported permission'); return Promise.resolve(window.__permission); } } : undefined });
     window.__permission = { state: 'prompt', onchange: null };
     window.__permissionSet = state => { window.__permission.state = state; if (window.__permission.onchange) window.__permission.onchange(); };
-  }, { preset: PRESET, version: VERSION, locked, permissionAPI, nativeGeo, home: HOME });
+  }, { preset: PRESET, version: VERSION, locked, permissionAPI, nativeGeo, webkitNativeGeoClock, home: HOME });
   const p = await c.newPage(); await p.clock.install({ time: nativeGeo ? Date.now() : time });
   const errors = [], calls = [], state = { weather: 'ok', radar: 'ok', widgetStatus: 200, searches: [], holdSearch: null };
   p.on('pageerror', e => errors.push(e.message));
