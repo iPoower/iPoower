@@ -78,8 +78,9 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     // capture locale facultative (jamais dans la CI)
     if (process.env.WX_SHOT) { await s.p.locator('#secWx').screenshot({ path: process.env.WX_SHOT + '-iphone.png' }); await s.p.evaluate(() => window.scrollTo(0, 0)); }
     check('1 · Météo : le poste météo est la première section, avant les mesures détaillées', w.shown && w.first === 'secWx' && w.beforeCur, JSON.stringify({ first: w.first, shown: w.shown }));
-    check('1 · verdict lisible : niveau 🟢🟡🟠🔴, titre, température et ressenti', /lv[0-3]/.test(w.heroLv) && w.title.length > 4 && /Température actuelle/.test(w.hero) && /Ressenti .* °C/.test(w.hero), w.hero);
-    check('1 · température actuelle : carte blanche dédiée et immédiatement lisible', /Température actuelle/.test(w.current) && /°C/.test(w.current) && /Ressenti/.test(w.current), w.current);
+    // innerText restitue les majuscules de text-transform : le libellé reste le même.
+    check('1 · verdict lisible : niveau 🟢🟡🟠🔴, titre, température et ressenti', /lv[0-3]/.test(w.heroLv) && w.title.length > 4 && /Température actuelle/i.test(w.hero) && /Ressenti .* °C/.test(w.hero), w.hero);
+    check('1 · température actuelle : carte blanche dédiée et immédiatement lisible', /Température actuelle/i.test(w.current) && /°C/.test(w.current) && /Ressenti/.test(w.current), w.current);
     check('1 · prochain trajet de l’agenda : origine → destination, horaires, départ et arrivée', /Prochain trajet/i.test(w.trip) && /→/.test(w.trip) && /Départ/.test(w.trip) && /Arrivée/.test(w.trip), w.trip);
     check('1 · plusieurs trajets : la chronologie montre plusieurs départs, triés', w.moments.filter(x => /départ/.test(x)).length >= 2, w.moments.join(' | '));
     check('1 · chronologie dans l’ordre des heures, lendemain signalé', w.ts.length > 2 && w.ts.every((x, i) => !i || w.ts[i - 1] <= x) && w.moments.filter((x, i) => w.ts[i].slice(0, 10) > '2026-10-03').every(x => /^dem\. /.test(x)), w.moments.join(' | '));
