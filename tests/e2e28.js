@@ -70,7 +70,15 @@ async function session(b, iso, opt = {}) {
     return r.abort();
   });
   await p.goto(U); await p.clock.runFor(3000);
-  await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
+  await p.fill('#unlockPw', PW);
+  // Reproduire une réponse de démarrage pendant la saisie : aucun code ne doit être perdu.
+  const inputKept = await p.evaluate(() => {
+    const field = document.querySelector('#unlockPw'), value = field.value;
+    renderNotice();
+    return value.length > 0 && document.querySelector('#unlockPw') === field && field.value === value && document.activeElement === field;
+  });
+  check('Déverrouillage · rafraîchissement pendant la saisie : code et focus conservés · ' + iso, inputKept);
+  await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
   for (let k = 0; k < 60; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(200); await p.waitForTimeout(250); }
   const settle = async (n = 12) => { for (let k = 0; k < n; k++) { await p.clock.runFor(700); await p.waitForTimeout(150); } };
   const txt = () => p.$eval('#secBrf', x => x.innerText.replace(/\n+/g, ' ⏎ ').replace(/[ \t]+/g, ' ').trim()).catch(() => '(absent)');

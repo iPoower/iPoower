@@ -684,13 +684,22 @@ function renderNotice() {
       <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button></form><span class="sub">Accepte « Enregistrer le mot de passe » : l’iPhone le remplira ensuite avec Face ID.</span><span class="sub">Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button></span><span class="sub" id="unlockMsg"></span></span></div>` : '';
   const setup = lock || (CFG_IMPORTED ? `<div class="note lv0"><b>CONFIGURÉ</b><span>Tes lieux et tes voitures sont enregistrés sur cet appareil. Ajoute la page à l’écran d’accueil depuis ce lien.</span></div>`
     : !S.configured ? `<div class="note lvx"><b>À CONFIGURER</b><span>Renseigne tes lieux et tes voitures dans les paramètres. Ils restent sur cet appareil. <button class="btn sm" data-act="goset-cfg">Ouvrir les paramètres</button></span></div>` : '');
-  if (m && CX) { el.innerHTML = setup; return; }
+  // Une réponse météo peut arriver entre la saisie et la validation du code.
+  // Garder le formulaire en place conserve la valeur, le focus et le remplissage du gestionnaire de mots de passe.
+  const setContent = extra => {
+    const form = el.querySelector('.unlock');
+    if (lock && form) {
+      Array.from(el.childNodes).forEach(node => { if (node !== form) node.remove(); });
+      if (extra) form.insertAdjacentHTML('afterend', extra);
+    } else el.innerHTML = setup + extra;
+  };
+  if (m && CX) { setContent(''); return; }
   const err = ERR[UI.loc];
   // le déverrouillage reste possible quand la météo manque (premier lancement hors ligne, fournisseur en panne)
-  el.innerHTML = setup + `<div class="notice"><h3>${busy ? 'Chargement de la météo…' : 'Météo indisponible'}</h3>
+  setContent(`<div class="notice"><h3>${busy ? 'Chargement de la météo…' : 'Météo indisponible'}</h3>
     <p class="muted">${busy ? 'Interrogation d’Open-Meteo.' : `Open-Meteo n’a pas répondu${err ? ' (' + esc(err) + ')' : ''}. Aucune valeur n’est inventée : l’analyse reste vide tant que les données réelles manquent. Cela arrive hors ligne ou quand le réseau bloque l’accès aux services externes.`}</p>
     ${window.TWRC_LIVE_URL ? `<p><a href="${esc(window.TWRC_LIVE_URL)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Ouvrir la version en temps réel ↗</a></p>` : ''}
-    <div class="chips"><button class="btn pri" data-act="refresh">Réessayer</button><button class="btn" data-act="demo" data-scn="froid">Voir la démo (données simulées)</button></div></div>`;
+    <div class="chips"><button class="btn pri" data-act="refresh">Réessayer</button><button class="btn" data-act="demo" data-scn="froid">Voir la démo (données simulées)</button></div></div>`);
 }
 function renderBanners() {
   const el = $('#banners'); if (!CX) { el.innerHTML = ''; return; }
