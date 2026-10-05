@@ -961,7 +961,7 @@ function labLastDriveHtml(car, li) {
       <label for="labDriveAt">Date et heure d’arrivée<input id="labDriveAt" name="at" type="datetime-local" required max="${esc(li.now)}" value="${esc(manual ? h.at : li.now)}"></label>
       <label for="labDriveMinutes">Durée du roulage (minutes)<input id="labDriveMinutes" name="minutes" type="number" required min="1" max="720" step="1" value="${manual ? h.minutes : 40}"></label>
       <label for="labDriveKind">Type de route<select id="labDriveKind" name="kind">${Object.entries(kinds).map(([k, v]) => `<option value="${k}" ${k === (manual ? h.kind : 'route') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-      <div class="cal-v"><button class="btn" type="submit">Enregistrer le roulage</button>${h ? '<button class="btn sm" type="button" data-act="lab-drive-forget">Oublier cet historique</button>' : ''}</div>
+      <div class="cal-v"><button class="btn" type="submit">Enregistrer le roulage</button>${h ? '<button class="btn" type="button" data-act="lab-drive-forget">Oublier cet historique</button>' : ''}</div>
     </fieldset></form><p class="sub">Source : saisie utilisateur. Estimation thermique, aucun capteur.</p>
     ${note ? `<p role="${note.error ? 'alert' : 'status'}">${esc(note.text)}</p>` : ''}</div></details>`;
 }
