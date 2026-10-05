@@ -1,11 +1,43 @@
 // Tyre Weather Race Control : shell PWA hors ligne + dernières données publiques chiffrées
 // Les requêtes vers OSRM, Open-Meteo, BigDataCloud, RainViewer et les tuiles externes ne sont JAMAIS mises en Cache Storage.
-const STATIC = 'twrc-static-v9', DATA = 'twrc-data-v3';
+const STATIC = 'twrc-static-v10', DATA = 'twrc-data-v3';
 const NAV_WAIT_MS = 3000;   // réseau qui ne répond pas (parking, tunnel) : shell en cache au-delà, mise à jour poursuivie en arrière-plan
 const SHELL = ['./', './index.html', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './manifest.webmanifest', './tiredb.json'];
-const DATA_PATHS = /\/(calendar\.sealed\.json|obs\.json|tiredb\.json|version\.json)$/;
+const DATA_PATHS = /\/(calendar\.sealed\.json|obs\.json|tiredb\.json|version\.json|road-datex\.json)$/;
 
 const canonical = u => new Request(u.origin + u.pathname, { method: 'GET' });
+async function roadFallback(response) {
+  if (!response) throw new Error('Road cache unavailable');
+  const headers = new Headers(response.headers); headers.set('X-TWRC-Cache', 'fallback');
+  return new Response(await response.arrayBuffer(), { status: response.status, statusText: response.statusText, headers });
+}
+async function roadCached(cache, key) {
+  const old = await cache.match(key); if (!old) return null;
+  try {
+    const j = await old.clone().json(), a = Date.parse(j.checkedAt), b = Date.parse(j.publicationTime), now = Date.now();
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a > now + 60000 || b > now + 60000 || Math.max(now - a, now - b) > 86400000) throw new Error('expired');
+    return old;
+  } catch (e) { await cache.delete(key); return null; }
+}
+async function publicRoad(req, key) {
+  const cache = await caches.open(DATA);
+  try {
+    const response = await fetch(req, { cache: 'no-store' });
+    if (response.ok) {
+      // Seul DATEX public est stockable. Une réponse HTML/JSON invalide ne remplace jamais le dernier flux valide.
+      const raw = await response.clone().text();
+      if (raw.length <= 1500000) {
+        try { const j = JSON.parse(raw); if (j.schema === 1 && j.provider === 'datex' && j.complete === true && Array.isArray(j.events) && j.events.length <= 2500 && Number.isFinite(Date.parse(j.checkedAt)) && Number.isFinite(Date.parse(j.publicationTime))) await cache.put(key, response.clone()); } catch (e) { /* non stockable */ }
+      }
+      return response;
+    }
+    const old = await roadCached(cache, key); return old ? roadFallback(old) : response;
+  } catch (error) {
+    const old = await roadCached(cache, key);
+    if (old) return roadFallback(old);
+    throw error;
+  }
+}
 async function networkFirst(req, cacheName, key, fallback, event, waitMs) {
   const cache = await caches.open(cacheName), k = key || req;
   if (waitMs) {
@@ -41,6 +73,10 @@ self.addEventListener('fetch', e => {
 
   // Confidentialité : aucun fournisseur externe (et donc aucune coordonnée GPS envoyée dans ses URL) n'est persisté par le SW.
   if (u.origin !== self.location.origin) return;
+
+  if (/\/road-datex\.json$/.test(u.pathname)) { e.respondWith(publicRoad(e.request, canonical(u))); return; }
+  // Les futurs bridges commerciaux devront être explicitement autorisés : aucun cache implicite du shell.
+  if (/\/road-[^/]+|\/api\/road\//.test(u.pathname)) { e.respondWith(fetch(e.request)); return; }
 
   // Agenda = blob AES-GCM chiffré ; obs/tiredb/version = données publiques. Une seule copie canonique, sans le ?t=.
   if (DATA_PATHS.test(u.pathname)) {

@@ -1,0 +1,53 @@
+// Intégration DATEX → OSRM → cockpit, profils PC et iPhone 11 Pro Max, réseau entièrement fictif.
+'use strict';
+const assert = require('node:assert/strict'), { launch } = require('./lib/browser'), { session } = require('./lib/jarvis-session'), F = require('./lib/road-fixtures');
+let n = 0; const check = (label, ok) => { assert(ok, label); n++; console.log('✅ ' + label); };
+(async () => {
+  const browser = await launch();
+  try {
+    for (const iphone of [false, true]) {
+      const s = await session(browser, { iphone }), { p, c, settle } = s, prefix = iphone ? 'iPhone' : 'PC';
+      let mode = 'fresh', requests = [], osrm = [];
+      await p.route('**/road-datex.json', r => {
+        requests.push(r.request().url());
+        if (mode === 'error') return r.fulfill({ status: 503, body: 'unavailable' });
+        const feed = F.feed('datex', mode === 'empty' ? { events: [] } : mode === 'stale' ? { publicationTime: new Date(F.NOW - 20 * 60000).toISOString() } : {});
+        if (mode === 'xss') feed.events[0].title = '<img src=x onerror="window.__roadXss=1">';
+        return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(feed) });
+      });
+      await p.route('**/router.project-osrm.org/**', r => { osrm.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(F.routeJSON) }); });
+      await p.evaluate(() => { CAL.events = []; S.work.dep = '12:20'; S.work.ret = '17:30'; S.work.days = [1, 2, 3, 4, 5]; rebuild(); renderAll(); document.querySelector('#settings').open = true; });
+      await settle(2); await p.locator('[data-act=locate]').first().click(); await settle(6);
+      await p.locator('#secBrf [data-act=trip-start]').first().click(); await settle(6);
+      const text = () => p.locator('#secRoad').innerText();
+      const st = await p.evaluate(() => ({ phase: LIVE.phase, route: !!(LIVE.route && LIVE.route.road), fix: FIX && FIX.acc, source: ROAD.manager.snapshot().events.length }));
+      check(prefix + ' · un vrai clic démarre le trajet, route OSRM et signalement corrélé', st.phase === 'active' && st.route && st.source === 1);
+      check(prefix + ' · requête OSRM enrichie, aucune seconde route ; DATEX sans coordonnées', osrm.some(u => u.includes('steps=true')) && requests.length > 0 && requests.every(u => /\/road-datex\.json$/.test(u)));
+      let t = await text(); check(prefix + ' · cockpit : axe, distance, ETA OSRM, source, âge et couverture', /Accident signalé/.test(t) && /A1/.test(t) && /devant/.test(t) && /OSRM/.test(t) && /DIR/.test(t) && /partielle/.test(t) && /LIVE/.test(t));
+      check(prefix + ' · alerte visuelle nouvelle et sévère, aucune ETA trafic inventée', await p.locator('#secRoad .road-alert').count() === 1 && /trafic non inclus/.test(t) && /Vitesses trafic indisponibles/.test(t));
+      const score = await p.evaluate(() => JSON.stringify(CX));
+      const force = async () => { await p.evaluate(async () => { const state = ROAD.manager.states.get('datex'); state.triedAt = -Infinity; state.retryAt = 0; await ROAD.manager.refresh(); renderRoad(); }); };
+      mode = 'empty'; await force(); t = await text(); check(prefix + ' · 200 vide : absence qualifiée par la source disponible', /Aucun événement correspondant dans cette source disponible/.test(t) && !/Accident signalé/.test(t));
+      mode = 'fresh'; await force(); check(prefix + ' · pas de répétition de l’alerte après disparition et retour', await p.locator('#secRoad .road-alert').count() === 0);
+      mode = 'error'; await force(); t = await text(); check(prefix + ' · panne fournisseur : cache identifié, jamais LIVE', /Indisponible/.test(t) && !/\bLIVE\b/.test(t.replace(/non LIVE/g, '')) && /non LIVE/.test(t));
+      check(prefix + ' · verdicts météo et pneus inchangés pendant les mises à jour trafic', await p.evaluate(() => JSON.stringify(CX)) === score);
+      mode = 'stale'; await force(); t = await text(); check(prefix + ' · flux périmé : signalements masqués', /Périmé/.test(t) && !/Accident signalé/.test(t));
+      mode = 'xss'; await force(); check(prefix + ' · texte source échappé, aucun handler HTML injecté', await p.locator('#secRoad img').count() === 0 && !await p.evaluate(() => window.__roadXss));
+      mode = 'fresh'; await force();
+      await p.evaluate(() => { window.__roadOffline = true; Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => !window.__roadOffline }); window.dispatchEvent(new Event('offline')); }); await settle(2);
+      t = await text(); check(prefix + ' · hors ligne : données datées, pas de LIVE ni alerte', /Hors ligne/.test(t) && !/\bLIVE\b/.test(t.replace(/non LIVE/g, '')) && await p.locator('#secRoad .road-alert').count() === 0);
+      await p.evaluate(() => { window.__roadOffline = false; roadSync(); });
+      await p.evaluate(({ coords }) => { FIX = { lat: coords[1], lon: coords[0], acc: 18, ts: Date.now() }; roadSync(); }, { coords: F.coordinates[8] });
+      check(prefix + ' · événement dépassé retiré du cockpit', !/Accident signalé/.test(await text()));
+      await p.evaluate(() => { FIX = { ...FIX, acc: 500, ts: Date.now() }; roadSync(); }); check(prefix + ' · dérive GPS : aucune alerte routière', /imprécise/.test(await text()) && await p.locator('#secRoad .road-alert').count() === 0);
+      await p.locator('#f-road-on').selectOption('0'); check(prefix + ' · handler de réglage : fournisseur arrêté, carte masquée', await p.locator('#secRoad').isHidden() && !await p.evaluate(() => ROAD.manager.states.get('datex').provider.enabled));
+      await p.locator('#f-road-on').selectOption('1');
+      await p.evaluate(() => { liveReset(); S.work.days = []; CAL.events = []; renderAll(); });
+      check(prefix + ' · arrivée/annulation/sans trajet : aucun contexte ou événement résiduel', await p.locator('#secRoad').isHidden() && await p.evaluate(() => ROAD.manager.context === null && ROAD.alert === null));
+      for (const view of ['meteo', 'tenue', 'analyse', 'pneus']) { await p.locator(`[data-act=view][data-v=${view}]`).click(); check(prefix + ' · commande ' + view + ' toujours active', await p.locator(`[data-act=view][data-v=${view}]`).getAttribute('aria-pressed') === 'true'); }
+      check(prefix + ' · pas de débordement, JavaScript ou secret dans le cache trafic', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && !/trip-fictif|"fix"|"route"|"distanceAhead"/.test(localStorage.getItem('twrc.road.datex') || '')) && s.errors.length === 0);
+      await c.close();
+    }
+  } finally { await browser.close(); }
+  console.log(`${n}/${n} scénarios OK · erreurs JS : aucune`);
+})().catch(e => { console.error(e); process.exit(1); });

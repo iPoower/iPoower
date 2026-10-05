@@ -699,3 +699,10 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .ev-l { display: inline-block; min-width: 16px; text-align: center; font-family: var(--f-mono); font-size: 10.5px; border: 1px solid var(--line2); border-radius: 3px; }
 .ev-rep .chips { gap: 6px; }
 .ev .btn, .ev summary { min-height: 44px; }
+/* Signalements routiers : garde le cockpit et les cibles tactiles existants. */
+.road-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.road-head h2{margin:0;font-size:16px}.road-source,.road-eta{margin:7px 0}
+.road-events{list-style:none;padding:0;margin:8px 0;display:grid;gap:8px}
+.road-events li{display:grid;gap:3px;padding-top:7px;border-top:1px solid var(--line);overflow-wrap:anywhere}
+.road-events small,.road-distance{color:var(--fg2);font-size:12px}.road-alert{padding:9px;border-left:3px solid #f5a623;border-radius:5px;background:#f5a62315}
+.road summary{min-height:44px;display:flex;align-items:center;cursor:pointer}.road-details p{overflow-wrap:anywhere}.road-details a{overflow-wrap:anywhere}
