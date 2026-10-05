@@ -6,7 +6,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   const R = 6371000, RAD = Math.PI / 180, CELL = 0.005;
-  const TYPES = new Set(['accident', 'works', 'closure', 'obstacle', 'stopped_vehicle', 'restriction', 'weather', 'congestion', 'unknown']);
+  const TYPES = new Set(['accident', 'works', 'closure', 'obstacle', 'stopped_vehicle', 'restriction', 'weather', 'congestion', 'jam', 'slowdown', 'unknown']);
   const finite = x => typeof x === 'number' && Number.isFinite(x);
   const text = x => typeof x === 'string' ? x.slice(0, 1200) : null;
   const num = x => finite(x) && x >= 0 ? x : null;

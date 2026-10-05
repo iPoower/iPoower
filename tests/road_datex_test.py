@@ -79,6 +79,9 @@ class Datex(unittest.TestCase):
             self.assertEqual(e['type'], expected); self.assertEqual(e['delaySeconds'], 120); self.assertIn('1 voie', e['laneInfo'])
         e = ingest(publication(situation(record(kind='RoadOrCarriagewayOrLaneManagement', extra='<roadOrCarriagewayOrLaneManagementType>roadClosed</roadOrCarriagewayOrLaneManagementType>'))))['events'][0]
         self.assertEqual(e['type'], 'closure')
+        for subtype, expected in [('queuingTraffic', 'jam'), ('stationaryTraffic', 'jam'), ('slowTraffic', 'slowdown')]:
+            e = ingest(publication(situation(record(kind='AbnormalTraffic', extra=f'<abnormalTrafficType>{subtype}</abnormalTrafficType>'))))['events'][0]
+            self.assertEqual(e['type'], expected); self.assertEqual(e['congestion'], subtype); self.assertIsNone(e['currentSpeed'])
 
     def test_location_and_vehicle_restrictions(self):
         e = ingest(publication(situation(record(point=False))))['events'][0]

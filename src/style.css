@@ -705,4 +705,4 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .road-events{list-style:none;padding:0;margin:8px 0;display:grid;gap:8px}
 .road-events li{display:grid;gap:3px;padding-top:7px;border-top:1px solid var(--line);overflow-wrap:anywhere}
 .road-events small,.road-distance{color:var(--fg2);font-size:12px}.road-alert{padding:9px;border-left:3px solid #f5a623;border-radius:5px;background:#f5a62315}
-.road summary{min-height:44px;display:flex;align-items:center;cursor:pointer}.road-details p{overflow-wrap:anywhere}.road-details a{overflow-wrap:anywhere}
+.road summary{min-height:44px;display:flex;align-items:center;cursor:pointer}.road-details p{overflow-wrap:anywhere}.road-details a{overflow-wrap:anywhere;display:inline-flex;align-items:center;min-height:44px}

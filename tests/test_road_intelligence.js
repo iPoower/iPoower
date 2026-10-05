@@ -6,7 +6,7 @@ const filter = (events, fix = F.fix, r = route) => Road.filter(r, fix, events, F
 check('modèle complet, champs inconnus null, provenance source et unités préservées', () => {
   const a = e(); for (const key of ['delaySeconds', 'lengthMeters', 'currentSpeed', 'freeFlowSpeed', 'congestion', 'laneInfo', 'distanceAhead', 'etaToEvent', 'relevanceScore']) assert.equal(a[key], null);
   assert.equal(a.id, 'datex:fixture-accident'); assert.equal(a.lat, F.coordinates[7][1]); assert.equal(a.officialSource, true); assert(a.start && a.end);
-  for (const type of ['accident', 'works', 'closure', 'obstacle', 'stopped_vehicle', 'restriction', 'weather', 'congestion']) assert.equal(e({ type }).type, type);
+  for (const type of ['accident', 'works', 'closure', 'obstacle', 'stopped_vehicle', 'restriction', 'weather', 'congestion', 'jam', 'slowdown']) assert.equal(e({ type }).type, type);
 });
 check('géométries invalides, identifiant absent, fournisseur et coordonnées invalides refusés', () => {
   for (const x of [{ sourceId: '' }, { geometry: { type: 'Point', coordinates: [[2, 48]] } }, { geometry: { type: 'Polygon', coordinates: [] } }, { geometry: null, latitude: 200, longitude: 2 }]) assert.equal(e(x), null);

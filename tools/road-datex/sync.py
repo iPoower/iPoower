@@ -123,6 +123,9 @@ def normalize(record, situation, now):
                     if value(record, name)), None)
     if subtype in {"roadClosed", "carriagewayClosures", "roadClosure"}:
         kind, title = "closure", "Route fermée"
+    if kind == "congestion":
+        kind, title = {"queuingTraffic": ("jam", "Bouchon"), "stationaryTraffic": ("jam", "Circulation à l'arrêt"),
+                       "slowTraffic": ("slowdown", "Ralentissement")}.get(subtype, (kind, title))
     comments = []
     for comment in nodes(record, "generalPublicComment"):
         values = nodes(comment, "value")
@@ -130,7 +133,9 @@ def normalize(record, situation, now):
         if chosen is not None and chosen.text:
             comments.append(chosen.text.strip())
     restricted = number(value(record, "numberOfLanesRestricted"))
-    lanes = [n.text for n in nodes(location, "lane") if n.text]
+    lane_names = {"leftLane": "voie de gauche", "rightLane": "voie de droite", "middleLane": "voie centrale",
+                  "hardShoulder": "bande d'arrêt d'urgence", "allLanes": "toutes les voies"}
+    lanes = [lane_names.get(n.text, n.text) for n in nodes(location, "lane") if n.text]
     lane_info = (str(int(restricted)) + " voie(s) neutralisée(s)") if restricted is not None and restricted > 0 else None
     if lanes:
         lane_info = (lane_info + " · " if lane_info else "") + ", ".join(lanes)
@@ -152,7 +157,7 @@ def normalize(record, situation, now):
         "roadNumber": road, "roadName": None, "direction": value(location, "tpegDirection"),
         "startTime": start, "endTime": end, "updatedAt": updated,
         "delaySeconds": number(value(record, "delayTimeValue")), "lengthMeters": number(value(record, "affectedRoadLength")),
-        "currentSpeed": None, "freeFlowSpeed": None, "congestion": subtype if kind == "congestion" else None,
+        "currentSpeed": None, "freeFlowSpeed": None, "congestion": subtype if kind in {"congestion", "jam", "slowdown"} else None,
         "laneInfo": lane_info, "confidence": "high" if value(record, "reliable") == "true" else "unknown",
         "sourceUrl": SOURCE, "officialSource": True, "producer": value(record, "sourceIdentification") or "Bison Futé / DIR",
         "rawReference": source_id,

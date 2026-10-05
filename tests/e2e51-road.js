@@ -25,6 +25,8 @@ let n = 0; const check = (label, ok) => { assert(ok, label); n++; console.log('�
       check(prefix + ' · requête OSRM enrichie, aucune seconde route ; DATEX sans coordonnées', osrm.some(u => u.includes('steps=true')) && requests.length > 0 && requests.every(u => /\/road-datex\.json$/.test(u)));
       let t = await text(); check(prefix + ' · cockpit : axe, distance, ETA OSRM, source, âge et couverture', /Accident signalé/.test(t) && /A1/.test(t) && /devant/.test(t) && /OSRM/.test(t) && /DIR/.test(t) && /partielle/.test(t) && /LIVE/.test(t));
       check(prefix + ' · alerte visuelle nouvelle et sévère, aucune ETA trafic inventée', await p.locator('#secRoad .road-alert').count() === 1 && /trafic non inclus/.test(t) && /Vitesses trafic indisponibles/.test(t));
+      const layout = await p.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth, height: document.querySelector('#secRoad').getBoundingClientRect().height, target: document.querySelector('#secRoad summary').getBoundingClientRect().height }));
+      check(prefix + ' · carte active compacte, aucun débordement et cible tactile 44 px', layout.width <= layout.viewport + 1 && layout.target >= 43 && (!iphone || layout.height < 480));
       const score = await p.evaluate(() => JSON.stringify(CX));
       const force = async () => { await p.evaluate(async () => { const state = ROAD.manager.states.get('datex'); state.triedAt = -Infinity; state.retryAt = 0; await ROAD.manager.refresh(); renderRoad(); }); };
       mode = 'empty'; await force(); t = await text(); check(prefix + ' · 200 vide : absence qualifiée par la source disponible', /Aucun événement correspondant dans cette source disponible/.test(t) && !/Accident signalé/.test(t));
