@@ -226,7 +226,16 @@ const check = (name, ok, detail = '') => { rows.push((ok ? '✅ ' : '❌ ') + na
     let readyConfigured = initialConfigured;
     for (let i = 0; i < 24; i++) {
       await settle(1); readyConfigured = await configuredSnapshot();
-      if (readyConfigured.every(e => e.legs.length && e.legs.every(l => !l.pending && l.routed))) break;
+      const weatherIdle = await page.evaluate(() => {
+        const queue = WEATHER_REQUESTS.state();
+        return CALBUSY.size === 0 && LEGBUSY.size === 0 && queue.active === 0 && queue.queued === 0;
+      });
+      if (weatherIdle && readyConfigured.every(e => e.legs.length && e.legs.every(l => !l.pending && l.routed))) {
+        // effLegs peut devenir prêt pendant cette lecture, alors que fetchLeg.t
+        // attend encore son rendu à +150 ms. Terminer ce rendu sur l'horloge
+        // fictive avant de vérifier Waze et l'absence de requêtes de consultation.
+        await settle(1); break;
+      }
     }
     const configuredGo = readyConfigured[0].legs.filter(l => l.k === 'go'), followingGo = readyConfigured[1].legs.filter(l => l.k === 'go');
     const routeURLs = requests.slice(routeAt).filter(r => r.url.includes('router.project-osrm.org')).map(r => r.url);
