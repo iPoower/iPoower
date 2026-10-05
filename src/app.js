@@ -358,7 +358,7 @@ async function onPos(pos, focus) {
   // Références fixes : des pas successifs de moins de 3 km doivent aussi finir par changer de ville/météo.
   const nameMoved = !gpsNameOrigin || distKm(gpsNameOrigin, np) > 3, weatherMoved = !gpsWeatherOrigin || distKm(gpsWeatherOrigin, np) > 3;
   const prevName = GPS && !nameMoved ? { name: GPS.name, sub: GPS.sub } : null;
-  GPS = { id: 'gps', gps: true, ...np, acc: Math.round(c.accuracy), t: ts, name: prevName ? prevName.name : 'Ma position', sub: prevName ? prevName.sub : '' };
+  GPS = { id: 'gps', gps: true, ...np, acc: Math.round(c.accuracy), t: ts, placePending: !!observation.hold, name: prevName ? prevName.name : 'Ma position', sub: prevName ? prevName.sub : '' };
   if (!S.gpsAuto) { S.gpsAuto = 1; saveSettings(); }
   if (focus && !PLACE.conf) UI.loc = 'gps';   // un lieu confirmé reste le contexte, même après « Ma position »
   lsSet('twrc.gps', JSON.stringify(GPS)); renderStatus(); renderLocChips(); renderSrc(); renderDiag();
@@ -392,14 +392,14 @@ function placeList() {
   return [...S.locs, ...S.customs].filter(locHasCoords).map(l => ({ id: l.id, name: l.name, lat: l.lat, lon: l.lon, kind: l.id === S.work.to ? 'work' : l === home ? 'home' : 'custom' }));
 }
 function placeInput(extra) {
-  const precise = PLACE_HOLD ? PLACE_FIX : PLACE_FIX || (GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null) || GEO.raw;
+  const precise = PLACE_HOLD || GPS && GPS.placePending ? PLACE_FIX : PLACE_FIX || (GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null) || GEO.raw;
   return { now: Date.now(), today: placeToday(), places: placeList(), conf: PLACE.conf, last: PLACE.last, fix: precise, net: NETLOC,
     moving: LIVE.phase === 'active', movingSince: LIVE.startFix ? LIVE.startFix.ts : null, fmt: hmLocal, ...(extra || {}) };
 }
 // contexte courant ; une confirmation terminée (départ, GPS précis ailleurs, fin de journée) est effacée une seule fois
 function placeNow() {
   const c = placeContext(placeInput());
-  if (c.ended && PLACE.conf) { PLACE.last = { placeId: PLACE.conf.placeId, at: Date.now(), source: 'fin : ' + c.ended.reason }; PLACE.conf = null; placeSave(); }
+  if (c.ended && PLACE.conf) { PLACE.last = { placeId: PLACE.conf.placeId, at: PLACE.conf.at, source: 'fin : ' + c.ended.reason }; PLACE.conf = null; placeSave(); }
   if (!PLACE.conf && c.source === 'gps' && c.place && (!PLACE.last || PLACE.last.placeId !== c.place.id || Date.now() - PLACE.last.at > 10 * 60e3)) { PLACE.last = { placeId: c.place.id, at: Date.now(), source: 'gps' }; placeSave(); }
   return c;
 }
@@ -462,11 +462,13 @@ function placeDiagRows(forCopy) {
   const raw = f ? `${rd(f.lat)}, ${rd(f.lon)} · ±${Math.round(f.acc)} m · il y a ${seconds < 60 ? seconds + ' s' : ageTxt(seconds / 60)} · source : API navigateur` : 'aucun relevé';
   const net = NETLOC ? `${NETLOC.name || 'nom inconnu'} · ±${Math.round(NETLOC.acc / 1000)} km · il y a ${ageTxt(ageOf(NETLOC.ts))}` : 'aucune';
   const rej = c.rejected.concat(PLACE_REJ ? [PLACE_REJ] : []);
-  const distances = f && placeFixClass(f) === 'gps' ? placeList().map(p => [(p.kind === 'home' ? 'Distance domicile' : p.kind === 'work' ? 'Distance travail' : 'Distance ' + p.name), Math.round(placeDistance(f, p) * 1000) + ' m']) : [];
+  const used = FIX || f, distances = used && placeFixClass(used) === 'gps' ? placeList().map(p => [(p.kind === 'home' ? 'Distance domicile' : p.kind === 'work' ? 'Distance travail' : 'Distance ' + p.name), Math.round(placeDistance(used, p) * 1000) + ' m']) : [];
+  const source = { gps: 'GPS navigateur', approx: 'navigateur approximatif', coarse: 'navigateur trop imprécis', manual: 'confirmation utilisateur', network: 'position réseau', last: 'dernier lieu fiable', trip: 'mouvement confirmé', none: 'aucune' }[c.source];
   return [['Permission localisation', GEO.permission], ['Statut localisation navigateur', GEO.status + (document.hidden ? ' · suivi suspendu en arrière-plan' : '')],
-    ['Géolocalisation navigateur (brute)', raw], ['Dernière erreur localisation', GEO.error ? GEO.error.code + ' · ' + GEO.error.message : 'aucune'], ['Position réseau / IP', net],
+    ['Géolocalisation navigateur (brute)', raw], ['Position navigateur retenue', FIX ? `±${Math.round(FIX.acc)} m · il y a ${ageTxt(ageOf(FIX.ts))}` : 'aucune'],
+    ['Dernière erreur localisation', GEO.error ? GEO.error.code + ' · ' + GEO.error.message : 'aucune'], ['Position réseau / IP', net],
     ...distances,
-    ['Lieu logique Race Control', `${c.place ? c.place.name : c.title.replace(/^\S+ /, '')} · ${c.trust}`], ['Source retenue', `${c.source}${c.originLock ? ' · origine verrouillée : ' + c.originLock : ''}`],
+    ['Lieu logique Race Control', `${c.place ? c.place.name : c.title.replace(/^\S+ /, '')} · ${c.trust} · ${c.place ? c.place.kind === 'home' ? 'domicile' : c.place.kind === 'work' ? 'travail' : 'destination connue' : c.source === 'gps' ? 'autre' : 'indéterminé'}`], ['Source retenue', `${c.source} · ${source}${c.originLock ? ' · origine verrouillée : ' + c.originLock : ''}`],
     ['Raison localisation', c.source === 'manual' ? 'confirmation utilisateur' : c.source === 'trip' ? 'déplacement confirmé · trajet en cours' : GEO.reason || (c.source === 'last' ? 'dernier lieu fiable · attente de position fraîche' : c.source === 'gps' ? 'position navigateur précise dans la géofence' : 'position insuffisante · confirmation manuelle disponible')],
     ['Sources écartées', rej.length ? rej.map(x => `${x.source} : ${x.reason}`).join(' | ') : 'aucune']];
 }

@@ -64,7 +64,7 @@ const st = p => p.evaluate(() => { const b = document.getElementById('placeBar')
   const dd = [...document.querySelectorAll('#diagBox dt')].reduce((o, dt) => (o[dt.textContent] = dt.nextElementSibling.textContent, o), {});
   return { bar: b ? b.innerText.replace(/\s+/g, ' ').trim() : '', loc: UI.loc, conf: PLACE.conf, gps: GPS ? { name: GPS.name, acc: GPS.acc } : null, chips: document.getElementById('locChips').innerText.replace(/\s+/g, ' '),
     stored: localStorage.getItem('twrc.place.v1'), diag: dd, brief: (document.getElementById('secBrf').innerText || '').replace(/\s+/g, ' ') }; });
-const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }, g); await s.p.evaluate(() => locate(true)); await s.settle(4); };
+const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }, g); await s.p.evaluate(() => locate(true)); await s.settle(2); await s.p.evaluate(() => window.__geoPush()); await s.settle(2); };
 
 (async () => {
   const b = await BR.launch();

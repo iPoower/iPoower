@@ -22,6 +22,7 @@ function diagRows(forCopy) {
     ['Application chargée', window.TWRC_BUILD ? `build ${window.TWRC_BUILD} · shell HTML/JS/CSS autonome` : 'version locale'],
     ['Version publiée', VER ? `prod-${VER.run} · ${String(VER.sha).slice(0, 7)} · métadonnées du serveur` : 'indisponible'],
     ['Service Worker', SWV || '…'],
+    ['Contexte navigateur', `${window.isSecureContext ? 'sécurisé' : 'non sécurisé'} · ${(window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone ? 'PWA installée' : 'onglet navigateur'}`],
     ['Réseau', DEMO.on ? 'démo (aucune donnée réelle)' : offlineNow() ? 'hors ligne' : busy ? 'en ligne · actualisation en cours' : 'en ligne'],
     ['Dernière actualisation', lastOk ? `${hmLocal(lastOk)} (il y a ${ageTxt(ageOf(lastOk))})` : 'aucune réussie' + (lastTry ? ` · tentative ${hmLocal(lastTry)}` : '')],
     ['Météo du lieu affiché', r ? `${freshState(wAge)} · ${r.mode === 'live' ? 'LIVE' : r.mode === 'cache' ? 'cache' : r.mode} · ${ageTxt(wAge)}${ERR[UI.loc] ? ' · erreur : ' + noUrl(ERR[UI.loc]) : ''}` : 'UNAVAILABLE' + (ERR[UI.loc] ? ' · ' + noUrl(ERR[UI.loc]) : '')],

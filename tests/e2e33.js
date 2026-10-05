@@ -60,7 +60,7 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
   });
   const settle = async (n = 4) => { for (let i = 0; i < n; i++) { await p.clock.runFor(700); await p.waitForTimeout(100); } };
   const state = () => p.evaluate(() => ({ gps: GPS && { ...GPS }, raw: RAW.gps && { lat: RAW.gps.lat, lon: RAW.gps.lon }, fix: FIX && { ...FIX }, busy: gpsBusy, loc: UI.loc }));
-  const move = async (g, o = {}) => { await p.clock.runFor(1000); await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { ...g, age: 0, ...o }); await settle(); };
+  const move = async (g, o = {}) => { await p.clock.runFor(1000); await require('./lib/geo-fixture-time').coherentTime(p, g, o); await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { ...g, age: 0, ...o }); await settle(); };
   const gpsRequests = () => requests.filter(u => { const q = new URL(u).searchParams; return Number(q.get('longitude')) === rounded(A).lon && /api\.bigdatacloud\.net|\/v1\/forecast/.test(u); });
   const pauseNetwork = g => { let release; hold = { lat: g.lat.toFixed(4), geocode: 0, weather: 0, wait: new Promise(r => { release = r; }), release: () => release() }; return hold; };
   await p.goto(U); await p.clock.runFor(3000);

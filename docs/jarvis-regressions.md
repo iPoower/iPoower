@@ -95,7 +95,7 @@ Les événements `click` sont délégués sur `document` : le rerender ne détru
 - Demande précise au démarrage, au clic et à la reprise, timeout de 15 s ; suivi avec cache maximal de 10 s et timeout de 30 s. Permissions API optionnelle ; refus, indisponibilité et timeout distincts.
 - GPS précis récent conservé face à un point moins précis. Géofence d’entrée `max(150 m, 2 × accuracy)` réservée aux observations ≤100 m ; sortie `max(350 m, 3 × accuracy)`, deux observations distinctes cohérentes pour changer de lieu. Adresses qui se recouvrent : confirmation disponible.
 - Points invalides, anciens, futurs, déplacements ou vitesses impossibles refusés. L’heure ne déclenche toujours pas un trajet : la machine existante demande déplacement et deux vitesses cohérentes.
-- Suspension : arrêt du watch, invalidation des callbacks, série de confirmation abandonnée. Premier plan : demande fraîche et un seul watch. Oubli manuel empêche les anciennes réponses de réactiver le GPS.
+- Suspension : arrêt du watch, invalidation des callbacks, série de confirmation abandonnée. Premier plan : demande fraîche et un seul watch. Rechargement pendant une confirmation ne transforme pas un point isolé en lieu validé. Oubli manuel empêche les anciennes réponses de réactiver le GPS.
 - Coordonnées détaillées seulement dans le diagnostic à l’écran ; diagnostic copié arrondi à environ 1 km. Aucune coordonnée nouvelle stockée dans le lieu logique.
 
 ## PWA et cache
@@ -104,4 +104,4 @@ Le shell contient ensemble HTML, JavaScript et CSS. Navigation network-first ; s
 
 ## Limites de vérification
 
-Chromium et WebKit sont exécutés dans GitHub CI, les navigateurs locaux étant bloqués par les restrictions de sockets. Le profil WebKit mobile couvre la résolution 414 × 896, le tactile et les reprises simulées ; il ne remplace pas un iPhone physique. Verrouillage matériel, suspension du système iOS, précision du capteur et changement de radio Wi-Fi/4G/5G restent à vérifier sur appareil après déploiement. Aucun merge ni déploiement dans cette PR.
+Chromium et WebKit sont exécutés dans GitHub CI, les navigateurs locaux étant bloqués par les restrictions de sockets. Le profil WebKit mobile couvre la résolution 414 × 896, le tactile et les reprises simulées ; il ne remplace pas un iPhone physique. Verrouillage matériel, suspension du système iOS, précision du capteur et changement de radio Wi-Fi/4G/5G restent à vérifier sur appareil après déploiement. Les anciens parcours de réseau téléportaient parfois les positions de plusieurs kilomètres en une seconde ; leurs déplacements volontaires ont désormais des horodatages routiers cohérents. Les assertions de trajet, de réponses tardives et de cache sont conservées. Les tests de saut aberrant gardent leurs points impossibles. Aucun merge ni déploiement dans cette PR.

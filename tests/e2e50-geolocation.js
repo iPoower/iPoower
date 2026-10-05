@@ -22,6 +22,8 @@ async function check(name, fn) { await fn(); count++; console.log('✅ ' + name)
       await check(tag + ' · GPS conservé malgré IP divergente et navigateur à 900 m', async () => { const x = await state(p); assert.equal(x.fix.acc, 18); assert.equal(x.context.place.id, 'home'); assert.equal(x.context.source, 'gps'); assert.match(x.diag['Position réseau / IP'], /±6 km/); });
       await p.clock.runFor(20 * 60e3); await p.evaluate(w => __geoPush(w), WORK); await s.settle();
       await check(tag + ' · un point au travail ne suffit pas', async () => { const x = await state(p); assert.equal(x.context.place.id, 'home'); assert(x.pending); });
+      await p.reload(); await p.evaluate(w => Object.assign(__geo, w), WORK); await s.settle(4);
+      await check(tag + ' · reload pendant confirmation : ne valide pas le point isolé', async () => { const x = await state(p); assert.equal(x.context.place.id, 'home'); assert(x.pending); });
       await p.evaluate(w => __geoPush(w), WORK); await s.settle();
       await check(tag + ' · second relevé cohérent reconnaît le travail', async () => { const x = await state(p); assert.equal(x.context.place.id, 'work'); assert.equal(x.context.source, 'gps'); });
       await p.evaluate(() => __geoPush({ lat: 48.9007, lon: 2.2502, speed: null })); await s.settle();

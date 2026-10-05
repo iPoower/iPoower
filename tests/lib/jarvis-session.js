@@ -1,7 +1,7 @@
 // Session de régression exclusivement fictive, réseau extérieur bloqué par lib/browser.
 'use strict';
 const fs = require('node:fs'), vm = require('node:vm');
-const URL = 'https://ipoower.github.io/iPoower/race-control/';
+const APP_URL = 'https://ipoower.github.io/iPoower/race-control/';
 const HTML = fs.readFileSync('site/index.html', 'utf8'), PRESET = JSON.parse(fs.readFileSync('preset.json', 'utf8'));
 const VERSION = JSON.parse(/window\.TWRC_SEALED_V=("[^"]+")/.exec(HTML)[1]);
 const HOME = { lat: 48.8502, lon: 2.3501, acc: 18 }, WORK = { lat: 48.9005, lon: 2.2502, acc: 25 };
@@ -51,7 +51,7 @@ async function session(browser, { iphone = false, permissionAPI = true, locked =
     if (u.includes('rainviewer.com') && !u.includes('tilecache.')) { if (state.radar === 'abort') return r.abort(); return J({ host: 'https://tilecache.rainviewer.com', radar: { past: [{ time: Math.floor(time / 1000), path: '/test' }] } }); }
     if (/tilecache\.rainviewer|arcgisonline|tile\.openstreetmap/.test(u)) return r.fulfill({ status: 200, contentType: 'image/png', body: PNG });
     if (/leaflet@1\.9\.4\/dist\/leaflet\.(js|css)/.test(u)) return r.fulfill({ status: 200, contentType: u.endsWith('.js') ? 'text/javascript' : 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/' + (u.endsWith('.js') ? 'leaflet.js' : 'leaflet.css')) });
-    if (u.startsWith(URL)) {
+    if (u.startsWith(APP_URL)) {
       const name = new URL(u).pathname.split('/').pop();
       if (!name || name === 'index.html') return r.fulfill({ status: 200, contentType: 'text/html', body: HTML });
       if (name === 'obs.json') return J({ updated: new Date(time).toISOString(), stations: {} });
@@ -62,7 +62,7 @@ async function session(browser, { iphone = false, permissionAPI = true, locked =
     return r.abort();
   });
   const settle = async (n = 3) => { for (let i = 0; i < n; i++) { await p.clock.runFor(500); await p.waitForTimeout(60); } };
-  await p.goto(URL); await settle(12);
+  await p.goto(APP_URL); await settle(12);
   return { p, c, errors, calls, state, settle, time, home: HOME, work: WORK };
 }
 module.exports = { session, HOME, WORK };
