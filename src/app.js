@@ -3450,7 +3450,7 @@ document.addEventListener('click', async e => {
   } else if (a === 'geo-add') {
     const h = (window.__hits || [])[+t.dataset.i]; if (!h || S.customs.length >= 4) return;
     markEdit('customs'); S.customs.push({ id: 'c' + Date.now().toString(36), name: h.name, sub: h.sub, dept: h.dept || '', lat: +h.lat.toFixed(4), lon: +h.lon.toFixed(4) });
-    saveSettings(); renderSettings(); S.work.to = S.customs[S.customs.length - 1].id; saveSettings(); refreshAll();
+    saveSettings(); renderSettings(); refreshAll();   // une destination ajoutée ne remplace jamais le lieu de travail (domicile-travail, « Au travail »)
   } else if (a === 'loc-del') {
     markEdit('customs'); const l = S.customs.splice(+t.dataset.i, 1)[0]; if (l) { if (S.work.to === l.id) S.work.to = S.locs[1].id; if (S.work.from === l.id) S.work.from = S.locs[0].id; if (UI.loc === l.id) UI.loc = S.locs[0].id; delete RAW[l.id]; }
     saveSettings(); renderSettings(); rebuild(); renderAll();

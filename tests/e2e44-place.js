@@ -126,6 +126,14 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     check('11 · confirmé : « 🏠 À LA MAISON », lieu Maison sélectionné', /🏠 À LA MAISON/.test(x.bar) && x.loc === 'home', x.bar);
     await s.c.close();
 
+    // 11 bis. ajouter une destination (« + Destination ») ne change pas le lieu de travail
+    s = await session(b, { at: '2026-10-05T09:30:00+02:00', geo: null });
+    const w = await s.p.evaluate(async () => { const before = S.work.to; window.__hits = [{ name: 'Ville D', sub: 'Test', lat: 48.7, lon: 1.0 }];
+      const bt = document.createElement('button'); bt.dataset.act = 'geo-add'; bt.dataset.i = '0'; document.body.appendChild(bt); bt.click(); bt.remove();
+      await new Promise(r => setTimeout(r, 50)); return { before, after: S.work.to, added: S.customs.some(c => c.name === 'Ville D'), work: (placeList().find(p => p.kind === 'work') || {}).id }; });
+    check('11 bis · « + Destination » : destination ajoutée, lieu de travail inchangé', w.added && w.after === w.before && w.work === w.before, JSON.stringify(w));
+    await s.c.close();
+
     // 12. iPhone : barre lisible, sans débordement, cibles ≥ 44 pt
     s = await session(b, { at: '2026-10-05T06:50:00+02:00', dev: 'iphone' });
     const L = await s.p.evaluate(() => { const W = document.documentElement.clientWidth, small = []; document.querySelectorAll('#placeBar button').forEach(e => { const r = e.getBoundingClientRect(); if (r.height < 43.5) small.push(Math.round(r.height)); });
