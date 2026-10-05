@@ -640,6 +640,93 @@ function renderCurrent() {
   <div><div class="sub" style="margin-bottom:6px">ÉVOLUTION · PRÉVISIONS</div><div class="evo">${ev}</div></div>`;
 }
 
+/* ---------- onglet Météo : poste météo (verdict, prochain trajet, chronologie, ce qui compte, phénomènes, route) ---------- */
+// Toute la décision vient de wxDesk (src/wxdesk.js, pur et testé) ; ici, seulement l'adaptation des données déjà chargées et le rendu.
+// Trajets : ceux du briefing (domicile-travail + rendez-vous de l'agenda reconnus comme trajets), jamais tous les événements de l'agenda.
+const WX_IC = { rain: '🌧', snow: '🌨', fog: '🌫', wind: '💨', ice: '❄️', temp: '🌡', sun: '🌅', better: '🌤', zero: '🧊', dep: '🚗', arr: '🏁' };
+function wxTrips(clockModel) {
+  const offSec = clockModel && clockModel.payload && clockModel.payload.utc_offset_seconds != null ? clockModel.payload.utc_offset_seconds : 7200;
+  return BRF_SHOWN.filter(t => !t.originPending && t.dep).map((t, k) => {
+    const seq = t.seq || [], last = seq.length - 1;
+    const points = seq.map((q, j) => {
+      const x = q.hs && q.hs[q.i]; if (!x) return null;
+      // agenda : heure et kilomètre de passage calculés par le relais ; domicile-travail : départ, heures pleines, arrivée
+      const at = q.t || (j === 0 ? t.dep : j === last && t.arr ? t.arr : x.t);
+      return { t: at, f: q.f != null ? q.f : last > 0 ? j / last : 0, km: q.km != null ? q.km : null, name: q.name || q.loc || null, x };
+    }).filter(Boolean);
+    let glare = t.td && t.td.glare ? { ts: t.td.glare.ts } : null;
+    if (!glare && t.l && locHasCoords(t.l.from) && locHasCoords(t.l.to) && t.l.min) {
+      const cloudAt = ts => { const p = points.reduce((b, q) => !b || Math.abs(tsToDate(q.t) - tsToDate(ts)) < Math.abs(tsToDate(b.t) - tsToDate(ts)) ? q : b, null); return p ? p.x.cloud : null; };
+      const g = glareCheck(t.l.from, t.l.to, t.dep, t.l.min, offSec, cloudAt).glare; if (g) glare = { ts: g.ts };
+    }
+    const label = t.src === 'work' ? (t.td && t.td.dir === 'ret' ? 'trajet retour' : 'trajet aller') : t.l && t.l.k === 'ret' ? 'trajet retour' : `trajet vers ${t.to || 'le rendez-vous'}`;
+    return { id: t.key || 'trip' + k, label, from: t.from || null, to: t.to || null, dep: t.dep, arr: t.arr || t.dep, km: t.l && t.l.km != null ? t.l.km : null, glare, points };
+  });
+}
+function wxInput() {
+  const m = CX.m, now = DEMO.on ? m.nowStr.slice(0, 16) : nowIn(m.tz || 'Europe/Paris');
+  const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Math.max(0, (Date.now() - raw.t) / 60e3);
+  const day = m.days.find(d => d.date === now.slice(0, 10)) || {};
+  // valeurs « actuelles » d'une réponse ancienne : on préfère l'heure prévue pour maintenant
+  const cur = ageMin != null && ageMin > 90 ? {} : { T: m.cur.T, Tapp: m.cur.Tapp };
+  return { now, hours: m.hs.slice(Math.max(0, m.nowI - 4)), cur, trips: wxTrips(m), nowcast: ageMin != null && ageMin > 30 ? null : m.nc || null,
+    sun: { sunrise: day.sunrise || null, sunset: day.sunset || null }, ageMin };
+}
+function renderWx() {
+  const el = $('#secWx'); if (!el) return;
+  if (UI.view !== 'meteo' || !CX) { if (!el.hidden || el.innerHTML) { el.hidden = true; el.innerHTML = ''; renderWx.last = ''; } return; }
+  const input = wxInput(), d = wxDesk(input);
+  if (!d) { el.hidden = true; el.innerHTML = ''; renderWx.last = ''; return; }
+  el.hidden = false;
+  const m = CX.m, l = curLoc(), today = input.now.slice(0, 10), E = WXD_EMO;
+  const dayLbl = day => { const n = dayDiff(today, day); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(day); };
+  const mode = DEMO.on ? 'DÉMO · simulé' : offlineNow() ? 'HORS LIGNE' : m.mode === 'live' ? 'LIVE' : 'CACHE';
+  const age = input.ageMin == null ? '' : ` · ${freshState(input.ageMin)} · ${ageTxt(input.ageMin)}`;
+  const h = d.hero;
+  const hero = `<div class="wx-hero lv${h.level}" role="status" aria-live="polite">
+    <div class="wx-hk"><span>${esc(l ? l.name : '')}</span><span class="wx-age">${mode}${age}</span></div>
+    <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.title)}</h2>
+    ${h.lines.map((x, i) => `<p class="${i ? 'wx-hl' : 'wx-hl wx-h1'}">${esc(x)}</p>`).join('')}
+    ${h.stale ? `<p class="wx-stale">⚠ Prévisions reçues il y a ${esc(ageTxt(input.ageMin))} : verdict indicatif, actualise dès que possible.</p>` : ''}</div>`;
+  // prochain trajet
+  const t = d.trip;
+  const tripHtml = !t ? `<div class="wx-blk wx-trip wx-none"><h3>Prochain trajet</h3><p class="sub">Aucun trajet prévu dans les 24 h. Les rendez-vous sans lieu reconnu ne sont pas des trajets.</p></div>`
+    : `<div class="wx-blk wx-trip lv${t.lv}"><h3>Prochain trajet${t.running ? ' · en cours' : ' · ' + esc(dayLbl(t.day))}</h3>
+      <p class="wx-route"><b>${esc(t.from || 'Départ')} → ${esc(t.to || 'Arrivée')}</b></p>
+      <p class="wx-when num">${t.dep} → ${t.arr} · ${t.durMin} min${t.km != null ? ' · ' + f0(t.km) + ' km' : ''}</p>
+      ${t.waiting ? '<p class="sub">⏳ Météo du trajet en cours de chargement…</p>' : `<ul class="wx-pts">${t.points.map(p => `<li class="lv${p.lv}"><span class="k">${esc(p.label)} <i class="num">${esc(p.t)}</i></span><span>${p.T != null ? '<b class="num">' + f0(p.T) + ' °C</b> · ' : ''}${esc(p.text)}${p.place && p.label === 'Mi-parcours' ? ' · ' + esc(p.place) : ''}</span></li>`).join('')}</ul>`}
+      ${t.crit ? `<p class="wx-crit lv${t.crit.lv}">${E[t.crit.lv]} ${esc(t.crit.text)}</p>` : t.waiting ? '' : '<p class="wx-crit lv0">🟢 Aucun phénomène critique sur le trajet</p>'}
+      ${t.later.length ? `<p class="sub">Ensuite : ${t.later.map(x => `${E[x.lv]} ${x.day !== today ? esc(dayLbl(x.day)) + ' ' : ''}${esc(x.dep)} ${esc(x.label)}`).join(' · ')}</p>` : ''}</div>`;
+  // chronologie : moments clés, puis bande horaire défilante
+  const tday = x => x.ts.slice(0, 10) !== today && x.t !== 'maintenant' ? (dayDiff(today, x.ts) === 1 ? 'dem. ' : fmtDay(x.ts.slice(0, 10)) + ' ') : '';
+  const mom = d.timeline.moments.map(x => `<li class="lv${x.lv}${x.kind !== 'wx' ? ' trip' : ''}" data-ts="${esc(x.ts)}"><time class="num">${esc(tday(x) + x.t)}</time><span aria-hidden="true">${WX_IC[x.kind === 'wx' ? x.id : x.kind] || '•'}</span><span>${esc(x.text)}</span></li>`).join('');
+  const skyIc = x => { const dd = m.days.find(z => z.date === x.t.slice(0, 10)) || {}, night = dd.sunrise && dd.sunset && (x.t < dd.sunrise.slice(0, 13) + ':00' || x.t > dd.sunset);
+    return x.code == null ? '·' : x.code <= 1 ? (night ? '🌙' : '☀️') : x.code === 2 ? (night ? '☁️' : '⛅') : '☁️'; };
+  const strip = d.timeline.strip.map(x => {
+    const bar = x.P == null ? 0 : Math.min(100, Math.round(x.P / 4 * 100));
+    return `<li class="lv${x.lv}${x.trip ? ' trip' : ''}${x.now ? ' now' : ''}"><span class="hh num">${x.now ? 'maint.' : x.t.slice(0, 10) !== today && x.hh === '00:00' ? 'dem.' : esc(x.hh)}</span><span class="ic" aria-hidden="true">${x.ic ? WX_IC[x.ic] : skyIc(x)}</span><b class="num">${x.T == null ? '—' : f0(x.T) + '°'}</b><span class="rb" title="${x.P == null ? '' : f1(x.P) + ' mm/h'}"><i style="height:${bar}%"></i></span><span class="pp num">${x.pp != null && x.pp >= 20 ? f0(x.pp) + '%' : ''}</span>${x.trip ? '<span class="tm" aria-label="trajet">🚗</span>' : ''}</li>`;
+  }).join('');
+  const tl = `<div class="wx-blk wx-tlb"><h3>Chronologie · jusqu’à ${esc(d.window.to)}</h3><ol class="wx-tl">${mom || '<li class="lv0"><time>—</time><span></span><span>Aucun changement notable</span></li>'}</ol>
+    <ol class="wx-strip" aria-label="Heure par heure : température, pluie, phénomènes, trajets">${strip}</ol>
+    <p class="sub">Barre bleue : pluie (pleine à 4 mm/h) · % : probabilité de pluie · 🚗 : heure de trajet.</p></div>`;
+  const matters = `<div class="wx-blk wx-matb"><h3>Ce qui compte aujourd’hui</h3><ul class="wx-mat">${d.matters.map(x => `<li class="lv${x.lv}"><span aria-hidden="true">${E[x.lv]}</span><span>${esc(x.text)}</span></li>`).join('')}</ul></div>`;
+  const open = new Set([...el.querySelectorAll('details[open][data-k]')].map(x => x.dataset.k));
+  const ph = `<div class="wx-blk"><h3>Phénomènes</h3><div class="wx-ph">${d.phen.map(p => `<details class="wx-pc lv${p.lv}" data-k="${p.id}"${open.has(p.id) ? ' open' : ''}><summary><span class="ic" aria-hidden="true">${p.icon}</span><span class="tt">${esc(p.title)}</span><span class="ln">${p.lv ? E[p.lv] + ' ' : ''}${esc(p.line)}</span></summary><ul>${p.detail.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`).join('')}</div></div>`;
+  // conditions route + lien court vers Pneus (aucune analyse pneumatique ici)
+  const r = d.road, tires = (CX.cars || []).filter(c => hasTires(c.car) && c.w), tl2 = tires.length ? tires.reduce((a, c) => Math.max(a, c.w.level), 0) : null;
+  const road = `<div class="wx-blk wx-road lv${r.level}"><h3>Conditions route</h3>
+    <div class="wx-rs"><b class="num">${r.score}</b><span>/ 100 ${E[r.level]}</span><span class="sub">${esc(r.window.label)}</span></div>
+    <ul class="wx-rf">${r.factors.map(f => `<li class="lv${f.lv}"><span aria-hidden="true">${E[f.lv]}</span><b>${esc(f.label)}</b><span class="sub">${esc(f.why)}</span><span class="num">${f.pen ? '−' + f.pen : '0'}</span></li>`).join('')}</ul>
+    <details class="wx-how" data-k="how"${open.has('how') ? ' open' : ''}><summary>Comment ce score est calculé</summary><p class="sub">100 moins les points listés : gel jusqu’à −45 (verglas élevé ou pluie verglaçante), neige −35, visibilité −15 à −35 (sous 1 000, 500 et 200 m), pluie −5 à −30 (probabilité ≥ 60 %, 0,2, 2 et 7,6 mm/h), rafales −10 à −30 (55, 70 et 90 km/h), froid ou chaleur −5, air saturé −5, soleil rasant −5. La couleur n’est jamais plus douce que le pire facteur. Environnement seulement : l’adhérence des pneus est dans l’onglet Pneus.</p></details>
+    ${tl2 != null ? `<div class="wx-tire"><span>Impact pneus : <b>${['faible', 'modéré', 'élevé', 'critique'][tl2]}</b> ${E[tl2]}</span><button class="btn sm" data-act="view" data-v="pneus">Voir analyse Pneus →</button></div>` : ''}</div>`;
+  const foot = `<p class="sub wx-foot">Détails techniques plus bas : <a href="#secCur">mesures</a> · <a href="#secChart">graphique 24 h</a> · <a href="#hdrMore">sources et fraîcheur</a>.</p>`;
+  const html = hero + tripHtml + tl + matters + ph + road + foot;
+  if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
+  const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
+  el.className = 'mod wx lv' + d.level; el.innerHTML = html; renderWx.last = html;
+  const ns = el.querySelector('.wx-strip'); if (ns && left) ns.scrollLeft = left;
+}
+
 
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 const TIRE_ALERTS = ['press', 'age', 'mont'];
@@ -650,13 +737,14 @@ function renderView() {
   document.body.classList.toggle('vt', vt);
   $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="pneus" aria-pressed="${!vm && !vt}">🛞 Pneus</button><button data-act="view" data-v="meteo" aria-pressed="${vm}">🌦️ Météo</button><button data-act="view" data-v="tenue" aria-pressed="${vt}">👔 Tenue</button></div>`;
   const links = vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
-    ? [['secCur', 'Actuel'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
+    ? [['secWx', 'Synthèse'], ['secRadar', 'Radar'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secCur', 'Détails'], ['secAir', 'Air · UV'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
     : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secSeason', 'Saison'], ['secJournal', 'Journal'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
   const order = vt
-    ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'] : vm
-    ? ['hdrMore', 'banners', 'secCur', 'secTip', 'secBrf', 'secCal', 'secRadar', 'secAir', 'secChart', 'secDays', 'secIce', 'secAlerts', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
-    : ['secBrf', 'secCal', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts'];
+    ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx'] : vm
+    // Météo : synthèse d'abord (verdict, trajet, chronologie, phénomènes, route), puis cartes et graphiques, puis les détails techniques
+    ? ['secWx', 'banners', 'hdrMore', 'secRadar', 'secChart', 'secDays', 'secCur', 'secAir', 'secIce', 'secAlerts', 'secTip', 'secCal', 'secBrf', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal']
+    : ['secBrf', 'secCal', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx'];
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#notice');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
@@ -1331,7 +1419,7 @@ const LIVE = { key: null, phase: 'idle', base: null, startFix: null, lastFix: nu
 // Il ne peut constater ni un départ ni une arrivée et ne demande aucun suivi GPS continu.
 const TRIPPREVIEW = { key: null, phase: 'idle', gen: 0, base: null, planSignature: null, fix: null, origin: null, route: null, requestedAt: 0, readyAt: 0, exp: 0, message: '' };
 const TRIPPREVIEW_AGE = 30 * 60e3, TRIPPREVIEW_KM = 1;
-let BRF_TRIPS = [];
+let BRF_TRIPS = [], BRF_SHOWN = [];
 const RETURNHOME_KEY = 'twrc.returnhome.v1';
 let RETURNHOME = null;
 function returnHomeLoad() {
@@ -1730,7 +1818,9 @@ function liveApply(T, now) {
 }
 setInterval(() => { if ((LIVE.key || TRIPPREVIEW.key) && !document.hidden) renderBrf(); }, 15e3);
 
-function renderBrf() {
+// Le poste météo (onglet Météo) suit chaque mise à jour du briefing : mêmes trajets, mêmes modèles, aucun appel en plus.
+function renderBrf() { BRF_SHOWN = []; try { renderBrfCore(); } finally { renderWx(); } }
+function renderBrfCore() {
   const el = $('#secBrf'); if (!el) return;
   // La météo du GPS peut être en cours de chargement ; les trajets ont leurs propres modèles.
   const clockModel = (CX && CX.m) || M[S.locs[0].id] || Object.values(M).find(Boolean);
@@ -1765,6 +1855,7 @@ function renderBrf() {
   T = liveApply(T, now);   // trajet vivant (position GPS réelle) : un seul, en mémoire uniquement
   T = tripPreviewApply(T, now);
   T.sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : a.src === 'work' ? -1 : 1);
+  BRF_SHOWN = T.slice();   // trajets réellement affichés (travail + agenda reconnus), relus par le poste météo
   const full = T.filter(t => fullFor(t.dep)), main = full[0], rest = full.slice(1);
   const wk = T.find(t => t.src === 'work'), ag = T.find(t => t.src === 'cal');
   const emo = t => t.worst == null ? (t.wait ? '⏳' : '·') : LV[t.worst].emoji;

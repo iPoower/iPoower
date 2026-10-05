@@ -62,6 +62,8 @@ SUITE.push(['e2e35.js', 'intégration : annulations, Tenue et aperçu GPS frais'
   ['e2e41-sw-coldstart.js', 'service worker réel : démarrage à froid hors ligne, ancien cache, réseau muet', true, 'chromium'],
   ['e2e37-sw.js', 'service worker réel : Cache Storage, panne serveur et redémarrage offline', true, 'chromium']);
 SUITE.push(['e2e37.js', 'agenda : rappels exclus des trajets et de Tenue, cache ancien et mobile', true]);
+SUITE.push(['test_wxdesk.js', 'onglet Météo : verdict, chronologie, phénomènes, score route et contre-tests', false],
+  ['e2e42-meteo.js', 'onglet Météo : iPhone, PC, hors ligne, panne, données anciennes, 0 ou plusieurs trajets', true]);
 const verdict = (code, out) => {
   const js = out.match(/erreurs JS : (?!aucune)([^\n]{0,300})/), ex = out.match(/^\w*Error:[^\n]{0,240}/m);   // données 100 % fictives : le motif peut être affiché
   if (code !== 0) return 'code de sortie ' + code + (js ? ' · erreurs JS : ' + js[1] : ex ? ' · ' + ex[0] : '');

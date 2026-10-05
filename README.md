@@ -10,7 +10,7 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
 
 | Dossier | Contenu |
 |---|---|
-| `src/` | Code source : `engine.js` (moteur partagé page + relais), `app.js` (interface), `demo.js`, `style.css`, `shell.html`, `sw.js`, `relay.js`, `widget.js`, `tiredb.json`, `static/` (icônes) |
+| `src/` | Code source : `engine.js` (moteur partagé page + relais), `app.js` (interface), `wxdesk.js` (poste météo de l’onglet Météo), `demo.js`, `style.css`, `shell.html`, `sw.js`, `relay.js`, `widget.js`, `tiredb.json`, `static/` (icônes) |
 | `tools/` | `build.js` (assemble `dist/`), `check-secrets.js` (garde-fou de confidentialité), `check-keys.js` (séparation des clés), `keys.js` (chiffrement partagé), `deploy-copy.js` (publication), `pre-commit`, `relay-clock/` (horloge externe du relais), `relay-freshness.js` (mesure de fraîcheur) |
 | `tests/` | Tests Playwright de bout en bout (horloge et réseau simulés) et harnais du relais (`relay-harness/`) |
 | `encrypted/` | Réglages **déjà chiffrés** (AES-256-GCM, PBKDF2-SHA256 600 000 itérations) |
@@ -104,6 +104,40 @@ Les anciennes chaînes en cache sont réparées depuis le dernier lieu valide ; 
 Le suivi GPS renouvelle aussi le nom de commune et la météo après plusieurs petits déplacements cumulés,
 reprend après la veille et ignore les réponses anciennes après déplacement ou oubli. Les origines de référence restent en mémoire.
 Tests : `test_tripcancel.js`, `test_calendar_ids.js`, `test_gps_requests.js`, `e2e33.js` et `e2e34.js`.
+
+## Onglet Météo : poste météo
+
+L’onglet **🌦️ Météo** répond d’abord à « quoi, quand, où, quel impact pour moi », en moins de 5 secondes.
+Météo = environnement ; Pneus = réaction des pneumatiques ; Race Control = décision. L’analyse d’adhérence reste dans Pneus :
+Météo n’en montre qu’une ligne (« Impact pneus : modéré ») et un lien **Voir analyse Pneus →**.
+
+| Ordre | Bloc | Contenu |
+|---|---|---|
+| 1 | Verdict | 🟢🟡🟠🔴, phénomène dominant, début ou fin estimés, trajet concerné, température et ressenti, prochain changement, état LIVE / CACHE / HORS LIGNE et âge des données |
+| 2 | Prochain trajet | origine → destination, horaires, durée, conditions au départ, à mi-parcours et à l’arrivée, point critique (au kilomètre pour l’agenda), trajets suivants |
+| 3 | Chronologie | moments clés (phénomènes, départs, arrivées, lendemain signalé) puis bande heure par heure défilante (température, pluie, phénomène, heures de trajet) |
+| 4 | Ce qui compte aujourd’hui | 1 à 5 lignes, la plus grave d’abord ; rassurances seulement quand la question se pose (froid, trajet prévu) |
+| 5 | Phénomènes | pluie, brouillard, vent, gel, température, soleil rasant, chaussée : une ligne chacun, détail au toucher |
+| 6 | Conditions route | score 100 − pénalités affichées une à une, fenêtre explicite (prochain trajet, sinon les 6 h à venir) |
+| 7 | Détails | radar, 24 h, 7 jours, mesures détaillées, air et UV, verglas, alertes, sources et fraîcheur (inchangés, plus bas) |
+
+Le moteur `src/wxdesk.js` est pur et déterministe (aucun réseau, stockage ni horloge). Il lit les heures déjà calculées
+(air, pluie, visibilité, rafales, chaussée estimée, verglas) et les trajets déjà affichés par le briefing : domicile-travail
+et rendez-vous de l’agenda reconnus comme trajets, jamais les rappels sans lieu ni les `#pasdetrajet`. Seuils (alignés sur le reste de l’app) :
+
+| Phénomène | 🟡 | 🟠 | 🔴 | Pénalité route |
+|---|---|---|---|---|
+| Pluie | ≥ 0,2 mm/h (ou ≥ 60 % et ≥ 0,1 mm/h) | ≥ 2 mm/h, orage | — | −5 (≥ 60 %), −10, −20, −30 (≥ 7,6 mm/h) |
+| Neige | — | chute prévue | — | −35 |
+| Visibilité | < 1 000 m | < 500 m | < 200 m | −15, −25, −35 |
+| Rafales | ≥ 55 km/h | ≥ 70 km/h | ≥ 90 km/h | −10, −20, −30 |
+| Gel | chaussée estimée − 2 °C < 0 | chaussée + 2 °C < 0, verglas modéré | verglas élevé, pluie verglaçante | −8, −15, −25, −45 |
+| Température | air ≥ 35 °C ou ressenti ≤ −10 °C | — | — | −5 (air ≤ 3 °C ou ≥ 35 °C) |
+| Air saturé, soleil rasant | humidité ≥ 95 % sans pluie ; soleil bas dans l’axe d’un trajet | — | — | −5 chacun |
+
+La couleur du score n’est jamais plus douce que son pire facteur. Hors connexion ou avec un cache de plus de 3 h,
+le dernier verdict reste affiché, marqué indicatif. Sans météo (premier lancement hors ligne, fournisseur en panne),
+le poste météo reste masqué : aucune valeur n’est inventée. Aucun nouveau fournisseur externe.
 
 ## Tenue sartoriale
 
@@ -263,6 +297,7 @@ node tests/run-ci.js              # Chromium
 BROWSER=webkit node tests/run-ci.js   # WebKit (moteur de Safari), profil iPhone
 ```
 
+- Onglet Météo : `test_wxdesk.js` (28 scénarios du moteur pur et 8 régressions volontaires rejetées) ; `e2e42-meteo.js` (iPhone 11 Pro Max, PC 1280 et 1920, hors connexion, cache ancien, fournisseur en panne ou absent puis rétabli, aucun ou plusieurs trajets, lien vers Pneus, aucun nouveau fournisseur).
 - Moteur GO / NO GO : `test_engine_verdicts.js` fige des vérités de sécurité (pluie verglaçante, neige et verglas en pneus été, brouillard, rafales, usure, monotonie au froid, pneu inconnu traité comme été) ; `engine-countertests.js` vérifie que dix régressions volontaires du moteur sont rejetées.
 - Moteur (verdicts, chaussée, verglas), widget, puis parcours navigateur avec horloge et réseau simulés : jours de trajet, timeline (avant départ, en cours, après arrivée), lieux, mini-carte, GPS dynamique, Waze, automate du trajet (départ par le mouvement, arrivée à froid, marche, jitter, vitesse dérivée).
 - Isolement réseau strict : proxy inexistant, service workers bloqués, refus par défaut. Aucun test ne peut joindre le vrai site ni le vrai agenda.
