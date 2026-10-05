@@ -95,7 +95,7 @@ async function session(browser, iso, options = {}) {
   const waitFor = async re => { let t = ''; for (let i = 0; i < 35; i++) { t = await txt(); if (re.test(t) && !/⏳/.test(t)) return t; await settle(1); } return t; };
   // La météo live utilise payload.current.time : son horloge doit avancer comme celle du navigateur.
   const to = async next => { const now = await p.evaluate(() => Date.now()), target = typeof next === 'number' ? next : clock(next); if (target > now) { forecastTime = target; await p.clock.fastForward(target - now); } };
-  const fix = async (g, extra = {}) => { await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { ...g, age: 0, acc: 25, speed: null, ...extra }); await settle(3); };
+  const fix = async (g, extra = {}) => { await require('./lib/geo-fixture-time').coherentTime(p, g, extra); await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { ...g, age: 0, acc: 25, speed: null, ...extra }); await settle(3); };
   const enableGps = async (g = G.here, extra = {}) => { await p.evaluate(x => window.__geoSet(x), { ...g, age: 0, acc: 25, speed: null, ...extra }); await p.evaluate(() => locate(true)); await settle(8); };
   const reload = async () => { S.reloading = true; await p.reload(); await boot(); await fixture(); await settle(8); S.reloading = false; };
   const cancel = async accept => { const button = p.locator('#secBrf [data-act="trip-cancel"]').first(); let asked = false; p.once('dialog', async d => { asked = d.type() === 'confirm'; await (accept ? d.accept() : d.dismiss()); }); await button.click(); await settle(4); return asked; };

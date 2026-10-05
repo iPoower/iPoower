@@ -2,7 +2,7 @@ let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTime
 let gpsResumeAt = -Infinity;
 function resumeGps() {
   if (document.hidden || !S.gpsAuto || location.protocol !== 'https:' || Date.now() - gpsResumeAt < 750) return;
-  gpsResumeAt = Date.now(); stopGps(); startWatch(LIVE.phase === 'active', true); locate(false, true);
+  gpsResumeAt = Date.now(); stopGps(); startWatch(LIVE.phase === 'active' || !FIX || FIX.acc > PLACE_ACC_GPS, true); locate(false, true);
 }
 // iOS peut abandonner le watch et une demande ponctuelle pendant la veille : recréer les deux à la reprise.
 document.addEventListener('visibilitychange', () => { if (document.hidden) { stopGps(); gpsResumeAt = -Infinity; } else { tripCancelSchedulePurge(); resumeGps(); } });
@@ -34,8 +34,8 @@ function registerSW() {
 document.addEventListener('toggle', e => { if (e.target && e.target.id === 'settings' && e.target.open) renderSettings(true); }, true);
 (function init() {
   if (LOCKED() && lsGet('twrc.key')) unseal(lsGet('twrc.key')).then(ok => { if (ok) location.reload(); });
-  registerSW(); refreshTireDB(); tripCancelSchedulePurge();
-  if (GPS && !(Number.isFinite(GPS.acc) && GPS.acc <= PLACE_ACC_APPROX)) { GPS = null; try { localStorage.removeItem('twrc.gps'); } catch (e) { /* stockage */ } }   // ancienne position réseau : jamais une position
+  registerSW(); readGeoPermission(); refreshTireDB(); tripCancelSchedulePurge();
+  if (GPS && !(locHasCoords(GPS) && Number.isFinite(GPS.t) && GPS.t <= Date.now() + 60e3 && Number.isFinite(GPS.acc) && GPS.acc >= 0 && GPS.acc <= PLACE_ACC_APPROX)) { GPS = null; try { localStorage.removeItem('twrc.gps'); } catch (e) { /* stockage */ } }   // ancienne position imprécise ou invalide : jamais un lieu fiable
   if (S.gpsAuto && GPS) UI.loc = 'gps';
   { const c = placeNow(); if (c.source === 'manual') UI.loc = c.place.id; }   // lieu confirmé : contexte de tous les modules (origine verrouillée)
   if (S.gpsAuto && location.protocol === 'https:') setTimeout(() => locate(false), 400);

@@ -60,7 +60,7 @@ async function unseal(pass) {
 }
 const LOCKED = () => !!window.TWRC_SEALED && !window.TWRC_PRESET;
 // Préréglage éventuel injecté à la construction (version privée uniquement)
-const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET) ? normalize(window.TWRC_PRESET, BASE) : clone(BASE);
+const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET) ? normalize({ ...window.TWRC_PRESET, configured: 1 }, BASE) : clone(BASE);
 // Configuration privée transmise dans le fragment d'URL (#cfg=...) : jamais envoyée au serveur
 let CFG_IMPORTED = false;
 function hashCfg() {
@@ -281,59 +281,89 @@ async function reverseName(lat, lon) {
   } catch (e) { return { name: 'Ma position', sub: '' }; }
 }
 let gpsWatch = null, gpsWatchHi = false, gpsBusy = false, gpsRequestGen = 0, gpsWatchGen = 0;
+// Provenance séparée : cette API est celle du navigateur, quel que soit son fournisseur réel.
+let GEO = { permission: 'inconnue', status: 'aucune demande', raw: null, error: null, reason: '' }, geoPermission = null;
+let PLACE_FIX = null, PLACE_PENDING = null, PLACE_HOLD = false;
+function geoFailure(err) {
+  const code = err && err.code, status = code === 1 ? 'PERMISSION_DENIED' : code === 2 ? 'POSITION_UNAVAILABLE' : code === 3 ? 'TIMEOUT' : 'UNAVAILABLE';
+  const msg = code === 1 ? 'Localisation refusée : autorise ce site dans les réglages de localisation du navigateur.'
+    : code === 2 ? 'Position navigateur indisponible : vérifie le service de localisation et réessaie.'
+    : code === 3 ? 'Délai de localisation dépassé : réessaie au premier plan, avec le service de localisation actif.'
+    : 'Localisation indisponible sur ce navigateur ou dans ce contexte.';
+  GEO.status = status; GEO.error = { code: status, message: msg, at: Date.now() };
+  if (code === 1) { GEO.permission = 'refusée'; if (gpsWatch != null) { try { navigator.geolocation.clearWatch(gpsWatch); } catch (e) { /* arrêté */ } gpsWatch = null; gpsWatchGen++; } }
+  alertLoc(msg); renderDiag();
+}
+function readGeoPermission() {
+  if (!navigator.permissions || !navigator.permissions.query || geoPermission) return;
+  try {
+  navigator.permissions.query({ name: 'geolocation' }).then(p => {
+    geoPermission = p;
+    const update = () => { GEO.permission = p.state === 'granted' ? 'autorisée' : p.state === 'denied' ? 'refusée' : GEO.raw ? 'autorisée' : 'à demander'; renderDiag(); };
+    update(); p.onchange = () => { update(); if (p.state === 'denied') { stopGps(); geoFailure({ code: 1 }); } else if (p.state === 'granted' && S.gpsAuto) resumeGps(); };
+  }).catch(() => { /* Safari : Permissions API optionnelle ; le résultat de la demande fait foi. */ });
+  } catch (e) { /* Ancien navigateur : query peut aussi lever une exception synchrone. */ }
+}
+function receivePosition(pos, focus) {
+  onPos(pos, focus).catch(() => { GEO.status = 'traitement interrompu'; alertLoc('Position reçue, traitement interrompu : réessaie.'); renderDiag(); });
+}
 // Le nom persistant peut provenir d'une ancienne version : le premier fix le résout à nouveau.
 let gpsWeatherOrigin = null, gpsNameOrigin = null, gpsWeatherGen = 0, gpsNameGen = 0;
 function stopGps() {
-  gpsRequestGen++; gpsBusy = false; gpsWatchGen++;
+  gpsRequestGen++; gpsBusy = false; gpsWatchGen++; PLACE_PENDING = null;
   if (gpsWatch != null) { try { navigator.geolocation.clearWatch(gpsWatch); } catch (e) { /* déjà arrêté */ } gpsWatch = null; }
 }
 function liveGpsRequest(options) {
   const gen = gpsRequestGen;
-  try { navigator.geolocation.getCurrentPosition(p => { if (gen === gpsRequestGen && S.gpsAuto) onPos(p, false); }, () => {}, options); } catch (e) { /* indisponible */ }
+  try { navigator.geolocation.getCurrentPosition(p => { if (gen === gpsRequestGen && S.gpsAuto) receivePosition(p, false); }, e => { if (gen === gpsRequestGen && S.gpsAuto) geoFailure(e); }, options); } catch (e) { geoFailure(e); }
 }
 function locate(manual, fresh) {
-  if (!('geolocation' in navigator)) { if (manual) alertLoc('Localisation indisponible sur ce navigateur.'); return; }
-  if (gpsBusy) return; gpsBusy = true; const gen = ++gpsRequestGen; if (manual) alertLoc('Recherche de ta position…');
-  const error = err => { if (gen !== gpsRequestGen) return; gpsBusy = false; if (manual) alertLoc(err.code === 1 ? 'Localisation refusée : Réglages iPhone → Confidentialité → Service de localisation → Safari → « Lorsque l’app est active ».' : 'Position introuvable pour le moment.'); };
+  if (!('geolocation' in navigator) || (location.protocol !== 'https:' && location.hostname !== 'localhost')) { geoFailure({ code: 0 }); return; }
+  if (manual && !S.gpsAuto) { S.gpsAuto = 1; saveSettings(); }
+  readGeoPermission();
+  if (gpsBusy) { if (manual) alertLoc('Recherche de ta position déjà en cours…'); return; }
+  gpsBusy = true; GEO.status = 'recherche en cours'; const gen = ++gpsRequestGen; if (manual) alertLoc('Recherche de ta position…'); renderDiag();
+  const error = err => { if (gen !== gpsRequestGen) return; gpsBusy = false; geoFailure(err); if (err && err.code !== 1) startWatch(true); };
   try {
-    navigator.geolocation.getCurrentPosition(pos => { if (gen !== gpsRequestGen) return; gpsBusy = false; if (manual) alertLoc(''); onPos(pos, true); startWatch(LIVE.phase === 'active'); },
-      error, { enableHighAccuracy: !!manual || LIVE.phase === 'active', timeout: 15000, maximumAge: manual || fresh ? 0 : 120000 });
+    navigator.geolocation.getCurrentPosition(pos => { if (gen !== gpsRequestGen) return; gpsBusy = false; if (manual) alertLoc(''); receivePosition(pos, !!manual); startWatch(LIVE.phase === 'active' || !FIX || FIX.acc > PLACE_ACC_GPS); },
+      error, { enableHighAccuracy: true, timeout: 15000, maximumAge: manual || fresh ? 0 : 10000 });
   } catch (e) { error({ code: 0 }); }
 }
-// hi = false : suivi basse consommation (normal) ; hi = true : haute précision continue, seulement pendant un trajet réellement commencé
+// Haute précision pour acquérir un point exploitable et pendant le trajet ; suivi économique ensuite, avec cache court et délai borné.
 function startWatch(hi, restart) {
   hi = !!hi; if (!('geolocation' in navigator) || document.hidden || (gpsWatch != null && gpsWatchHi === hi && !restart)) return;
   if (gpsWatch != null) { try { navigator.geolocation.clearWatch(gpsWatch); } catch (e) { /* déjà arrêté */ } gpsWatch = null; }
   gpsWatchHi = hi; const gen = ++gpsWatchGen;
-  try { gpsWatch = navigator.geolocation.watchPosition(p => { if (gen === gpsWatchGen) onPos(p, false); }, () => {}, hi ? { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 } : { enableHighAccuracy: false, maximumAge: 300000 }); } catch (e) { /* non disponible */ }
+  try { gpsWatch = navigator.geolocation.watchPosition(p => { if (gen === gpsWatchGen && S.gpsAuto) receivePosition(p, false); }, e => { if (gen === gpsWatchGen && S.gpsAuto) geoFailure(e); }, { enableHighAccuracy: hi, maximumAge: 10000, timeout: 30000 }); } catch (e) { geoFailure(e); }
 }
 async function onPos(pos, focus) {
-  if (!pos || !pos.coords) return;
+  if (!pos || !pos.coords) { geoFailure({ code: 2 }); return; }
   const c = pos.coords, ts = Number.isFinite(pos.timestamp) && pos.timestamp > 0 ? pos.timestamp : Date.now();
-  if (!Number.isFinite(c.latitude) || !Number.isFinite(c.longitude) || Math.abs(c.latitude) > 90 || Math.abs(c.longitude) > 180 || (FIX && ts < FIX.ts) || (!FIX && GPS && ts < GPS.t)) return;
-  const np = { lat: +c.latitude.toFixed(4), lon: +c.longitude.toFixed(4) };
-  // garde de confiance : une position réseau (IP, VPN, > 1,5 km) ou incohérente avec un lieu confirmé n'est jamais la position
-  // physique ; elle ne nourrit ni « Ma position », ni la météo, ni le trajet vivant (donnée technique seulement)
-  const raw = { lat: c.latitude, lon: c.longitude, acc: c.accuracy == null ? Infinity : c.accuracy, ts }, refused = placeGate(raw);
+  const raw = { lat: c.latitude, lon: c.longitude, acc: c.accuracy == null ? Infinity : c.accuracy, ts, speed: Number.isFinite(c.speed) ? c.speed : null };
+  const context = placeContext(placeInput());
+  GEO.raw = raw; GEO.permission = 'autorisée'; GEO.error = null; GEO.status = placeFixClass(raw) === 'gps' ? 'position précise reçue' : 'position approximative reçue';
+  const previous = FIX || (GPS ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null);
+  const observation = placeObserve({ fix: raw, previous, logical: PLACE_FIX || previous, context, pending: PLACE_PENDING, places: placeList(), now: Date.now() });
+  const refused = observation.accept ? placeGate(raw) : observation.reason;
+  GEO.reason = refused || observation.reason;
   if (refused) {
-    if (refused === 'réseau') {
-      const moved = !NETLOC || distKm(NETLOC, raw) > 3; NETLOC = { ...raw, name: moved ? null : NETLOC.name };
-      if (moved && !offlineNow()) reverseName(np.lat, np.lon).then(nm => { if (NETLOC && distKm(NETLOC, raw) <= 3 && nm.name !== 'Ma position') { NETLOC.name = nm.name; renderPlace(); } });
-    } else PLACE_REJ = { source: placeFixClass(raw) === 'gps' ? 'GPS' : 'position approximative', reason: refused };
-    if (focus) alertLoc(refused === 'réseau' ? `Position réseau seulement (± ${Math.round(raw.acc / 1000)} km) : localisation physique indisponible, VPN possible.` : 'Position ignorée : incohérente avec le lieu confirmé.');
+    PLACE_PENDING = null; PLACE_REJ = { source: 'navigateur', reason: refused };
+    if (focus) alertLoc(placeFixClass(raw) === 'coarse' ? `Localisation navigateur approximative · précision ~${Math.round(raw.acc / 1000)} km. Confirmation manuelle disponible.` : 'Position ignorée : ' + refused + '.');
     renderPlace(); if (typeof renderDiag === 'function') renderDiag(); return;
   }
-  PLACE_REJ = null;
+  PLACE_FIX = observation.logical; PLACE_PENDING = observation.pending; PLACE_HOLD = !!observation.hold;
+  PLACE_REJ = PLACE_PENDING || /hystérésis/.test(observation.reason) ? { source: 'navigateur', reason: observation.reason } : null;
+  const np = { lat: +c.latitude.toFixed(4), lon: +c.longitude.toFixed(4) };
   // relevé brut pour le trajet vivant (mémoire uniquement) : horodatage réel du relevé, pas l'heure de réception
-  FIXPREV = FIX; FIX = { lat: c.latitude, lon: c.longitude, acc: c.accuracy == null ? Infinity : c.accuracy, ts, speed: c.speed == null || isNaN(c.speed) ? null : c.speed };
+  FIXPREV = FIX; FIX = raw;
   liveOnFix(FIX);
   // Références fixes : des pas successifs de moins de 3 km doivent aussi finir par changer de ville/météo.
   const nameMoved = !gpsNameOrigin || distKm(gpsNameOrigin, np) > 3, weatherMoved = !gpsWeatherOrigin || distKm(gpsWeatherOrigin, np) > 3;
   const prevName = GPS && !nameMoved ? { name: GPS.name, sub: GPS.sub } : null;
-  GPS = { id: 'gps', gps: true, ...np, acc: Math.round(c.accuracy), t: ts, name: prevName ? prevName.name : 'Ma position', sub: prevName ? prevName.sub : '' };
+  GPS = { id: 'gps', gps: true, ...np, acc: Math.round(c.accuracy), t: ts, placePending: !!observation.hold, name: prevName ? prevName.name : 'Ma position', sub: prevName ? prevName.sub : '' };
   if (!S.gpsAuto) { S.gpsAuto = 1; saveSettings(); }
   if (focus && !PLACE.conf) UI.loc = 'gps';   // un lieu confirmé reste le contexte, même après « Ma position »
-  lsSet('twrc.gps', JSON.stringify(GPS)); renderStatus(); renderLocChips(); renderSrc();
+  lsSet('twrc.gps', JSON.stringify(GPS)); renderStatus(); renderLocChips(); renderSrc(); renderDiag();
   if (focus && !weatherMoved && M.gps) renderAll();
   const tasks = [];
   if (nameMoved && !offlineNow()) {
@@ -353,7 +383,7 @@ async function onPos(pos, focus) {
 /* ===================== LIEU COURANT (localisation métier, une seule source de vérité) ===================== */
 // Tout est décidé par placeContext (src/placectx.js, pur et testé). Ici : stockage local, relevés du navigateur, actions et rendu.
 // twrc.place.v1 = { conf: { placeId, at, how, day } | null, last: { placeId, at, source } | null } : identifiants de lieux et heures,
-// AUCUNE coordonnée. NETLOC (mémoire seulement) : dernière position réseau écartée (IP, VPN), pour le badge et le diagnostic.
+// AUCUNE coordonnée. NETLOC est réservé à une éventuelle source réseau indépendante. Le navigateur ne le remplit jamais.
 const PLACE_KEY = 'twrc.place.v1';
 let PLACE = { conf: null, last: null }; try { PLACE = Object.assign({ conf: null, last: null }, JSON.parse(lsGet(PLACE_KEY) || '{}') || {}); } catch (e) { PLACE = { conf: null, last: null }; }
 let NETLOC = null, PLACE_REJ = null;
@@ -364,20 +394,19 @@ function placeList() {
   return [...S.locs, ...S.customs].filter(locHasCoords).map(l => ({ id: l.id, name: l.name, lat: l.lat, lon: l.lon, kind: l.id === S.work.to ? 'work' : l === home ? 'home' : 'custom' }));
 }
 function placeInput(extra) {
-  const precise = FIX && placeFixClass(FIX) !== 'network' ? FIX : GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null;
+  const precise = PLACE_HOLD || GPS && GPS.placePending ? PLACE_FIX : PLACE_FIX || (GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null) || GEO.raw;
   return { now: Date.now(), today: placeToday(), places: placeList(), conf: PLACE.conf, last: PLACE.last, fix: precise, net: NETLOC,
     moving: LIVE.phase === 'active', movingSince: LIVE.startFix ? LIVE.startFix.ts : null, fmt: hmLocal, ...(extra || {}) };
 }
 // contexte courant ; une confirmation terminée (départ, GPS précis ailleurs, fin de journée) est effacée une seule fois
 function placeNow() {
   const c = placeContext(placeInput());
-  if (c.ended && PLACE.conf) { PLACE.last = { placeId: PLACE.conf.placeId, at: Date.now(), source: 'fin : ' + c.ended.reason }; PLACE.conf = null; placeSave(); }
+  if (c.ended && PLACE.conf) { PLACE.last = { placeId: PLACE.conf.placeId, at: PLACE.conf.at, source: 'fin : ' + c.ended.reason }; PLACE.conf = null; placeSave(); }
   if (!PLACE.conf && c.source === 'gps' && c.place && (!PLACE.last || PLACE.last.placeId !== c.place.id || Date.now() - PLACE.last.at > 10 * 60e3)) { PLACE.last = { placeId: c.place.id, at: Date.now(), source: 'gps' }; placeSave(); }
   return c;
 }
 // garde à l'entrée des relevés du navigateur : renvoie la raison d'un refus, ou null si le relevé peut être utilisé
 function placeGate(fix) {
-  if (placeFixClass(fix) === 'network') return 'réseau';
   const c = placeContext(placeInput({ fix, net: null }));
   const r = c.rejected.find(x => x.source !== 'réseau');
   return r ? r.reason : null;
@@ -398,6 +427,7 @@ function placeArriveBtn(t) {
 function placeConfirm(placeId, how) {
   const p = placeList().find(x => x.id === placeId); if (!p) return;
   const now = Date.now();
+  PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false;
   PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' }; placeSave();
   // la machine de trajet existante termine proprement l'aller : arrivée du trajet vivant, sinon trajet planifié marqué arrivé
   const t = placeArrivalTrip(placeId);
@@ -428,13 +458,20 @@ function renderPlace() {
   if (el.innerHTML !== h) el.innerHTML = h;
 }
 // diagnostic interne : brut navigateur, réseau, lieu logique, source gagnante et sources écartées (coordonnées arrondies à ~1 km)
-function placeDiagRows() {
-  const c = placeContext(placeInput()), rd = v => (Math.round(v * 100) / 100).toFixed(2);
-  const raw = FIX ? `${rd(FIX.lat)}, ${rd(FIX.lon)} · ±${Math.round(FIX.acc)} m · ${placeFixClass(FIX)} · il y a ${ageTxt(ageOf(FIX.ts))}` : 'aucun relevé';
+function placeDiagRows(forCopy) {
+  const c = placeContext(placeInput()), rd = v => Number.isFinite(v) ? v.toFixed(forCopy ? 2 : 5) : '—', f = GEO.raw || FIX;
+  const seconds = f ? Math.max(0, Math.round((Date.now() - f.ts) / 1000)) : null;
+  const raw = f ? `${rd(f.lat)}, ${rd(f.lon)} · ±${Math.round(f.acc)} m · il y a ${seconds < 60 ? seconds + ' s' : ageTxt(seconds / 60)} · source : API navigateur` : 'aucun relevé';
   const net = NETLOC ? `${NETLOC.name || 'nom inconnu'} · ±${Math.round(NETLOC.acc / 1000)} km · il y a ${ageTxt(ageOf(NETLOC.ts))}` : 'aucune';
   const rej = c.rejected.concat(PLACE_REJ ? [PLACE_REJ] : []);
-  return [['Géolocalisation navigateur (brute)', raw], ['Position réseau / IP', net],
-    ['Lieu logique Race Control', `${c.place ? c.place.name : c.title.replace(/^\S+ /, '')} · ${c.trust}`], ['Source retenue', `${c.source}${c.originLock ? ' · origine verrouillée : ' + c.originLock : ''}`],
+  const used = FIX || f, distances = used && placeFixClass(used) === 'gps' ? placeList().map(p => [(p.kind === 'home' ? 'Distance domicile' : p.kind === 'work' ? 'Distance travail' : 'Distance ' + p.name), Math.round(placeDistance(used, p) * 1000) + ' m']) : [];
+  const source = { gps: 'GPS navigateur', approx: 'navigateur approximatif', coarse: 'navigateur trop imprécis', manual: 'confirmation utilisateur', network: 'position réseau', last: 'dernier lieu fiable', trip: 'mouvement confirmé', none: 'aucune' }[c.source];
+  return [['Permission localisation', GEO.permission], ['Statut localisation navigateur', GEO.status + (document.hidden ? ' · suivi suspendu en arrière-plan' : '')],
+    ['Géolocalisation navigateur (brute)', raw], ['Position navigateur retenue', FIX ? `±${Math.round(FIX.acc)} m · il y a ${ageTxt(ageOf(FIX.ts))}` : 'aucune'],
+    ['Dernière erreur localisation', GEO.error ? GEO.error.code + ' · ' + GEO.error.message : 'aucune'], ['Position réseau / IP', net],
+    ...distances,
+    ['Lieu logique Race Control', `${c.place ? c.place.name : c.title.replace(/^\S+ /, '')} · ${c.trust} · ${c.place ? c.place.kind === 'home' ? 'domicile' : c.place.kind === 'work' ? 'travail' : 'destination connue' : c.source === 'gps' ? 'autre' : 'indéterminé'}`], ['Source retenue', `${c.source} · ${source}${c.originLock ? ' · origine verrouillée : ' + c.originLock : ''}`],
+    ['Raison localisation', c.source === 'manual' ? 'confirmation utilisateur' : c.source === 'trip' ? 'déplacement confirmé · trajet en cours' : GEO.reason || (c.source === 'last' ? 'dernier lieu fiable · attente de position fraîche' : c.source === 'gps' ? 'position navigateur précise dans la géofence' : 'position insuffisante · confirmation manuelle disponible')],
     ['Sources écartées', rej.length ? rej.map(x => `${x.source} : ${x.reason}`).join(' | ') : 'aucune']];
 }
 function alertLoc(msg) { const el = $('#locMsg'); if (el) { el.textContent = msg; el.hidden = !msg; } }
@@ -640,11 +677,13 @@ function renderStatus() {
   else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
   else u = 'Aucune donnée météo';
   const pause = WEATHER_REQUESTS.state(), limited = !DEMO.on && pause.until > Date.now();
+  const blocked = busy || limited && !off;
+  document.querySelectorAll('[data-act="refresh"]').forEach(button => { button.disabled = blocked; button.title = busy ? 'Actualisation en cours' : limited && !off ? 'Reprise automatique après la pause du fournisseur météo' : ''; });
   if (limited && !off) u += ' · fournisseur météo limité · reprise automatique après ' + new Date(pause.until).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
   if (busy && !off && mode !== 'demo') u += ' <span class="sync">· actualisation…</span>';   // HORS LIGNE → actualisation → LIVE
   if (typeof renderDiag === 'function') renderDiag();
   $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
-    <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${busy || limited ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
+    <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${blocked ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
 }
 function renderLocChips() {
   const gpsChip = GPS ? `<button class="chip gpsc" data-act="loc" data-id="gps" aria-pressed="${UI.loc === 'gps'}">📍 ${esc(GPS.name)}${GPS.acc ? ` <small>±${GPS.acc < 1000 ? GPS.acc + ' m' : (GPS.acc / 1000).toFixed(1) + ' km'}</small>` : ''}</button>`
@@ -1149,8 +1188,8 @@ function renderRadar() {
     el.dataset.ready = 1;
     el.innerHTML = `<div class="mod-h"><h2>Radar pluie</h2><span class="src obs">mesuré · radar</span></div>
       <div class="radar"><div id="rmap" class="rmap" role="img" aria-label="Carte radar des précipitations"></div><div class="rmsg" id="rmsg">La carte se charge quand tu arrives ici.</div>
-        <button class="btn sm rctr" data-act="rcenter" aria-label="Recentrer sur le lieu">◎</button></div>
-      <div class="rctl"><button class="btn sm" data-act="rplay" id="rplay" aria-label="Lecture">▶</button><input type="range" id="rslide" min="0" max="0" value="0" aria-label="Heure de l’image radar"><span class="num" id="rtime">—</span></div>
+        <button class="btn sm rctr" data-act="rcenter" aria-label="Recentrer sur le lieu" disabled>◎</button></div>
+      <div class="rctl"><button class="btn sm" data-act="rplay" id="rplay" aria-label="Lecture" disabled>▶</button><input type="range" id="rslide" min="0" max="0" value="0" aria-label="Heure de l’image radar" disabled><span class="num" id="rtime">—</span></div>
       <div class="rleg"><span>faible</span><i></i><span>forte</span></div>
       <div class="disc">Pluie et neige réellement mesurées par les radars sur les 2 dernières heures (RainViewer, précision régionale). Pour les 2 prochaines heures, voir « Pluie au quart d’heure » dans la météo actuelle. Un doigt fait défiler la page, deux doigts déplacent et zooment la carte.</div>`;
     $('#rslide').addEventListener('input', e => { radarPlay(false); radarShow(+e.target.value); });
@@ -1160,15 +1199,17 @@ function renderRadar() {
     } else initRadar();
   }
   el.hidden = !CX;
-  if (RADAR.state === 'ready') { radarCenter(false); if (Date.now() - RADAR.t > 10 * 60e3) radarFrames(); }
+  if (RADAR.state === 'ready') { radarCenter(false); if (Date.now() - RADAR.t > 10 * 60e3) radarRefresh(); }
 }
+function radarControls() { const ready = !!RADAR.map && RADAR.layers.length > 0; document.querySelectorAll('#secRadar [data-act], #rslide').forEach(b => { b.disabled = !ready; }); }
 async function initRadar() {
   if (RADAR.state === 'loading' || RADAR.state === 'ready') return;
-  RADAR.state = 'loading'; radarMsg('Chargement du radar…');
+  RADAR.wanted = true; RADAR.state = 'loading'; radarMsg('Chargement du radar…'); radarControls();
   try {
     await loadLeaflet();
     const l = curLoc(), mob = L.Browser.mobile;
     if (!locHasCoords(l)) { RADAR.state = 'idle'; radarMsg('Coordonnées du lieu à renseigner.'); return; }
+    if (!RADAR.map) {
     const map = L.map('rmap', { zoomControl: false, minZoom: 5, maxZoom: 10, dragging: !mob, touchZoom: true, scrollWheelZoom: false, tap: false, attributionControl: true }).setView([l.lat, l.lon], 8);
     map.attributionControl.setPrefix(false);
     map.createPane('labels'); map.getPane('labels').style.zIndex = 450; map.getPane('labels').style.pointerEvents = 'none';
@@ -1176,20 +1217,20 @@ async function initRadar() {
     L.control.zoom({ position: 'topright' }).addTo(map);
     RADAR.marker = L.circleMarker([l.lat, l.lon], { radius: 6, color: '#ffffff', weight: 2, fillColor: '#ff8c2b', fillOpacity: 1 }).addTo(map);
     RADAR.map = map; RADAR.at = l.id;
+    }
     await radarFrames();
-    RADAR.state = 'ready';
-  } catch (e) { RADAR.state = 'idle'; RADAR.err = e.message; radarMsg('Radar indisponible pour le moment (' + e.message + ').'); }
+    RADAR.state = 'ready'; RADAR.err = null; radarControls();
+  } catch (e) { RADAR.state = 'idle'; RADAR.err = e.message; radarControls(); radarMsg('Radar indisponible pour le moment. Réessaie avec « Actualiser ».'); }
 }
 async function radarFrames() {
   if (!RADAR.map) return;
-  RADAR.t = Date.now();
   const js = await fetchJSON('https://api.rainviewer.com/public/weather-maps.json', 10000);
   const past = (js && js.radar && js.radar.past) || []; if (!past.length) throw new Error('aucune image');
   RADAR.layers.forEach(x => RADAR.map.removeLayer(x));
   RADAR.frames = past;
   RADAR.layers = past.map(f => L.tileLayer(`${js.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, maxNativeZoom: 7, maxZoom: 10, zIndex: 5 }).addTo(RADAR.map));
   const sl = $('#rslide'); if (sl) sl.max = past.length - 1;
-  radarShow(past.length - 1); radarMsg('');
+  RADAR.t = Date.now(); radarShow(past.length - 1); radarMsg(''); radarControls();
 }
 function radarShow(i) {
   if (!RADAR.layers.length) return;
@@ -1213,7 +1254,13 @@ function radarCenter(force) {
   if (!force && RADAR.at === l.id) return;
   RADAR.at = l.id; RADAR.marker.setLatLng([l.lat, l.lon]); RADAR.map.setView([l.lat, l.lon], force ? Math.max(8, RADAR.map.getZoom()) : 8, { animate: true });
 }
-function radarRefresh() { if (RADAR.state === 'ready' && Date.now() - RADAR.t > 9 * 60e3) radarFrames().catch(() => {}); }
+function radarRefresh() {
+  if (offlineNow()) return;
+  if (RADAR.wanted && RADAR.state === 'idle') { initRadar(); return; }
+  if (RADAR.state === 'ready' && Date.now() - RADAR.t > 9 * 60e3 && !radarRefresh.busy) {
+    radarRefresh.busy = true; radarFrames().catch(() => radarMsg('Radar non actualisé. Réessaie avec « Actualiser ».')).finally(() => { radarRefresh.busy = false; });
+  }
+}
 
 
 /* ---------- sauvegarde chiffrée (export / import entre téléphones) ---------- */
@@ -2560,7 +2607,6 @@ function renderCars() {
     const strip = []; for (let k = 0; k <= 24; k++) { const v = hourVerdict(car, m.hs, i + k); strip.push(v ? `<i class="lv${v.level}" title="${m.hs[i + k].t.slice(11, 16)} · ${LV[v.level].name} · ${v.score}/100"></i>` : ''); }
     const labels = [0, 6, 12, 18, 24].map(k => `<span>${m.hs[i + k] ? m.hs[i + k].t.slice(11, 16) : ''}</span>`).join('');
     const wi = w.worst;
-    const segs = ['summer', 'winter', 'allseason', 'unknown'].map(t => `<button data-act="tire" data-car="${esc(car.id)}" data-type="${t}" aria-pressed="${car.tire.type === t}">${t === 'summer' ? 'Été' : t === 'winter' ? 'Hiver' : t === 'allseason' ? '4 saisons' : 'Inconnu'}</button>`).join('');
     return `<article class="car lv${w.level}">
       <div class="car-h"><div class="car-top"><div><h3>${esc(car.name)}</h3><span class="spec">${esc(car.spec)}</span></div>${carThumb(car)}</div>
         <div class="tirebox"><span><b>Pneus montés : ${TYPE_LABEL[car.tire.type]}</b></span><span>${tireTxt(car)}</span></div>
@@ -2915,7 +2961,7 @@ function recordJournal() {
     if (JSON.stringify(J[date]) !== JSON.stringify(rec)) { J[date] = rec; changed = true; }
   });
   const keys = Object.keys(J).sort(); if (keys.length > 400) keys.slice(0, keys.length - 400).forEach(k => delete J[k]);
-  if (changed) saveSettings();
+  if (changed) lsSet('twrc.settings.v1', JSON.stringify(S));   // un journal automatique ne configure pas les lieux et voitures
 }
 function renderJournal() {
   const el = $('#secJournal'); if (!el) return; if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
@@ -3011,7 +3057,7 @@ function renderSettings(force) {
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
       <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>
     <div class="set-sec"><h3>Version</h3><p class="sub" id="verLine">${verLine()}</p></div>
-    <div class="set-sec"><h3>Diagnostic</h3><p class="sub">État interne, sans aucune coordonnée, adresse ni titre de rendez-vous : à copier pour signaler une anomalie.</p>
+    <div class="set-sec"><h3>Diagnostic</h3><p class="sub">Sources et précision à l’écran ; positions arrondies à environ 1 km dans la copie, sans adresse ni titre de rendez-vous.</p>
       <dl class="diag" id="diagBox">${diagHtml()}</dl><div class="chips"><button class="btn" data-act="diag-copy">Copier le diagnostic</button></div></div>`;
   loadVersion(); loadSwVersion();
 }
@@ -3027,6 +3073,11 @@ function softRender() { // après un réglage : tout sauf le panneau de paramèt
 }
 
 /* ---------- événements ---------- */
+let geoSearchGen = 0;
+function commandFeedback(button, message, input) {
+  if (button) { button.textContent = message; button.setAttribute('aria-live', 'polite'); }
+  if (input) input.focus();
+}
 document.addEventListener('click', async e => {
   const j = e.target.closest('.jump a');
   if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
@@ -3055,12 +3106,12 @@ document.addEventListener('click', async e => {
   else if (a === 'outfit-occasion') { UI.outfitOccasion = ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing'; lsSet('twrc.outfit.occasion', UI.outfitOccasion); renderTenue(); }
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
-  else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
+  else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; GEO.raw = null; GEO.error = null; GEO.reason = ''; GEO.status = 'suivi désactivé'; PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; alertLoc('Suivi de position désactivé.'); WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
   else if (a === 'loc') { UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false; renderAll(); }
   else if (a === 'locs-toggle') { UI.locsOpen = !UI.locsOpen; renderLocChips(); }
   else if (a === 'tire') { const c = S.cars.find(x => x.id === t.dataset.car); switchTire(c, t.dataset.type); const ci = S.cars.indexOf(c); markEdit(`cars.${ci}.tire`); markEdit(`cars.${ci}.sets`); saveSettings(); renderSettings(); softRender(); }
   else if (a === 'fb') {
-    const m = M[UI.loc]; if (!m || m.nowI < 0) return;
+    const m = M[UI.loc]; if (!m || m.nowI < 0) { commandFeedback(t, 'Météo indisponible pour ce relevé'); return; }
     const x = m.hs[m.nowI], raw = x.Tr != null ? Math.round((x.Tr - ROAD_BIAS) * 10) / 10 : null;
     S.calib = (S.calib || []).concat([{ t: m.nowStr, loc: UI.loc, kind: t.dataset.k, Tr: raw, T: x.T }]).slice(-30);
     saveSettings(); applyCalib(); rebuild(); renderAll();
@@ -3068,21 +3119,22 @@ document.addEventListener('click', async e => {
   else if (a === 'photo-del') { const c = S.cars[+t.dataset.i]; if (c) { delete c.photo; saveSettings(); renderSettings(); softRender(); } }
   else if (a === 'odo' || a === 'tread-add' || a === 'rot') {
     const i = +t.dataset.i, c = S.cars[i], today = (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10);
-    if (a === 'odo') { const v = parseFloat(($('#odo-' + i) || {}).value); if (!isFinite(v) || v <= 0) return; c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).slice(-60); }
-    if (a === 'tread-add') { const v = parseFloat(String(($('#trd-' + i) || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) return; const lo = lastOdo(c);
+    if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; }
+    if (a === 'odo') { const input = $('#odo-' + i), v = parseFloat((input || {}).value); if (!isFinite(v) || v < 0) { commandFeedback(t, 'Saisis un compteur positif ou nul', input); return; } c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).slice(-60); }
+    if (a === 'tread-add') { const input = $('#trd-' + i), v = parseFloat(String((input || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) { commandFeedback(t, 'Saisis une profondeur de 0 à 12 mm', input); return; } const lo = lastOdo(c);
       c.tire.treads = (c.tire.treads || []).concat([{ d: today, mm: Math.round(v * 10) / 10, km: lo ? lo.km : null }]).slice(-30); c.tire.tread = Math.round(v * 10) / 10; }
     if (a === 'rot') { const lo = lastOdo(c); if (!lo) { t.textContent = 'Enregistre d’abord le compteur'; return; } c.tire.lastRot = lo.km; }
-    saveSettings(); renderSettings(); softRender();
+    saveSettings(); renderSettings(); softRender(); commandFeedback($(`#settings [data-act="${a}"][data-i="${i}"]`), 'Enregistré');
   }
   else if (a === 'calib-reset') { S.calib = []; saveSettings(); applyCalib(); rebuild(); renderSettings(); renderAll(); }
-  else if (a === 'pchk') { const c = S.cars.find(x => x.id === t.dataset.car), m = M[UI.loc]; if (!c || !m) return; c.tire.pchk = { date: m.nowStr.slice(0, 10), T: m.cur.T != null ? Math.round(m.cur.T * 10) / 10 : null }; saveSettings(); renderSettings(); softRender(); }
+  else if (a === 'pchk') { const c = S.cars.find(x => x.id === t.dataset.car), m = M[UI.loc]; if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; } c.tire.pchk = { date: m ? m.nowStr.slice(0, 10) : new Date().toISOString().slice(0, 10), T: m && m.cur.T != null ? Math.round(m.cur.T * 10) / 10 : null }; saveSettings(); renderSettings(); softRender(); }
   else if (a === 'ntfy-test') {
     try { const r = await fetch('https://ntfy.sh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: window.TWRC_NTFY, title: 'Race Control · test', message: 'Les notifications du matin arrivent bien sur ce téléphone.', tags: ['white_check_mark'], click: location.href.split('#')[0] }) });
       t.textContent = r.ok ? 'Test envoyé' : 'Échec (' + r.status + ')'; } catch (err) { t.textContent = 'Réseau indisponible'; }
   }
   else if (a === 'copy-widget') {
     try {
-      if (!window.__wjs) { const r = await fetch('widget.js', { cache: 'no-store' }); window.__wjs = await r.text(); }
+      if (!window.__wjs) { const r = await fetch('widget.js', { cache: 'no-store' }); if (!r.ok) throw new Error('Script indisponible'); window.__wjs = await r.text(); }
       const home = S.locs[0], work = S.locs[1];
       const cfg = { home: { id: home.id, name: home.name, lat: home.lat, lon: home.lon }, work: { id: work.id, name: work.name, lat: work.lat, lon: work.lon }, dep: S.work.dep, durMin: S.work.durMin, days: commuteDays(S.work.days),
         cars: S.cars.map(c => ({ short: c.short, sporty: c.sporty, tire: { type: c.tire.type, size: c.tire.size, tread: c.tire.tread ?? null, dot: c.tire.dot || '' }, plan: { on: 0 } })) };
@@ -3092,7 +3144,7 @@ document.addEventListener('click', async e => {
     catch (err) { t.textContent = 'Copie impossible : ouvre « Voir le script »'; }
   }
   else if (a === 'diag-copy') { renderDiag(); try { await navigator.clipboard.writeText(diagText()); t.textContent = 'Copié'; } catch (err) { t.textContent = 'Copie impossible'; } }
-  else if (a === 'copy') { const v = t.dataset.v; try { await navigator.clipboard.writeText(v); t.textContent = 'Copié'; } catch (err) { const i = document.getElementById(t.dataset.for); if (i) { i.focus(); i.select(); } } }
+  else if (a === 'copy') { const v = t.dataset.v; try { await navigator.clipboard.writeText(v); t.textContent = 'Copié'; } catch (err) { const i = document.getElementById(t.dataset.for); if (i) { i.focus(); i.select(); } commandFeedback(t, i ? 'Texte sélectionné : copie manuellement' : 'Copie impossible'); } }
   else if (a === 'from') { if (UI.dir === 'go') { S.work.from = t.dataset.id; markEdit('work.from'); } else { S.work.to = t.dataset.id; markEdit('work.to'); } saveSettings(); softRender(); }
   else if (a === 'dir') { UI.dir = t.dataset.d; UI.dayOff = null; softRender(); }
   else if (a === 'day') { UI.dayOff = +t.dataset.off; softRender(); }
@@ -3106,7 +3158,7 @@ document.addEventListener('click', async e => {
   else if (a === 'tripmap') { lsSet('twrc.tripmap', lsGet('twrc.tripmap') === '1' ? '0' : '1'); renderBrf(); }
   else if (a === 'wday') {
     const d = +t.dataset.d, cur = commuteDays(S.work.days).slice(), k = cur.indexOf(d);
-    if (k >= 0) { if (cur.length === 1) return; cur.splice(k, 1); } else cur.push(d);   // au moins un jour de trajet
+    if (k >= 0) { if (cur.length === 1) { commandFeedback(t, 'Garde au moins un jour de trajet'); return; } cur.splice(k, 1); } else cur.push(d);   // au moins un jour de trajet
     S.work.days = cur.sort((a, b) => a - b); markEdit('work.days'); UI.dayOff = null; saveSettings(); renderSettings(); softRender();
   }
   else if (a === 'bcar') { UI.bcar = t.dataset.car; renderBrief(); }
@@ -3118,12 +3170,14 @@ document.addEventListener('click', async e => {
   else if (a === 'goset') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
   else if (a === 'reset') { S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
   else if (a === 'geo-search') {
-    const q = ($('#geoQ').value || '').trim(), box = $('#geoHits'); if (q.length < 2) return;
+    const input = $('#geoQ'), q = (input.value || '').trim(), box = $('#geoHits'), gen = ++geoSearchGen; window.__hits = [];
+    if (q.length < 2) { box.innerHTML = '<span class="sub" role="status">Saisis au moins deux caractères.</span>'; input.focus(); return; }
     box.innerHTML = '<span class="sub">Recherche…</span>';
-    try { const r = await geocode(q); window.__hits = r; box.innerHTML = r.length ? r.map((h, i) => `<button data-act="geo-add" data-i="${i}">${esc(h.name)} <span class="muted">· ${esc(h.sub)} · ${h.lat.toFixed(2)}, ${h.lon.toFixed(2)}</span></button>`).join('') : '<span class="sub">Aucun résultat.</span>'; }
-    catch (err) { box.innerHTML = '<span class="sub">Recherche impossible (réseau indisponible). Tu peux aussi saisir latitude et longitude à la main.</span>'; }
+    const current = () => gen === geoSearchGen && box.isConnected && input.isConnected && input.value.trim() === q;
+    try { const r = await geocode(q); if (!current()) return; window.__hits = r; box.innerHTML = r.length ? r.map((h, i) => `<button data-act="geo-add" data-i="${i}">${esc(h.name)} <span class="muted">· ${esc(h.sub)} · ${h.lat.toFixed(2)}, ${h.lon.toFixed(2)}</span></button>`).join('') : '<span class="sub">Aucun résultat.</span>'; }
+    catch (err) { if (current()) box.innerHTML = '<span class="sub" role="status">Recherche impossible (réseau indisponible). Tu peux aussi saisir latitude et longitude à la main.</span>'; }
   } else if (a === 'geo-add') {
-    const h = (window.__hits || [])[+t.dataset.i]; if (!h || S.customs.length >= 4) return;
+    const h = (window.__hits || [])[+t.dataset.i]; if (!h) { commandFeedback(t, 'Relance la recherche'); return; } if (S.customs.length >= 4) { commandFeedback(t, 'Limite de quatre destinations : supprime un lieu'); return; } geoSearchGen++;
     markEdit('customs'); S.customs.push({ id: 'c' + Date.now().toString(36), name: h.name, sub: h.sub, dept: h.dept || '', lat: +h.lat.toFixed(4), lon: +h.lon.toFixed(4) });
     saveSettings(); renderSettings(); refreshAll();   // une destination ajoutée ne remplace jamais le lieu de travail (domicile-travail, « Au travail »)
   } else if (a === 'loc-del') {
@@ -3131,6 +3185,7 @@ document.addEventListener('click', async e => {
     saveSettings(); renderSettings(); rebuild(); renderAll();
   }
 });
+document.addEventListener('keydown', e => { if (e.target.id === 'geoQ' && e.key === 'Enter') { e.preventDefault(); const b = $('[data-act="geo-search"]'); if (b) b.click(); } });
 function resizePhoto(file, maxW) {
   return new Promise((res, rej) => {
     const rd = new FileReader();
@@ -3153,7 +3208,7 @@ document.addEventListener('change', e => {
   if (t.id === 'bkFile') { if (t.files && t.files[0]) backupImport(t.files[0]); t.value = ''; return; }
   if (t.dataset.photo != null && t.files && t.files[0]) {
     const car = S.cars[+t.dataset.photo];
-    resizePhoto(t.files[0], 360).then(url => { car.photo = url; saveSettings(); renderSettings(); softRender(); }).catch(() => {});
+    resizePhoto(t.files[0], 360).then(url => { car.photo = url; saveSettings(); renderSettings(); softRender(); }).catch(() => { const label = t.closest('label'); if (label) { label.title = 'Image illisible : choisis une autre photo'; const msg = label.querySelector('span'); if (msg) { msg.textContent = 'Image illisible'; msg.setAttribute('role', 'status'); } else label.insertAdjacentHTML('beforeend', '<span role="status">Image illisible</span>'); } });
     return;
   }
   if (t.dataset.actChange === 'demoScn') { startDemo(t.value); return; }

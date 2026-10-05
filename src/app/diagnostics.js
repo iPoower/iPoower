@@ -14,13 +14,15 @@ async function loadSwVersion() {
   } catch (e) { SWV = 'indisponible'; }
   renderDiag();
 }
-function diagRows() {
+function diagRows(forCopy) {
   const r = RAW[UI.loc], wAge = r ? ageOf(r.t) : null, withData = allLocs().filter(l => RAW[l.id]).length;
   let n = 0, bytes = 0; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^twrc\./.test(k)) { n++; bytes += k.length + (localStorage.getItem(k) || '').length; } } } catch (e) { /* stockage bloqué */ }
   const calAge = CAL ? ageOf(CAL.updated) : null, relayAge = ageOf(RELAY_AT);
   return [
-    ['Application', VER ? `prod-${VER.run} · ${String(VER.sha).slice(0, 7)}` : 'version locale'],
+    ['Application chargée', window.TWRC_BUILD ? `build ${window.TWRC_BUILD} · shell HTML/JS/CSS autonome` : 'version locale'],
+    ['Version publiée', VER ? `prod-${VER.run} · ${String(VER.sha).slice(0, 7)} · métadonnées du serveur` : 'indisponible'],
     ['Service Worker', SWV || '…'],
+    ['Contexte navigateur', `${window.isSecureContext ? 'sécurisé' : 'non sécurisé'} · ${(window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone ? 'PWA installée' : 'onglet navigateur'}`],
     ['Réseau', DEMO.on ? 'démo (aucune donnée réelle)' : offlineNow() ? 'hors ligne' : busy ? 'en ligne · actualisation en cours' : 'en ligne'],
     ['Dernière actualisation', lastOk ? `${hmLocal(lastOk)} (il y a ${ageTxt(ageOf(lastOk))})` : 'aucune réussie' + (lastTry ? ` · tentative ${hmLocal(lastTry)}` : '')],
     ['Météo du lieu affiché', r ? `${freshState(wAge)} · ${r.mode === 'live' ? 'LIVE' : r.mode === 'cache' ? 'cache' : r.mode} · ${ageTxt(wAge)}${ERR[UI.loc] ? ' · erreur : ' + noUrl(ERR[UI.loc]) : ''}` : 'UNAVAILABLE' + (ERR[UI.loc] ? ' · ' + noUrl(ERR[UI.loc]) : '')],
@@ -29,7 +31,7 @@ function diagRows() {
     ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
     ['Agenda', CAL ? `${freshState(calAge)} · relais il y a ${ageTxt(calAge)} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}` : CALDONE ? 'indisponible' : 'chargement…'],
     ['Stockage local', `${n} clés · ${Math.round(bytes / 1024)} Ko`],
-    ...placeDiagRows(),
+    ...placeDiagRows(forCopy),
     ...(() => { const car = labCar(), st = car ? tyreStateOf(car) : null; if (!st) return [['Pneus (Analyse)', 'aucun véhicule']];
       const ax = a => `${a.model || 'modèle ?'} · ${a.size || 'dimension ?'} · DOT ${a.dot || '?'} · ${a.tread != null ? a.tread + ' mm' : 'profondeur ?'} · ${a.press != null ? a.press + ' bar' : 'pression ?'}`;
       return [['Véhicule (Analyse)', st.vehicle.name], ['Monte active', st.active ? st.active.label : 'inconnue'], ['Avant', ax(st.axles.front)], ['Arrière', ax(st.axles.rear)],
@@ -40,7 +42,7 @@ function diagRows() {
   ];
 }
 const diagHtml = () => diagRows().map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
-const diagText = () => `Race Control · diagnostic du ${new Date().toISOString()}\n` + diagRows().map(([k, v]) => `${k} : ${v}`).join('\n');
+const diagText = () => `Race Control · diagnostic du ${new Date().toISOString()}\n` + diagRows(true).map(([k, v]) => `${k} : ${v}`).join('\n');
 function renderDiag() { const el = $('#diagBox'); if (el && $('#settings') && $('#settings').open) el.innerHTML = diagHtml(); }
 // version en production (version.json écrit par le déploiement automatique : n° de mise en production, date, commit)
 let VER = null;
@@ -50,4 +52,3 @@ async function loadVersion() {
   try { const v = await fetchJSON('version.json?t=' + Date.now(), 6000); if (v && v.run && v.sha && v.at) { VER = v; const e = $('#verLine'); if (e) e.innerHTML = verLine(); } } catch (e) { /* pas encore publiée */ }
   loadVersion.busy = 0;
 }
-
