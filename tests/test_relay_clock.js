@@ -119,7 +119,10 @@ const TOKEN = 'jeton-de-test-uniquement';
     await assert.rejects(w.tick(), /HTTP 503/); assert.equal(w.S.dispatches, 0);
   });
   await test('secret GH_TOKEN absent : erreur explicite, aucun appel réseau', async () => {
-    const calls = []; await assert.rejects(W.tick({}, { fetchImpl: async u => { calls.push(u); }, now: T0 }), /GH_TOKEN/); assert.equal(calls.length, 0);
+    const calls = [], logs = []; await assert.rejects(W.tick({}, { fetchImpl: async u => { calls.push(u); }, now: T0, log: l => logs.push(l) }), /GH_TOKEN/); assert.equal(calls.length, 0);
+    // vécu en production : secret placé dans les variables de build → l'exception seule ne disait rien dans Workers Logs
+    assert.equal(logs.length, 1, 'une ligne de journal lisible'); const o = JSON.parse(logs[0]);
+    assert.equal(o.action, 'error'); assert.match(o.reason, /GH_TOKEN absent/); assert.equal(o.decision, null);
   });
   await test('lecture d’obs.json sans jeton ni cache CDN', async () => {
     const w = world({ updated: T0 - 30 * 60e3 }); await w.tick();
