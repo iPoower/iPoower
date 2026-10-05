@@ -915,17 +915,19 @@ function evidenceHtml() {
 const TT_KEY = 'twrc.tyretherm.v1';
 let TT = null;
 function ttLoad() { if (!TT) { try { TT = JSON.parse(lsGet(TT_KEY) || '{}') || {}; } catch (e) { TT = {}; } } return TT; }
-function ttSave(carId, at, T) {
+function ttSave(carId, at, T, sig) {
   if (!carId || !at || !Number.isFinite(T)) return;
-  const o = ttLoad(); o[carId] = { at, T: Math.round(T * 10) / 10 };
+  const o = ttLoad(); o[carId] = { at, T: Math.round(T * 10) / 10, sig: sig || null };   // sig : identité de la monte (invalidation au changement de jeu)
   Object.keys(o).forEach(k => { if (!S.cars.some(c => c.id === k)) delete o[k]; });
   lsSet(TT_KEY, JSON.stringify(o));
 }
 const labCar = () => S.cars.find(c => c.id === UI.labCar) || S.cars.find(hasTires) || S.cars[0];
+// état pneumatique unique (onglet Pneus = source de vérité) : recalculé à chaque rendu, donc jamais périmé après une saisie
+const tyreStateOf = car => tyreState(car, { today: nowIn('Europe/Paris').slice(0, 10) });
 const localTs = (ms, tz) => new Date(ms).toLocaleString('sv-SE', { timeZone: tz || 'Europe/Paris', hour12: false }).replace(' ', 'T').slice(0, 16);
 function labInput(car) {
   const m = CX && CX.m, tz = (m && m.tz) || 'Europe/Paris';
-  if (!m) return { now: nowIn(tz), car, hours: [] };
+  if (!m) return { now: nowIn(tz), car, hours: [], state: tyreStateOf(car) };
   const now = DEMO.on ? m.nowStr.slice(0, 16) : nowIn(tz);
   const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Math.max(0, (Date.now() - raw.t) / 60e3);
   let drive = null;
@@ -941,9 +943,9 @@ function labInput(car) {
     const dur = (tsToDate(t0.arr) - tsToDate(t0.dep)) / 60e3, v = km && dur > 0 ? km / dur * 60 : null;
     trip = { label: t0.label, km, kind: v == null ? null : v < 45 ? 'ville' : v < 80 ? 'route' : 'autoroute', points: t0.points.map(p => ({ t: p.t, f: p.f, km: p.km, name: p.name, x: p.x })) };
   }
-  const h = ttLoad()[car.id];
+  const h = ttLoad()[car.id], state = tyreStateOf(car);
   const reports = reportsLive().map(r => ({ kind: r.kind, at: localTs(r.at, tz) }));
-  return { now, car, hours: m.hs.slice(Math.max(0, m.nowI - 36), m.nowI + 40), history: h && h.at <= now ? h : null, drive, trip, ageMin, reports,
+  return { now, car, hours: m.hs.slice(Math.max(0, m.nowI - 36), m.nowI + 40), history: h && h.at <= now && tyreMemoryValid(h, state) ? h : null, state, drive, trip, ageMin, reports,
     db: car.tire && (car.tire.brand || car.tire.model) ? findTire(car.tire.brand, car.tire.model) : null };
 }
 // suivi de la mémoire thermique : pendant un trajet vivant (toutes les 2 min au plus) et à l'arrivée
@@ -952,7 +954,7 @@ function labThermTick(arrived) {
   const car = labCar(); if (!car || !hasTires(car)) return;
   if (!arrived && !(LIVE.phase === 'active' && Date.now() - (labThermTick.at || 0) > 120e3)) return;
   const r = tyreLab(labInput(car)); if (!r || !r.thermal) return;
-  labThermTick.at = Date.now(); ttSave(car.id, r.now, r.thermal.T);
+  labThermTick.at = Date.now(); ttSave(car.id, r.now, r.thermal.T, r.state && r.state.sig);
 }
 function renderLab() {
   const el = $('#secLab'); if (!el) return;
@@ -971,8 +973,19 @@ function renderLab() {
       <div class="lab-sp"><p class="lab-tag est">DÉCODAGE DE LA MONTE SAISIE</p><ul><li>Saison : ${esc(t.season)}${t.uhp ? ' · haute performance (fenêtre décalée de +5 °C, hypothèse Race Control)' : ''}</li>${idx.length ? `<li>${esc(idx.join(' · '))}</li>` : ''}<li>${esc(t.axles)}</li>${r.spec.db && r.spec.db.cat ? `<li>Base Race Control : ${esc(r.spec.db.cat)}${r.spec.db.tier ? ' · gamme ' + esc(r.spec.db.tier) : ''}</li>` : ''}</ul>
       <p class="lab-tag fab">DONNÉE CONSTRUCTEUR</p><ul>${r.spec.known.map(f => f.v ? `<li><b>${esc(f.k)}</b> : ${esc(f.v)} · <a href="${esc(f.src)}" target="_blank" rel="noopener">source ↗</a>${f.check ? ' <span class="sub">(relevé via recherche le 05/10/2026, à confirmer)</span>' : ''}</li>` : `<li class="muted"><b>${esc(f.k)}</b> : non disponible</li>`).join('')}</ul>
       <p class="sub">Étiquette européenne : elle dépend de la dimension exacte (registre EPREL) et n’est jamais déduite du modèle seul.</p></div></details>`;
+    // état du pneu monté, lu dans l'onglet Pneus (aucune saisie ici) : provenance, fraîcheur, essieux, jeux stockés, entretien
+    const st = r.state, stHtml = st ? `<details class="wx-pc lab-d" data-k="state"><summary><span class="ic" aria-hidden="true">🛞</span><span class="tt">État du pneu monté · onglet Pneus</span><span class="ln">${esc(st.active ? 'Monte active : ' + st.active.label : 'Monte inconnue')}${st.dot ? ' · ' + esc(st.dot.raw) : ''}${st.tread.mm != null ? ' · ' + f1(st.tread.mm) + ' mm' : ''}</span></summary>
+      <div class="lab-sp"><p class="lab-tag est">QUALITÉ DES DONNÉES</p><ul>${st.quality.map(q => `<li>${q.st} <b>${esc(q.k)}</b> : ${esc(q.txt)}</li>`).join('')}</ul>
+      <p class="lab-tag est">DONNÉES SAISIES DANS PNEUS</p><ul>${st.dot ? `<li>${esc(st.dot.txt)}</li>` : '<li class="muted">DOT non renseigné</li>'}
+        <li>${st.mount.date ? `Monté le ${esc(fmtDay(st.mount.date))}${st.mount.serviceY != null ? ' · usage ≈ ' + f1(st.mount.serviceY) + ' an' : ''}` : 'Date de montage non renseignée'}${st.mount.kmSince != null ? ` · ≈ ${st.mount.kmSince.toLocaleString('fr-FR')} km depuis le montage` : st.mount.km != null ? ' · compteur actuel inconnu' : ''}</li>
+        <li>Profondeur : ${st.tread.mm != null ? `${f1(st.tread.mm)} mm, mesurée par vous${st.tread.date ? ' le ' + esc(fmtDay(st.tread.date)) : ''}` : 'non mesurée (jamais estimée)'}${st.tread.rate ? ` · usure ≈ ${st.tread.rate.toFixed(2).replace('.', ',')} mm / 1 000 km` : st.tread.n === 1 ? ' · tendance après une 2e mesure' : ''}</li>
+        <li>Pression : ${st.pressure.target != null ? `cible ${f1(st.pressure.target)} bar (plaque du véhicule)` : 'cible non renseignée'}${st.pressure.check ? ` · contrôlée le ${esc(fmtDay(st.pressure.check.date))}${st.pressure.check.T != null ? ' à ' + f1(st.pressure.check.T) + ' °C' : ''}` : ''}</li>
+        <li>Essieux : AV ${st.axles.front.press != null ? f1(st.axles.front.press) + ' bar' : '—'} · AR ${st.axles.rear.press != null ? f1(st.axles.rear.press) + ' bar' : '—'} · ${esc(st.axles.note)}</li>
+        <li>Profil technique : ${esc(st.profile.label)}</li>
+        ${st.stored.length ? `<li>Jeux stockés (jamais analysés) : ${st.stored.map(x => esc(x.label + ' · ' + x.title)).join(' ; ')}</li>` : ''}</ul>
+      ${st.maint.length ? `<p class="lab-tag est">ENTRETIEN (hors verdict de conduite)</p><ul>${st.maint.map(x => `<li>${WXD_EMO[Math.min(3, x.lv)]} ${esc(x.text)}</li>`).join('')}</ul>` : ''}</div></details>` : '';
     if (r.noWeather) html = `${cars}<div class="lab-hero lvx"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car.short || car.name)}</span></div><h2 class="wx-ht">${esc(t.title)}</h2><p class="wx-hl">${esc(t.size || 'dimension non renseignée')}</p>
-      <p class="wx-hl">Météo indisponible : aucune estimation thermique ni d’adhérence (rien n’est inventé).</p></div>${fiche}`;
+      <p class="wx-hl">Météo indisponible : aucune estimation thermique ni d’adhérence (rien n’est inventé).</p></div>${stHtml}${fiche}`;
     else {
       const h = r.hero, th = r.thermal, g = r.grip, cf = r.confidence;
       const hero = `<div class="lab-hero ${lvc(h.lvl)}" role="status"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car.short || car.name)}</span><span class="wx-age">${r.phase === 'driving' ? 'EN ROULAGE' : r.phase === 'parked' ? 'À L’ARRÊT' : 'HISTORIQUE INCONNU'}</span></div>
@@ -1002,7 +1015,7 @@ function renderLab() {
         : `<div class="wx-blk lab-trip"><h3>Analyse du trajet</h3><p class="sub">Aucun trajet prévu : l’analyse suppose un départ sur route (≈ 70 km/h).</p></div>`;
       const p = r.press, press = `<div class="wx-blk lab-pr ${p.known && p.low ? 'lv2' : ''}"><h3>Pression</h3>${p.known ? `<ul class="lab-why">${p.notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="sub">Source : ${esc(p.src)}.</p>` : `<p class="sub">${esc(p.text)}</p>`}</div>`;
       const conf = `<details class="wx-pc lab-d" data-k="conf"><summary><span class="ic" aria-hidden="true">🎯</span><span class="tt">Niveau de confiance</span><span class="ln">${esc(cf.level[0].toUpperCase() + cf.level.slice(1))}</span></summary><ul>${cf.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
-      html = cars + hero + win + brake + grip + aqua + cmp + tr + press + fiche + conf;
+      html = cars + hero + win + brake + grip + aqua + cmp + tr + press + stHtml + fiche + conf;
     }
   }
   html += `<p class="sub lab-foot">Estimations Race Control (plages, tendances, indicateurs) : aucune mesure de capteur, aucune distance de freinage garantie. État, références et montage : <button class="btn sm" data-act="view" data-v="pneus">onglet Pneus</button></p>`;
@@ -3242,6 +3255,10 @@ function diagRows() {
     ['Agenda', CAL ? `${freshState(calAge)} · relais il y a ${ageTxt(calAge)} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}` : CALDONE ? 'indisponible' : 'chargement…'],
     ['Stockage local', `${n} clés · ${Math.round(bytes / 1024)} Ko`],
     ...placeDiagRows(),
+    ...(() => { const car = labCar(), st = car ? tyreStateOf(car) : null; if (!st) return [['Pneus (Analyse)', 'aucun véhicule']];
+      const ax = a => `${a.model || 'modèle ?'} · ${a.size || 'dimension ?'} · DOT ${a.dot || '?'} · ${a.tread != null ? a.tread + ' mm' : 'profondeur ?'} · ${a.press != null ? a.press + ' bar' : 'pression ?'}`;
+      return [['Véhicule (Analyse)', st.vehicle.name], ['Monte active', st.active ? st.active.label : 'inconnue'], ['Avant', ax(st.axles.front)], ['Arrière', ax(st.axles.rear)],
+        ['Profil pneu', `${st.profile.kind} · ${st.profile.label}`], ['Données pneu', st.quality.map(q => q.st + ' ' + q.k).join(' · ')], ['Mémoire thermique', (() => { const h = ttLoad()[car.id]; return !h ? 'aucune' : tyreMemoryValid(h, st) ? `valide · ${h.at}` : 'ignorée (autre monte ou ancienne version)'; })()]]; })(),
     ['Moteur v2 (preuves)', (() => { const L = shadowLoad(), s2 = evidenceScore(L.map(e => ({ pred: e.v2, obs: e.obs }))), s1 = evidenceScore(L.map(e => ({ pred: e.v1, obs: e.obs })));
       return `mode ${EV_FLAG()} · ${L.length} entrées · vérités terrain ${s2.n} · faux négatifs v1 ${s1.fn} / v2 ${s2.fn} · faux positifs v1 ${s1.fp} / v2 ${s2.fp}`; })()],
     ['Trajet vivant', `${LIVE.phase}${FIX ? ` · dernier relevé GPS il y a ${ageTxt(ageOf(FIX.ts))} (${Number.isFinite(FIX.acc) ? '±' + Math.round(FIX.acc) + ' m' : 'précision inconnue'})` : ' · aucun relevé GPS'}`]

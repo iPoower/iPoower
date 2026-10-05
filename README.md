@@ -10,7 +10,7 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
 
 | Dossier | Contenu |
 |---|---|
-| `src/` | Code source : `engine.js` (moteur partagé page + relais), `app.js` (interface), `wxdesk.js` (poste météo de l’onglet Météo), `tyrelab.js` et `tirespecs.js` (onglet Analyse), `placectx.js` (lieu courant de confiance), `demo.js`, `style.css`, `shell.html`, `sw.js`, `relay.js`, `widget.js`, `tiredb.json`, `static/` (icônes) |
+| `src/` | Code source : `engine.js` (moteur partagé page + relais), `app.js` (interface), `wxdesk.js` (poste météo de l’onglet Météo), `tyrelab.js` et `tirespecs.js` (onglet Analyse), `placectx.js` (lieu courant de confiance), `evidence.js` (preuves météo v2), `tyrestate.js` (état pneumatique unique), `demo.js`, `style.css`, `shell.html`, `sw.js`, `relay.js`, `widget.js`, `tiredb.json`, `static/` (icônes) |
 | `tools/` | `build.js` (assemble `dist/`), `check-secrets.js` (garde-fou de confidentialité), `check-keys.js` (séparation des clés), `keys.js` (chiffrement partagé), `deploy-copy.js` (publication), `pre-commit`, `relay-clock/` (horloge externe du relais), `relay-freshness.js` (mesure de fraîcheur) |
 | `tests/` | Tests Playwright de bout en bout (horloge et réseau simulés) et harnais du relais (`relay-harness/`) |
 | `encrypted/` | Réglages **déjà chiffrés** (AES-256-GCM, PBKDF2-SHA256 600 000 itérations) |
@@ -163,6 +163,26 @@ fin de la journée pour le travail, 20 h pour un autre lieu. La confirmation ter
 de trajet existante (arrivée du trajet vivant, sinon trajet planifié marqué arrivé) et fonctionne hors connexion.
 Stockage : `twrc.place.v1` (identifiants de lieux et heures, aucune coordonnée). Une position réseau reste en mémoire,
 pour le badge et le diagnostic (Réglages → Diagnostic : brut, réseau, lieu logique, source retenue, sources écartées).
+
+## État pneumatique : une seule source de vérité
+
+L’onglet **Pneus** décrit ce qui est physiquement monté : `S.cars[i].tire` est la **monte active**, `S.cars[i].sets` garde les
+jeux stockés (été, hiver…), `S.cars[i].odo` les relevés du compteur. `src/tyrestate.js` (pur, testé) lit ces données et les
+expose à toute l’app ; Analyse, le diagnostic, l’entretien et la mémoire thermique n’ont **aucune saisie ni copie propre**.
+
+| Donnée (saisie une fois dans Pneus) | Provenance | Fraîcheur | Utilisée par |
+|---|---|---|---|
+| Type, marque, modèle, dimension (charge, vitesse, XL, ZR) | saisie | permanente tant que la monte ne change pas | Analyse (fenêtres, profil technique), Pneus, relais |
+| DOT (semaine, année) | saisie | permanent | âge depuis la fabrication : surveillance, confiance, entretien (jamais une pénalité d’adhérence calculée) |
+| Date et compteur de montage | saisie | permanents | âge d’usage, kilomètres depuis le montage (si le compteur est connu) |
+| Profondeur et historique | mesure | fraîche ≤ 60 j, ancienne > 180 j | aquaplaning, freinage mouillé, confiance, usure (≥ 2 mesures avec compteur) |
+| Pression cible (AV / AR) et dernier contrôle | plaque du véhicule + contrôle | contrôle frais ≤ 14 j, ancien > 30 j | estimation à froid / à chaud, sous-gonflage, confiance, entretien |
+
+Changer une valeur dans Pneus recalcule Analyse au rendu suivant (aucun cache de résultat). Changer de jeu change
+l’identité de la monte : l’ancienne mémoire thermique est ignorée. Un jeu stocké n’est jamais analysé. Avant et arrière
+sont distingués quand les pressions diffèrent ; aucune différence n’est inventée (un seul modèle et une seule profondeur
+sont saisis). L’entretien (âge ≥ 10 ans, 5 ans d’usage, profondeur, contrôle de pression) reste séparé du verdict de conduite.
+Aucune migration : la structure existante est conservée telle quelle.
 
 ## Onglet Analyse : ingénieur pneumatique embarqué
 
@@ -357,6 +377,8 @@ BROWSER=webkit node tests/run-ci.js   # WebKit (moteur de Safari), profil iPhone
 ```
 
 - Lieu courant : `test_placectx.js` (19 scénarios : VPN, changement de VPN, relevé imprécis ou impossible, départ réel, trajet, fin de journée, domicile, aucune position, réseau seul, lieu générique ; 6 régressions rejetées) ; `e2e44-place.js` (PC au travail + VPN, rechargement, hors ligne puis reconnexion, départ, retour à la maison, GPS légitime, iPhone).
+- État pneumatique : `test_tyrestate.js` (13 scénarios A–K et 4 régressions rejetées) ; `e2e46-tyrelink.js` (saisie dans Pneus reprise par Analyse, changement de jeu, rechargement, hors ligne, essieux).
+- Moteur de preuves v2 : `test_evidence.js` (incident du 5 octobre rejoué avec les METAR réels, cas A–L, red team ; 7 régressions rejetées) ; `e2e45-evidence.js` (carte, signalement, modes, hors ligne).
 - Onglet Analyse : `test_tyrelab.js` (26 scénarios physiques : nuit, trajet récent, arrêt court ou long, 2 °C contre 20 °C, pluie froide, ville contre autoroute, été contre hiver, chaleur, 0 °C, pluie forte, trajet court ou long, sans trajet, sans météo, pression ou pneu inconnus, fiche partielle ; 8 régressions rejetées) ; `e2e43-analyse.js` (iPhone 11 Pro Max et PC, monte inconnue, mémoire thermique, roulage suivi, hors ligne, données anciennes, météo absente, autres onglets intacts).
 - Onglet Météo : `test_wxdesk.js` (28 scénarios du moteur pur et 8 régressions volontaires rejetées) ; `e2e42-meteo.js` (iPhone 11 Pro Max, PC 1280 et 1920, hors connexion, cache ancien, fournisseur en panne ou absent puis rétabli, aucun ou plusieurs trajets, lien vers Pneus, aucun nouveau fournisseur).
 - Moteur GO / NO GO : `test_engine_verdicts.js` fige des vérités de sécurité (pluie verglaçante, neige et verglas en pneus été, brouillard, rafales, usure, monotonie au froid, pneu inconnu traité comme été) ; `engine-countertests.js` vérifie que dix régressions volontaires du moteur sont rejetées.

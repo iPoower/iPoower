@@ -69,7 +69,7 @@ function tyreLab(input) {
   /* ---------- 2. environnement heure par heure ---------- */
   const H = ((inp.hours || []).filter(x => x && Number.isFinite(mins(x.t)) && n(x.T) != null)).slice().sort((a, b) => mins(a.t) - mins(b.t));
   const noWeather = !H.length || mins(H[0].t) > nowM || mins(H[H.length - 1].t) + 60 < nowM;
-  if (noWeather) return { known: true, tyre, spec: specOut, noWeather: true, confidence: { level: 'faible', reasons: ['Aucune météo pour l’heure en cours : aucune estimation thermique possible.'] } };
+  if (noWeather) return { known: true, tyre, spec: specOut, noWeather: true, state: inp.state || null, confidence: { level: 'faible', reasons: ['Aucune météo pour l’heure en cours : aucune estimation thermique possible.'] } };
   const rowAt = m => { let b = H[0]; for (const x of H) { if (mins(x.t) <= m) b = x; else break; } return b; };
   const recentRain = m => H.filter(x => { const t = mins(x.t); return t <= m && t > m - 180; }).reduce((a, x) => a + (n(x.Pl) ?? n(x.P) ?? 0), 0);
   function env(m) {
@@ -86,7 +86,8 @@ function tyreLab(input) {
   /* ---------- 3. pression (saisie ou estimée, jamais « réelle ») ---------- */
   const target = typeof pressTarget === 'function' ? pressTarget(tire.press) : null, pc = tire.pchk || {}, Tchk = n(pc.T);
   const pAbs = 1.013;
-  const coldAt = Tenv => target == null || Tchk == null ? null : (target + pAbs) * (273.15 + Tenv) / (273.15 + Tchk) - pAbs;
+  // une seule formule de pression pour toute l'app : pressLoss (engine.js), loi des gaz à volume constant
+  const coldAt = Tenv => target == null || Tchk == null ? null : target - (typeof pressLoss === 'function' ? pressLoss(target, Tchk, Tenv) : (target + pAbs) * (Tchk - Tenv) / (273.15 + Tchk));
   /* ---------- 4. dynamique thermique ---------- */
   function kindOf(v) { return v == null ? null : v < 45 ? 'ville' : v < 80 ? 'route' : 'autoroute'; }
   const fType = { summer: 1, allseason: 1.05, winter: 1.1 }[type];
@@ -289,6 +290,11 @@ function tyreLab(input) {
   if (tread == null) { score -= 0.5; reasons.push('Profondeur de sculpture inconnue'); }
   if (stale) { score -= 1; reasons.push(`Météo ancienne (${Math.round(inp.ageMin / 60)} h)`); }
   if (!drv && !tripKind) { score -= 0.5; reasons.push('Type de route supposé (aucun trajet ni roulage en cours)'); }
+  // état pneumatique (onglet Pneus) : la qualité et la fraîcheur comptent, pas le nombre de champs remplis
+  const st0 = inp.state;
+  if (st0 && st0.pressure && target != null) { const c = st0.pressure.check; if (!c || c.fresh === 'stale') { score -= 0.5; reasons.push(c ? `Pression contrôlée il y a ${c.ageD} j` : 'Pression : aucun contrôle daté'); } else if (c.fresh === 'aging') { score -= 0.25; reasons.push(`Pression contrôlée il y a ${c.ageD} j`); } }
+  if (st0 && st0.tread && st0.tread.fresh === 'stale') { score -= 0.5; reasons.push(`Profondeur mesurée il y a ${st0.tread.ageD} j`); }
+  if (st0 && st0.dot) reasons.push(`Âge : ${st0.dot.txt.replace(/^DOT \d{4} · /, '')} (surveillance, sans effet calculé sur l’adhérence)`);
   if (!drv) score = Math.min(score, 2.4);   // sans roulage suivi au GPS, l'état thermique reste une hypothèse : confiance au plus moyenne
   const confidence = { level: score >= 2.5 ? 'élevée' : score >= 1.5 ? 'moyenne' : 'faible', score, reasons };
   /* ---------- 12. verdict principal ---------- */
@@ -298,5 +304,5 @@ function tyreLab(input) {
     warm: warm.reached ? (warm.sinceMin != null ? `Zone favorable atteinte depuis ~${warm.sinceMin} min` : null) : warm.never ? 'Zone favorable non atteinte dans ces conditions' : warm.min[1] == null ? `≥ ${warm.min[0]} min · ≥ ${warm.km[0]} km (peut ne pas être atteinte)` : `≈ ${warm.min[0]}–${warm.min[1]} min · ≈ ${warm.km[0]}–${warm.km[1]} km`,
     brake: gNow.word, corner: gNow.bars[2].word, rain: gNow.aqua.lv ? ['Faible', 'Vigilance', 'Risque élevé', 'Critique'][gNow.aqua.lv] : gripAt({ ...eNow, surf: 'rain', Pl: 1 }, st, kind).word, limiting, confidence: confidence.level };
   return { known: true, tyre, spec: specOut, now: inp.now, phase, parkedMin, drivenKm, drivenMin, kind, env: { Ta: eNow.Ta, Tr: eNow.Tr, Tenv: eNow.Tenv, surf: eNow.surf, surfTxt: SURF_TXT[eNow.surf], Pl: eNow.Pl },
-    thermal: { T, range, state: TL_STATES[st], s: st, lv: stLv(st), win, pos, marks, why, uhp }, warm, cool, grip: gNow, trip, compare, press, confidence, hero };
+    thermal: { T, range, state: TL_STATES[st], s: st, lv: stLv(st), win, pos, marks, why, uhp }, warm, cool, grip: gNow, trip, compare, press, confidence, hero, state: inp.state || null };
 }
