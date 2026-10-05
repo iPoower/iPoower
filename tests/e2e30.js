@@ -230,4 +230,4 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
   for (const s of all) await s.c.close();
   console.log(rows.join('\n') + `\n\n${rows.length - fail}/${rows.length} scénarios OK · erreurs JS : ${errs.length ? errs.join(' | ') : 'aucune'}`);
   await b.close(); process.exit(fail || errs.length ? 1 : 0);
-})().catch(e => { console.log(rows.join('\n')); console.error(e); process.exitCode = 1; });
+})().catch(e => { console.log(rows.join('\n')); console.error(e); process.exit(1); });
