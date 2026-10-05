@@ -2601,8 +2601,9 @@ function tyreLab(input) {
   if (drv) {
     const since = mins(drv.since), v = n(drv.speedKmh), kind = drv.kind && TL_KIND[drv.kind] ? drv.kind : kindOf(v) || 'route';
     // avant le départ : depuis la mémoire si elle existe, sinon froid
-    let T0 = env(since).Tenv; if (hist && mins(hist.at) <= since) T0 = evolve(hist.T, mins(hist.at), since, null).T;
-    const r = evolve(T0, since, nowM, { kind, v: v || TL_KIND[kind].v });
+    let T0 = env(since).Tenv, t0 = since; if (hist && mins(hist.at) <= since) T0 = evolve(hist.T, mins(hist.at), since, null).T;
+    else if (hist && mins(hist.at) <= nowM) { T0 = hist.T; t0 = mins(hist.at); }   // mémoire enregistrée pendant ce roulage : on repart d'elle (départ à chaud conservé)
+    const r = evolve(T0, t0, nowM, { kind, v: v || TL_KIND[kind].v });
     T = r.T; phase = 'driving'; drivenMin = nowM - since; drivenKm = n(drv.km) ?? r.km; driveKind = kind;
     why.push(`En roulage depuis ${Math.round(drivenMin)} min (≈ ${r1(drivenKm)} km, ${TL_KIND[kind].label}${v ? ' ≈ ' + r0(v) + ' km/h' : ', vitesse supposée'})`);
   } else if (hist) {
@@ -4165,11 +4166,14 @@ function labInput(car) {
   const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Math.max(0, (Date.now() - raw.t) / 60e3);
   let drive = null;
   if (!DEMO.on && LIVE.phase === 'active' && LIVE.startFix) {
-    const sf = LIVE.startFix, lf = FIX || LIVE.lastFix || sf, dmin = Math.max(0, (lf.ts - sf.ts) / 60e3);
-    // progression le long de l'itinéraire OSRM (km du premier itinéraire − km restants) ; sinon vol d'oiseau ×1,2, signalé comme estimation
-    const R0 = LIVE.route0, R = LIVE.route, onRoute = R0 && R && R0.key === LIVE.key && R.key === LIVE.key && R0.km >= R.km;
-    const km = onRoute ? (R0.km - R.km) + (distKm(sf, R0.o) + distKm(R.o, lf)) * 1.2 : distKm(sf, lf) * 1.2;
-    drive = { active: true, since: localTs(sf.ts, tz), km, kmSrc: onRoute ? 'route' : 'estimate', speedKmh: dmin >= 2 ? km / dmin * 60 : null };
+    const sf = LIVE.startFix, geo = Number.isFinite(sf.lat), cand = [FIX, LIVE.lastFix].find(f => f && f.ts > sf.ts), lf = geo && cand ? cand : null;
+    const dmin = Math.max(0, (Date.now() - sf.ts) / 60e3), b = LIVE.base || {}, planMin = b.l && b.l.min ? b.l.min : b.dep && b.arr ? Math.max(1, liveMin(b.dep, b.arr)) : null;
+    // progression le long de l'itinéraire OSRM (km du premier itinéraire − km restants) ; sinon vol d'oiseau ×1,2 ; sans GPS (hors ligne,
+    // GPS coupé) : temps écoulé / durée prévue × distance prévue. La source est toujours affichée.
+    const R0 = LIVE.route0, R = LIVE.route, onRoute = !!lf && R0 && R && R0.key === LIVE.key && R.key === LIVE.key && R0.km >= R.km;
+    const total = R0 && R0.key === LIVE.key ? R0.km : b.l && b.l.km != null ? b.l.km : null;
+    const km = onRoute ? (R0.km - R.km) + (distKm(sf, R0.o) + distKm(R.o, lf)) * 1.2 : lf ? distKm(sf, lf) * 1.2 : total != null && planMin ? total * Math.min(1, dmin / planMin) : null;
+    drive = { active: true, since: localTs(sf.ts, tz), startTs: sf.ts, km, total, kmSrc: onRoute ? 'route' : lf ? 'estimate' : km != null ? 'time' : null, speedKmh: dmin >= 2 && km != null ? km / dmin * 60 : null };
   }
   // prochain trajet réellement prévu (briefing) : points datés, kilomètres de l'agenda ou distance domicile-travail ×1,3
   const trips = wxTrips(m).filter(t => t.arr > now && t.points.length), t0 = trips[0] || null;
@@ -4185,12 +4189,34 @@ function labInput(car) {
     db: car.tire && (car.tire.brand || car.tire.model) ? findTire(car.tire.brand, car.tire.model) : null };
 }
 // suivi de la mémoire thermique : pendant un trajet vivant (toutes les 2 min au plus) et à l'arrivée
+// état du trajet vu par Analyse (même état LIVE que le briefing) : simulation avant départ, suivi en cours, bilan à l'arrivée
+function labTripState(r, li) {
+  const d = li && li.drive, hm = ms => localTs(ms).slice(11, 16), rg = x => `${String(x[0]).replace('-', '−')}–${String(x[1]).replace('-', '−')} °C`, km = x => f1(x).replace(/,0$/, '');
+  if (d) {
+    const src = d.kmSrc === 'route' ? 'le long de l’itinéraire' : d.kmSrc === 'estimate' ? 'estimée : GPS, vol d’oiseau ×1,2' : d.kmSrc === 'time' ? 'estimée au temps écoulé, sans GPS' : null;
+    return `<div class="wx-blk lab-live" data-k="live"><h3>🚗 Trajet en cours</h3><ul class="lab-why"><li>Départ réel : <b>${hm(d.startTs)}</b></li>
+      ${d.km != null ? `<li>Progression : <b>${km(d.km)}${d.total != null ? ' / ' + km(d.total) : ''} km</b>${src ? ` <span class="sub">(${src})</span>` : ''}</li>` : ''}
+      <li>Pneu : <b>${esc(r.thermal.state.toLowerCase())}</b> · gomme ≈ ${rg(r.thermal.range)}${r.hero.warm && !r.warm.reached ? ' · ' + esc(r.hero.warm) + ' restantes' : ''}</li></ul></div>`;
+  }
+  if (TRIPEND && Date.now() - TRIPEND.at < 3 * 3600e3) {
+    const e = TRIPEND;
+    return `<div class="wx-blk lab-live" data-k="end"><h3>🏁 Trajet terminé${e.name ? ' · ' + esc(e.name) : ''} · ${hm(e.at)}</h3><ul class="lab-why">${e.km != null ? `<li><b>${km(e.km)} km</b>${e.kmSrc === 'route' ? '' : ' <span class="sub">(estimé)</span>'}</li>` : ''}<li><b>${e.min} min</b></li>
+      <li>État thermique final estimé : <b>${rg(e.range)}</b> (${esc(String(e.state).toLowerCase())})</li><li>Confiance : ${esc(e.conf)} · sert de point de départ au prochain trajet</li></ul></div>`;
+  }
+  if (r.trip && r.trip.rows.length) {
+    const rain = r.trip.rows.find(x => x.events.some(ev => ev.ic === '🌧')), last = r.trip.rows[r.trip.rows.length - 1];
+    return `<div class="wx-blk lab-live" data-k="pre"><h3>⏳ Avant départ · ${esc(r.trip.label)} ${esc(r.trip.dep)}</h3><ul class="lab-why"><li><b>${esc(TL_STATES[r.trip.startS])}</b> probable au départ${r.hero.warm && !r.warm.reached ? ' · ' + esc(r.hero.warm) + ' avant plage favorable' : ''}</li>
+      ${rain ? `<li>Pluie prévue ${rain.km != null ? 'après ≈ ' + rain.km + ' km' : 'vers ' + esc(rain.t)}</li>` : ''}<li>État thermique estimé à l’arrivée : <b>${esc(last.state.toLowerCase())}</b> · ≈ ${rg(last.range)}</li></ul></div>`;
+  }
+  return '';
+}
 function labThermTick(arrived) {
   if (DEMO.on || !CX) return;
   const car = labCar(); if (!car || !hasTires(car)) return;
   if (!arrived && !(LIVE.phase === 'active' && Date.now() - (labThermTick.at || 0) > 120e3)) return;
-  const r = tyreLab(labInput(car)); if (!r || !r.thermal) return;
+  const inp = labInput(car), r = tyreLab(inp); if (!r || !r.thermal) return;
   labThermTick.at = Date.now(); ttSave(car.id, r.now, r.thermal.T, r.state && r.state.sig);
+  return { r, inp };
 }
 function renderLab() {
   const el = $('#secLab'); if (!el) return;
@@ -4198,7 +4224,7 @@ function renderLab() {
   el.hidden = false;
   const car = labCar(), E = WXD_EMO, lvc = l => 'lv' + (l == null ? 'x' : l), sg = v => String(v).replace('-', '−'), rg = r => `${sg(r[0])} à ${sg(r[1])} °C`;
   const cars = S.cars.length > 1 ? `<div class="chips lab-cars" role="group" aria-label="Véhicule analysé">${S.cars.map(c => `<button class="chip" data-act="labcar" data-car="${esc(c.id)}" aria-pressed="${c === car}">${esc(c.short || c.name)}</button>`).join('')}</div>` : '';
-  const r = car ? tyreLab(labInput(car)) : { known: false, reason: 'Monte active inconnue — sélectionner les pneus montés.' };
+  const li = car ? labInput(car) : null, r = car ? tyreLab(li) : { known: false, reason: 'Monte active inconnue — sélectionner les pneus montés.' };
   let html;
   if (!r.known) html = `${cars}<div class="lab-hero lvx"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car ? car.short || car.name : '')}</span></div>
       <h2 class="wx-ht">${esc(r.reason)}</h2><p class="wx-hl">Race Control n’analyse jamais un autre pneu que celui réellement monté.</p>
@@ -4251,7 +4277,7 @@ function renderLab() {
         : `<div class="wx-blk lab-trip"><h3>Analyse du trajet</h3><p class="sub">Aucun trajet prévu : l’analyse suppose un départ sur route (≈ 70 km/h).</p></div>`;
       const p = r.press, press = `<div class="wx-blk lab-pr ${p.known && p.low ? 'lv2' : ''}"><h3>Pression</h3>${p.known ? `<ul class="lab-why">${p.notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="sub">Source : ${esc(p.src)}.</p>` : `<p class="sub">${esc(p.text)}</p>`}</div>`;
       const conf = `<details class="wx-pc lab-d" data-k="conf"><summary><span class="ic" aria-hidden="true">🎯</span><span class="tt">Niveau de confiance</span><span class="ln">${esc(cf.level[0].toUpperCase() + cf.level.slice(1))}</span></summary><ul>${(cf.axes || []).map(([k, v]) => `<li><b>${esc(k)}</b> : ${esc(v)}</li>`).join('')}${cf.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
-      html = cars + hero + win + brake + grip + aqua + cmp + tr + press + stHtml + fiche + conf;
+      html = cars + hero + labTripState(r, li) + win + brake + grip + aqua + cmp + tr + press + stHtml + fiche + conf;
     }
   }
   html += `<p class="sub lab-foot">Estimations Race Control (plages, tendances, indicateurs) : aucune mesure de capteur, aucune distance de freinage garantie. État, références et montage : <button class="btn sm" data-act="view" data-v="pneus">onglet Pneus</button></p>`;
@@ -5048,6 +5074,14 @@ function liveDoneHas(t, all) {
 }
 // trajets terminés (arrivée) mémorisés sur l'appareil : uniquement clé du trajet (heures, sens), mode, heure et expiration — AUCUNE coordonnée
 const TRIPDONE = 'twrc.tripdone';
+// « 🚗 Je pars maintenant » : départ déclaré (clé du trajet, heure, origine), relu au rechargement ; fin de trajet : résumé pour Analyse
+const TRIPSTART_KEY = 'twrc.tripstart.v1', TRIPEND_KEY = 'twrc.tripend.v1';
+let TRIPSTART = null, TRIPEND = null;
+try { TRIPSTART = JSON.parse(lsGet(TRIPSTART_KEY) || 'null'); } catch (e) { TRIPSTART = null; }
+try { TRIPEND = JSON.parse(lsGet(TRIPEND_KEY) || 'null'); } catch (e) { TRIPEND = null; }
+const lsPut = (k, v) => { if (v) lsSet(k, JSON.stringify(v)); else { try { localStorage.removeItem(k); } catch (e) { /* stockage indisponible */ } } };
+const tripStartSave = v => { TRIPSTART = v; lsPut(TRIPSTART_KEY, v); };
+const tripEndSave = v => { TRIPEND = v; lsPut(TRIPEND_KEY, v); };
 function liveDonePersist(key, how) {
   let o = {}; try { o = JSON.parse(lsGet(TRIPDONE) || '{}') || {}; } catch (e) { o = {}; }
   const n = Date.now(); Object.keys(o).forEach(k => { if (!(o[k] && o[k].exp > n)) delete o[k]; });
@@ -5091,6 +5125,7 @@ function liveReset(reason) {
   if (LIVE.key && reason) LIVE.done[LIVE.key] = reason;
   Object.assign(LIVE, { key: null, phase: 'idle', base: null, startFix: null, lastFix: null, carN: 0, near: null, arrN: 0, arrTs: 0, route: null, routeAt: 0, routeOrigin: null, routeTry: 0, routeErr: false, last: null, lastOk: 0, hiAt: 0, loAt: 0, nowAt: 0 });
   LIVE.gen++;   // toute réponse encore en route est désormais ignorée
+  LIVE.manual = 0; if (TRIPSTART) tripStartSave(null);
   if (gpsWatch != null && gpsWatchHi) startWatch(false);   // retour au suivi basse consommation
 }
 // destination pour l'ARRIVÉE : un retour vise le domicile local exact (le relais n'a qu'un domicile arrondi à 0,01°)
@@ -5105,10 +5140,27 @@ function liveSpeed(a, b) {
   if (dt < 5 || b.ts - a.ts > LIVE_AGE_IMM) return null;   // intervalle trop court ou de plus de 5 min : vitesse non mesurable
   return d <= 2 * (a.acc + b.acc) ? 0 : d / dt;
 }
+// « 🚗 Je pars maintenant » : bascule le trajet affiché en « en cours » dans l'automate existant (aucune deuxième machine).
+// Origine : relevé GPS frais, sinon lieu confirmé, sinon origine prévue du trajet ; itinéraire OSRM demandé tout de suite.
+function liveBegin(t, s) {
+  const o = s.o && Number.isFinite(+s.o.lat) ? s.o : null, sf = { lat: o ? +o.lat : NaN, lon: o ? +o.lon : NaN, acc: s.acc || 100, ts: s.at, src: s.src };
+  Object.assign(LIVE, { key: t.key, base: t, phase: 'active', manual: s.at, startFix: sf, lastFix: sf, carN: 0, arrN: 0, near: null });
+  if (o && !offlineNow()) liveRoute(sf, t);
+  if (liveAllowed()) startWatch(true);   // suivi continu si le GPS est autorisé
+}
+function liveStart(key) {
+  const t = BRF_SHOWN.find(x => x.key === key); if (!t || !liveDest(t)) return;
+  const base = LIVE.key === key && LIVE.base ? LIVE.base : t; if (LIVE.key && LIVE.key !== key) liveReset();
+  const pc = PLACE.conf && placeList().find(p => p.id === PLACE.conf.placeId), fix = liveFresh(FIX, LIVE_AGE_IMM) ? FIX : null;
+  const o = fix || (pc && locHasCoords(pc) ? pc : null) || livePlanFrom(base);
+  const s = { key, at: Date.now(), o: o && locHasCoords(o) ? { lat: +o.lat, lon: +o.lon } : null, acc: fix ? fix.acc : 100, src: fix ? 'gps' : pc ? 'lieu confirmé' : 'origine prévue' };
+  tripStartSave(s); liveBegin(base, s); renderAll();
+}
 function liveArrive(how) {
   const k = LIVE.key, b = LIVE.base; if (!k) return;
   liveDonePersist(k, how); LIVE.lastDone = { key: k, name: b ? b.name : '', at: Date.now() };
-  labThermTick(true);   // mémoire thermique : l'état estimé à l'arrivée sert de point de départ au refroidissement
+  const fin = labThermTick(true);   // mémoire thermique : l'état estimé à l'arrivée sert de point de départ au refroidissement (et au trajet suivant)
+  if (fin && fin.inp.drive) { const d = fin.inp.drive, r = fin.r; tripEndSave({ at: Date.now(), name: b ? b.name : '', km: d.km, kmSrc: d.kmSrc, min: Math.round((Date.now() - d.startTs) / 60e3), range: r.thermal.range, state: r.thermal.state, conf: r.confidence.level }); }
   returnHomeClear(k);
   liveReset('arrivé'); renderBrf();
 }
@@ -5287,7 +5339,8 @@ const liveAgo = ms => { const s = Math.round(ms / 1000); return s < 60 ? `${s} s
 function liveTrip(b, now) {
   const run = LIVE.phase === 'active', fix = FIX, fresh = liveFresh(fix, run ? LIVE_AGE_RUN : LIVE_AGE_IMM);
   if (fresh) liveRoute(fix, b);
-  if (LIVE.phase === 'advice') { if (!fresh) liveAskLow(); } else if (!fresh || LIVE.phase === 'late') liveAskFix();
+  if (!liveAllowed()) { /* départ déclaré, GPS coupé : aucune demande de position */ }
+  else if (LIVE.phase === 'advice') { if (!fresh) liveAskLow(); } else if (!fresh || LIVE.phase === 'late') liveAskFix();
   let a = null;
   if (fresh && liveRouteCurrent(LIVE.route, liveOrigin(fix))) {
     // aller : départ conseillé = arrivée prévue − durée depuis ici ; retour : départ prévu ; parti ou en retard : maintenant
@@ -5299,7 +5352,7 @@ function liveTrip(b, now) {
   }
   let old = null;
   if (!a && LIVE.last && Date.now() - LIVE.lastOk <= LIVE_GRACE) { a = LIVE.last; old = fresh ? 'route' : 'gps'; }   // dernière analyse, marquée ancienne
-  if (!a) return LIVE.last ? { ...b, liveLost: true } : b;   // repli explicite après un premier résultat ; sinon trajet planifié, sans mention
+  if (!a) { const mb = run && LIVE.manual ? { ...b, running: true, dep: localTs(LIVE.manual), arr: addMin(localTs(LIVE.manual), Math.max(1, liveMin(b.dep, b.arr || b.dep))) } : b; return LIVE.last ? { ...mb, liveLost: true } : mb; }   // repli explicite après un premier résultat ; sinon trajet planifié, sans mention
   const { leg, r } = a, hm = new Date(LIVE.lastOk).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
   return { ...b, live: LIVE.phase, liveGen: a.gen, planDep: b.dep, planL: b.l, adv: a.adv, dep: leg.dep, arr: leg.arr, running: run, from: '📍 Ma position', l: leg, obs: null,
     res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.worst, wait: false,
@@ -5315,14 +5368,15 @@ function liveApply(T, now) {
   }
   // Un trajet déjà terminé reste terminé même si le GPS est désactivé au rechargement.
   const beforeDone = T; T = T.filter(t => !liveDoneHas(t, beforeDone));
-  if (!liveAllowed()) { if (LIVE.key) liveReset(); return T; }
+  if (!LIVE.key && !DEMO.on && TRIPSTART && Date.now() - TRIPSTART.at < 12 * 3600e3) { const t = T.find(x => x.key === TRIPSTART.key); if (t) liveBegin(t, TRIPSTART); }
+  if (!liveAllowed() && !LIVE.manual) { if (LIVE.key) liveReset(); return T; }
   let cur = LIVE.key ? T.find(t => t.key === LIVE.key) : null;
   if (cur) LIVE.base = cur;
   else if (LIVE.key && LIVE.base && (LIVE.phase === 'active' || LIVE.last)) { cur = LIVE.base; T.push(cur); }   // trajet suivi en direct : reste affiché
   else if (LIVE.key) liveReset();
   if (LIVE.key) {   // expiration : jamais parti → arrivée prévue + 30 min ; parti → coupe-circuit arrivée prévue + max(60 min, 2 × durée)
-    const b = LIVE.base, dur = Math.max(1, liveMin(b.dep, b.arr || b.dep));
-    if (liveMin(b.arr || b.dep, now) > (LIVE.phase === 'active' ? Math.max(60, 2 * dur) : 30)) { const k = b.key; liveReset(LIVE.phase === 'active' ? 'coupe-circuit' : 'expiré'); T = T.filter(t => t.key !== k); cur = null; }
+    const b = LIVE.base, dur = Math.max(1, liveMin(b.dep, b.arr || b.dep)), mArr = LIVE.manual ? addMin(localTs(LIVE.manual), dur) : null;
+    if (liveMin(mArr && mArr > (b.arr || b.dep) ? mArr : b.arr || b.dep, now) > (LIVE.phase === 'active' ? Math.max(60, 2 * dur) : 30)) { const k = b.key; liveReset(LIVE.phase === 'active' ? 'coupe-circuit' : 'expiré'); T = T.filter(t => t.key !== k); cur = null; }
   }
   if (LIVE.key && LIVE.phase === 'advice') {   // aperçu abandonné si l'on revient à moins de 1 km de l'origine prévue
     const pf = livePlanFrom(LIVE.base);
@@ -5510,6 +5564,9 @@ const homeExact = () => { const L = S.locs || [], h = L.find(l => l.id === 'home
 const legNavTo = leg => leg && leg.k === 'ret' ? (homeExact() || leg.to) : leg && (leg.navTo || leg.to);
 // destination du trajet AFFICHÉ (vivant, adaptatif, agenda ou boulot) ; planL = trajet agenda d'origine d'un trajet vivant
 const tripTo = t => t.src === 'cal' ? ((t.planL || t.l || {}).k === 'ret' ? homeExact() || (t.l && t.l.to) : (t.l && (t.l.navTo || t.l.to))) : (t.td && t.td.LB) || (t.l && t.l.to) || null;
+// départ déclaré / arrivée confirmée : actions globales du trajet (même automate, lues par tous les onglets)
+const liveStartBtn = t => !DEMO.on && !t.running && t.live !== 'active' && !t.manualPreview && !t.manualReturn && LIVE.phase !== 'active' && liveDest(t) ? `<button class="btn sm" data-act="trip-start" data-key="${esc(t.key)}">🚗 Je pars maintenant</button>` : '';
+const liveArrBtn = t => (t.running || t.live === 'active') && LIVE.key === t.key ? `<button class="btn sm" data-act="trip-arrived">✅ Bien arrivé</button>` : '';
 // carte de briefing complète, identique pour un trajet domicile-travail et un trajet agenda
 function briefCard(t, dayLbl) {
   const src = t.src === 'work' ? 'domicile-travail' : 'agenda';
@@ -5523,7 +5580,7 @@ function briefCard(t, dayLbl) {
     : t.running ? `<span class="brf-k">🏎️ Trajet en cours · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">parti à ${t.dep.slice(11, 16)} · arrivée prévue <b>${(t.arr || '').slice(11, 16)}</b></span>`
     : `<span class="brf-k">🏁 Prochain trajet · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">${dayLbl(t.dep)} · ${t.dep.slice(11, 16)} → ${(t.arr || '').slice(11, 16)} · ${cdSpan(t.dep)}</span>`}</div>
     <div class="brf-ev">${t.src === 'cal' ? '📅' : '🏁'} <b>${esc(t.name)}</b>${t.l ? ` · ${f0(t.l.km)} km · ${t.l.min} min${t.live ? ' depuis ici' : ''}${t.l.routed ? ' · route analysée' : ' (estimé)'}` : ''}</div>
-    ${tripOriginHtml(t)}<div class="cal-v">${tripCancelButton(t)}${returnHomeButtonForTrip(t)}${placeArriveBtn(t)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
+    ${tripOriginHtml(t)}<div class="cal-v">${tripCancelButton(t)}${returnHomeButtonForTrip(t)}${liveStartBtn(t)}${placeArriveBtn(t) || liveArrBtn(t)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
   if (!t.res) return head + `<p class="muted">${t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;
   const sum = t.sum, top = t.res[0], lv = top.w.level, xs = t.seq.map(q => q.hs[q.i]);
   const ppMax = Math.max(...xs.map(x => x.pp || 0)), Pmax = Math.max(...xs.map(x => x.P || 0));
@@ -6595,6 +6652,7 @@ document.addEventListener('click', async e => {
   else if (a === 'dir') { UI.dir = t.dataset.d; UI.dayOff = null; softRender(); }
   else if (a === 'day') { UI.dayOff = +t.dataset.off; softRender(); }
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
+  else if (a === 'trip-start') liveStart(t.dataset.key);
   else if (a === 'place-confirm') placeConfirm(t.dataset.place, t.dataset.how);
   else if (a === 'place-leave') placeLeave();
   else if (a === 'ev-report') reportAdd(t.dataset.k);
@@ -6622,7 +6680,7 @@ document.addEventListener('click', async e => {
   } else if (a === 'geo-add') {
     const h = (window.__hits || [])[+t.dataset.i]; if (!h || S.customs.length >= 4) return;
     markEdit('customs'); S.customs.push({ id: 'c' + Date.now().toString(36), name: h.name, sub: h.sub, dept: h.dept || '', lat: +h.lat.toFixed(4), lon: +h.lon.toFixed(4) });
-    saveSettings(); renderSettings(); S.work.to = S.customs[S.customs.length - 1].id; saveSettings(); refreshAll();
+    saveSettings(); renderSettings(); refreshAll();   // une destination ajoutée ne remplace jamais le lieu de travail (domicile-travail, « Au travail »)
   } else if (a === 'loc-del') {
     markEdit('customs'); const l = S.customs.splice(+t.dataset.i, 1)[0]; if (l) { if (S.work.to === l.id) S.work.to = S.locs[1].id; if (S.work.from === l.id) S.work.from = S.locs[0].id; if (UI.loc === l.id) UI.loc = S.locs[0].id; delete RAW[l.id]; }
     saveSettings(); renderSettings(); rebuild(); renderAll();
