@@ -189,7 +189,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert(!/en chauffe/i.test(r.hero.state)); assert(Math.abs(r.thermal.T - r.thermal.eq) < 1, `${r.thermal.T} / ${r.thermal.eq}`);
     assert.deepEqual(r.thermal.range, [24, 41]);   // ±(3 + 25 % de l'écart à l'environnement) : la stabilisation ne réduit pas l'erreur sur ΔT
     assert(r.thermal.why.some(x => /Estimation centrale ≈ 32 °C \(favorable\)/.test(x) && /bas de plage ≈ 24 °C/.test(x) && /prudence/.test(x)), r.thermal.why.join(' | '));
-    assert.equal(r.warm.marginal, true); assert.equal(r.hero.warm, 'bas de plage sous le seuil'); assert(!/\d+ °C/.test(r.hero.warm), r.hero.warm);   // libellé compact, explication prudente complète dans thermal.why
+    assert.equal(r.warm.marginal, true); assert.equal(r.hero.warm, null); assert(!/\d+ °C/.test(r.hero.warm), r.hero.warm);   // avertissement dans le verdict ; explication prudente complète dans thermal.why
   });
   test('T3 · été UHP · air 25 °C · soleil · garé, sans historique : température seulement supposée ambiante (jamais « en chauffe » ni « au repos ») ; « Au repos · ambiant » réservé à un arrêt connu', () => {
     const r = scn({ T: 25, Tr: 30, rad: 600 }, null);
@@ -212,7 +212,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const base = { car: UHP(), hours: H({ T: 12, Tr: 13 }), history: { at: ts('08:30'), T: 45 }, ageMin: 10 };
     const soon = lab({ ...base, now: ts('09:00') }), later = lab({ ...base, now: ts('12:00') });
     assert.equal(soon.phase, 'parked'); assert.equal(soon.thermal.trend, 'cooling'); assert(/^En refroidissement · /.test(soon.hero.state), soon.hero.state);
-    assert.equal(soon.hero.warm, 'bas de plage sous le seuil'); assert.equal(soon.thermal.level, 'Sous la plage favorable');
+    assert.equal(soon.warm.marginal, true); assert.equal(soon.hero.warm, null); assert.equal(soon.thermal.level, 'Sous la plage favorable');
     assert.equal(later.thermal.trend, 'rest'); assert.equal(later.hero.state, 'Au repos · ambiant · froid'); assert(later.thermal.T < soon.thermal.T - 10);
   });
   test('T7 · reprise après un arrêt avec historique : repart de la chaleur conservée, pas d’un pneu supposé froid', () => {
