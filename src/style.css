@@ -741,3 +741,20 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .day-destination > .chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .day-destination .chip { min-width: 0; justify-content: center; overflow-wrap: anywhere; }
 .day-destination .chip:last-child:nth-child(odd) { grid-column: 1 / -1; }
+/* débrief d'arrivée (carte Pneus + Journal) */
+.dbf .dbf-q { margin: 12px 0 8px; font-family: var(--f-disp); font-size: 18px; font-weight: 600; }
+.dbf .dbf-v { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.dbf .dbf-v .btn { min-height: 44px; }
+.dbf .dbf-causes { margin: 6px 0; flex-wrap: wrap; }
+.dbf .dbf-causes .chip { min-height: 44px; }
+.dbf .dbf-row { display: flex; gap: 8px; margin-top: 10px; }
+.dbf .dbf-ok { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--go-soft); }
+.dbf .dbf-ok b { color: var(--go-t); }
+.dbf-j { margin-top: 14px; }
+.dbf-j h3 { margin: 0 0 4px; }
+.dbf-list, .dbf-pats { list-style: none; margin: 8px 0; padding: 0; }
+.dbf-li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.dbf-li .btn { grid-row: span 2; }
+.dbf-li.v-worse > span:first-child { color: var(--risk-t); }
+.dbf-li.v-expected > span:first-child { color: var(--go-t); }
+.dbf-pats li { padding: 2px 0; }

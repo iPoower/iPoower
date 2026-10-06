@@ -438,7 +438,7 @@ function placeConfirm(placeId, how) {
   PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' };
   const chosenTrip = APP_CONTEXT.snapshot.activeTrip || BRF_SHOWN.find(t => (appTripPlace(t, 'to') || {}).id === placeId);
   if (appDay().nextDestination && (!appDay().nextDestination.placeId || appDay().nextDestination.placeId === placeId)) {
-    if (chosenTrip) { liveDonePersist(chosenTrip.key, 'confirmé'); LIVE.done[chosenTrip.key] = 'arrivé'; }
+    if (chosenTrip) { closeTrip(chosenTrip, 'confirmé'); LIVE.done[chosenTrip.key] = 'arrivé'; }
     appConfirmedPlace(placeId, now);
   } else { appDay().lastConfirmedPlace = { placeId, at: now, source: 'manual' }; appDay().departedAt = null; }
   USER_STORE.state.lastDeparture = null;
@@ -454,7 +454,7 @@ function placeConfirm(placeId, how) {
     if (!td.err) t = { src: 'work', td, dep: td.dep, arr: td.arr, from: td.fromName, to: td.toName, name: 'Retour domicile-travail', key: 'commute|' + td.dep + '|ret' };
   }
   if (LIVE.key && t && LIVE.key === t.key) liveArrive('confirmé');
-  else if (t && t.key) { liveDonePersist(t.key, 'confirmé'); LIVE.done[t.key] = 'arrivé'; LIVE.lastDone = { key: t.key, name: t.name || p.name, at: now }; if (TRIPPREVIEW.key === t.key) tripPreviewReset(); }
+  else if (t && t.key) { closeTrip(t, 'confirmé'); LIVE.done[t.key] = 'arrivé'; LIVE.lastDone = { key: t.key, name: t.name || p.name, at: now }; if (TRIPPREVIEW.key === t.key) tripPreviewReset(); }
   if (LIVE.phase === 'active') liveReset();
   APP_CONTEXT.weatherPreview = null; UI.loc = placeId; rebuild();
   });
@@ -850,6 +850,7 @@ function renderCurrent() {
 
 // @include app/weather-view.js
 // @include app/analysis-view.js
+// @include app/debrief-view.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 const TIRE_ALERTS = ['press', 'age', 'mont'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
@@ -864,11 +865,11 @@ function renderView() {
     : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secSeason', 'Saison'], ['secJournal', 'Journal'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
   const order = va
-    ? ['secLab', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx'] : vt
-    ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vm
+    ? ['secLab', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secDbf'] : vt
+    ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secDbf'] : vm
     // Météo : synthèse d'abord (verdict, trajet, chronologie, phénomènes, route), puis cartes et graphiques, puis les détails techniques
-    ? ['secWx', 'banners', 'hdrMore', 'secRadar', 'secChart', 'secDays', 'secCur', 'secAir', 'secIce', 'secAlerts', 'secTip', 'secCal', 'secBrf', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal', 'secLab']
-    : ['secBrf', 'secCal', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'];
+    ? ['secWx', 'banners', 'hdrMore', 'secRadar', 'secChart', 'secDays', 'secCur', 'secAir', 'secIce', 'secAlerts', 'secTip', 'secCal', 'secBrf', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal', 'secLab', 'secDbf']
+    : ['secDbf', 'secBrf', 'secCal', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'];
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#notice');
   order.splice(order.indexOf('secBrf') + 1, 0, 'secRoad');
@@ -1645,7 +1646,7 @@ function returnHomeDone(key) {
   return appAction(() => {
   const t = BRF_TRIPS.find(x => x.key === key && x.src === 'cal' && x.l && x.l.k === 'ret');
   if (!t) return;
-  liveDonePersist(key, 'confirmé');
+  closeTrip(t, 'confirmé');
   if (LIVE.key === key) liveReset('arrivé'); else LIVE.done[key] = 'arrivé';
   if (TRIPPREVIEW.key === key) tripPreviewReset();
   returnHomeClear(key);
@@ -1768,8 +1769,8 @@ function liveStart(key) {
 function liveArrive(how) {
   return appAction(() => {
   const k = LIVE.key, b = LIVE.base; if (!k) return;
-  liveDonePersist(k, how); LIVE.lastDone = { key: k, name: b ? b.name : '', at: Date.now() };
   const fin = labThermTick(true);   // mémoire thermique : l'état estimé à l'arrivée sert de point de départ au refroidissement (et au trajet suivant)
+  closeTrip(b && b.key === k ? b : { key: k }, how, fin); LIVE.lastDone = { key: k, name: b ? b.name : '', at: Date.now() };
   if (fin && fin.inp.drive) { const d = fin.inp.drive, r = fin.r; tripEndSave({ at: Date.now(), name: b ? b.name : '', km: d.km, kmSrc: d.kmSrc, min: Math.round((Date.now() - d.startTs) / 60e3), range: r.thermal.range, state: r.thermal.state, conf: r.confidence.level }); }
   returnHomeClear(k);
   appArrival(b, how);
@@ -3112,7 +3113,7 @@ function renderJournal() {
    <div class="metrics">${tile('Matins enregistrés', rec.length, '')}${tile('Sous 7 °C', cnt(r => r.T < 7), 'repère pneus hiver')}${tile('Sous 3 °C', cnt(r => r.T < 3), '')}${tile('Gel (≤ 0 °C)', cnt(r => r.T <= 0), '')}${tile('Verglas modéré ou plus', cnt(r => r.ice >= 1), 'estimé')}${tile('Premier gel', ff ? fmtDay(ff) : '—', fr ? 'chaussée ≤ 0 °C : ' + fmtDay(fr) : 'chaussée : pas encore')}</div>
    <div><div class="sub" style="margin-bottom:4px">60 derniers matins (0–9 h, ${esc(S.locs[0].name)}) · gris = non enregistré</div><div class="strip jr">${cells.join('')}</div>
    <div class="strip-l"><span>${fmtDay(addMin(today + 'T00:00', -59 * 1440).slice(0, 10))}</span><span>aujourd’hui</span></div></div>
-   <p class="disc">Enregistré automatiquement à chaque ouverture, à partir des prévisions recalées sur la station quand elle est disponible. Les matins où l’app n’a pas été ouverte sont rattrapés sur 1 jour.</p>`;
+   <p class="disc">Enregistré automatiquement à chaque ouverture, à partir des prévisions recalées sur la station quand elle est disponible. Les matins où l’app n’a pas été ouverte sont rattrapés sur 1 jour.</p>${debriefJournalHtml()}`;
 }
 
 /* ---------- alertes ---------- */
@@ -3204,7 +3205,7 @@ function renderAll() {
   APP_CONTEXT.rendering = true;
   try {
     appRefreshContext(); recordJournal();
-    renderView(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+    renderView(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderDebrief(); renderBrfCore(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
     renderWx(); renderLab(); labThermTick(false); roadSync();
   } finally { APP_CONTEXT.rendering = false; }
 }
@@ -3222,6 +3223,7 @@ document.addEventListener('click', async e => {
   if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act;
+  if (a.startsWith('dbf-')) { debriefAction(a, t); return; }
   if (a === 'day-destination') { appChooseDestination(t.dataset.id || null); return; }
   if (a === 'day-type') { appSetDayType(t.dataset.v); return; }
   if (a === 'day-car') { appSetCar(t.dataset.id || null); return; }
@@ -3296,7 +3298,7 @@ document.addEventListener('click', async e => {
   else if (a === 'place-leave') placeLeave();
   else if (a === 'ev-report') reportAdd(t.dataset.k);
   else if (a === 'ev-flag') { S.flags = S.flags || {}; S.flags.weatherEvidenceV2 = t.dataset.v; saveSettings(); renderSettings(true); renderAll(); }
-  else if (a === 'trip-undo') appAction(() => { const d = LIVE.lastDone; if (d) { delete LIVE.done[d.key]; liveDonePersist(d.key, null); LIVE.noAuto[d.key] = Date.now() + 10 * 60e3; if (PLACE.conf && (d.placeId === PLACE.conf.placeId || PLACE.conf.at === d.at)) PLACE.conf = null; LIVE.lastDone = null; } });
+  else if (a === 'trip-undo') appAction(() => { const d = LIVE.lastDone; if (d) { delete LIVE.done[d.key]; liveDonePersist(d.key, null); debriefRevoke(d.key); LIVE.noAuto[d.key] = Date.now() + 10 * 60e3; if (PLACE.conf && (d.placeId === PLACE.conf.placeId || PLACE.conf.at === d.at)) PLACE.conf = null; LIVE.lastDone = null; } });
   else if (a === 'tripmap') { lsSet('twrc.tripmap', lsGet('twrc.tripmap') === '1' ? '0' : '1'); renderBrf(); }
   else if (a === 'wday') {
     const d = +t.dataset.d, cur = commuteDays(S.work.days).slice(), k = cur.indexOf(d);

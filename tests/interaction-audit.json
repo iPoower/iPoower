@@ -234,5 +234,29 @@
   "day-destination": {
     "suite": "e2e55-day-context.js",
     "result": "destination canonique temporaire"
+  },
+  "dbf-verdict": {
+    "suite": "e2e56-debrief.js",
+    "result": "ressenti Mieux / Comme prévu enregistré, Pire ouvre les causes"
+  },
+  "dbf-cause": {
+    "suite": "e2e56-debrief.js",
+    "result": "cause du « Pire » cochée ou décochée"
+  },
+  "dbf-save": {
+    "suite": "e2e56-debrief.js",
+    "result": "débrief « Pire » enregistré avec ses causes"
+  },
+  "dbf-later": {
+    "suite": "e2e56-debrief.js",
+    "result": "carte masquée, débrief conservé (« à compléter » dans le Journal)"
+  },
+  "dbf-close": {
+    "suite": "e2e56-debrief.js",
+    "result": "confirmation du débrief refermée"
+  },
+  "dbf-open": {
+    "suite": "e2e56-debrief.js",
+    "result": "débrief non répondu rouvert depuis le Journal"
   }
 }
