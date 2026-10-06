@@ -4,7 +4,7 @@
 const WX_IC = { rain: '🌧', snow: '🌨', fog: '🌫', wind: '💨', ice: '❄️', temp: '🌡', sun: '🌅', better: '🌤', zero: '🧊', dep: '🚗', arr: '🏁' };
 function wxTrips(clockModel) {
   const offSec = clockModel && clockModel.payload && clockModel.payload.utc_offset_seconds != null ? clockModel.payload.utc_offset_seconds : 7200;
-  return BRF_SHOWN.filter(t => !t.originPending && t.dep).map((t, k) => {
+  return APP_CONTEXT.snapshot.trips.filter(t => !t.originPending && t.dep).map((t, k) => {
     const seq = t.seq || [], last = seq.length - 1;
     const points = seq.map((q, j) => {
       const x = q.hs && q.hs[q.i]; if (!x) return null;
@@ -172,5 +172,4 @@ function evidenceHtml() {
     <details class="wx-how" data-k="evprov"><summary>Provenance du verdict brouillard${r.worst.label ? ' (' + esc(r.worst.label) + ')' : ''}</summary><ul class="lab-why">${prov}</ul><p class="sub">A observation · C modèle · D terrain · E physique. Une observation pèse selon sa distance, son âge et l’échéance ; l’absence de signalement ne prouve rien.</p></details>
     <div class="ev-rep"><p class="sub"><b>Signaler les conditions réelles</b> (votre observation, non officielle)${mine ? ' · récents : ' + esc(mine) : ''}</p><div class="chips">${rep}</div></div></div></details>`;
 }
-
 

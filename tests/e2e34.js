@@ -421,7 +421,7 @@ const privacy = async s => {
     const migration = await p.evaluate(() => {
       const ev = CAL.events[0], leg = ev.legs.find(l => l.k === 'go'), legacy = calendarTripLegacyKey(ev, leg), current = calendarTripKey(ev, leg);
       localStorage.setItem('twrc.tripdone', JSON.stringify({ [legacy]: { how: 'auto', at: Date.now(), exp: Date.now() + 24 * 3600e3 } }));
-      LIVE.done = {}; liveDoneLoad();
+      LIVE.done = {}; liveDoneLoad(true);   // migration explicite de la fixture d'ancienne version
       const filtered = liveApply(BRF_TRIPS.slice(), liveNow());
       return { legacy, current, visible: filtered.some(t => t.key === current), raw: localStorage.getItem('twrc.tripdone') };
     });

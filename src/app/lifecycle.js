@@ -39,6 +39,6 @@ document.addEventListener('toggle', e => { if (e.target && e.target.id === 'sett
   if (S.gpsAuto && GPS) UI.loc = 'gps';
   { const c = placeNow(); if (c.source === 'manual') UI.loc = c.place.id; }   // lieu confirmé : contexte de tous les modules (origine verrouillée)
   if (S.gpsAuto && location.protocol === 'https:') setTimeout(() => locate(false), 400);
-  loadCache(); if (offlineNow()) markOfflineCache(); rebuild(); renderSettings(); renderAll();
+  loadCache(); if (offlineNow()) markOfflineCache(); rebuild(); APP_CONTEXT.ready = true; renderSettings(); renderAll();
   if (offlineNow()) loadCalendar(); else refreshAll();
 })();

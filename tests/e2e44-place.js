@@ -91,7 +91,7 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     check('4 · relevé « précis » à 100 km en 3 min : rejeté comme incohérent', /🏢 AU TRAVAIL/.test(x.bar) && /déplacement impossible/.test(x.diag['Sources écartées'] || ''), JSON.stringify(x.diag));
     // 5. « Je quitte le travail » : fin de l'état, dernier lieu fiable conservé
     await s.p.locator('#placeBar [data-act=place-leave]').click(); await s.settle(2); x = await st(s.p);
-    check('5 · « Je quitte le travail » : état terminé, Travail reste le dernier lieu fiable', !x.conf && /Travail test · Estimée/.test(x.diag['Lieu logique Race Control'] || '') && /🏢 Je suis déjà au travail/.test(x.bar), JSON.stringify({ bar: x.bar, diag: x.diag['Lieu logique Race Control'] }));
+    check('5 · « Je quitte le travail » : confirmation clôturée et même retour démarré pour toute l’app', !x.conf && await s.p.evaluate(() => APP_CONTEXT.snapshot.status === 'travel' && APP_CONTEXT.snapshot.activeTrip.td.dir === 'ret' && APP_CONTEXT.snapshot.origin.id === 'work'), JSON.stringify({ bar: x.bar, diag: x.diag['Lieu logique Race Control'] }));
     await s.c.close();
 
     // 6. ouvert après l'arrivée, hors ligne, sans GPS : « Je suis déjà au travail », puis reconnexion avec une position approximative
