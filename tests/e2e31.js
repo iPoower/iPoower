@@ -80,7 +80,9 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
     // Capture locale, seulement si demandée par l'atelier (jamais publiée dans la CI).
     if (process.env.RC_OUTFIT_SHOT) await p.locator('body').screenshot({ path: process.env.RC_OUTFIT_SHOT, fullPage: true });
     await p.reload(); await settle();
-    check('onglet Tenue et usage Promenade conservés au rechargement', await visible('secTenue') && await p.locator('[data-act=outfit-occasion][data-v=walk]').getAttribute('aria-pressed') === 'true');
+    check('onglet Tenue conservé ; Promenade du lendemain ne remplace pas aujourd’hui', await visible('secTenue') && await p.locator('[data-act=outfit-occasion][data-v=walk]').getAttribute('aria-pressed') === 'false');
+    await p.click('[data-act=outfit-day][data-v="1"]');
+    check('usage Promenade conservé pour le lendemain choisi après rechargement', await p.locator('[data-act=outfit-occasion][data-v=walk]').getAttribute('aria-pressed') === 'true');
     await p.click('[data-act=view][data-v=meteo]');
     check('Météo reste utilisable et masque la tenue', await visible('secCur') && !(await visible('secTenue')));
     await p.click('[data-act=view][data-v=pneus]');

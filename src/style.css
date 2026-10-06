@@ -715,5 +715,6 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .road summary{min-height:44px;display:flex;align-items:center;cursor:pointer}.road-details p{overflow-wrap:anywhere}.road-details a{overflow-wrap:anywhere;display:inline-flex;align-items:center;min-height:44px}
 
 /* Contrôles locaux du jour : primitives cockpit existantes. */
-.day-context{margin:10px 0;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.day-context{margin:10px 0;padding:4px 12px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
 .day-context .chips{margin-top:8px}.day-context button,.day-context summary{min-height:44px}.day-context summary{display:flex;align-items:center;cursor:pointer;overflow-wrap:anywhere}
+.day-context .day-editor[open]{padding-bottom:8px}

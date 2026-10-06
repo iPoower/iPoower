@@ -12,12 +12,14 @@ const read = p => p.evaluate(() => {
 });
 async function check(label, fn) { try { await fn(); n++; console.log('✅ ' + label); } catch (e) { console.error('❌ ' + label + ' · ' + e.message); throw e; } }
 async function tap(p, selector) {
+  if (/data-act=day-(type|car)/.test(selector)) await openDay(p);
   const el = p.locator(selector).first(); scope.selector = selector;
   try { if (scope.device === 'iphone') await el.tap(); else await el.click(); } catch (e) {
     console.error('DIAGNOSTIC ' + JSON.stringify({ ...scope, present: await el.count(), visible: await el.isVisible().catch(() => false), enabled: await el.isEnabled().catch(() => false), state: await read(p), overlay: await p.evaluate(() => [...document.querySelectorAll('[role=dialog],dialog[open]')].map(x => x.id)) })); throw e;
   }
 }
-async function destination(p, id) { const details = p.locator('#dayContext details'); if (!(await details.getAttribute('open') != null)) await tap(p, '#dayContext summary'); await tap(p, '#dayContext [data-act=day-destination][data-id="' + id + '"]'); }
+async function openDay(p) { if (!(await p.locator('#dayContext .day-editor').getAttribute('open') != null)) await tap(p, '#dayContext .day-editor > summary'); }
+async function destination(p, id) { await openDay(p); const details = p.locator('#dayContext .day-destination'); if (!(await details.getAttribute('open') != null)) await tap(p, '#dayContext .day-destination > summary'); await tap(p, '#dayContext [data-act=day-destination][data-id="' + id + '"]'); }
 async function views(p, expected) {
   for (const v of ['pneus', 'meteo', 'tenue', 'analyse']) {
     scope.view = v; await tap(p, '#viewSeg [data-act=view][data-v=' + v + ']');

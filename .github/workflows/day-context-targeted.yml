@@ -28,7 +28,7 @@ jobs:
           BROWSER: ${{ matrix.browser }}
         run: node tests/run-ci.js --lane browser --suite e2e55-day-context.js --suite e2e53-global-context.js --suite e2e50-geolocation.js --suite e2e31.js --suite e2e32.js --suite e2e42-meteo.js --suite e2e39-layout.js
       - name: Réouverture PWA réelle hors ligne
-        if: matrix.browser == 'chromium'
+        if: always() && matrix.browser == 'chromium'
         env:
           BROWSER: chromium
         run: node tests/run-ci.js --lane browser --suite e2e54-context-sw.js
@@ -39,5 +39,6 @@ jobs:
           path: |
             .ci/results/
             .ci/work/*/out/*.log
+            .ci/work/*/out/day-context-*.png
           if-no-files-found: error
           retention-days: 3
