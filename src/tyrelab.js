@@ -13,10 +13,21 @@
      à l'arrêt      Teq = Tenv (+ 3 °C au soleil fort), constante de temps 50 min (×0,8 sous la pluie) : après 2 h, il reste
                     moins de 10 % de l'écart, le pneu est « froid » au sens de Michelin
      intégration    T ← Teq + (T − Teq)·exp(−Δ/τ), par pas de 2 min au plus
-   Incertitude : ±3 °C + 25 % de l'écart à l'environnement, + 3 °C sans historique, + 3 °C sans météo fraîche.
+   Incertitude : ±3 °C (erreur sur l'environnement) + 25 % de l'écart à l'environnement (erreur relative sur la montée ΔT du
+   roulage, dont les valeurs sont des ordres de grandeur), + 3 °C sans historique (s'estompe avec la distance roulée), + 3 °C
+   sans météo fraîche. Elle ne diminue PAS quand la température se stabilise : la stabilisation lève l'incertitude de calendrier
+   (« quand ? »), pas l'erreur sur la température d'équilibre elle-même (« combien ? »).
    L'état affiché est le plus prudent de la plage (le côté froid pour l'adhérence, le côté chaud pour la surchauffe).
 
-   FENÊTRES (hypothèses Race Control, gomme estimée, °C)  froid | en chauffe | favorable | chaud | très chaud
+   ÉTAT ≠ TENDANCE
+     état     où se situe la gomme dans les fenêtres : froid · sous la plage favorable · favorable · chaud · très chaud
+     tendance ce que fait la température : en chauffe · stabilisé · en refroidissement · au repos (ambiant)
+     roulage  stabilisé quand l'écart restant à l'équilibre du roulage ≤ 5 % de la montée (≈ 3 constantes de temps, soit ≈ 30 km
+              à τ = 10 km) ou ≤ 1 °C (un tiers de l'incertitude de base) ; au-delà : en chauffe (écart > 0) ou en refroidissement
+     arrêt    « ambiant » à ±3 °C de l'environnement (indiscernable à l'incertitude de base) ; au-dessus : en refroidissement
+     Un pneu peut donc être « Stabilisé · sous la plage favorable » : équilibre atteint, mais trop frais pour entrer dans la plage.
+
+   FENÊTRES (hypothèses Race Control, gomme estimée, °C)  froid | sous la plage favorable | favorable | chaud | très chaud
      été          < 10 | 10–20 | 20–50 | 50–65 | > 65     (été UHP, indices W/Y/ZR : +5 °C sur les deux premiers seuils)
      4 saisons    <  5 |  5–15 | 15–45 | 45–60 | > 60
      hiver        < −5 | −5–5  |  5–35 | 35–50 | > 50
@@ -31,7 +42,10 @@
      moitié sur mouillé : fr.wikipedia.org/wiki/Distance_d'arrêt), multiplié par les facteurs ci-dessus ; temps de réaction 1 s affiché à part.
      Neige et verglas : aucune distance, indice relatif seulement. */
 const TL_WIN = { summer: [10, 20, 50, 65], allseason: [5, 15, 45, 60], winter: [-5, 5, 35, 50] };
-const TL_STATES = ['Pneu froid', 'En chauffe', 'Fenêtre favorable', 'Chaud', 'Très chaud'];
+const TL_STATES = ['Pneu froid', 'Sous la plage favorable', 'Fenêtre favorable', 'Chaud', 'Très chaud'];   // NIVEAUX ; « en chauffe » est une tendance
+const TL_LEVEL_TXT = ['froid', 'sous la plage favorable', 'favorable', 'chaud', 'très chaud'];
+const TL_TREND_TXT = { heating: 'En chauffe', stable: 'Stabilisé', cooling: 'En refroidissement', rest: 'Au repos' };
+const TL_SETTLE = 0.05, TL_BASE_U = 3;   // convergence (part de la montée) ; incertitude de base (°C)
 const TL_KIND = { ville: { dT: 14, tauKm: 7, v: 30, label: 'ville' }, route: { dT: 20, tauKm: 10, v: 70, label: 'route' }, autoroute: { dT: 26, tauKm: 10, v: 115, label: 'autoroute' } };
 const TL_MU = { dry: [0.7, 0.9], wet: [0.4, 0.55] };
 const TL_TAU_PARK = 50;
@@ -144,6 +158,27 @@ function tyreLab(input) {
   // position sur l'échelle froid → très chaud (0 à 1) pour la jauge
   const pos = clamp((T - (win[0] - 10)) / ((win[3] + 10) - (win[0] - 10)), 0, 1);
   const marks = [win[0], win[1], win[2], win[3]].map(t => clamp((t - (win[0] - 10)) / ((win[3] + 10) - (win[0] - 10)), 0, 1));
+  /* ---------- 5 bis. tendance (ce que fait la température), distincte de l'état (où elle se situe) ---------- */
+  let trend, eq, ambient = false;
+  if (phase === 'driving') {
+    const q = eqDrive(eNow, driveKind, T), gap = q.Teq - T, rise = q.Teq - eNow.Tenv; eq = q.Teq;
+    trend = Math.abs(gap) <= Math.max(TL_SETTLE * Math.abs(rise), 1) ? 'stable' : gap > 0 ? 'heating' : 'cooling';
+  } else {
+    const q = eqPark(eNow); eq = q.Teq;
+    ambient = Math.abs(T - eNow.Tenv) <= TL_BASE_U;
+    trend = !ambient && T - q.Teq > 0 ? 'cooling' : 'rest';
+  }
+  const lvlSuffix = st === 0 || st >= 3 ? ' · ' + TL_LEVEL_TXT[st] : '';
+  // sans historique ni roulage suivi, « au repos » serait plus certain que les données : la température est seulement SUPPOSÉE ambiante
+  const stateTxt = trend === 'rest' && ambient ? (phase === 'unknown' ? 'Supposé ambiant' : 'Au repos · ambiant') + lvlSuffix : `${TL_TREND_TXT[trend]} · ${TL_LEVEL_TXT[st]}`;
+  why.push(phase === 'driving'
+    ? trend === 'stable' ? `Tendance : stabilisée — l’équilibre de ce roulage est atteint à ${r0(TL_SETTLE * 100)} % près`
+      : `Tendance : ${trend === 'heating' ? 'en chauffe' : 'en refroidissement'} — équilibre de ce roulage ≈ ${r0(eq)} °C, encore ${r0(Math.abs(eq - T))} °C d’écart`
+    : trend === 'cooling' ? `Tendance : en refroidissement vers l’ambiante (≈ ${r0(eq)} °C)` : `Tendance : au repos${ambient ? (phase === 'unknown' ? ' ; température supposée ambiante (aucun historique d’arrêt connu)' : ', gomme à la température ambiante (± 3 °C)') : ''}`);
+  const cT = cls(T);
+  if (cT > st) why.push(`Estimation centrale ≈ ${r0(T)} °C (${TL_LEVEL_TXT[cT]}) mais bas de plage ≈ ${r0(lo)} °C : état affiché par prudence (${TL_LEVEL_TXT[st]})`);
+  else if (cT < st) why.push(`Estimation centrale ≈ ${r0(T)} °C (${TL_LEVEL_TXT[cT]}) mais haut de plage ≈ ${r0(hi)} °C : état affiché par prudence (${TL_LEVEL_TXT[st]})`);
+  if (type === 'summer' && eNow.Tenv < 7) why.push(`Pneu été sous 7 °C (air/chaussée ≈ ${r1(eNow.Tenv)} °C) : adhérence réduite même une fois la gomme stabilisée (règle des 7 °C)`);
   /* ---------- 6. mise en température (plages) ---------- */
   const tripKind = inp.trip && inp.trip.kind && TL_KIND[inp.trip.kind] ? inp.trip.kind : null;
   const kind = driveKind || tripKind || 'route';
@@ -151,6 +186,7 @@ function tyreLab(input) {
     const q = eqDrive(e, k, Tstart), target0 = win[1], Tl = Tstart - u;   // départ prudent : bas de plage
     const fast = { Teq: e.Tenv + (q.Teq - e.Tenv) * 1.2, tauKm: q.tauKm * 0.8 }, slow = { Teq: e.Tenv + (q.Teq - e.Tenv) * 0.8, tauKm: q.tauKm * 1.3 };
     if (Tl >= target0) return { reached: true };
+    if (Tstart >= target0) return { marginal: true, central: Tstart, low: Tl };   // estimation centrale déjà dans la plage : seule la marge d'incertitude passe sous le seuil
     const kmTo = p => p.Teq <= target0 ? Infinity : p.tauKm * Math.log((p.Teq - Tl) / (p.Teq - target0));
     const a = kmTo(fast), b = kmTo(slow), v = q.v;
     if (!Number.isFinite(a)) return { never: true, Teq: q.Teq };
@@ -187,7 +223,7 @@ function tyreLab(input) {
     const S = { dry: 1, damp: 0.85, rain: 0.7, heavy: 0.6, pool: 0.5, snow: type === 'summer' ? 0.2 : type === 'winter' ? 0.5 : pmsf ? 0.45 : 0.4, ice: type === 'winter' ? 0.2 : 0.15 }[e.surf];
     f.push({ k: 'Chaussée ' + SURF_TXT[e.surf], v: S });
     const tf = s === 0 ? { summer: 0.85, allseason: 0.92, winter: 0.97 }[type] : s === 1 ? { summer: 0.93, allseason: 0.96, winter: 0.99 }[type] : s === 3 ? 0.97 : s === 4 ? 0.9 : 1;
-    f.push({ k: 'Gomme ' + ['froide', 'en chauffe', 'dans sa fenêtre favorable', 'chaude', 'très chaude'][s], v: tf });
+    f.push({ k: 'Gomme ' + ['froide', 'sous la plage favorable', 'dans sa fenêtre favorable', 'chaude', 'très chaude'][s], v: tf });
     if (type === 'summer' && e.Tenv < 7) f.push({ k: `Pneu été sous 7 °C (${r1(e.Tenv)} °C air/chaussée)`, v: 0.9 });
     if (type === 'winter' && e.Ta > 20) f.push({ k: `Pneu hiver au-dessus de 20 °C`, v: 0.92 });
     const wet = !['dry'].includes(e.surf);
@@ -211,7 +247,7 @@ function tyreLab(input) {
     const bars = [
       { id: 'trac', label: 'Accélération', b: bar(mu * snowTr), why: [...f.map(pctTxt), snowTr < 1 ? 'Pneu été sur neige : motricité réduite ×75 %' : null].filter(Boolean) },
       { id: 'brake', label: 'Freinage', b: bar(mu), why: f.map(pctTxt) },
-      { id: 'corner', label: 'Virage', b: bar(mu / tf * tfLat), why: [...f.map(pctTxt), tf < 1 ? 'Gomme pas encore en température : effet renforcé en appui latéral' : null].filter(Boolean) },
+      { id: 'corner', label: 'Virage', b: bar(mu / tf * tfLat), why: [...f.map(pctTxt), tf < 1 ? 'Gomme sous sa plage favorable : effet renforcé en appui latéral' : null].filter(Boolean) },
       { id: 'stab', label: 'Stabilité', b: bar(gust * aq), why: [e.gust != null ? `Rafales ${r0(e.gust)} km/h` : 'Rafales non fournies', `Aquaplaning ${aqua.word.toLowerCase()}`] },
       { id: 'aqua', label: 'Aquaplaning', b: bar(aq), why: aqua.why }
     ].map(x => ({ ...x, word: x.id === 'aqua' ? ['Bonne', 'Vigilance', 'Risque élevé', 'Critique'][aqua.lv] : word(x.b), lv: x.id === 'aqua' ? aqua.lv : x.b >= 9 ? 0 : x.b >= 7 ? 1 : x.b >= 5 ? 2 : 3 }));
@@ -303,11 +339,11 @@ function tyreLab(input) {
     ['Météo', stale ? 'ancienne' : 'récente'], ['Modèle thermique', 'générique (estimation Race Control)'], ['Capteur direct', 'non']];
   const confidence = { level: score >= 1.5 ? 'moyenne' : 'faible', score, reasons, axes };
   /* ---------- 12. verdict principal ---------- */
-  const limiting = gNow.dom ? (gNow.dom.k.startsWith('Gomme') ? ['gomme froide', 'gomme encore froide', 'gomme dans sa fenêtre', 'gomme chaude', 'gomme très chaude'][st] : gNow.dom.k.toLowerCase()) : 'aucun';
+  const limiting = gNow.dom ? (gNow.dom.k.startsWith('Gomme') ? ['gomme froide', 'gomme sous sa plage favorable', 'gomme dans sa fenêtre', 'gomme chaude', 'gomme très chaude'][st] : gNow.dom.k.toLowerCase()) : 'aucun';
   const lvl = Math.max(stLv(st), gNow.lv);
-  const hero = { title: tyre.title, size: tyre.size, state: TL_STATES[st], s: st, lvl, emoji: EMO[stLv(st)], range,
-    warm: warm.reached ? (warm.sinceMin != null ? `Zone favorable atteinte depuis ~${warm.sinceMin} min` : null) : warm.never ? 'Zone favorable non atteinte dans ces conditions' : warm.min[1] == null ? `≥ ${warm.min[0]} min · ≥ ${warm.km[0]} km (peut ne pas être atteinte)` : `≈ ${warm.min[0]}–${warm.min[1]} min · ≈ ${warm.km[0]}–${warm.km[1]} km`,
+  const hero = { title: tyre.title, size: tyre.size, state: stateTxt, s: st, lvl, emoji: EMO[stLv(st)], range,
+    warm: warm.reached ? (warm.sinceMin != null ? `Zone favorable atteinte depuis ~${warm.sinceMin} min` : null) : warm.marginal ? 'bas de plage sous le seuil favorable, estimation centrale déjà dans la plage' : warm.never ? 'Zone favorable non atteinte dans ces conditions' : warm.min[1] == null ? `≥ ${warm.min[0]} min · ≥ ${warm.km[0]} km (peut ne pas être atteinte)` : `≈ ${warm.min[0]}–${warm.min[1]} min · ≈ ${warm.km[0]}–${warm.km[1]} km`,
     brake: gNow.word, corner: gNow.bars[2].word, rain: gNow.aqua.lv ? ['Faible', 'Vigilance', 'Risque élevé', 'Critique'][gNow.aqua.lv] : gripAt({ ...eNow, surf: 'rain', Pl: 1 }, st, kind).word, limiting, confidence: confidence.level };
   return { known: true, tyre, spec: specOut, now: inp.now, phase, parkedMin, drivenKm, drivenMin, kind, env: { Ta: eNow.Ta, Tr: eNow.Tr, Tenv: eNow.Tenv, surf: eNow.surf, surfTxt: SURF_TXT[eNow.surf], Pl: eNow.Pl },
-    thermal: { T, range, state: TL_STATES[st], s: st, lv: stLv(st), win, pos, marks, why, uhp }, warm, cool, grip: gNow, trip, compare, press, confidence, hero, state: inp.state || null };
+    thermal: { T, range, state: stateTxt, level: TL_STATES[st], trend, trendTxt: TL_TREND_TXT[trend], eq: Math.round(eq * 10) / 10, s: st, lv: stLv(st), win, pos, marks, why, uhp }, warm, cool, grip: gNow, trip, compare, press, confidence, hero, state: inp.state || null };
 }

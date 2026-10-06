@@ -43,11 +43,11 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   });
   test('voiture stationnée toute la nuit : pneu froid, retour proche de l’état froid', () => {
     const r = lab({ now: ts('06:30'), car: car(), hours: H({ T: 4, Tr: 3 }), history: { at: ts('19:00', '2026-10-05'), T: 32 } });
-    assert.equal(r.thermal.state, 'Pneu froid'); assert.equal(r.cool.label, 'Retour proche de l’état froid'); assert(r.cool.kept <= 5);
+    assert.equal(r.thermal.level, 'Pneu froid'); assert.equal(r.cool.label, 'Retour proche de l’état froid'); assert(r.cool.kept <= 5);
   });
   test('départ après un trajet récent : la chaleur est conservée (mémoire thermique)', () => {
     const r = lab({ now: ts('08:20'), car: car(), hours: H({ T: 10, Tr: 10 }), history: { at: ts('08:10'), T: 38 } });
-    assert.equal(r.cool.label, 'Température conservée'); assert(r.cool.kept >= 75); assert.equal(r.thermal.state, 'Fenêtre favorable');
+    assert.equal(r.cool.label, 'Température conservée'); assert(r.cool.kept >= 75); assert.equal(r.thermal.level, 'Fenêtre favorable');
   });
   test('arrêt court (5 min) : l’essentiel conservé ; arrêt long (3 h) : proche du froid', () => {
     const short = lab({ now: ts('10:05'), car: car(), hours: H(), history: { at: ts('10:00'), T: 40 } }), long = lab({ now: ts('13:00'), car: car(), hours: H(), history: { at: ts('10:00'), T: 40 } });
@@ -176,6 +176,56 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const cold = lab(base), warm = lab({ ...base, history: { at: ts('10:15'), T: 45 } });
     assert(warm.thermal.T > cold.thermal.T + 3, `${cold.thermal.T} → ${warm.thermal.T}`);
   });
+  /* ---------- ÉTAT ≠ TENDANCE : « en chauffe » n'est plus un état permanent ---------- */
+  const UHP = (extra = {}) => car({ size: '215/40 ZR18 89Y XL', ...extra });   // été haute performance : fenêtre 15 / 25 / 50 / 65 °C
+  const scn = (hours, drv, extra = {}) => lab({ now: ts('09:00'), car: UHP(), hours: H(hours), drive: drv, ageMin: 10, ...extra });
+  test('T1 · été UHP · air 12 °C · route sèche · 20 min : encore en chauffe, sous la plage favorable', () => {
+    const r = scn({ T: 12, Tr: 13 }, drive('08:40', 'route'));
+    assert.equal(r.thermal.trend, 'heating'); assert.equal(r.thermal.level, 'Sous la plage favorable'); assert.equal(r.hero.state, 'En chauffe · sous la plage favorable');
+  });
+  test('T2 · été UHP · air 12 °C · route sèche · 60 min : stabilisé sous la plage favorable (plus « en chauffe »), incertitude inchangée et prudence expliquée', () => {
+    const r = scn({ T: 12, Tr: 13 }, drive('08:00', 'route'));
+    assert.equal(r.thermal.trend, 'stable'); assert.equal(r.hero.state, 'Stabilisé · sous la plage favorable'); assert.equal(r.thermal.state, r.hero.state);
+    assert(!/en chauffe/i.test(r.hero.state)); assert(Math.abs(r.thermal.T - r.thermal.eq) < 1, `${r.thermal.T} / ${r.thermal.eq}`);
+    assert.deepEqual(r.thermal.range, [24, 41]);   // ±(3 + 25 % de l'écart à l'environnement) : la stabilisation ne réduit pas l'erreur sur ΔT
+    assert(r.thermal.why.some(x => /Estimation centrale ≈ 32 °C \(favorable\)/.test(x) && /bas de plage ≈ 24 °C/.test(x) && /prudence/.test(x)), r.thermal.why.join(' | '));
+    assert.equal(r.warm.marginal, true); assert(!/\d+ °C/.test(r.hero.warm), r.hero.warm);   // jamais de valeur exacte dans le titre ni la ligne d'échauffement
+  });
+  test('T3 · été UHP · air 25 °C · soleil · garé, sans historique : température seulement supposée ambiante (jamais « en chauffe » ni « au repos ») ; « Au repos · ambiant » réservé à un arrêt connu', () => {
+    const r = scn({ T: 25, Tr: 30, rad: 600 }, null);
+    assert.equal(r.phase, 'unknown'); assert.equal(r.thermal.trend, 'rest'); assert.equal(r.hero.state, 'Supposé ambiant'); assert(!/chauffe|au repos/i.test(r.hero.state));
+    const k = lab({ now: ts('09:00'), car: UHP(), hours: H({ T: 25, Tr: 30, rad: 600 }), history: { at: ts('02:00'), T: 30 }, ageMin: 10 });
+    assert.equal(k.phase, 'parked'); assert.equal(k.hero.state, 'Au repos · ambiant');   // « au repos » seulement avec un historique d’arrêt connu
+    assert(r.confidence.reasons.some(x => /Historique de roulage inconnu/.test(x)));
+  });
+  test('T4 · été UHP · air 18 °C · route sèche · 20 min : dans la fenêtre, température encore en hausse', () => {
+    const r = scn({ T: 18, Tr: 20 }, drive('08:40', 'route'));
+    assert.equal(r.thermal.s, 2); assert.equal(r.thermal.trend, 'heating'); assert.equal(r.hero.state, 'En chauffe · favorable');
+  });
+  test('T5 · été UHP · air < 7 °C : stabilisé sous la plage, règle des 7 °C expliquée et facteur limitant', () => {
+    const r = scn({ T: 4, Tr: 3 }, drive('08:00', 'route'));
+    assert.equal(r.thermal.trend, 'stable'); assert.equal(r.hero.state, 'Stabilisé · sous la plage favorable');
+    assert(r.thermal.why.some(x => /Pneu été sous 7 °C/.test(x) && /règle des 7 °C/.test(x)), r.thermal.why.join(' | '));
+    assert(/sous 7 °c/i.test(r.hero.limiting), r.hero.limiting);
+  });
+  test('T6 · roulage puis arrêt : refroidissement, puis retour au repos ambiant', () => {
+    const base = { car: UHP(), hours: H({ T: 12, Tr: 13 }), history: { at: ts('08:30'), T: 45 }, ageMin: 10 };
+    const soon = lab({ ...base, now: ts('09:00') }), later = lab({ ...base, now: ts('12:00') });
+    assert.equal(soon.phase, 'parked'); assert.equal(soon.thermal.trend, 'cooling'); assert(/^En refroidissement · /.test(soon.hero.state), soon.hero.state);
+    assert.equal(later.thermal.trend, 'rest'); assert.equal(later.hero.state, 'Au repos · ambiant · froid'); assert(later.thermal.T < soon.thermal.T - 10);
+  });
+  test('T7 · reprise après un arrêt avec historique : repart de la chaleur conservée, pas d’un pneu supposé froid', () => {
+    const base = { now: ts('09:05'), car: UHP(), hours: H({ T: 12, Tr: 13 }), drive: drive('09:00', 'route'), ageMin: 10 };
+    const noHist = lab(base), withHist = lab({ ...base, history: { at: ts('08:50'), T: 30 } });
+    assert(withHist.thermal.T > noHist.thermal.T + 5, `${noHist.thermal.T} → ${withHist.thermal.T}`); assert.equal(withHist.thermal.trend, 'heating');
+    assert(withHist.thermal.s >= noHist.thermal.s);
+  });
+  test('T8 · pneus hiver et 4 saisons : même vocabulaire état / tendance, états inchangés', () => {
+    const w = lab({ now: ts('09:00'), car: car({ type: 'winter', size: '205/55 R16 91H' }), hours: H({ T: 2, Tr: 1 }), drive: drive('08:00', 'route'), ageMin: 10 });
+    const a = lab({ now: ts('09:00'), car: car({ type: 'allseason', size: '205/55 R16 91H' }), hours: H({ T: 8, Tr: 9 }), drive: drive('08:00', 'route'), ageMin: 10 });
+    for (const r of [w, a]) { assert.equal(r.thermal.trend, 'stable'); assert.equal(r.thermal.level, 'Fenêtre favorable'); assert.equal(r.hero.state, 'Stabilisé · favorable'); assert.equal(r.hero.lvl, 0); }
+    assert.deepEqual(w.thermal.win, [-5, 5, 35, 50]); assert.deepEqual(a.thermal.win, [5, 15, 45, 60]);
+  });
   return count;
 }
 module.exports = { runTests, sourcePath };
@@ -189,6 +239,13 @@ if (require.main === module) {
     { name: 'pneu hiver traité comme un pneu été', from: 'winter: [-5, 5, 35, 50]', to: 'winter: [10, 20, 50, 65]' },
     { name: 'plage d’incertitude supprimée (fausse précision)', from: "const u = 3 + 0.25 * Math.abs(T - eNow.Tenv)", to: "const u = 0 * Math.abs(T - eNow.Tenv)" },
     { name: 'historique inconnu supposé chaud', from: "else { T = eNow.Tenv; phase = 'unknown';", to: "else { T = eNow.Tenv + 25; phase = 'unknown';" },
+    { name: 'stabilisation jamais détectée (toujours « en chauffe »)', from: "trend = Math.abs(gap) <= Math.max(TL_SETTLE * Math.abs(rise), 1) ? 'stable' : gap > 0 ? 'heating' : 'cooling';", to: "trend = 'heating';" },
+    { name: 'tout roulage déclaré stabilisé dès le départ', from: "trend = Math.abs(gap) <= Math.max(TL_SETTLE * Math.abs(rise), 1) ? 'stable' : gap > 0 ? 'heating' : 'cooling';", to: "trend = 'stable';" },
+    { name: 'pneu garé à l’ambiante non reconnu', from: 'ambient = Math.abs(T - eNow.Tenv) <= TL_BASE_U;', to: 'ambient = false;' },
+    { name: 'refroidissement à l’arrêt non détecté', from: "trend = !ambient && T - q.Teq > 0 ? 'cooling' : 'rest';", to: "trend = 'rest';" },
+    { name: 'incertitude réduite de moitié pour faire apparaître « favorable »', from: "const u = 3 + 0.25 * Math.abs(T - eNow.Tenv)", to: "const u = 1.5 + 0.125 * Math.abs(T - eNow.Tenv)" },
+    { name: 'prudence supprimée (état pris sur l’estimation centrale)', from: 'const stateOf = (t, uu) => { const a = cls(t - uu); if (a <= 1) return a;', to: 'const stateOf = (t, uu) => { const a = cls(t); if (a <= 1) return a;' },
+    { name: 'règle des 7 °C non expliquée', from: "if (type === 'summer' && eNow.Tenv < 7) why.push(", to: "if (false) why.push(" },
     { name: 'distance affichée sur verglas', from: "if (!['snow', 'ice'].includes(e.surf)) {", to: 'if (true) {' },
     { name: 'confiance indépendante des données manquantes', from: "  if (phase === 'unknown') { score -= 1;", to: "  if (false) { score -= 1;" }
   ];
