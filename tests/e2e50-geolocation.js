@@ -3,11 +3,39 @@ const assert = require('node:assert/strict'), BR = require('./lib/browser'), { s
 let count = 0, step = '';
 const state = p => p.evaluate(() => ({ context: placeContext(placeInput()), fix: FIX, gps: GPS, raw: GEO.raw, geo: { permission: GEO.permission, status: GEO.status, error: GEO.error }, pending: PLACE_PENDING, network: NETLOC, auto: S.gpsAuto, watches: window.__watchCount(), phase: LIVE.phase, diag: Object.fromEntries(placeDiagRows()), message: document.querySelector('#locMsg').textContent }));
 async function check(name, fn) { step = name; await fn(); count++; console.log('✅ ' + name); }
+async function initialWork(browser, iphone) {
+  const s = await session(browser, { iphone }), p = s.p, tag = iphone ? 'iPhone · GPS initial' : 'PC · GPS initial';
+  try {
+    await p.clock.pauseAt(new Date(await p.evaluate(() => Date.now()) + 1000));
+    await p.evaluate(w => Object.assign(__geo, w), WORK);
+    await p.locator('[data-act=locate]').first().click(); await p.clock.runFor(20);
+    await p.waitForFunction(() => GPS && GEO.raw);
+    const isolated = async () => {
+      const x = await state(p); assert.equal(x.context.place, null); assert(x.gps.placePending);
+      assert.equal(await p.evaluate(() => APP_CONTEXT.snapshot.currentLocation), null);
+      assert.equal(await p.evaluate(() => USER_STORE.state.place.conf), null);
+      assert.equal(await p.evaluate(() => Object.keys(USER_STORE.state.done).length), 0);
+    };
+    await check(tag + ' · un premier point travail reste une observation', isolated);
+    await p.reload(); await p.evaluate(w => Object.assign(__geo, w), WORK);
+    await check(tag + ' · reload ne promeut pas le point isolé', isolated);
+    await p.evaluate(w => __geoPush(w), WORK);
+    await check(tag + ' · premier nouveau point après reload reste à confirmer', isolated);
+    await p.clock.runFor(1000); await p.evaluate(w => __geoPush(w), WORK); await s.settle();
+    await check(tag + ' · observations cohérentes sans confirmation utilisateur inventée', async () => {
+      assert.equal((await state(p)).context.place.id, 'work');
+      assert.equal(await p.evaluate(() => USER_STORE.state.place.conf), null);
+      assert.equal(await p.evaluate(() => Object.keys(USER_STORE.state.done).length), 0);
+    });
+    assert.deepEqual(s.errors, []);
+  } finally { await s.c.close(); }
+}
 async function tripCycle(browser, iphone) {
   const s = await session(browser, { iphone }), p = s.p, tag = iphone ? 'iPhone · cycle réel simulé' : 'PC · cycle réel simulé';
   try {
     await p.evaluate(() => { S.work.dep = '12:10'; S.work.ret = '13:00'; S.work.days = [1]; CAL = { events: [] }; renderAll(); });
     await p.locator('[data-act=locate]').first().click(); await s.settle(6);
+    await p.evaluate(h => __geoPush(h), HOME); await s.settle();
     await check(tag + ' · domicile reconnu, trajet imminent', async () => { const x = await state(p); assert.equal(x.context.place.id, 'home'); assert.equal(x.phase, 'imminent'); });
     await p.clock.pauseAt(new Date(await p.evaluate(() => Date.now()) + 1000));
     const advance = async ms => p.clock.setSystemTime(new Date(await p.evaluate(() => Date.now()) + ms));
@@ -34,6 +62,7 @@ async function tripCycle(browser, iphone) {
   const browser = await BR.launch();
   try {
     for (const iphone of [false, true]) {
+      await initialWork(browser, iphone);
       const s = await session(browser, { iphone, permissionAPI: !iphone }), p = s.p, tag = iphone ? 'iPhone / Permissions API absente' : 'PC';
       await p.evaluate(() => { CAL = { events: [] }; renderAll(); });
       await check(tag + ' · lancement : aucune position inventée', async () => { assert.equal((await state(p)).context.source, 'none'); });
@@ -44,6 +73,8 @@ async function tripCycle(browser, iphone) {
       await p.evaluate(() => { __geo.error = 0; __geo.acc = 6000; }); await p.locator('[data-act=locate]').first().click(); await s.settle();
       await check(tag + ' · navigateur approximatif : aucune déduction IP ou VPN', async () => { const x = await state(p); assert.equal(x.network, null); assert.equal(x.raw.acc, 6000); assert.equal(x.context.place, null); assert(!/VPN|Position réseau/.test(x.message)); assert.equal(x.auto, 1); });
       await p.evaluate(h => __geoPush({ ...h, error: 0, age: 0 }), HOME); await s.settle();
+      await check(tag + ' · premier point domicile : lieu canonique encore indéterminé', async () => { assert.equal((await state(p)).context.place, null); assert.equal(await p.evaluate(() => APP_CONTEXT.snapshot.currentLocation), null); });
+      await p.evaluate(h => __geoPush(h), HOME); await s.settle();
       await check(tag + ' · GPS domicile automatique sans clic de confirmation', async () => { const x = await state(p); assert.equal(x.context.place.id, 'home'); assert.equal(x.context.source, 'gps'); assert.equal(x.context.originLock, 'home'); assert.equal(x.geo.permission, 'autorisée'); assert.match(x.diag['Géolocalisation navigateur (brute)'], /±18 m.*source : API navigateur/); assert.match(x.diag['Distance domicile'], /^2[0-9] m$/); });
       await p.evaluate(w => { NETLOC = { ...w, acc: 6000, ts: Date.now(), name: 'Réseau test' }; __geoPush({ ...w, acc: 900 }); }, WORK); await s.settle();
       await check(tag + ' · GPS conservé malgré IP divergente et navigateur à 900 m', async () => { const x = await state(p); assert.equal(x.fix.acc, 18); assert.equal(x.context.place.id, 'home'); assert.equal(x.context.source, 'gps'); assert.match(x.diag['Position réseau / IP'], /±6 km/); });
@@ -95,6 +126,7 @@ async function tripCycle(browser, iphone) {
       async function cOffline(value) { await s.c.setOffline(value); await p.evaluate(value => window.dispatchEvent(new Event(value ? 'offline' : 'online')), value); }
     }
     const unsupported = await session(browser, { permissionAPI: 'throws' }); await unsupported.p.locator('[data-act=locate]').first().click(); await unsupported.settle(6);
+    await unsupported.p.evaluate(h => __geoPush(h), HOME); await unsupported.settle();
     await check('Permissions API · exception synchrone : application et GPS fonctionnels', async () => { assert.equal((await state(unsupported.p)).context.place.id, 'home'); assert.deepEqual(unsupported.errors, []); }); await unsupported.c.close();
     // Permission et API du moteur navigateur, en complément des erreurs/horodatages contrôlés ci-dessus.
     const real = await session(browser, { nativeGeo: true, webkitNativeGeoClock: BR.NAME === 'webkit' });
@@ -102,6 +134,7 @@ async function tripCycle(browser, iphone) {
       await real.p.locator('[data-act=locate]').first().click();
       await real.c.setGeolocation({ latitude: HOME.lat, longitude: HOME.lon, accuracy: HOME.acc });
       await real.settle(8); await real.p.waitForFunction(() => GEO.raw || GEO.error, null, { timeout: 5000 });
+      await real.p.clock.runFor(1000); await real.c.setGeolocation({ latitude: HOME.lat, longitude: HOME.lon, accuracy: HOME.acc }); await real.settle(4);
       const x = await state(real.p); assert.equal(x.context.place && x.context.place.id, 'home', JSON.stringify({ geo: x.geo, raw: x.raw, source: x.context.source, reason: x.diag['Raison localisation'], now: await real.p.evaluate(() => Date.now()) }));
       assert.equal(x.geo.permission, 'autorisée'); assert.equal(x.raw.lat, HOME.lat); assert.equal(x.raw.lon, HOME.lon); assert.equal(x.raw.acc, HOME.acc);
       if (BR.NAME === 'webkit') {

@@ -343,7 +343,7 @@ async function onPos(pos, focus) {
   const context = placeContext(placeInput());
   GEO.raw = raw; GEO.permission = 'autorisée'; GEO.error = null; GEO.status = placeFixClass(raw) === 'gps' ? 'position précise reçue' : 'position approximative reçue';
   const previous = FIX || (GPS ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null);
-  const observation = placeObserve({ fix: raw, previous, logical: PLACE_FIX || previous, context, pending: PLACE_PENDING, places: placeList(), now: Date.now() });
+  const observation = placeObserve({ fix: raw, previous, logical: PLACE_FIX || (GPS && GPS.placePending ? null : previous), context, pending: PLACE_PENDING, places: placeList(), now: Date.now() });
   const refused = observation.accept ? placeGate(raw) : observation.reason;
   GEO.reason = refused || observation.reason;
   if (refused) {
