@@ -1,7 +1,9 @@
 # Checkpoint — contexte réel du jour, lots A + B
 
-Branche : `feat/day-context-destination-car`. PR à conserver en Draft, sans fusion ni déploiement.
+Branche : `feat/day-context-destination-car`. PR #45 à conserver en Draft, sans fusion ni déploiement.
 Base main vérifiée : `292fbe56766598d9ec7bc59cd0be98aff0c91ddd` (#40 à #43 présentes).
+
+PAUSE à la demande de l’utilisateur : priorité à la livraison de #44. PR #45 distante encore au HEAD `9a1da9e311436ff2bb8638d5bace44babbc5fbdc`. Les corrections suivantes et ce handoff sont sauvegardés sur `verify/day-context-ci-9a1da9e` ; récupérer son dernier HEAD avant reprise. Aucun merge ni déploiement de #45. Après livraison de #44, remettre le chantier à jour depuis main en conservant ses verdicts thermiques ; ne pas écraser le test E2E43 de #44.
 
 ## État canonique
 
@@ -29,11 +31,17 @@ HEAD de validation ciblée : `843ecfc5a23614fd8272fc50b8b3adf5cf373421`.
 Run ciblé : https://github.com/iPoower/iPoower/actions/runs/37514917704
 Statut ciblé : entièrement vert — 7 suites sur Chromium et WebKit, plus E2E54/PWA sur Chromium.
 
-49 scénarios déterministes du contexte du jour ; registre complet de 27 suites unitaires. E2E55 : vrais taps iPhone 414 × 896 @3x et clics desktop, profils propre/configuré, quatre vues, destinations connues/inconnues, voitures A/B/fallback/suppression, voiture sans monte, reload/réouverture, jour suivant et expiration des préférences. Régressions ciblées : E2E50, 53, 31, 32, 39, 42 et E2E54 avec vrai SW/offline Chromium.
+51 scénarios déterministes du contexte du jour ; registre complet de 27 suites unitaires. E2E55 : vrais taps iPhone 414 × 896 @3x et clics desktop, profils propre/configuré, quatre vues, destinations connues/inconnues, voitures A/B/fallback/suppression, voiture sans monte, reload/réouverture, jour suivant et expiration des préférences. Régressions ciblées : E2E50, 53, 31, 32, 39, 42 et E2E54 avec vrai SW/offline Chromium.
 
-Les tests historiques E2E31 et 53 gardent leurs assertions : occasion appliquée à sa date et destination Maison choisie avant départ. La fixture PWA réutilise le second emplacement de voiture configuré. Les fixtures/captures sont synthétiques ; aucune donnée personnelle ni secret ajouté.
+Les tests historiques E2E31, 44, 49 et 53 gardent leurs contrôles fonctionnels : occasion appliquée à sa date, destination Maison choisie avant départ et sélection véhicule vérifiée dans le contexte canonique et le rendu. La fixture PWA réutilise le second emplacement de voiture configuré. Les fixtures/captures sont synthétiques ; aucune donnée personnelle ni secret ajouté.
 
-La CI standard de PR est le gate final (27 suites unitaires et 66 exécutions navigateur, soit 93 validations, en six shards). Son résultat final et le HEAD exact sont conservés dans les checks et le compte rendu de la PR, ainsi que dans la branche distante. Le workflow de ciblage temporaire est retiré avant ouverture de la PR.
+La première CI complète (HEAD `9a1da9e311436ff2bb8638d5bace44babbc5fbdc`, run https://github.com/iPoower/iPoower/actions/runs/37516241400) a révélé trois échecs sur les deux moteurs. E2E44 : attente historique d’un retour Maison sans choix. E2E49 : assertion historique de sélection locale Analyse. E2E43 : vraies régressions de rendu — verdict Agenda absent avec une voiture sans monte, et 82 pixels du bloc Aujourd’hui poussant le verdict Analyse sous l’écran. Deux tests unitaires rouges ont reproduit le verdict manquant avant correction ; météo conservée et aucun verdict d’une autre voiture. Le bloc Aujourd’hui utilise l’ordre de modules existant, après Analyse et en tête des autres vues. Le libellé Agenda d’un retour personnalisé conserve aussi sa destination réelle.
+
+Revalidation ciblée des corrections : https://github.com/iPoower/iPoower/actions/runs/37518132591 — HEAD `585c82a8b477506c92c5b258bf1f716d76bd996e`. Suites E2E43, 44, 49, 55 et 42 sur Chromium/WebKit. Le résultat final figure dans les checks et le compte rendu de #45. Ne pas reprendre le HEAD rouge précédent.
+
+Résultat à la pause : Chromium 5/5 vert. WebKit : E2E43, 44, 49 et 55 verts ; E2E42 encore rouge. Assertion exacte : `1 · iPhone : verdict visible sans défiler (haut de l’écran)` — `heroBottom: 900`, `heroTop: 597`, viewport 414 × 896, aucun overflow horizontal ni cible trop petite. Classification : PRODUCT REGRESSION de placement/espacement du nouveau bloc Aujourd’hui, apparue en le sortant du header ; pas de logique météo en cause démontrée. Prochaine action après #44 : mesurer ses marges et corriger seulement l’espacement, puis E2E42 WebKit/Chromium et E2E43/E2E55 avant une nouvelle CI complète. Ne pas augmenter les seuils du test.
+
+La CI standard de PR est le gate final (27 suites unitaires et 66 exécutions navigateur, soit 93 validations, en six shards). Son résultat final et le HEAD exact sont conservés dans les checks et le compte rendu de la PR, ainsi que dans la branche distante. Le workflow de ciblage temporaire est retiré du diff final de la PR.
 PR et état actuel : https://github.com/iPoower/iPoower/pulls?q=is%3Apr+head%3Afeat%2Fday-context-destination-car
 
 ## Fichiers et reprise
