@@ -17,6 +17,45 @@ async function version() {
   const v = await r.json(); assert.equal(v.sha, expectedSha, 'commit réellement publié'); return v;
 }
 const text = (p, selector) => p.locator(selector).innerText();
+const tokenColor = hex => 'rgb(' + [1, 3, 5].map(i => parseInt(hex.trim().slice(i, i + 2), 16)).join(', ') + ')';
+async function temperature(p, mobile) {
+  await p.locator('#viewSeg [data-act=view][data-v=meteo]').click();
+  for (const context of ['none', 'fog']) for (const value of [-5, 0, 8, 15, 25, 35]) {
+    const result = await p.evaluate(({ context, value }) => {
+      const m = CX.m;
+      m.cur.T = value; m.cur.Tapp = value - .5;
+      m.hs = m.hs.map(x => ({ ...x, T: 15, Tapp: 14.5, Tr: 12, Td: 5, RH: 60, P: 0, Pl: 0, pp: 0, snow: 0, ice: { ...x.ice, level: 0, score: 0 }, code: 1, vis: 24000, wind: 9, gust: 20 }));
+      const start = m.hs.findIndex(x => x.t.slice(0, 13) === m.nowStr.slice(0, 13));
+      if (context === 'fog') for (let i = start; i < start + 2; i++) Object.assign(m.hs[i], { vis: 100, code: 45, RH: 98, Td: 14.5 });
+      RAW[UI.loc].t = Date.now(); m.mode = 'live';
+      const d = wxDesk(wxInput()); renderWx();
+      const card = document.querySelector('.wx-now'), hero = card.closest('.wx-hero'), title = hero.querySelector('.wx-ht');
+      const style = getComputedStyle(card), val = card.querySelector('.wx-now-v'), root = getComputedStyle(document.documentElement);
+      const rect = e => e.getBoundingClientRect(), box = rect(card);
+      return { tokens: Object.fromEntries(['--panel2', '--line', '--fg', '--fg2', '--c-rain', '--c-air', '--risk-t', '--nogo-t'].map(k => [k, root.getPropertyValue(k)])),
+        background: style.backgroundColor, border: style.borderColor, shadow: style.boxShadow,
+        value: val.textContent, valueColor: getComputedStyle(val).color, size: parseFloat(getComputedStyle(val).fontSize),
+        secondaryColor: getComputedStyle(card.querySelector('.wx-now-src')).color,
+        title: title.textContent, titleColor: getComputedStyle(title).color, alertColor: getComputedStyle(hero).getPropertyValue('--lv-t'),
+        level: d.hero.level, expectedTitle: d.hero.title, headerAbove: rect(hero.querySelector('.wx-hk')).bottom <= box.top + 1,
+        overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth || [...card.querySelectorAll('*')].some(e => { const b = rect(e); return b.width && (b.left < box.left - 1 || b.right > box.right + 1); }) };
+    }, { context, value });
+    const label = (mobile ? 'iPhone' : 'desktop') + '/' + context + '/' + value;
+    assert.equal(result.background, tokenColor(result.tokens['--panel2']), label + '/surface sombre');
+    assert.equal(result.border, tokenColor(result.tokens['--line']), label + '/bordure');
+    assert.equal(result.shadow, 'none', label + '/ombre');
+    assert.equal(result.value, value.toFixed(1).replace('.', ','), label + '/valeur');
+    const token = value <= 0 ? '--c-rain' : value < 15 ? '--c-air' : value < 25 ? '--fg' : value < 35 ? '--risk-t' : '--nogo-t';
+    assert.equal(result.valueColor, tokenColor(result.tokens[token]), label + '/couleur thermique');
+    assert.equal(result.secondaryColor, tokenColor(result.tokens['--fg2']), label + '/texte secondaire');
+    assert.equal(result.level, context === 'fog' ? 3 : 0, label + '/alerte');
+    assert(result.title.includes(result.expectedTitle), label + '/titre météo');
+    if (context === 'fog') assert.match(result.title, /BROUILLARD EN COURS/);
+    assert.equal(result.titleColor, tokenColor(result.alertColor), label + '/priorité alerte');
+    assert(result.size >= 50 && result.headerAbove && !result.overflow, label + '/layout');
+    rows.push({ device: mobile ? 'iPhone' : 'desktop', temperature: value, context, dark: true, alert: result.level });
+  }
+}
 async function views(p, phase, expected) {
   for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) {
     await p.locator('#viewSeg [data-act=view][data-v=' + view + ']').click();
@@ -104,8 +143,10 @@ async function views(p, phase, expected) {
       await p.close();
       const reopened = await c.newPage(); await reopened.goto(URL_APP);
       await reopened.waitForFunction(() => APP_CONTEXT.ready);
+      assert.equal(await reopened.evaluate(() => window.TWRC_BUILD), expectedBuild, 'build après réouverture');
       await views(reopened, 'réouverture', { status: 'home', place: 'home', confirmation: 'home', active: null, weather: 'home' });
       await reopened.waitForFunction(() => { const r = WEATHER_REQUESTS.state(); return !r.active && !r.queued; });
+      if (process.env.CHECK_DARK_CARD === '1') await temperature(reopened, mobile);
       assert.deepEqual(errors, [], 'erreurs JavaScript sur le document de production');
       rows.push({ device: mobile ? 'iPhone 414×896 @3x' : 'desktop', profile: mobile ? 'propre' : 'migration des anciennes clés', sw, build: expectedBuild, errors: errors.length });
       await c.close();

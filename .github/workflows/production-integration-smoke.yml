@@ -25,6 +25,7 @@ jobs:
       - name: Build public, SW réel, quatre vues et cycle de localisation
         env:
           BROWSER: ${{ matrix.browser }}
-          EXPECTED_SHA: 1d6109d8e4d81823cb6b7f328f93e0e141809cab
-          EXPECTED_BUILD: 82854ced8e89
+          EXPECTED_SHA: 7cae238751605e7022762bb7c693cb22102fac07
+          EXPECTED_BUILD: badbc423e8ae
+          CHECK_DARK_CARD: '1'
         run: node tests/production-integration-smoke.js
