@@ -2423,6 +2423,8 @@ function tripCancelBeforeFirst(e, settings = S, state = TRIPCANCEL, now = Date.n
   const home = locs.find(l => l.id === 'home') || (settings.locs || [])[0], work = settings.work || {}, date = e.s.slice(0, 10);
   const valid = p => p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
   const homePoint = valid(home) ? { ...home, label: 'Domicile', city: 'Domicile' } : null;
+  const real = settings === S && date === placeToday() && e.s >= liveNow() ? appRealOrigin(date) : null;
+  if (real) return { ...real, label: real.name, city: real.name };
   if (!appWorkOn(date, work.days) || workCancelled(date, state, now)) return homePoint;
   const dep = date + 'T' + work.dep, ret = date + 'T' + work.ret, duration = +work.durMin || 30;
   const target = e.allDay ? date + 'T09:00' : e.s;

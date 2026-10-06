@@ -73,4 +73,12 @@ check('Congé reconstruit localement une ancienne origine Agenda Travail sans an
   vm.runInContext(app.match(/^const cancelAffectedDay =.*;$/m)[0] + '\n' + app.slice(app.indexOf('function effLegs('), app.indexOf('function altHtml(')), a);
   assert.equal(a.effLegs(e)[0].from.id, 'home'); assert.deepEqual(a.TRIPCANCEL, {});
 });
+check('Congé ne transforme pas le lieu confirmé Travail en origine Domicile', () => {
+  const a = appFixture(), app = fs.readFileSync(require('node:path').resolve(__dirname, '../src/app.js'), 'utf8');
+  a.S.locs = places.slice(0, 2); a.S.customs = [places[2]]; a.S.work = { from: 'home', to: 'work', days: [2], dep: '07:00', ret: '18:00' };
+  a.USER_STORE.state.dayContext.dayType = { date: '2026-10-06', value: 'off' }; a.TRIPCANCEL = {}; a.workCancelled = () => false; a.commuteDays = x => x;
+  a.placeToday = () => '2026-10-06'; a.liveNow = () => '2026-10-06T17:30'; a.placeNow = () => ({ source: 'manual', confirmed: { at: now }, place: places[1] });
+  vm.runInContext(app.slice(app.indexOf('function tripCancelBeforeFirst('), app.indexOf('const tripCancelRouteKey')), a);
+  assert.equal(a.tripCancelBeforeFirst({ s: '2026-10-06T18:30' }).id, 'work');
+});
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);
