@@ -62,6 +62,29 @@ let n = 0; const check = (label, ok) => { assert(ok, label); n++; console.log('�
       for (const view of ['meteo', 'tenue', 'analyse', 'pneus']) { const tab = p.locator(`[data-act=view][data-v=${view}][aria-pressed]`); await tab.click(); check(prefix + ' · commande ' + view + ' toujours active', await tab.getAttribute('aria-pressed') === 'true'); }
       check(prefix + ' · pas de débordement, JavaScript ou secret dans le cache trafic', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && !/trip-fictif|"fix"|"route"|"distanceAhead"/.test(localStorage.getItem('twrc.road.datex') || '')) && s.errors.length === 0);
       await c.close();
+
+      // Même premier lancement que le site public : aucun préréglage privé ni code injecté.
+      const own = await session(browser, { iphone, locked: true }), q = own.p;
+      const roadCalls = [];
+      await q.route('**/road-datex.json', r => {
+        roadCalls.push(r.request().url());
+        return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(F.feed('datex')) });
+      });
+      await q.route('**/router.project-osrm.org/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(F.routeJSON) }));
+      await q.evaluate(() => { CAL = { events: [] }; CALDONE = true; S.work.dep = '17:20'; S.work.ret = '18:30'; S.work.days = [1, 2, 3, 4, 5]; rebuild(); renderAll(); });
+      await own.settle(2); await q.locator('#secBrf [data-act=trip-start]').first().click(); await own.settle(2);
+      check(prefix + ' · premier lancement verrouillé : carte et requêtes DATEX absentes', await q.locator('#secRoad').isHidden() && roadCalls.length === 0);
+      await q.locator('[data-act=nocode]').click(); await own.settle(2);
+      check(prefix + ' · propres réglages sans GPS : carte qualifiée immédiatement, aucun appel DATEX', await q.locator('#secRoad').isVisible() && /Position précise et trajet OSRM courant requis/.test(await q.locator('#secRoad').innerText()) && roadCalls.length === 0);
+      check(prefix + ' · mode sans code : préréglage chiffré toujours verrouillé', await q.evaluate(() => LOCKED() && !lsGet('twrc.plain') && lsGet('twrc.nocode') === '1'));
+      await q.locator('[data-act=withcode]').click();
+      check(prefix + ' · retour au code : carte masquée immédiatement', await q.locator('#secRoad').isHidden() && await q.evaluate(() => ROAD.manager.context === null && ROAD.alert === null));
+      await q.locator('[data-act=nocode]').click(); await q.locator('[data-act=locate]').first().click(); await own.settle(10);
+      check(prefix + ' · propres réglages avec GPS fictif : trajet existant corrélé au flux DATEX', roadCalls.length > 0 && /Accident signalé/.test(await q.locator('#secRoad').innerText()) && await q.evaluate(() => !!ROAD.manager.context));
+      await q.locator('[data-act=withcode]').click();
+      check(prefix + ' · retour au code : contexte et alerte routiers arrêtés immédiatement', await q.locator('#secRoad').isHidden() && await q.evaluate(() => ROAD.manager.context === null && ROAD.alert === null));
+      check(prefix + ' · profil public : aucune erreur JavaScript ni déchiffrement', own.errors.length === 0 && await q.evaluate(() => LOCKED() && !lsGet('twrc.plain')));
+      await own.c.close();
     }
   } finally { await browser.close(); }
   console.log(`${n}/${n} scénarios OK · erreurs JS : aucune`);
