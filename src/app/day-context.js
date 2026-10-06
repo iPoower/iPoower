@@ -10,6 +10,8 @@ function appRealOrigin(date = placeToday()) {
   if (date !== placeToday()) return null;
   const c = placeNow();
   if (c.source === 'gps' || c.source === 'manual' && DayContext.date(c.confirmed.at) === placeToday()) return c.place;
+  const confirmed = appDay().lastConfirmedPlace, observation = PLACE.last;
+  if (confirmed && observation && observation.source === 'gps' && observation.at > confirmed.at && observation.placeId !== confirmed.placeId) return null;
   return DayContext.morningOrigin(appDay(), Date.now(), placeList());
 }
 function appCommuteEndpoints(dir, date, key) {

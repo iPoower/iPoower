@@ -81,4 +81,9 @@ check('Congé ne transforme pas le lieu confirmé Travail en origine Domicile', 
   vm.runInContext(app.slice(app.indexOf('function tripCancelBeforeFirst('), app.indexOf('const tripCancelRouteKey')), a);
   assert.equal(a.tripCancelBeforeFirst({ s: '2026-10-06T18:30' }).id, 'work');
 });
+check('observation GPS cohérente plus récente invalide une ancienne origine sans inventer de destination', () => {
+  const a = appFixture(); a.placeToday = () => '2026-10-06'; a.placeNow = () => ({ source: 'last', place: places[1] });
+  a.PLACE = { last: { placeId: 'work', at: now, source: 'gps' } }; a.USER_STORE.state.dayContext = { lastConfirmedPlace: conf(now - 3600000), nextDestination: choice('b') };
+  assert.equal(a.appRealOrigin(), null); assert.equal(a.appDay().nextDestination.placeId, 'b');
+});
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);
