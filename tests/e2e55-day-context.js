@@ -23,8 +23,9 @@ async function views(p, expected) {
     const s = await read(p); for (const [k, x] of Object.entries(expected)) assert.equal(s[k], x, v + ' · ' + JSON.stringify(s));
     if (expected.destination === 'b') {
       assert.equal(s.next.to, 'Lieu B'); assert.equal(s.next.from, 'Travail test');
-      if (v === 'pneus') assert.match(await p.locator('#secBrf').innerText(), /Lieu B/);
-      if (v === 'tenue') assert.match(await p.locator('#secTenue').innerText(), /Lieu B/);
+      if (v === 'pneus') assert.match(await p.locator('#secBrf').innerText(), /Lieu B/i);
+      if (v === 'meteo') assert.match(await p.locator('#secWx .wx-route').innerText(), /Travail test.*Lieu B/i);
+      if (v === 'tenue') assert.match(await p.locator('#secTenue').innerText(), /Lieu B/i);
       if (v === 'analyse') assert.equal(await p.evaluate(() => labCar().id), 'carB');
     }
   }
