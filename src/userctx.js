@@ -57,8 +57,11 @@ const DayContext = (() => {
     return manual && manual.date === day ? manual.occasion : working || destinationId && destinationId === workId ? 'office' : 'outing';
   }
   function prioritize(trips, v, now) {
-    const n = clean(v, now).nextDestination;
-    return n ? [...trips.filter(t => t.key === n.tripKey), ...trips.filter(t => t.key !== n.tripKey)] : trips;
+    const n = clean(v, now).nextDestination, chosen = n && trips.find(t => t.key === n.tripKey);
+    if (!chosen) return trips;
+    // Les départs plus faibles incompatibles avec « destination suivante »
+    // ne pilotent aucune vue. Les trajets ultérieurs restent des prévisions.
+    return [chosen, ...trips.filter(t => t.key !== chosen.key && (!chosen.arr || !t.dep || t.dep >= chosen.arr))];
   }
   return { date, expiry, clean, morningOrigin, destination, returnLeg, workOn, occasion, prioritize };
 })();

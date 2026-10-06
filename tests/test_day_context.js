@@ -17,6 +17,10 @@ check('origine plafonnée à 20 h même le lendemain', () => assert.equal(D.morn
 check('A5/A8 manuel récent prévaut sur planning et agenda', () => assert.equal(D.destination({ nextDestination: choice('b') }, { id: 'home' }, now, places).place.id, 'b'));
 check('A7 GPS observe sans inventer ni remplacer destination', () => assert.equal(D.destination({ nextDestination: choice('b'), gps: places[0] }, places[0], now, places).place.id, 'b'));
 check('A8 Agenda plus tôt ne passe pas devant le trajet explicitement choisi', () => assert.equal(D.prioritize([{ key: 'agenda-home' }, { key: 'current' }], { nextDestination: choice('b') }, now)[0].key, 'current'));
+check('même timeline : une prédiction concurrente avant arrivée choisie est retirée, futures conservées', () => {
+  const T = [{ key: 'agenda-home', dep: '2026-10-06T17:10', arr: '2026-10-06T17:40' }, { key: 'current', dep: '2026-10-06T18:00', arr: '2026-10-06T18:40' }, { key: 'future', dep: '2026-10-06T19:00', arr: '2026-10-06T19:30' }];
+  assert.deepEqual(Array.from(D.prioritize(T, { nextDestination: choice('b') }, now), t => t.key), ['current', 'future']);
+});
 check('E1 avant arrivée la destination reste confirmée', () => assert.equal(D.clean({ nextDestination: choice('b') }, now + 1000, places, cars).nextDestination.source, 'user'));
 check('E2 arrivée plus récente termine la destination', () => assert.equal(D.clean({ nextDestination: choice('b'), arrivedAt: now + 1000 }, now + 1000, places, cars).nextDestination, null));
 check('E3 expiration exacte à 04 h Paris', () => { assert(D.clean({ nextDestination: choice('b') }, t('2026-10-07T03:59:59'), places, cars).nextDestination); assert.equal(D.clean({ nextDestination: choice('b') }, t('2026-10-07T04:00:00'), places, cars).nextDestination, null); });
