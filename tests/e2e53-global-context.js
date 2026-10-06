@@ -60,6 +60,13 @@ async function allViews(s, stage, expected, home, work) {
       if (expected.status === 'work') assert.match(bar, /AU TRAVAIL/);
       if (expected.status === 'home') assert.match(bar, /À LA MAISON/);
       if (expected.status === 'travel') assert.match(bar, /EN ROUTE/);
+      if (expected.status === 'home' && expected.nextDir === 'go') {
+        const futureReturn = await p.evaluate(() => {
+          const t = APP_CONTEXT.snapshot.plannedTrips.find(t => t.src === 'work' && t.td.dir === 'ret');
+          return t && { from: t.td.LA.id, to: t.td.LB.id };
+        });
+        if (futureReturn) { assert.equal(futureReturn.from, 'work', 'origine du retour futur conservée'); assert.equal(futureReturn.to, 'home'); }
+      }
       if (view === 'pneus' && expected.status !== 'travel') {
         const weather = await text(p, '#secCur'), label = x.location === 'work' ? work : home;
         assert(weather.toLowerCase().includes(label.toLowerCase()), 'météo actuelle du lieu confirmé · ' + label + ' · ' + weather);
@@ -107,6 +114,12 @@ async function allViews(s, stage, expected, home, work) {
         for (let i = 0; i < 8; i++) { await other.clock.runFor(500); await other.waitForTimeout(80); }
         await allViews({ p: other }, tag + ' · seconde fenêtre au travail', { status: 'work', location: 'work', confirmation: 'work', nextDir: 'ret' }, home, work);
       }
+      // Maison est choisie explicitement ; quitter le travail ne déduit aucune destination.
+      // Analyse utilise son sélecteur voiture compact ; l’éditeur complet du jour reste dans les vues de pilotage.
+      await tab(p, 'pneus');
+      await action(p, '#dayContext .day-editor > summary', 'ouvrir Aujourd’hui');
+      await action(p, '#dayContext .day-destination > summary', 'choisir une destination');
+      await action(p, '#dayContext [data-act=day-destination][data-id=home]', 'confirmer la destination Maison');
       // Départ depuis Analyse : le bouton global démarre le même retour anticipé.
       await tab(p, 'analyse'); await action(p, '#placeBar [data-act=place-leave]', 'départ du travail');
       await allViews(s, tag + ' · retour commencé', { status: 'travel', origin: 'work', destination: 'home', activeDir: 'ret', confirmation: null, weather: 'work' }, home, work);

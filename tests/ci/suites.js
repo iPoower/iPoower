@@ -56,4 +56,5 @@ SUITE.push(['test_userctx.js', 'contexte global : migration, transactions, persi
   ['e2e53-global-context.js', 'contexte global : cycle maison/travail/retour dans les quatre vues, profils, iPhone/PC et rechargement', true],
   ['e2e54-context-sw.js', 'contexte global et vrai SW : migration v10/v11, cache, cycle de trajet et réouverture PWA hors ligne', true, 'chromium']);
 SUITE.push(['test_app_source.js', 'assemblage statique : ordre, portée et inclusions sûres', false], ['test_ci_lanes.js', 'CI : isolation, couverture complète et refus des faux verts', false]);
+SUITE.push(['test_day_context.js', 'contexte du jour : destination, origine, expiration, voiture et Tenue', false], ['e2e55-day-context.js', 'contexte du jour : vrais taps mobile/PC, quatre vues, profils et reload', true]);
 module.exports = { SUITE };

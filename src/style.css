@@ -639,7 +639,9 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 @media (max-width: 380px) { .wx-pts li { grid-template-columns: 92px minmax(0, 1fr); } .wx-rf li { grid-template-columns: 22px 80px minmax(0, 1fr) 32px; } }
 
 /* ---------- onglet Analyse : ingénieur pneumatique embarqué (verdict d'abord, explications au toucher) ---------- */
-.va .wrap > .mod:not(#secLab):not(#settings), .va #secCars, .va #banners, .va .foot { display: none !important; }
+.va .wrap > .mod:not(#secLab):not(#settings), .va #secCars, .va #banners, .va .foot, .va .day-context { display: none !important; }
+.va #placeBar .pl-act { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+.va #placeBar .pl-act .btn { min-height: 44px; min-width: 0; overflow-wrap: anywhere; }
 .lab { gap: 10px; }
 .lab h3 { font-family: var(--f-disp); font-size: 15px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--fg2); }
 .lab-cars { margin-bottom: 2px; }
@@ -713,3 +715,8 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .road-events li{display:grid;gap:3px;padding-top:7px;border-top:1px solid var(--line);overflow-wrap:anywhere}
 .road-events small,.road-distance{color:var(--fg2);font-size:12px}.road-alert{padding:9px;border-left:3px solid #f5a623;border-radius:5px;background:#f5a62315;overflow-wrap:anywhere}
 .road summary{min-height:44px;display:flex;align-items:center;cursor:pointer}.road-details p{overflow-wrap:anywhere}.road-details a{overflow-wrap:anywhere;display:inline-flex;align-items:center;min-height:44px}
+
+/* Contrôles locaux du jour : primitives cockpit existantes. */
+.day-context{margin:10px 0;padding:4px 12px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.day-context .chips{margin-top:8px}.day-context button,.day-context summary{min-height:44px}.day-context summary{display:flex;align-items:center;cursor:pointer;overflow-wrap:anywhere}
+.day-context .day-editor[open]{padding-bottom:8px}
