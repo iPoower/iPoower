@@ -3,7 +3,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { session, BR, errors, U } = require('./lib/context-session');
-let n = 0;
+let n = 0, stage = 'initialisation';
 async function check(label, fn) {
   try { await fn(); n++; console.log('✅ ' + label); }
   catch (e) { console.log('❌ ' + label); console.log(String(e.message).replace(/\n/g, ' ')); throw e; }
@@ -21,6 +21,7 @@ const state = p => p.evaluate(() => {
     stored: JSON.parse(localStorage.getItem(USER_STORE.key)), updatedAt: c.updatedAt, revision: c.revision };
 });
 async function tab(p, value) { await p.locator('#viewSeg [data-act=view][data-v=' + value + ']').click(); }
+async function action(p, selector, label) { stage = label; await p.locator(selector).first().click(); }
 async function allViews(s, stage, expected, home, work) {
   const { p } = s;
   for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) {
@@ -65,13 +66,13 @@ async function allViews(s, stage, expected, home, work) {
       if (profile === 'public-propre') { await p.locator('[data-act=nocode]').click(); await s.settle(8); }
       const tag = dev + ' · ' + profile, home = profile === 'configure' ? 'Maison test' : 'Lieu principal', work = profile === 'configure' ? 'Travail test' : 'Lieu de travail';
       let navigations = 0; const onNav = f => { if (f === p.mainFrame()) navigations++; }; p.on('framenavigated', onNav);
-      await p.locator('#placeBar [data-act=place-confirm][data-place=home]').click();
+      await action(p, '#placeBar [data-act=place-confirm][data-place=home]', 'confirmation au domicile');
       await allViews(s, tag + ' · maison', { status: 'home', location: 'home', origin: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
-      await tab(p, 'pneus'); await p.locator('#secBrf [data-act=trip-start]').first().click();
+      await tab(p, 'pneus'); await action(p, '#secBrf [data-act=trip-start]', 'départ de l’aller');
       await allViews(s, tag + ' · aller commencé', { status: 'travel', origin: 'home', destination: 'work', activeDir: 'go', confirmation: null }, home, work);
       await p.clock.fastForward(5 * 60e3); await s.settle(2);
       // L'arrivée est déclarée depuis Météo, avant l'heure de départ prévue.
-      await tab(p, 'meteo'); await p.locator('#placeBar [data-act=place-confirm][data-place=work]').click();
+      await tab(p, 'meteo'); await action(p, '#placeBar [data-act=place-confirm][data-place=work]', 'confirmation au travail');
       await allViews(s, tag + ' · déjà au travail', { status: 'work', location: 'work', origin: 'work', destination: 'home', confirmation: 'work', active: null, nextDir: 'ret', weather: 'work' }, home, work);
       await check(tag + ' · l’aller est clôturé et aucun clic n’a rechargé la page', async () => { assert((await state(p)).done.some(k => /^commute\|.*\|go$/.test(k))); assert.equal(navigations, 0); });
       p.off('framenavigated', onNav); await p.reload(); await s.settle(8);
@@ -83,7 +84,7 @@ async function allViews(s, stage, expected, home, work) {
         await allViews({ p: other }, tag + ' · seconde fenêtre au travail', { status: 'work', location: 'work', confirmation: 'work', nextDir: 'ret' }, home, work);
       }
       // Départ depuis Analyse : le bouton global démarre le même retour anticipé.
-      await tab(p, 'analyse'); await p.locator('#placeBar [data-act=place-leave]').click();
+      await tab(p, 'analyse'); await action(p, '#placeBar [data-act=place-leave]', 'départ du travail');
       await allViews(s, tag + ' · retour commencé', { status: 'travel', origin: 'work', destination: 'home', activeDir: 'ret', confirmation: null, weather: 'work' }, home, work);
       const activeKey = (await state(p)).active;
       await p.reload(); await s.settle(8); assert.equal((await state(p)).active, activeKey);
@@ -94,7 +95,7 @@ async function allViews(s, stage, expected, home, work) {
         await p.waitForFunction(() => APP_CONTEXT.snapshot.status === 'home');
         await check(tag + ' · arrivée depuis une autre fenêtre propagée sans reload', async () => { assert.equal((await state(other)).confirmation, 'home'); assert.equal((await state(p)).confirmation, 'home'); });
         await other.close();
-      } else { await tab(p, 'tenue'); await p.locator('#placeBar [data-act=place-confirm][data-place=home]').click(); }
+      } else { await tab(p, 'tenue'); await action(p, '#placeBar [data-act=place-confirm][data-place=home]', 'confirmation au domicile'); }
       await allViews(s, tag + ' · arrivé maison', { status: 'home', location: 'home', origin: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
       const stored = (await state(p)).stored;
       await p.close(); p = await s.c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.clock.install({ time: s.T0 + 5 * 60e3 }); await p.goto(U);
@@ -103,7 +104,7 @@ async function allViews(s, stage, expected, home, work) {
       await allViews(s, tag + ' · fermeture/réouverture', { status: 'home', location: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
       await check(tag + ' · réouverture conserve les deux arrivées et le contexte ; aucun autre fournisseur', async () => { const x = await state(p); assert.deepEqual(x.stored.done, stored.done); assert.equal(x.stored.place.conf.at, stored.place.conf.at); });
       if (dev === 'pc' && profile === 'configure') {
-        await p.locator('#placeBar [data-act=place-confirm][data-place=work]').click();
+        await action(p, '#placeBar [data-act=place-confirm][data-place=work]', 'confirmation au travail');
         await allViews(s, 'nouvelle confirmation au travail après un retour déjà terminé', { status: 'work', location: 'work', nextDir: 'ret', active: null, weather: 'work' }, home, work);
       }
       await s.c.close();
@@ -135,4 +136,4 @@ async function allViews(s, stage, expected, home, work) {
     await check('aucune erreur JavaScript sur les quatre parcours', async () => assert.deepEqual(errors, []));
   } finally { await browser.close(); }
   console.log(`${n}/${n} scénarios OK · erreurs JS : aucune`);
-})().catch(e => { console.error('❌ contexte global · exception'); console.error(String(e.message)); console.error(e); process.exit(1); });
+})().catch(e => { console.error('❌ contexte global · ' + stage); console.error(String(e.message).replace(/\n/g, ' ')); console.error(e); process.exit(1); });

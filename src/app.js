@@ -469,14 +469,14 @@ function placeLeave() {
 function renderPlace() {
   const el = $('#placeBar'); if (!el) return;
   const c = placeNow(), K = PLACE_KIND, pl = placeList(), work = pl.find(p => p.kind === 'work'), home = pl.find(p => p.kind === 'home');
+  const confirm = (p, arrival = false) => `<button class="btn${arrival ? ' pri' : ''} sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="${arrival ? 'arrival' : 'manual'}">${arrival ? '✅' : (K[p.kind] || K.custom).icon} ${esc(arrival ? (K[p.kind] || K.custom).arrive : (K[p.kind] || K.custom).already)} · ${esc(p.name)}</button>`;
   let h;
   if (c.source === 'manual') {
     const k = K[c.place.kind] || K.custom;
-    h = `<div class="place on" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}<button class="btn sm" data-act="place-leave">🚗 ${esc(k.leave)}</button></div>`;
+    h = `<div class="place on" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}<button class="btn sm" data-act="place-leave">🚗 ${esc(k.leave)}</button>${[work, home].filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</div>`;
   } else {
     const arr = [work, home].filter(Boolean).map(p => ({ p, t: placeArrivalTrip(p.id) })).find(x => x.t);
-    const btns = arr ? `<button class="btn pri sm" data-act="place-confirm" data-place="${esc(arr.p.id)}" data-how="arrival">✅ ${esc((K[arr.p.kind] || K.custom).arrive)}</button>`
-      : [work, home].filter(Boolean).map(p => `<button class="btn sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="manual">${(K[p.kind] || K.custom).icon} ${esc((K[p.kind] || K.custom).already)} · ${esc(p.name)}</button>`).join('');
+    const btns = [work, home].filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
     h = `<div class="place${arr ? ' arr' : ''}">${arr ? `<b>${c.source === 'trip' ? '🚗 EN ROUTE · destination' : 'ARRIVÉE'} · ${(K[arr.p.kind] || K.custom).icon} ${esc(arr.p.name)}</b>` : `<span class="pl-src"><b>${esc(c.title)}</b> · ${esc(c.trust)}${c.badge ? ' · ' + esc(c.badge) : ''}</span>`}<span class="pl-act">${btns}</span></div>`;
   }
   if (el.innerHTML !== h) el.innerHTML = h;
