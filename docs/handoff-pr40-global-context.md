@@ -27,6 +27,13 @@ Run suivant `37439115848` : les quatre cycles et le soir passent sur Chromium.
 Dernière assertion fragile : `#notice` affiche « MÉTÉO INDISPONIBLE » via CSS,
 alors que la regex était sensible à la casse. Comparaison passée en `/i`, sans
 modifier le produit ni retirer les assertions de contexte. À retester.
+Run `37439480309` : e2e53 Chromium vert (50 s), WebKit bloqué par
+`clock.install: TypeError: undefined is not an object (evaluating 'globalThis.__pwClock.controller')`
+à la seconde fenêtre, ligne 105 (job `112189373215`). L'horloge Playwright est
+globale au BrowserContext : retirer les réinstallations sur seconde fenêtre et
+réouverture. Les pages héritent de l'horloge existante, avec assertion de
+monotonie à la réouverture. Aucun délai ou retry ajouté, aucun code produit changé.
+Source : https://playwright.dev/docs/api/class-clock
 
 CAUSES CORRIGÉES : les boutons du checkpoint sont validés sur les deux moteurs.
 La première acquisition GPS précise dans une géofence exige désormais un second

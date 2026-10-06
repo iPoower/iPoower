@@ -102,7 +102,8 @@ async function allViews(s, stage, expected, home, work) {
       await allViews(s, tag + ' · reload au travail', { status: 'work', location: 'work', confirmation: 'work', active: null, nextDir: 'ret', weather: 'work' }, home, work);
       let other = null;
       if (dev === 'pc' && profile === 'configure') {
-        other = await s.c.newPage(); other.on('pageerror', e => errors.push(e.message)); await other.clock.install({ time: await p.evaluate(() => Date.now()) }); await other.goto(U);
+        // L'horloge Playwright appartient au contexte : les nouvelles pages en héritent.
+        other = await s.c.newPage(); other.on('pageerror', e => errors.push(e.message)); await other.goto(U);
         for (let i = 0; i < 8; i++) { await other.clock.runFor(500); await other.waitForTimeout(80); }
         await allViews({ p: other }, tag + ' · seconde fenêtre au travail', { status: 'work', location: 'work', confirmation: 'work', nextDir: 'ret' }, home, work);
       }
@@ -122,7 +123,8 @@ async function allViews(s, stage, expected, home, work) {
       await allViews(s, tag + ' · arrivé maison', { status: 'home', location: 'home', origin: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
       const stored = (await state(p)).stored;
       const reopenedAt = await p.evaluate(() => Date.now());
-      await p.close(); p = await s.c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.clock.install({ time: reopenedAt }); await p.goto(U);
+      await p.close(); p = await s.c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.goto(U);
+      assert(await p.evaluate(() => Date.now()) >= reopenedAt, 'réouverture sans recul de l’horloge partagée');
       s.p = p; s.settle = async (count = 6) => { for (let i = 0; i < count; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } };
       await s.settle(8);
       await allViews(s, tag + ' · fermeture/réouverture', { status: 'home', location: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
