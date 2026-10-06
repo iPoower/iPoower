@@ -52,8 +52,11 @@ let n = 0; const check = (label, ok) => { assert(ok, label); n++; console.log('�
       await p.locator('#f-road-on').selectOption('0'); check(prefix + ' · handler de réglage : fournisseur arrêté, carte masquée', await p.locator('#secRoad').isHidden() && !await p.evaluate(() => ROAD.manager.states.get('datex').provider.enabled));
       await p.locator('#f-road-on').selectOption('1');
       const arrivedKey = await p.evaluate(() => LIVE.key);
-      await p.locator('#secBrf [data-act=trip-arrived]').first().click();
-      check(prefix + ' · handler « Bien arrivé » termine le trajet suivi', await p.evaluate(key => LIVE.done[key] === 'arrivé', arrivedKey));
+      // Le briefing privilégie la confirmation du lieu connu (travail) au bouton d'arrivée générique.
+      const arrival = p.locator('#secBrf [data-act=trip-arrived], #secBrf [data-act=place-confirm][data-how=arrival]').first();
+      check(prefix + ' · action d’arrivée réellement proposée et visible', await arrival.count() === 1 && await arrival.isVisible());
+      await arrival.click();
+      check(prefix + ' · handler d’arrivée termine le trajet suivi et les alertes', await p.evaluate(key => LIVE.done[key] === 'arrivé' && ROAD.manager.context === null && ROAD.alert === null, arrivedKey));
       await p.evaluate(() => { liveReset(); S.work.days = []; CAL.events = []; renderAll(); });
       check(prefix + ' · arrivée/annulation/sans trajet : aucun contexte ou événement résiduel', await p.locator('#secRoad').isHidden() && await p.evaluate(() => ROAD.manager.context === null && ROAD.alert === null));
       for (const view of ['meteo', 'tenue', 'analyse', 'pneus']) { const tab = p.locator(`[data-act=view][data-v=${view}][aria-pressed]`); await tab.click(); check(prefix + ' · commande ' + view + ' toujours active', await tab.getAttribute('aria-pressed') === 'true'); }
