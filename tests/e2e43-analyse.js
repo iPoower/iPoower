@@ -66,7 +66,8 @@ const layout = (p, mobile) => p.evaluate(mobile => {
   return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6), heroBottom: Math.round(el.querySelector('.lab-hero').getBoundingClientRect().bottom) };
 }, mobile);
 const toLab = async s => { await s.p.click('[data-act=view][data-v=analyse]'); await s.settle(3); await s.p.evaluate(() => window.scrollTo(0, 0)); };
-const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
+// libellé « tendance · niveau » : la tendance (en chauffe, stabilisé, en refroidissement, au repos) est distincte du niveau (froid … très chaud)
+const STATES = /(EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT|FROID|SOUS LA PLAGE FAVORABLE|FAVORABLE|CHAUD|TRÈS CHAUD)/;
 
 (async () => {
   const b = await BR.launch();
@@ -104,7 +105,7 @@ const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
     await setMem(10, 40); await s.settle(1); a = await lab(s.p);
     check('2 · arrêt de 10 min après un trajet : « À l’arrêt », température conservée', /À L’ARRÊT/i.test(a.hero) && /Température conservée/.test(a.all), a.hero + ' | ' + a.all.slice(0, 400));
     await setMem(14 * 60, 40); await s.settle(1); a = await lab(s.p);
-    check('2 · nuit entière : retour proche de l’état froid', /Retour proche de l’état froid/.test(a.all) && /PNEU FROID|EN CHAUFFE/.test(a.hero), a.hero);
+    check('2 · nuit entière : retour proche de l’état froid', /Retour proche de l’état froid/.test(a.all) && /AU REPOS · AMBIANT · FROID/.test(a.hero) && !/EN CHAUFFE/.test(a.hero), a.hero);
     // 3. roulage suivi au GPS : état « en roulage », mémoire écrite sans aucune position
     const mem = await s.p.evaluate(() => { const l = allLocs()[0]; LIVE.phase = 'active'; LIVE.key = 'test'; LIVE.startFix = { ts: Date.now() - 14 * 60e3, lat: l.lat, lon: l.lon, acc: 20 }; FIX = { ts: Date.now(), lat: l.lat + 0.12, lon: l.lon, acc: 20 };
       labThermTick.at = 0; renderAll(); const r = localStorage.getItem('twrc.tyretherm.v1'); LIVE.phase = 'idle'; LIVE.key = null; LIVE.startFix = null; FIX = null; return r; });
