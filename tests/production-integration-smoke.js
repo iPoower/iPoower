@@ -51,7 +51,7 @@ async function views(p, phase, expected) {
       const c = await browser.newContext({ viewport: mobile ? { width: 414, height: 896 } : { width: 1280, height: 900 },
         ...(mobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}), timezoneId: 'Europe/Paris', locale: 'fr-FR' });
       const errors = [];
-      c.on('page', p => { p.on('pageerror', e => errors.push(e.message)); p.on('console', m => { if (m.type() === 'error' && /Uncaught|TypeError|ReferenceError|SyntaxError/.test(m.text())) errors.push(m.text()); }); });
+      c.on('page', p => { p.on('pageerror', e => errors.push({ type: 'pageerror', message: e.message, stack: e.stack, page: p.url() })); p.on('console', m => { if (m.type() === 'error' && /Uncaught|TypeError|ReferenceError|SyntaxError/.test(m.text())) errors.push({ type: 'console', message: m.text(), location: m.location(), page: p.url() }); }); });
       await c.addInitScript(({ fixture, time, mobile }) => {
         if (location.origin !== 'https://ipoower.github.io' || !location.pathname.startsWith('/iPoower/race-control/')) return;
         if (!localStorage.getItem('twrc.production.fixture')) {
@@ -92,15 +92,20 @@ async function views(p, phase, expected) {
       await views(p, 'arrivé travail', { status: 'work', place: 'work', confirmation: 'work', active: null, next: 'ret', weather: 'work' });
       await p.locator('#placeBar [data-act=place-leave]').click();
       await views(p, 'retour réel', { status: 'travel', origin: 'work', destination: 'home', dir: 'ret', confirmation: null, weather: 'work' });
+      // Terminer les fixtures réseau avant de quitter le document : WebKit
+      // signale sinon l'annulation de la réponse CORS comme erreur de console.
+      await p.waitForFunction(() => { const r = WEATHER_REQUESTS.state(); return !r.active && !r.queued; });
       await p.reload(); await p.waitForFunction(() => APP_CONTEXT.ready && APP_CONTEXT.snapshot.activeTrip);
       await views(p, 'reload retour', { status: 'travel', origin: 'work', destination: 'home', dir: 'ret', confirmation: null, weather: 'work' });
       await p.locator('#viewSeg [data-act=view][data-v=tenue]').click();
       await p.locator('#placeBar [data-act=place-confirm][data-place=home]').click();
       await views(p, 'arrivé maison', { status: 'home', place: 'home', confirmation: 'home', active: null, weather: 'home' });
+      await p.waitForFunction(() => { const r = WEATHER_REQUESTS.state(); return !r.active && !r.queued; });
       await p.close();
       const reopened = await c.newPage(); await reopened.goto(URL_APP);
       await reopened.waitForFunction(() => APP_CONTEXT.ready);
       await views(reopened, 'réouverture', { status: 'home', place: 'home', confirmation: 'home', active: null, weather: 'home' });
+      await reopened.waitForFunction(() => { const r = WEATHER_REQUESTS.state(); return !r.active && !r.queued; });
       assert.deepEqual(errors, [], 'erreurs JavaScript sur le document de production');
       rows.push({ device: mobile ? 'iPhone 414×896 @3x' : 'desktop', profile: mobile ? 'propre' : 'migration des anciennes clés', sw, build: expectedBuild, errors: errors.length });
       await c.close();
