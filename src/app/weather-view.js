@@ -2,6 +2,17 @@
 // Toute la décision vient de wxDesk (src/wxdesk.js, pur et testé) ; ici, seulement l'adaptation des données déjà chargées et le rendu.
 // Trajets : ceux du briefing (domicile-travail + rendez-vous de l'agenda reconnus comme trajets), jamais tous les événements de l'agenda.
 const WX_IC = { rain: '🌧', snow: '🌨', fog: '🌫', wind: '💨', ice: '❄️', temp: '🌡', sun: '🌅', better: '🌤', zero: '🧊', dep: '🚗', arr: '🏁' };
+// Présentation de la seule valeur actuelle ; aucun lien avec les niveaux d'alerte.
+function wxCurrentTemperatureTone(temperature) {
+  if (temperature <= 0) return 'cold';
+  if (temperature < 8) return 'chilly';
+  if (temperature < 15) return 'cool';
+  if (temperature < 20) return 'mild';
+  if (temperature < 25) return 'warm';
+  if (temperature < 30) return 'warmer';
+  if (temperature < 35) return 'hot';
+  return 'hottest';
+}
 function wxTrips(clockModel) {
   const offSec = clockModel && clockModel.payload && clockModel.payload.utc_offset_seconds != null ? clockModel.payload.utc_offset_seconds : 7200;
   return APP_CONTEXT.snapshot.trips.filter(t => !t.originPending && t.dep).map((t, k) => {
@@ -42,8 +53,7 @@ function renderWx() {
   const age = input.ageMin == null ? '' : ` · ${freshState(input.ageMin)} · ${ageTxt(input.ageMin)}`;
   const h = d.hero, nowWx = d.current || {}, hasNowTemp = Number.isFinite(nowWx.T);
   const heroLines = h.lines.filter(x => !(hasNowTemp && /°C · ressenti .* °C/.test(x)));
-  // Teinte de présentation uniquement : température déjà calculée, indépendante du niveau d'alerte.
-  const currentTone = nowWx.T <= 0 ? 'cold' : nowWx.T < 15 ? 'cool' : nowWx.T < 25 ? 'mild' : nowWx.T < 35 ? 'warm' : 'hot';
+  const currentTone = hasNowTemp ? wxCurrentTemperatureTone(nowWx.T) : '';
   const currentCard = hasNowTemp ? `<div class="wx-now" data-tone="${currentTone}" aria-label="Température actuelle">
       <div class="wx-now-main"><span class="wx-now-v num">${f1(nowWx.T)}</span><span class="wx-now-u">°C</span></div>
       <div class="wx-now-side"><span class="wx-now-k">Température actuelle</span>

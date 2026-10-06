@@ -3,8 +3,18 @@
 const fs = require('node:fs'), path = require('node:path');
 const { session } = require('./jarvis-session');
 const BR = require('./browser');
-const TEMPS = [-5, 0, 8, 15, 25, 35];
-const TOKENS = ['--panel2', '--line', '--fg', '--fg2', '--c-rain', '--c-air', '--risk-t', '--nogo-t'];
+// Cas métier explicites : les seuils et les tokens sont vérifiés sur le vrai rendu.
+const CASES = [
+  [-5, 'cold', '--c-rain'], [0, 'cold', '--c-rain'],
+  [5, 'chilly', '--c-rain'],
+  [8, 'cool', '--c-air'], [12, 'cool', '--c-air'],
+  [15, 'mild', '--fg2'], [18, 'mild', '--fg2'],
+  [20, 'warm', '--c-road'], [21.3, 'warm', '--c-road'], [24, 'warm', '--c-road'],
+  [25, 'warmer', '--risk-t'], [28, 'warmer', '--risk-t'],
+  [30, 'hot', '--nogo-t'],
+  [35, 'hottest', '--nogo'], [40, 'hottest', '--nogo']
+];
+const TOKENS = ['--panel2', '--line', '--fg', '--fg2', '--c-rain', '--c-air', '--c-road', '--risk-t', '--nogo-t', '--nogo'];
 const rgb = s => (s.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
 const luminance = s => rgb(s).map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((a, v, i) => a + v * [.2126, .7152, .0722][i], 0);
 const contrast = (a, b) => (Math.max(luminance(a), luminance(b)) + .05) / (Math.min(luminance(a), luminance(b)) + .05);
@@ -28,7 +38,8 @@ async function run(browser, check) {
         if (shots) { await s.p.evaluate(() => window.scrollTo(0, 0)); await s.p.screenshot({ path: path.join(shots, `${device}-${view}-overview.png`) }); }
       }
       report.push({ device, surfaces });
-      for (const context of ['none', 'fog', 'wind']) for (const temperature of TEMPS) {
+      const canonicalBefore = await s.p.evaluate(() => localStorage.getItem(USER_STORE.key));
+      for (const context of ['none', 'fog', 'wind']) for (const [temperature, tone, token] of CASES) {
         // La température actuelle et les phénomènes horaires sont indépendants dans cette fixture de rendu.
         // Cela vérifie qu'une alerte rouge ne colore pas une température douce et inversement.
         const expected = await s.p.evaluate(({ context, temperature }) => {
@@ -43,7 +54,8 @@ async function run(browser, check) {
           }
           RAW[UI.loc].t = Date.now(); m.mode = 'live';
           const d = wxDesk(wxInput()); renderWx();
-          return { title: d.hero.title, level: d.hero.level, lines: d.hero.lines.filter(x => !/°C · ressenti .* °C/.test(x)) };
+          return { title: d.hero.title, level: d.hero.level, lines: d.hero.lines.filter(x => !/°C · ressenti .* °C/.test(x)),
+            source: d.current.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours' };
         }, { context, temperature });
         const observed = await s.p.evaluate(tokens => {
           const root = getComputedStyle(document.documentElement), card = document.querySelector('.wx-now'), hero = card.closest('.wx-hero');
@@ -52,10 +64,11 @@ async function run(browser, check) {
           const c = getComputedStyle(card), v = getComputedStyle(value), t = getComputedStyle(title);
           const bounds = rect(card), header = rect(hero.querySelector('.wx-hk')), main = rect(card.querySelector('.wx-now-main')), secondary = rect(side);
           const clipped = [...card.querySelectorAll('*')].filter(e => { const b = rect(e); return b.width && (b.left < bounds.left - 1 || b.right > bounds.right + 1); }).map(e => e.className);
-          return { tokens: Object.fromEntries(tokens.map(k => [k, root.getPropertyValue(k)])), background: c.backgroundColor, borderColor: c.borderColor, radius: c.borderRadius, shadow: c.boxShadow,
+          return { tokens: Object.fromEntries(tokens.map(k => [k, root.getPropertyValue(k)])), tone: card.dataset.tone, background: c.backgroundColor, backgroundImage: c.backgroundImage, borderColor: c.borderColor, radius: c.borderRadius, shadow: c.boxShadow,
             value: value.textContent, valueColor: v.color, valueSize: parseFloat(v.fontSize), unitColor: getComputedStyle(card.querySelector('.wx-now-u')).color,
             feel: card.querySelector('.wx-now-feel').textContent, feelColor: getComputedStyle(card.querySelector('.wx-now-feel')).color,
-            secondaryColor: getComputedStyle(card.querySelector('.wx-now-src')).color, title: title.textContent.trim().replace(/^[^A-Z]+/, ''), titleColor: t.color,
+            secondaryColor: getComputedStyle(card.querySelector('.wx-now-src')).color, source: card.querySelector('.wx-now-src').textContent,
+            labelColor: getComputedStyle(card.querySelector('.wx-now-k')).color, title: title.textContent.trim().replace(/^[^A-Z]+/, ''), titleColor: t.color,
             alertColor: getComputedStyle(hero).getPropertyValue('--lv-t').trim(), heroClass: hero.className, lines: [...hero.querySelectorAll('.wx-hl')].map(e => e.textContent),
             clipped, main, secondary, bounds, header, viewportWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth,
             badges: hero.querySelector('.wx-age').textContent };
@@ -66,17 +79,18 @@ async function run(browser, check) {
         check(label + ' : alerte et données météo conservées', observed.title === expected.title && observed.heroClass.includes('lv' + expected.level) && JSON.stringify(observed.lines) === JSON.stringify(expected.lines) && (context === 'none' ? expected.level === 0 : expected.level === 3), JSON.stringify({ expected, title: observed.title }));
         check(label + ' : badges et grande valeur lisibles', /LIVE.*FRESH/.test(observed.badges) && observed.valueSize >= 50 && contrast(observed.valueColor, observed.background) >= 4.5);
         if (!baseline) {
-          const token = temperature <= 0 ? '--c-rain' : temperature < 15 ? '--c-air' : temperature < 25 ? '--fg' : temperature < 35 ? '--risk-t' : '--nogo-t';
-          check(label + ' : surface sombre du cockpit, sans ombre ajoutée', observed.background === tokenColor(observed.tokens['--panel2']) && observed.borderColor === tokenColor(observed.tokens['--line']) && observed.radius === '6px' && observed.shadow === 'none');
-          check(label + ' : couleur thermique limitée à la valeur', observed.valueColor === tokenColor(observed.tokens[token]) && observed.unitColor === tokenColor(observed.tokens['--fg2']) && observed.feelColor === tokenColor(observed.tokens['--fg']) && observed.secondaryColor === tokenColor(observed.tokens['--fg2']) && contrast(observed.secondaryColor, observed.background) >= 4.5);
+          check(label + ' : surface sombre du cockpit, sans ombre ajoutée', observed.background === tokenColor(observed.tokens['--panel2']) && observed.backgroundImage === 'none' && observed.borderColor === tokenColor(observed.tokens['--line']) && observed.radius === '6px' && observed.shadow === 'none');
+          check(label + ' : couleur thermique limitée à la valeur', observed.tone === tone && observed.valueColor === tokenColor(observed.tokens[token]) && observed.unitColor === tokenColor(observed.tokens['--fg2']) && observed.feelColor === tokenColor(observed.tokens['--fg']) && observed.secondaryColor === tokenColor(observed.tokens['--fg2']) && observed.labelColor === tokenColor(observed.tokens['--fg2']) && observed.source === expected.source && contrast(observed.secondaryColor, observed.background) >= 4.5);
           check(label + ' : priorité visuelle de l’alerte conservée', observed.titleColor === tokenColor(observed.alertColor));
+          if (temperature === 21.3) check(label + ' : orange chaud, jamais blanc', observed.valueColor === tokenColor(observed.tokens['--c-road']) && observed.valueColor !== tokenColor(observed.tokens['--fg']));
         }
         report.push({ device, context, temperature, expected, observed });
         if (shots) {
           await s.p.locator('.wx-hero').screenshot({ path: path.join(shots, `${device}-${context}-${temperature}.png`) });
-          if (temperature === 8) { await s.p.evaluate(() => window.scrollTo(0, 0)); await s.p.screenshot({ path: path.join(shots, `${device}-${context}-screen.png`) }); }
+          if ([8, 21.3, 35].includes(temperature)) { await s.p.evaluate(() => window.scrollTo(0, 0)); await s.p.screenshot({ path: path.join(shots, `${device}-${context}-${temperature}-screen.png`) }); }
         }
       }
+      check(device + ' : barème sans changement du contexte global', await s.p.evaluate(() => localStorage.getItem(USER_STORE.key)) === canonicalBefore);
       // Les handlers existants restent utilisables après les rerenders du composant.
       await s.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await s.settle(1);
       await s.p.locator('#viewSeg [data-act=view][data-v=meteo]').click(); await s.settle(1);
