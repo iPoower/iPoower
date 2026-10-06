@@ -56,7 +56,11 @@ const DayContext = (() => {
     const manual = v && v.outfitChoice;
     return manual && manual.date === day ? manual.occasion : working || destinationId && destinationId === workId ? 'office' : 'outing';
   }
-  return { date, expiry, clean, morningOrigin, destination, returnLeg, workOn, occasion };
+  function prioritize(trips, v, now) {
+    const n = clean(v, now).nextDestination;
+    return n ? [...trips.filter(t => t.key === n.tripKey), ...trips.filter(t => t.key !== n.tripKey)] : trips;
+  }
+  return { date, expiry, clean, morningOrigin, destination, returnLeg, workOn, occasion, prioritize };
 })();
 function userContextStore({ read, write, now = () => Date.now() }) {
   const key = 'twrc.context.v1', listeners = new Set();

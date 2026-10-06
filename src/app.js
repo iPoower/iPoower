@@ -463,7 +463,8 @@ function placeLeave() {
   return appAction(() => {
   if (!PLACE.conf) return;
   if (!appDay().nextDestination && !BRF_SHOWN.some(t => t.src === 'cal' && (appTripPlace(t, 'from') || {}).id === PLACE.conf.placeId && t.dep.slice(0, 10) === placeToday())) appChooseDestination(null, 'pending');
-  const next = BRF_SHOWN.find(t => !t.originPending && (appTripPlace(t, 'from') || {}).id === PLACE.conf.placeId);
+  const intention = appDay().nextDestination;
+  const next = intention && !intention.placeId ? null : BRF_SHOWN.find(t => !t.originPending && (appTripPlace(t, 'from') || {}).id === PLACE.conf.placeId && (!intention || t.key === intention.tripKey));
   if (next) { liveStart(next.key); return; }
   PLACE.last = { placeId: PLACE.conf.placeId, at: Date.now(), source: 'départ annoncé' }; PLACE.conf = null; placeSave();
   USER_STORE.state.lastDeparture = { placeId: PLACE.last.placeId, at: Date.now() };
@@ -2097,7 +2098,7 @@ function appBuildTrips() {
   T = liveApply(T, now);   // trajet vivant (position GPS réelle) : un seul, en mémoire uniquement
   T = tripPreviewApply(T, now);
   T.sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : a.src === 'work' ? -1 : 1);
-  return T;
+  return DayContext.prioritize(T, appDay(), Date.now());
 }
 function renderBrfCore() {
   const el = $('#secBrf'); if (!el) return;
@@ -2224,7 +2225,7 @@ const wazeBtn = p => { const u = wazeUrl(p); return u ? `<a class="btn sm" href=
 const homeExact = () => { const L = S.locs || [], h = L.find(l => l.id === 'home') || L[0]; return locHasCoords(h) ? h : null; };
 const legNavTo = leg => leg && leg.k === 'ret' && !leg.destinationOverride ? (homeExact() || leg.to) : leg && (leg.navTo || leg.to);
 // destination du trajet AFFICHÉ (vivant, adaptatif, agenda ou boulot) ; planL = trajet agenda d'origine d'un trajet vivant
-const tripTo = t => t.src === 'cal' ? legNavTo(t.l) : (t.td && t.td.LB) || (t.l && (t.l.navTo || t.l.to)) || null;
+const tripTo = t => t.src === 'cal' ? (t.planL || t.l || {}).k === 'ret' && !(t.planL || t.l || {}).destinationOverride ? homeExact() || (t.l && t.l.to) : legNavTo(t.l) : (t.td && t.td.LB) || (t.l && (t.l.navTo || t.l.to)) || null;
 // départ déclaré / arrivée confirmée : actions globales du trajet (même automate, lues par tous les onglets)
 const liveStartBtn = t => !DEMO.on && !t.running && t.live !== 'active' && !t.manualPreview && !t.manualReturn && LIVE.phase !== 'active' && liveDest(t) ? `<button class="btn sm" data-act="trip-start" data-key="${esc(t.key)}">🚗 Je pars maintenant</button>` : '';
 const liveArrBtn = t => (t.running || t.live === 'active') && LIVE.key === t.key ? `<button class="btn sm" data-act="trip-arrived">✅ Bien arrivé</button>` : '';
