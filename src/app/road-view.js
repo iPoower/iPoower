@@ -18,7 +18,7 @@ function roadSync() {
   try {
     const manager = roadManager(), enabled = S.road.on === 1;
     const datex = manager.states.get('datex'); if (datex && datex.provider.enabled !== enabled) manager.setEnabled('datex', enabled);
-    const allowed = enabled && !LOCKED() && !DEMO.on && LIVE.key && LIVE.phase !== 'idle';
+    const allowed = enabled && !(LOCKED() && !lsGet('twrc.nocode')) && !DEMO.on && LIVE.key && LIVE.phase !== 'idle';
     const route = allowed && LIVE.route && LIVE.route.road && FIX && liveRouteCurrent(LIVE.route, liveOrigin(FIX)) ? LIVE.route.road : null;
     if (ROAD.key !== LIVE.key || ROAD.route !== route) { ROAD.alert = null; ROAD.key = LIVE.key; ROAD.route = route; }
     manager.setContext(route ? { key: LIVE.key, route, fix: FIX, phase: LIVE.phase } : null);
@@ -29,7 +29,7 @@ function roadSync() {
 }
 function renderRoad() {
   const el = $('#secRoad'); if (!el) return;
-  const show = !LOCKED() && !DEMO.on && S.road.on === 1 && LIVE.key && LIVE.phase !== 'idle' && UI.view === 'pneus';
+  const show = !(LOCKED() && !lsGet('twrc.nocode')) && !DEMO.on && S.road.on === 1 && LIVE.key && LIVE.phase !== 'idle' && UI.view === 'pneus';
   el.hidden = !show; if (!show) { el.innerHTML = ''; ROAD.alert = null; return; }
   const manager = ROAD.manager; if (!manager) return;
   const v = manager.snapshot({ online: !offlineNow() }), p = v.providers.find(s => s.active) || v.providers.find(s => s.confirmed) || v.providers[0] || { label: 'Aucune source', state: 'unavailable', ageMs: null }, now = Date.now();
