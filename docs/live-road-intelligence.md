@@ -36,7 +36,7 @@ Dans le navigateur, `RoadProvider` et `Manager` isolent activation, erreurs HTTP
 
 `liveParse` conserve les sorties existantes du trajet météo et ajoute un index spatial de la géométrie complète OSRM. Le même appel OSRM, en aperçu comme en trajet actif, reçoit `steps=true` pour connaître les axes ; aucun calcul de route supplémentaire pour DATEX. Les axes suivent la géométrie complète de chaque étape, y compris après une boucle ; une étape incohérente invalide la corrélation. La corrélation exige un GPS frais et précis, une proximité de la polyline, un axe connu et concordant, un sens compatible, la validité et la progression. Un point dépassé, une route voisine, un croisement ambigu ou une section non empruntée est rejeté. Une géométrie DATEX linéaire représente ses bornes, pas une polyline à interpoler aveuglément.
 
-Les événements conservent les identifiants, producteur, horodatages et référence source. Une fusion entre fournisseurs nécessite type/axe/sens compatibles, proximité, dates et validités concordantes ; elle conserve chaque provenance. Les vitesses sont traitées séparément des incidents. Une vitesse faible ne crée jamais un accident. Les valeurs absentes restent `null`.
+Les événements conservent les identifiants, producteur, horodatages et référence source. Une fusion entre fournisseurs nécessite type/axe/sens compatibles, proximité, dates et validités concordantes ; elle conserve chaque provenance. Les essais de fusion sont bornés dans les zones denses. Un événement dont la fin précède sa rencontre estimée est masqué. Les vitesses sont traitées séparément des incidents ; bouchon et ralentissement ne sont déclarés que par leur type DATEX explicite. Une vitesse faible ne crée jamais un accident. Les valeurs absentes restent `null`.
 
 ## Affichage, fraîcheur et vie du trajet
 
@@ -58,7 +58,7 @@ Les alertes sont dédupliquées en mémoire, espacées d’au moins 5 min et ret
 
 ## PWA, confidentialité et performance
 
-Le SW passe de `twrc-static-v9` à `twrc-static-v10` pour ce nouveau shell et conserve `twrc-data-v3`. Le cache DATEX a une clé canonique, une validation minimale et une rétention de 24 h. Une réponse de secours porte `X-TWRC-Cache: fallback`, qui interdit le statut LIVE même si son contenu est récent. Les futures URLs de bridge commercial sont exclues du cache implicite du shell. Les requêtes externes et coordonnées restent exclues de Cache Storage.
+Le SW passe de `twrc-static-v9` à `twrc-static-v10` pour ce nouveau shell et conserve `twrc-data-v3`. Le cache DATEX a une clé canonique, une validation minimale et une rétention de 24 h. Une réponse de secours porte `X-TWRC-Cache: fallback`, qui interdit le statut LIVE même si son contenu est récent. Un refus de Cache Storage ou un quota plein n'empêche pas de lire une réponse réseau valide. Les futures URLs de bridge commercial sont exclues du cache implicite du shell. Les requêtes externes et coordonnées restent exclues de Cache Storage.
 
 `twrc.road.datex` ne contient que le flux public non filtré. GPS, progression, itinéraire, ETA personnelle et historique d’alerte restent en mémoire. Aucun secret, donnée d’agenda, position privée ou notification personnelle n’est ajouté au dépôt public. L’ajout du réglage `road.on` utilise la normalisation de paramètres existante, sans modifier le chiffrement ou les migrations antérieures.
 
@@ -69,12 +69,23 @@ Le filtre utilise des cellules spatiales, des bornes de géométrie et un nombre
 ## Validation et limites de livraison
 
 - Build sans données privées et syntaxe JavaScript validés localement.
-- **25 suites unitaires au vert**, incluant 42 scénarios routiers/DATEX ; suites historiques conservées.
+- **25 suites unitaires au vert**, incluant **45 scénarios routiers/DATEX/SW** et les pannes de Cache Storage ; suites historiques conservées.
 - Registre complet : **57 suites**, **86 exécutions** prévues (25 unitaires, 32 Chromium, 29 WebKit).
 - Nouveaux E2E : cockpit PC et iPhone 11 Pro Max 414×896 sur Chromium/WebKit ; SW réel Chromium, migration, cache, offline, 503, invalidité et protection de futurs bridges.
-- Les navigateurs Chromium et WebKit peuvent maintenant être exécutés localement ; la revue finale vérifie aussi la CI de la PR.
+- Les [contrôles de la PR #37](https://github.com/iPoower/iPoower/pull/37/checks) donnent les preuves du commit courant. La validation exige les sept rapports du même code, sans suite absente ou dupliquée, ainsi que le contrôle de confidentialité.
+- L’[incident GitHub Actions du 5 octobre](https://www.githubstatus.com/) a annulé cinq shards avant leur exécution ; le contrôle final signalait `tests (abandoned)`. Ces annulations ne constituent pas une preuve de régression. Les validations sont relancées après reprise des runners.
 - iPhone physique/Safari réel non testé ; WebKit avec viewport iPhone ne remplace pas un essai sur appareil.
 
 Limites connues : couverture DIR partielle ; événements récurrents ou direction/axe inconnus masqués ; pas de garantie d’identification verticale pont/tunnel lorsque les données ne permettent pas de distinguer la chaussée ; pas de vitesse trafic, pas d’ETA trafic ; cache récent ne prouve pas l’état actuel ; cadence de publication GitHub non garantie. Les fournisseurs commerciaux sont non activés.
 
-**Décision de revue : GO avec limites pour la PR DATEX/OSRM après registre complet et CI de la PR au vert.**
+| Fichiers | Rôle |
+|---|---|
+| `tools/road-datex/sync.py`, `.github/workflows/road-datex.yml` | Ingestion et publication du seul flux public DATEX. |
+| `src/road-intelligence.js`, `src/road-providers.js` | Contrat commun, index OSRM, corrélation, état fournisseur et cache licite. |
+| `src/app/road-view.js`, `src/app.js`, `src/shell.html`, `src/style.css` | Carte compacte, branchement au trajet existant et réglage de désactivation. |
+| `src/sw.js`, `tools/build.js`, `tools/deploy-copy.js` | Assemblage, migration du shell, cache avec provenance et préservation du flux au déploiement. |
+| `tests/test_road_intelligence.js`, `tests/test_road_providers.js`, `tests/test_road_datex.js`, `tests/road_datex_test.py`, `tests/lib/road-fixtures.js` | Modèles, pannes, protocole DATEX, validité, confidentialité et erreurs de stockage, données fictives. |
+| `tests/e2e51-road.js`, `tests/e2e52-road-sw.js`, `tests/ci/suites.js`, `tests/test_ci_lanes.js` | Scénarios navigateur requis et couverture exacte sans retirer les tests historiques. |
+| `docs/live-road-intelligence.md` | Recherche, choix, fonctionnement, preuves et limites. |
+
+**Décision de revue : GO avec limites pour DATEX/OSRM uniquement après registre complet Chromium/WebKit et CI de la PR au vert. Aucune fusion sans validation de Bryan.**

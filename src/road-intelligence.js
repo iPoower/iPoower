@@ -146,12 +146,14 @@
       const within = ordered.length > 1 && position.distance >= ordered[0].distance && position.distance <= ordered[ordered.length - 1].distance;
       const hit = within ? position : ordered.find(h => h.distance >= position.distance);
       const ahead = hit ? hit.distance - position.distance : null;
+      const eta = hit && position.seconds != null && hit.seconds != null ? Math.max(0, hit.seconds - position.seconds) : null;
       if (!reason && !hit) reason = 'behind';
       if (!reason && ahead > 60000) reason = 'outside_corridor';
+      if (!reason && e.end && eta != null && Date.parse(e.end) <= now + eta * 1000) reason = 'expires_before_encounter';
       if (reason) { rejected.push({ id: e.id, reason }); continue; }
       const recent = now - Date.parse(e.updatedAt) <= 60 * 60e3;
       matches.push({ ...e, distanceAhead: Math.max(0, ahead),
-        etaToEvent: position.seconds != null && hit.seconds != null ? Math.max(0, hit.seconds - position.seconds) : null,
+        etaToEvent: eta,
         relevanceScore: 0.9, matchConfidence: 'high', matchReason: 'road_direction_geometry',
         routeStatus: ahead <= 250 ? 'imminent' : ahead <= 1000 ? 'near' : 'ahead',
         alertEligible: recent && e.severity >= 2 && ['accident', 'closure', 'obstacle', 'stopped_vehicle', 'weather'].includes(e.type),

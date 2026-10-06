@@ -1,10 +1,19 @@
 'use strict';
-const assert = require('node:assert/strict'), Road = require('../src/road-intelligence'), P = require('../src/road-providers'), F = require('./lib/road-fixtures');
+const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), Road = require('../src/road-intelligence'), P = require('../src/road-providers'), F = require('./lib/road-fixtures');
 let n = 0, now = F.NOW; const check = async (label, fn) => { now = F.NOW; await fn(); n++; console.log('✅ ' + label); };
 const response = (j = F.feed(), status = 200, headers = {}) => new Response(JSON.stringify(j), { status, headers });
 const context = { key: 'trip-fictif', phase: 'active', route: Road.fromOSRM(F.routeJSON), fix: F.fix };
 const manager = (providers, options = {}) => { const m = new P.Manager({ providers, now: () => now, ...options }); m.setContext(context); return m; };
 const provider = (load, extra = {}) => new P.RoadProvider({ id: 'datex', label: 'Fictif', load, ...extra });
+function sw({ denied = false, quota = false, offline = false, status = 200, old = null } = {}) {
+  const url = 'https://example.test/race-control/road-datex.json', stored = new Map(old ? [[url, response(old)]] : []), handlers = {};
+  const cache = { match: async k => stored.get(k.url || k)?.clone(), delete: async k => stored.delete(k.url || k), put: async (k, r) => { if (quota) throw new Error('quota'); stored.set(k.url || k, r.clone()); } };
+  const context = vm.createContext({ URL, Request, Response, Headers, Promise, setTimeout, Date: class extends Date { static now() { return F.NOW; } },
+    caches: { open: async () => { if (denied) throw new Error('denied'); return cache; } }, fetch: async () => { if (offline) throw new Error('offline'); return response(F.feed(), status); },
+    self: { location: { origin: 'https://example.test' }, registration: { scope: 'https://example.test/race-control/' }, addEventListener: (type, fn) => { handlers[type] = fn; } } });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/sw.js'), 'utf8'), context);
+  return { stored, read: async () => { let pending; handlers.fetch({ request: new Request(url), respondWith: r => { pending = r; } }); return pending; } };
+}
 (async () => {
 await check('DATEX ne transmet aucune position, itinéraire, clé ou referrer', async () => {
   let call; const m = manager([new P.DatexRoadProvider((...args) => { call = args; return response(); })]);
@@ -71,6 +80,16 @@ await check('GPS incertain, dérive, reroute, arrivée et annulation suppriment 
   m.setContext({ ...context, fix: { ...F.fix, lon: 3 } }); assert.equal(m.snapshot().reason, 'off_route');
   m.setContext({ ...context, route: Road.fromOSRM({ routes: [{ ...F.routeJSON.routes[0], legs: [{ steps: [{ ref: 'D2', geometry: { coordinates: F.coordinates } }] }] }] }) }); assert.equal(m.snapshot().events.length, 0);
   m.stop(); assert.equal(m.snapshot().events.length, 0); assert.equal(m.nextAlert(), null);
+});
+await check('SW : Cache Storage refusé ou quota plein ne perd pas une réponse réseau valide', async () => {
+  for (const options of [{ denied: true }, { quota: true }]) { const r = await sw(options).read(); assert.equal(r.status, 200); assert.equal(r.headers.get('x-twrc-cache'), null); assert.equal((await r.json()).provider, 'datex'); }
+});
+await check('SW : secours après offline/503 marqué ; cache de plus de 24 h purgé', async () => {
+  for (const options of [{ offline: true }, { status: 503 }]) { const s = sw({ ...options, old: F.feed() }), r = await s.read(); assert.equal(r.headers.get('x-twrc-cache'), 'fallback'); }
+  const s = sw({ status: 503, old: F.feed('datex', { checkedAt: new Date(F.NOW - 25 * 3600000).toISOString() }) }); assert.equal((await s.read()).status, 503); assert.equal(s.stored.size, 0);
+});
+await check('SW : aucun cache disponible hors réseau ne crée de contenu LIVE', async () => {
+  await assert.rejects(sw({ denied: true, offline: true }).read());
 });
 console.log(`${n}/${n} scénarios OK`);
 })().catch(e => { console.error(e); process.exit(1); });

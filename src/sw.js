@@ -18,21 +18,22 @@ async function roadFallback(response) {
   return new Response(await response.arrayBuffer(), { status: response.status, statusText: response.statusText, headers });
 }
 async function roadCached(cache, key) {
-  const old = await cache.match(key); if (!old) return null;
+  if (!cache) return null;
   try {
+    const old = await cache.match(key); if (!old) return null;
     const j = await old.clone().json(), a = Date.parse(j.checkedAt), b = Date.parse(j.publicationTime), now = Date.now();
     if (!roadMetadataValid(j) || Math.max(now - a, now - b) > 86400000) throw new Error('expired');
     return old;
-  } catch (e) { await cache.delete(key); return null; }
+  } catch (e) { try { await cache.delete(key); } catch (ignored) {} return null; }
 }
 async function publicRoad(req, key) {
-  const cache = await caches.open(DATA);
+  let cache = null; try { cache = await caches.open(DATA); } catch (e) { /* cache refusé : réseau seul */ }
   try {
     const response = await fetch(req, { cache: 'no-store' });
     if (response.ok) {
       // Seul DATEX public est stockable. Une réponse HTML/JSON invalide ne remplace jamais le dernier flux valide.
       const raw = await response.clone().text();
-      if (raw.length <= 1500000) {
+      if (cache && raw.length <= 1500000) {
         try { if (roadMetadataValid(JSON.parse(raw))) await cache.put(key, response.clone()); } catch (e) { /* non stockable */ }
       }
       return response;

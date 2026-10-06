@@ -30,6 +30,7 @@ check('sens opposé, route parallèle, absence d’axe ou de direction : aucun s
 });
 check('validité future, terminée, suspendue et horodatage impossible refusés', () => {
   for (const extra of [{ status: 'ended' }, { status: 'suspended' }, { endTime: new Date(F.NOW).toISOString() }, { startTime: new Date(F.NOW + 1).toISOString() }, { updatedAt: null }, { updatedAt: new Date(F.NOW + 60001).toISOString() }]) assert.equal(filter([e(extra)]).events.length, 0);
+  assert.equal(filter([e({ endTime: new Date(F.NOW + 300000).toISOString() })]).rejected[0].reason, 'expires_before_encounter');
 });
 check('situation longue en cours à distance zéro ; section quittée par l’itinéraire masquée', () => {
   const long = e({ geometry: { type: 'LineString', coordinates: [F.coordinates[2], F.coordinates[8]] } });

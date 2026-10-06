@@ -51,6 +51,9 @@ let n = 0; const check = (label, ok) => { assert(ok, label); n++; console.log('�
       await p.evaluate(() => { FIX = { ...FIX, acc: 500, ts: Date.now() }; roadSync(); }); check(prefix + ' · dérive GPS : aucune alerte routière', /imprécise/.test(await text()) && await p.locator('#secRoad .road-alert').count() === 0);
       await p.locator('#f-road-on').selectOption('0'); check(prefix + ' · handler de réglage : fournisseur arrêté, carte masquée', await p.locator('#secRoad').isHidden() && !await p.evaluate(() => ROAD.manager.states.get('datex').provider.enabled));
       await p.locator('#f-road-on').selectOption('1');
+      const arrivedKey = await p.evaluate(() => LIVE.key);
+      await p.locator('#secBrf [data-act=trip-arrived]').first().click();
+      check(prefix + ' · handler « Bien arrivé » termine le trajet suivi', await p.evaluate(key => LIVE.done[key] === 'arrivé', arrivedKey));
       await p.evaluate(() => { liveReset(); S.work.days = []; CAL.events = []; renderAll(); });
       check(prefix + ' · arrivée/annulation/sans trajet : aucun contexte ou événement résiduel', await p.locator('#secRoad').isHidden() && await p.evaluate(() => ROAD.manager.context === null && ROAD.alert === null));
       for (const view of ['meteo', 'tenue', 'analyse', 'pneus']) { const tab = p.locator(`[data-act=view][data-v=${view}][aria-pressed]`); await tab.click(); check(prefix + ' · commande ' + view + ' toujours active', await tab.getAttribute('aria-pressed') === 'true'); }

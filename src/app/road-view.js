@@ -17,7 +17,7 @@ function roadStatus(p) {
 function roadSync() {
   try {
     const manager = roadManager(), enabled = S.road.on === 1;
-    if (manager.states.get('datex').provider.enabled !== enabled) manager.setEnabled('datex', enabled);
+    const datex = manager.states.get('datex'); if (datex && datex.provider.enabled !== enabled) manager.setEnabled('datex', enabled);
     const allowed = enabled && !LOCKED() && !DEMO.on && LIVE.key && LIVE.phase !== 'idle';
     const route = allowed && LIVE.route && LIVE.route.road && FIX && liveRouteCurrent(LIVE.route, liveOrigin(FIX)) ? LIVE.route.road : null;
     if (ROAD.key !== LIVE.key || ROAD.route !== route) { ROAD.alert = null; ROAD.key = LIVE.key; ROAD.route = route; }
@@ -32,13 +32,13 @@ function renderRoad() {
   const show = !LOCKED() && !DEMO.on && S.road.on === 1 && LIVE.key && LIVE.phase !== 'idle' && UI.view === 'pneus';
   el.hidden = !show; if (!show) { el.innerHTML = ''; ROAD.alert = null; return; }
   const manager = ROAD.manager; if (!manager) return;
-  const v = manager.snapshot({ online: !offlineNow() }), p = v.providers[0], now = Date.now();
+  const v = manager.snapshot({ online: !offlineNow() }), p = v.providers.find(s => s.active) || v.providers.find(s => s.confirmed) || v.providers[0] || { label: 'Aucune source', state: 'unavailable', ageMs: null }, now = Date.now();
   if (ROAD.alert && (now - ROAD.alertAt > 45000 || !v.fresh || !v.events.some(e => e.id === ROAD.alert.id && e.alertEligible))) ROAD.alert = null;
   if (!document.hidden && !ROAD.alert) { const a = manager.nextAlert({ online: !offlineNow() }); if (a) { ROAD.alert = a; ROAD.alertAt = now; } }
   const message = !manager.context ? 'Position précise et trajet OSRM courant requis.' : v.reason === 'gps_uncertain' ? 'Position trop ancienne ou imprécise · signalements masqués.' : v.reason === 'off_route' ? 'Position hors du trajet · recalcul OSRM attendu.' : !v.events.length ? p.confirmed ? 'Aucun événement correspondant dans cette source disponible. Couverture partielle.' : 'Source non vérifiée : aucun état de la circulation ne peut être confirmé.' : '';
   const card = e => `<li><b>${esc(e.title)} · ${esc(e.roadNumber)}</b><span class="road-distance">${roadDistance(e.distanceAhead)} devant${e.etaToEvent == null ? '' : ` · ~${Math.max(1, Math.ceil(e.etaToEvent / 60))} min (OSRM)`}</span>${e.laneInfo ? `<span>${esc(e.laneInfo)}</span>` : ''}${e.delaySeconds == null ? '' : `<span>Délai signalé : ${Math.ceil(e.delaySeconds / 60)} min · source</span>`}<small>${esc(e.producer || e.provider)} · mise à jour ${roadAge(Math.max(0, now - Date.parse(e.updatedAt)))}${!e.providerFresh ? ' · non LIVE' : ''}</small></li>`;
   el.innerHTML = `<div class="road-head"><h2>🚧 Sur le trajet</h2><span class="badge">${esc(roadStatus(p))}</span></div>
-    <p class="sub road-source">DATEX · Bison Futé / DIR · ${roadAge(p.ageMs)}<br>National non concédé · couverture partielle</p>
+    <p class="sub road-source">${esc(p.label)} · ${roadAge(p.ageMs)}<br>${esc(p.coverage || 'Couverture non vérifiée')}</p>
     ${ROAD.alert ? `<div class="road-alert" role="status">⚠️ ${esc(ROAD.alert.title)} · ${roadDistance(ROAD.alert.distanceAhead)} devant</div>` : ''}
     ${message ? `<p class="sub road-message">${message}</p>` : ''}
     ${v.events.length ? `<ul class="road-events">${v.events.slice(0, 3).map(card).join('')}</ul>` : ''}
