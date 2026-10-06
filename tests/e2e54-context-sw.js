@@ -75,7 +75,7 @@ async function views(p, expected) {
       assert(urls.every(u => u.startsWith(base))); assert(!urls.some(u => /latitude=|longitude=/.test(u)));
     });
     // Lieux et véhicules fictifs uniquement ; choix de contexte par vrais taps.
-    await p.evaluate(() => { S.customs = [{ id: 'b', name: 'Lieu B', lat: 48.8, lon: 2.45 }]; const car = structuredClone(S.cars[0]); car.id = 'carB'; car.name = car.short = 'Voiture B'; S.cars.push(car); saveSettings(); renderAll(); });
+    await p.evaluate(() => { S.customs = [{ id: 'b', name: 'Lieu B', lat: 48.8, lon: 2.45 }]; const car = structuredClone(S.cars[0]); car.id = 'carB'; car.name = car.short = 'Voiture B'; S.cars[1] = car; saveSettings(); renderAll(); });
     await destination(p, 'b'); await p.locator('#dayContext [data-act=day-car][data-id=carB]').tap(); await p.locator('#dayContext [data-act=day-type][data-v=work]').tap();
     await c.setOffline(true); await p.close(); await open();
     await check('PWA fermée/réouverte hors ligne : Lieu B et voiture B, aucun aller dans Tenue', async () => {

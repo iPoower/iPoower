@@ -86,4 +86,13 @@ check('observation GPS cohérente plus récente invalide une ancienne origine sa
   a.PLACE = { last: { placeId: 'work', at: now, source: 'gps' } }; a.USER_STORE.state.dayContext = { lastConfirmedPlace: conf(now - 3600000), nextDestination: choice('b') };
   assert.equal(a.appRealOrigin(), null); assert.equal(a.appDay().nextDestination.placeId, 'b');
 });
+check('E13/E14 navigation et arrivée Agenda suivent uniquement la destination du trajet courant', () => {
+  const a = appFixture(), app = fs.readFileSync(require('node:path').resolve(__dirname, '../src/app.js'), 'utf8');
+  a.homeExact = () => places[0]; a.locHasCoords = p => p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
+  vm.runInContext(app.slice(app.indexOf('function liveDest('), app.indexOf('const liveOut')) + ['legNavTo', 'tripTo', 'liveArrDest'].map(n => app.match(new RegExp('^const ' + n + ' =.*;$', 'm'))[0]).join('\n') + ';this.nav={legNavTo,tripTo,liveArrDest};', a);
+  const original = { k: 'ret', from: places[1], to: places[0] }, chosen = { ...D.returnLeg(original, 'current', { nextDestination: choice('b') }, now, places), originPending: false };
+  assert.equal(a.nav.legNavTo(chosen).id, 'b'); assert.equal(a.nav.tripTo({ src: 'cal', l: chosen, planL: chosen }).id, 'b'); assert.equal(a.nav.liveArrDest({ src: 'cal', l: chosen }).lon, places[2].lon);
+  const future = D.returnLeg(original, 'future', { nextDestination: choice('b') }, now, places);
+  assert.equal(a.nav.tripTo({ src: 'cal', l: future }).id, 'home'); assert.equal(a.nav.liveArrDest({ src: 'cal', l: future }).id, 'home');
+});
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);
