@@ -21,7 +21,7 @@ function appReopenReturn(placeId, at) {
 function appTripPlace(t, end, origin = null) {
   if (!t) return null;
   const start = end === 'from' && (origin || TRIPSTART && TRIPSTART.key === t.key && TRIPSTART.o || t.l && t.l.from);
-  const p = start || (t.src === 'work' ? t.td && t.td[end === 'to' ? 'LB' : 'LA'] : (t.planL || t.l) && (t.planL || t.l)[end]);
+  const p = start || (t.src === 'work' ? t.td && t.td[end === 'to' ? 'LB' : 'LA'] : (t.l || t.planL) && (t.l || t.planL)[end]);
   if (!p || !locHasCoords(p)) return null;
   const places = [...S.locs, ...S.customs, ...(PLACE.extra ? [PLACE.extra] : [])].filter(locHasCoords);
   const known = places.find(l => p.id && l.id === p.id) || places.filter(l => distKm(l, p) <= 1.5).sort((a, b) => distKm(a, p) - distKm(b, p))[0];
@@ -49,6 +49,8 @@ function appArrival(t, how) {
   PLACE.last = { placeId: p.id, at, source: how === 'auto' ? 'gps' : 'manual' };
   USER_STORE.state.lastDeparture = null;
   USER_STORE.state.lastArrival = { key: t.key, name: t.name || p.name, at, placeId: p.id };
+  if (how !== 'auto') appConfirmedPlace(p.id, at);
+  else { const day = appDay(); day.arrivedAt = at; day.nextDestination = null; }
   appReopenReturn(p.id, at);
   APP_CONTEXT.weatherPreview = null; UI.loc = p.id;
 }
@@ -57,21 +59,24 @@ function appDeparture(t, s) {
   s.trip = { src: t.src, key: t.key, dep: t.planDep || t.dep, arr: t.arr, dir: t.td && t.td.dir,
     eventId: t.e ? TripCancel.eventId(t.e) : null, fromId: from && from.id, toId: to && to.id };
   if (PLACE.conf) PLACE.last = { placeId: PLACE.conf.placeId, at: s.at, source: 'départ annoncé' };
+  appDay().departedAt = s.at;
   PLACE.conf = null; USER_STORE.state.lastDeparture = null; APP_CONTEXT.weatherPreview = null; TRIPSTART = s;
 }
 function appWorkTripData(dir, off, departure = null) {
   const r = tripData(dir, off, departure); if (!r.err || r.cancelled) return r;
   // Les horaires et destinations sont des faits de planning, indépendants de
   // la disponibilité météo au premier lancement ou hors ligne.
-  const w = S.work, LA = locById(dir === 'go' ? w.from : w.to), LB = locById(dir === 'go' ? w.to : w.from);
-  if (!locHasCoords(LA) || !locHasCoords(LB)) return r;
+  const w = S.work;
   const clock = nowIn('Europe/Paris'), today = clock.slice(0, 10), time = dir === 'go' ? w.dep : w.ret;
   if (off === 'auto') off = commuteOff(today, time, clock.slice(11, 16), w.days);
   if (!Number.isFinite(off)) return r;
   const dep = departure || addMin(today + 'T00:00', off * 1440 + toMin(time)); if (workCancelled(dep.slice(0, 10))) return r;
+  const ends = appCommuteEndpoints(dir, dep.slice(0, 10), 'commute|' + dep.slice(0, 10) + 'T' + time + '|' + dir), LA = ends.from, LB = ends.to;
+  if (!locHasCoords(LA) || !locHasCoords(LB)) return r;
   return { dir, LA, LB, fromName: LA.name, toName: LB.name, dep, arr: addMin(dep, +w.durMin || 30), seq: [], A: null, B: null, noWeather: true };
 }
 function appRefreshContext({ persist = true } = {}) {
+  appDay();
   const c = placeNow();
   if (!APP_CONTEXT.weatherPreview) {
     if (c.place && ['manual', 'last'].includes(c.source)) UI.loc = c.place.id;
@@ -103,6 +108,7 @@ function appRefreshContext({ persist = true } = {}) {
     nextTrip: next, departureTime: active ? active.dep : next && next.dep,
     confirmation: PLACE.conf, gps: GPS, agendaEvent: (active || next) && (active || next).e || null,
     returnHome: RETURNHOME, trips: APP_CONTEXT.trips, plannedTrips: APP_CONTEXT.planned,
+    dayContext: appDay(), destinationSource: appDay().nextDestination ? appDay().nextDestination.placeId ? 'user' : 'pending' : next ? 'planned' : 'unknown',
     updatedAt: USER_STORE.state.updatedAt, weatherLocationId: UI.loc });
 }
 USER_STORE.subscribe(() => { if (APP_CONTEXT.ready && !APP_CONTEXT.rendering) renderAll(); });
@@ -123,3 +129,4 @@ window.addEventListener('storage', e => {
     APP_CONTEXT.weatherPreview = null; rebuild(); renderAll();
   }
 });
+// @include app/day-context.js

@@ -436,6 +436,11 @@ function placeConfirm(placeId, how) {
   const previous = placeNow().place;
   PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false;
   PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' };
+  const chosenTrip = APP_CONTEXT.snapshot.activeTrip || BRF_SHOWN.find(t => (appTripPlace(t, 'to') || {}).id === placeId);
+  if (appDay().nextDestination && (!appDay().nextDestination.placeId || appDay().nextDestination.placeId === placeId)) {
+    if (chosenTrip) { liveDonePersist(chosenTrip.key, 'confirmé'); LIVE.done[chosenTrip.key] = 'arrivé'; }
+    appConfirmedPlace(placeId, now);
+  } else { appDay().lastConfirmedPlace = { placeId, at: now, source: 'manual' }; }
   USER_STORE.state.lastDeparture = null;
   appReopenReturn(placeId, now);
   // la machine de trajet existante termine proprement l'aller : arrivée du trajet vivant, sinon trajet planifié marqué arrivé
@@ -457,10 +462,12 @@ function placeConfirm(placeId, how) {
 function placeLeave() {
   return appAction(() => {
   if (!PLACE.conf) return;
+  if (!appDay().nextDestination && !BRF_SHOWN.some(t => t.src === 'cal' && (appTripPlace(t, 'from') || {}).id === PLACE.conf.placeId && t.dep.slice(0, 10) === placeToday())) appChooseDestination(null, 'pending');
   const next = BRF_SHOWN.find(t => !t.originPending && (appTripPlace(t, 'from') || {}).id === PLACE.conf.placeId);
   if (next) { liveStart(next.key); return; }
   PLACE.last = { placeId: PLACE.conf.placeId, at: Date.now(), source: 'départ annoncé' }; PLACE.conf = null; placeSave();
   USER_STORE.state.lastDeparture = { placeId: PLACE.last.placeId, at: Date.now() };
+  appDay().departedAt = Date.now();
   // prépare le retour sans l'inventer : la détection de déplacement reprend, le trajet prévu reste celui du planning ou de l'agenda
   if (liveAllowed()) { LIVE.hiAt = 0; liveAskFix(); }
   APP_CONTEXT.weatherPreview = null;
@@ -473,10 +480,10 @@ function renderPlace() {
   let h;
   if (c.source === 'manual') {
     const k = K[c.place.kind] || K.custom;
-    h = `<div class="place on" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}<button class="btn sm" data-act="place-leave">🚗 ${esc(k.leave)}</button>${[work, home].filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</div>`;
+    h = `<div class="place on" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}<button class="btn sm" data-act="place-leave">🚗 ${esc(k.leave)}</button>${pl.filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</div>`;
   } else {
     const arr = [work, home].filter(Boolean).map(p => ({ p, t: placeArrivalTrip(p.id) })).find(x => x.t);
-    const btns = [work, home].filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
+    const btns = pl.filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
     h = `<div class="place${arr ? ' arr' : ''}">${arr ? `<b>${c.source === 'trip' ? '🚗 EN ROUTE · destination' : 'ARRIVÉE'} · ${(K[arr.p.kind] || K.custom).icon} ${esc(arr.p.name)}</b>` : `<span class="pl-src"><b>${esc(c.title)}</b> · ${esc(c.trust)}${c.badge ? ' · ' + esc(c.badge) : ''}</span>`}<span class="pl-act">${btns}</span></div>`;
   }
   if (el.innerHTML !== h) el.innerHTML = h;
@@ -1621,6 +1628,8 @@ function returnHomeStart(key) {
   return appAction(() => {
   const t = BRF_TRIPS.find(x => x.key === key && x.src === 'cal' && x.l && x.l.k === 'ret');
   if (!t) return;
+  appChooseDestination((homeExact() || {}).id);
+  appDay().nextDestination.tripKey = key;
   returnHomeSave({ key, at: Date.now(), exp: Date.now() + 6 * 3600e3 });
   if (LIVE.key) liveReset();
   if (TRIPPREVIEW.key) tripPreviewReset();
@@ -1651,6 +1660,7 @@ function returnHomeDone(key) {
 function returnHomeButtonForTrip(t) {
   const plan = t && (t.planL || t.l);
   if (!t || t.src !== 'cal' || !t.e || !plan || plan.k !== 'ret') return '';
+  if (t.l && t.l.destinationOverride && (tripTo(t) || {}).id !== (homeExact() || {}).id) return `<button class="btn sm" data-act="trip-start" data-key="${esc(t.key)}">🚗 Je pars maintenant</button>`;
   const now = liveNow(), planDep = t.planDep || plan.dep || t.dep, sameDay = planDep.slice(0, 10) === now.slice(0, 10), started = t.e.allDay || !t.e.s || t.e.s <= now;
   if (!sameDay || !started) return '';
   if (LIVE.done[t.key]) return '<span class="sub">✓ Déjà rentré confirmé</span>';
@@ -1709,13 +1719,13 @@ function liveAllowed() {
 // destination réelle (jamais envoyée telle quelle : domicile et travail arrondis à 0,01°, comme pour la mini-carte)
 function liveDest(t) {
   if (t.originPending || t.l && t.l.originPending) return null;
-  if (t.src === 'cal' && t.l && locHasCoords(t.l.to)) return { lat: t.l.to.lat, lon: t.l.to.lon, name: t.to, priv: t.l.k === 'ret' };
+  if ((t.src === 'cal' || t.src === 'local') && t.l && locHasCoords(t.l.to)) return { lat: t.l.to.lat, lon: t.l.to.lon, name: t.to, priv: t.l.k === 'ret' };
   if (t.src === 'work' && t.td && locHasCoords(t.td.LB)) return { lat: t.td.LB.lat, lon: t.td.LB.lon, name: t.to, priv: true };
   return null;
 }
 // aller (l'arrivée est la contrainte) ; origine prévue du trajet ; départ effectif (conseillé pour un aller dont la route est connue)
 const liveOut = t => (t.src === 'cal' && !!t.l && t.l.k === 'go') || (t.src === 'work' && !!t.td && t.td.dir === 'go');
-const livePlanFrom = t => t.src === 'cal' ? (t.l && t.l.from) : (t.td && t.td.LA);
+const livePlanFrom = t => t.src === 'cal' || t.src === 'local' ? (t.l && t.l.from) : (t.td && t.td.LA);
 // départ adaptatif seulement pour un aller, et seulement si la route part à plus de 1 km de l'origine prévue : chez soi, l'heure
 // planifiée (et, pour le boulot, la durée choisie dans les réglages) n'est jamais modifiée
 const liveAdapt = (b, R) => liveOut(b) && !!b.arr && !!R && !!livePlanFrom(b) && distKm(R.o, livePlanFrom(b)) > 1;
@@ -1730,7 +1740,7 @@ function liveReset(reason) {
   if (gpsWatch != null && gpsWatchHi) startWatch(false);   // retour au suivi basse consommation
 }
 // destination pour l'ARRIVÉE : un retour vise le domicile local exact (le relais n'a qu'un domicile arrondi à 0,01°)
-const liveArrDest = b => b.src === 'cal' && b.l && b.l.k === 'ret' ? (homeExact() || liveDest(b)) : liveDest(b);
+const liveArrDest = b => b.src === 'cal' && b.l && b.l.k === 'ret' && !b.l.destinationOverride ? (homeExact() || liveDest(b)) : liveDest(b);
 // vitesse entre deux relevés (m/s) : vitesse GPS si fournie, sinon déduite (distance / Δt) — seulement si le déplacement dépasse
 // deux fois l'incertitude cumulée des deux relevés (le bruit GPS ne crée aucune vitesse) ; null si non mesurable
 const LIVE_CAR = 2;
@@ -2081,6 +2091,7 @@ function appBuildTrips() {
     const r = appWorkTripData(TRIPSTART.trip.dir, dayDiff(today, TRIPSTART.trip.dep.slice(0, 10)));
     if (r && !r.err) workT(r, false);
   }
+  T = appLocalTrips(T, now);
   APP_CONTEXT.planned = T.slice();   // cibles des actions explicites, uniquement en mémoire
   T = returnHomeApply(T, now);   // action explicite : le retour choisi devient le prochain départ, sans déclarer la voiture partie
   T = liveApply(T, now);   // trajet vivant (position GPS réelle) : un seul, en mémoire uniquement
@@ -2211,9 +2222,9 @@ const wazeBtn = p => { const u = wazeUrl(p); return u ? `<a class="btn sm" href=
 // domicile local EXACT (préréglage de l'appareil). Le relais n'a qu'un domicile arrondi à 0,01° (confidentialité des appels OSRM) :
 // pour Waze, ouvert par l'utilisateur, un retour vise le vrai domicile. L'arrondi OSRM, le relais et l'agenda chiffré ne changent pas.
 const homeExact = () => { const L = S.locs || [], h = L.find(l => l.id === 'home') || L[0]; return locHasCoords(h) ? h : null; };
-const legNavTo = leg => leg && leg.k === 'ret' ? (homeExact() || leg.to) : leg && (leg.navTo || leg.to);
+const legNavTo = leg => leg && leg.k === 'ret' && !leg.destinationOverride ? (homeExact() || leg.to) : leg && (leg.navTo || leg.to);
 // destination du trajet AFFICHÉ (vivant, adaptatif, agenda ou boulot) ; planL = trajet agenda d'origine d'un trajet vivant
-const tripTo = t => t.src === 'cal' ? ((t.planL || t.l || {}).k === 'ret' ? homeExact() || (t.l && t.l.to) : (t.l && (t.l.navTo || t.l.to))) : (t.td && t.td.LB) || (t.l && t.l.to) || null;
+const tripTo = t => t.src === 'cal' ? legNavTo(t.l) : (t.td && t.td.LB) || (t.l && (t.l.navTo || t.l.to)) || null;
 // départ déclaré / arrivée confirmée : actions globales du trajet (même automate, lues par tous les onglets)
 const liveStartBtn = t => !DEMO.on && !t.running && t.live !== 'active' && !t.manualPreview && !t.manualReturn && LIVE.phase !== 'active' && liveDest(t) ? `<button class="btn sm" data-act="trip-start" data-key="${esc(t.key)}">🚗 Je pars maintenant</button>` : '';
 const liveArrBtn = t => (t.running || t.live === 'active') && LIVE.key === t.key ? `<button class="btn sm" data-act="trip-arrived">✅ Bien arrivé</button>` : '';
@@ -2455,13 +2466,13 @@ function effLegs(e, all) {
   if (!calendarSpatial(e) || calendarCancelled(e)) return [];
   if (cancelAffectedDay(e)) {
     const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), TRIPCANCEL, Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
-    return (chains.get(e) || chains.get(TripCancel.eventId(e)) || []).map(leg => tripCancelRouteLeg(e, leg));
+    return (chains.get(e) || chains.get(TripCancel.eventId(e)) || []).map(leg => tripCancelRouteLeg(e, appAgendaLeg(e, leg)));
   }
   const D = calDirectSet(); let legs = (e.legs || []).slice();
   // le retour maison d'un rendez-vous disparaît si le suivant est enchaîné directement
   legs = legs.filter(l => !(l.k === 'ret' && l.brk && D[l.brk]));
   if (e.alt && D[e.alt.key]) legs = legs.map(l => l.k === 'go' && l.brk === e.alt.key ? { ...e.alt.direct, chosen: true } : l);
-  return legs;
+  return legs.map(l => { const effective = appAgendaLeg(e, l); return effective === l ? l : tripCancelRouteLeg(e, effective); });
 }
 function altHtml(e) {
   if (cancelAffectedDay(e)) return '';
@@ -2762,11 +2773,10 @@ async function ensureMids(pts) {
 }
 // dir : 'go' | 'ret' ; off : null = choix de l'interface, 'auto' = prochain départ
 function tripData(dir = UI.dir, off = null, departure = null) {
-  const w = S.work, fromId = dir === 'go' ? w.from : w.to, toId = dir === 'go' ? w.to : w.from;
-  const A = M[fromId], B = M[toId], LA = locById(fromId), LB = locById(toId);
+  const w = S.work;
   const nm = id => (locById(id) || {}).name || id;
-  if (!A || !B || A.nowI < 0 || B.nowI < 0 || !locHasCoords(LA) || !locHasCoords(LB)) return { err: `Données ou coordonnées manquantes pour ${!A || !locHasCoords(LA) ? nm(fromId) : nm(toId)}.` };
-  const clock = DEMO.on ? A.nowStr : nowIn(A.tz || 'Europe/Paris');
+  const model = M[dir === 'go' ? w.from : w.to];
+  const clock = DEMO.on && model ? model.nowStr : nowIn(model && model.tz || 'Europe/Paris');
   const time = dir === 'go' ? w.dep : w.ret, today = clock.slice(0, 10);
   const auto = commuteOff(today, time, clock.slice(11, 16), w.days);   // saute les jours sans trajet domicile-travail
   if (auto == null) return { err: 'Aucun jour de trajet domicile-travail coché (Réglages → Trajet).' };
@@ -2775,6 +2785,10 @@ function tripData(dir = UI.dir, off = null, departure = null) {
   const dur = +w.durMin || 30;
   const dep = departure || addMin(today + 'T00:00', off * 1440 + toMin(time)), arr = addMin(dep, dur);
   if (workCancelled(dep.slice(0, 10))) return { err: 'Trajets domicile-travail annulés pour cette journée sur cet appareil.', cancelled: true };
+  const ends = appCommuteEndpoints(dir, dep.slice(0, 10), 'commute|' + dep.slice(0, 10) + 'T' + time + '|' + dir), LA = ends.from, LB = ends.to;
+  const fromId = LA && LA.id, toId = LB && LB.id, A = M[fromId], B = M[toId];
+  if (!LB) return { err: 'Destination à confirmer.', destinationPending: true };
+  if (!A || !B || A.nowI < 0 || B.nowI < 0 || !locHasCoords(LA) || !locHasCoords(LB)) return { err: `Données ou coordonnées manquantes pour ${!A || !locHasCoords(LA) ? nm(fromId) : nm(toId)}.` };
   const hDep = dep.slice(0, 13) + ':00', hArr = arr.slice(0, 13) + ':00', seq = [];
   const dist = distKm(LA, LB), mids = midPoints(LA, LB);
   const missing = mids.filter(p => MIDM[p.id] === undefined);
@@ -3176,7 +3190,7 @@ function renderAll() {
   APP_CONTEXT.rendering = true;
   try {
     appRefreshContext(); recordJournal();
-    renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+    renderView(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
     renderWx(); renderLab(); labThermTick(false); roadSync();
   } finally { APP_CONTEXT.rendering = false; }
 }
@@ -3194,6 +3208,7 @@ document.addEventListener('click', async e => {
   if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act;
+  if (a === 'day-destination') { appChooseDestination(t.dataset.id || null); return; }
   if (a === 'refresh') refreshAll();
   else if (a === 'unlock') {
     const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
