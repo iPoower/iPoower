@@ -23,7 +23,8 @@ function userContextStore({ read, write, now = () => Date.now() }) {
       tripStart: trip(v.tripStart) ? v.tripStart : null,
       tripEnd: obj(v.tripEnd) && time(v.tripEnd.at) ? v.tripEnd : null,
       returnHome: trip(v.returnHome) && Number.isFinite(v.returnHome.exp) && v.returnHome.exp > now() ? v.returnHome : null,
-      done, lastArrival: obj(v.lastArrival) && time(v.lastArrival.at) ? v.lastArrival : null };
+      done, lastArrival: obj(v.lastArrival) && time(v.lastArrival.at) ? v.lastArrival : null,
+      lastDeparture: obj(v.lastDeparture) && typeof v.lastDeparture.placeId === 'string' && time(v.lastDeparture.at) && now() - v.lastDeparture.at < 20 * 3600e3 ? v.lastDeparture : null };
   }
   const saved = parse(key), legacy = !saved ? { place: parse('twrc.place.v1'), gps: parse('twrc.gps'),
     tripStart: parse('twrc.tripstart.v1'), tripEnd: parse('twrc.tripend.v1'), returnHome: parse('twrc.returnhome.v1'), done: parse('twrc.tripdone') } : null;

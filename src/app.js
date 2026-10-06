@@ -349,11 +349,15 @@ async function onPos(pos, focus) {
   if (refused) {
     PLACE_PENDING = null; PLACE_REJ = { source: 'navigateur', reason: refused };
     if (focus) alertLoc(placeFixClass(raw) === 'coarse' ? `Localisation navigateur approximative · précision ~${Math.round(raw.acc / 1000)} km. Confirmation manuelle disponible.` : 'Position ignorée : ' + refused + '.');
-    renderPlace(); if (typeof renderDiag === 'function') renderDiag(); return;
+    renderAll(); if (typeof renderDiag === 'function') renderDiag(); return;
   }
   const tasks = []; let weatherMoved;
   appAction(() => {
   PLACE_FIX = observation.logical; PLACE_PENDING = observation.pending; PLACE_HOLD = !!observation.hold;
+  if (USER_STORE.state.lastDeparture && !PLACE_HOLD && placeFixClass(PLACE_FIX) === 'gps') {
+    const found = placeContext(placeInput({ moving: false, movingSince: null, conf: null, fix: PLACE_FIX }));
+    if (found.place && found.place.id !== USER_STORE.state.lastDeparture.placeId) USER_STORE.state.lastDeparture = null;
+  }
   PLACE_REJ = PLACE_PENDING || /hystérésis/.test(observation.reason) ? { source: 'navigateur', reason: observation.reason } : null;
   const np = { lat: +c.latitude.toFixed(4), lon: +c.longitude.toFixed(4) };
   // relevé brut pour le trajet vivant (mémoire uniquement) : horodatage réel du relevé, pas l'heure de réception
@@ -394,9 +398,10 @@ function placeList() {
   return [...S.locs, ...S.customs, ...(PLACE.extra ? [PLACE.extra] : [])].filter(locHasCoords).map(l => ({ id: l.id, name: l.name, lat: l.lat, lon: l.lon, kind: l.id === S.work.to ? 'work' : l === home ? 'home' : 'custom' }));
 }
 function placeInput(extra) {
+  if (USER_STORE.state.lastDeparture && Date.now() - USER_STORE.state.lastDeparture.at >= 20 * 3600e3) USER_STORE.state.lastDeparture = null;
   const precise = PLACE_HOLD || GPS && GPS.placePending ? PLACE_FIX : PLACE_FIX || (GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null) || GEO.raw;
   return { now: Date.now(), today: placeToday(), places: placeList(), conf: PLACE.conf, last: PLACE.last, fix: precise, net: NETLOC,
-    moving: LIVE.phase === 'active', movingSince: LIVE.startFix ? LIVE.startFix.ts : null, fmt: hmLocal, ...(extra || {}) };
+    moving: LIVE.phase === 'active' || !!USER_STORE.state.lastDeparture, movingSince: LIVE.startFix ? LIVE.startFix.ts : USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at, fmt: hmLocal, ...(extra || {}) };
 }
 // contexte courant ; une confirmation terminée (départ, GPS précis ailleurs, fin de journée) est effacée une seule fois
 function placeNow() {
@@ -430,11 +435,12 @@ function placeConfirm(placeId, how) {
   const now = Date.now();
   PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false;
   PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' };
+  USER_STORE.state.lastDeparture = null;
   // la machine de trajet existante termine proprement l'aller : arrivée du trajet vivant, sinon trajet planifié marqué arrivé
   const t = placeArrivalTrip(placeId) || (p.kind === 'work' ? BRF_TRIPS.find(t => t.src === 'work' && t.td.dir === 'go' && t.dep.slice(0, 10) === placeToday()) : null);
   if (LIVE.key && t && LIVE.key === t.key) liveArrive('confirmé');
   else if (t && t.key) { liveDonePersist(t.key, 'confirmé'); LIVE.done[t.key] = 'arrivé'; LIVE.lastDone = { key: t.key, name: t.name || p.name, at: now }; if (TRIPPREVIEW.key === t.key) tripPreviewReset(); }
-  if (LIVE.phase === 'active') liveReset('interrompu');
+  if (LIVE.phase === 'active') liveReset();
   APP_CONTEXT.weatherPreview = null; UI.loc = placeId; rebuild();
   });
 }
@@ -444,6 +450,7 @@ function placeLeave() {
   const next = BRF_SHOWN.find(t => !t.originPending && (appTripPlace(t, 'from') || {}).id === PLACE.conf.placeId);
   if (next) { liveStart(next.key); return; }
   PLACE.last = { placeId: PLACE.conf.placeId, at: Date.now(), source: 'départ annoncé' }; PLACE.conf = null; placeSave();
+  USER_STORE.state.lastDeparture = { placeId: PLACE.last.placeId, at: Date.now() };
   // prépare le retour sans l'inventer : la détection de déplacement reprend, le trajet prévu reste celui du planning ou de l'agenda
   if (liveAllowed()) { LIVE.hiAt = 0; liveAskFix(); }
   APP_CONTEXT.weatherPreview = null;
@@ -1003,14 +1010,14 @@ function buildTenueDay(options = {}) {
   // auparavant. Aucun trajet implicite vers son ancienne origine n'est ajouté.
   // start est arrondi à la minute : l'observation peut déjà être postérieure à
   // un départ/événement de cette même minute, qui ne remplace donc pas le GPS.
-  const contextSeed = context && offset !== 1 && (context.activeTrip ? context.origin : context.currentLocation);
+  const contextSeed = context && offset !== 1 && (context.activeTrip ? context.origin : context.location.source === 'gps' && context.gps ? context.gps : context.currentLocation);
   if (context && offset !== 1) {
     // Les trajets effectifs viennent du même plan que Météo et Analyse. Le
     // calendrier reste une prévision des activités, jamais une preuve d'arrivée.
     const templates = segments.filter(s => s.kind === 'trip');
-    for (let i = segments.length - 1; i >= 0; i--) if (segments[i].kind === 'trip') segments.splice(i, 1);
+    for (let i = segments.length - 1; i >= 0; i--) if (segments[i].kind === 'trip' && (contextSeed || segments[i].end > start)) segments.splice(i, 1);
     if (contextSeed) segments.forEach(s => {
-      if (!s.nonSpatial && s.start <= start && (!s.to || !samePlace(s.to, contextSeed))) s.beforeGps = true;
+      if (!s.nonSpatial && s.start <= start && (context.location.source === 'gps' || !s.to || !samePlace(s.to, contextSeed))) s.beforeGps = true;
     });
     context.trips.forEach(t => {
       if (t.originPending || !t.dep || !t.arr) return;
@@ -1083,6 +1090,7 @@ function buildTenueDay(options = {}) {
 }
 /* ---------- vue du plan : le détail lit exactement le conseil du moteur ---------- */
 function renderTenue() {
+  if (!APP_CONTEXT.rendering) { renderAll(); return; }
   const el = $('#secTenue'); el.hidden = UI.view !== 'tenue'; if (el.hidden) return;
   const context = APP_CONTEXT.snapshot, l = context.currentLocation || curLoc(), m = M[l.id], tomorrow = UI.outfitDay === 1;
   const controls = `<div class="outfit-controls"><div class="seg" role="group" aria-label="Jour de la tenue">${[[0, 'Aujourd’hui'], [1, 'Demain']].map(([v, t]) => `<button data-act="outfit-day" data-v="${v}" aria-pressed="${UI.outfitDay === v}">${t}</button>`).join('')}</div>
@@ -1489,19 +1497,19 @@ function frostBand(Tr) {
   return null;
 }
 function nextTrip() {
-  const m = M[S.work.from] || M[S.locs[0].id]; if (!m) return null;
-  const clock = DEMO.on ? m.nowStr : nowIn(m.tz || 'Europe/Paris');
+  const m = M[S.work.from] || M[S.locs[0].id];
+  const clock = DEMO.on && m ? m.nowStr : nowIn(m && m.tz || 'Europe/Paris');
   const now = toMin(clock.slice(11, 16)), dep = toMin(S.work.dep), ret = toMin(S.work.ret);
   const place = placeNow(), atWork = place.place && place.place.id === S.work.to;
   const dir = isCommuteDay(clock, S.work.days) && (atWork || now >= dep && now < ret) ? 'ret' : 'go';
-  const td = tripData(dir, atWork && isCommuteDay(clock, S.work.days) ? 0 : 'auto');
+  const td = appWorkTripData(dir, atWork && isCommuteDay(clock, S.work.days) ? 0 : 'auto');
   const completed = td && LIVE.done['commute|' + td.dep + '|' + td.dir];
   if (td && !td.err && !completed) return td;
   if (completed || td && td.cancelled) {
     for (let off = 1; off <= 8; off++) {
       const date = addMin(clock.slice(0, 10) + 'T00:00', off * 1440).slice(0, 10);
       if (!isCommuteDay(date, S.work.days)) continue;
-      const next = tripData('go', off); if (next && !next.err && !LIVE.done['commute|' + next.dep + '|go']) return next;
+      const next = appWorkTripData('go', off); if (next && !next.err && !LIVE.done['commute|' + next.dep + '|go']) return next;
     }
   }
   return null;
@@ -1762,6 +1770,7 @@ function liveAskNow() {
 //   départ : référence figée une seule fois + déplacement > max(300 m, 2 × incertitude) + vitesse automobile (> 2 m/s) sur 2 relevés successifs,
 //            mesurée ou déduite ; dès la fenêtre vivante (90 min avant le plus tôt des départs prévu / conseillé), sans attendre l'heure
 function liveOnFix(fix) {
+  if (PLACE.conf && fix.ts <= PLACE.conf.at) return;   // un GPS antérieur ne défait jamais une confirmation plus récente
   if (!LIVE.key || !LIVE.base) { if (liveAllowed()) { clearTimeout(liveOnFix.t); liveOnFix.t = setTimeout(renderBrf, 300); } return; }
   const ad = liveArrDest(LIVE.base);
   if (LIVE.phase === 'advice') { LIVE.arrN = 0; LIVE.near = null; }   // aperçu (jusqu'à 4 h avant) : ni arrivée automatique, ni arrivée probable
@@ -1942,7 +1951,16 @@ function liveTrip(b, now) {
   }
   let old = null;
   if (!a && LIVE.last && Date.now() - LIVE.lastOk <= LIVE_GRACE) { a = LIVE.last; old = fresh ? 'route' : 'gps'; }   // dernière analyse, marquée ancienne
-  if (!a) { const mb = run && LIVE.manual ? { ...b, running: true, dep: localTs(LIVE.manual), arr: addMin(localTs(LIVE.manual), Math.max(1, liveMin(b.dep, b.arr || b.dep))) } : b; return LIVE.last ? { ...mb, liveLost: true } : mb; }   // repli explicite après un premier résultat ; sinon trajet planifié, sans mention
+  if (!a) {
+    const started = TRIPSTART && TRIPSTART.key === b.key ? TRIPSTART.at : LIVE.manual;
+    const mb = run && started ? { ...b, running: true, dep: localTs(started), arr: addMin(localTs(started), Math.max(1, liveMin(b.dep, b.arr || b.dep))) } : { ...b, running: false };
+    // Une météo de route en attente n'efface pas une heure conseillée déjà
+    // validée depuis la même origine, avec une géométrie encore courante.
+    if (!run && LIVE.last && LIVE.last.adv && fresh && liveRouteCurrent(LIVE.route, liveOrigin(fix))) {
+      mb.dep = liveEffDep(b); mb.adv = { target: b.arr, dep: mb.dep };
+    }
+    return LIVE.last ? { ...mb, liveLost: true } : mb;
+  }
   const { leg, r } = a, hm = new Date(LIVE.lastOk).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
   return { ...b, live: LIVE.phase, liveGen: a.gen, planDep: b.dep, planL: b.l, adv: a.adv, dep: leg.dep, arr: leg.arr, running: run, from: '📍 Ma position', l: leg, obs: null,
     res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.worst, wait: false,
@@ -2004,23 +2022,23 @@ setInterval(() => { if ((LIVE.key || TRIPPREVIEW.key) && !document.hidden) rende
 function renderBrf() { renderAll(); }
 function appBuildTrips() {
   const clockModel = (CX && CX.m) || M[S.locs[0].id] || Object.values(M).find(Boolean);
-  const cars = TCARS(); if (!clockModel || !cars.length) return [];
-  const now = DEMO.on ? clockModel.nowStr.slice(0, 16) : nowIn((clockModel.payload && clockModel.payload.timezone) || 'Europe/Paris');
+  const cars = TCARS();
+  const now = DEMO.on && clockModel ? clockModel.nowStr.slice(0, 16) : nowIn(clockModel && clockModel.payload && clockModel.payload.timezone || 'Europe/Paris');
   const today = now.slice(0, 10), nowHm = now.slice(11, 16);
   // une seule timeline : trajet domicile-travail + trajets agenda, triés par heure réelle de départ
   // modèle commun Trip : { src: 'work' | 'cal', carId (choix de voiture par trajet, prévu, pas encore utilisé), dep, arr, running, from, to, res, sum, seq, worst }
   let T = []; const workT = (td, running) => {
     if (workCancelled(td.dep.slice(0, 10))) return;
-    const res = cars.map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w); if (!res.length) return;
+    const res = td.seq.length ? cars.map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w) : [];
     T.push({ src: 'work', carId: null, dep: td.dep, arr: td.arr, running: running && !PLACE.conf, name: `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail`, from: td.fromName, to: td.toName,
-      res, sum: summarize(td.seq), seq: td.seq, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0), key: 'commute|' + td.dep + '|' + td.dir, obs: td.A.obs, td });
+      res: res.length ? res : null, sum: td.seq.length ? summarize(td.seq) : null, seq: td.seq, wait: !td.seq.length, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, key: 'commute|' + td.dep + '|' + td.dir, obs: td.A && td.A.obs, td });
   };
   // trajet domicile-travail en cours (entre le départ et l'arrivée) : il reste affiché jusqu'à l'arrivée
   if (isCommuteDay(today, S.work.days)) ['go', 'ret'].forEach(d => { const t0 = toMin(d === 'go' ? S.work.dep : S.work.ret), n = toMin(nowHm);
-    if (n >= t0 && n < t0 + (+S.work.durMin || 30)) { const r = tripData(d, 0); if (r && !r.err) workT(r, true); } });
+    if (n >= t0 && n < t0 + (+S.work.durMin || 30)) { const r = appWorkTripData(d, 0); if (r && !r.err) workT(r, true); } });
   if (isCommuteDay(today, S.work.days)) ['go', 'ret'].forEach(d => {
     const time = d === 'go' ? S.work.dep : S.work.ret;
-    if (today + 'T' + time > now) { const r = tripData(d, 0); if (r && !r.err) workT(r, false); }
+    if (today + 'T' + time > now) { const r = appWorkTripData(d, 0); if (r && !r.err) workT(r, false); }
   });
   const td = nextTrip(); if (td && !T.some(t => t.key === 'commute|' + td.dep + '|' + td.dir)) workT(td, false);
   if (CAL && CAL.events) CAL.events.filter(calendarSpatial).forEach(e => effLegs(e).forEach(l => {
@@ -2031,7 +2049,7 @@ function appBuildTrips() {
   }));
   // Un départ déclaré reste restorable après l'heure d'arrivée prévue.
   if (TRIPSTART && TRIPSTART.trip && TRIPSTART.trip.src === 'work' && !T.some(t => t.key === TRIPSTART.key)) {
-    const r = tripData(TRIPSTART.trip.dir, dayDiff(today, TRIPSTART.trip.dep.slice(0, 10)));
+    const r = appWorkTripData(TRIPSTART.trip.dir, dayDiff(today, TRIPSTART.trip.dep.slice(0, 10)));
     if (r && !r.err) workT(r, false);
   }
   APP_CONTEXT.planned = T.slice();   // cibles des actions explicites, uniquement en mémoire
@@ -2044,8 +2062,8 @@ function appBuildTrips() {
 function renderBrfCore() {
   const el = $('#secBrf'); if (!el) return;
   const clockModel = (CX && CX.m) || M[S.locs[0].id] || Object.values(M).find(Boolean), cars = TCARS();
-  if (!clockModel || !cars.length) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
-  const now = DEMO.on ? clockModel.nowStr.slice(0, 16) : nowIn((clockModel.payload && clockModel.payload.timezone) || 'Europe/Paris');
+  if (!cars.length) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
+  const now = DEMO.on && clockModel ? clockModel.nowStr.slice(0, 16) : nowIn(clockModel && clockModel.payload && clockModel.payload.timezone || 'Europe/Paris');
   const today = now.slice(0, 10), nowHm = now.slice(11, 16), T = APP_CONTEXT.snapshot.trips;
   const eve = toMin(nowHm) >= Math.min(18 * 60, isCommuteDay(today, S.work.days) ? toMin(S.work.ret) : 1440);
   const fullFor = d => { const n = dayDiff(today, d.slice(0, 10)); return n <= 0 || (n === 1 && eve); };
@@ -3232,7 +3250,7 @@ document.addEventListener('click', async e => {
   else if (a === 'labcar') { UI.labCar = t.dataset.car; renderLab(); }
   else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   else if (a === 'goset') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
-  else if (a === 'reset') { PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; APP_CONTEXT.weatherPreview = null; liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
+  else if (a === 'reset') { PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; APP_CONTEXT.weatherPreview = null; liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
   else if (a === 'geo-search') {
     const input = $('#geoQ'), q = (input.value || '').trim(), box = $('#geoHits'), gen = ++geoSearchGen; window.__hits = [];
     if (q.length < 2) { box.innerHTML = '<span class="sub" role="status">Saisis au moins deux caractères.</span>'; input.focus(); return; }

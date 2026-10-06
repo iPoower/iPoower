@@ -21,9 +21,24 @@ function appTripPlace(t, end) {
 function appArrival(t, how) {
   const p = appTripPlace(t, 'to'); if (!p) return;
   const at = Date.now();
-  if (p.id === 'arrival') PLACE.extra = { ...p, at };
+  if (p.id === 'arrival') {
+    PLACE.extra = { ...p, at };
+    const sources = [
+      ...Object.values(M).map(m => ({ m, t: m && RAW[m.id] && RAW[m.id].t })),
+      ...Object.values(CALM),
+      ...Object.values(LEGM).flatMap(c => (c.models || []).map(m => ({ m, t: c.t })))
+    ].filter(s => s.m && s.m.payload && locHasCoords(s.m.loc) && distKm(p, s.m.loc) <= 1.5 && Number.isFinite(s.t));
+    sources.sort((a, b) => b.t - a.t);
+    if (sources[0]) {
+      const { m, t: fetched } = sources[0];
+      RAW[p.id] = { p: m.payload, mode: m.mode, t: fetched, lat: p.lat, lon: p.lon };
+      lsSet('twrc.cache.' + p.id, JSON.stringify(RAW[p.id]));
+      M[p.id] = makeModel(m.payload, m.mode, p);
+    }
+  }
   PLACE.conf = how === 'auto' ? null : { placeId: p.id, at, how: 'arrival', day: placeToday() };
   PLACE.last = { placeId: p.id, at, source: how === 'auto' ? 'gps' : 'manual' };
+  USER_STORE.state.lastDeparture = null;
   USER_STORE.state.lastArrival = { key: t.key, name: t.name || p.name, at, placeId: p.id };
   APP_CONTEXT.weatherPreview = null; UI.loc = p.id;
 }
@@ -32,13 +47,31 @@ function appDeparture(t, s) {
   s.trip = { src: t.src, key: t.key, dep: t.planDep || t.dep, arr: t.arr, dir: t.td && t.td.dir,
     eventId: t.e ? TripCancel.eventId(t.e) : null, fromId: from && from.id, toId: to && to.id };
   if (PLACE.conf) PLACE.last = { placeId: PLACE.conf.placeId, at: s.at, source: 'départ annoncé' };
-  PLACE.conf = null; APP_CONTEXT.weatherPreview = null; TRIPSTART = s;
+  PLACE.conf = null; USER_STORE.state.lastDeparture = null; APP_CONTEXT.weatherPreview = null; TRIPSTART = s;
+}
+function appWorkTripData(dir, off) {
+  const r = tripData(dir, off); if (!r.err || r.cancelled) return r;
+  // Les horaires et destinations sont des faits de planning, indépendants de
+  // la disponibilité météo au premier lancement ou hors ligne.
+  const w = S.work, LA = locById(dir === 'go' ? w.from : w.to), LB = locById(dir === 'go' ? w.to : w.from);
+  if (!locHasCoords(LA) || !locHasCoords(LB)) return r;
+  const clock = nowIn('Europe/Paris'), today = clock.slice(0, 10), time = dir === 'go' ? w.dep : w.ret;
+  if (off === 'auto') off = commuteOff(today, time, clock.slice(11, 16), w.days);
+  if (!Number.isFinite(off)) return r;
+  const dep = addMin(today + 'T00:00', off * 1440 + toMin(time)); if (workCancelled(dep.slice(0, 10))) return r;
+  return { dir, LA, LB, fromName: LA.name, toName: LB.name, dep, arr: addMin(dep, +w.durMin || 30), seq: [], A: null, B: null, noWeather: true };
 }
 function appRefreshContext() {
   const c = placeNow();
   if (!APP_CONTEXT.weatherPreview) {
-    if (c.place && ['manual', 'gps', 'last'].includes(c.source)) UI.loc = c.place.id;
+    if (c.place && ['manual', 'last'].includes(c.source)) UI.loc = c.place.id;
+    else if (c.source === 'gps' && GPS && !PLACE_HOLD) UI.loc = 'gps';
     else if (c.coords && GPS && !PLACE_HOLD) UI.loc = 'gps';
+    else if (c.source === 'trip') {
+      const originId = TRIPSTART && TRIPSTART.trip && TRIPSTART.trip.fromId || USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.placeId || PLACE.last && PLACE.last.placeId;
+      if (GPS && !GPS.placePending && !PLACE_HOLD && Date.now() - GPS.t <= 10 * 60e3) UI.loc = 'gps';
+      else if (locById(originId)) UI.loc = originId;
+    }
   }
   if (PLACE.extra && !M[PLACE.extra.id]) {
     const p = PLACE.extra, cached = CALM['cal' + p.lat.toFixed(2) + '_' + p.lon.toFixed(2)];
@@ -49,13 +82,14 @@ function appRefreshContext() {
   // liveApply peut restaurer/clôturer un départ ; relire le lieu APRÈS le moteur.
   const location = placeNow(), active = LIVE.phase === 'active' ? APP_CONTEXT.trips.find(t => t.key === LIVE.key) || LIVE.base : null;
   const next = APP_CONTEXT.trips.find(t => !active || t.key !== active.key) || null;
-  const current = active ? GPS && !PLACE_HOLD && Date.now() - GPS.t <= 10 * 60e3 ? GPS : { id: 'travel', name: 'En déplacement' } : location.place;
-  const origin = active ? appTripPlace(active, 'from') : current;
+  const leaving = USER_STORE.state.lastDeparture;
+  const current = active || leaving ? GPS && !GPS.placePending && !PLACE_HOLD && Date.now() - GPS.t <= 10 * 60e3 ? GPS : { id: 'travel', name: 'En déplacement' } : location.place || (location.source === 'gps' && GPS ? GPS : null);
+  const origin = active ? appTripPlace(active, 'from') : leaving ? locById(leaving.placeId) : current;
   USER_STORE.flush();
   APP_CONTEXT.snapshot = Object.freeze({ revision: USER_STORE.state.revision, currentLocation: current, location,
-    status: active ? 'travel' : current ? current.id === S.work.to ? 'work' : current.id === S.locs[0].id ? 'home' : 'arrived' : 'unknown',
+    status: active || leaving ? 'travel' : current ? current.id === S.work.to ? 'work' : current.id === S.locs[0].id ? 'home' : 'arrived' : 'unknown',
     activeTrip: active, origin,
-    destination: active ? appTripPlace(active, 'to') : next ? appTripPlace(next, 'to') : null,
+    destination: active ? appTripPlace(active, 'to') : leaving ? null : next ? appTripPlace(next, 'to') : null,
     nextTrip: next, departureTime: active ? active.dep : next && next.dep,
     confirmation: PLACE.conf, gps: GPS, agendaEvent: (active || next) && (active || next).e || null,
     returnHome: RETURNHOME, trips: APP_CONTEXT.trips, plannedTrips: APP_CONTEXT.planned,
@@ -70,6 +104,11 @@ window.addEventListener('storage', e => {
   if (changed) {
     // Toute réponse OSRM en cours appartenait au contexte précédent.
     LIVE.gen++; tripPreviewReset();
+    gpsWeatherGen++; gpsNameGen++; WEATHER_REQUESTS.cancelGroup('gps');
+    PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; FIX = FIXPREV = null;
+    if (GPS && RAW.gps && (!locHasCoords(RAW.gps.pt) || distKm(GPS, RAW.gps.pt) > 3)) {
+      delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps;
+    }
     Object.assign(LIVE, { key: null, phase: 'idle', base: null, manual: 0, route: null, startFix: null, lastFix: null });
     APP_CONTEXT.weatherPreview = null; rebuild(); renderAll();
   }

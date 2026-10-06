@@ -20,7 +20,7 @@ const read = p => p.evaluate(() => ({ state: APP_CONTEXT.snapshot.status, place:
   next: APP_CONTEXT.snapshot.nextTrip && APP_CONTEXT.snapshot.nextTrip.td.dir, stored: JSON.parse(localStorage.getItem(USER_STORE.key)), caches: [] }));
 async function views(p, expected) {
   for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) {
-    await p.locator('[data-act=view][data-v=' + view + ']').click(); const s = await read(p);
+    await p.locator('#viewSeg [data-act=view][data-v=' + view + ']').click(); const s = await read(p);
     for (const [k, v] of Object.entries(expected)) assert.equal(s[k], v, view + ' · ' + JSON.stringify(s));
     if (view === 'tenue' && expected.state !== 'travel') {
       const first = await p.locator('#secTenue .outfit-moment:first-child .outfit-moment-heading').innerText();

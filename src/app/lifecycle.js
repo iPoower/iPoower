@@ -5,8 +5,8 @@ function resumeGps() {
   gpsResumeAt = Date.now(); stopGps(); startWatch(LIVE.phase === 'active' || !FIX || FIX.acc > PLACE_ACC_GPS, true); locate(false, true);
 }
 // iOS peut abandonner le watch et une demande ponctuelle pendant la veille : recréer les deux à la reprise.
-document.addEventListener('visibilitychange', () => { if (document.hidden) { stopGps(); gpsResumeAt = -Infinity; } else { tripCancelSchedulePurge(); resumeGps(); } });
-['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { tripCancelSchedulePurge(); resumeGps(); }));
+document.addEventListener('visibilitychange', () => { if (document.hidden) { stopGps(); gpsResumeAt = -Infinity; } else { tripCancelSchedulePurge(); renderAll(); resumeGps(); } });
+['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { tripCancelSchedulePurge(); if (APP_CONTEXT.ready) renderAll(); resumeGps(); }));
 // actualisation automatique : toutes les 5 min tant que l'app est à l'écran, et dès le retour dans l'app
 // (vérification toutes les 30 s : résiste à la mise en veille des minuteurs par iOS)
 const AUTO_MS = 5 * 60e3;

@@ -104,7 +104,7 @@ async function session(browser, iso, options = {}) {
 const phase = s => s.p.evaluate(() => LIVE.phase);
 const gpsRoutes = s => s.S.osrm.filter(u => /3\.306,49\.385|3\.333,49\.399/.test(u));
 const privacy = async s => {
-  const local = await s.p.evaluate(() => ({ cancel: localStorage.getItem('twrc.tripcancel'), done: localStorage.getItem('twrc.tripdone'), other: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
+  const local = await s.p.evaluate(() => ({ cancel: localStorage.getItem('twrc.tripcancel'), done: localStorage.getItem('twrc.tripdone'), other: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps|context\.v1)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
   const sent = s.S.reqs.filter(r => /49\.3847|3\.3061|49\.385|3\.306|49\.399|3\.333/.test(r.u));
   const gpsHostAllowed = /^(router\.project-osrm\.org|[a-z-]*api\.open-meteo\.com|api\.bigdatacloud\.net)$/;
   const unexpectedProviders = [...new Set(s.S.reqs.filter(r => !allowed.test(new URL(r.u).hostname)).map(r => new URL(r.u).hostname))];
