@@ -30,7 +30,7 @@ const server = http.createServer((req, res) => {
         ]);
       } finally { clearTimeout(timer); }
     });
-    const keys = await p.evaluate(() => caches.keys()); check('migration : v10 actif, v9 purgé, données publiques v3 conservées', keys.includes('twrc-static-v10') && !keys.includes('twrc-static-v9') && keys.includes('twrc-data-v3'));
+    const keys = await p.evaluate(() => caches.keys()); check('migration : v11 actif, v9 purgé, données publiques v3 conservées', keys.includes('twrc-static-v11') && !keys.includes('twrc-static-v9') && keys.includes('twrc-data-v3'));
     const read = () => p.evaluate(async () => { const r = await fetch('road-datex.json'); return { status: r.status, cache: r.headers.get('x-twrc-cache'), body: await r.text() }; });
     let r = await read(); check('200 DATEX validé et mis en cache, sans marqueur de secours', r.status === 200 && r.cache === null && JSON.parse(r.body).provider === 'datex');
     await p.evaluate(() => fetch('road-datex.json?t=fictif'));

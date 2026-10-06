@@ -134,6 +134,11 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const r = desk({ now: '2026-10-06T07:00', hours: H(), trips: [{ ...trip('07:45', '08:25'), points: [] }] });
     assert.equal(r.trip.waiting, true); assert.deepEqual(r.trip.points, []); assert.equal(r.trip.crit, null); assert.match(r.road.window.label, /^maintenant →/);
   });
+  test('le statut réel de trajet prime sur un horaire de départ déjà passé', () => {
+    const input = { now: '2026-10-06T07:00', hours: H(), trips: [trip('06:50', '07:30', { running: false })] };
+    assert.equal(desk(input).trip.running, false);
+    input.trips[0].running = true; assert.equal(desk(input).trip.running, true);
+  });
   test('trajet passé ignoré, trajet en cours conservé jusqu’à l’arrivée', () => {
     const hs = set(H(), '05', { vis: 300 });
     const past = { ...trip('05:00', '05:40'), id: 'old', points: pts(hs, '05:00', [['05:00', 0, 0]]) }, run = { ...trip('06:50', '07:30'), points: pts(hs, '06:50', [['06:50', 0, 0], ['07:30', 1, 44]]) };

@@ -285,7 +285,7 @@ function wxDesk(input) {
     if (!crit && tt.glare) crit = { lv: 1, id: 'sun', text: `Soleil rasant vers ${hm(tt.glare.ts)}`, at: hm(tt.glare.ts) };
     const later = tripList.filter(t => t !== tt && t.depM > tt.depM).slice(0, 3).map(t => ({ dep: hm(t.dep), label: t.label || 'trajet', lv: t.pts.reduce((a, p) => Math.max(a, p.lv), 0), day: t.dep.slice(0, 10) }));
     trip = { id: tt.id || null, label: tt.label || 'trajet', from: tt.from || null, to: tt.to || null, dep: hm(tt.dep), arr: hm(tt.arr || tt.dep), day: tt.dep.slice(0, 10), durMin: Math.max(0, Math.round(tt.arrM - tt.depM)),
-      running: tt.depM <= nowM, km: finite(tt.km) ? tt.km : null, waiting: !P.length,
+      running: typeof tt.running === 'boolean' ? tt.running : tt.depM <= nowM, km: finite(tt.km) ? tt.km : null, waiting: !P.length,
       points: P.length ? [pt(P[0], 'Départ'), mid && mid !== P[0] && mid !== P[P.length - 1] ? pt(mid, 'Mi-parcours') : null, P.length > 1 ? pt(P[P.length - 1], 'Arrivée') : null].filter(Boolean) : [],
       crit, lv: P.reduce((a, p) => Math.max(a, p.lv), tt.glare ? 1 : 0), later };
   }

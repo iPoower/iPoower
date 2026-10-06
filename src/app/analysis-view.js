@@ -22,13 +22,14 @@ function labInput(car) {
   let drive = null;
   if (!DEMO.on && LIVE.phase === 'active' && LIVE.startFix) {
     const sf = LIVE.startFix, geo = Number.isFinite(sf.lat), cand = [FIX, LIVE.lastFix].find(f => f && f.ts > sf.ts), lf = geo && cand ? cand : null;
-    const dmin = Math.max(0, (Date.now() - sf.ts) / 60e3), b = LIVE.base || {}, planMin = b.l && b.l.min ? b.l.min : b.dep && b.arr ? Math.max(1, liveMin(b.dep, b.arr)) : null;
+    const startTs = TRIPSTART && TRIPSTART.key === LIVE.key ? TRIPSTART.at : sf.ts;
+    const dmin = Math.max(0, (Date.now() - startTs) / 60e3), b = LIVE.base || {}, planMin = b.l && b.l.min ? b.l.min : b.dep && b.arr ? Math.max(1, liveMin(b.dep, b.arr)) : null;
     // progression le long de l'itinéraire OSRM (km du premier itinéraire − km restants) ; sinon vol d'oiseau ×1,2 ; sans GPS (hors ligne,
     // GPS coupé) : temps écoulé / durée prévue × distance prévue. La source est toujours affichée.
     const R0 = LIVE.route0, R = LIVE.route, onRoute = !!lf && R0 && R && R0.key === LIVE.key && R.key === LIVE.key && R0.km >= R.km;
     const total = R0 && R0.key === LIVE.key ? R0.km : b.l && b.l.km != null ? b.l.km : null;
     const km = onRoute ? (R0.km - R.km) + (distKm(sf, R0.o) + distKm(R.o, lf)) * 1.2 : lf ? distKm(sf, lf) * 1.2 : total != null && planMin ? total * Math.min(1, dmin / planMin) : null;
-    drive = { active: true, since: localTs(sf.ts, tz), startTs: sf.ts, km, total, kmSrc: onRoute ? 'route' : lf ? 'estimate' : km != null ? 'time' : null, speedKmh: dmin >= 2 && km != null ? km / dmin * 60 : null };
+    drive = { active: true, since: localTs(startTs, tz), startTs, km, total, kmSrc: onRoute ? 'route' : lf ? 'estimate' : km != null ? 'time' : null, speedKmh: dmin >= 2 && km != null ? km / dmin * 60 : null };
   }
   // prochain trajet réellement prévu (briefing) : points datés, kilomètres de l'agenda ou distance domicile-travail ×1,3
   const trips = wxTrips(m).filter(t => t.arr > now && t.points.length), t0 = trips[0] || null;
@@ -141,5 +142,4 @@ function renderLab() {
   el.innerHTML = html; renderLab.last = html;
   el.querySelectorAll('details[data-k]').forEach(x => { if (open.has(x.dataset.k)) x.open = true; });
 }
-
 

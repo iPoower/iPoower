@@ -5,8 +5,8 @@ function resumeGps() {
   gpsResumeAt = Date.now(); stopGps(); startWatch(LIVE.phase === 'active' || !FIX || FIX.acc > PLACE_ACC_GPS, true); locate(false, true);
 }
 // iOS peut abandonner le watch et une demande ponctuelle pendant la veille : recréer les deux à la reprise.
-document.addEventListener('visibilitychange', () => { if (document.hidden) { stopGps(); gpsResumeAt = -Infinity; } else { tripCancelSchedulePurge(); resumeGps(); } });
-['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { tripCancelSchedulePurge(); resumeGps(); }));
+document.addEventListener('visibilitychange', () => { if (document.hidden) { stopGps(); gpsResumeAt = -Infinity; } else { tripCancelSchedulePurge(); renderAll(); resumeGps(); } });
+['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { tripCancelSchedulePurge(); if (APP_CONTEXT.ready) renderAll(); resumeGps(); }));
 // actualisation automatique : toutes les 5 min tant que l'app est à l'écran, et dès le retour dans l'app
 // (vérification toutes les 30 s : résiste à la mise en veille des minuteurs par iOS)
 const AUTO_MS = 5 * 60e3;
@@ -39,6 +39,6 @@ document.addEventListener('toggle', e => { if (e.target && e.target.id === 'sett
   if (S.gpsAuto && GPS) UI.loc = 'gps';
   { const c = placeNow(); if (c.source === 'manual') UI.loc = c.place.id; }   // lieu confirmé : contexte de tous les modules (origine verrouillée)
   if (S.gpsAuto && location.protocol === 'https:') setTimeout(() => locate(false), 400);
-  loadCache(); if (offlineNow()) markOfflineCache(); rebuild(); renderSettings(); renderAll();
+  loadCache(); if (offlineNow()) markOfflineCache(); rebuild(); APP_CONTEXT.ready = true; renderSettings(); renderAll();
   if (offlineNow()) loadCalendar(); else refreshAll();
 })();
