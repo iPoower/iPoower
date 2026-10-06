@@ -10,7 +10,7 @@ function ttSave(carId, at, T, sig) {
   Object.keys(o).forEach(k => { if (!S.cars.some(c => c.id === k)) delete o[k]; });
   lsSet(TT_KEY, JSON.stringify(o));
 }
-const labCar = () => S.cars.find(c => c.id === UI.labCar) || S.cars.find(hasTires) || S.cars[0];
+const labCar = () => appActiveCar() || S.cars.find(c => c.id === UI.labCar) || S.cars.find(hasTires) || S.cars[0];
 // état pneumatique unique (onglet Pneus = source de vérité) : recalculé à chaque rendu, donc jamais périmé après une saisie
 const tyreStateOf = car => tyreState(car, { today: nowIn('Europe/Paris').slice(0, 10) });
 const localTs = (ms, tz) => new Date(ms).toLocaleString('sv-SE', { timeZone: tz || 'Europe/Paris', hour12: false }).replace(' ', 'T').slice(0, 16);
@@ -142,4 +142,3 @@ function renderLab() {
   el.innerHTML = html; renderLab.last = html;
   el.querySelectorAll('details[data-k]').forEach(x => { if (open.has(x.dataset.k)) x.open = true; });
 }
-

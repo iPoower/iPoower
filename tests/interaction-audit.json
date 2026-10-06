@@ -222,5 +222,17 @@
   "withcode": {
     "suite": "e2e49-interactions.js",
     "result": "formulaire de déverrouillage rétabli"
+  },
+  "day-type": {
+    "suite": "e2e55-day-context.js",
+    "result": "journée explicite datée"
+  },
+  "day-car": {
+    "suite": "e2e55-day-context.js",
+    "result": "voiture active persistante"
+  },
+  "day-destination": {
+    "suite": "e2e55-day-context.js",
+    "result": "destination canonique temporaire"
   }
 }

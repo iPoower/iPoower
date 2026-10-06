@@ -68,7 +68,7 @@ function appWorkTripData(dir, off, departure = null) {
   // la disponibilité météo au premier lancement ou hors ligne.
   const w = S.work;
   const clock = nowIn('Europe/Paris'), today = clock.slice(0, 10), time = dir === 'go' ? w.dep : w.ret;
-  if (off === 'auto') off = commuteOff(today, time, clock.slice(11, 16), w.days);
+  if (off === 'auto') off = appCommuteOff(today, time, clock.slice(11, 16), w.days);
   if (!Number.isFinite(off)) return r;
   const dep = departure || addMin(today + 'T00:00', off * 1440 + toMin(time)); if (workCancelled(dep.slice(0, 10))) return r;
   const ends = appCommuteEndpoints(dir, dep.slice(0, 10), 'commute|' + dep.slice(0, 10) + 'T' + time + '|' + dir), LA = ends.from, LB = ends.to;
@@ -108,7 +108,8 @@ function appRefreshContext({ persist = true } = {}) {
     nextTrip: next, departureTime: active ? active.dep : next && next.dep,
     confirmation: PLACE.conf, gps: GPS, agendaEvent: (active || next) && (active || next).e || null,
     returnHome: RETURNHOME, trips: APP_CONTEXT.trips, plannedTrips: APP_CONTEXT.planned,
-    dayContext: appDay(), destinationSource: appDay().nextDestination ? appDay().nextDestination.placeId ? 'user' : 'pending' : next ? 'planned' : 'unknown',
+    dayContext: appDay(), date: placeToday(), dayType: appWorkOn(placeToday()) ? 'work' : 'off', activeCarId: appDay().activeCarId,
+    destinationSource: appDay().nextDestination ? appDay().nextDestination.placeId ? 'user' : 'pending' : next ? 'planned' : 'unknown',
     updatedAt: USER_STORE.state.updatedAt, weatherLocationId: UI.loc });
 }
 USER_STORE.subscribe(() => { if (APP_CONTEXT.ready && !APP_CONTEXT.rendering) renderAll(); });

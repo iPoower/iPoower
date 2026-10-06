@@ -1,6 +1,6 @@
 /* Extension locale de USER_STORE : lieux configurés par ID, aucun autre store. */
 function appDay() {
-  USER_STORE.state.dayContext = DayContext.clean(USER_STORE.state.dayContext, Date.now(), placeList());
+  USER_STORE.state.dayContext = DayContext.clean(USER_STORE.state.dayContext, Date.now(), placeList(), S.cars.filter(hasTires));
   return USER_STORE.state.dayContext;
 }
 function appConfirmedPlace(placeId, at) {
@@ -35,6 +35,30 @@ function appChooseDestination(placeId, source = 'user') {
   });
 }
 function appAgendaLeg(e, leg) { return DayContext.returnLeg(leg, calendarTripKey(e, leg), appDay(), Date.now(), placeList()); }
+function appWorkOn(date, days = S.work.days) { return DayContext.workOn(date, appDay(), commuteDays(days)); }
+function appCommuteOff(today, time, nowHm, days = S.work.days) {
+  for (let off = 0; off <= 8; off++) {
+    const date = addMin(today.slice(0, 10) + 'T00:00', off * 1440).slice(0, 10);
+    if (appWorkOn(date, days) && (off > 0 || time > nowHm)) return off;
+  }
+  return null;
+}
+function appActiveCar() { const id = appDay().activeCarId; return S.cars.find(c => c.id === id) || null; }
+function appTripCars() { const car = appActiveCar(); return car ? [car] : TCARS(); }
+function appSetDayType(value) {
+  if (!['work', 'off'].includes(value)) return;
+  appAction(() => {
+    appDay().dayType = { date: placeToday(), value };
+    // Une journée ne contredit pas un départ réellement confirmé.
+    if (LIVE.key && LIVE.phase !== 'active') liveReset();
+    tripPreviewReset(); CANCELROUTEGEN++; CANCELROUTES.clear(); UI.dayOff = null;
+  });
+}
+function appSetCar(id) { appAction(() => { appDay().activeCarId = S.cars.some(c => c.id === id && hasTires(c)) ? id : null; }); }
+function appOutfitOccasion(offset = UI.outfitDay) {
+  const date = addMin(placeToday() + 'T00:00', offset * 1440).slice(0, 10), n = appDay().nextDestination;
+  return DayContext.occasion(date, appDay(), appWorkOn(date), offset === 0 && n && n.placeId, S.work.to);
+}
 function appLocalTrips(T, now) {
   const n = appDay().nextDestination;
   if (!n || T.some(t => t.key === n.tripKey)) return T;
@@ -42,7 +66,7 @@ function appLocalTrips(T, now) {
   const dep = started ? localTs(TRIPSTART.at) : now, l = { k: 'local', from, to, navTo: to, dep, arr: addMin(dep, +S.work.durMin || 30), min: +S.work.durMin || 30, pts: [] };
   const ready = to && from ? tripCancelRouteLeg({ id: n.tripKey, s: n.dep }, { ...l, originPending: true }) : l;
   const r = to && from && !ready.originPending ? legEval(ready) : {};
-  T.unshift({ src: 'local', key: n.tripKey, carId: null, dep, planDep: n.dep, arr: ready.arr, l: ready,
+  T.unshift({ src: 'local', key: n.tripKey, carId: appDay().activeCarId, dep, planDep: n.dep, arr: ready.arr, l: ready,
     from: from && from.name || 'Origine à confirmer', to: to && to.name || 'Destination à confirmer', name: 'Trajet choisi',
     destinationPending: !to, res: r.res || null, sum: r.sum || null, seq: r.seq || [], wait: !r.res, worst: r.worst ?? null });
   return T;
@@ -53,5 +77,8 @@ function renderDayContext() {
   const destination = n ? n.placeId ? locById(n.placeId) : null : c.destination;
   const label = n ? n.placeId ? 'CONFIRMÉ' : 'À CONFIRMER' : destination ? 'PRÉVU' : 'À CONFIRMER';
   const choices = placeList().map(p => `<button class="chip" data-act="day-destination" data-id="${esc(p.id)}" aria-pressed="${!!n && n.placeId === p.id}">${esc(p.name)}</button>`).join('');
-  el.innerHTML = `<div class="sub">AUJOURD’HUI</div><details><summary>Destination suivante · ${esc(destination && destination.name || 'Destination à confirmer')} · ${label}</summary><div class="chips">${choices}<button class="chip" data-act="day-destination" data-id="" aria-pressed="${!!n && !n.placeId}">Autre</button></div></details>`;
+  const work = appWorkOn(placeToday()), dayButtons = [['work', 'Travail'], ['off', 'Congé / Pas de travail']].map(([v, title]) => `<button data-act="day-type" data-v="${v}" aria-pressed="${work === (v === 'work')}">${title}</button>`).join('');
+  const carButtons = S.cars.map(car => `<button class="chip" data-act="day-car" data-id="${esc(car.id)}" aria-pressed="${d.activeCarId === car.id}" ${hasTires(car) ? '' : 'disabled'}>${esc(car.short || car.name || car.id)}</button>`).join('');
+  const opened = el.querySelector('details') && el.querySelector('details').open;
+  el.innerHTML = `<div class="sub">AUJOURD’HUI · ${d.dayType ? 'CONFIRMÉ' : 'PRÉVU'}</div><div class="seg" role="group" aria-label="Type de journée">${dayButtons}</div><div class="chips" role="group" aria-label="Voiture active">${carButtons}<button class="chip" data-act="day-car" data-id="" aria-pressed="${!d.activeCarId}">Toutes · comparaison</button></div><details ${opened ? 'open' : ''}><summary>Destination suivante · ${esc(destination && destination.name || 'Destination à confirmer')} · ${label}</summary><div class="chips">${choices}<button class="chip" data-act="day-destination" data-id="" aria-pressed="${!!n && !n.placeId}">Autre</button></div></details>`;
 }

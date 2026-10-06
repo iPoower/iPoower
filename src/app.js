@@ -231,7 +231,7 @@ function markOfflineCache() {
 applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
   view: ['meteo', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
-  outfitOccasion: ['office', 'walk'].includes(lsGet('twrc.outfit.occasion')) ? lsGet('twrc.outfit.occasion') : 'outing' };
+  outfitOccasion: 'outing' };
 
 const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
   read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
@@ -445,11 +445,11 @@ function placeConfirm(placeId, how) {
   appReopenReturn(placeId, now);
   // la machine de trajet existante termine proprement l'aller : arrivée du trajet vivant, sinon trajet planifié marqué arrivé
   let t = placeArrivalTrip(placeId) || (p.kind === 'work' ? BRF_TRIPS.find(t => t.src === 'work' && t.td.dir === 'go' && t.dep.slice(0, 10) === placeToday()) : null);
-  if (!t && p.kind === 'work' && isCommuteDay(placeToday(), S.work.days)) {
+  if (!t && p.kind === 'work' && appWorkOn(placeToday())) {
     const td = appWorkTripData('go', 0);
     if (!td.err) t = { src: 'work', td, dep: td.dep, arr: td.arr, from: td.fromName, to: td.toName, name: 'Aller domicile-travail', key: 'commute|' + td.dep + '|go' };
   }
-  if (!t && p.kind === 'home' && previous && previous.id === S.work.to && isCommuteDay(placeToday(), S.work.days)) {
+  if (!t && p.kind === 'home' && previous && previous.id === S.work.to && appWorkOn(placeToday())) {
     const td = appWorkTripData('ret', 0);
     if (!td.err) t = { src: 'work', td, dep: td.dep, arr: td.arr, from: td.fromName, to: td.toName, name: 'Retour domicile-travail', key: 'commute|' + td.dep + '|ret' };
   }
@@ -982,7 +982,7 @@ function buildTenueDay(options = {}) {
       if (!/^\d{2}:\d{2}$/.test(time || '')) return;
       const sourceZone = models[a.id] && models[a.id].tz || zone;
       const sourceDay = tenueZoneTime(day + 'T12:00', zone, sourceZone).slice(0, 10);
-      if (!isCommuteDay(sourceDay, work.days) || commuteCancelled(sourceDay)) return;
+      if (!appWorkOn(sourceDay, work.days) || commuteCancelled(sourceDay)) return;
       const dep = tenueZoneTime(sourceDay + 'T' + time, sourceZone, zone), pts = [{ f: 0, ...knownModel(a) }, ...midPoints(a, b).filter(p => midModels[p.id]).map(p => ({ f: p.f, m: midModels[p.id], t: midModels[p.id].retrievedAt ?? null })), { f: 1, ...knownModel(b) }];
       trip(a, b, dep, addMin(dep, dur), dir === 'go' ? 'work-go' : 'work-ret', 10, pts, 'commute|' + sourceDay + 'T' + time + '|' + dir);
     });
@@ -1104,12 +1104,12 @@ function buildTenueDay(options = {}) {
     const weather = unknown ? null : sample(source, at);
     moments.push({ start: at, end: until > end ? end : until, location, kind, event: physicalEvent, weather, unknown, stale: sourceStale(source) });
   }
-  return { date, start, end, occasion: options.occasion || UI.outfitOccasion, moments, warnings: [...new Set(warnings)] };
+  return { date, start, end, occasion: options.occasion || appOutfitOccasion(offset), moments, warnings: [...new Set(warnings)] };
 }
 /* ---------- vue du plan : le détail lit exactement le conseil du moteur ---------- */
 function renderTenue() {
   const el = $('#secTenue'); el.hidden = UI.view !== 'tenue'; if (el.hidden) return;
-  const context = APP_CONTEXT.snapshot, l = context.currentLocation || curLoc(), m = M[l.id], tomorrow = UI.outfitDay === 1;
+  const context = APP_CONTEXT.snapshot, l = context.currentLocation || curLoc(), m = M[l.id], tomorrow = UI.outfitDay === 1; UI.outfitOccasion = appOutfitOccasion();
   const controls = `<div class="outfit-controls"><div class="seg" role="group" aria-label="Jour de la tenue">${[[0, 'Aujourd’hui'], [1, 'Demain']].map(([v, t]) => `<button data-act="outfit-day" data-v="${v}" aria-pressed="${UI.outfitDay === v}">${t}</button>`).join('')}</div>
     <div class="seg" role="group" aria-label="Usage de la tenue">${[['office', 'Bureau'], ['outing', 'Sortie'], ['walk', 'Promenade']].map(([v, t]) => `<button data-act="outfit-occasion" data-v="${v}" aria-pressed="${UI.outfitOccasion === v}">${t}</button>`).join('')}</div></div>`;
   const head = `<div class="mod-h"><h2>👔 Tenue · ${esc(l.name)}</h2><span class="src obs">Sartorial</span></div>${controls}`;
@@ -1461,14 +1461,14 @@ function liveTips() {
   // UV
   const pk = uvToday(m); if (pk && pk.uv >= 3 && pk.t >= m.nowStr.slice(0, 13)) add(`Indice UV maximal de ${f0(pk.uv)} vers ${at(pk)} aujourd’hui. Lunettes de soleil dans la voiture, surtout avec le soleil bas.`, 'indice UV (OMS)');
   // départ et retour de nuit
-  const cdToday = isCommuteDay(today, S.work.days);   // les astuces du trajet domicile-travail ne valent que les jours de trajet
+  const cdToday = appWorkOn(today);   // les astuces du trajet domicile-travail ne valent que les jours de trajet
   if (cdToday && day.sunrise && S.work.dep && day.sunrise.slice(11, 16) > S.work.dep) add(`Lever du soleil à ${day.sunrise.slice(11, 16)}, après ton départ de ${S.work.dep} : trajet de nuit. Vérifie que tes feux et ton pare-brise sont propres.`, 'éphéméride');
   if (cdToday && day.sunset && S.work.ret) { const s0 = day.sunset.slice(11, 16), r = toMin(S.work.ret) - toMin(s0); if (r >= -45 && r <= 30) add(`Coucher du soleil à ${s0}, autour de ton retour de ${S.work.ret} : soleil rasant puis pénombre. Lunettes de soleil et feux allumés tôt.`, 'éphéméride'); }
   // voitures : pression, pneus été au froid, âge, montage hiver
   TCARS().forEach(car => {
     const t = car.tire, pc = t.pchk, tgt = pressTarget(t.press);
     if (pc && pc.T != null && tmin && pc.T - tmin.T >= 8) add(`${car.short} : pression contrôlée à ${f0(pc.T)} °C. À ${f1(tmin.T)} °C vers ${at(tmin)}, elle aura perdu environ ${f1(pressLoss(tgt, pc.T, tmin.T))} bar. Recontrôle à froid.`, 'ton contrôle du ' + fmtDay(pc.date), 1);
-    if (effType(car) === 'summer') { const dh = (S.work.dep || '06:30').slice(0, 5), co = commuteOff(today, dh, m.nowStr.slice(11, 16), S.work.days);
+    if (effType(car) === 'summer') { const dh = (S.work.dep || '06:30').slice(0, 5), co = appCommuteOff(today, dh, m.nowStr.slice(11, 16));
       const dd = co == null ? null : addMin(today + 'T00:00', co * 1440).slice(0, 10), dep = dd ? m.byTime.get(dd + 'T' + dh.slice(0, 2) + ':00') : null, x = dep != null ? hs[dep] : null;
       if (x && x.T != null && x.T < 7) add(`${co === 0 ? 'Ce matin' : co === 1 ? 'Demain' : cap1(fmtDay(dd))} à ${dh} : ${f1(x.T)} °C, sous le seuil de 7 °C des pneus été de la ${car.short}. Freinages plus longs, surtout sur le mouillé.`, 'prévision horaire', 1); }
     const age = dotAge(t.dot, m.nowStr); if (age != null && age >= 5) add(`${car.short} : pneus de ${f1(age)} ans (DOT ${t.dot}). À partir de 5 ans, fais-les inspecter chaque année.`, 'code DOT', age >= 8 ? 2 : 1);
@@ -1518,7 +1518,7 @@ function nextTrip() {
   const clock = DEMO.on && m ? m.nowStr : nowIn(m && m.tz || 'Europe/Paris');
   const now = toMin(clock.slice(11, 16)), dep = toMin(S.work.dep), ret = toMin(S.work.ret);
   const place = placeNow(), atWork = place.place && place.place.id === S.work.to, atHome = place.place && place.place.id === S.work.from;
-  const workingDay = isCommuteDay(clock, S.work.days);
+  const workingDay = appWorkOn(clock);
   const dir = workingDay && (atWork || !atHome && now >= dep && now < ret) ? 'ret' : 'go';
   const td = appWorkTripData(dir, workingDay && (atWork || atHome && now < ret) ? 0 : 'auto');
   const completed = td && LIVE.done['commute|' + td.dep + '|' + td.dir];
@@ -1526,7 +1526,7 @@ function nextTrip() {
   if (completed || td && td.cancelled) {
     for (let off = 1; off <= 8; off++) {
       const date = addMin(clock.slice(0, 10) + 'T00:00', off * 1440).slice(0, 10);
-      if (!isCommuteDay(date, S.work.days)) continue;
+      if (!appWorkOn(date)) continue;
       const next = appWorkTripData('go', off); if (next && !next.err && !LIVE.done['commute|' + next.dep + '|go']) return next;
     }
   }
@@ -2048,7 +2048,7 @@ setInterval(() => { if ((LIVE.key || TRIPPREVIEW.key) && !document.hidden) rende
 function renderBrf() { renderAll(); }
 function appBuildTrips() {
   const clockModel = (CX && CX.m) || M[S.locs[0].id] || Object.values(M).find(Boolean);
-  const cars = TCARS();
+  const cars = appTripCars();
   const now = DEMO.on && clockModel ? clockModel.nowStr.slice(0, 16) : nowIn(clockModel && clockModel.payload && clockModel.payload.timezone || 'Europe/Paris');
   const today = now.slice(0, 10), nowHm = now.slice(11, 16);
   // une seule timeline : trajet domicile-travail + trajets agenda, triés par heure réelle de départ
@@ -2064,13 +2064,13 @@ function appBuildTrips() {
       if (!actual.err) td = actual;
     }
     const res = td.seq.length ? cars.map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w) : [];
-    T.push({ src: 'work', carId: null, dep: td.dep, planDep: plannedDep, arr: td.arr, running: false, name: `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail`, from: td.fromName, to: td.toName,
+    T.push({ src: 'work', carId: appDay().activeCarId, dep: td.dep, planDep: plannedDep, arr: td.arr, running: false, name: `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail`, from: td.fromName, to: td.toName,
       res: res.length ? res : null, sum: td.seq.length ? summarize(td.seq) : null, seq: td.seq, wait: !td.seq.length, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, key, obs: td.A && td.A.obs, td });
   };
   // trajet domicile-travail en cours (entre le départ et l'arrivée) : il reste affiché jusqu'à l'arrivée
-  if (isCommuteDay(today, S.work.days)) ['go', 'ret'].forEach(d => { const t0 = toMin(d === 'go' ? S.work.dep : S.work.ret), n = toMin(nowHm);
+  if (appWorkOn(today)) ['go', 'ret'].forEach(d => { const t0 = toMin(d === 'go' ? S.work.dep : S.work.ret), n = toMin(nowHm);
     if (n >= t0 && n < t0 + (+S.work.durMin || 30)) { const r = appWorkTripData(d, 0); if (r && !r.err) workT(r, true); } });
-  if (isCommuteDay(today, S.work.days)) ['go', 'ret'].forEach(d => {
+  if (appWorkOn(today)) ['go', 'ret'].forEach(d => {
     const time = d === 'go' ? S.work.dep : S.work.ret;
     if (today + 'T' + time > now) { const r = appWorkTripData(d, 0); if (r && !r.err) workT(r, false); }
   });
@@ -2083,7 +2083,7 @@ function appBuildTrips() {
       l = { ...l, dep, arr: addMin(dep, dur) };
     }
     const r = legEval(l);
-    T.push({ src: 'cal', carId: null, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: false, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
+    T.push({ src: 'cal', carId: appDay().activeCarId, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: false, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
       res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading, key });
   }));
   // Un départ déclaré reste restorable après l'heure d'arrivée prévue.
@@ -2105,7 +2105,7 @@ function renderBrfCore() {
   if (!cars.length) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
   const now = DEMO.on && clockModel ? clockModel.nowStr.slice(0, 16) : nowIn(clockModel && clockModel.payload && clockModel.payload.timezone || 'Europe/Paris');
   const today = now.slice(0, 10), nowHm = now.slice(11, 16), T = APP_CONTEXT.snapshot.trips;
-  const eve = toMin(nowHm) >= Math.min(18 * 60, isCommuteDay(today, S.work.days) ? toMin(S.work.ret) : 1440);
+  const eve = toMin(nowHm) >= Math.min(18 * 60, appWorkOn(today) ? toMin(S.work.ret) : 1440);
   const fullFor = d => { const n = dayDiff(today, d.slice(0, 10)); return n <= 0 || (n === 1 && eve); };
   const dayLbl = d => { const n = dayDiff(today, d.slice(0, 10)); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(d.slice(0, 10)); };
   const full = T.filter(t => fullFor(t.dep)), main = full[0], rest = full.slice(1);
@@ -2132,7 +2132,7 @@ function renderBrfCore() {
     ${nrLine}`;
   if (!main) {   // plus aucun trajet aujourd'hui : seulement des lignes discrètes vers la suite
     el.className = 'mod brf lv0';
-    const msg = !CAL && !CALDONE && lsGet('twrc.key') ? '⏳ Lecture de l’agenda…' : `💤 ${isCommuteDay(today, S.work.days) && wk && wk.dep.slice(0, 10) > today ? 'Plus de trajet prévu aujourd’hui' : 'Aucun trajet prévu aujourd’hui'}`;
+    const msg = !CAL && !CALDONE && lsGet('twrc.key') ? '⏳ Lecture de l’agenda…' : `💤 ${appWorkOn(today) && wk && wk.dep.slice(0, 10) > today ? 'Plus de trajet prévu aujourd’hui' : 'Aucun trajet prévu aujourd’hui'}`;
     el.innerHTML = `${liveUndoHtml()}${tripCancelUndoHtml()}<div class="brf-h"><span class="brf-k">${msg}</span></div>${tail}`;
     return;
   }
@@ -2389,7 +2389,7 @@ function calTrip(ev) {
   const dep = addMin(day + 'T00:00', startMin - dur - 10), arr = addMin(dep, dur), seq = [];
   for (let t = dep.slice(0, 13) + ':00'; t <= arr.slice(0, 13) + ':00'; t = addMin(t, 60)) { const a = home.byTime.get(t), b = B.byTime.get(t); if (a != null) seq.push({ hs: home.hs, i: a }); if (b != null) seq.push({ hs: B.hs, i: b }); }
   if (!seq.length) return { km, dur, dep, beyond: true };
-  const res = TCARS().map(c => ({ c, w: windowAssess(c, seq, 'trip') })).filter(r => r.w);
+  const res = appTripCars().map(c => ({ c, w: windowAssess(c, seq, 'trip') })).filter(r => r.w);
   return { km, dur, dep, arr, sum: summarize(seq), res, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0) };
 }
 
@@ -2412,8 +2412,8 @@ function legEval(leg) {
   if (!c || Date.now() - c.t > PT_TTL) { fetchLeg(leg); if (!c) return { loading: true }; }
   if (!c.models) return { err: true };
   const seq = legSeq(c.models, legPoints(leg), leg.dep, leg.min); if (!seq.length) return { beyond: true };
-  const res = TCARS().map(car => ({ c: car, w: windowAssess(car, seq, 'trip') })).filter(r => r.w);
-  return { seq, sum: summarize(seq), res, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0), crit: legCritical(seq, TCARS()) };
+  const res = appTripCars().map(car => ({ c: car, w: windowAssess(car, seq, 'trip') })).filter(r => r.w);
+  return { seq, sum: summarize(seq), res, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0), crit: legCritical(seq, appTripCars()) };
 }
 function calDirectSet() { return S.calDirect || {}; }
 const CANCELROUTES = new Map(); let CANCELROUTEGEN = 0;
@@ -2422,7 +2422,7 @@ function tripCancelBeforeFirst(e, settings = S, state = TRIPCANCEL, now = Date.n
   const home = locs.find(l => l.id === 'home') || (settings.locs || [])[0], work = settings.work || {}, date = e.s.slice(0, 10);
   const valid = p => p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
   const homePoint = valid(home) ? { ...home, label: 'Domicile', city: 'Domicile' } : null;
-  if (!isCommuteDay(date, work.days) || workCancelled(date, state, now)) return homePoint;
+  if (!appWorkOn(date, work.days) || workCancelled(date, state, now)) return homePoint;
   const dep = date + 'T' + work.dep, ret = date + 'T' + work.ret, duration = +work.durMin || 30;
   const target = e.allDay ? date + 'T09:00' : e.s;
   if (target < dep || target >= addMin(ret, duration)) return homePoint;
@@ -2778,12 +2778,13 @@ function tripData(dir = UI.dir, off = null, departure = null) {
   const model = M[dir === 'go' ? w.from : w.to];
   const clock = DEMO.on && model ? model.nowStr : nowIn(model && model.tz || 'Europe/Paris');
   const time = dir === 'go' ? w.dep : w.ret, today = clock.slice(0, 10);
-  const auto = commuteOff(today, time, clock.slice(11, 16), w.days);   // saute les jours sans trajet domicile-travail
+  const auto = appCommuteOff(today, time, clock.slice(11, 16), w.days);   // saute les jours sans trajet domicile-travail
   if (auto == null) return { err: 'Aucun jour de trajet domicile-travail coché (Réglages → Trajet).' };
   if (off === 'auto') off = auto;
   else if (off == null) { if (UI.dayOff == null) UI.dayOff = auto; off = UI.dayOff; }   // un nombre = décalage imposé
   const dur = +w.durMin || 30;
   const dep = departure || addMin(today + 'T00:00', off * 1440 + toMin(time)), arr = addMin(dep, dur);
+  if (!appWorkOn(dep.slice(0, 10)) && !(TRIPSTART && TRIPSTART.trip && TRIPSTART.trip.src === 'work')) return { err: 'Pas de travail prévu pour cette journée.', cancelled: true };
   if (workCancelled(dep.slice(0, 10))) return { err: 'Trajets domicile-travail annulés pour cette journée sur cet appareil.', cancelled: true };
   const ends = appCommuteEndpoints(dir, dep.slice(0, 10), 'commute|' + dep.slice(0, 10) + 'T' + time + '|' + dir), LA = ends.from, LB = ends.to;
   const fromId = LA && LA.id, toId = LB && LB.id, A = M[fromId], B = M[toId];
@@ -2826,13 +2827,13 @@ function feedbackBlock() {
 }
 function renderBrief() {
   const el = $('#secBrief'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
-  const td = tripData(), w = S.work, dir = UI.dir;
+  const td = tripData(), w = S.work, dir = UI.dir; if (appActiveCar()) UI.bcar = appActiveCar().id;
   const time = dir === 'go' ? w.dep : w.ret;
   const locOpts = (sel, key) => allLocs().map(l => `<option value="${esc(l.id)}" ${l.id === sel ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
   if (!TCARS().some(c => c.id === UI.bcar) && TCARS().length) UI.bcar = TCARS()[0].id;
   const carSeg = TCARS().map(c => `<button data-act="bcar" data-car="${esc(c.id)}" aria-pressed="${UI.bcar === c.id}">${esc(c.short)}</button>`).join('');
   const mFrom = M[w.from] || M[S.locs[0].id], day0 = mFrom ? (DEMO.on ? mFrom.nowStr : nowIn(mFrom.tz || 'Europe/Paris')).slice(0, 10) : null, dOffs = [];
-  if (day0) for (let o = 0; o < 10 && dOffs.length < 3; o++) if (isCommuteDay(addMin(day0 + 'T00:00', o * 1440), w.days)) dOffs.push(o);
+  if (day0) for (let o = 0; o < 10 && dOffs.length < 3; o++) if (appWorkOn(addMin(day0 + 'T00:00', o * 1440), w.days)) dOffs.push(o);
   if (UI.dayOff != null && !dOffs.includes(UI.dayOff)) { dOffs.push(UI.dayOff); dOffs.sort((a, b) => a - b); }
   const dayLbl = o => o === 0 ? 'Aujourd’hui' : o === 1 ? 'Demain' : cap1(fmtDay(addMin(day0 + 'T00:00', o * 1440).slice(0, 10)));
   let head = `<div class="mod-h"><h2>Briefing départ</h2><span class="src obs">prévision météo</span></div>
@@ -3209,6 +3210,8 @@ document.addEventListener('click', async e => {
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act;
   if (a === 'day-destination') { appChooseDestination(t.dataset.id || null); return; }
+  if (a === 'day-type') { appSetDayType(t.dataset.v); return; }
+  if (a === 'day-car') { appSetCar(t.dataset.id || null); return; }
   if (a === 'refresh') refreshAll();
   else if (a === 'unlock') {
     const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
@@ -3229,7 +3232,7 @@ document.addEventListener('click', async e => {
   else if (a === 'bk-export') backupExport();
   else if (a === 'view') { UI.view = ['meteo', 'tenue', 'analyse'].includes(t.dataset.v) ? t.dataset.v : 'pneus'; lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   else if (a === 'outfit-day') { UI.outfitDay = t.dataset.v === '1' ? 1 : 0; renderTenue(); }
-  else if (a === 'outfit-occasion') { UI.outfitOccasion = ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing'; lsSet('twrc.outfit.occasion', UI.outfitOccasion); renderTenue(); }
+  else if (a === 'outfit-occasion') { appAction(() => { appDay().outfitChoice = { date: addMin(placeToday() + 'T00:00', UI.outfitDay * 1440).slice(0, 10), occasion: ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing' }; }); }
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
   else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; GEO.raw = null; GEO.error = null; GEO.reason = ''; GEO.status = 'suivi désactivé'; PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; alertLoc('Suivi de position désactivé.'); WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
@@ -3287,14 +3290,14 @@ document.addEventListener('click', async e => {
     if (k >= 0) { if (cur.length === 1) { commandFeedback(t, 'Garde au moins un jour de trajet'); return; } cur.splice(k, 1); } else cur.push(d);   // au moins un jour de trajet
     S.work.days = cur.sort((a, b) => a - b); markEdit('work.days'); UI.dayOff = null; saveSettings(); renderSettings(); softRender();
   }
-  else if (a === 'bcar') { UI.bcar = t.dataset.car; renderBrief(); }
+  else if (a === 'bcar') { appSetCar(t.dataset.car); }
   else if (a === 'demo') startDemo(t.dataset.scn || 'froid');
   else if (a === 'demo-sel') startDemo(($('#demoSel') || {}).value || 'froid');
   else if (a === 'demo-off') { DEMO.on = false; rebuild(); renderAll(); refreshAll(); }
-  else if (a === 'labcar') { UI.labCar = t.dataset.car; renderLab(); }
+  else if (a === 'labcar') { appSetCar(t.dataset.car); }
   else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   else if (a === 'goset') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
-  else if (a === 'reset') { PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; APP_CONTEXT.weatherPreview = null; liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
+  else if (a === 'reset') { PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; USER_STORE.state.dayContext = {}; APP_CONTEXT.weatherPreview = null; liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
   else if (a === 'geo-search') {
     const input = $('#geoQ'), q = (input.value || '').trim(), box = $('#geoHits'), gen = ++geoSearchGen; window.__hits = [];
     if (q.length < 2) { box.innerHTML = '<span class="sub" role="status">Saisis au moins deux caractères.</span>'; input.focus(); return; }

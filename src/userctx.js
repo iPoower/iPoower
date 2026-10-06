@@ -15,7 +15,7 @@ const DayContext = (() => {
   }
   const id = v => typeof v === 'string' && v.length > 0 && v.length <= 1200;
   const timestamp = (v, now) => Number.isFinite(v) && v >= 0 && v <= now + 60000;
-  function clean(v, now, places = null) {
+  function clean(v, now, places = null, cars = null) {
     v = v || {}; const n = v.nextDestination, c = v.lastConfirmedPlace;
     const exists = x => !places || places.some(p => p.id === x);
     const arrivedAt = timestamp(v.arrivedAt, now) ? v.arrivedAt : null;
@@ -24,7 +24,10 @@ const DayContext = (() => {
     return { nextDestination: valid ? { placeId: n.placeId || null, source: n.source, confirmedAt: n.confirmedAt, expiresAt: n.expiresAt,
       originId: id(n.originId) ? n.originId : null, tripKey: id(n.tripKey) ? n.tripKey : null, dep: typeof n.dep === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(n.dep) ? n.dep : null } : null,
       lastConfirmedPlace: c && id(c.placeId) && exists(c.placeId) && timestamp(c.at, now) && c.source === 'manual' ? { placeId: c.placeId, at: c.at, source: 'manual' } : null,
-      departedAt: timestamp(v.departedAt, now) ? v.departedAt : null, arrivedAt };
+      departedAt: timestamp(v.departedAt, now) ? v.departedAt : null, arrivedAt,
+      dayType: v.dayType && v.dayType.date === date(now) && ['work', 'off'].includes(v.dayType.value) ? { date: v.dayType.date, value: v.dayType.value } : null,
+      activeCarId: id(v.activeCarId) && (!cars || cars.some(c => c.id === v.activeCarId)) ? v.activeCarId : null,
+      outfitChoice: v.outfitChoice && [date(now), nextDate(date(now))].includes(v.outfitChoice.date) && ['office', 'outing', 'walk'].includes(v.outfitChoice.occasion) ? { date: v.outfitChoice.date, occasion: v.outfitChoice.occasion } : null };
   }
   function morningOrigin(v, now, places) {
     const c = clean(v, now, places), p = c.lastConfirmedPlace; if (!p || now - p.at > 20 * 3600e3 || c.departedAt != null && c.departedAt >= p.at) return null;
@@ -43,7 +46,17 @@ const DayContext = (() => {
     return { ...leg, to, navTo: to, destinationOverride: true, g: [], pts: [], km: null, min: null, routed: false,
       originPending: true, originUncertain: !to || !leg.from, targetArr: null };
   }
-  return { date, expiry, clean, morningOrigin, destination, returnLeg };
+  function workOn(day, v, days) {
+    day = day.slice(0, 10); const explicit = v && v.dayType;
+    if (explicit && explicit.date === day) return explicit.value === 'work';
+    const weekday = new Date(day + 'T12:00:00Z').getUTCDay() || 7;
+    return (days || []).includes(weekday);
+  }
+  function occasion(day, v, working, destinationId, workId) {
+    const manual = v && v.outfitChoice;
+    return manual && manual.date === day ? manual.occasion : working || destinationId && destinationId === workId ? 'office' : 'outing';
+  }
+  return { date, expiry, clean, morningOrigin, destination, returnLeg, workOn, occasion };
 })();
 function userContextStore({ read, write, now = () => Date.now() }) {
   const key = 'twrc.context.v1', listeners = new Set();
@@ -74,11 +87,14 @@ function userContextStore({ read, write, now = () => Date.now() }) {
   const saved = parse(key), legacy = !saved ? { place: parse('twrc.place.v1'), gps: parse('twrc.gps'),
     tripStart: parse('twrc.tripstart.v1'), tripEnd: parse('twrc.tripend.v1'), returnHome: parse('twrc.returnhome.v1'), done: parse('twrc.tripdone') } : null;
   let state = normalize(saved && saved.v === 1 ? saved : legacy || {}), depth = 0, baseline = '', publishing = false;
+  const oldOutfit = read('twrc.outfit.occasion');
+  if (!(saved && saved.dayContext) && ['office', 'outing', 'walk'].includes(oldOutfit)) state.dayContext.outfitChoice = { date: DayContext.date(now()), occasion: oldOutfit };
   const encode = v => v == null ? null : JSON.stringify(v);
   function persist() {
     // Une écriture atomique du document canonique précède les anciens miroirs.
     // Un stockage refusé conserve exactement le même contexte en mémoire.
     try { write(key, JSON.stringify(state)); } catch (e) { return; }
+    if (oldOutfit != null) { try { write('twrc.outfit.occasion', null); } catch (e) { /* migration déjà dans le document */ } }
     const mirrors = { 'twrc.place.v1': { conf: state.place.conf, last: state.place.last }, 'twrc.gps': state.gps,
       'twrc.tripstart.v1': state.tripStart, 'twrc.tripend.v1': state.tripEnd, 'twrc.returnhome.v1': state.returnHome,
       'twrc.tripdone': Object.keys(state.done).length ? state.done : null };
