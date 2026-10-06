@@ -11,12 +11,13 @@ const USER_STORE = userContextStore({ read: lsGet, write: (k, v) => {
 });
 const APP_CONTEXT = { snapshot: null, planned: [], trips: [], live: null, rendering: false, ready: false, weatherPreview: null };
 function appAction(fn) { return USER_STORE.transaction(fn); }
-function appTripPlace(t, end) {
+function appTripPlace(t, end, origin = null) {
   if (!t) return null;
-  const p = t.src === 'work' ? t.td && t.td[end === 'to' ? 'LB' : 'LA'] : (t.planL || t.l) && (t.planL || t.l)[end];
+  const start = end === 'from' && (origin || TRIPSTART && TRIPSTART.key === t.key && TRIPSTART.o || t.l && t.l.from);
+  const p = start || (t.src === 'work' ? t.td && t.td[end === 'to' ? 'LB' : 'LA'] : (t.planL || t.l) && (t.planL || t.l)[end]);
   if (!p || !locHasCoords(p)) return null;
   const known = [...S.locs, ...S.customs].find(l => locHasCoords(l) && distKm(l, p) <= 1.5);
-  return known || { id: 'arrival', name: t[end] || p.name || p.city || p.label || 'Destination', lat: p.lat, lon: p.lon };
+  return known || { id: end === 'from' ? 'gps' : 'arrival', name: end === 'from' && start ? 'Ma position au départ' : t[end] || p.name || p.city || p.label || 'Destination', lat: p.lat, lon: p.lon };
 }
 function appArrival(t, how) {
   const p = appTripPlace(t, 'to'); if (!p) return;
@@ -43,14 +44,14 @@ function appArrival(t, how) {
   APP_CONTEXT.weatherPreview = null; UI.loc = p.id;
 }
 function appDeparture(t, s) {
-  const from = appTripPlace(t, 'from'), to = appTripPlace(t, 'to');
+  const from = appTripPlace(t, 'from', s.o), to = appTripPlace(t, 'to');
   s.trip = { src: t.src, key: t.key, dep: t.planDep || t.dep, arr: t.arr, dir: t.td && t.td.dir,
     eventId: t.e ? TripCancel.eventId(t.e) : null, fromId: from && from.id, toId: to && to.id };
   if (PLACE.conf) PLACE.last = { placeId: PLACE.conf.placeId, at: s.at, source: 'départ annoncé' };
   PLACE.conf = null; USER_STORE.state.lastDeparture = null; APP_CONTEXT.weatherPreview = null; TRIPSTART = s;
 }
-function appWorkTripData(dir, off) {
-  const r = tripData(dir, off); if (!r.err || r.cancelled) return r;
+function appWorkTripData(dir, off, departure = null) {
+  const r = tripData(dir, off, departure); if (!r.err || r.cancelled) return r;
   // Les horaires et destinations sont des faits de planning, indépendants de
   // la disponibilité météo au premier lancement ou hors ligne.
   const w = S.work, LA = locById(dir === 'go' ? w.from : w.to), LB = locById(dir === 'go' ? w.to : w.from);
@@ -58,10 +59,10 @@ function appWorkTripData(dir, off) {
   const clock = nowIn('Europe/Paris'), today = clock.slice(0, 10), time = dir === 'go' ? w.dep : w.ret;
   if (off === 'auto') off = commuteOff(today, time, clock.slice(11, 16), w.days);
   if (!Number.isFinite(off)) return r;
-  const dep = addMin(today + 'T00:00', off * 1440 + toMin(time)); if (workCancelled(dep.slice(0, 10))) return r;
+  const dep = departure || addMin(today + 'T00:00', off * 1440 + toMin(time)); if (workCancelled(dep.slice(0, 10))) return r;
   return { dir, LA, LB, fromName: LA.name, toName: LB.name, dep, arr: addMin(dep, +w.durMin || 30), seq: [], A: null, B: null, noWeather: true };
 }
-function appRefreshContext() {
+function appRefreshContext({ persist = true } = {}) {
   const c = placeNow();
   if (!APP_CONTEXT.weatherPreview) {
     if (c.place && ['manual', 'last'].includes(c.source)) UI.loc = c.place.id;
@@ -85,7 +86,7 @@ function appRefreshContext() {
   const leaving = USER_STORE.state.lastDeparture;
   const current = active || leaving ? GPS && !GPS.placePending && !PLACE_HOLD && Date.now() - GPS.t <= 10 * 60e3 ? GPS : { id: 'travel', name: 'En déplacement' } : location.place || (location.source === 'gps' && GPS ? GPS : null);
   const origin = active ? appTripPlace(active, 'from') : leaving ? locById(leaving.placeId) : current;
-  USER_STORE.flush();
+  if (persist) USER_STORE.flush();
   APP_CONTEXT.snapshot = Object.freeze({ revision: USER_STORE.state.revision, currentLocation: current, location,
     status: active || leaving ? 'travel' : current ? current.id === S.work.to ? 'work' : current.id === S.locs[0].id ? 'home' : 'arrived' : 'unknown',
     activeTrip: active, origin,

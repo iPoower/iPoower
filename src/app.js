@@ -1025,7 +1025,8 @@ function buildTenueDay(options = {}) {
       const template = templates.find(s => s.key === t.key);
       const sources = template && samePlace(template.from, from) ? template.sources : [{ f: 0, ...knownModel(from) }, { f: 1, ...knownModel(to) }];
       const active = context.activeTrip && context.activeTrip.key === t.key;
-      trip(from, to, agendaTime(t.dep), agendaTime(t.arr), t.src === 'work' ? t.td.dir === 'ret' ? 'work-ret' : 'work-go' : 'agenda', active ? 50 : 40, sources, t.key);
+      if (contextSeed && !active && agendaTime(t.dep) <= start) return;
+      trip(from, to, agendaTime(t.dep), agendaTime(t.arr), t.src === 'work' ? t.td.dir === 'ret' ? 'work-ret' : 'work-go' : 'agenda', active ? 50 : t.src === 'work' ? 10 : 40, sources, t.key);
     });
   } else if (gpsSeed) segments.forEach(s => { if (!s.nonSpatial && s.start <= start) s.beforeGps = true; });
   const boundaries = new Set([midnight, start, end]);
@@ -1090,7 +1091,6 @@ function buildTenueDay(options = {}) {
 }
 /* ---------- vue du plan : le détail lit exactement le conseil du moteur ---------- */
 function renderTenue() {
-  if (!APP_CONTEXT.rendering) { renderAll(); return; }
   const el = $('#secTenue'); el.hidden = UI.view !== 'tenue'; if (el.hidden) return;
   const context = APP_CONTEXT.snapshot, l = context.currentLocation || curLoc(), m = M[l.id], tomorrow = UI.outfitDay === 1;
   const controls = `<div class="outfit-controls"><div class="seg" role="group" aria-label="Jour de la tenue">${[[0, 'Aujourd’hui'], [1, 'Demain']].map(([v, t]) => `<button data-act="outfit-day" data-v="${v}" aria-pressed="${UI.outfitDay === v}">${t}</button>`).join('')}</div>
@@ -1546,8 +1546,9 @@ function gaugeSvg(score, lv) {
 // Aperçu (advice) : prochain aller seulement, jusqu'à 4 h avant le départ prévu, GPS frais et à plus de 1 km de l'origine prévue ;
 //   relevés basse consommation uniquement, recalcul après 5 km ou 30 min. Suivi vivant dès min(départ prévu, départ conseillé) − 90 min.
 // Les notifications du relais restent calculées depuis le trajet planifié : la position n'est jamais envoyée à GitHub.
-// Rien n'est stocké (ni localStorage, ni twrc.croute) ni publié (ni obs.json, ni agenda, ni relais) : route, météo, relevé de
-// référence et phase vivent en mémoire et disparaissent à la fermeture. Aucun nouveau fournisseur externe : en mode trajet vivant,
+// Route, météo de route et références du moteur restent en mémoire : aucun tracé n'est stocké dans localStorage ou twrc.croute.
+// Le contexte canonique conserve le point courant et les faits minimaux de départ/arrivée ; rien n'est publié dans obs.json,
+// l'agenda ou le relais. Aucun nouveau fournisseur externe : en mode trajet vivant,
 // la position courante arrondie à 0,001° est en plus transmise à OSRM pour calculer le trajet restant.
 const ROUTE_MARGIN_MAX = 15;
 const routeTravelMin = (raw, reserved = 0) => {
@@ -1957,7 +1958,7 @@ function liveTrip(b, now) {
     // Une météo de route en attente n'efface pas une heure conseillée déjà
     // validée depuis la même origine, avec une géométrie encore courante.
     if (!run && LIVE.last && LIVE.last.adv && fresh && liveRouteCurrent(LIVE.route, liveOrigin(fix))) {
-      mb.dep = liveEffDep(b); mb.adv = { target: b.arr, dep: mb.dep };
+      mb.dep = liveEffDep(b); mb.adv = { target: b.arr, dep: mb.dep }; mb.live = LIVE.phase; mb.planDep = b.dep;
     }
     return LIVE.last ? { ...mb, liveLost: true } : mb;
   }
@@ -2029,9 +2030,14 @@ function appBuildTrips() {
   // modèle commun Trip : { src: 'work' | 'cal', carId (choix de voiture par trajet, prévu, pas encore utilisé), dep, arr, running, from, to, res, sum, seq, worst }
   let T = []; const workT = (td, running) => {
     if (workCancelled(td.dep.slice(0, 10))) return;
+    const plannedDep = td.dep, key = 'commute|' + plannedDep + '|' + td.dir;
+    if (TRIPSTART && TRIPSTART.key === key) {
+      const actual = appWorkTripData(td.dir, dayDiff(today, plannedDep.slice(0, 10)), localTs(TRIPSTART.at));
+      if (!actual.err) td = actual;
+    }
     const res = td.seq.length ? cars.map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w) : [];
-    T.push({ src: 'work', carId: null, dep: td.dep, arr: td.arr, running: running && !PLACE.conf, name: `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail`, from: td.fromName, to: td.toName,
-      res: res.length ? res : null, sum: td.seq.length ? summarize(td.seq) : null, seq: td.seq, wait: !td.seq.length, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, key: 'commute|' + td.dep + '|' + td.dir, obs: td.A && td.A.obs, td });
+    T.push({ src: 'work', carId: null, dep: td.dep, planDep: plannedDep, arr: td.arr, running: running && !PLACE.conf, name: `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail`, from: td.fromName, to: td.toName,
+      res: res.length ? res : null, sum: td.seq.length ? summarize(td.seq) : null, seq: td.seq, wait: !td.seq.length, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, key, obs: td.A && td.A.obs, td });
   };
   // trajet domicile-travail en cours (entre le départ et l'arrivée) : il reste affiché jusqu'à l'arrivée
   if (isCommuteDay(today, S.work.days)) ['go', 'ret'].forEach(d => { const t0 = toMin(d === 'go' ? S.work.dep : S.work.ret), n = toMin(nowHm);
@@ -2732,7 +2738,7 @@ async function ensureMids(pts) {
   softRender();
 }
 // dir : 'go' | 'ret' ; off : null = choix de l'interface, 'auto' = prochain départ
-function tripData(dir = UI.dir, off = null) {
+function tripData(dir = UI.dir, off = null, departure = null) {
   const w = S.work, fromId = dir === 'go' ? w.from : w.to, toId = dir === 'go' ? w.to : w.from;
   const A = M[fromId], B = M[toId], LA = locById(fromId), LB = locById(toId);
   const nm = id => (locById(id) || {}).name || id;
@@ -2744,7 +2750,7 @@ function tripData(dir = UI.dir, off = null) {
   if (off === 'auto') off = auto;
   else if (off == null) { if (UI.dayOff == null) UI.dayOff = auto; off = UI.dayOff; }   // un nombre = décalage imposé
   const dur = +w.durMin || 30;
-  const dep = addMin(today + 'T00:00', off * 1440 + toMin(time)), arr = addMin(dep, dur);
+  const dep = departure || addMin(today + 'T00:00', off * 1440 + toMin(time)), arr = addMin(dep, dur);
   if (workCancelled(dep.slice(0, 10))) return { err: 'Trajets domicile-travail annulés pour cette journée sur cet appareil.', cancelled: true };
   const hDep = dep.slice(0, 13) + ':00', hArr = arr.slice(0, 13) + ':00', seq = [];
   const dist = distKm(LA, LB), mids = midPoints(LA, LB);

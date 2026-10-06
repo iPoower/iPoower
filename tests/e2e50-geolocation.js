@@ -82,7 +82,7 @@ async function tripCycle(browser, iphone) {
       await p.locator('#placeBar [data-act=place-confirm][data-place=home]').click(); await s.settle();
       await check(tag + ' · override Je suis chez moi conservé', async () => { const x = await state(p); assert.equal(x.context.source, 'manual'); assert.equal(x.context.place.id, 'home'); assert(!/VPN/.test(await p.locator('#placeBar').innerText())); });
       await p.locator('#placeBar [data-act=place-leave]').click(); await s.settle();
-      await p.evaluate(() => { PLACE = { conf: null, last: null }; NETLOC = { lat: 48.9, lon: 2.25, acc: 6000, ts: Date.now() }; renderAll(); });
+      await p.evaluate(() => { USER_STORE.state.lastDeparture = null; liveReset(); PLACE = { conf: null, last: null }; NETLOC = { lat: 48.9, lon: 2.25, acc: 6000, ts: Date.now() }; renderAll(); });
       await check(tag + ' · IP seule : indéterminé, confirmation disponible', async () => { const x = await state(p); assert.equal(x.context.place, null); assert.equal(x.context.source, 'network'); assert.match(x.context.badge, /Position réseau approximative · précision ~6 km/); assert(!/VPN/.test(x.context.badge)); });
       if (!iphone) {
         await p.evaluate(() => { S.gpsAuto = 1; __permissionSet('denied'); });

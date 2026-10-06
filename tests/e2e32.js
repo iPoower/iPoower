@@ -54,7 +54,7 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
     // On remplit uniquement les mémoires déjà utilisées par l'app. Aucun appel
     // à buildTenueDay/dayplan dans les assertions, ni météo/agenda réellement lus.
     const scenario = opt => p.evaluate(o => {
-      DEMO.on = false; GPS = o.gps || null; S.locs = o.locs; S.customs = [];
+      DEMO.on = false; GPS = o.gps || null; S.locs = o.locs; S.customs = []; S.gpsAuto = 0;
       S.work = { from: 'home', to: 'work', dep: '08:00', ret: '18:00', durMin: 30, days: [1, 2, 3, 4, 5], ...(o.work || {}) };
       S.calDirect = o.direct || {}; UI.loc = o.loc || 'home'; UI.view = 'tenue'; UI.outfitDay = 0; UI.outfitOccasion = 'outing';
       M = {}; for (const k of Object.keys(RAW)) delete RAW[k];
@@ -79,7 +79,9 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
         const v = create({ ...item.loc, id, name: item.loc.label || item.loc.loc }, item.changes, item.mode);
         CALM[id] = { t: Date.now() - (item.age || 0), m: v.model };
       }
-      renderTenue();
+      // Injection de météo/planning : préparer la projection commune sans
+      // persister les points fictifs. Le rendu Tenue reste une lecture seule.
+      appRefreshContext({ persist: false }); renderTenue();
     }, { locs: [home, work], ...opt });
     const patch = (from, to, values) => ({ from, to, values, day: DAY });
     await p.goto(U); await settle(); await p.fill('#unlockPw', PW);

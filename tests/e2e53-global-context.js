@@ -4,7 +4,10 @@
 const assert = require('node:assert/strict');
 const { session, BR, errors, U } = require('./lib/context-session');
 let n = 0;
-async function check(label, fn) { await fn(); n++; console.log('✅ ' + label); }
+async function check(label, fn) {
+  try { await fn(); n++; console.log('✅ ' + label); }
+  catch (e) { console.log('❌ ' + label); console.log(String(e.message).replace(/\n/g, ' ')); throw e; }
+}
 const text = async (p, id) => (await p.locator(id).innerText()).replace(/\s+/g, ' ');
 const state = p => p.evaluate(() => {
   const c = APP_CONTEXT.snapshot;
@@ -12,6 +15,8 @@ const state = p => p.evaluate(() => {
     destination: c.destination && c.destination.id, active: c.activeTrip && c.activeTrip.key,
     activeDir: c.activeTrip && c.activeTrip.td && c.activeTrip.td.dir,
     nextDir: c.nextTrip && c.nextTrip.td && c.nextTrip.td.dir, weather: c.weatherLocationId,
+    departure: c.departureTime, activeArrival: c.activeTrip && c.activeTrip.arr,
+    forecastTimes: c.activeTrip && c.activeTrip.seq.map(q => q.hs[q.i].t),
     confirmation: c.confirmation && c.confirmation.placeId, done: Object.keys(USER_STORE.state.done),
     stored: JSON.parse(localStorage.getItem(USER_STORE.key)), updatedAt: c.updatedAt, revision: c.revision };
 });
@@ -24,6 +29,12 @@ async function allViews(s, stage, expected, home, work) {
       const x = await state(p); for (const [k, v] of Object.entries(expected)) assert.equal(x[k], v, k + ' · ' + JSON.stringify(x));
       assert(x.updatedAt > 0 && x.revision > 0); assert.equal(x.stored.place.conf && x.stored.place.conf.placeId, x.confirmation);
       assert.equal(x.stored.tripStart && x.stored.tripStart.key, x.active);
+      if (x.active) {
+        const dep = await p.evaluate(at => localTs(at), x.stored.tripStart.at);
+        assert.equal(x.departure, dep, 'départ réel partagé');
+        assert(x.forecastTimes.length > 0);
+        assert(x.forecastTimes.every(t => t >= dep.slice(0, 13) + ':00' && t <= x.activeArrival.slice(0, 13) + ':00'), 'prévisions du créneau réel · ' + JSON.stringify(x));
+      }
       const bar = await text(p, '#placeBar');
       if (expected.status === 'work') assert.match(bar, /AU TRAVAIL/);
       if (expected.status === 'home') assert.match(bar, /À LA MAISON/);
@@ -46,7 +57,7 @@ async function allViews(s, stage, expected, home, work) {
     for (const dev of ['pc', 'iphone']) for (const profile of ['public-propre', 'configure']) {
       const s = await session(browser, { at: '2026-10-05T06:20:00+02:00', dev, unlock: profile === 'configure' });
       let p = s.p;
-      if (profile === 'public-propre') { await p.locator('[data-act=nocode]').click(); await s.settle(4); }
+      if (profile === 'public-propre') { await Promise.all([p.waitForNavigation(), p.locator('[data-act=nocode]').click()]); await s.settle(8); }
       const tag = dev + ' · ' + profile, home = profile === 'configure' ? 'Maison test' : 'Lieu principal', work = profile === 'configure' ? 'Travail test' : 'Lieu de travail';
       let navigations = 0; const onNav = f => { if (f === p.mainFrame()) navigations++; }; p.on('framenavigated', onNav);
       await p.locator('#placeBar [data-act=place-confirm][data-place=home]').click();
@@ -89,7 +100,7 @@ async function allViews(s, stage, expected, home, work) {
       await s.c.close();
     }
     const cold = await session(browser, { at: '2026-10-05T06:20:00+02:00', unlock: false, meteo: '503', dev: 'iphone' });
-    await cold.p.locator('[data-act=nocode]').click(); await cold.settle(2);
+    await Promise.all([cold.p.waitForNavigation(), cold.p.locator('[data-act=nocode]').click()]); await cold.settle(8);
     await cold.p.locator('#placeBar [data-act=place-confirm][data-place=work]').click();
     await check('premier lancement sans météo : confirmation au travail et prochain retour conservés partout', async () => {
       for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) { await tab(cold.p, view); const x = await state(cold.p); assert.equal(x.status, 'work'); assert.equal(x.location, 'work'); assert.equal(x.nextDir, 'ret'); assert.match(await text(cold.p, '#placeBar'), /AU TRAVAIL/); }
@@ -108,4 +119,4 @@ async function allViews(s, stage, expected, home, work) {
     await check('aucune erreur JavaScript sur les quatre parcours', async () => assert.deepEqual(errors, []));
   } finally { await browser.close(); }
   console.log(`${n}/${n} scénarios OK · erreurs JS : aucune`);
-})().catch(e => { console.error(e); process.exit(1); });
+})().catch(e => { console.error('❌ contexte global · exception'); console.error(String(e.message)); console.error(e); process.exit(1); });
