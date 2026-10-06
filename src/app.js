@@ -481,7 +481,7 @@ function renderPlace() {
   let h;
   if (c.source === 'manual') {
     const k = K[c.place.kind] || K.custom;
-    h = `<div class="place on" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}<button class="btn sm" data-act="place-leave">🚗 ${esc(k.leave)}</button>${pl.filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</div>`;
+    h = `<div class="place on" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}<span class="pl-act"><button class="btn sm" data-act="place-leave">🚗 ${esc(k.leave)}</button>${pl.filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</span></div>`;
   } else {
     const arr = [work, home].filter(Boolean).map(p => ({ p, t: placeArrivalTrip(p.id) })).find(x => x.t);
     const btns = pl.filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
