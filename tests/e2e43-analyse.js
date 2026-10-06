@@ -19,7 +19,7 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
   const c = await b.newContext({ ...VP[dev], timezoneId: 'Europe/Paris', locale: 'fr-FR' });
   const p = await c.newPage(); await p.clock.install({ time: T0 });
   const S = { meteo, calls: 0 };
-  p.on('pageerror', e => errors.push(dev + ' · ' + e.message));
+  p.on('pageerror', e => errors.push(dev + ' · ' + (e.stack || e.message)));
   p.on('request', r => { try { hosts.add(new URL(r.url()).host); } catch (e) { /* url illisible */ } });
   await p.route('**/*', r => {
     const u = r.request().url(), J = o => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
@@ -86,8 +86,9 @@ const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
     check('1 · fiche : DONNÉE CONSTRUCTEUR séparée, rubriques « non disponible » sans modèle', /DONNÉE CONSTRUCTEUR/.test(a.all) && /DÉCODAGE DE LA MONTE SAISIE/.test(a.all) && /Étiquette UE : non disponible/.test(a.all) && !a.links.length);
     check('1 · aucune fausse précision : pas de « exactement », mention estimation et absence de capteur', !/exactement/i.test(a.all) && /aucune mesure de capteur/.test(a.all) && /aucun capteur direct/.test(a.all));
     const L = await layout(s.p, true);
+    if (process.env.LAB_DUMP) console.log('header layout ' + JSON.stringify(await s.p.evaluate(() => Object.fromEntries(['.top', '#viewSeg', '#locChips', '#placeBar', '#dayContext', '#notice', '#secLab', '#secLab .lab-hero'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return [q, { top: r.top, height: r.height, bottom: r.bottom }]; })))));
     check('1 · iPhone : aucun débordement, cibles ≥ 44 pt (onglets compris), verdict visible sans défiler', L.sw <= L.W && !L.wide.length && !L.small.length && L.heroBottom < 896, JSON.stringify(L));
-    if (process.env.LAB_SHOT) await s.p.locator('#secLab').screenshot({ path: process.env.LAB_SHOT + '-iphone.png' });   // capture locale facultative, après les mesures
+    if (process.env.LAB_SHOT) await s.p.screenshot({ path: process.env.LAB_SHOT + '-iphone.png' });   // capture locale facultative, après les mesures
     await s.p.locator('#secLab details[data-k=why] summary').click(); await s.p.locator('#secLab details[data-k=b-brake] summary').click(); await s.settle(1);
     await s.p.evaluate(() => renderAll()); await s.settle(2);
     check('1 · explications ouvertes au toucher et conservées après actualisation', await s.p.evaluate(() => document.querySelector('#secLab details[data-k=why]').open && document.querySelector('#secLab details[data-k=b-brake]').open));
