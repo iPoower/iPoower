@@ -5,6 +5,13 @@ on:
     paths: ['tools/road-datex/**', '.github/workflows/road-datex.yml']
   schedule:
     - cron: '4,12,20,28,36,44,52 * * * *'
+  # Le cron GitHub peut manquer des exécutions. L'horloge externe existante
+  # déclenche le relais météo ; sa fin renouvelle aussi le flux DATEX public.
+  # Une panne météo ne doit pas bloquer cette ingestion indépendante.
+  workflow_run:
+    workflows: ['Race Control · relais météo', 'Race Control · watchdog relais']
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: write
@@ -13,12 +20,17 @@ concurrency:
   cancel-in-progress: false
 jobs:
   datex:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_run' ||
+       (github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: main
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
