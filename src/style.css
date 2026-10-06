@@ -488,10 +488,22 @@ html { scroll-behavior: smooth; }
 .mod { box-shadow: 0 1px 0 rgba(255,255,255,.035) inset, 0 6px 16px -12px rgba(0,0,0,.7); }
 @media (max-width: 380px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .brf-m { grid-template-columns: 100px minmax(0, 1fr); } .gauge { width: 100px; height: 100px; } }
 @media (prefers-reduced-motion: reduce) { .g-fg { transition: none; } }
-#locChips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
-#locChips::-webkit-scrollbar { display: none; }
-#locChips .chip { flex: none; }
-#locChips .locs-more { flex-wrap: nowrap; flex-basis: auto; border-left: 0; padding: 0; }
+#locChips { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 6px; min-width: 0; }
+#locChips.has-gps { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 44px; }
+#locChips .chip { min-width: 0; min-height: 44px; text-align: left; border-radius: 6px; }
+#locChips .gpsc, #locChips .loc-grid .chip { display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: center; }
+#locChips .loc-toggle { justify-content: space-between; }
+.loc-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.loc-copy small { color: var(--fg2); font-size: 10px; line-height: 1.2; font-weight: 400; }
+.loc-toggle .loc-copy > span, .gpsc .loc-copy small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#locChips .locs-more { grid-column: 1 / -1; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.loc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.loc-grid .loc-copy > span { overflow-wrap: anywhere; }
+.loc-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+#locChips .loc-manage { width: 100%; justify-content: center; margin-top: 6px; color: var(--fg2); background: transparent; }
+#locMsg { grid-column: 1 / -1; overflow-wrap: anywhere; }
+@media (max-width: 360px) { .loc-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (min-width: 760px) { .loc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .loc-grid > :last-child:nth-child(odd) { grid-column: auto; } }
 .hdr-more { display: flex; flex-direction: column; gap: 8px; }
 .top { gap: 8px; padding-top: 10px; }
 .title small { font-size: 10px; margin-bottom: 4px; }
@@ -686,14 +698,19 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 
 /* ---------- lieu courant : confirmation de lieu, badge de provenance (sobre, une ligne quand c'est possible) ---------- */
 #placeBar:empty { display: none; }
-.place { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); font-size: 12.5px; min-width: 0; }
+.place { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 12.5px; min-width: 0; }
 .place b { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .06em; }
 .place.on { border-color: var(--go); background: var(--go-soft); }
 .place.on b { color: var(--go-t); }
 .place.arr { border-color: var(--accent); background: var(--accent-soft); }
 .place .pl-src { color: var(--fg2); min-width: 0; overflow-wrap: anywhere; flex: 1 1 220px; }
 .place .pl-src b { color: var(--fg); }
-.place .pl-act { display: flex; flex-wrap: wrap; gap: 6px; }
+.place .pl-info { display: flex; flex-direction: column; gap: 2px; color: var(--fg2); }
+.place .pl-act { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.place .pl-act .btn { display: grid; grid-template-columns: auto minmax(0, 1fr); text-align: left; align-content: center; min-height: 44px; min-width: 0; overflow-wrap: anywhere; }
+.place .pl-act > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+.place .pl-copy { display: flex; flex-direction: column; gap: 2px; }
+.place .pl-copy small { color: var(--fg2); font-size: 11px; font-weight: 400; }
 .place > span { min-width: 0; overflow-wrap: anywhere; }
 
 /* ---------- moteur de preuves v2 : carte expérimentale de l'onglet Météo ---------- */
@@ -720,3 +737,7 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .day-context{margin:10px 0;padding:4px 12px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
 .day-context .chips{margin-top:8px}.day-context button,.day-context summary{min-height:44px}.day-context summary{display:flex;align-items:center;cursor:pointer;overflow-wrap:anywhere}
 .day-context .day-editor[open]{padding-bottom:8px}
+.day-destination { margin-top: 8px; border-top: 1px solid var(--line); }
+.day-destination > .chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.day-destination .chip { min-width: 0; justify-content: center; overflow-wrap: anywhere; }
+.day-destination .chip:last-child:nth-child(odd) { grid-column: 1 / -1; }

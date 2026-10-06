@@ -151,6 +151,7 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     await s.p.locator('[data-act=view][data-v=pneus]').click(); await s.settle(2); x = await st(s.p);
     const route = await s.p.locator('#secBrf .brf-r').innerText();
     check('11 ter · lieu confirmé nommé, retour depuis le vrai Travail', /AU TRAVAIL · Travail test/.test(x.bar) && route.replace(/\s+/g, ' ').trim().toLowerCase() === 'travail test → maison test', route + ' | ' + x.bar);
+    await s.p.locator('#locChips [data-act=locs-toggle]').click();
     const labels = await s.p.locator('#locChips [data-act=loc]').evaluateAll(els => els.map(e => e.getAttribute('aria-label') || '').join(' | '));
     check('11 ter · lieux météo : domicile, travail et destination identifiés', /Météo : Travail test · 🏢 Travail/.test(labels) && /Météo : Destination ancienne test · 📌 Destination/.test(labels), labels);
     await s.p.evaluate(() => { S.work.to = 'c-legacy'; markEdit('work.to'); saveSettings(); });

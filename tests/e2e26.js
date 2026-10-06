@@ -28,9 +28,9 @@ const sec=async()=>({cur:await p.$eval('#secCur',x=>x.innerText.replace(/\s+/g,'
 const preset=JSON.parse(fs.readFileSync('preset.json','utf8')), names=new Map([...preset.locs,...preset.customs].map(l=>[l.id,l.name]));let fail=0;
 const chips=await p.$$eval('[data-act=loc]',x=>x.map(y=>({id:y.dataset.id,t:y.textContent.trim()})));console.log('pastilles :',chips.map(c=>c.t).join(' | '));
 for(const v of ['pneus','meteo']){await p.click(`[data-act=view][data-v=${v}]`).catch(()=>{});await p.waitForTimeout(800);console.log('== vue',v);
- for(const ch of chips){if(v==='meteo'){await p.click('[data-act=locs-toggle]');await p.waitForTimeout(400);}await p.click(`[data-act=loc][data-id="${ch.id}"]`);await p.waitForTimeout(1200);const s=await sec();
-  const lbl=v==='meteo'?await p.$eval('[data-act=locs-toggle]',x=>x.textContent.trim()):'';const name=names.get(ch.id);const ok=!!name&&(v==='meteo'?lbl.includes(name):s.pressed.length===1&&s.pressed[0]===ch.t)&&s.cur.toLowerCase().includes(name.split(' / ')[0].toLowerCase());if(!ok)fail++;
-  console.log((ok?'✅':'❌')+' '+ch.t.padEnd(26)+'→ actif: '+(v==='meteo'?lbl:s.pressed.join(','))+' | '+s.cur);}
+ for(const ch of chips){await p.click('[data-act=locs-toggle]');await p.waitForTimeout(400);await p.click(`[data-act=loc][data-id="${ch.id}"]`);await p.waitForTimeout(1200);const s=await sec();
+  const lbl=await p.$eval('[data-act=locs-toggle]',x=>x.textContent.trim());const name=names.get(ch.id);const ok=!!name&&lbl.includes(name)&&s.pressed.length===1&&s.pressed[0]===ch.t&&s.cur.toLowerCase().includes(name.split(' / ')[0].toLowerCase());if(!ok)fail++;
+  console.log((ok?'✅':'❌')+' '+ch.t.padEnd(26)+'→ actif: '+lbl+' | '+s.cur);}
 }
 const lb=await p.$('[data-act=locate]');console.log('bouton Ma position :',!!lb);if(lb){await lb.click();await p.waitForTimeout(4000);const s=await sec();console.log('après Ma position → actif:',s.pressed.join(','),'|',s.cur);}
 await p.screenshot({path:SP+'/locs.png'});

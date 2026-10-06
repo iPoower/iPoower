@@ -69,6 +69,7 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
     await p.evaluate(() => { M = {}; renderTenue(); });
     check('météo absente : aucun vêtement prétendument calculé', /Météo insuffisante/.test(await txt()) && await p.locator('.outfit-piece').count() === 0);
     await p.evaluate(() => startDemo('doux'));
+    await p.click('[data-act=locs-toggle]');
     await p.click('[data-act=loc][data-id=work]');
     check('le lieu choisi met à jour le panneau Tenue', /Travail test/i.test(await p.locator('#secTenue h2').innerText()));
     for (const width of [320, 414, 1280]) {

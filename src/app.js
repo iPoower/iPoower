@@ -477,11 +477,11 @@ function placeLeave() {
 function renderPlace() {
   const el = $('#placeBar'); if (!el) return;
   const c = placeNow(), K = PLACE_KIND, pl = placeList(), work = pl.find(p => p.kind === 'work'), home = pl.find(p => p.kind === 'home');
-  const confirm = (p, arrival = false) => `<button class="btn${arrival ? ' pri' : ''} sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="${arrival ? 'arrival' : 'manual'}">${arrival ? '✅' : (K[p.kind] || K.custom).icon} ${esc(arrival ? (K[p.kind] || K.custom).arrive : (K[p.kind] || K.custom).already)} · ${esc(p.name)}</button>`;
+  const confirm = (p, arrival = false) => `<button class="btn${arrival ? ' pri' : ''} sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="${arrival ? 'arrival' : 'manual'}"><span aria-hidden="true">${arrival ? '✅' : (K[p.kind] || K.custom).icon}</span><span class="pl-copy"><span>${esc(arrival ? (K[p.kind] || K.custom).arrive : (K[p.kind] || K.custom).already)}</span><small>${esc(p.name)}</small></span></button>`;
   let h;
   if (c.source === 'manual') {
     const k = K[c.place.kind] || K.custom;
-    h = `<div class="place on" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}<span class="pl-act"><button class="btn sm" data-act="place-leave">🚗 ${esc(k.leave)}</button>${pl.filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</span></div>`;
+    h = `<div class="place on" role="status"><span class="pl-info"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}</span><span class="pl-act"><button class="btn sm" data-act="place-leave"><span aria-hidden="true">🚗</span><span>${esc(k.leave)}</span></button>${pl.filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</span></div>`;
   } else {
     const arr = [work, home].filter(Boolean).map(p => ({ p, t: placeArrivalTrip(p.id) })).find(x => x.t);
     const btns = pl.filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
@@ -718,21 +718,16 @@ function renderStatus() {
     <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${blocked ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
 }
 function renderLocChips() {
-  const gpsChip = GPS ? `<button class="chip gpsc" data-act="loc" data-id="gps" aria-pressed="${UI.loc === 'gps'}">📍 ${esc(GPS.name)}${GPS.acc ? ` <small>±${GPS.acc < 1000 ? GPS.acc + ' m' : (GPS.acc / 1000).toFixed(1) + ' km'}</small>` : ''}</button>`
-    : `<button class="chip gpsc" data-act="locate">📍 Ma position</button>`;
-  const fixed = allLocs().filter(l => !l.gps), chips = fixed.map(l => { const role = l.id === S.work.to ? '🏢 Travail' : l.id === S.locs[0].id ? '🏠 Domicile' : '📌 Destination'; return `<button class="chip" data-act="loc" data-id="${esc(l.id)}" aria-label="Météo : ${esc(l.name)} · ${role}" aria-pressed="${l.id === UI.loc}">${role.split(' ')[0]} ${esc(l.name)}</button>`; }).join('');
-  const refresh = GPS ? '<button class="chip" data-act="locate" aria-label="Actualiser ma position">↻ 📍</button>' : '';
-  if (UI.view === 'meteo') {
-    // mode Météo : ma position en avant, les lieux fixes repliés dans un seul bouton
-    const sel = fixed.find(l => l.id === UI.loc);
-    $('#locChips').innerHTML = gpsChip + refresh +
-      `<button class="chip${sel ? ' on' : ''}" data-act="locs-toggle" aria-expanded="${!!UI.locsOpen}">📌 ${sel ? esc(sel.name) : 'Mes lieux'} ${UI.locsOpen ? '▴' : '▾'}</button>` +
-      (UI.locsOpen ? `<div class="chips locs-more">${chips}<button class="chip" data-act="goset">+ Destination</button></div>` : '') + '<span class="sub" id="locMsg" hidden></span>';
-    renderPlace(); return;
-  }
-  $('#locChips').innerHTML = gpsChip + chips + `<button class="chip" data-act="goset">+ Destination</button>${refresh}<span class="sub" id="locMsg" hidden></span>`;
-  const selected = allLocs().find(l => l.id === UI.loc);
-  if (selected) $('#locChips').insertAdjacentHTML('beforeend', `<span class="sub" style="flex-basis:100%">Météo affichée : ${esc(selected.name)}</span>`);
+  const el = $('#locChips');
+  const gpsChip = GPS ? `<button class="chip gpsc" data-act="loc" data-id="gps" aria-label="Météo : ${esc(GPS.name)} · Ma position${GPS.acc ? ' · précision ±' + esc(GPS.acc) + ' m' : ''}" aria-pressed="${UI.loc === 'gps'}"><span aria-hidden="true">📍</span><span class="loc-copy"><span>Ma position</span><small>${esc(GPS.name)}</small></span></button>`
+    : `<button class="chip gpsc" data-act="locate"><span aria-hidden="true">📍</span><span>Ma position</span></button>`;
+  const fixed = allLocs().filter(l => !l.gps), chips = fixed.map(l => { const role = l.id === S.work.to ? '🏢 Travail' : l.id === S.locs[0].id ? '🏠 Domicile' : '📌 Destination'; return `<button class="chip" data-act="loc" data-id="${esc(l.id)}" aria-label="Météo : ${esc(l.name)} · ${role}" aria-pressed="${l.id === UI.loc}"><span aria-hidden="true">${role.split(' ')[0]}</span><span class="loc-copy"><small>${role.slice(role.indexOf(' ') + 1)}</small><span>${esc(l.name)}</span></span></button>`; }).join('');
+  const refresh = GPS ? '<button class="chip" data-act="locate" aria-label="Actualiser ma position">↻</button>' : '';
+  const sel = fixed.find(l => l.id === UI.loc);
+  el.classList.toggle('has-gps', !!GPS);
+  el.innerHTML = gpsChip +
+    `<button class="chip loc-toggle${sel ? ' on' : ''}" data-act="locs-toggle" aria-label="Mes lieux météo${sel ? ' · ' + esc(sel.name) : ''}" aria-controls="locChoices" aria-expanded="${!!UI.locsOpen}"><span class="loc-copy"><small>${sel ? 'Météo consultée' : 'Météo des lieux'}</small><span>${sel ? esc(sel.name) : 'Mes lieux'}</span></span><span aria-hidden="true">${UI.locsOpen ? '▴' : '▾'}</span></button>` + refresh +
+    `<div id="locChoices" class="locs-more" ${UI.locsOpen ? '' : 'hidden'}><div class="loc-grid">${chips}</div><button class="chip loc-manage" data-act="goset">Gérer mes lieux</button></div><span class="sub" id="locMsg" hidden></span>`;
   renderPlace();
 }
 function renderSrc() {
@@ -3314,7 +3309,7 @@ document.addEventListener('click', async e => {
   else if (a === 'demo-off') { DEMO.on = false; rebuild(); renderAll(); refreshAll(); }
   else if (a === 'labcar') { appSetCar(t.dataset.car); }
   else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  else if (a === 'goset') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
+  else if (a === 'goset') { UI.locsOpen = false; renderLocChips(); const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
   else if (a === 'reset') { PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; USER_STORE.state.dayContext = {}; APP_CONTEXT.weatherPreview = null; liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
   else if (a === 'geo-search') {
     const input = $('#geoQ'), q = (input.value || '').trim(), box = $('#geoHits'), gen = ++geoSearchGen; window.__hits = [];
