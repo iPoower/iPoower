@@ -1,4 +1,21 @@
-# Tyre Weather Race Control
+# Bryan — Cloud · DevSecOps · Cybersecurity
+
+> Building production-minded projects while progressing toward Cloud, DevSecOps and cybersecurity roles — with a strong focus on reliability, automation, testing and privacy-by-design.
+
+## Featured work
+
+- **🏎️ Tyre Weather Race Control** — this repository. Mobile-first PWA combining weather, GPS, routing and tyre-state logic, with Playwright E2E tests, GitHub Actions CI/CD, offline support and privacy controls.  
+  **Live:** https://ipoower.github.io/iPoower/race-control/
+- **🎓 [Reconversion Control](https://github.com/iPoower/Reconversion-Control)** — learning cockpit for Cyber · Cloud · DevSecOps, with guided progression, practical labs, bilingual learning and automated browser tests.  
+  **Live:** https://ipoower.github.io/Reconversion-Control/
+
+**Current engineering focus:** Linux · Networking · JavaScript · PWA · Playwright · GitHub Actions · CI/CD · Cloud · DevSecOps · Security
+
+> **FR —** Je construis des projets concrets et testés pour transformer ma reconversion Cloud / DevSecOps / cybersécurité en compétences démontrables.
+
+---
+
+## 🏎️ Tyre Weather Race Control — technical documentation
 
 Application web personnelle : avant chaque trajet (domicile-travail ou agenda), elle croise météo, observations, température de chaussée estimée, pneus montés et itinéraire pour donner un verdict de GO à NO GO.
 
