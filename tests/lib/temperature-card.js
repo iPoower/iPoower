@@ -20,7 +20,7 @@ async function run(browser, check) {
       // Comparaison des surfaces des quatre onglets, sans modifier leur code ni leurs données.
       const surfaces = {};
       for (const view of ['pneus', 'tenue', 'analyse', 'meteo']) {
-        await s.p.locator(`[data-act=view][data-v=${view}]`).click(); await s.settle(1);
+        await s.p.locator(`#viewSeg [data-act=view][data-v=${view}]`).click(); await s.settle(1);
         surfaces[view] = await s.p.evaluate(() => {
           const rows = [...document.querySelectorAll('.mod, .readout, .outfit-base, .outfit-moment, .lab-hero, .wx-blk')].filter(e => e.getBoundingClientRect().height > 0);
           return rows.map(e => { const c = getComputedStyle(e); return { cls: e.className, bg: c.background, border: c.border, radius: c.borderRadius, color: c.color, shadow: c.boxShadow, font: c.fontFamily }; });
@@ -78,8 +78,8 @@ async function run(browser, check) {
         }
       }
       // Les handlers existants restent utilisables après les rerenders du composant.
-      await s.p.locator('[data-act=view][data-v=pneus]').click(); await s.settle(1);
-      await s.p.locator('[data-act=view][data-v=meteo]').click(); await s.settle(1);
+      await s.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await s.settle(1);
+      await s.p.locator('#viewSeg [data-act=view][data-v=meteo]').click(); await s.settle(1);
       check(device + ' : retour à Météo et aucune erreur JavaScript', await s.p.locator('.wx-now').isVisible() && !s.errors.length, s.errors.join(' | '));
     } finally { await s.c.close(); }
   }
