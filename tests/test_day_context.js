@@ -57,6 +57,37 @@ function appFixture() {
     USER_STORE: { state: { dayContext: {} } }, placeList: () => places, hasTires: car => car.tire.type !== 'none', appAction: fn => fn() };
   c.TCARS = () => c.S.cars.filter(c.hasTires); vm.createContext(c); vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/app/day-context.js'), 'utf8'), c); return c;
 }
+function commuteFixture(place, clock) {
+  const a = appFixture(), at = t(clock);
+  a.Date = class extends Date { static now() { return at; } };
+  a.S.work = { from: 'home', to: 'work', days: [2], dep: '07:00', ret: '18:00' };
+  a.localTs = () => clock; a.placeToday = () => clock.slice(0, 10);
+  a.toMin = s => +s.slice(0, 2) * 60 + +s.slice(3, 5);
+  a.commuteDays = days => days;
+  a.locById = id => places.find(p => p.id === id); a.TRIPSTART = null;
+  a.placeNow = () => ({ source: 'manual', confirmed: { at }, place });
+  return a;
+}
+check('domicile confirmé avant l’aller : le retour futur part toujours du travail', () => {
+  const a = commuteFixture(places[0], '2026-10-06T06:30');
+  assert.equal(a.appCommuteEndpoints('go', '2026-10-06', 'aller').from.id, 'home');
+  const ret = a.appCommuteEndpoints('ret', '2026-10-06', 'retour');
+  assert.equal(ret.from.id, 'work'); assert.equal(ret.to.id, 'home');
+});
+check('autre lieu confirmé le matin : origine réelle de l’aller, origine prévue du retour', () => {
+  const a = commuteFixture(places[2], '2026-10-06T06:30');
+  assert.equal(a.appCommuteEndpoints('go', '2026-10-06', 'aller').from.id, places[2].id);
+  assert.equal(a.appCommuteEndpoints('ret', '2026-10-06', 'retour').from.id, 'work');
+});
+check('travail confirmé : le retour courant conserve l’origine réelle au travail', () => {
+  const a = commuteFixture(places[1], '2026-10-06T17:30');
+  assert.equal(a.appCommuteEndpoints('ret', '2026-10-06', 'retour').from.id, 'work');
+});
+check('départ réel déjà enregistré : son origine reste prioritaire sur la prochaine direction', () => {
+  const a = commuteFixture(places[0], '2026-10-06T06:30');
+  a.TRIPSTART = { key: 'retour', trip: { fromId: places[2].id } };
+  assert.equal(a.appCommuteEndpoints('ret', '2026-10-06', 'retour').from.id, places[2].id);
+});
 check('voiture configurée sans monte renseignée reste sélectionnable, sans analyser les autres voitures', () => {
   const a = appFixture(); a.appSetCar('b'); assert.equal(a.appDay().activeCarId, 'b'); assert.equal(a.appTripCars()[0].id, 'b');
 });

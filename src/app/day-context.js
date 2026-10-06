@@ -14,8 +14,15 @@ function appRealOrigin(date = placeToday()) {
   if (confirmed && observation && observation.source === 'gps' && observation.at > confirmed.at && observation.placeId !== confirmed.placeId) return null;
   return DayContext.morningOrigin(appDay(), Date.now(), placeList());
 }
+function appCommuteDirection(clock) {
+  const now = toMin(clock.slice(11, 16)), dep = toMin(S.work.dep), ret = toMin(S.work.ret);
+  const place = placeNow().place, atWork = place && place.id === S.work.to, atHome = place && place.id === S.work.from;
+  return appWorkOn(clock) && (atWork || !atHome && now >= dep && now < ret) ? 'ret' : 'go';
+}
 function appCommuteEndpoints(dir, date, key) {
-  const real = appRealOrigin(date), n = appDay().nextDestination, start = TRIPSTART && TRIPSTART.key === key && TRIPSTART.trip;
+  // Le lieu réel pilote le prochain commute ; les jambes futures gardent leur origine prévue.
+  const real = dir === appCommuteDirection(localTs(Date.now())) ? appRealOrigin(date) : null;
+  const n = appDay().nextDestination, start = TRIPSTART && TRIPSTART.key === key && TRIPSTART.trip;
   const from = start && locById(start.fromId) || real || locById(dir === 'go' ? S.work.from : S.work.to);
   const to = n && n.tripKey === key ? locById(n.placeId) : locById(dir === 'go' ? S.work.to : S.work.from);
   return { from, to };

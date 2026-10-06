@@ -60,6 +60,13 @@ async function allViews(s, stage, expected, home, work) {
       if (expected.status === 'work') assert.match(bar, /AU TRAVAIL/);
       if (expected.status === 'home') assert.match(bar, /À LA MAISON/);
       if (expected.status === 'travel') assert.match(bar, /EN ROUTE/);
+      if (expected.status === 'home' && expected.nextDir === 'go') {
+        const futureReturn = await p.evaluate(() => {
+          const t = APP_CONTEXT.snapshot.plannedTrips.find(t => t.src === 'work' && t.td.dir === 'ret');
+          return t && { from: t.td.LA.id, to: t.td.LB.id };
+        });
+        if (futureReturn) { assert.equal(futureReturn.from, 'work', 'origine du retour futur conservée'); assert.equal(futureReturn.to, 'home'); }
+      }
       if (view === 'pneus' && expected.status !== 'travel') {
         const weather = await text(p, '#secCur'), label = x.location === 'work' ? work : home;
         assert(weather.toLowerCase().includes(label.toLowerCase()), 'météo actuelle du lieu confirmé · ' + label + ' · ' + weather);

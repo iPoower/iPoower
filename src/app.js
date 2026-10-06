@@ -1517,10 +1517,10 @@ function frostBand(Tr) {
 function nextTrip() {
   const m = M[S.work.from] || M[S.locs[0].id];
   const clock = DEMO.on && m ? m.nowStr : nowIn(m && m.tz || 'Europe/Paris');
-  const now = toMin(clock.slice(11, 16)), dep = toMin(S.work.dep), ret = toMin(S.work.ret);
+  const now = toMin(clock.slice(11, 16)), ret = toMin(S.work.ret);
   const place = placeNow(), atWork = place.place && place.place.id === S.work.to, atHome = place.place && place.place.id === S.work.from;
   const workingDay = appWorkOn(clock);
-  const dir = workingDay && (atWork || !atHome && now >= dep && now < ret) ? 'ret' : 'go';
+  const dir = appCommuteDirection(clock);
   const td = appWorkTripData(dir, workingDay && (atWork || atHome && now < ret) ? 0 : 'auto');
   const completed = td && LIVE.done['commute|' + td.dep + '|' + td.dir];
   if (td && !td.err && !completed) return td;
