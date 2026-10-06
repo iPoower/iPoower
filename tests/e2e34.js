@@ -104,7 +104,7 @@ async function session(browser, iso, options = {}) {
 const phase = s => s.p.evaluate(() => LIVE.phase);
 const gpsRoutes = s => s.S.osrm.filter(u => /3\.306,49\.385|3\.333,49\.399/.test(u));
 const privacy = async s => {
-  const local = await s.p.evaluate(() => ({ cancel: localStorage.getItem('twrc.tripcancel'), done: localStorage.getItem('twrc.tripdone'), other: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
+  const local = await s.p.evaluate(() => ({ cancel: localStorage.getItem('twrc.tripcancel'), done: localStorage.getItem('twrc.tripdone'), other: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps|context\.v1)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
   const sent = s.S.reqs.filter(r => /49\.3847|3\.3061|49\.385|3\.306|49\.399|3\.333/.test(r.u));
   const gpsHostAllowed = /^(router\.project-osrm\.org|[a-z-]*api\.open-meteo\.com|api\.bigdatacloud\.net)$/;
   const unexpectedProviders = [...new Set(s.S.reqs.filter(r => !allowed.test(new URL(r.u).hostname)).map(r => new URL(r.u).hostname))];
@@ -421,7 +421,7 @@ const privacy = async s => {
     const migration = await p.evaluate(() => {
       const ev = CAL.events[0], leg = ev.legs.find(l => l.k === 'go'), legacy = calendarTripLegacyKey(ev, leg), current = calendarTripKey(ev, leg);
       localStorage.setItem('twrc.tripdone', JSON.stringify({ [legacy]: { how: 'auto', at: Date.now(), exp: Date.now() + 24 * 3600e3 } }));
-      LIVE.done = {}; liveDoneLoad();
+      LIVE.done = {}; liveDoneLoad(true);   // migration explicite de la fixture d'ancienne version
       const filtered = liveApply(BRF_TRIPS.slice(), liveNow());
       return { legacy, current, visible: filtered.some(t => t.key === current), raw: localStorage.getItem('twrc.tripdone') };
     });

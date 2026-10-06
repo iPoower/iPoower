@@ -51,6 +51,9 @@ SUITE.push(['test_road_intelligence.js', 'route : géométrie, sens, progression
   ['test_road_providers.js', 'fournisseurs : pannes isolées, fraîcheur, quota, cache licite, annulation et flux', false],
   ['test_road_datex.js', 'DATEX serveur : snapshot, deltas, fin, validité, atomique et conservation au déploiement', false],
   ['e2e51-road.js', 'Live Road Intelligence : cockpit PC/iPhone, clics, OSRM, DATEX, fraîcheur, panne et confidentialité', true],
-  ['e2e52-road-sw.js', 'SW réel : migration v9/v10, DATEX, hors ligne, rétention et aucun faux LIVE', true, 'chromium']);
+  ['e2e52-road-sw.js', 'SW réel : migration v9/v11, DATEX, hors ligne, rétention et aucun faux LIVE', true, 'chromium']);
+SUITE.push(['test_userctx.js', 'contexte global : migration, transactions, persistance, fraîcheur et fenêtres', false],
+  ['e2e53-global-context.js', 'contexte global : cycle maison/travail/retour dans les quatre vues, profils, iPhone/PC et rechargement', true],
+  ['e2e54-context-sw.js', 'contexte global et vrai SW : migration v10/v11, cache, cycle de trajet et réouverture PWA hors ligne', true, 'chromium']);
 SUITE.push(['test_app_source.js', 'assemblage statique : ordre, portée et inclusions sûres', false], ['test_ci_lanes.js', 'CI : isolation, couverture complète et refus des faux verts', false]);
 module.exports = { SUITE };

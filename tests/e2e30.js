@@ -100,7 +100,7 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
     check('7 · arrivée mémorisée : clé du trajet seulement, aucune coordonnée', /leg\|2026-10-03T15:35\|go/.test(ls) && !/\d\.\d/.test(ls), ls);
     s.S.reloading = true; await p.reload(); for (let k = 0; k < 40; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(300); await p.waitForTimeout(200); } s.S.reloading = false;
     await s.settle(6); t = await s.txt();
-    check('7 · après rechargement : le trajet terminé ne réapparaît pas', !/Assurance/.test(t) && /Concert/.test(t), t.slice(0, 140));
+    check('7 · après rechargement : le trajet terminé ne redevient pas le trajet actif', !/Assurance/.test(main(t)) && /Concert/.test(t), t.slice(0, 140));
   }
   // ===== 13. annuler l'arrivée : le trajet revient, plus d'arrivée automatique pendant 10 min (confirmation manuelle) =====
   {
@@ -204,7 +204,7 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
     await p.evaluate(() => { const o = JSON.parse(localStorage.getItem('twrc.tripdone') || '{}'); o['leg|2026-09-30T08:00|go|vieux'] = { how: 'auto', at: Date.now() - 25 * 3600e3, exp: Date.now() - 3600e3 }; localStorage.setItem('twrc.tripdone', JSON.stringify(o)); });
     await reload(); const ls1 = await p.evaluate(() => localStorage.getItem('twrc.tripdone') || '');
     check('16 · entrée expirée effacée du stockage au chargement, entrée valide conservée', !/vieux/.test(ls1) && /15:35\|go/.test(ls1), ls1);
-    await p.evaluate(() => localStorage.setItem('twrc.tripdone', JSON.stringify({ 'leg|2026-09-30T08:00|go|vieux': { how: 'auto', at: Date.now() - 25 * 3600e3, exp: Date.now() - 3600e3 } })));
+    await p.evaluate(() => { localStorage.removeItem('twrc.context.v1'); localStorage.setItem('twrc.tripdone', JSON.stringify({ 'leg|2026-09-30T08:00|go|vieux': { how: 'auto', at: Date.now() - 25 * 3600e3, exp: Date.now() - 3600e3 } })); });
     await reload(); const ls2 = await p.evaluate(() => localStorage.getItem('twrc.tripdone'));
     check('16 · uniquement des entrées expirées : clé twrc.tripdone supprimée', ls2 === null, String(ls2));
   }

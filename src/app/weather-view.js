@@ -4,7 +4,7 @@
 const WX_IC = { rain: '🌧', snow: '🌨', fog: '🌫', wind: '💨', ice: '❄️', temp: '🌡', sun: '🌅', better: '🌤', zero: '🧊', dep: '🚗', arr: '🏁' };
 function wxTrips(clockModel) {
   const offSec = clockModel && clockModel.payload && clockModel.payload.utc_offset_seconds != null ? clockModel.payload.utc_offset_seconds : 7200;
-  return BRF_SHOWN.filter(t => !t.originPending && t.dep).map((t, k) => {
+  return APP_CONTEXT.snapshot.trips.filter(t => !t.originPending && t.dep).map((t, k) => {
     const seq = t.seq || [], last = seq.length - 1;
     const points = seq.map((q, j) => {
       const x = q.hs && q.hs[q.i]; if (!x) return null;
@@ -18,7 +18,7 @@ function wxTrips(clockModel) {
       const g = glareCheck(t.l.from, t.l.to, t.dep, t.l.min, offSec, cloudAt).glare; if (g) glare = { ts: g.ts };
     }
     const label = t.src === 'work' ? (t.td && t.td.dir === 'ret' ? 'trajet retour' : 'trajet aller') : t.l && t.l.k === 'ret' ? 'trajet retour' : `trajet vers ${t.to || 'le rendez-vous'}`;
-    return { id: t.key || 'trip' + k, label, from: t.from || null, to: t.to || null, dep: t.dep, arr: t.arr || t.dep, km: t.l && t.l.km != null ? t.l.km : null, glare, points };
+    return { id: t.key || 'trip' + k, label, from: t.from || null, to: t.to || null, dep: t.dep, arr: t.arr || t.dep, running: !!(APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.key === t.key), km: t.l && t.l.km != null ? t.l.km : null, glare, points };
   });
 }
 function wxInput() {
@@ -174,5 +174,3 @@ function evidenceHtml() {
     <details class="wx-how" data-k="evprov"><summary>Provenance du verdict brouillard${r.worst.label ? ' (' + esc(r.worst.label) + ')' : ''}</summary><ul class="lab-why">${prov}</ul><p class="sub">A observation · C modèle · D terrain · E physique. Une observation pèse selon sa distance, son âge et l’échéance ; l’absence de signalement ne prouve rien.</p></details>
     <div class="ev-rep"><p class="sub"><b>Signaler les conditions réelles</b> (votre observation, non officielle)${mine ? ' · récents : ' + esc(mine) : ''}</p><div class="chips">${rep}</div></div></div></details>`;
 }
-
-

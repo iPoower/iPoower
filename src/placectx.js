@@ -50,7 +50,7 @@ function placeObserve({ fix, previous, logical, context, pending, places, now })
   const retained = context && context.confirmed || current && logical && placeDistance(current, logical) > 0.35 ? null : logical;
   const held = (reason, next) => ({ accept: true, hold: true, logical: retained, pending: next, reason });
   if (current && target !== current.id && placeDistance(current, fix) <= Math.max(0.35, 3 * fix.acc / 1000)) return held('hystérésis : bord de la géofence, lieu conservé', null);
-  const changing = current && target !== current.id || !current && target && logical;
+  const changing = current && target !== current.id || !current && target;
   if (changing) {
     const key = target || 'other', coherent = pending && pending.key === key && fix.ts > pending.fix.ts && fix.ts - pending.fix.ts <= 2 * 60e3
       && placeDistance(pending.fix, fix) <= Math.max(0.5, (fix.ts - pending.fix.ts) / 3600e3 * PLACE_VMAX + (pending.fix.acc + fix.acc) / 1000);
