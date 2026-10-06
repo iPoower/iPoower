@@ -29,10 +29,10 @@ Le libellé secondaire marginal répète l'avertissement du verdict et provoque 
 Le premier essai compact laisse encore 900 px dans WebKit avec police de secours.
 L'explication scientifique complète est déjà conservée dans `thermal.why`.
 
-## Correctif minimal séparé (pas encore livré)
+## Correctif minimal séparé (fusionné, déploiement en attente)
 
 - Branche : `fix/pr44-thermal-mobile-label`, issue du main fusionné ci-dessus.
-- PR corrective : #46, Draft, diff limité à trois fichiers.
+- PR corrective : #46, sortie du Draft puis fusionnée, diff limité à trois fichiers.
 - HEAD sauvegardé : `7bec6b630f1df82b16771e4f4b65304d03a11ae0`.
 - Une seule valeur de présentation modifiée : `hero.warm` marginal → « limite ».
 - Tous les calculs, plages, tendances, niveaux et explications détaillées sont conservés.
@@ -42,15 +42,19 @@ L'explication scientifique complète est déjà conservée dans `thermal.why`.
 - Tests unitaires : 36/36 ; contre-tests : 16/16.
 - Run ciblé Chromium/WebKit : `37523830814`, SUCCESS, 29/29 scénarios dans chaque moteur.
 - Workflow ciblé temporaire retiré ; source applicative identique à la validation ciblée.
-- CI standard complète sur le HEAD de #46 en cours : `37524203298`.
+- CI standard complète sur le HEAD de #46 : `37524203298`, SUCCESS.
 - Confidentialité PR : run `37524203286`, SUCCESS.
 - Build applicatif attendu du correctif : `d70a17007dbf`.
+- Nouveau main / squash du correctif : `239b07b696c8ce94007222236ec2a48722228263`.
+- CI complète main et déploiement standard en cours : `37526089979`.
+- Production actuellement observée reste prod-38 tant que le déploiement n'est pas vérifié.
 
 ## Prochaine action exacte
 
-1. Attendre le résultat de la CI complète `37524203298`, conserver/classifier tout échec.
-2. Si vert : relire l'état réel de #46 / main / reviews, Ready puis merge sur CI verte.
-3. Attendre la CI complète et le déploiement standard du nouveau main.
+1. Attendre la CI complète main et le déploiement standard `37526089979` ;
+   conserver/classifier tout échec, ne pas corriger à l'aveugle.
+2. Vérifier que le main public est `239b07b696c8ce94007222236ec2a48722228263`.
+3. Attendre la vérification normale du hash HTML du build par le job deploy.
 4. Mettre les SHA/build attendus du probe sur la version effectivement publiée.
 5. Exécuter `tests/production-thermal-smoke.js` depuis `verify/pr44-production` :
    public HTML/SW/assets, profils jetables, desktop/iPhone Chromium/WebKit,
