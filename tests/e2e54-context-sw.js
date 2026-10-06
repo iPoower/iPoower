@@ -16,8 +16,15 @@ const server = http.createServer((req, res) => {
 });
 async function check(label, fn) { await fn(); n++; console.log('✅ ' + label); }
 const read = p => p.evaluate(() => ({ state: APP_CONTEXT.snapshot.status, place: APP_CONTEXT.snapshot.currentLocation && APP_CONTEXT.snapshot.currentLocation.id,
-  origin: APP_CONTEXT.snapshot.origin && APP_CONTEXT.snapshot.origin.id, dir: APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.td.dir,
-  next: APP_CONTEXT.snapshot.nextTrip && APP_CONTEXT.snapshot.nextTrip.td.dir, stored: JSON.parse(localStorage.getItem(USER_STORE.key)), caches: [] }));
+  origin: APP_CONTEXT.snapshot.origin && APP_CONTEXT.snapshot.origin.id, dir: APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.td && APP_CONTEXT.snapshot.activeTrip.td.dir,
+  next: APP_CONTEXT.snapshot.nextTrip && APP_CONTEXT.snapshot.nextTrip.td && APP_CONTEXT.snapshot.nextTrip.td.dir,
+  destination: APP_CONTEXT.snapshot.destination && APP_CONTEXT.snapshot.destination.id, car: APP_CONTEXT.snapshot.activeCarId,
+  stored: JSON.parse(localStorage.getItem(USER_STORE.key)), caches: [] }));
+async function destination(p, id) {
+  if (!(await p.locator('#dayContext .day-editor').getAttribute('open') != null)) await p.locator('#dayContext .day-editor > summary').tap();
+  if (!(await p.locator('#dayContext .day-destination').getAttribute('open') != null)) await p.locator('#dayContext .day-destination > summary').tap();
+  await p.locator('#dayContext [data-act=day-destination][data-id=' + id + ']').tap();
+}
 async function views(p, expected) {
   for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) {
     await p.locator('#viewSeg [data-act=view][data-v=' + view + ']').click(); const s = await read(p);
@@ -33,7 +40,7 @@ async function views(p, expected) {
   const local = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
   const browser = await pw.chromium.launch({ ...(fs.existsSync(local) ? { executablePath: local } : {}), args: ['--no-sandbox'], proxy: { server: 'http://127.0.0.1:9', bypass: 'localhost' } });
   try {
-    const c = await browser.newContext({ serviceWorkers: 'allow', viewport: { width: 414, height: 896 }, isMobile: true, hasTouch: true, timezoneId: 'Europe/Paris' }), errors = [];
+    const c = await browser.newContext({ serviceWorkers: 'allow', viewport: { width: 414, height: 896 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, timezoneId: 'Europe/Paris' }), errors = [];
     await c.route('**/*', r => {
       const u = r.request().url(); if (u.startsWith(base)) return r.continue();
       if (u.includes('open-meteo.com')) {
@@ -67,8 +74,15 @@ async function views(p, expected) {
       const urls = await p.evaluate(async () => (await Promise.all((await caches.keys()).map(async k => (await (await caches.open(k)).keys()).map(r => r.url)))).flat());
       assert(urls.every(u => u.startsWith(base))); assert(!urls.some(u => /latitude=|longitude=/.test(u)));
     });
+    // Lieux et véhicules fictifs uniquement ; choix de contexte par vrais taps.
+    await p.evaluate(() => { S.customs = [{ id: 'b', name: 'Lieu B', lat: 48.8, lon: 2.45 }]; const car = structuredClone(S.cars[0]); car.id = 'carB'; car.name = car.short = 'Voiture B'; S.cars.push(car); saveSettings(); renderAll(); });
+    await destination(p, 'b'); await p.locator('#dayContext [data-act=day-car][data-id=carB]').tap(); await p.locator('#dayContext [data-act=day-type][data-v=work]').tap();
     await c.setOffline(true); await p.close(); await open();
-    await check('PWA fermée/réouverte hors ligne : toujours au travail, aucun aller dans Tenue', () => views(p, { state: 'work', place: 'work', next: 'ret' }));
+    await check('PWA fermée/réouverte hors ligne : Lieu B et voiture B, aucun aller dans Tenue', async () => {
+      await views(p, { state: 'work', place: 'work', next: 'ret', destination: 'b', car: 'carB' });
+      assert.equal((await read(p)).stored.dayContext.dayType.value, 'work');
+    });
+    await destination(p, 'home');
     await p.locator('#placeBar [data-act=place-leave]').click();
     await check('retour anticipé hors ligne : quatre vues en déplacement depuis le travail', () => views(p, { state: 'travel', origin: 'work', dir: 'ret' }));
     const startKey = (await read(p)).stored.tripStart.key;

@@ -102,6 +102,18 @@ async function views(p, expected) {
         assert.equal(x.dayContext.nextDestination, null); assert.equal(x.dayContext.dayType, null); assert.equal(x.dayContext.outfitChoice, null); assert.equal(x.occasion, 'office');
         assert.deepEqual(x.work, original);
       });
+      scope.phase = 'travail exceptionnel';
+      await p.evaluate(() => { S.work.days = [1, 2]; saveSettings(); renderAll(); });
+      await tap(p, '[data-act=day-type][data-v=work]');
+      await check('Jour normalement off : vrai tap Travail autorise le commute sans changer le planning', async () => {
+        const x = await read(p); assert.equal(x.next.src, 'work'); assert.equal(x.next.from, 'Lieu B'); assert.equal(x.next.to, 'Travail test'); assert.deepEqual(x.work.days, [1, 2]);
+      });
+      await tap(p, '[data-act=day-type][data-v=off]');
+      await check('Congé exceptionnel supprime les trajets du jour', async () => assert(await p.evaluate(() => !APP_CONTEXT.snapshot.trips.some(t => t.src === 'work' && t.dep.slice(0, 10) === placeToday()))));
+      await p.clock.setSystemTime(new Date('2026-10-08T06:00:00+02:00')); await tap(p, '[data-act=day-type][data-v=work]');
+      await check('Origine temporaire expirée : planning Domicile PRÉVU retrouvé', async () => { const x = await read(p); assert.equal(x.next.from, 'Domicile test'); assert.equal(x.dayContext.nextDestination, null); assert.equal(x.dayContext.outfitChoice, null); });
+      await p.evaluate(() => { S.cars = S.cars.filter(c => c.id !== 'carB'); saveSettings(); renderAll(); });
+      await check('Suppression voiture active : ID nettoyé et fallback conservé', async () => { assert.equal((await read(p)).car, null); assert.equal(await p.evaluate(() => appTripCars()[0].id), 'carA'); });
       await s.c.close();
     }
     await check('aucune erreur JavaScript', async () => assert.deepEqual(errors, []));

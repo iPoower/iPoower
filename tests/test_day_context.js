@@ -63,4 +63,14 @@ check('voiture configurée sans monte renseignée reste sélectionnable, sans an
 check('arrivée explicite plus récente efface le départ précédent pour la prochaine origine', () => {
   const a = appFixture(); a.USER_STORE.state.dayContext.departedAt = now; a.appConfirmedPlace('b', now); assert.equal(D.morningOrigin(a.appDay(), now + 1000, places).id, 'b');
 });
+check('Congé reconstruit localement une ancienne origine Agenda Travail sans annulation persistante', () => {
+  const a = appFixture(), app = fs.readFileSync(require('node:path').resolve(__dirname, '../src/app.js'), 'utf8');
+  vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/trip-cancel.js'), 'utf8') + ';this.TC=TripCancel;', a);
+  a.S.work = { days: [2] }; a.USER_STORE.state.dayContext.dayType = { date: '2026-10-06', value: 'off' }; a.commuteDays = x => x;
+  const e = { id: 'fixture-agenda', t: 'Lieu B', s: '2026-10-06T18:30', e: '2026-10-06T19:00', ...places[2], legs: [{ k: 'go', from: places[1], to: places[2], dep: '2026-10-06T18:00', arr: '2026-10-06T18:20', min: 20 }] };
+  a.CAL = { events: [e] }; a.TRIPCANCEL = {}; a.workCancelled = (day, state) => a.TC.has(state, a.TC.workId(day), now); a.calendarSpatial = () => true; a.calendarPlace = x => x;
+  a.calendarCancelled = () => false; a.homeExact = () => places[0]; a.calDirectSet = () => ({}); a.tripCancelBeforeFirst = () => places[0]; a.tripCancelRouteLeg = (_, l) => l; a.calendarTripKey = (_, l) => 'fixture|' + l.k;
+  vm.runInContext(app.match(/^const cancelAffectedDay =.*;$/m)[0] + '\n' + app.slice(app.indexOf('function effLegs('), app.indexOf('function altHtml(')), a);
+  assert.equal(a.effLegs(e)[0].from.id, 'home'); assert.deepEqual(a.TRIPCANCEL, {});
+});
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);

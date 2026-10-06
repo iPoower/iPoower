@@ -36,6 +36,12 @@ function appChooseDestination(placeId, source = 'user') {
 }
 function appAgendaLeg(e, leg) { return DayContext.returnLeg(leg, calendarTripKey(e, leg), appDay(), Date.now(), placeList()); }
 function appWorkOn(date, days = S.work.days) { return DayContext.workOn(date, appDay(), commuteDays(days)); }
+function appCalendarCancelState(state = TRIPCANCEL) {
+  const day = appDay().dayType;
+  // Projection temporaire pour reconstruire un agenda calculé avec le planning
+  // habituel. Ne jamais écrire cette projection dans twrc.tripcancel.
+  return day && day.value === 'off' ? TripCancel.cancel(state, TripCancel.workId(day.date), TripCancel.workExpiration(day.date), Date.now()) : state;
+}
 function appCommuteOff(today, time, nowHm, days = S.work.days) {
   for (let off = 0; off <= 8; off++) {
     const date = addMin(today.slice(0, 10) + 'T00:00', off * 1440).slice(0, 10);

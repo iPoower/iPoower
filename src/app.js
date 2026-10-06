@@ -912,7 +912,7 @@ function buildTenueDay(options = {}) {
   // Après 23 h, on couvre encore la fin de l'heure courante jusqu'à minuit.
   const end = start < date + 'T23:00' ? date + 'T23:00' : addMin(midnight, 1440);
   const retrievalNow = options.retrievalNow == null ? Date.now() : options.retrievalNow;
-  const cancelState = options.cancelState || TRIPCANCEL, cancelNow = options.cancelNow == null ? Date.now() : options.cancelNow;
+  const cancelState = settings === S ? appCalendarCancelState(options.cancelState || TRIPCANCEL) : options.cancelState || TRIPCANCEL, cancelNow = options.cancelNow == null ? Date.now() : options.cancelNow;
   const events = (calendar && calendar.events || []).filter(e => e.s);
   const eventCancelled = e => calendarCancelled(e, events, cancelState, cancelNow);
   const commuteCancelled = day => workCancelled(day, cancelState, cancelNow);
@@ -2164,7 +2164,7 @@ function tripCancelSchedulePurge() {
     if (changed) tripCancelChanged();
   }, delay);
 }
-const cancelAffectedDay = e => workCancelled(e.s.slice(0, 10)) || !!(CAL && CAL.events && CAL.events.some(other => other.s.slice(0, 10) === e.s.slice(0, 10) && (TripCancel.nonSpatialNeedsRebuild(other, calendarSpatial, calendarPlace) || calendarCancelled(other))));
+const cancelAffectedDay = e => workCancelled(e.s.slice(0, 10), appCalendarCancelState()) || !!(CAL && CAL.events && CAL.events.some(other => other.s.slice(0, 10) === e.s.slice(0, 10) && (TripCancel.nonSpatialNeedsRebuild(other, calendarSpatial, calendarPlace) || calendarCancelled(other))));
 function tripCancelButton(t) {
   const allowed = t && (t.src === 'cal' && t.e || t.src === 'work' && t.dep.slice(0, 10) === liveNow().slice(0, 10));
   return allowed ? `<button class="btn sm" data-act="trip-cancel" data-key="${esc(t.key)}">${t.src === 'work' ? '✕ Pas de trajet aujourd’hui' : '✕ Je n’y vais pas'}</button>` : '';
@@ -2182,7 +2182,7 @@ function tripCancelChanged() {
     const e = CAL.events.find(e => e === t.e || TripCancel.eventId(e) === TripCancel.eventId(t.e));
     if (!e || !calendarSpatial(e) || calendarCancelled(e)) return true;
     const old = t.planL || t.l;
-    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), TRIPCANCEL, Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
+    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), appCalendarCancelState(), Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
     const next = (chains.get(e) || []).find(l => l.k === (old && old.k));
     if (!old || !next || next.originUncertain) return true;
     const same = (a, b, privatePoint) => a && b && Number.isFinite(a.lat) && Number.isFinite(a.lon) && Number.isFinite(b.lat) && Number.isFinite(b.lon) && (privatePoint ? rc2(a.lat) === rc2(b.lat) && rc2(a.lon) === rc2(b.lon) : +a.lat.toFixed(3) === +b.lat.toFixed(3) && +a.lon.toFixed(3) === +b.lon.toFixed(3));
@@ -2466,7 +2466,7 @@ function tripCancelRouteLeg(e, leg) {
 function effLegs(e, all) {
   if (!calendarSpatial(e) || calendarCancelled(e)) return [];
   if (cancelAffectedDay(e)) {
-    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), TRIPCANCEL, Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
+    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), appCalendarCancelState(), Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
     return (chains.get(e) || chains.get(TripCancel.eventId(e)) || []).map(leg => tripCancelRouteLeg(e, appAgendaLeg(e, leg)));
   }
   const D = calDirectSet(); let legs = (e.legs || []).slice();
