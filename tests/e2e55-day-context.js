@@ -72,6 +72,14 @@ async function views(p, expected) {
       });
       await tap(p, '[data-act=day-car][data-id=carB]');
       if (profile === 'configured') await p.locator('#dayContext').screenshot({ path: path.join(process.env.SP, 'day-context-' + dev + '.png') });
+      await p.evaluate(() => { S.cars[1].tire.type = 'none'; saveSettings(); renderAll(); });
+      await tap(p, '[data-act=day-car][data-id=carA]'); await tap(p, '[data-act=day-car][data-id=carB]');
+      await check('Voiture configurée sans pneus : sélection réelle conservée, aucune analyse des autres pneus', async () => {
+        await views(p, { place: 'work', destination: 'b', car: 'carB' });
+        assert(await p.evaluate(() => APP_CONTEXT.snapshot.trips.every(t => !t.res || t.res.every(r => r.c.id === 'carB'))));
+        assert.match(await p.locator('#secLab').innerText(), /Monte.*inconnue/i);
+      });
+      await p.evaluate(() => { S.cars[1].tire.type = S.cars[0].tire.type; saveSettings(); renderAll(); });
       await p.reload(); await s.settle();
       await check(dev + '/' + profile + ' · reload conserve le contexte', () => views(p, { place: 'work', destination: 'b', car: 'carB' }));
       await p.close(); p = await s.c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.goto(U);
