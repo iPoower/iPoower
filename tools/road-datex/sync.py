@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -18,6 +19,12 @@ SOURCE = "https://www.bison-fute.gouv.fr/donnees-sur-la-circulation-du.html"
 LICENSE = "https://www.etalab.gouv.fr/wp-content/uploads/2017/04/ETALAB-Licence-Ouverte-v2.0.pdf"
 MAX_XML = 12_000_000
 MAX_GAP = 256
+# Le serveur public DIR ne répond pas toujours : une erreur réseau est retentée
+# deux fois. Si elle persiste, la dernière publication reste servie telle quelle
+# (avec ses horodatages d'origine) tant qu'elle a moins d'une heure.
+NETWORK_ERRORS = (urllib.error.URLError, TimeoutError, ConnectionError)
+RETRY_PAUSES = (3, 8)
+KEEP_LAST_MAX_AGE = 3600
 XSI = "{http://www.w3.org/2001/XMLSchema-instance}type"
 TYPES = {
     "Accident": ("accident", "Accident"),
@@ -195,13 +202,23 @@ def download(name):
     if name not in {"content.xml", "index.txt"} and not re.fullmatch(r"\d{1,10}\.xml", name):
         raise ValueError("Invalid source path")
     request = urllib.request.Request(BASE + name, headers={"User-Agent": "RaceControl-DATEX-open-data/1.0", "Cache-Control": "no-cache"})
-    with urllib.request.urlopen(request, timeout=40) as response:
-        if response.status != 200 or not response.url.startswith(BASE):
-            raise ValueError("Source status/redirect rejected")
-        data = response.read(MAX_XML + 1)
-        if len(data) > MAX_XML:
-            raise ValueError("Source too large")
-        return data
+    for attempt in range(len(RETRY_PAUSES) + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=40) as response:
+                if response.status != 200 or not response.url.startswith(BASE):
+                    raise ValueError("Source status/redirect rejected")
+                data = response.read(MAX_XML + 1)
+                if len(data) > MAX_XML:
+                    raise ValueError("Source too large")
+                return data
+        except urllib.error.HTTPError as error:
+            # 4xx : réponse définitive, jamais retentée ; 5xx : panne passagère possible
+            if error.code < 500 or attempt == len(RETRY_PAUSES):
+                raise
+        except NETWORK_ERRORS:
+            if attempt == len(RETRY_PAUSES):
+                raise
+        time.sleep(RETRY_PAUSES[attempt])
 
 def sync(fetch=download, previous=None, now=None):
     clock = time.time if now is None else lambda: now
@@ -259,14 +276,29 @@ def sync(fetch=download, previous=None, now=None):
             "attribution": "Bison Futé / services routiers de l'État (DIR)", "licenseUrl": LICENSE,
             "sourceUrl": SOURCE, "events": events, "flows": []}
 
-def main():
+def arguments(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--fixture-dir")
     parser.add_argument("--now")
-    args = parser.parse_args()
+    return parser.parse_args(argv)
+
+def published_age(output, now=None):
+    """Âge (s) de la dernière publication valide, ou None si elle est absente ou illisible."""
+    try:
+        checked = timestamp(json.loads(Path(output).read_text())["checkedAt"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if checked is None:
+        return None
+    age = (time.time() if now is None else now) - checked
+    return age if age >= 0 else None
+
+def main(argv=None, fetch=None):
+    args = arguments(argv)
     output = Path(args.output)
-    fetch = (lambda name: (Path(args.fixture_dir) / name).read_bytes()) if args.fixture_dir else download
+    if fetch is None:
+        fetch = (lambda name: (Path(args.fixture_dir) / name).read_bytes()) if args.fixture_dir else download
     now = timestamp(args.now) if args.now else None
     if args.now and now is None:
         raise ValueError("Invalid fixture time")
@@ -283,9 +315,19 @@ def main():
                       "publicationTime": result["publicationTime"], "bytes": len(payload.encode()),
                       "seconds": round(time.monotonic() - started, 2)}))
 
-if __name__ == "__main__":
+def cli(argv=None, fetch=None, now=None):
     try:
-        main()
+        main(argv, fetch)
+        return 0
     except Exception as error:
+        if isinstance(error, NETWORK_ERRORS) and not (isinstance(error, urllib.error.HTTPError) and error.code < 500):
+            age = published_age(arguments(argv).output, now)
+            if age is not None and age <= KEEP_LAST_MAX_AGE:
+                print("DATEX source unreachable (" + type(error).__name__ + "): last publication kept, "
+                      + str(round(age / 60)) + " min old", file=sys.stderr)
+                return 0
         print("DATEX sync failed: " + type(error).__name__, file=sys.stderr)
-        sys.exit(1)
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(cli())

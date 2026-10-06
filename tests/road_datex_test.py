@@ -145,5 +145,53 @@ class Datex(unittest.TestCase):
             (p / 'index.txt').write_text('100'); self.assertEqual(subprocess.run(command, capture_output=True).returncode, 0)
             self.assertEqual(len(json.loads(out.read_text())['events']), 1); self.assertFalse((p / 'road.tmp').exists())
 
+    def test_network_errors_are_retried_but_client_errors_are_not(self):
+        import urllib.error
+        calls = []
+        class Response:
+            status = 200
+            def __init__(self, name): self.url = D.BASE + name
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n): return b'101'
+        def flaky(request, timeout):
+            calls.append(request.full_url)
+            if len(calls) < 3: raise urllib.error.URLError('timed out')
+            return Response('index.txt')
+        sleeps = []
+        old_open, old_sleep = D.urllib.request.urlopen, D.time.sleep
+        D.urllib.request.urlopen, D.time.sleep = flaky, sleeps.append
+        try:
+            self.assertEqual(D.download('index.txt'), b'101'); self.assertEqual((len(calls), sleeps), (3, [3, 8]))
+            calls.clear(); sleeps.clear()
+            def missing(request, timeout):
+                calls.append(1); raise urllib.error.HTTPError(request.full_url, 404, 'Not Found', None, None)
+            D.urllib.request.urlopen = missing
+            with self.assertRaises(urllib.error.HTTPError): D.download('index.txt')
+            self.assertEqual((len(calls), sleeps), (1, []))
+            calls.clear()
+            def always_down(request, timeout):
+                calls.append(1); raise urllib.error.URLError('timed out')
+            D.urllib.request.urlopen = always_down
+            with self.assertRaises(urllib.error.URLError): D.download('index.txt')
+            self.assertEqual(len(calls), 3)
+        finally:
+            D.urllib.request.urlopen, D.time.sleep = old_open, old_sleep
+
+    def test_unreachable_source_keeps_recent_publication_only(self):
+        import urllib.error
+        now = D.timestamp('2026-10-06T16:00:00Z')
+        def down(name): raise urllib.error.URLError('timed out')
+        def corrupt(name): raise ValueError('bad source')
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder) / 'road.json'
+            argv = ['--output', str(out)]
+            self.assertEqual(D.cli(argv, down, now), 1)                     # aucune publication précédente
+            recent = json.dumps({'checkedAt': '2026-10-06T15:50:00+00:00', 'events': []}); out.write_text(recent)
+            self.assertEqual(D.cli(argv, down, now), 0); self.assertEqual(out.read_text(), recent)   # gardée telle quelle
+            self.assertEqual(D.cli(argv, corrupt, now), 1)                  # une source invalide n'est jamais masquée
+            out.write_text(json.dumps({'checkedAt': '2026-10-06T14:30:00+00:00', 'events': []}))
+            self.assertEqual(D.cli(argv, down, now), 1)                     # plus d'une heure : l'échec redevient visible
+
 if __name__ == '__main__':
     unittest.main()

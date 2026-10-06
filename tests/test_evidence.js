@@ -7,10 +7,10 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   vm.runInContext(source + '\nthis.ev = evidenceEngine; this.score = evidenceScore; this.CFG = EV_CFG;', ctx);
   const plain = v => JSON.parse(JSON.stringify(v)), E = input => plain(ctx.ev(plain(input)));
   const NOW = Date.parse('2026-10-05T04:30:00Z');   // 06:30 à Paris
-  const HOME = { lat: 49.80, lon: 2.70 };            // point fictif, ≈ 19 km de LFAQ
+  const HOME = { lat: 48.80, lon: 2.30 };            // point fictif, ≈ 19 km de LFAQ
   const clear = { T: 9, Td: 6, RH: 81, vis: 24000, wind: 9, gust: 15, code: 1, P: 0, Pl: 0, Tr: 9, ice: { level: 0 } };
   const pt = (x, extra = {}) => ({ ...HOME, label: 'départ', t: '2026-10-05T06:30', ms: NOW, x: { ...clear, ...x }, ...extra });
-  const LFAQ = (o) => ({ id: 'LFAQ', name: 'Albert-Bray', lat: 49.9715, lon: 2.6976, obs: [o] });
+  const LFAQ = (o) => ({ id: 'LFAQ', name: 'Albert-Bray', lat: 48.9715, lon: 2.2976, obs: [o] });
   const metar = (raw, t, T, Td, vis, wind, wx) => ({ t, T, Td, vis, wind, wx, raw });
   const base = (o = {}) => ({ now: NOW, points: [pt({})], stations: [], reports: [], location: { trust: 'Confirmée' }, fresh: { modelAgeMin: 10 }, ...o });
   let count = 0;
@@ -35,7 +35,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   });
   test('B · T − Td élevé + visibilité observée bonne → risque faible', () => {
     const o = metar('METAR LFAQ 050430Z 24012KT 9999 FEW040 14/06 Q1018', '2026-10-05T04:20:00Z', 14, 6, 10000, 22, '');
-    const r = E(base({ points: [pt({ T: 14, Td: 6, RH: 58, wind: 20 })], stations: [LFAQ({ ...o, lat: 49.80 })] }));
+    const r = E(base({ points: [pt({ T: 14, Td: 6, RH: 58, wind: 20 })], stations: [LFAQ({ ...o, lat: 48.80 })] }));
     assert.equal(r.worst.lv, 0); assert.equal(r.headline, null);
   });
   test('C · code « peu nuageux » mais visibilité 180 m → la visibilité gagne', () => {
@@ -43,24 +43,24 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(r.worst.lv, 3); assert.equal(r.headline.text, 'BROUILLARD DENSE POSSIBLE'); assert.equal(r.worst.range, 'moins de 200 m possible');
   });
   test('D · trois modèles « clairs » + observation récente à 300 m tout près → l’observation gagne', () => {
-    const st = { id: 'X', name: 'Station test', lat: 49.81, lon: 2.70, obs: [metar('METAR XXXX 050420Z 00000KT 0300 FG VV001 07/07', '2026-10-05T04:20:00Z', 7, 7, 300, 0, 'FG')] };
+    const st = { id: 'X', name: 'Station test', lat: 48.81, lon: 2.30, obs: [metar('METAR XXXX 050420Z 00000KT 0300 FG VV001 07/07', '2026-10-05T04:20:00Z', 7, 7, 300, 0, 'FG')] };
     const r = E(base({ points: [pt({ vis: 24000 })], stations: [st] }));
     assert(r.worst.lv >= 2 && r.worst.obsLv >= 2); assert(r.contradiction);
   });
   test('E · METAR brouillard à 60 km → indice régional seulement', () => {
-    const st = { id: 'Y', name: 'Station lointaine', lat: 50.34, lon: 2.70, obs: [metar('METAR YYYY 050420Z 00000KT 0200 FG 07/07', '2026-10-05T04:20:00Z', 7, 7, 200, 0, 'FG')] };
+    const st = { id: 'Y', name: 'Station lointaine', lat: 49.34, lon: 2.30, obs: [metar('METAR YYYY 050420Z 00000KT 0200 FG 07/07', '2026-10-05T04:20:00Z', 7, 7, 200, 0, 'FG')] };
     const r = E(base({ points: [pt({ T: 9, Td: 5, wind: 15 })], stations: [st] }));
     assert(r.worst.lv <= 1); assert(r.worst.ev.some(e => /indice régional/.test(e.text)));
   });
   test('F · localisation non fiable (VPN) → confiance plafonnée, jamais élevée pour un phénomène local', () => {
     const strong = o => base({ ...o, points: [pt({ T: 7, Td: 7, wind: 3, vis: 800 })], reports: [{ kind: 'fog', at: NOW - 5 * 60e3, ...HOME }],
-      stations: [{ id: 'S', name: 'S', lat: 49.81, lon: 2.70, obs: [metar('m', '2026-10-05T04:20:00Z', 7, 7, 400, 0, 'FG')] }] });
+      stations: [{ id: 'S', name: 'S', lat: 48.81, lon: 2.30, obs: [metar('m', '2026-10-05T04:20:00Z', 7, 7, 400, 0, 'FG')] }] });
     assert.equal(E(strong({})).phen.find(p => p.id === 'fog').trustTxt, 'élevée');   // trois couches concordantes, lieu confirmé
     const r = E(strong({ location: { trust: 'Incertaine' } }));
     assert.equal(r.phen.find(p => p.id === 'fog').trustTxt, 'faible'); assert.equal(r.phen.find(p => p.id === 'loc').lv, 2);
   });
   test('G · observation vieille de 3 h → forte décote', () => {
-    const fresh = { id: 'S', name: 'S', lat: 49.81, lon: 2.70, obs: [metar('m', '2026-10-05T04:20:00Z', 7, 7, 300, 0, 'FG')] };
+    const fresh = { id: 'S', name: 'S', lat: 48.81, lon: 2.30, obs: [metar('m', '2026-10-05T04:20:00Z', 7, 7, 300, 0, 'FG')] };
     const old = { ...fresh, obs: [{ ...fresh.obs[0], t: '2026-10-05T01:20:00Z' }] };
     const a = E(base({ stations: [fresh] })).worst.ev.find(e => e.layer === 'A'), b = E(base({ stations: [old] })).worst.ev.find(e => e.layer === 'A');
     assert(a.w >= 0.9 && b.w <= 0.1, `${a.w} / ${b.w}`); assert(E(base({ stations: [old] })).worst.lv <= 1);
@@ -70,10 +70,10 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(r.worst.lv, 2); assert(r.worst.ev.some(e => e.layer === 'D' && /non officielle/.test(e.text)));
   });
   test('I · plusieurs signalements communautaires récents sur le trajet → risque augmenté', () => {
-    const items = [0, 1, 2].map(k => ({ kind: 'fog', at: NOW - 5 * 60e3, lat: 49.80 + k * 0.01, lon: 2.70 }));
+    const items = [0, 1, 2].map(k => ({ kind: 'fog', at: NOW - 5 * 60e3, lat: 48.80 + k * 0.01, lon: 2.30 }));
     const r = E(base({ points: [pt({ T: 8, Td: 7.2, wind: 6 })], community: { available: true, items } }));
     assert.equal(r.worst.comLv, 2); assert(r.worst.lv >= 2);
-    const one = E(base({ community: { available: true, items: [{ kind: 'fog', at: NOW - 40 * 60e3, lat: 49.98, lon: 2.70 }] } }));
+    const one = E(base({ community: { available: true, items: [{ kind: 'fog', at: NOW - 40 * 60e3, lat: 48.98, lon: 2.30 }] } }));
     assert(one.worst.lv <= 1);   // signalement isolé lointain : indice faible
   });
   test('J · aucun signal communautaire → ne réduit pas le risque', () => {
@@ -85,17 +85,17 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(r.community, 'non disponible (aucune source autorisée)'); assert.equal(r.worst.lv, 2);
   });
   test('L · sources contradictoires → confiance réduite et contradiction visible (jamais moyennées)', () => {
-    const st = { id: 'S', name: 'S', lat: 49.81, lon: 2.70, obs: [metar('m', '2026-10-05T04:20:00Z', 12, 4, 10000, 15, '')] };
+    const st = { id: 'S', name: 'S', lat: 48.81, lon: 2.30, obs: [metar('m', '2026-10-05T04:20:00Z', 12, 4, 10000, 15, '')] };
     const r = E(base({ points: [pt({ vis: 300, code: 45 })], stations: [st] }));
     assert(/trop pessimiste/.test(r.contradiction)); assert.equal(r.worst.lv, 1); assert.notEqual(r.phen.find(p => p.id === 'fog').trustTxt, 'élevée');
   });
   test('pire condition crédible : 10 km, 8 km, 700 m, 250 m → brouillard sur une portion, pas la moyenne', () => {
-    const P = [24000, 8000, 700, 250].map((v, k) => ({ lat: 49.8 + k * 0.03, lon: 2.6, label: ['départ', '25 %', '50 %', '75 %'][k], t: '2026-10-05T06:3' + k, ms: NOW + k * 5 * 60e3, x: { ...clear, vis: v } }));
+    const P = [24000, 8000, 700, 250].map((v, k) => ({ lat: 48.80 + k * 0.03, lon: 2.20, label: ['départ', '25 %', '50 %', '75 %'][k], t: '2026-10-05T06:3' + k, ms: NOW + k * 5 * 60e3, x: { ...clear, vis: v } }));
     const r = E(base({ points: P }));
     assert.equal(r.worst.lv, 2); assert.equal(r.worst.label, '75 %'); assert.equal(r.headline.where, 'portion du trajet : 75 %');
   });
   test('échéance : une observation n’informe plus la prévision au-delà de 3 h', () => {
-    const st = { id: 'S', name: 'S', lat: 49.81, lon: 2.70, obs: [metar('m', '2026-10-05T04:20:00Z', 7, 7, 300, 0, 'FG')] };
+    const st = { id: 'S', name: 'S', lat: 48.81, lon: 2.30, obs: [metar('m', '2026-10-05T04:20:00Z', 7, 7, 300, 0, 'FG')] };
     const r = E(base({ points: [{ ...pt({ T: 14, Td: 7, wind: 15 }), ms: NOW + 5 * 3600e3, t: '2026-10-05T11:30' }], stations: [st] }));
     assert.equal(r.worst.lv, 0);
   });
@@ -115,7 +115,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert(r.worst.lv <= 1);
   });
   test('red team · station 300 m plus haute : poids réduit', () => {
-    const st = { id: 'H', name: 'Sommet', elev: 450, lat: 49.81, lon: 2.70, obs: [metar('m', '2026-10-05T04:20:00Z', 7, 7, 200, 0, 'FG')] };
+    const st = { id: 'H', name: 'Sommet', elev: 450, lat: 48.81, lon: 2.30, obs: [metar('m', '2026-10-05T04:20:00Z', 7, 7, 200, 0, 'FG')] };
     const r = E(base({ points: [{ ...pt({}), elev: 120 }], stations: [st] }));
     assert(r.worst.ev.find(e => e.layer === 'A').w <= 0.6);
   });
