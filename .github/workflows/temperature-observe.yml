@@ -1,0 +1,42 @@
+name: Temperature card · targeted observation
+on:
+  push:
+    branches: [ui/weather-temperature-card-dark]
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - run: node tests/run-ci.js --prepare-only
+      - name: Composant réel, données fictives, aucun réseau extérieur
+        env:
+          BROWSER: ${{ matrix.browser }}
+          TEMPERATURE_BASELINE: '1'
+          TEMPERATURE_SHOTS: ${{ github.workspace }}/.ci/temperature-shots
+          SP: ${{ github.workspace }}/.ci/prepared/out
+        working-directory: .ci/prepared/w
+        run: |
+          ln -s "$GITHUB_WORKSPACE/node_modules" node_modules
+          node "$GITHUB_WORKSPACE/tests/lib/temperature-card.js"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: temperature-${{ matrix.browser }}
+          path: .ci/temperature-shots/
+          if-no-files-found: warn
+          retention-days: 3
