@@ -2392,7 +2392,7 @@ function calTrip(ev) {
   for (let t = dep.slice(0, 13) + ':00'; t <= arr.slice(0, 13) + ':00'; t = addMin(t, 60)) { const a = home.byTime.get(t), b = B.byTime.get(t); if (a != null) seq.push({ hs: home.hs, i: a }); if (b != null) seq.push({ hs: B.hs, i: b }); }
   if (!seq.length) return { km, dur, dep, beyond: true };
   const res = appTripCars().map(c => ({ c, w: windowAssess(c, seq, 'trip') })).filter(r => r.w);
-  return { km, dur, dep, arr, sum: summarize(seq), res, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0) };
+  return { km, dur, dep, arr, sum: summarize(seq), res: res.length ? res : null, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null };
 }
 
 // trajets calculés par le relais (itinéraire routier, aller / retour, enchaînement) : météo aux points de passage
@@ -2503,6 +2503,12 @@ function legHtml(leg, ev) {
   if (r.loading) body = `<div class="cal-v"><span class="sub">Analyse de la météo le long de la route…</span>${nav}</div>`;
   else if (r.err) body = `<div class="cal-v"><span class="sub">Météo indisponible pour ce trajet.</span>${nav}</div>`;
   else if (r.beyond) body = `<div class="cal-v"><span class="sub">Trop loin pour les prévisions horaires.</span>${nav}</div>`;
+  else if (!r.res || !r.res.length) {
+    const fb = frostBand(r.sum.TrMin);
+    body = `<div class="cal-v"><span class="sub">Pneus de la voiture active à renseigner · météo du trajet conservée.</span>${nav}</div>
+      <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
+      ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}`;
+  }
   else {
     const fb = frostBand(r.sum.TrMin), c = r.crit;
     let crit = '';
@@ -2579,6 +2585,13 @@ function renderCal() {
     else if (tr.near) body = `<span class="sub">À moins de 3 km de chez toi : pas de trajet à analyser.</span>`;
     else if (tr.loading) body = `<span class="sub">${f0(tr.km)} km · analyse de la météo du trajet…</span>`;
     else if (tr.beyond) body = `<span class="sub">${f0(tr.km)} km · départ ≈ ${tr.dep.slice(11, 16)} · trop loin pour les prévisions horaires.</span>`;
+    else if (!tr.res || !tr.res.length) {
+      const fb = frostBand(tr.sum.TrMin);
+      body = `<div class="cal-v"><span class="sub">Pneus de la voiture active à renseigner · météo du trajet conservée.</span>
+        <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span>${wazeBtn(e)}</div>
+        <div class="cal-k"><span>Route <b>${f1(tr.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(tr.sum.Tmin)} °C</b></span><span>Pluie <b>${(tr.sum.Pmax || 0) >= 0.1 ? f1(tr.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(tr.sum.visMin)}</b></span></div>
+        ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}`;
+    }
     else {
       const fb = frostBand(tr.sum.TrMin), lvw = tr.worst;
       body = `<div class="cal-v"><span class="pill lv${lvw}">${LV[lvw].emoji} ${LV[lvw].name}${tr.res[0] ? ' ' + tr.res[0].w.score : ''}</span>
