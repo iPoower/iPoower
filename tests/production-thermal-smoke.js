@@ -36,13 +36,14 @@ const tap = (p, selector, mobile) => mobile ? p.locator(selector).tap() : p.loca
 async function thermal(p, mobile) {
   await tap(p, '#viewSeg [data-act=view][data-v=analyse]', mobile);
   await p.waitForFunction(() => { const r = WEATHER_REQUESTS.state(); return !r.active && !r.queued; });
+  await p.evaluate(() => { const car = labCar(); window.__thermalFixture = { car, tire: structuredClone(car.tire), model: CX.m, hours: CX.m.hs, live: { ...LIVE }, fix: FIX, tripStart: TRIPSTART, tt: TT, stored: localStorage.getItem(TT_KEY) }; });
   for (const scn of thermalCases) {
     // Données d'entrée synthétiques uniquement. labInput, tyreLab et renderLab
     // sont les fonctions réellement publiées, sans remplacement ni interception.
     const r = await p.evaluate(scn => {
       const car = labCar(), m = CX.m, now = Date.now();
       Object.assign(car.tire, { type: scn.type || 'summer', brand: '', model: '', size: scn.type ? '205/55 R16 91H' : '215/40 ZR18 89Y XL', press: '2,4', tread: 6, pchk: { date: '2026-09-20', T: 15 } });
-      m.hs = m.hs.map(h => ({ ...h, T: scn.T, Tr: scn.Tr, RH: 70, P: 0, Pl: 0, snow: 0, code: 1, gust: 15, rad: scn.rad || 0, ice: { level: 0, score: 0 } }));
+      m.hs = m.hs.map(h => ({ ...h, T: scn.T, Tr: scn.Tr, RH: 70, P: 0, Pl: 0, snow: 0, code: 1, gust: 15, rad: scn.rad || 0, ice: { ...h.ice, level: 0, score: 0 } }));
       RAW[UI.loc].t = now; TT = {}; localStorage.removeItem(TT_KEY);
       if (scn.histMin) TT[car.id] = { at: localTs(now - scn.histMin * 60000), T: scn.histT, sig: tyreStateOf(car).sig };
       LIVE.phase = scn.min ? 'active' : 'idle'; LIVE.key = scn.min ? 'fixture-thermal' : null;
@@ -70,7 +71,7 @@ async function thermal(p, mobile) {
     assert(r.scrollWidth <= r.width, label + '/aucun overflow horizontal');
     if (mobile) { assert.equal(r.small, 0, label + '/cibles 44 px'); assert(r.heroBottom <= 896, label + '/verdict visible sans défiler : ' + r.heroBottom); }
   }
-  await p.evaluate(() => { LIVE.phase = 'idle'; LIVE.key = null; LIVE.startFix = null; LIVE.base = null; TT = {}; renderAll(); });
+  await p.evaluate(() => { const f = window.__thermalFixture; f.car.tire = f.tire; f.model.hs = f.hours; Object.assign(LIVE, f.live); FIX = f.fix; TRIPSTART = f.tripStart; TT = f.tt; if (f.stored == null) localStorage.removeItem(TT_KEY); else localStorage.setItem(TT_KEY, f.stored); delete window.__thermalFixture; renderAll(); });
 }
 async function views(p, phase, expected) {
   const mobile = p.viewportSize().width === 414;
