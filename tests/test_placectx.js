@@ -7,8 +7,8 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   vm.runInContext(source + '\nthis.pc = placeContext; this.cls = placeFixClass;', ctx);
   const plain = v => JSON.parse(JSON.stringify(v)), P = input => plain(ctx.pc(plain(input)));
   const T0 = Date.parse('2026-10-06T05:42:00Z'), min = m => T0 + m * 60e3;
-  const places = [{ id: 'home', name: 'Maison test', kind: 'home', lat: 49.80, lon: 2.70 }, { id: 'work', name: 'Travail test', kind: 'work', lat: 49.95, lon: 2.35 }];
-  const COARSE = { lat: 49.50, lon: 1.60, acc: 25000 };   // ≈ 60 km du travail, précision d'adresse IP
+  const places = [{ id: 'home', name: 'Maison test', kind: 'home', lat: 48.80, lon: 2.30 }, { id: 'work', name: 'Travail test', kind: 'work', lat: 48.95, lon: 1.95 }];
+  const COARSE = { lat: 48.50, lon: 1.20, acc: 25000 };   // ≈ 60 km du travail, précision d'adresse IP
   const fix = (p, m, acc) => ({ lat: p.lat, lon: p.lon, acc, ts: min(m) });
   const confW = { placeId: 'work', at: T0, how: 'arrival', day: '2026-10-06' };
   const base = (o = {}) => ({ now: min(3), today: '2026-10-06', places, ...o });
@@ -22,7 +22,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert(r.rejected.length >= 1 && r.rejected.every(x => /réseau|précision/.test(x.source + x.reason)));
   });
   test('changement de position approximative sans déplacement : aucune ville réseau ne devient le lieu', () => {
-    for (const v of [COARSE, { lat: 48.9, lon: 2.3, acc: 30000 }, { lat: 50.6, lon: 3.0, acc: 8000 }]) {
+    for (const v of [COARSE, { lat: 47.90, lon: 1.90, acc: 30000 }, { lat: 49.60, lon: 2.60, acc: 8000 }]) {
       const r = P(base({ conf: confW, fix: fix(v, 3, v.acc), net: fix(v, 3, v.acc) }));
       assert.equal(r.place.id, 'work'); assert.equal(r.ended, null);
     }
@@ -36,7 +36,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(r.place.id, 'work'); assert(r.rejected.some(x => /déplacement impossible/.test(x.reason)));
   });
   test('GPS précis et cohérent loin du travail (départ réel) : la confirmation se termine légitimement', () => {
-    const away = { lat: 49.85, lon: 2.55 }, r = P(base({ now: min(40), conf: confW, fix: fix(away, 39, 15) }));
+    const away = { lat: 48.85, lon: 2.15 }, r = P(base({ now: min(40), conf: confW, fix: fix(away, 39, 15) }));
     assert.equal(r.ended.reason, 'position précise ailleurs (départ réel)'); assert.equal(r.source, 'gps'); assert.equal(r.trust, 'Fiable'); assert.equal(r.confirmed, undefined);
   });
   test('trajet vivant parti après la confirmation : départ détecté, état « en route »', () => {
@@ -64,11 +64,11 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(r.title, '📍 Localisation physique indisponible'); assert.equal(r.badge, 'Position réseau approximative · précision ~25 km · Ville réseau test');
   });
   test('GPS précis près du travail : lieu reconnu, source GPS, origine verrouillée', () => {
-    const r = P(base({ fix: fix({ lat: 49.951, lon: 2.351 }, 2, 20) }));
+    const r = P(base({ fix: fix({ lat: 48.951, lon: 1.951 }, 2, 20) }));
     assert.equal(r.place.id, 'work'); assert.equal(r.source, 'gps'); assert.equal(r.trust, 'Fiable'); assert.equal(r.originLock, 'work'); assert.match(r.badge, /GPS navigateur · ± 20 m/);
   });
   test('localisation navigateur peu précise (± 900 m) près du domicile : estimée, sans verrou d’origine', () => {
-    const r = P(base({ fix: fix({ lat: 49.805, lon: 2.70 }, 2, 900) }));
+    const r = P(base({ fix: fix({ lat: 48.805, lon: 2.30 }, 2, 900) }));
     assert.equal(r.place.id, 'home'); assert.equal(r.trust, 'Estimée'); assert.equal(r.originLock, null);
   });
   test('relevé précis trop ancien : ignoré au profit du dernier lieu fiable', () => {
@@ -87,7 +87,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(ctx.cls({ acc: 100 }), 'gps'); assert.equal(ctx.cls({ acc: 101 }), 'approx'); assert.equal(ctx.cls({ acc: 1500 }), 'approx'); assert.equal(ctx.cls({ acc: 1501 }), 'coarse'); assert.equal(ctx.cls({}), 'coarse');
   });
   test('architecture générique : un lieu favori se confirme comme le travail', () => {
-    const r = P({ now: min(1), places: [...places, { id: 'c1', name: 'Club test', kind: 'custom', lat: 49.7, lon: 2.4 }], conf: { placeId: 'c1', at: T0, how: 'manual' } });
+    const r = P({ now: min(1), places: [...places, { id: 'c1', name: 'Club test', kind: 'custom', lat: 48.70, lon: 2.00 }], conf: { placeId: 'c1', at: T0, how: 'manual' } });
     assert.equal(r.place.id, 'c1'); assert.equal(r.title, '📍 SUR PLACE'); assert.equal(r.originLock, 'c1');
   });
   test('confirmation d’un lieu inconnu ou supprimé : ignorée', () => {

@@ -15,8 +15,10 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+# File distincte du relais météo : une file GitHub ne garde qu'une exécution en attente,
+# DATEX ne doit jamais remplacer (annuler) une exécution météo en attente.
 concurrency:
-  group: race-control-relay
+  group: race-control-datex
   cancel-in-progress: false
 jobs:
   datex:

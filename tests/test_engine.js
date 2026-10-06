@@ -63,7 +63,7 @@ console.log(relevantCount+'/'+relevantCount+' scénarios pertinence agenda OK');
 const cars=[
  {id:'i20',short:'i20 N',sporty:true,tire:{type:'summer',size:'215/40 R18 89Y XL',tread:null},plan:{on:true,date:''}},
  {id:'308',short:'308',sporty:false,tire:{type:'allseason',size:'225/45 R17 94W',tread:null},plan:{on:false}}];
-const loc={id:'ros',lat:49.8167,lon:2.7};
+const loc={id:'villeA',lat:48.85,lon:2.35};   // lieu fictif (aucune donnée personnelle)
 for(const k of ['froid','pluie','neige','doux']){
   const p=A.makeDemoPayload(k,loc); const m=A.makeModel(p,'demo',loc);
   console.log('\n=== '+k+' nowI',m.nowI,m.nowStr,'hours',m.hs.length,'days',m.days.length);

@@ -225,7 +225,8 @@ const osrmFromGps = S => S.osrm.filter(x => GPS_MARK.some(v => x.includes(v)));
     await s.to('2026-10-03T12:45:00+02:00'); await s.fix(G.loin3); await s.settle(6);
     check('I4 · aperçu : route de plus de 30 min → recalcul', osrmFromGps(S).length === n1 + 2);
     check('I4 · aperçu : jamais de haute précision (ni demande, ni suivi)', !(await p.evaluate(n => window.__geoLog.slice(n).some(x => x.hi), hi0)) && !(await p.evaluate(() => window.__geoWatches())).includes(true));
-    const ls = await p.evaluate(() => Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps|context\.v1)$/.test(k)).map(k => k + '=' + localStorage.getItem(k)).join('|'));
+    // l'agenda chiffré (base64 aléatoire) est opaque : il peut contenir « live » par hasard, sans rien révéler du suivi
+    const ls = await p.evaluate(() => Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps|context\.v1|calendar\.sealed\.v1)$/.test(k)).map(k => k + '=' + localStorage.getItem(k)).join('|'));
     check('I4 · aperçu : aucun itinéraire ni état de suivi persisté hors du contexte canonique', !/live/i.test(ls) && !GPS_MARK.some(v => ls.includes(v)));
     await s.to('2026-10-03T14:10:00+02:00'); await s.fix(G.loin3); await s.settle(6);
     check('I5 · 14:10 : suivi vivant activé dès min(départ prévu, départ conseillé) − 90 min', (await p.evaluate(() => LIVE.phase)) === 'imminent');
