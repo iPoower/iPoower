@@ -13,6 +13,11 @@ const APP_CONTEXT = { snapshot: null, planned: [], trips: [], live: null, render
 function appAction(fn) { return USER_STORE.transaction(fn); }
 function appGpsFloor() { return Math.max(PLACE.conf && PLACE.conf.at || 0, TRIPSTART && TRIPSTART.at || 0, USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at || 0); }
 function appCurrentGps() { return GPS && !GPS.placePending && !PLACE_HOLD && GPS.acc <= PLACE_ACC_GPS && GPS.t >= appGpsFloor() && Date.now() - GPS.t <= 10 * 60e3 ? GPS : null; }
+function appReopenReturn(placeId, at) {
+  if (placeId !== S.work.to) return;
+  const key = 'commute|' + placeToday() + 'T' + S.work.ret + '|ret', done = USER_STORE.state.done[key];
+  if (done && done.at <= at) delete USER_STORE.state.done[key];
+}
 function appTripPlace(t, end, origin = null) {
   if (!t) return null;
   const start = end === 'from' && (origin || TRIPSTART && TRIPSTART.key === t.key && TRIPSTART.o || t.l && t.l.from);
@@ -44,6 +49,7 @@ function appArrival(t, how) {
   PLACE.last = { placeId: p.id, at, source: how === 'auto' ? 'gps' : 'manual' };
   USER_STORE.state.lastDeparture = null;
   USER_STORE.state.lastArrival = { key: t.key, name: t.name || p.name, at, placeId: p.id };
+  appReopenReturn(p.id, at);
   APP_CONTEXT.weatherPreview = null; UI.loc = p.id;
 }
 function appDeparture(t, s) {

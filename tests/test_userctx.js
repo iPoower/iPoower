@@ -42,4 +42,10 @@ check('stockage refusé : l’action reste cohérente en mémoire et est publié
   const x = context.store({ read: () => null, write: () => { throw Error('quota'); }, now: () => t }); let seen = 0; x.subscribe(() => seen++);
   x.transaction(state => { state.place.conf = { placeId: 'work', at: t }; state.tripStart = null; }); assert.equal(x.state.place.conf.placeId, 'work'); assert.equal(seen, 1);
 });
+check('hydratation : une confirmation d’arrivée plus récente clôture un ancien départ contradictoire', () => {
+  const data = new Map([['twrc.context.v1', JSON.stringify({ v: 1, place: { conf: { placeId: 'work', at: t } }, tripStart: { key: 'go', at: t - 120000 }, done: {} })]]);
+  const x = context.store({ read: k => data.get(k), write: (k, v) => data.set(k, v), now: () => t });
+  assert.equal(x.state.place.conf.placeId, 'work'); assert.equal(x.state.tripStart, null);
+  assert.equal(JSON.parse(data.get(x.key)).tripStart, null);
+});
 console.log(`${n}/${n} scénarios OK`);

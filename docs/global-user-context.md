@@ -36,6 +36,10 @@ après son horaire d’arrivée prévu. Les horaires restent connus même sans m
 Les prévisions sont recalculées pour le départ réel, avec la clé du trajet prévu
 conservée. Un utilisateur encore au travail après l’horaire de retour conserve
 un retour pertinent depuis le travail, évalué pour le créneau actuel.
+Un horaire passé ne suffit pas à déclarer un trajet « en cours » : toutes les
+vues utilisent le départ actif du contexte. L’hydratation écarte un ancien
+départ contredit par une arrivée plus récente. Une nouvelle présence confirmée
+au travail peut rouvrir le retour du jour déjà terminé.
 
 Les chips « Météo affichée » conservent leur fonction de consultation d’un lieu.
 Cette consultation n’invente pas un déplacement physique. Toute action de lieu,

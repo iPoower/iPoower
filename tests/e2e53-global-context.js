@@ -27,26 +27,29 @@ async function allViews(s, stage, expected, home, work) {
     await tab(p, view);
     await check(stage + ' · ' + view + ' partage lieu, statut, trajet et persistance', async () => {
       const x = await state(p); for (const [k, v] of Object.entries(expected)) assert.equal(x[k], v, k + ' · ' + JSON.stringify(x));
-      assert(x.updatedAt > 0 && x.revision > 0); assert.equal(x.stored.place.conf && x.stored.place.conf.placeId, x.confirmation);
+      assert(x.updatedAt > 0 && x.revision > 0, 'horodatage et révision publiés · ' + JSON.stringify(x)); assert.equal(x.stored.place.conf && x.stored.place.conf.placeId, x.confirmation);
       assert.equal(x.stored.tripStart && x.stored.tripStart.key, x.active);
       if (x.active) {
         const dep = await p.evaluate(at => localTs(at), x.stored.tripStart.at);
         assert.equal(x.departure, dep, 'départ réel partagé');
-        assert(x.forecastTimes.length > 0);
+        assert(x.forecastTimes.length > 0, 'prévisions du trajet disponibles · ' + JSON.stringify(x));
         assert(x.forecastTimes.every(t => t >= dep.slice(0, 13) + ':00' && t <= x.activeArrival.slice(0, 13) + ':00'), 'prévisions du créneau réel · ' + JSON.stringify(x));
       }
       const bar = await text(p, '#placeBar');
       if (expected.status === 'work') assert.match(bar, /AU TRAVAIL/);
       if (expected.status === 'home') assert.match(bar, /À LA MAISON/);
       if (expected.status === 'travel') assert.match(bar, /EN ROUTE/);
-      if (view === 'pneus' && expected.status !== 'travel') assert((await text(p, '#secCur')).includes(expected.location === 'work' ? work : home));
+      if (view === 'pneus' && expected.status !== 'travel') {
+        const weather = await text(p, '#secCur'), label = x.location === 'work' ? work : home;
+        assert(weather.includes(label), 'météo actuelle du lieu confirmé · ' + label + ' · ' + weather);
+      }
       if (view === 'tenue') {
         const first = await text(p, '#secTenue .outfit-moment:first-child .outfit-moment-heading');
-        if (expected.status === 'work') { assert(first.includes(work)); assert(!first.includes('→'), first); }
-        if (expected.status === 'home') { assert(first.includes(home)); assert(!first.includes('→'), first); }
+        if (expected.status === 'work') { assert(first.includes(work), 'premier moment au travail · ' + first); assert(!first.includes('→'), first); }
+        if (expected.status === 'home') { assert(first.includes(home), 'premier moment au domicile · ' + first); assert(!first.includes('→'), first); }
         if (expected.status === 'travel') assert(first.includes(expected.activeDir === 'go' ? home + ' → ' + work : work + ' → ' + home), first);
       }
-      if (view === 'meteo' && expected.status === 'work') assert((await text(p, '#secWx')).includes(work + ' → ' + home));
+      if (view === 'meteo' && expected.status === 'work') { const wx = await text(p, '#secWx'); assert(wx.includes(work + ' → ' + home)); assert(!/Prochain trajet · en cours/i.test(wx), wx); }
       if (view === 'analyse' && expected.status === 'travel') assert.match(await text(p, '#secLab'), /TRAJET EN COURS/i);
     });
   }
@@ -98,6 +101,10 @@ async function allViews(s, stage, expected, home, work) {
       await s.settle(8);
       await allViews(s, tag + ' · fermeture/réouverture', { status: 'home', location: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
       await check(tag + ' · réouverture conserve les deux arrivées et le contexte ; aucun autre fournisseur', async () => { const x = await state(p); assert.deepEqual(x.stored.done, stored.done); assert.equal(x.stored.place.conf.at, stored.place.conf.at); });
+      if (dev === 'pc' && profile === 'configure') {
+        await p.locator('#placeBar [data-act=place-confirm][data-place=work]').click();
+        await allViews(s, 'nouvelle confirmation au travail après un retour déjà terminé', { status: 'work', location: 'work', nextDir: 'ret', active: null, weather: 'work' }, home, work);
+      }
       await s.c.close();
     }
     const late = await session(browser, { at: '2026-10-05T18:45:00+02:00' });

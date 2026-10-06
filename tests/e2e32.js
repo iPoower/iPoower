@@ -187,6 +187,9 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
       if (undersized.length) console.log('Commandes sous 44 px à ' + width + ' px : ' + JSON.stringify(undersized));
     }
     await p.setViewportSize({ width: 414, height: 896 });
+    // Les callbacks globaux de la météo peuvent écrire le journal et les
+    // tendances pendant les fixtures. Isoler les commandes Tenue après cela.
+    const controlsAt = await p.evaluate(() => window.__tenueWrites.length);
     await p.click('[data-act=outfit-day][data-v="1"]');
     check('Demain sélectionne une journée locale distincte', /04\/10/.test(await txt()) && /demain/i.test(await txt()));
     await p.click('[data-act=outfit-occasion][data-v=office]');
@@ -196,8 +199,9 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
     await p.click('[data-act=outfit-day][data-v="0"]');
     check('rendus et réglages Tenue sans nouvelle requête météo ou agenda', requests.length === networkAt);
     const writes = await p.evaluate(n => window.__tenueWrites.slice(n), writesAt);
+    const controlWrites = await p.evaluate(n => window.__tenueWrites.slice(n), controlsAt);
     const contextKeys = /^(?:twrc\.(?:context\.v1|gps|place\.v1|tripstart\.v1|tripend\.v1|returnhome\.v1|tripdone))$/;
-    check('aucun stockage du plan, des événements ou des tracés ; seuls les faits du contexte sont persistés', writes.every(x => ['twrc.outfit.occasion', 'twrc.view'].includes(x.key) || contextKeys.test(x.key)) && !JSON.stringify(writes).includes(PRIVATE) && !writes.some(x => contextKeys.test(x.key) && /\"(?:moments|timeline|events|route|pts|g|history)\"/.test(x.value)));
+    check('aucun stockage du plan, des événements ou des tracés ; commandes Tenue limitées aux préférences', controlWrites.every(x => ['twrc.outfit.occasion', 'twrc.view'].includes(x.key) || contextKeys.test(x.key)) && !JSON.stringify(writes).includes(PRIVATE) && !writes.some(x => /\"(?:moments|timeline|events)\"/.test(x.value)) && !writes.some(x => contextKeys.test(x.key) && /\"(?:route|pts|g|history)\"/.test(x.value)));
     check('aucun titre d’agenda transmis ou publié', !JSON.stringify(requests).includes(PRIVATE) && requests.every(x => ['GET', 'HEAD'].includes(x.method)));
     await scenario({});
     await p.click('[data-act=view][data-v=meteo]');

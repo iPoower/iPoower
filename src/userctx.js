@@ -11,16 +11,18 @@ function userContextStore({ read, write, now = () => Date.now() }) {
   const trip = t => obj(t) && typeof t.key === 'string' && t.key.length <= 1200 && time(t.at) && now() - t.at < 12 * 3600e3;
   function normalize(v) {
     const p = obj(v.place) ? v.place : {}, done = {};
+    const conf = obj(p.conf) && typeof p.conf.placeId === 'string' && time(p.conf.at) ? p.conf : null;
+    const start = trip(v.tripStart) ? v.tripStart : null;
     if (obj(v.done)) Object.entries(v.done).slice(-256).forEach(([k, d]) => {
       if (obj(d) && time(d.at) && Number.isFinite(d.exp) && d.exp > now() && typeof d.how === 'string') done[k] = d;
     });
     return { v: 1, revision: Number.isSafeInteger(v.revision) && v.revision >= 0 ? v.revision : 0,
       updatedAt: time(v.updatedAt) ? v.updatedAt : now(),
-      place: { conf: obj(p.conf) && typeof p.conf.placeId === 'string' && time(p.conf.at) ? p.conf : null,
+      place: { conf,
         last: obj(p.last) && typeof p.last.placeId === 'string' && time(p.last.at) ? p.last : null,
         extra: point(p.extra) && time(p.extra.at) ? p.extra : null },
       gps: point(v.gps) && time(v.gps.t) && Number.isFinite(v.gps.acc) && v.gps.acc >= 0 ? v.gps : null,
-      tripStart: trip(v.tripStart) ? v.tripStart : null,
+      tripStart: start && !(conf && conf.at >= start.at) ? start : null,
       tripEnd: obj(v.tripEnd) && time(v.tripEnd.at) ? v.tripEnd : null,
       returnHome: trip(v.returnHome) && Number.isFinite(v.returnHome.exp) && v.returnHome.exp > now() ? v.returnHome : null,
       done, lastArrival: obj(v.lastArrival) && time(v.lastArrival.at) ? v.lastArrival : null,

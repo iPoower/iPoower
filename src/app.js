@@ -401,7 +401,7 @@ function placeInput(extra) {
   if (USER_STORE.state.lastDeparture && Date.now() - USER_STORE.state.lastDeparture.at >= 20 * 3600e3) USER_STORE.state.lastDeparture = null;
   const precise = PLACE_HOLD || GPS && GPS.placePending ? PLACE_FIX : PLACE_FIX || (GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null) || GEO.raw;
   return { now: Date.now(), today: placeToday(), places: placeList(), conf: PLACE.conf, last: PLACE.last, fix: precise, net: NETLOC,
-    moving: LIVE.phase === 'active' || !!USER_STORE.state.lastDeparture, movingSince: LIVE.startFix ? LIVE.startFix.ts : USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at, fmt: hmLocal, ...(extra || {}) };
+    moving: LIVE.phase === 'active' || !!TRIPSTART || !!USER_STORE.state.lastDeparture, movingSince: TRIPSTART ? TRIPSTART.at : LIVE.startFix ? LIVE.startFix.ts : USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at, fmt: hmLocal, ...(extra || {}) };
 }
 // contexte courant ; une confirmation terminée (départ, GPS précis ailleurs, fin de journée) est effacée une seule fois
 function placeNow() {
@@ -433,14 +433,20 @@ function placeConfirm(placeId, how) {
   return appAction(() => {
   const p = placeList().find(x => x.id === placeId); if (!p) return;
   const now = Date.now();
+  const previous = placeNow().place;
   PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false;
   PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' };
   USER_STORE.state.lastDeparture = null;
+  appReopenReturn(placeId, now);
   // la machine de trajet existante termine proprement l'aller : arrivée du trajet vivant, sinon trajet planifié marqué arrivé
   let t = placeArrivalTrip(placeId) || (p.kind === 'work' ? BRF_TRIPS.find(t => t.src === 'work' && t.td.dir === 'go' && t.dep.slice(0, 10) === placeToday()) : null);
   if (!t && p.kind === 'work' && isCommuteDay(placeToday(), S.work.days)) {
     const td = appWorkTripData('go', 0);
     if (!td.err) t = { src: 'work', td, dep: td.dep, arr: td.arr, from: td.fromName, to: td.toName, name: 'Aller domicile-travail', key: 'commute|' + td.dep + '|go' };
+  }
+  if (!t && p.kind === 'home' && previous && previous.id === S.work.to && isCommuteDay(placeToday(), S.work.days)) {
+    const td = appWorkTripData('ret', 0);
+    if (!td.err) t = { src: 'work', td, dep: td.dep, arr: td.arr, from: td.fromName, to: td.toName, name: 'Retour domicile-travail', key: 'commute|' + td.dep + '|ret' };
   }
   if (LIVE.key && t && LIVE.key === t.key) liveArrive('confirmé');
   else if (t && t.key) { liveDonePersist(t.key, 'confirmé'); LIVE.done[t.key] = 'arrivé'; LIVE.lastDone = { key: t.key, name: t.name || p.name, at: now }; if (TRIPPREVIEW.key === t.key) tripPreviewReset(); }
@@ -1504,9 +1510,10 @@ function nextTrip() {
   const m = M[S.work.from] || M[S.locs[0].id];
   const clock = DEMO.on && m ? m.nowStr : nowIn(m && m.tz || 'Europe/Paris');
   const now = toMin(clock.slice(11, 16)), dep = toMin(S.work.dep), ret = toMin(S.work.ret);
-  const place = placeNow(), atWork = place.place && place.place.id === S.work.to;
-  const dir = isCommuteDay(clock, S.work.days) && (atWork || now >= dep && now < ret) ? 'ret' : 'go';
-  const td = appWorkTripData(dir, atWork && isCommuteDay(clock, S.work.days) ? 0 : 'auto');
+  const place = placeNow(), atWork = place.place && place.place.id === S.work.to, atHome = place.place && place.place.id === S.work.from;
+  const workingDay = isCommuteDay(clock, S.work.days);
+  const dir = workingDay && (atWork || !atHome && now >= dep && now < ret) ? 'ret' : 'go';
+  const td = appWorkTripData(dir, workingDay && (atWork || atHome && now < ret) ? 0 : 'auto');
   const completed = td && LIVE.done['commute|' + td.dep + '|' + td.dir];
   if (td && !td.err && !completed) return td;
   if (completed || td && td.cancelled) {
@@ -2037,13 +2044,15 @@ function appBuildTrips() {
   let T = []; const workT = (td, running) => {
     if (workCancelled(td.dep.slice(0, 10))) return;
     const plannedDep = td.dep, key = 'commute|' + plannedDep + '|' + td.dir;
-    const overdueReturn = td.dir === 'ret' && td.arr <= now && placeNow().place && placeNow().place.id === S.work.to;
-    if (TRIPSTART && TRIPSTART.key === key || overdueReturn) {
+    const current = placeNow().place;
+    if (td.dir === 'go' && plannedDep.slice(0, 10) === today && current && current.id === S.work.to && !(TRIPSTART && TRIPSTART.key === key)) return;
+    const place = placeNow().place, overdue = td.dep <= now && place && place.id === (td.dir === 'go' ? S.work.from : S.work.to);
+    if (TRIPSTART && TRIPSTART.key === key || overdue) {
       const actual = appWorkTripData(td.dir, dayDiff(today, plannedDep.slice(0, 10)), TRIPSTART && TRIPSTART.key === key ? localTs(TRIPSTART.at) : now);
       if (!actual.err) td = actual;
     }
     const res = td.seq.length ? cars.map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w) : [];
-    T.push({ src: 'work', carId: null, dep: td.dep, planDep: plannedDep, arr: td.arr, running: running && !PLACE.conf, name: `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail`, from: td.fromName, to: td.toName,
+    T.push({ src: 'work', carId: null, dep: td.dep, planDep: plannedDep, arr: td.arr, running: false, name: `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail`, from: td.fromName, to: td.toName,
       res: res.length ? res : null, sum: td.seq.length ? summarize(td.seq) : null, seq: td.seq, wait: !td.seq.length, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, key, obs: td.A && td.A.obs, td });
   };
   // trajet domicile-travail en cours (entre le départ et l'arrivée) : il reste affiché jusqu'à l'arrivée
@@ -2062,7 +2071,7 @@ function appBuildTrips() {
       l = { ...l, dep, arr: addMin(dep, dur) };
     }
     const r = legEval(l);
-    T.push({ src: 'cal', carId: null, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: !l.originPending && l.dep <= now, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
+    T.push({ src: 'cal', carId: null, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: false, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
       res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading, key });
   }));
   // Un départ déclaré reste restorable après l'heure d'arrivée prévue.
