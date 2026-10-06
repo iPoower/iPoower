@@ -31,6 +31,10 @@ async function views(p, expected) {
       if (v === 'tenue') assert.match(await p.locator('#secTenue').innerText(), /Lieu B/i);
       if (v === 'analyse') assert.equal(await p.evaluate(() => labCar().id), 'carB');
     }
+    if (expected.destination === null && expected.status === 'travel') {
+      if (v === 'pneus') assert.match(await p.locator('#secBrf').innerText(), /Destination à confirmer/i);
+      if (v === 'meteo') { assert.match(await p.locator('#secWx .wx-route').innerText(), /Destination à confirmer/i); assert.equal(await p.locator('#secWx .wx-when').count(), 0); }
+    }
   }
 }
 (async () => {

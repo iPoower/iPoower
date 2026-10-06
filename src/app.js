@@ -2231,6 +2231,7 @@ const liveStartBtn = t => !DEMO.on && !t.running && t.live !== 'active' && !t.ma
 const liveArrBtn = t => (t.running || t.live === 'active') && LIVE.key === t.key ? `<button class="btn sm" data-act="trip-arrived">✅ Bien arrivé</button>` : '';
 // carte de briefing complète, identique pour un trajet domicile-travail et un trajet agenda
 function briefCard(t, dayLbl) {
+  if (t.destinationPending || t.l && t.l.destinationOverride && !t.l.to) return `<div class="brf-h"><span class="brf-k">${APP_CONTEXT.snapshot.status === 'travel' ? '🚗 En trajet' : '🏁 Prochain trajet'}</span></div><div class="brf-ev"><b>${esc(t.from || 'Origine à confirmer')} → Destination à confirmer</b></div><p class="brf-why" role="status">Choisis la destination dans Aujourd’hui pour calculer le trajet.</p>`;
   const src = t.src === 'work' ? 'domicile-travail' : 'agenda';
   if (t.l && t.l.originPending) return `<div class="brf-h"><span class="brf-k">🏁 Prochain trajet · ${src}</span></div><div class="brf-ev">📅 <b>${esc(t.name)}</b></div><p class="brf-why" role="status">Origine à confirmer après annulation du trajet précédent</p><div class="cal-v">${tripCancelButton(t)}</div>`;
   const head = `<div class="brf-h">${t.manualPreview ? `<span class="brf-k">📍 Aperçu depuis ma position · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · départ estimé <b>${t.previewDep.slice(11, 16)}</b> · arrivée estimée ${t.previewArr.slice(11, 16)}</span>`

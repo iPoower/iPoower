@@ -95,4 +95,9 @@ check('E13/E14 navigation et arrivée Agenda suivent uniquement la destination d
   const future = D.returnLeg(original, 'future', { nextDestination: choice('b') }, now, places);
   assert.equal(a.nav.tripTo({ src: 'cal', l: future }).id, 'home'); assert.equal(a.nav.liveArrDest({ src: 'cal', l: future }).id, 'home');
 });
+check('destination inconnue : aucun ETA ou durée du commute inventé', () => {
+  const a = appFixture(); a.S.work = { durMin: 40 }; a.locById = id => places.find(p => p.id === id); a.TRIPSTART = null;
+  a.addMin = (s, m) => new Date(Date.parse(s + ':00Z') + m * 60000).toISOString().slice(0, 16); a.USER_STORE.state.dayContext.nextDestination = choice(null);
+  const trip = a.appLocalTrips([], '2026-10-06T17:30')[0]; assert.equal(trip.l.min, null); assert.equal(trip.arr, null); assert.equal(trip.to, 'Destination à confirmer');
+});
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);

@@ -71,7 +71,7 @@ function appLocalTrips(T, now) {
   const n = appDay().nextDestination;
   if (!n || T.some(t => t.key === n.tripKey)) return T;
   const from = locById(n.originId), to = locById(n.placeId), started = TRIPSTART && TRIPSTART.key === n.tripKey;
-  const dep = started ? localTs(TRIPSTART.at) : now, l = { k: 'local', from, to, navTo: to, dep, arr: addMin(dep, +S.work.durMin || 30), min: +S.work.durMin || 30, pts: [] };
+  const dep = started ? localTs(TRIPSTART.at) : now, l = { k: 'local', from, to, navTo: to, dep, arr: to ? addMin(dep, +S.work.durMin || 30) : null, min: to ? +S.work.durMin || 30 : null, pts: [] };
   const ready = to && from ? tripCancelRouteLeg({ id: n.tripKey, s: n.dep }, { ...l, originPending: true }) : l;
   const r = to && from && !ready.originPending ? legEval(ready) : {};
   T.unshift({ src: 'local', key: n.tripKey, carId: appDay().activeCarId, dep, planDep: n.dep, arr: ready.arr, l: ready,
