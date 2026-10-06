@@ -108,6 +108,8 @@ async function allViews(s, stage, expected, home, work) {
         await allViews({ p: other }, tag + ' · seconde fenêtre au travail', { status: 'work', location: 'work', confirmation: 'work', nextDir: 'ret' }, home, work);
       }
       // Maison est choisie explicitement ; quitter le travail ne déduit aucune destination.
+      // Analyse utilise son sélecteur voiture compact ; l’éditeur complet du jour reste dans les vues de pilotage.
+      await tab(p, 'pneus');
       await action(p, '#dayContext .day-editor > summary', 'ouvrir Aujourd’hui');
       await action(p, '#dayContext .day-destination > summary', 'choisir une destination');
       await action(p, '#dayContext [data-act=day-destination][data-id=home]', 'confirmer la destination Maison');
