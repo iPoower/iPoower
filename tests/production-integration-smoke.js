@@ -53,6 +53,7 @@ async function views(p, phase, expected) {
       const errors = [];
       c.on('page', p => { p.on('pageerror', e => errors.push(e.message)); p.on('console', m => { if (m.type() === 'error' && /Uncaught|TypeError|ReferenceError|SyntaxError/.test(m.text())) errors.push(m.text()); }); });
       await c.addInitScript(({ fixture, time, mobile }) => {
+        if (location.origin !== 'https://ipoower.github.io' || !location.pathname.startsWith('/iPoower/race-control/')) return;
         if (!localStorage.getItem('twrc.production.fixture')) {
           localStorage.setItem('twrc.nocode', '1');
           localStorage.setItem('twrc.settings.v1', JSON.stringify({ ...fixture, v: 1, configured: 1, gpsAuto: 0 }));
