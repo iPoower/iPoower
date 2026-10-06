@@ -150,7 +150,7 @@ async function allViews(s, stage, expected, home, work) {
       for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) { await tab(cold.p, view); const x = await state(cold.p); assert.equal(x.status, 'work'); assert.equal(x.location, 'work'); assert.equal(x.nextDir, 'ret'); assert.match(await text(cold.p, '#placeBar'), /AU TRAVAIL/); }
     });
     await cold.p.reload(); await cold.settle(4);
-    await check('premier lancement sans météo : reload conserve l’état sans inventer de données', async () => { const x = await state(cold.p); assert.equal(x.location, 'work'); assert.equal(x.confirmation, 'work'); assert.equal(x.nextDir, 'ret'); assert.match(await text(cold.p, '#notice'), /Météo indisponible|Chargement de la météo/); });
+    await check('premier lancement sans météo : reload conserve l’état sans inventer de données', async () => { const x = await state(cold.p); assert.equal(x.location, 'work'); assert.equal(x.confirmation, 'work'); assert.equal(x.nextDir, 'ret'); assert.match(await text(cold.p, '#notice'), /Météo indisponible|Chargement de la météo/i); });
     await tab(cold.p, 'pneus'); cold.p.once('dialog', d => d.accept()); await action(cold.p, '#secBrf [data-act=trip-cancel]', 'annulation retour sans météo');
     await action(cold.p, '#placeBar [data-act=place-leave]', 'départ sans trajet pertinent');
     await check('départ sans trajet pertinent : contexte en déplacement, origine connue, destination non inventée', async () => {

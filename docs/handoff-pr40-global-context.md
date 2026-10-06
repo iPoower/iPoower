@@ -23,6 +23,10 @@ confirmation Travail `1791433505011`, arrivée Maison antérieure dans le parcou
 mais timestamp `1791433532365`. L'assertion `nextDir` échouait (`go !== ret`).
 La fixture conserve désormais l'heure du scénario avant fermeture, sans retour
 en arrière ; la garde produit sur les arrivées plus récentes reste intacte.
+Run suivant `37439115848` : les quatre cycles et le soir passent sur Chromium.
+Dernière assertion fragile : `#notice` affiche « MÉTÉO INDISPONIBLE » via CSS,
+alors que la regex était sensible à la casse. Comparaison passée en `/i`, sans
+modifier le produit ni retirer les assertions de contexte. À retester.
 
 CAUSES CORRIGÉES : les boutons du checkpoint sont validés sur les deux moteurs.
 La première acquisition GPS précise dans une géofence exige désormais un second
