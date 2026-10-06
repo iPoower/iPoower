@@ -1,5 +1,31 @@
 # Checkpoint PR #40 — contexte global Race Control
 
+## Reprise quota critique — 6 octobre, validation ciblée
+
+DERNIER COMMIT produit : `d9973acaa87cf144c54529ca123e8e55f4ea2ebc`.
+e2e50 Chromium : **vert**, 41 s.
+e2e50 WebKit : **vert**, 79 s.
+Preuve : https://github.com/iPoower/iPoower/actions/runs/37437358482
+(job `112182343005`, checkout du SHA ci-dessus).
+e2e53 Chromium : à lancer avec diagnostics de clic complets.
+e2e53 WebKit : après Chromium vert.
+
+CAUSES CORRIGÉES : les boutons du checkpoint sont validés sur les deux moteurs.
+La première acquisition GPS précise dans une géofence exige désormais un second
+relevé cohérent. Un GPS stocké en attente ne devient pas un lieu logique à la
+première observation après reload. Les nouvelles régressions e2e50 vérifient le
+point initial au travail, sa réouverture, le lieu canonique indéterminé et
+l'absence de confirmation/arrivée inventée ; le cycle GPS continue à passer.
+`TMAP.map.invalidateSize` ne réapparaît pas dans ces deux exécutions.
+
+PROCHAINE ACTION : uniquement e2e53 Chromium, puis WebKit. Le label `quota-ciblee`
+suspend la CI complète pour cette branche ; `pr40-targeted.yml` exécute uniquement
+e2e50, ou uniquement e2e53 avec le label `e2e53-only`. Aucun secret ni déploiement.
+Retirer ces labels après autorisation de la validation complète, pas avant.
+Le passage local e2e50 a été bloqué par l'exécutable Playwright absent ; les
+résultats ci-dessus proviennent du runner GitHub. Les sections suivantes sont
+le checkpoint historique et ne remplacent pas ces résultats ciblés plus récents.
+
 Checkpoint demandé le 6 octobre 2026 à 09:56 Europe/Paris. Reprise de travail
 uniquement sur instruction suivante : laisser la PR en draft, sans fusion ni
 déploiement, sans nouveau développement DATEX ou Live Road Intelligence.

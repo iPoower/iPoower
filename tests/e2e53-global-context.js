@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const { session, BR, errors, U } = require('./lib/context-session');
 let n = 0, stage = 'initialisation';
+let scope = { device: '', profil: '', phase: 'initialisation' };
 async function check(label, fn) {
   try { await fn(); n++; console.log('✅ ' + label); }
   catch (e) { console.log('❌ ' + label); console.log(String(e.message).replace(/\n/g, ' ')); throw e; }
@@ -20,8 +21,26 @@ const state = p => p.evaluate(() => {
     confirmation: c.confirmation && c.confirmation.placeId, done: Object.keys(USER_STORE.state.done),
     stored: JSON.parse(localStorage.getItem(USER_STORE.key)), updatedAt: c.updatedAt, revision: c.revision };
 });
-async function tab(p, value) { await p.locator('#viewSeg [data-act=view][data-v=' + value + ']').click(); }
-async function action(p, selector, label) { stage = label; await p.locator(selector).first().click(); }
+async function click(p, selector) {
+  const element = p.locator(selector).first();
+  try { await element.click(); }
+  catch (e) {
+    const present = await element.count(), visible = !!present && await element.isVisible(), enabled = !!present && await element.isEnabled();
+    const detail = await p.evaluate(selector => {
+      const el = document.querySelector(selector), r = el && el.getBoundingClientRect();
+      const top = r && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      const c = APP_CONTEXT.snapshot, trip = t => t && ({ key: t.key, dir: t.td && t.td.dir, dep: t.dep, arr: t.arr });
+      return { onglet: UI.view, overlay: top && el && !el.contains(top) ? top.outerHTML.slice(0, 600) : null,
+        USER_STORE: USER_STORE.state, APP_CONTEXT: { status: c.status, currentLocation: c.currentLocation, origin: c.origin,
+          destination: c.destination, activeTrip: trip(c.activeTrip), nextTrip: trip(c.nextTrip), confirmation: c.confirmation,
+          departureTime: c.departureTime, weatherLocationId: c.weatherLocationId, revision: c.revision, updatedAt: c.updatedAt } };
+    }, selector);
+    console.log('DIAGNOSTIC CLIC ' + JSON.stringify({ ...scope, selecteur: selector, present, visible, enabled, ...detail }));
+    throw e;
+  }
+}
+async function tab(p, value) { stage = 'onglet ' + value; await click(p, '#viewSeg [data-act=view][data-v=' + value + ']'); }
+async function action(p, selector, label) { stage = scope.phase = label; await click(p, selector); }
 async function allViews(s, stage, expected, home, work) {
   const { p } = s;
   for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) {
@@ -60,10 +79,11 @@ async function allViews(s, stage, expected, home, work) {
   try {
     // Jeudi travaillé, sans rendez-vous intermédiaire dans l’agenda fictif.
     for (const dev of ['pc', 'iphone']) for (const profile of ['public-propre', 'configure']) {
+      scope = { device: dev, profil: profile, phase: 'premier lancement' };
       const s = await session(browser, { at: '2026-10-08T06:20:00+02:00', dev, unlock: profile === 'configure',
         storedGps: dev === 'pc' && profile === 'configure' ? { id: 'gps', gps: 1, name: 'GPS domicile précédent', lat: 48.8502, lon: 2.3501, acc: 20, t: Date.parse('2026-10-08T06:19:40+02:00') } : null });
       let p = s.p;
-      if (profile === 'public-propre') { await p.locator('[data-act=nocode]').click(); await s.settle(8); }
+      if (profile === 'public-propre') { await action(p, '[data-act=nocode]', 'profil public'); await s.settle(8); }
       const tag = dev + ' · ' + profile, home = profile === 'configure' ? 'Maison test' : 'Lieu principal', work = profile === 'configure' ? 'Travail test' : 'Lieu de travail';
       let navigations = 0; const onNav = f => { if (f === p.mainFrame()) navigations++; }; p.on('framenavigated', onNav);
       await action(p, '#placeBar [data-act=place-confirm][data-place=home]', 'confirmation au domicile');
@@ -91,7 +111,7 @@ async function allViews(s, stage, expected, home, work) {
       await allViews(s, tag + ' · reload en retour', { status: 'travel', origin: 'work', destination: 'home', activeDir: 'ret', confirmation: null, weather: 'work' }, home, work);
       if (other) {
         await other.waitForFunction(() => APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.td.dir === 'ret');
-        await tab(other, 'meteo'); await other.locator('#placeBar [data-act=place-confirm][data-place=home]').click();
+        await tab(other, 'meteo'); await action(other, '#placeBar [data-act=place-confirm][data-place=home]', 'arrivée maison depuis seconde fenêtre');
         await p.waitForFunction(() => APP_CONTEXT.snapshot.status === 'home');
         await check(tag + ' · arrivée depuis une autre fenêtre propagée sans reload', async () => { assert.equal((await state(other)).confirmation, 'home'); assert.equal((await state(p)).confirmation, 'home'); });
         await other.close();
@@ -110,28 +130,30 @@ async function allViews(s, stage, expected, home, work) {
       await s.c.close();
     }
     const late = await session(browser, { at: '2026-10-08T18:45:00+02:00' });
-    await late.p.locator('#placeBar [data-act=place-confirm][data-place=work]').click();
+    scope = { device: 'pc', profil: 'configure', phase: 'travail après horaire retour' };
+    await action(late.p, '#placeBar [data-act=place-confirm][data-place=work]', scope.phase);
     await allViews(late, 'travail après l’heure prévue du retour', { status: 'work', location: 'work', origin: 'work', destination: 'home', active: null, nextDir: 'ret', weather: 'work' }, 'Maison test', 'Travail test');
     await check('au travail le soir : aller clôturé et météo du retour évaluée au créneau actuel', async () => {
       assert((await state(late.p)).done.some(k => /^commute\|.*\|go$/.test(k)));
       assert(await late.p.evaluate(() => APP_CONTEXT.snapshot.nextTrip.arr > localTs(Date.now()) && APP_CONTEXT.snapshot.nextTrip.seq.every(q => q.hs[q.i].t >= localTs(Date.now()).slice(0, 13) + ':00')));
     }); await late.c.close();
     const cold = await session(browser, { at: '2026-10-08T06:20:00+02:00', unlock: false, meteo: '503', dev: 'iphone' });
-    await cold.p.locator('[data-act=nocode]').click(); await cold.settle(8);
-    await cold.p.locator('#placeBar [data-act=place-confirm][data-place=work]').click();
+    scope = { device: 'iphone', profil: 'public-propre · météo 503', phase: 'premier lancement' };
+    await action(cold.p, '[data-act=nocode]', 'profil public sans météo'); await cold.settle(8);
+    await action(cold.p, '#placeBar [data-act=place-confirm][data-place=work]', 'confirmation travail sans météo');
     await check('premier lancement sans météo : confirmation au travail et prochain retour conservés partout', async () => {
       for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) { await tab(cold.p, view); const x = await state(cold.p); assert.equal(x.status, 'work'); assert.equal(x.location, 'work'); assert.equal(x.nextDir, 'ret'); assert.match(await text(cold.p, '#placeBar'), /AU TRAVAIL/); }
     });
     await cold.p.reload(); await cold.settle(4);
     await check('premier lancement sans météo : reload conserve l’état sans inventer de données', async () => { const x = await state(cold.p); assert.equal(x.location, 'work'); assert.equal(x.confirmation, 'work'); assert.equal(x.nextDir, 'ret'); assert.match(await text(cold.p, '#notice'), /Météo indisponible|Chargement de la météo/); });
-    await tab(cold.p, 'pneus'); cold.p.once('dialog', d => d.accept()); await cold.p.locator('#secBrf [data-act=trip-cancel]').first().click();
-    await cold.p.locator('#placeBar [data-act=place-leave]').click();
+    await tab(cold.p, 'pneus'); cold.p.once('dialog', d => d.accept()); await action(cold.p, '#secBrf [data-act=trip-cancel]', 'annulation retour sans météo');
+    await action(cold.p, '#placeBar [data-act=place-leave]', 'départ sans trajet pertinent');
     await check('départ sans trajet pertinent : contexte en déplacement, origine connue, destination non inventée', async () => {
       for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) { await tab(cold.p, view); const x = await state(cold.p); assert.equal(x.status, 'travel'); assert.equal(x.origin, 'work'); assert.equal(x.destination, null); assert.equal(x.active, null); assert.match(await text(cold.p, '#placeBar'), /EN ROUTE/); }
     });
     await cold.p.reload(); await cold.settle(4);
     await check('départ sans trajet puis reload : le domicile ne remplace pas l’origine au travail', async () => { const x = await state(cold.p); assert.equal(x.status, 'travel'); assert.equal(x.origin, 'work'); assert.equal(x.weather, 'work'); });
-    await cold.p.locator('#placeBar [data-act=place-confirm][data-place=home]').click(); assert.equal((await state(cold.p)).status, 'home');
+    await action(cold.p, '#placeBar [data-act=place-confirm][data-place=home]', 'arrivée maison sans météo'); assert.equal((await state(cold.p)).status, 'home');
     await cold.c.close();
     await check('aucune erreur JavaScript sur les quatre parcours', async () => assert.deepEqual(errors, []));
   } finally { await browser.close(); }
