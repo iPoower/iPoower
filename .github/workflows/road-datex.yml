@@ -1,0 +1,41 @@
+name: Race Control · DATEX routier
+on:
+  push:
+    branches: [main]
+    paths: ['tools/road-datex/**', '.github/workflows/road-datex.yml']
+  schedule:
+    - cron: '4,12,20,28,36,44,52 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: race-control-relay
+  cancel-in-progress: false
+jobs:
+  datex:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: gh-pages
+          path: pages
+      - name: Normaliser le flux public (aucun secret, aucune donnée utilisateur)
+        run: python3 tools/road-datex/sync.py --output pages/race-control/road-datex.json
+      - name: Publier uniquement les événements publics
+        working-directory: pages
+        run: |
+          git config user.name "race-control-datex"
+          git config user.email "race-control-datex@users.noreply.github.com"
+          git add race-control/road-datex.json
+          git diff --cached --quiet && exit 0
+          git commit -q -m "DATEX : événements DIR actualisés"
+          for i in 1 2 3 4 5; do
+            if git push -q; then exit 0; fi
+            git pull -q --rebase || exit 1
+          done
+          exit 1

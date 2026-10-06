@@ -18,7 +18,7 @@ const BASE = {
   ],
   customs: [],
   work: { from: 'home', to: 'work', durMin: 40, dep: '07:30', ret: '17:30', days: [1, 2, 3, 4, 5] },
-  horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on' },
+  horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on' }, road: { on: 1 },
   alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
   cars: [
     { id: 'car1', name: 'Voiture 1', short: 'Voiture 1', spec: '', sporty: 0,
@@ -844,6 +844,7 @@ function renderView() {
     : ['secBrf', 'secCal', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'];
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#notice');
+  order.splice(order.indexOf('secBrf') + 1, 0, 'secRoad');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
   if (RADAR.map) setTimeout(() => RADAR.map.invalidateSize(), 60);
 }
@@ -1766,7 +1767,9 @@ function liveParse(j) {
   const g = [], step = totD / 80; let nxt = 0;
   for (let i = 0; i < co.length; i++) if (cumD[i] >= nxt || i === co.length - 1) { g.push([+co[i][1].toFixed(3), +co[i][0].toFixed(3)]); nxt = cumD[i] + step; }
   const km = r.distance != null ? r.distance / 1000 : totD, sec = r.duration != null ? r.duration : totT, rawMin = Math.max(1, sec / 60);
-  return { km: Math.round(km * 10) / 10, rawMin, min: routeTravelMin(rawMin), pts, g };   // marge routière plafonnée ; l'aller réserve séparément 10 min avant le rendez-vous
+  let road = null;
+  try { if (typeof RoadIntelligence !== 'undefined') road = RoadIntelligence.fromOSRM(j); } catch (e) { /* le trajet météo reste utilisable */ }
+  return { km: Math.round(km * 10) / 10, rawMin, min: routeTravelMin(rawMin), pts, g, road };   // marge routière plafonnée ; l'aller réserve séparément 10 min avant le rendez-vous
 }
 function tripPreviewReset() {
   const gen = TRIPPREVIEW.gen + 1;
@@ -1810,7 +1813,7 @@ function tripPreviewRoute(fix, b, gen) {
   const o = liveOrigin(fix), d = liveDest(b); if (!d) { tripPreviewReset(); return; }
   const dd = d.priv ? { lat: rc2(d.lat), lon: rc2(d.lon) } : { lat: +(+d.lat).toFixed(3), lon: +(+d.lon).toFixed(3) };
   TRIPPREVIEW.origin = o; TRIPPREVIEW.phase = 'loading';
-  fetchJSON(`https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${dd.lon},${dd.lat}?overview=full&geometries=geojson&annotations=duration`, 10000)
+  fetchJSON(`https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${dd.lon},${dd.lat}?overview=full&geometries=geojson&annotations=duration&steps=true`, 10000)
     .then(j => {
       if (gen !== TRIPPREVIEW.gen || b.key !== TRIPPREVIEW.key) return;
       if (!tripPreviewMatches(BRF_TRIPS.find(t => t.key === b.key))) { tripPreviewReset(); renderBrf(); return; }
@@ -1866,7 +1869,7 @@ function liveRoute(fix, b) {
   const d = liveDest(b); if (!d) return;
   const dd = d.priv ? { lat: rc2(d.lat), lon: rc2(d.lon) } : { lat: +(+d.lat).toFixed(3), lon: +(+d.lon).toFixed(3) };
   LIVE.routeTry = Date.now(); const gen = ++LIVE.gen, key = LIVE.key;
-  fetchJSON(`https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${dd.lon},${dd.lat}?overview=full&geometries=geojson&annotations=duration`, 10000)
+  fetchJSON(`https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${dd.lon},${dd.lat}?overview=full&geometries=geojson&annotations=duration&steps=true`, 10000)
     .then(j => {
       if (gen !== LIVE.gen || key !== LIVE.key) return;   // OSRM : réponse d'une ancienne position ou d'un autre trajet, ignorée (génération)
       // (météo : chaque route a sa propre clé géographique legKey/LEGM ; une réponse tardive d'une ancienne route n'est jamais lue pour la route courante)
@@ -1953,7 +1956,8 @@ function liveApply(T, now) {
 setInterval(() => { if ((LIVE.key || TRIPPREVIEW.key) && !document.hidden) renderBrf(); }, 15e3);
 
 // Le poste météo (onglet Météo) suit chaque mise à jour du briefing : mêmes trajets, mêmes modèles, aucun appel en plus.
-function renderBrf() { BRF_SHOWN = []; try { renderBrfCore(); } finally { renderWx(); renderLab(); labThermTick(false); } }
+// @include app/road-view.js
+function renderBrf() { BRF_SHOWN = []; try { renderBrfCore(); } finally { renderWx(); renderLab(); labThermTick(false); roadSync(); } }
 function renderBrfCore() {
   const el = $('#secBrf'); if (!el) return;
   // La météo du GPS peut être en cours de chargement ; les trajets ont leurs propres modèles.
@@ -3047,6 +3051,7 @@ function renderSettings(force) {
     <div class="set-sec"><h3>Trajet</h3><div class="frow">${bindIn('work.dep', S.work.dep, { label: 'Départ aller', type: 'time' })}${bindIn('work.ret', S.work.ret, { label: 'Départ retour', type: 'time' })}${bindIn('work.durMin', S.work.durMin, { label: 'Durée (min)', type: 'number', num: 1, attrs: 'min="5" max="1200" step="5"' })}</div>
       <div class="fld"><span class="l">Jours de trajet domicile-travail</span><div class="seg wdays">${WDN.map((n, k) => `<button data-act="wday" data-d="${k + 1}" aria-pressed="${commuteDays(S.work.days).includes(k + 1)}">${n}</button>`).join('')}</div></div>
       <p class="sub">Les autres jours (télétravail, repos) : pas de briefing domicile-travail, le briefing passe directement au prochain jour de trajet. L’agenda reste actif 7 j/7. Les notifications du matin suivent la configuration chiffrée du relais : si ton rythme change, fais-la mettre à jour aussi.</p></div>
+    <div class="set-sec"><h3>Événements routiers</h3><p class="sub">DATEX · Bison Futé / DIR. Couverture partielle du réseau national non concédé. Filtrage local sur le trajet OSRM ; aucune position transmise à DATEX. Alertes visuelles pendant le trajet, app ouverte. Vitesses et ETA trafic indisponibles.</p><div class="fld"><label for="f-road-on">Signalements sur mon trajet</label><select id="f-road-on" data-bind="road.on" data-num="1"><option value="1" ${S.road.on ? 'selected' : ''}>Activés</option><option value="0" ${S.road.on ? '' : 'selected'}>Désactivés</option></select></div></div>
     <div class="set-sec"><h3>Analyse</h3><div class="frow"><div class="fld"><label for="f-horizon">Horizon des verdicts</label><select id="f-horizon" data-bind="horizon" data-num="1">${[6, 12, 24].map(h => `<option value="${h}" ${S.horizon === h ? 'selected' : ''}>${h} h</option>`).join('')}</select></div>${bindIn('rainThr', S.rainThr, { label: 'Forte pluie (mm/h)', type: 'number', num: 1, attrs: 'min="1" max="30" step="0.5"' })}</div></div>
     <div class="set-sec" id="bkSec"><h3>💾 Sauvegarde</h3>
       <p class="sub">Journal, DOT, usure, kilométrage, pressions, photos, calibration et réglages, dans un seul fichier <b>chiffré avec ton code</b>. À faire avant de changer de téléphone ou de vider Safari. Sur le nouveau téléphone : Importer, puis le même code. Dernière sauvegarde : <b>${lsGet('twrc.lastbackup') ? fmtDay(lsGet('twrc.lastbackup')) : 'jamais'}</b>.</p>
