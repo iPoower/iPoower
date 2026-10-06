@@ -18,7 +18,10 @@ async function tap(p, selector) {
     console.error('DIAGNOSTIC ' + JSON.stringify({ ...scope, present: await el.count(), visible: await el.isVisible().catch(() => false), enabled: await el.isEnabled().catch(() => false), state: await read(p), overlay: await p.evaluate(() => [...document.querySelectorAll('[role=dialog],dialog[open]')].map(x => x.id)) })); throw e;
   }
 }
-async function openDay(p) { if (!(await p.locator('#dayContext .day-editor').getAttribute('open') != null)) await tap(p, '#dayContext .day-editor > summary'); }
+async function openDay(p) {
+  if (await p.evaluate(() => UI.view === 'analyse')) await tap(p, '#viewSeg [data-act=view][data-v=pneus]');
+  if (!(await p.locator('#dayContext .day-editor').getAttribute('open') != null)) await tap(p, '#dayContext .day-editor > summary');
+}
 async function destination(p, id) { await openDay(p); const details = p.locator('#dayContext .day-destination'); if (!(await details.getAttribute('open') != null)) await tap(p, '#dayContext .day-destination > summary'); await tap(p, '#dayContext [data-act=day-destination][data-id="' + id + '"]'); }
 async function views(p, expected) {
   for (const v of ['pneus', 'meteo', 'tenue', 'analyse']) {
