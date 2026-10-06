@@ -437,7 +437,11 @@ function placeConfirm(placeId, how) {
   PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' };
   USER_STORE.state.lastDeparture = null;
   // la machine de trajet existante termine proprement l'aller : arrivée du trajet vivant, sinon trajet planifié marqué arrivé
-  const t = placeArrivalTrip(placeId) || (p.kind === 'work' ? BRF_TRIPS.find(t => t.src === 'work' && t.td.dir === 'go' && t.dep.slice(0, 10) === placeToday()) : null);
+  let t = placeArrivalTrip(placeId) || (p.kind === 'work' ? BRF_TRIPS.find(t => t.src === 'work' && t.td.dir === 'go' && t.dep.slice(0, 10) === placeToday()) : null);
+  if (!t && p.kind === 'work' && isCommuteDay(placeToday(), S.work.days)) {
+    const td = appWorkTripData('go', 0);
+    if (!td.err) t = { src: 'work', td, dep: td.dep, arr: td.arr, from: td.fromName, to: td.toName, name: 'Aller domicile-travail', key: 'commute|' + td.dep + '|go' };
+  }
   if (LIVE.key && t && LIVE.key === t.key) liveArrive('confirmé');
   else if (t && t.key) { liveDonePersist(t.key, 'confirmé'); LIVE.done[t.key] = 'arrivé'; LIVE.lastDone = { key: t.key, name: t.name || p.name, at: now }; if (TRIPPREVIEW.key === t.key) tripPreviewReset(); }
   if (LIVE.phase === 'active') liveReset();
@@ -1772,6 +1776,7 @@ function liveAskNow() {
 //            mesurée ou déduite ; dès la fenêtre vivante (90 min avant le plus tôt des départs prévu / conseillé), sans attendre l'heure
 function liveOnFix(fix) {
   if (PLACE.conf && fix.ts <= PLACE.conf.at) return;   // un GPS antérieur ne défait jamais une confirmation plus récente
+  if (TRIPSTART && fix.ts < TRIPSTART.at) return;
   if (!LIVE.key || !LIVE.base) { if (liveAllowed()) { clearTimeout(liveOnFix.t); liveOnFix.t = setTimeout(renderBrf, 300); } return; }
   const ad = liveArrDest(LIVE.base);
   if (LIVE.phase === 'advice') { LIVE.arrN = 0; LIVE.near = null; }   // aperçu (jusqu'à 4 h avant) : ni arrivée automatique, ni arrivée probable
@@ -1937,7 +1942,7 @@ const liveAgo = ms => { const s = Math.round(ms / 1000); return s < 60 ? `${s} s
 // Une analyse n'est COURANTE que si : relevé frais + route courante pour ce relevé + météo de cette route prête. Seule une analyse
 // courante est présentée comme actuelle et fait avancer lastOk ; sinon la dernière analyse est affichée, marquée ancienne, 5 min au plus.
 function liveTrip(b, now) {
-  const run = LIVE.phase === 'active', fix = FIX, fresh = liveFresh(fix, run ? LIVE_AGE_RUN : LIVE_AGE_IMM);
+  const run = LIVE.phase === 'active', fix = FIX, fresh = liveFresh(fix, run ? LIVE_AGE_RUN : LIVE_AGE_IMM) && fix.ts >= appGpsFloor();
   if (fresh) liveRoute(fix, b);
   if (!liveAllowed()) { /* départ déclaré, GPS coupé : aucune demande de position */ }
   else if (LIVE.phase === 'advice') { if (!fresh) liveAskLow(); } else if (!fresh || LIVE.phase === 'late') liveAskFix();
@@ -1959,6 +1964,7 @@ function liveTrip(b, now) {
     // validée depuis la même origine, avec une géométrie encore courante.
     if (!run && LIVE.last && LIVE.last.adv && fresh && liveRouteCurrent(LIVE.route, liveOrigin(fix))) {
       mb.dep = liveEffDep(b); mb.adv = { target: b.arr, dep: mb.dep }; mb.live = LIVE.phase; mb.planDep = b.dep;
+      if (LIVE.phase === 'late') { mb.dep = now; mb.arr = addMin(now, liveRouteMin(b, LIVE.route)); }
     }
     return LIVE.last ? { ...mb, liveLost: true } : mb;
   }
@@ -2031,8 +2037,9 @@ function appBuildTrips() {
   let T = []; const workT = (td, running) => {
     if (workCancelled(td.dep.slice(0, 10))) return;
     const plannedDep = td.dep, key = 'commute|' + plannedDep + '|' + td.dir;
-    if (TRIPSTART && TRIPSTART.key === key) {
-      const actual = appWorkTripData(td.dir, dayDiff(today, plannedDep.slice(0, 10)), localTs(TRIPSTART.at));
+    const overdueReturn = td.dir === 'ret' && td.arr <= now && placeNow().place && placeNow().place.id === S.work.to;
+    if (TRIPSTART && TRIPSTART.key === key || overdueReturn) {
+      const actual = appWorkTripData(td.dir, dayDiff(today, plannedDep.slice(0, 10)), TRIPSTART && TRIPSTART.key === key ? localTs(TRIPSTART.at) : now);
       if (!actual.err) td = actual;
     }
     const res = td.seq.length ? cars.map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w) : [];
@@ -2049,9 +2056,14 @@ function appBuildTrips() {
   const td = nextTrip(); if (td && !T.some(t => t.key === 'commute|' + td.dep + '|' + td.dir)) workT(td, false);
   if (CAL && CAL.events) CAL.events.filter(calendarSpatial).forEach(e => effLegs(e).forEach(l => {
     if ((l.arr || l.dep) < now && !(TRIPSTART && calendarTripKey(e, l) === TRIPSTART.key)) return;   // gardé jusqu'à l'arrivée
+    const key = calendarTripKey(e, l), planned = l;
+    if (TRIPSTART && TRIPSTART.key === key) {
+      const dep = localTs(TRIPSTART.at), dur = +l.min || Math.max(1, liveMin(l.dep, l.arr));
+      l = { ...l, dep, arr: addMin(dep, dur) };
+    }
     const r = legEval(l);
-    T.push({ src: 'cal', carId: null, dep: l.dep, arr: l.arr, running: !l.originPending && l.dep <= now, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
-      res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading, key: calendarTripKey(e, l) });
+    T.push({ src: 'cal', carId: null, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: !l.originPending && l.dep <= now, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
+      res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading, key });
   }));
   // Un départ déclaré reste restorable après l'heure d'arrivée prévue.
   if (TRIPSTART && TRIPSTART.trip && TRIPSTART.trip.src === 'work' && !T.some(t => t.key === TRIPSTART.key)) {

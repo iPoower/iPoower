@@ -30,9 +30,12 @@ Pneus, Météo, Tenue, Analyse, Agenda et Road Intelligence. `BRF_SHOWN` et
 
 Le moteur GPS conserve ses règles de précision, fraîcheur, hystérésis et rejet
 du mouvement impossible. Ses transitions passent par le contexte global. Une
-confirmation récente prime sur un GPS plus ancien. Une arrivée clôture le trajet
+confirmation récente et un départ annoncé priment sur un GPS plus ancien. Une arrivée clôture le trajet
 et fixe la destination dans la même transaction ; un départ réel reste restorable
 après son horaire d’arrivée prévu. Les horaires restent connus même sans météo.
+Les prévisions sont recalculées pour le départ réel, avec la clé du trajet prévu
+conservée. Un utilisateur encore au travail après l’horaire de retour conserve
+un retour pertinent depuis le travail, évalué pour le créneau actuel.
 
 Les chips « Météo affichée » conservent leur fonction de consultation d’un lieu.
 Cette consultation n’invente pas un déplacement physique. Toute action de lieu,
@@ -51,8 +54,9 @@ coordonnée n’est ajoutée à la télémétrie ou aux données publiées.
 - `e2e53-global-context.js` : vrais boutons, Maison → Travail → Arrivé travail →
   Retour → Arrivé maison, quatre vues, PC/iPhone 414×896, profils public propre et
   configuré fictif, navigation, reload, réouverture, deux fenêtres et première
-  ouverture sans météo et départ sans destination connue. Exécuté dans Chromium
-  et WebKit.
+  ouverture sans météo, départ sans destination connue, GPS domicile plus ancien
+  que la confirmation au travail et présence au travail après l’heure de retour.
+  Exécuté dans Chromium et WebKit.
 - `e2e54-context-sw.js` : vrai SW, migration v10/v11, ancien contexte migré,
   réouverture hors ligne au travail, pendant le retour et à la maison.
 

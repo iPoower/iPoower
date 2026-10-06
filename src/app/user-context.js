@@ -11,12 +11,15 @@ const USER_STORE = userContextStore({ read: lsGet, write: (k, v) => {
 });
 const APP_CONTEXT = { snapshot: null, planned: [], trips: [], live: null, rendering: false, ready: false, weatherPreview: null };
 function appAction(fn) { return USER_STORE.transaction(fn); }
+function appGpsFloor() { return Math.max(PLACE.conf && PLACE.conf.at || 0, TRIPSTART && TRIPSTART.at || 0, USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at || 0); }
+function appCurrentGps() { return GPS && !GPS.placePending && !PLACE_HOLD && GPS.acc <= PLACE_ACC_GPS && GPS.t >= appGpsFloor() && Date.now() - GPS.t <= 10 * 60e3 ? GPS : null; }
 function appTripPlace(t, end, origin = null) {
   if (!t) return null;
   const start = end === 'from' && (origin || TRIPSTART && TRIPSTART.key === t.key && TRIPSTART.o || t.l && t.l.from);
   const p = start || (t.src === 'work' ? t.td && t.td[end === 'to' ? 'LB' : 'LA'] : (t.planL || t.l) && (t.planL || t.l)[end]);
   if (!p || !locHasCoords(p)) return null;
-  const known = [...S.locs, ...S.customs].find(l => locHasCoords(l) && distKm(l, p) <= 1.5);
+  const places = [...S.locs, ...S.customs, ...(PLACE.extra ? [PLACE.extra] : [])].filter(locHasCoords);
+  const known = places.find(l => p.id && l.id === p.id) || places.filter(l => distKm(l, p) <= 1.5).sort((a, b) => distKm(a, p) - distKm(b, p))[0];
   return known || { id: end === 'from' ? 'gps' : 'arrival', name: end === 'from' && start ? 'Ma position au départ' : t[end] || p.name || p.city || p.label || 'Destination', lat: p.lat, lon: p.lon };
 }
 function appArrival(t, how) {
@@ -70,7 +73,7 @@ function appRefreshContext({ persist = true } = {}) {
     else if (c.coords && GPS && !PLACE_HOLD) UI.loc = 'gps';
     else if (c.source === 'trip') {
       const originId = TRIPSTART && TRIPSTART.trip && TRIPSTART.trip.fromId || USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.placeId || PLACE.last && PLACE.last.placeId;
-      if (GPS && !GPS.placePending && !PLACE_HOLD && Date.now() - GPS.t <= 10 * 60e3) UI.loc = 'gps';
+      if (appCurrentGps()) UI.loc = 'gps';
       else if (locById(originId)) UI.loc = originId;
     }
   }
@@ -84,7 +87,7 @@ function appRefreshContext({ persist = true } = {}) {
   const location = placeNow(), active = LIVE.phase === 'active' ? APP_CONTEXT.trips.find(t => t.key === LIVE.key) || LIVE.base : null;
   const next = APP_CONTEXT.trips.find(t => !active || t.key !== active.key) || null;
   const leaving = USER_STORE.state.lastDeparture;
-  const current = active || leaving ? GPS && !GPS.placePending && !PLACE_HOLD && Date.now() - GPS.t <= 10 * 60e3 ? GPS : { id: 'travel', name: 'En déplacement' } : location.place || (location.source === 'gps' && GPS ? GPS : null);
+  const current = active || leaving ? appCurrentGps() || { id: 'travel', name: 'En déplacement' } : location.place || (location.source === 'gps' && GPS ? GPS : null);
   const origin = active ? appTripPlace(active, 'from') : leaving ? locById(leaving.placeId) : current;
   if (persist) USER_STORE.flush();
   APP_CONTEXT.snapshot = Object.freeze({ revision: USER_STORE.state.revision, currentLocation: current, location,

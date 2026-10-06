@@ -55,9 +55,10 @@ async function allViews(s, stage, expected, home, work) {
   const browser = await BR.launch();
   try {
     for (const dev of ['pc', 'iphone']) for (const profile of ['public-propre', 'configure']) {
-      const s = await session(browser, { at: '2026-10-05T06:20:00+02:00', dev, unlock: profile === 'configure' });
+      const s = await session(browser, { at: '2026-10-05T06:20:00+02:00', dev, unlock: profile === 'configure',
+        storedGps: dev === 'pc' && profile === 'configure' ? { id: 'gps', gps: 1, name: 'GPS domicile précédent', lat: 48.8502, lon: 2.3501, acc: 20, t: Date.parse('2026-10-05T06:19:40+02:00') } : null });
       let p = s.p;
-      if (profile === 'public-propre') { await Promise.all([p.waitForNavigation(), p.locator('[data-act=nocode]').click()]); await s.settle(8); }
+      if (profile === 'public-propre') { await p.locator('[data-act=nocode]').click(); await s.settle(8); }
       const tag = dev + ' · ' + profile, home = profile === 'configure' ? 'Maison test' : 'Lieu principal', work = profile === 'configure' ? 'Travail test' : 'Lieu de travail';
       let navigations = 0; const onNav = f => { if (f === p.mainFrame()) navigations++; }; p.on('framenavigated', onNav);
       await p.locator('#placeBar [data-act=place-confirm][data-place=home]').click();
@@ -79,10 +80,10 @@ async function allViews(s, stage, expected, home, work) {
       }
       // Départ depuis Analyse : le bouton global démarre le même retour anticipé.
       await tab(p, 'analyse'); await p.locator('#placeBar [data-act=place-leave]').click();
-      await allViews(s, tag + ' · retour commencé', { status: 'travel', origin: 'work', destination: 'home', activeDir: 'ret', confirmation: null }, home, work);
+      await allViews(s, tag + ' · retour commencé', { status: 'travel', origin: 'work', destination: 'home', activeDir: 'ret', confirmation: null, weather: 'work' }, home, work);
       const activeKey = (await state(p)).active;
       await p.reload(); await s.settle(8); assert.equal((await state(p)).active, activeKey);
-      await allViews(s, tag + ' · reload en retour', { status: 'travel', origin: 'work', destination: 'home', activeDir: 'ret', confirmation: null }, home, work);
+      await allViews(s, tag + ' · reload en retour', { status: 'travel', origin: 'work', destination: 'home', activeDir: 'ret', confirmation: null, weather: 'work' }, home, work);
       if (other) {
         await other.waitForFunction(() => APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.td.dir === 'ret');
         await tab(other, 'meteo'); await other.locator('#placeBar [data-act=place-confirm][data-place=home]').click();
@@ -99,8 +100,15 @@ async function allViews(s, stage, expected, home, work) {
       await check(tag + ' · réouverture conserve les deux arrivées et le contexte ; aucun autre fournisseur', async () => { const x = await state(p); assert.deepEqual(x.stored.done, stored.done); assert.equal(x.stored.place.conf.at, stored.place.conf.at); });
       await s.c.close();
     }
+    const late = await session(browser, { at: '2026-10-05T18:45:00+02:00' });
+    await late.p.locator('#placeBar [data-act=place-confirm][data-place=work]').click();
+    await allViews(late, 'travail après l’heure prévue du retour', { status: 'work', location: 'work', origin: 'work', destination: 'home', active: null, nextDir: 'ret', weather: 'work' }, 'Maison test', 'Travail test');
+    await check('au travail le soir : aller clôturé et météo du retour évaluée au créneau actuel', async () => {
+      assert((await state(late.p)).done.some(k => /^commute\|.*\|go$/.test(k)));
+      assert(await late.p.evaluate(() => APP_CONTEXT.snapshot.nextTrip.arr > localTs(Date.now()) && APP_CONTEXT.snapshot.nextTrip.seq.every(q => q.hs[q.i].t >= localTs(Date.now()).slice(0, 13) + ':00')));
+    }); await late.c.close();
     const cold = await session(browser, { at: '2026-10-05T06:20:00+02:00', unlock: false, meteo: '503', dev: 'iphone' });
-    await Promise.all([cold.p.waitForNavigation(), cold.p.locator('[data-act=nocode]').click()]); await cold.settle(8);
+    await cold.p.locator('[data-act=nocode]').click(); await cold.settle(8);
     await cold.p.locator('#placeBar [data-act=place-confirm][data-place=work]').click();
     await check('premier lancement sans météo : confirmation au travail et prochain retour conservés partout', async () => {
       for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) { await tab(cold.p, view); const x = await state(cold.p); assert.equal(x.status, 'work'); assert.equal(x.location, 'work'); assert.equal(x.nextDir, 'ret'); assert.match(await text(cold.p, '#placeBar'), /AU TRAVAIL/); }
