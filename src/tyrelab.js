@@ -168,11 +168,13 @@ function tyreLab(input) {
     ambient = Math.abs(T - eNow.Tenv) <= TL_BASE_U;
     trend = !ambient && T - q.Teq > 0 ? 'cooling' : 'rest';
   }
-  const stateTxt = trend === 'rest' && ambient ? 'Au repos · ambiant' + (st === 0 || st >= 3 ? ' · ' + TL_LEVEL_TXT[st] : '') : `${TL_TREND_TXT[trend]} · ${TL_LEVEL_TXT[st]}`;
+  const lvlSuffix = st === 0 || st >= 3 ? ' · ' + TL_LEVEL_TXT[st] : '';
+  // sans historique ni roulage suivi, « au repos » serait plus certain que les données : la température est seulement SUPPOSÉE ambiante
+  const stateTxt = trend === 'rest' && ambient ? (phase === 'unknown' ? 'Supposé ambiant' : 'Au repos · ambiant') + lvlSuffix : `${TL_TREND_TXT[trend]} · ${TL_LEVEL_TXT[st]}`;
   why.push(phase === 'driving'
     ? trend === 'stable' ? `Tendance : stabilisée — l’équilibre de ce roulage est atteint à ${r0(TL_SETTLE * 100)} % près`
       : `Tendance : ${trend === 'heating' ? 'en chauffe' : 'en refroidissement'} — équilibre de ce roulage ≈ ${r0(eq)} °C, encore ${r0(Math.abs(eq - T))} °C d’écart`
-    : trend === 'cooling' ? `Tendance : en refroidissement vers l’ambiante (≈ ${r0(eq)} °C)` : `Tendance : au repos${ambient ? ', gomme à la température ambiante (± 3 °C)' : ''}`);
+    : trend === 'cooling' ? `Tendance : en refroidissement vers l’ambiante (≈ ${r0(eq)} °C)` : `Tendance : au repos${ambient ? (phase === 'unknown' ? ' ; température supposée ambiante (aucun historique d’arrêt connu)' : ', gomme à la température ambiante (± 3 °C)') : ''}`);
   const cT = cls(T);
   if (cT > st) why.push(`Estimation centrale ≈ ${r0(T)} °C (${TL_LEVEL_TXT[cT]}) mais bas de plage ≈ ${r0(lo)} °C : état affiché par prudence (${TL_LEVEL_TXT[st]})`);
   else if (cT < st) why.push(`Estimation centrale ≈ ${r0(T)} °C (${TL_LEVEL_TXT[cT]}) mais haut de plage ≈ ${r0(hi)} °C : état affiché par prudence (${TL_LEVEL_TXT[st]})`);

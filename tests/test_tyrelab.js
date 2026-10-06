@@ -191,9 +191,11 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert(r.thermal.why.some(x => /Estimation centrale ≈ 32 °C \(favorable\)/.test(x) && /bas de plage ≈ 24 °C/.test(x) && /prudence/.test(x)), r.thermal.why.join(' | '));
     assert.equal(r.warm.marginal, true); assert(!/\d+ °C/.test(r.hero.warm), r.hero.warm);   // jamais de valeur exacte dans le titre ni la ligne d'échauffement
   });
-  test('T3 · été UHP · air 25 °C · soleil · garé, sans historique : « Au repos · ambiant », jamais « en chauffe »', () => {
+  test('T3 · été UHP · air 25 °C · soleil · garé, sans historique : température seulement supposée ambiante (jamais « en chauffe » ni « au repos ») ; « Au repos · ambiant » réservé à un arrêt connu', () => {
     const r = scn({ T: 25, Tr: 30, rad: 600 }, null);
-    assert.equal(r.phase, 'unknown'); assert.equal(r.thermal.trend, 'rest'); assert.equal(r.hero.state, 'Au repos · ambiant'); assert(!/chauffe/i.test(r.hero.state));
+    assert.equal(r.phase, 'unknown'); assert.equal(r.thermal.trend, 'rest'); assert.equal(r.hero.state, 'Supposé ambiant'); assert(!/chauffe|au repos/i.test(r.hero.state));
+    const k = lab({ now: ts('09:00'), car: UHP(), hours: H({ T: 25, Tr: 30, rad: 600 }), history: { at: ts('02:00'), T: 30 }, ageMin: 10 });
+    assert.equal(k.phase, 'parked'); assert.equal(k.hero.state, 'Au repos · ambiant');   // « au repos » seulement avec un historique d’arrêt connu
     assert(r.confidence.reasons.some(x => /Historique de roulage inconnu/.test(x)));
   });
   test('T4 · été UHP · air 18 °C · route sèche · 20 min : dans la fenêtre, température encore en hausse', () => {

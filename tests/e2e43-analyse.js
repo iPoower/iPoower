@@ -67,7 +67,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
 }, mobile);
 const toLab = async s => { await s.p.click('[data-act=view][data-v=analyse]'); await s.settle(3); await s.p.evaluate(() => window.scrollTo(0, 0)); };
 // libellé « tendance · niveau » : la tendance (en chauffe, stabilisé, en refroidissement, au repos) est distincte du niveau (froid … très chaud)
-const STATES = /(EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT|FROID|SOUS LA PLAGE FAVORABLE|FAVORABLE|CHAUD|TRÈS CHAUD)/;
+const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT|FROID|SOUS LA PLAGE FAVORABLE|FAVORABLE|CHAUD|TRÈS CHAUD))|SUPPOSÉ AMBIANT/;
 
 (async () => {
   const b = await BR.launch();
