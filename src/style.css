@@ -570,10 +570,13 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .wx-now { margin: 5px 0 7px; padding: 11px 13px; border-radius: 6px; background: var(--panel2); color: var(--fg); border: 1px solid var(--line); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
 .wx-now-main { display: flex; align-items: flex-start; min-width: 0; }
 .wx-now-v { font-family: var(--f-disp); font-size: clamp(50px, 14vw, 68px); line-height: .82; font-weight: 700; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
-.wx-now[data-tone="cold"] .wx-now-v { color: var(--c-rain); }
+.wx-now[data-tone="cold"] .wx-now-v, .wx-now[data-tone="chilly"] .wx-now-v { color: var(--c-rain); }
 .wx-now[data-tone="cool"] .wx-now-v { color: var(--c-air); }
-.wx-now[data-tone="warm"] .wx-now-v { color: var(--risk-t); }
+.wx-now[data-tone="mild"] .wx-now-v { color: var(--fg2); }
+.wx-now[data-tone="warm"] .wx-now-v { color: var(--c-road); }
+.wx-now[data-tone="warmer"] .wx-now-v { color: var(--risk-t); }
 .wx-now[data-tone="hot"] .wx-now-v { color: var(--nogo-t); }
+.wx-now[data-tone="hottest"] .wx-now-v { color: var(--nogo); }
 .wx-now-u { font-family: var(--f-disp); font-size: 21px; line-height: 1; font-weight: 600; margin: 1px 0 0 3px; color: var(--fg2); }
 .wx-now-side { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .wx-now-k { font-size: 10.5px; line-height: 1.2; letter-spacing: .09em; text-transform: uppercase; color: var(--fg2); font-weight: 700; }
