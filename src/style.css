@@ -639,7 +639,7 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 @media (max-width: 380px) { .wx-pts li { grid-template-columns: 92px minmax(0, 1fr); } .wx-rf li { grid-template-columns: 22px 80px minmax(0, 1fr) 32px; } }
 
 /* ---------- onglet Analyse : ingénieur pneumatique embarqué (verdict d'abord, explications au toucher) ---------- */
-.va .wrap > .mod:not(#secLab):not(#settings), .va #secCars, .va #banners, .va .foot { display: none !important; }
+.va .wrap > .mod:not(#secLab):not(#settings), .va #secCars, .va #banners, .va .foot, .va .day-context { display: none !important; }
 .lab { gap: 10px; }
 .lab h3 { font-family: var(--f-disp); font-size: 15px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--fg2); }
 .lab-cars { margin-bottom: 2px; }
