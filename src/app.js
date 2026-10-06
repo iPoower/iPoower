@@ -2244,7 +2244,7 @@ function briefCard(t, dayLbl) {
     : `<span class="brf-k">🏁 Prochain trajet · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · ${t.dep.slice(11, 16)} → ${(t.arr || '').slice(11, 16)} · ${cdSpan(t.dep)}</span>`}</div>
     <div class="brf-ev">${t.src === 'cal' ? '📅' : '🏁'} <b>${esc(t.name)}</b>${t.l ? ` · ${f0(t.l.km)} km · ${t.l.min} min${t.live ? ' depuis ici' : ''}${t.l.routed ? ' · route analysée' : ' (estimé)'}` : ''}</div>
     ${tripOriginHtml(t)}<div class="cal-v">${tripCancelButton(t)}${returnHomeButtonForTrip(t)}${liveStartBtn(t)}${placeArriveBtn(t) || liveArrBtn(t)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
-  if (!t.res) return head + `<p class="muted">${t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;
+  if (!t.res) return head + `<p class="muted">${appActiveCar() && !hasTires(appActiveCar()) ? 'Pneus de la voiture active à renseigner.' : t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;
   const sum = t.sum, top = t.res[0], lv = top.w.level, xs = t.seq.map(q => q.hs[q.i]);
   const ppMax = Math.max(...xs.map(x => x.pp || 0)), Pmax = Math.max(...xs.map(x => x.P || 0));
   const parts = ((top.w.worst && top.w.worst.parts) || []).slice().sort((a, b) => b.v - a.v).slice(0, 2).map(p => p.label);
@@ -2415,7 +2415,7 @@ function legEval(leg) {
   if (!c.models) return { err: true };
   const seq = legSeq(c.models, legPoints(leg), leg.dep, leg.min); if (!seq.length) return { beyond: true };
   const res = appTripCars().map(car => ({ c: car, w: windowAssess(car, seq, 'trip') })).filter(r => r.w);
-  return { seq, sum: summarize(seq), res, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0), crit: legCritical(seq, appTripCars()) };
+  return { seq, sum: summarize(seq), res: res.length ? res : null, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, crit: legCritical(seq, appTripCars()) };
 }
 function calDirectSet() { return S.calDirect || {}; }
 const CANCELROUTES = new Map(); let CANCELROUTEGEN = 0;
@@ -2462,7 +2462,7 @@ function tripCancelRouteLeg(e, leg) {
       })
       .catch(() => { if (gen !== CANCELROUTEGEN) return; entry.phase = 'error'; renderCal(); renderBrf(); renderTenue(); });
   }
-  if (entry.leg && legEval(entry.leg).res) { entry.phase = 'ready'; return entry.leg; }
+  if (entry.leg && legEval(entry.leg).sum) { entry.phase = 'ready'; return entry.leg; }
   // Ne pas exposer une ancienne route ou une nouvelle heure tant que route ET météo ne sont pas prêtes.
   return { ...leg, from: null, min: null, km: null, pts: [], g: [], routed: false, originPending: true };
 }

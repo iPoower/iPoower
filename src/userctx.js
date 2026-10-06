@@ -40,7 +40,7 @@ const DayContext = (() => {
     return n ? { place: places.find(p => p.id === n.placeId) || null, source: n.placeId ? 'user' : 'pending', confirmedAt: n.confirmedAt } : { place: planned || null, source: planned ? 'planned' : 'unknown', confirmedAt: null };
   }
   function returnLeg(leg, key, v, now, places) {
-    const n = clean(v, now, places).nextDestination; if (!n || n.tripKey !== key || leg.k !== 'ret') return leg;
+    const n = clean(v, now, places).nextDestination; if (!n || n.tripKey !== key) return leg;
     const to = places.find(p => p.id === n.placeId) || null;
     if (to && leg.to && to.id === leg.to.id && to.lat === leg.to.lat && to.lon === leg.to.lon) return { ...leg, navTo: to, destinationOverride: true };
     return { ...leg, to, navTo: to, destinationOverride: true, g: [], pts: [], km: null, min: null, routed: false,

@@ -106,4 +106,16 @@ check('libellé Travail → Lieu B ne prétend pas rentrer au domicile ; vrai re
   assert.equal(a.appCommuteLabel(td), 'Trajet · Travail test → Lieu B');
   assert.equal(a.appCommuteLabel({ ...td, LB: places[0], toName: 'Domicile test' }), 'Retour domicile-travail');
 });
+check('destination manuelle plus récente remplace aussi le trajet Agenda aller courant', () => {
+  const l = { k: 'go', from: places[1], to: places[0], min: 30 };
+  assert.equal(D.returnLeg(l, 'current', { nextDestination: choice('b') }, now, places).to.id, 'b');
+});
+check('voiture active sans pneus : météo route conservée, aucun verdict d’une autre voiture', () => {
+  const a = appFixture(), app = fs.readFileSync(require('node:path').resolve(__dirname, '../src/app.js'), 'utf8');
+  vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/engine.js'), 'utf8'), a);
+  a.appSetCar('b'); a.PT_TTL = 3600000; a.LEGM = { route: { t: now, models: [{}] } }; a.legKey = () => 'route'; a.locHasCoords = () => true;
+  a.legSeq = () => [{ hs: [{}], i: 0 }]; a.legPoints = () => []; a.summarize = () => ({}); a.legCritical = () => null;
+  vm.runInContext(app.slice(app.indexOf('function legEval('), app.indexOf('function calDirectSet(')), a);
+  const r = a.legEval({ from: places[0], to: places[1], dep: '2026-10-06T17:30', min: 30 }); assert.equal(r.res, null); assert.equal(r.seq.length, 1); assert.equal(r.worst, null);
+});
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);
