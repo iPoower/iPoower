@@ -640,6 +640,7 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 
 /* ---------- onglet Analyse : ingénieur pneumatique embarqué (verdict d'abord, explications au toucher) ---------- */
 .va .wrap > .mod:not(#secLab):not(#settings), .va #secCars, .va #banners, .va .foot, .va .day-context { display: none !important; }
+.va #placeBar .place.on [data-act="place-confirm"] { display: none !important; }
 .lab { gap: 10px; }
 .lab h3 { font-family: var(--f-disp); font-size: 15px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--fg2); }
 .lab-cars { margin-bottom: 2px; }
