@@ -20,6 +20,10 @@ function appCommuteEndpoints(dir, date, key) {
   const to = n && n.tripKey === key ? locById(n.placeId) : locById(dir === 'go' ? S.work.to : S.work.from);
   return { from, to };
 }
+function appCommuteLabel(td) {
+  const home = S.locs[0].id, from = td.dir === 'go' ? home : S.work.to, to = td.dir === 'go' ? S.work.to : home;
+  return td.LA.id === from && td.LB.id === to ? `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail` : `Trajet · ${td.fromName} → ${td.toName}`;
+}
 function appChooseDestination(placeId, source = 'user') {
   return appAction(() => {
     const places = placeList(); if (placeId != null && !places.some(p => p.id === placeId)) return;

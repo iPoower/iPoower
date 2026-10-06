@@ -2065,7 +2065,7 @@ function appBuildTrips() {
       if (!actual.err) td = actual;
     }
     const res = td.seq.length ? cars.map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w) : [];
-    T.push({ src: 'work', carId: appDay().activeCarId, dep: td.dep, planDep: plannedDep, arr: td.arr, running: false, name: `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail`, from: td.fromName, to: td.toName,
+    T.push({ src: 'work', carId: appDay().activeCarId, dep: td.dep, planDep: plannedDep, arr: td.arr, running: false, name: appCommuteLabel(td), customRoute: appCommuteLabel(td).startsWith('Trajet ·'), from: td.fromName, to: td.toName,
       res: res.length ? res : null, sum: td.seq.length ? summarize(td.seq) : null, seq: td.seq, wait: !td.seq.length, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, key, obs: td.A && td.A.obs, td });
   };
   // trajet domicile-travail en cours (entre le départ et l'arrivée) : il reste affiché jusqu'à l'arrivée
@@ -2232,7 +2232,7 @@ const liveArrBtn = t => (t.running || t.live === 'active') && LIVE.key === t.key
 // carte de briefing complète, identique pour un trajet domicile-travail et un trajet agenda
 function briefCard(t, dayLbl) {
   if (t.destinationPending || t.l && t.l.destinationOverride && !t.l.to) return `<div class="brf-h"><span class="brf-k">${APP_CONTEXT.snapshot.status === 'travel' ? '🚗 En trajet' : '🏁 Prochain trajet'}</span></div><div class="brf-ev"><b>${esc(t.from || 'Origine à confirmer')} → Destination à confirmer</b></div><p class="brf-why" role="status">Choisis la destination dans Aujourd’hui pour calculer le trajet.</p>`;
-  const src = t.src === 'work' ? 'domicile-travail' : 'agenda';
+  const src = t.customRoute || t.src === 'local' ? 'trajet choisi' : t.src === 'work' ? 'domicile-travail' : 'agenda';
   if (t.l && t.l.originPending) return `<div class="brf-h"><span class="brf-k">🏁 Prochain trajet · ${src}</span></div><div class="brf-ev">📅 <b>${esc(t.name)}</b></div><p class="brf-why" role="status">Origine à confirmer après annulation du trajet précédent</p><div class="cal-v">${tripCancelButton(t)}</div>`;
   const head = `<div class="brf-h">${t.manualPreview ? `<span class="brf-k">📍 Aperçu depuis ma position · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · départ estimé <b>${t.previewDep.slice(11, 16)}</b> · arrivée estimée ${t.previewArr.slice(11, 16)}</span>`
     : t.live === 'active' ? `<span class="brf-k">🏎️ Trajet en cours · ${src}</span><span class="brf-w">${f0(t.l.km)} km restants · ${t.l.min} min · arrivée estimée <b>${t.arr.slice(11, 16)}</b></span>`
@@ -2240,8 +2240,8 @@ function briefCard(t, dayLbl) {
     : t.live === 'late' && t.adv ? `<span class="brf-k">⏱ Départ conseillé dépassé · ${src}</span><span class="brf-w">arrivée estimée <b>${t.arr.slice(11, 16)}</b> · ${liveMin(t.adv.target, t.arr) > 0 ? `retard estimé +${Math.round(liveMin(t.adv.target, t.arr))} min` : `dans les temps (cible ${t.adv.target.slice(11, 16)})`}</span>`
     : t.live === 'late' ? `<span class="brf-k">⏱ Départ prévu dépassé · ${src}</span><span class="brf-w">prévu ${t.planDep.slice(11, 16)} · itinéraire depuis ma position</span>`
     : t.adv && (t.live === 'imminent' || t.live === 'advice') ? `<span class="brf-k">🏁 Prochain trajet · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · départ conseillé <b>${t.adv.dep.slice(11, 16)}</b> · arrivée cible ${t.adv.target.slice(11, 16)} · ${cdSpan(t.adv.dep)}</span>`
-    : t.running ? `<span class="brf-k">🏎️ Trajet en cours · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">parti à ${t.dep.slice(11, 16)} · arrivée prévue <b>${(t.arr || '').slice(11, 16)}</b></span>`
-    : `<span class="brf-k">🏁 Prochain trajet · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">${dayLbl(t.dep)} · ${t.dep.slice(11, 16)} → ${(t.arr || '').slice(11, 16)} · ${cdSpan(t.dep)}</span>`}</div>
+    : t.running ? `<span class="brf-k">🏎️ Trajet en cours · ${src}</span><span class="brf-w">parti à ${t.dep.slice(11, 16)} · arrivée prévue <b>${(t.arr || '').slice(11, 16)}</b></span>`
+    : `<span class="brf-k">🏁 Prochain trajet · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · ${t.dep.slice(11, 16)} → ${(t.arr || '').slice(11, 16)} · ${cdSpan(t.dep)}</span>`}</div>
     <div class="brf-ev">${t.src === 'cal' ? '📅' : '🏁'} <b>${esc(t.name)}</b>${t.l ? ` · ${f0(t.l.km)} km · ${t.l.min} min${t.live ? ' depuis ici' : ''}${t.l.routed ? ' · route analysée' : ' (estimé)'}` : ''}</div>
     ${tripOriginHtml(t)}<div class="cal-v">${tripCancelButton(t)}${returnHomeButtonForTrip(t)}${liveStartBtn(t)}${placeArriveBtn(t) || liveArrBtn(t)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
   if (!t.res) return head + `<p class="muted">${t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;

@@ -100,4 +100,10 @@ check('destination inconnue : aucun ETA ou durée du commute inventé', () => {
   a.addMin = (s, m) => new Date(Date.parse(s + ':00Z') + m * 60000).toISOString().slice(0, 16); a.USER_STORE.state.dayContext.nextDestination = choice(null);
   const trip = a.appLocalTrips([], '2026-10-06T17:30')[0]; assert.equal(trip.l.min, null); assert.equal(trip.arr, null); assert.equal(trip.to, 'Destination à confirmer');
 });
+check('libellé Travail → Lieu B ne prétend pas rentrer au domicile ; vrai retour Maison conservé', () => {
+  const a = appFixture(); a.S.locs = places.slice(0, 2); a.S.work = { from: 'home', to: 'work' };
+  const td = { dir: 'ret', LA: places[1], LB: places[2], fromName: 'Travail test', toName: 'Lieu B' };
+  assert.equal(a.appCommuteLabel(td), 'Trajet · Travail test → Lieu B');
+  assert.equal(a.appCommuteLabel({ ...td, LB: places[0], toName: 'Domicile test' }), 'Retour domicile-travail');
+});
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);
