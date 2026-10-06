@@ -27,7 +27,7 @@ jobs:
           BROWSER: ${{ matrix.browser }}
           LAB_DUMP: '1'
           LAB_SHOT: /tmp/day-context-analyse
-        run: node tests/run-ci.js --lane browser --suite e2e43-analyse.js --suite e2e44-place.js --suite e2e49-interactions.js
+        run: node tests/run-ci.js --lane browser --suite e2e43-analyse.js --suite e2e44-place.js --suite e2e49-interactions.js --suite e2e55-day-context.js --suite e2e42-meteo.js
       - name: Diagnostic fictif
         if: always() && !cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -35,8 +35,7 @@ jobs:
           name: day-regressions-${{ matrix.browser }}
           path: |
             .ci/results/report-*.json
-            .ci/out-browser-*/*.log
-            .ci/lanes/*/out/*.log
+            .ci/work/*/out/*.log
             /tmp/day-context-analyse-*.png
           if-no-files-found: error
           retention-days: 1

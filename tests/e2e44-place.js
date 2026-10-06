@@ -89,7 +89,10 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     // 4. relevé précis impossible (100 km en 3 min) : rejeté
     await s.p.clock.runFor(3 * 60e3); await locateAt(s, { lat: 48.75, lon: 0.95, acc: 30 }); x = await st(s.p);
     check('4 · relevé « précis » à 100 km en 3 min : rejeté comme incohérent', /🏢 AU TRAVAIL/.test(x.bar) && /déplacement impossible/.test(x.diag['Sources écartées'] || ''), JSON.stringify(x.diag));
-    // 5. « Je quitte le travail » : fin de l'état, dernier lieu fiable conservé
+    // 5. Maison choisie, puis « Je quitte le travail » : retour explicite, dernier lieu fiable conservé
+    await s.p.locator('#dayContext .day-editor > summary').click();
+    await s.p.locator('#dayContext .day-destination > summary').click();
+    await s.p.locator('[data-act=day-destination][data-id=home]').click();
     await s.p.locator('#placeBar [data-act=place-leave]').click(); await s.settle(2); x = await st(s.p);
     check('5 · « Je quitte le travail » : confirmation clôturée et même retour démarré pour toute l’app', !x.conf && await s.p.evaluate(() => APP_CONTEXT.snapshot.status === 'travel' && APP_CONTEXT.snapshot.activeTrip.td.dir === 'ret' && APP_CONTEXT.snapshot.origin.id === 'work'), JSON.stringify({ bar: x.bar, diag: x.diag['Lieu logique Race Control'] }));
     await s.c.close();

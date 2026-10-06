@@ -61,7 +61,7 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
       await click('[data-act=view][data-v=tenue]');
       await check(tag + ' · jour et occasion Tenue', async () => { await click('[data-act=outfit-day][data-v="1"]'); assert.equal(await p.evaluate(() => UI.outfitDay), 1); await click('[data-act=outfit-occasion][data-v=walk]'); assert.equal(await p.evaluate(() => UI.outfitOccasion), 'walk'); });
       await click('[data-act=view][data-v=analyse]');
-      await check(tag + ' · véhicule Analyse', async () => { const car = await p.locator('[data-act=labcar]').last().getAttribute('data-car'); await p.locator('[data-act=labcar]').last().click(); assert.equal(await p.evaluate(() => UI.labCar), car); });
+      await check(tag + ' · véhicule Analyse et choix global', async () => { const car = await p.locator('[data-act=labcar]').last().getAttribute('data-car'); await p.locator('[data-act=labcar]').last().click(); assert.equal(await p.evaluate(() => appActiveCar().id), car); assert.equal(await p.evaluate(() => labCar().id), car); assert.equal(await p.locator(`[data-act=labcar][data-car=${car}]`).getAttribute('aria-pressed'), 'true'); });
       await open();
       await check(tag + ' · calibration effacée et photo dynamique retirée', async () => {
         await click('[data-act=calib-reset]'); assert.equal(await p.evaluate(() => S.calib.length), 0);

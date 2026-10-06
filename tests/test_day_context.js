@@ -118,4 +118,24 @@ check('voiture active sans pneus : météo route conservée, aucun verdict d’u
   vm.runInContext(app.slice(app.indexOf('function legEval('), app.indexOf('function calDirectSet(')), a);
   const r = a.legEval({ from: places[0], to: places[1], dep: '2026-10-06T17:30', min: 30 }); assert.equal(r.res, null); assert.equal(r.seq.length, 1); assert.equal(r.worst, null);
 });
+check('Agenda sans monte active : rendu météo conservé, aucun accès à un verdict inexistant', () => {
+  const a = appFixture(), app = fs.readFileSync(require('node:path').resolve(__dirname, '../src/app.js'), 'utf8');
+  a.appSetCar('b'); a.legEval = () => ({ sum: { TrMin: 6, Tmin: 8, Pmax: 0, visMin: 10000 }, res: null, worst: null, seq: [], crit: null });
+  a.liveNow = () => '2026-10-06T17:30'; a.esc = String; a.f0 = String; a.f1 = String; a.visTxt = String; a.cdSpan = () => ''; a.wazeBtn = () => ''; a.legNavTo = l => l.to; a.frostBand = () => null; a.LV = {};
+  vm.runInContext(app.slice(app.indexOf('function legHtml('), app.indexOf('// résumé de la journée')), a);
+  const html = a.legHtml({ k: 'ret', from: places[1], to: places[0], dep: '2026-10-06T18:00', arr: '2026-10-06T18:30', min: 30, km: 20 });
+  assert.match(html, /Pneus.*renseigner/); assert.match(html, /Route <b>6 °C/); assert.match(html, /Air <b>8 °C/);
+  const custom = a.legHtml({ k: 'ret', from: places[1], to: places[2], destinationOverride: true, dep: '2026-10-06T18:00', arr: '2026-10-06T18:30', min: 30, km: 20 });
+  assert.match(custom, /vers Lieu B/); assert.doesNotMatch(custom, /vers le domicile/);
+});
+check('Agenda sans itinéraire relais : voiture sans monte ne reçoit aucun faux verdict vert', () => {
+  const a = appFixture(), app = fs.readFileSync(require('node:path').resolve(__dirname, '../src/app.js'), 'utf8');
+  vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/engine.js'), 'utf8'), a); a.appSetCar('b');
+  const model = { byTime: new Map([['2026-10-06T17:00', 0], ['2026-10-06T18:00', 0]]), hs: [{}] };
+  a.S.locs = places.slice(0, 2); a.M = { home: model }; a.CALM = { 'cal48.80_2.45': { m: model } }; a.calendarSpatial = () => true; a.locHasCoords = () => true;
+  a.distKm = () => 20; a.routeTravelMin = () => 30; a.toMin = () => 18 * 60; a.summarize = () => ({ Tmin: 8 });
+  a.addMin = (s, m) => new Date(Date.parse(s + ':00Z') + m * 60000).toISOString().slice(0, 16);
+  vm.runInContext(app.slice(app.indexOf('function calTrip('), app.indexOf('// trajets calculés par le relais')), a);
+  const r = a.calTrip({ ...places[2], s: '2026-10-06T18:00' }); assert.equal(r.res, null); assert.equal(r.worst, null); assert.equal(r.sum.Tmin, 8);
+});
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);
