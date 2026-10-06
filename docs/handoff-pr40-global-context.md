@@ -1,55 +1,57 @@
 # Checkpoint PR #40 — contexte global Race Control
 
-## Reprise quota critique — 6 octobre, validation ciblée
+## Reprise quota critique — quatre tests ciblés verts
 
-DERNIER COMMIT produit : `d9973acaa87cf144c54529ca123e8e55f4ea2ebc`.
-e2e50 Chromium : **vert**, 41 s.
-e2e50 WebKit : **vert**, 79 s.
-Preuve : https://github.com/iPoower/iPoower/actions/runs/37437358482
-(job `112182343005`, checkout du SHA ci-dessus).
-e2e53 Chromium : run `37438002486` rouge, diagnostic complet obtenu ; fixture corrigée, à retester.
-e2e53 WebKit : après Chromium vert.
+BRANCHE : `fix/global-user-context`.
+PR : https://github.com/iPoower/iPoower/pull/40 — Draft, non fusionnée, non déployée.
+DERNIER COMMIT : SHA du checkpoint final dans l'en-tête de la PR ; récupérer
+`git log -1 --format=%H -- docs/handoff-pr40-global-context.md`.
+Dernière révision du code testée : `cdd0a986922366b22784c2a942d5c337a70a8359`.
 
-Cause exacte e2e53 : PC/configuré, Pneus, départ de l'aller,
-`#secBrf [data-act=trip-start]` absent (visible/enabled faux, aucun overlay).
-USER_STORE domicile confirmé, aucun départ/arrivée ; APP_CONTEXT domicile,
-prochain aller lundi 12 octobre 06:30. Le jeudi du scénario n'était pas dans les
-jours travaillés du preset fictif `[1,2,3]`. Correction limitée au scénario :
-déclarer explicitement ce jeudi travaillé. Aucun trajet inventé dans le produit.
-Erreur complète : logs du job `112185043500`, run ci-dessus.
-Deuxième diagnostic e2e53 : run `37438637685`, job `112186595250`.
-La réouverture remettait artificiellement l'horloge à T0+5 min : nouvelle
-confirmation Travail `1791433505011`, arrivée Maison antérieure dans le parcours
-mais timestamp `1791433532365`. L'assertion `nextDir` échouait (`go !== ret`).
-La fixture conserve désormais l'heure du scénario avant fermeture, sans retour
-en arrière ; la garde produit sur les arrivées plus récentes reste intacte.
-Run suivant `37439115848` : les quatre cycles et le soir passent sur Chromium.
-Dernière assertion fragile : `#notice` affiche « MÉTÉO INDISPONIBLE » via CSS,
-alors que la regex était sensible à la casse. Comparaison passée en `/i`, sans
-modifier le produit ni retirer les assertions de contexte. À retester.
-Run `37439480309` : e2e53 Chromium vert (50 s), WebKit bloqué par
-`clock.install: TypeError: undefined is not an object (evaluating 'globalThis.__pwClock.controller')`
-à la seconde fenêtre, ligne 105 (job `112189373215`). L'horloge Playwright est
-globale au BrowserContext : retirer les réinstallations sur seconde fenêtre et
-réouverture. Les pages héritent de l'horloge existante, avec assertion de
-monotonie à la réouverture. Aucun délai ou retry ajouté, aucun code produit changé.
-Source : https://playwright.dev/docs/api/class-clock
+| Test | Chromium | WebKit | Preuve GitHub |
+| --- | --- | --- | --- |
+| e2e50-geolocation.js | **vert** | **vert** | [run 37437358482](https://github.com/iPoower/iPoower/actions/runs/37437358482), job 112182343005, SHA d9973ac |
+| e2e53-global-context.js | **vert** | **vert** | [run 37440000962](https://github.com/iPoower/iPoower/actions/runs/37440000962), job 112191131599, SHA cdd0a98 |
 
-CAUSES CORRIGÉES : les boutons du checkpoint sont validés sur les deux moteurs.
-La première acquisition GPS précise dans une géofence exige désormais un second
-relevé cohérent. Un GPS stocké en attente ne devient pas un lieu logique à la
-première observation après reload. Les nouvelles régressions e2e50 vérifient le
-point initial au travail, sa réouverture, le lieu canonique indéterminé et
-l'absence de confirmation/arrivée inventée ; le cycle GPS continue à passer.
-`TMAP.map.invalidateSize` ne réapparaît pas dans ces deux exécutions.
+Le code produit est identique entre ces deux révisions. Aucune suite complète
+relancée, aucun nouvel unitaire lancé. Les 26 verts et le PWA/offline plus bas
+sont les résultats historiques ; ils ne sont pas de nouvelles validations.
 
-PROCHAINE ACTION : uniquement e2e53 Chromium, puis WebKit. Le label `quota-ciblee`
-suspend la CI complète pour cette branche ; `pr40-targeted.yml` exécute uniquement
-e2e50, ou uniquement e2e53 avec le label `e2e53-only`. Aucun secret ni déploiement.
-Retirer ces labels après autorisation de la validation complète, pas avant.
-Le passage local e2e50 a été bloqué par l'exécutable Playwright absent ; les
-résultats ci-dessus proviennent du runner GitHub. Les sections suivantes sont
-le checkpoint historique et ne remplacent pas ces résultats ciblés plus récents.
+CAUSES CORRIGÉES :
+- Boutons Maison/Travail du checkpoint validés sur les deux moteurs.
+- Premier GPS précis dans une géofence : second relevé cohérent requis, même
+  sans lieu antérieur. Une observation stockée en attente ne devient pas un lieu
+  logique après reload. e2e50 couvre explicitement le premier point au travail,
+  sa réouverture et l'absence de confirmation/arrivée inventée.
+- Fixture e2e53 : jeudi déclaré travaillé, contrairement au preset `[1,2,3]`.
+- Horloge partagée Playwright conservée lors des nouvelles fenêtres/réouvertures,
+  sans réinstallation ni retour artificiel à T0+5 min.
+- Message météo indisponible comparé sans dépendre des majuscules CSS.
+- Aucun `{ force: true }`, timeout augmenté, gros délai ou reload de contournement.
+- Aucun retour de `TMAP.map.invalidateSize` ; assertions d'erreurs JS vertes.
+
+CAUSES RESTANTES : aucune dans ces deux tests ciblés. CI complète à exécuter
+après réinitialisation du quota ; ne pas annoncer une validation globale terminée.
+
+DIAGNOSTICS CONSERVÉS : run 37438002486/job 112185043500 : PC/configuré/Pneus,
+départ aller, `#secBrf [data-act=trip-start]` absent, non visible, non enabled,
+aucun overlay. USER_STORE domicile confirmé, sans départ ; APP_CONTEXT prochain
+aller lundi 12 octobre 06:30 (fixture jeudi non travaillé). Run 37438637685 :
+`go !== ret` après horloge reculée ; run 37439115848 : regex sensible à la casse ;
+run 37439480309 : WebKit `clock.install`, `globalThis.__pwClock.controller`
+indéfini sur la seconde fenêtre. Les logs conservent erreurs et états complets.
+Source horloge : https://playwright.dev/docs/api/class-clock
+
+PROCHAINE ACTION EXACTE : après réinitialisation du quota, une seule CI complète
+sur cette branche (Actions → Race Control · tests → Run workflow, branche
+`fix/global-user-context`, version vide). La configuration CI temporaire ciblée
+est retirée ; CI standard restaurée. Checkpoint documentaire avec `[skip ci]`.
+L'environnement local n'a pas l'exécutable Playwright ; ne pas contourner de
+restriction. Ne pas refaire l'audit, ne pas repartir de main, ne pas fusionner,
+ne pas déployer, ne pas ajouter DATEX ou de nouvelles fonctionnalités.
+
+Les sections suivantes constituent le checkpoint historique. Les résultats
+ciblés ci-dessus remplacent ses échecs e2e50/e2e53 et son doute sur le GPS initial.
 
 Checkpoint demandé le 6 octobre 2026 à 09:56 Europe/Paris. Reprise de travail
 uniquement sur instruction suivante : laisser la PR en draft, sans fusion ni

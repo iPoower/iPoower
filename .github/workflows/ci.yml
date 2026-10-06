@@ -34,8 +34,6 @@ permissions:
   contents: read
 jobs:
   version:
-    # PR #40 : quota critique, uniquement les suites ciblées tant que ce label est présent.
-    if: github.head_ref != 'fix/global-user-context' || !contains(github.event.pull_request.labels.*.name, 'quota-ciblee')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
@@ -204,7 +202,6 @@ jobs:
         run: node tests/run-ci.js
   relay-smoke:
     needs: version
-    if: github.head_ref != 'fix/global-user-context' || !contains(github.event.pull_request.labels.*.name, 'quota-ciblee')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -224,7 +221,7 @@ jobs:
   validation:
     needs: [version, unit, tests, tests-rollback, relay-smoke, confidentialite]
     # Même en cas d'échec d'un parent, le verdict doit être rouge, jamais sauté en silence.
-    if: always() && !cancelled() && (github.head_ref != 'fix/global-user-context' || !contains(github.event.pull_request.labels.*.name, 'quota-ciblee'))
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
