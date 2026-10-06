@@ -7,8 +7,16 @@ e2e50 Chromium : **vert**, 41 s.
 e2e50 WebKit : **vert**, 79 s.
 Preuve : https://github.com/iPoower/iPoower/actions/runs/37437358482
 (job `112182343005`, checkout du SHA ci-dessus).
-e2e53 Chromium : à lancer avec diagnostics de clic complets.
+e2e53 Chromium : run `37438002486` rouge, diagnostic complet obtenu ; fixture corrigée, à retester.
 e2e53 WebKit : après Chromium vert.
+
+Cause exacte e2e53 : PC/configuré, Pneus, départ de l'aller,
+`#secBrf [data-act=trip-start]` absent (visible/enabled faux, aucun overlay).
+USER_STORE domicile confirmé, aucun départ/arrivée ; APP_CONTEXT domicile,
+prochain aller lundi 12 octobre 06:30. Le jeudi du scénario n'était pas dans les
+jours travaillés du preset fictif `[1,2,3]`. Correction limitée au scénario :
+déclarer explicitement ce jeudi travaillé. Aucun trajet inventé dans le produit.
+Erreur complète : logs du job `112185043500`, run ci-dessus.
 
 CAUSES CORRIGÉES : les boutons du checkpoint sont validés sur les deux moteurs.
 La première acquisition GPS précise dans une géofence exige désormais un second

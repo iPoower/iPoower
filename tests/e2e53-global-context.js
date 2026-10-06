@@ -41,6 +41,7 @@ async function click(p, selector) {
 }
 async function tab(p, value) { stage = 'onglet ' + value; await click(p, '#viewSeg [data-act=view][data-v=' + value + ']'); }
 async function action(p, selector, label) { stage = scope.phase = label; await click(p, selector); }
+const workday = p => p.evaluate(() => { S.work.days = [1, 2, 3, 4, 5]; saveSettings(); rebuild(); renderAll(); });
 async function allViews(s, stage, expected, home, work) {
   const { p } = s;
   for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) {
@@ -84,6 +85,8 @@ async function allViews(s, stage, expected, home, work) {
         storedGps: dev === 'pc' && profile === 'configure' ? { id: 'gps', gps: 1, name: 'GPS domicile précédent', lat: 48.8502, lon: 2.3501, acc: 20, t: Date.parse('2026-10-08T06:19:40+02:00') } : null });
       let p = s.p;
       if (profile === 'public-propre') { await action(p, '[data-act=nocode]', 'profil public'); await s.settle(8); }
+      // Le préréglage fictif ne travaille que lundi/mardi/mercredi ; ce cycle porte sur un jeudi travaillé.
+      await workday(p);
       const tag = dev + ' · ' + profile, home = profile === 'configure' ? 'Maison test' : 'Lieu principal', work = profile === 'configure' ? 'Travail test' : 'Lieu de travail';
       let navigations = 0; const onNav = f => { if (f === p.mainFrame()) navigations++; }; p.on('framenavigated', onNav);
       await action(p, '#placeBar [data-act=place-confirm][data-place=home]', 'confirmation au domicile');
@@ -131,6 +134,7 @@ async function allViews(s, stage, expected, home, work) {
     }
     const late = await session(browser, { at: '2026-10-08T18:45:00+02:00' });
     scope = { device: 'pc', profil: 'configure', phase: 'travail après horaire retour' };
+    await workday(late.p);
     await action(late.p, '#placeBar [data-act=place-confirm][data-place=work]', scope.phase);
     await allViews(late, 'travail après l’heure prévue du retour', { status: 'work', location: 'work', origin: 'work', destination: 'home', active: null, nextDir: 'ret', weather: 'work' }, 'Maison test', 'Travail test');
     await check('au travail le soir : aller clôturé et météo du retour évaluée au créneau actuel', async () => {
