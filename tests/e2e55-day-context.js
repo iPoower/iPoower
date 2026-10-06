@@ -12,7 +12,7 @@ const read = p => p.evaluate(() => {
 async function check(label, fn) { try { await fn(); n++; console.log('✅ ' + label); } catch (e) { console.error('❌ ' + label + ' · ' + e.message); throw e; } }
 async function tap(p, selector) {
   const el = p.locator(selector).first(); scope.selector = selector;
-  try { await el.tap(); } catch (e) {
+  try { if (scope.device === 'iphone') await el.tap(); else await el.click(); } catch (e) {
     console.error('DIAGNOSTIC ' + JSON.stringify({ ...scope, present: await el.count(), visible: await el.isVisible().catch(() => false), enabled: await el.isEnabled().catch(() => false), state: await read(p), overlay: await p.evaluate(() => [...document.querySelectorAll('[role=dialog],dialog[open]')].map(x => x.id)) })); throw e;
   }
 }
