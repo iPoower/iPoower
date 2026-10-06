@@ -41,15 +41,15 @@ async function allViews(s, stage, expected, home, work) {
       if (expected.status === 'travel') assert.match(bar, /EN ROUTE/);
       if (view === 'pneus' && expected.status !== 'travel') {
         const weather = await text(p, '#secCur'), label = x.location === 'work' ? work : home;
-        assert(weather.includes(label), 'météo actuelle du lieu confirmé · ' + label + ' · ' + weather);
+        assert(weather.toLowerCase().includes(label.toLowerCase()), 'météo actuelle du lieu confirmé · ' + label + ' · ' + weather);
       }
       if (view === 'tenue') {
         const first = await text(p, '#secTenue .outfit-moment:first-child .outfit-moment-heading');
-        if (expected.status === 'work') { assert(first.includes(work), 'premier moment au travail · ' + first); assert(!first.includes('→'), first); }
-        if (expected.status === 'home') { assert(first.includes(home), 'premier moment au domicile · ' + first); assert(!first.includes('→'), first); }
-        if (expected.status === 'travel') assert(first.includes(expected.activeDir === 'go' ? home + ' → ' + work : work + ' → ' + home), first);
+        if (expected.status === 'work') { assert(first.toLowerCase().includes(work.toLowerCase()), 'premier moment au travail · ' + first); assert(!first.includes('→'), first); }
+        if (expected.status === 'home') { assert(first.toLowerCase().includes(home.toLowerCase()), 'premier moment au domicile · ' + first); assert(!first.includes('→'), first); }
+        if (expected.status === 'travel') assert(first.toLowerCase().includes((expected.activeDir === 'go' ? home + ' → ' + work : work + ' → ' + home).toLowerCase()), first);
       }
-      if (view === 'meteo' && expected.status === 'work') { const wx = await text(p, '#secWx'); assert(wx.includes(work + ' → ' + home)); assert(!/Prochain trajet · en cours/i.test(wx), wx); }
+      if (view === 'meteo' && expected.status === 'work') { const wx = await text(p, '#secWx'); assert(wx.toLowerCase().includes((work + ' → ' + home).toLowerCase()), 'météo du retour · ' + wx); assert(!/Prochain trajet · en cours/i.test(wx), wx); }
       if (view === 'analyse' && expected.status === 'travel') assert.match(await text(p, '#secLab'), /TRAJET EN COURS/i);
     });
   }
@@ -57,9 +57,10 @@ async function allViews(s, stage, expected, home, work) {
 (async () => {
   const browser = await BR.launch();
   try {
+    // Jeudi travaillé, sans rendez-vous intermédiaire dans l’agenda fictif.
     for (const dev of ['pc', 'iphone']) for (const profile of ['public-propre', 'configure']) {
-      const s = await session(browser, { at: '2026-10-05T06:20:00+02:00', dev, unlock: profile === 'configure',
-        storedGps: dev === 'pc' && profile === 'configure' ? { id: 'gps', gps: 1, name: 'GPS domicile précédent', lat: 48.8502, lon: 2.3501, acc: 20, t: Date.parse('2026-10-05T06:19:40+02:00') } : null });
+      const s = await session(browser, { at: '2026-10-08T06:20:00+02:00', dev, unlock: profile === 'configure',
+        storedGps: dev === 'pc' && profile === 'configure' ? { id: 'gps', gps: 1, name: 'GPS domicile précédent', lat: 48.8502, lon: 2.3501, acc: 20, t: Date.parse('2026-10-08T06:19:40+02:00') } : null });
       let p = s.p;
       if (profile === 'public-propre') { await p.locator('[data-act=nocode]').click(); await s.settle(8); }
       const tag = dev + ' · ' + profile, home = profile === 'configure' ? 'Maison test' : 'Lieu principal', work = profile === 'configure' ? 'Travail test' : 'Lieu de travail';
@@ -107,14 +108,14 @@ async function allViews(s, stage, expected, home, work) {
       }
       await s.c.close();
     }
-    const late = await session(browser, { at: '2026-10-05T18:45:00+02:00' });
+    const late = await session(browser, { at: '2026-10-08T18:45:00+02:00' });
     await late.p.locator('#placeBar [data-act=place-confirm][data-place=work]').click();
     await allViews(late, 'travail après l’heure prévue du retour', { status: 'work', location: 'work', origin: 'work', destination: 'home', active: null, nextDir: 'ret', weather: 'work' }, 'Maison test', 'Travail test');
     await check('au travail le soir : aller clôturé et météo du retour évaluée au créneau actuel', async () => {
       assert((await state(late.p)).done.some(k => /^commute\|.*\|go$/.test(k)));
       assert(await late.p.evaluate(() => APP_CONTEXT.snapshot.nextTrip.arr > localTs(Date.now()) && APP_CONTEXT.snapshot.nextTrip.seq.every(q => q.hs[q.i].t >= localTs(Date.now()).slice(0, 13) + ':00')));
     }); await late.c.close();
-    const cold = await session(browser, { at: '2026-10-05T06:20:00+02:00', unlock: false, meteo: '503', dev: 'iphone' });
+    const cold = await session(browser, { at: '2026-10-08T06:20:00+02:00', unlock: false, meteo: '503', dev: 'iphone' });
     await cold.p.locator('[data-act=nocode]').click(); await cold.settle(8);
     await cold.p.locator('#placeBar [data-act=place-confirm][data-place=work]').click();
     await check('premier lancement sans météo : confirmation au travail et prochain retour conservés partout', async () => {

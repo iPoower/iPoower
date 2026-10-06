@@ -870,7 +870,7 @@ function renderView() {
   let prev = $('#notice');
   order.splice(order.indexOf('secBrf') + 1, 0, 'secRoad');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
-  if (RADAR.map) setTimeout(() => RADAR.map.invalidateSize(), 60);
+  if (RADAR.map) { const map = RADAR.map; setTimeout(() => { if (RADAR.map === map) map.invalidateSize(); }, 60); }
 }
 
 /* ---------- tenue : adaptation en mémoire, sans réseau ni nouveau stockage ---------- */
@@ -2005,7 +2005,9 @@ function liveApply(T, now) {
     if (pf && liveFresh(FIX, LIVE_AGE_IMM) && distKm(FIX, pf) <= 1) { liveReset(); cur = null; }
   }
   if (!LIVE.key) {
-    const nxt = T.filter(t => liveDest(t)).sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : 0)[0];
+    // Une météo réévaluée pour « maintenant » ne rouvre pas toute seule la
+    // fenêtre GPS d'un départ planifié ancien. Un départ explicite la rouvre.
+    const nxt = T.filter(t => liveDest(t) && (t.manualReturn || liveMin(t.planDep || t.dep, now) <= Math.max(1, liveMin(t.dep, t.arr || t.dep)) + 30)).sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : 0)[0];
     if (!nxt) return T;
     let ph = null;
     if (liveMin(now, nxt.dep) <= LIVE_WIN) ph = 'imminent';
@@ -2288,7 +2290,7 @@ function tripMapMount(t) {
   const wide = wideScreen(), slot = wide ? $('#tmapW') : lsGet('twrc.tripmap') === '1' ? $('#tmapM') : null;
   if (!slot) return;
   const key = `${t.key}|${t.worst}|${t.live ? 'L' + t.liveGen : t.manualPreview ? 'P' + t.previewGen : ''}|${wide ? 'w' : 'm'}`;
-  if (TMAP.node && TMAP.key === key) { slot.appendChild(TMAP.node); if (TMAP.map) setTimeout(() => TMAP.map.invalidateSize(), 0); return; }
+  if (TMAP.node && TMAP.key === key) { slot.appendChild(TMAP.node); if (TMAP.map) { const map = TMAP.map; setTimeout(() => { if (TMAP.map === map) map.invalidateSize(); }, 0); } return; }
   if (TMAP.map) { try { TMAP.map.remove(); } catch (e) { /* déjà retirée */ } TMAP.map = null; }
   const node = document.createElement('div'); node.className = 'tmap'; node.setAttribute('role', 'img'); node.setAttribute('aria-label', `Carte du trajet ${t.from} → ${t.to}`);
   slot.appendChild(node); TMAP.node = node; TMAP.key = key;
