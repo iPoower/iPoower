@@ -10,8 +10,14 @@ function run(code = source) {
   const O = extra => c.observe({ now, places, fix: fix(), previous: null, logical: null, context: {}, pending: null, ...extra });
   let n = 0;
   const test = (label, fn) => { fn(); n++; };
-  test('domicile précis reconnu immédiatement, sans override', () => { const r = O({}); assert(r.accept && !r.hold); assert.equal(c.context({ now, places, fix: r.logical }).place.id, 'home'); });
-  test('travail précis reconnu', () => { const r = O({ fix: fix(work) }); assert.equal(c.context({ now, places, fix: r.logical }).place.id, 'work'); });
+  for (const place of places) test(`${place.id} : premier point isolé en attente, second point cohérent reconnu`, () => {
+    const first = O({ fix: fix(place) });
+    assert(first.accept && first.hold); assert.equal(first.logical, null); assert.equal(first.pending.key, place.id);
+    assert.equal(c.context({ now, places, fix: first.logical }).place, null);
+    const second = O({ now: now + 5000, fix: fix(place, 5000), previous: fix(place), pending: first.pending });
+    assert(second.accept && !second.hold); assert.equal(second.pending, null);
+    assert.equal(c.context({ now: now + 5000, places, fix: second.logical }).place.id, place.id);
+  });
   test('lieu inconnu conservé comme autre, sans faux domicile', () => assert.equal(c.context({ now, places, fix: O({ fix: fix({ lat: 48.86, lon: 2.36 }) }).logical }).place, null));
   test('une mesure navigateur à 6 km ne devient pas une adresse IP', () => { const r = O({ fix: fix(home, 0, 6000) }); assert(!r.accept); const p = c.context({ now, places, fix: fix(home, 0, 6000) }); assert.equal(p.source, 'coarse'); assert.equal(p.place, null); assert(!/VPN|IP/.test(p.badge)); });
   test('IP seule : lieu indéterminé, aucune géofence', () => { const p = c.context({ now, places, net: fix(home, 0, 6000) }); assert.equal(p.source, 'network'); assert.equal(p.place, null); assert.equal(p.originLock, null); assert(!/VPN/.test(p.badge)); });
@@ -44,7 +50,7 @@ function run(code = source) {
   return n;
 }
 const count = run();
-for (const [from, to] of [["if (cls === 'coarse')", 'if (false)'], ["if (!coherent)", 'if (false)'], ['now - previous.ts <= PLACE_GPS_AGE', 'false'], ['const PLACE_VMAX = 200,', 'const PLACE_VMAX = 1e9,']]) {
+for (const [from, to] of [["if (cls === 'coarse')", 'if (false)'], ["if (!coherent)", 'if (false)'], ['now - previous.ts <= PLACE_GPS_AGE', 'false'], ['const PLACE_VMAX = 200,', 'const PLACE_VMAX = 1e9,'], ['!current && target;', '!current && target && logical;']]) {
   assert(source.includes(from)); assert.throws(() => run(source.replace(from, to)));
 }
-console.log(`${count}/${count} scénarios OK · 4/4 mutations rejetées`);
+console.log(`${count}/${count} scénarios OK · 5/5 mutations rejetées`);

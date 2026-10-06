@@ -1,5 +1,22 @@
 # Checkpoint PR #40 — contexte global Race Control
 
+## Intégration ordonnée — 6 octobre 2026
+
+La nouvelle instruction autorise la fusion/déploiement de #40 après CI complète
+verte, puis seulement la mise à jour/revalidation de #41. Les interdictions
+historiques de fusion ci-dessous sont remplacées par ces gates.
+
+- `cb611ecfe7acf9d9c0209452f7d6fd39003f97ab` : commit vide de lancement CI ; arbre
+  identique à `a6aaa81`. Connecteur utilisé, sans dépendance à la connexion navigateur.
+- CI complète [37457282065](https://github.com/iPoower/iPoower/actions/runs/37457282065)
+  rouge : 25/26 suites unitaires vertes ; `test_geolocation.js` ligne 13 attendait
+  encore la reconnaissance immédiate au premier point. Shards non exécutés.
+- Assertion historique corrigée, moteur produit inchangé : premier point Maison
+  ou Travail en attente, second point cohérent reconnu. Contre-test ajouté pour
+  rejeter le retour à la règle du point isolé. Local : 25/25 scénarios, 5/5 mutations.
+- Prochaine action : CI standard complète sur le nouveau HEAD ; pas de fusion,
+  de déploiement ni de modification de #41 avant tous les gates verts de #40.
+
 ## Reprise quota critique — quatre tests ciblés verts
 
 BRANCHE : `fix/global-user-context`.
