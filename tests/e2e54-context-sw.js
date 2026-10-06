@@ -21,6 +21,7 @@ const read = p => p.evaluate(() => ({ state: APP_CONTEXT.snapshot.status, place:
   destination: APP_CONTEXT.snapshot.destination && APP_CONTEXT.snapshot.destination.id, car: APP_CONTEXT.snapshot.activeCarId,
   stored: JSON.parse(localStorage.getItem(USER_STORE.key)), caches: [] }));
 async function destination(p, id) {
+  if (await p.evaluate(() => UI.view === 'analyse')) await p.locator('#viewSeg [data-act=view][data-v=pneus]').click();
   if (!(await p.locator('#dayContext .day-editor').getAttribute('open') != null)) await p.locator('#dayContext .day-editor > summary').tap();
   if (!(await p.locator('#dayContext .day-destination').getAttribute('open') != null)) await p.locator('#dayContext .day-destination > summary').tap();
   await p.locator('#dayContext [data-act=day-destination][data-id=' + id + ']').tap();
