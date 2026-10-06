@@ -1,0 +1,40 @@
+name: Race Control · thermique en production
+on:
+  push:
+    branches: [verify/pr44-production]
+    paths: ['tests/production-thermal-smoke.js', '.github/workflows/production-thermal-smoke.yml']
+permissions:
+  contents: read
+jobs:
+  production:
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: HTML/SW publics, verdicts thermiques et navigation réelle
+        env:
+          BROWSER: ${{ matrix.browser }}
+          EXPECTED_SHA: 5bf3526dd82b7dbccf7ca97a0a40559ffe0873ff
+          EXPECTED_BUILD: 42d6059fe39f
+          PRODUCTION_PROOF_PATH: production-proof
+        run: node tests/production-thermal-smoke.js
+      - name: Preuves fictives sur l’application réellement publiée
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: production-thermal-${{ matrix.browser }}
+          path: production-proof/
+          if-no-files-found: error
+          retention-days: 3
