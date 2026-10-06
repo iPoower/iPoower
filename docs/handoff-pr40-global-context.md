@@ -17,6 +17,12 @@ prochain aller lundi 12 octobre 06:30. Le jeudi du scénario n'était pas dans l
 jours travaillés du preset fictif `[1,2,3]`. Correction limitée au scénario :
 déclarer explicitement ce jeudi travaillé. Aucun trajet inventé dans le produit.
 Erreur complète : logs du job `112185043500`, run ci-dessus.
+Deuxième diagnostic e2e53 : run `37438637685`, job `112186595250`.
+La réouverture remettait artificiellement l'horloge à T0+5 min : nouvelle
+confirmation Travail `1791433505011`, arrivée Maison antérieure dans le parcours
+mais timestamp `1791433532365`. L'assertion `nextDir` échouait (`go !== ret`).
+La fixture conserve désormais l'heure du scénario avant fermeture, sans retour
+en arrière ; la garde produit sur les arrivées plus récentes reste intacte.
 
 CAUSES CORRIGÉES : les boutons du checkpoint sont validés sur les deux moteurs.
 La première acquisition GPS précise dans une géofence exige désormais un second

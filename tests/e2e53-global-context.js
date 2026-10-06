@@ -121,7 +121,8 @@ async function allViews(s, stage, expected, home, work) {
       } else { await tab(p, 'tenue'); await action(p, '#placeBar [data-act=place-confirm][data-place=home]', 'confirmation au domicile'); }
       await allViews(s, tag + ' · arrivé maison', { status: 'home', location: 'home', origin: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
       const stored = (await state(p)).stored;
-      await p.close(); p = await s.c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.clock.install({ time: s.T0 + 5 * 60e3 }); await p.goto(U);
+      const reopenedAt = await p.evaluate(() => Date.now());
+      await p.close(); p = await s.c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.clock.install({ time: reopenedAt }); await p.goto(U);
       s.p = p; s.settle = async (count = 6) => { for (let i = 0; i < count; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } };
       await s.settle(8);
       await allViews(s, tag + ' · fermeture/réouverture', { status: 'home', location: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
