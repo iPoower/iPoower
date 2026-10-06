@@ -440,7 +440,7 @@ function placeConfirm(placeId, how) {
   if (appDay().nextDestination && (!appDay().nextDestination.placeId || appDay().nextDestination.placeId === placeId)) {
     if (chosenTrip) { liveDonePersist(chosenTrip.key, 'confirmé'); LIVE.done[chosenTrip.key] = 'arrivé'; }
     appConfirmedPlace(placeId, now);
-  } else { appDay().lastConfirmedPlace = { placeId, at: now, source: 'manual' }; }
+  } else { appDay().lastConfirmedPlace = { placeId, at: now, source: 'manual' }; appDay().departedAt = null; }
   USER_STORE.state.lastDeparture = null;
   appReopenReturn(placeId, now);
   // la machine de trajet existante termine proprement l'aller : arrivée du trajet vivant, sinon trajet planifié marqué arrivé
@@ -2053,7 +2053,7 @@ function appBuildTrips() {
   const now = DEMO.on && clockModel ? clockModel.nowStr.slice(0, 16) : nowIn(clockModel && clockModel.payload && clockModel.payload.timezone || 'Europe/Paris');
   const today = now.slice(0, 10), nowHm = now.slice(11, 16);
   // une seule timeline : trajet domicile-travail + trajets agenda, triés par heure réelle de départ
-  // modèle commun Trip : { src: 'work' | 'cal', carId (choix de voiture par trajet, prévu, pas encore utilisé), dep, arr, running, from, to, res, sum, seq, worst }
+  // modèle commun Trip : { src: 'work' | 'cal' | 'local', carId (voiture active ou comparaison), dep, arr, running, from, to, res, sum, seq, worst }
   let T = []; const workT = (td, running) => {
     if (workCancelled(td.dep.slice(0, 10))) return;
     const plannedDep = td.dep, key = 'commute|' + plannedDep + '|' + td.dir;
@@ -2831,7 +2831,7 @@ function renderBrief() {
   const td = tripData(), w = S.work, dir = UI.dir; if (appActiveCar()) UI.bcar = appActiveCar().id;
   const time = dir === 'go' ? w.dep : w.ret;
   const locOpts = (sel, key) => allLocs().map(l => `<option value="${esc(l.id)}" ${l.id === sel ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
-  if (!TCARS().some(c => c.id === UI.bcar) && TCARS().length) UI.bcar = TCARS()[0].id;
+  if (!appActiveCar() && !TCARS().some(c => c.id === UI.bcar) && TCARS().length) UI.bcar = TCARS()[0].id;
   const carSeg = TCARS().map(c => `<button data-act="bcar" data-car="${esc(c.id)}" aria-pressed="${UI.bcar === c.id}">${esc(c.short)}</button>`).join('');
   const mFrom = M[w.from] || M[S.locs[0].id], day0 = mFrom ? (DEMO.on ? mFrom.nowStr : nowIn(mFrom.tz || 'Europe/Paris')).slice(0, 10) : null, dOffs = [];
   if (day0) for (let o = 0; o < 10 && dOffs.length < 3; o++) if (appWorkOn(addMin(day0 + 'T00:00', o * 1440), w.days)) dOffs.push(o);
@@ -2849,8 +2849,9 @@ function renderBrief() {
     <div class="fld"><label for="f-work-to">Vers</label><select id="f-work-to" data-bind="work.to">${locOpts(w.to)}</select></div>
   </div>`;
   if (td.err) { el.innerHTML = head + `<p class="muted">${esc(td.err)}</p>`; return; }
-  const car = TCARS().find(c => c.id === UI.bcar) || TCARS()[0];
+  const car = appActiveCar() || TCARS().find(c => c.id === UI.bcar) || TCARS()[0];
   if (!car) { el.innerHTML = head + '<p class="muted">Aucune voiture équipée de pneus.</p>'; return; }
+  if (!hasTires(car)) { el.innerHTML = head + '<p class="muted">Pneus de la voiture active à renseigner.</p>'; return; }
   const wa = windowAssess(car, td.seq, 'trip'), sm = summarize(td.seq);
   if (!wa) { el.innerHTML = head + '<p class="muted">Données insuffisantes.</p>'; return; }
   const nar = narrate(car, wa, sm, 'au départ');

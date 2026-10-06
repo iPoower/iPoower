@@ -80,7 +80,10 @@ function userContextStore({ read, write, now = () => Date.now() }) {
       if (obj(d) && time(d.at) && Number.isFinite(d.exp) && d.exp > now() && typeof d.how === 'string') done[k] = d;
     });
     return { v: 1, revision: Number.isSafeInteger(v.revision) && v.revision >= 0 ? v.revision : 0,
-      updatedAt: time(v.updatedAt) ? v.updatedAt : now(), dayContext: DayContext.clean(v.dayContext, now()),
+      updatedAt: time(v.updatedAt) ? v.updatedAt : now(), dayContext: DayContext.clean(v.dayContext || {
+        lastConfirmedPlace: conf ? { placeId: conf.placeId, at: conf.at, source: 'manual' } : null,
+        departedAt: start && start.at || v.lastDeparture && v.lastDeparture.at || null
+      }, now()),
       place: { conf,
         last: obj(p.last) && typeof p.last.placeId === 'string' && time(p.last.at) ? p.last : null,
         extra: point(p.extra) && time(p.extra.at) ? p.extra : null },

@@ -42,4 +42,25 @@ check('E11 Tenue expire le lendemain, Bureau revient', () => assert.equal(D.occa
 check('journée off ne propose pas Bureau depuis planning', () => assert.equal(D.occasion('2026-10-06', {}, false, null, 'work'), 'outing'));
 check('E12 ancienne occasion migre une fois pour aujourd’hui', () => { let clock = now; const mem = new Map([['twrc.outfit.occasion', 'walk']]); const make = () => ctx.store({ read: k => mem.get(k), write: (k, v) => v == null ? mem.delete(k) : mem.set(k, v), now: () => clock }); const s = make(); assert.equal(s.state.dayContext.outfitChoice.date, '2026-10-06'); assert.equal(s.state.dayContext.outfitChoice.occasion, 'walk'); assert.equal(mem.has('twrc.outfit.occasion'), false); clock += 86400000; assert.equal(make().state.dayContext.outfitChoice, null); });
 check('canonical migration datée + synchro fenêtre en une publication', () => { const mem = new Map(), make = () => ctx.store({ read: k => mem.get(k), write: (k, v) => mem.set(k, v), now: () => now }); const a = make(), b = make(); let changes = 0; b.subscribe(() => changes++); a.transaction(x => { x.dayContext = { activeCarId: 'b', nextDestination: choice('b'), dayType: { date: '2026-10-06', value: 'off' } }; }); assert(b.receive(mem.get(a.key))); assert.equal(changes, 1); assert.equal(b.state.dayContext.activeCarId, 'b'); assert.equal(b.state.dayContext.dayType.value, 'off'); });
+check('ancien profil #40 : confirmation manuelle du soir disponible comme origine le lendemain', () => {
+  const at = t('2026-10-06T18:10:00'), clock = t('2026-10-07T06:00:00');
+  const mem = new Map([['twrc.context.v1', JSON.stringify({ v: 1, place: { conf: { placeId: 'b', at, how: 'manual', day: '2026-10-06' } } })]]);
+  const s = ctx.store({ read: k => mem.get(k), write: (k, v) => mem.set(k, v), now: () => clock });
+  assert.equal(D.morningOrigin(s.state.dayContext, clock, places).id, 'b');
+});
+check('migration ancien GPS : observation jamais convertie en confirmation manuelle', () => {
+  const mem = new Map([['twrc.context.v1', JSON.stringify({ v: 1, place: { last: { placeId: 'work', at: now, source: 'gps' } } })]]);
+  const s = ctx.store({ read: k => mem.get(k), write: (k, v) => mem.set(k, v), now: () => now }); assert.equal(s.state.dayContext.lastConfirmedPlace, null);
+});
+function appFixture() {
+  const c = { Date: class extends Date { static now() { return now; } }, DayContext: D, S: { cars: [{ id: 'a', tire: { type: 'summer' } }, { id: 'b', tire: { type: 'none' } }] },
+    USER_STORE: { state: { dayContext: {} } }, placeList: () => places, hasTires: car => car.tire.type !== 'none', appAction: fn => fn() };
+  c.TCARS = () => c.S.cars.filter(c.hasTires); vm.createContext(c); vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/app/day-context.js'), 'utf8'), c); return c;
+}
+check('voiture configurée sans monte renseignée reste sélectionnable, sans analyser les autres voitures', () => {
+  const a = appFixture(); a.appSetCar('b'); assert.equal(a.appDay().activeCarId, 'b'); assert.equal(a.appTripCars()[0].id, 'b');
+});
+check('arrivée explicite plus récente efface le départ précédent pour la prochaine origine', () => {
+  const a = appFixture(); a.USER_STORE.state.dayContext.departedAt = now; a.appConfirmedPlace('b', now); assert.equal(D.morningOrigin(a.appDay(), now + 1000, places).id, 'b');
+});
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);

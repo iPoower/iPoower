@@ -1,6 +1,7 @@
 // Contexte du jour : données synthétiques, vrais taps, quatre vues et expiration.
 'use strict';
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const { session, BR, errors, U } = require('./lib/context-session');
 let n = 0, scope = {};
 const read = p => p.evaluate(() => {
@@ -58,6 +59,13 @@ async function views(p, expected) {
         assert.equal(await p.evaluate(() => TCARS().length), 2); assert.equal(await p.evaluate(() => appTripCars().length), 1);
         assert.equal((await read(p)).next.car, 'carB');
       });
+      await tap(p, '[data-act=day-car][data-id=carA]');
+      await check('Voiture A puis fallback comparaison : changement réel propagé', async () => {
+        assert.equal((await read(p)).next.car, 'carA'); await tap(p, '[data-act=day-car][data-id=""]');
+        assert.equal((await read(p)).car, null); assert.equal(await p.evaluate(() => appTripCars().length), 2);
+      });
+      await tap(p, '[data-act=day-car][data-id=carB]');
+      if (profile === 'configured') await p.locator('#dayContext').screenshot({ path: path.join(process.env.SP, 'day-context-' + dev + '.png') });
       await p.reload(); await s.settle();
       await check(dev + '/' + profile + ' · reload conserve le contexte', () => views(p, { place: 'work', destination: 'b', car: 'carB' }));
       await p.close(); p = await s.c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.goto(U);
@@ -84,6 +92,14 @@ async function views(p, expected) {
       await check('WORK → UNKNOWN ne devient jamais Maison', () => views(p, { status: 'travel', destination: null, car: 'carB' }));
       await p.reload(); await p.waitForFunction(() => APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.status === 'travel');
       await check('UNKNOWN persiste après reload', async () => assert.equal((await read(p)).destination, null));
+      scope.phase = 'origine du lendemain'; await tap(p, '#placeBar [data-act=place-confirm][data-place=b]');
+      await p.clock.setSystemTime(new Date('2026-10-07T06:00:00+02:00'));
+      await check('CUSTOM → WORK le lendemain : origine récente, choix du jour expirés, voiture persistante', async () => {
+        await views(p, { origin: 'b', destination: 'work', car: 'carB', day: 'work' });
+        const x = await read(p); assert.equal(x.next.from, 'Lieu B'); assert.equal(x.next.to, 'Travail test');
+        assert.equal(x.dayContext.nextDestination, null); assert.equal(x.dayContext.dayType, null); assert.equal(x.dayContext.outfitChoice, null); assert.equal(x.occasion, 'office');
+        assert.deepEqual(x.work, original);
+      });
       await s.c.close();
     }
     await check('aucune erreur JavaScript', async () => assert.deepEqual(errors, []));
