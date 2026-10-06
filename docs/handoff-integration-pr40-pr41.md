@@ -11,7 +11,7 @@
 - Contrôle production : https://github.com/iPoower/iPoower/actions/runs/37463191273 — Chromium/WebKit, desktop/iPhone 414×896 @3x, profils jetables.
 - Cycle Maison → aller réel → arrivé travail → retour réel → arrivé maison : quatre vues cohérentes, reload, réouverture, zéro erreur JS.
 
-## #41 fusionnée ; déploiement en cours
+## #41 terminée
 
 - Branche : `ui/weather-temperature-card-dark`.
 - Mise à jour depuis main : `e89cd7b3ed6e11eff9c7053f9df4dc837da78cb6` ; aucun conflit dans `weather-view.js`.
@@ -23,12 +23,16 @@
 - Diff final : seulement `src/style.css`, `src/app/weather-view.js`, `tests/e2e42-meteo.js`, `tests/lib/temperature-card.js`.
 - Contexte #40 et logique météo/brouillard inchangés. Renderer byte-identique à main #40 après retrait de la seule décoration thermique.
 - Fusion main : `7cae238751605e7022762bb7c693cb22102fac07` ; arbre identique au HEAD validé.
-- CI/deploy main : https://github.com/iPoower/iPoower/actions/runs/37465553416 — EN COURS.
-- Build attendu : `badbc423e8ae` ; vérification publique #41 PAS ENCORE ACQUISE.
+- CI/deploy main : https://github.com/iPoower/iPoower/actions/runs/37465553416 — 90 exécutions vertes, déploiement terminé et page publique identique au build.
+- Production : **prod-36**, SHA public `7cae238751605e7022762bb7c693cb22102fac07`, build `badbc423e8ae`, SW `twrc-static-v11`.
+- Contrôle du document/SW réellement publiés : https://github.com/iPoower/iPoower/actions/runs/37467179299 — Chromium/WebKit verts, desktop/iPhone, profils jetables avec données fictives.
+- Cycle global complet, quatre vues, reload et réouverture : cohérents ; zéro erreur JS.
+- 48 cas publics : −5/0/8/15/25/35 °C × sans alerte/brouillard × deux devices × deux moteurs. Surface sombre, couleurs thermiques, lisibilité, responsive et priorité du brouillard conservés.
+- PR #40 et #41 fermées et fusionnées ; aucun changement supplémentaire du produit ; aucune régression détectée. Les deux branches de travail sont propres et poussées.
 
 ## Prochaine action exacte
 
-Attendre les six shards, la validation et le déploiement standard du run `37465553416`. En cas d'échec : classifier et arrêter, aucune autre intégration. Si vert : vérifier le SHA/version publics, puis déclencher le contrôle de production préparé sur `verify/production-integration` (workflow et script inclus dans ce checkpoint, `CHECK_DARK_CARD=1`). Il vérifie le document/SW réels, le cycle global et la carte sur 48 cas en profils jetables. Publier le verdict final et arrêter.
+Aucune : mission terminée, checkpoint final poussé sur `verify/production-integration`. **STOP.** Ne relancer aucun audit, test ou déploiement sans nouvelle instruction.
 
 ## À ne pas faire
 
