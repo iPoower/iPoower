@@ -34,7 +34,7 @@ async function run(browser, check) {
         const expected = await s.p.evaluate(({ context, temperature }) => {
           const m = CX.m;
           m.cur.T = temperature; m.cur.Tapp = temperature - .5;
-          m.hs = m.hs.map(x => ({ ...x, T: 15, Tapp: 14.5, Tr: 12, Td: 5, RH: 60, P: 0, Pl: 0, pp: 0, snow: 0, ice: { level: 0 }, code: 1, vis: 24000, wind: 9, gust: 20 }));
+          m.hs = m.hs.map(x => ({ ...x, T: 15, Tapp: 14.5, Tr: 12, Td: 5, RH: 60, P: 0, Pl: 0, pp: 0, snow: 0, ice: { ...x.ice, level: 0, score: 0 }, code: 1, vis: 24000, wind: 9, gust: 20 }));
           const hour = m.nowStr.slice(0, 13);
           const start = m.hs.findIndex(x => x.t.slice(0, 13) === hour);
           for (let i = start; i < start + 2; i++) {

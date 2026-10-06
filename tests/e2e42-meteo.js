@@ -80,7 +80,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     check('1 · Météo : le poste météo est la première section, avant les mesures détaillées', w.shown && w.first === 'secWx' && w.beforeCur, JSON.stringify({ first: w.first, shown: w.shown }));
     // innerText restitue les majuscules de text-transform : le libellé reste le même.
     check('1 · verdict lisible : niveau 🟢🟡🟠🔴, titre, température et ressenti', /lv[0-3]/.test(w.heroLv) && w.title.length > 4 && /Température actuelle/i.test(w.hero) && /Ressenti .* °C/.test(w.hero), w.hero);
-    check('1 · température actuelle : carte blanche dédiée et immédiatement lisible', /Température actuelle/i.test(w.current) && /°C/.test(w.current) && /Ressenti/.test(w.current), w.current);
+    check('1 · température actuelle : carte dédiée et immédiatement lisible', /Température actuelle/i.test(w.current) && /°C/.test(w.current) && /Ressenti/.test(w.current), w.current);
     check('1 · prochain trajet de l’agenda : origine → destination, horaires, départ et arrivée', /Prochain trajet/i.test(w.trip) && /→/.test(w.trip) && /Départ/.test(w.trip) && /Arrivée/.test(w.trip), w.trip);
     check('1 · plusieurs trajets : la chronologie montre plusieurs départs, triés', w.moments.filter(x => /départ/.test(x)).length >= 2, w.moments.join(' | '));
     check('1 · chronologie dans l’ordre des heures, lendemain signalé', w.ts.length > 2 && w.ts.every((x, i) => !i || w.ts[i - 1] <= x) && w.moments.filter((x, i) => w.ts[i].slice(0, 10) > '2026-10-03').every(x => /^dem\. /.test(x)), w.moments.join(' | '));
@@ -152,6 +152,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     check('6 · « ce qui compte » commence par le plus grave', /^🔴|^🟠/.test(w.matters[0] || ''), w.matters.join(' | '));
     await s.c.close();
 
+    await require('./lib/temperature-card')(b, check);
     const extra = [...hosts].filter(h => !KNOWN.test(h));
     check('7 · aucun fournisseur externe supplémentaire', !extra.length, extra.join(', '));
     check('7 · aucune erreur JavaScript', !errors.length, errors.slice(0, 3).join(' | '));

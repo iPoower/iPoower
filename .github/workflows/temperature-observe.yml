@@ -1,4 +1,4 @@
-name: Temperature card · targeted observation
+name: Temperature card · targeted validation
 on:
   push:
     branches: [ui/weather-temperature-card-dark]
@@ -23,16 +23,15 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npx playwright install --with-deps ${{ matrix.browser }}
       - run: node tests/run-ci.js --prepare-only
-      - name: Composant réel, données fictives, aucun réseau extérieur
+      - name: Météo, matrice température et layout iPhone/desktop
         env:
           BROWSER: ${{ matrix.browser }}
-          TEMPERATURE_BASELINE: '1'
           TEMPERATURE_SHOTS: ${{ github.workspace }}/.ci/temperature-shots
-          SP: ${{ github.workspace }}/.ci/prepared/out
-        working-directory: .ci/prepared/w
         run: |
-          ln -s "$GITHUB_WORKSPACE/node_modules" node_modules
-          node "$GITHUB_WORKSPACE/tests/lib/temperature-card.js"
+          node tests/run-ci.js --lane browser --reuse --suite e2e42-meteo.js --suite e2e39-layout.js
+      - name: Logs ciblés fictifs
+        if: always()
+        run: cat .ci/work/*/out/e2e42-meteo.log .ci/work/*/out/e2e39-layout.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:

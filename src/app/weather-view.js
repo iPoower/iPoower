@@ -42,7 +42,9 @@ function renderWx() {
   const age = input.ageMin == null ? '' : ` · ${freshState(input.ageMin)} · ${ageTxt(input.ageMin)}`;
   const h = d.hero, nowWx = d.current || {}, hasNowTemp = Number.isFinite(nowWx.T);
   const heroLines = h.lines.filter(x => !(hasNowTemp && /°C · ressenti .* °C/.test(x)));
-  const currentCard = hasNowTemp ? `<div class="wx-now" aria-label="Température actuelle">
+  // Teinte de présentation uniquement : température déjà calculée, indépendante du niveau d'alerte.
+  const currentTone = nowWx.T <= 0 ? 'cold' : nowWx.T < 15 ? 'cool' : nowWx.T < 25 ? 'mild' : nowWx.T < 35 ? 'warm' : 'hot';
+  const currentCard = hasNowTemp ? `<div class="wx-now" data-tone="${currentTone}" aria-label="Température actuelle">
       <div class="wx-now-main"><span class="wx-now-v num">${f1(nowWx.T)}</span><span class="wx-now-u">°C</span></div>
       <div class="wx-now-side"><span class="wx-now-k">Température actuelle</span>
         <b class="wx-now-feel">Ressenti ${Number.isFinite(nowWx.Tapp) ? f1(nowWx.Tapp) + ' °C' : '—'}</b>
@@ -172,5 +174,4 @@ function evidenceHtml() {
     <details class="wx-how" data-k="evprov"><summary>Provenance du verdict brouillard${r.worst.label ? ' (' + esc(r.worst.label) + ')' : ''}</summary><ul class="lab-why">${prov}</ul><p class="sub">A observation · C modèle · D terrain · E physique. Une observation pèse selon sa distance, son âge et l’échéance ; l’absence de signalement ne prouve rien.</p></details>
     <div class="ev-rep"><p class="sub"><b>Signaler les conditions réelles</b> (votre observation, non officielle)${mine ? ' · récents : ' + esc(mine) : ''}</p><div class="chips">${rep}</div></div></div></details>`;
 }
-
 
