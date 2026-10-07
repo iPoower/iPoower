@@ -3,7 +3,12 @@
 const GeoSearch = (() => {
   const finite = Number.isFinite;
   const clean = (v, n = 220) => typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, n) : '';
-  const frenchHint = q => /\b(?:0[1-9]|[1-8]\d|9[0-5]|97[1-6])\d{3}\b/.test(q) || /\bfrance\b/i.test(q);
+  // Adresse française : code postal, « France », ou voie à la française (rue, avenue, chemin…) sans pays étranger nommé.
+  // Une adresse sans code postal (« 1 Rue de l'Église, Saint-Étienne ») part ainsi d'abord vers la BAN, la référence
+  // officielle ; si la BAN ne trouve rien, OpenStreetMap prend le relais comme avant.
+  const FR_STREET = /(?:^|[\s,'’-])(?:rue|avenue|av\.|boulevard|bd|chemin|allée|allee|impasse|place|quai|cours|route|faubourg|lieu-dit|hameau|résidence|residence|square|sentier|voie|ruelle|passage|esplanade)(?=[\s,'’-]|$)/i;
+  const FOREIGN = /\b(?:belgique|belgium|bruxelles|brussels|suisse|switzerland|schweiz|genève|geneve|lausanne|luxembourg|monaco|canada|québec|quebec|montréal|montreal|maroc|morocco|tunisie|algérie|algerie|sénégal|senegal|uk|england|london|usa|deutschland|germany|españa|spain|italia|italy)\b/i;
+  const frenchHint = q => /\b(?:0[1-9]|[1-8]\d|9[0-5]|97[1-6])\d{3}\b/.test(q) || /\bfrance\b/i.test(q) || (FR_STREET.test(q) && !FOREIGN.test(q));
 
   function ban(json) {
     return (json && Array.isArray(json.features) ? json.features : []).map(f => {

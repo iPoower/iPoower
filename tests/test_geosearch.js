@@ -24,6 +24,13 @@ await check('aucun résultat adresse : Open-Meteo reste repli ville',async()=>{
  const r=await G.search('Amiens centre improbable',fetch);
  assert(calls.length>=2);assert.equal(r[0].provider,'Open-Meteo');
 });
+await check('adresse française sans code postal (rue, accents, apostrophe) : IGN/BAN d’abord ; pays étranger nommé : OpenStreetMap',async()=>{
+ for(const q of ["1 Rue de l'Église, Saint-Étienne",'29 Rue Jean Jaurès, Saint-Ouen','12 avenue Foch Amiens','Chemin des Vignes, Montélimar','place du Marché Dieppe'])assert.equal(G.frenchHint(q),true,q);
+ for(const q of ['221B Baker Street, London','Rue de la Loi 16, Bruxelles','Avenue de la Gare, Lausanne, Suisse','Amiens','Tour Eiffel'])assert.equal(G.frenchHint(q),false,q);
+ const calls=[];const fetch=async u=>{calls.push(u);return {features:[{properties:{label:"1 Rue de l'Église 42000 Saint-Étienne",context:'42, Loire'},geometry:{coordinates:[4.38,45.43]}}]};};
+ const r=await G.search("1 Rue de l'Église, Saint-Étienne",fetch);
+ assert.equal(calls.length,1);assert.match(calls[0],/data\.geopf\.fr/);assert.equal(r[0].name,"1 Rue de l'Église 42000 Saint-Étienne");
+});
 await check('parseurs ignorent les coordonnées invalides et limitent à six résultats',async()=>{
  const j={features:Array.from({length:8},(_,i)=>({properties:{label:'L'+i},geometry:{coordinates:[2+i/10,49+i/10]}})).concat([{properties:{label:'bad'},geometry:{coordinates:['x','y']}}])};
  assert.equal(G.ban(j).length,6);
