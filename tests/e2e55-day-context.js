@@ -87,16 +87,19 @@ async function views(p, expected) {
       await s.settle();
       await check(dev + '/' + profile + ' · même destination et voiture dans les quatre vues', () => views(p, { place: 'work', destination: 'b', car: 'carB', status: 'work' }));
       const original = (await read(p)).work;
-      await check(dev + '/' + profile + ' · touch 44 px, pas de débordement, comparaison intacte', async () => {
+      await check(dev + '/' + profile + ' · voiture manuelle unique, touch 44 px et Race Control aligné', async () => {
         assert(await p.evaluate(() => [...document.querySelectorAll('#dayContext button')].filter(x => x.getClientRects().length).every(x => x.getBoundingClientRect().height >= 44)));
         assert(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
         assert.equal(await p.evaluate(() => TCARS().length), 2); assert.equal(await p.evaluate(() => appTripCars().length), 1);
+        assert.equal(await p.locator('#dayContext [data-act=day-car][data-id=""]').count(), 0);
         assert.equal((await read(p)).next.car, 'carB');
+        const decision = p.locator('#decisionCore'); if (await decision.isVisible()) assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
       });
       await tap(p, '[data-act=day-car][data-id=carA]');
-      await check('Voiture A puis fallback comparaison : changement réel propagé', async () => {
-        assert.equal((await read(p)).next.car, 'carA'); await tap(p, '[data-act=day-car][data-id=""]');
-        assert.equal((await read(p)).car, null); assert.equal(await p.evaluate(() => appTripCars().length), 2);
+      await check('changement manuel de voiture : propagation globale immédiate', async () => {
+        assert.equal((await read(p)).car, 'carA'); assert.equal((await read(p)).next.car, 'carA');
+        assert.equal(await p.evaluate(() => appTripCars().length), 1);
+        const decision = p.locator('#decisionCore'); if (await decision.isVisible()) assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture A\s*·\s*choix manuel/i);
       });
       await tap(p, '[data-act=day-car][data-id=carB]');
       if (profile === 'configured') await p.locator('#dayContext').screenshot({ path: path.join(process.env.SP, 'day-context-' + dev + '.png') });
@@ -136,10 +139,11 @@ async function views(p, expected) {
       await check('UNKNOWN persiste après reload', async () => assert.equal((await read(p)).destination, null));
       scope.phase = 'origine du lendemain'; await tap(p, '#placeBar [data-act=place-confirm][data-place=b]');
       await p.clock.setSystemTime(new Date('2026-10-07T06:00:00+02:00'));
-      await check('CUSTOM → WORK le lendemain : origine récente, choix du jour expirés, voiture persistante', async () => {
+      await check('CUSTOM → WORK le lendemain : voiture manuelle persistante jusqu’au changement utilisateur', async () => {
         await views(p, { origin: 'b', destination: 'work', car: 'carB', day: 'work' });
         const x = await read(p); assert.equal(x.next.from, 'Lieu B'); assert.equal(x.next.to, 'Travail test');
         assert.equal(x.dayContext.nextDestination, null); assert.equal(x.dayContext.dayType, null); assert.equal(x.dayContext.outfitChoice, null); assert.equal(x.occasion, 'office');
+        assert.equal(x.dayContext.activeCarId, 'carB'); const decision = p.locator('#decisionCore'); if (await decision.isVisible()) assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
         assert.deepEqual(x.work, original);
       });
       scope.phase = 'travail exceptionnel';

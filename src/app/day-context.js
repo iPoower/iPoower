@@ -95,7 +95,10 @@ function appSetDayType(value) {
     tripPreviewReset(); CANCELROUTEGEN++; CANCELROUTES.clear(); UI.dayOff = null;
   });
 }
-function appSetCar(id) { appAction(() => { appDay().activeCarId = S.cars.some(c => c.id === id) ? id : null; }); }
+function appSetCar(id) {
+  if (!S.cars.some(c => c.id === id)) return false;
+  return appAction(() => { appDay().activeCarId = id; });
+}
 function appOutfitOccasion(offset = UI.outfitDay) {
   const date = addMin(placeToday() + 'T00:00', offset * 1440).slice(0, 10), n = appDay().nextDestination;
   return DayContext.occasion(date, appDay(), appWorkOn(date), offset === 0 && n && n.placeId, S.work.to);
@@ -129,5 +132,5 @@ function renderDayContext() {
   const opened = el.querySelector('details.day-editor') && el.querySelector('details.day-editor').open;
   const destinationOpen = el.querySelector('details.day-destination') && el.querySelector('details.day-destination').open;
   const car = appActiveCar();
-  el.innerHTML = `<details class="day-editor" ${opened ? 'open' : ''}><summary>Aujourd’hui · ${work ? 'Travail' : 'Congé'} · ${d.dayType ? 'CONFIRMÉ' : 'PRÉVU'}${car ? ' · ' + esc(car.short || car.name) : ''}</summary><div class="seg" role="group" aria-label="Type de journée">${dayButtons}</div><div class="chips" role="group" aria-label="Voiture active">${carButtons}<button class="chip" data-act="day-car" data-id="" aria-pressed="${!d.activeCarId}">Toutes · comparaison</button></div><details class="day-destination" ${destinationOpen ? 'open' : ''}><summary>Destination suivante · ${esc(destination && destination.name || 'Destination à confirmer')} · ${label}</summary><div class="chips">${choices}<button class="chip" data-act="day-destination" data-id="" aria-pressed="${!!n && !n.placeId}">Autre</button></div>${agendaChoices ? `<div class="sub">Prochains rendez-vous · départ direct depuis le lieu actuel</div><div class="chips">${agendaChoices}</div>` : ''}</details></details>`;
+  el.innerHTML = `<details class="day-editor" ${opened ? 'open' : ''}><summary>Aujourd’hui · ${work ? 'Travail' : 'Congé'} · ${d.dayType ? 'CONFIRMÉ' : 'PRÉVU'}${car ? ' · ' + esc(car.short || car.name) : ''}</summary><div class="seg" role="group" aria-label="Type de journée">${dayButtons}</div><div class="sub">Voiture active · choix manuel conservé jusqu’à ton prochain changement</div><div class="chips" role="group" aria-label="Voiture active">${carButtons}</div>${car ? '' : '<div class="sub" role="status">Choisis la voiture que tu utilises : elle pilotera Pneus, Météo, Tenue, Analyse et Race Control.</div>'}<details class="day-destination" ${destinationOpen ? 'open' : ''}><summary>Destination suivante · ${esc(destination && destination.name || 'Destination à confirmer')} · ${label}</summary><div class="chips">${choices}<button class="chip" data-act="day-destination" data-id="" aria-pressed="${!!n && !n.placeId}">Autre</button></div>${agendaChoices ? `<div class="sub">Prochains rendez-vous · départ direct depuis le lieu actuel</div><div class="chips">${agendaChoices}</div>` : ''}</details></details>`;
 }
