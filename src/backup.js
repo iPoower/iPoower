@@ -146,17 +146,45 @@ const Backup = (() => {
   const DERIVED_KEYS = ['twrc.trend', 'twrc.tripmap', 'twrc.croute', 'twrc.calendar.sealed.v1', 'twrc.weather.limit.v1'];
   const DERIVED_PREFIXES = ['twrc.cache.', 'twrc.croute.'];
 
-  function restorePlan(data, now = Date.now()) {
+  /* Journal des trajets = suivi humain (ressenti conducteur) : un import ne l'efface jamais.
+     Fusion par trajet entre la sauvegarde et ce téléphone : un retour renseigné l'emporte sur une entrée sans retour,
+     entre deux retours le plus récent ; plus récent d'abord, 60 trajets au plus (même limite que le journal). */
+  function journal(a, b) {
+    const pick = (x, y) => {
+      if (!x) return y; if (!y) return x;
+      if (x.feedback && y.feedback) return y.feedback.at > x.feedback.at ? y : x;
+      if (x.feedback || y.feedback) return x.feedback ? x : y;
+      return y.at > x.at ? y : x;
+    };
+    const m = new Map();
+    [...a.entries, ...b.entries].forEach(e => m.set(e.key, pick(m.get(e.key), e)));
+    return { active: null, entries: [...m.values()].sort((x, y) => y.at - x.at).slice(0, 60) };
+  }
+  const later = (a, b) => { const out = { ...a }; Object.entries(b).forEach(([k, d]) => { if (!out[k] || d.at > out[k].at) out[k] = d; }); return out; };
+  // phone : état actuel du téléphone ({ context, tyreTherm, tripCancel }), facultatif
+  function restorePlan(data, now = Date.now(), phone = null) {
     if (!obj(data) || data.app !== 'twrc' || !obj(data.settings)) return null;
     const writes = { 'twrc.settings.v1': JSON.stringify({ ...clone(data.settings), configured: 1 }) };
     if (text(data.view, 40)) writes['twrc.view'] = data.view;
     const remove = [...CONTEXT_KEYS, ...DURABLE_KEYS, ...DERIVED_KEYS];
+    const cur = obj(phone) && obj(phone.context) ? context(phone.context, now) : null;
+    const curCancel = obj(phone) ? tripCancel(phone.tripCancel) : {};
+    let kept = 0;
     if (data.v >= 2 && obj(data.durable)) {
-      writes['twrc.context.v1'] = JSON.stringify(context(data.durable.context, now));
+      const ctx = context(data.durable.context, now);
+      if (cur) { const before = ctx.debrief.entries.length; ctx.debrief = journal(ctx.debrief, cur.debrief); ctx.done = later(ctx.done, cur.done); kept = ctx.debrief.entries.length - before; }
+      writes['twrc.context.v1'] = JSON.stringify(ctx);
       writes['twrc.tyretherm.v1'] = JSON.stringify(tyreTherm(data.durable.tyreTherm));
-      writes['twrc.tripcancel'] = JSON.stringify(tripCancel(data.durable.tripCancel));
+      writes['twrc.tripcancel'] = JSON.stringify(later(tripCancel(data.durable.tripCancel), curCancel));
+    } else if (cur) {
+      // V1 (réglages seuls) : le journal, les trajets clos et les annulations de ce téléphone restent ;
+      // l'état propre à l'appareil (GPS, lieu, contexte du jour, trajet en cours) repart de zéro.
+      writes['twrc.context.v1'] = JSON.stringify(context({ done: cur.done, debrief: cur.debrief, lastArrival: cur.lastArrival }, now));
+      if (obj(phone.tyreTherm)) writes['twrc.tyretherm.v1'] = JSON.stringify(tyreTherm(phone.tyreTherm));
+      writes['twrc.tripcancel'] = JSON.stringify(curCancel);
+      kept = cur.debrief.entries.length;
     }
-    return { writes, remove: [...new Set(remove.filter(k => !Object.prototype.hasOwnProperty.call(writes, k)))], removePrefixes: DERIVED_PREFIXES.slice() };
+    return { writes, remove: [...new Set(remove.filter(k => !Object.prototype.hasOwnProperty.call(writes, k)))], removePrefixes: DERIVED_PREFIXES.slice(), kept };
   }
   return { VERSION, make, restorePlan, context, tyreTherm, tripCancel };
 })();

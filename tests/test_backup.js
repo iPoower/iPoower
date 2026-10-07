@@ -43,10 +43,47 @@ check('restauration V2 remplace le canonique et purge les états dérivés', () 
   assert(p.remove.includes('twrc.gps')); assert(p.remove.includes('twrc.tripstart.v1')); assert(p.remove.includes('twrc.calendar.sealed.v1'));
   assert(p.removePrefixes.includes('twrc.cache.')); assert(!Object.keys(p.writes).includes('twrc.runtime.v1'));
 });
-check('ancienne sauvegarde V1 reste importable sans mélanger le contexte actuel', () => {
+check('ancienne sauvegarde V1 importable ; sans état du téléphone, rien n’est inventé', () => {
   const p = B.restorePlan({ app: 'twrc', v: 1, at: new Date(at).toISOString(), settings: { old: 1 }, view: 'pneus' }, at);
-  assert(p); assert.equal(JSON.parse(p.writes['twrc.settings.v1']).old, 1); assert(!p.writes['twrc.context.v1']);
+  assert(p); assert.equal(JSON.parse(p.writes['twrc.settings.v1']).old, 1); assert(!p.writes['twrc.context.v1']); assert.equal(p.kept, 0);
   for (const k of ['twrc.context.v1', 'twrc.tyretherm.v1', 'twrc.tripcancel']) assert(p.remove.includes(k));
+});
+const v1 = { app: 'twrc', v: 1, at: new Date(at).toISOString(), settings: { old: 1 }, view: 'pneus' };
+const phone = { context: state, tyreTherm: { car1: { at: '2026-10-07T07:10', T: 21.4, sig: 'summer' } }, tripCancel: { 'work-2026-10-08': { at: at - 1000, exp: at + 5000 } } };
+check('V1 : le journal des trajets, les trajets clos et les annulations du téléphone sont conservés', () => {
+  const p = B.restorePlan(v1, at, phone), c = JSON.parse(p.writes['twrc.context.v1']);
+  assert.equal(p.kept, 1); assert.equal(c.debrief.entries.length, 1); assert.equal(c.debrief.entries[0].key, 'd1');
+  assert.deepEqual(json(c.debrief.entries[0].feedback), { at: at - 500, conditions: ['fog'], grip: 'normal' });
+  assert(c.done.x); assert.equal(c.lastArrival.key, 'd1'); assert.equal(c.debrief.active, null);
+  // l'état propre à l'appareil repart de zéro
+  assert.equal(c.gps, null); assert.equal(c.place.conf, null); assert.equal(c.dayContext.nextDestination, null); assert.equal(c.dayContext.activeCarId, null);
+  assert(!JSON.stringify(c).includes('"lat"')); assert(!JSON.stringify(c).includes('"lon"'));
+  assert(JSON.parse(p.writes['twrc.tripcancel'])['work-2026-10-08']); assert.equal(JSON.parse(p.writes['twrc.tyretherm.v1']).car1.T, 21.4);
+  assert(!p.remove.includes('twrc.context.v1')); for (const k of ['twrc.gps', 'twrc.place.v1', 'twrc.tripstart.v1', 'twrc.debrief.v1', 'twrc.tripdone']) assert(p.remove.includes(k));
+});
+check('incident du 7 octobre : débrief du matin donné, import V1 → le trajet reste clos et la réponse reste', () => {
+  const morning = { key: 'work-2026-10-07|aller', at: Date.parse('2026-10-07T07:12:00+02:00'), how: 'auto', name: 'Aller travail', from: 'home', to: 'work',
+    feedback: { at: Date.parse('2026-10-07T07:20:00+02:00'), conditions: ['wet'], grip: 'normal' }, deferred: false };
+  const p = B.restorePlan(v1, at, { context: { debrief: { active: null, entries: [morning] }, done: { [morning.key]: { at: morning.at, exp: morning.at + 864e5, how: 'auto' } } } });
+  const c = JSON.parse(p.writes['twrc.context.v1']), e = c.debrief.entries.find(x => x.key === morning.key);
+  assert(e && e.feedback && e.feedback.grip === 'normal'); assert(c.done[morning.key]);
+});
+check('V2 : journal fusionné par trajet — le retour renseigné l’emporte, les trajets récents du téléphone s’ajoutent', () => {
+  const bk = B.make({ settings: { x: 1 }, context: { ...state, debrief: { active: null, entries: [{ ...state.debrief.entries[0], feedback: null }] } }, at: new Date(at).toISOString() });
+  const newer = { key: 'd2', at: at + 60000, how: 'confirmé', name: 'Retour', from: 'B', to: 'A', feedback: null, deferred: true };
+  const p = B.restorePlan(bk, at + 120000, { context: { ...state, debrief: { active: null, entries: [newer, state.debrief.entries[0]] }, done: { d2: { at: at + 60000, exp: at + 9e6, how: 'confirmé' } } } });
+  const c = JSON.parse(p.writes['twrc.context.v1']);
+  assert.deepEqual(c.debrief.entries.map(e => e.key), ['d2', 'd1']); assert.equal(c.debrief.entries[1].feedback.grip, 'normal');
+  assert(c.done.d2 && c.done.x); assert.equal(p.kept, 1);
+  assert.equal(c.place.conf.placeId, 'work');   // le contexte métier vient bien de la sauvegarde V2
+});
+check('V2 : deux retours pour le même trajet → le plus récent ; journal plafonné à 60 trajets, plus récents d’abord', () => {
+  const e = (key, t, f) => ({ key, at: t, how: 'auto', name: '', from: '', to: '', feedback: f ? { at: f, conditions: [], grip: 'reduced' } : null });
+  const bk = B.make({ settings: {}, context: { debrief: { entries: [{ ...e('k', at, at + 10), feedback: { at: at + 10, conditions: ['rain'], grip: 'slip' } }] } }, at: new Date(at).toISOString() });
+  const many = Array.from({ length: 70 }, (_, i) => e('m' + i, at - (i + 1) * 1000));
+  const p = B.restorePlan(bk, at, { context: { debrief: { entries: [e('k', at, at + 20), ...many] } } }), c = JSON.parse(p.writes['twrc.context.v1']);
+  const k = c.debrief.entries.find(x => x.key === 'k'); assert.equal(k.feedback.grip, 'reduced');
+  assert.equal(c.debrief.entries.length, 60); assert(c.debrief.entries.every((x, i, a) => !i || a[i - 1].at >= x.at));
 });
 check('payload invalide refusé', () => {
   assert.equal(B.restorePlan(null, at), null); assert.equal(B.restorePlan({ app: 'other', settings: {} }, at), null); assert.equal(B.restorePlan({ app: 'twrc' }, at), null);
