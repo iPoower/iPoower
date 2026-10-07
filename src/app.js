@@ -2366,7 +2366,7 @@ const TMAP = { node: null, map: null, key: '' };
 const wideScreen = () => matchMedia('(min-width: 760px)').matches;
 const rc2 = v => Math.round(v * 100) / 100;   // domicile et travail arrondis à ~1 km avant tout appel externe
 async function tripGeo(t) {
-  if (t.src === 'cal' || t.live || t.manualPreview) {   // route agenda, vivante ou aperçu : mémoire uniquement
+  if (t.src === 'cal' || t.src === 'local' || t.live || t.manualPreview) {   // route agenda/locale, vivante ou aperçu : mémoire uniquement
     const P = legPoints(t.l), pts = t.l.g && t.l.g.length > 1 ? t.l.g : P.map(p => [p.lat, p.lon]), cr = t.crit;
     // point critique : seulement en cas de vrai risque (verdict orange ou rouge, verglas, brouillard)
     const cp = cr && (cr.lv >= 2 || cr.ice >= 1 || cr.fog) && P[cr.q.k] ? { at: [P[cr.q.k].lat, P[cr.q.k].lon], lv: Math.max(2, cr.lv), t: cr.q.t } : null;
