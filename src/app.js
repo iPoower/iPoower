@@ -125,7 +125,18 @@ let TRIPCANCEL = {}; try { TRIPCANCEL = TripCancel.load(localStorage, Date.now()
 let TRIPCANCELTIMER = null;
 // position réelle (GPS du téléphone) : reste sur l'appareil
 // @include app/user-context.js
-const allLocs = () => [...(GPS ? [GPS] : []), ...S.locs, ...S.customs, ...(PLACE.extra ? [PLACE.extra] : [])];
+// @include app/trip-view.js
+function tripContextLocs() {
+  const n = USER_STORE.state.dayContext && USER_STORE.state.dayContext.nextDestination;
+  return n ? [n.originPoint, n.destinationPoint].filter(locHasCoords) : [];
+}
+const allLocs = () => {
+  const seen = new Set();
+  return [...(GPS ? [GPS] : []), ...S.locs, ...S.customs, ...tripContextLocs(), ...(PLACE.extra ? [PLACE.extra] : [])].filter(l => {
+    if (!l || !l.id) return !!l;
+    if (seen.has(l.id)) return false; seen.add(l.id); return true;
+  });
+};
 // réglages modifiés à la main : ils survivent aux nouvelles versions du préréglage
 function getPath(o, p) { return p.split('.').reduce((a, k) => a == null ? undefined : a[k], o); }  // déclaration hissée : utilisée dès loadSettings
 function markEdit(p) { (S.edits || (S.edits = {}))[p] = 1; }
@@ -387,7 +398,9 @@ const placeSave = () => USER_STORE.flush();
 const placeToday = () => nowIn('Europe/Paris').slice(0, 10);
 function placeList() {
   const home = S.locs[0];
-  return [...S.locs, ...S.customs, ...(PLACE.extra ? [PLACE.extra] : [])].filter(locHasCoords).map(l => ({ id: l.id, name: l.name, lat: l.lat, lon: l.lon, kind: l.id === S.work.to ? 'work' : l === home ? 'home' : 'custom' }));
+  const seen = new Set();
+  return [...S.locs, ...S.customs, ...tripContextLocs(), ...(PLACE.extra ? [PLACE.extra] : [])].filter(l => locHasCoords(l) && (!l.id || !seen.has(l.id) && seen.add(l.id)))
+    .map(l => ({ ...l, id: l.id, name: l.name || l.label || 'Lieu', lat: l.lat, lon: l.lon, kind: l.id === S.work.to ? 'work' : l.id === home.id ? 'home' : 'custom' }));
 }
 function placeInput(extra) {
   if (USER_STORE.state.lastDeparture && Date.now() - USER_STORE.state.lastDeparture.at >= 20 * 3600e3) USER_STORE.state.lastDeparture = null;
@@ -920,31 +933,33 @@ const TIRE_ALERTS = ['press', 'age', 'mont'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
 const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 function chooseView(view) {
-  UI.view = ['meteo', 'tenue', 'analyse'].includes(view) ? view : 'pneus';
+  UI.view = ['pneus', 'meteo', 'trajet', 'tenue', 'analyse'].includes(view) ? view : 'pneus';
   lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: scrollBehavior() });
 }
 function renderView() {
-  const vm = UI.view === 'meteo', vt = UI.view === 'tenue', va = UI.view === 'analyse';
+  const vm = UI.view === 'meteo', vtr = UI.view === 'trajet', vt = UI.view === 'tenue', va = UI.view === 'analyse', vp = !vm && !vtr && !vt && !va;
   document.body.classList.toggle('vm', vm);
+  document.body.classList.toggle('vtr', vtr);
   document.body.classList.toggle('vt', vt);
   document.body.classList.toggle('va', va);
-  $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="pneus" aria-pressed="${!vm && !vt && !va}">🛞 Pneus</button><button data-act="view" data-v="meteo" aria-pressed="${vm}">🌦️ Météo</button><button data-act="view" data-v="tenue" aria-pressed="${vt}">👔 Tenue</button><button data-act="view" data-v="analyse" aria-pressed="${va}">🔬 Analyse</button></div>`;
-  const links = va ? [['secLab', 'Analyse'], ['secSeason', 'Saison pneus'], ['secJournal', 'Journal de saison'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
+  $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-pressed="${vm}">🌦️ Météo</button><button data-act="view" data-v="pneus" aria-pressed="${vp}">🛞 Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-pressed="${vtr}">TRAJET</button><button data-act="view" data-v="tenue" aria-pressed="${vt}">👔 Tenue</button><button data-act="view" data-v="analyse" aria-pressed="${va}">🔬 Analyse</button></div>`;
+  const links = vtr ? [['secTrip', 'Planifier'], ['settings', 'Réglages']] : va ? [['secLab', 'Analyse'], ['secSeason', 'Saison pneus'], ['secJournal', 'Journal de saison'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
     ? [['secWx', 'Synthèse'], ['secRadar', 'Radar'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secCur', 'Détails'], ['secAir', 'Air · UV'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
     : [['secBrf', 'Départ'], ['secCars', 'Voitures'], ['secBrief', 'Préparer'], ['secWeatherLink', 'Météo'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
-  if (USER_STORE.state.debrief.entries.length && !DEMO.on) links.splice(1, 0, ['secDebrief', 'Journal des trajets']);
+  if (!vtr && USER_STORE.state.debrief.entries.length && !DEMO.on) links.splice(1, 0, ['secDebrief', 'Journal des trajets']);
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
-  const order = va
+  const order = vtr
+    ? ['secTrip', 'secTripSummary', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue']
+    : va
     ? ['jump', 'secLab', 'secSeason', 'secJournal', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secAlerts', 'secWx'] : vt
     ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vm
-    // Météo : synthèse d'abord (verdict, trajet, chronologie, phénomènes, route), puis cartes et graphiques, puis les détails techniques
     ? ['secWx', 'banners', 'hdrMore', 'secRadar', 'secChart', 'secDays', 'secCur', 'secAir', 'secIce', 'secAlerts', 'secTip', 'secCal', 'secBrf', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal', 'secLab']
-    : ['secBrf', 'banners', 'hdrMore', 'secCars', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'];
+    : ['secTripSummary', 'secBrf', 'banners', 'hdrMore', 'secCars', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue'];
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#notice');
-  if (!va) order.splice(order.indexOf('hdrMore') + 1, 0, 'jump');
-  order.splice(order.indexOf('secBrf') + 1, 0, 'secRoad');
-  order.splice(va ? 2 : 1, 0, 'secDebrief');
+  if (!va && !vtr) order.splice(order.indexOf('hdrMore') + 1, 0, 'jump');
+  const brf = order.indexOf('secBrf'); if (brf >= 0) order.splice(brf + 1, 0, 'secRoad');
+  if (!vtr) order.splice(va ? 2 : 1, 0, 'secDebrief');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
   if (RADAR.map) { const map = RADAR.map; setTimeout(() => { if (RADAR.map === map) map.invalidateSize(); }, 60); }
 }
@@ -2504,6 +2519,25 @@ function tripCancelBeforeFirst(e, settings = S, state = TRIPCANCEL, now = Date.n
   return valid(loc) ? { ...loc, kind: 'work', label: loc.name || 'Travail', city: loc.name || 'Travail' } : null;
 }
 const tripCancelRouteKey = (e, leg) => JSON.stringify([TripCancel.eventId(e), leg.k, leg.from, leg.to, leg.dep, leg.targetArr]);
+function manualRouteCacheKey(leg) {
+  if (!leg || !leg.manual || !locHasCoords(leg.from) || !locHasCoords(leg.to)) return null;
+  const p = x => (+x.lat).toFixed(3) + ',' + (+x.lon).toFixed(3);
+  return 'manual|' + p(leg.from) + '>' + p(leg.to);
+}
+function manualRouteCacheRead(leg) {
+  const key = manualRouteCacheKey(leg); if (!key) return null;
+  let C = {}; try { C = JSON.parse(lsGet('twrc.croute') || '{}'); } catch (e) { return null; }
+  const r = C[key];
+  return r && Number.isFinite(r.km) && Number.isFinite(r.min) && Array.isArray(r.g) && r.g.length > 1 ? r : null;
+}
+function manualRouteCacheWrite(leg, route) {
+  const key = manualRouteCacheKey(leg); if (!key || !route) return;
+  let C = {}; try { C = JSON.parse(lsGet('twrc.croute') || '{}'); } catch (e) { C = {}; }
+  const oldManual = Object.keys(C).filter(k => k.startsWith('manual|')).sort((a, b) => (C[b].at || 0) - (C[a].at || 0));
+  oldManual.slice(7).forEach(k => delete C[k]);
+  C[key] = { at: Date.now(), km: route.km, min: route.min, pts: (route.pts || []).slice(0, 8), g: (route.g || []).slice(0, 100) };
+  lsSet('twrc.croute', JSON.stringify(C));
+}
 function tripCancelReadyLeg(e, leg) {
   const entry = CANCELROUTES.get(tripCancelRouteKey(e, leg));
   return entry && entry.phase === 'ready' ? entry.leg : null;
@@ -2514,22 +2548,35 @@ function tripCancelRouteLeg(e, leg) {
   const roundPoint = p => p.id === S.locs[0].id || p.id === S.work.from || p.id === S.work.to || p.label === 'Domicile' ? { lat: rc2(p.lat), lon: rc2(p.lon) } : { lat: +p.lat.toFixed(3), lon: +p.lon.toFixed(3) };
   if (!leg.originPending) return { ...leg, from: { ...leg.from, ...roundPoint(leg.from) }, to: { ...leg.to, ...roundPoint(leg.to) }, navTo: leg.navTo || { ...leg.to }, pts: (leg.pts || []).map(p => ({ ...p, lat: +p.lat.toFixed(3), lon: +p.lon.toFixed(3) })), g: (leg.g || []).map(p => [+p[0].toFixed(3), +p[1].toFixed(3)]) };
   if (leg.originUncertain) return leg;
+  const a = roundPoint(leg.from), b = roundPoint(leg.to), cached = leg.manual ? manualRouteCacheRead(leg) : null;
+  if (leg.manual && offlineNow()) {
+    return cached ? { ...leg, ...cached, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, dep: leg.dep, arr: addMin(leg.dep, cached.min), routed: true, cachedRoute: true, originPending: false }
+      : { ...leg, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, min: null, km: null, pts: [], g: [], routed: false, routeOffline: true, originPending: true };
+  }
   const key = tripCancelRouteKey(e, leg);
   let entry = CANCELROUTES.get(key);
   if (!entry) {
     const gen = CANCELROUTEGEN; entry = { phase: 'loading', leg: null }; CANCELROUTES.set(key, entry);
-    const a = roundPoint(leg.from), b = roundPoint(leg.to);
     fetchJSON(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson&annotations=duration`, 10000)
       .then(j => {
-        if (gen !== CANCELROUTEGEN || calendarCancelled(e)) return;
+        if (gen !== CANCELROUTEGEN || !e.manual && calendarCancelled(e)) return;
         const route = liveParse(j); if (!route) throw new Error('itinéraire vide');
         const routeMin = routeTravelMin(route.rawMin ?? route.min, leg.k === 'go' && leg.targetArr ? 10 : 0);
         const dep = leg.k === 'go' && leg.targetArr ? addMin(leg.targetArr, -routeMin) : leg.dep;
         entry.leg = { ...leg, ...route, min: routeMin, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, dep, arr: addMin(dep, routeMin), routed: true, byTime: true, rebuilt: true };
         delete entry.leg.originPending; delete entry.leg.originUncertain; delete entry.leg.rebuildFrom;
+        if (leg.manual) manualRouteCacheWrite(leg, entry.leg);
         entry.phase = 'weather'; renderCal(); renderBrf(); renderTenue();
       })
-      .catch(() => { if (gen !== CANCELROUTEGEN) return; entry.phase = 'error'; renderCal(); renderBrf(); renderTenue(); });
+      .catch(() => {
+        if (gen !== CANCELROUTEGEN) return;
+        const old = leg.manual ? manualRouteCacheRead(leg) : null;
+        if (old) {
+          entry.leg = { ...leg, ...old, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, dep: leg.dep, arr: addMin(leg.dep, old.min), routed: true, cachedRoute: true };
+          delete entry.leg.originPending; entry.phase = 'weather';
+        } else entry.phase = 'error';
+        renderCal(); renderBrf(); renderTenue();
+      });
   }
   if (entry.leg && legEval(entry.leg).sum) { entry.phase = 'ready'; return entry.leg; }
   // Ne pas exposer une ancienne route ou une nouvelle heure tant que route ET météo ne sont pas prêtes.
@@ -3335,7 +3382,7 @@ function renderAll() {
   APP_CONTEXT.rendering = true;
   try {
     appRefreshContext(); recordJournal();
-    renderView(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+    renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
     renderWx(); renderLab(); renderDebrief(); labThermTick(false); roadSync();
   } finally { APP_CONTEXT.rendering = false; }
 }
@@ -3353,6 +3400,13 @@ document.addEventListener('click', async e => {
   if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); } return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act;
+  if (a === 'trip-dest-search') { await tripSearch('destination', t); return; }
+  if (a === 'trip-origin-search') { await tripSearch('origin', t); return; }
+  if (a === 'trip-dest-pick') { tripPick('destination', t.dataset.i); return; }
+  if (a === 'trip-origin-pick') { tripPick('origin', t.dataset.i); return; }
+  if (a === 'trip-dest-known') { tripPickKnown(t.dataset.id); return; }
+  if (a === 'trip-plan') { tripProgram(t); return; }
+  if (a === 'trip-plan-cancel') { tripCancelPlan(); return; }
   if (a === 'day-destination') { if (t.dataset.agendaKey) appChooseAgendaDestination(t.dataset.agendaKey); else appChooseDestination(t.dataset.id || null); return; }
   if (a === 'day-type') { appSetDayType(t.dataset.v); return; }
   if (a === 'day-car') { appSetCar(t.dataset.id || null); return; }
@@ -3496,6 +3550,7 @@ document.addEventListener('submit', async e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t && t.dataset && t.dataset.tripField) { tripFieldChanged(t); return; }
   if (t.id === 'bkFile') { if (t.files && t.files[0]) backupImport(t.files[0]); t.value = ''; return; }
   if (t.dataset.photo != null && t.files && t.files[0]) {
     const car = S.cars[+t.dataset.photo];

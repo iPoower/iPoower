@@ -9,6 +9,10 @@ const Backup = (() => {
   const text = (v, max = 1200) => typeof v === 'string' ? v.slice(0, max) : null;
   const stamp = v => Number.isFinite(v) && v >= 0 ? v : null;
   const local = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?$/.test(v) ? v : null;
+  const point = (v, fallback) => obj(v) && Number.isFinite(v.lat) && Number.isFinite(v.lon) && Math.abs(v.lat) <= 90 && Math.abs(v.lon) <= 180 ? {
+    id: text(v.id, 120) || fallback, name: text(v.name || v.label, 220) || 'Lieu', address: text(v.address, 320) || '',
+    lat: +v.lat, lon: +v.lon, provider: text(v.provider, 80) || '', precision: text(v.precision, 80) || ''
+  } : null;
 
   function dayContext(v) {
     v = obj(v) ? v : {};
@@ -18,9 +22,10 @@ const Backup = (() => {
     const o = obj(v.outfitChoice) ? v.outfitChoice : null;
     return {
       nextDestination: n && stamp(n.confirmedAt) != null && stamp(n.expiresAt) != null ? {
-        placeId: text(n.placeId, 120), source: ['user', 'pending'].includes(n.source) ? n.source : 'pending',
+        placeId: text(n.placeId, 120), source: ['user', 'manual', 'calendar', 'live', 'pending'].includes(n.source) ? n.source : 'pending',
         confirmedAt: n.confirmedAt, expiresAt: n.expiresAt, originId: text(n.originId, 120),
-        tripKey: text(n.tripKey), dep: local(n.dep)
+        originPoint: point(n.originPoint, 'manual-origin'), destinationPoint: point(n.destinationPoint, 'manual-destination'),
+        tripKey: text(n.tripKey), dep: local(n.dep), createdAt: stamp(n.createdAt), updatedAt: stamp(n.updatedAt)
       } : null,
       lastConfirmedPlace: p && text(p.placeId, 120) && stamp(p.at) != null ? { placeId: text(p.placeId, 120), at: p.at, source: 'manual' } : null,
       departedAt: stamp(v.departedAt), arrivedAt: stamp(v.arrivedAt),

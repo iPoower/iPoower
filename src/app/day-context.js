@@ -38,12 +38,12 @@ function appChooseDestination(placeId, source = 'user') {
     const current = placeNow().place || locById(USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.placeId);
     const candidate = active || APP_CONTEXT.trips.find(t => t.dep.slice(0, 10) === placeToday() && !liveDoneHas(t, APP_CONTEXT.trips)
       && (!current || (appTripPlace(t, 'from') || {}).id === current.id));
-    const prior = TRIPSTART;
+    const prior = TRIPSTART, dep = candidate && (candidate.planDep || candidate.dep) || localTs(at);
     if (LIVE.key) liveReset(); tripPreviewReset(); CANCELROUTEGEN++; CANCELROUTES.clear();
     if (active && prior) TRIPSTART = prior;
-    appDay().nextDestination = { placeId: placeId || null, source, confirmedAt: at, expiresAt: DayContext.expiry(at),
+    appDay().nextDestination = { placeId: placeId || null, source, confirmedAt: at, expiresAt: DayContext.tripExpiry(dep, at),
       originId: current && current.id || prior && prior.trip && prior.trip.fromId || null,
-      tripKey: candidate && candidate.key || 'local|' + at, dep: candidate && (candidate.planDep || candidate.dep) || localTs(at) };
+      tripKey: candidate && candidate.key || 'local|' + at, dep, createdAt: at, updatedAt: at };
     APP_CONTEXT.weatherPreview = null;
   });
 }
@@ -59,14 +59,16 @@ function appChooseAgendaDestination(key) {
   const l = t && (t.planL || t.l), p = l && l.to;
   if (!t || !p || !locHasCoords(p)) return false;
   const known = placeList().find(x => x.id !== (PLACE.extra && PLACE.extra.id) && distKm(x, p) <= 1.5);
-  if (known) { appChooseDestination(known.id); return true; }
+  if (known) { appChooseDestination(known.id, 'calendar'); return true; }
   const current = placeNow().place;
   // PLACE.extra est l'unique lieu dynamique du contexte. Ne jamais l'écraser s'il représente le lieu courant confirmé.
   if (PLACE.extra && current && current.id === PLACE.extra.id && PLACE.conf && PLACE.conf.placeId === PLACE.extra.id) return false;
   const where = t.to || p.city || p.label || 'Rendez-vous';
   const title = t.e && t.e.t && t.e.t !== where ? t.e.t + ' · ' + where : (t.e && t.e.t) || where;
-  PLACE.extra = { id: 'agenda-next', name: title, lat: p.lat, lon: p.lon, at: Date.now() };
-  appChooseDestination(PLACE.extra.id);
+  PLACE.extra = { id: 'agenda-next', name: title, address: where, lat: p.lat, lon: p.lon, provider: 'calendar', precision: 'event', at: Date.now() };
+  appChooseDestination(PLACE.extra.id, 'calendar');
+  const n = appDay().nextDestination;
+  if (n) n.destinationPoint = { id: PLACE.extra.id, name: PLACE.extra.name, address: PLACE.extra.address, lat: PLACE.extra.lat, lon: PLACE.extra.lon, provider: 'calendar', precision: 'event' };
   return true;
 }
 function appAgendaLeg(e, leg) { return DayContext.returnLeg(leg, calendarTripKey(e, leg), appDay(), Date.now(), placeList()); }
@@ -106,20 +108,49 @@ function appOutfitOccasion(offset = UI.outfitDay) {
 function appLocalTrips(T, now) {
   const n = appDay().nextDestination;
   if (!n || T.some(t => t.key === n.tripKey)) return T;
-  const from = locById(n.originId), to = locById(n.placeId), started = TRIPSTART && TRIPSTART.key === n.tripKey;
-  const dep = started ? localTs(TRIPSTART.at) : now, l = { k: 'local', from, to, navTo: to, dep, arr: to ? addMin(dep, +S.work.durMin || 30) : null, min: to ? +S.work.durMin || 30 : null, pts: [] };
-  const ready = to && from ? tripCancelRouteLeg({ id: n.tripKey, s: n.dep }, { ...l, originPending: true }) : l;
+  const from = n.originPoint || locById(n.originId), to = n.destinationPoint || locById(n.placeId), started = TRIPSTART && TRIPSTART.key === n.tripKey;
+  const dep = started ? localTs(TRIPSTART.at) : n.dep || now;
+  const l = { k: 'local', from, to, navTo: to, dep, arr: to ? addMin(dep, +S.work.durMin || 30) : null, min: to ? +S.work.durMin || 30 : null, pts: [], manual: n.source === 'manual' };
+  const ready = to && from ? tripCancelRouteLeg({ id: n.tripKey, s: n.dep, manual: n.source === 'manual' }, { ...l, originPending: true }) : l;
   const r = to && from && !ready.originPending ? legEval(ready) : {};
   T.unshift({ src: 'local', key: n.tripKey, carId: appDay().activeCarId, dep, planDep: n.dep, arr: ready.arr, l: ready,
-    from: from && from.name || 'Origine à confirmer', to: to && to.name || 'Destination à confirmer', name: 'Trajet choisi',
+    from: from && from.name || 'Origine à confirmer', to: to && to.name || 'Destination à confirmer', name: n.source === 'manual' ? 'Trajet manuel' : 'Trajet choisi',
     destinationPending: !to, res: r.res || null, sum: r.sum || null, seq: r.seq || [], wait: !r.res, worst: r.worst ?? null });
   return T;
+}
+function appProgramManualTrip({ originId = null, originPoint = null, destinationId = null, destinationPoint = null, dep, carId = null } = {}) {
+  let key = null;
+  appAction(() => {
+    const at = Date.now(), d = appDay(), previous = d.nextDestination && d.nextDestination.source === 'manual' ? d.nextDestination : null;
+    key = previous && previous.tripKey || 'manual|' + at;
+    if (LIVE.key && LIVE.key !== key && LIVE.phase !== 'active') liveReset();
+    tripPreviewReset(); CANCELROUTEGEN++; CANCELROUTES.clear();
+    d.nextDestination = { placeId: destinationId || destinationPoint && destinationPoint.id || null, destinationPoint: destinationPoint || null,
+      source: 'manual', confirmedAt: at, expiresAt: DayContext.tripExpiry(dep, at),
+      originId: originId || originPoint && originPoint.id || null, originPoint: originPoint || null,
+      tripKey: key, dep, createdAt: previous && previous.createdAt || at, updatedAt: at };
+    if (carId && S.cars.some(c => c.id === carId)) d.activeCarId = carId;
+    APP_CONTEXT.weatherPreview = null;
+  });
+  return key;
+}
+function appCancelManualTrip() {
+  let cancelled = null;
+  appAction(() => {
+    const d = appDay(), n = d.nextDestination;
+    if (!n || n.source !== 'manual') return;
+    cancelled = n.tripKey;
+    d.nextDestination = null;
+    if (LIVE.key === cancelled && LIVE.phase !== 'active') liveReset();
+    tripPreviewReset(); CANCELROUTEGEN++; CANCELROUTES.clear(); APP_CONTEXT.weatherPreview = null;
+  });
+  return cancelled;
 }
 function renderDayContext() {
   const el = $('#dayContext'); if (!el) return;
   const d = appDay(), c = APP_CONTEXT.snapshot, n = d.nextDestination;
   const destination = n ? n.placeId ? locById(n.placeId) : null : c.destination;
-  const label = n ? n.placeId ? 'CONFIRMÉ' : 'À CONFIRMER' : destination ? 'PRÉVU' : 'À CONFIRMER';
+  const label = n ? n.source === 'manual' ? 'MANUEL' : n.placeId ? 'CONFIRMÉ' : 'À CONFIRMER' : destination ? 'PRÉVU' : 'À CONFIRMER';
   const choices = placeList().map(p => `<button class="chip" data-act="day-destination" data-id="${esc(p.id)}" aria-pressed="${!!n && n.placeId === p.id}">${esc(p.name)}</button>`).join('');
   const chosen = n && n.placeId ? locById(n.placeId) : null;
   const agendaTrips = appAgendaDestinationTrips(), agendaChoices = agendaTrips.map(t => {
