@@ -75,10 +75,35 @@ async function test(name, fn) { await fn(); count++; console.log('✅ ' + name);
     assert.equal(s.c.state().until, at);
   });
   await test('quota horaire ou journalier sans en-tête : délai adapté au motif', async () => {
-    for (const [reason, delay, kind] of [['Hourly API request limit exceeded', 3600000, 'hour'], ['Daily API request limit exceeded. Please try tomorrow', 86400000, 'day']]) {
+    // test à 10:00 UTC : quota journalier → reprise à minuit UTC + 2 min (14 h 02), plus 24 h
+    for (const [reason, delay, kind] of [['Hourly API request limit exceeded', 3600000, 'hour'], ['Daily API request limit exceeded. Please try tomorrow', 14 * 3600000 + 120000, 'day']]) {
       const s = setup(), p = s.c.get(U + kind), rejected = assert.rejects(p, e => e.status === 429);
       s.calls[0].resolve(reply(429, { reason })); await rejected; assert.equal(s.c.state().until, s.now() + delay); assert.equal(s.c.state().kind, kind);
     }
+  });
+  await test('incident du 7 octobre : quota journalier à 14:44 → reprise à minuit UTC, puis toutes les heures s’il reste épuisé', async () => {
+    const s = setup();
+    let p = s.c.get(U + 'd1'), rejected = assert.rejects(p, e => e.status === 429);
+    s.calls[0].resolve(reply(429, { reason: 'Daily API request limit exceeded. Please try again tomorrow.' })); await rejected;
+    assert.equal(new Date(s.c.state().until).toISOString(), '2026-10-06T00:02:00.000Z');
+    await s.advance(s.c.state().until - s.now());
+    p = s.c.get(U + 'd2'); rejected = assert.rejects(p, e => e.status === 429);
+    s.calls[1].resolve(reply(429, { reason: 'Daily API request limit exceeded. Please try again tomorrow.' })); await rejected;
+    assert.equal(s.c.state().until, s.now() + 3600000, 'encore épuisé à la reprise : nouvel essai dans 1 h, pas un jour de plus');
+    await s.advance(3600000); p = s.c.get(U + 'd3'); s.calls[2].resolve(reply()); await p;
+    assert.equal(s.c.state().until, 0); assert.equal(s.c.state().failures, 0);
+  });
+  await test('pause journalière de 24 h enregistrée par l’ancienne version : ramenée à minuit UTC au chargement', async () => {
+    const shared = { value: JSON.stringify({ until: Date.parse('2026-10-06T10:00:00Z'), failures: 1, kind: 'day' }) }, s = setup(shared);
+    assert.equal(new Date(s.c.state().until).toISOString(), '2026-10-06T00:02:00.000Z'); assert.equal(JSON.parse(shared.value).until, Date.parse('2026-10-06T00:02:00Z'));
+    const h = setup({ value: JSON.stringify({ until: Date.parse('2026-10-05T11:00:00Z'), failures: 1, kind: 'hour' }) });
+    assert.equal(h.c.state().until, Date.parse('2026-10-05T11:00:00Z'), 'une pause horaire n’est pas touchée');
+  });
+  await test('429 journalier juste avant minuit UTC : pas de reprise immédiate, essai dans 1 h', async () => {
+    const s = setup(); await s.advance(Date.parse('2026-10-05T23:55:00Z') - s.now());
+    const p = s.c.get(U + 'late'), rejected = assert.rejects(p, e => e.status === 429);
+    s.calls[0].resolve(reply(429, { reason: 'Daily API request limit exceeded' })); await rejected;
+    assert.equal(s.c.state().until, s.now() + 3600000);
   });
   await test('sans délai explicite : 1 puis 2 minutes ; succès après attente réinitialise le recul', async () => {
     const s = setup();

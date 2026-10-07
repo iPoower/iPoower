@@ -5,12 +5,19 @@ function weatherRequestManager(options) {
   const later = options.setTimeout || setTimeout, cancel = options.clearTimeout || clearTimeout;
   const read = options.read || (() => null), write = options.write || (() => {});
   const queue = [], pending = new Map(); let active = 0, limit = { until: 0, failures: 0, kind: '' };
+  // Quota journalier Open-Meteo (« try again tomorrow ») : reprise à minuit UTC (+2 min), pas 24 h plus tard. Si la porte se
+  // referme juste après minuit, ou si le quota est encore épuisé à la reprise, nouvelle tentative dans 1 h.
+  // Incident du 7 octobre 2026 : 429 journalier à 14:44, pause jusqu'au lendemain 14:44 → matinée entière sur le cache.
+  const dayReset = (at, again = false) => { const next = Date.UTC(new Date(at).getUTCFullYear(), new Date(at).getUTCMonth(), new Date(at).getUTCDate() + 1, 0, 2);
+    return again || next - at < 10 * 60e3 ? at + 3600e3 : next; };
   const owns = url => { try { return /(^|\.)open-meteo\.com$/.test(new URL(url).hostname); } catch (e) { return false; } };
   function state() {
     try {
       const s = JSON.parse(read() || 'null');
       if (s && Number.isFinite(s.until) && s.until > limit.until && s.until <= now() + 7 * 86400e3)
         limit = { until: s.until, failures: Math.max(1, Math.min(8, Math.floor(+s.failures || 1))), kind: ['minute', 'hour', 'day', 'concurrent', 'limited'].includes(s.kind) ? s.kind : 'limited' };
+      // pause journalière enregistrée par une ancienne version (24 h) : ramenée à la prochaine reprise à minuit UTC
+      if (limit.kind === 'day' && limit.until > dayReset(now())) { limit = { ...limit, until: dayReset(now()) }; save(); }
     } catch (e) { /* stockage indisponible ou illisible : la pause en mémoire reste valable */ }
     return { ...limit, active, queued: queue.filter(j => !j.done).length };
   }
@@ -34,7 +41,7 @@ function weatherRequestManager(options) {
     limit = { until: Math.max(previous.until, at + Math.max(1000, delay == null ? backoff : delay)), failures, kind: 'limited' }; save();
     try { const body = await response.json(); reason = typeof body.reason === 'string' ? body.reason.toLowerCase() : ''; } catch (e) { /* corps absent */ }
     const kind = /daily|per day|tomorrow/.test(reason) ? 'day' : /hourly|next hour/.test(reason) ? 'hour' : /minutely|next minute/.test(reason) ? 'minute' : /concurrent/.test(reason) ? 'concurrent' : 'limited';
-    const fallback = kind === 'day' ? 86400e3 : kind === 'hour' ? 3600e3 : backoff;
+    const fallback = kind === 'day' ? dayReset(at, previous.kind === 'day' && failures >= 2) - at : kind === 'hour' ? 3600e3 : backoff;
     limit = { until: Math.max(state().until, at + Math.max(1000, delay == null ? fallback : delay)), failures, kind }; save();
     throw limitedError();
   }
