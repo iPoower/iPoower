@@ -4,7 +4,7 @@ const source = fs.readFileSync(path.resolve(__dirname, '../src/backup.js'), 'utf
 const ctx = { Date, JSON, Math, Number, Object, Array, RegExp }; vm.createContext(ctx); vm.runInContext(source + ';this.api=Backup;', ctx);
 const B = ctx.api, json = v => JSON.parse(JSON.stringify(v));
 const at = Date.parse('2026-10-07T10:30:00+02:00');
-let n = 0; const check = (name, fn) => { fn(); n++; console.log('✅ ' + name); };
+let n = 0; const check = (name, fn) => { try { fn(); n++; console.log('✅ ' + name); } catch (e) { console.error('❌ ' + name + ' · ' + e.message); throw e; } };
 const state = {
   updatedAt: at - 1000,
   dayContext: {
