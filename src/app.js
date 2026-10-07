@@ -805,10 +805,6 @@ function decisionOpenCarChooser() {
   const group = $('#dayContext [role="group"][aria-label="Voiture active"]');
   if (!group) return false;
   group.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  const active = group.querySelector('[data-act="day-car"][aria-pressed="true"]') || group.querySelector('[data-act="day-car"]');
-  if (active) setTimeout(() => {
-    try { active.focus({ preventScroll: true }); } catch (err) { active.focus(); }
-  }, 0);
   return true;
 }
 
