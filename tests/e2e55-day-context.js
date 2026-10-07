@@ -98,8 +98,7 @@ async function views(p, expected) {
           assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
           await decision.locator('[data-act=decision-car-change]').click();
           assert.notEqual(await p.locator('#dayContext details.day-editor').getAttribute('open'), null);
-          await p.waitForFunction(() => document.activeElement && document.activeElement.dataset.act === 'day-car');
-          assert.equal(await p.evaluate(() => document.activeElement && document.activeElement.dataset.id), 'carB');
+          assert.equal(await p.locator('#dayContext [data-act=day-car][data-id=carB]').getAttribute('aria-pressed'), 'true');
         }
       });
       await tap(p, '[data-act=day-car][data-id=carA]');
