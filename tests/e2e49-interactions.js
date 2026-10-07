@@ -18,6 +18,17 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
       await check(tag + ' · tous les onglets et aria-pressed après deux passages', async () => {
         for (let n = 0; n < 2; n++) for (const v of ['pneus', 'meteo', 'tenue', 'analyse']) { await click(`[data-act=view][data-v=${v}]`); assert.equal(await p.evaluate(() => UI.view), v); assert.equal(await p.locator(`[data-act=view][data-v=${v}]`).getAttribute('aria-pressed'), 'true'); }
       });
+      await check(tag + ' · préférence Réduire les animations respectée par les scrolls programmatiques', async () => {
+        await p.emulateMedia({ reducedMotion: 'reduce' }); assert.equal(await p.evaluate(() => scrollBehavior()), 'auto');
+        await p.emulateMedia({ reducedMotion: 'no-preference' }); assert.equal(await p.evaluate(() => scrollBehavior()), 'smooth');
+      });
+      if (iphone) await check('iPhone 11 Pro Max · cibles secondaires visibles ≥ 44 px', async () => {
+        await click('[data-act=view][data-v=meteo]');
+        const bad = await p.evaluate(() => [...document.querySelectorAll('.jump a, button.btn.sm, summary')].filter(el => {
+          const s = getComputedStyle(el), r = el.getBoundingClientRect(); return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0 && r.height < 43.5;
+        }).map(el => ({ tag: el.tagName, text: (el.textContent || '').trim().slice(0, 40), h: Math.round(el.getBoundingClientRect().height) })));
+        assert.deepEqual(bad, []);
+      });
       await click('[data-act=view][data-v=pneus]');
       await check(tag + ' · menu des lieux ouvre les paramètres puis se replie', async () => { await click('[data-act=locs-toggle]'); await click('[data-act=goset]'); assert.equal(await p.locator('#settings').getAttribute('open'), ''); assert.equal(await p.locator('[data-act=locs-toggle]').getAttribute('aria-expanded'), 'false'); await p.locator('#settings > summary').click(); });
       await check(tag + ' · boutons dynamiques météo et cartes conservés après refresh', async () => { const before = s.calls.length; await click('#statusbar [data-act=refresh]'); await s.settle(8); assert(s.calls.length > before); assert.match(await p.locator('#statusbar').innerText(), /LIVE/); assert(await p.locator('[data-act=tip]').count()); });
