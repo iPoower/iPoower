@@ -282,5 +282,9 @@
   "place-toggle": {
     "suite": "e2e57-place-compact.js",
     "result": "lieu confirmé compact, départ direct, corrections et météo déployées par Modifier, fermeture après confirmation"
+  },
+  "decision-car-change": {
+    "suite": "e2e55-day-context.js",
+    "result": "le raccourci Changer du bandeau Race Control ouvre le panneau Aujourd’hui et focalise la voiture active"
   }
 }
