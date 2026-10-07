@@ -850,7 +850,7 @@ function renderDecisionCore() {
   el.innerHTML = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + '</p></div>' +
     '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b></span></div>' +
     '<div class="decision-meta"><span>Destination · <b>' + esc(destination) + '</b></span><span>Voiture · <b>' + esc(carLabel) + '</b></span><span>' + esc(fresh) + '</span></div>' +
-    (confidence.reasons.length > 1 ? '<div class="decision-why">' + confidence.reasons.slice(1).map(r => '<span>' + esc(r) + '</span>').join('') + '</div>' : '') + changesHtml;
+    (confidence.level > 0 && confidence.reasons.length ? '<div class="decision-why">' + confidence.reasons.map(r => '<span>' + esc(r) + '</span>').join('') + '</div>' : '') + changesHtml;
 }
 
 /* ---------- probabilités et pluie 15 min ---------- */
