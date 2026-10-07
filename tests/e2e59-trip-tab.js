@@ -27,7 +27,7 @@ async function setup(s,dev){
    return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({routes:[{distance:38100,duration:2520,geometry:{coordinates:[a,mid,b]},legs:[{annotation:{duration:[1260,1260]}}]}]})});
  });
  await p.evaluate(async()=>{
-   S.locs=[{id:'home',name:'Maison test',lat:49.20,lon:2.58},{id:'work',name:'Travail — Poulainville',lat:49.91,lon:2.31}];S.customs=[];S.work={from:'home',to:'work',dep:'07:00',ret:'18:00',days:[1,2,3],durMin:40};
+   S.locs=[{id:'home',name:'Maison test',lat:49.20,lon:2.58},{id:'work',name:'Travail test',lat:49.91,lon:2.31}];S.customs=[];S.work={from:'home',to:'work',dep:'07:00',ret:'18:00',days:[1,2,3],durMin:40};
    S.cars[0].name='Hyundai i20 N';S.cars[0].short='i20 N';Object.assign(S.cars[0].tire,{type:'summer',size:'215/40 R18 89Y',brand:'Michelin',model:'Pilot Sport 4S',tread:6});
    S.cars[1].name='Peugeot 308';S.cars[1].short='308';Object.assign(S.cars[1].tire,{type:'allseason',size:'225/45 R17 94W',brand:'Pirelli',model:'Cinturato All Season SF3',tread:6});
    USER_STORE.state.dayContext={activeCarId:S.cars[0].id};CAL={events:[]};saveSettings();USER_STORE.flush();await refreshAll();renderAll();
@@ -44,7 +44,7 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
  for(const dev of ['iphone','pc']){
   const s=await session(b,{at:'2026-10-07T15:00:00+02:00',dev}),p=s.p,ctl=await setup(s,dev);
   await check(dev+' · TRAJET visible en un geste, navigation à cinq onglets',async()=>{const L=await layout(p);assert.deepEqual(L.tabs,['meteo','pneus','trajet','tenue','analyse']);assert.equal((await state(p)).view,'trajet');assert(await p.locator('#secTrip').isVisible());});
-  await check(dev+' · départ proposé depuis le lieu Travail confirmé',async()=>assert.match(await p.locator('#secTrip').innerText(),/Travail — Poulainville/));
+  await check(dev+' · départ proposé depuis le lieu Travail confirmé',async()=>assert.match(await p.locator('#secTrip').innerText(),/Travail test/));
   await search(p,dev,'29 Rue Jean Jaurès, 80610 Saint-Ouen');
   await check(dev+' · cas réel : adresse exacte fournie par IGN/BAN',async()=>{const t=await p.locator('#secTrip').innerText();assert.match(t,/29 Rue Jean Jaurès 80610 Saint-Ouen/);assert.match(t,/IGN\/BAN/);});
   const [carA,carB]=await p.evaluate(()=>S.cars.map(c=>c.id)); await later(p,dev,'17:15',carA);
