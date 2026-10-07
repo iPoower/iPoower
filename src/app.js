@@ -867,13 +867,13 @@ function renderView() {
   document.body.classList.toggle('vt', vt);
   document.body.classList.toggle('va', va);
   $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="pneus" aria-pressed="${!vm && !vt && !va}">🛞 Pneus</button><button data-act="view" data-v="meteo" aria-pressed="${vm}">🌦️ Météo</button><button data-act="view" data-v="tenue" aria-pressed="${vt}">👔 Tenue</button><button data-act="view" data-v="analyse" aria-pressed="${va}">🔬 Analyse</button></div>`;
-  const links = va ? [['secLab', 'Analyse'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
+  const links = va ? [['secLab', 'Analyse'], ['secSeason', 'Saison pneus'], ['secJournal', 'Journal de saison'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
     ? [['secWx', 'Synthèse'], ['secRadar', 'Radar'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secCur', 'Détails'], ['secAir', 'Air · UV'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
-    : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secSeason', 'Saison'], ['secJournal', 'Journal'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
+    : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
   if (USER_STORE.state.debrief.entries.length && !DEMO.on) links.splice(1, 0, ['secDebrief', 'Journal des trajets']);
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
   const order = va
-    ? ['secLab', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx'] : vt
+    ? ['secLab', 'secSeason', 'secJournal', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secAlerts', 'secWx'] : vt
     ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vm
     // Météo : synthèse d'abord (verdict, trajet, chronologie, phénomènes, route), puis cartes et graphiques, puis les détails techniques
     ? ['secWx', 'banners', 'hdrMore', 'secRadar', 'secChart', 'secDays', 'secCur', 'secAir', 'secIce', 'secAlerts', 'secTip', 'secCal', 'secBrf', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal', 'secLab']
