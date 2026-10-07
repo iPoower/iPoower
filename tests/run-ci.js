@@ -5,6 +5,9 @@
 const fs = require('node:fs'), path = require('node:path'), { spawnSync } = require('node:child_process');
 const { SUITE } = require('./ci/suites'), { select } = require('./ci/plan'), { verdict } = require('./ci/verdict');
 const { ROOT, CI, prepare, workspace } = require('./ci/workspace');
+// Une suite bloquée doit échouer vite et sous son nom, pas consommer tout le job (timeout GitHub de 30 min, sans journal exploitable) :
+// incidents du 7 octobre 2026, deux shards WebKit annulés à 30 min. La plus longue suite dure ≈ 2 min (tests/ci/durations.json).
+const SUITE_TIMEOUT_MS = 6 * 60e3;
 const started = Date.now(), options = { lane: 'all', browser: (process.env.BROWSER || 'chromium').toLowerCase(), index: 1, total: 1, files: [] };
 let reuse = false, list = false, prepareOnly = false;
 try {
@@ -29,8 +32,8 @@ try {
   const report = { schema: 1, selection: options.files.length ? 'targeted' : 'full', sourceHash: meta.sourceHash, lane: options.lane, browser: options.browser, index: options.index, total: options.total, startedAt: new Date(started).toISOString(), prepare: { buildMs: meta.buildMs, fixtureMs: meta.fixtureMs, prepareMs: meta.prepareMs }, results: [] };
   let fail = 0;
   for (const [file, what, browser] of suites) {
-    const t0 = Date.now(), r = spawnSync(process.execPath, [path.join(ROOT, 'tests', file)], { cwd: w, encoding: 'utf8', timeout: 20 * 60e3, env: { ...process.env, SP: out, BROWSER: options.browser } });
-    const output = (r.stdout || '') + (r.stderr || ''), why = r.error ? String(r.error.message) : verdict(r.status, output), ms = Date.now() - t0;
+    const t0 = Date.now(), r = spawnSync(process.execPath, [path.join(ROOT, 'tests', file)], { cwd: w, encoding: 'utf8', timeout: SUITE_TIMEOUT_MS, killSignal: 'SIGKILL', env: { ...process.env, SP: out, BROWSER: options.browser } });
+    const output = (r.stdout || '') + (r.stderr || ''), why = r.error ? (r.error.code === 'ETIMEDOUT' ? `bloquée : plus de ${SUITE_TIMEOUT_MS / 60e3} min (suite la plus longue ≈ 2 min)` : String(r.error.message)) : verdict(r.status, output), ms = Date.now() - t0;
     fs.writeFileSync(path.join(out, file.replace('.js', '.log')), output);
     report.results.push({ file, ms, ok: !why, ...(why ? { error: why } : {}) });
     console.log(`${why ? '❌' : '✅'} ${file.padEnd(17)} ${what}${browser ? ` [${options.browser}]` : ''} · ${Math.round(ms / 1000)} s${why ? ' · ' + why : ''}`);
