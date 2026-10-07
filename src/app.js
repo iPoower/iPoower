@@ -436,15 +436,17 @@ function placeConfirm(placeId, how) {
   const previous = placeNow().place;
   PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false;
   PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' };
-  const chosenTrip = APP_CONTEXT.snapshot.activeTrip || BRF_SHOWN.find(t => (appTripPlace(t, 'to') || {}).id === placeId);
+  const activeTrip = APP_CONTEXT.snapshot.activeTrip;
+  const intention = appDay().nextDestination;
+  const chosenTrip = activeTrip && (appTripPlace(activeTrip, 'to') || {}).id === placeId ? activeTrip : BRF_SHOWN.find(t => (appTripPlace(t, 'to') || {}).id === placeId
+    && t.dep && t.dep.slice(0, 10) === placeToday() && (t.dep <= liveNow() || intention && intention.placeId === placeId && (!intention.tripKey || intention.tripKey === t.key)));
   if (appDay().nextDestination && (!appDay().nextDestination.placeId || appDay().nextDestination.placeId === placeId)) {
-    if (chosenTrip) { liveDonePersist(chosenTrip.key, 'confirmé'); LIVE.done[chosenTrip.key] = 'arrivé'; }
     appConfirmedPlace(placeId, now);
   } else { appDay().lastConfirmedPlace = { placeId, at: now, source: 'manual' }; appDay().departedAt = null; }
   USER_STORE.state.lastDeparture = null;
   appReopenReturn(placeId, now);
   // la machine de trajet existante termine proprement l'aller : arrivée du trajet vivant, sinon trajet planifié marqué arrivé
-  let t = placeArrivalTrip(placeId) || (p.kind === 'work' ? BRF_TRIPS.find(t => t.src === 'work' && t.td.dir === 'go' && t.dep.slice(0, 10) === placeToday()) : null);
+  let t = placeArrivalTrip(placeId) || chosenTrip || (p.kind === 'work' ? BRF_TRIPS.find(t => t.src === 'work' && t.td.dir === 'go' && t.dep.slice(0, 10) === placeToday()) : null);
   if (!t && p.kind === 'work' && appWorkOn(placeToday())) {
     const td = appWorkTripData('go', 0);
     if (!td.err) t = { src: 'work', td, dep: td.dep, arr: td.arr, from: td.fromName, to: td.toName, name: 'Aller domicile-travail', key: 'commute|' + td.dep + '|go' };
@@ -453,8 +455,8 @@ function placeConfirm(placeId, how) {
     const td = appWorkTripData('ret', 0);
     if (!td.err) t = { src: 'work', td, dep: td.dep, arr: td.arr, from: td.fromName, to: td.toName, name: 'Retour domicile-travail', key: 'commute|' + td.dep + '|ret' };
   }
-  if (LIVE.key && t && LIVE.key === t.key) liveArrive('confirmé');
-  else if (t && t.key) { liveDonePersist(t.key, 'confirmé'); LIVE.done[t.key] = 'arrivé'; LIVE.lastDone = { key: t.key, name: t.name || p.name, at: now }; if (TRIPPREVIEW.key === t.key) tripPreviewReset(); }
+  if (t && t.key) closeTrip(t, 'confirmé');
+  if (PLACE.conf && PLACE.conf.placeId === placeId) PLACE.conf.how = how === 'arrival' ? 'arrival' : 'manual';
   if (LIVE.phase === 'active') liveReset();
   APP_CONTEXT.weatherPreview = null; UI.loc = placeId; rebuild();
   });
@@ -850,6 +852,7 @@ function renderCurrent() {
 
 // @include app/weather-view.js
 // @include app/analysis-view.js
+// @include app/debrief-view.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 const TIRE_ALERTS = ['press', 'age', 'mont'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
@@ -862,6 +865,7 @@ function renderView() {
   const links = va ? [['secLab', 'Analyse'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
     ? [['secWx', 'Synthèse'], ['secRadar', 'Radar'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secCur', 'Détails'], ['secAir', 'Air · UV'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
     : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secSeason', 'Saison'], ['secJournal', 'Journal'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
+  if (USER_STORE.state.debrief.entries.length && !DEMO.on) links.splice(1, 0, ['secDebrief', 'Journal des trajets']);
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
   const order = va
     ? ['secLab', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx'] : vt
@@ -872,6 +876,7 @@ function renderView() {
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#notice');
   order.splice(order.indexOf('secBrf') + 1, 0, 'secRoad');
+  order.splice(1, 0, 'secDebrief');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
   if (RADAR.map) { const map = RADAR.map; setTimeout(() => { if (RADAR.map === map) map.invalidateSize(); }, 60); }
 }
@@ -1645,12 +1650,7 @@ function returnHomeDone(key) {
   return appAction(() => {
   const t = BRF_TRIPS.find(x => x.key === key && x.src === 'cal' && x.l && x.l.k === 'ret');
   if (!t) return;
-  liveDonePersist(key, 'confirmé');
-  if (LIVE.key === key) liveReset('arrivé'); else LIVE.done[key] = 'arrivé';
-  if (TRIPPREVIEW.key === key) tripPreviewReset();
-  returnHomeClear(key);
-  LIVE.lastDone = { key, name: t.name || 'Retour maison', at: Date.now() };
-  appArrival(t, 'confirmé');
+  closeTrip(t, 'confirmé');
   });
 }
 function returnHomeButtonForTrip(t) {
@@ -1733,6 +1733,7 @@ function liveReset(reason) {
   Object.assign(LIVE, { key: null, phase: 'idle', base: null, startFix: null, lastFix: null, carN: 0, near: null, arrN: 0, arrTs: 0, route: null, routeAt: 0, routeOrigin: null, routeTry: 0, routeErr: false, last: null, lastOk: 0, hiAt: 0, loAt: 0, nowAt: 0 });
   LIVE.gen++;   // toute réponse encore en route est désormais ignorée
   LIVE.manual = 0; if (TRIPSTART) tripStartSave(null);
+  USER_STORE.state.debrief.active = null;
   if (gpsWatch != null && gpsWatchHi) startWatch(false);   // retour au suivi basse consommation
 }
 // destination pour l'ARRIVÉE : un retour vise le domicile local exact (le relais n'a qu'un domicile arrondi à 0,01°)
@@ -1757,7 +1758,7 @@ function liveBegin(t, s) {
 }
 function liveStart(key) {
   return appAction(() => {
-  const t = BRF_SHOWN.find(x => x.key === key); if (!t || !liveDest(t)) return;
+  const t = BRF_SHOWN.find(x => x.key === key); if (!t || !liveDest(t) || LIVE.key === key && LIVE.phase === 'active') return;
   const base = LIVE.key === key && LIVE.base ? LIVE.base : t; if (LIVE.key && LIVE.key !== key) liveReset();
   const pc = PLACE.conf && placeList().find(p => p.id === PLACE.conf.placeId), fix = !pc && liveFresh(FIX, LIVE_AGE_IMM) ? FIX : null;
   const o = fix || (pc && locHasCoords(pc) ? pc : null) || livePlanFrom(base);
@@ -1767,13 +1768,7 @@ function liveStart(key) {
 }
 function liveArrive(how) {
   return appAction(() => {
-  const k = LIVE.key, b = LIVE.base; if (!k) return;
-  liveDonePersist(k, how); LIVE.lastDone = { key: k, name: b ? b.name : '', at: Date.now() };
-  const fin = labThermTick(true);   // mémoire thermique : l'état estimé à l'arrivée sert de point de départ au refroidissement (et au trajet suivant)
-  if (fin && fin.inp.drive) { const d = fin.inp.drive, r = fin.r; tripEndSave({ at: Date.now(), name: b ? b.name : '', km: d.km, kmSrc: d.kmSrc, min: Math.round((Date.now() - d.startTs) / 60e3), range: r.thermal.range, state: r.thermal.state, conf: r.confidence.level }); }
-  returnHomeClear(k);
-  appArrival(b, how);
-  liveReset('arrivé');
+  if (LIVE.key && LIVE.base) closeTrip(LIVE.base, how);
   });
 }
 // relevé de confirmation demandé tout de suite (arrivée à confirmer), au plus un toutes les 10 s ; jamais de haute précision en aperçu
@@ -3205,7 +3200,7 @@ function renderAll() {
   try {
     appRefreshContext(); recordJournal();
     renderView(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
-    renderWx(); renderLab(); labThermTick(false); roadSync();
+    renderWx(); renderLab(); renderDebrief(); labThermTick(false); roadSync();
   } finally { APP_CONTEXT.rendering = false; }
 }
 function softRender() { renderAll(); } // paramètres inchangés ; mêmes sélecteurs de contexte
@@ -3290,13 +3285,19 @@ document.addEventListener('click', async e => {
   else if (a === 'from') { if (UI.dir === 'go') { S.work.from = t.dataset.id; markEdit('work.from'); } else { S.work.to = t.dataset.id; markEdit('work.to'); } saveSettings(); softRender(); }
   else if (a === 'dir') { UI.dir = t.dataset.d; UI.dayOff = null; softRender(); }
   else if (a === 'day') { UI.dayOff = +t.dataset.off; softRender(); }
+  else if (a === 'debrief-condition') debriefPick('condition', t.dataset.v);
+  else if (a === 'debrief-grip') debriefPick('grip', t.dataset.v);
+  else if (a === 'debrief-save') debriefSave();
+  else if (a === 'debrief-later') debriefLater();
+  else if (a === 'debrief-open') debriefOpen(t.dataset.key);
+  else if (a === 'debrief-clear') debriefClear();
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
   else if (a === 'trip-start') liveStart(t.dataset.key);
   else if (a === 'place-confirm') placeConfirm(t.dataset.place, t.dataset.how);
   else if (a === 'place-leave') placeLeave();
   else if (a === 'ev-report') reportAdd(t.dataset.k);
   else if (a === 'ev-flag') { S.flags = S.flags || {}; S.flags.weatherEvidenceV2 = t.dataset.v; saveSettings(); renderSettings(true); renderAll(); }
-  else if (a === 'trip-undo') appAction(() => { const d = LIVE.lastDone; if (d) { delete LIVE.done[d.key]; liveDonePersist(d.key, null); LIVE.noAuto[d.key] = Date.now() + 10 * 60e3; if (PLACE.conf && (d.placeId === PLACE.conf.placeId || PLACE.conf.at === d.at)) PLACE.conf = null; LIVE.lastDone = null; } });
+  else if (a === 'trip-undo') appAction(() => { const d = LIVE.lastDone; if (d) { USER_STORE.state.debrief = Debrief.undo(USER_STORE.state.debrief, d.key); if (TRIPEND && TRIPEND.key === d.key) TRIPEND = null; DEBRIEF_FORM = null; delete LIVE.done[d.key]; liveDonePersist(d.key, null); LIVE.noAuto[d.key] = Date.now() + 10 * 60e3; if (PLACE.conf && (d.placeId === PLACE.conf.placeId || PLACE.conf.at === d.at)) PLACE.conf = null; LIVE.lastDone = null; } });
   else if (a === 'tripmap') { lsSet('twrc.tripmap', lsGet('twrc.tripmap') === '1' ? '0' : '1'); renderBrf(); }
   else if (a === 'wday') {
     const d = +t.dataset.d, cur = commuteDays(S.work.days).slice(), k = cur.indexOf(d);

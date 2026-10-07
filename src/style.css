@@ -347,7 +347,7 @@ html { scroll-behavior: smooth; }
 .seg.view button { padding: 7px 16px; font-size: 13.5px; min-height: 38px; }
 .vm #secCars, .vm #secBrief, .vm #secCmp, .vm #secSeason, .vm #secJournal { display: none !important; }
 /* Tenue conserve le cockpit et utilise uniquement son propre panneau. */
-.vt .wrap > .mod:not(#secTenue):not(#settings), .vt #secCars, .vt #banners, .vt .foot { display: none !important; }
+.vt .wrap > .mod:not(#secTenue):not(#secDebrief):not(#settings), .vt #secCars, .vt #banners, .vt .foot { display: none !important; }
 .outfit { border-color: var(--line2); gap: 18px; }
 .outfit button { min-height: 44px; }
 .outfit-controls { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -651,7 +651,7 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 @media (max-width: 380px) { .wx-pts li { grid-template-columns: 92px minmax(0, 1fr); } .wx-rf li { grid-template-columns: 22px 80px minmax(0, 1fr) 32px; } }
 
 /* ---------- onglet Analyse : ingénieur pneumatique embarqué (verdict d'abord, explications au toucher) ---------- */
-.va .wrap > .mod:not(#secLab):not(#settings), .va #secCars, .va #banners, .va .foot, .va .day-context { display: none !important; }
+.va .wrap > .mod:not(#secLab):not(#secDebrief):not(#settings), .va #secCars, .va #banners, .va .foot, .va .day-context { display: none !important; }
 .va #placeBar .pl-act { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
 .va #placeBar .pl-act .btn { min-height: 44px; min-width: 0; overflow-wrap: anywhere; }
 .lab { gap: 10px; }
@@ -741,3 +741,23 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .day-destination > .chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .day-destination .chip { min-width: 0; justify-content: center; overflow-wrap: anywhere; }
 .day-destination .chip:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+/* Débrief conducteur et journal : cibles tactiles, noms longs et petit écran. */
+.debrief { overflow-wrap: anywhere; }
+.debrief .mod-h { align-items: start; flex-wrap: wrap; }
+.debrief fieldset { border: 0; padding: 0; margin: 18px 0; min-width: 0; }
+.debrief legend { font-weight: 700; margin-bottom: 8px; }
+.debrief-choices, .debrief-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.debrief button { min-height: 44px !important; min-width: 44px; white-space: normal; height: auto; }
+.debrief button[aria-pressed="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.debrief button:disabled { opacity: .45; cursor: default; }
+.debrief-facts { margin: 12px 0; }
+.debrief-facts > div { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.debrief-facts dt { font-size: 12px; color: var(--fg2); }
+.debrief-facts dd { margin: 4px 0 0; }
+.debrief-journal { margin-top: 12px; }
+.debrief-journal > summary, .debrief-entry > summary, .debrief-snapshot > summary { min-height: 44px; padding: 12px 0; cursor: pointer; font-weight: 600; }
+.debrief-entry { border-top: 1px solid var(--line); }
+@media (max-width: 360px) { .debrief-choices, .debrief-actions { grid-template-columns: 1fr; } }
+.debrief summary::before { content: '›'; display: inline-block; margin-right: 8px; }
+.debrief details[open] > summary::before { transform: rotate(90deg); }

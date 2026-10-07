@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
 const ctx = { Date, Intl, JSON, Object, Number, Array, Set, Math };
-vm.createContext(ctx); vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/userctx.js'), 'utf8') + ';this.api = typeof DayContext === "undefined" ? null : DayContext; this.store = userContextStore;', ctx);
+vm.createContext(ctx); vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/debrief.js'), 'utf8') + fs.readFileSync(require('node:path').resolve(__dirname, '../src/userctx.js'), 'utf8') + ';this.api = typeof DayContext === "undefined" ? null : DayContext; this.store = userContextStore;', ctx);
 const D = ctx.api, t = s => Date.parse(s + '+02:00'), now = t('2026-10-06T17:30:00');
 const places = [{ id: 'home', name: 'Domicile test', lat: 48.85, lon: 2.35 }, { id: 'work', name: 'Travail test', lat: 48.9, lon: 2.25 }, { id: 'b', name: 'Lieu B', lat: 48.8, lon: 2.45 }];
 const cars = [{ id: 'a' }, { id: 'b' }], conf = at => ({ placeId: 'b', at, source: 'manual' });

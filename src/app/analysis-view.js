@@ -54,7 +54,7 @@ function labTripState(r, li) {
       ${d.km != null ? `<li>Progression : <b>${km(d.km)}${d.total != null ? ' / ' + km(d.total) : ''} km</b>${src ? ` <span class="sub">(${src})</span>` : ''}</li>` : ''}
       <li>Pneu : <b>${esc(r.thermal.state.toLowerCase())}</b> · gomme ≈ ${rg(r.thermal.range)}${r.hero.warm && !r.warm.reached ? ' · ' + esc(r.hero.warm) + ' restantes' : ''}</li></ul></div>`;
   }
-  if (TRIPEND && Date.now() - TRIPEND.at < 3 * 3600e3) {
+  if (TRIPEND && (!TRIPEND.carId || li && li.car && li.car.id === TRIPEND.carId) && Date.now() - TRIPEND.at < 3 * 3600e3) {
     const e = TRIPEND;
     return `<div class="wx-blk lab-live" data-k="end"><h3>🏁 Trajet terminé${e.name ? ' · ' + esc(e.name) : ''} · ${hm(e.at)}</h3><ul class="lab-why">${e.km != null ? `<li><b>${km(e.km)} km</b>${e.kmSrc === 'route' ? '' : ' <span class="sub">(estimé)</span>'}</li>` : ''}<li><b>${e.min} min</b></li>
       <li>État thermique final estimé : <b>${rg(e.range)}</b> (${esc(String(e.state).toLowerCase())})</li><li>Confiance : ${esc(e.conf)} · sert de point de départ au prochain trajet</li></ul></div>`;
@@ -66,9 +66,9 @@ function labTripState(r, li) {
   }
   return '';
 }
-function labThermTick(arrived) {
+function labThermTick(arrived, vehicle = null) {
   if (DEMO.on || !CX) return;
-  const car = labCar(); if (!car || !hasTires(car)) return;
+  const car = vehicle || labCar(); if (!car || !hasTires(car)) return;
   if (!arrived && !(LIVE.phase === 'active' && Date.now() - (labThermTick.at || 0) > 120e3)) return;
   const inp = labInput(car), r = tyreLab(inp); if (!r || !r.thermal) return;
   labThermTick.at = Date.now(); ttSave(car.id, r.now, r.thermal.T, r.state && r.state.sig);
