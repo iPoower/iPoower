@@ -23,10 +23,10 @@ const BASE = {
   cars: [
     { id: 'car1', name: 'Voiture 1', short: 'Voiture 1', spec: '', sporty: 0,
       tire: { type: 'summer', brand: '', model: '', size: '', tread: null, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
-      plan: { on: 0, brand: '', model: '', size: '', date: '' } },
+      plan: { on: 0, brand: '', model: '', size: '', ordered: '', etaFrom: '', etaTo: '', etaChecked: '', date: '', appointmentDate: '', appointmentConfirmed: 0 } },
     { id: 'car2', name: 'Voiture 2', short: 'Voiture 2', spec: '', sporty: 0,
       tire: { type: 'allseason', brand: '', model: '', size: '', tread: null, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
-      plan: { on: 0, brand: '', model: '', size: '', date: '' } }
+      plan: { on: 0, brand: '', model: '', size: '', ordered: '', etaFrom: '', etaTo: '', etaChecked: '', date: '', appointmentDate: '', appointmentConfirmed: 0 } }
   ]
 };
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -3090,13 +3090,39 @@ function renderSeason() {
     const cal = `<div class="season-week"><div class="sub">Jours 1 à 7 · prévisions min / max</div><div class="cal">${cells(di.slice(0, 7))}</div></div>${di.length > 7 ? `<div class="season-week trend"><div class="sub">Jours 8 à 14 · tendance plus incertaine</div><div class="cal">${cells(di.slice(7))}</div></div>` : ''}`;
     let cd = '';
     if (car.plan && car.plan.on && car.tire.type !== 'winter') {
-      const n = s.countdown && s.countdown.n;
-      const planTxt = [car.plan.brand, car.plan.model].filter(Boolean).join(' ') || 'pneus hiver';
-      cd = `<div class="stat lvx"><span class="sub">Montage prévu : ${esc(planTxt)}${car.plan.size ? ' · ' + esc(car.plan.size) : ''}</span>
-        ${n == null ? '<span class="sub">Date d’arrivée/montage non renseignée.</span>' : `<span class="cd num">${n > 0 ? 'J-' + pad(n) : n === 0 ? 'Jour J' : 'J+' + pad(-n)}</span><span class="sub">${n > 0 ? 'avant montage pneus hiver' : 'date de montage atteinte ou dépassée'} · ${fmtDay(car.plan.date)}</span>`}
-        <div class="fld" style="margin-top:4px"><label for="f-cars-${ci}-plan-date">Date prévisionnelle de montage</label><input type="date" id="f-cars-${ci}-plan-date" data-bind="cars.${ci}.plan.date" value="${esc(car.plan.date)}"></div>
+      const plan = car.plan, n = s.countdown && s.countdown.n;
+      const planTxt = [plan.brand, plan.model].filter(Boolean).join(' ') || 'pneus hiver';
+      const etaDate = plan.etaTo || plan.etaFrom, etaTxt = plan.etaFrom && plan.etaTo && plan.etaFrom !== plan.etaTo
+        ? `${fmtDay(plan.etaFrom)} → ${fmtDay(plan.etaTo)}`
+        : etaDate ? fmtDay(etaDate) : 'non renseignée';
+      const today = CX.m.nowStr.slice(0, 10);
+      const supplyStatus = !etaDate ? 'À RENSEIGNER' : today < (plan.etaFrom || etaDate) ? 'EN ATTENTE' : today <= etaDate ? 'FENÊTRE ETA' : 'ETA DÉPASSÉE';
+      const apptTxt = plan.appointmentDate
+        ? `${plan.appointmentConfirmed ? 'confirmé' : 'à confirmer'} · ${fmtDay(plan.appointmentDate)}`
+        : 'non confirmé';
+      const mountLabel = s.countdown && s.countdown.kind === 'confirmed' ? 'avant rendez-vous confirmé' : 'avant montage estimé';
+      const covered = s.countdown ? s.countdown.weatherCoveredDays || 0 : 0, remaining = s.countdown ? s.countdown.weatherRemainingDays || 0 : 0;
+      const etaConflict = !!(plan.date && etaDate && plan.date < etaDate && !(plan.appointmentConfirmed && plan.appointmentDate));
+      cd = `<div class="stat lvx"><span class="sub">Prochaine monte : ${esc(planTxt)}${plan.size ? ' · ' + esc(plan.size) : ''}</span>
+        ${n == null ? '<span class="sub">Date de montage estimée non renseignée.</span>' : `<span class="cd num">${n > 0 ? 'J-' + pad(n) : n === 0 ? 'Jour J' : 'J+' + pad(-n)}</span><span class="sub">${n > 0 ? esc(mountLabel) : 'date de montage atteinte ou dépassée'} · ${fmtDay(s.countdown.date)}</span>`}
+        <span class="sub"><b>Commande</b> · ${plan.ordered ? fmtDay(plan.ordered) : 'date non renseignée'}</span>
+        <span class="sub"><b>Approvisionnement</b> · ${esc(supplyStatus)} · ETA ${esc(etaTxt)}${plan.etaChecked ? ' · vérifié ' + fmtDay(plan.etaChecked) : ''}</span>
+        <span class="sub"><b>Rendez-vous</b> · ${esc(apptTxt)}</span>
+        ${etaConflict ? '<div class="note lv2"><b>COHÉRENCE</b><span>Le montage estimé est antérieur à la dernière ETA fournisseur. Vérifie les deux dates.</span></div>' : ''}
+        ${n == null ? '' : `<div class="note lv${remaining > 0 ? 1 : 0}"><b>COUVERTURE MÉTÉO</b><span>${covered} jour${covered > 1 ? 's' : ''} analysé${covered > 1 ? 's' : ''} sur ${Math.max(0, n)} avant ${s.countdown.kind === 'confirmed' ? 'le rendez-vous' : 'le montage'}.${remaining > 0 ? ` ${remaining} jour${remaining > 1 ? 's' : ''} encore non évaluable${remaining > 1 ? 's' : ''} : aucune conclusion météo n’est extrapolée au-delà de la fenêtre disponible.` : ' Toute la période restante est couverte par les prévisions disponibles.'}</span></div>`}
+        <details class="wx-how"><summary>Mettre à jour le suivi</summary>
+          <div class="frow">
+            <div class="fld"><label for="f-cars-${ci}-plan-ordered">Commande passée</label><input type="date" id="f-cars-${ci}-plan-ordered" data-bind="cars.${ci}.plan.ordered" value="${esc(plan.ordered)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-eta-from">ETA fournisseur · début</label><input type="date" id="f-cars-${ci}-plan-eta-from" data-bind="cars.${ci}.plan.etaFrom" value="${esc(plan.etaFrom)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-eta-to">ETA fournisseur · fin</label><input type="date" id="f-cars-${ci}-plan-eta-to" data-bind="cars.${ci}.plan.etaTo" value="${esc(plan.etaTo)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-eta-checked">ETA vérifiée le</label><input type="date" id="f-cars-${ci}-plan-eta-checked" data-bind="cars.${ci}.plan.etaChecked" value="${esc(plan.etaChecked)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-date">Montage estimé</label><input type="date" id="f-cars-${ci}-plan-date" data-bind="cars.${ci}.plan.date" value="${esc(plan.date)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-appt">Date du rendez-vous</label><input type="date" id="f-cars-${ci}-plan-appt" data-bind="cars.${ci}.plan.appointmentDate" value="${esc(plan.appointmentDate)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-appt-ok">Rendez-vous confirmé</label><select id="f-cars-${ci}-plan-appt-ok" data-bind="cars.${ci}.plan.appointmentConfirmed" data-num="1"><option value="1" ${plan.appointmentConfirmed ? 'selected' : ''}>Oui</option><option value="0" ${plan.appointmentConfirmed ? '' : 'selected'}>Non</option></select></div>
+          </div>
+        </details>
         <div class="chips"><button class="btn" data-act="mount-open" data-car="${esc(car.id)}"${DEMO.on ? ' disabled' : ''}>Montage effectué</button></div>${mountDraft(car)}</div>`;
-      if (s.coldBefore) cd += `<div class="note lv3"><b>ALERTE</b><span>Période froide ${s.coldBefore.severe ? 'avec conditions hivernales' : '(≥ 2 nuits à 2 °C ou moins)'} prévue dès le ${fmtDay(s.coldBefore.first.date)}, avant le montage du ${fmtDay(s.countdown.date)}.${s.coldBefore.partial ? ' Prévisions limitées à 14 jours : analyse partielle.' : ''}</span></div>`;
+      if (s.coldBefore) cd += `<div class="note lv3"><b>ALERTE</b><span>Période froide ${s.coldBefore.severe ? 'avec conditions hivernales' : '(≥ 2 nuits à 2 °C ou moins)'} prévue dès le ${fmtDay(s.coldBefore.first.date)}, avant ${s.countdown.kind === 'confirmed' ? 'le rendez-vous confirmé' : 'le montage estimé'} du ${fmtDay(s.countdown.date)}.${s.coldBefore.partial ? ' La météo disponible ne couvre pas toute la période restante.' : ''}</span></div>`;
     }
     return `<div class="season lv${s.level}"><h3>${esc(car.name)} · pneus ${TYPE_LABEL[car.tire.type]}</h3>
       <div class="stat"><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div>${cd}
@@ -3186,7 +3212,12 @@ function renderSettings(force) {
       <div class="fld"><span class="l">Permutation AV/AR</span><button class="btn sm" data-act="rot" data-i="${i}">Permutation faite aujourd’hui</button></div>
       ${bindIn(`cars.${i}.tire.pchk.date`, (c.tire.pchk || {}).date, { label: 'Dernier contrôle pression', type: 'date' })}${bindIn(`cars.${i}.tire.pchk.T`, (c.tire.pchk || {}).T, { label: 'Température au contrôle (°C)', type: 'number', num: 1, attrs: 'step="0.5"' })}</div>
     <div class="frow"><div class="fld wide"><label for="f-cars-${i}-plan-on">Pneus hiver prévus</label><select id="f-cars-${i}-plan-on" data-bind="cars.${i}.plan.on" data-num="1"><option value="1" ${c.plan.on ? 'selected' : ''}>Oui, suivre le montage</option><option value="0" ${c.plan.on ? '' : 'selected'}>Non</option></select></div>
-      ${bindIn(`cars.${i}.plan.brand`, c.plan.brand, { label: 'Marque' })}${bindIn(`cars.${i}.plan.model`, c.plan.model, { label: 'Modèle' })}${bindIn(`cars.${i}.plan.size`, c.plan.size, { label: 'Dimensions / indices' })}${bindIn(`cars.${i}.plan.date`, c.plan.date, { label: 'Arrivée / montage prévu', type: 'date' })}</div></div>`).join('');
+      ${bindIn(`cars.${i}.plan.brand`, c.plan.brand, { label: 'Marque' })}${bindIn(`cars.${i}.plan.model`, c.plan.model, { label: 'Modèle' })}${bindIn(`cars.${i}.plan.size`, c.plan.size, { label: 'Dimensions / indices' })}</div>
+    <div class="frow">
+      ${bindIn(`cars.${i}.plan.ordered`, c.plan.ordered, { label: 'Commande passée', type: 'date' })}${bindIn(`cars.${i}.plan.etaFrom`, c.plan.etaFrom, { label: 'ETA fournisseur · début', type: 'date' })}${bindIn(`cars.${i}.plan.etaTo`, c.plan.etaTo, { label: 'ETA fournisseur · fin', type: 'date' })}${bindIn(`cars.${i}.plan.etaChecked`, c.plan.etaChecked, { label: 'ETA vérifiée le', type: 'date' })}</div>
+    <div class="frow">
+      ${bindIn(`cars.${i}.plan.date`, c.plan.date, { label: 'Montage estimé', type: 'date' })}${bindIn(`cars.${i}.plan.appointmentDate`, c.plan.appointmentDate, { label: 'Date du rendez-vous', type: 'date' })}
+      <div class="fld"><label for="f-cars-${i}-plan-appt-ok">Rendez-vous confirmé</label><select id="f-cars-${i}-plan-appt-ok" data-bind="cars.${i}.plan.appointmentConfirmed" data-num="1"><option value="1" ${c.plan.appointmentConfirmed ? 'selected' : ''}>Oui</option><option value="0" ${c.plan.appointmentConfirmed ? '' : 'selected'}>Non</option></select></div></div></div>`).join('');
   const locSet = S.locs.map((l, i) => `<div class="frow">${bindIn(`locs.${i}.name`, l.name, { label: i === 0 ? 'Zone principale' : 'Lieu de travail / 2e zone', wide: 1 })}${bindIn(`locs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`locs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}</div>`).join('') +
     S.customs.map((l, i) => `<div class="frow">${bindIn(`customs.${i}.name`, l.name, { label: 'Destination', wide: 1 })}${bindIn(`customs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`customs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}<div class="fld"><span class="l">&nbsp;</span><button class="btn sm" data-act="loc-del" data-i="${i}">Retirer</button></div></div>`).join('');
   el.innerHTML = `<div class="set-sec"><h3>Voitures et pneus</h3></div>${carSet}
