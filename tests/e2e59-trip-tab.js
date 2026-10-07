@@ -61,12 +61,13 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
   await s.c.setOffline(false);await tap(p,dev,'#secTrip [data-act=trip-plan-cancel]');
   await check(dev+' · annulation rend la priorité au planning sans perdre le lieu Travail',async()=>{const x=await state(p);assert.equal(x.n,null);assert.equal(x.status,'work');assert(!(await p.evaluate(k=>APP_CONTEXT.trips.some(t=>t.key===k),key)));});
   ctl.setGeoFail(true);await p.fill('#tripDestQ','Adresse impossible ZXCV');await tap(p,dev,'#secTrip [data-act=trip-dest-search]');await s.settle(2);
-  // trois fournisseurs interrogés l'un après l'autre : attendre la réponse affichée, pas un délai fixe (échec intermittent sur PC)
-  await p.waitForFunction(()=>/Aucun résultat|Recherche impossible/.test(document.getElementById('secTrip').innerText),null,{timeout:15000}).catch(()=>{});
+  // trois fournisseurs interrogés l'un après l'autre ; le dernier (Open-Meteo) passe par la file météo, rythmée par des timers :
+  // l'horloge simulée doit avancer pendant l'attente (sinon la réponse n'arrive jamais : échec intermittent sur PC)
+  for(let i=0;i<40&&!(await p.evaluate(()=>/Aucun résultat|Recherche impossible/.test(document.getElementById('secTrip').innerText)));i++)await s.settle(1);
   await check(dev+' · géocodage impossible : erreur explicite, aucun trajet inventé',async()=>{assert.match(await p.locator('#secTrip').innerText(),/Aucun résultat/);assert.equal((await state(p)).n,null);});
   ctl.setGeoFail(false);await search(p,dev,"1 Rue de l'Église, Saint-Étienne");await check(dev+' · accents, apostrophe et tiret conservés',async()=>assert.match(await p.locator('#secTrip').innerText(),/Rue de l'Église.*Saint-Étienne/));
   if(dev==='iphone')await check('iPhone 11 Pro Max · aucun débordement et cibles ≥ 44 pt',async()=>{const L=await layout(p);assert(L.sw<=L.W+1,JSON.stringify(L));assert.deepEqual(L.wide,[]);assert.deepEqual(L.small,[]);});
   await s.c.close();
  }
- await check('aucune erreur JavaScript',async()=>assert.deepEqual(errors,[]));console.log(n+'/'+n+' scénarios OK');
+ await check('aucune erreur JavaScript',async()=>assert.deepEqual(errors,[],errors.join(' | ')));console.log(n+'/'+n+' scénarios OK');
 }finally{await b.close();}})().catch(e=>{console.error('❌ '+stage+' · '+e.stack);process.exit(1);});
