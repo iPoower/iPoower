@@ -46,6 +46,32 @@ function labInput(car) {
   return { now, car, hours: m.hs.slice(Math.max(0, m.nowI - 36), m.nowI + 40), history: h && h.at <= now && tyreMemoryValid(h, state) ? h : null, state, drive, trip, ageMin, reports,
     db: car.tire && (car.tire.brand || car.tire.model) ? findTire(car.tire.brand, car.tire.model) : null };
 }
+// Gomme estimée le long d'un trajet du briefing (mêmes points datés que la météo du trajet) : tyreLab pur, aucune donnée nouvelle.
+// Partagé par le briefing (ligne « Gomme ») et le débrief (prévision figée au départ). null sans météo ni points.
+function tripLab(t, car) {
+  const seq = t && t.seq || [];
+  if (!car || !CX || !seq.length || !seq.every(q => q && q.hs && q.hs[q.i])) return null;
+  const li = labInput(car);
+  li.trip = { label: t.name, km: t.l && t.l.km != null ? t.l.km : t.td && t.td.dist != null ? t.td.dist * 1.3 : null,
+    points: seq.map((q, i) => ({ t: q.t || (i === 0 ? t.dep : i === seq.length - 1 ? t.arr : q.hs[q.i].t),
+      f: q.f != null ? q.f : seq.length > 1 ? i / (seq.length - 1) : 0, km: q.km, x: q.hs[q.i] })) };
+  try { return tyreLab(li); } catch (e) { return null; }
+}
+// ligne du briefing : état de la gomme au départ → à l'arrivée (ou maintenant, en roulage), plage °C, fenêtre atteinte ou non
+function briefThermalHtml(t, car) {
+  const r = tripLab(t, car), rows = r && r.trip && r.trip.rows;
+  if (!rows || !rows.length) return '';
+  const rg = x => `${String(x[0]).replace('-', '−')}–${String(x[1]).replace('-', '−')} °C`, low = x => esc(TL_LEVEL_TXT[x.s] || String(x.state || '').toLowerCase());
+  const a = rows[0], z = rows[rows.length - 1], reached = rows.some(x => x.s === 2), hot = rows.some(x => x.s >= 3);
+  const live = r.hero && r.thermal && (t.live === 'active' || t.running) && LIVE.phase === 'active';
+  const lv = hot ? (rows.some(x => x.s >= 4) ? 2 : 1) : reached ? 0 : z.s === 0 ? 2 : 1;
+  const verdict = hot ? 'Gomme chaude en fin de trajet : surveille la pression à chaud'
+    : reached ? `Fenêtre favorable atteinte${rows.find(x => x.s === 2).km != null ? ' vers le km ' + rows.find(x => x.s === 2).km : ''}`
+    : 'N’atteint pas sa fenêtre favorable sur ce trajet : freinages et virages comme sur pneu froid';
+  return `<div class="frost lv${lv} brf-gum" data-k="gum"><b>🌡️ Gomme · estimation</b>
+    <span>${live ? `Maintenant : <strong>${low(r.thermal)}</strong> (${rg(r.thermal.range)}) · ` : `Départ : <strong>${low(a)}</strong> (${rg(a.range)}) → `}Arrivée : <strong>${low(z)}</strong> (${rg(z.range)})</span>
+    <span>${esc(verdict)} <button class="btn sm" data-act="brf-lab">Détail ›</button></span></div>`;
+}
 // suivi de la mémoire thermique : pendant un trajet vivant (toutes les 2 min au plus) et à l'arrivée
 // état du trajet vu par Analyse (même état LIVE que le briefing) : simulation avant départ, suivi en cours, bilan à l'arrivée
 function labTripState(r, li) {

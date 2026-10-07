@@ -29,14 +29,8 @@ function debriefDeparture(t, s) {
     }
   }
   let thermal = null;
-  if (car && CX && seq.length) {
-    const li = labInput(car);
-    li.trip = { label: t.name, km: t.l && t.l.km != null ? t.l.km : t.td && t.td.dist != null ? t.td.dist * 1.3 : null,
-      points: seq.map((q, i) => ({ t: q.t || (i === 0 ? t.dep : i === seq.length - 1 ? t.arr : q.hs[q.i].t),
-        f: q.f != null ? q.f : seq.length > 1 ? i / (seq.length - 1) : 0, km: q.km, x: q.hs[q.i] })) };
-    const r = tyreLab(li), row = r.trip && r.trip.rows[r.trip.rows.length - 1];
-    if (row && r.confidence) thermal = { s: row.s, range: row.range, conf: r.confidence.level };
-  }
+  const r = tripLab(t, car), row = r && r.trip && r.trip.rows[r.trip.rows.length - 1];
+  if (row && r.confidence) thermal = { s: row.s, range: row.range, conf: r.confidence.level };
   const verdict = t.res && t.res.find(r => car && r.c.id === car.id);
   USER_STORE.state.debrief = Debrief.begin(USER_STORE.state.debrief, { key: t.key, at: s.at,
     name: t.name, from: t.from, to: t.to, carId: car && car.id, car: car && (car.short || car.name),
