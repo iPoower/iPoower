@@ -19,6 +19,11 @@ try {
   check('fichier lié refusé', () => { put('app.js', '// @include app/linked.js\n'); fs.symlinkSync(path.join(root, 'src/app.js'), path.join(root, 'src/app/linked.js')); assert.throws(() => appSource(root), /non régulière/); });
   check('répertoire lié hors de src refusé', () => { fs.renameSync(path.join(root, 'src/app'), path.join(root, 'elsewhere')); fs.symlinkSync(path.join(root, 'elsewhere'), path.join(root, 'src/app')); put('app.js', '// @include app/second.js\n'); assert.throws(() => appSource(root), /hors de src/); });
   check('app complète assemblée et syntaxiquement valide', () => { const source = appSource(); assert(!/^\/\/ @include /m.test(source)); new vm.Script(source); for (const name of ['renderWx', 'renderLab', 'diagRows', 'autoTick']) assert(source.includes('function ' + name + '(')); });
+  check('suivi hiver sépare fournisseur, estimation et rendez-vous', () => {
+    const source = appSource();
+    for (const token of ['Commande passée', 'ETA fournisseur · début', 'ETA fournisseur · fin', 'Montage estimé', 'Date du rendez-vous', 'Rendez-vous confirmé', 'COUVERTURE MÉTÉO'])
+      assert(source.includes(token), 'Champ hiver absent : ' + token);
+  });
   check('chaque commande visible possède un handler et une entrée dans l’audit', () => {
     const repo = path.resolve(__dirname, '..'), source = appSource(repo) + fs.readFileSync(path.join(repo, 'src/shell.html'), 'utf8');
     const actions = [...new Set([...source.matchAll(/data-act=["']([a-z][a-z-]*)/g)].map(m => m[1]))].sort();

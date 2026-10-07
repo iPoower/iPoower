@@ -444,20 +444,25 @@ function seasonAnalysis(model, car) {
     level = 0; title = '4 saisons 3PMSF : polyvalents';
     text = firstSevere ? 'Conditions hivernales annoncées : le 4 saisons reste utilisable mais n’égale pas un excellent pneu hiver.' : 'Aucune contrainte particulière détectée. En été, ils ne donnent pas les performances maximales d’un pneu été sportif.';
   }
-  // compte à rebours + période froide avant montage
+  // compte à rebours + période froide avant montage.
+  // Un rendez-vous confirmé est un fait plus fort que l'estimation ; l'ETA fournisseur
+  // reste informative et ne pilote jamais seule le verdict météo.
   let countdown = null, coldBefore = null;
   const plan = car.plan;
   if (plan && plan.on && type !== 'winter') {
-    if (plan.date) {
-      const n = dayDiff(model.nowStr.slice(0, 10), plan.date);
-      countdown = { n, date: plan.date };
-      const before = di.filter(d => d.date < plan.date);
+    const confirmed = !!plan.appointmentConfirmed && !!plan.appointmentDate;
+    const mountDate = confirmed ? plan.appointmentDate : plan.date;
+    if (mountDate) {
+      const n = dayDiff(model.nowStr.slice(0, 10), mountDate);
+      const before = di.filter(d => d.date < mountDate);
+      const covered = Math.max(0, Math.min(Math.max(0, n), before.length));
+      const remaining = Math.max(0, n - covered);
+      countdown = { n, date: mountDate, kind: confirmed ? 'confirmed' : 'estimated', weatherCoveredDays: covered, weatherRemainingDays: remaining, partial: remaining > 0 };
       const ev = before.filter(d => severeDay(d) || (d.tmin != null && d.tmin <= 2));
       const sev = before.find(severeDay);
       const cold2 = before.filter(d => d.tmin != null && d.tmin <= 2).length;
-      if (sev || cold2 >= 2) coldBefore = { first: sev || ev[0], severe: !!sev, cold2, partial: dayDiff(model.nowStr.slice(0, 10), plan.date) > 14 };
-      countdown.partial = n > 14;
-    } else countdown = { n: null };
+      if (sev || cold2 >= 2) coldBefore = { first: sev || ev[0], severe: !!sev, cold2, partial: remaining > 0 };
+    } else countdown = { n: null, kind: confirmed ? 'confirmed' : 'estimated', weatherCoveredDays: 0, weatherRemainingDays: 0, partial: false };
   }
   return { level, title, text, days: di, countdown, coldBefore };
 }
@@ -502,7 +507,7 @@ function computeAlerts(model, cars, S, seasonByCar) {
   for (let k = 0; k + 3 < seq.length; k++) { const a = seq[k].hs[seq[k].i], b = seq[k + 3].hs[seq[k + 3].i]; if (a.T != null && b.T != null && a.T - b.T >= 5 && (!drop || a.T - b.T > drop.d)) drop = { d: a.T - b.T, s: seq[k + 3], from: a.T, to: b.T }; }
   if (drop) set('drop', drop.d >= 8 ? 3 : 2, `Baisse brutale : −${f1(drop.d)} °C en 3 h`, `De ${f1(drop.from)} à ${f1(drop.to)} °C vers ${hhmm(drop.s)}.`);
   const pre = cars.map(c => ({ c, s: seasonByCar[c.id] })).filter(o => o.s && o.s.coldBefore && effType(o.c) === 'summer');
-  if (pre.length) { const o = pre[0]; set('pre', 3, `Météo hivernale avant le montage hiver (${o.c.short})`, `Premier épisode : ${fmtDay(o.s.coldBefore.first.date)}, avant le montage prévu le ${fmtDay(o.s.countdown.date)}.${o.s.coldBefore.partial ? ' Prévision au-delà de 14 j non disponible : analyse partielle.' : ''}`); }
+  if (pre.length) { const o = pre[0], when = o.s.countdown.kind === 'confirmed' ? 'rendez-vous confirmé' : 'montage estimé'; set('pre', 3, `Météo hivernale avant le montage hiver (${o.c.short})`, `Premier épisode : ${fmtDay(o.s.coldBefore.first.date)}, avant le ${when} du ${fmtDay(o.s.countdown.date)}.${o.s.coldBefore.partial ? ' La météo disponible ne couvre pas toute la période restante.' : ''}`); }
   return res;
 }
 
