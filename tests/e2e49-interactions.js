@@ -51,6 +51,7 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         await p.locator('#photo-0').setInputFiles({ name: 'fixture.png', mimeType: 'image/png', buffer: image }); await s.settle(3); assert.match(await p.evaluate(() => S.cars[0].photo), /^data:image\/jpeg/);
         await p.locator('#photo-0').setInputFiles({ name: 'broken.png', mimeType: 'image/png', buffer: Buffer.from('invalid fixture') }); await s.settle(3); assert.match(await p.locator('label[for=photo-0]').getAttribute('title'), /Image illisible/);
       });
+      await click('[data-act=view][data-v=meteo]');
       await check(tag + ' · radar, lecture, pause, curseur et recentrage', async () => {
         await p.locator('#secRadar').scrollIntoViewIfNeeded(); await s.settle(8); await p.waitForFunction(() => RADAR.state === 'ready');
         await click('[data-act=rplay]'); assert.equal(await p.evaluate(() => !!RADAR.play), true); await click('[data-act=rplay]'); assert.equal(await p.evaluate(() => !!RADAR.play), false);
@@ -137,6 +138,7 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
       assert.deepEqual(s.errors, []); await s.c.close();
     }
     const radar = await session(browser); radar.state.radar = 'abort';
+    await radar.p.locator('[data-act=view][data-v=meteo]').click(); await radar.settle(1);
     await radar.p.locator('#secRadar').scrollIntoViewIfNeeded(); await radar.settle(6);
     await check('radar · panne initiale : commandes désactivées et raison visible', async () => { await radar.p.waitForFunction(() => RADAR.state === 'idle'); assert.equal(await radar.p.locator('[data-act=rplay]').isDisabled(), true); assert.match(await radar.p.locator('#rmsg').innerText(), /Actualiser/); });
     radar.state.radar = 'ok'; await radar.p.locator('#statusbar [data-act=refresh]').click(); await radar.settle(8);

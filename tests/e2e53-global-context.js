@@ -68,7 +68,7 @@ async function allViews(s, stage, expected, home, work) {
         if (futureReturn) { assert.equal(futureReturn.from, 'work', 'origine du retour futur conservée'); assert.equal(futureReturn.to, 'home'); }
       }
       if (view === 'pneus' && expected.status !== 'travel') {
-        const weather = await text(p, '#secCur'), label = x.location === 'work' ? work : home;
+        const weather = await text(p, '#secWeatherLink'), label = x.location === 'work' ? work : home;
         assert(weather.toLowerCase().includes(label.toLowerCase()), 'météo actuelle du lieu confirmé · ' + label + ' · ' + weather);
       }
       if (view === 'tenue') {

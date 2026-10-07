@@ -81,3 +81,33 @@ function tyreState(car, opt = {}) {
 }
 // mémoire thermique : valable seulement pour la même monte (un changement de jeu invalide l'ancienne estimation)
 function tyreMemoryValid(rec, state) { return !!rec && !!state && (rec.sig == null ? false : rec.sig === state.sig); }
+
+// chaque type (été / hiver / 4 saisons / inconnu) garde son propre jeu de pneus
+const SET_KEYS = ['brand', 'model', 'size', 'tread', 'press', 'mounted', 'dot', 'pchk', 'info', 'treads', 'mountKm', 'lastRot'];
+function switchTire(car, type) {
+  if (car.tire.type === type) return;
+  car.sets = car.sets || {};
+  car.sets[car.tire.type] = Object.fromEntries(SET_KEYS.map(k => [k, car.tire[k] ?? null]));
+  let next = car.sets[type];
+  if (!next && type === 'winter' && car.plan && car.plan.on && (car.plan.brand || car.plan.model))
+    next = { brand: car.plan.brand, model: car.plan.model, size: car.plan.size || car.tire.size, tread: null, press: car.tire.press, mounted: '' };
+  if (!next) next = { brand: '', model: '', size: (car.sets.summer && car.sets.summer.size) || car.tire.size, tread: null, press: car.tire.press, mounted: '' };
+  car.tire = { type, dot: '', info: '', pchk: { date: '', T: null }, ...JSON.parse(JSON.stringify(next)) };
+  if (!car.tire.pchk) car.tire.pchk = { date: '', T: null };
+}
+// Un montage est un fait confirmé, distinct de la date prévisionnelle. Aucun effet sur l'entrée en cas d'erreur.
+function confirmWinterMount(car, { date, km, today } = {}) {
+  if (!car || !car.tire || !car.plan || !car.plan.on || car.tire.type === 'winter') return { error: 'Le montage hiver n’est plus en attente.' };
+  const validDate = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d + 'T12:00:00Z')) && new Date(d + 'T12:00:00Z').toISOString().slice(0, 10) === d;
+  if (!validDate(date) || !validDate(today) || date > today) return { error: 'Choisis la date réelle du montage, aujourd’hui ou avant.' };
+  const value = km == null || String(km).trim() === '' ? null : Number(km);
+  if (value != null && (!Number.isSafeInteger(value) || value < 0)) return { error: 'Le compteur doit être un nombre entier positif ou nul.' };
+  const readings = (car.odo || []).filter(o => o && Number.isFinite(o.km));
+  if (value != null && readings.some(o => o.d <= date && o.km > value || o.d > date && o.km < value)) return { error: 'Ce compteur ne correspond pas à la chronologie des relevés enregistrés.' };
+  const next = JSON.parse(JSON.stringify(car));
+  switchTire(next, 'winter');
+  Object.assign(next.tire, { mounted: date, mountKm: value, lastRot: null, pchk: { date: '', T: null } });
+  if (value != null) next.odo = [...(next.odo || []).filter(o => o.d !== date), { d: date, km: value }].sort((a, b) => String(a.d).localeCompare(String(b.d)));
+  next.plan.on = 0;
+  return { car: next };
+}

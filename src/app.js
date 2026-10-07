@@ -126,19 +126,6 @@ let TRIPCANCELTIMER = null;
 // position réelle (GPS du téléphone) : reste sur l'appareil
 // @include app/user-context.js
 const allLocs = () => [...(GPS ? [GPS] : []), ...S.locs, ...S.customs, ...(PLACE.extra ? [PLACE.extra] : [])];
-// chaque type (été / hiver / 4 saisons / inconnu) garde son propre jeu de pneus
-const SET_KEYS = ['brand', 'model', 'size', 'tread', 'press', 'mounted', 'dot', 'pchk', 'info', 'treads', 'mountKm', 'lastRot'];
-function switchTire(car, type) {
-  if (car.tire.type === type) return;
-  car.sets = car.sets || {};
-  car.sets[car.tire.type] = Object.fromEntries(SET_KEYS.map(k => [k, car.tire[k] ?? null]));
-  let next = car.sets[type];
-  if (!next && type === 'winter' && car.plan && car.plan.on && (car.plan.brand || car.plan.model))
-    next = { brand: car.plan.brand, model: car.plan.model, size: car.plan.size || car.tire.size, tread: null, press: car.tire.press, mounted: '' };
-  if (!next) next = { brand: '', model: '', size: (car.sets.summer && car.sets.summer.size) || car.tire.size, tread: null, press: car.tire.press, mounted: '' };
-  car.tire = { type, dot: '', info: '', pchk: { date: '', T: null }, ...clone(next) };
-  if (!car.tire.pchk) car.tire.pchk = { date: '', T: null };
-}
 // réglages modifiés à la main : ils survivent aux nouvelles versions du préréglage
 function getPath(o, p) { return p.split('.').reduce((a, k) => a == null ? undefined : a[k], o); }  // déclaration hissée : utilisée dès loadSettings
 function markEdit(p) { (S.edits || (S.edits = {}))[p] = 1; }
@@ -869,19 +856,20 @@ function renderView() {
   $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="pneus" aria-pressed="${!vm && !vt && !va}">🛞 Pneus</button><button data-act="view" data-v="meteo" aria-pressed="${vm}">🌦️ Météo</button><button data-act="view" data-v="tenue" aria-pressed="${vt}">👔 Tenue</button><button data-act="view" data-v="analyse" aria-pressed="${va}">🔬 Analyse</button></div>`;
   const links = va ? [['secLab', 'Analyse'], ['secSeason', 'Saison pneus'], ['secJournal', 'Journal de saison'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
     ? [['secWx', 'Synthèse'], ['secRadar', 'Radar'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secCur', 'Détails'], ['secAir', 'Air · UV'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
-    : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
+    : [['secBrf', 'Départ'], ['secCars', 'Voitures'], ['secBrief', 'Préparer'], ['secWeatherLink', 'Météo'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
   if (USER_STORE.state.debrief.entries.length && !DEMO.on) links.splice(1, 0, ['secDebrief', 'Journal des trajets']);
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
   const order = va
-    ? ['secLab', 'secSeason', 'secJournal', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secAlerts', 'secWx'] : vt
+    ? ['jump', 'secLab', 'secSeason', 'secJournal', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secAlerts', 'secWx'] : vt
     ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vm
     // Météo : synthèse d'abord (verdict, trajet, chronologie, phénomènes, route), puis cartes et graphiques, puis les détails techniques
     ? ['secWx', 'banners', 'hdrMore', 'secRadar', 'secChart', 'secDays', 'secCur', 'secAir', 'secIce', 'secAlerts', 'secTip', 'secCal', 'secBrf', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal', 'secLab']
-    : ['secBrf', 'secCal', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'];
+    : ['secBrf', 'banners', 'hdrMore', 'secCars', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'];
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#notice');
+  if (!va) order.splice(order.indexOf('hdrMore') + 1, 0, 'jump');
   order.splice(order.indexOf('secBrf') + 1, 0, 'secRoad');
-  order.splice(1, 0, 'secDebrief');
+  order.splice(va ? 2 : 1, 0, 'secDebrief');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
   if (RADAR.map) { const map = RADAR.map; setTimeout(() => { if (RADAR.map === map) map.invalidateSize(); }, 60); }
 }
@@ -3062,28 +3050,43 @@ function dayInfosOne(m, car, date) {
   const idx = []; m.hs.forEach((x, i) => { if (x.date === date) idx.push({ hs: m.hs, i }); });
   const w = idx.length ? windowAssess(car, idx, 'trip') : null; return w ? w.level : null;
 }
+function renderWeatherLink() {
+  const el = $('#secWeatherLink'); el.hidden = UI.view !== 'pneus';
+  if (el.hidden) return;
+  const c = CX && CX.m.cur, l = curLoc();
+  el.innerHTML = `<div><h3>Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="view" data-v="meteo">Détails météo →</button>`;
+}
 
+// @include app/season-actions.js
 /* ---------- saison pneus ---------- */
 function renderSeason() {
+  // Une actualisation météo ne doit pas interrompre la saisie de la confirmation.
+  if (MOUNT_FORM && document.activeElement && document.activeElement.matches('#secSeason input[data-mount-field]')) return;
   const el = $('#secSeason'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
   const cards = CX.cars.filter(c => c.season).map(({ car, season: s }) => { const ci = S.cars.indexOf(car);
     const di = s.days.slice(0, 14);
-    const cal = di.map(d => { const dt = new Date(d.date + 'T12:00:00Z'); return `<div class="cell lv${d.level == null ? 'x' : d.level}" title="${fmtDay(d.date)} · ${d.level == null ? '' : LV[d.level].name}"><b>${DAYN[dt.getUTCDay()]}${pad(dt.getUTCDate())}</b><span class="lo">${f0(d.tmin)}°</span>/<span class="hi">${f0(d.tmax)}°</span></div>`; }).join('');
+    const cells = days => days.map(d => { const dt = new Date(d.date + 'T12:00:00Z'), label = d.level == null ? 'Données insuffisantes' : LV[d.level].name;
+      return `<div class="cell lv${d.level == null ? 'x' : d.level}" role="img" aria-label="${fmtDay(d.date)} · minimum ${f0(d.tmin)} degrés, maximum ${f0(d.tmax)} degrés · ${label}" title="${fmtDay(d.date)} · ${label}"><b>${DAYN[dt.getUTCDay()]}${pad(dt.getUTCDate())}</b><span class="lo">${f0(d.tmin)}°</span>/<span class="hi">${f0(d.tmax)}°</span></div>`; }).join('');
+    const cal = `<div class="season-week"><div class="sub">Jours 1 à 7 · prévisions min / max</div><div class="cal">${cells(di.slice(0, 7))}</div></div>${di.length > 7 ? `<div class="season-week trend"><div class="sub">Jours 8 à 14 · tendance plus incertaine</div><div class="cal">${cells(di.slice(7))}</div></div>` : ''}`;
     let cd = '';
     if (car.plan && car.plan.on && car.tire.type !== 'winter') {
       const n = s.countdown && s.countdown.n;
       const planTxt = [car.plan.brand, car.plan.model].filter(Boolean).join(' ') || 'pneus hiver';
       cd = `<div class="stat lvx"><span class="sub">Montage prévu : ${esc(planTxt)}${car.plan.size ? ' · ' + esc(car.plan.size) : ''}</span>
         ${n == null ? '<span class="sub">Date d’arrivée/montage non renseignée.</span>' : `<span class="cd num">${n > 0 ? 'J-' + pad(n) : n === 0 ? 'Jour J' : 'J+' + pad(-n)}</span><span class="sub">${n > 0 ? 'avant montage pneus hiver' : 'date de montage atteinte ou dépassée'} · ${fmtDay(car.plan.date)}</span>`}
-        <div class="fld" style="margin-top:4px"><label for="f-cars-${ci}-plan-date">Date prévisionnelle de montage</label><input type="date" id="f-cars-${ci}-plan-date" data-bind="cars.${ci}.plan.date" value="${esc(car.plan.date)}"></div></div>`;
+        <div class="fld" style="margin-top:4px"><label for="f-cars-${ci}-plan-date">Date prévisionnelle de montage</label><input type="date" id="f-cars-${ci}-plan-date" data-bind="cars.${ci}.plan.date" value="${esc(car.plan.date)}"></div>
+        <div class="chips"><button class="btn" data-act="mount-open" data-car="${esc(car.id)}"${DEMO.on ? ' disabled' : ''}>Montage effectué</button></div>${mountDraft(car)}</div>`;
       if (s.coldBefore) cd += `<div class="note lv3"><b>ALERTE</b><span>Période froide ${s.coldBefore.severe ? 'avec conditions hivernales' : '(≥ 2 nuits à 2 °C ou moins)'} prévue dès le ${fmtDay(s.coldBefore.first.date)}, avant le montage du ${fmtDay(s.countdown.date)}.${s.coldBefore.partial ? ' Prévisions limitées à 14 jours : analyse partielle.' : ''}</span></div>`;
     }
     return `<div class="season lv${s.level}"><h3>${esc(car.name)} · pneus ${TYPE_LABEL[car.tire.type]}</h3>
       <div class="stat"><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div>${cd}
-      <div><div class="sub" style="margin-bottom:4px">14 prochains jours · min / max · couleur = verdict pneus du jour</div><div class="cal">${cal}</div></div></div>`;
+      ${cal}<div class="season-legend" aria-label="Légende des verdicts pneus">${[['lv0', 'Adapté'], ['lv1', 'Vigilance'], ['lv2', 'Risque élevé'], ['lv3', 'Déconseillé'], ['lvx', 'Données insuffisantes']].map(([lv, text]) => `<span class="${lv}"><i aria-hidden="true"></i>${text}</span>`).join('')}</div></div>`;
   }).join('');
+  const form = el.querySelector('.mount-form');
   el.innerHTML = `<div class="mod-h"><h2>Saison pneus</h2><span class="src">analyse des prévisions, pas du calendrier</span></div><div class="grid2">${cards}</div>
    <p class="disc">Fiabilité décroissante au-delà de 5 à 7 jours. Le seuil de 7 °C est une règle pratique, pas une frontière physique.</p>`;
+  const fresh = el.querySelector('.mount-form');
+  if (form && fresh && form.dataset.car === fresh.dataset.car) { fresh.replaceWith(form); form.querySelector('.mount-message').textContent = MOUNT_FORM.msg; }
 }
 
 /* ---------- journal de saison ---------- */
@@ -3208,7 +3211,7 @@ function renderAll() {
   APP_CONTEXT.rendering = true;
   try {
     appRefreshContext(); recordJournal();
-    renderView(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+    renderView(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
     renderWx(); renderLab(); renderDebrief(); labThermTick(false); roadSync();
   } finally { APP_CONTEXT.rendering = false; }
 }
@@ -3317,6 +3320,9 @@ document.addEventListener('click', async e => {
   else if (a === 'demo') startDemo(t.dataset.scn || 'froid');
   else if (a === 'demo-sel') startDemo(($('#demoSel') || {}).value || 'froid');
   else if (a === 'demo-off') { DEMO.on = false; rebuild(); renderAll(); refreshAll(); }
+  else if (a === 'mount-open') mountOpen(t.dataset.car);
+  else if (a === 'mount-save') mountSave();
+  else if (a === 'mount-cancel') { MOUNT_FORM = null; renderSeason(); }
   else if (a === 'labcar') { appSetCar(t.dataset.car); }
   else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   else if (a === 'goset') { UI.locsOpen = false; renderLocChips(); const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }

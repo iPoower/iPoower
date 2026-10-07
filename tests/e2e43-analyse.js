@@ -160,6 +160,67 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     if (process.env.LAB_SHOT) await s.p.screenshot({ path: process.env.LAB_SHOT + '-iphone-cooling.png' });
     await s.c.close();
 
+    // 10. Ergonomie et montage confirmé : parcours réels PC/iPhone, brouillon, erreur, archive et offline.
+    for (const dev of ['pc', 'iphone']) {
+      s = await session(b, { at: '2026-10-05T12:00:00+02:00', dev });
+      await s.p.evaluate(() => {
+        const car = S.cars[0]; car.plan = { on: 1, brand: 'Goodyear', model: 'UltraGrip Performance 3', size: '215/40 R18 89V', date: '2026-11-26' };
+        car.odo = [{ d: '2026-10-01', km: 23000 }]; car.tire.type = 'summer'; car.tire.tread = 6.4;
+        car.tire.pchk = { date: '2026-10-01', T: 15 };
+        car.sets = { winter: { brand: 'Goodyear', model: 'UltraGrip Performance 3', size: '215/40 R18 89V', tread: 7.2, dot: '1825', pchk: { date: '2026-03-01', T: 8 } } };
+        TT = { [car.id]: { at: nowIn('Europe/Paris'), T: 40, sig: tyreStateOf(car).sig }, other: { at: nowIn('Europe/Paris'), T: 18, sig: 'other' } };
+        lsSet(TT_KEY, JSON.stringify(TT)); saveSettings(); renderAll();
+      });
+      await s.p.locator('[data-act=view][data-v=pneus]').click(); await s.settle(1);
+      check('10 · ' + dev + ' · Pneus : départ et voitures prioritaires, détails météo regroupés dans Météo', await s.p.evaluate(() => {
+        const shown = id => !!document.getElementById(id).getClientRects().length;
+        const ids = [...document.querySelectorAll('.wrap > section,.wrap > .grid2')].filter(e => e.getClientRects().length).map(e => e.id);
+        return ids[0] === 'secBrf' && ids.indexOf('secCars') < ids.indexOf('secWeatherLink') && shown('secWeatherLink') && ['secCur','secChart','secDays','secRadar','secAir'].every(id => !shown(id));
+      }));
+      await s.p.locator('#secWeatherLink [data-act=view]').click(); await s.settle(1);
+      check('10 · ' + dev + ' · bouton météo ouvre les détails conservés', await s.p.locator('#secCur').isVisible() && await s.p.locator('#secChart').isVisible() && await s.p.locator('#secRadar').isVisible());
+      await toLab(s);
+      check('10 · ' + dev + ' · raccourcis avant Analyse, semaines distinguées, légende explicite', await s.p.evaluate(() => {
+        return !!(document.getElementById('jump').compareDocumentPosition(document.getElementById('secLab')) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+          document.querySelectorAll('#secSeason .season-week').length >= 2 && /tendance plus incertaine/.test(document.getElementById('secSeason').textContent) &&
+          document.querySelectorAll('#secSeason .season-legend span').length >= 5 && document.querySelector('#secSeason .cell').getAttribute('aria-label').includes('minimum');
+      }));
+      check('10 · ' + dev + ' · freinage présenté comme potentiel estimé, avec confiance', /estimé/i.test(await s.p.locator('.lab-brk').innerText()) && /confiance/i.test(await s.p.locator('.lab-brk').innerText()) && !/OPTIMAL/.test(await s.p.locator('.lab-brk').innerText()));
+      if (dev === 'iphone') {
+        await s.p.locator('#secJournal').scrollIntoViewIfNeeded();
+        check('10 · iPhone · onglets accessibles après défilement, contenu final hors du bandeau', await s.p.evaluate(() => {
+          const nav = document.getElementById('viewSeg'), r = nav.getBoundingClientRect(), b = nav.querySelector('button').getBoundingClientRect();
+          const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+          return getComputedStyle(nav).position === 'fixed' && r.top >= 0 && r.bottom <= innerHeight + 1 && !!hit.closest('#viewSeg');
+        }));
+        await s.p.locator('[data-act=view][data-v=tenue]').tap(); await s.settle(1);
+        check('10 · iPhone · onglet fixe activable au toucher', await s.p.locator('#secTenue').isVisible()); await toLab(s);
+      }
+      await s.p.locator('[data-act=mount-open][data-car=carA]').click();
+      await s.p.fill('#mountKm', '24567'); await s.p.evaluate(() => renderAll());
+      check('10 · ' + dev + ' · brouillon et focus conservés pendant le rafraîchissement', await s.p.inputValue('#mountKm') === '24567' && await s.p.evaluate(() => document.activeElement.id === 'mountKm' && S.cars[0].tire.type === 'summer'));
+      await s.p.locator('[data-act=mount-cancel]').click();
+      check('10 · ' + dev + ' · annulation sans changement de monte', !(await s.p.locator('.mount-form').count()) && await s.p.evaluate(() => S.cars[0].tire.type === 'summer' && S.cars[0].plan.on === 1));
+      await s.c.setOffline(true); await s.p.evaluate(() => window.dispatchEvent(new Event('offline'))); await s.settle(1);
+      await s.p.locator('[data-act=mount-open][data-car=carA]').click(); await s.p.fill('#mountDate', '2026-10-06'); await s.p.fill('#mountKm', '24567');
+      await s.p.locator('[data-act=mount-save]').click();
+      check('10 · ' + dev + ' · date future refusée, erreur visible, pneus inchangés', /date réelle/.test(await s.p.locator('.mount-message').innerText()) && await s.p.evaluate(() => S.cars[0].tire.type === 'summer'));
+      await s.p.fill('#mountDate', '2026-10-05'); await s.p.fill('#mountKm', '22000'); await s.p.locator('[data-act=mount-save]').click();
+      check('10 · ' + dev + ' · compteur incohérent refusé', /chronologie/.test(await s.p.locator('.mount-message').innerText()));
+      await s.p.fill('#mountKm', '24567'); await s.p.locator('[data-act=mount-save]').click(); await s.settle(1);
+      const mounted = await s.p.evaluate(() => { const c = S.cars[0], mem = JSON.parse(lsGet(TT_KEY)); return {
+        type: c.tire.type, model: c.tire.model, date: c.tire.mounted, km: c.tire.mountKm, pressure: c.tire.pchk.date, tread: c.tire.tread,
+        summerTread: c.sets.summer.tread, summerPressure: c.sets.summer.pchk.date, plan: c.plan.on, thermalGone: !mem[c.id] && !!mem.other,
+        shared: tyreStateOf(labCar()).active.type, title: document.querySelector('.lab-tyre').textContent }; });
+      check('10 · ' + dev + ' · confirmation offline : bon jeu hiver, archive été, date réelle, compteur, pression non inventée', mounted.type === 'winter' && mounted.model === 'UltraGrip Performance 3' && mounted.date === '2026-10-05' && mounted.km === 24567 && mounted.pressure === '' && mounted.tread === 7.2 && mounted.summerTread === 6.4 && mounted.summerPressure === '2026-10-01' && mounted.plan === 0 && mounted.thermalGone && mounted.shared === 'winter' && /UltraGrip Performance 3/.test(mounted.title), JSON.stringify(mounted));
+      check('10 · ' + dev + ' · formulaire et compte à rebours retirés après confirmation', !(await s.p.locator('.mount-form').count()) && !(await s.p.locator('[data-act=mount-open][data-car=carA]').count()));
+      await s.c.setOffline(false); await s.p.reload(); await s.settle(8);
+      check('10 · ' + dev + ' · montage et archive conservés au rechargement', await s.p.evaluate(() => S.cars[0].tire.type === 'winter' && S.cars[0].tire.mountKm === 24567 && S.cars[0].sets.summer.tread === 6.4 && S.cars[0].plan.on === 0));
+      await s.p.locator('[data-act=view][data-v=pneus]').click(); await s.settle(1);
+      check('10 · ' + dev + ' · Pneus reprend le montage confirmé dans Analyse', /Pneus montés : hiver/.test(await s.p.locator('#secCars').innerText()));
+      await s.c.close();
+    }
+
     const extra = [...hosts].filter(h => !KNOWN.test(h));
     check('9 · aucun fournisseur externe supplémentaire', !extra.length, extra.join(', '));
     check('9 · aucune erreur JavaScript', !errors.length, errors.slice(0, 3).join(' | '));
