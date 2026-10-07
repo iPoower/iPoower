@@ -30,7 +30,11 @@ setInterval(autoTick, 30e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });
 function networkChanged() {
   if (offlineNow()) { markOfflineCache(); rebuild(); renderAll(); loadCalendar(); }
-  else { validateRecovery('retour réseau'); loadVersion(true); refreshAll(); }
+  else {
+    if (USER_STORE.durability().status === 'degraded') validateRecovery('retour réseau');
+    else renderStatus();
+    loadVersion(true); refreshAll();
+  }
 }
 window.addEventListener('offline', networkChanged);
 window.addEventListener('online', networkChanged);
