@@ -1,7 +1,7 @@
 // Onglet TRAJET : une seule intention canonique pilote route, météo, véhicule et vues.
 'use strict';
 const assert=require('node:assert/strict');
-const {session,BR,errors}=require('./lib/context-session');
+const {session,BR,errors,NETWORK_NOISE}=require('./lib/context-session');
 let n=0,stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;console.log('✅ '+label);};
 const tap=(p,dev,sel)=>dev==='iphone'?p.locator(sel).first().tap():p.locator(sel).first().click();
 const state=p=>p.evaluate(()=>{const n=USER_STORE.state.dayContext.nextDestination,t=n&&APP_CONTEXT.trips.find(x=>x.key===n.tripKey),l=t&&(t.l||t.planL);return{
@@ -69,5 +69,6 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
   if(dev==='iphone')await check('iPhone 11 Pro Max · aucun débordement et cibles ≥ 44 pt',async()=>{const L=await layout(p);assert(L.sw<=L.W+1,JSON.stringify(L));assert.deepEqual(L.wide,[]);assert.deepEqual(L.small,[]);});
   await s.c.close();
  }
+ if(NETWORK_NOISE.length)console.log('ℹ️ requêtes coupées en vol signalées par WebKit (hors exceptions) : '+NETWORK_NOISE.length);
  await check('aucune erreur JavaScript',async()=>assert.deepEqual(errors,[],errors.map(e=>String(e).replace(/https?:\/\/([^/?\s]+)([^?\s]*)\S*/g,'<$1$2>')).join(' | ').slice(0,600)));console.log(n+'/'+n+' scénarios OK');
 }finally{await b.close();}})().catch(e=>{console.error('❌ '+stage+' · '+e.stack);process.exit(1);});
