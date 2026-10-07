@@ -119,7 +119,7 @@ function renderTripView() {
 function renderTripSummary() {
   const el = $('#secTripSummary'); if (!el) return;
   const n = appDay().nextDestination;
-  if (UI.view === 'trajet' || !n || n.source === 'pending') { el.hidden = true; el.innerHTML = ''; return; }
+  if (UI.view !== 'pneus' || !n || n.source === 'pending') { el.hidden = true; el.innerHTML = ''; return; }
   const t = APP_CONTEXT.trips.find(x => x.key === n.tripKey), from = n.originPoint || locById(n.originId) || t && appTripPlace(t, 'from'), to = n.destinationPoint || locById(n.placeId) || t && appTripPlace(t, 'to');
   const car = appActiveCar(), l = t && (t.l || t.planL), route = l && !l.originPending && Number.isFinite(l.km) ? `${f1(l.km)} km · ~${Math.round(l.min)} min` : offlineNow() ? 'route à recalculer au retour du réseau' : 'route en préparation';
   const address = to && (to.address || to.sub) || '';
