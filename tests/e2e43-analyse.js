@@ -76,7 +76,9 @@ const layout = (p, mobile) => p.evaluate(mobile => {
   const W = document.documentElement.clientWidth, el = document.getElementById('secLab'), small = [], wide = [];
   document.querySelectorAll('#secLab button, #secLab summary, #viewSeg button').forEach(e => { const b = e.getBoundingClientRect(); if (b.height > 0 && mobile && b.height < 43.5) small.push((e.dataset.act || e.tagName) + ' ' + Math.round(b.height)); });
   el.querySelectorAll('*').forEach(e => { const b = e.getBoundingClientRect(); if (b.width > 0 && b.right > W + 1) wide.push(e.className || e.tagName); });
-  return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6), heroBottom: Math.round(el.querySelector('.lab-hero').getBoundingClientRect().bottom) };
+  const hero = el.querySelector('.lab-hero').getBoundingClientRect(), decision = document.getElementById('decisionCore').getBoundingClientRect();
+  return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6),
+    heroBottom: Math.round(hero.bottom), heroTop: Math.round(hero.top), decisionBottom: Math.round(decision.bottom) };
 }, mobile);
 const toLab = async s => { await s.p.click('[data-act=view][data-v=analyse]'); await s.settle(3); await s.p.evaluate(() => window.scrollTo(0, 0)); };
 // libellé « tendance · niveau » : la tendance (en chauffe, stabilisé, en refroidissement, au repos) est distincte du niveau (froid … très chaud)
@@ -100,7 +102,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     check('1 · fiche : DONNÉE CONSTRUCTEUR séparée, rubriques « non disponible » sans modèle', /DONNÉE CONSTRUCTEUR/.test(a.all) && /DÉCODAGE DE LA MONTE SAISIE/.test(a.all) && /Étiquette UE : non disponible/.test(a.all) && !a.links.length);
     check('1 · aucune fausse précision : pas de « exactement », mention estimation et absence de capteur', !/exactement/i.test(a.all) && /aucune mesure de capteur/.test(a.all) && /aucun capteur direct/.test(a.all));
     const L = await layout(s.p, true);
-    check('1 · iPhone : aucun débordement, cibles ≥ 44 pt (onglets compris), verdict visible sans défiler', L.sw <= L.W && !L.wide.length && !L.small.length && L.heroBottom < 896, JSON.stringify(L));
+    check('1 · iPhone : aucun débordement, cibles ≥ 44 pt, synthèse globale visible et verdict Analyse déjà engagé', L.sw <= L.W && !L.wide.length && !L.small.length && L.decisionBottom > 0 && L.decisionBottom < 896 && L.heroTop > 0 && L.heroTop < 896, JSON.stringify(L));
     if (process.env.LAB_SHOT) await s.p.locator('#secLab').screenshot({ path: process.env.LAB_SHOT + '-iphone.png' });   // capture locale facultative, après les mesures
     await s.p.locator('#secLab details[data-k=why] summary').click(); await s.p.locator('#secLab details[data-k=b-brake] summary').click(); await s.settle(1);
     await s.p.evaluate(() => renderAll()); await s.settle(2);
@@ -169,7 +171,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     });
     a = await lab(s.p); const Lc = await layout(s.p, true);
     check('8 · arrêt récent : en refroidissement sous la plage favorable, estimation prudente inchangée', cooling.state === 'En refroidissement · sous la plage favorable' && cooling.trend === 'cooling' && cooling.range.join(',') === '22,38' && cooling.warm === 'limite' && a.all.includes('Avant la zone favorable : limite') && cooling.why.some(x => /bas de plage/.test(x) && /prudence/.test(x)), JSON.stringify(cooling));
-    check('8 · iPhone domicile confirmé : verdict complet visible sans défiler, aucune cible masquée ni débordement', a.hero.includes('EN REFROIDISSEMENT · SOUS LA PLAGE FAVORABLE') && Lc.sw <= Lc.W && !Lc.wide.length && !Lc.small.length && Lc.heroBottom < 896, JSON.stringify(Lc));
+    check('8 · iPhone domicile confirmé : synthèse globale visible, verdict Analyse engagé, aucune cible masquée ni débordement', a.hero.includes('EN REFROIDISSEMENT · SOUS LA PLAGE FAVORABLE') && Lc.sw <= Lc.W && !Lc.wide.length && !Lc.small.length && Lc.decisionBottom > 0 && Lc.decisionBottom < 896 && Lc.heroTop > 0 && Lc.heroTop < 896, JSON.stringify(Lc));
     if (process.env.LAB_SHOT) await s.p.screenshot({ path: process.env.LAB_SHOT + '-iphone-cooling.png' });
     await s.close();
 

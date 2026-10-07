@@ -64,8 +64,9 @@ const layout = (p, mobile) => p.evaluate(mobile => {
   const W = document.documentElement.clientWidth, el = document.getElementById('secWx'), small = [], wide = [];
   el.querySelectorAll('button, summary, a.btn').forEach(e => { const b = e.getBoundingClientRect(); if (b.height > 0 && mobile && b.height < 43.5) small.push((e.dataset.act || e.tagName) + ' ' + Math.round(b.height)); });
   el.querySelectorAll('*').forEach(e => { if (e.closest('.wx-strip')) return; const b = e.getBoundingClientRect(); if (b.width > 0 && b.right > W + 1) wide.push(e.className || e.tagName); });
-  const hero = el.querySelector('.wx-hero').getBoundingClientRect();
-  return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6), heroBottom: Math.round(hero.bottom), heroTop: Math.round(hero.top) };
+  const hero = el.querySelector('.wx-hero').getBoundingClientRect(), decision = document.getElementById('decisionCore').getBoundingClientRect();
+  return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6),
+    heroBottom: Math.round(hero.bottom), heroTop: Math.round(hero.top), decisionBottom: Math.round(decision.bottom) };
 }, mobile);
 
 (async () => {
@@ -92,7 +93,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     const L = await layout(s.p, true);
     check('1 · iPhone : aucun défilement horizontal de la page, rien ne dépasse', L.sw <= L.W && !L.wide.length, JSON.stringify(L));
     check('1 · iPhone : cibles tactiles ≥ 44 pt dans le poste météo', !L.small.length, L.small.join(', '));
-    check('1 · iPhone : verdict visible sans défiler (haut de l’écran)', L.heroBottom > 0 && L.heroBottom < 896, JSON.stringify(L));
+    check('1 · iPhone : synthèse Race Control entièrement visible et verdict météo déjà engagé sans défiler', L.decisionBottom > 0 && L.decisionBottom < 896 && L.heroTop > 0 && L.heroTop < 896, JSON.stringify(L));
     // détail au toucher, conservé après une actualisation
     await s.p.locator('#secWx details[data-k=fog] summary').click(); await s.settle(1);
     await s.p.evaluate(() => renderAll()); await s.settle(2);

@@ -65,4 +65,5 @@ SUITE.push(['e2e57-place-compact.js', 'lieu confirmé compact : Modifier, GPS re
 SUITE.push(['test_reliability.js', 'fiabilité : journal runtime privé, anti-boucle PWA et cohérence de version', false]);
 SUITE.push(['test_backup.js', 'sauvegarde V2 : contexte durable, confidentialité, compatibilité V1 et journal des trajets jamais effacé', false],
   ['e2e58-import-journal.js', 'import d’une sauvegarde : journal des trajets conservé, trajet clos non redemandé, iPhone/PC et reload', true]);
+SUITE.push(['test_decision.js', 'synthèse : décision, confiance qualitative et changements significatifs', false]);
 module.exports = { SUITE };

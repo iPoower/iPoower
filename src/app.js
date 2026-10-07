@@ -222,6 +222,8 @@ applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
   view: ['meteo', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
   outfitOccasion: 'outing', placeExpanded: null };
+const DECISION_HISTORY = Decision.history(typeof localStorage !== 'undefined' ? localStorage : null);
+let DECISION_LAST = null;
 
 const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
   read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
@@ -794,6 +796,61 @@ function renderBanners() {
   const top = Object.values(alerts).filter(a => S.alerts[a.id] && a.sev >= 2 && a.id !== 'fog' && a.id !== 'vis' && !(UI.view === 'meteo' && TIRE_ALERTS.includes(a.id))).sort((a, b) => b.sev - a.sev).slice(0, 3);
   if (top.length) h += '<div class="notes">' + top.map(a => `<div class="note lv${a.sev}"><b>${a.sev >= 3 ? 'DANGER' : 'ATTENTION'}</b><span>${esc(a.title)}</span></div>`).join('') + '</div>';
   el.innerHTML = h;
+}
+
+function renderDecisionCore() {
+  const el = $('#decisionCore');
+  if (!el) return;
+  if (!CX || !APP_CONTEXT.snapshot || DEMO.on || LOCKED()) {
+    el.hidden = true; el.innerHTML = ''; DECISION_LAST = null; return;
+  }
+  const snap = APP_CONTEXT.snapshot, now = Date.now(), raw = RAW[UI.loc];
+  const ageMin = value => {
+    const t = typeof value === 'number' ? value : Date.parse(value || '');
+    return Number.isFinite(t) ? Math.max(0, (now - t) / 60000) : null;
+  };
+  const car = appActiveCar(), carEval = car && CX.cars.find(x => x.car.id === car.id);
+  const active = !!snap.activeTrip, gpsAge = FIX && Number.isFinite(FIX.ts) ? ageMin(FIX.ts) : null;
+  const agendaRequired = !!snap.agendaEvent, calAge = CAL ? ageMin(CAL.updated) : null;
+  const confidence = Decision.confidence({
+    weather: { available: !!raw && !!CX.m, ageMin: raw ? ageMin(raw.t) : null, mode: raw && raw.mode },
+    online: !offlineNow(), contextKnown: snap.status !== 'unknown',
+    storageDurable: USER_STORE.durability().status === 'durable',
+    tyresRequired: !!car, tyresKnown: !car || !!(hasTires(car) && carEval && carEval.w),
+    activeTrip: active, gpsAgeMin: gpsAge,
+    routeReady: !active || !!(LIVE.route && !LIVE.routeErr && Number.isFinite(LIVE.lastOk) && now - LIVE.lastOk <= 5 * 60e3),
+    agendaRequired, agendaAvailable: !!CAL, agendaAgeMin: calAge
+  });
+  const alerts = Object.values(CX.alerts || {}).filter(a => S.alerts[a.id] && Number.isFinite(a.sev) && (!car || !TIRE_ALERTS.includes(a.id)));
+  const decision = Decision.decide({ alerts, tyreLevel: carEval && carEval.w ? carEval.w.level : null,
+    tyreReason: carEval && carEval.nar ? carEval.nar.head : '', confidence });
+  const hour = CX.m && CX.m.hs[CX.m.nowI] || {}, tyre = car && car.tire || {};
+  const state = Decision.snapshot({
+    at: raw && raw.t || now, riskLevel: decision.riskLevel, confidenceKey: confidence.key,
+    weatherMode: raw && raw.mode, weatherAt: raw && raw.t,
+    temperature: CX.m && CX.m.cur && CX.m.cur.T, roadTemp: hour.Tr, visibility: hour.vis,
+    destinationKey: snap.nextTrip && snap.nextTrip.key || snap.dayContext && snap.dayContext.nextDestination && snap.dayContext.nextDestination.tripKey,
+    destinationId: snap.destination && snap.destination.id,
+    carId: car && car.id,
+    tyreSig: car ? [tyre.type || '', tyre.brand || '', tyre.model || '', tyre.size || ''].join('|') : null,
+    placeId: snap.currentLocation && snap.currentLocation.id
+  });
+  const changes = DECISION_HISTORY.changes(state).slice(0, 4);
+  DECISION_HISTORY.save(state);
+  DECISION_LAST = { confidence, decision, state, changes };
+  const icon = ['✓', '◌', '⚠', '⛔'][decision.displayLevel] || '•';
+  const confClass = 'lv' + Math.min(2, confidence.level);
+  const destination = snap.destination && snap.destination.name || (snap.destination ? 'Destination' : 'Aucune destination immédiate');
+  const carLabel = car ? (car.short || car.name || car.id) : 'Comparaison';
+  const wAge = raw ? ageMin(raw.t) : null, fresh = wAge == null ? 'météo —' : 'météo ' + (wAge < 1 ? 'moins de 1 min' : Math.round(wAge) + ' min');
+  const changesHtml = changes.length ? '<details class="decision-changes"><summary>Depuis la dernière ouverture · ' + changes.length + ' changement' + (changes.length > 1 ? 's' : '') + '</summary><div>' +
+    changes.map(c => '<span class="' + esc(c.kind) + '">' + (c.kind === 'up' ? '↑ ' : c.kind === 'down' ? '↓ ' : '↔ ') + esc(c.text) + '</span>').join('') + '</div></details>' : '';
+  el.className = 'decision-core lv' + decision.displayLevel;
+  el.hidden = false;
+  el.innerHTML = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + '</p></div>' +
+    '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b></span></div>' +
+    '<div class="decision-meta"><span>Destination · <b>' + esc(destination) + '</b></span><span>Voiture · <b>' + esc(carLabel) + '</b></span><span>' + esc(fresh) + '</span></div>' +
+    (confidence.level > 0 && confidence.reasons.length ? '<div class="decision-why">' + confidence.reasons.map(r => '<span>' + esc(r) + '</span>').join('') + '</div>' : '') + changesHtml;
 }
 
 /* ---------- probabilités et pluie 15 min ---------- */
@@ -3279,7 +3336,7 @@ function renderAll() {
   APP_CONTEXT.rendering = true;
   try {
     appRefreshContext(); recordJournal();
-    renderView(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+    renderView(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
     renderWx(); renderLab(); renderDebrief(); labThermTick(false); roadSync();
   } finally { APP_CONTEXT.rendering = false; }
 }
@@ -3402,7 +3459,7 @@ document.addEventListener('click', async e => {
   else if (a === 'labcar') { appSetCar(t.dataset.car); }
   else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   else if (a === 'goset') { UI.locsOpen = false; renderLocChips(); const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
-  else if (a === 'reset') { PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; USER_STORE.state.dayContext = {}; APP_CONTEXT.weatherPreview = null; liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
+  else if (a === 'reset') { PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; USER_STORE.state.dayContext = {}; APP_CONTEXT.weatherPreview = null; DECISION_HISTORY.reset(); liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
   else if (a === 'geo-search') {
     const input = $('#geoQ'), q = (input.value || '').trim(), box = $('#geoHits'), gen = ++geoSearchGen; window.__hits = [];
     if (q.length < 2) { box.innerHTML = '<span class="sub" role="status">Saisis au moins deux caractères.</span>'; input.focus(); return; }
