@@ -83,6 +83,9 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
       await check(tag + ' · profondeur invalide et mesure valide, permutation', async () => {
         await p.fill('#trd-0', '20'); await click('[data-act=tread-add][data-i="0"]'); assert.match(await p.locator('[data-act=tread-add][data-i="0"]').innerText(), /0 à 12/);
         await p.fill('#trd-0', '6.5'); await click('[data-act=tread-add][data-i="0"]'); assert.equal(await p.evaluate(() => S.cars[0].tire.tread), 6.5);
+        // relevé de l'avant seul, estimé : l'arrière garde 6,5 ; valeur effective = essieu le plus usé ; origine et essieu dans l'historique
+        await p.fill('#trd-0', '2.3'); await p.selectOption('#trdax-0', 'av'); await p.selectOption('#trdest-0', '1'); await click('[data-act=tread-add][data-i="0"]');
+        assert.deepEqual(await p.evaluate(() => { const t = S.cars[0].tire, h = t.treads[t.treads.length - 1]; return [t.treadAv, t.treadAr, t.tread, t.treadEst, h.ax, h.est]; }), [2.3, 6.5, 2.3, 1, 'av', 1]);
         await click('[data-act=rot][data-i="0"]'); assert.equal(await p.evaluate(() => S.cars[0].tire.lastRot), 42150);
       });
       await check(tag + ' · select et switch moteur, persistance', async () => {
@@ -126,7 +129,7 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         await click('[data-act=bk-export]'); assert.match(await p.locator('#bkMsg').innerText(), /8 caractères/);
         await p.locator('#bkFile').setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{}') }); await s.settle(2); assert((await p.locator('#bkMsg').innerText()).length > 10);
       });
-      await check(tag + ' · listeners conservés après rechargement', async () => { await p.reload(); await s.settle(12); await click('[data-act=view][data-v=tenue]'); assert.equal(await p.evaluate(() => UI.view), 'tenue'); assert.equal(await p.evaluate(() => S.cars[0].tire.tread), 6.5); });
+      await check(tag + ' · listeners conservés après rechargement', async () => { await p.reload(); await s.settle(12); await click('[data-act=view][data-v=tenue]'); assert.equal(await p.evaluate(() => UI.view), 'tenue'); assert.deepEqual(await p.evaluate(() => [S.cars[0].tire.tread, S.cars[0].tire.treadAv, S.cars[0].tire.treadAr, S.cars[0].tire.treadEst]), [2.3, 2.3, 6.5, 1]); });
       await check(tag + ' · offline et online : commandes et onglets actifs', async () => { await s.c.setOffline(true); await p.evaluate(() => window.dispatchEvent(new Event('offline'))); await click('[data-act=view][data-v=analyse]'); assert.equal(await p.evaluate(() => UI.view), 'analyse'); await s.c.setOffline(false); await p.evaluate(() => window.dispatchEvent(new Event('online'))); await s.settle(8); assert.match(await p.locator('#statusbar').innerText(), /LIVE/); });
       await p.locator('#settings > summary').click(); await s.settle(1);
       await check(tag + ' · démo, changement de scénario, sortie et reset', async () => {
