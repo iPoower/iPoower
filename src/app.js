@@ -221,7 +221,7 @@ function markOfflineCache() {
 applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
   view: ['meteo', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
-  outfitOccasion: 'outing' };
+  outfitOccasion: 'outing', placeExpanded: false };
 
 const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
   read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
@@ -423,6 +423,7 @@ function placeConfirm(placeId, how) {
   return appAction(() => {
   const p = placeList().find(x => x.id === placeId); if (!p) return;
   const now = Date.now();
+  UI.placeExpanded = false;
   const previous = placeNow().place;
   PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false;
   PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' };
@@ -452,6 +453,7 @@ function placeConfirm(placeId, how) {
   });
 }
 function placeLeave() {
+  UI.placeExpanded = false;
   return appAction(() => {
   if (!PLACE.conf) return;
   if (!appDay().nextDestination && !BRF_SHOWN.some(t => t.src === 'cal' && (appTripPlace(t, 'from') || {}).id === PLACE.conf.placeId && t.dep.slice(0, 10) === placeToday())) appChooseDestination(null, 'pending');
@@ -472,8 +474,8 @@ function renderPlace() {
   const confirm = (p, arrival = false) => `<button class="btn${arrival ? ' pri' : ''} sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="${arrival ? 'arrival' : 'manual'}"><span aria-hidden="true">${arrival ? '✅' : (K[p.kind] || K.custom).icon}</span><span class="pl-copy"><span>${esc(arrival ? (K[p.kind] || K.custom).arrive : (K[p.kind] || K.custom).already)}</span><small>${esc(p.name)}</small></span></button>`;
   let h;
   if (c.source === 'manual') {
-    const k = K[c.place.kind] || K.custom;
-    h = `<div class="place on" role="status"><span class="pl-info"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}</span><span class="pl-act"><button class="btn sm" data-act="place-leave"><span aria-hidden="true">🚗</span><span>${esc(k.leave)}</span></button>${pl.filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</span></div>`;
+    const k = K[c.place.kind] || K.custom, expanded = !!UI.placeExpanded;
+    h = `<div class="place on compact${expanded ? ' expanded' : ''}"><span class="pl-info" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${expanded && c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}</span><button class="btn sm pl-toggle" data-act="place-toggle" aria-expanded="${expanded}" aria-controls="placeActions"><span>${expanded ? 'Réduire' : 'Modifier'}</span><span aria-hidden="true">${expanded ? '▴' : '▾'}</span></button>${expanded ? `<span class="pl-act" id="placeActions"><button class="btn sm" data-act="place-leave"><span aria-hidden="true">🚗</span><span>${esc(k.leave)}</span></button>${pl.filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</span>` : ''}</div>`;
   } else {
     const arr = [work, home].filter(Boolean).map(p => ({ p, t: placeArrivalTrip(p.id) })).find(x => x.t);
     const btns = pl.filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
@@ -3312,6 +3314,7 @@ document.addEventListener('click', async e => {
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
   else if (a === 'trip-start') liveStart(t.dataset.key);
   else if (a === 'place-confirm') placeConfirm(t.dataset.place, t.dataset.how);
+  else if (a === 'place-toggle') { UI.placeExpanded = !UI.placeExpanded; renderPlace(); }
   else if (a === 'place-leave') placeLeave();
   else if (a === 'ev-report') reportAdd(t.dataset.k);
   else if (a === 'ev-flag') { S.flags = S.flags || {}; S.flags.weatherEvidenceV2 = t.dataset.v; saveSettings(); renderSettings(true); renderAll(); }
