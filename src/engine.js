@@ -253,7 +253,7 @@ function tireAssess(car, hs, i) {
   const snow = (x.snow || 0) > 0.05 || SNOW_CODES.has(x.code);
   const fz = FZ_CODES.has(x.code);
   const ice = x.ice && x.ice.score != null ? x.ice.score : 0;
-  const tread = tire.tread;
+  const tread = typeof treadAxles === 'function' ? treadAxles(tire).worst : tire.tread;   // essieu le plus usé (page) ; relais : valeur effective
   // — météo seule (indépendant du type de pneu)
   if (x.vis != null) add(`Visibilité ${Math.round(x.vis)} m`, x.vis < 200 ? 30 : x.vis < 500 ? 20 : x.vis < 1000 ? 10 : 0, 'hazard');
   if (x.gust != null) add(`Rafales ${Math.round(x.gust)} km/h`, x.gust >= 90 ? 20 : x.gust >= 70 ? 12 : x.gust >= 55 ? 6 : 0, 'hazard');

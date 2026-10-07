@@ -192,13 +192,14 @@ expose à toute l’app ; Analyse, le diagnostic, l’entretien et la mémoire t
 | Type, marque, modèle, dimension (charge, vitesse, XL, ZR) | saisie | permanente tant que la monte ne change pas | Analyse (fenêtres, profil technique), Pneus, relais |
 | DOT (semaine, année) | saisie | permanent | âge depuis la fabrication : surveillance, confiance, entretien (jamais une pénalité d’adhérence calculée) |
 | Date et compteur de montage | saisie | permanents | âge d’usage, kilomètres depuis le montage (si le compteur est connu) |
-| Profondeur et historique | mesure | fraîche ≤ 60 j, ancienne > 180 j | aquaplaning, freinage mouillé, confiance, usure (≥ 2 mesures avec compteur) |
+| Profondeur AV / AR et historique | mesure (jauge) ou estimation, signalée comme telle | fraîche ≤ 60 j, ancienne > 180 j | aquaplaning, freinage mouillé et verdict sur l’essieu le plus usé, confiance (estimation : −0,25 et jauge demandée), usure (≥ 2 mesures réelles du même essieu avec compteur) |
 | Pression cible (AV / AR) et dernier contrôle | plaque du véhicule + contrôle | contrôle frais ≤ 14 j, ancien > 30 j | estimation à froid / à chaud, sous-gonflage, confiance, entretien |
 
 Changer une valeur dans Pneus recalcule Analyse au rendu suivant (aucun cache de résultat). Changer de jeu change
 l’identité de la monte : l’ancienne mémoire thermique est ignorée. Un jeu stocké n’est jamais analysé. Avant et arrière
-sont distingués quand les pressions diffèrent ; aucune différence n’est inventée (un seul modèle et une seule profondeur
-sont saisis). L’entretien (âge ≥ 10 ans, 5 ans d’usage, profondeur, contrôle de pression) reste séparé du verdict de conduite.
+sont distingués quand les pressions ou les profondeurs diffèrent ; aucune différence n’est inventée (un seul modèle ; un essieu
+jamais saisi reste inconnu, l’ancienne profondeur commune `tread` vaut pour les deux essieux tant qu’aucun n’est saisi à part).
+`tread` reste la valeur effective lue par le moteur et le relais : toujours l’essieu le plus usé, jamais une moyenne. L’entretien (âge ≥ 10 ans, 5 ans d’usage, profondeur, contrôle de pression) reste séparé du verdict de conduite.
 Aucune migration : la structure existante est conservée telle quelle.
 
 ## Onglet Analyse : ingénieur pneumatique embarqué

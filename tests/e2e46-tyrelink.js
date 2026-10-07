@@ -61,8 +61,15 @@ const diag = p => p.evaluate(() => { document.getElementById('settings').open = 
     let t = await labTxt(s.p);
     check('F · Analyse lit la monte active de Pneus (pneu été, dimension saisie), sans formulaire propre', /Monte active : été/.test(t) && /215\/40 ZR18 89Y XL/.test(t) && !(await s.p.$('#secLab input')), t.slice(0, 200));
     // A · profondeur saisie dans Pneus → Analyse (aquaplaning, qualité des données)
-    await field(s.p, 'cars.0.tire.tread', '2.4'); await s.settle(2); t = await labTxt(s.p);
+    await field(s.p, 'cars.0.tire.treadAv', '2.4'); await field(s.p, 'cars.0.tire.treadAr', '2.4'); await s.settle(2); t = await labTxt(s.p);
     check('A · profondeur 2,4 mm saisie dans Pneus : reprise immédiatement (mesurée par vous) et aquaplaning recalculé', /Profondeur : 2,4 mm, mesurée par vous/.test(t) && /Profondeur 2,4 mm/.test(t), t.slice(0, 600));
+    // A2 · essieux distincts : l'avant usé pilote les calculs ; A3 · estimation affichée comme telle, puis retour à la mesure
+    await field(s.p, 'cars.0.tire.treadAr', '5.5'); await s.settle(2); t = await labTxt(s.p);
+    const ax = await s.p.evaluate(() => ({ tread: S.cars[0].tire.tread, av: S.cars[0].tire.treadAv, ar: S.cars[0].tire.treadAr }));
+    check('A2 · AV 2,4 / AR 5,5 : essieux affichés, calculs sur l’essieu le plus usé (avant)', ax.tread === 2.4 && ax.av === 2.4 && ax.ar === 5.5 && /AV 2,4 \/ AR 5,5 mm, mesurée par vous/.test(t) && /essieu le plus usé \(avant\)/.test(t) && /Profondeur 2,4 mm/.test(t), JSON.stringify(ax) + ' ' + t.slice(0, 600));
+    await field(s.p, 'cars.0.tire.treadEst', '1'); await s.settle(2); t = await labTxt(s.p);
+    check('A3 · profondeur estimée : signalée dans Analyse et dans la confiance', /estimée par vous \(pas mesurée à la jauge\)/.test(t) && /Profondeur estimée par vous, pas mesurée à la jauge/.test(t), t.slice(0, 900));
+    await field(s.p, 'cars.0.tire.treadEst', '0'); await field(s.p, 'cars.0.tire.treadAr', '2.4'); await s.settle(2);
     // B · pression et contrôle daté
     await field(s.p, 'cars.0.tire.press', '2,4 AV / 2,6 AR'); await field(s.p, 'cars.0.tire.pchk.date', '2026-08-01'); await field(s.p, 'cars.0.tire.pchk.T', '22'); await s.settle(2); t = await labTxt(s.p);
     check('B · pression et contrôle saisis dans Pneus : cible par essieu, contrôle ancien → confiance et entretien', /Cible saisie : 2,4 bar/.test(t) && /AV 2,4 bar · AR 2,6 bar/.test(t) && /Pression contrôlée il y a 63 j/.test(t) && /Pression à contrôler à froid/.test(t), t.slice(0, 800));

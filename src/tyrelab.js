@@ -206,7 +206,7 @@ function tyreLab(input) {
     cool = { kept: Math.round(kept * 100), label: kept >= 0.6 ? 'Température conservée' : kept >= 0.2 ? 'Refroidissement modéré' : 'Retour proche de l’état froid' };
   }
   /* ---------- 7. adhérence, freinage, aquaplaning ---------- */
-  const tread = n(tire.tread);
+  const tread = typeof treadAxles === 'function' ? treadAxles(tire).worst : n(tire.tread);   // essieu le plus usé
   function aquaOf(e, k) {
     if (e.Pl < 0.2 && e.acc < 1) return { lv: 0, word: 'Faible', why: ['Pas de pluie ni d’eau accumulée'] };
     let R = e.Pl >= 7.6 ? 4 : e.Pl >= 4 ? 3 : e.Pl >= 2 ? 2 : e.Pl >= 0.2 ? 1 : 0; const w = [`Pluie ${r1(e.Pl)} mm/h`];
@@ -331,10 +331,11 @@ function tyreLab(input) {
   const st0 = inp.state;
   if (st0 && st0.pressure && target != null) { const c = st0.pressure.check; if (!c || c.fresh === 'stale') { score -= 0.5; reasons.push(c ? `Pression contrôlée il y a ${c.ageD} j` : 'Pression : aucun contrôle daté'); } else if (c.fresh === 'aging') { score -= 0.25; reasons.push(`Pression contrôlée il y a ${c.ageD} j`); } }
   if (st0 && st0.tread && st0.tread.fresh === 'stale') { score -= 0.5; reasons.push(`Profondeur mesurée il y a ${st0.tread.ageD} j`); }
+  if (st0 && st0.tread && st0.tread.est) { score -= 0.25; reasons.push('Profondeur estimée par vous, pas mesurée à la jauge'); }
   if (st0 && st0.dot) reasons.push(`Âge : ${st0.dot.txt.replace(/^DOT \d{4} · /, '')} (surveillance, sans effet calculé sur l’adhérence)`);
   if (!drv) score = Math.min(score, 2.4);   // sans roulage suivi au GPS, l'état thermique reste une hypothèse : confiance au plus moyenne
   // axes séparés ; niveau global plafonné à « moyenne » : modèle thermique générique, aucun capteur de pression ni de température
-  const axes = [['Données pneu', modelKnown && target != null && tread != null ? 'renseignées dans Pneus' : 'incomplètes'],
+  const axes = [['Données pneu', modelKnown && target != null && tread != null ? (st0 && st0.tread && st0.tread.est ? 'renseignées dans Pneus, profondeur estimée' : 'renseignées dans Pneus') : 'incomplètes'],
     ['Trajet', drv ? (drv.kmSrc === 'route' ? 'roulage suivi, progression sur l’itinéraire' : 'roulage suivi, distance estimée (vol d’oiseau ×1,2)') : tripKind ? 'trajet prévu (agenda)' : 'supposé'],
     ['Météo', stale ? 'ancienne' : 'récente'], ['Modèle thermique', 'générique (estimation Race Control)'], ['Capteur direct', 'non']];
   const confidence = { level: score >= 1.5 ? 'moyenne' : 'faible', score, reasons, axes };

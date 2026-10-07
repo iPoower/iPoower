@@ -22,10 +22,10 @@ const BASE = {
   alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
   cars: [
     { id: 'car1', name: 'Voiture 1', short: 'Voiture 1', spec: '', sporty: 0,
-      tire: { type: 'summer', brand: '', model: '', size: '', tread: null, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
+      tire: { type: 'summer', brand: '', model: '', size: '', tread: null, treadAv: null, treadAr: null, treadEst: 0, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
       plan: { on: 0, brand: '', model: '', size: '', ordered: '', etaFrom: '', etaTo: '', etaChecked: '', date: '', appointmentDate: '', appointmentConfirmed: 0 } },
     { id: 'car2', name: 'Voiture 2', short: 'Voiture 2', spec: '', sporty: 0,
-      tire: { type: 'allseason', brand: '', model: '', size: '', tread: null, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
+      tire: { type: 'allseason', brand: '', model: '', size: '', tread: null, treadAv: null, treadAr: null, treadEst: 0, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
       plan: { on: 0, brand: '', model: '', size: '', ordered: '', etaFrom: '', etaTo: '', etaChecked: '', date: '', appointmentDate: '', appointmentConfirmed: 0 } }
   ]
 };
@@ -100,13 +100,13 @@ function loadSettings() {
   if (window.TWRC_PRESET && window.TWRC_PRESET_V && lsGet('twrc.presetv') !== window.TWRC_PRESET_V) {
     // on garde ce qui ne se trouve que sur le téléphone : contrôles de pression, DOT, profondeurs, jeux de pneus
     const old = saved;
-    const keep = saved && Array.isArray(saved.cars) ? Object.assign(saved.cars.map(c => c ? { tire: c.tire ? { pchk: c.tire.pchk, dot: c.tire.dot, tread: c.tire.tread, treads: c.tire.treads, mountKm: c.tire.mountKm, lastRot: c.tire.lastRot } : null, sets: c.sets, photo: c.photo, odo: c.odo } : null), { calib: saved.calib, journal: saved.journal }) : null;
+    const keep = saved && Array.isArray(saved.cars) ? Object.assign(saved.cars.map(c => c ? { tire: c.tire ? { pchk: c.tire.pchk, dot: c.tire.dot, tread: c.tire.tread, treadAv: c.tire.treadAv, treadAr: c.tire.treadAr, treadEst: c.tire.treadEst, treads: c.tire.treads, mountKm: c.tire.mountKm, lastRot: c.tire.lastRot } : null, sets: c.sets, photo: c.photo, odo: c.odo } : null), { calib: saved.calib, journal: saved.journal }) : null;
     saved = null; lsSet('twrc.presetv', window.TWRC_PRESET_V);
     try { localStorage.removeItem('twrc.settings.v1'); } catch (e) { /* stockage indisponible */ }
     if (keep) {
       const fresh = normalize(null, DEFAULTS);
       keep.forEach((k, i) => { const c = fresh.cars[i]; if (!k || !c) return; if (k.sets) c.sets = k.sets; if (k.photo) c.photo = k.photo; if (k.odo) c.odo = k.odo;
-        if (k.tire) ['pchk', 'dot', 'tread', 'treads', 'mountKm', 'lastRot'].forEach(f => { const v = k.tire[f]; if (v != null && v !== '' && !(f === 'pchk' && !v.date)) c.tire[f] = v; }); });
+        if (k.tire) ['pchk', 'dot', 'tread', 'treadAv', 'treadAr', 'treadEst', 'treads', 'mountKm', 'lastRot'].forEach(f => { const v = k.tire[f]; if (v != null && v !== '' && !(f === 'pchk' && !v.date)) c.tire[f] = v; }); });
       const oldCalib = keep.calib;
       saved = { ...fresh, configured: 1, calib: oldCalib || [], journal: keep.journal || {} }; reapplyEdits(saved, old); lsSet('twrc.settings.v1', JSON.stringify(saved));
     }
@@ -2679,7 +2679,7 @@ function dayBriefHtml(td, tdLv) {
 /* ---------- rendu : voitures ---------- */
 const tireTxt = car => {
   const t = car.tire, a = [t.brand, t.model].filter(Boolean).join(' ');
-  return `${a ? esc(a) : '<span class="muted">marque / modèle non renseignés</span>'} · <span class="tt">${esc(t.size || '—')}</span>${t.tread != null ? ` · <span class="tt">${f1(t.tread)} mm</span>` : ''}`;
+  return `${a ? esc(a) : '<span class="muted">marque / modèle non renseignés</span>'} · <span class="tt">${esc(t.size || '—')}</span>${t.tread != null ? ` · <span class="tt">${esc(treadTxt(treadAxles(t), treadAxles(t).worst))}${t.treadEst ? ' (estimée)' : ''}</span>` : ''}`;
 };
 const lastOdo = car => (car.odo || []).slice().sort((x, y) => x.km - y.km).slice(-1)[0] || null;
 function kmPerDay(car) {
@@ -2687,7 +2687,7 @@ function kmPerDay(car) {
   const days = dayDiff(o[0].d, o[o.length - 1].d); return days >= 7 ? (o[o.length - 1].km - o[0].km) / days : null;
 }
 function wearInfo(car) {
-  const t = car.tire, tr = (t.treads || []).filter(x => x.km != null && x.mm != null).sort((x, y) => x.km - y.km);
+  const t = car.tire, wx = treadAxles(t).ax, tr = (t.treads || []).filter(x => x.km != null && x.mm != null && !x.est && (!x.ax || !wx || x.ax === wx)).sort((x, y) => x.km - y.km);
   const thr = t.type === 'winter' ? 4 : 3, last = (t.treads || []).slice(-1)[0] || null, out = { last, thr };
   if (tr.length >= 2) {
     const a = tr[0], b = tr[tr.length - 1], rate = (a.mm - b.mm) / Math.max(1, b.km - a.km) * 1000;
@@ -3214,12 +3214,14 @@ function renderSettings(force) {
         return `<div class="fld wide"><label for="f-db-${i}">Choisir dans la base · ${comp.length} modèles en ${esc(k || 'dimension inconnue')}</label><select id="f-db-${i}" data-db="${i}"><option value="">—</option>
           ${grp(by('summer'), 'Été · ' + (k || ''))}${grp(by('winter'), 'Hiver · ' + (k || ''))}${grp(by('allseason'), '4 saisons · ' + (k || ''))}${grp(others, 'Autres dimensions')}</select></div>`; })()}
       ${bindIn(`cars.${i}.tire.brand`, c.tire.brand, { label: 'Marque du pneu', ph: 'ex. Michelin' })}${bindIn(`cars.${i}.tire.model`, c.tire.model, { label: 'Modèle exact', ph: 'ex. Pilot Sport 4' })}
-      ${bindIn(`cars.${i}.tire.size`, c.tire.size, { label: 'Dimensions / indices' })}${bindIn(`cars.${i}.tire.tread`, c.tire.tread, { label: 'Profondeur restante (mm)', type: 'number', num: 1, attrs: 'min="0" max="12" step="0.1"' })}
+      ${bindIn(`cars.${i}.tire.size`, c.tire.size, { label: 'Dimensions / indices' })}${(() => { const x = treadAxles(c.tire); return bindIn(`cars.${i}.tire.treadAv`, x.av, { label: 'Profondeur avant (mm)', type: 'number', num: 1, attrs: 'min="0" max="12" step="0.1" inputmode="decimal"' }) + bindIn(`cars.${i}.tire.treadAr`, x.ar, { label: 'Profondeur arrière (mm)', type: 'number', num: 1, attrs: 'min="0" max="12" step="0.1" inputmode="decimal"' }); })()}
+      <div class="fld"><label for="f-cars-${i}-tire-treadEst">Origine des profondeurs</label><select id="f-cars-${i}-tire-treadEst" data-bind="cars.${i}.tire.treadEst" data-num="1"><option value="0" ${c.tire.treadEst ? '' : 'selected'}>Mesurées (jauge)</option><option value="1" ${c.tire.treadEst ? 'selected' : ''}>Estimées</option></select></div>
       ${bindIn(`cars.${i}.tire.press`, c.tire.press, { label: 'Pression recommandée (bar)', ph: 'ex. 2,4 AV / 2,3 AR' })}${bindIn(`cars.${i}.tire.mounted`, c.tire.mounted, { label: 'Date de montage', type: 'date' })}
       ${bindIn(`cars.${i}.tire.dot`, c.tire.dot, { label: 'Code DOT (semaine + année)', ph: 'ex. 2321', attrs: 'inputmode="numeric" maxlength="4"' })}
       ${bindIn(`cars.${i}.tire.info`, c.tire.info, { label: 'Fiche du pneu (fabrication, indices…)', wide: 1 })}
       <div class="fld"><label for="odo-${i}">Compteur actuel (km)</label><div style="display:flex;gap:6px"><input type="number" id="odo-${i}" inputmode="numeric" min="0" step="1" placeholder="${lastOdo(c) ? lastOdo(c).km : 'ex. 42150'}" style="flex:1;min-width:0"><button class="btn sm" data-act="odo" data-i="${i}">Enregistrer</button></div></div>
-      <div class="fld"><label for="trd-${i}">Profondeur mesurée (mm)</label><div style="display:flex;gap:6px"><input type="number" id="trd-${i}" inputmode="decimal" min="0" max="12" step="0.1" placeholder="ex. 6,5" style="flex:1;min-width:0"><button class="btn sm" data-act="tread-add" data-i="${i}">Enregistrer</button></div></div>
+      <div class="fld wide"><label for="trd-${i}">Nouveau relevé de profondeur (mm)</label><div style="display:flex;gap:6px"><input type="number" id="trd-${i}" inputmode="decimal" min="0" max="12" step="0.1" placeholder="ex. 6,5" style="flex:1;min-width:0"><button class="btn sm" data-act="tread-add" data-i="${i}">Enregistrer</button></div>
+        <div style="display:flex;gap:6px;margin-top:6px"><select id="trdax-${i}" aria-label="Essieu du relevé" style="flex:1;min-width:0"><option value="both">AV + AR</option><option value="av">Avant seul</option><option value="ar">Arrière seul</option></select><select id="trdest-${i}" aria-label="Origine du relevé" style="flex:1;min-width:0"><option value="0">Mesure (jauge)</option><option value="1">Estimation</option></select></div></div>
       ${bindIn(`cars.${i}.tire.mountKm`, c.tire.mountKm, { label: 'Compteur au montage (km)', type: 'number', num: 1, attrs: 'step="1" inputmode="numeric"' })}
       <div class="fld"><span class="l">Permutation AV/AR</span><button class="btn sm" data-act="rot" data-i="${i}">Permutation faite aujourd’hui</button></div>
       ${bindIn(`cars.${i}.tire.pchk.date`, (c.tire.pchk || {}).date, { label: 'Dernier contrôle pression', type: 'date' })}${bindIn(`cars.${i}.tire.pchk.T`, (c.tire.pchk || {}).T, { label: 'Température au contrôle (°C)', type: 'number', num: 1, attrs: 'step="0.5"' })}</div>
@@ -3336,7 +3338,9 @@ document.addEventListener('click', async e => {
     if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; }
     if (a === 'odo') { const input = $('#odo-' + i), v = parseFloat((input || {}).value); if (!isFinite(v) || v < 0) { commandFeedback(t, 'Saisis un compteur positif ou nul', input); return; } c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).slice(-60); }
     if (a === 'tread-add') { const input = $('#trd-' + i), v = parseFloat(String((input || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) { commandFeedback(t, 'Saisis une profondeur de 0 à 12 mm', input); return; } const lo = lastOdo(c);
-      c.tire.treads = (c.tire.treads || []).concat([{ d: today, mm: Math.round(v * 10) / 10, km: lo ? lo.km : null }]).slice(-30); c.tire.tread = Math.round(v * 10) / 10; }
+      const mm = Math.round(v * 10) / 10, ax = ($('#trdax-' + i) || {}).value || 'both', est = ($('#trdest-' + i) || {}).value === '1';
+      c.tire.treads = (c.tire.treads || []).concat([{ d: today, mm, km: lo ? lo.km : null, ...(ax !== 'both' ? { ax } : {}), ...(est ? { est: 1 } : {}) }]).slice(-30);
+      setTreadAxle(c.tire, ax === 'av' || ax === 'ar' ? ax : 'both', mm); c.tire.treadEst = est ? 1 : 0; }
     if (a === 'rot') { const lo = lastOdo(c); if (!lo) { t.textContent = 'Enregistre d’abord le compteur'; return; } c.tire.lastRot = lo.km; }
     saveSettings(); renderSettings(); softRender(); commandFeedback($(`#settings [data-act="${a}"][data-i="${i}"]`), 'Enregistré');
   }
@@ -3454,7 +3458,9 @@ document.addEventListener('change', e => {
     const pm = /^cars\.(\d+)\.tire\.pchk\./.exec(t.dataset.bind);
     if (pm && !S.cars[+pm[1]].tire.pchk) S.cars[+pm[1]].tire.pchk = { date: '', T: null };
     const tm = /^cars\.(\d+)\.tire\.type$/.exec(t.dataset.bind);
-    if (tm) switchTire(S.cars[+tm[1]], v); else setPath(S, t.dataset.bind, v);
+    const trm = /^cars\.(\d+)\.tire\.tread(Av|Ar)$/.exec(t.dataset.bind);
+    if (tm) switchTire(S.cars[+tm[1]], v); else if (trm) setTreadAxle(S.cars[+trm[1]].tire, trm[2] === 'Av' ? 'av' : 'ar', v); else setPath(S, t.dataset.bind, v);
+    if (trm) { markEdit(`cars.${trm[1]}.tire.tread`); markEdit(`cars.${trm[1]}.tire.treadAv`); markEdit(`cars.${trm[1]}.tire.treadAr`); }
     if (tm) { markEdit(`cars.${tm[1]}.tire`); markEdit(`cars.${tm[1]}.sets`); } else markEdit(t.dataset.bind);
     // modèle reconnu dans la base : le type de pneu se met à jour tout seul
     const bm = /^cars\.(\d+)\.tire\.(brand|model)$/.exec(t.dataset.bind);
@@ -3466,7 +3472,7 @@ document.addEventListener('change', e => {
     if (b.startsWith('dept.')) fetchVigi();
     if (b.startsWith('work.')) UI.dayOff = b === 'work.dep' || b === 'work.ret' ? null : UI.dayOff;
     softRender();
-    if (/\.tire\.type$/.test(b) || /plan\.on$/.test(b)) renderSettings();
+    if (/\.tire\.type$/.test(b) || /plan\.on$/.test(b) || /\.tire\.tread(Av|Ar)$/.test(b)) renderSettings();
   }
 });
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#cfg=')) location.reload(); });
