@@ -3295,7 +3295,7 @@ document.addEventListener('click', async e => {
   if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act;
-  if (a === 'day-destination') { appChooseDestination(t.dataset.id || null); return; }
+  if (a === 'day-destination') { if (t.dataset.agendaKey) appChooseAgendaDestination(t.dataset.agendaKey); else appChooseDestination(t.dataset.id || null); return; }
   if (a === 'day-type') { appSetDayType(t.dataset.v); return; }
   if (a === 'day-car') { appSetCar(t.dataset.id || null); return; }
   if (a === 'refresh') refreshAll();
