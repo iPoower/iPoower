@@ -69,5 +69,5 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
   if(dev==='iphone')await check('iPhone 11 Pro Max · aucun débordement et cibles ≥ 44 pt',async()=>{const L=await layout(p);assert(L.sw<=L.W+1,JSON.stringify(L));assert.deepEqual(L.wide,[]);assert.deepEqual(L.small,[]);});
   await s.c.close();
  }
- await check('aucune erreur JavaScript',async()=>assert.deepEqual(errors,[],errors.join(' | ')));console.log(n+'/'+n+' scénarios OK');
+ await check('aucune erreur JavaScript',async()=>assert.deepEqual(errors,[],errors.map(e=>String(e).replace(/https?:\/\/([^/?\s]+)([^?\s]*)\S*/g,'<$1$2>')).join(' | ').slice(0,600)));console.log(n+'/'+n+' scénarios OK');
 }finally{await b.close();}})().catch(e=>{console.error('❌ '+stage+' · '+e.stack);process.exit(1);});

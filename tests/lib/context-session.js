@@ -29,7 +29,7 @@ async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock =
   }, geo);
   const p = await c.newPage(); await p.clock.install({ time: T0 });
   const S = { meteo, calls: 0 };
-  p.on('pageerror', e => errors.push(dev + ' · ' + e.message));
+  p.on('pageerror', e => errors.push(dev + ' · ' + (e.name && e.name !== 'Error' ? e.name + ': ' : '') + e.message + ' @ ' + String(e.stack || '').split('\n').slice(0, 2).join(' ← ').replace(/https?:\/\/[^\s)]*\//g, '')));
   p.on('request', r => { try { hosts.add(new URL(r.url()).host); } catch (e) { /* url illisible */ } });
   await c.route('**/*', r => {
     const u = r.request().url(), J = o => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
