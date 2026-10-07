@@ -32,9 +32,11 @@ const DayContext = (() => {
     v = v || {}; const n = v.nextDestination, c = v.lastConfirmedPlace;
     const exists = x => !places || places.some(p => p.id === x);
     const arrivedAt = timestamp(v.arrivedAt, now) ? v.arrivedAt : null;
-    const dep = n && local(n.dep), source = n && ['user', 'manual', 'calendar', 'live', 'pending'].includes(n.source) ? n.source : null;
+    const dep = n && local(n.dep), rawSource = n && ['user', 'manual', 'calendar', 'live', 'pending'].includes(n.source) ? n.source : null;
     const originPoint = n && cleanPoint(n.originPoint, 'manual-origin'), destinationPoint = n && cleanPoint(n.destinationPoint, 'manual-destination');
-    const targetOk = source === 'pending' ? n.placeId == null : !!(destinationPoint || id(n.placeId) && exists(n.placeId));
+    // Compatibilité v1 : l'ancien { source:'user', placeId:null } signifiait déjà « À confirmer ».
+    const source = rawSource === 'user' && n && n.placeId == null && !destinationPoint ? 'pending' : rawSource;
+    const targetOk = !!n && (source === 'pending' ? n.placeId == null && !destinationPoint : !!(destinationPoint || id(n.placeId) && exists(n.placeId)));
     const maxExpiry = n && timestamp(n.confirmedAt, now) ? tripExpiry(dep, n.confirmedAt) : null;
     const valid = n && source && timestamp(n.confirmedAt, now) && Number.isFinite(n.expiresAt) && n.expiresAt > now && maxExpiry && n.expiresAt <= maxExpiry + 60000
       && (!arrivedAt || arrivedAt < n.confirmedAt) && targetOk;
