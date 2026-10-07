@@ -798,6 +798,20 @@ function renderBanners() {
   el.innerHTML = h;
 }
 
+function decisionOpenCarChooser() {
+  const editor = $('#dayContext details.day-editor');
+  if (!editor) return false;
+  editor.open = true;
+  const group = $('#dayContext [role="group"][aria-label="Voiture active"]');
+  if (!group) return false;
+  group.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const active = group.querySelector('[data-act="day-car"][aria-pressed="true"]') || group.querySelector('[data-act="day-car"]');
+  if (active) setTimeout(() => {
+    try { active.focus({ preventScroll: true }); } catch (err) { active.focus(); }
+  }, 0);
+  return true;
+}
+
 function renderDecisionCore() {
   const el = $('#decisionCore');
   if (!el) return;
@@ -849,7 +863,7 @@ function renderDecisionCore() {
   el.hidden = false;
   el.innerHTML = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + '</p></div>' +
     '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b></span></div>' +
-    '<div class="decision-meta"><span>Destination · <b>' + esc(destination) + '</b></span><span>Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + '</span><span>' + esc(fresh) + '</span></div>' +
+    '<div class="decision-meta"><span>Destination · <b>' + esc(destination) + '</b></span><span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span><span>' + esc(fresh) + '</span></div>' +
     (confidence.level > 0 && confidence.reasons.length ? '<div class="decision-why">' + confidence.reasons.map(r => '<span>' + esc(r) + '</span>').join('') + '</div>' : '') + changesHtml;
 }
 
@@ -3358,6 +3372,7 @@ document.addEventListener('click', async e => {
   if (a === 'day-destination') { if (t.dataset.agendaKey) appChooseAgendaDestination(t.dataset.agendaKey); else appChooseDestination(t.dataset.id || null); return; }
   if (a === 'day-type') { appSetDayType(t.dataset.v); return; }
   if (a === 'day-car') { appSetCar(t.dataset.id || null); return; }
+  if (a === 'decision-car-change') { decisionOpenCarChooser(); return; }
   if (a === 'refresh') refreshAll();
   else if (a === 'unlock') {
     const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
