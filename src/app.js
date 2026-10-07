@@ -212,7 +212,10 @@ async function refreshTireDB() {
     if (js && (js.version > cur.version || (js.updated && (!cur.updated || js.updated > cur.updated)))) { if (loadTireDB(js, 'en ligne')) { renderSettings(); softRender(); } }
   } catch (e) { /* hors ligne : base intégrée */ }
 }
-function applyCalib() { const c = calibBias(S.calib); setRoadBias(c.bias); return c; }
+// La correction de chaussée est propre à chaque lieu (calibBias) : appliquée seulement pendant la construction du modèle de CE lieu.
+// Hors de cette fenêtre (points de trajet, agenda, démo), aucune correction.
+function applyCalib() { setRoadBias(0); }
+const calibFor = id => calibBias(S.calib, id);
 const locById = id => allLocs().find(l => l.id === id);
 let lastOk = null, lastTry = null, busy = false, CX = null;
 const offlineNow = () => typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -553,13 +556,15 @@ function rebuild() {
       m.ens = ensembleStats(makeDemoEnsemble(pl), m); m.ensModel = 'demo'; m.nc = nowcast(makeDemoNowcast(pl), m.nowStr); M[l.id] = m; return;
     }
     const r = RAW[l.id]; if (!r) return;
+    const cb = calibFor(l.id);
     try {
+      setRoadBias(cb.bias);
       const m = makeModel(r.p, r.mode, l);
       const en = ENSRAW[l.id]; if (en) { m.ens = ensembleStats(en.p, m); m.ensModel = en.model; }
       if (NOWRAW[l.id] && r.mode === 'live') m.nc = nowcast(NOWRAW[l.id], m.nowStr);
       if (OBS && r.mode === 'live') m.obs = applyObs(m, OBS.stations, 35);
-      M[l.id] = m;
-    } catch (e) { ERR[l.id] = 'données illisibles'; }
+      m.roadBias = cb.bias; M[l.id] = m;
+    } catch (e) { ERR[l.id] = 'données illisibles'; } finally { setRoadBias(0); }
   });
 }
 // Vigilance Météo-France (relais Opendatasoft). Lecture tolérante : le format exact n'est pas garanti.
@@ -2826,11 +2831,15 @@ function colStats(seq) {
   return { T: s.Tmin, Tmax: s.Tmax, Tr: s.TrMin, P: s.Pmax, pp: s.ppMax, vis: s.visMin, fog: (s.visMin != null && s.visMin < 1000) || s.fog, frost: s.Tmin != null && s.Tmin <= 1,
     ice: s.iceLevel, snow: s.snowSum > 0 || s.snowCode, sleet: s.sleet, gust: s.gustMax, wind: s.windMax, code: single ? x.code : null };
 }
+const CALIB_LV = { observation: 'observation', motif: 'motif possible', signal: 'signal', suggestion: 'suggestion' };
 function feedbackBlock() {
-  const c = calibBias(S.calib), last = (S.calib || []).slice(-1)[0];
-  return `<div class="fb"><div class="sub">RETOUR TERRAIN · ce que tu as vu sur la route (calibre l’estimation de chaussée)</div>
+  const l = curLoc(), c = calibFor(l && l.id), last = (S.calib || []).filter(r => r && l && r.loc === l.id).slice(-1)[0];
+  const state = c.applied ? `correction appliquée ici : <b class="mono">${c.bias > 0 ? '+' : ''}${f1(c.bias)} °C</b> (${c.n} retours utiles cohérents)`
+    : c.n ? `<b class="mono">aucune correction</b> · ${c.n} retour${c.n > 1 ? 's' : ''} utile${c.n > 1 ? 's' : ''} ici = ${CALIB_LV[c.level]}${c.coherent ? '' : ', contradictoires'} (correction à partir de ${CALIB_MIN} retours cohérents au même lieu)`
+    : '<b class="mono">aucune correction</b>';
+  return `<div class="fb"><div class="sub">RETOUR TERRAIN · ce que tu as vu sur la route (noté comme observation pour ce lieu)</div>
     <div class="chips"><button class="btn sm" data-act="fb" data-k="ice">❄️ Givre / verglas vu</button><button class="btn sm" data-act="fb" data-k="wet">💧 Mouillé, pas gelé</button><button class="btn sm" data-act="fb" data-k="dry">✅ Sec, RAS</button></div>
-    <div class="disc">Calibration actuelle : <b class="mono">${c.n ? (c.bias > 0 ? '+' : '') + f1(c.bias) + ' °C' : 'aucune'}</b>${c.n ? ` (${c.n} retour${c.n > 1 ? 's' : ''} utile${c.n > 1 ? 's' : ''})` : ''}${last ? ` · dernier : ${fmtDay(last.t.slice(0, 10))} ${last.t.slice(11, 16)}` : ''}.</div></div>`;
+    <div class="disc">Chaussée : ${state}${c.dry ? ` · ${c.dry} « Sec, RAS » noté${c.dry > 1 ? 's' : ''}, sans effet sur la température (ne renseigne pas le gel)` : ''}${last ? ` · dernier : ${fmtDay(last.t.slice(0, 10))} ${last.t.slice(11, 16)}` : ''}.</div></div>`;
 }
 function renderBrief() {
   const el = $('#secBrief'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
@@ -3160,7 +3169,7 @@ function renderSettings(force) {
     <div class="set-sec"><h3>Lieux</h3>${locSet}
       <div class="fld"><label for="geoQ">Ajouter une destination (vacances, trajet long)</label><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="search" id="geoQ" placeholder="Ville ou lieu" style="flex:1;min-width:140px"><button class="btn" data-act="geo-search">Rechercher</button></div></div><div class="hits" id="geoHits"></div></div>
     <div class="set-sec"><h3>Base pneus</h3><p class="sub">${TIRE_DB_META.count} modèles · ${TIRE_DB_META.version ? 'version ' + TIRE_DB_META.version + ' du ' + esc(TIRE_DB_META.updated || '') : 'base de secours'} (${esc(TIRE_DB_META.source)}). ${S.cars.map(c => `${esc(c.short)} : ${compatible(c).length} compatibles`).join(' · ')}. Mise à jour automatique chaque mois ; ★ = nouveauté de moins de 60 jours.</p></div>
-    <div class="set-sec"><h3>Calibration terrain</h3><p class="sub">Correction apprise de tes retours : <b class="mono">${(() => { const c = calibBias(S.calib); return c.n ? (c.bias > 0 ? '+' : '') + f1(c.bias) + ' °C sur ' + c.n + ' retour(s)' : 'aucune'; })()}</b>. Elle s’applique à toutes les températures de chaussée estimées.</p><div class="chips"><button class="btn sm" data-act="calib-reset">Effacer la calibration</button></div></div>
+    <div class="set-sec"><h3>Calibration terrain</h3><p class="sub">Corrections apprises de tes retours, lieu par lieu : <b class="mono">${(() => { const xs = allLocs().map(l => ({ l, c: calibFor(l.id) })).filter(x => x.c.n); return xs.length ? xs.map(x => esc(x.l.name) + ' ' + (x.c.applied ? (x.c.bias > 0 ? '+' : '') + f1(x.c.bias) + ' °C' : 'aucune (' + x.c.n + '/' + CALIB_MIN + ')')).join(' · ') : 'aucune'; })()}</b>. Un retour isolé est une observation : une correction n’est appliquée qu’à partir de ${CALIB_MIN} retours cohérents au même lieu, et seulement à ce lieu.</p><div class="chips"><button class="btn sm" data-act="calib-reset">Effacer la calibration</button></div></div>
     <div class="set-sec"><h3>Ma position</h3><p class="sub">${GPS ? `Dernière position : <b>${esc(GPS.name)}</b>${GPS.sub ? ', ' + esc(GPS.sub) : ''} (±${GPS.acc || '?'} m, ${new Date(GPS.t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}). L’app s’ouvre sur ta position et se recale quand tu te déplaces de plus de 3 km. La position reste sur ce téléphone.` : 'Touche « 📍 Ma position » en haut pour suivre la météo de l’endroit où tu es.'}</p>
       ${GPS ? '<div class="chips"><button class="btn sm" data-act="locate">Actualiser ma position</button><button class="btn sm" data-act="gps-forget">Oublier ma position</button></div>' : ''}</div>
     <div class="set-sec"><h3>Notifications du matin</h3>
@@ -3249,7 +3258,7 @@ document.addEventListener('click', async e => {
   else if (a === 'tire') { const c = S.cars.find(x => x.id === t.dataset.car); switchTire(c, t.dataset.type); const ci = S.cars.indexOf(c); markEdit(`cars.${ci}.tire`); markEdit(`cars.${ci}.sets`); saveSettings(); renderSettings(); softRender(); }
   else if (a === 'fb') {
     const m = M[UI.loc]; if (!m || m.nowI < 0) { commandFeedback(t, 'Météo indisponible pour ce relevé'); return; }
-    const x = m.hs[m.nowI], raw = x.Tr != null ? Math.round((x.Tr - ROAD_BIAS) * 10) / 10 : null;
+    const x = m.hs[m.nowI], raw = x.Tr != null ? Math.round((x.Tr - (m.roadBias || 0)) * 10) / 10 : null;
     S.calib = (S.calib || []).concat([{ t: m.nowStr, loc: UI.loc, kind: t.dataset.k, Tr: raw, T: x.T }]).slice(-30);
     saveSettings(); applyCalib(); rebuild(); renderAll();
   }

@@ -655,13 +655,24 @@ function nowcast(p, nowStr) {
   return { slots, nowWet, startIn: !nowWet && firstWet ? Math.max(0, mins(firstWet.ts)) : null, stopAt: nowWet && firstDry ? firstDry.ts.slice(11, 16) : null,
     snow: slots.some(s => (s.S || 0) > 0), total: slots.reduce((a, s) => a + (s.P || 0), 0) };
 }
-// calibration : givre vu → chaussée réelle ≤ 0 ; mouillé non gelé → chaussée réelle > 0
-function calibBias(list) {
-  const inf = (list || []).filter(r => r && (r.kind === 'ice' || r.kind === 'wet') && r.Tr != null).slice(-12);
-  if (!inf.length) return { bias: 0, n: 0 };
+// Retours terrain : une observation n'est pas une calibration.
+//  - givre vu → chaussée réelle ≤ 0 ; mouillé non gelé → chaussée réelle > 0 ; « Sec, RAS » ne dit rien du gel (noté, sans effet).
+//  - PAR LIEU : seuls les retours faits à ce lieu comptent (un retour ailleurs ne décale jamais ce lieu).
+//  - 1 retour utile = observation · 2 = motif · 3–4 = signal · 5+ = suggestion ; la correction n'est appliquée qu'à partir
+//    de 5 retours utiles au même lieu ET cohérents (aucun écart de sens opposé). Sinon 0 °C.
+const CALIB_MIN = 5, CALIB_KEEP = 12;
+function calibBias(list, loc) {
+  const here = (list || []).filter(r => r && loc != null && r.loc === loc);
+  const dry = here.filter(r => r.kind === 'dry').length;
+  const inf = here.filter(r => (r.kind === 'ice' || r.kind === 'wet') && Number.isFinite(r.Tr)).slice(-CALIB_KEEP);
+  const n = inf.length, level = n >= CALIB_MIN ? 'suggestion' : n >= 3 ? 'signal' : n === 2 ? 'motif' : n === 1 ? 'observation' : null;
+  if (!n) return { bias: 0, n: 0, level, dry, applied: false, coherent: true };
   const errs = inf.map(r => r.kind === 'ice' ? Math.min(0, -0.3 - r.Tr) : Math.max(0, 0.5 - r.Tr));
-  const mean = errs.reduce((a, b) => a + b, 0) / errs.length;
-  return { bias: Math.round(clamp(mean * inf.length / (inf.length + 2), -3, 3) * 10) / 10, n: inf.length };
+  const coherent = !(errs.some(e => e > 0) && errs.some(e => e < 0));
+  const mean = errs.reduce((a, b) => a + b, 0) / n;
+  const proposed = Math.round(clamp(mean * n / (n + 2), -3, 3) * 10) / 10;
+  const applied = n >= CALIB_MIN && coherent && proposed !== 0;
+  return { bias: applied ? proposed : 0, proposed, n, level, dry, applied, coherent };
 }
 
 /* ===================== BASE PNEUS + DÉCODAGE AUTOMATIQUE ===================== */
