@@ -59,7 +59,7 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
   await s.c.setOffline(true);await p.evaluate(()=>{CANCELROUTEGEN++;CANCELROUTES.clear();rebuild();renderAll();});await s.settle(2);
   await check(dev+' · offline : contexte et dernière route connue restent disponibles',async()=>{const x=await state(p);assert.equal(x.n.tripKey,key);assert(x.route&&x.route.cached);assert(x.route.km>0);assert.match(await p.locator('#secTrip').innerText(),/Hors connexion · dernière route connue/);});
   await s.c.setOffline(false);await tap(p,dev,'#secTrip [data-act=trip-plan-cancel]');
-  await check(dev+' · annulation rend la priorité au planning sans perdre le lieu Travail',async()=>{const x=await state(p);assert.equal(x.n,null);assert.equal(x.status,'work');assert(!await p.evaluate(k=>APP_CONTEXT.trips.some(t=>t.key===k),key);});
+  await check(dev+' · annulation rend la priorité au planning sans perdre le lieu Travail',async()=>{const x=await state(p);assert.equal(x.n,null);assert.equal(x.status,'work');assert(!(await p.evaluate(k=>APP_CONTEXT.trips.some(t=>t.key===k),key)));});
   ctl.setGeoFail(true);await p.fill('#tripDestQ','Adresse impossible ZXCV');await tap(p,dev,'#secTrip [data-act=trip-dest-search]');await s.settle(2);
   await check(dev+' · géocodage impossible : erreur explicite, aucun trajet inventé',async()=>{assert.match(await p.locator('#secTrip').innerText(),/Aucun résultat/);assert.equal((await state(p)).n,null);});
   ctl.setGeoFail(false);await search(p,dev,"1 Rue de l'Église, Saint-Étienne");await check(dev+' · accents, apostrophe et tiret conservés',async()=>assert.match(await p.locator('#secTrip').innerText(),/Rue de l'Église.*Saint-Étienne/));
