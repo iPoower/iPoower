@@ -614,10 +614,7 @@ function vigiBlock() {
   else body = 'Chargement…';
   return `<div class="note lvx"><b>VIGILANCE ${esc((S.dept.name || S.dept.code).toUpperCase())}</b><span>${body} Référence officielle : ${link}</span></div>`;
 }
-async function geocode(q) {
-  const j = await fetchJSON('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(q) + '&count=6&language=fr&format=json', 10000);
-  return (j.results || []).map(r => ({ name: r.name, sub: [r.admin2, r.admin1, r.country].filter(Boolean).join(', '), dept: r.country_code === 'FR' ? (r.admin2 || '') : '', lat: r.latitude, lon: r.longitude }));
-}
+async function geocode(q) { return GeoSearch.search(q, fetchJSON); }
 
 /* ---------- formats ---------- */
 const hmLocal = ms => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -3296,7 +3293,7 @@ function renderSettings(force) {
     S.customs.map((l, i) => `<div class="frow">${bindIn(`customs.${i}.name`, l.name, { label: 'Destination', wide: 1 })}${bindIn(`customs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`customs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}<div class="fld"><span class="l">&nbsp;</span><button class="btn sm" data-act="loc-del" data-i="${i}">Retirer</button></div></div>`).join('');
   el.innerHTML = `<div class="set-sec"><h3>Voitures et pneus</h3></div>${carSet}
     <div class="set-sec"><h3>Lieux</h3>${locSet}
-      <div class="fld"><label for="geoQ">Ajouter une destination (vacances, trajet long)</label><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="search" id="geoQ" placeholder="Ville ou lieu" style="flex:1;min-width:140px"><button class="btn" data-act="geo-search">Rechercher</button></div></div><div class="hits" id="geoHits"></div></div>
+      <div class="fld"><label for="geoQ">Ajouter une destination ou une adresse</label><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="search" id="geoQ" placeholder="Adresse, ville ou lieu" style="flex:1;min-width:140px"><button class="btn" data-act="geo-search">Rechercher</button></div><span class="sub">France : IGN / Base Adresse Nationale · monde : OpenStreetMap. Recherche uniquement quand tu appuies sur « Rechercher ».</span></div><div class="hits" id="geoHits"></div></div>
     <div class="set-sec"><h3>Base pneus</h3><p class="sub">${TIRE_DB_META.count} modèles · ${TIRE_DB_META.version ? 'version ' + TIRE_DB_META.version + ' du ' + esc(TIRE_DB_META.updated || '') : 'base de secours'} (${esc(TIRE_DB_META.source)}). ${S.cars.map(c => `${esc(c.short)} : ${compatible(c).length} compatibles`).join(' · ')}. Mise à jour automatique chaque mois ; ★ = nouveauté de moins de 60 jours.</p></div>
     <div class="set-sec"><h3>Calibration terrain</h3><p class="sub">Corrections apprises de tes retours, lieu par lieu : <b class="mono">${(() => { const xs = allLocs().map(l => ({ l, c: calibFor(l.id) })).filter(x => x.c.n); return xs.length ? xs.map(x => esc(x.l.name) + ' ' + (x.c.applied ? (x.c.bias > 0 ? '+' : '') + f1(x.c.bias) + ' °C' : 'aucune (' + x.c.n + '/' + CALIB_MIN + ')')).join(' · ') : 'aucune'; })()}</b>. Un retour isolé est une observation : une correction n’est appliquée qu’à partir de ${CALIB_MIN} retours cohérents au même lieu, et seulement à ce lieu.</p><div class="chips"><button class="btn sm" data-act="calib-reset">Effacer la calibration</button></div></div>
     <div class="set-sec"><h3>Ma position</h3><p class="sub">${GPS ? `Dernière position : <b>${esc(GPS.name)}</b>${GPS.sub ? ', ' + esc(GPS.sub) : ''} (±${GPS.acc || '?'} m, ${new Date(GPS.t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}). L’app s’ouvre sur ta position et se recale quand tu te déplaces de plus de 3 km. La position reste sur ce téléphone.` : 'Touche « 📍 Ma position » en haut pour suivre la météo de l’endroit où tu es.'}</p>
@@ -3467,7 +3464,7 @@ document.addEventListener('click', async e => {
     if (q.length < 2) { box.innerHTML = '<span class="sub" role="status">Saisis au moins deux caractères.</span>'; input.focus(); return; }
     box.innerHTML = '<span class="sub">Recherche…</span>';
     const current = () => gen === geoSearchGen && box.isConnected && input.isConnected && input.value.trim() === q;
-    try { const r = await geocode(q); if (!current()) return; window.__hits = r; box.innerHTML = r.length ? r.map((h, i) => `<button data-act="geo-add" data-i="${i}">${esc(h.name)} <span class="muted">· ${esc(h.sub)} · ${h.lat.toFixed(2)}, ${h.lon.toFixed(2)}</span></button>`).join('') : '<span class="sub">Aucun résultat.</span>'; }
+    try { const r = await geocode(q); if (!current()) return; window.__hits = r; box.innerHTML = r.length ? r.map((h, i) => `<button data-act="geo-add" data-i="${i}">${esc(h.name)} <span class="muted">· ${esc(h.sub)} · ${h.provider ? esc(h.provider) + ' · ' : ''}${h.lat.toFixed(4)}, ${h.lon.toFixed(4)}</span></button>`).join('') : '<span class="sub">Aucun résultat. Vérifie le numéro, la rue et le code postal.</span>'; }
     catch (err) { if (current()) box.innerHTML = '<span class="sub" role="status">Recherche impossible (réseau indisponible). Tu peux aussi saisir latitude et longitude à la main.</span>'; }
   } else if (a === 'geo-add') {
     const h = (window.__hits || [])[+t.dataset.i]; if (!h) { commandFeedback(t, 'Relance la recherche'); return; } if (S.customs.length >= 4) { commandFeedback(t, 'Limite de quatre destinations : supprime un lieu'); return; } geoSearchGen++;
