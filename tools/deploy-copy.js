@@ -17,6 +17,9 @@ const ta = path.join(src, 'tiredb.json'), tb = path.join(dst, 'tiredb.json');
 if (ver(ta) > ver(tb) || (ver(ta) === ver(tb) && !same(ta, tb) && ver(tb) < 0)) { fs.copyFileSync(ta, tb); changed.push('tiredb.json'); }
 else if (!same(ta, tb)) console.log(`tiredb.json : version en production (${ver(tb)}) ≥ build (${ver(ta)}) → conservée`);
 // version.json : n° de mise en production, date et commit (affichés dans Réglages → Version), seulement s'il y a quelque chose à publier
-if (changed.length && process.env.DEPLOY_RUN && process.env.DEPLOY_SHA) { fs.writeFileSync(path.join(dst, 'version.json'), JSON.stringify({ run: +process.env.DEPLOY_RUN, sha: process.env.DEPLOY_SHA, at: new Date().toISOString(), ...(process.env.DEPLOY_ROLLBACK ? { rollback: true } : {}) })); changed.push('version.json'); }
+if (changed.length && process.env.DEPLOY_RUN && process.env.DEPLOY_SHA) {
+  const html = fs.readFileSync(path.join(src, 'index.html'), 'utf8'), m = html.match(/window\.TWRC_BUILD=(["'])([^"']+)\1/), build = m && m[2];
+  fs.writeFileSync(path.join(dst, 'version.json'), JSON.stringify({ run: +process.env.DEPLOY_RUN, sha: process.env.DEPLOY_SHA, at: new Date().toISOString(), ...(build ? { build } : {}), ...(process.env.DEPLOY_ROLLBACK ? { rollback: true } : {}) })); changed.push('version.json');
+}
 for (const f of fs.readdirSync(src)) if (RELAY_OWNED.includes(f)) { console.error('Le build ne doit pas contenir ' + f); process.exit(1); }
 console.log(changed.length ? 'Fichiers publiés : ' + changed.join(', ') : 'Aucun changement à publier');
