@@ -738,6 +738,14 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .place .pl-copy { display: flex; flex-direction: column; gap: 2px; }
 .place .pl-copy small { color: var(--fg2); font-size: 11px; font-weight: 400; }
 .place > span { min-width: 0; overflow-wrap: anywhere; }
+.place.on.compact { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; padding: 6px 8px; }
+.place.on.compact .pl-info { min-width: 0; gap: 1px; }
+.place.on.compact .pl-info b, .place.on.compact .pl-info > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.place.on.compact .pl-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; white-space: nowrap; }
+.place.on.compact .pl-act { grid-column: 1 / -1; width: 100%; margin-top: 2px; }
+@media (max-width: 420px) {
+  .place.on.compact .pl-toggle { min-width: 72px; padding-inline: 8px; }
+}
 
 /* ---------- moteur de preuves v2 : carte expérimentale de l'onglet Météo ---------- */
 .ev .ev-b { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
