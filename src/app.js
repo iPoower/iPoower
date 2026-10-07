@@ -2340,6 +2340,7 @@ function briefCard(t, dayLbl) {
       ${k('Visib.', visV(sum.visMin), visU(sum.visMin), 'prev', (sum.visMin != null && sum.visMin < 1000 ? 'lv2' : ''))}
     </div>
     ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
+    ${briefThermalHtml(t, top.c)}
     ${cr && cr.q.f > 0 && cr.q.f < 1 && cr.sc >= 20 ? `<div class="brf-why">📍 Point le plus délicat : km ${f0(cr.q.f * t.l.km)}${cr.q.name ? ' (' + esc(cr.q.name) + ')' : ''} vers ${cr.q.t.slice(11, 16)}</div>` : ''}
     ${ob && ob.T != null ? `<div class="brf-obs"><i class="tag obs">mesuré</i> ${esc(ob.name)} · ${new Date(ob.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · <b>${f1(ob.T)} °C</b>${ob.vis != null && ob.vis < 5000 ? ' · visibilité ' + ob.vis + ' m' : ''}${ob.wx ? ' · ' + esc(wxFr(ob.wx)) : ''}</div>` : ''}
     <div class="brf-t">${trendHtml(tr)}</div>
@@ -3376,6 +3377,7 @@ document.addEventListener('click', async e => {
   else if (a === 'withcode') { try { localStorage.removeItem('twrc.nocode'); } catch (err) { /* stockage */ } renderNotice(); roadSync(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   else if (a === 'bk-export') backupExport();
   else if (a === 'view') chooseView(t.dataset.v);
+  else if (a === 'brf-lab') { chooseView('analyse'); try { window.scrollTo(0, 0); } catch (e) { /* défilement indisponible */ } }
   else if (a === 'weather-details') chooseView('meteo');
   else if (a === 'outfit-day') { UI.outfitDay = t.dataset.v === '1' ? 1 : 0; renderTenue(); }
   else if (a === 'outfit-occasion') { appAction(() => { appDay().outfitChoice = { date: addMin(placeToday() + 'T00:00', UI.outfitDay * 1440).slice(0, 10), occasion: ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing' }; }); }

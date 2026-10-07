@@ -216,6 +216,10 @@ MOTEUR   src/tyrelab.js (pur, déterministe, testé) + src/tirespecs.js (fiches 
 INTERFACE  verdict, fenêtre, freinage, adhérence, aquaplaning, comparaison, trajet, pression, fiche, confiance (détails au toucher)
 ```
 
+Le **briefing du trajet** (onglet Pneus) reprend la même estimation sur une ligne « 🌡️ Gomme · estimation » : état et plage °C
+au départ → à l’arrivée (ou maintenant, en roulage), fenêtre favorable atteinte ou non, bouton Détail vers Analyse. Même calcul
+`tyreLab` sur les mêmes points datés que la prévision figée au départ pour le débrief (`tripLab`), donc aucun chiffre divergent.
+
 **Aucun capteur** : toutes les valeurs sont des estimations en plages (jamais « vos pneus sont à 42 °C »), et l’état affiché
 est le plus prudent de la plage. Modèle thermique du premier ordre avec mémoire :
 

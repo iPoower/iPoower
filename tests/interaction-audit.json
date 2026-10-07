@@ -7,6 +7,10 @@
     "suite": "e2e49-interactions.js",
     "result": "export chiffré ou erreur de saisie visible"
   },
+  "brf-lab": {
+    "suite": "e2e59-brief-gum.js",
+    "result": "onglet Analyse ouvert depuis la ligne Gomme du briefing"
+  },
   "caldirect": {
     "suite": "e2e32.js",
     "result": "enchaînement agenda direct recalculé"
