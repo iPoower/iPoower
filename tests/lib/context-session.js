@@ -35,7 +35,7 @@ async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock =
   // en silence : NETWORK_NOISE est exporté pour les tests qui veulent le vérifier.
   p.on('pageerror', e => {
     const msg = String(e && e.message || '');
-    if (/^(?:TypeError: )?Fetch API cannot load https?:\/\//.test(msg.trim())) { NETWORK_NOISE.push(dev + ' · ' + msg.replace(/\?.*$/, '')); return; }
+    if (/\bFetch API cannot load\b/.test(msg) && !/\b(?:ReferenceError|SyntaxError|RangeError|is not a function|is not defined|undefined is not|null is not)\b/.test(msg)) { NETWORK_NOISE.push(dev + ' · ' + msg.replace(/\?.*$/, '')); return; }
     errors.push(dev + ' · ' + (e.name && e.name !== 'Error' ? e.name + ': ' : '') + msg + ' @ ' + String(e.stack || '').split('\n').slice(0, 2).join(' ← ').replace(/https?:\/\/[^\s)]*\//g, ''));
   });
   p.on('request', r => { try { hosts.add(new URL(r.url()).host); } catch (e) { /* url illisible */ } });
