@@ -104,24 +104,37 @@ function userContextStore({ read, write, now = () => Date.now() }) {
   const oldOutfit = read('twrc.outfit.occasion');
   if (!(saved && saved.dayContext) && ['office', 'outing', 'walk'].includes(oldOutfit)) state.dayContext.outfitChoice = { date: DayContext.date(now()), occasion: oldOutfit };
   const encode = v => v == null ? null : JSON.stringify(v);
+  let durability = { status: 'durable', failedAt: null, lastOkAt: null, error: null };
   function persist() {
     // Une écriture atomique du document canonique précède les anciens miroirs.
-    // Un stockage refusé conserve exactement le même contexte en mémoire.
-    try { write(key, JSON.stringify(state)); } catch (e) { return; }
+    // Une panne de stockage reste visible et retentable : jamais de faux « sauvegardé ».
+    try { write(key, JSON.stringify(state)); }
+    catch (e) {
+      durability = { status: 'degraded', failedAt: now(), lastOkAt: durability.lastOkAt, error: String(e && e.message || e || 'écriture refusée').slice(0, 120) };
+      return false;
+    }
+    durability = { status: 'durable', failedAt: null, lastOkAt: now(), error: null };
     if (oldOutfit != null) { try { write('twrc.outfit.occasion', null); } catch (e) { /* migration déjà dans le document */ } }
     const mirrors = { 'twrc.place.v1': { conf: state.place.conf, last: state.place.last }, 'twrc.gps': state.gps,
       'twrc.tripstart.v1': state.tripStart, 'twrc.tripend.v1': state.tripEnd, 'twrc.returnhome.v1': state.returnHome,
       'twrc.tripdone': Object.keys(state.done).length ? state.done : null, 'twrc.debrief.v1': state.debrief };
     Object.entries(mirrors).forEach(([k, v]) => { try { write(k, encode(v)); } catch (e) { /* compatibilité facultative */ } });
+    return true;
   }
   function flush() {
     if (depth) return false;
     const next = JSON.stringify(state); if (next === baseline) return false;
-    const durable = parse(key);
-    state.revision = Math.max(state.revision, durable && Number.isSafeInteger(durable.revision) ? durable.revision : 0) + 1;
-    state.updatedAt = Math.max(state.updatedAt, now()); baseline = JSON.stringify(state); persist();
+    const durable = parse(key), base = (() => { try { return JSON.parse(baseline || 'null'); } catch (e) { return null; } })();
+    state.revision = Math.max(base && Number.isSafeInteger(base.revision) ? base.revision : 0, durable && Number.isSafeInteger(durable.revision) ? durable.revision : 0) + 1;
+    state.updatedAt = Math.max(state.updatedAt, now());
+    if (persist()) baseline = JSON.stringify(state);
     if (!publishing) { publishing = true; try { listeners.forEach(fn => fn(state)); } finally { publishing = false; } }
     return true;
+  }
+  function retry() {
+    if (depth) return false;
+    if (durability.status === 'durable' && JSON.stringify(state) === baseline) return true;
+    const ok = persist(); if (ok) baseline = JSON.stringify(state); return ok;
   }
   function transaction(fn) {
     depth++; try { return fn(state); } finally { depth--; if (!depth) flush(); }
@@ -135,7 +148,7 @@ function userContextStore({ read, write, now = () => Date.now() }) {
     if (JSON.stringify(normalize(incoming)) === baseline) return false;
     state = normalize(incoming); baseline = JSON.stringify(state); listeners.forEach(fn => fn(state)); return true;
   }
-  baseline = JSON.stringify(state); persist();
-  return { key, get state() { return state; }, transaction, flush, receive,
+  baseline = ''; if (persist()) baseline = JSON.stringify(state);
+  return { key, get state() { return state; }, transaction, flush, retry, durability: () => ({ ...durability }), receive,
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
 }
