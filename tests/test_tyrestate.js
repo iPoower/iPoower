@@ -3,7 +3,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm'), assert = r
 const sourcePath = path.join(__dirname, '../src/tyrestate.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = {}; vm.createContext(ctx);
-  vm.runInContext(['engine.js', 'tirespecs.js'].map(f => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8')).join('\n') + source + fs.readFileSync(path.join(__dirname, '../src/tyrelab.js'), 'utf8') + '\nthis.ts = tyreState; this.valid = tyreMemoryValid; this.lab = tyreLab;', ctx);
+  vm.runInContext(['engine.js', 'tirespecs.js'].map(f => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8')).join('\n') + source + fs.readFileSync(path.join(__dirname, '../src/tyrelab.js'), 'utf8') + '\nthis.ts = tyreState; this.valid = tyreMemoryValid; this.lab = tyreLab; this.mount = confirmWinterMount; this.switchTire = switchTire;', ctx);
   const plain = v => JSON.parse(JSON.stringify(v)), TS = (c, o) => plain(ctx.ts(plain(c), o)), today = '2026-10-06';
   const H = (b = {}) => Array.from({ length: 40 }, (_, k) => ({ t: new Date(Date.parse('2026-10-05T18:00:00Z') + k * 36e5).toISOString().slice(0, 16), T: 12, Tr: 12, RH: 70, P: 0, Pl: 0, gust: 15, rad: 0, ice: { level: 0 }, ...b }));
   const car = (tire = {}, extra = {}) => ({ id: 'carA', name: 'Voiture test', odo: [{ d: '2026-10-01', km: 23400 }], ...extra,
@@ -74,6 +74,41 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   });
   test('monte inconnue : pas d’état actif inventé', () => {
     const st = TS(car({ type: 'unknown' }), { today }); assert.equal(st.known, false); assert.equal(st.active, null);
+  });
+  test('montage confirmé : jeu démonté archivé, hiver stocké repris, mesures et pression jamais inventées', () => {
+    const c = car({}, { plan: { on: 1, brand: 'Goodyear', model: 'UltraGrip Performance 3', date: '2026-11-26' },
+      sets: { winter: { brand: 'Goodyear', model: 'UltraGrip Performance 3', size: '215/40 R18 89V', dot: '1825', tread: 6.9,
+        treads: [{ d: '2026-03-01', mm: 6.9, km: 12000 }], mounted: '2025-11-01', mountKm: 9000, lastRot: 10000, pchk: { date: '2026-03-01', T: 10 } } } });
+    const before = plain(c), r = plain(ctx.mount(c, { date: today, km: '25000', today }));
+    assert.deepEqual(c, before); assert(!r.error); assert.equal(r.car.tire.type, 'winter');
+    for (const k of ['brand','model','size','dot','tread','treads','mounted','mountKm','lastRot','pchk']) assert.deepEqual(r.car.sets.summer[k], before.tire[k] ?? null);
+    assert.equal(r.car.tire.dot, '1825'); assert.equal(r.car.tire.tread, 6.9); assert.deepEqual(r.car.tire.treads, c.sets.winter.treads);
+    assert.equal(r.car.tire.mounted, today); assert.equal(r.car.tire.mountKm, 25000); assert.equal(r.car.tire.lastRot, null);
+    assert.deepEqual(r.car.tire.pchk, { date: '', T: null }); assert.equal(r.car.plan.on, 0); assert.equal(r.car.plan.date, '2026-11-26');
+    assert.equal(TS(r.car, { today }).mount.kmSince, 0);
+    assert.equal(ctx.valid({ sig: TS(c, { today }).sig, T: 40 }, ctx.ts(r.car, { today })), false);
+    ctx.switchTire(r.car, 'summer'); for (const k of ['tread','treads','pchk','dot','mounted','mountKm']) assert.deepEqual(r.car.tire[k], before.tire[k]);
+  });
+  test('montage prévu : références reprises, compteur vide inconnu, aucun relevé ou profondeur fabriqué', () => {
+    const c = car({}, { plan: { on: 1, brand: 'Goodyear', model: 'UltraGrip Performance 3', size: '215/40 R18 89V', date: '2026-11-26' } });
+    const r = plain(ctx.mount(c, { date: today, km: '', today }));
+    assert.equal(r.car.tire.model, c.plan.model); assert.equal(r.car.tire.size, c.plan.size); assert.equal(r.car.tire.tread, null);
+    assert.equal(r.car.tire.mountKm, null); assert.deepEqual(r.car.odo, c.odo); assert.equal(TS(r.car, { today }).mount.kmSince, null);
+    const z = plain(ctx.mount(car({}, { odo: [], plan: { on: 1 } }), { date: today, km: '0', today })); assert.equal(z.car.tire.mountKm, 0);
+  });
+  test('montage : date future, impossible ou vide, compteur incohérent, et double validation refusés sans mutation', () => {
+    const c = car({}, { plan: { on: 1 } }), before = plain(c);
+    for (const v of [{ date: '2026-10-07', km: '25000' }, { date: '2026-02-30', km: '' }, { date: '', km: '' },
+      { date: today, km: '-1' }, { date: today, km: '25000.5' }, { date: today, km: 'abc' }, { date: today, km: '23000' }]) {
+      assert(ctx.mount(c, { ...v, today }).error, JSON.stringify(v)); assert.deepEqual(c, before);
+    }
+    const mounted = ctx.mount(c, { date: today, km: '25000', today }).car;
+    assert(ctx.mount(mounted, { date: today, km: '25000', today }).error);
+  });
+  test('montage daté après coup : compteur encadré par les relevés avant et après', () => {
+    const c = car({}, { plan: { on: 1 }, odo: [{ d: '2026-10-01', km: 100 }, { d: '2026-10-05', km: 200 }] });
+    const good = plain(ctx.mount(c, { date: '2026-10-03', km: '150', today })); assert(!good.error); assert.equal(TS(good.car, { today }).mount.kmSince, 50);
+    for (const km of ['90', '201']) assert(ctx.mount(c, { date: '2026-10-03', km, today }).error);
   });
   return count;
 }

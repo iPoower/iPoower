@@ -258,5 +258,21 @@
   "debrief-clear": {
     "suite": "e2e56-debrief.js",
     "result": "journal local effacé après confirmation"
+  },
+  "mount-open": {
+    "suite": "e2e43-analyse.js",
+    "result": "confirmation de montage sans modifier la monte active"
+  },
+  "mount-save": {
+    "suite": "e2e43-analyse.js",
+    "result": "date réelle validée, jeu hiver activé et jeu démonté conservé"
+  },
+  "mount-cancel": {
+    "suite": "e2e43-analyse.js",
+    "result": "brouillon abandonné sans changement de pneus"
+  },
+  "weather-details": {
+    "suite": "e2e43-analyse.js",
+    "result": "détails météo ouverts depuis le résumé Pneus"
   }
 }
