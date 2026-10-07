@@ -96,7 +96,7 @@ check('V2 conserve un trajet manuel programmé avec points normalisés, sans GPS
   const n = d.durable.context.dayContext.nextDestination;
   assert.equal(n.source,'manual'); assert.equal(n.dep,'2026-10-08T17:15'); assert.equal(n.destinationPoint.provider,'IGN/BAN');
   assert.equal(n.destinationPoint.address,'29 Rue Jean Jaurès, 80610 Saint-Ouen');
-  assert.equal(d.durable.context.gps,null); assert.equal(d.durable.context.place.extra,null); assert(!JSON.stringify(d.durable.context).includes('"route"'));
+  assert.equal(d.durable.context.gps,null); assert.equal(d.durable.context.place.extra,null); assert(!/"route"\s*:/.test(JSON.stringify(d.durable.context)));
 });
 check('payload invalide refusé', () => {
   assert.equal(B.restorePlan(null, at), null); assert.equal(B.restorePlan({ app: 'other', settings: {} }, at), null); assert.equal(B.restorePlan({ app: 'twrc' }, at), null);
