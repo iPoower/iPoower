@@ -12,10 +12,12 @@ const TOKEN = 'jeton-de-test-uniquement';
 
   // Monde : obs.updated réel, publié sur Pages 60 s après le commit ; un run met 30 s à démarrer et 90 s à finir.
   // Le relais ne rafraîchit obs.json que s'il le trouve dû (≥ 8 min), comme l'étape « Vérifier si une vraie synchronisation est due ».
-  function world({ updated = T0 - 20 * 60e3, relayWorks = true, obsMode = 'ok', dispatchStatus = 204, runsStatus = 200 } = {}) {
-    const S = { now: T0, updated, published: [{ at: -Infinity, updated }], runs: [], dispatches: 0, calls: [], logs: [] };
+  function world({ updated = T0 - 20 * 60e3, relayWorks = true, obsMode = 'ok', dispatchStatus = 204, runsStatus = 200, cancelStatus = 202 } = {}) {
+    const S = { now: T0, updated, published: [{ at: -Infinity, updated }], runs: [], dispatches: 0, cancels: [], calls: [], logs: [], nextId: 1000 };
     const servedObs = () => { const p = S.published.filter(x => x.at <= S.now).pop(); return p && p.updated; };
     const advance = () => S.runs.forEach(r => {
+      if (!r.id) r.id = S.nextId++;
+      if (r.stuck && r.status !== 'completed') return;   // run coincé (environnement « waiting ») : ne finit jamais seul
       const age = S.now - r.created;
       if (r.status !== 'completed' && age >= 90e3) {
         r.status = 'completed'; r.conclusion = 'success';
@@ -35,8 +37,15 @@ const TOKEN = 'jeton-de-test-uniquement';
       const m = RUNS_RE.exec(url);
       if (m && (!init.method || init.method === 'GET')) {
         if (runsStatus !== 200) return { ok: false, status: runsStatus, json: async () => ({}) };
-        const list = S.runs.filter(r => r.wf === m[1]).slice().reverse().map(r => ({ status: r.status, conclusion: r.conclusion || null, created_at: new Date(r.created).toISOString(), event: r.event }));
+        const list = S.runs.filter(r => r.wf === m[1]).slice().reverse().map(r => ({ id: r.id, status: r.status, conclusion: r.conclusion || null, created_at: new Date(r.created).toISOString(), event: r.event }));
         return { ok: true, status: 200, json: async () => ({ total_count: list.length, workflow_runs: list }) };
+      }
+      const cm = /\/actions\/runs\/(\d+)\/cancel$/.exec(url);
+      if (cm && init.method === 'POST') {
+        S.cancels.push(+cm[1]);
+        const r = S.runs.find(x => x.id === +cm[1]);
+        if (r && cancelStatus >= 200 && cancelStatus < 300) { r.status = 'completed'; r.conclusion = 'cancelled'; }
+        return { ok: cancelStatus < 300, status: cancelStatus };
       }
       if (url.endsWith('/dispatches') && init.method === 'POST') {
         S.dispatches++;
@@ -105,6 +114,34 @@ const TOKEN = 'jeton-de-test-uniquement';
     const w = world({ updated: T0 - 12 * 60e3 }); w.S.runs.push({ wf: 'race-control.yml', created: T0 - 6 * 60e3, status: 'completed', conclusion: 'success', event: 'schedule' });
     w.S.runs[0].created = T0 - 5 * 60e3 - (12 - 8) * 60e3 - 60e3;   // créé avant le passage à « dû »
     await w.tick(); assert.equal(w.S.dispatches, 1);
+  });
+
+  // — auto-réparation : run bloqué (incident du 7 octobre 2026)
+  await test('run bloqué « waiting » depuis 25 min et données dues : annulé, puis relais relancé au tick suivant', async () => {
+    const w = world({ updated: T0 - 30 * 60e3 }); w.S.runs.push({ wf: 'race-control-watchdog.yml', created: T0 - 25 * 60e3, status: 'waiting', event: 'push', stuck: true, id: 42 });
+    const a = await w.tick(); assert.equal(a.action, 'cancelled'); assert.deepEqual(w.S.cancels, [42]); assert.equal(w.S.dispatches, 0);
+    const c = w.S.calls.find(x => x.url.endsWith('/runs/42/cancel'));
+    assert.equal(c.url, 'https://api.github.com/repos/iPoower/iPoower/actions/runs/42/cancel'); assert.equal(c.init.headers.authorization, 'Bearer ' + TOKEN);
+    w.S.now += 60e3; const b = await w.tick(); assert.equal(b.action, 'dispatched'); assert.equal(w.S.dispatches, 1);
+  });
+  await test('run actif depuis moins de 20 min : jamais annulé (relais lent ou démarrage tardif)', async () => {
+    const w = world({ updated: T0 - 30 * 60e3 }); w.S.runs.push({ wf: 'race-control.yml', created: T0 - 19 * 60e3, status: 'waiting', event: 'push', stuck: true });
+    const r = await w.tick(); assert.equal(r.action, 'skipped'); assert.equal(w.S.cancels.length, 0);
+  });
+  await test('données fraîches : un run bloqué n’est pas touché (aucun appel GitHub)', async () => {
+    const w = world({ updated: T0 - 2 * 60e3 }); w.S.runs.push({ wf: 'race-control-watchdog.yml', created: T0 - 90 * 60e3, status: 'waiting', stuck: true });
+    await w.tick(); assert.equal(w.S.cancels.length, 0); assert(!w.S.calls.some(c => c.url.includes('api.github.com')));
+  });
+  await test('rejeu du 7 octobre : watchdog coincé juste après un relais → relais rétabli en moins de 25 min (au lieu de 1 h 36)', async () => {
+    const w = world({ updated: T0 - 60e3 }); w.S.runs.push({ wf: 'race-control-watchdog.yml', created: T0, status: 'waiting', event: 'push', stuck: true });
+    const out = await w.minutes(120), maxAge = Math.max(...out.map(o => o.age || 0));
+    assert.equal(w.S.cancels.length, 1, 'une seule annulation'); assert(maxAge < 25, 'âge maximal ' + maxAge.toFixed(1) + ' min');
+    assert(out.every(o => !o.error)); console.log('   ↳ incident rejoué : âge max ' + maxAge.toFixed(1) + ' min, ' + w.S.dispatches + ' dispatches en 2 h');
+  });
+  await test('annulation refusée par GitHub : erreur propre, sans secret, et aucun dispatch', async () => {
+    const w = world({ updated: T0 - 30 * 60e3, cancelStatus: 403 }); w.S.runs.push({ wf: 'race-control-watchdog.yml', created: T0 - 40 * 60e3, status: 'waiting', stuck: true });
+    await assert.rejects(w.tick(), e => /HTTP 403/.test(e.message) && !e.message.includes(TOKEN)); assert.equal(w.S.dispatches, 0);
+    const o = JSON.parse(w.S.logs[w.S.logs.length - 1]); assert.equal(o.action, 'error'); assert.equal(o.status, 403);
   });
 
   // — pannes et sécurité
