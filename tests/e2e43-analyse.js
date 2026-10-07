@@ -18,8 +18,12 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
   vm.createContext(ctx); vm.runInContext(src + ';this.mk=makeDemoPayload;this.me=makeDemoEnsemble;this.mn=makeDemoNowcast;', ctx);
   const c = await b.newContext({ ...VP[dev], timezoneId: 'Europe/Paris', locale: 'fr-FR' });
   const p = await c.newPage(); await p.clock.install({ time: T0 });
-  const S = { meteo, calls: 0 };
-  p.on('pageerror', e => errors.push(dev + ' · ' + e.message));
+  const S = { meteo, calls: 0, phase: 'démarrage' };
+  p.on('pageerror', e => {
+    // Garder la cause et l'étape avant les longues URL : le rapport CI borne chaque diagnostic.
+    const detail = String(e.stack || e.message).replace(/\S*open-meteo\.com[^\s]*/g, '[requête météo fictive]').replace(/\n/g, ' ⏎ ');
+    errors.push(dev + ' · ' + at.slice(0, 10) + ' · ' + S.phase + ' · ' + e.name + ' · ' + detail.slice(0, 500));
+  });
   p.on('request', r => { try { hosts.add(new URL(r.url()).host); } catch (e) { /* url illisible */ } });
   await p.route('**/*', r => {
     const u = r.request().url(), J = o => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
@@ -44,11 +48,13 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
     return r.abort();
   });
   await p.goto(U); await p.clock.runFor(2500);
-  if (unlock) { await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); }
+  if (unlock) { S.phase = 'déverrouillage'; await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); }
   const settle = async (n = 14) => { for (let i = 0; i < n; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } };
   await settle();
   await p.evaluate(() => window.scrollTo(0, 0));
-  return { p, c, S, settle, T0 };
+  S.phase = 'parcours';
+  const close = () => { S.phase = 'fermeture'; return c.close(); };
+  return { p, c, S, settle, T0, close };
 }
 const lab = p => p.evaluate(() => {
   document.querySelectorAll('#secLab details[data-k=spec], #secLab details[data-k=conf]').forEach(d => { d.open = true; });
@@ -125,19 +131,19 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     check('5 · Météo intacte (poste météo visible), Analyse masquée', await s.p.evaluate(() => !document.getElementById('secWx').hidden && document.getElementById('secLab').hidden));
     await s.p.click('[data-act=view][data-v=tenue]'); await s.settle(2);
     check('5 · Tenue intacte, Analyse masquée', await s.p.evaluate(() => !document.getElementById('secTenue').hidden && getComputedStyle(document.getElementById('secLab')).display === 'none' || document.getElementById('secLab').hidden));
-    await s.c.close();
+    await s.close();
 
     // 6. PC 1280 : même contenu, sans débordement
     s = await session(b, { at: '2026-10-03T14:00:00+02:00', scn: 'pluie', dev: 'pc' }); await toLab(s); a = await lab(s.p); const Lp = await layout(s.p, false);
     if (process.env.LAB_SHOT) await s.p.locator('#secLab').screenshot({ path: process.env.LAB_SHOT + '-pc.png' });
     check('6 · PC : mêmes blocs que l’iPhone, sans débordement', a.shown && a.bars === 5 && a.cmp === 5 && Lp.sw <= Lp.W && !Lp.wide.length, JSON.stringify(Lp));
     check('6 · pluie : aquaplaning et freinage pluie évalués', /AQUAPLANING/i.test(a.all) && /Pluie : \S+/.test(a.hero), a.hero);
-    await s.c.close();
+    await s.close();
 
     // 7. météo absente au premier lancement : pneu identifié, aucune estimation inventée
     s = await session(b, { at: '2026-10-03T05:40:00+02:00', meteo: '503' }); await toLab(s); a = await lab(s.p);
     check('7 · météo absente : pneu affiché, « aucune estimation thermique », aucune barre', a.shown && /Météo indisponible : aucune estimation thermique/.test(a.hero) && a.bars === 0, a.hero);
-    await s.c.close();
+    await s.close();
 
     // 8. Régression prod-38 : le libellé marginal long repoussait le bas du verdict à 922 px
     // sur iPhone, après confirmation du domicile. Seules les entrées météo / mémoire sont préparées.
@@ -158,7 +164,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     check('8 · arrêt récent : en refroidissement sous la plage favorable, estimation prudente inchangée', cooling.state === 'En refroidissement · sous la plage favorable' && cooling.trend === 'cooling' && cooling.range.join(',') === '22,38' && cooling.warm === 'limite' && a.all.includes('Avant la zone favorable : limite') && cooling.why.some(x => /bas de plage/.test(x) && /prudence/.test(x)), JSON.stringify(cooling));
     check('8 · iPhone domicile confirmé : verdict complet visible sans défiler, aucune cible masquée ni débordement', a.hero.includes('EN REFROIDISSEMENT · SOUS LA PLAGE FAVORABLE') && Lc.sw <= Lc.W && !Lc.wide.length && !Lc.small.length && Lc.heroBottom < 896, JSON.stringify(Lc));
     if (process.env.LAB_SHOT) await s.p.screenshot({ path: process.env.LAB_SHOT + '-iphone-cooling.png' });
-    await s.c.close();
+    await s.close();
 
     // 10. Ergonomie et montage confirmé : parcours réels PC/iPhone, brouillon, erreur, archive et offline.
     for (const dev of ['pc', 'iphone']) {
@@ -202,6 +208,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
       check('10 · ' + dev + ' · brouillon et focus conservés pendant le rafraîchissement', await s.p.inputValue('#mountKm') === '24567' && await s.p.evaluate(() => document.activeElement.id === 'mountKm' && S.cars[0].tire.type === 'summer'));
       await s.p.locator('[data-act=mount-cancel]').click();
       check('10 · ' + dev + ' · annulation sans changement de monte', !(await s.p.locator('.mount-form').count()) && await s.p.evaluate(() => S.cars[0].tire.type === 'summer' && S.cars[0].plan.on === 1));
+      s.S.phase = 'montage hors connexion';
       await s.c.setOffline(true); await s.p.evaluate(() => window.dispatchEvent(new Event('offline'))); await s.settle(1);
       await s.p.locator('[data-act=mount-open][data-car=carA]').click(); await s.p.fill('#mountDate', '2026-10-06'); await s.p.fill('#mountKm', '24567');
       await s.p.locator('[data-act=mount-save]').click();
@@ -215,11 +222,12 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
         shared: tyreStateOf(labCar()).active.type, title: document.querySelector('.lab-tyre').textContent }; });
       check('10 · ' + dev + ' · confirmation offline : bon jeu hiver, archive été, date réelle, compteur, pression non inventée', mounted.type === 'winter' && mounted.model === 'UltraGrip Performance 3' && mounted.date === '2026-10-05' && mounted.km === 24567 && mounted.pressure === '' && mounted.tread === 7.2 && mounted.summerTread === 6.4 && mounted.summerPressure === '2026-10-01' && mounted.plan === 0 && mounted.thermalGone && mounted.shared === 'winter' && /UltraGrip Performance 3/.test(mounted.title), JSON.stringify(mounted));
       check('10 · ' + dev + ' · montage enregistré visible, formulaire et compte à rebours retirés', /Montage enregistré/.test(await s.p.locator('#secSeason').innerText()) && !(await s.p.locator('.mount-form').count()) && !(await s.p.locator('[data-act=mount-open][data-car=carA]').count()));
-      await s.c.setOffline(false); await s.p.reload(); await s.settle(8);
+      s.S.phase = 'retour en ligne'; await s.c.setOffline(false);
+      s.S.phase = 'rechargement'; await s.p.reload(); await s.settle(8); s.S.phase = 'après rechargement';
       check('10 · ' + dev + ' · montage et archive conservés au rechargement', await s.p.evaluate(() => S.cars[0].tire.type === 'winter' && S.cars[0].tire.mountKm === 24567 && S.cars[0].sets.summer.tread === 6.4 && S.cars[0].plan.on === 0));
       await s.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await s.settle(1);
       check('10 · ' + dev + ' · Pneus reprend le montage confirmé dans Analyse', /Pneus montés : hiver/.test(await s.p.locator('#secCars').innerText()));
-      await s.c.close();
+      await s.close();
     }
 
     const extra = [...hosts].filter(h => !KNOWN.test(h));
