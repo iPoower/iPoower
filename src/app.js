@@ -3097,18 +3097,22 @@ function renderSeason() {
         : etaDate ? fmtDay(etaDate) : 'non renseignée';
       const today = CX.m.nowStr.slice(0, 10);
       const supplyStatus = !etaDate ? 'À RENSEIGNER' : today < (plan.etaFrom || etaDate) ? 'EN ATTENTE' : today <= etaDate ? 'FENÊTRE ETA' : 'ETA DÉPASSÉE';
-      const apptTxt = plan.appointmentDate
-        ? `${plan.appointmentConfirmed ? 'confirmé' : 'à confirmer'} · ${fmtDay(plan.appointmentDate)}`
-        : 'non confirmé';
+      const apptTxt = plan.appointmentConfirmed && !plan.appointmentDate
+        ? 'confirmation incomplète · date à renseigner'
+        : plan.appointmentDate ? `${plan.appointmentConfirmed ? 'confirmé' : 'à confirmer'} · ${fmtDay(plan.appointmentDate)}` : 'non confirmé';
       const mountLabel = s.countdown && s.countdown.kind === 'confirmed' ? 'avant rendez-vous confirmé' : 'avant montage estimé';
       const covered = s.countdown ? s.countdown.weatherCoveredDays || 0 : 0, remaining = s.countdown ? s.countdown.weatherRemainingDays || 0 : 0;
       const etaConflict = !!(plan.date && etaDate && plan.date < etaDate && !(plan.appointmentConfirmed && plan.appointmentDate));
+      const etaRangeInvalid = !!(plan.etaFrom && plan.etaTo && plan.etaFrom > plan.etaTo);
+      const apptIncomplete = !!plan.appointmentConfirmed && !plan.appointmentDate;
       cd = `<div class="stat lvx"><span class="sub">Prochaine monte : ${esc(planTxt)}${plan.size ? ' · ' + esc(plan.size) : ''}</span>
         ${n == null ? '<span class="sub">Date de montage estimée non renseignée.</span>' : `<span class="cd num">${n > 0 ? 'J-' + pad(n) : n === 0 ? 'Jour J' : 'J+' + pad(-n)}</span><span class="sub">${n > 0 ? esc(mountLabel) : 'date de montage atteinte ou dépassée'} · ${fmtDay(s.countdown.date)}</span>`}
         <span class="sub"><b>Commande</b> · ${plan.ordered ? fmtDay(plan.ordered) : 'date non renseignée'}</span>
         <span class="sub"><b>Approvisionnement</b> · ${esc(supplyStatus)} · ETA ${esc(etaTxt)}${plan.etaChecked ? ' · vérifié ' + fmtDay(plan.etaChecked) : ''}</span>
         <span class="sub"><b>Rendez-vous</b> · ${esc(apptTxt)}</span>
         ${etaConflict ? '<div class="note lv2"><b>COHÉRENCE</b><span>Le montage estimé est antérieur à la dernière ETA fournisseur. Vérifie les deux dates.</span></div>' : ''}
+        ${etaRangeInvalid ? '<div class="note lv2"><b>COHÉRENCE</b><span>La fin de l’ETA fournisseur est antérieure à son début. Corrige la fenêtre.</span></div>' : ''}
+        ${apptIncomplete ? '<div class="note lv2"><b>COHÉRENCE</b><span>Le rendez-vous est marqué confirmé mais aucune date n’est renseignée. Il ne remplace pas le montage estimé.</span></div>' : ''}
         ${n == null ? '' : `<div class="note lv${remaining > 0 ? 1 : 0}"><b>COUVERTURE MÉTÉO</b><span>${covered} jour${covered > 1 ? 's' : ''} analysé${covered > 1 ? 's' : ''} sur ${Math.max(0, n)} avant ${s.countdown.kind === 'confirmed' ? 'le rendez-vous' : 'le montage'}.${remaining > 0 ? ` ${remaining} jour${remaining > 1 ? 's' : ''} encore non évaluable${remaining > 1 ? 's' : ''} : aucune conclusion météo n’est extrapolée au-delà de la fenêtre disponible.` : ' Toute la période restante est couverte par les prévisions disponibles.'}</span></div>`}
         <details class="wx-how"><summary>Mettre à jour le suivi</summary>
           <div class="frow">
@@ -3130,7 +3134,7 @@ function renderSeason() {
       ${cal}<div class="season-legend" aria-label="Légende des verdicts pneus">${[['lv0', 'Adapté'], ['lv1', 'Vigilance'], ['lv2', 'Risque élevé'], ['lv3', 'Déconseillé'], ['lvx', 'Données insuffisantes']].map(([lv, text]) => `<span class="${lv}"><i aria-hidden="true"></i>${text}</span>`).join('')}</div></div>`;
   }).join('');
   const form = el.querySelector('.mount-form');
-  el.innerHTML = `<div class="mod-h"><h2>Saison pneus</h2><span class="src">analyse des prévisions, pas du calendrier</span></div><div class="grid2">${cards}</div>
+  el.innerHTML = `<div class="mod-h"><h2>Saison pneus</h2><span class="src">prévisions + suivi du montage</span></div><div class="grid2">${cards}</div>
    <p class="disc">Fiabilité décroissante au-delà de 5 à 7 jours. Le seuil de 7 °C est une règle pratique, pas une frontière physique.</p>`;
   const fresh = el.querySelector('.mount-form');
   if (form && fresh && form.dataset.car === fresh.dataset.car) { fresh.replaceWith(form); form.querySelector('.mount-message').textContent = MOUNT_FORM.msg; }
@@ -3178,7 +3182,7 @@ function renderAlerts() {
   const act = items.filter(i => i.on && i.a).length;
   el.innerHTML = `<div class="mod-h"><h2>Alertes</h2><span class="src">${act} active${act > 1 ? 's' : ''} · 24 h</span></div>
    ${vigiBlock()}<div>${items.map(({ d, a, on }) => `<div class="al${on ? '' : ' off'}"><div><label class="sw"><input type="checkbox" data-alert="${d.id}" ${on ? 'checked' : ''} aria-label="${esc(d.label)}"><i></i></label></div>
-     <div style="display:flex;justify-content:space-between;gap:10px;align-items:start;min-width:0"><div style="min-width:0"><div class="t">${esc(a && on ? a.title : d.label)}</div><div class="d">${on ? (a ? esc(a.detail) : (d.id === 'pre' && S.cars.some(c => c.plan.on && c.tire.type !== 'winter' && !(c.plan.date || (c.plan.appointmentConfirmed && c.plan.appointmentDate))) ? 'Renseigne la date de montage des pneus hiver (Saison pneus) pour activer cette alerte.' : 'Non déclenchée')) : 'Désactivée'}</div></div>
+     <div style="display:flex;justify-content:space-between;gap:10px;align-items:start;min-width:0"><div style="min-width:0"><div class="t">${esc(a && on ? a.title : d.label)}</div><div class="d">${on ? (a ? esc(a.detail) : (d.id === 'pre' && S.cars.some(c => c.plan.on && c.tire.type !== 'winter' && !(c.plan.date || (c.plan.appointmentConfirmed && c.plan.appointmentDate))) ? 'Renseigne un montage estimé ou un rendez-vous confirmé (Saison pneus) pour activer cette alerte.' : 'Non déclenchée')) : 'Désactivée'}</div></div>
      ${on && a ? `<span class="sev lv${a.sev}">${a.sev >= 3 ? 'DANGER' : a.sev === 2 ? 'ATTENTION' : 'INFO'}</span>` : `<span class="sev none">${on ? 'RAS' : 'OFF'}</span>`}</div></div>`).join('')}</div>
    <p class="disc">Les alertes sont recalculées à chaque actualisation et visibles à l’ouverture de la page. Aucune notification n’est envoyée quand la page est fermée.</p>`;
 }
