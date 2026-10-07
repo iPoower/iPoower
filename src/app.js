@@ -848,6 +848,10 @@ function renderCurrent() {
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 const TIRE_ALERTS = ['press', 'age', 'mont'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
+function chooseView(view) {
+  UI.view = ['meteo', 'tenue', 'analyse'].includes(view) ? view : 'pneus';
+  lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 function renderView() {
   const vm = UI.view === 'meteo', vt = UI.view === 'tenue', va = UI.view === 'analyse';
   document.body.classList.toggle('vm', vm);
@@ -3054,7 +3058,7 @@ function renderWeatherLink() {
   const el = $('#secWeatherLink'); el.hidden = UI.view !== 'pneus';
   if (el.hidden) return;
   const c = CX && CX.m.cur, l = curLoc();
-  el.innerHTML = `<div><h3>Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="view" data-v="meteo">Détails météo →</button>`;
+  el.innerHTML = `<div><h3>Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="weather-details">Détails météo →</button>`;
 }
 
 // @include app/season-actions.js
@@ -3080,6 +3084,7 @@ function renderSeason() {
     }
     return `<div class="season lv${s.level}"><h3>${esc(car.name)} · pneus ${TYPE_LABEL[car.tire.type]}</h3>
       <div class="stat"><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div>${cd}
+      ${car.tire.type === 'winter' && car.tire.mounted ? `<p class="sub" role="status">Montage enregistré : ${esc(fmtDay(car.tire.mounted))}${Number.isFinite(car.tire.mountKm) ? ' · compteur ' + car.tire.mountKm.toLocaleString('fr-FR') + ' km' : ''}</p>` : ''}
       ${cal}<div class="season-legend" aria-label="Légende des verdicts pneus">${[['lv0', 'Adapté'], ['lv1', 'Vigilance'], ['lv2', 'Risque élevé'], ['lv3', 'Déconseillé'], ['lvx', 'Données insuffisantes']].map(([lv, text]) => `<span class="${lv}"><i aria-hidden="true"></i>${text}</span>`).join('')}</div></div>`;
   }).join('');
   const form = el.querySelector('.mount-form');
@@ -3250,7 +3255,8 @@ document.addEventListener('click', async e => {
   else if (a === 'nocode') { lsSet('twrc.nocode', '1'); renderNotice(); roadSync(); const d = $('#settings'); if (d) { d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
   else if (a === 'withcode') { try { localStorage.removeItem('twrc.nocode'); } catch (err) { /* stockage */ } renderNotice(); roadSync(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   else if (a === 'bk-export') backupExport();
-  else if (a === 'view') { UI.view = ['meteo', 'tenue', 'analyse'].includes(t.dataset.v) ? t.dataset.v : 'pneus'; lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  else if (a === 'view') chooseView(t.dataset.v);
+  else if (a === 'weather-details') chooseView('meteo');
   else if (a === 'outfit-day') { UI.outfitDay = t.dataset.v === '1' ? 1 : 0; renderTenue(); }
   else if (a === 'outfit-occasion') { appAction(() => { appDay().outfitChoice = { date: addMin(placeToday() + 'T00:00', UI.outfitDay * 1440).slice(0, 10), occasion: ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing' }; }); }
   else if (a === 'rplay') radarPlay(!RADAR.play);

@@ -236,6 +236,7 @@ input[type=time], input[type=number] { font-family: var(--f-mono); }
 .mount-form .frow { margin: 0; }
 .mount-message { color: var(--risk-t); }
 .weather-link { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.weather-link h3 { font-family: var(--f-disp); font-size: 20px; letter-spacing: .05em; text-transform: uppercase; }
 .weather-link p { font-size: 13px; color: var(--fg2); }
 
 /* comparateur */

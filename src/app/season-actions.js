@@ -30,7 +30,10 @@ function mountSave() {
   S.cars[ci] = result.car;
   ['tire', 'sets', 'odo', 'plan.on'].forEach(k => markEdit(`cars.${ci}.${k}`));
   const memory = ttLoad(); delete memory[car.id]; lsSet(TT_KEY, JSON.stringify(memory));
-  MOUNT_FORM = null; saveSettings(); rebuild(); renderSettings(); renderAll();
+  MOUNT_FORM = null; saveSettings();
+  // Le débrief conserve son historique ; le bilan temporaire de l'ancien jeu ne sert plus de point de départ.
+  if (TRIPEND && (!TRIPEND.carId || TRIPEND.carId === car.id)) appAction(() => { TRIPEND = null; });
+  rebuild(); renderSettings(); renderAll();
 }
 document.addEventListener('input', e => {
   const t = e.target;

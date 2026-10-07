@@ -270,5 +270,9 @@
   "mount-cancel": {
     "suite": "e2e43-analyse.js",
     "result": "brouillon abandonné sans changement de pneus"
+  },
+  "weather-details": {
+    "suite": "e2e43-analyse.js",
+    "result": "détails météo ouverts depuis le résumé Pneus"
   }
 }
