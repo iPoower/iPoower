@@ -5,7 +5,7 @@ const Reliability = (() => {
   const KEY = 'twrc.runtime.v1';
   const clip = (value, max = 180) => String(value == null ? '' : value)
     .replace(/https?:\/\/\S+/gi, 'url')
-    .replace(/\b(?:lat(?:itude)?|lon(?:gitude)?)\s*[:=]\s*-?\d+(?:\.\d+)?/gi, '$1=coordonnée')
+    .replace(/\b(?:lat(?:itude)?|lon(?:gitude)?)\s*[:=]\s*-?\d+(?:\.\d+)?/gi, 'coordonnée')
     .replace(/-?\d{1,2}\.\d{3,}\s*[,;/]\s*-?\d{1,3}\.\d{3,}/g, 'coordonnées')
     .replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim().slice(0, max);
   const parse = raw => {
