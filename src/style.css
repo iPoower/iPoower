@@ -347,8 +347,8 @@ button, .chip, .seg button, label.thumb, summary, a.btn { touch-action: manipula
 @media (pointer: coarse) {
   input[type=text], input[type=time], input[type=date], input[type=number], input[type=search], select { font-size: 16px; min-height: 44px; }
   .btn, .chip, .seg button { min-height: 44px; }
-  .btn.sm { min-height: 40px; padding: 6px 12px; }
-  summary, details summary, .tinfo summary, details.mod > summary { min-height: 40px; }
+  .btn.sm { min-height: 44px; padding: 6px 12px; }
+  summary, details summary, .tinfo summary, details.mod > summary { min-height: 44px; }
   .sw input { inset: -8px; }
   .sw { width: 50px; height: 30px; } .sw i::after { width: 24px; height: 24px; } .sw input:checked + i::after { transform: translateX(20px); }
   .btn:active, .chip:active, .seg button:active { transform: scale(.98); }
@@ -358,7 +358,7 @@ button, .chip, .seg button, label.thumb, summary, a.btn { touch-action: manipula
 .jump::-webkit-scrollbar { display: none; }
 .jump a { flex: none; font-size: 12.5px; color: var(--fg2); text-decoration: none; border: 1px solid var(--line); border-radius: 3px; padding: 7px 10px; min-height: 36px; display: inline-flex; align-items: center; background: var(--panel); }
 .jump a:active { border-color: var(--accent); color: var(--accent); }
-@media (pointer: coarse) { .jump a { min-height: 40px; } }
+@media (pointer: coarse) { .jump a { min-height: 44px; } }
 .mod, .grid2, details.mod { scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 64px); }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }

@@ -921,9 +921,10 @@ function renderCurrent() {
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 const TIRE_ALERTS = ['press', 'age', 'mont'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
+const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 function chooseView(view) {
   UI.view = ['meteo', 'tenue', 'analyse'].includes(view) ? view : 'pneus';
-  lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: scrollBehavior() });
 }
 function renderView() {
   const vm = UI.view === 'meteo', vt = UI.view === 'tenue', va = UI.view === 'analyse';
@@ -2688,7 +2689,7 @@ function cdText(dep) {
   return { t: m < 60 ? `départ dans ${m} min` : m < 24 * 60 ? `départ dans ${Math.floor(m / 60)} h ${pad(m % 60)}` : `départ dans ${Math.floor(m / 1440)} j`, cls: '' };
 }
 const cdSpan = dep => { const c = cdText(dep); return `<span class="cd ${c.cls}" data-dep="${dep}">${c.t}</span>`; };
-setInterval(() => { document.querySelectorAll('.cd[data-dep]').forEach(el => { const c = cdText(el.dataset.dep); el.textContent = c.t; el.className = 'cd ' + c.cls; }); }, 30e3);
+setInterval(() => { if (document.hidden) return; document.querySelectorAll('.cd[data-dep]').forEach(el => { const c = cdText(el.dataset.dep); el.textContent = c.t; el.className = 'cd ' + c.cls; }); }, 30e3);
 // tendance : première prévision vue pour un trajet (sur ce téléphone uniquement), comparée à l'actuelle
 let TREND = null;
 function trendStore() { if (!TREND) { try { TREND = JSON.parse(lsGet('twrc.trend') || '{}'); } catch (e) { TREND = {}; } } return TREND; }
@@ -3352,7 +3353,7 @@ function commandFeedback(button, message, input) {
 }
 document.addEventListener('click', async e => {
   const j = e.target.closest('.jump a');
-  if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
+  if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); } return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act;
   if (a === 'day-destination') { if (t.dataset.agendaKey) appChooseAgendaDestination(t.dataset.agendaKey); else appChooseDestination(t.dataset.id || null); return; }
@@ -3373,8 +3374,8 @@ document.addEventListener('click', async e => {
   else if (a === 'return-home-undo') returnHomeUndo();
   else if (a === 'caldirect') { const k = t.dataset.k; S.calDirect = { ...(S.calDirect || {}) }; if (S.calDirect[k]) delete S.calDirect[k]; else S.calDirect[k] = 1; markEdit('calDirect'); saveSettings(); renderCal(); renderBrf(); renderTenue(); }
   else if (a === 'tip') { TIP_OFF += +t.dataset.d || 1; renderTip(); }
-  else if (a === 'nocode') { lsSet('twrc.nocode', '1'); renderNotice(); roadSync(); const d = $('#settings'); if (d) { d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
-  else if (a === 'withcode') { try { localStorage.removeItem('twrc.nocode'); } catch (err) { /* stockage */ } renderNotice(); roadSync(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  else if (a === 'nocode') { lsSet('twrc.nocode', '1'); renderNotice(); roadSync(); const d = $('#settings'); if (d) { d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); } }
+  else if (a === 'withcode') { try { localStorage.removeItem('twrc.nocode'); } catch (err) { /* stockage */ } renderNotice(); roadSync(); window.scrollTo({ top: 0, behavior: scrollBehavior() }); }
   else if (a === 'bk-export') backupExport();
   else if (a === 'view') chooseView(t.dataset.v);
   else if (a === 'brf-lab') { chooseView('analyse'); try { window.scrollTo(0, 0); } catch (e) { /* défilement indisponible */ } }
@@ -3459,8 +3460,8 @@ document.addEventListener('click', async e => {
   else if (a === 'mount-save') mountSave();
   else if (a === 'mount-cancel') { MOUNT_FORM = null; renderSeason(); }
   else if (a === 'labcar') { appSetCar(t.dataset.car); }
-  else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  else if (a === 'goset') { UI.locsOpen = false; renderLocChips(); const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
+  else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); }
+  else if (a === 'goset') { UI.locsOpen = false; renderLocChips(); const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
   else if (a === 'reset') { PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; USER_STORE.state.dayContext = {}; APP_CONTEXT.weatherPreview = null; DECISION_HISTORY.reset(); liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
   else if (a === 'geo-search') {
     const input = $('#geoQ'), q = (input.value || '').trim(), box = $('#geoHits'), gen = ++geoSearchGen; window.__hits = [];

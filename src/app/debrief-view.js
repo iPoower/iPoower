@@ -84,7 +84,7 @@ function debriefDetails(e) {
 function debriefOpen(key) {
   const e = USER_STORE.state.debrief.entries.find(e => e.key === key); if (!e) return;
   DEBRIEF_FORM = { key, conditions: e.feedback ? e.feedback.conditions.slice() : null, grip: e.feedback ? e.feedback.grip : 'unknown' };
-  renderDebrief(); $('#secDebrief').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  renderDebrief(); $('#secDebrief').scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
 }
 function debriefPick(kind, value) {
   if (!DEBRIEF_FORM) return;
