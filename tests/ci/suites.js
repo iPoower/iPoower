@@ -60,4 +60,5 @@ SUITE.push(['test_day_context.js', 'contexte du jour : destination, origine, exp
 SUITE.push(['test_debrief.js', 'débrief : arrivée unique, snapshot, observation et fiabilité locale', false],
   ['debrief-countertests.js', 'débrief : mutations de clôture, preuves, confidentialité et rétention rejetées', false],
   ['e2e56-debrief.js', 'débrief : vrais clics iPhone/PC, trois chemins d’arrivée, annulation, quatre vues et reload', true]);
+SUITE.push(['test_calib.js', 'retours terrain : observation d’abord, correction par lieu à 5 retours cohérents, contre-tests', false]);
 module.exports = { SUITE };

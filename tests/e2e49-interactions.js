@@ -36,6 +36,13 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
       });
       await check(tag + ' · retour terrain et switch alerte', async () => {
         await click('[data-act=fb]'); assert(await p.evaluate(() => S.calib.length > 0));
+        // un retour isolé est une observation : aucune correction de chaussée, nulle part
+        assert.deepEqual(await p.evaluate(() => Object.values(M).map(m => m.roadBias || 0).filter(b => b !== 0)), []);
+        for (let i = 0; i < 4; i++) await click('[data-act=fb][data-k=ice]');
+        // 5 retours « givre » cohérents au lieu affiché : correction appliquée à CE lieu seulement
+        const cal = await p.evaluate(() => ({ here: M[UI.loc] && M[UI.loc].roadBias, others: Object.keys(M).filter(id => id !== UI.loc).map(id => M[id].roadBias || 0), c: calibBias(S.calib, UI.loc) }));
+        assert.equal(cal.c.applied, true, JSON.stringify(cal)); assert(cal.here < 0, JSON.stringify(cal));
+        assert(cal.others.length && cal.others.every(b => b === 0), JSON.stringify(cal));
         const alert = p.locator('input[data-alert]').first(), name = await alert.getAttribute('data-alert'), old = await alert.isChecked(); await alert.locator('xpath=..').click();
         assert.equal(await p.evaluate(name => S.alerts[name], name), old ? 0 : 1);
       });
