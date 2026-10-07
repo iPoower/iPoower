@@ -49,7 +49,20 @@ check('stockage récupéré : l’état non durable est réécrit sans nouvelle 
   x.transaction(state => { state.place.conf = { placeId: 'work', at: t }; });
   assert.equal(x.durability().status, 'degraded'); assert.equal(data.has(x.key), false);
   fail = false; assert.equal(x.retry(), true); assert.equal(x.durability().status, 'durable');
-  assert.equal(JSON.parse(data.get(x.key)).place.conf.placeId, 'work');
+  assert(Number.isFinite(x.durability().validatedAt)); assert.equal(JSON.parse(data.get(x.key)).place.conf.placeId, 'work');
+});
+check('validation de reprise refuse un faux positif non relisible', () => {
+  const data = new Map(); let corrupt = false;
+  const x = context.store({ read: k => data.get(k) || null, write: (k, v) => {
+    if (v == null) data.delete(k);
+    else if (k === 'twrc.context.v1' && corrupt) data.set(k, '{"v":1}');
+    else data.set(k, v);
+  }, now: () => t });
+  corrupt = true;
+  x.transaction(state => { state.place.last = { placeId: 'work', at: t, source: 'manual' }; });
+  assert.equal(x.durability().status, 'durable');
+  assert.equal(x.retry(), false); assert.equal(x.durability().status, 'degraded');
+  assert.match(x.durability().error, /validation stockage/);
 });
 check('hydratation : une confirmation d’arrivée plus récente clôture un ancien départ contradictoire', () => {
   const data = new Map([['twrc.context.v1', JSON.stringify({ v: 1, place: { conf: { placeId: 'work', at: t } }, tripStart: { key: 'go', at: t - 120000 }, done: {} })]]);

@@ -57,7 +57,7 @@ check('40.9 · agenda plus récent adopté, copie plus ancienne ignorée (affich
 fault='503';await p.evaluate(()=>{lastOk=0;lastTry=0;refreshAll();});await settle(6);fault=null;
 await p.evaluate(()=>{const s=document.getElementById('settings');s.open=true;renderSettings(true);});await settle(4);
 const diag=await p.evaluate(()=>({html:document.querySelector('#diagBox').innerText,text:diagText()}));
-check('40.10 · diagnostic : réseau, météo datée avec son erreur, relais, agenda, stockage, trajet',/Réseau/.test(diag.text)&&/Météo du lieu affiché : (FRESH|AGING|STALE) · cache · .*erreur : HTTP 503/.test(diag.text)&&/Agenda : (FRESH|AGING|STALE)/.test(diag.text)&&/Stockage local : (DURABLE|DEGRADED) · \d+ clés/.test(diag.text)&&/Trajet vivant/.test(diag.text)&&/Météo du lieu/.test(diag.html),diag.text.replace(/\n/g,' | ').slice(0,400));
+check('40.10 · diagnostic : réseau, météo datée avec son erreur, relais, agenda, stockage, trajet',/Réseau/.test(diag.text)&&/Météo du lieu affiché : (FRESH|AGING|STALE) · cache · .*erreur : HTTP 503/.test(diag.text)&&/Agenda : (FRESH|AGING|STALE)/.test(diag.text)&&/Stockage local : (DURABLE|DEGRADED) · (?:validé il y a [^·]+|validation de reprise en attente) · \d+ clés/.test(diag.text)&&/Trajet vivant/.test(diag.text)&&/Météo du lieu/.test(diag.html),diag.text.replace(/\n/g,' | ').slice(0,400));
 check('40.11 · diagnostic sans coordonnée, lieu ni rendez-vous',!/\d+[.,]\d{3,}/.test(diag.text.replace(/diagnostic du \S+/,''))&&!/Maison test|Travail test|Lieu test|Assurance|Concert|Lille|Amiens/i.test(diag.text),diag.text.replace(/\n/g,' | ').slice(0,300));
 // Incident PC : HTTP 429 malgré une page à jour et un réseau disponible. La pause survit au rechargement.
 await p.setViewportSize({width:1280,height:800});fault='429';
