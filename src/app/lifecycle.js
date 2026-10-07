@@ -10,9 +10,16 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sto
 // actualisation automatique : toutes les 5 min tant que l'app est à l'écran, et dès le retour dans l'app
 // (vérification toutes les 30 s : résiste à la mise en veille des minuteurs par iOS)
 const AUTO_MS = 5 * 60e3;
+function validateRecovery(reason) {
+  const before = USER_STORE.durability(), ok = USER_STORE.retry(), after = USER_STORE.durability();
+  if (before.status === 'degraded' && ok && after.status === 'durable' && RUNTIME_RECORDER)
+    RUNTIME_RECORDER.record('storage-recovered', reason || 'automatic');
+  if (APP_CONTEXT.ready) { renderStatus(); renderDiag(); }
+  return ok;
+}
 function autoTick() {
   if (document.hidden) return;
-  if (USER_STORE.durability().status === 'degraded') USER_STORE.retry();
+  if (USER_STORE.durability().status === 'degraded') validateRecovery('retry périodique');
   if (navigator.onLine !== false && Date.now() - VER_CHECK_AT >= AUTO_MS) loadVersion(true); else enforceVersionCoherence();
   if (!DEMO.on && expireLive()) { rebuild(); renderAll(); }   // reprise : la donnée vieillie est requalifiée avant toute requête
   if (DEMO.on || busy || (navigator.onLine === false)) return;
@@ -23,7 +30,7 @@ setInterval(autoTick, 30e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });
 function networkChanged() {
   if (offlineNow()) { markOfflineCache(); rebuild(); renderAll(); loadCalendar(); }
-  else { USER_STORE.retry(); renderStatus(); loadVersion(true); refreshAll(); }
+  else { validateRecovery('retour réseau'); loadVersion(true); refreshAll(); }
 }
 window.addEventListener('offline', networkChanged);
 window.addEventListener('online', networkChanged);
