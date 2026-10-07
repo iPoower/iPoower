@@ -1378,11 +1378,13 @@ async function backupImport(f) {
     const key = await bkKey(pass, b64(o.s), o.it || 600000, 'decrypt');
     data = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(o.i) }, key, b64(o.c))));
   } catch (e) { bkMsg('Code incorrect : entre le code utilisé lors de la sauvegarde.'); return; }
-  const plan = Backup.restorePlan(data, Date.now());
+  // le journal des trajets de ce téléphone (ressenti conducteur) est fusionné, jamais effacé par l'import
+  const plan = Backup.restorePlan(data, Date.now(), { context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL });
   if (!plan) { bkMsg('Sauvegarde incomplète.'); return; }
   const when = new Date(data.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const version = data.v >= 2 ? 'V2' : 'V1';
-  if (!confirm(`Remplacer les données de ce téléphone par la sauvegarde ${version} du ${when} ?`)) { bkMsg('Import annulé.'); return; }
+  const kept = plan.kept ? `\n\nJournal des trajets conservé : ${plan.kept} trajet${plan.kept > 1 ? 's' : ''} de ce téléphone ${data.v >= 2 ? 'ajouté' : 'gardé'}${plan.kept > 1 ? 's' : ''}.` : '';
+  if (!confirm(`Remplacer les réglages de ce téléphone par la sauvegarde ${version} du ${when} ?${kept}`)) { bkMsg('Import annulé.'); return; }
   backupApplyPlan(plan);
   if (window.TWRC_PRESET_V) lsSet('twrc.presetv', window.TWRC_PRESET_V);
   lsSet('twrc.lastbackup', String(data.at).slice(0, 10));

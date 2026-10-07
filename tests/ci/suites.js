@@ -63,5 +63,6 @@ SUITE.push(['test_debrief.js', 'débrief : arrivée unique, snapshot, observatio
 SUITE.push(['test_calib.js', 'retours terrain : observation d’abord, correction par lieu à 5 retours cohérents, contre-tests', false]);
 SUITE.push(['e2e57-place-compact.js', 'lieu confirmé compact : Modifier, GPS refusé, départ, quatre vues, fenêtres et hauteur iPhone/PC', true]);
 SUITE.push(['test_reliability.js', 'fiabilité : journal runtime privé, anti-boucle PWA et cohérence de version', false]);
-SUITE.push(['test_backup.js', 'sauvegarde V2 : contexte durable, confidentialité et compatibilité V1', false]);
+SUITE.push(['test_backup.js', 'sauvegarde V2 : contexte durable, confidentialité, compatibilité V1 et journal des trajets jamais effacé', false],
+  ['e2e58-import-journal.js', 'import d’une sauvegarde : journal des trajets conservé, trajet clos non redemandé, iPhone/PC et reload', true]);
 module.exports = { SUITE };

@@ -20,11 +20,22 @@ Les températures prévues et celles calculées à l'arrivée restent deux estim
 
 `twrc.context.v1.debrief` est le document canonique partagé : snapshot actif et 60 trajets maximum sur 90 jours. Les champs sont sélectionnés explicitement. Le journal ne contient aucune coordonnée, trace GPS ni payload fournisseur et n'ajoute aucun envoi réseau. Les noms des trajets et des lieux restent locaux. Le miroir local `twrc.debrief.v1`, écrit après le document canonique, permet la récupération si une ancienne page ignore le nouveau champ ; il ne prévaut jamais sur un champ canonique présent, même vide. Le bouton « Effacer le journal » demande une confirmation et efface les entrées locales ; le snapshot d'un trajet encore en cours est conservé pour son arrivée.
 
+## Import d'une sauvegarde : le journal n'est jamais effacé
+
+Le journal est le suivi humain des trajets (ressenti du conducteur) : un import ne l'efface jamais.
+
+- **Sauvegarde V2** : le journal de la sauvegarde et celui du téléphone sont fusionnés par trajet. Un retour renseigné l'emporte sur une entrée sans retour ; entre deux retours, le plus récent l'emporte. Les trajets clos (`done`) et les annulations sont réunis.
+- **Sauvegarde V1** (réglages seuls) : le journal, les trajets clos, la dernière arrivée, les annulations et la mémoire thermique du téléphone sont gardés. L'état propre à l'appareil (GPS, lieu, contexte du jour, trajet en cours) repart de zéro.
+- La confirmation d'import annonce le nombre de trajets du téléphone conservés.
+
+Incident du 7 octobre 2026 : un import V1 vidait tout le contexte, si bien que le débrief du matin, déjà donné, était redemandé. `test_backup.js` et `e2e58-import-journal.js` rejouent ce cas.
+
 ## Vérifications
 
 - `test_debrief.js` : invariants purs, fidélité des snapshots, dédoublonnage, écarts, fraîcheur, états thermiques 3/4, confidentialité, rétention, correction et annulation d'arrivée.
 - `debrief-countertests.js` : les mêmes invariants doivent rejeter les implémentations volontairement erronées.
 - `e2e56-debrief.js` : vrais clics/taps sur profils fictifs PC et viewport iPhone, trois chemins d'arrivée, GPS, annulation, quatre vues, modification, effacement et rechargement.
 - `e2e54-context-sw.js` : fermeture puis réouverture hors ligne avec un vrai Service Worker, observation et prévision conservées.
+- `e2e58-import-journal.js` : vrai fichier chiffré V1 importé sur iPhone et PC, rechargement, réponse du matin conservée et aucun débrief redemandé.
 
 Ces tests ne certifient pas Safari ni une PWA sur un iPhone physique. Le protocole appareil est dans [debrief-iphone-check.md](debrief-iphone-check.md).
