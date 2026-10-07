@@ -1342,11 +1342,11 @@ async function backupExport() {
   if (!crypto || !crypto.subtle) { bkMsg('Chiffrement indisponible sur ce navigateur.'); return; }
   bkMsg('Chiffrement…');
   try {
-    const data = { app: 'twrc', v: 1, at: new Date().toISOString(), settings: S, view: UI.view };
+    const data = Backup.make({ settings: S, view: UI.view, context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL, at: new Date().toISOString() });
     const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)), it = 600000;
     const key = await bkKey(pass, salt, it, 'encrypt');
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(data))));
-    const txt = JSON.stringify({ app: 'twrc-backup', v: 1, kdf: 'PBKDF2-SHA256', it, s: b64e(salt), i: b64e(iv), c: b64e(ct) });
+    const txt = JSON.stringify({ app: 'twrc-backup', v: Backup.VERSION, kdf: 'PBKDF2-SHA256', it, s: b64e(salt), i: b64e(iv), c: b64e(ct) });
     const day = new Date().toISOString().slice(0, 10), name = `race-control-sauvegarde-${day}.json`;
     const file = new File([txt], name, { type: 'application/json' });
     let done = false;
@@ -1356,9 +1356,16 @@ async function backupExport() {
     }
     if (!done) { const u = URL.createObjectURL(file), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
     lsSet('twrc.lastbackup', day);
-    bkMsg(`✅ Sauvegarde prête (${Math.max(1, Math.round(txt.length / 1024))} Ko). Range-la dans Fichiers ou iCloud Drive.`);
+    bkMsg(`✅ Sauvegarde V2 prête (${Math.max(1, Math.round(txt.length / 1024))} Ko) · contexte durable inclus.`);
     const p = $('#bkSec .sub b'); if (p) p.textContent = fmtDay(day);
   } catch (e) { bkMsg('Échec de la sauvegarde : ' + (e.message || e)); }
+}
+function backupApplyPlan(plan) {
+  const keys = [];
+  try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch (e) { /* stockage indisponible */ }
+  keys.filter(Boolean).filter(k => plan.removePrefixes.some(p => k.startsWith(p))).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  plan.remove.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  Object.entries(plan.writes).forEach(([k, v]) => lsSet(k, v));
 }
 async function backupImport(f) {
   bkMsg('Lecture du fichier…');
@@ -1371,14 +1378,15 @@ async function backupImport(f) {
     const key = await bkKey(pass, b64(o.s), o.it || 600000, 'decrypt');
     data = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(o.i) }, key, b64(o.c))));
   } catch (e) { bkMsg('Code incorrect : entre le code utilisé lors de la sauvegarde.'); return; }
-  if (!data || data.app !== 'twrc' || !data.settings) { bkMsg('Sauvegarde incomplète.'); return; }
+  const plan = Backup.restorePlan(data, Date.now());
+  if (!plan) { bkMsg('Sauvegarde incomplète.'); return; }
   const when = new Date(data.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  if (!confirm(`Remplacer les données de ce téléphone par la sauvegarde du ${when} ?`)) { bkMsg('Import annulé.'); return; }
-  lsSet('twrc.settings.v1', JSON.stringify({ ...data.settings, configured: 1 }));
+  const version = data.v >= 2 ? 'V2' : 'V1';
+  if (!confirm(`Remplacer les données de ce téléphone par la sauvegarde ${version} du ${when} ?`)) { bkMsg('Import annulé.'); return; }
+  backupApplyPlan(plan);
   if (window.TWRC_PRESET_V) lsSet('twrc.presetv', window.TWRC_PRESET_V);
-  if (data.view) lsSet('twrc.view', data.view);
   lsSet('twrc.lastbackup', String(data.at).slice(0, 10));
-  bkMsg('✅ Sauvegarde restaurée. Redémarrage…');
+  bkMsg(`✅ Sauvegarde ${version} restaurée. Redémarrage…`);
   setTimeout(() => location.reload(), 600);
 }
 
