@@ -221,7 +221,7 @@ function markOfflineCache() {
 applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
   view: ['meteo', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
-  outfitOccasion: 'outing', placeExpanded: false };
+  outfitOccasion: 'outing', placeExpanded: null };
 
 const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
   read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
@@ -282,14 +282,14 @@ function geoFailure(err) {
     : 'Localisation indisponible sur ce navigateur ou dans ce contexte.';
   GEO.status = status; GEO.error = { code: status, message: msg, at: Date.now() };
   if (code === 1) { GEO.permission = 'refusée'; if (gpsWatch != null) { try { navigator.geolocation.clearWatch(gpsWatch); } catch (e) { /* arrêté */ } gpsWatch = null; gpsWatchGen++; } }
-  alertLoc(msg); renderDiag();
+  alertLoc(msg); renderPlace(); renderDiag();
 }
 function readGeoPermission() {
   if (!navigator.permissions || !navigator.permissions.query || geoPermission) return;
   try {
   navigator.permissions.query({ name: 'geolocation' }).then(p => {
     geoPermission = p;
-    const update = () => { GEO.permission = p.state === 'granted' ? 'autorisée' : p.state === 'denied' ? 'refusée' : GEO.raw ? 'autorisée' : 'à demander'; renderDiag(); };
+    const update = () => { GEO.permission = p.state === 'granted' ? 'autorisée' : p.state === 'denied' ? 'refusée' : GEO.raw ? 'autorisée' : 'à demander'; renderPlace(); renderDiag(); };
     update(); p.onchange = () => { update(); if (p.state === 'denied') { stopGps(); geoFailure({ code: 1 }); } else if (p.state === 'granted' && S.gpsAuto) resumeGps(); };
   }).catch(() => { /* Safari : Permissions API optionnelle ; le résultat de la demande fait foi. */ });
   } catch (e) { /* Ancien navigateur : query peut aussi lever une exception synchrone. */ }
@@ -423,7 +423,7 @@ function placeConfirm(placeId, how) {
   return appAction(() => {
   const p = placeList().find(x => x.id === placeId); if (!p) return;
   const now = Date.now();
-  UI.placeExpanded = false;
+  UI.placeExpanded = null;
   const previous = placeNow().place;
   PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false;
   PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' };
@@ -453,7 +453,7 @@ function placeConfirm(placeId, how) {
   });
 }
 function placeLeave() {
-  UI.placeExpanded = false;
+  UI.placeExpanded = null;
   return appAction(() => {
   if (!PLACE.conf) return;
   if (!appDay().nextDestination && !BRF_SHOWN.some(t => t.src === 'cal' && (appTripPlace(t, 'from') || {}).id === PLACE.conf.placeId && t.dep.slice(0, 10) === placeToday())) appChooseDestination(null, 'pending');
@@ -468,14 +468,28 @@ function placeLeave() {
   APP_CONTEXT.weatherPreview = null;
   });
 }
+// Le repli est dérivé du contexte canonique. Seule l'ouverture demandée est locale à l'UI ;
+// sa clé de confirmation la referme aussi après une arrivée ou une confirmation dans une autre fenêtre.
+function placeDisclosure(c) {
+  const destination = appDay().nextDestination;
+  const compact = c.source === 'manual' && !!c.confirmed && !!c.place && !PLACE_PENDING
+    && LIVE.phase !== 'active' && !USER_STORE.state.lastDeparture && !(destination && !destination.placeId);
+  const key = c.confirmed ? c.confirmed.placeId + '|' + c.confirmed.at : null;
+  return { compact, key, expanded: !compact || UI.placeExpanded === key };
+}
 function renderPlace() {
   const el = $('#placeBar'); if (!el) return;
   const c = placeNow(), K = PLACE_KIND, pl = placeList(), work = pl.find(p => p.kind === 'work'), home = pl.find(p => p.kind === 'home');
   const confirm = (p, arrival = false) => `<button class="btn${arrival ? ' pri' : ''} sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="${arrival ? 'arrival' : 'manual'}"><span aria-hidden="true">${arrival ? '✅' : (K[p.kind] || K.custom).icon}</span><span class="pl-copy"><span>${esc(arrival ? (K[p.kind] || K.custom).arrive : (K[p.kind] || K.custom).already)}</span><small>${esc(p.name)}</small></span></button>`;
+  const { compact, expanded } = placeDisclosure(c);
+  const details = $('#locChips'); if (details) details.hidden = compact && !expanded;
   let h;
   if (c.source === 'manual') {
-    const k = K[c.place.kind] || K.custom, expanded = !!UI.placeExpanded;
-    h = `<div class="place on compact${expanded ? ' expanded' : ''}"><span class="pl-info" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${expanded && c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}</span><button class="btn sm pl-toggle" data-act="place-toggle" aria-expanded="${expanded}" aria-controls="placeActions"><span>${expanded ? 'Réduire' : 'Modifier'}</span><span aria-hidden="true">${expanded ? '▴' : '▾'}</span></button>${expanded ? `<span class="pl-act" id="placeActions"><button class="btn sm" data-act="place-leave"><span aria-hidden="true">🚗</span><span>${esc(k.leave)}</span></button>${pl.filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</span>` : ''}</div>`;
+    const k = K[c.place.kind] || K.custom, weather = allLocs().find(p => p.id === UI.loc);
+    const weatherLabel = weather && weather.id === c.place.id ? '🌦 météo locale' : weather ? '🌦 Météo : ' + weather.name : '🌦 Météo à choisir';
+    const gpsUnavailable = GEO.permission === 'refusée' || !!GEO.error;
+    const meta = expanded ? c.badge : 'Confirmé ' + hmLocal(c.confirmed.at);
+    h = `<div class="place on${compact ? ' compact' : ''}${expanded ? ' expanded' : ''}"><span class="pl-info" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span class="pl-meta" title="Source : confirmation utilisateur">${esc(meta)} · ${esc(weatherLabel)}${gpsUnavailable ? ' · <span class="pl-gps">📍 GPS indisponible</span>' : ''}</span>${expanded && c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}</span><span class="pl-main"><button class="btn sm" data-act="place-leave"><span aria-hidden="true">🚗</span><span>${esc(k.leave)}</span></button>${compact ? `<button class="btn sm pl-toggle" data-act="place-toggle" aria-expanded="${expanded}" aria-controls="placeActions locChips"><span>${expanded ? 'Réduire' : 'Modifier'}</span><span aria-hidden="true">${expanded ? '▴' : '▾'}</span></button>` : ''}</span><span class="pl-act" id="placeActions" ${expanded ? '' : 'hidden'}>${pl.filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</span></div>`;
   } else {
     const arr = [work, home].filter(Boolean).map(p => ({ p, t: placeArrivalTrip(p.id) })).find(x => x.t);
     const btns = pl.filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
@@ -723,7 +737,7 @@ function renderLocChips() {
   el.classList.toggle('has-gps', !!GPS);
   el.innerHTML = gpsChip +
     `<button class="chip loc-toggle${sel ? ' on' : ''}" data-act="locs-toggle" aria-label="Mes lieux météo${sel ? ' · ' + esc(sel.name) : ''}" aria-controls="locChoices" aria-expanded="${!!UI.locsOpen}"><span class="loc-copy"><small>${sel ? 'Météo consultée' : 'Météo des lieux'}</small><span>${sel ? esc(sel.name) : 'Mes lieux'}</span></span><span aria-hidden="true">${UI.locsOpen ? '▴' : '▾'}</span></button>` + refresh +
-    `<div id="locChoices" class="locs-more" ${UI.locsOpen ? '' : 'hidden'}><div class="loc-grid">${chips}</div><button class="chip loc-manage" data-act="goset">Gérer mes lieux</button></div><span class="sub" id="locMsg" hidden></span>`;
+    `<div id="locChoices" class="locs-more" ${UI.locsOpen ? '' : 'hidden'}><div class="loc-grid">${chips}</div><button class="chip loc-manage" data-act="goset">Gérer mes lieux</button></div><span class="sub" id="locMsg" ${GEO.error ? '' : 'hidden'}>${GEO.error ? esc(GEO.error.message) : ''}</span>`;
   renderPlace();
 }
 function renderSrc() {
@@ -3314,7 +3328,7 @@ document.addEventListener('click', async e => {
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
   else if (a === 'trip-start') liveStart(t.dataset.key);
   else if (a === 'place-confirm') placeConfirm(t.dataset.place, t.dataset.how);
-  else if (a === 'place-toggle') { UI.placeExpanded = !UI.placeExpanded; renderPlace(); }
+  else if (a === 'place-toggle') { const d = placeDisclosure(placeNow()); UI.placeExpanded = d.expanded ? null : d.key; renderPlace(); }
   else if (a === 'place-leave') placeLeave();
   else if (a === 'ev-report') reportAdd(t.dataset.k);
   else if (a === 'ev-flag') { S.flags = S.flags || {}; S.flags.weatherEvidenceV2 = t.dataset.v; saveSettings(); renderSettings(true); renderAll(); }

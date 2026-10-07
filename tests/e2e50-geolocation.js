@@ -114,7 +114,9 @@ async function tripCycle(browser, iphone) {
       await check(tag + ' · override Je suis chez moi conservé et compact', async () => {
         const x = await state(p); assert.equal(x.context.source, 'manual'); assert.equal(x.context.place.id, 'home'); assert(!/VPN/.test(await p.locator('#placeBar').innerText()));
         assert.equal(await p.locator('#placeBar .place.on.compact').count(), 1);
-        assert.equal(await p.locator('#placeBar [data-act=place-leave]').count(), 0);
+        assert.equal(await p.locator('#placeBar [data-act=place-leave]').count(), 1);
+        assert(await p.locator('#placeBar [data-act=place-leave]').isVisible());
+        assert(!await p.locator('#locChips').isVisible());
         assert.equal(await p.locator('#placeBar [data-act=place-toggle]').getAttribute('aria-expanded'), 'false');
       });
       await p.locator('#placeBar [data-act=place-toggle]').click(); await s.settle();

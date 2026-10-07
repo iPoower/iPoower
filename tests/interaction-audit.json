@@ -276,7 +276,7 @@
     "result": "détails météo ouverts depuis le résumé Pneus"
   },
   "place-toggle": {
-    "suite": "e2e50-geolocation.js",
-    "result": "état confirmé compact, actions déployées uniquement sur demande"
+    "suite": "e2e57-place-compact.js",
+    "result": "lieu confirmé compact, départ direct, corrections et météo déployées par Modifier, fermeture après confirmation"
   }
 }

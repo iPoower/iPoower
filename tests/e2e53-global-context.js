@@ -3,6 +3,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { session, BR, errors, U } = require('./lib/context-session');
+const { revealPlaceControls } = require('./lib/place-controls');
 let n = 0, stage = 'initialisation';
 let scope = { device: '', profil: '', phase: 'initialisation' };
 async function check(label, fn) {
@@ -22,6 +23,7 @@ const state = p => p.evaluate(() => {
     stored: JSON.parse(localStorage.getItem(USER_STORE.key)), updatedAt: c.updatedAt, revision: c.revision };
 });
 async function click(p, selector) {
+  await revealPlaceControls(p, selector);
   const element = p.locator(selector).first();
   try { await element.click(); }
   catch (e) {
