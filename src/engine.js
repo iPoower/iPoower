@@ -444,20 +444,25 @@ function seasonAnalysis(model, car) {
     level = 0; title = '4 saisons 3PMSF : polyvalents';
     text = firstSevere ? 'Conditions hivernales annoncées : le 4 saisons reste utilisable mais n’égale pas un excellent pneu hiver.' : 'Aucune contrainte particulière détectée. En été, ils ne donnent pas les performances maximales d’un pneu été sportif.';
   }
-  // compte à rebours + période froide avant montage
+  // compte à rebours + période froide avant montage.
+  // Un rendez-vous confirmé est un fait plus fort que l'estimation ; l'ETA fournisseur
+  // reste informative et ne pilote jamais seule le verdict météo.
   let countdown = null, coldBefore = null;
   const plan = car.plan;
   if (plan && plan.on && type !== 'winter') {
-    if (plan.date) {
-      const n = dayDiff(model.nowStr.slice(0, 10), plan.date);
-      countdown = { n, date: plan.date };
-      const before = di.filter(d => d.date < plan.date);
+    const confirmed = !!plan.appointmentConfirmed && !!plan.appointmentDate;
+    const mountDate = confirmed ? plan.appointmentDate : plan.date;
+    if (mountDate) {
+      const n = dayDiff(model.nowStr.slice(0, 10), mountDate);
+      const before = di.filter(d => d.date < mountDate);
+      const covered = Math.max(0, Math.min(Math.max(0, n), before.length));
+      const remaining = Math.max(0, n - covered);
+      countdown = { n, date: mountDate, kind: confirmed ? 'confirmed' : 'estimated', weatherCoveredDays: covered, weatherRemainingDays: remaining, partial: remaining > 0 };
       const ev = before.filter(d => severeDay(d) || (d.tmin != null && d.tmin <= 2));
       const sev = before.find(severeDay);
       const cold2 = before.filter(d => d.tmin != null && d.tmin <= 2).length;
-      if (sev || cold2 >= 2) coldBefore = { first: sev || ev[0], severe: !!sev, cold2, partial: dayDiff(model.nowStr.slice(0, 10), plan.date) > 14 };
-      countdown.partial = n > 14;
-    } else countdown = { n: null };
+      if (sev || cold2 >= 2) coldBefore = { first: sev || ev[0], severe: !!sev, cold2, partial: remaining > 0 };
+    } else countdown = { n: null, kind: confirmed ? 'confirmed' : 'estimated', weatherCoveredDays: 0, weatherRemainingDays: 0, partial: false };
   }
   return { level, title, text, days: di, countdown, coldBefore };
 }
