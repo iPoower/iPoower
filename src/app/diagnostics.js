@@ -4,7 +4,7 @@ const freshState = ageMin => ageMin == null || !Number.isFinite(ageMin) ? 'UNAVA
 const ageOf = t => { const v = typeof t === 'number' ? t : Date.parse(t || ''); return Number.isFinite(v) ? Math.max(0, (Date.now() - v) / 60000) : null; };
 const ageTxt = m => m == null ? '—' : m < 1 ? '< 1 min' : m < 90 ? Math.round(m) + ' min' : (m / 60).toFixed(1).replace('.', ',') + ' h';
 const noUrl = t => String(t || '').replace(/https?:\S+/g, 'url').slice(0, 120);
-let SWV = null;
+let SWV = null, VER_CHECK_AT = 0, VERSION_COHERENCE = 'unknown';
 async function loadSwVersion() {
   try {
     const ctl = navigator.serviceWorker && navigator.serviceWorker.controller;
@@ -30,7 +30,9 @@ function diagRows(forCopy) {
     ['API météo', (() => { const p = WEATHER_REQUESTS.state(); return p.until > Date.now() ? `HTTP 429 · pause jusqu’à ${hmLocal(p.until)} · ${p.kind}` : `disponible · ${p.active}/2 requêtes actives · ${p.queued} en attente`; })()],
     ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
     ['Agenda', CAL ? `${freshState(calAge)} · relais il y a ${ageTxt(calAge)} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}` : CALDONE ? 'indisponible' : 'chargement…'],
-    ['Stockage local', `${n} clés · ${Math.round(bytes / 1024)} Ko`],
+    ['Stockage local', (() => { const d = USER_STORE.durability(); return `${d.status === 'durable' ? 'DURABLE' : 'DEGRADED'} · ${n} clés · ${Math.round(bytes / 1024)} Ko${d.error ? ' · ' + noUrl(d.error) : ''}`; })()],
+    ['Cohérence production', VERSION_COHERENCE === 'current' ? 'À JOUR · build chargé = build publié' : VERSION_COHERENCE === 'deferred' ? 'MISE À JOUR DIFFÉRÉE · trajet en cours' : VERSION_COHERENCE === 'reload' ? 'MISE À JOUR · rechargement demandé' : VERSION_COHERENCE === 'stale' ? 'ANCIEN SHELL · rechargement déjà tenté' : 'inconnue'],
+    ['Erreurs runtime', (() => { const c = RUNTIME_RECORDER ? RUNTIME_RECORDER.count() : 0, last = RUNTIME_RECORDER && RUNTIME_RECORDER.last(); return c ? `${c} · dernière : ${ageTxt(ageOf(last.at))} · ${last.kind} · ${noUrl(last.message)}` : '0 depuis le démarrage'; })()],
     ...placeDiagRows(forCopy),
     ...(() => { const car = labCar(), st = car ? tyreStateOf(car) : null; if (!st) return [['Pneus (Analyse)', 'aucun véhicule']];
       const ax = a => `${a.model || 'modèle ?'} · ${a.size || 'dimension ?'} · DOT ${a.dot || '?'} · ${a.tread != null ? a.tread + ' mm' : 'profondeur ?'} · ${a.press != null ? a.press + ' bar' : 'pression ?'}`;
@@ -47,8 +49,23 @@ function renderDiag() { const el = $('#diagBox'); if (el && $('#settings') && $(
 // version en production (version.json écrit par le déploiement automatique : n° de mise en production, date, commit)
 let VER = null;
 const verLine = () => VER ? `En ligne : <b>prod-${esc(String(VER.run))}</b> du ${new Date(VER.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · commit <span class="mono">${esc(String(VER.sha).slice(0, 7))}</span> · ${VER.rollback ? '<b>retour arrière</b> après tests verts' : 'déployée après tests verts'}.` : 'Version de production : information indisponible.';
-async function loadVersion() {
-  if (VER || loadVersion.busy) return; loadVersion.busy = 1;
-  try { const v = await fetchJSON('version.json?t=' + Date.now(), 6000); if (v && v.run && v.sha && v.at) { VER = v; const e = $('#verLine'); if (e) e.innerHTML = verLine(); } } catch (e) { /* pas encore publiée */ }
+function versionTravelling() { return !!(APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.status === 'travel' || LIVE.phase === 'active'); }
+async function enforceVersionCoherence() {
+  if (!VER) { VERSION_COHERENCE = 'unknown'; return VERSION_COHERENCE; }
+  const target = VER.build || null, marker = target ? 'twrc.reload.' + target : '';
+  let attempted = false; try { attempted = !!marker && sessionStorage.getItem(marker) === '1'; } catch (e) { /* sessionStorage optionnel */ }
+  VERSION_COHERENCE = Reliability.versionDecision({ loaded: window.TWRC_BUILD, published: target, travelling: versionTravelling(), attempted });
+  if (VERSION_COHERENCE !== 'reload') { renderDiag(); return VERSION_COHERENCE; }
+  try { if (marker) sessionStorage.setItem(marker, '1'); } catch (e) { /* anti-boucle best effort */ }
+  try { const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); } catch (e) { if (RUNTIME_RECORDER) RUNTIME_RECORDER.record('service-worker', e); }
+  setTimeout(() => location.reload(), 50);
+  renderDiag(); return VERSION_COHERENCE;
+}
+async function loadVersion(force = false) {
+  if (!force && VER || loadVersion.busy) return; loadVersion.busy = 1; VER_CHECK_AT = Date.now();
+  try {
+    const v = await fetchJSON('version.json?t=' + Date.now(), 6000);
+    if (v && v.run && v.sha && v.at) { VER = v; const e = $('#verLine'); if (e) e.innerHTML = verLine(); await enforceVersionCoherence(); }
+  } catch (e) { /* pas encore publiée / hors ligne */ }
   loadVersion.busy = 0;
 }
