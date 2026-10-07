@@ -50,11 +50,18 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
   await p.goto(U); await p.clock.runFor(2500);
   if (unlock) { S.phase = 'déverrouillage'; await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); }
   const settle = async (n = 14) => { for (let i = 0; i < n; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } };
+  const weatherIdle = async () => {
+    for (let i = 0; i < 40; i++) {
+      await settle(1);
+      if (await p.evaluate(() => { const r = WEATHER_REQUESTS.state(); return !busy && r.active === 0 && r.queued === 0; })) return;
+    }
+    throw new Error('Actualisation météo fictive encore en cours');
+  };
   await settle();
   await p.evaluate(() => window.scrollTo(0, 0));
   S.phase = 'parcours';
   const close = () => { S.phase = 'fermeture'; return c.close(); };
-  return { p, c, S, settle, T0, close };
+  return { p, c, S, settle, weatherIdle, T0, close };
 }
 const lab = p => p.evaluate(() => {
   document.querySelectorAll('#secLab details[data-k=spec], #secLab details[data-k=conf]').forEach(d => { d.open = true; });
@@ -223,6 +230,9 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
       check('10 · ' + dev + ' · confirmation offline : bon jeu hiver, archive été, date réelle, compteur, pression non inventée', mounted.type === 'winter' && mounted.model === 'UltraGrip Performance 3' && mounted.date === '2026-10-05' && mounted.km === 24567 && mounted.pressure === '' && mounted.tread === 7.2 && mounted.summerTread === 6.4 && mounted.summerPressure === '2026-10-01' && mounted.plan === 0 && mounted.thermalGone && mounted.shared === 'winter' && /UltraGrip Performance 3/.test(mounted.title), JSON.stringify(mounted));
       check('10 · ' + dev + ' · montage enregistré visible, formulaire et compte à rebours retirés', /Montage enregistré/.test(await s.p.locator('#secSeason').innerText()) && !(await s.p.locator('.mount-form').count()) && !(await s.p.locator('[data-act=mount-open][data-car=carA]').count()));
       s.S.phase = 'retour en ligne'; await s.c.setOffline(false);
+      // Le retour en ligne relance les prévisions. Vérifier ensuite la persistance, sans interrompre
+      // les réponses routées : WebKit signale leur interruption comme une erreur CORS de fetch.
+      await s.p.evaluate(() => window.dispatchEvent(new Event('online'))); await s.weatherIdle();
       s.S.phase = 'rechargement'; await s.p.reload(); await s.settle(8); s.S.phase = 'après rechargement';
       check('10 · ' + dev + ' · montage et archive conservés au rechargement', await s.p.evaluate(() => S.cars[0].tire.type === 'winter' && S.cars[0].tire.mountKm === 24567 && S.cars[0].sets.summer.tread === 6.4 && S.cars[0].plan.on === 0));
       await s.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await s.settle(1);
