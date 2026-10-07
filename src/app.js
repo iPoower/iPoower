@@ -231,7 +231,7 @@ function markOfflineCache() {
 }
 applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
-  view: ['meteo', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
+  view: ['meteo', 'trajet', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus',   // dernier onglet ouvert, TRAJET compris (reprise hors connexion) outfitDay: 0, labCar: null,
   outfitOccasion: 'outing', placeExpanded: null };
 const DECISION_HISTORY = Decision.history(typeof localStorage !== 'undefined' ? localStorage : null);
 let DECISION_LAST = null;
