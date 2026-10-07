@@ -4,7 +4,7 @@ const source = fs.readFileSync(path.join(__dirname, '../src/reliability.js'), 'u
 const ctx = { console, Date, JSON, String }; vm.createContext(ctx); vm.runInContext(source + ';this.R=Reliability;', ctx);
 const R = ctx.R; let n = 0; const check = (label, fn) => { fn(); n++; console.log('✅ ' + label); };
 check('version identique : aucune action', () => assert.equal(R.versionDecision({ loaded: 'a', published: 'a' }), 'current'));
-check('version différente pendant trajet : rechargement différé', () => assert.equal(R.versionDecision({ loaded: 'a', published: 'b', travelling: true }), 'deferred'));
+check('version différente pendant trajet : rechargement différé', () => assert.equal(R.versionDecision({ loaded: 'a', published: 'b', travelling: true }), 'deferred'));\ncheck('version différente hors ligne : aucun rechargement', () => assert.equal(R.versionDecision({ loaded: 'a', published: 'b', online: false }), 'offline'));
 check('version différente au repos : un rechargement autorisé', () => assert.equal(R.versionDecision({ loaded: 'a', published: 'b' }), 'reload'));
 check('même cible déjà tentée : aucune boucle de rechargement', () => assert.equal(R.versionDecision({ loaded: 'a', published: 'b', attempted: true }), 'stale'));
 check('métadonnées anciennes sans build : garde neutre', () => assert.equal(R.versionDecision({ loaded: 'a', published: null }), 'unknown'));
