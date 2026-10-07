@@ -44,9 +44,10 @@ const Reliability = (() => {
       }
     };
   }
-  function versionDecision({ loaded, published, travelling = false, attempted = false } = {}) {
+  function versionDecision({ loaded, published, travelling = false, attempted = false, online = true } = {}) {
     if (!loaded || !published) return 'unknown';
     if (loaded === published) return 'current';
+    if (!online) return 'offline';
     if (travelling) return 'deferred';
     return attempted ? 'stale' : 'reload';
   }
