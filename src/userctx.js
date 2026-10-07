@@ -140,6 +140,9 @@ function userContextStore({ read, write, now = () => Date.now() }) {
     depth++; try { return fn(state); } finally { depth--; if (!depth) flush(); }
   }
   function receive(value) {
+    // Une fenêtre qui possède une modification non durable ne l'écrase jamais
+    // par un événement storage concurrent : elle retente d'abord sa propre vérité.
+    if (durability.status === 'degraded') return false;
     let incoming; try { incoming = JSON.parse(value || 'null'); } catch (e) { return false; }
     if (!incoming || incoming.v !== 1) return false;
     // Le dernier document réellement stocké gagne, même avec deux clics dans
