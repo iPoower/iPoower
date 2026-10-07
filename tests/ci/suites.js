@@ -64,4 +64,5 @@ SUITE.push(['test_calib.js', 'retours terrain : observation d’abord, correctio
 SUITE.push(['e2e57-place-compact.js', 'lieu confirmé compact : Modifier, GPS refusé, départ, quatre vues, fenêtres et hauteur iPhone/PC', true]);
 SUITE.push(['test_reliability.js', 'fiabilité : journal runtime privé, anti-boucle PWA et cohérence de version', false]);
 SUITE.push(['test_backup.js', 'sauvegarde V2 : contexte durable, confidentialité et compatibilité V1', false]);
+SUITE.push(['test_decision.js', 'synthèse : décision, confiance qualitative et changements significatifs', false]);
 module.exports = { SUITE };

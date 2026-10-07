@@ -143,7 +143,7 @@ const Backup = (() => {
 
   const CONTEXT_KEYS = ['twrc.context.v1', 'twrc.gps', 'twrc.place.v1', 'twrc.tripstart.v1', 'twrc.tripend.v1', 'twrc.returnhome.v1', 'twrc.tripdone', 'twrc.debrief.v1'];
   const DURABLE_KEYS = ['twrc.tyretherm.v1', 'twrc.tripcancel'];
-  const DERIVED_KEYS = ['twrc.trend', 'twrc.tripmap', 'twrc.croute', 'twrc.calendar.sealed.v1', 'twrc.weather.limit.v1'];
+  const DERIVED_KEYS = ['twrc.trend', 'twrc.tripmap', 'twrc.croute', 'twrc.calendar.sealed.v1', 'twrc.weather.limit.v1', 'twrc.decision.latest.v1'];
   const DERIVED_PREFIXES = ['twrc.cache.', 'twrc.croute.'];
 
   function restorePlan(data, now = Date.now()) {
