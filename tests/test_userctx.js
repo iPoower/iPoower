@@ -41,6 +41,15 @@ check('JSON corrompu, GPS impossible, timestamp futur et ancien départ ne devie
 check('stockage refusé : l’action reste cohérente en mémoire et est publiée une seule fois', () => {
   const x = context.store({ read: () => null, write: () => { throw Error('quota'); }, now: () => t }); let seen = 0; x.subscribe(() => seen++);
   x.transaction(state => { state.place.conf = { placeId: 'work', at: t }; state.tripStart = null; }); assert.equal(x.state.place.conf.placeId, 'work'); assert.equal(seen, 1);
+  assert.equal(x.durability().status, 'degraded'); assert.match(x.durability().error, /quota/); assert.equal(x.retry(), false);
+});
+check('stockage récupéré : l’état non durable est réécrit sans nouvelle action utilisateur', () => {
+  const data = new Map(); let fail = true;
+  const x = context.store({ read: k => data.get(k) || null, write: (k, v) => { if (k === 'twrc.context.v1' && fail) throw Error('temporaire'); if (v == null) data.delete(k); else data.set(k, v); }, now: () => t });
+  x.transaction(state => { state.place.conf = { placeId: 'work', at: t }; });
+  assert.equal(x.durability().status, 'degraded'); assert.equal(data.has(x.key), false);
+  fail = false; assert.equal(x.retry(), true); assert.equal(x.durability().status, 'durable');
+  assert.equal(JSON.parse(data.get(x.key)).place.conf.placeId, 'work');
 });
 check('hydratation : une confirmation d’arrivée plus récente clôture un ancien départ contradictoire', () => {
   const data = new Map([['twrc.context.v1', JSON.stringify({ v: 1, place: { conf: { placeId: 'work', at: t } }, tripStart: { key: 'go', at: t - 120000 }, done: {} })]]);

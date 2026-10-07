@@ -12,6 +12,8 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sto
 const AUTO_MS = 5 * 60e3;
 function autoTick() {
   if (document.hidden) return;
+  if (USER_STORE.durability().status === 'degraded') USER_STORE.retry();
+  if (navigator.onLine !== false && Date.now() - VER_CHECK_AT >= AUTO_MS) loadVersion(true); else enforceVersionCoherence();
   if (!DEMO.on && expireLive()) { rebuild(); renderAll(); }   // reprise : la donnée vieillie est requalifiée avant toute requête
   if (DEMO.on || busy || (navigator.onLine === false)) return;
   const ref = Math.max(lastOk || 0, lastTry || 0);
@@ -21,7 +23,7 @@ setInterval(autoTick, 30e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });
 function networkChanged() {
   if (offlineNow()) { markOfflineCache(); rebuild(); renderAll(); loadCalendar(); }
-  else { renderStatus(); refreshAll(); }
+  else { USER_STORE.retry(); renderStatus(); loadVersion(true); refreshAll(); }
 }
 window.addEventListener('offline', networkChanged);
 window.addEventListener('online', networkChanged);
@@ -29,7 +31,10 @@ window.addEventListener('online', networkChanged);
 
 /* ---------- démarrage ---------- */
 function registerSW() {
-  try { if ('serviceWorker' in navigator && location.protocol === 'https:' && /github\.io$/.test(location.hostname)) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {}); } catch (e) { /* non disponible */ }
+  try {
+    if ('serviceWorker' in navigator && location.protocol === 'https:' && /github\.io$/.test(location.hostname))
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(e => { if (RUNTIME_RECORDER) RUNTIME_RECORDER.record('service-worker', e); });
+  } catch (e) { if (RUNTIME_RECORDER) RUNTIME_RECORDER.record('service-worker', e); }
 }
 document.addEventListener('toggle', e => { if (e.target && e.target.id === 'settings' && e.target.open) renderSettings(true); }, true);
 (function init() {
