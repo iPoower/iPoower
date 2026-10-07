@@ -24,6 +24,11 @@ try {
     for (const token of ['Commande passée', 'ETA fournisseur · début', 'ETA fournisseur · fin', 'Montage estimé', 'Date du rendez-vous', 'Rendez-vous confirmé', 'COUVERTURE MÉTÉO'])
       assert(source.includes(token), 'Champ hiver absent : ' + token);
   });
+  check('reprise stockage et réseau revalide automatiquement le contexte', () => {
+    const source = appSource();
+    for (const token of ['function validateRecovery(', "validateRecovery('retour réseau')", "validateRecovery('retry périodique')", 'validation de reprise en attente'])
+      assert(source.includes(token), 'Contrat de reprise absent : ' + token);
+  });
   check('chaque commande visible possède un handler et une entrée dans l’audit', () => {
     const repo = path.resolve(__dirname, '..'), source = appSource(repo) + fs.readFileSync(path.join(repo, 'src/shell.html'), 'utf8');
     const actions = [...new Set([...source.matchAll(/data-act=["']([a-z][a-z-]*)/g)].map(m => m[1]))].sort();
