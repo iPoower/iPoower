@@ -45,6 +45,17 @@ function normalize(saved, base) {
   S.customs = saved && Array.isArray(saved.customs) ? saved.customs : clone(base.customs);
   return S;
 }
+// Migration étroite d'une ancienne identité véhicule déjà enregistrée.
+// Elle ne touche qu'à la combinaison historique exacte ; aucun véhicule générique n'est renommé.
+function repairVehicleIdentity(settings) {
+  if (!settings || !Array.isArray(settings.cars)) return false;
+  const car = settings.cars.find(c => c && c.id === '308');
+  if (!car || car.name !== 'Peugeot 308 Féline 2.0 HDi' || car.spec !== '136 ch FAP · 2009 · BVM6 · traction avant') return false;
+  car.name = 'Peugeot 308 2.0 HDi 136 Premium Pack';
+  car.short = '308';
+  car.spec = '136 ch FAP · Premium Pack · 2009 · BVM6 · traction avant';
+  return true;
+}
 // réglages chiffrés (site public) : déchiffrés une fois avec le code, puis gardés sur l'appareil
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function unseal(pass) {
@@ -61,6 +72,7 @@ async function unseal(pass) {
 const LOCKED = () => !!window.TWRC_SEALED && !window.TWRC_PRESET;
 // Préréglage éventuel injecté à la construction (version privée uniquement)
 const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET) ? normalize({ ...window.TWRC_PRESET, configured: 1 }, BASE) : clone(BASE);
+repairVehicleIdentity(DEFAULTS);
 // Configuration privée transmise dans le fragment d'URL (#cfg=...) : jamais envoyée au serveur
 let CFG_IMPORTED = false;
 function hashCfg() {
@@ -117,6 +129,7 @@ function loadSettings() {
     saved = { ...hc.cfg, configured: 1 }; CFG_IMPORTED = true;
     lsSet('twrc.cfghash', hc.raw); lsSet('twrc.settings.v1', JSON.stringify(saved));
   }
+  if (repairVehicleIdentity(saved)) lsSet('twrc.settings.v1', JSON.stringify(saved));
   return normalize(saved, DEFAULTS);
 }
 let S = loadSettings();
