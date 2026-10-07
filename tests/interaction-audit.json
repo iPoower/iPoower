@@ -274,5 +274,9 @@
   "weather-details": {
     "suite": "e2e43-analyse.js",
     "result": "détails météo ouverts depuis le résumé Pneus"
+  },
+  "place-toggle": {
+    "suite": "e2e50-geolocation.js",
+    "result": "état confirmé compact, actions déployées uniquement sur demande"
   }
 }
