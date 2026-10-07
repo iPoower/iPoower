@@ -8,7 +8,7 @@ let n = 0, scope = {};
 const read = p => p.evaluate(() => {
   const c = APP_CONTEXT.snapshot;
   return { day: c.dayType, place: c.currentLocation && c.currentLocation.id, origin: c.origin && c.origin.id, destination: c.destination && c.destination.id,
-    status: c.status, car: c.activeCarId, occasion: UI.outfitOccasion, next: c.nextTrip && { from: c.nextTrip.from, to: c.nextTrip.to, car: c.nextTrip.carId, src: c.nextTrip.src, key: c.nextTrip.key },
+    destinationName: c.destination && c.destination.name, status: c.status, car: c.activeCarId, occasion: UI.outfitOccasion, next: c.nextTrip && { from: c.nextTrip.from, to: c.nextTrip.to, car: c.nextTrip.carId, src: c.nextTrip.src, key: c.nextTrip.key },
     dayContext: USER_STORE.state.dayContext, work: S.work, stored: JSON.parse(localStorage.getItem(USER_STORE.key)) };
 });
 async function check(label, fn) { try { await fn(); n++; console.log('✅ ' + label); } catch (e) { console.error('❌ ' + label + ' · ' + e.message); throw e; } }
@@ -60,7 +60,30 @@ async function views(p, expected) {
       await tap(p, '[data-act=refresh]'); await s.settle();
       scope.phase = 'travail confirmé'; await tap(p, '#placeBar [data-act=place-confirm][data-place=work]');
       await check(dev + '/' + profile + ' · Maison est uniquement PRÉVU', async () => { const x = await read(p); assert.equal(x.destination, 'home'); assert.equal(x.dayContext.nextDestination, null); });
-      scope.phase = 'WORK → CUSTOM'; await destination(p, 'b'); await tap(p, '[data-act=day-car][data-id=carB]');
+      scope.phase = 'WORK → RENDEZ-VOUS AGENDA';
+      await p.evaluate(() => {
+        const home = { ...S.locs[0], label: 'Domicile test', city: 'Domicile test' };
+        const piano = { lat: 49.971, lon: 2.651, label: 'Le Zèbre test', city: 'Albert test' };
+        const leg = { k: 'go', from: home, to: piano, dep: '2026-10-06T17:40', arr: '2026-10-06T18:20', km: 48, min: 40, routed: true,
+          pts: [{ f: .5, lat: (home.lat + piano.lat) / 2, lon: (home.lon + piano.lon) / 2, km: 24 }], g: [[home.lat, home.lon], [piano.lat, piano.lon]] };
+        CAL = { events: [{ id: 'piano-test', t: 'Piano test', s: '2026-10-06T18:30', e: '2026-10-06T19:30',
+          loc: 'Le Zèbre test', label: 'Albert test', lat: piano.lat, lon: piano.lon, legs: [leg] }], updated: new Date(Date.now()).toISOString(), c: CAL && CAL.c };
+        CALDONE = true; renderAll();
+      });
+      await openDay(p); if (!(await p.locator('#dayContext .day-destination').getAttribute('open') != null)) await tap(p, '#dayContext .day-destination > summary');
+      const agendaButton = p.locator('#dayContext [data-act=day-destination][data-agenda-key]').first();
+      await check(dev + '/' + profile + ' · rendez-vous agenda proposé dans Destination suivante', async () => {
+        assert.equal(await agendaButton.count(), 1); assert.match(await agendaButton.innerText(), /17:40.*Piano test.*Albert test/);
+      });
+      await tap(p, '#dayContext [data-act=day-destination][data-agenda-key]');
+      await s.settle();
+      await check(dev + '/' + profile + ' · Travail → Piano direct remplace le retour Maison', async () => {
+        const x = await read(p); assert.equal(x.destination, 'agenda-next'); assert.equal(x.dayContext.nextDestination.originId, 'work');
+        assert.equal(x.next.from, 'Travail test'); assert.match(x.next.to, /Piano test.*Albert test/); assert.doesNotMatch(x.next.to, /Domicile|Maison/);
+        assert.match(await p.locator('#dayContext .day-destination > summary').innerText(), /Piano test.*Albert test.*CONFIRMÉ/);
+      });
+      await p.evaluate(() => { CAL = { events: [], updated: new Date(Date.now()).toISOString(), c: CAL && CAL.c }; CALDONE = true; renderAll(); });
+      scope.phase = 'WORK → CUSTOM'; await destination(p, 'b'); await p.evaluate(() => { if (PLACE.extra && PLACE.extra.id === 'agenda-next') { PLACE.extra = null; USER_STORE.flush(); renderAll(); } }); await tap(p, '[data-act=day-car][data-id=carB]');
       await s.settle();
       await check(dev + '/' + profile + ' · même destination et voiture dans les quatre vues', () => views(p, { place: 'work', destination: 'b', car: 'carB', status: 'work' }));
       const original = (await read(p)).work;

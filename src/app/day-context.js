@@ -47,6 +47,28 @@ function appChooseDestination(placeId, source = 'user') {
     APP_CONTEXT.weatherPreview = null;
   });
 }
+function appAgendaDestinationTrips(now = liveNow()) {
+  const at = String(now).slice(0, 16), today = placeToday();
+  return (APP_CONTEXT.planned || []).filter(t => {
+    const l = t && (t.planL || t.l);
+    return !!(t && t.src === 'cal' && t.e && l && l.k === 'go' && t.dep && t.dep.slice(0, 10) === today && t.dep >= at && locHasCoords(l.to));
+  }).slice(0, 4);
+}
+function appChooseAgendaDestination(key) {
+  const t = (APP_CONTEXT.planned || []).find(x => x && x.key === key && x.src === 'cal');
+  const l = t && (t.planL || t.l), p = l && l.to;
+  if (!t || !p || !locHasCoords(p)) return false;
+  const known = placeList().find(x => x.id !== (PLACE.extra && PLACE.extra.id) && distKm(x, p) <= 1.5);
+  if (known) { appChooseDestination(known.id); return true; }
+  const current = placeNow().place;
+  // PLACE.extra est l'unique lieu dynamique du contexte. Ne jamais l'écraser s'il représente le lieu courant confirmé.
+  if (PLACE.extra && current && current.id === PLACE.extra.id && PLACE.conf && PLACE.conf.placeId === PLACE.extra.id) return false;
+  const where = t.to || p.city || p.label || 'Rendez-vous';
+  const title = t.e && t.e.t && t.e.t !== where ? t.e.t + ' · ' + where : (t.e && t.e.t) || where;
+  PLACE.extra = { id: 'agenda-next', name: title, lat: p.lat, lon: p.lon, at: Date.now() };
+  appChooseDestination(PLACE.extra.id);
+  return true;
+}
 function appAgendaLeg(e, leg) { return DayContext.returnLeg(leg, calendarTripKey(e, leg), appDay(), Date.now(), placeList()); }
 function appWorkOn(date, days = S.work.days) { return DayContext.workOn(date, appDay(), commuteDays(days)); }
 function appCalendarCancelState(state = TRIPCANCEL) {
@@ -96,10 +118,16 @@ function renderDayContext() {
   const destination = n ? n.placeId ? locById(n.placeId) : null : c.destination;
   const label = n ? n.placeId ? 'CONFIRMÉ' : 'À CONFIRMER' : destination ? 'PRÉVU' : 'À CONFIRMER';
   const choices = placeList().map(p => `<button class="chip" data-act="day-destination" data-id="${esc(p.id)}" aria-pressed="${!!n && n.placeId === p.id}">${esc(p.name)}</button>`).join('');
+  const chosen = n && n.placeId ? locById(n.placeId) : null;
+  const agendaTrips = appAgendaDestinationTrips(), agendaChoices = agendaTrips.map(t => {
+    const l = t.planL || t.l, target = l && l.to, selected = !!(chosen && target && locHasCoords(chosen) && locHasCoords(target) && distKm(chosen, target) <= 1.5);
+    const title = t.e && t.e.t || 'Rendez-vous', where = t.to && t.to !== title ? ' · ' + t.to : '';
+    return `<button class="chip" data-act="day-destination" data-agenda-key="${esc(t.key)}" aria-pressed="${selected}">📅 ${esc(t.dep.slice(11, 16))} · ${esc(title + where)}</button>`;
+  }).join('');
   const work = appWorkOn(placeToday()), dayButtons = [['work', 'Travail'], ['off', 'Congé / Pas de travail']].map(([v, title]) => `<button data-act="day-type" data-v="${v}" aria-pressed="${work === (v === 'work')}">${title}</button>`).join('');
   const carButtons = S.cars.map(car => `<button class="chip" data-act="day-car" data-id="${esc(car.id)}" aria-pressed="${d.activeCarId === car.id}">${esc(car.short || car.name || car.id)}</button>`).join('');
   const opened = el.querySelector('details.day-editor') && el.querySelector('details.day-editor').open;
   const destinationOpen = el.querySelector('details.day-destination') && el.querySelector('details.day-destination').open;
   const car = appActiveCar();
-  el.innerHTML = `<details class="day-editor" ${opened ? 'open' : ''}><summary>Aujourd’hui · ${work ? 'Travail' : 'Congé'} · ${d.dayType ? 'CONFIRMÉ' : 'PRÉVU'}${car ? ' · ' + esc(car.short || car.name) : ''}</summary><div class="seg" role="group" aria-label="Type de journée">${dayButtons}</div><div class="chips" role="group" aria-label="Voiture active">${carButtons}<button class="chip" data-act="day-car" data-id="" aria-pressed="${!d.activeCarId}">Toutes · comparaison</button></div><details class="day-destination" ${destinationOpen ? 'open' : ''}><summary>Destination suivante · ${esc(destination && destination.name || 'Destination à confirmer')} · ${label}</summary><div class="chips">${choices}<button class="chip" data-act="day-destination" data-id="" aria-pressed="${!!n && !n.placeId}">Autre</button></div></details></details>`;
+  el.innerHTML = `<details class="day-editor" ${opened ? 'open' : ''}><summary>Aujourd’hui · ${work ? 'Travail' : 'Congé'} · ${d.dayType ? 'CONFIRMÉ' : 'PRÉVU'}${car ? ' · ' + esc(car.short || car.name) : ''}</summary><div class="seg" role="group" aria-label="Type de journée">${dayButtons}</div><div class="chips" role="group" aria-label="Voiture active">${carButtons}<button class="chip" data-act="day-car" data-id="" aria-pressed="${!d.activeCarId}">Toutes · comparaison</button></div><details class="day-destination" ${destinationOpen ? 'open' : ''}><summary>Destination suivante · ${esc(destination && destination.name || 'Destination à confirmer')} · ${label}</summary><div class="chips">${choices}<button class="chip" data-act="day-destination" data-id="" aria-pressed="${!!n && !n.placeId}">Autre</button></div>${agendaChoices ? `<div class="sub">Prochains rendez-vous · départ direct depuis le lieu actuel</div><div class="chips">${agendaChoices}</div>` : ''}</details></details>`;
 }
