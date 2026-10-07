@@ -900,7 +900,7 @@ function renderCurrent() {
   const cls = rainClass(c.P);
   const ev = [3, 6, 12].map(k => { const x = hs[n + k]; if (!x) return ''; return `<div><span>Dans ${k} h · ${x.t.slice(11, 16)}</span><b>${f1(x.T)} °C</b><span>${(x.Pl || 0) >= 0.1 ? f1(x.Pl) + ' mm/h' : 'sec'} · vis. ${visTxt(x.vis)}</span></div>`; }).join('');
   const l = allLocs().find(x => x.id === UI.loc);
-  el.innerHTML = `<div class="mod-h"><h2>Météo actuelle · ${esc(l ? l.name : '')}</h2><span class="src obs">mesuré/prévision météo</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>🌡️ Météo actuelle · ${esc(l ? l.name : '')}</h2><span class="src obs">mesuré/prévision météo</span></div>
   <div class="cur"><div class="bigT num">${c.T == null ? '—' : f1(c.T)}<sup>°C</sup></div>
     <div class="cond"><span class="lbl">${icon(c.code)}${esc(wx(c.code))}</span><span class="sub">Ressentie ${f1(c.Tapp)} °C · min ${f1(day.tmin)} / max ${f1(day.tmax)} °C aujourd’hui</span></div></div>
   <div class="metrics">
@@ -947,7 +947,7 @@ function renderView() {
   document.body.classList.toggle('vtr', vtr);
   document.body.classList.toggle('vt', vt);
   document.body.classList.toggle('va', va);
-  $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-pressed="${vm}">🌦️ Météo</button><button data-act="view" data-v="pneus" aria-pressed="${vp}">🛞 Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-pressed="${vtr}">TRAJET</button><button data-act="view" data-v="tenue" aria-pressed="${vt}">👔 Tenue</button><button data-act="view" data-v="analyse" aria-pressed="${va}">🔬 Analyse</button></div>`;
+  $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-pressed="${vm}"><span class="tab-ic" aria-hidden="true">🌦️</span> Météo</button><button data-act="view" data-v="pneus" aria-pressed="${vp}"><span class="tab-ic" aria-hidden="true">🛞</span> Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-pressed="${vtr}"><span class="tab-ic" aria-hidden="true">🧭</span> TRAJET</button><button data-act="view" data-v="tenue" aria-pressed="${vt}"><span class="tab-ic" aria-hidden="true">👔</span> Tenue</button><button data-act="view" data-v="analyse" aria-pressed="${va}"><span class="tab-ic" aria-hidden="true">🔬</span> Analyse</button></div>`;
   const links = vtr ? [['secTrip', 'Planifier'], ['settings', 'Réglages']] : va ? [['secLab', 'Analyse'], ['secSeason', 'Saison pneus'], ['secJournal', 'Journal de saison'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
     ? [['secWx', 'Synthèse'], ['secRadar', 'Radar'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secCur', 'Détails'], ['secAir', 'Air · UV'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
     : [['secBrf', 'Départ'], ['secCars', 'Voitures'], ['secBrief', 'Préparer'], ['secWeatherLink', 'Météo'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
@@ -1225,16 +1225,16 @@ function renderTenue() {
   }).join('');
   const carry = [...new Set([...plan.carry, ...a.accessories])];
   el.innerHTML = `${head}<div class="outfit-context${stale ? ' old' : ''}"><span>${esc(state)}</span><b>${esc(interval)}</b></div>
-    <div class="outfit-dayplan"><div class="outfit-plan-heading"><h3>Plan de tenue de la journée</h3><span class="outfit-indicator" data-level="${esc(plan.indicator.level)}">${esc(plan.indicator.text)}</span>${plan.weatherWarning ? `<span class="outfit-weather-warning" data-level="warning" data-risks="${esc(plan.weatherWarning.risks.join(' '))}" role="status">${esc(plan.weatherWarning.text)}</span>` : ''}</div>
+    <div class="outfit-dayplan"><div class="outfit-plan-heading"><h3>🧥 Plan de tenue de la journée</h3><span class="outfit-indicator" data-level="${esc(plan.indicator.level)}">${esc(plan.indicator.text)}</span>${plan.weatherWarning ? `<span class="outfit-weather-warning" data-level="warning" data-risks="${esc(plan.weatherWarning.risks.join(' '))}" role="status">${esc(plan.weatherWarning.text)}</span>` : ''}</div>
       <div class="outfit-base"><span class="outfit-label">Kit complet de la journée · N${plan.base.level} max</span><p>${plan.base.layers.map(esc).join(' + ')}</p></div>
-      <div class="outfit-extra outfit-carry"><h3>À emporter</h3>${carry.length ? `<ul>${carry.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p>Aucune pièce supplémentaire prévue.</p>'}</div>
-      ${plan.actions.length ? `<div class="outfit-extra outfit-actions"><h3>Adaptations prévues</h3><ul>${plan.actions.map(x => `<li data-time="${esc(x.time)}"><b>${esc(x.time.slice(11, 16))}</b> · ${esc(x.text)}</li>`).join('')}</ul></div>` : ''}
+      <div class="outfit-extra outfit-carry"><h3>🎒 À emporter</h3>${carry.length ? `<ul>${carry.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p>Aucune pièce supplémentaire prévue.</p>'}</div>
+      ${plan.actions.length ? `<div class="outfit-extra outfit-actions"><h3>🔄 Adaptations prévues</h3><ul>${plan.actions.map(x => `<li data-time="${esc(x.time)}"><b>${esc(x.time.slice(11, 16))}</b> · ${esc(x.text)}</li>`).join('')}</ul></div>` : ''}
       <ol class="outfit-timeline" aria-label="Heures, lieux et adaptations de la tenue">${timeline}</ol></div>
     <div class="outfit-verdict"><span class="outfit-label">${tomorrow ? 'Ta tenue de demain' : 'Ta tenue pour la suite de la journée'} · kit complet</span><h3>${esc(a.title)}</h3><p>Détail du kit complet du plan ; la timeline indique les couches portées à chaque moment.</p></div>
     <div class="outfit-metrics">${metric('Ressenti' + (a.tempFallback ? ' / air' : ''), f0(a.low) + ' à ' + f0(a.high) + ' °C')}${metric('Pluie · max', a.pp == null ? '—' : f0(a.pp) + ' %')}${metric('Rafales · max', a.gust == null ? '—' : f0(a.gust) + ' km/h')}</div>
     <div class="outfit-pieces">${a.pieces.map((p, i) => `<div class="outfit-piece"><span class="outfit-no mono">0${i + 1}</span><div><span class="outfit-label">${esc(p.label)}</span><h4>${esc(p.item)}</h4><p>${esc(p.detail)}</p></div></div>`).join('')}</div>
     <div class="outfit-palette"><span class="outfit-label">Accord de couleurs suggéré</span><div>${a.palette.map(t => `<span>${esc(t)}</span>`).join('')}</div></div>
-    ${detail.length ? `<div class="outfit-extra"><h3>À prévoir</h3><ul>${detail.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
+    ${detail.length ? `<div class="outfit-extra"><h3>📝 À prévoir</h3><ul>${detail.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
     <p class="outfit-method">Suggestions de pièces, à adapter à ce que tu possèdes et à ta sensibilité au froid. Les seuils sont des repères de confort. Le ressenti météo intègre déjà le vent ; aucune température de chaussée ni score pneus n’intervient ici.</p>`;
 }
 
@@ -1284,7 +1284,7 @@ function renderAir() {
   } else if (a) pol = '<div class="sub">🌿 Pollens : aucune donnée pour ce lieu (hors saison ou hors Europe).</div>';
   const pollu = a ? [['PM2,5', a.pm25], ['PM10', a.pm10], ['O₃', a.o3], ['NO₂', a.no2]].filter(x => x[1] != null).map(x => `<span><b class="num">${f0(x[1])}</b> ${x[0]}</span>`).join('') : '';
   const msg = !a ? `<div class="sub">${AQBUSY.has(id) ? 'Chargement de la qualité de l’air…' : er ? 'Qualité de l’air indisponible (' + esc(er.msg) + ').' : 'Qualité de l’air en attente.'}</div>` : '';
-  el.innerHTML = `<div class="mod-h"><h2>Air · UV · pollens</h2><span class="src obs">prévision</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>🌿 Air · UV · pollens</h2><span class="src obs">prévision</span></div>
     <div class="airg">${tile('UV maintenant', uN, 'uv', uN ? '' : '')}${tile('UV max auj.', uM, 'uv', pk && uM ? 'vers ' + pk.t.slice(11, 16) : '')}${tile('Qualité de l’air', a && a.aqi, 'aqi', a && a.aqiPk && a.aqiPk.v > (a.aqi ? a.aqi.v : 0) + 9 ? 'pic ' + a.aqiPk.v + (a.aqiPkAt ? ' vers ' + a.aqiPkAt : '') : '')}</div>
     ${uM && uM.lv >= 1 ? `<div class="note lv${uM.lv}"><b>☀️ UV</b><span>${esc(uM.tip)}.</span></div>` : ''}
     ${pollu ? `<div class="obs-row airp">${pollu}<span class="sub">µg/m³</span></div>` : ''}${msg}${pol}
@@ -1326,7 +1326,7 @@ function renderRadar() {
   const el = $('#secRadar'); if (!el) return;
   if (!el.dataset.ready) {
     el.dataset.ready = 1;
-    el.innerHTML = `<div class="mod-h"><h2>Radar pluie</h2><span class="src obs">mesuré · radar</span></div>
+    el.innerHTML = `<div class="mod-h"><h2>📡 Radar pluie</h2><span class="src obs">mesuré · radar</span></div>
       <div class="radar"><div id="rmap" class="rmap" role="img" aria-label="Carte radar des précipitations"></div><div class="rmsg" id="rmsg">La carte se charge quand tu arrives ici.</div>
         <button class="btn sm rctr" data-act="rcenter" aria-label="Recentrer sur le lieu" disabled>◎</button></div>
       <div class="rctl"><button class="btn sm" data-act="rplay" id="rplay" aria-label="Lecture" disabled>▶</button><input type="range" id="rslide" min="0" max="0" value="0" aria-label="Heure de l’image radar" disabled><span class="num" id="rtime">—</span></div>
@@ -2978,7 +2978,7 @@ function renderBrief() {
   if (day0) for (let o = 0; o < 10 && dOffs.length < 3; o++) if (appWorkOn(addMin(day0 + 'T00:00', o * 1440), w.days)) dOffs.push(o);
   if (UI.dayOff != null && !dOffs.includes(UI.dayOff)) { dOffs.push(UI.dayOff); dOffs.sort((a, b) => a - b); }
   const dayLbl = o => o === 0 ? 'Aujourd’hui' : o === 1 ? 'Demain' : cap1(fmtDay(addMin(day0 + 'T00:00', o * 1440).slice(0, 10)));
-  let head = `<div class="mod-h"><h2>Briefing départ</h2><span class="src obs">prévision météo</span></div>
+  let head = `<div class="mod-h"><h2>🚦 Briefing départ</h2><span class="src obs">prévision météo</span></div>
   <div class="ctrl">
     <div class="fld"><span class="l">Voiture</span><div class="seg">${carSeg}</div></div>
     <div class="fld"><span class="l">Sens</span><div class="seg"><button data-act="dir" data-d="go" aria-pressed="${dir === 'go'}">Aller</button><button data-act="dir" data-d="ret" aria-pressed="${dir === 'ret'}">Retour</button></div></div>
@@ -3037,7 +3037,7 @@ function renderCompare() {
   const mode = td.err ? 'card' : 'trip', sm = summarize(seq);
   const res = TCARS().map(car => ({ car, w: windowAssess(car, seq, mode) })).filter(r => r.w);
   if (res.length < 2) { const wait = S.cars.filter(c => !hasTires(c)).map(c => c.short); el.hidden = false;
-    el.innerHTML = `<div class="mod-h"><h2>Quelle voiture prendre ?</h2><span class="src">comparaison factuelle</span></div><p class="sub">${wait.length ? `Comparaison suspendue : ${esc(wait.join(', '))} en attente de pneus. Seule ${esc(res.map(r => r.car.short).join(', ') || 'aucune voiture')} est analysée.` : 'Comparaison indisponible.'}</p>`; return; }
+    el.innerHTML = `<div class="mod-h"><h2>🚗 Quelle voiture prendre ?</h2><span class="src">comparaison factuelle</span></div><p class="sub">${wait.length ? `Comparaison suspendue : ${esc(wait.join(', '))} en attente de pneus. Seule ${esc(res.map(r => r.car.short).join(', ') || 'aucune voiture')} est analysée.` : 'Comparaison indisponible.'}</p>`; return; }
   const wet = seq.some(s => { const x = s.hs[s.i]; return (x.P || 0) >= 0.1 || recentPrecip(s.hs, s.i, 2) >= 0.3; });
   const cold = sm.Tmin != null && sm.Tmin < 7;
   const best = [...res].sort((a, b) => b.w.score - a.w.score)[0], gap = Math.abs(res[0].w.score - res[1].w.score);
@@ -3071,7 +3071,7 @@ function renderCompare() {
     sporty && (cold || wet) ? `${esc(sporty.car.short)} (usage sportif, ${esc(sporty.car.spec || 'puissance élevée')}) sollicite davantage l’adhérence disponible au démarrage et en sortie de courbe quand le pneu est froid.` : '',
     'Cette comparaison ne porte que sur les pneus et la météo. Elle ne tient pas compte de l’état des freins, de l’usure réelle, du chargement ni de ton expérience : le choix t’appartient.'
   ].filter(Boolean);
-  el.innerHTML = `<div class="mod-h"><h2>Quelle voiture prendre ?</h2><span class="src">comparaison factuelle</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>🚗 Quelle voiture prendre ?</h2><span class="src">comparaison factuelle</span></div>
     <div class="cmp">${cards}</div><div class="why">${why.map(t => `<span>${t}</span>`).join('')}</div>`;
 }
 
@@ -3096,7 +3096,7 @@ function renderIce() {
 /* ---------- graphique 24 h ---------- */
 function renderChartShell() {
   const el = $('#secChart'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
-  el.innerHTML = `<div class="mod-h"><h2>Graphique 24 h</h2><span class="src">mesuré/prévision + estimé</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>📈 Graphique 24 h</h2><span class="src">mesuré/prévision + estimé</span></div>
    <div class="legend"><span><svg viewBox="0 0 22 8"><line x1="0" y1="4" x2="22" y2="4" stroke="var(--c-air)" stroke-width="2.4"/></svg>Air (prévision)</span>
    <span><svg viewBox="0 0 22 8"><line x1="0" y1="4" x2="22" y2="4" stroke="var(--c-road)" stroke-width="2.4" stroke-dasharray="5 3"/></svg>Chaussée (estimé)</span>
    <span><svg viewBox="0 0 22 8"><line x1="0" y1="4" x2="22" y2="4" stroke="var(--c-dew)" stroke-width="2" stroke-dasharray="1.5 3"/></svg>Point de rosée</span>
@@ -3181,7 +3181,7 @@ function renderDays() {
       <div class="pr"><span class="num" style="color:var(--c-air)">${f0(d.tmin)}°</span> / <span class="num" style="color:var(--fg)">${f0(d.tmax)}°</span><br>${(d.psum || 0) >= 0.1 ? f1(d.psum) + ' mm' : '—'}${(d.ssum || 0) > 0 ? ' · ❄ ' + f1(d.ssum) + ' cm' : ''}</div>
       ${UI.view === 'meteo' ? `<div class="pips dm">${d.pmax != null ? '☂ ' + f0(d.pmax) + ' %' : ''}${d.uv != null ? '<br>UV ' + f0(d.uv) : ''}</div>` : `<div class="pips">${pips}</div>`}</div>`;
   }).join('');
-  el.innerHTML = `<div class="mod-h"><h2>Prévisions 7 jours</h2><span class="src obs">prévision météo</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>📆 Prévisions 7 jours</h2><span class="src obs">prévision météo</span></div>
    <div class="sub">Barre = min → max. Repères : 0 °C (bleu) et 7 °C (jaune). ${UI.view === 'meteo' ? 'À droite : probabilité de pluie maximale et indice UV maximal du jour.' : `Carrés = verdict pneus du jour (${CX.cars.filter(c => hasTires(c.car)).map(c => esc(c.car.short)).join(', ')}).`}</div><div class="days">${rows}</div>`;
 }
 function dayInfosOne(m, car, date) {
@@ -3192,7 +3192,7 @@ function renderWeatherLink() {
   const el = $('#secWeatherLink'); el.hidden = UI.view !== 'pneus';
   if (el.hidden) return;
   const c = CX && CX.m.cur, l = curLoc();
-  el.innerHTML = `<div><h3>Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="weather-details">Détails météo →</button>`;
+  el.innerHTML = `<div><h3>🌦️ Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="weather-details">Détails météo →</button>`;
 }
 
 // @include app/season-actions.js
@@ -3252,7 +3252,7 @@ function renderSeason() {
       ${cal}<div class="season-legend" aria-label="Légende des verdicts pneus">${[['lv0', 'Adapté'], ['lv1', 'Vigilance'], ['lv2', 'Risque élevé'], ['lv3', 'Déconseillé'], ['lvx', 'Données insuffisantes']].map(([lv, text]) => `<span class="${lv}"><i aria-hidden="true"></i>${text}</span>`).join('')}</div></div>`;
   }).join('');
   const form = el.querySelector('.mount-form');
-  el.innerHTML = `<div class="mod-h"><h2>Saison pneus</h2><span class="src">prévisions + suivi du montage</span></div><div class="grid2">${cards}</div>
+  el.innerHTML = `<div class="mod-h"><h2>🍂 Saison pneus</h2><span class="src">prévisions + suivi du montage</span></div><div class="grid2">${cards}</div>
    <p class="disc">Fiabilité décroissante au-delà de 5 à 7 jours. Le seuil de 7 °C est une règle pratique, pas une frontière physique.</p>`;
   const fresh = el.querySelector('.mount-form');
   if (form && fresh && form.dataset.car === fresh.dataset.car) { fresh.replaceWith(form); form.querySelector('.mount-message').textContent = MOUNT_FORM.msg; }
@@ -3284,7 +3284,7 @@ function renderJournal() {
   const cells = []; for (let k = 59; k >= 0; k--) { const d = addMin(today + 'T00:00', -k * 1440).slice(0, 10), r = J[d];
     const c = !r ? 'lvx' : r.T <= 0 ? 'lv3' : r.T < 3 ? 'lv2' : r.T < 7 ? 'lv1' : 'lv0';
     cells.push(`<i class="${c}" title="${fmtDay(d)}${r ? ' · min ' + f1(r.T) + ' °C · chaussée ' + f1(r.Tr) + ' °C' : ' · non enregistré'}"></i>`); }
-  el.innerHTML = `<div class="mod-h"><h2>Journal de saison</h2><span class="src">depuis le ${fmtDay(start)}</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>📓 Journal de saison</h2><span class="src">depuis le ${fmtDay(start)}</span></div>
    <div class="metrics">${tile('Matins enregistrés', rec.length, '')}${tile('Sous 7 °C', cnt(r => r.T < 7), 'repère pneus hiver')}${tile('Sous 3 °C', cnt(r => r.T < 3), '')}${tile('Gel (≤ 0 °C)', cnt(r => r.T <= 0), '')}${tile('Verglas modéré ou plus', cnt(r => r.ice >= 1), 'estimé')}${tile('Premier gel', ff ? fmtDay(ff) : '—', fr ? 'chaussée ≤ 0 °C : ' + fmtDay(fr) : 'chaussée : pas encore')}</div>
    <div><div class="sub" style="margin-bottom:4px">60 derniers matins (0–9 h, ${esc(S.locs[0].name)}) · gris = non enregistré</div><div class="strip jr">${cells.join('')}</div>
    <div class="strip-l"><span>${fmtDay(addMin(today + 'T00:00', -59 * 1440).slice(0, 10))}</span><span>aujourd’hui</span></div></div>
@@ -3298,7 +3298,7 @@ function renderAlerts() {
   const rank = i => (i.on && i.a) ? 10 + i.a.sev : i.on ? 1 : 0;
   items.sort((x, y) => rank(y) - rank(x));
   const act = items.filter(i => i.on && i.a).length;
-  el.innerHTML = `<div class="mod-h"><h2>Alertes</h2><span class="src">${act} active${act > 1 ? 's' : ''} · 24 h</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>🔔 Alertes</h2><span class="src">${act} active${act > 1 ? 's' : ''} · 24 h</span></div>
    ${vigiBlock()}<div>${items.map(({ d, a, on }) => `<div class="al${on ? '' : ' off'}"><div><label class="sw"><input type="checkbox" data-alert="${d.id}" ${on ? 'checked' : ''} aria-label="${esc(d.label)}"><i></i></label></div>
      <div style="display:flex;justify-content:space-between;gap:10px;align-items:start;min-width:0"><div style="min-width:0"><div class="t">${esc(a && on ? a.title : d.label)}</div><div class="d">${on ? (a ? esc(a.detail) : (d.id === 'pre' && S.cars.some(c => c.plan.on && c.tire.type !== 'winter' && !(c.plan.date || (c.plan.appointmentConfirmed && c.plan.appointmentDate))) ? 'Renseigne un montage estimé ou un rendez-vous confirmé (Saison pneus) pour activer cette alerte.' : 'Non déclenchée')) : 'Désactivée'}</div></div>
      ${on && a ? `<span class="sev lv${a.sev}">${a.sev >= 3 ? 'DANGER' : a.sev === 2 ? 'ATTENTION' : 'INFO'}</span>` : `<span class="sev none">${on ? 'RAS' : 'OFF'}</span>`}</div></div>`).join('')}</div>
@@ -3344,39 +3344,39 @@ function renderSettings(force) {
       <div class="fld"><label for="f-cars-${i}-plan-appt-ok">Rendez-vous confirmé</label><select id="f-cars-${i}-plan-appt-ok" data-bind="cars.${i}.plan.appointmentConfirmed" data-num="1"><option value="1" ${c.plan.appointmentConfirmed ? 'selected' : ''}>Oui</option><option value="0" ${c.plan.appointmentConfirmed ? '' : 'selected'}>Non</option></select></div></div></div>`).join('');
   const locSet = S.locs.map((l, i) => `<div class="frow">${bindIn(`locs.${i}.name`, l.name, { label: i === 0 ? 'Zone principale' : 'Lieu de travail / 2e zone', wide: 1 })}${bindIn(`locs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`locs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}</div>`).join('') +
     S.customs.map((l, i) => `<div class="frow">${bindIn(`customs.${i}.name`, l.name, { label: 'Destination', wide: 1 })}${bindIn(`customs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`customs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}<div class="fld"><span class="l">&nbsp;</span><button class="btn sm" data-act="loc-del" data-i="${i}">Retirer</button></div></div>`).join('');
-  el.innerHTML = `<div class="set-sec"><h3>Voitures et pneus</h3></div>${carSet}
-    <div class="set-sec"><h3>Lieux</h3>${locSet}
+  el.innerHTML = `<div class="set-sec"><h3>🚗 Voitures et pneus</h3></div>${carSet}
+    <div class="set-sec"><h3>📍 Lieux</h3>${locSet}
       <div class="fld"><label for="geoQ">Ajouter une destination ou une adresse</label><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="search" id="geoQ" placeholder="Adresse, ville ou lieu" style="flex:1;min-width:140px"><button class="btn" data-act="geo-search">Rechercher</button></div><span class="sub">France : IGN / Base Adresse Nationale · monde : OpenStreetMap. Recherche uniquement quand tu appuies sur « Rechercher ».</span></div><div class="hits" id="geoHits"></div></div>
-    <div class="set-sec"><h3>Base pneus</h3><p class="sub">${TIRE_DB_META.count} modèles · ${TIRE_DB_META.version ? 'version ' + TIRE_DB_META.version + ' du ' + esc(TIRE_DB_META.updated || '') : 'base de secours'} (${esc(TIRE_DB_META.source)}). ${S.cars.map(c => `${esc(c.short)} : ${compatible(c).length} compatibles`).join(' · ')}. Mise à jour automatique chaque mois ; ★ = nouveauté de moins de 60 jours.</p></div>
-    <div class="set-sec"><h3>Calibration terrain</h3><p class="sub">Corrections apprises de tes retours, lieu par lieu : <b class="mono">${(() => { const xs = allLocs().map(l => ({ l, c: calibFor(l.id) })).filter(x => x.c.n); return xs.length ? xs.map(x => esc(x.l.name) + ' ' + (x.c.applied ? (x.c.bias > 0 ? '+' : '') + f1(x.c.bias) + ' °C' : 'aucune (' + x.c.n + '/' + CALIB_MIN + ')')).join(' · ') : 'aucune'; })()}</b>. Un retour isolé est une observation : une correction n’est appliquée qu’à partir de ${CALIB_MIN} retours cohérents au même lieu, et seulement à ce lieu.</p><div class="chips"><button class="btn sm" data-act="calib-reset">Effacer la calibration</button></div></div>
-    <div class="set-sec"><h3>Ma position</h3><p class="sub">${GPS ? `Dernière position : <b>${esc(GPS.name)}</b>${GPS.sub ? ', ' + esc(GPS.sub) : ''} (±${GPS.acc || '?'} m, ${new Date(GPS.t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}). L’app s’ouvre sur ta position et se recale quand tu te déplaces de plus de 3 km. La position reste sur ce téléphone.` : 'Touche « 📍 Ma position » en haut pour suivre la météo de l’endroit où tu es.'}</p>
+    <div class="set-sec"><h3>📚 Base pneus</h3><p class="sub">${TIRE_DB_META.count} modèles · ${TIRE_DB_META.version ? 'version ' + TIRE_DB_META.version + ' du ' + esc(TIRE_DB_META.updated || '') : 'base de secours'} (${esc(TIRE_DB_META.source)}). ${S.cars.map(c => `${esc(c.short)} : ${compatible(c).length} compatibles`).join(' · ')}. Mise à jour automatique chaque mois ; ★ = nouveauté de moins de 60 jours.</p></div>
+    <div class="set-sec"><h3>🎯 Calibration terrain</h3><p class="sub">Corrections apprises de tes retours, lieu par lieu : <b class="mono">${(() => { const xs = allLocs().map(l => ({ l, c: calibFor(l.id) })).filter(x => x.c.n); return xs.length ? xs.map(x => esc(x.l.name) + ' ' + (x.c.applied ? (x.c.bias > 0 ? '+' : '') + f1(x.c.bias) + ' °C' : 'aucune (' + x.c.n + '/' + CALIB_MIN + ')')).join(' · ') : 'aucune'; })()}</b>. Un retour isolé est une observation : une correction n’est appliquée qu’à partir de ${CALIB_MIN} retours cohérents au même lieu, et seulement à ce lieu.</p><div class="chips"><button class="btn sm" data-act="calib-reset">Effacer la calibration</button></div></div>
+    <div class="set-sec"><h3>📡 Ma position</h3><p class="sub">${GPS ? `Dernière position : <b>${esc(GPS.name)}</b>${GPS.sub ? ', ' + esc(GPS.sub) : ''} (±${GPS.acc || '?'} m, ${new Date(GPS.t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}). L’app s’ouvre sur ta position et se recale quand tu te déplaces de plus de 3 km. La position reste sur ce téléphone.` : 'Touche « 📍 Ma position » en haut pour suivre la météo de l’endroit où tu es.'}</p>
       ${GPS ? '<div class="chips"><button class="btn sm" data-act="locate">Actualiser ma position</button><button class="btn sm" data-act="gps-forget">Oublier ma position</button></div>' : ''}</div>
-    <div class="set-sec"><h3>Notifications du matin</h3>
+    <div class="set-sec"><h3>🔔 Notifications du matin</h3>
       <p class="sub">Chaque matin de trajet domicile-travail (${daysTxt(S.work.days)}), de 90 à 5 minutes avant ton départ de ${esc(S.work.dep)}, un relais automatique (GitHub) recalcule le verdict du trajet toutes les 15 minutes depuis tes deux points de départ. Il t’envoie une notification si une voiture passe en 🟠 ou 🔴, s’il y a un risque de verglas ou du brouillard sous 500 m, puis une nouvelle uniquement si la situation s’aggrave (3 au maximum). Aucun nom de lieu n’apparaît dans les notifications. 1. Installe l’app gratuite <b>ntfy</b> (App Store). 2. <b>+</b> → sujet ci-dessous, serveur ntfy.sh. 3. Autorise les notifications.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="ntfyTopic" readonly value="${esc(window.TWRC_NTFY || '')}" style="flex:1;min-width:160px"><button class="btn" data-act="copy" data-for="ntfyTopic" data-v="${esc(window.TWRC_NTFY || '')}">Copier</button><button class="btn" data-act="ntfy-test">Envoyer un test</button></div></div>
-    <div class="set-sec"><h3>Widget écran d’accueil</h3>
+    <div class="set-sec"><h3>📱 Widget écran d’accueil</h3>
       <p class="sub">1. Installe l’app gratuite <b>Scriptable</b> (App Store). 2. Dans Scriptable, <b>+</b> → colle le script (bouton ci-dessous) → nomme-le « Race Control ». 3. Écran d’accueil : appui long → <b>+</b> → Scriptable → taille <b>moyenne</b> → touche le widget → Script : « Race Control ». Le widget se met à jour seul (iOS décide du rythme, en général toutes les 15 à 30 min).</p>
       <div class="chips"><button class="btn" data-act="copy-widget">Copier le script du widget</button><a class="btn" href="widget.js" target="_blank" rel="noopener">Voir le script</a></div></div>
-    <div class="set-sec"><h3>Moteur météo v2 (preuves)</h3><p class="sub">Observation : calculé et journalisé à côté du moteur actuel, sans changer les verdicts. Actif : le phénomène critique prouvé passe en tête de l’onglet Météo.</p><div class="seg" role="group" aria-label="Moteur v2">${[['off', 'Désactivé'], ['shadow', 'Observation'], ['on', 'Actif']].map(([v, t]) => `<button data-act="ev-flag" data-v="${v}" aria-pressed="${EV_FLAG() === v}">${t}</button>`).join('')}</div></div>
-    <div class="set-sec"><h3>Vigilance Météo-France</h3><div class="frow">${bindIn('dept.code', S.dept.code, { label: 'Département (numéro)', ph: 'ex. 33' })}${bindIn('dept.name', S.dept.name, { label: 'Nom du département', ph: 'ex. Gironde' })}</div></div>
-    <div class="set-sec"><h3>Ouverture automatique le matin</h3>
+    <div class="set-sec"><h3>🧪 Moteur météo v2 (preuves)</h3><p class="sub">Observation : calculé et journalisé à côté du moteur actuel, sans changer les verdicts. Actif : le phénomène critique prouvé passe en tête de l’onglet Météo.</p><div class="seg" role="group" aria-label="Moteur v2">${[['off', 'Désactivé'], ['shadow', 'Observation'], ['on', 'Actif']].map(([v, t]) => `<button data-act="ev-flag" data-v="${v}" aria-pressed="${EV_FLAG() === v}">${t}</button>`).join('')}</div></div>
+    <div class="set-sec"><h3>⚠️ Vigilance Météo-France</h3><div class="frow">${bindIn('dept.code', S.dept.code, { label: 'Département (numéro)', ph: 'ex. 33' })}${bindIn('dept.name', S.dept.name, { label: 'Nom du département', ph: 'ex. Gironde' })}</div></div>
+    <div class="set-sec"><h3>⏰ Ouverture automatique le matin</h3>
       <p class="sub">Sur iPhone : app <b>Raccourcis</b> → <b>Automatisation</b> → <b>+</b> → <b>Heure de la journée</b> (ex. 06:45, jours de semaine) → <b>Exécuter immédiatement</b> → action <b>Ouvrir les URL</b> avec l’adresse ci-dessous. La page s’ouvre seule chaque matin avec les verdicts à jour.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="autoUrl" readonly value="${esc(location.href.split('#')[0].split('?')[0])}" style="flex:1;min-width:160px"><button class="btn" data-act="copy" data-for="autoUrl" data-v="${esc(location.href.split('#')[0].split('?')[0])}">Copier</button></div></div>
-    <div class="set-sec"><h3>Trajet</h3><div class="frow">${bindIn('work.dep', S.work.dep, { label: 'Départ aller', type: 'time' })}${bindIn('work.ret', S.work.ret, { label: 'Départ retour', type: 'time' })}${bindIn('work.durMin', S.work.durMin, { label: 'Durée (min)', type: 'number', num: 1, attrs: 'min="5" max="1200" step="5"' })}</div>
+    <div class="set-sec"><h3>🧭 Trajet</h3><div class="frow">${bindIn('work.dep', S.work.dep, { label: 'Départ aller', type: 'time' })}${bindIn('work.ret', S.work.ret, { label: 'Départ retour', type: 'time' })}${bindIn('work.durMin', S.work.durMin, { label: 'Durée (min)', type: 'number', num: 1, attrs: 'min="5" max="1200" step="5"' })}</div>
       <div class="fld"><span class="l">Jours de trajet domicile-travail</span><div class="seg wdays">${WDN.map((n, k) => `<button data-act="wday" data-d="${k + 1}" aria-pressed="${commuteDays(S.work.days).includes(k + 1)}">${n}</button>`).join('')}</div></div>
       <p class="sub">Les autres jours (télétravail, repos) : pas de briefing domicile-travail, le briefing passe directement au prochain jour de trajet. L’agenda reste actif 7 j/7. Les notifications du matin suivent la configuration chiffrée du relais : si ton rythme change, fais-la mettre à jour aussi.</p></div>
-    <div class="set-sec"><h3>Événements routiers</h3><p class="sub">DATEX · Bison Futé / DIR. Couverture partielle du réseau national non concédé. Filtrage local sur le trajet OSRM ; aucune position transmise à DATEX. Alertes visuelles pendant le trajet, app ouverte. Vitesses et ETA trafic indisponibles.</p><div class="fld"><label for="f-road-on">Signalements sur mon trajet</label><select id="f-road-on" data-bind="road.on" data-num="1"><option value="1" ${S.road.on ? 'selected' : ''}>Activés</option><option value="0" ${S.road.on ? '' : 'selected'}>Désactivés</option></select></div></div>
-    <div class="set-sec"><h3>Analyse</h3><div class="frow"><div class="fld"><label for="f-horizon">Horizon des verdicts</label><select id="f-horizon" data-bind="horizon" data-num="1">${[6, 12, 24].map(h => `<option value="${h}" ${S.horizon === h ? 'selected' : ''}>${h} h</option>`).join('')}</select></div>${bindIn('rainThr', S.rainThr, { label: 'Forte pluie (mm/h)', type: 'number', num: 1, attrs: 'min="1" max="30" step="0.5"' })}</div></div>
+    <div class="set-sec"><h3>🚧 Événements routiers</h3><p class="sub">DATEX · Bison Futé / DIR. Couverture partielle du réseau national non concédé. Filtrage local sur le trajet OSRM ; aucune position transmise à DATEX. Alertes visuelles pendant le trajet, app ouverte. Vitesses et ETA trafic indisponibles.</p><div class="fld"><label for="f-road-on">Signalements sur mon trajet</label><select id="f-road-on" data-bind="road.on" data-num="1"><option value="1" ${S.road.on ? 'selected' : ''}>Activés</option><option value="0" ${S.road.on ? '' : 'selected'}>Désactivés</option></select></div></div>
+    <div class="set-sec"><h3>🔬 Analyse</h3><div class="frow"><div class="fld"><label for="f-horizon">Horizon des verdicts</label><select id="f-horizon" data-bind="horizon" data-num="1">${[6, 12, 24].map(h => `<option value="${h}" ${S.horizon === h ? 'selected' : ''}>${h} h</option>`).join('')}</select></div>${bindIn('rainThr', S.rainThr, { label: 'Forte pluie (mm/h)', type: 'number', num: 1, attrs: 'min="1" max="30" step="0.5"' })}</div></div>
     <div class="set-sec" id="bkSec"><h3>💾 Sauvegarde</h3>
       <p class="sub">Journal, DOT, usure, kilométrage, pressions, photos, calibration et réglages, dans un seul fichier <b>chiffré avec ton code</b>. À faire avant de changer de téléphone ou de vider Safari. Sur le nouveau téléphone : Importer, puis le même code. Dernière sauvegarde : <b>${lsGet('twrc.lastbackup') ? fmtDay(lsGet('twrc.lastbackup')) : 'jamais'}</b>.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="password" id="bkPw" autocomplete="current-password" placeholder="${lsGet('twrc.key') ? 'code (vide = code de déverrouillage)' : 'code, 8 caractères minimum'}" style="flex:1;min-width:160px">
         <button class="btn pri" data-act="bk-export">Exporter</button><label class="btn" for="bkFile">Importer</label><input type="file" id="bkFile" accept=".json,application/json,text/plain" hidden></div>
       <p class="sub" id="bkMsg" aria-live="polite"></p></div>
-    <div class="set-sec"><h3>Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
+    <div class="set-sec"><h3>🗂️ Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
       <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>
-    <div class="set-sec"><h3>Version</h3><p class="sub" id="verLine">${verLine()}</p></div>
-    <div class="set-sec"><h3>Diagnostic</h3><p class="sub">Sources et précision à l’écran ; positions arrondies à environ 1 km dans la copie, sans adresse ni titre de rendez-vous.</p>
+    <div class="set-sec"><h3>🏷️ Version</h3><p class="sub" id="verLine">${verLine()}</p></div>
+    <div class="set-sec"><h3>🩺 Diagnostic</h3><p class="sub">Sources et précision à l’écran ; positions arrondies à environ 1 km dans la copie, sans adresse ni titre de rendez-vous.</p>
       <dl class="diag" id="diagBox">${diagHtml()}</dl><div class="chips"><button class="btn" data-act="diag-copy">Copier le diagnostic</button></div></div>`;
   loadVersion(); loadSwVersion();
 }

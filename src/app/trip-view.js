@@ -96,7 +96,7 @@ function renderTripView() {
     : `<div class="trip-route-state old"><b>${route.offline ? 'Hors connexion' : 'Calcul en cours'}</b><span>${route.offline ? 'Départ, destination, véhicule et horaire sont conservés. La route sera recalculée au retour du réseau.' : 'OSRM et la météo de route se préparent.'}</span></div>` : '';
   const selectedDest = dest ? `<div class="trip-selected"><b>✓ ${esc(dest.name)}</b><span>${esc(dest.address || dest.sub || '')}</span>${dest.provider ? `<small>${esc(dest.provider)}${dest.precision ? ' · ' + esc(dest.precision) : ''}</small>` : ''}</div>` : '';
   const dep = tripDepartureValue(), immediate = TRIP_FORM.when === 'now';
-  el.innerHTML = `<div class="mod-h"><h2>TRAJET</h2><span class="src obs">contexte partagé Race Control</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>🧭 TRAJET</h2><span class="src obs">contexte partagé Race Control</span></div>
     <div class="trip-form">
       <div class="trip-field"><span class="trip-label">Départ</span><div class="trip-origin-head"><b>${origin ? esc(origin.name) : 'Origine à choisir'}</b><span>${TRIP_FORM.originMode === rec.mode ? 'proposé par le contexte' : 'choisi'}</span></div>
         <label class="sr-only" for="tripOriginSel">Modifier le départ</label><select id="tripOriginSel" data-trip-field="origin">${opts.map(([v,t]) => `<option value="${esc(v)}" ${TRIP_FORM.originMode === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
@@ -124,7 +124,7 @@ function renderTripSummary() {
   const car = appActiveCar(), l = t && (t.l || t.planL), route = l && !l.originPending && Number.isFinite(l.km) ? `${f1(l.km)} km · ~${Math.round(l.min)} min` : offlineNow() ? 'route à recalculer au retour du réseau' : 'route en préparation';
   const address = to && (to.address || to.sub) || '';
   el.hidden = false;
-  el.innerHTML = `<div class="trip-summary-head"><span class="trip-label">PROCHAIN TRAJET</span><b class="mono">${esc((n.dep || '').slice(11,16) || '—')}</b></div>
+  el.innerHTML = `<div class="trip-summary-head"><span class="trip-label">🧭 PROCHAIN TRAJET</span><b class="mono">${esc((n.dep || '').slice(11,16) || '—')}</b></div>
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(car && (car.short || car.name) || 'véhicule à choisir')}</span><span>${esc(route)}</span><span>${n.source === 'manual' ? 'manuel' : n.source}</span></div>
     <div class="chips"><button class="btn sm" data-act="view" data-v="trajet">Voir le trajet</button><button class="btn sm" data-act="view" data-v="trajet">Modifier</button></div>`;
