@@ -59,10 +59,11 @@ async function views(p, expected) {
       }
     }, { time: T });
     let p;
-    const open = async () => {
-      p = await c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.clock.install({ time: T }); await p.goto(base);
+    const open = async (at = T) => {
+      p = await c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.clock.install({ time: at }); await p.goto(base);
       for (let i = 0; i < 12; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); }
     };
+    const reopen = async () => { const at = await p.evaluate(() => Date.now()); await p.close(); await open(at); };
     await open();
     await p.evaluate(async () => { await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }); await navigator.serviceWorker.ready; });
     await p.reload(); await p.waitForFunction(() => navigator.serviceWorker.controller);
@@ -78,7 +79,7 @@ async function views(p, expected) {
     // Lieux et véhicules fictifs uniquement ; choix de contexte par vrais taps.
     await p.evaluate(() => { S.customs = [{ id: 'b', name: 'Lieu B', lat: 48.8, lon: 2.45 }]; const car = structuredClone(S.cars[0]); car.id = 'carB'; car.name = car.short = 'Voiture B'; S.cars[1] = car; saveSettings(); renderAll(); });
     await destination(p, 'b'); await p.locator('#dayContext [data-act=day-car][data-id=carB]').tap(); await p.locator('#dayContext [data-act=day-type][data-v=work]').tap();
-    await c.setOffline(true); await p.close(); await open();
+    await c.setOffline(true); await reopen();
     await check('PWA fermée/réouverte hors ligne : Lieu B et voiture B, aucun aller dans Tenue', async () => {
       await views(p, { state: 'work', place: 'work', next: 'ret', destination: 'b', car: 'carB' });
       assert.equal((await read(p)).stored.dayContext.dayType.value, 'work');
@@ -87,12 +88,23 @@ async function views(p, expected) {
     await p.locator('#placeBar [data-act=place-leave]').click();
     await check('retour anticipé hors ligne : quatre vues en déplacement depuis le travail', () => views(p, { state: 'travel', origin: 'work', dir: 'ret' }));
     const startKey = (await read(p)).stored.tripStart.key;
-    await p.close(); await open();
+    await reopen();
     await check('PWA fermée pendant le retour : même départ et même trajet restaurés', async () => { assert.equal((await read(p)).stored.tripStart.key, startKey); await views(p, { state: 'travel', origin: 'work', dir: 'ret' }); });
     await p.locator('#placeBar [data-act=place-confirm][data-place=home]').click();
-    await p.close(); await open();
+    await p.locator('#secDebrief [data-act=debrief-condition][data-v=fog]').tap();
+    await p.locator('#secDebrief [data-act=debrief-save]').tap();
+    await reopen();
     await check('arrivée maison puis réouverture hors ligne : lieu et deux trajets clôturés persistants', async () => {
       await views(p, { state: 'home', place: 'home', next: 'go' }); assert.equal((await read(p)).stored.tripStart, null); assert(Object.keys((await read(p)).stored.done).includes(startKey));
+    });
+    await check('débrief puis fermeture PWA hors ligne : observation et snapshot conservés une seule fois', async () => {
+      const rows = (await read(p)).stored.debrief.entries; assert.equal(rows.length, 1); assert.equal(rows[0].key, startKey);
+      assert.deepEqual(rows[0].feedback.conditions, ['fog']); assert(rows[0].start);
+      for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) { await p.locator('#viewSeg [data-act=view][data-v=' + view + ']').click(); assert(await p.locator('#secDebrief').isVisible()); }
+    });
+    await check('ancienne page réécrivant v1 : le journal reste récupérable hors ligne', async () => {
+      await p.evaluate(() => { const old = JSON.parse(localStorage.getItem('twrc.context.v1')); delete old.debrief; localStorage.setItem('twrc.context.v1', JSON.stringify(old)); });
+      await reopen(); const rows = (await read(p)).stored.debrief.entries; assert.equal(rows.length, 1); assert.deepEqual(rows[0].feedback.conditions, ['fog']);
     });
     await check('vrai SW et application : aucune erreur JavaScript', async () => assert.deepEqual(errors, []));
     await c.close();

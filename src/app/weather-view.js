@@ -149,7 +149,7 @@ function evInput() {
     : [0, 1, 2, 3].map(k => m.hs[m.nowI + k]).filter(Boolean).map((x, k) => ({ lat: l.lat, lon: l.lon, t: x.t, ms: msOf(x.t), x, label: k ? '+' + k + ' h' : 'maintenant' }));
   const raw = RAW[UI.loc];
   return { now, points: points.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon)), stations: evStations(), reports: reportsLive(), community: { available: false },
-    location: { trust: evLocTrust() }, fresh: { modelAgeMin: raw && raw.t ? (Date.now() - raw.t) / 60e3 : null, offline: offlineNow() }, onTrip: !!trip };
+    location: { trust: evLocTrust() }, fresh: { modelAgeMin: raw && raw.t ? (Date.now() - raw.t) / 60e3 : null, offline: offlineNow() }, onTrip: !!trip, tripKey: trip && trip.id };
 }
 function evNow() {
   const i = evInput(); if (!i || !i.points.length) return null;

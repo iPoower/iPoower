@@ -27,9 +27,8 @@ function appTripPlace(t, end, origin = null) {
   const known = places.find(l => p.id && l.id === p.id) || places.filter(l => distKm(l, p) <= 1.5).sort((a, b) => distKm(a, p) - distKm(b, p))[0];
   return known || { id: end === 'from' ? 'gps' : 'arrival', name: end === 'from' && start ? 'Ma position au départ' : t[end] || p.name || p.city || p.label || 'Destination', lat: p.lat, lon: p.lon };
 }
-function appArrival(t, how) {
+function appArrival(t, how, at = Date.now()) {
   const p = appTripPlace(t, 'to'); if (!p) return;
-  const at = Date.now();
   if (p.id === 'arrival') {
     PLACE.extra = { ...p, at };
     const sources = [
@@ -55,6 +54,7 @@ function appArrival(t, how) {
   APP_CONTEXT.weatherPreview = null; UI.loc = p.id;
 }
 function appDeparture(t, s) {
+  debriefDeparture(t, s);
   const from = appTripPlace(t, 'from', s.o), to = appTripPlace(t, 'to');
   s.trip = { src: t.src, key: t.key, dep: t.planDep || t.dep, arr: t.arr, dir: t.td && t.td.dir,
     eventId: t.e ? TripCancel.eventId(t.e) : null, fromId: from && from.id, toId: to && to.id };
@@ -77,6 +77,7 @@ function appWorkTripData(dir, off, departure = null) {
 }
 function appRefreshContext({ persist = true } = {}) {
   appDay();
+  USER_STORE.state.debrief = Debrief.clean(USER_STORE.state.debrief);
   const c = placeNow();
   if (!APP_CONTEXT.weatherPreview) {
     if (c.place && ['manual', 'last'].includes(c.source)) UI.loc = c.place.id;

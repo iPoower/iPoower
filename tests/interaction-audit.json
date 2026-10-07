@@ -234,5 +234,29 @@
   "day-destination": {
     "suite": "e2e55-day-context.js",
     "result": "destination canonique temporaire"
+  },
+  "debrief-condition": {
+    "suite": "e2e56-debrief.js",
+    "result": "conditions rencontrées sélectionnées explicitement"
+  },
+  "debrief-grip": {
+    "suite": "e2e56-debrief.js",
+    "result": "adhérence ressentie facultative sélectionnée"
+  },
+  "debrief-save": {
+    "suite": "e2e56-debrief.js",
+    "result": "observation enregistrée une seule fois dans le journal local"
+  },
+  "debrief-later": {
+    "suite": "e2e56-debrief.js",
+    "result": "débrief différé sans retour inventé"
+  },
+  "debrief-open": {
+    "suite": "e2e56-debrief.js",
+    "result": "débrief repris ou modifié dans le journal"
+  },
+  "debrief-clear": {
+    "suite": "e2e56-debrief.js",
+    "result": "journal local effacé après confirmation"
   }
 }

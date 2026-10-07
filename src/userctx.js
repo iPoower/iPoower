@@ -76,6 +76,10 @@ function userContextStore({ read, write, now = () => Date.now() }) {
     const p = obj(v.place) ? v.place : {}, done = {};
     const conf = obj(p.conf) && typeof p.conf.placeId === 'string' && time(p.conf.at) ? p.conf : null;
     const start = trip(v.tripStart) ? v.tripStart : null;
+    // Une ancienne page peut réécrire v1 sans connaître ce nouveau champ.
+    // Le miroir sert seulement à cette récupération ; un champ canonique vide gagne.
+    const debrief = Debrief.clean(Object.prototype.hasOwnProperty.call(v, 'debrief') ? v.debrief : parse('twrc.debrief.v1'), now());
+    if (!start || conf && conf.at >= start.at || debrief.active && debrief.active.key !== start.key) debrief.active = null;
     if (obj(v.done)) Object.entries(v.done).slice(-256).forEach(([k, d]) => {
       if (obj(d) && time(d.at) && Number.isFinite(d.exp) && d.exp > now() && typeof d.how === 'string') done[k] = d;
     });
@@ -91,7 +95,7 @@ function userContextStore({ read, write, now = () => Date.now() }) {
       tripStart: start && !(conf && conf.at >= start.at) ? start : null,
       tripEnd: obj(v.tripEnd) && time(v.tripEnd.at) ? v.tripEnd : null,
       returnHome: trip(v.returnHome) && Number.isFinite(v.returnHome.exp) && v.returnHome.exp > now() ? v.returnHome : null,
-      done, lastArrival: obj(v.lastArrival) && time(v.lastArrival.at) ? v.lastArrival : null,
+      done, debrief, lastArrival: obj(v.lastArrival) && time(v.lastArrival.at) ? v.lastArrival : null,
       lastDeparture: obj(v.lastDeparture) && typeof v.lastDeparture.placeId === 'string' && time(v.lastDeparture.at) && now() - v.lastDeparture.at < 20 * 3600e3 ? v.lastDeparture : null };
   }
   const saved = parse(key), legacy = !saved ? { place: parse('twrc.place.v1'), gps: parse('twrc.gps'),
@@ -107,7 +111,7 @@ function userContextStore({ read, write, now = () => Date.now() }) {
     if (oldOutfit != null) { try { write('twrc.outfit.occasion', null); } catch (e) { /* migration déjà dans le document */ } }
     const mirrors = { 'twrc.place.v1': { conf: state.place.conf, last: state.place.last }, 'twrc.gps': state.gps,
       'twrc.tripstart.v1': state.tripStart, 'twrc.tripend.v1': state.tripEnd, 'twrc.returnhome.v1': state.returnHome,
-      'twrc.tripdone': Object.keys(state.done).length ? state.done : null };
+      'twrc.tripdone': Object.keys(state.done).length ? state.done : null, 'twrc.debrief.v1': state.debrief };
     Object.entries(mirrors).forEach(([k, v]) => { try { write(k, encode(v)); } catch (e) { /* compatibilité facultative */ } });
   }
   function flush() {
