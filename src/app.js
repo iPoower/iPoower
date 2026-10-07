@@ -816,7 +816,7 @@ function renderDecisionCore() {
     weather: { available: !!raw && !!CX.m, ageMin: raw ? ageMin(raw.t) : null, mode: raw && raw.mode },
     online: !offlineNow(), contextKnown: snap.status !== 'unknown',
     storageDurable: USER_STORE.durability().status === 'durable',
-    tyresRequired: !!car, tyresKnown: !car || !!(hasTires(car) && carEval && carEval.w),
+    tyresRequired: true, tyresKnown: !!(car && hasTires(car) && carEval && carEval.w),
     activeTrip: active, gpsAgeMin: gpsAge,
     routeReady: !active || !!(LIVE.route && !LIVE.routeErr && Number.isFinite(LIVE.lastOk) && now - LIVE.lastOk <= 5 * 60e3),
     agendaRequired, agendaAvailable: !!CAL, agendaAgeMin: calAge
@@ -841,7 +841,7 @@ function renderDecisionCore() {
   const icon = ['✓', '◌', '⚠', '⛔'][decision.displayLevel] || '•';
   const confClass = 'lv' + Math.min(2, confidence.level);
   const destination = snap.destination && snap.destination.name || (snap.destination ? 'Destination' : 'Aucune destination immédiate');
-  const carLabel = car ? (car.short || car.name || car.id) : 'Comparaison';
+  const carLabel = car ? (car.short || car.name || car.id) : 'À choisir';
   const wAge = raw ? ageMin(raw.t) : null, fresh = wAge == null ? 'météo —' : 'météo ' + (wAge < 1 ? 'moins de 1 min' : Math.round(wAge) + ' min');
   const changesHtml = changes.length ? '<details class="decision-changes"><summary>Depuis la dernière ouverture · ' + changes.length + ' changement' + (changes.length > 1 ? 's' : '') + '</summary><div>' +
     changes.map(c => '<span class="' + esc(c.kind) + '">' + (c.kind === 'up' ? '↑ ' : c.kind === 'down' ? '↓ ' : '↔ ') + esc(c.text) + '</span>').join('') + '</div></details>' : '';
@@ -849,7 +849,7 @@ function renderDecisionCore() {
   el.hidden = false;
   el.innerHTML = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + '</p></div>' +
     '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b></span></div>' +
-    '<div class="decision-meta"><span>Destination · <b>' + esc(destination) + '</b></span><span>Voiture · <b>' + esc(carLabel) + '</b></span><span>' + esc(fresh) + '</span></div>' +
+    '<div class="decision-meta"><span>Destination · <b>' + esc(destination) + '</b></span><span>Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + '</span><span>' + esc(fresh) + '</span></div>' +
     (confidence.level > 0 && confidence.reasons.length ? '<div class="decision-why">' + confidence.reasons.map(r => '<span>' + esc(r) + '</span>').join('') + '</div>' : '') + changesHtml;
 }
 
