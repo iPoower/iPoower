@@ -274,5 +274,9 @@
   "weather-details": {
     "suite": "e2e43-analyse.js",
     "result": "détails météo ouverts depuis le résumé Pneus"
+  },
+  "place-toggle": {
+    "suite": "e2e57-place-compact.js",
+    "result": "lieu confirmé compact, départ direct, corrections et météo déployées par Modifier, fermeture après confirmation"
   }
 }

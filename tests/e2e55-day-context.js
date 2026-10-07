@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { session, BR, errors, U } = require('./lib/context-session');
+const { revealPlaceControls } = require('./lib/place-controls');
 let n = 0, scope = {};
 const read = p => p.evaluate(() => {
   const c = APP_CONTEXT.snapshot;
@@ -12,6 +13,7 @@ const read = p => p.evaluate(() => {
 });
 async function check(label, fn) { try { await fn(); n++; console.log('✅ ' + label); } catch (e) { console.error('❌ ' + label + ' · ' + e.message); throw e; } }
 async function tap(p, selector) {
+  await revealPlaceControls(p, selector);
   if (/data-act=day-(type|car)/.test(selector)) await openDay(p);
   const el = p.locator(selector).first(); scope.selector = selector;
   try { if (scope.device === 'iphone') await el.tap(); else await el.click(); } catch (e) {

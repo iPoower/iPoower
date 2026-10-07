@@ -111,7 +111,19 @@ async function tripCycle(browser, iphone) {
       await p.evaluate(w => __geoOldPush(w), WORK); await s.settle();
       await check(tag + ' · oublier : anciens callbacks ignorés', async () => { const x = await state(p); assert.equal(x.auto, 0); assert.equal(x.fix, null); assert.equal(x.raw, null); assert.equal(x.watches, 0); });
       await p.locator('#placeBar [data-act=place-confirm][data-place=home]').click(); await s.settle();
-      await check(tag + ' · override Je suis chez moi conservé', async () => { const x = await state(p); assert.equal(x.context.source, 'manual'); assert.equal(x.context.place.id, 'home'); assert(!/VPN/.test(await p.locator('#placeBar').innerText())); });
+      await check(tag + ' · override Je suis chez moi conservé et compact', async () => {
+        const x = await state(p); assert.equal(x.context.source, 'manual'); assert.equal(x.context.place.id, 'home'); assert(!/VPN/.test(await p.locator('#placeBar').innerText()));
+        assert.equal(await p.locator('#placeBar .place.on.compact').count(), 1);
+        assert.equal(await p.locator('#placeBar [data-act=place-leave]').count(), 1);
+        assert(await p.locator('#placeBar [data-act=place-leave]').isVisible());
+        assert(!await p.locator('#locChips').isVisible());
+        assert.equal(await p.locator('#placeBar [data-act=place-toggle]').getAttribute('aria-expanded'), 'false');
+      });
+      await p.locator('#placeBar [data-act=place-toggle]').click(); await s.settle();
+      await check(tag + ' · actions du lieu confirmé disponibles sur demande', async () => {
+        assert.equal(await p.locator('#placeBar [data-act=place-toggle]').getAttribute('aria-expanded'), 'true');
+        assert.equal(await p.locator('#placeBar [data-act=place-leave]').count(), 1);
+      });
       await p.locator('#placeBar [data-act=place-leave]').click(); await s.settle();
       await p.evaluate(() => { USER_STORE.state.lastDeparture = null; liveReset(); PLACE = { conf: null, last: null }; NETLOC = { lat: 48.9, lon: 2.25, acc: 6000, ts: Date.now() }; renderAll(); });
       await check(tag + ' · IP seule : indéterminé, confirmation disponible', async () => { const x = await state(p); assert.equal(x.context.place, null); assert.equal(x.context.source, 'network'); assert.match(x.context.badge, /Position réseau approximative · précision ~6 km/); assert(!/VPN/.test(x.context.badge)); });

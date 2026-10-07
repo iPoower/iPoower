@@ -73,11 +73,11 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     let s = await session(b, { at: '2026-10-05T06:50:00+02:00' }); let x = await st(s.p);
     check('1 · trajet aller en cours : « ARRIVÉE · 🏢 Travail test » et bouton « ✅ Bien arrivé »', /ARRIVÉE · 🏢 Travail test/.test(x.bar) && /✅ Bien arrivé/.test(x.bar), x.bar);
     await s.p.locator('#placeBar [data-act=place-confirm][data-how=arrival]').click(); await s.settle(2); x = await st(s.p);
-    check('1 · confirmé : « 🏢 AU TRAVAIL · Confirmé à 06:50 · source : confirmation utilisateur »', /🏢 AU TRAVAIL/.test(x.bar) && /Confirmé à 06:50 · source : confirmation utilisateur/.test(x.bar) && x.loc === 'work', JSON.stringify({ bar: x.bar, loc: x.loc }));
+    check('1 · confirmé compact : AU TRAVAIL, heure et provenance canonique', /🏢 AU TRAVAIL/.test(x.bar) && /Confirmé 06:50/.test(x.bar) && /^manual/.test(x.diag['Source retenue']) && x.loc === 'work', JSON.stringify({ bar: x.bar, loc: x.loc }));
     check('1 · trajet aller terminé proprement (plus affiché en cours)', !/Trajet en cours · domicile-travail/.test(x.brief) && /commute\|/.test(await s.p.evaluate(() => localStorage.getItem('twrc.tripdone') || '')), x.brief.slice(0, 200));
     check('1 · stockage : identifiant de lieu et heure seulement, aucune coordonnée', !!x.stored && /"placeId":"work"/.test(x.stored) && !/lat|lon|48\.|2\.2/.test(x.stored), x.stored);
     // 2. COARSE : position IP à ~100 km, précision 20 km → lieu non déduit
-    await locateAt(s, COARSE); x = await st(s.p);
+    await locateAt(s, COARSE); await s.p.locator('#placeBar [data-act=place-toggle]').click(); x = await st(s.p);
     check('2 · relevé approximatif à ~100 km juste après la confirmation : le lieu reste Travail', /🏢 AU TRAVAIL/.test(x.bar) && x.loc === 'work' && !x.gps, JSON.stringify({ bar: x.bar, loc: x.loc, gps: x.gps }));
     check('2 · Relevé navigateur approximatif signalé sans inférer un fournisseur, jamais affiché comme position réelle', /Position approximative ignorée pour le lieu confirmé/.test(x.bar) && !/Ville approximative test/.test(x.chips), x.bar + ' | ' + x.chips);
     check('2 · diagnostic : brut, réseau, lieu logique, source gagnante, source écartée', x.diag['Position réseau / IP'] === 'aucune' && /±20000 m/.test(x.diag['Géolocalisation navigateur (brute)'] || '') && /Travail test · Confirmée/.test(x.diag['Lieu logique Race Control'] || '') && /^manual/.test(x.diag['Source retenue'] || '') && /navigateur : précision insuffisante/.test(x.diag['Sources écartées'] || ''), JSON.stringify(['Position réseau / IP', 'Lieu logique Race Control', 'Source retenue', 'Sources écartées'].map(k => x.diag[k])));
@@ -151,6 +151,7 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     await s.p.locator('[data-act=view][data-v=pneus]').click(); await s.settle(2); x = await st(s.p);
     const route = await s.p.locator('#secBrf .brf-r').innerText();
     check('11 ter · lieu confirmé nommé, retour depuis le vrai Travail', /AU TRAVAIL · Travail test/.test(x.bar) && route.replace(/\s+/g, ' ').trim().toLowerCase() === 'travail test → maison test', route + ' | ' + x.bar);
+    await s.p.locator('#placeBar [data-act=place-toggle]').click();
     await s.p.locator('#locChips [data-act=locs-toggle]').click();
     const labels = await s.p.locator('#locChips [data-act=loc]').evaluateAll(els => els.map(e => e.getAttribute('aria-label') || '').join(' | '));
     check('11 ter · lieux météo : domicile, travail et destination identifiés', /Météo : Travail test · 🏢 Travail/.test(labels) && /Météo : Destination ancienne test · 📌 Destination/.test(labels), labels);
