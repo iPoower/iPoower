@@ -285,6 +285,6 @@
   },
   "decision-car-change": {
     "suite": "e2e55-day-context.js",
-    "result": "le raccourci Changer du bandeau Race Control ouvre le panneau Aujourd’hui et focalise la voiture active"
+    "result": "le raccourci Changer du bandeau Race Control ouvre le panneau Aujourd’hui sur le sélecteur de voiture active"
   }
 }
