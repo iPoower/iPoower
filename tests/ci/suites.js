@@ -61,5 +61,5 @@ SUITE.push(['test_debrief.js', 'débrief : arrivée unique, snapshot, observatio
   ['debrief-countertests.js', 'débrief : mutations de clôture, preuves, confidentialité et rétention rejetées', false],
   ['e2e56-debrief.js', 'débrief : vrais clics iPhone/PC, trois chemins d’arrivée, annulation, quatre vues et reload', true]);
 SUITE.push(['test_calib.js', 'retours terrain : observation d’abord, correction par lieu à 5 retours cohérents, contre-tests', false]);
-SUITE.push(['e2e57-place-compact.js', 'lieu confirmé compact : Modifier, GPS refusé, départ, quatre vues, fenêtres et hauteur iPhone/PC', true]);
+SUITE.push(['e2e57-place-compact.js', 'lieu confirmé compact : Modifier, GPS refusé, départ, quatre vues, fenêtres et hauteur iPhone/PC', true]);\nSUITE.push(['test_reliability.js', 'fiabilité : journal runtime privé, anti-boucle PWA et cohérence de version', false]);
 module.exports = { SUITE };
