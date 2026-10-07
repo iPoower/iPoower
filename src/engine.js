@@ -507,7 +507,7 @@ function computeAlerts(model, cars, S, seasonByCar) {
   for (let k = 0; k + 3 < seq.length; k++) { const a = seq[k].hs[seq[k].i], b = seq[k + 3].hs[seq[k + 3].i]; if (a.T != null && b.T != null && a.T - b.T >= 5 && (!drop || a.T - b.T > drop.d)) drop = { d: a.T - b.T, s: seq[k + 3], from: a.T, to: b.T }; }
   if (drop) set('drop', drop.d >= 8 ? 3 : 2, `Baisse brutale : −${f1(drop.d)} °C en 3 h`, `De ${f1(drop.from)} à ${f1(drop.to)} °C vers ${hhmm(drop.s)}.`);
   const pre = cars.map(c => ({ c, s: seasonByCar[c.id] })).filter(o => o.s && o.s.coldBefore && effType(o.c) === 'summer');
-  if (pre.length) { const o = pre[0]; set('pre', 3, `Météo hivernale avant le montage hiver (${o.c.short})`, `Premier épisode : ${fmtDay(o.s.coldBefore.first.date)}, avant le montage prévu le ${fmtDay(o.s.countdown.date)}.${o.s.coldBefore.partial ? ' Prévision au-delà de 14 j non disponible : analyse partielle.' : ''}`); }
+  if (pre.length) { const o = pre[0], when = o.s.countdown.kind === 'confirmed' ? 'rendez-vous confirmé' : 'montage estimé'; set('pre', 3, `Météo hivernale avant le montage hiver (${o.c.short})`, `Premier épisode : ${fmtDay(o.s.coldBefore.first.date)}, avant le ${when} du ${fmtDay(o.s.countdown.date)}.${o.s.coldBefore.partial ? ' La météo disponible ne couvre pas toute la période restante.' : ''}`); }
   return res;
 }
 
