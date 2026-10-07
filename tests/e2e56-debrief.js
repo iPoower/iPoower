@@ -97,9 +97,9 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
       await tap(cancel, '#secBrf [data-act=trip-cancel-undo]');
       await check('Annuler l’annulation · aucun faux débrief', async () => assert.equal((await state(cancel.p)).journal.entries.length, 0));
     } finally { await cancel.c.close(); }
-    const retro = await setup(b, 'iphone', '2026-10-03T18:40:00+02:00');
+    const retro = await setup(b, 'iphone', '2026-10-03T17:10:00+02:00');
     try {
-      await tap(retro, '#secCal [data-act=return-home-done]');
+      await tap(retro, '#secBrf [data-act=return-home-done]');
       await check('Déjà rentré · clôture après coup sans prévision fabriquée', async () => { const v = await state(retro.p); assert.equal(v.journal.entries.length, 1); assert.equal(v.journal.entries[0].start, null); assert.equal(v.journal.entries[0].how, 'confirmé'); });
     } finally { await retro.c.close(); }
     const vehicle = await setup(b, 'pc', '2026-10-03T14:00:00+02:00');
