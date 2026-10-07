@@ -104,21 +104,41 @@ function userContextStore({ read, write, now = () => Date.now() }) {
   const oldOutfit = read('twrc.outfit.occasion');
   if (!(saved && saved.dayContext) && ['office', 'outing', 'walk'].includes(oldOutfit)) state.dayContext.outfitChoice = { date: DayContext.date(now()), occasion: oldOutfit };
   const encode = v => v == null ? null : JSON.stringify(v);
-  let durability = { status: 'durable', failedAt: null, lastOkAt: null, error: null };
+  let durability = { status: 'durable', failedAt: null, lastOkAt: null, validatedAt: null, error: null };
   function persist() {
     // Une écriture atomique du document canonique précède les anciens miroirs.
     // Une panne de stockage reste visible et retentable : jamais de faux « sauvegardé ».
     try { write(key, JSON.stringify(state)); }
     catch (e) {
-      durability = { status: 'degraded', failedAt: now(), lastOkAt: durability.lastOkAt, error: String(e && e.message || e || 'écriture refusée').slice(0, 120) };
+      durability = { status: 'degraded', failedAt: now(), lastOkAt: durability.lastOkAt, validatedAt: durability.validatedAt, error: String(e && e.message || e || 'écriture refusée').slice(0, 120) };
       return false;
     }
-    durability = { status: 'durable', failedAt: null, lastOkAt: now(), error: null };
+    durability = { status: 'durable', failedAt: null, lastOkAt: now(), validatedAt: durability.validatedAt, error: null };
     if (oldOutfit != null) { try { write('twrc.outfit.occasion', null); } catch (e) { /* migration déjà dans le document */ } }
     const mirrors = { 'twrc.place.v1': { conf: state.place.conf, last: state.place.last }, 'twrc.gps': state.gps,
       'twrc.tripstart.v1': state.tripStart, 'twrc.tripend.v1': state.tripEnd, 'twrc.returnhome.v1': state.returnHome,
       'twrc.tripdone': Object.keys(state.done).length ? state.done : null, 'twrc.debrief.v1': state.debrief };
     Object.entries(mirrors).forEach(([k, v]) => { try { write(k, encode(v)); } catch (e) { /* compatibilité facultative */ } });
+    return true;
+  }
+  function validateDurable() {
+    // Une reprise n'est validée qu'après relecture du document canonique.
+    // Cela évite un faux DURABLE si l'écriture a été acceptée sans être relisible
+    // (stockage révoqué, contexte navigateur instable ou concurrence inattendue).
+    const expected = JSON.stringify(state);
+    let stored = null;
+    try { stored = read(key); }
+    catch (e) {
+      durability = { status: 'degraded', failedAt: now(), lastOkAt: durability.lastOkAt, validatedAt: durability.validatedAt,
+        error: String(e && e.message || e || 'relecture refusée').slice(0, 120) };
+      return false;
+    }
+    if (stored !== expected) {
+      durability = { status: 'degraded', failedAt: now(), lastOkAt: durability.lastOkAt, validatedAt: durability.validatedAt,
+        error: 'validation stockage : document canonique différent ou illisible' };
+      return false;
+    }
+    durability = { status: 'durable', failedAt: null, lastOkAt: durability.lastOkAt || now(), validatedAt: now(), error: null };
     return true;
   }
   function flush() {
@@ -133,8 +153,10 @@ function userContextStore({ read, write, now = () => Date.now() }) {
   }
   function retry() {
     if (depth) return false;
-    if (durability.status === 'durable' && JSON.stringify(state) === baseline) return true;
-    const ok = persist(); if (ok) baseline = JSON.stringify(state); return ok;
+    if (durability.status === 'durable' && JSON.stringify(state) === baseline) return validateDurable();
+    const ok = persist();
+    if (!ok || !validateDurable()) return false;
+    baseline = JSON.stringify(state); return true;
   }
   function transaction(fn) {
     depth++; try { return fn(state); } finally { depth--; if (!depth) flush(); }
