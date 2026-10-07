@@ -93,7 +93,14 @@ async function views(p, expected) {
         assert.equal(await p.evaluate(() => TCARS().length), 2); assert.equal(await p.evaluate(() => appTripCars().length), 1);
         assert.equal(await p.locator('#dayContext [data-act=day-car][data-id=""]').count(), 0);
         assert.equal((await read(p)).next.car, 'carB');
-        const decision = p.locator('#decisionCore'); if (await decision.isVisible()) assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
+        const decision = p.locator('#decisionCore');
+        if (await decision.isVisible()) {
+          assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
+          await decision.locator('[data-act=decision-car-change]').click();
+          assert.notEqual(await p.locator('#dayContext details.day-editor').getAttribute('open'), null);
+          await p.waitForFunction(() => document.activeElement && document.activeElement.dataset.act === 'day-car');
+          assert.equal(await p.evaluate(() => document.activeElement && document.activeElement.dataset.id), 'carB');
+        }
       });
       await tap(p, '[data-act=day-car][data-id=carA]');
       await check('changement manuel de voiture : propagation globale immédiate', async () => {
