@@ -90,6 +90,11 @@ async function capture(p, dev, name) {
         assert.match(await p.locator('#placeBar').innerText(), /source : confirmation utilisateur/);
       });
       const full = await layout(p); await capture(p, dev, 'expanded');
+      if (dev === 'pc') await check('desktop · Modifier au clavier conserve le focus et les commandes', async () => {
+        const toggle = p.locator('#placeBar [data-act=place-toggle]'); await toggle.focus(); await toggle.press('Enter');
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'false'); assert(await toggle.evaluate(el => el === document.activeElement));
+        await toggle.press('Space'); assert.equal(await toggle.getAttribute('aria-expanded'), 'true'); assert(await toggle.evaluate(el => el === document.activeElement));
+      });
       await check(dev + ' · gain vertical ≥ 40 %, aucune coupure/débordement et cibles ≥ 44 px', async () => {
         assert(small.height <= full.height * 0.6, JSON.stringify({ small, full }));
         assert(small.height <= 140, JSON.stringify(small));

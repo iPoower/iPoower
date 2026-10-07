@@ -3328,7 +3328,11 @@ document.addEventListener('click', async e => {
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
   else if (a === 'trip-start') liveStart(t.dataset.key);
   else if (a === 'place-confirm') placeConfirm(t.dataset.place, t.dataset.how);
-  else if (a === 'place-toggle') { const d = placeDisclosure(placeNow()); UI.placeExpanded = d.expanded ? null : d.key; renderPlace(); }
+  else if (a === 'place-toggle') {
+    const d = placeDisclosure(placeNow()), focused = document.activeElement === t;
+    UI.placeExpanded = d.expanded ? null : d.key; renderPlace();
+    const button = $('#placeBar [data-act=place-toggle]'); if (focused && button) button.focus({ preventScroll: true });
+  }
   else if (a === 'place-leave') placeLeave();
   else if (a === 'ev-report') reportAdd(t.dataset.k);
   else if (a === 'ev-flag') { S.flags = S.flags || {}; S.flags.weatherEvidenceV2 = t.dataset.v; saveSettings(); renderSettings(true); renderAll(); }
