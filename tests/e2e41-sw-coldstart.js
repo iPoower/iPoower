@@ -23,8 +23,11 @@ const server=http.createServer((req,res)=>{
   const port=await new Promise((ok,ko)=>server.listen(0,'127.0.0.1',()=>ok(server.address().port)).on('error',ko)),base='http://localhost:'+port+'/race-control/';
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'twrc-sw-'));
   // proxy inexistant : aucune requête externe (météo, cartes) ne peut sortir ; seul le serveur local répond
-  const open=()=>pw.chromium.launchPersistentContext(dir,{...(fs.existsSync(LOCAL)?{executablePath:LOCAL}:{}),args:['--no-sandbox'],serviceWorkers:'allow',
-    proxy:{server:'http://127.0.0.1:9',bypass:'localhost'},viewport:{width:414,height:896},timezoneId:'Europe/Paris'});
+  // heure fixe dans la page (les timers continuent) : un lundi 06:00, avant le trajet du matin. Sans elle, le verdict du briefing
+  // dépendait de l'heure réelle du run (après 16:00 un mercredi : plus aucun trajet, donc aucune jauge → 41.3 rouge).
+  const AT=new Date('2026-10-05T06:00:00+02:00');
+  const open=async()=>{const c=await pw.chromium.launchPersistentContext(dir,{...(fs.existsSync(LOCAL)?{executablePath:LOCAL}:{}),args:['--no-sandbox'],serviceWorkers:'allow',
+    proxy:{server:'http://127.0.0.1:9',bypass:'localhost'},viewport:{width:414,height:896},timezoneId:'Europe/Paris'});await c.clock.setFixedTime(AT);return c;};
   // 1. première visite en ligne : un ancien cache traîne, le SW s'installe, l'app est déverrouillée, une météo valide est mémorisée
   let c=await open(),p=c.pages()[0]||await c.newPage();p.on('pageerror',e=>rows.push('ERR '+e.message));
   await p.goto(base+'harness.html');await p.evaluate(async()=>{const ca=await caches.open('twrc-static-v1');await ca.put('/ancien',new Response('x'));});

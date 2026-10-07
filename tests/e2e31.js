@@ -32,8 +32,8 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
     const visible = id => p.locator('#' + id).isVisible();
     await p.goto(U); await settle(); await p.fill('#unlockPw', PW);
     await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); await settle();
-    check('même titre, onglets Pneus / Météo / Tenue / Analyse dans cet ordre', await p.locator('.title').innerText().then(t => /TYRE WEATHER RACE CONTROL/i.test(t)) &&
-      await p.locator('#viewSeg button').evaluateAll(a => a.map(x => x.dataset.v).join(',') === 'pneus,meteo,tenue,analyse'));
+    check('même titre, onglets Météo / Pneus / TRAJET / Tenue / Analyse dans cet ordre', await p.locator('.title').innerText().then(t => /TYRE WEATHER RACE CONTROL/i.test(t)) &&
+      await p.locator('#viewSeg button').evaluateAll(a => a.map(x => x.dataset.v).join(',') === 'meteo,pneus,trajet,tenue,analyse'));
     check('la tenue est masquée dans le cockpit Pneus', !(await visible('secTenue')) && await visible('secCars'));
     const n = forecasts;
     await p.click('[data-act=view][data-v=tenue]'); await settle();

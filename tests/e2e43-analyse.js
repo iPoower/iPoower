@@ -91,7 +91,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     let s = await session(b, { at: '2026-10-03T05:40:00+02:00', scn: 'froid' });
     await toLab(s); let a = await lab(s.p);
     if (process.env.LAB_DUMP) console.log(JSON.stringify(a, null, 1));
-    check('1 · quatre onglets, Analyse en dernier', a.tabs === 'pneus,meteo,tenue,analyse', a.tabs);
+    check('1 · cinq onglets (Météo · Pneus · TRAJET · Tenue · Analyse), Analyse en dernier', a.tabs === 'meteo,pneus,trajet,tenue,analyse', a.tabs);
     check('1 · Analyse : seule section visible avec les réglages, en tête', a.shown && a.first === 'secLab' && !a.others.length, JSON.stringify({ first: a.first, others: a.others }));
     check('1 · verdict : pneu réellement monté (modèle non renseigné → analyse générique été), dimension, état, plage estimée', /Modèle non renseigné · pneu été/.test(a.hero) && /215\/40 ZR18 89Y XL/.test(a.hero) && STATES.test(a.hero) && /Gomme estimée ≈ −?\d+ à −?\d+ °C/.test(a.hero), a.hero);
     check('1 · verdict : freinage, virage, pluie, facteur limitant, confiance', /Freinage : \S+/.test(a.hero) && /Virage : \S+/.test(a.hero) && /(Si pluie|Pluie) : \S+/.test(a.hero) && /Facteur limitant : /.test(a.hero) && /Confiance : (faible|moyenne|élevée)/.test(a.hero), a.hero);
