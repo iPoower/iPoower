@@ -240,8 +240,10 @@ let DECISION_LAST = null;
 const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
   read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
 async function fetchJSON(url, ms, group = 'shared') {
-  // hors connexion déclaré par l'appareil : aucune tentative réseau (inutile, coûteuse en batterie ; Safari la signale en erreur)
-  if (offlineNow()) { const e = new Error('Hors connexion : requête non envoyée'); e.offline = true; throw e; }
+  // hors connexion déclaré par l'appareil : aucune requête vers un service EXTERNE (inutile, coûteuse en batterie ; Safari la
+  // signale en erreur). Les fichiers de l'app (agenda chiffré, base pneus, observations, version) restent demandés : le service
+  // worker les sert depuis son cache, c'est ce qui permet le démarrage à froid hors ligne.
+  if (offlineNow() && /^https?:\/\//i.test(url) && new URL(url).origin !== location.origin) { const e = new Error('Hors connexion : requête non envoyée'); e.offline = true; throw e; }
   if (WEATHER_REQUESTS.owns(url)) return WEATHER_REQUESTS.get(url, ms || 12000, group);
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms || 12000);
   try {
