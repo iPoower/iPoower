@@ -69,4 +69,5 @@ SUITE.push(['e2e59-brief-gum.js', 'briefing : gomme estimée au départ et à l�
 SUITE.push(['test_decision.js', 'synthèse : décision, confiance qualitative et changements significatifs', false]);
 SUITE.push(['test_geosearch.js', 'géocodage : adresse France IGN/BAN, monde OSM et replis réseau', false]);
 SUITE.push(['e2e59-trip-tab.js', 'onglet TRAJET : adresse exacte, priorité manuelle, véhicule, horaire, reload, offline, annulation et mobile', true]);
+SUITE.push(['test_device_storage.js', 'stockage : import vérifié, récupération et verrouillage chiffré sans perte du journal', false]);
 module.exports = { SUITE };

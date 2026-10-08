@@ -4,7 +4,7 @@ const source = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8').sp
 const make = () => {
   const data = new Map(), storage = { getItem: k => data.get(k) || null, setItem: (k, v) => data.set(k, v), removeItem: k => data.delete(k) };
   const ctx = { window: {}, location: { hash: '' }, document: { querySelector: () => null }, localStorage: storage, console };
-  vm.createContext(ctx); vm.runInContext(source + ';this.repair = repairStoredWork; this.repairVehicle = repairVehicleIdentity; this.load = loadSettings; this.base = BASE;', ctx);
+  vm.createContext(ctx); vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/device-storage.js'), 'utf8') + '\n' + source + ';this.repair = repairStoredWork; this.repairVehicle = repairVehicleIdentity; this.load = loadSettings; this.base = BASE;', ctx);
   return { ctx, storage };
 };
 const fixture = ctx => ({ ...JSON.parse(JSON.stringify(ctx.base)), configured: 1,

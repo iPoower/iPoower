@@ -3,18 +3,20 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../src/app.js'), 'utf8');
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
-const actual = section('const gpsSourceCurrent =', 'const TCARS') + section('async function refreshAll()', 'function startDemo') + section('async function fetchAQ(l)', 'const polCls');
+const actual = section('const gpsSourceCurrent =', 'const TCARS') + section('async function refreshAll(', 'function startDemo') + section('async function fetchAQ(l)', 'const polCls');
 const A = { id: 'gps', gps: true, lat: 49, lon: 2 }, B = { ...A, lat: 50 };
 const defer = () => { let resolve, reject; const promise = new Promise((ok, no) => { resolve = ok; reject = no; }); return { promise, resolve, reject }; };
 const weather = origin => ({ hourly: { time: ['2026-10-04T00:00'] }, origin });
 const turn = () => new Promise(resolve => setImmediate(resolve));
 function setup() {
+  const DeviceStorage = { isFrozen: () => false, isLocked: () => false };
   const c = { Date, Promise, Map, Set, GPS: { ...A }, gpsWeatherGen: 1, DEMO: { on: false }, ENSRAW: {}, AQRAW: {}, AQERR: {}, AQBUSY: new Set(), AQREQ: new Map(), RAW: {}, ERR: {}, UI: { loc: 'gps' }, busy: false, lastOk: null, lastTry: null, MIDP: {}, OBS: null, location: { protocol: 'http:' } };
   c.distKm = (a, b) => Math.abs(a.lat - b.lat) * 111;
+  Object.assign(c, { DeviceStorage, localStorage: {}, window: {} });
   c.allLocs = () => c.GPS ? [c.GPS] : [];
   c.offlineNow = () => false; c.markOfflineCache = () => {};
   for (const name of ['rebuild', 'softRender', 'renderAll', 'renderStatus', 'fetchVigi', 'radarRefresh', 'loadCalendar', 'renderAir']) c[name] = () => {};
-  c.urlAQ = l => l;
+  c.urlAQ = l => l; c.WEATHER_REQUESTS = { fetchedAt: () => null };
   vm.createContext(c); vm.runInContext(actual, c); return c;
 }
 let checks = 0;

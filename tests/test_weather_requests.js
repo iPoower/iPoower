@@ -156,5 +156,48 @@ async function test(name, fn) { await fn(); count++; console.log('✅ ' + name);
     const c = manager({ read: () => { throw new Error('storage'); }, write: () => { throw new Error('storage'); }, fetch: async () => { calls++; return reply(429, {}, '120'); } });
     await assert.rejects(c.get(U + 'first'), e => e.status === 429); await assert.rejects(c.get(U + 'second'), e => e.status === 429); assert.equal(calls, 1);
   });
+  await test('cache mémoire : même URL économisée pendant sa durée, puis réellement renouvelée', async () => {
+    const s = setup(), u = U + 'ttl';
+    const first = s.c.get(u, 12000, 'shared', 20 * 60e3); s.calls[0].resolve(reply()); await first;
+    const initial = s.c.fetchedAt(u);
+    await s.advance(5 * 60e3);
+    const cached = await s.c.get(u, 12000, 'shared', 20 * 60e3);
+    assert.equal(s.calls.length, 1); assert.equal(cached.hourly.time[0], '2026-10-05T12:00');
+    assert.equal(s.c.fetchedAt(u), initial, 'l’heure de la source ne doit pas avancer sur un cache');
+    await s.advance(15 * 60e3);
+    const next = s.c.get(u, 12000, 'shared', 20 * 60e3);
+    assert.equal(s.calls.length, 2); s.calls[1].resolve(reply()); await next;
+    assert.equal(s.c.fetchedAt(u), s.now());
+    assert.deepEqual(Object.keys(JSON.parse(s.shared.value || '{}')), [], 'aucune URL en localStorage');
+  });
+  await test('cache strict : requête forcée, URL différente et réponse 200 invalide ne sont pas réutilisées', async () => {
+    const s = setup(), u = U + 'bad';
+    let p = s.c.get(u, 12000, 'shared', 15 * 60e3); s.calls[0].resolve(reply(200, {})); await p;
+    p = s.c.get(u, 12000, 'shared', 15 * 60e3); assert.equal(s.calls.length, 2);
+    s.calls[1].resolve(reply()); await p;
+    p = s.c.get(u, 12000, 'shared', 0); assert.equal(s.calls.length, 3);
+    s.calls[2].resolve(reply()); await p;
+    p = s.c.get(U + 'other', 12000, 'shared', 15 * 60e3); assert.equal(s.calls.length, 4);
+    s.calls[3].resolve(reply()); await p;
+  });
+  await test('volume : 12 consultations 5 min d’une prévision 30 min = 2 appels HTTP, jamais 12', async () => {
+    const s = setup(), u = U + 'volume';
+    for (let i = 0; i < 12; i++) {
+      const n = s.calls.length;
+      const p = s.c.get(u, 12000, 'shared', 30 * 60e3);
+      if (s.calls.length > n) s.calls[n].resolve(reply());
+      await p; await s.advance(5 * 60e3);
+    }
+    assert.equal(s.calls.length, 2);
+  });
+  await test('429 reste bloquant même si une ancienne réponse de la même URL est en cache', async () => {
+    const s = setup(), u = U + 'cached';
+    let p = s.c.get(u, 12000, 'shared', 30 * 60e3); s.calls[0].resolve(reply()); await p;
+    p = s.c.get(U + '429', 12000, 'shared', 0);
+    const bad = assert.rejects(p, e => e.status === 429);
+    s.calls[1].resolve(reply(429, { reason: 'Daily API request limit exceeded' })); await bad;
+    await assert.rejects(s.c.get(u, 12000, 'shared', 30 * 60e3), e => e.status === 429);
+    assert.equal(s.calls.length, 2);
+  });
   console.log(`${count}/${count} scénarios OK`);
 })().catch(e => { console.error(e); process.exitCode = 1; });

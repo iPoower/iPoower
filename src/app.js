@@ -1,8 +1,10 @@
 /* ===================== APPLICATION ===================== */
 const $ = s => document.querySelector(s);
+const APP_STORAGE = (() => { try { return DeviceStorage.guard(localStorage, () => !!window.TWRC_STORAGE_ERROR); }
+  catch (e) { return { getItem: () => null, setItem: () => {}, removeItem: () => {}, key: () => null, length: 0 }; } })();
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* stockage indisponible */ } };
+const lsGet = k => { try { return APP_STORAGE.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { APP_STORAGE.setItem(k, v); } catch (e) { /* stockage indisponible */ } };
 const locHasCoords = l => !!l && Number.isFinite(l.lat) && Number.isFinite(l.lon) && Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180;
 const calendarPlaces = (settings = S) => [...(settings.locs || []), ...(settings.customs || [])];
 const calendarRelevant = e => calendarEventRelevant(e, calendarPlaces());
@@ -65,13 +67,38 @@ async function unseal(pass) {
     const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(S0.s), iterations: S0.it, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(S0.i) }, key, b64(S0.c));
     const txt = new TextDecoder().decode(pt); JSON.parse(txt);
-    localStorage.setItem('twrc.plain', txt); localStorage.setItem('twrc.plain.v', window.TWRC_SEALED_V); localStorage.setItem('twrc.key', pass);
+    const restored = await DeviceStorage.unlockPlan(localStorage, pass, crypto);
+    const plan = restored || { writes: {}, remove: [], removePrefixes: [] };
+    Object.assign(plan.writes, { 'twrc.plain': txt, 'twrc.plain.v': String(window.TWRC_SEALED_V), 'twrc.key': pass });
+    // La version restaurée conserve ses modifications ; loadSettings fera la migration si le préréglage a changé.
+    DeviceStorage.apply(localStorage, plan); window.TWRC_STORAGE_ERROR = false; unseal.restored = !!restored;
     return true;
-  } catch (e) { return false; }
+  } catch (e) { unseal.error = e.name === 'OperationError' ? 'Code incorrect.' : 'Déverrouillage impossible : stockage local indisponible. Tes données restent conservées.'; return false; }
 }
-const LOCKED = () => !!window.TWRC_SEALED && !window.TWRC_PRESET;
+const LOCKED = () => DeviceStorage.isFrozen() || !!window.TWRC_STORAGE_ERROR || DeviceStorage.isLocked(localStorage) || !!window.TWRC_SEALED && !window.TWRC_PRESET;
+async function lockDevice(button) {
+  if (DeviceStorage.isFrozen()) return;
+  const pass = lsGet('twrc.key');
+  if (!pass) { alert('Le code de configuration est nécessaire pour protéger tes données.'); return; }
+  if (button) { button.disabled = true; button.textContent = 'Protection des données…'; }
+  try {
+    // Ne pas quitter une session possédant des modifications encore seulement en mémoire.
+    localStorage.setItem('twrc.settings.v1', JSON.stringify(S));
+    if (localStorage.getItem('twrc.settings.v1') !== JSON.stringify(S) || !USER_STORE.retry()) throw new Error('Données locales non confirmées.');
+    DeviceStorage.freeze(true);
+    stopGps();
+    await DeviceStorage.lock(localStorage, pass, crypto);
+    location.reload();
+  } catch (e) {
+    const protectedCopy = DeviceStorage.isLocked(localStorage);
+    DeviceStorage.freeze(protectedCopy);
+    alert(protectedCopy ? 'Copie chiffrée conservée. Le nettoyage local doit être repris ; rouvre l’app.' : 'Verrouillage non effectué : stockage local indisponible. Tes données sont conservées sur cet appareil.');
+    if (protectedCopy) location.reload();
+    else if (button) { button.disabled = false; button.textContent = 'Verrouiller cet appareil'; }
+  }
+}
 // Préréglage éventuel injecté à la construction (version privée uniquement)
-const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET) ? normalize({ ...window.TWRC_PRESET, configured: 1 }, BASE) : clone(BASE);
+const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET && !LOCKED()) ? normalize({ ...window.TWRC_PRESET, configured: 1 }, BASE) : clone(BASE);
 repairVehicleIdentity(DEFAULTS);
 // Configuration privée transmise dans le fragment d'URL (#cfg=...) : jamais envoyée au serveur
 let CFG_IMPORTED = false;
@@ -105,6 +132,7 @@ function repairStoredWork(saved) {
   lsSet('twrc.settings.v1', JSON.stringify(saved)); return true;
 }
 function loadSettings() {
+  if (window.TWRC_STORAGE_ERROR || DeviceStorage.isLocked(localStorage)) return clone(BASE);
   let saved = null;
   try { saved = JSON.parse(lsGet('twrc.settings.v1') || 'null'); } catch (e) { saved = null; }
   repairStoredWork(saved);
@@ -114,7 +142,7 @@ function loadSettings() {
     const old = saved;
     const keep = saved && Array.isArray(saved.cars) ? Object.assign(saved.cars.map(c => c ? { tire: c.tire ? { pchk: c.tire.pchk, dot: c.tire.dot, tread: c.tire.tread, treadAv: c.tire.treadAv, treadAr: c.tire.treadAr, treadEst: c.tire.treadEst, treads: c.tire.treads, mountKm: c.tire.mountKm, lastRot: c.tire.lastRot } : null, sets: c.sets, photo: c.photo, odo: c.odo } : null), { calib: saved.calib, journal: saved.journal }) : null;
     saved = null; lsSet('twrc.presetv', window.TWRC_PRESET_V);
-    try { localStorage.removeItem('twrc.settings.v1'); } catch (e) { /* stockage indisponible */ }
+    try { APP_STORAGE.removeItem('twrc.settings.v1'); } catch (e) { /* stockage indisponible */ }
     if (keep) {
       const fresh = normalize(null, DEFAULTS);
       keep.forEach((k, i) => { const c = fresh.cars[i]; if (!k || !c) return; if (k.sets) c.sets = k.sets; if (k.photo) c.photo = k.photo; if (k.odo) c.odo = k.odo;
@@ -134,7 +162,7 @@ function loadSettings() {
 }
 let S = loadSettings();
 const saveSettings = () => { S.configured = 1; lsSet('twrc.settings.v1', JSON.stringify(S)); };
-let TRIPCANCEL = {}; try { TRIPCANCEL = TripCancel.load(localStorage, Date.now()); } catch (e) { /* stockage indisponible */ }
+let TRIPCANCEL = {}; try { TRIPCANCEL = TripCancel.load(APP_STORAGE, Date.now()); } catch (e) { /* stockage indisponible */ }
 let TRIPCANCELTIMER = null;
 // position réelle (GPS du téléphone) : reste sur l'appareil
 // @include app/user-context.js
@@ -182,7 +210,7 @@ const ERR = {};
 let DEMO = { on: false, scn: 'froid' };
 let MIDM = {};                       // modèles des points intermédiaires
 let MIDP = {};                       // données brutes des points intermédiaires
-const MIDPENDING = new Set();
+const MIDPENDING = new Set(), MID_TTL = 25 * 60e3, MID_FAILURE_RETRY = 10 * 60e3;
 let VIGI = { state: 'none', items: [], t: null };
 const ENSRAW = {}, NOWRAW = {};
 let OBS = null;   // observations réelles publiées par le relais (obs.json)
@@ -247,17 +275,17 @@ const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, cha
   // dernier onglet ouvert restauré, TRAJET compris (reprise hors connexion)
   view: ['meteo', 'trajet', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
   outfitOccasion: 'outing', placeExpanded: null };
-const DECISION_HISTORY = Decision.history(typeof localStorage !== 'undefined' ? localStorage : null);
+const DECISION_HISTORY = Decision.history(APP_STORAGE);
 let DECISION_LAST = null;
 
 const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
   read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
-async function fetchJSON(url, ms, group = 'shared') {
+async function fetchJSON(url, ms, group = 'shared', cacheMs = 0) {
   // hors connexion déclaré par l'appareil : aucune requête vers un service EXTERNE (inutile, coûteuse en batterie ; Safari la
   // signale en erreur). Les fichiers de l'app (agenda chiffré, base pneus, observations, version) restent demandés : le service
   // worker les sert depuis son cache, c'est ce qui permet le démarrage à froid hors ligne.
   if (offlineNow() && /^https?:\/\//i.test(url) && new URL(url).origin !== location.origin) { const e = new Error('Hors connexion : requête non envoyée'); e.offline = true; throw e; }
-  if (WEATHER_REQUESTS.owns(url)) return WEATHER_REQUESTS.get(url, ms || 12000, group);
+  if (WEATHER_REQUESTS.owns(url)) return WEATHER_REQUESTS.get(url, ms || 12000, group, cacheMs);
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms || 12000);
   try {
     const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
@@ -277,21 +305,34 @@ function loadCache() {
     } catch (e) { /* cache illisible */ }
   });
 }
-async function loadLoc(l) {
+async function loadLoc(l, force = false) {
   if (!locHasCoords(l)) throw new Error('Coordonnées du lieu à renseigner.');
   const origin = { lat: l.lat, lon: l.lon }, gen = l.gps ? ++gpsWeatherGen : null;
   if (l.gps) { WEATHER_REQUESTS.cancelGroup('gps'); gpsWeatherOrigin = origin; }
   const group = l.gps ? 'gps' : 'shared';
-  const [b, ar, nc] = await Promise.allSettled([fetchJSON(urlFor(l), 12000, group), fetchJSON(urlArome(l), 12000, group), fetchJSON(urlNow(l), 12000, group)]);
+  // Modèle du lieu affiché : 5 min ; autres lieux : 20 min ; AROME : 35 min ; nowcast : 15 min.
+  // Un rafraîchissement manuel (force) interroge toujours le fournisseur. Un trajet/lieu nouveau a une URL neuve.
+  const baseUrl = urlFor(l);
+  const [b, ar, nc] = await Promise.allSettled([
+    fetchJSON(baseUrl, 12000, group, force ? 0 : l.id === UI.loc ? 4 * 60e3 : 18 * 60e3),
+    fetchJSON(urlArome(l), 12000, group, force ? 0 : 35 * 60e3),
+    fetchJSON(urlNow(l), 12000, group, force ? 0 : 14 * 60e3)
+  ]);
   // Validation AVANT toute écriture : une réponse 200 vide, tronquée ou d'un portail ne remplace jamais la dernière météo valide.
   const invalid = b.status === 'fulfilled' ? validForecast(b.value) : null;
   if (b.status !== 'fulfilled' || invalid) { if (l.gps && gen === gpsWeatherGen) gpsWeatherOrigin = null; throw b.status !== 'fulfilled' ? b.reason : new Error('réponse météo invalide : ' + invalid); }
-  const p = mergeArome(b.value, ar.status === 'fulfilled' ? ar.value : null);
+  // Ne jamais laisser un ancien AROME en cache écraser une prévision de base reçue plus récemment :
+  // en cas de décalage de fraîcheur, le modèle de base fait foi jusqu'au prochain vrai relevé AROME.
+  const arFresh = ar.status === 'fulfilled' && !!ar.value
+    && (WEATHER_REQUESTS.fetchedAt(urlArome(l)) || 0) >= (WEATHER_REQUESTS.fetchedAt(baseUrl) || 0) - 60e3;
+  const p = mergeArome(b.value, arFresh ? ar.value : null);
   // Un ancien lieu GPS ne remplace jamais la météo d'une position plus récente, ni un GPS oublié.
   if (l.gps && (gen !== gpsWeatherGen || !GPS || distKm(origin, GPS) > 3)) return p;
   if (nc.status === 'fulfilled' && nc.value && nc.value.minutely_15) NOWRAW[l.id] = nc.value; else delete NOWRAW[l.id];
-  RAW[l.id] = { p, mode: 'live', t: Date.now(), ...origin }; delete ERR[l.id];
-  try { lsSet('twrc.cache.' + l.id, JSON.stringify({ t: Date.now(), ...origin, p })); } catch (e) { /* quota */ }
+  // Conserver la vraie heure du téléchargement, pas celle de la relecture du cache mémoire.
+  const retrievedAt = WEATHER_REQUESTS.fetchedAt(baseUrl) || Date.now();
+  RAW[l.id] = { p, mode: 'live', t: retrievedAt, ...origin }; delete ERR[l.id];
+  try { lsSet('twrc.cache.' + l.id, JSON.stringify({ t: retrievedAt, ...origin, p })); } catch (e) { /* quota */ }
   return p;
 }
 async function reverseName(lat, lon) {
@@ -548,10 +589,11 @@ function placeDiagRows(forCopy) {
     ['Sources écartées', rej.length ? rej.map(x => `${x.source} : ${x.reason}`).join(' | ') : 'aucune']];
 }
 function alertLoc(msg) { const el = $('#locMsg'); if (el) { el.textContent = msg; el.hidden = !msg; } }
-async function refreshAll() {
+async function refreshAll(force = true) {
+  if (DeviceStorage.isFrozen() || DeviceStorage.isLocked(localStorage) || window.TWRC_STORAGE_ERROR) { renderStatus(); renderNotice(); return; }
   if (busy) return;
   if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
-  busy = true; DEMO.on = false; MIDP = {}; lastTry = Date.now(); renderStatus();
+  busy = true; DEMO.on = false; lastTry = Date.now(); renderStatus();
   const locs = allLocs(), gpsStart = gpsWeatherGen, generations = new Map();
   try {
     if (location.protocol === 'https:') {
@@ -565,7 +607,7 @@ async function refreshAll() {
   const res = await Promise.allSettled(locs.map(l => {
     // Une position remplacée pendant la lecture des observations ne relance pas une ancienne météo.
     if (l.gps && !gpsSourceCurrent(l, gpsStart)) return Promise.resolve(null);
-    const request = loadLoc(l); if (l.gps) generations.set(l.id, gpsWeatherGen); return request;
+    const request = loadLoc(l, force); if (l.gps) generations.set(l.id, gpsWeatherGen); return request;
   }));
   let ok = 0;
   res.forEach((r, k) => {
@@ -574,7 +616,7 @@ async function refreshAll() {
     if (r.status === 'fulfilled' && r.value && r.value.hourly && r.value.hourly.time) ok++;
     else { ERR[l.id] = (r.reason && r.reason.message) || 'réponse invalide'; if (RAW[l.id]) RAW[l.id].mode = 'cache'; }
   });
-  if (ok) lastOk = Date.now();
+  if (ok) lastOk = Math.max(lastOk || 0, ...locs.map(l => (RAW[l.id] && RAW[l.id].mode === 'live' ? RAW[l.id].t : 0)));
   busy = false; rebuild(); renderAll();
   fetchVigi(); refreshEns(); radarRefresh(); loadCalendar();
 }
@@ -584,7 +626,11 @@ function startDemo(scn) {
 }
 function rebuild() {
   M = {}; MIDM = {}; expireLive();
-  Object.keys(MIDP).forEach(id => { const r = MIDP[id]; try { MIDM[id] = r ? makeModel(r.p, r.mode, r.pt) : null; } catch (e) { MIDM[id] = null; } });
+  Object.keys(MIDP).forEach(id => {
+    const r = MIDP[id], ttl = r && r.p ? MID_TTL : MID_FAILURE_RETRY;
+    if (!r || !Number.isFinite(r.t) || Date.now() - r.t >= ttl || Date.now() < r.t) { delete MIDP[id]; return; }
+    try { MIDM[id] = r.p ? makeModel(r.p, r.mode, r.pt) : null; } catch (e) { MIDM[id] = null; }
+  });
   allLocs().forEach((l, k) => {
     if (!locHasCoords(l)) return;
     if (DEMO.on) {
@@ -783,11 +829,12 @@ function renderSrc() {
 }
 function renderNotice() {
   const m = M[UI.loc], el = $('#notice');
+  if (window.TWRC_STORAGE_ERROR) { el.innerHTML = '<div class="note lvx" role="alert"><b>RÉCUPÉRATION LOCALE</b><span>Une restauration interrompue reste protégée. Libère de l’espace de stockage puis rouvre l’app ; aucun réglage personnel n’est chargé.</span></div>'; return; }
   $('#demoBar').innerHTML = DEMO.on ? `<div class="demo-bar"><b>MODE DÉMO · DONNÉES SIMULÉES, PAS DE MÉTÉO RÉELLE</b><span>${esc(DEMO_SCN[DEMO.scn].name)}</span>
     <select id="demoScn" data-act-change="demoScn" aria-label="Scénario de démo">${Object.keys(DEMO_SCN).map(k => `<option value="${k}" ${k === DEMO.scn ? 'selected' : ''}>${esc(DEMO_SCN[k].name)}</option>`).join('')}</select>
     <button class="btn sm" data-act="demo-off">Quitter la démo</button></div>` : '';
-  const lock = LOCKED() && !lsGet('twrc.nocode') ? `<div class="note lvx unlock"><b>🔒 CONFIGURATION</b><span>Réglages personnels chiffrés. Entre ton code une seule fois sur cet appareil.
-      <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button></form><span class="sub">Accepte « Enregistrer le mot de passe » : l’iPhone le remplira ensuite avec Face ID.</span><span class="sub">Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button></span><span class="sub" id="unlockMsg"></span></span></div>` : '';
+  const lock = LOCKED() && !lsGet('twrc.nocode') ? `<div class="note lvx unlock"><b>🔒 CONFIGURATION</b><span>${DeviceStorage.isLocked(localStorage) ? 'Tes réglages et ton journal sont conservés dans une copie chiffrée. Déverrouille cet appareil avec ton code.' : 'Réglages personnels chiffrés. Entre ton code une seule fois sur cet appareil.'}
+      <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" aria-label="Code de configuration" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button></form><span class="sub">Accepte « Enregistrer le mot de passe » : l’iPhone le remplira ensuite avec Face ID.</span><span class="sub">${DeviceStorage.isLocked(localStorage) ? '' : 'Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button>'}</span><span class="sub" id="unlockMsg"></span></span></div>` : '';
   const setup = lock || (CFG_IMPORTED ? `<div class="note lv0"><b>CONFIGURÉ</b><span>Tes lieux et tes voitures sont enregistrés sur cet appareil. Ajoute la page à l’écran d’accueil depuis ce lien.</span></div>`
     : !S.configured ? `<div class="note lvx"><b>À CONFIGURER</b><span>Renseigne tes lieux et tes voitures dans les paramètres. Ils restent sur cet appareil. <button class="btn sm" data-act="goset-cfg">Ouvrir les paramètres</button></span></div>` : '');
   // Une réponse météo peut arriver entre la saisie et la validation du code.
@@ -1318,8 +1365,8 @@ async function fetchAQ(l) {
   if (AQBUSY.has(l.id) && (!l.gps || previous && gpsSourceCurrent(previous.origin, previous.gen))) return;
   const request = { origin: { ...l }, gen }; AQREQ.set(l.id, request); AQBUSY.add(l.id);
   try {
-    const p = await fetchJSON(urlAQ(l), 12000, l.gps ? 'gps' : 'shared'); if (!p || !p.hourly) throw new Error('réponse invalide');
-    if (gpsSourceCurrent(request.origin, gen)) { AQRAW[l.id] = { p, t: Date.now() }; delete AQERR[l.id]; }
+    const p = await fetchJSON(urlAQ(l), 12000, l.gps ? 'gps' : 'shared', 45 * 60e3); if (!p || !p.hourly) throw new Error('réponse invalide');
+    if (gpsSourceCurrent(request.origin, gen)) { AQRAW[l.id] = { p, t: WEATHER_REQUESTS.fetchedAt(urlAQ(l)) || Date.now() }; delete AQERR[l.id]; }
   } catch (e) { if (gpsSourceCurrent(request.origin, gen)) AQERR[l.id] = { t: Date.now(), msg: e.message }; }
   finally {
     // Une ancienne requête ne libère pas le verrou de celle qui la remplace.
@@ -1330,7 +1377,7 @@ const polCls = l => l == null || l === 0 ? 'lvx' : 'lv' + Math.min(3, l - 1);
 function renderAir() {
   const el = $('#secAir'); if (!el) return; if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
   const m = CX.m, l = curLoc(), id = l.id, r = AQRAW[id], er = AQERR[id];
-  if (!DEMO.on && (!r || Date.now() - r.t > 30 * 60e3) && !(er && Date.now() - er.t < 5 * 60e3)) fetchAQ(l);
+  if (!DEMO.on && (!r || Date.now() - r.t > 45 * 60e3) && !(er && Date.now() - er.t < 5 * 60e3)) fetchAQ(l);
   const a = DEMO.on ? airSummary(makeDemoAir(m.payload), m.nowStr) : r ? airSummary(r.p, m.nowStr) : null;
   const day = m.days.find(d => d.date === m.nowStr.slice(0, 10)) || {};
   const uN = uvInfo((m.hs[m.nowI] || {}).uv), pk = uvToday(m), uM = uvInfo(day.uv != null ? day.uv : pk ? pk.uv : null);
@@ -1495,11 +1542,7 @@ async function backupExport() {
   } catch (e) { bkMsg('Échec de la sauvegarde : ' + (e.message || e)); }
 }
 function backupApplyPlan(plan) {
-  const keys = [];
-  try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch (e) { /* stockage indisponible */ }
-  keys.filter(Boolean).filter(k => plan.removePrefixes.some(p => k.startsWith(p))).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
-  plan.remove.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
-  Object.entries(plan.writes).forEach(([k, v]) => lsSet(k, v));
+  DeviceStorage.apply(localStorage, plan);
 }
 async function backupImport(f) {
   bkMsg('Lecture du fichier…');
@@ -1519,9 +1562,12 @@ async function backupImport(f) {
   const version = data.v >= 2 ? 'V2' : 'V1';
   const kept = plan.kept ? `\n\nJournal des trajets conservé : ${plan.kept} trajet${plan.kept > 1 ? 's' : ''} de ce téléphone ${data.v >= 2 ? 'ajouté' : 'gardé'}${plan.kept > 1 ? 's' : ''}.` : '';
   if (!confirm(`Remplacer les réglages de ce téléphone par la sauvegarde ${version} du ${when} ?${kept}`)) { bkMsg('Import annulé.'); return; }
-  backupApplyPlan(plan);
-  if (window.TWRC_PRESET_V) lsSet('twrc.presetv', window.TWRC_PRESET_V);
-  lsSet('twrc.lastbackup', String(data.at).slice(0, 10));
+  if (window.TWRC_PRESET_V) plan.writes['twrc.presetv'] = String(window.TWRC_PRESET_V);
+  plan.writes['twrc.lastbackup'] = String(data.at).slice(0, 10);
+  try { backupApplyPlan(plan); }
+  catch (e) { bkMsg(e.recoveryPending ? 'Import interrompu : la copie de récupération est conservée. Libère de l’espace puis rouvre l’app.' : 'Import non appliqué : stockage local indisponible. Tes réglages et ton journal précédents sont conservés.'); return; }
+  // Les anciens moteurs encore en mémoire ne doivent pas réécrire l'état importé avant le rechargement.
+  DeviceStorage.freeze(true);
   bkMsg(`✅ Sauvegarde ${version} restaurée. Redémarrage…`);
   setTimeout(() => location.reload(), 600);
 }
@@ -1843,7 +1889,7 @@ function liveDoneHas(t, all) {
 const TRIPDONE = 'twrc.tripdone';
 // « 🚗 Je pars maintenant » : départ déclaré (clé du trajet, heure, origine), relu au rechargement ; fin de trajet : résumé pour Analyse
 const TRIPSTART_KEY = 'twrc.tripstart.v1', TRIPEND_KEY = 'twrc.tripend.v1';
-const lsPut = (k, v) => { if (v) lsSet(k, JSON.stringify(v)); else { try { localStorage.removeItem(k); } catch (e) { /* stockage indisponible */ } } };
+const lsPut = (k, v) => { if (v) lsSet(k, JSON.stringify(v)); else { try { APP_STORAGE.removeItem(k); } catch (e) { /* stockage indisponible */ } } };
 const tripStartSave = v => { TRIPSTART = v; USER_STORE.flush(); };
 const tripEndSave = v => { TRIPEND = v; USER_STORE.flush(); };
 function liveDonePersist(key, how) {
@@ -2305,7 +2351,7 @@ function tripCancelSchedulePurge() {
   TRIPCANCELTIMER = setTimeout(() => {
     TRIPCANCELTIMER = null;
     const before = Object.keys(TRIPCANCEL || {}).length;
-    TRIPCANCEL = TripCancel.save(localStorage, TRIPCANCEL, Date.now());
+    TRIPCANCEL = TripCancel.save(APP_STORAGE, TRIPCANCEL, Date.now());
     const changed = Object.keys(TRIPCANCEL || {}).length !== before;
     tripCancelSchedulePurge();
     if (changed) tripCancelChanged();
@@ -2354,13 +2400,13 @@ function tripCancelStart(key) {
   if (!window.confirm(t.src === 'work' ? 'Annuler les trajets aller et retour domicile-travail pour aujourd’hui sur cet appareil ?' : 'Annuler les trajets aller et retour de ce rendez-vous sur cet appareil ? Le rendez-vous reste dans Google Agenda.')) return;
   TRIPCANCELNOTICE = '';
   TRIPCANCEL = TripCancel.cancel(TRIPCANCEL, id, exp, now);
-  try { TRIPCANCEL = TripCancel.save(localStorage, TRIPCANCEL, now); } catch (e) { /* état en mémoire */ }
+  try { TRIPCANCEL = TripCancel.save(APP_STORAGE, TRIPCANCEL, now); } catch (e) { /* état en mémoire */ }
   tripCancelChanged();
 }
 function tripCancelUndo(id) {
   if (!TripCancel.undoable(TRIPCANCEL, Date.now()).some(e => e.id === id)) return;
   TRIPCANCEL = TripCancel.undo(TRIPCANCEL, id, Date.now());
-  try { TRIPCANCEL = TripCancel.save(localStorage, TRIPCANCEL, Date.now()); } catch (e) { /* état en mémoire */ }
+  try { TRIPCANCEL = TripCancel.save(APP_STORAGE, TRIPCANCEL, Date.now()); } catch (e) { /* état en mémoire */ }
   tripCancelChanged();
 }
 // navigation externe : Waze (lien universel), ouvert UNIQUEMENT par un geste de l'utilisateur. Seule la destination est transmise :
@@ -2518,15 +2564,15 @@ async function loadCalendar() {
   } catch (e) { /* code différent ou cache illisible */ }
   finally { if (!CALDONE) { CALDONE = true; renderBrf(); } }
 }
-// météo des lieux d'agenda et des points de trajet : renouvelée à chaque cycle « auto 5 min » (même état que le lieu affiché)
-const PT_TTL = 4 * 60e3;
+// Météo des lieux d'agenda et points de route : modèle horaire réutilisé pendant 25 min ; cockpit et observations restent à 5 min.
+const PT_TTL = 25 * 60e3;
 async function calModel(ev) {
   if (!calendarSpatial(ev) || !locHasCoords(ev)) return null;
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2);
   if (CALM[id] && Date.now() - CALM[id].t < PT_TTL) return CALM[id].m;
   if (CALBUSY.has(id)) return null; CALBUSY.add(id);
   try { const p = await fetchJSON(`${API}?latitude=${ev.lat}&longitude=${ev.lon}&hourly=${Q_HR}&daily=${Q_DY}&timezone=auto&past_days=1&forecast_days=10`, 12000); const bad = validForecast(p); if (bad) throw new Error(bad); CALM[id] = { t: Date.now(), m: makeModel(p, 'live', { id, lat: ev.lat, lon: ev.lon, name: ev.label || ev.loc }) }; }
-  catch (e) { CALM[id] = { t: Date.now() - PT_TTL + 2 * 60e3, m: null }; }
+  catch (e) { CALM[id] = { t: Date.now() - PT_TTL + 10 * 60e3, m: null }; }
   CALBUSY.delete(id); renderCal(); renderTenue(); return CALM[id].m;
 }
 function calTrip(ev) {
@@ -2553,7 +2599,7 @@ async function fetchLeg(leg) {
     let js = await fetchJSON(`${API}?latitude=${pts.map(p => p.lat).join(',')}&longitude=${pts.map(p => p.lon).join(',')}&hourly=${Q_HR}&timezone=Europe%2FParis&past_days=1&forecast_days=10`, 15000);
     if (!Array.isArray(js)) js = [js];
     LEGM[k] = { t: Date.now(), models: js.map((p, i) => { try { return validForecast(p) ? null : makeModel(p, 'live', pts[i]); } catch (e) { return null; } }) };
-  } catch (e) { LEGM[k] = { t: Date.now() - PT_TTL + 2 * 60e3, models: null }; }
+  } catch (e) { LEGM[k] = { t: Date.now() - PT_TTL + 10 * 60e3, models: null }; }
   LEGBUSY.delete(k); clearTimeout(fetchLeg.t); fetchLeg.t = setTimeout(() => { renderCal(); renderBrf(); renderTenue(); }, 150);
 }
 function legEval(leg) {
@@ -2963,7 +3009,7 @@ async function ensureMids(pts) {
       const pl = DEMO.on ? makeDemoPayload(DEMO.scn, p, 'Europe/Paris', 0.3) : await fetchJSON(urlFor(p));
       const bad = validForecast(pl); if (bad) throw new Error(bad);
       MIDP[p.id] = { p: pl, mode: DEMO.on ? 'demo' : 'live', pt: p, t: Date.now() }; MIDM[p.id] = makeModel(pl, MIDP[p.id].mode, p); MIDM[p.id].retrievedAt = MIDP[p.id].t;
-    } catch (e) { MIDP[p.id] = null; MIDM[p.id] = null; }
+    } catch (e) { MIDP[p.id] = { p: null, mode: 'cache', pt: p, t: Date.now() }; MIDM[p.id] = null; }
     finally { MIDPENDING.delete(p.id); }
   }));
   softRender();
@@ -3368,6 +3414,7 @@ function renderAlerts() {
 const bindIn = (path, val, o = {}) => `<div class="fld${o.wide ? ' wide' : ''}"><label for="f-${path.replace(/\./g, '-')}">${o.label}</label><input type="${o.type || 'text'}" id="f-${path.replace(/\./g, '-')}" data-bind="${path}" ${o.num ? 'data-num="1"' : ''} ${o.attrs || ''} value="${esc(val == null ? '' : val)}" ${o.ph ? `placeholder="${esc(o.ph)}"` : ''}></div>`;
 function renderSettings(force) {
   const el = $('#settingsBody'); if (!el) return;
+  if (DeviceStorage.isLocked(localStorage) || window.TWRC_STORAGE_ERROR) { el.innerHTML = '<p>Déverrouille la configuration pour retrouver tes réglages et ton journal conservés sur cet appareil.</p>'; return; }
   const d = $('#settings'); if (!force && d && !d.open) { el.innerHTML = ''; el.dataset.stale = '1'; return; }
   el.dataset.stale = '';
   const carSet = S.cars.map((c, i) => `<div class="set-sec"><h3>${esc(c.name)}</h3>${c.photo ? `<div class="chips"><button class="btn sm" data-act="photo-del" data-i="${i}">Retirer la photo</button></div>` : ''}
@@ -3478,9 +3525,9 @@ document.addEventListener('click', async e => {
   if (a === 'refresh') refreshAll();
   else if (a === 'unlock') {
     const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
-    const ok = await unseal(pw.trim()); if (ok) { try { localStorage.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } location.reload(); } else if (msg) msg.textContent = 'Code incorrect.';
+    const ok = await unseal(pw.trim()); if (ok) { if (!unseal.restored) { try { APP_STORAGE.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } } location.reload(); } else if (msg) msg.textContent = unseal.error || 'Code incorrect.';
   }
-  else if (a === 'lock') { ['twrc.plain', 'twrc.plain.v', 'twrc.key'].forEach(k => { try { localStorage.removeItem(k); } catch (err) { /* stockage */ } }); location.reload(); }
+  else if (a === 'lock') { await lockDevice(t); }
   else if (a === 'locate') locate(true);
   else if (a === 'trip-preview') tripPreviewStart(t.dataset.key);
   else if (a === 'trip-cancel') tripCancelStart(t.dataset.key);
@@ -3629,7 +3676,7 @@ document.addEventListener('submit', async e => {
   if (!e.target || e.target.id !== 'unlockForm') return;
   e.preventDefault();
   const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
-  const ok = await unseal(pw.trim()); if (ok) { try { localStorage.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } location.reload(); } else if (msg) msg.textContent = 'Code incorrect.';
+  const ok = await unseal(pw.trim()); if (ok) { if (!unseal.restored) { try { APP_STORAGE.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } } location.reload(); } else if (msg) msg.textContent = unseal.error || 'Code incorrect.';
 });
 document.addEventListener('change', e => {
   const t = e.target;

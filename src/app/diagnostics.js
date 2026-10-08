@@ -16,7 +16,7 @@ async function loadSwVersion() {
 }
 function diagRows(forCopy) {
   const r = RAW[UI.loc], wAge = r ? ageOf(r.t) : null, withData = allLocs().filter(l => RAW[l.id]).length;
-  let n = 0, bytes = 0; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^twrc\./.test(k)) { n++; bytes += k.length + (localStorage.getItem(k) || '').length; } } } catch (e) { /* stockage bloqué */ }
+  let n = 0, bytes = 0; try { for (let i = 0; i < APP_STORAGE.length; i++) { const k = APP_STORAGE.key(i); if (/^twrc\./.test(k)) { n++; bytes += k.length + (APP_STORAGE.getItem(k) || '').length; } } } catch (e) { /* stockage bloqué */ }
   const calAge = CAL ? ageOf(CAL.updated) : null, relayAge = ageOf(RELAY_AT);
   return [
     ['Application chargée', window.TWRC_BUILD ? `build ${window.TWRC_BUILD} · shell HTML/JS/CSS autonome` : 'version locale'],
