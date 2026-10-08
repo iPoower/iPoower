@@ -15,7 +15,10 @@ const GeoSearch = (() => {
       const p = f && f.properties || {}, c = f && f.geometry && f.geometry.coordinates || [];
       const lon = +c[0], lat = +c[1]; if (!finite(lat) || !finite(lon)) return null;
       const label = clean(p.label || [p.housenumber, p.street || p.name, p.postcode, p.city].filter(Boolean).join(' '));
-      return label ? { name: label, address: label, sub: clean(p.context || [p.postcode, p.city].filter(Boolean).join(' · ')), dept: clean(p.context || '', 100), lat, lon, provider: 'IGN/BAN', precision: clean(p.type || '', 80) } : null;
+      // contexte BAN « 74, Haute-Savoie, Auvergne-Rhône-Alpes » : code et nom du département séparés, jamais la chaîne entière
+      const ctx = clean(p.context || '', 160).split(',').map(x => x.trim()), deptCode = /^(\d{2}|2[AB]|97\d)$/i.test(ctx[0] || '') ? ctx[0].toUpperCase() : '';
+      return label ? { name: label, address: label, sub: clean(p.context || [p.postcode, p.city].filter(Boolean).join(' · ')), dept: deptCode ? clean(ctx[1] || '', 100) : '', deptCode,
+        city: clean(p.city || '', 120), cityCode: clean(String(p.citycode || ''), 5), postcode: clean(String(p.postcode || ''), 5), lat, lon, provider: 'IGN/BAN', precision: clean(p.type || '', 80) } : null;
     }).filter(Boolean).slice(0, 6);
   }
   function osm(json) {
@@ -23,15 +26,19 @@ const GeoSearch = (() => {
       const lat = +r.lat, lon = +r.lon; if (!finite(lat) || !finite(lon)) return null;
       const parts = clean(r.display_name, 500).split(',').map(x => x.trim()).filter(Boolean);
       const name = clean(r.name || parts.slice(0, Math.min(2, parts.length)).join(', '));
-      const a = r.address || {}, dept = clean(a.county || a.state_district || a.state || '', 100);
+      // département : comté OSM ou code ISO « FR-74 » ; jamais la région (state), qui ferait échouer l'alerte montagne
+      const a = r.address || {}, fr = !a.country_code || String(a.country_code).toLowerCase() === 'fr', iso = clean(a['ISO3166-2-lvl6'] || '', 12);
+      const dept = fr ? clean(a.county || a.state_district || '', 100) : '', deptCode = fr && /^FR-(\d{2}|2[AB]|97\d)/i.test(iso) ? iso.slice(3, iso.startsWith('FR-97') ? 6 : 5).toUpperCase() : '';
       const sub = clean(parts.filter(x => !name.includes(x)).slice(0, 4).join(', '));
-      return name ? { name, address: clean(r.display_name, 320), sub, dept, lat, lon, provider: 'OpenStreetMap', precision: clean(r.addresstype || r.type || '', 80) } : null;
+      return name ? { name, address: clean(r.display_name, 320), sub, dept, deptCode, city: fr ? clean(a.city || a.town || a.village || a.municipality || '', 120) : '', cityCode: '',
+        postcode: fr ? clean(String(a.postcode || ''), 5) : '', lat, lon, provider: 'OpenStreetMap', precision: clean(r.addresstype || r.type || '', 80) } : null;
     }).filter(Boolean).slice(0, 6);
   }
   function openMeteo(json) {
     return (json && Array.isArray(json.results) ? json.results : []).map(r => {
       const lat = +r.latitude, lon = +r.longitude; if (!finite(lat) || !finite(lon)) return null;
-      return { name: clean(r.name), address: clean([r.name, r.admin2, r.admin1, r.country].filter(Boolean).join(', '), 320), sub: clean([r.admin2, r.admin1, r.country].filter(Boolean).join(', ')), dept: r.country_code === 'FR' ? clean(r.admin2 || '', 100) : '', lat, lon, provider: 'Open-Meteo', precision: 'locality' };
+      return { name: clean(r.name), address: clean([r.name, r.admin2, r.admin1, r.country].filter(Boolean).join(', '), 320), sub: clean([r.admin2, r.admin1, r.country].filter(Boolean).join(', ')), dept: r.country_code === 'FR' ? clean(r.admin2 || '', 100) : '', deptCode: '',
+        city: r.country_code === 'FR' ? clean(r.name) : '', cityCode: '', postcode: r.country_code === 'FR' && Array.isArray(r.postcodes) ? clean(String(r.postcodes[0] || ''), 5) : '', lat, lon, provider: 'Open-Meteo', precision: 'locality' };
     }).filter(x => x && x.name).slice(0, 6);
   }
   async function call(fetchJson, url) { try { return await fetchJson(url, 8000); } catch (e) { return null; } }

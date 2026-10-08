@@ -35,5 +35,15 @@ await check('parseurs ignorent les coordonnées invalides et limitent à six ré
  const j={features:Array.from({length:8},(_,i)=>({properties:{label:'L'+i},geometry:{coordinates:[2+i/10,49+i/10]}})).concat([{properties:{label:'bad'},geometry:{coordinates:['x','y']}}])};
  assert.equal(G.ban(j).length,6);
 });
+await check('audit A05 · département séparé : code et nom, quelle que soit la source ; jamais la région ni le contexte entier',async()=>{
+ const b=G.ban({features:[{properties:{label:'1 Place fictive 74000 Annecy',context:'74, Haute-Savoie, Auvergne-Rhône-Alpes',city:'Annecy',citycode:'74010',postcode:'74000',type:'housenumber'},geometry:{coordinates:[6.13,45.9]}}]})[0];
+ assert.deepEqual([b.dept,b.deptCode,b.city,b.cityCode,b.postcode],['Haute-Savoie','74','Annecy','74010','74000']);
+ const c=G.ban({features:[{properties:{label:'Ajaccio',context:'2A, Corse-du-Sud, Corse'},geometry:{coordinates:[8.7,41.9]}}]})[0];assert.deepEqual([c.dept,c.deptCode],['Corse-du-Sud','2A']);
+ const o=G.osm([{lat:'45.9',lon:'6.13',name:'Annecy',display_name:'Annecy, Haute-Savoie, Auvergne-Rhône-Alpes, France',address:{town:'Annecy',county:'Haute-Savoie',state:'Auvergne-Rhône-Alpes','ISO3166-2-lvl6':'FR-74',postcode:'74000',country_code:'fr'}}])[0];
+ assert.deepEqual([o.dept,o.deptCode,o.city,o.postcode],['Haute-Savoie','74','Annecy','74000']);
+ const region=G.osm([{lat:'45.9',lon:'6.13',name:'Lieu',display_name:'Lieu, Auvergne-Rhône-Alpes, France',address:{state:'Auvergne-Rhône-Alpes',country_code:'fr'}}])[0];assert.equal(region.dept,'');
+ const uk=G.osm([{lat:'51.5',lon:'-0.1',name:'X',display_name:'X, London',address:{county:'Greater London',country_code:'gb'}}])[0];assert.deepEqual([uk.dept,uk.deptCode,uk.city],['','','']);
+ const m=G.openMeteo({results:[{name:'Annecy',admin2:'Haute-Savoie',country_code:'FR',postcodes:['74000'],latitude:45.9,longitude:6.13}]})[0];assert.deepEqual([m.dept,m.city,m.postcode],['Haute-Savoie','Annecy','74000']);
+});
 console.log(n+'/'+n+' scénarios OK');
 })().catch(e=>{console.error(e);process.exit(1);});

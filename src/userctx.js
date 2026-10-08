@@ -25,8 +25,12 @@ const DayContext = (() => {
   function cleanPoint(v, fallbackId) {
     if (!v || typeof v !== 'object' || !Number.isFinite(v.lat) || !Number.isFinite(v.lon) || Math.abs(v.lat) > 90 || Math.abs(v.lon) > 180) return null;
     const pid = text(v.id, 120) || fallbackId;
+    // métadonnées administratives conservées (audit A05) : un point manuel garde son département jusqu'à l'alerte montagne
+    const pat = (x, re) => typeof x === 'string' && re.test(x.trim()) ? x.trim().toUpperCase() : '';
     return { id: pid, name: text(v.name || v.label, 220) || 'Lieu', address: text(v.address, 320) || '', lat: +v.lat, lon: +v.lon,
-      provider: text(v.provider, 80) || '', precision: text(v.precision, 80) || '' };
+      provider: text(v.provider, 80) || '', precision: text(v.precision, 80) || '',
+      deptCode: pat(v.deptCode, /^(\d{2}|2[AB]|97[1-6])$/i), dept: text(v.dept, 100) || '', city: text(v.city, 120) || '',
+      cityCode: pat(v.cityCode, /^(\d{5}|2[AB]\d{3})$/i), postcode: pat(v.postcode, /^\d{5}$/) };
   }
   function clean(v, now, places = null, cars = null) {
     v = v || {}; const n = v.nextDestination, c = v.lastConfirmedPlace;

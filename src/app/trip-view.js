@@ -9,7 +9,7 @@ const TRIP_FORM = {
 function tripPoint(v, id, fallback) {
   if (!v || !locHasCoords(v)) return null;
   return DayContext.cleanPoint({ id: id || v.id, name: v.name || v.label || fallback || 'Lieu', address: v.address || v.name || v.label || '',
-    lat: +v.lat, lon: +v.lon, provider: v.provider || '', precision: v.precision || '' }, id || 'manual-point');
+    lat: +v.lat, lon: +v.lon, provider: v.provider || '', precision: v.precision || '', ...frAdmin(v) }, id || 'manual-point');
 }
 function tripRecommendedOrigin() {
   const c = placeNow(), p = c && c.place;

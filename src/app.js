@@ -691,7 +691,8 @@ function vigiBlock() {
   else body = 'Chargement…';
   return `<div class="note lvx"><b>VIGILANCE ${esc((S.dept.name || S.dept.code).toUpperCase())}</b><span>${body} Référence officielle : ${link}</span></div>`;
 }
-async function geocode(q) { return GeoSearch.search(q, fetchJSON); }
+// résultats normalisés : même département (code + nom), commune et code postal quelle que soit la source (audit A05)
+async function geocode(q) { return (await GeoSearch.search(q, fetchJSON)).map(h => ({ ...h, ...frAdmin(h) })); }
 
 /* ---------- formats ---------- */
 const hmLocal = ms => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -752,7 +753,7 @@ function extraAlerts(m, sum24) {
   const td = tripData(UI.dir, 'auto');
   if (!td.err && td.mont.concerned && (td.mont.season || dayDiff(today, '2026-11-01'.replace('2026', today.slice(0, 4))) <= 14)) {
     const nc = TCARS().filter(c => effType(c) === 'summer').map(c => c.short);
-    out.mont = { id: 'mont', sev: td.mont.season ? 2 : 1, title: `${td.toName} : zone Loi Montagne ${td.mont.season ? 'en vigueur' : 'à partir du 1er novembre'}`, detail: `Pneus 3PMSF ou chaînes / chaussettes obligatoires du 1er novembre au 31 mars dans les communes listées par arrêté préfectoral.${nc.length ? ' Non équipées en 3PMSF : ' + nc.join(', ') + '.' : ''}` };
+    out.mont = { id: 'mont', sev: td.mont.season ? 2 : 1, title: `${td.toName} : vigilance Loi Montagne ${td.mont.season ? '(1er novembre – 31 mars)' : 'à partir du 1er novembre'}`, detail: `${montagneWhy(td.mont, td.toName)}. Pneus 3PMSF ou chaînes / chaussettes obligatoires seulement dans les communes fixées par arrêté préfectoral : vérifie la commune. Source : ${MONT_SRC.text}.${nc.length ? ' Non équipées en 3PMSF : ' + nc.join(', ') + '.' : ''}` };
   }
   // probabilités d'ensemble
   const ew = ensWindow(m.ens, m.hs.slice(m.nowI, m.nowI + 25).map(x => x.t));
@@ -2422,6 +2423,25 @@ const tripTo = t => t.src === 'cal' ? (t.planL || t.l || {}).k === 'ret' && !(t.
 // départ déclaré / arrivée confirmée : actions globales du trajet (même automate, lues par tous les onglets)
 const liveStartBtn = t => !DEMO.on && !t.running && t.live !== 'active' && !t.manualPreview && !t.manualReturn && LIVE.phase !== 'active' && liveDest(t) ? `<button class="btn sm" data-act="trip-start" data-key="${esc(t.key)}">🚗 Je pars maintenant</button>` : '';
 const liveArrBtn = t => (t.running || t.live === 'active') && LIVE.key === t.key ? `<button class="btn sm" data-act="trip-arrived">✅ Bien arrivé</button>` : '';
+// Loi Montagne (audit A05) : même règle pour domicile-travail, agenda et trajet manuel, au départ comme à l'arrivée.
+// Département ou altitude = vigilance ; seule la commune fixée par arrêté préfectoral fait foi, avec lien vers la liste officielle.
+const placeElev = p => { const m = p && p.id && M[p.id]; return m && m.payload ? num(m.payload.elevation) : null; };
+function montNoteHtml(list, dep, car) {
+  if (!list.length) return '';
+  const inSeason = list.some(o => o.mc.season), ss = montagneSeason(dep), effT = car ? effType(car) : null;
+  const carTxt = !car ? '' : effT === 'summer' ? ` ${esc(car.short)} en pneus ${TYPE_LABEL[car.tire.type]} : prévois chaînes ou chaussettes.` : ` ${esc(car.short)} : conforme si le marquage 3PMSF est présent.`;
+  return `<div class="note lv${inSeason ? 2 : 1}" data-k="mont"><b>🏔️ LOI MONTAGNE · VIGILANCE</b><span>${list.map(o => esc(montagneWhy(o.mc, (o.role ? o.role + ' · ' : '') + o.name))).join(' ; ')}. Du 1er novembre au 31 mars, pneus 3PMSF ou chaînes / chaussettes obligatoires seulement dans les communes fixées par arrêté préfectoral : <a href="${MONT_SRC.communes}" target="_blank" rel="noopener noreferrer">vérifier la commune</a>${inSeason ? '' : ' (période pas encore commencée à cette date)'}.${carTxt}</span><span class="sub">Source : ${esc(MONT_SRC.text)} · <a href="${MONT_SRC.url}" target="_blank" rel="noopener noreferrer">service-public.gouv.fr</a>${ss.note ? ' · ' + esc(ss.note) : ''}</span></div>`;
+}
+function tripMontagneHtml(t, car) {
+  const ends = [['Départ', t.td ? t.td.LA : t.l && t.l.from, t.td ? t.fromName || t.td.fromName : t.l && t.l.from && t.l.from.name], ['Arrivée', tripTo(t), t.td ? t.td.toName : (tripTo(t) || {}).name]];
+  const seen = new Set(), list = [];
+  ends.forEach(([role, p, name]) => {
+    if (!p || !locHasCoords(p)) return; const k = (+p.lat).toFixed(3) + ',' + (+p.lon).toFixed(3); if (seen.has(k)) return; seen.add(k);
+    const mc = t.td && role === 'Arrivée' && t.td.mont ? t.td.mont : montagneInfo(p, t.dep || '', placeElev(p));
+    if (mc.concerned) list.push({ role, name: name || p.name || 'lieu', mc });
+  });
+  return montNoteHtml(list, t.dep || '', car);
+}
 // carte de briefing complète, identique pour un trajet domicile-travail et un trajet agenda
 function briefCard(t, dayLbl) {
   if (t.destinationPending || t.l && t.l.destinationOverride && !t.l.to) return `<div class="brf-h"><span class="brf-k">${APP_CONTEXT.snapshot.status === 'travel' ? '🚗 En trajet' : '🏁 Prochain trajet'}</span></div><div class="brf-ev"><b>${esc(t.from || 'Origine à confirmer')} → Destination à confirmer</b></div><p class="brf-why" role="status">Choisis la destination dans Aujourd’hui pour calculer le trajet.</p>`;
@@ -2464,6 +2484,7 @@ function briefCard(t, dayLbl) {
     </div>
     ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
     ${briefThermalHtml(t, top.c)}
+    ${tripMontagneHtml(t, top.c)}
     ${cr && cr.q.f > 0 && cr.q.f < 1 && cr.sc >= 20 ? `<div class="brf-why">📍 Point le plus délicat : km ${f0(cr.q.f * t.l.km)}${cr.q.name ? ' (' + esc(cr.q.name) + ')' : ''} vers ${cr.q.t.slice(11, 16)}</div>` : ''}
     ${ob && ob.T != null ? `<div class="brf-obs"><i class="tag obs">mesuré</i> ${esc(ob.name)} · ${new Date(ob.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · <b>${f1(ob.T)} °C</b>${ob.vis != null && ob.vis < 5000 ? ' · visibilité ' + ob.vis + ' m' : ''}${ob.wx ? ' · ' + esc(wxFr(ob.wx)) : ''}</div>` : ''}
     <div class="brf-t">${trendHtml(tr)}</div>
@@ -3118,7 +3139,7 @@ function renderBrief() {
     R('Vent / rafales', c => `${f0(c.wind)} / ${f0(c.gust)} km/h`)
   ].join('') + `<tr><td class="k">Soleil rasant dans l’axe</td><td class="num">—</td><td class="num">${td.glare ? `<b style="color:var(--risk-t)">oui vers ${td.glare.ts.slice(11, 16)}</b> · ${f0(td.glare.alt)}° au-dessus de l’horizon` : 'non'}</td><td class="num">—</td></tr>`;
   const mc = td.mont, effT = effType(car);
-  const montTxt = mc.concerned ? `<div class="note lv${mc.season ? 2 : 1}"><b>LOI MONTAGNE</b><span>${esc(td.toName)} ${mc.inDept ? 'est dans un département concerné' : `est en altitude (${f0(mc.elev)} m)`}. Du 1er novembre au 31 mars, pneus 3PMSF (hiver ou 4 saisons marqués) ou chaînes / chaussettes obligatoires dans les communes fixées par arrêté préfectoral${mc.season ? '' : ' (période pas encore commencée à cette date)'}. ${effT === 'summer' ? `${esc(car.short)} en pneus ${TYPE_LABEL[car.tire.type]} : prévois chaînes ou chaussettes.` : `${esc(car.short)} : conforme si le marquage 3PMSF est présent.`}</span></div>` : '';
+  const montTxt = mc.concerned ? montNoteHtml([{ name: td.toName, mc }], td.dep, car) : '';
   const routeTxt = `Cap ${capTxt(td.cap)} (${f0(td.cap)}°) · ${f0(td.dist)} km à vol d’oiseau${td.mids.length ? ` · ${td.midsLoaded}/${td.mids.length} points intermédiaires analysés (≈ tous les 50 km)` : ''}`;
   el.innerHTML = head + `<div class="sub">${esc(td.fromName)} → ${esc(td.toName)} · départ <b class="mono">${td.dep.slice(11, 16)}</b> le ${fmtDay(td.dep.slice(0, 10))} · arrivée <b class="mono">${td.arr.slice(11, 16)}</b>${td.past ? ' · <b style="color:var(--risk-t)">horaire déjà passé</b>' : ''}</div>
   ${verdictHtml(wa.level)}
@@ -3641,7 +3662,7 @@ document.addEventListener('click', async e => {
     catch (err) { if (current()) box.innerHTML = '<span class="sub" role="status">Recherche impossible (réseau indisponible). Tu peux aussi saisir latitude et longitude à la main.</span>'; }
   } else if (a === 'geo-add') {
     const h = (window.__hits || [])[+t.dataset.i]; if (!h) { commandFeedback(t, 'Relance la recherche'); return; } if (S.customs.length >= 4) { commandFeedback(t, 'Limite de quatre destinations : supprime un lieu'); return; } geoSearchGen++;
-    markEdit('customs'); S.customs.push({ id: 'c' + Date.now().toString(36), name: h.name, sub: h.sub, dept: h.dept || '', lat: +h.lat.toFixed(4), lon: +h.lon.toFixed(4) });
+    markEdit('customs'); S.customs.push({ id: 'c' + Date.now().toString(36), name: h.name, sub: h.sub, ...frAdmin(h), lat: +h.lat.toFixed(4), lon: +h.lon.toFixed(4) });
     saveSettings(); renderSettings(); refreshAll();   // une destination ajoutée ne remplace jamais le lieu de travail (domicile-travail, « Au travail »)
   } else if (a === 'loc-del') {
     markEdit('customs'); const l = S.customs.splice(+t.dataset.i, 1)[0]; if (l) { if (S.work.to === l.id) S.work.to = S.locs[1].id; if (S.work.from === l.id) S.work.from = S.locs[0].id; if (UI.loc === l.id) UI.loc = S.locs[0].id; delete RAW[l.id]; }
@@ -3712,7 +3733,12 @@ document.addEventListener('change', e => {
       if (d && car.tire.type !== d.type) { const keep = { brand: car.tire.brand, model: car.tire.model }; switchTire(car, d.type); Object.assign(car.tire, keep); renderSettings(); } }
     saveSettings();
     const b = t.dataset.bind;
-    if (/^(locs|customs)\.\d+\.(lat|lon)$/.test(b)) { rebuild(); refreshAll(); return; }
+    if (/^(locs|customs)\.\d+\.(lat|lon)$/.test(b)) {
+      // coordonnées déplacées à la main : l'ancienne commune ne vaut plus ; l'alerte montagne retombe sur l'altitude
+      const [k, i] = b.split('.'), l = S[k] && S[k][+i];
+      if (l && ['deptCode', 'dept', 'city', 'cityCode', 'postcode'].some(f => l[f])) { ['deptCode', 'dept', 'city', 'cityCode', 'postcode'].forEach(f => { if (f in l) l[f] = ''; }); markEdit(k); saveSettings(); }
+      rebuild(); refreshAll(); return;
+    }
     if (b.startsWith('dept.')) fetchVigi();
     if (b.startsWith('work.')) UI.dayOff = b === 'work.dep' || b === 'work.ret' ? null : UI.dayOff;
     softRender();
