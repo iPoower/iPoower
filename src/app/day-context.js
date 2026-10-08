@@ -71,7 +71,26 @@ function appChooseAgendaDestination(key) {
   if (n) n.destinationPoint = { id: PLACE.extra.id, name: PLACE.extra.name, address: PLACE.extra.address, lat: PLACE.extra.lat, lon: PLACE.extra.lon, provider: 'calendar', precision: 'event' };
   return true;
 }
-function appAgendaLeg(e, leg) { return DayContext.returnLeg(leg, calendarTripKey(e, leg), appDay(), Date.now(), placeList()); }
+function appAgendaLeg(e, leg) {
+  const effective = DayContext.returnLeg(leg, calendarTripKey(e, leg), appDay(), Date.now(), placeList());
+  // Un lieu confirmé aujourd'hui est prioritaire sur l'origine « Domicile » figée par le relais.
+  // Seul le premier ALLER agenda non commencé est adapté, jamais un retour ni un départ futur.
+  const c = placeNow(), now = liveNow(), today = placeToday(), chosen = appDay().nextDestination;
+  // L'arrivée confirmée ne doit jamais créer un nouveau trajet en changeant sa clé horaire.
+  if ((USER_STORE.state.done || {})[calendarTripKey(e, leg)]) return effective;
+  if (c.source !== 'manual' || !c.confirmed || DayContext.date(c.confirmed.at) !== today
+    || USER_STORE.state.lastDeparture || TRIPSTART || LIVE.phase === 'active'
+    || !effective || effective.k !== 'go' || effective.originPending || !effective.arr || effective.arr < now
+    || !effective.dep || effective.dep.slice(0, 10) !== today || e.mode === 'maison'
+    || chosen && chosen.source === 'manual' || !locHasCoords(effective.from) || !locHasCoords(effective.to)
+    || !c.place || !locHasCoords(c.place) || distKm(c.place, effective.from) <= 1) return effective;
+  const next = CAL && (CAL.events || []).filter(event => calendarSpatial(event) && !calendarCancelled(event)
+    && event.s && event.s.slice(0, 10) === today && event.s > now
+    && (event.legs || []).some(route => route.k === 'go' && !(USER_STORE.state.done || {})[calendarTripKey(event, route)]))
+    .sort((a, b) => a.s.localeCompare(b.s))[0];
+  if (next !== e) return effective;
+  return DayContext.rebaseAgendaOrigin(effective, c.place);
+}
 function appWorkOn(date, days = S.work.days) { return DayContext.workOn(date, appDay(), commuteDays(days)); }
 function appCalendarCancelState(state = TRIPCANCEL) {
   const day = appDay().dayType;

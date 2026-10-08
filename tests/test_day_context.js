@@ -85,7 +85,9 @@ check('migration ancien GPS : observation jamais convertie en confirmation manue
 });
 function appFixture() {
   const c = { Date: class extends Date { static now() { return now; } }, DayContext: D, S: { cars: [{ id: 'a', tire: { type: 'summer' } }, { id: 'b', tire: { type: 'none' } }] },
-    USER_STORE: { state: { dayContext: {} } }, placeList: () => places, hasTires: car => car.tire.type !== 'none', appAction: fn => fn() };
+    USER_STORE: { state: { dayContext: {} } }, placeList: () => places, hasTires: car => car.tire.type !== 'none', appAction: fn => fn(),
+    placeNow: () => ({ source: 'none' }), placeToday: () => '2026-10-06', liveNow: () => '2026-10-06T17:30',
+    TRIPSTART: null, LIVE: { phase: 'idle' } };
   c.TCARS = () => c.S.cars.filter(c.hasTires); vm.createContext(c); vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/app/day-context.js'), 'utf8'), c); return c;
 }
 function commuteFixture(place, clock) {
@@ -142,6 +144,48 @@ check('Congé ne transforme pas le lieu confirmé Travail en origine Domicile', 
   a.placeToday = () => '2026-10-06'; a.liveNow = () => '2026-10-06T17:30'; a.placeNow = () => ({ source: 'manual', confirmed: { at: now }, place: places[1] });
   vm.runInContext(app.slice(app.indexOf('function tripCancelBeforeFirst('), app.indexOf('const tripCancelRouteKey')), a);
   assert.equal(a.tripCancelBeforeFirst({ s: '2026-10-06T18:30' }).id, 'work');
+});
+check('AGENDA : lieu B confirmé sans GPS invalide la route de démonstration du prochain aller uniquement', () => {
+  const a = appFixture();
+  a.locHasCoords = p => !!p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
+  a.calendarSpatial = () => true; a.calendarCancelled = () => false;
+  a.calendarTripKey = (e, leg) => e.id + '|' + leg.k;
+  a.distKm = (x, y) => x.id === y.id ? 0 : 30;
+  a.placeNow = () => ({ source: 'manual', confirmed: { at: now }, place: places[2] });
+  const old = { k: 'go', from: places[0], to: places[1], dep: '2026-10-06T18:00', arr: '2026-10-06T18:20',
+    km: 39, min: 41, routed: true, pts: [{ lat: 48.86, lon: 2.30 }], g: [[48.85, 2.35], [48.9, 2.25]] };
+  const later = { ...old, dep: '2026-10-06T20:00', arr: '2026-10-06T20:20' };
+  const first = { id: 'maif', s: '2026-10-06T18:30', mode: 'auto', legs: [old] };
+  const second = { id: 'concert', s: '2026-10-06T20:30', mode: 'auto', legs: [later] };
+  a.CAL = { events: [first, second] };
+  const adapted = a.appAgendaLeg(first, old);
+  assert.equal(adapted.from.id, 'b'); assert.equal(adapted.from.city, 'Lieu B');
+  assert.equal(adapted.originName, 'Lieu B'); assert.equal(adapted.targetArr, old.arr);
+  assert.equal(adapted.originPlannedDep, old.dep);
+  assert.equal(adapted.originRecalc, true); assert.equal(adapted.originPending, true);
+  assert.equal(adapted.km, null); assert.equal(adapted.min, null); assert.equal(adapted.routed, false);
+  assert.deepEqual(Array.from(adapted.g), []); assert.deepEqual(Array.from(adapted.pts), []);
+  assert.equal(old.from.id, 'home'); assert.equal(old.km, 39); assert.equal(old.g.length, 2);
+  assert.equal(a.appAgendaLeg(second, later), later, 'prochain rendez-vous ultérieur préservé');
+  const back = { ...old, k: 'ret' };
+  assert.equal(a.appAgendaLeg(first, back), back, 'retour préservé');
+  first.mode = 'maison'; assert.equal(a.appAgendaLeg(first, old), old, 'consigne #maison respectée');
+  first.mode = 'auto';
+  a.placeNow = () => ({ source: 'last', place: places[2] });
+  assert.equal(a.appAgendaLeg(first, old), old, 'dernier lieu estimé ne remplace pas le planning');
+  a.placeNow = () => ({ source: 'manual', confirmed: { at: now - 86400000 }, place: places[2] });
+  assert.equal(a.appAgendaLeg(first, old), old, 'confirmation de la veille non imposée');
+  a.placeNow = () => ({ source: 'manual', confirmed: { at: now }, place: places[0] });
+  assert.equal(a.appAgendaLeg(first, old), old, 'pas de recalcul si origine identique');
+  a.placeNow = () => ({ source: 'manual', confirmed: { at: now }, place: places[2] });
+  const appSource = fs.readFileSync(require('node:path').resolve(__dirname, '../src/app.js'), 'utf8');
+  a.TripCancel = { eventId: () => 'id-fixture' };
+  vm.runInContext(appSource.slice(appSource.indexOf('function calendarTripKey('), appSource.indexOf('function liveDoneHas(')), a);
+  const key = a.calendarTripKey(first, old);
+  assert.equal(a.calendarTripKey(first, adapted), key, 'même clé technique après recalcul de départ');
+  a.USER_STORE.state.done = { [key]: { how: 'confirmé', at: now, exp: now + 86400000 } };
+  assert.equal(a.appAgendaLeg(first, old), old, 'arrivée enregistrée : aucun nouveau trajet créé');
+  assert.equal(a.appAgendaLeg(second, later).from.id, 'b', 'prochain aller non terminé devient le suivant');
 });
 check('observation GPS cohérente plus récente invalide une ancienne origine sans inventer de destination', () => {
   const a = appFixture(); a.placeToday = () => '2026-10-06'; a.placeNow = () => ({ source: 'last', place: places[1] });
