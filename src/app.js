@@ -62,37 +62,65 @@ function repairVehicleIdentity(settings) {
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function unseal(pass) {
   const S0 = window.TWRC_SEALED; if (!S0 || !crypto || !crypto.subtle) return false;
+  let txt;
   try {
     const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
     const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(S0.s), iterations: S0.it, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(S0.i) }, key, b64(S0.c));
-    const txt = new TextDecoder().decode(pt); JSON.parse(txt);
+    txt = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(S0.i) }, key, b64(S0.c))); JSON.parse(txt);
+  } catch (e) { unseal.error = e.name === 'OperationError' ? 'Code incorrect.' : 'Déverrouillage impossible : chiffrement indisponible. Tes données restent conservées.'; return false; }
+  const VS = window.TWRC_VAULT;
+  if (VS) {
+    // Sécurité V1 : le préréglage déchiffré et le code ne sont conservés que dans le coffre chiffré (jamais en clair).
+    const raw = window.TWRC_RAW_STORAGE, had = VS.mode === 'vault' || !!(raw && (raw.getItem(SessionVault.VAULT) || raw.getItem(DeviceStorage.VAULT)));
+    try { await VS.unlock(pass, { 'twrc.plain': txt, 'twrc.plain.v': String(window.TWRC_SEALED_V) }); }
+    catch (e) {
+      unseal.error = e.name === 'OperationError' ? 'Ce code ouvre la configuration, mais le coffre de cet appareil a été chiffré avec un autre code : saisis le code utilisé lors du chiffrement. Rien n’a été modifié.'
+        : 'Déverrouillage impossible : stockage local indisponible ou plein. Tes données restent conservées.';
+      return false;
+    }
+    window.TWRC_STORAGE_ERROR = false; unseal.restored = had; return true;
+  }
+  // Navigateur sans coffre de session (chiffrement indisponible au démarrage) : ancien comportement.
+  try {
     const restored = await DeviceStorage.unlockPlan(localStorage, pass, crypto);
     const plan = restored || { writes: {}, remove: [], removePrefixes: [] };
     Object.assign(plan.writes, { 'twrc.plain': txt, 'twrc.plain.v': String(window.TWRC_SEALED_V), 'twrc.key': pass });
-    // La version restaurée conserve ses modifications ; loadSettings fera la migration si le préréglage a changé.
     DeviceStorage.apply(localStorage, plan); window.TWRC_STORAGE_ERROR = false; unseal.restored = !!restored;
     return true;
   } catch (e) { unseal.error = e.name === 'OperationError' ? 'Code incorrect.' : 'Déverrouillage impossible : stockage local indisponible. Tes données restent conservées.'; return false; }
 }
-const LOCKED = () => DeviceStorage.isFrozen() || !!window.TWRC_STORAGE_ERROR || DeviceStorage.isLocked(localStorage) || !!window.TWRC_SEALED && !window.TWRC_PRESET;
+// coffre de session verrouillé (code demandé) ; ancien coffre v1 lu sur le stockage brut
+const vaultLocked = () => !!(window.TWRC_VAULT && window.TWRC_VAULT.locked());
+const storeLocked = () => vaultLocked() || DeviceStorage.isLocked(window.TWRC_RAW_STORAGE || localStorage);
+// tout rechargement attend la fin de l'écriture chiffrée en cours (aucune modification perdue)
+async function reloadSafe(delay = 0) {
+  try { if (window.TWRC_VAULT) await window.TWRC_VAULT.flush(); } catch (e) { /* le rechargement reste possible */ }
+  setTimeout(() => location.reload(), delay);
+}
+const LOCKED = () => DeviceStorage.isFrozen() || !!window.TWRC_STORAGE_ERROR || storeLocked() || !!window.TWRC_SEALED && !window.TWRC_PRESET;
 async function lockDevice(button) {
   if (DeviceStorage.isFrozen()) return;
-  const pass = lsGet('twrc.key');
-  if (!pass) { alert('Le code de configuration est nécessaire pour protéger tes données.'); return; }
+  const VS = window.TWRC_VAULT, vault = VS && VS.mode === 'vault';
+  if (!vault && !lsGet('twrc.key')) { alert('Le code de configuration est nécessaire pour protéger tes données.'); return; }
+  // Trajet en cours : verrouiller arrête le suivi GPS ; jamais sans confirmation explicite.
+  if (APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.activeTrip && !confirm('Un trajet est en cours : verrouiller arrête son suivi GPS sur cet appareil. Verrouiller quand même ?')) return;
   if (button) { button.disabled = true; button.textContent = 'Protection des données…'; }
   try {
     // Ne pas quitter une session possédant des modifications encore seulement en mémoire.
     localStorage.setItem('twrc.settings.v1', JSON.stringify(S));
     if (localStorage.getItem('twrc.settings.v1') !== JSON.stringify(S) || !USER_STORE.retry()) throw new Error('Données locales non confirmées.');
-    DeviceStorage.freeze(true);
     stopGps();
-    await DeviceStorage.lock(localStorage, pass, crypto);
+    if (vault) {
+      await VS.lock();   // coffre réécrit et relu, clé de session effacée, autres onglets prévenus
+      DeviceStorage.freeze(true); location.reload(); return;
+    }
+    DeviceStorage.freeze(true);
+    await DeviceStorage.lock(localStorage, lsGet('twrc.key'), crypto);
     location.reload();
   } catch (e) {
-    const protectedCopy = DeviceStorage.isLocked(localStorage);
+    const protectedCopy = !vault && DeviceStorage.isLocked(localStorage);
     DeviceStorage.freeze(protectedCopy);
-    alert(protectedCopy ? 'Copie chiffrée conservée. Le nettoyage local doit être repris ; rouvre l’app.' : 'Verrouillage non effectué : stockage local indisponible. Tes données sont conservées sur cet appareil.');
+    alert(protectedCopy ? 'Copie chiffrée conservée. Le nettoyage local doit être repris ; rouvre l’app.' : 'Verrouillage non effectué : enregistrement chiffré impossible. Tes données sont conservées sur cet appareil.');
     if (protectedCopy) location.reload();
     else if (button) { button.disabled = false; button.textContent = 'Verrouiller cet appareil'; }
   }
@@ -132,7 +160,7 @@ function repairStoredWork(saved) {
   lsSet('twrc.settings.v1', JSON.stringify(saved)); return true;
 }
 function loadSettings() {
-  if (window.TWRC_STORAGE_ERROR || DeviceStorage.isLocked(localStorage)) return clone(BASE);
+  if (window.TWRC_STORAGE_ERROR || storeLocked()) return clone(BASE);
   let saved = null;
   try { saved = JSON.parse(lsGet('twrc.settings.v1') || 'null'); } catch (e) { saved = null; }
   repairStoredWork(saved);
@@ -606,7 +634,7 @@ function placeDiagRows(forCopy) {
 }
 function alertLoc(msg) { const el = $('#locMsg'); if (el) { el.textContent = msg; el.hidden = !msg; } }
 async function refreshAll(force = true) {
-  if (DeviceStorage.isFrozen() || DeviceStorage.isLocked(localStorage) || window.TWRC_STORAGE_ERROR) { renderStatus(); renderNotice(); return; }
+  if (DeviceStorage.isFrozen() || storeLocked() || window.TWRC_STORAGE_ERROR) { renderStatus(); renderNotice(); return; }
   if (busy) return;
   if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
   busy = true; DEMO.on = false; lastTry = Date.now(); renderStatus();
@@ -857,13 +885,18 @@ function renderNotice() {
   $('#demoBar').innerHTML = DEMO.on ? `<div class="demo-bar"><b>MODE DÉMO · DONNÉES SIMULÉES, PAS DE MÉTÉO RÉELLE</b><span>${esc(DEMO_SCN[DEMO.scn].name)}</span>
     <select id="demoScn" data-act-change="demoScn" aria-label="Scénario de démo">${Object.keys(DEMO_SCN).map(k => `<option value="${k}" ${k === DEMO.scn ? 'selected' : ''}>${esc(DEMO_SCN[k].name)}</option>`).join('')}</select>
     <button class="btn sm" data-act="demo-off">Quitter la démo</button></div>` : '';
-  const lock = LOCKED() && !lsGet('twrc.nocode') ? `<div class="note lvx unlock"><b>🔒 CONFIGURATION</b><span>${DeviceStorage.isLocked(localStorage) ? 'Tes réglages et ton journal sont conservés dans une copie chiffrée. Déverrouille cet appareil avec ton code.' : 'Réglages personnels chiffrés. Entre ton code une seule fois sur cet appareil.'}
-      <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" aria-label="Code de configuration" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button></form><span class="sub">Accepte « Enregistrer le mot de passe » : l’iPhone le remplira ensuite avec Face ID.</span><span class="sub">${DeviceStorage.isLocked(localStorage) ? '' : 'Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button>'}</span><span class="sub" id="unlockMsg"></span></span></div>` : '';
+  const lock = LOCKED() && !lsGet('twrc.nocode') ? `<div class="note lvx unlock"><b>🔒 CONFIGURATION</b><span>${storeLocked() ? 'Tes réglages et ton journal sont conservés dans une copie chiffrée. Déverrouille cet appareil avec ton code.' : 'Réglages personnels chiffrés. Entre ton code une seule fois sur cet appareil.'}
+      <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" aria-label="Code de configuration" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button></form><span class="sub">Accepte « Enregistrer le mot de passe » : l’iPhone le remplira ensuite avec Face ID.</span><span class="sub">${storeLocked() ? '' : 'Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button>'}</span><span class="sub" id="unlockMsg"></span></span></div>` : '';
   const setup = lock || (CFG_IMPORTED ? `<div class="note lv0"><b>CONFIGURÉ</b><span>Tes lieux et tes voitures sont enregistrés sur cet appareil. Ajoute la page à l’écran d’accueil depuis ce lien.</span></div>`
     : !S.configured ? `<div class="note lvx"><b>À CONFIGURER</b><span>Renseigne tes lieux et tes voitures dans les paramètres. Ils restent sur cet appareil. <button class="btn sm" data-act="goset-cfg">Ouvrir les paramètres</button></span></div>` : '');
   // Une réponse météo peut arriver entre la saisie et la validation du code.
   // Garder le formulaire en place conserve la valeur, le focus et le remplissage du gestionnaire de mots de passe.
-  const setContent = extra => {
+  // Sécurité V1 : état du coffre de session (erreur d'écriture, migration non terminée, migration réussie)
+  const VS = window.TWRC_VAULT, vaultNote = !VS ? '' : VS.error ? `<div class="note lv2" role="alert" data-k="vault"><b>ENREGISTREMENT CHIFFRÉ</b><span>${esc(VS.error)}</span></div>`
+    : VS.warn ? `<div class="note lv1" role="status" data-k="vault"><b>STOCKAGE LOCAL</b><span>${esc(VS.warn)}</span></div>`
+    : VS.migrated ? `<div class="note lv0" role="status" data-k="vault"><b>🔐 DONNÉES CHIFFRÉES SUR CET APPAREIL</b><span>Réglages, lieux, journal et code sont désormais chiffrés au repos. Le code sera demandé à chaque réouverture de l’app (le trousseau de l’iPhone peut le remplir) ; un simple rechargement ne le redemande pas.</span></div>` : '';
+  const setContent = extra0 => {
+    const extra = vaultNote + extra0;
     const form = el.querySelector('.unlock');
     if (lock && form) {
       Array.from(el.childNodes).forEach(node => { if (node !== form) node.remove(); });
@@ -1565,8 +1598,18 @@ async function backupExport() {
     const p = $('#bkSec .sub b'); if (p) p.textContent = fmtDay(day);
   } catch (e) { bkMsg('Échec de la sauvegarde : ' + (e.message || e)); }
 }
-function backupApplyPlan(plan) {
+async function backupApplyPlan(plan) {
+  const VS = window.TWRC_VAULT;
+  if (!VS || VS.mode !== 'vault') { DeviceStorage.apply(localStorage, plan); return; }
+  // Coffre de session : l'import n'est réussi qu'une fois le coffre chiffré réécrit ET relu ; sinon retour exact à l'état précédent.
+  const names = [...new Set([...Object.keys(plan.writes), ...plan.remove])], before = Object.fromEntries(names.map(k => [k, localStorage.getItem(k)]));
   DeviceStorage.apply(localStorage, plan);
+  await VS.flush();
+  if (VS.error) {
+    names.forEach(k => { if (before[k] == null) localStorage.removeItem(k); else localStorage.setItem(k, before[k]); });
+    await VS.flush();
+    throw new Error(VS.error);
+  }
 }
 async function backupImport(f) {
   bkMsg('Lecture du fichier…');
@@ -1588,12 +1631,12 @@ async function backupImport(f) {
   if (!confirm(`Remplacer les réglages de ce téléphone par la sauvegarde ${version} du ${when} ?${kept}`)) { bkMsg('Import annulé.'); return; }
   if (window.TWRC_PRESET_V) plan.writes['twrc.presetv'] = String(window.TWRC_PRESET_V);
   plan.writes['twrc.lastbackup'] = String(data.at).slice(0, 10);
-  try { backupApplyPlan(plan); }
+  try { await backupApplyPlan(plan); }
   catch (e) { bkMsg(e.recoveryPending ? 'Import interrompu : la copie de récupération est conservée. Libère de l’espace puis rouvre l’app.' : 'Import non appliqué : stockage local indisponible. Tes réglages et ton journal précédents sont conservés.'); return; }
   // Les anciens moteurs encore en mémoire ne doivent pas réécrire l'état importé avant le rechargement.
   DeviceStorage.freeze(true);
   bkMsg(`✅ Sauvegarde ${version} restaurée. Redémarrage…`);
-  setTimeout(() => location.reload(), 600);
+  reloadSafe(600);
 }
 
 
@@ -3460,7 +3503,7 @@ function renderAlerts() {
 const bindIn = (path, val, o = {}) => `<div class="fld${o.wide ? ' wide' : ''}"><label for="f-${path.replace(/\./g, '-')}">${o.label}</label><input type="${o.type || 'text'}" id="f-${path.replace(/\./g, '-')}" data-bind="${path}" ${o.num ? 'data-num="1"' : ''} ${o.attrs || ''} value="${esc(val == null ? '' : val)}" ${o.ph ? `placeholder="${esc(o.ph)}"` : ''}></div>`;
 function renderSettings(force) {
   const el = $('#settingsBody'); if (!el) return;
-  if (DeviceStorage.isLocked(localStorage) || window.TWRC_STORAGE_ERROR) { el.innerHTML = '<p>Déverrouille la configuration pour retrouver tes réglages et ton journal conservés sur cet appareil.</p>'; return; }
+  if (storeLocked() || window.TWRC_STORAGE_ERROR) { el.innerHTML = '<p>Déverrouille la configuration pour retrouver tes réglages et ton journal conservés sur cet appareil.</p>'; return; }
   const d = $('#settings'); if (!force && d && !d.open) { el.innerHTML = ''; el.dataset.stale = '1'; return; }
   el.dataset.stale = '';
   const carSet = S.cars.map((c, i) => `<div class="set-sec"><h3>${esc(c.name)}</h3>${c.photo ? `<div class="chips"><button class="btn sm" data-act="photo-del" data-i="${i}">Retirer la photo</button></div>` : ''}
@@ -3775,3 +3818,7 @@ document.addEventListener('change', e => {
 });
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#cfg=')) location.reload(); });
 // @include app/lifecycle.js
+// Sécurité V1 : écriture chiffrée immédiate quand l'app passe en arrière-plan ; erreur d'écriture affichée sans attendre.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && window.TWRC_VAULT) window.TWRC_VAULT.flush(); });
+window.addEventListener('pagehide', () => { if (window.TWRC_VAULT) window.TWRC_VAULT.flush(); });
+window.addEventListener('twrc-vault-error', () => { try { renderNotice(); } catch (e) { /* rendu suivant */ } });

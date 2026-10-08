@@ -35,7 +35,7 @@ for(const [name,f] of FAULTS){
   fault=f;await p.evaluate(()=>{lastOk=0;lastTry=0;refreshAll();});
   await settle(f==='timeout'?30:6);const s=await st();
   check(`40 · ${name} : dernière météo valide conservée, en cache, jamais LIVE`,s.hours===ref.hours&&s.cache===ref.cache&&!/LIVE/.test(s.bar)&&/CACHE/.test(s.bar)&&!s.busy&&s.verdict,JSON.stringify(s));
-  fault=null;await p.evaluate(()=>refreshAll());await settle(8);
+  fault=null;await p.evaluate(()=>{refreshAll();});await settle(8);
 }
 // reprise automatique sans geste : le minuteur d'actualisation (5 min) relance seul après une panne
 // (pas de 5 s, plus courts que le plus petit délai réseau de 8 s, et chaque actualisation terminée en temps réel

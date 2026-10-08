@@ -20,7 +20,8 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
   const c = await b.newContext({ viewport: { width: 414, height: 896 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, timezoneId: 'Europe/Paris' });
   await c.addInitScript(({ lat, lon }) => {
     const st = { lat, lon, age: 0, acc: 24 }, watches = new Map(), oldWatches = new Map(), pending = [];
-    try { const saved = JSON.parse(localStorage.getItem('twrc.gps')); if (saved) { st.lat = saved.lat; st.lon = saved.lon; } } catch (e) { /* aucune position enregistrée */ }
+    // position simulée conservée au rechargement par le test lui-même (sécurité V1 : l'état de l'app est chiffré, illisible ici)
+    try { const saved = JSON.parse(sessionStorage.getItem('e2e.geo') || localStorage.getItem('twrc.gps')); if (saved) { st.lat = saved.lat; st.lon = saved.lon; } } catch (e) { /* aucune position enregistrée */ }
     let id = 0, holdGets = false, hidden = false; window.__geoLog = [];
     const mk = o => { const x = { ...st, ...o }; return { coords: { latitude: x.lat, longitude: x.lon, accuracy: x.acc, speed: null }, timestamp: Date.now() - x.age }; };
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
@@ -29,7 +30,7 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
       clearWatch(n) { watches.delete(n); window.__geoLog.push({ kind: 'clear', id: n }); }
     } });
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
-    window.__geoSet = o => Object.assign(st, o);
+    window.__geoSet = o => { Object.assign(st, o); try { sessionStorage.setItem('e2e.geo', JSON.stringify({ lat: st.lat, lon: st.lon })); } catch (e) { /* facultatif */ } };
     window.__geoPush = o => { const pos = mk(o); watches.forEach(ok => ok(pos)); };
     window.__geoOldWatch = (n, o) => oldWatches.get(n)(mk(o));
     window.__geoHoldGets = on => { holdGets = on; };
@@ -104,9 +105,9 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
   await move(G(13));
   const cached = await p.evaluate(() => { delete RAW.gps; loadCache(); return RAW.gps && { mode: RAW.gps.mode, lat: RAW.gps.lat, lon: RAW.gps.lon }; });
   check('10 · cache après petit mouvement : origine météo conservée au rechargement', cached && cached.mode === 'cache' && eq(cached, G(12)));
-  await p.evaluate(() => { const saved = JSON.parse(localStorage.getItem('twrc.gps')); saved.name = 'Albert ancien'; localStorage.setItem('twrc.gps', JSON.stringify(saved)); });
+  await p.evaluate(() => { const saved = JSON.parse(localStorage.getItem('twrc.gps')); saved.name = 'Albert ancien'; localStorage.setItem('twrc.gps', JSON.stringify(saved)); return window.TWRC_VAULT && window.TWRC_VAULT.flush(); });   // écriture chiffrée terminée avant le rechargement
   await p.reload(); await settle(10); s = await state();
-  check('10b · premier fix après mise à jour : ancien nom persistant corrigé sans déplacement', eq(s.gps, G(13)) && s.gps.name === city(G(13)));
+  check('10b · premier fix après mise à jour : ancien nom persistant corrigé sans déplacement', eq(s.gps, G(13)) && s.gps.name === city(G(13)), JSON.stringify({ gps: s.gps, want: city(G(13)) }));
   const gpsMarks = [A, G(3), G(8), G(12), G(13)].map(g => g.lat.toFixed(4));
   const privacy = await p.evaluate(() => ({ keys: Object.keys(localStorage), other: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps|context\.v1)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
   const sent = requests.filter(u => gpsMarks.some(v => u.includes(v)));

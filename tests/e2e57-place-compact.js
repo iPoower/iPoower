@@ -112,6 +112,8 @@ async function capture(p, dev, name) {
       await check(dev + ' · SUR PLACE : compact et libellé long lisible', async () => { await compact(p); assert.equal((await state(p)).status, 'arrived'); assert.deepEqual((await layout(p)).clipped, []); });
       await modify(p, dev); await confirm(p, dev, 'work'); await modify(p, dev);
       const other = await s.c.newPage(); await other.goto(U); await s.settle(4);
+      // sécurité V1 : une nouvelle fenêtre n'hérite pas de la clé de session ; elle se déverrouille avec le code
+      if (await other.locator('#unlockPw').count()) { await other.fill('#unlockPw', fs.readFileSync('.passphrase', 'utf8').trim()); await Promise.all([other.waitForNavigation({ timeout: 60000 }), other.click('#unlockForm button[type=submit]')]); await s.settle(6); }
       await modify(other, dev); await confirm(other, dev, 'home');
       await p.waitForFunction(() => APP_CONTEXT.snapshot.status === 'home');
       await check(dev + ' · confirmation dans une autre fenêtre : état propagé et panneau replié', async () => { await compact(p); await compact(other); assert.deepEqual((await state(p)).confirmation, (await state(other)).confirmation); });

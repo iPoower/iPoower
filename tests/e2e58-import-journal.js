@@ -75,10 +75,11 @@ async function session(b, dev, T0) {
       if (!await p.$eval('#settings', d => d.open)) await p.click('#settings > summary');
       await p.evaluate(() => {
         S.cars[0].name = 'Véhicule local fictif'; markEdit('cars.0.name'); saveSettings(); USER_STORE.flush();
-        window.storageBeforeImport = { settings: localStorage.getItem('twrc.settings.v1'), context: localStorage.getItem('twrc.context.v1') };
+        window.storageBeforeImport = { settings: localStorage.getItem('twrc.settings.v1'), context: localStorage.getItem('twrc.context.v1'), vault: window.TWRC_RAW_STORAGE.getItem('twrc.vault.v2') };
         window.originalStorageSet = Storage.prototype.setItem;
         Storage.prototype.setItem = function(k, v) {
-          if (k === 'twrc.context.v1' && this.getItem(DeviceStorage.PENDING)) throw new DOMException('Test quota', 'QuotaExceededError');
+          // sécurité V1 : les données vivent dans le coffre chiffré ; c'est son écriture que le stockage plein refuse
+          if (k === 'twrc.vault.v2') throw new DOMException('Test quota', 'QuotaExceededError');
           return window.originalStorageSet.call(this, k, v);
         };
         renderSettings(true);
@@ -90,25 +91,26 @@ async function session(b, dev, T0) {
       const failedImport = await p.evaluate(() => {
         const status = document.getElementById('bkMsg').textContent;
         const out = { status, settingsOk: localStorage.getItem('twrc.settings.v1') === window.storageBeforeImport.settings,
-          contextOk: localStorage.getItem('twrc.context.v1') === window.storageBeforeImport.context, pending: localStorage.getItem(DeviceStorage.PENDING) };
+          contextOk: localStorage.getItem('twrc.context.v1') === window.storageBeforeImport.context, pending: localStorage.getItem(DeviceStorage.PENDING),
+          vaultOk: window.TWRC_RAW_STORAGE.getItem('twrc.vault.v2') === window.storageBeforeImport.vault };
         Storage.prototype.setItem = window.originalStorageSet;
         return out;
       });
       check(dev + ' · quota pendant import : échec annoncé sans faux succès', /Import non appliqué/.test(failedImport.status) && !/restaurée/.test(failedImport.status), JSON.stringify(failedImport));
-      check(dev + ' · quota pendant import : réglages et journal précédents intacts', failedImport.settingsOk && failedImport.contextOk && !failedImport.pending, JSON.stringify(failedImport));
+      check(dev + ' · quota pendant import : réglages et journal précédents intacts', failedImport.settingsOk && failedImport.contextOk && !failedImport.pending && failedImport.vaultOk, JSON.stringify(failedImport));
       // Vrai clic sur Verrouiller : plus aucune copie lisible, puis récupération avec le code fictif.
       await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('[data-act="lock"]')]);
       await s.settle();
       const locked = await p.evaluate(() => ({ locked: LOCKED(), settings: localStorage.getItem('twrc.settings.v1'),
-        context: localStorage.getItem('twrc.context.v1'), code: localStorage.getItem('twrc.key'), vault: !!localStorage.getItem(DeviceStorage.VAULT),
+        context: localStorage.getItem('twrc.context.v1'), code: localStorage.getItem('twrc.key'), vault: !!window.TWRC_RAW_STORAGE.getItem('twrc.vault.v2') && !window.TWRC_RAW_STORAGE.getItem('twrc.key') && !window.TWRC_RAW_STORAGE.getItem('twrc.settings.v1'),
         name: S.cars[0].name, body: document.body.innerText }));
-      check(dev + ' · verrouillage : réglages, journal et code retirés des copies lisibles', locked.locked && locked.vault && !locked.settings && !locked.context && !locked.code, JSON.stringify({ ...locked, body: undefined }));
+      check(dev + ' · verrouillage : réglages, journal et code retirés des copies lisibles', locked.locked && locked.vault && !locked.settings && !(locked.context || '').includes(key) && !/feedback/.test(locked.context || '') && !locked.code, JSON.stringify({ ...locked, body: undefined }));
       check(dev + ' · verrouillage : véhicule et journal personnels masqués', locked.name !== 'Véhicule local fictif' && !locked.body.includes('Véhicule local fictif'), locked.name);
       await s.unlock();
       const restored = await p.evaluate(key => ({ name: S.cars[0].name,
         grip: USER_STORE.state.debrief.entries.find(e => e.key === key)?.feedback?.grip,
-        done: !!USER_STORE.state.done[key], locked: LOCKED(), vault: !!localStorage.getItem(DeviceStorage.VAULT) }), key);
-      check(dev + ' · déverrouillage : réglage local et réponse du matin récupérés', restored.name === 'Véhicule local fictif' && restored.grip === 'normal' && restored.done && !restored.locked && !restored.vault, JSON.stringify(restored));
+        done: !!USER_STORE.state.done[key], locked: LOCKED(), vault: !!window.TWRC_RAW_STORAGE.getItem('twrc.vault.v2'), plain: ['twrc.key', 'twrc.plain', 'twrc.settings.v1', 'twrc.context.v1'].filter(k => window.TWRC_RAW_STORAGE.getItem(k) != null) }), key);
+      check(dev + ' · déverrouillage : réglage local et réponse du matin récupérés', restored.name === 'Véhicule local fictif' && restored.grip === 'normal' && restored.done && !restored.locked && restored.vault && !restored.plain.length, JSON.stringify(restored));   // sécurité V1 : coffre conservé, rien en clair
       await s.c.close();
     }
   } finally { await b.close(); }

@@ -46,9 +46,13 @@ const server=http.createServer((req,res)=>{
   c=await open();await c.setOffline(true);p=c.pages()[0]||await c.newPage();p.on('pageerror',e=>rows.push('ERR '+e.message));
   const t0=Date.now(),nav=await p.goto(base,{waitUntil:'domcontentloaded'}).catch(e=>null);
   await p.waitForSelector('#statusbar .badge',{timeout:15000}).catch(()=>null);await p.waitForTimeout(800);
+  // sécurité V1 : réouverture = code demandé (données chiffrées au repos) ; le déverrouillage doit marcher HORS LIGNE
+  const askedCode=await p.locator('#unlockPw').count()>0;
+  check('41.2b · réouverture : code demandé, aucune donnée personnelle chargée avant',askedCode&&await p.evaluate(()=>!window.TWRC_PRESET),String(askedCode));
+  if(askedCode){await p.fill('#unlockPw',PW);await Promise.all([p.waitForNavigation({timeout:60000}),p.click('#unlockForm button[type=submit]')]);await p.waitForSelector('#statusbar .badge',{timeout:15000}).catch(()=>null);await p.waitForTimeout(800);}
   const st=await p.evaluate(()=>({bar:(document.querySelector('#statusbar')||{}).innerText||'',hours:typeof M!=='undefined'&&M[UI.loc]?M[UI.loc].hs.length:0,gauge:!!document.querySelector('.gauge'),locked:!!(document.querySelector('#unlockPw')&&document.querySelector('#unlockPw').offsetParent)})).catch(e=>({err:e.message}));
   check('41.2 · démarrage à froid hors ligne : shell servi par le SW',!!nav&&nav.status()===200,(nav&&nav.status())+' en '+(Date.now()-t0)+' ms');
-  check('41.3 · démarrage à froid hors ligne : déverrouillée, dernière météo et verdict affichés',!st.locked&&st.hours>=24&&st.gauge,JSON.stringify(st).slice(0,200));
+  check('41.3 · démarrage à froid hors ligne : déverrouillée hors ligne, dernière météo et verdict affichés',!st.locked&&st.hours>=24&&st.gauge,JSON.stringify(st).slice(0,200));
   check('41.4 · démarrage à froid hors ligne : HORS LIGNE + données datées, jamais LIVE',/HORS LIGNE/.test(st.bar)&&/cache/i.test(st.bar)&&!/\bLIVE\b/.test(st.bar),String(st.bar).replace(/\s+/g,' '));
   await c.close();
 

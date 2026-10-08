@@ -3,6 +3,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { session, BR, errors, U } = require('./lib/context-session');
+const { unlockIfLocked } = require('./lib/unlock');
 const { revealPlaceControls } = require('./lib/place-controls');
 let n = 0, stage = 'initialisation';
 let scope = { device: '', profil: '', phase: 'initialisation' };
@@ -114,6 +115,7 @@ async function allViews(s, stage, expected, home, work) {
         // L'horloge Playwright appartient au contexte : les nouvelles pages en héritent.
         other = await s.c.newPage(); other.on('pageerror', e => errors.push(e.message)); await other.goto(U);
         for (let i = 0; i < 8; i++) { await other.clock.runFor(500); await other.waitForTimeout(80); }
+        await unlockIfLocked(other, async () => { for (let i = 0; i < 8; i++) { await other.clock.runFor(500); await other.waitForTimeout(80); } });   // sécurité V1
         await allViews({ p: other }, tag + ' · seconde fenêtre au travail', { status: 'work', location: 'work', confirmation: 'work', nextDir: 'ret' }, home, work);
       }
       // Maison est choisie explicitement ; quitter le travail ne déduit aucune destination.
@@ -141,7 +143,7 @@ async function allViews(s, stage, expected, home, work) {
       await p.close(); p = await s.c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.goto(U);
       assert(await p.evaluate(() => Date.now()) >= reopenedAt, 'réouverture sans recul de l’horloge partagée');
       s.p = p; s.settle = async (count = 6) => { for (let i = 0; i < count; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } };
-      await s.settle(8);
+      await s.settle(8); await unlockIfLocked(p, () => s.settle(8));   // réouverture : code demandé (sécurité V1)
       await allViews(s, tag + ' · fermeture/réouverture', { status: 'home', location: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
       await check(tag + ' · réouverture conserve les deux arrivées et le contexte ; aucun autre fournisseur', async () => { const x = await state(p); assert.deepEqual(x.stored.done, stored.done); assert.equal(x.stored.place.conf.at, stored.place.conf.at); });
       if (dev === 'pc' && profile === 'configure') {

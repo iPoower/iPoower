@@ -23,20 +23,23 @@ function seal(data) {
         USER_STORE.flush(); saveSettings();
         return { names: S.locs.map(l => l.name), coords: S.locs.map(l => [String(l.lat), String(l.lon)]), car: S.cars[0].name };
       });
-      const leaks = () => p.evaluate(({ names, coords, car }) => {
-        const out = [];
-        for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i), v = localStorage.getItem(k); if (/vault/.test(k)) continue;
-          const num = x => new RegExp('(^|[^0-9.])' + x.replace('.', '\\.') + '([^0-9]|$)').test(v);
-          if (names.some(x => v.includes(x)) || coords.some(([a, o]) => num(a) && num(o)) || v.includes(car)) out.push(k); }
-        return out;
-      }, me);
-      assert((await leaks()).length > 0, 'précondition : données personnelles fictives présentes avant verrouillage');
+      // Stockage RÉEL du navigateur (lu par Playwright, indépendant du JavaScript de la page) et sessionStorage de l'onglet
+      const leaks = async () => {
+        const st = await s.c.storageState(), ls = (st.origins.find(o => o.origin === 'https://ipoower.github.io') || { localStorage: [] }).localStorage;
+        const ses = await p.evaluate(() => Object.keys(sessionStorage).map(k => ({ name: k, value: sessionStorage.getItem(k) })));
+        const num = (v, x) => new RegExp('(^|[^0-9.])' + x.replace('.', '\\.') + '([^0-9]|$)').test(v);
+        return [...ls, ...ses].filter(({ name, value: v }) => !/vault/.test(name) && (name === 'twrc.key' || name === 'twrc.plain' || me.names.some(x => v.includes(x)) || me.coords.some(([a, o]) => num(v, a) && num(v, o)) || v.includes(me.car))).map(x => x.name);
+      };
+      // sécurité V1 : données personnelles disponibles pour l'app, mais déjà aucune copie lisible pendant la session déverrouillée
+      assert.equal(await p.evaluate(() => S.locs.length > 0 && !!USER_STORE.state.debrief.entries.length), true, 'précondition : données personnelles fictives chargées');
+      assert.deepEqual(await leaks(), [], 'session déverrouillée : rien en clair au repos');
       await check(dev + ' · « Verrouiller cet appareil » : rechargé verrouillé, plus aucune donnée personnelle en clair', async () => {
         await p.evaluate(() => { const d = document.getElementById('settings'); d.open = true; renderSettings(true); });
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('[data-act=lock]').click()]); await s.settle(8);
         assert.equal(await p.evaluate(() => LOCKED()), true); assert.equal(await p.locator('#unlockPw').count(), 1);
         assert.deepEqual(await leaks(), []); assert.equal(await p.evaluate(() => localStorage.getItem('twrc.key')), null);
-        assert(await p.evaluate(() => Object.keys(localStorage).some(k => /^twrc\..*vault/.test(k))), 'copie chiffrée présente');
+        assert(await p.evaluate(() => !!window.TWRC_RAW_STORAGE.getItem('twrc.vault.v2')), 'copie chiffrée présente');
+        assert.equal(await p.evaluate(() => sessionStorage.getItem('twrc.session.v2')), null, 'clé de session effacée');
       });
       await check(dev + ' · verrouillé : ni lieux, ni voiture, ni journal chargés ; aucune requête vers les lieux personnels', async () => {
         const st = await p.evaluate(() => ({ names: S.locs.map(l => l.name), car: S.cars[0].name, journal: USER_STORE.state.debrief.entries.length }));
@@ -46,14 +49,15 @@ function seal(data) {
       });
       await check(dev + ' · déverrouillage avec le code : lieux, voiture et journal reviennent à l’identique, coffre supprimé', async () => {
         await reloadUnlock(s, p);
-        const st = await p.evaluate(() => ({ names: S.locs.map(l => l.name), car: S.cars[0].name, journal: USER_STORE.state.debrief.entries.some(e => e.key === 'journal-fictif'), vault: Object.keys(localStorage).some(k => /^twrc\..*vault/.test(k)), locked: LOCKED() }));
-        assert.deepEqual(st.names, me.names); assert.equal(st.car, me.car); assert.equal(st.journal, true); assert.equal(st.vault, false); assert.equal(st.locked, false);
+        const st = await p.evaluate(() => ({ names: S.locs.map(l => l.name), car: S.cars[0].name, journal: USER_STORE.state.debrief.entries.some(e => e.key === 'journal-fictif'), vault: !!window.TWRC_RAW_STORAGE.getItem('twrc.vault.v2'), locked: LOCKED() }));
+        assert.deepEqual(st.names, me.names); assert.equal(st.car, me.car); assert.equal(st.journal, true); assert.equal(st.vault, true, 'coffre conservé (sécurité V1)'); assert.equal(st.locked, false);
+        assert.deepEqual(await leaks(), [], 'déverrouillé : toujours rien en clair');
       });
       await check(dev + ' · import refusé par le stockage : message d’échec, aucun rechargement, réglages et journal intacts', async () => {
         const before = await p.evaluate(() => localStorage.getItem('twrc.settings.v1'));
         const settings = await p.evaluate(() => JSON.parse(JSON.stringify({ ...S, locs: S.locs.map(l => ({ ...l, name: l.name + ' importé' })) })));
         await p.evaluate(() => { const set = Storage.prototype.setItem; window.__denyCtx = true;
-          Storage.prototype.setItem = function (k, v) { if (window.__denyCtx && k === 'twrc.context.v1') throw new DOMException('refus', 'QuotaExceededError'); return set.call(this, k, v); };
+          Storage.prototype.setItem = function (k, v) { if (window.__denyCtx && k === 'twrc.vault.v2') throw new DOMException('refus', 'QuotaExceededError'); return set.call(this, k, v); };   // l'écriture du coffre chiffré est refusée
           const d = document.getElementById('settings'); d.open = true; renderSettings(true); });
         const file = seal({ app: 'twrc', v: 2, at: new Date().toISOString(), settings, view: 'pneus', durable: { context: { debrief: { entries: [] } }, tyreTherm: {}, tripCancel: {} } });
         if (await p.$('#bkPw')) await p.fill('#bkPw', PW);

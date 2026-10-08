@@ -246,10 +246,10 @@ const privacy = async s => {
     check('8 · après dix minutes : undo retiré, annulation toujours appliquée', await p.locator('[data-act="trip-cancel-undo"]').count() === 0 && !/Titre privé Alpha/.test(await s.txt()));
     await s.reload(); check('5 · après rechargement : annulation locale conservée sans supprimer l’événement', !/Titre privé Alpha/.test(await s.txt()) && await p.evaluate(() => CAL.events.length) === 2);
     const activeId = await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('twrc.tripcancel')))[0]);
-    await p.evaluate(() => { const o = JSON.parse(localStorage.getItem('twrc.tripcancel')); o['cal-00000000000000000000000000000000'] = { at: Date.now() - 7200e3, exp: Date.now() - 3600e3 }; localStorage.setItem('twrc.tripcancel', JSON.stringify(o)); });
+    await p.evaluate(() => { const o = JSON.parse(localStorage.getItem('twrc.tripcancel')); o['cal-00000000000000000000000000000000'] = { at: Date.now() - 7200e3, exp: Date.now() - 3600e3 }; localStorage.setItem('twrc.tripcancel', JSON.stringify(o)); return window.TWRC_VAULT && window.TWRC_VAULT.flush(); });   // écriture chiffrée terminée avant le rechargement
     await s.reload(); let ls = await p.evaluate(() => localStorage.getItem('twrc.tripcancel'));
-    check('9 · chargement : entrée expirée réellement purgée, entrée valide conservée', !/00000000000000000000000000000000/.test(ls || '') && (ls || '').includes(activeId));
-    await p.evaluate(() => localStorage.setItem('twrc.tripcancel', JSON.stringify({ 'cal-00000000000000000000000000000000': { at: Date.now() - 7200e3, exp: Date.now() - 3600e3 } })));
+    check('9 · chargement : entrée expirée réellement purgée, entrée valide conservée', !/00000000000000000000000000000000/.test(ls || '') && (ls || '').includes(activeId), JSON.stringify({ ls, activeId }));
+    await p.evaluate(() => { localStorage.setItem('twrc.tripcancel', JSON.stringify({ 'cal-00000000000000000000000000000000': { at: Date.now() - 7200e3, exp: Date.now() - 3600e3 } })); return window.TWRC_VAULT && window.TWRC_VAULT.flush(); });
     await s.reload(); ls = await p.evaluate(() => localStorage.getItem('twrc.tripcancel'));
     check('9 · aucune entrée valide : clé réellement supprimée du localStorage', ls === null);
     const pr = await privacy(s); check('14 · annulation locale : aucun appel fournisseur nouveau ni écriture réseau', pr.providers && pr.readOnly, pr.detail);

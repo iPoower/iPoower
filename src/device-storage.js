@@ -56,7 +56,8 @@ const DeviceStorage = (() => {
   function finishLock(storage) {
     if (!isLocked(storage)) return;
     if (!validVault(JSON.parse(read(storage, VAULT)))) throw new Error('Copie chiffrée invalide : données locales conservées.');
-    keys(storage).filter(k => k.startsWith('twrc.') && k !== VAULT).forEach(k => put(storage, k, null));
+    // le coffre v2 (sécurité V1) n'est jamais effacé par la fin d'un ancien verrouillage v1
+    keys(storage).filter(k => k.startsWith('twrc.') && k !== VAULT && k !== 'twrc.vault.v2').forEach(k => put(storage, k, null));
   }
   function bootstrap(target, storage) {
     try { recover(storage); finishLock(storage); } catch (e) { target.TWRC_STORAGE_ERROR = true; }

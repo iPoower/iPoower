@@ -12,7 +12,7 @@ function setup() {
   const DeviceStorage = { isFrozen: () => false, isLocked: () => false };
   const c = { Date, Promise, Map, Set, GPS: { ...A }, gpsWeatherGen: 1, DEMO: { on: false }, ENSRAW: {}, AQRAW: {}, AQERR: {}, AQBUSY: new Set(), AQREQ: new Map(), RAW: {}, ERR: {}, UI: { loc: 'gps' }, busy: false, lastOk: null, lastTry: null, MIDP: {}, OBS: null, location: { protocol: 'http:' } };
   c.distKm = (a, b) => Math.abs(a.lat - b.lat) * 111;
-  Object.assign(c, { DeviceStorage, localStorage: {}, window: {} });
+  Object.assign(c, { DeviceStorage, localStorage: {}, window: {}, storeLocked: () => false });   // coffre de session déverrouillé (sécurité V1)
   c.allLocs = () => c.GPS ? [c.GPS] : [];
   c.offlineNow = () => false; c.markOfflineCache = () => {};
   for (const name of ['rebuild', 'softRender', 'renderAll', 'renderStatus', 'fetchVigi', 'radarRefresh', 'loadCalendar', 'renderAir']) c[name] = () => {};
