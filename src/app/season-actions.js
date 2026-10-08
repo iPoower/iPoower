@@ -8,7 +8,7 @@ function mountOpen(carId) {
   MOUNT_FORM = { carId, date: nowIn('Europe/Paris').slice(0, 10), km: '', msg: '', sig: mountIdentity(car),
     target: [preview.tire.brand, preview.tire.model, preview.tire.size].filter(Boolean).join(' · ') || 'Pneus hiver, modèle non renseigné' };
   renderSeason();
-  const form = $('#secSeason .mount-form'); if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const form = $('#secSeason .mount-form'); if (form) form.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
 }
 function mountDraft(car) {
   if (!MOUNT_FORM || MOUNT_FORM.carId !== car.id) return '';

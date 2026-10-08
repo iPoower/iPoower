@@ -7,7 +7,7 @@ const PW = fs.readFileSync('.passphrase', 'utf8').trim(), SP = process.env.SP, h
 const U = 'https://ipoower.github.io/iPoower/race-control/', BR = require('./browser');
 const PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const KNOWN = /open-meteo\.com|opendatasoft\.com|ipoower\.github\.io|rainviewer|arcgisonline|tile\.openstreetmap|unpkg\.com|cdn\.jsdelivr|router\.project-osrm|fonts\.g|bigdatacloud\.net/;
-let fail = 0; const rows = [], errors = [], hosts = new Set();
+let fail = 0; const rows = [], errors = [], hosts = new Set(), NETWORK_NOISE = [];
 const check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ? '' : ' · ' + String(d).slice(0, 400))); if (!ok) fail++; };
 const VP = { iphone: { viewport: { width: 414, height: 896 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 }, pc: { viewport: { width: 1280, height: 800 } } };
 const COARSE = { lat: 48.75, lon: 0.95, acc: 20000 }, COARSE2 = { lat: 49.4, lon: 1.1, acc: 35000 }, WORK = { lat: 48.9005, lon: 2.2502, acc: 25 }, HOME = { lat: 48.8502, lon: 2.3501, acc: 20 };
@@ -29,7 +29,16 @@ async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock =
   }, geo);
   const p = await c.newPage(); await p.clock.install({ time: T0 });
   const S = { meteo, calls: 0 };
-  p.on('pageerror', e => errors.push(dev + ' · ' + e.message));
+  // WebKit (moteur de Safari) remonte en « erreur de page » une requête annulée ou coupée en vol (passage hors connexion,
+  // requête remplacée) : « Fetch API cannot load <url> ». Ce n'est pas une exception JavaScript ; l'effet fonctionnel (cache
+  // conservé, message hors connexion) est vérifié par les scénarios eux-mêmes. Ces lignes sont comptées à part, jamais ignorées
+  // en silence : NETWORK_NOISE est exporté pour les tests qui veulent le vérifier.
+  p.on('pageerror', e => {
+    // Playwright/WebKit découpe ce message au premier « : » : name = « Fetch API cannot load https », message = « /api.… ».
+    const msg = String(e && e.message || ''), full = (e && e.name ? e.name + ': ' : '') + msg;
+    if (/\bFetch API cannot load\b/.test(full) && !/\b(?:ReferenceError|SyntaxError|RangeError|is not a function|is not defined|undefined is not|null is not)\b/.test(full)) { NETWORK_NOISE.push(dev + ' · ' + full.replace(/\?.*$/, '')); return; }
+    errors.push(dev + ' · ' + (e.name && e.name !== 'Error' ? e.name + ': ' : '') + msg + ' @ ' + String(e.stack || '').split('\n').slice(0, 2).join(' ← ').replace(/https?:\/\/[^\s)]*\//g, ''));
+  });
   p.on('request', r => { try { hosts.add(new URL(r.url()).host); } catch (e) { /* url illisible */ } });
   await c.route('**/*', r => {
     const u = r.request().url(), J = o => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
@@ -62,4 +71,4 @@ async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock =
   return { p, c, S, settle, T0 };
 }
 
-module.exports = { session, BR, errors, U };
+module.exports = { session, BR, errors, U, NETWORK_NOISE };

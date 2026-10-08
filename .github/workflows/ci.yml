@@ -149,7 +149,16 @@ jobs:
       - name: Dépendances exactes (package-lock.json)
         run: npm ci --no-audit --no-fund
       - name: Navigateur ${{ matrix.browser }}
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+        # Installation bornée et relancée : le 7 octobre, elle s'est bloquée plus de 20 min (dépôts apt / téléchargement),
+        # deux jobs WebKit ont expiré à 30 min sans exécuter un seul test. 3 essais de 6 min au plus, puis échec explicite.
+        timeout-minutes: 20
+        run: |
+          for i in 1 2 3; do
+            timeout 360 npx playwright install --with-deps ${{ matrix.browser }} && exit 0
+            echo "::warning title=Navigateur ${{ matrix.browser }}::installation bloquée ou en échec (essai $i/3), nouvelle tentative"
+            sleep $((i * 10))
+          done
+          echo "::error title=Navigateur ${{ matrix.browser }}::installation impossible après 3 essais"; exit 1
       - name: Fixtures fictives du même run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -206,7 +215,16 @@ jobs:
       - name: Dépendances exactes (package-lock.json)
         run: npm ci --no-audit --no-fund
       - name: Navigateur ${{ matrix.browser }}
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+        # Installation bornée et relancée : le 7 octobre, elle s'est bloquée plus de 20 min (dépôts apt / téléchargement),
+        # deux jobs WebKit ont expiré à 30 min sans exécuter un seul test. 3 essais de 6 min au plus, puis échec explicite.
+        timeout-minutes: 20
+        run: |
+          for i in 1 2 3; do
+            timeout 360 npx playwright install --with-deps ${{ matrix.browser }} && exit 0
+            echo "::warning title=Navigateur ${{ matrix.browser }}::installation bloquée ou en échec (essai $i/3), nouvelle tentative"
+            sleep $((i * 10))
+          done
+          echo "::error title=Navigateur ${{ matrix.browser }}::installation impossible après 3 essais"; exit 1
       - name: Tests (données fictives, sans aucun secret)
         env:
           BROWSER: ${{ matrix.browser }}

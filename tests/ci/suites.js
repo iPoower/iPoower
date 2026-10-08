@@ -67,4 +67,6 @@ SUITE.push(['test_backup.js', 'sauvegarde V2 : contexte durable, confidentialit�
   ['e2e58-import-journal.js', 'import d’une sauvegarde : journal des trajets conservé, trajet clos non redemandé, iPhone/PC et reload', true]);
 SUITE.push(['e2e59-brief-gum.js', 'briefing : gomme estimée au départ et à l’arrivée, fenêtre atteinte ou non, Détail → Analyse, iPhone/PC', true]);
 SUITE.push(['test_decision.js', 'synthèse : décision, confiance qualitative et changements significatifs', false]);
+SUITE.push(['test_geosearch.js', 'géocodage : adresse France IGN/BAN, monde OSM et replis réseau', false]);
+SUITE.push(['e2e59-trip-tab.js', 'onglet TRAJET : adresse exacte, priorité manuelle, véhicule, horaire, reload, offline, annulation et mobile', true]);
 module.exports = { SUITE };

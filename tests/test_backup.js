@@ -4,7 +4,7 @@ const source = fs.readFileSync(path.resolve(__dirname, '../src/backup.js'), 'utf
 const ctx = { Date, JSON, Math, Number, Object, Array, RegExp }; vm.createContext(ctx); vm.runInContext(source + ';this.api=Backup;', ctx);
 const B = ctx.api, json = v => JSON.parse(JSON.stringify(v));
 const at = Date.parse('2026-10-07T10:30:00+02:00');
-let n = 0; const check = (name, fn) => { fn(); n++; console.log('✅ ' + name); };
+let n = 0; const check = (name, fn) => { try { fn(); n++; console.log('✅ ' + name); } catch (e) { console.error('❌ ' + name + ' · ' + e.message); throw e; } };
 const state = {
   updatedAt: at - 1000,
   dayContext: {
@@ -84,6 +84,19 @@ check('V2 : deux retours pour le même trajet → le plus récent ; journal plaf
   const p = B.restorePlan(bk, at, { context: { debrief: { entries: [e('k', at, at + 20), ...many] } } }), c = JSON.parse(p.writes['twrc.context.v1']);
   const k = c.debrief.entries.find(x => x.key === 'k'); assert.equal(k.feedback.grip, 'reduced');
   assert.equal(c.debrief.entries.length, 60); assert(c.debrief.entries.every((x, i, a) => !i || a[i - 1].at >= x.at));
+});
+check('V2 conserve un trajet manuel programmé avec points normalisés, sans GPS ni trace', () => {
+  const manual = { ...state, dayContext: { ...state.dayContext, nextDestination: {
+    placeId: 'manual-destination', source: 'manual', confirmedAt: at - 2000, expiresAt: at + 2 * 864e5,
+    originId: 'work', originPoint: null, destinationPoint: { id:'manual-destination', name:'29 Rue Jean Jaurès 80610 Saint-Ouen',
+      address:'29 Rue Jean Jaurès, 80610 Saint-Ouen', lat:50.04, lon:2.11, provider:'IGN/BAN', precision:'housenumber' },
+    tripKey:'manual|1', dep:'2026-10-08T17:15', createdAt:at - 2000, updatedAt:at - 1000
+  } } };
+  const d = B.make({ settings:{}, context:manual, at:new Date(at).toISOString() });
+  const n = d.durable.context.dayContext.nextDestination;
+  assert.equal(n.source,'manual'); assert.equal(n.dep,'2026-10-08T17:15'); assert.equal(n.destinationPoint.provider,'IGN/BAN');
+  assert.equal(n.destinationPoint.address,'29 Rue Jean Jaurès, 80610 Saint-Ouen');
+  assert.equal(d.durable.context.gps,null); assert.equal(d.durable.context.place.extra,null); assert(!/"route"\s*:/.test(JSON.stringify(d.durable.context)));
 });
 check('payload invalide refusé', () => {
   assert.equal(B.restorePlan(null, at), null); assert.equal(B.restorePlan({ app: 'other', settings: {} }, at), null); assert.equal(B.restorePlan({ app: 'twrc' }, at), null);

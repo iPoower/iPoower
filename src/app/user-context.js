@@ -23,12 +23,14 @@ function appTripPlace(t, end, origin = null) {
   const start = end === 'from' && (origin || TRIPSTART && TRIPSTART.key === t.key && TRIPSTART.o || t.l && t.l.from);
   const p = start || (t.src === 'work' ? t.td && t.td[end === 'to' ? 'LB' : 'LA'] : (t.l || t.planL) && (t.l || t.planL)[end]);
   if (!p || !locHasCoords(p)) return null;
-  const places = [...S.locs, ...S.customs, ...(PLACE.extra ? [PLACE.extra] : [])].filter(locHasCoords);
+  const places = placeList().filter(locHasCoords);
   const known = places.find(l => p.id && l.id === p.id) || places.filter(l => distKm(l, p) <= 1.5).sort((a, b) => distKm(a, p) - distKm(b, p))[0];
   return known || { id: end === 'from' ? 'gps' : 'arrival', name: end === 'from' && start ? 'Ma position au départ' : t[end] || p.name || p.city || p.label || 'Destination', lat: p.lat, lon: p.lon };
 }
 function appArrival(t, how, at = Date.now()) {
   const p = appTripPlace(t, 'to'); if (!p) return;
+  const chosen = appDay().nextDestination;
+  if (chosen && chosen.destinationPoint && p.id === chosen.destinationPoint.id) PLACE.extra = { ...chosen.destinationPoint, at };
   if (p.id === 'arrival') {
     PLACE.extra = { ...p, at };
     const sources = [
@@ -110,7 +112,7 @@ function appRefreshContext({ persist = true } = {}) {
     confirmation: PLACE.conf, gps: GPS, agendaEvent: (active || next) && (active || next).e || null,
     returnHome: RETURNHOME, trips: APP_CONTEXT.trips, plannedTrips: APP_CONTEXT.planned,
     dayContext: appDay(), date: placeToday(), dayType: appWorkOn(placeToday()) ? 'work' : 'off', activeCarId: appDay().activeCarId,
-    destinationSource: appDay().nextDestination ? appDay().nextDestination.placeId ? 'user' : 'pending' : next ? 'planned' : 'unknown',
+    destinationSource: appDay().nextDestination ? appDay().nextDestination.source : next ? 'planned' : 'unknown',
     updatedAt: USER_STORE.state.updatedAt, weatherLocationId: UI.loc });
 }
 USER_STORE.subscribe(() => { if (APP_CONTEXT.ready && !APP_CONTEXT.rendering) renderAll(); });

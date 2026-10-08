@@ -286,5 +286,33 @@
   "decision-car-change": {
     "suite": "e2e55-day-context.js",
     "result": "le raccourci Changer du bandeau Race Control ouvre le panneau Aujourd’hui sur le sélecteur de voiture active"
+  },
+  "trip-dest-search": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "adresse recherchée via le géocodeur partagé ou erreur visible"
+  },
+  "trip-origin-search": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "origine manuelle recherchée via le géocodeur partagé ou erreur visible"
+  },
+  "trip-dest-pick": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "suggestion d’adresse retenue dans le brouillon TRAJET"
+  },
+  "trip-origin-pick": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "suggestion d’origine retenue dans le brouillon TRAJET"
+  },
+  "trip-dest-known": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "destination connue retenue dans le brouillon TRAJET"
+  },
+  "trip-plan": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "trajet manuel créé ou mis à jour dans le contexte canonique"
+  },
+  "trip-plan-cancel": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "trajet manuel annulé et planning automatique restauré"
   }
 }
