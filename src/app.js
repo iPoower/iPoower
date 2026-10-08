@@ -2278,7 +2278,7 @@ function appBuildTrips() {
       l = { ...l, dep, arr: addMin(dep, dur) };
     }
     const r = legEval(l);
-    T.push({ src: 'cal', carId: appDay().activeCarId, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: false, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
+    T.push({ src: 'cal', carId: appDay().activeCarId, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: false, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.originRecalc && l.originName ? l.originName : l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
       res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading, key });
   }));
   // Un départ déclaré reste restorable après l'heure d'arrivée prévue.
@@ -2446,7 +2446,7 @@ function tripMontagneHtml(t, car) {
 function briefCard(t, dayLbl) {
   if (t.destinationPending || t.l && t.l.destinationOverride && !t.l.to) return `<div class="brf-h"><span class="brf-k">${APP_CONTEXT.snapshot.status === 'travel' ? '🚗 En trajet' : '🏁 Prochain trajet'}</span></div><div class="brf-ev"><b>${esc(t.from || 'Origine à confirmer')} → Destination à confirmer</b></div><p class="brf-why" role="status">Choisis la destination dans Aujourd’hui pour calculer le trajet.</p>`;
   const src = t.customRoute || t.src === 'local' ? 'trajet choisi' : t.src === 'work' ? 'domicile-travail' : 'agenda';
-  if (t.l && t.l.originPending) return `<div class="brf-h"><span class="brf-k">🏁 Prochain trajet · ${src}</span></div><div class="brf-ev">📅 <b>${esc(t.name)}</b></div><p class="brf-why" role="status">Origine à confirmer après annulation du trajet précédent</p><div class="cal-v">${tripCancelButton(t)}</div>`;
+  if (t.l && t.l.originPending) return `<div class="brf-h"><span class="brf-k">🏁 Prochain trajet · ${src}</span></div><div class="brf-ev">📅 <b>${esc(t.name)}</b></div><p class="brf-why" role="status">${t.l.originRecalc ? '📍 Départ confirmé : ' + esc(t.l.originName) + ' · recalcul de la route, de l’heure de départ et de la météo en cours. Ancien trajet invalidé.' : 'Origine à confirmer après annulation du trajet précédent'}</p><div class="cal-v">${tripCancelButton(t)}</div>`;
   const head = `<div class="brf-h">${t.manualPreview ? `<span class="brf-k">📍 Aperçu depuis ma position · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · départ estimé <b>${t.previewDep.slice(11, 16)}</b> · arrivée estimée ${t.previewArr.slice(11, 16)}</span>`
     : t.live === 'active' ? `<span class="brf-k">🏎️ Trajet en cours · ${src}</span><span class="brf-w">${f0(t.l.km)} km restants · ${t.l.min} min · arrivée estimée <b>${t.arr.slice(11, 16)}</b></span>`
     : t.manualReturn ? `<span class="brf-k">🏠 Retour maison demandé · ${src}</span><span class="brf-w">départ maintenant · le trajet passe « en cours » uniquement après mouvement confirmé</span>`
@@ -2740,7 +2740,7 @@ function legHtml(leg, ev) {
   const action = trip && (leg.arr || leg.dep) >= liveNow() ? tripCancelButton(trip) : '';
   const homeAction = trip ? returnHomeButtonForTrip(trip) : '';
   const cancel = action || homeAction ? `<div class="cal-v">${action}${homeAction}</div>` : '';
-  if (leg.originPending) return `<div class="leg lvx"><div class="leg-h"><b>${leg.k === 'go' ? 'ALLER' : 'RETOUR'}</b></div><p class="sub" role="status">Origine à confirmer après annulation du trajet précédent</p>${cancel}</div>`;
+  if (leg.originPending) return `<div class="leg lvx"><div class="leg-h"><b>${leg.k === 'go' ? 'ALLER' : 'RETOUR'}</b></div><p class="sub" role="status">${leg.originRecalc ? '📍 Départ confirmé : ' + esc(leg.originName) + ' · nouvel itinéraire et météo en cours de calcul' : 'Origine à confirmer après annulation du trajet précédent'}</p>${cancel}</div>`;
   const r = legEval(leg), go = leg.k === 'go';
   const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${leg.dep.slice(11, 16)}</b> → ${leg.arr.slice(11, 16)} · ${f0(leg.km)} km · ${leg.min} min${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''} · ${cdSpan(leg.dep)}</div>
     <div class="leg-src">${leg.routed ? '<i class="tag prev">🛣 route · OSRM</i>' : '<i class="tag est">≈ route estimée</i>'}</div>
