@@ -60,7 +60,7 @@ function dayplan(input) {
     if ([56, 57, 66, 67].includes(weather.code)) result.push('freezing');
     if ((finite(weather.snow) && weather.snow > 0) || [71, 73, 75, 77, 85, 86].includes(weather.code)) result.push('snow');
     if ([95, 96, 99].includes(weather.code)) result.push('storm');
-    if ((finite(weather.pp) && weather.pp >= 50) || (finite(weather.P) && weather.P >= 0.1) || [51, 53, 55, 61, 63, 65, 80, 81, 82].includes(weather.code)) result.push('rain');
+    if ((finite(weather.pp) && weather.pp >= 50) || (finite(weather.P) && weather.P >= 0.1) || (finite(weather.Pb) && weather.Pb >= 0.2) || [51, 53, 55, 61, 63, 65, 80, 81, 82].includes(weather.code)) result.push('rain');
     // Même prudence que wardrobe.js : vent soutenu à 40 km/h ou rafales à 50.
     if ((finite(weather.gust) && weather.gust >= 50) || (finite(weather.wind) && weather.wind >= 40)) result.push('wind');
     return result;

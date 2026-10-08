@@ -150,6 +150,18 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const b = good(); E.mergeArome(b, { hourly: { time: 'x' } }); E.mergeArome(b, { hourly: { time: b.hourly.time, temperature_2m: null } });
     assert.equal(E.validForecast(b), null); assert.equal(b.hourly.temperature_2m[0], 10);
   });
+  test('AROME : réponse de base intacte, quantité du modèle de base et source AROME conservées par heure (audit A03)', () => {
+    const b = good(); b.hourly.precipitation = b.hourly.time.map(() => 0.8); b.hourly.precipitation_probability = b.hourly.time.map(() => 90);
+    const before = JSON.stringify(b), t = b.hourly.time;
+    const ar = { hourly: { time: t.slice(0, 6), precipitation: [0, 0, 0, 0, 0, 0], temperature_2m: [5, 5, 5, 5, 5, 5] } };
+    const m = E.mergeArome(b, ar);
+    assert.equal(JSON.stringify(b), before, 'la réponse de base (cache de requêtes) n’est jamais modifiée');
+    assert.equal(m.hourly.precipitation[0], 0); assert.equal(m.hourly.precipitation_base[0], 0.8); assert.equal(m.hourly.precipitation_arome[0], 1);
+    assert.equal(m.hourly.precipitation_base[10], null); assert.equal(m.hourly.precipitation_arome[10], 0); assert.equal(m.__arome.hours, 6);
+    const hs = E.buildHours(m);
+    assert.deepEqual([hs[0].P, hs[0].Pb, hs[0].ar, hs[0].pp], [0, 0.8, true, 90]); assert.deepEqual([hs[10].P, hs[10].Pb, hs[10].ar], [0.8, null, false]);
+    const none = E.buildHours(E.mergeArome(good(), null)); assert.deepEqual([none[0].Pb, none[0].ar], [null, false]);
+  });
   if (!options.quiet) console.log(count + '/' + count + ' scénarios OK');
   return count;
 }

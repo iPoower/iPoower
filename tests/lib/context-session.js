@@ -12,7 +12,8 @@ const check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ?
 const VP = { iphone: { viewport: { width: 414, height: 896 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 }, pc: { viewport: { width: 1280, height: 800 } } };
 const COARSE = { lat: 48.75, lon: 0.95, acc: 20000 }, COARSE2 = { lat: 49.4, lon: 1.1, acc: 35000 }, WORK = { lat: 48.9005, lon: 2.2502, acc: 25 }, HOME = { lat: 48.8502, lon: 2.3501, acc: 20 };
 
-async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock = true, geo = null, storedGps = null }) {
+// wx (facultatif) : (réponse, type) => réponse modifiée, type = 'base' | 'multi' (points de trajet) | 'arome' | 'now' (quart d'heure).
+async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock = true, geo = null, storedGps = null, wx = null }) {
   const T0 = new Date(at).getTime();
   const ctx = { console, Math, Date: class extends Date { constructor(...a) { super(...(a.length ? a : [T0])); } static now() { return T0; } }, Intl, Map, Set, JSON };
   vm.createContext(ctx); vm.runInContext(src + ';this.mk=makeDemoPayload;this.me=makeDemoEnsemble;this.mn=makeDemoNowcast;', ctx);
@@ -47,9 +48,9 @@ async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock =
       if (S.meteo === 'abort') return r.abort();
       if (S.meteo === '503') return r.fulfill({ status: 503, contentType: 'text/plain', headers: { 'access-control-allow-origin': '*' }, body: 'Service Unavailable' });
       const q = new URL(u).searchParams, lats = String(q.get('latitude')).split(','), lons = String(q.get('longitude')).split(',');
-      const one = i => ctx.mk(scn, { lat: +lats[i], lon: +lons[i] }, 'Europe/Paris', 0);
-      if (lats.length > 1) return J(lats.map((_, i) => one(i)));
-      const base = one(0); return J(u.includes('ensemble') ? ctx.me(base) : q.get('minutely_15') ? ctx.mn(base) : u.includes('air-quality') ? {} : base);
+      const one = i => ctx.mk(scn, { lat: +lats[i], lon: +lons[i] }, 'Europe/Paris', 0), tw = (o, kind) => wx ? wx(JSON.parse(JSON.stringify(o)), kind) : o;
+      if (lats.length > 1) return J(lats.map((_, i) => tw(one(i), 'multi')));
+      const base = one(0); return J(u.includes('ensemble') ? ctx.me(base) : q.get('minutely_15') ? ctx.mn(tw(base, 'now')) : u.includes('air-quality') ? {} : tw(base, u.includes('meteofrance_seamless') ? 'arome' : 'base'));
     }
     if (u.includes('/race-control/calendar.sealed.json')) return r.fulfill({ status: 200, contentType: 'application/json', body: fs.readFileSync(SP + '/cal.fake.json', 'utf8') });
     if (u.includes('router.project-osrm.org')) return r.abort();

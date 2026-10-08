@@ -15,6 +15,9 @@ test('pluie et rafales fortes : imperméable, semelle gomme, capuche', () => {
   assert(a.accessories.some(x => /capuche/.test(x))); assert(!a.accessories.some(x => /Parapluie/.test(x)));
 });
 test('une pluie possible à 50 % suffit à prévoir une protection', () => assert(ctx.advice([sample(18, { pp: 50 })]).wet));
+test('désaccord de modèles : AROME 0 mm mais modèle de base 0,5 mm → protection, comme « pluie possible » en Météo', () => {
+  assert(ctx.advice([sample(18, { P: 0, Pb: 0.5, pp: 30 })]).wet); assert(!ctx.advice([sample(18, { P: 0, Pb: 0.1, pp: 30 })]).wet);
+});
 test('neige et pluie verglaçante : semelle crantée', () => {
   for (const code of [73, 66]) assert.match(ctx.advice([sample(2, { code })]).pieces[3].item, /crantée/);
 });

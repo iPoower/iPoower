@@ -198,6 +198,66 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const ahead = desk({ now: '2026-10-06T09:10', hours: hs }).phen.find(p => p.id === 'road');
     assert.equal(ahead.line, 'Sèche 12,0 °C → mouillée 10:00'); assert.equal(ahead.lv, 1);
   });
+  /* ---------- audit A03 : probabilité forte / quantité faible, code pluvieux à 0 mm, désaccord de modèles ---------- */
+  const rainTrip = (hs, extra) => [{ ...trip('07:30', '08:10'), ...extra, points: pts(hs, '07:30', [['07:30', 0, 0, 'Ville A'], ['07:50', 0.5, 22, 'Ville M'], ['08:10', 1, 44, 'Ville B']]) }];
+  const noDryClaim = r => !r.matters.some(m => /Pas de pluie/.test(m.text)) && !/^Aucune/.test(r.phen.find(p => p.id === 'rain').line) && !r.hero.lines.some(l => /Aucun phénomène notable/.test(l));
+  test('A03 · production : 0 mm AROME et probabilité 90 % → « pluie possible » sourcée, plus jamais « pas de pluie »', () => {
+    const hs = H().map(x => ({ ...x, T: 15, Tr: 15, pp: 90, P: 0, Pl: 0, Pb: 0, ar: true, code: 3 }));
+    const r = desk({ now: '2026-10-06T06:40', hours: hs, trips: rainTrip(hs) });
+    assert(noDryClaim(r), JSON.stringify({ m: r.matters, h: r.hero.lines }));
+    const m = r.matters.find(x => /Pluie possible pendant le trajet aller \(07:30\)/.test(x.text));
+    assert(m && m.lv === 1 && /probabilité 90 % \(modèle de base\)/.test(m.text) && /quantité négligeable selon AROME \(0,0 mm\/h\)/.test(m.text), JSON.stringify(r.matters));
+    assert.equal(r.road.score, 95, 'la prudence du score reste');   // pénalité « probabilité seule » conservée
+    const f = r.road.factors.find(x => x.id === 'rain'); assert.equal(f.lv, 1); assert.match(f.why, /^pluie possible : probabilité 90 %/);
+    const rain = r.phen.find(p => p.id === 'rain'); assert.equal(rain.lv, f.lv); assert.equal(rain.line, 'Possible maintenant · peu d’eau prévue');
+    assert(rain.detail.some(d => /Modèles en désaccord/.test(d)), rain.detail.join(' | '));
+    assert.equal(r.trip.crit.id, 'rain'); assert.match(r.trip.crit.text, /^Pluie possible dès le départ · probabilité 90 %/);
+    assert.equal(r.hero.title, 'CONDITIONS NORMALES'); assert.match(r.hero.lines[1], /^Pluie possible maintenant · peu d’eau prévue \(0,0 mm\/h\)$/);
+    assert(r.trip.points.every(p => /^pluie possible · 90 %$/.test(p.text)), JSON.stringify(r.trip.points));
+  });
+  test('A03 · code « averses » avec quantité arrondie à 0 : pluie possible 🟢, aucune pénalité inventée', () => {
+    const hs = set(H(), '07', { code: 80, pp: 30 }, 2);
+    const r = desk({ now: '2026-10-06T06:40', hours: hs, trips: rainTrip(hs) });
+    assert(noDryClaim(r), JSON.stringify({ m: r.matters, h: r.hero.lines }));
+    assert(!r.matters.some(m => /Pas de pluie/.test(m.text)), JSON.stringify(r.matters));
+    const m = r.matters.find(x => /Pluie possible pendant le trajet aller/.test(x.text)); assert(m && m.lv === 0 && /code météo « averses »/.test(m.text), JSON.stringify(r.matters));
+    assert.equal(r.road.score, 100); assert.match(r.road.factors.find(x => x.id === 'rain').why, /code météo « averses »/);
+    assert(r.phen.find(p => p.id === 'rain').detail.some(d => /quantité arrondie à 0 : averse brève ou locale possible/.test(d)));
+  });
+  test('A03 · désaccord de modèles : AROME 0 mm, modèle de base 0,8 mm → les deux sources sont citées', () => {
+    const hs = set(H(), '07', { Pl: 0, P: 0, Pb: 0.8, ar: true, pp: 40 }, 2);
+    const r = desk({ now: '2026-10-06T06:40', hours: hs, trips: rainTrip(hs) });
+    const m = r.matters.find(x => /Pluie possible pendant le trajet aller/.test(x.text));
+    assert(m && /modèle de base 0,8 mm\/h/.test(m.text) && /selon AROME/.test(m.text), JSON.stringify(r.matters));
+    assert(r.phen.find(p => p.id === 'rain').detail.some(d => /Modèles en désaccord/.test(d)));
+    assert(!r.matters.some(m => /Pas de pluie/.test(m.text)));
+  });
+  test('A03 · signal hors trajet : rassurance trajet gardée, pluie possible annoncée à son heure', () => {
+    const hs = set(H(), '18', { pp: 70 }, 2);
+    const r = desk({ now: '2026-10-06T06:40', hours: hs, trips: rainTrip(hs) });
+    assert(r.matters.some(m => m.text === 'Pas de pluie attendue sur les trajets d’ici 19:00'), JSON.stringify(r.matters));
+    assert(r.matters.some(m => /^Pluie possible vers 18:00 · probabilité 70 %/.test(m.text)), JSON.stringify(r.matters));
+  });
+  test('A03 · temps sec réel : la rassurance reste (aucun « possible » inventé)', () => {
+    const hs = H(), r = desk({ now: '2026-10-06T06:40', hours: hs, trips: rainTrip(hs) });
+    assert(r.matters.some(m => m.text === 'Pas de pluie attendue sur les trajets d’ici 19:00'), JSON.stringify(r.matters));
+    assert(!JSON.stringify(r).includes('possible ·') && r.phen.find(p => p.id === 'rain').line === 'Aucune avant 19:00');
+  });
+  test('A03 · grille : un signal de pluie (règle Tenue ou pénalité route) n’est jamais présenté comme un temps sec', () => {
+    let n = 0;
+    for (const pp of [0, 49, 50, 59, 60, 90]) for (const Pl of [0, 0.05, 0.1, 0.15]) for (const code of [1, 3, 51, 61, 80]) for (const Pb of [null, 0, 0.5]) {
+      const hs = H().map(x => ({ ...x, pp, P: Pl, Pl, code, Pb, ar: Pb != null }));
+      const r = desk({ now: '2026-10-06T06:40', hours: hs, trips: rainTrip(hs) }), f = r.road.factors.find(x => x.id === 'rain');
+      const tenueWet = pp >= 50 || Pl >= 0.1 || [51, 53, 55, 61, 63, 65, 80, 81, 82].includes(code) || (Pb != null && Pb >= 0.2);
+      const label = JSON.stringify({ pp, Pl, code, Pb });
+      if (tenueWet || f.pen) assert(!r.matters.some(m => /Pas de pluie|Rien de notable/.test(m.text)) && !/^Aucune/.test(r.phen.find(p => p.id === 'rain').line), label + ' ' + JSON.stringify(r.matters));
+      else assert(r.matters.some(m => /Pas de pluie attendue/.test(m.text)), label);
+      assert.equal(r.phen.find(p => p.id === 'rain').lv, f.lv, 'carte pluie et facteur route au même niveau ' + label);
+      if (f.pen) assert.notEqual(f.why, 'sec', label);
+      n++;
+    }
+    assert.equal(n, 360);
+  });
   return count;
 }
 module.exports = { runTests, sourcePath };
@@ -212,7 +272,12 @@ if (require.main === module) {
     { name: 'neige comptée comme pluie', from: 'if (!snowy) o.rain', to: 'o.rain' },
     { name: 'trajet passé gardé dans la chronologie', from: 'mins(t.arr || t.dep) >= nowM - 1', to: 'true' },
     { name: 'rassurance « pas de gel » affichée par temps doux (remplissage)', from: 'tmin != null && tmin <= 5', to: 'tmin != null' },
-    { name: 'verdict choisi par ordre d’apparition au lieu de la gravité', from: 'b.lv - a.lv || (active(b) - active(a)) ||', to: '' }
+    { name: 'verdict choisi par ordre d’apparition au lieu de la gravité', from: 'b.lv - a.lv || (active(b) - active(a)) ||', to: '' },
+    { name: 'pluie possible ignorée (retour du « pas de pluie » contradictoire)', from: 'return (pp != null && pp >= 50) ||', to: 'return false && (pp != null && pp >= 50) ||' },
+    { name: 'rassurance trajet affichée malgré une pluie possible sur le trajet', from: "!first('snow') && !tripMaybe.length && tripList.length", to: "!first('snow') && tripList.length" },
+    { name: 'prudence du score supprimée pour aligner les textes', from: 'ppm != null && ppm >= 60 ? ROAD_PEN.rain[3] : 0', to: '0' },
+    { name: 'source AROME de la quantité tue', from: "${ar ? ' selon AROME' : ''}", to: '' },
+    { name: 'désaccord de modèles non expliqué', from: "ar && sig.some(x => /base/.test(x)) ? 'Modèles en désaccord", to: "false ? 'Modèles en désaccord" }
   ];
   for (const m of mutations) {
     assert(original.includes(m.from), 'Mutation introuvable : ' + m.name);
