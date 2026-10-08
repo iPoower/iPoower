@@ -163,7 +163,7 @@ const osrmFromGps = S => S.osrm.filter(x => GPS_MARK.some(v => x.includes(v)));
   {
     const s = await session(b, '2026-10-03T14:30:00+02:00', { osrmDown: true }); all.push(s);
     await s.enableGps(G.lille); const t = await s.waitFor(/Assurance/);
-    check('C1 · OSRM en panne : briefing planifié complet, jamais une carte vide', /Assurance/.test(t) && /\/ 100|Route/.test(t) && nMa(t) === 0 && !/Suivi GPS indisponible/.test(t), t.slice(0, 120));
+    check('C1 · OSRM en panne : briefing planifié complet, jamais une carte vide', /Assurance/.test(t) && /\/ 100|🧪 APERÇU|Route/.test(t) && nMa(t) === 0 && !/Suivi GPS indisponible/.test(t), t.slice(0, 120));
   }
   {
     const s = await session(b, '2026-10-03T14:30:00+02:00', { meteoDownLat: '49.385' }); all.push(s);

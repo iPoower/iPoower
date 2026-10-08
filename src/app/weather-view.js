@@ -29,7 +29,7 @@ function wxTrips(clockModel) {
       const g = glareCheck(t.l.from, t.l.to, t.dep, t.l.min, offSec, cloudAt).glare; if (g) glare = { ts: g.ts };
     }
     const label = t.src === 'work' ? (t.td && t.td.dir === 'ret' ? 'trajet retour' : 'trajet aller') : t.l && t.l.k === 'ret' ? 'trajet retour' : `trajet vers ${t.to || 'le rendez-vous'}`;
-    return { id: t.key || 'trip' + k, label, from: t.from || null, to: t.to || null, dep: t.dep, arr: t.arr || t.dep, running: !!(APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.key === t.key), km: t.l && t.l.km != null ? t.l.km : null, glare, points };
+    return { id: t.key || 'trip' + k, src: t.src || null, label, from: t.from || null, to: t.to || null, dep: t.dep, arr: t.arr || t.dep, running: !!(APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.key === t.key), km: t.l && t.l.km != null ? t.l.km : null, glare, points };
   });
 }
 function wxInput() {

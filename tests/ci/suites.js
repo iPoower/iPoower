@@ -67,6 +67,8 @@ SUITE.push(['test_backup.js', 'sauvegarde V2 : contexte durable, confidentialit�
   ['e2e58-import-journal.js', 'import d’une sauvegarde : journal des trajets conservé, trajet clos non redemandé, iPhone/PC et reload', true]);
 SUITE.push(['e2e60-lock.js', 'verrouillage réel puis déverrouillage, import refusé sans faux succès, iPhone/PC (vérification indépendante de l’audit A01/A02)', true]);
 SUITE.push(['e2e61-rain-signal.js', 'pluie possible : AROME 0 mm contre 90 % du modèle de base, sources citées, score prudent et Tenue cohérente, iPhone/PC (audit A03)', true]);
+SUITE.push(['test_profile_check.js', 'profil générique : lieux d’exemple, monte à renseigner, verrouillage et planning impossible repérés, contre-tests (audit A06)', false]);
+SUITE.push(['e2e63-generic-profile.js', 'profil générique : aperçu au lieu de GO/100, planning impossible sans chauffe, verdict rétabli avec un vrai profil, iPhone/PC (audit A06)', true]);
 SUITE.push(['test_montagne.js', 'Loi Montagne : département reconnu quelle que soit la source, période, source datée et contre-tests (audit A05)', false],
   ['e2e62-montagne.js', 'Loi Montagne : destination BAN conservée jusqu’au briefing après rechargement, même vigilance depuis Réglages, iPhone/PC (audit A05)', true]);
 SUITE.push(['e2e59-brief-gum.js', 'briefing : gomme estimée au départ et à l’arrivée, fenêtre atteinte ou non, Détail → Analyse, iPhone/PC', true]);
