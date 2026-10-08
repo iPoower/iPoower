@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../src/app.js'), 'utf8');
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
-const actual = section('const gpsSourceCurrent =', 'const TCARS') + section('async function refreshAll()', 'function startDemo') + section('async function fetchAQ(l)', 'const polCls');
+const actual = section('const gpsSourceCurrent =', 'const TCARS') + section('async function refreshAll(', 'function startDemo') + section('async function fetchAQ(l)', 'const polCls');
 const A = { id: 'gps', gps: true, lat: 49, lon: 2 }, B = { ...A, lat: 50 };
 const defer = () => { let resolve, reject; const promise = new Promise((ok, no) => { resolve = ok; reject = no; }); return { promise, resolve, reject }; };
 const weather = origin => ({ hourly: { time: ['2026-10-04T00:00'] }, origin });
@@ -14,7 +14,7 @@ function setup() {
   c.allLocs = () => c.GPS ? [c.GPS] : [];
   c.offlineNow = () => false; c.markOfflineCache = () => {};
   for (const name of ['rebuild', 'softRender', 'renderAll', 'renderStatus', 'fetchVigi', 'radarRefresh', 'loadCalendar', 'renderAir']) c[name] = () => {};
-  c.urlAQ = l => l;
+  c.urlAQ = l => l; c.WEATHER_REQUESTS = { fetchedAt: () => null };
   vm.createContext(c); vm.runInContext(actual, c); return c;
 }
 let checks = 0;
