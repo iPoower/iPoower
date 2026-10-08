@@ -169,7 +169,7 @@ const ERR = {};
 let DEMO = { on: false, scn: 'froid' };
 let MIDM = {};                       // modèles des points intermédiaires
 let MIDP = {};                       // données brutes des points intermédiaires
-const MIDPENDING = new Set();
+const MIDPENDING = new Set(), MID_TTL = 25 * 60e3, MID_FAILURE_RETRY = 10 * 60e3;
 let VIGI = { state: 'none', items: [], t: null };
 const ENSRAW = {}, NOWRAW = {};
 let OBS = null;   // observations réelles publiées par le relais (obs.json)
@@ -239,12 +239,12 @@ let DECISION_LAST = null;
 
 const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
   read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
-async function fetchJSON(url, ms, group = 'shared') {
+async function fetchJSON(url, ms, group = 'shared', cacheMs = 0) {
   // hors connexion déclaré par l'appareil : aucune requête vers un service EXTERNE (inutile, coûteuse en batterie ; Safari la
   // signale en erreur). Les fichiers de l'app (agenda chiffré, base pneus, observations, version) restent demandés : le service
   // worker les sert depuis son cache, c'est ce qui permet le démarrage à froid hors ligne.
   if (offlineNow() && /^https?:\/\//i.test(url) && new URL(url).origin !== location.origin) { const e = new Error('Hors connexion : requête non envoyée'); e.offline = true; throw e; }
-  if (WEATHER_REQUESTS.owns(url)) return WEATHER_REQUESTS.get(url, ms || 12000, group);
+  if (WEATHER_REQUESTS.owns(url)) return WEATHER_REQUESTS.get(url, ms || 12000, group, cacheMs);
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms || 12000);
   try {
     const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
@@ -264,12 +264,19 @@ function loadCache() {
     } catch (e) { /* cache illisible */ }
   });
 }
-async function loadLoc(l) {
+async function loadLoc(l, force = false) {
   if (!locHasCoords(l)) throw new Error('Coordonnées du lieu à renseigner.');
   const origin = { lat: l.lat, lon: l.lon }, gen = l.gps ? ++gpsWeatherGen : null;
   if (l.gps) { WEATHER_REQUESTS.cancelGroup('gps'); gpsWeatherOrigin = origin; }
   const group = l.gps ? 'gps' : 'shared';
-  const [b, ar, nc] = await Promise.allSettled([fetchJSON(urlFor(l), 12000, group), fetchJSON(urlArome(l), 12000, group), fetchJSON(urlNow(l), 12000, group)]);
+  // Modèle du lieu affiché : 5 min ; autres lieux : 20 min ; AROME : 35 min ; nowcast : 15 min.
+  // Un rafraîchissement manuel (force) interroge toujours le fournisseur. Un trajet/lieu nouveau a une URL neuve.
+  const baseUrl = urlFor(l);
+  const [b, ar, nc] = await Promise.allSettled([
+    fetchJSON(baseUrl, 12000, group, force ? 0 : l.id === UI.loc ? 4 * 60e3 : 18 * 60e3),
+    fetchJSON(urlArome(l), 12000, group, force ? 0 : 35 * 60e3),
+    fetchJSON(urlNow(l), 12000, group, force ? 0 : 14 * 60e3)
+  ]);
   // Validation AVANT toute écriture : une réponse 200 vide, tronquée ou d'un portail ne remplace jamais la dernière météo valide.
   const invalid = b.status === 'fulfilled' ? validForecast(b.value) : null;
   if (b.status !== 'fulfilled' || invalid) { if (l.gps && gen === gpsWeatherGen) gpsWeatherOrigin = null; throw b.status !== 'fulfilled' ? b.reason : new Error('réponse météo invalide : ' + invalid); }
@@ -277,8 +284,10 @@ async function loadLoc(l) {
   // Un ancien lieu GPS ne remplace jamais la météo d'une position plus récente, ni un GPS oublié.
   if (l.gps && (gen !== gpsWeatherGen || !GPS || distKm(origin, GPS) > 3)) return p;
   if (nc.status === 'fulfilled' && nc.value && nc.value.minutely_15) NOWRAW[l.id] = nc.value; else delete NOWRAW[l.id];
-  RAW[l.id] = { p, mode: 'live', t: Date.now(), ...origin }; delete ERR[l.id];
-  try { lsSet('twrc.cache.' + l.id, JSON.stringify({ t: Date.now(), ...origin, p })); } catch (e) { /* quota */ }
+  // Conserver la vraie heure du téléchargement, pas celle de la relecture du cache mémoire.
+  const retrievedAt = WEATHER_REQUESTS.fetchedAt(baseUrl) || Date.now();
+  RAW[l.id] = { p, mode: 'live', t: retrievedAt, ...origin }; delete ERR[l.id];
+  try { lsSet('twrc.cache.' + l.id, JSON.stringify({ t: retrievedAt, ...origin, p })); } catch (e) { /* quota */ }
   return p;
 }
 async function reverseName(lat, lon) {
@@ -535,10 +544,10 @@ function placeDiagRows(forCopy) {
     ['Sources écartées', rej.length ? rej.map(x => `${x.source} : ${x.reason}`).join(' | ') : 'aucune']];
 }
 function alertLoc(msg) { const el = $('#locMsg'); if (el) { el.textContent = msg; el.hidden = !msg; } }
-async function refreshAll() {
+async function refreshAll(force = true) {
   if (busy) return;
   if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
-  busy = true; DEMO.on = false; MIDP = {}; lastTry = Date.now(); renderStatus();
+  busy = true; DEMO.on = false; lastTry = Date.now(); renderStatus();
   const locs = allLocs(), gpsStart = gpsWeatherGen, generations = new Map();
   try {
     if (location.protocol === 'https:') {
@@ -552,7 +561,7 @@ async function refreshAll() {
   const res = await Promise.allSettled(locs.map(l => {
     // Une position remplacée pendant la lecture des observations ne relance pas une ancienne météo.
     if (l.gps && !gpsSourceCurrent(l, gpsStart)) return Promise.resolve(null);
-    const request = loadLoc(l); if (l.gps) generations.set(l.id, gpsWeatherGen); return request;
+    const request = loadLoc(l, force); if (l.gps) generations.set(l.id, gpsWeatherGen); return request;
   }));
   let ok = 0;
   res.forEach((r, k) => {
@@ -561,7 +570,7 @@ async function refreshAll() {
     if (r.status === 'fulfilled' && r.value && r.value.hourly && r.value.hourly.time) ok++;
     else { ERR[l.id] = (r.reason && r.reason.message) || 'réponse invalide'; if (RAW[l.id]) RAW[l.id].mode = 'cache'; }
   });
-  if (ok) lastOk = Date.now();
+  if (ok) lastOk = Math.max(lastOk || 0, ...locs.map(l => (RAW[l.id] && RAW[l.id].mode === 'live' ? RAW[l.id].t : 0)));
   busy = false; rebuild(); renderAll();
   fetchVigi(); refreshEns(); radarRefresh(); loadCalendar();
 }
@@ -571,7 +580,11 @@ function startDemo(scn) {
 }
 function rebuild() {
   M = {}; MIDM = {}; expireLive();
-  Object.keys(MIDP).forEach(id => { const r = MIDP[id]; try { MIDM[id] = r ? makeModel(r.p, r.mode, r.pt) : null; } catch (e) { MIDM[id] = null; } });
+  Object.keys(MIDP).forEach(id => {
+    const r = MIDP[id], ttl = r && r.p ? MID_TTL : MID_FAILURE_RETRY;
+    if (!r || !Number.isFinite(r.t) || Date.now() - r.t >= ttl || Date.now() < r.t) { delete MIDP[id]; return; }
+    try { MIDM[id] = r.p ? makeModel(r.p, r.mode, r.pt) : null; } catch (e) { MIDM[id] = null; }
+  });
   allLocs().forEach((l, k) => {
     if (!locHasCoords(l)) return;
     if (DEMO.on) {
@@ -1259,7 +1272,7 @@ async function fetchAQ(l) {
   if (AQBUSY.has(l.id) && (!l.gps || previous && gpsSourceCurrent(previous.origin, previous.gen))) return;
   const request = { origin: { ...l }, gen }; AQREQ.set(l.id, request); AQBUSY.add(l.id);
   try {
-    const p = await fetchJSON(urlAQ(l), 12000, l.gps ? 'gps' : 'shared'); if (!p || !p.hourly) throw new Error('réponse invalide');
+    const p = await fetchJSON(urlAQ(l), 12000, l.gps ? 'gps' : 'shared', 45 * 60e3); if (!p || !p.hourly) throw new Error('réponse invalide');
     if (gpsSourceCurrent(request.origin, gen)) { AQRAW[l.id] = { p, t: Date.now() }; delete AQERR[l.id]; }
   } catch (e) { if (gpsSourceCurrent(request.origin, gen)) AQERR[l.id] = { t: Date.now(), msg: e.message }; }
   finally {
@@ -2459,8 +2472,8 @@ async function loadCalendar() {
   } catch (e) { /* code différent ou cache illisible */ }
   finally { if (!CALDONE) { CALDONE = true; renderBrf(); } }
 }
-// météo des lieux d'agenda et des points de trajet : renouvelée à chaque cycle « auto 5 min » (même état que le lieu affiché)
-const PT_TTL = 4 * 60e3;
+// Météo des lieux d'agenda et points de route : modèle horaire réutilisé pendant 25 min ; cockpit et observations restent à 5 min.
+const PT_TTL = 25 * 60e3;
 async function calModel(ev) {
   if (!calendarSpatial(ev) || !locHasCoords(ev)) return null;
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2);
@@ -2904,7 +2917,7 @@ async function ensureMids(pts) {
       const pl = DEMO.on ? makeDemoPayload(DEMO.scn, p, 'Europe/Paris', 0.3) : await fetchJSON(urlFor(p));
       const bad = validForecast(pl); if (bad) throw new Error(bad);
       MIDP[p.id] = { p: pl, mode: DEMO.on ? 'demo' : 'live', pt: p, t: Date.now() }; MIDM[p.id] = makeModel(pl, MIDP[p.id].mode, p); MIDM[p.id].retrievedAt = MIDP[p.id].t;
-    } catch (e) { MIDP[p.id] = null; MIDM[p.id] = null; }
+    } catch (e) { MIDP[p.id] = { p: null, mode: 'cache', pt: p, t: Date.now() }; MIDM[p.id] = null; }
     finally { MIDPENDING.delete(p.id); }
   }));
   softRender();
