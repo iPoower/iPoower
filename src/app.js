@@ -574,9 +574,9 @@ function renderPlace() {
     const weather = allLocs().find(p => p.id === UI.loc);
     const weatherLabel = UI.loc === 'gps' || weather && c.place && weather.id === c.place.id
       ? 'météo locale' : weather ? 'météo consultée : ' + weather.name : 'météo à choisir';
-    const precision = GPS && Number.isFinite(GPS.acc) ? ' · ±' + Math.round(GPS.acc) + ' m' : '';
+    const precision = GPS && Number.isFinite(GPS.acc) ? ' · ± ' + Math.round(GPS.acc) + ' m' : '';
     h = `<div class="place compact gps-compact${expanded ? ' expanded' : ''}">
-      <span class="pl-info" role="status"><b>📍 ${esc(where)}</b><span class="pl-meta">GPS fiable${esc(precision)} · ${esc(weatherLabel)}</span></span>
+      <span class="pl-info" role="status"><b>📍 ${esc(where)}</b><span class="pl-meta">· Fiable · GPS navigateur${esc(precision)} · ${esc(weatherLabel)}</span></span>
       <span class="pl-main"><button class="btn sm pl-toggle" data-act="place-toggle" aria-expanded="${expanded}" aria-controls="placeActions locChips" aria-label="${expanded ? 'Réduire les choix de localisation' : 'Changer de lieu ou confirmer ma position'}"><span>${expanded ? 'Réduire' : 'Changer'}</span><span aria-hidden="true">${expanded ? '▴' : '▾'}</span></button></span>
       <span class="pl-act" id="placeActions" ${expanded ? '' : 'hidden'}>${pl.map(p => confirm(p)).join('')}</span>
     </div>`;
