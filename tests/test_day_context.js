@@ -145,7 +145,7 @@ check('Congé ne transforme pas le lieu confirmé Travail en origine Domicile', 
   vm.runInContext(app.slice(app.indexOf('function tripCancelBeforeFirst('), app.indexOf('const tripCancelRouteKey')), a);
   assert.equal(a.tripCancelBeforeFirst({ s: '2026-10-06T18:30' }).id, 'work');
 });
-check('AGENDA : Aveluy confirmé sans GPS invalide la route calculée depuis Domicile pour le prochain aller uniquement', () => {
+check('AGENDA : lieu B confirmé sans GPS invalide la route de démonstration du prochain aller uniquement', () => {
   const a = appFixture();
   a.locHasCoords = p => !!p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
   a.calendarSpatial = () => true; a.calendarCancelled = () => false;
