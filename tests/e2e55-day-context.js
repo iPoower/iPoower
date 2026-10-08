@@ -98,6 +98,10 @@ async function views(p, expected) {
           const editor = p.locator('#dayContext details.day-editor');
           if (await editor.isVisible() && await editor.getAttribute('open') != null) await tap(p, '#dayContext .day-editor > summary');
           const decision = p.locator('#decisionCore');
+          if (profile === 'clean') {
+            assert.equal(await decision.isVisible(), false, view + ' : synthèse privée masquée sans code');
+            continue;
+          }
           assert(await decision.isVisible(), view + ' : synthèse visible');
           assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
           await tap(p, '#decisionCore [data-act=decision-car-change]');
