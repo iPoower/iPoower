@@ -29,6 +29,12 @@ try {
     for (const token of ['function validateRecovery(', "validateRecovery('retour réseau')", "validateRecovery('retry périodique')", 'validation de reprise en attente'])
       assert(source.includes(token), 'Contrat de reprise absent : ' + token);
   });
+  check('polish PC/iPhone : mouvement réduit et onglet masqué évitent les animations/travail inutiles', () => {
+    const source = appSource();
+    assert(source.includes("const scrollBehavior = () =>"));
+    assert(!source.includes("behavior: 'smooth'"));
+    assert(source.includes("if (document.hidden) return; document.querySelectorAll('.cd[data-dep]')"));
+  });
   check('chaque commande visible possède un handler et une entrée dans l’audit', () => {
     const repo = path.resolve(__dirname, '..'), source = appSource(repo) + fs.readFileSync(path.join(repo, 'src/shell.html'), 'utf8');
     const actions = [...new Set([...source.matchAll(/data-act=["']([a-z][a-z-]*)/g)].map(m => m[1]))].sort();

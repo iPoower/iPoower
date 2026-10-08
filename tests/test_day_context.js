@@ -31,7 +31,31 @@ check('lieu supprimé ne laisse aucune destination fantôme', () => assert.equal
 check('E13 retour agenda courant remplacé sans vieille géométrie', () => { const l = { k: 'ret', from: places[1], to: places[0], g: [[1, 2]], pts: [places[0]], min: 30 }; const r = D.returnLeg(l, 'current', { nextDestination: choice('b') }, now, places); assert.equal(r.to.id, 'b'); assert.equal(r.navTo.id, 'b'); assert.equal(r.g.length, 0); assert(r.originPending); assert.equal(l.to.id, 'home'); });
 check('E14 autres retours et après arrivée inchangés', () => { const l = { k: 'ret', to: places[0] }; assert.equal(D.returnLeg(l, 'future', { nextDestination: choice('b') }, now, places), l); assert.equal(D.returnLeg(l, 'current', { nextDestination: choice('b'), arrivedAt: now + 1 }, now + 1, places), l); });
 check('A6 reload + migration document v1 conserve intention valide', () => { const mem = new Map(); const make = () => ctx.store({ read: k => mem.get(k), write: (k, v) => mem.set(k, v), now: () => now }); const s = make(); s.transaction(x => { x.dayContext = { nextDestination: choice('b') }; }); assert.equal(make().state.dayContext.nextDestination.placeId, 'b'); });
-if (process.env.LOT === 'A') { console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0); }
+if (process.env.LOT === 'A') { check('TRAJET futur : expiration suit le jour de départ, pas seulement le lendemain de la saisie', () => {
+  const dep = '2026-10-08T17:15', exp = D.tripExpiry(dep, now);
+  assert(exp > D.expiry(now));
+  const point = { id: 'manual-destination', name: '29 Rue Jean Jaurès 80610 Saint-Ouen', address: '29 Rue Jean Jaurès, 80610 Saint-Ouen',
+    lat: 50.04, lon: 2.11, provider: 'IGN/BAN', precision: 'housenumber' };
+  const v = D.clean({ nextDestination: { placeId: point.id, destinationPoint: point, source: 'manual', confirmedAt: now, expiresAt: exp,
+    originId: 'work', tripKey: 'manual|1', dep, createdAt: now, updatedAt: now } }, now, places, cars).nextDestination;
+  assert(v); assert.equal(v.dep, dep); assert.equal(v.source, 'manual'); assert.equal(v.destinationPoint.address, point.address); assert.equal(v.destinationPoint.provider, 'IGN/BAN');
+});
+check('TRAJET manuel : heure choisie et voiture active pilotent le trajet local sans dupliquer le contexte', () => {
+  const a = appFixture(); a.S.work = { durMin: 40 }; a.locById = id => places.find(p => p.id === id); a.TRIPSTART = null;
+  a.addMin = (s, m) => new Date(Date.parse(s + ':00Z') + m * 60000).toISOString().slice(0, 16);
+  a.tripCancelRouteLeg = (_, l) => ({ ...l, originPending: false, min: 32, km: 24, arr: a.addMin(l.dep, 32), pts: [], g: [[48.9,2.25],[48.8,2.45]] });
+  a.legEval = () => ({ res: null, sum: { Tmin: 10 }, seq: [], worst: null });
+  a.USER_STORE.state.dayContext = { activeCarId: 'a', nextDestination: { ...choice('b'), source: 'manual', dep: '2026-10-06T19:15', tripKey: 'manual|x' } };
+  const trip = a.appLocalTrips([], '2026-10-06T17:30')[0];
+  assert.equal(trip.dep, '2026-10-06T19:15'); assert.equal(trip.carId, 'a'); assert.equal(trip.key, 'manual|x'); assert.equal(trip.src, 'local');
+});
+check('TRAJET manuel explicite reste prioritaire sur commute et agenda plus tôt', () => {
+  const exp = D.tripExpiry('2026-10-06T19:15', now), v = { nextDestination: { placeId: 'b', source: 'manual', confirmedAt: now, expiresAt: exp, originId: 'work', tripKey: 'manual|x', dep: '2026-10-06T19:15' } };
+  const T = [{ key:'commute', dep:'2026-10-06T18:00', arr:'2026-10-06T18:40' }, { key:'agenda', dep:'2026-10-06T18:30', arr:'2026-10-06T19:00' },
+    { key:'manual|x', dep:'2026-10-06T19:15', arr:'2026-10-06T19:45' }, { key:'after', dep:'2026-10-06T20:00', arr:'2026-10-06T20:30' }];
+  assert.deepEqual(Array.from(D.prioritize(T, v, now), x => x.key), ['manual|x','after']);
+});
+console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0); }
 for (const [label, date, value, days, expected] of [['B1', '2026-10-06', 'work', [2], true], ['B2', '2026-10-06', 'off', [2], false], ['B3', '2026-10-06', 'work', [], true], ['E7', '2026-10-07', 'off', [3], true]]) check(label + ' journée datée', () => assert.equal(D.workOn(date, { dayType: { date: '2026-10-06', value } }, days), expected));
 check('E8 choix exceptionnel ne réécrit jamais planning', () => { const days = [1]; D.workOn('2026-10-06', { dayType: { date: '2026-10-06', value: 'work' } }, days); assert.deepEqual(days, [1]); });
 for (const id of ['a', 'b', null]) check('B4/B5/B6 voiture ' + id, () => assert.equal(D.clean({ activeCarId: id }, now, places, cars).activeCarId, id));

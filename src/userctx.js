@@ -6,23 +6,44 @@ const DayContext = (() => {
   const date = at => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(at));
   const hour = at => +new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', hourCycle: 'h23' }).format(new Date(at));
   const nextDate = d => new Date(Date.parse(d + 'T12:00:00Z') + 86400000).toISOString().slice(0, 10);
-  function expiry(at) {
-    const day = nextDate(date(at)), nominal = Date.parse(day + 'T04:00:00Z');
+  const local = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v) ? v : null;
+  const text = (v, max = 1200) => typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null;
+  function parisAt(day, hm = '04:00') {
+    const nominal = Date.parse(day + 'T' + hm + ':00Z');
     const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
     let instant = nominal;
     for (let i = 0; i < 3; i++) { const p = {}; fmt.formatToParts(new Date(instant)).forEach(x => { p[x.type] = x.value; }); instant += nominal - Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:00Z`); }
     return instant;
   }
+  function expiry(at) { return parisAt(nextDate(date(at))); }
+  function tripExpiry(dep, at) {
+    const day = local(dep) ? dep.slice(0, 10) : date(at), exp = parisAt(nextDate(day));
+    return Math.min(exp, at + 370 * 86400000);
+  }
   const id = v => typeof v === 'string' && v.length > 0 && v.length <= 1200;
   const timestamp = (v, now) => Number.isFinite(v) && v >= 0 && v <= now + 60000;
+  function cleanPoint(v, fallbackId) {
+    if (!v || typeof v !== 'object' || !Number.isFinite(v.lat) || !Number.isFinite(v.lon) || Math.abs(v.lat) > 90 || Math.abs(v.lon) > 180) return null;
+    const pid = text(v.id, 120) || fallbackId;
+    return { id: pid, name: text(v.name || v.label, 220) || 'Lieu', address: text(v.address, 320) || '', lat: +v.lat, lon: +v.lon,
+      provider: text(v.provider, 80) || '', precision: text(v.precision, 80) || '' };
+  }
   function clean(v, now, places = null, cars = null) {
     v = v || {}; const n = v.nextDestination, c = v.lastConfirmedPlace;
     const exists = x => !places || places.some(p => p.id === x);
     const arrivedAt = timestamp(v.arrivedAt, now) ? v.arrivedAt : null;
-    const valid = n && (n.source === 'user' || n.source === 'pending') && timestamp(n.confirmedAt, now) && n.expiresAt > now && n.expiresAt <= expiry(n.confirmedAt)
-      && (!arrivedAt || arrivedAt < n.confirmedAt) && (n.placeId == null || id(n.placeId) && exists(n.placeId));
-    return { nextDestination: valid ? { placeId: n.placeId || null, source: n.source, confirmedAt: n.confirmedAt, expiresAt: n.expiresAt,
-      originId: id(n.originId) ? n.originId : null, tripKey: id(n.tripKey) ? n.tripKey : null, dep: typeof n.dep === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(n.dep) ? n.dep : null } : null,
+    const dep = n && local(n.dep), rawSource = n && ['user', 'manual', 'calendar', 'live', 'pending'].includes(n.source) ? n.source : null;
+    const originPoint = n && cleanPoint(n.originPoint, 'manual-origin'), destinationPoint = n && cleanPoint(n.destinationPoint, 'manual-destination');
+    // Compatibilité v1 : l'ancien { source:'user', placeId:null } signifiait déjà « À confirmer ».
+    const source = rawSource === 'user' && n && n.placeId == null && !destinationPoint ? 'pending' : rawSource;
+    const targetOk = !!n && (source === 'pending' ? n.placeId == null && !destinationPoint : !!(destinationPoint || id(n.placeId) && exists(n.placeId)));
+    const maxExpiry = n && timestamp(n.confirmedAt, now) ? tripExpiry(dep, n.confirmedAt) : null;
+    const valid = n && source && timestamp(n.confirmedAt, now) && Number.isFinite(n.expiresAt) && n.expiresAt > now && maxExpiry && n.expiresAt <= maxExpiry + 60000
+      && (!arrivedAt || arrivedAt < n.confirmedAt) && targetOk;
+    return { nextDestination: valid ? { placeId: id(n.placeId) ? n.placeId : destinationPoint && destinationPoint.id || null, source, confirmedAt: n.confirmedAt, expiresAt: n.expiresAt,
+      originId: id(n.originId) ? n.originId : originPoint && originPoint.id || null, originPoint, destinationPoint,
+      tripKey: id(n.tripKey) ? n.tripKey : null, dep, createdAt: timestamp(n.createdAt, now) ? n.createdAt : n.confirmedAt,
+      updatedAt: timestamp(n.updatedAt, now) ? n.updatedAt : n.confirmedAt } : null,
       lastConfirmedPlace: c && id(c.placeId) && exists(c.placeId) && timestamp(c.at, now) && c.source === 'manual' ? { placeId: c.placeId, at: c.at, source: 'manual' } : null,
       departedAt: timestamp(v.departedAt, now) ? v.departedAt : null, arrivedAt,
       dayType: v.dayType && v.dayType.date === date(now) && ['work', 'off'].includes(v.dayType.value) ? { date: v.dayType.date, value: v.dayType.value } : null,
@@ -37,11 +58,11 @@ const DayContext = (() => {
   }
   function destination(v, planned, now, places) {
     const n = clean(v, now, places).nextDestination;
-    return n ? { place: places.find(p => p.id === n.placeId) || null, source: n.placeId ? 'user' : 'pending', confirmedAt: n.confirmedAt } : { place: planned || null, source: planned ? 'planned' : 'unknown', confirmedAt: null };
+    return n ? { place: n.destinationPoint || places.find(p => p.id === n.placeId) || null, source: n.source === 'pending' ? 'pending' : n.source, confirmedAt: n.confirmedAt } : { place: planned || null, source: planned ? 'planned' : 'unknown', confirmedAt: null };
   }
   function returnLeg(leg, key, v, now, places) {
     const n = clean(v, now, places).nextDestination; if (!n || n.tripKey !== key) return leg;
-    const to = places.find(p => p.id === n.placeId) || null;
+    const to = n.destinationPoint || places.find(p => p.id === n.placeId) || null;
     if (to && leg.to && to.id === leg.to.id && to.lat === leg.to.lat && to.lon === leg.to.lon) return { ...leg, navTo: to, destinationOverride: true };
     return { ...leg, to, navTo: to, destinationOverride: true, g: [], pts: [], km: null, min: null, routed: false,
       originPending: true, originUncertain: !to || !leg.from, targetArr: null };
@@ -63,7 +84,7 @@ const DayContext = (() => {
     // ne pilotent aucune vue. Les trajets ultérieurs restent des prévisions.
     return [chosen, ...trips.filter(t => t.key !== chosen.key && (!chosen.arr || !t.dep || t.dep >= chosen.arr))];
   }
-  return { date, expiry, clean, morningOrigin, destination, returnLeg, workOn, occasion, prioritize };
+  return { date, expiry, tripExpiry, cleanPoint, clean, morningOrigin, destination, returnLeg, workOn, occasion, prioritize };
 })();
 function userContextStore({ read, write, now = () => Date.now() }) {
   const key = 'twrc.context.v1', listeners = new Set();

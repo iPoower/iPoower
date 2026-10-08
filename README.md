@@ -335,6 +335,9 @@ Cron Cloudflare (1 min) ──► lit l'âge public d'obs.json (Pages, sans jeto
    │ fresh  (< 8 min)          → rien (aucun appel à GitHub)
    │ stale / invalid / unreachable
    ▼
+auto-réparation : run du relais encore actif (en file, en attente, en cours) depuis ≥ 20 min (timeout du job : 8 min)
+   │                                  → annulé (« cancelled ») ; il libère la concurrence, relais relancé au tick suivant
+   ▼
 garde anti-tempête (API GitHub, runs de race-control.yml et race-control-watchdog.yml)
    │ run en file ou en cours             → skipped « relais déjà en cours »
    │ run démarré après le passage à « dû », il y a < 6 min → skipped « cooldown » (publication Pages)
@@ -349,6 +352,7 @@ workflow_dispatch race-control.yml (main, source=horloge)
 | Pas de tempête si le relais est cassé | au plus un dispatch par période de 6 min | 60 min de relais cassé |
 | Pas de dispatch à l'aveugle | liste des runs indisponible → erreur, aucun dispatch | panne de l'API GitHub |
 | Panne GitHub visible | dispatch refusé (401/403/422/5xx) → invocation en échec | erreurs propres, sans secret |
+| Aucun blocage durable | run coincé ≥ 20 min annulé, seulement quand les données sont dues (incident du 7 octobre : watchdog « waiting » 1 h 36) | rejeu de l'incident : âge max 24 min ; run de moins de 20 min jamais annulé ; annulation refusée → erreur, aucun dispatch |
 | Aucune donnée personnelle | journal : `t`, `decision`, `age_min`, `action`, `reason`, `status` uniquement | contrôle des clés et du contenu des journaux |
 
 **Observabilité, sans donnée personnelle :**
