@@ -382,7 +382,7 @@ html { scroll-behavior: smooth; }
 .seg.view button { padding: 7px 16px; font-size: 13.5px; min-height: 38px; }
 .vm #secCars, .vm #secBrief, .vm #secCmp, .vm #secSeason, .vm #secJournal { display: none !important; }
 /* Tenue conserve le cockpit et utilise uniquement son propre panneau. */
-.vt .wrap > .mod:not(#secTenue):not(#secDebrief):not(#settings), .vt #secCars, .vt #banners, .vt .foot { display: none !important; }
+.vt .wrap .mod:not(#secTenue):not(#secDebrief):not(#settings), .vt #secCars, .vt #banners, .vt .foot { display: none !important; }
 .outfit { border-color: var(--line2); gap: 18px; }
 .outfit button { min-height: 44px; }
 .outfit-controls { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -700,7 +700,7 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 
 /* ---------- onglet Analyse : ingénieur pneumatique embarqué (verdict d'abord, explications au toucher) ---------- */
 body:not(.va) #secSeason, body:not(.va) #secJournal,
-.va .wrap > .mod:not(#secLab):not(#secSeason):not(#secJournal):not(#secDebrief):not(#settings), .va #secCars, .va #banners, .va .foot, .va .day-context { display: none !important; }
+.va .wrap .mod:not(#secLab):not(#secSeason):not(#secJournal):not(#secDebrief):not(#settings), .va #secCars, .va #banners, .va .foot, .va .day-context { display: none !important; }
 .va #placeBar .pl-act { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
 .va #placeBar .pl-act .btn { min-height: 44px; min-width: 0; overflow-wrap: anywhere; }
 .lab { gap: 10px; }
@@ -858,7 +858,7 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .trip-summary-route b { font-size: 16px; }
 .trip-summary-route span, .trip-summary-meta { color: var(--fg2); font-size: 12px; }
 .vtr #placeBar, .vtr #locChips, .vtr #dayContext, .vtr #decisionCore, .vtr #hdrMore, .vtr #jump, .vtr #banners, .vtr #secTripSummary, .vtr .foot { display: none !important; }
-.vtr .wrap > .mod:not(#secTrip):not(#settings), .vtr #secCars { display: none !important; }
+.vtr .wrap .mod:not(#secTrip):not(#settings), .vtr #secCars { display: none !important; }
 @media (max-width: 560px) {
   #viewSeg .seg.view button { padding-inline: 2px; font-size: 11px; }
   #viewSeg .seg.view .trip-tab { font-size: 11.5px; }
@@ -871,4 +871,36 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 @media (max-width: 360px) {
   #viewSeg .seg.view button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; line-height: 1.15; }
   #viewSeg .seg.view .tab-ic { font-size: 15px; }
+}
+
+/* Tenue : plan de la journée et tenue retenue, empilés sur mobile (même espacement qu'avant) */
+.outfit-body, .outfit-side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+/* ---------- Bureau (≥ 1200 px, souris) : l'écran large sert, on ne défile plus jusqu'en bas ----------
+   Colonne principale (décision, trajet, analyse) et colonne de compléments (météo du lieu, radar, alertes…), côte à côte.
+   Le tactile et les petites fenêtres gardent la colonne unique. */
+@media (min-width: 1200px) and (pointer: fine) {
+  .wrap, .statusbar .in { max-width: 1520px; }
+  .wrap { gap: 16px; }
+  /* en-tête : titre et onglets sur une ligne ; la décision à gauche, le contexte (lieu, météo consultée, journée) à droite */
+  .top { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(360px, 1fr); column-gap: 20px; row-gap: 10px; align-items: start; }
+  .top > .title { align-self: end; }
+  .top > #viewSeg { justify-self: stretch; align-self: end; }
+  .top > #viewSeg .seg.view { display: flex; width: 100%; }
+  .top > #viewSeg .seg.view button { flex: 1 1 0; justify-content: center; white-space: nowrap; }
+  .top { grid-template-areas: "title tabs" "dec place" "day chips"; }
+  .top > .title { grid-area: title; } .top > #viewSeg { grid-area: tabs; }
+  .top > #decisionCore { grid-area: dec; align-self: stretch; margin: 0; }
+  .top > #placeBar { grid-area: place; min-width: 0; } .top > #locChips { grid-area: chips; min-width: 0; align-self: center; }
+  .top > #dayContext { grid-area: day; min-width: 0; }
+  /* corps : deux colonnes indépendantes, chacune à sa hauteur (pas d'alignement forcé ligne à ligne) */
+  .desk-cols { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(360px, 1fr); gap: 20px; align-items: start; }
+  .desk-main, .desk-rail { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .desk-rail .mod { padding: 13px; }
+  body.desk-solo .desk-cols { grid-template-columns: minmax(0, 1fr); }
+  body.desk-solo .desk-rail { display: none; }
+  body.vtr .desk-main { width: 100%; max-width: 1080px; margin-inline: auto; }
+  /* Tenue : le plan heure par heure à gauche, la tenue retenue et ses pièces à droite */
+  .outfit-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+  .outfit-side .outfit-pieces { grid-template-columns: minmax(0, 1fr); }
 }

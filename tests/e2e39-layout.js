@@ -36,8 +36,11 @@ for(const [name,vp,mobile,inset] of VPS){
       // cibles tactiles : boutons, puces, résumés, liens-boutons, champs ; les liens dans le texte et les interrupteurs (zone élargie) sont exclus
       document.querySelectorAll('button,.chip,summary,a.btn,.jump a,select,input[type=text],input[type=time],input[type=date],input[type=number],input[type=range]').forEach(e=>{
         if(!vis(e)||e.closest('.leaflet-container'))return;const b=e.getBoundingClientRect();if(mobile&&b.height<43.5)small.push((e.dataset.act||e.id||e.tagName.toLowerCase())+' '+Math.round(b.width)+'×'+Math.round(b.height));});
-      const ids=[...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details')].filter(vis).map(e=>e.id);
-      return {sw:document.documentElement.scrollWidth,W,small:[...new Set(small)],ids,badge:document.querySelector('#statusbar .badge').getBoundingClientRect().top,
+      const ids=[...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details, #deskCols > div > section, #deskCols > div > .grid2, #deskCols > aside > section')].filter(vis).map(e=>e.id).sort();
+      // bureau : colonne principale et colonne de compléments côte à côte, sans chevauchement
+      const dm=document.getElementById('deskMain'),dr=document.getElementById('deskRail'),desk=!!(dm&&dr&&vis(dm)&&vis(dr));
+      const cols=desk?{gap:Math.round(dr.getBoundingClientRect().left-dm.getBoundingClientRect().right),top:Math.round(Math.abs(dr.getBoundingClientRect().top-dm.getBoundingClientRect().top))}:null;
+      return {sw:document.documentElement.scrollWidth,W,small:[...new Set(small)],ids,desk,cols,badge:document.querySelector('#statusbar .badge').getBoundingClientRect().top,
         left:document.querySelector('main.wrap').getBoundingClientRect().left,right:W-document.querySelector('main.wrap').getBoundingClientRect().right,
         veil:getComputedStyle(document.documentElement,'::before').height};},mobile);
     check(`39 · ${name} · ${view} : aucun défilement horizontal`,r.sw<=r.W,`scrollWidth ${r.sw} > ${r.W}`);
@@ -47,6 +50,8 @@ for(const [name,vp,mobile,inset] of VPS){
       if(inset.left)check(`39 · ${name} : contenu hors de l’encoche (${inset.left} px)`,r.left>=inset.left&&r.right>=inset.right,`gauche ${r.left}, droite ${r.right}`);
     }
     (sections[view]=sections[view]||[]).push([name,r.ids.join(',')]);
+    if(!mobile&&view!=='tenue')check(`39 · ${name} · ${view} : bureau en deux colonnes côte à côte (compléments à droite, même hauteur de départ)`,r.desk&&r.cols.gap>=12&&r.cols.top<=2,JSON.stringify({desk:r.desk,cols:r.cols}));
+    if(mobile)check(`39 · ${name} · ${view} : colonne unique sur mobile`,!r.desk,JSON.stringify({desk:r.desk}));
     if(view==='meteo'&&name==='iPhone portrait'){
       // carte radar défilée sous le bandeau : le bandeau (et le voile de l'horloge) restent au-dessus de Leaflet
       await p.evaluate(()=>{const m=document.querySelector('#secRadar');if(m)m.scrollIntoView();});
@@ -57,9 +62,19 @@ for(const [name,vp,mobile,inset] of VPS){
       await p.evaluate(()=>window.scrollTo(0,0));
     }
   }
+  if(name==='PC 1280'){
+    // fenêtre réduite sous 1200 px puis agrandie : retour à la colonne unique sans perdre une section, puis retour au bureau
+    const snap=()=>p.evaluate(()=>({cols:!!document.getElementById('deskCols'),n:document.querySelectorAll('main.wrap section[id], main.wrap .grid2[id]').length,
+      inWrap:[...document.querySelectorAll('section[id], .grid2[id]')].every(e=>e.closest('main.wrap'))}));
+    for(const v of ['meteo','pneus']){await p.evaluate(v=>{UI.view=v;renderAll();},v);await p.clock.runFor(300);
+      const until=async want=>{let x;for(let i=0;i<20;i++){await p.clock.runFor(200);await p.waitForTimeout(100);x=await snap();if(x.cols===want)break;}return x;};
+      const a=await snap();await p.setViewportSize({width:1000,height:800});const m=await until(false);
+      await p.setViewportSize({width:1280,height:800});const d=await until(true);
+      check(`39 · ${v} : bureau ⇄ fenêtre étroite sans perte de section`,a.cols&&!m.cols&&d.cols&&a.n===m.n&&m.n===d.n&&m.inWrap,JSON.stringify({a,m,d}));}
+  }
   await c.close();
 }
 if(BR.NAME!=='chromium')rows.push('↪️ 39 · encoche et horloge iOS : émulation CDP Chromium uniquement (non applicable sur '+BR.NAME+')');
-for(const [view,list] of Object.entries(sections))check(`39 · ${view} : mêmes sections sur iPhone et PC`,list.every(([,ids])=>ids===list[0][1]),list.map(([n,ids])=>n+': '+ids).join(' | '));
+for(const [view,list] of Object.entries(sections))check(`39 · ${view} : mêmes sections sur iPhone et PC (ordre libre sur bureau)`,list.every(([,ids])=>ids===list[0][1]),list.map(([n,ids])=>n+': '+ids).join(' | '));
 console.log(rows.join('\n')+'\n\n'+(rows.filter(x=>/^[✅❌]/.test(x)).length-fail)+'/'+rows.filter(x=>/^[✅❌]/.test(x)).length+' scénarios OK · erreurs JS : '+(rows.some(x=>x.startsWith('ERR '))?'présentes':'aucune'));
 await b.close();process.exit(fail||rows.some(x=>x.startsWith('ERR '))?1:0);})();

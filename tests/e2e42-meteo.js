@@ -52,7 +52,7 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
 const wx = p => p.evaluate(() => {
   const el = document.getElementById('secWx'), vis = e => !!e && !e.hidden && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0;
   const q = s => el ? [...el.querySelectorAll(s)] : [], t = s => q(s).map(x => x.innerText.replace(/\s+/g, ' ').trim());
-  const first = [...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details')].filter(vis)[0];
+  const first = [...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details, #deskMain > section, #deskMain > .grid2')].filter(vis)[0];
   return { shown: vis(el), first: first ? first.id : null, hero: t('.wx-hero')[0] || '', title: t('.wx-ht')[0] || '', heroLv: (q('.wx-hero')[0] || { className: '' }).className,
     current: t('.wx-now')[0] || '',
     trip: t('.wx-trip')[0] || '', moments: t('.wx-tl li'), ts: q('.wx-tl li[data-ts]').map(x => x.dataset.ts), strip: q('.wx-strip li').length, matters: t('.wx-mat li'), phen: q('.wx-pc:not(.ev)').map(x => x.dataset.k),

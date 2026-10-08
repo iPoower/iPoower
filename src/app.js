@@ -1012,6 +1012,40 @@ function chooseView(view) {
   UI.view = ['pneus', 'meteo', 'trajet', 'tenue', 'analyse'].includes(view) ? view : 'pneus';
   lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: scrollBehavior() });
 }
+/* ---------- bureau (≥ 1200 px, souris) : colonne principale + colonne de compléments, côte à côte ----------
+   Même contenu et mêmes sections que sur mobile, seulement réparties : rien n'est masqué ni dupliqué. Le mobile (et le tactile)
+   garde la colonne unique : le passage d'un mode à l'autre déplace les sections, sans re-rendu ni perte d'état. */
+const DESK = typeof matchMedia === 'function' ? matchMedia('(min-width: 1200px) and (pointer: fine)') : { matches: false };
+const DESK_FULL = new Set(['hdrMore', 'banners', 'jump']);
+const DESK_RAIL = {
+  pneus: ['secWeatherLink', 'secCmp', 'secDebrief', 'secIce', 'secCal', 'secTip', 'secAlerts'],
+  meteo: ['secRadar', 'secAir', 'secIce', 'secDebrief', 'secAlerts', 'secTip', 'secCal'],
+  analyse: ['secSeason', 'secJournal', 'secDebrief'],
+  tenue: [], trajet: []
+};
+function deskLayout(order) {
+  let cols = document.getElementById('deskCols');
+  document.body.classList.toggle('desk', !!DESK.matches);
+  if (!DESK.matches) {   // colonne unique : toute section restée dans les colonnes (absente de l'ordre de cette vue) revient avant elles
+    if (cols) { cols.querySelectorAll('#deskMain > *, #deskRail > *').forEach(el => cols.before(el)); cols.remove(); }
+    return;
+  }
+  if (!cols) {
+    cols = document.createElement('div'); cols.id = 'deskCols'; cols.className = 'desk-cols';
+    cols.innerHTML = '<div class="desk-main" id="deskMain"></div><aside class="desk-rail" id="deskRail" aria-label="Compléments"></aside>';
+  }
+  const view = ['meteo', 'trajet', 'tenue', 'analyse'].includes(UI.view) ? UI.view : 'pneus', rail = new Set(DESK_RAIL[view]);
+  const main = cols.querySelector('#deskMain'), side = cols.querySelector('#deskRail'), notice = document.getElementById('notice');
+  if (notice.nextElementSibling !== cols) notice.after(cols);
+  order.forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    if (DESK_FULL.has(id)) cols.before(el); else (rail.has(id) ? side : main).appendChild(el);
+  });
+  document.body.classList.toggle('desk-solo', !rail.size);
+}
+const deskSync = () => { if (!!DESK.matches !== document.body.classList.contains('desk')) { renderView.last = null; renderView(); } };
+if (DESK.addEventListener) DESK.addEventListener('change', deskSync);
+window.addEventListener('resize', deskSync);   // filet : certains navigateurs signalent le changement de média plus tard
 function renderView() {
   const vm = UI.view === 'meteo', vtr = UI.view === 'trajet', vt = UI.view === 'tenue', va = UI.view === 'analyse', vp = !vm && !vtr && !vt && !va;
   document.body.classList.toggle('vm', vm);
@@ -1037,6 +1071,7 @@ function renderView() {
   const brf = order.indexOf('secBrf'); if (brf >= 0) order.splice(brf + 1, 0, 'secRoad');
   if (!vtr) order.splice(va ? 2 : 1, 0, 'secDebrief');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
+  deskLayout(order);
   if (RADAR.map) { const map = RADAR.map; setTimeout(() => { if (RADAR.map === map) map.invalidateSize(); }, 60); }
 }
 
@@ -1296,17 +1331,17 @@ function renderTenue() {
   }).join('');
   const carry = [...new Set([...plan.carry, ...a.accessories])];
   el.innerHTML = `${head}<div class="outfit-context${stale ? ' old' : ''}"><span>${esc(state)}</span><b>${esc(interval)}</b></div>
-    <div class="outfit-dayplan"><div class="outfit-plan-heading"><h3>🧥 Plan de tenue de la journée</h3><span class="outfit-indicator" data-level="${esc(plan.indicator.level)}">${esc(plan.indicator.text)}</span>${plan.weatherWarning ? `<span class="outfit-weather-warning" data-level="warning" data-risks="${esc(plan.weatherWarning.risks.join(' '))}" role="status">${esc(plan.weatherWarning.text)}</span>` : ''}</div>
+    <div class="outfit-body"><div class="outfit-dayplan"><div class="outfit-plan-heading"><h3>🧥 Plan de tenue de la journée</h3><span class="outfit-indicator" data-level="${esc(plan.indicator.level)}">${esc(plan.indicator.text)}</span>${plan.weatherWarning ? `<span class="outfit-weather-warning" data-level="warning" data-risks="${esc(plan.weatherWarning.risks.join(' '))}" role="status">${esc(plan.weatherWarning.text)}</span>` : ''}</div>
       <div class="outfit-base"><span class="outfit-label">Kit complet de la journée · N${plan.base.level} max</span><p>${plan.base.layers.map(esc).join(' + ')}</p></div>
       <div class="outfit-extra outfit-carry"><h3>🎒 À emporter</h3>${carry.length ? `<ul>${carry.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p>Aucune pièce supplémentaire prévue.</p>'}</div>
       ${plan.actions.length ? `<div class="outfit-extra outfit-actions"><h3>🔄 Adaptations prévues</h3><ul>${plan.actions.map(x => `<li data-time="${esc(x.time)}"><b>${esc(x.time.slice(11, 16))}</b> · ${esc(x.text)}</li>`).join('')}</ul></div>` : ''}
       <ol class="outfit-timeline" aria-label="Heures, lieux et adaptations de la tenue">${timeline}</ol></div>
-    <div class="outfit-verdict"><span class="outfit-label">${tomorrow ? 'Ta tenue de demain' : 'Ta tenue pour la suite de la journée'} · kit complet</span><h3>${esc(a.title)}</h3><p>Détail du kit complet du plan ; la timeline indique les couches portées à chaque moment.</p></div>
+    <div class="outfit-side"><div class="outfit-verdict"><span class="outfit-label">${tomorrow ? 'Ta tenue de demain' : 'Ta tenue pour la suite de la journée'} · kit complet</span><h3>${esc(a.title)}</h3><p>Détail du kit complet du plan ; la timeline indique les couches portées à chaque moment.</p></div>
     <div class="outfit-metrics">${metric('Ressenti' + (a.tempFallback ? ' / air' : ''), f0(a.low) + ' à ' + f0(a.high) + ' °C')}${metric('Pluie · max', a.pp == null ? '—' : f0(a.pp) + ' %')}${metric('Rafales · max', a.gust == null ? '—' : f0(a.gust) + ' km/h')}</div>
     <div class="outfit-pieces">${a.pieces.map((p, i) => `<div class="outfit-piece"><span class="outfit-no mono">0${i + 1}</span><div><span class="outfit-label">${esc(p.label)}</span><h4>${esc(p.item)}</h4><p>${esc(p.detail)}</p></div></div>`).join('')}</div>
     <div class="outfit-palette"><span class="outfit-label">Accord de couleurs suggéré</span><div>${a.palette.map(t => `<span>${esc(t)}</span>`).join('')}</div></div>
     ${detail.length ? `<div class="outfit-extra"><h3>📝 À prévoir</h3><ul>${detail.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
-    <p class="outfit-method">Suggestions de pièces, à adapter à ce que tu possèdes et à ta sensibilité au froid. Les seuils sont des repères de confort. Le ressenti météo intègre déjà le vent ; aucune température de chaussée ni score pneus n’intervient ici.</p>`;
+    <p class="outfit-method">Suggestions de pièces, à adapter à ce que tu possèdes et à ta sensibilité au froid. Les seuils sont des repères de confort. Le ressenti météo intègre déjà le vent ; aucune température de chaussée ni score pneus n’intervient ici.</p></div></div>`;
 }
 
 /* ---------- UV ---------- */

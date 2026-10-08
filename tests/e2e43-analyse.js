@@ -67,7 +67,7 @@ const lab = p => p.evaluate(() => {
   document.querySelectorAll('#secLab details[data-k=spec], #secLab details[data-k=conf]').forEach(d => { d.open = true; });
   const el = document.getElementById('secLab'), vis = e => !!e && !e.hidden && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0;
   const q = s => el ? [...el.querySelectorAll(s)] : [], t = s => q(s).map(x => x.innerText.replace(/\s+/g, ' ').trim());
-  const first = [...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details')].filter(vis)[0];
+  const first = [...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details, #deskMain > section, #deskMain > .grid2')].filter(vis)[0];
   return { shown: vis(el), first: first ? first.id : null, hero: t('.lab-hero')[0] || '', all: el ? el.innerText.replace(/\s+/g, ' ') : '',
     bars: q('.lab-bar').length, cmp: q('.lab-t tbody tr').length, trip: t('.lab-trip')[0] || '', tripRows: q('.lab-tl li:not(.ev)').length, links: q('.lab-sp a').map(a => a.href),
     marker: !!el && !!el.querySelector('.lab-mk'), others: ['secCars', 'secWx', 'secTenue', 'secCur'].filter(id => vis(document.getElementById(id))), tabs: [...document.querySelectorAll('#viewSeg button')].map(b => b.dataset.v).join(',') };
@@ -194,7 +194,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
       await s.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await s.settle(1);
       check('10 · ' + dev + ' · Pneus : départ et voitures prioritaires, détails météo regroupés dans Météo', await s.p.evaluate(() => {
         const shown = id => !!document.getElementById(id).getClientRects().length;
-        const ids = [...document.querySelectorAll('.wrap > section,.wrap > .grid2')].filter(e => e.getClientRects().length).map(e => e.id);
+        const ids = [...document.querySelectorAll('.wrap > section,.wrap > .grid2,#deskMain > section,#deskMain > .grid2,#deskRail > section,#deskRail > .grid2')].filter(e => e.getClientRects().length).map(e => e.id);
         return ids[0] === 'secBrf' && ids.indexOf('secCars') < ids.indexOf('secWeatherLink') && shown('secWeatherLink') && ['secCur','secChart','secDays','secRadar','secAir'].every(id => !shown(id));
       }));
       await s.p.locator('#secWeatherLink [data-act=weather-details]').click(); await s.settle(1);
