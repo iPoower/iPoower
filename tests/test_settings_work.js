@@ -4,7 +4,7 @@ const source = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8').sp
 const make = () => {
   const data = new Map(), storage = { getItem: k => data.get(k) || null, setItem: (k, v) => data.set(k, v), removeItem: k => data.delete(k) };
   const ctx = { window: {}, location: { hash: '' }, document: { querySelector: () => null }, localStorage: storage, console };
-  vm.createContext(ctx); vm.runInContext(source + ';this.repair = repairStoredWork; this.load = loadSettings; this.base = BASE;', ctx);
+  vm.createContext(ctx); vm.runInContext(source + ';this.repair = repairStoredWork; this.repairVehicle = repairVehicleIdentity; this.load = loadSettings; this.base = BASE;', ctx);
   return { ctx, storage };
 };
 const fixture = ctx => ({ ...JSON.parse(JSON.stringify(ctx.base)), configured: 1,
@@ -39,6 +39,33 @@ test('autre destination que le dernier ajout : aucune réparation conjecturale',
 test('chargement et rechargement utilisent le travail réparé', () => {
   const { ctx, storage } = make(), s = fixture(ctx); storage.setItem('twrc.settings.v1', JSON.stringify(s));
   assert.equal(ctx.load().work.to, 'work'); assert.equal(ctx.load().work.to, 'work');
+});
+test('identité 308 historique : Féline devient 2.0 HDi 136 Premium Pack sans toucher aux autres données', () => {
+  const { ctx } = make(), s = fixture(ctx);
+  s.cars[1] = { ...s.cars[1], id: '308', name: 'Peugeot 308 Féline 2.0 HDi', short: '308',
+    spec: '136 ch FAP · 2009 · BVM6 · traction avant', tire: { ...s.cars[1].tire, size: '225/45 R17 94W' } };
+  const tireBefore = JSON.stringify(s.cars[1].tire);
+  assert.equal(ctx.repairVehicle(s), true);
+  assert.equal(s.cars[1].name, 'Peugeot 308 2.0 HDi 136 Premium Pack');
+  assert.equal(s.cars[1].short, '308');
+  assert.equal(s.cars[1].spec, '136 ch FAP · Premium Pack · 2009 · BVM6 · traction avant');
+  assert.equal(JSON.stringify(s.cars[1].tire), tireBefore);
+});
+test('identité 308 : une configuration différente n’est jamais renommée par conjecture', () => {
+  const { ctx } = make(), s = fixture(ctx);
+  s.cars[1] = { ...s.cars[1], id: '308', name: 'Peugeot 308 test', spec: 'autre finition' };
+  assert.equal(ctx.repairVehicle(s), false);
+  assert.equal(s.cars[1].name, 'Peugeot 308 test');
+  assert.equal(s.cars[1].spec, 'autre finition');
+});
+test('chargement persiste automatiquement la nouvelle identité 308', () => {
+  const { ctx, storage } = make(), s = fixture(ctx);
+  s.cars[1] = { ...s.cars[1], id: '308', name: 'Peugeot 308 Féline 2.0 HDi', short: '308', spec: '136 ch FAP · 2009 · BVM6 · traction avant' };
+  storage.setItem('twrc.settings.v1', JSON.stringify(s));
+  const loaded = ctx.load(), stored = JSON.parse(storage.getItem('twrc.settings.v1'));
+  assert.equal(loaded.cars[1].name, 'Peugeot 308 2.0 HDi 136 Premium Pack');
+  assert.equal(stored.cars[1].name, 'Peugeot 308 2.0 HDi 136 Premium Pack');
+  assert.equal(stored.cars[1].spec, '136 ch FAP · Premium Pack · 2009 · BVM6 · traction avant');
 });
 test('stockage de position illisible : réparation des réglages conservée', () => {
   const { ctx, storage } = make(), s = fixture(ctx); storage.setItem('twrc.place.v1', '{broken'); assert.equal(ctx.repair(s), true);
