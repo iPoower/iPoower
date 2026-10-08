@@ -67,7 +67,7 @@ async function test(name, fn) { await fn(); count++; console.log('✅ ' + name);
     const rejected = assert.rejects(p, e => e.status === 429); a.calls[0].resolve(reply(429, {}, '120')); await rejected;
     await assert.rejects(b.c.get(U + 'other'), e => e.status === 429); assert.equal(b.calls.length, 0);
     const reloaded = setup(shared); await assert.rejects(reloaded.c.get(U + 'reload'), e => e.status === 429); assert.equal(reloaded.calls.length, 0);
-    assert.deepEqual(Object.keys(JSON.parse(shared.value)).sort(), ['failures', 'kind', 'until']); assert.ok(!shared.value.includes('latitude'));
+    assert.deepEqual(Object.keys(JSON.parse(shared.value)).sort(), ['at', 'failures', 'kind', 'until']); assert.ok(!shared.value.includes('latitude'));
   });
   await test('Retry-After accepte une date HTTP', async () => {
     const s = setup(), p = s.c.get(U + 'date'), rejected = assert.rejects(p, e => e.status === 429);
@@ -98,6 +98,21 @@ async function test(name, fn) { await fn(); count++; console.log('✅ ' + name);
     assert.equal(new Date(s.c.state().until).toISOString(), '2026-10-06T00:02:00.000Z'); assert.equal(JSON.parse(shared.value).until, Date.parse('2026-10-06T00:02:00Z'));
     const h = setup({ value: JSON.stringify({ until: Date.parse('2026-10-05T11:00:00Z'), failures: 1, kind: 'hour' }) });
     assert.equal(h.c.state().until, Date.parse('2026-10-05T11:00:00Z'), 'une pause horaire n’est pas touchée');
+  });
+  await test('incident du 8 octobre : pause de 24 h héritée, lue après minuit UTC → déjà expirée, la météo repart', async () => {
+    // refus le 05/10 à 12:44 UTC sous l'ancienne version (pause jusqu'au 06/10 12:44) ; l'app rouvre le 06/10 à 05:57 UTC
+    const shared = { value: JSON.stringify({ until: Date.parse('2026-10-06T12:44:00Z'), failures: 1, kind: 'day' }) }, s = setup(shared);
+    await s.advance(Date.parse('2026-10-06T05:57:00Z') - s.now());
+    assert(s.c.state().until <= s.now(), 'pause expirée à 00:02 UTC : ' + new Date(s.c.state().until).toISOString());
+    assert.equal(JSON.parse(shared.value).until, Date.parse('2026-10-06T00:02:00Z'));
+    const p = s.c.get(U + 'matin'); assert.equal(s.calls.length, 1, 'la requête part'); s.calls[0].resolve(reply()); await p;
+    assert.equal(s.c.state().failures, 0);
+  });
+  await test('nouveau refus journalier : moment du refus enregistré, pause jusqu’à la reprise suivante même lue le lendemain', async () => {
+    const shared = { value: null }, s = setup(shared), p = s.c.get(U + 'j'), rejected = assert.rejects(p, e => e.status === 429);
+    s.calls[0].resolve(reply(429, { reason: 'Daily API request limit exceeded' })); await rejected;
+    const saved = JSON.parse(shared.value); assert.equal(saved.at, Date.parse('2026-10-05T10:00:00Z')); assert.equal(saved.until, Date.parse('2026-10-06T00:02:00Z'));
+    const t = setup({ value: shared.value }); await t.advance(Date.parse('2026-10-06T06:00:00Z') - t.now()); assert(t.c.state().until <= t.now());
   });
   await test('429 journalier juste avant minuit UTC : pas de reprise immédiate, essai dans 1 h', async () => {
     const s = setup(); await s.advance(Date.parse('2026-10-05T23:55:00Z') - s.now());

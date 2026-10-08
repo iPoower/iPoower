@@ -1,5 +1,5 @@
 // Accès aux API Open-Meteo : concurrence bornée, requêtes identiques partagées et pause HTTP 429.
-// Seuls le délai, sa catégorie et le nombre de refus sont persistés : aucune URL ni coordonnée.
+// Seuls le délai, sa catégorie, le moment du refus et le nombre de refus sont persistés : aucune URL ni coordonnée.
 function weatherRequestManager(options) {
   const net = options.fetch, now = options.now || (() => Date.now());
   const later = options.setTimeout || setTimeout, cancel = options.clearTimeout || clearTimeout;
@@ -14,9 +14,16 @@ function weatherRequestManager(options) {
   function state() {
     try {
       const s = JSON.parse(read() || 'null');
-      if (s && Number.isFinite(s.until) && s.until > limit.until && s.until <= now() + 7 * 86400e3)
-        limit = { until: s.until, failures: Math.max(1, Math.min(8, Math.floor(+s.failures || 1))), kind: ['minute', 'hour', 'day', 'concurrent', 'limited'].includes(s.kind) ? s.kind : 'limited' };
-      // pause journalière enregistrée par une ancienne version (24 h) : ramenée à la prochaine reprise à minuit UTC
+      if (s && Number.isFinite(s.until) && s.until > limit.until && s.until <= now() + 7 * 86400e3) {
+        const kind = ['minute', 'hour', 'day', 'concurrent', 'limited'].includes(s.kind) ? s.kind : 'limited';
+        // at = moment du refus ; absent des pauses écrites avant ce correctif (une pause journalière y valait 24 h)
+        const at = Number.isFinite(s.at) ? s.at : kind === 'day' ? s.until - 86400e3 : null;
+        limit = { until: s.until, failures: Math.max(1, Math.min(8, Math.floor(+s.failures || 1))), kind, ...(at != null ? { at } : {}) };
+      }
+      // Quota journalier : jamais au-delà de la première reprise (minuit UTC + 2 min) qui suit le refus. Incident du 8 octobre :
+      // pause de 24 h écrite par l'ancienne version à 14:44 ; l'ancien correctif la ramenait à la reprise suivant « maintenant »
+      // (le lendemain 02:02), ce qui la laissait intacte après minuit. Elle expire désormais à la reprise qui suit le refus.
+      if (limit.kind === 'day' && Number.isFinite(limit.at) && limit.until > dayReset(limit.at)) { limit = { ...limit, until: dayReset(limit.at) }; save(); }
       if (limit.kind === 'day' && limit.until > dayReset(now())) { limit = { ...limit, until: dayReset(now()) }; save(); }
     } catch (e) { /* stockage indisponible ou illisible : la pause en mémoire reste valable */ }
     return { ...limit, active, queued: queue.filter(j => !j.done).length };
@@ -38,11 +45,11 @@ function weatherRequestManager(options) {
     if (!Number.isFinite(delay) || delay < 0) delay = null;
     const backoff = Math.min(15 * 60e3, 60e3 * 2 ** (failures - 1));
     // Ferme la porte dès le statut 429, avant de lire un éventuel corps lent ou absent.
-    limit = { until: Math.max(previous.until, at + Math.max(1000, delay == null ? backoff : delay)), failures, kind: 'limited' }; save();
+    limit = { until: Math.max(previous.until, at + Math.max(1000, delay == null ? backoff : delay)), failures, kind: 'limited', at }; save();
     try { const body = await response.json(); reason = typeof body.reason === 'string' ? body.reason.toLowerCase() : ''; } catch (e) { /* corps absent */ }
     const kind = /daily|per day|tomorrow/.test(reason) ? 'day' : /hourly|next hour/.test(reason) ? 'hour' : /minutely|next minute/.test(reason) ? 'minute' : /concurrent/.test(reason) ? 'concurrent' : 'limited';
     const fallback = kind === 'day' ? dayReset(at, previous.kind === 'day' && failures >= 2) - at : kind === 'hour' ? 3600e3 : backoff;
-    limit = { until: Math.max(state().until, at + Math.max(1000, delay == null ? fallback : delay)), failures, kind }; save();
+    limit = { until: Math.max(state().until, at + Math.max(1000, delay == null ? fallback : delay)), failures, kind, at }; save();
     throw limitedError();
   }
   function finish(job, error, value) {
