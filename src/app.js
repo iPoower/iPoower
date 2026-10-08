@@ -1,8 +1,10 @@
 /* ===================== APPLICATION ===================== */
 const $ = s => document.querySelector(s);
+const APP_STORAGE = (() => { try { return DeviceStorage.guard(localStorage, () => !!window.TWRC_STORAGE_ERROR); }
+  catch (e) { return { getItem: () => null, setItem: () => {}, removeItem: () => {}, key: () => null, length: 0 }; } })();
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* stockage indisponible */ } };
+const lsGet = k => { try { return APP_STORAGE.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { APP_STORAGE.setItem(k, v); } catch (e) { /* stockage indisponible */ } };
 const locHasCoords = l => !!l && Number.isFinite(l.lat) && Number.isFinite(l.lon) && Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180;
 const calendarPlaces = (settings = S) => [...(settings.locs || []), ...(settings.customs || [])];
 const calendarRelevant = e => calendarEventRelevant(e, calendarPlaces());
@@ -45,6 +47,17 @@ function normalize(saved, base) {
   S.customs = saved && Array.isArray(saved.customs) ? saved.customs : clone(base.customs);
   return S;
 }
+// Migration étroite d'une ancienne identité véhicule déjà enregistrée.
+// Elle ne touche qu'à la combinaison historique exacte ; aucun véhicule générique n'est renommé.
+function repairVehicleIdentity(settings) {
+  if (!settings || !Array.isArray(settings.cars)) return false;
+  const car = settings.cars.find(c => c && c.id === '308');
+  if (!car || car.name !== 'Peugeot 308 Féline 2.0 HDi' || car.spec !== '136 ch FAP · 2009 · BVM6 · traction avant') return false;
+  car.name = 'Peugeot 308 2.0 HDi 136 Premium Pack';
+  car.short = '308';
+  car.spec = '136 ch FAP · Premium Pack · 2009 · BVM6 · traction avant';
+  return true;
+}
 // réglages chiffrés (site public) : déchiffrés une fois avec le code, puis gardés sur l'appareil
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function unseal(pass) {
@@ -54,13 +67,39 @@ async function unseal(pass) {
     const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(S0.s), iterations: S0.it, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(S0.i) }, key, b64(S0.c));
     const txt = new TextDecoder().decode(pt); JSON.parse(txt);
-    localStorage.setItem('twrc.plain', txt); localStorage.setItem('twrc.plain.v', window.TWRC_SEALED_V); localStorage.setItem('twrc.key', pass);
+    const restored = await DeviceStorage.unlockPlan(localStorage, pass, crypto);
+    const plan = restored || { writes: {}, remove: [], removePrefixes: [] };
+    Object.assign(plan.writes, { 'twrc.plain': txt, 'twrc.plain.v': String(window.TWRC_SEALED_V), 'twrc.key': pass });
+    // La version restaurée conserve ses modifications ; loadSettings fera la migration si le préréglage a changé.
+    DeviceStorage.apply(localStorage, plan); window.TWRC_STORAGE_ERROR = false; unseal.restored = !!restored;
     return true;
-  } catch (e) { return false; }
+  } catch (e) { unseal.error = e.name === 'OperationError' ? 'Code incorrect.' : 'Déverrouillage impossible : stockage local indisponible. Tes données restent conservées.'; return false; }
 }
-const LOCKED = () => !!window.TWRC_SEALED && !window.TWRC_PRESET;
+const LOCKED = () => DeviceStorage.isFrozen() || !!window.TWRC_STORAGE_ERROR || DeviceStorage.isLocked(localStorage) || !!window.TWRC_SEALED && !window.TWRC_PRESET;
+async function lockDevice(button) {
+  if (DeviceStorage.isFrozen()) return;
+  const pass = lsGet('twrc.key');
+  if (!pass) { alert('Le code de configuration est nécessaire pour protéger tes données.'); return; }
+  if (button) { button.disabled = true; button.textContent = 'Protection des données…'; }
+  try {
+    // Ne pas quitter une session possédant des modifications encore seulement en mémoire.
+    localStorage.setItem('twrc.settings.v1', JSON.stringify(S));
+    if (localStorage.getItem('twrc.settings.v1') !== JSON.stringify(S) || !USER_STORE.retry()) throw new Error('Données locales non confirmées.');
+    DeviceStorage.freeze(true);
+    stopGps();
+    await DeviceStorage.lock(localStorage, pass, crypto);
+    location.reload();
+  } catch (e) {
+    const protectedCopy = DeviceStorage.isLocked(localStorage);
+    DeviceStorage.freeze(protectedCopy);
+    alert(protectedCopy ? 'Copie chiffrée conservée. Le nettoyage local doit être repris ; rouvre l’app.' : 'Verrouillage non effectué : stockage local indisponible. Tes données sont conservées sur cet appareil.');
+    if (protectedCopy) location.reload();
+    else if (button) { button.disabled = false; button.textContent = 'Verrouiller cet appareil'; }
+  }
+}
 // Préréglage éventuel injecté à la construction (version privée uniquement)
-const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET) ? normalize({ ...window.TWRC_PRESET, configured: 1 }, BASE) : clone(BASE);
+const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET && !LOCKED()) ? normalize({ ...window.TWRC_PRESET, configured: 1 }, BASE) : clone(BASE);
+repairVehicleIdentity(DEFAULTS);
 // Configuration privée transmise dans le fragment d'URL (#cfg=...) : jamais envoyée au serveur
 let CFG_IMPORTED = false;
 function hashCfg() {
@@ -93,6 +132,7 @@ function repairStoredWork(saved) {
   lsSet('twrc.settings.v1', JSON.stringify(saved)); return true;
 }
 function loadSettings() {
+  if (window.TWRC_STORAGE_ERROR || DeviceStorage.isLocked(localStorage)) return clone(BASE);
   let saved = null;
   try { saved = JSON.parse(lsGet('twrc.settings.v1') || 'null'); } catch (e) { saved = null; }
   repairStoredWork(saved);
@@ -102,7 +142,7 @@ function loadSettings() {
     const old = saved;
     const keep = saved && Array.isArray(saved.cars) ? Object.assign(saved.cars.map(c => c ? { tire: c.tire ? { pchk: c.tire.pchk, dot: c.tire.dot, tread: c.tire.tread, treadAv: c.tire.treadAv, treadAr: c.tire.treadAr, treadEst: c.tire.treadEst, treads: c.tire.treads, mountKm: c.tire.mountKm, lastRot: c.tire.lastRot } : null, sets: c.sets, photo: c.photo, odo: c.odo } : null), { calib: saved.calib, journal: saved.journal }) : null;
     saved = null; lsSet('twrc.presetv', window.TWRC_PRESET_V);
-    try { localStorage.removeItem('twrc.settings.v1'); } catch (e) { /* stockage indisponible */ }
+    try { APP_STORAGE.removeItem('twrc.settings.v1'); } catch (e) { /* stockage indisponible */ }
     if (keep) {
       const fresh = normalize(null, DEFAULTS);
       keep.forEach((k, i) => { const c = fresh.cars[i]; if (!k || !c) return; if (k.sets) c.sets = k.sets; if (k.photo) c.photo = k.photo; if (k.odo) c.odo = k.odo;
@@ -117,11 +157,12 @@ function loadSettings() {
     saved = { ...hc.cfg, configured: 1 }; CFG_IMPORTED = true;
     lsSet('twrc.cfghash', hc.raw); lsSet('twrc.settings.v1', JSON.stringify(saved));
   }
+  if (repairVehicleIdentity(saved)) lsSet('twrc.settings.v1', JSON.stringify(saved));
   return normalize(saved, DEFAULTS);
 }
 let S = loadSettings();
 const saveSettings = () => { S.configured = 1; lsSet('twrc.settings.v1', JSON.stringify(S)); };
-let TRIPCANCEL = {}; try { TRIPCANCEL = TripCancel.load(localStorage, Date.now()); } catch (e) { /* stockage indisponible */ }
+let TRIPCANCEL = {}; try { TRIPCANCEL = TripCancel.load(APP_STORAGE, Date.now()); } catch (e) { /* stockage indisponible */ }
 let TRIPCANCELTIMER = null;
 // position réelle (GPS du téléphone) : reste sur l'appareil
 // @include app/user-context.js
@@ -234,7 +275,7 @@ const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, cha
   // dernier onglet ouvert restauré, TRAJET compris (reprise hors connexion)
   view: ['meteo', 'trajet', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
   outfitOccasion: 'outing', placeExpanded: null };
-const DECISION_HISTORY = Decision.history(typeof localStorage !== 'undefined' ? localStorage : null);
+const DECISION_HISTORY = Decision.history(APP_STORAGE);
 let DECISION_LAST = null;
 
 const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
@@ -549,6 +590,7 @@ function placeDiagRows(forCopy) {
 }
 function alertLoc(msg) { const el = $('#locMsg'); if (el) { el.textContent = msg; el.hidden = !msg; } }
 async function refreshAll(force = true) {
+  if (DeviceStorage.isFrozen() || DeviceStorage.isLocked(localStorage) || window.TWRC_STORAGE_ERROR) { renderStatus(); renderNotice(); return; }
   if (busy) return;
   if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
   busy = true; DEMO.on = false; lastTry = Date.now(); renderStatus();
@@ -787,11 +829,12 @@ function renderSrc() {
 }
 function renderNotice() {
   const m = M[UI.loc], el = $('#notice');
+  if (window.TWRC_STORAGE_ERROR) { el.innerHTML = '<div class="note lvx" role="alert"><b>RÉCUPÉRATION LOCALE</b><span>Une restauration interrompue reste protégée. Libère de l’espace de stockage puis rouvre l’app ; aucun réglage personnel n’est chargé.</span></div>'; return; }
   $('#demoBar').innerHTML = DEMO.on ? `<div class="demo-bar"><b>MODE DÉMO · DONNÉES SIMULÉES, PAS DE MÉTÉO RÉELLE</b><span>${esc(DEMO_SCN[DEMO.scn].name)}</span>
     <select id="demoScn" data-act-change="demoScn" aria-label="Scénario de démo">${Object.keys(DEMO_SCN).map(k => `<option value="${k}" ${k === DEMO.scn ? 'selected' : ''}>${esc(DEMO_SCN[k].name)}</option>`).join('')}</select>
     <button class="btn sm" data-act="demo-off">Quitter la démo</button></div>` : '';
-  const lock = LOCKED() && !lsGet('twrc.nocode') ? `<div class="note lvx unlock"><b>🔒 CONFIGURATION</b><span>Réglages personnels chiffrés. Entre ton code une seule fois sur cet appareil.
-      <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button></form><span class="sub">Accepte « Enregistrer le mot de passe » : l’iPhone le remplira ensuite avec Face ID.</span><span class="sub">Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button></span><span class="sub" id="unlockMsg"></span></span></div>` : '';
+  const lock = LOCKED() && !lsGet('twrc.nocode') ? `<div class="note lvx unlock"><b>🔒 CONFIGURATION</b><span>${DeviceStorage.isLocked(localStorage) ? 'Tes réglages et ton journal sont conservés dans une copie chiffrée. Déverrouille cet appareil avec ton code.' : 'Réglages personnels chiffrés. Entre ton code une seule fois sur cet appareil.'}
+      <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" aria-label="Code de configuration" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button></form><span class="sub">Accepte « Enregistrer le mot de passe » : l’iPhone le remplira ensuite avec Face ID.</span><span class="sub">${DeviceStorage.isLocked(localStorage) ? '' : 'Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button>'}</span><span class="sub" id="unlockMsg"></span></span></div>` : '';
   const setup = lock || (CFG_IMPORTED ? `<div class="note lv0"><b>CONFIGURÉ</b><span>Tes lieux et tes voitures sont enregistrés sur cet appareil. Ajoute la page à l’écran d’accueil depuis ce lien.</span></div>`
     : !S.configured ? `<div class="note lvx"><b>À CONFIGURER</b><span>Renseigne tes lieux et tes voitures dans les paramètres. Ils restent sur cet appareil. <button class="btn sm" data-act="goset-cfg">Ouvrir les paramètres</button></span></div>` : '');
   // Une réponse météo peut arriver entre la saisie et la validation du code.
@@ -828,6 +871,17 @@ function renderBanners() {
   const top = Object.values(alerts).filter(a => S.alerts[a.id] && a.sev >= 2 && a.id !== 'fog' && a.id !== 'vis' && !(UI.view === 'meteo' && TIRE_ALERTS.includes(a.id))).sort((a, b) => b.sev - a.sev).slice(0, 3);
   if (top.length) h += '<div class="notes">' + top.map(a => `<div class="note lv${a.sev}"><b>${a.sev >= 3 ? 'DANGER' : 'ATTENTION'}</b><span>${esc(a.title)}</span></div>`).join('') + '</div>';
   el.innerHTML = h;
+}
+
+function decisionOpenCarChooser() {
+  if (UI.view === 'analyse' || UI.view === 'trajet') chooseView('pneus');
+  const editor = $('#dayContext details.day-editor');
+  if (!editor) return false;
+  editor.open = true;
+  const group = $('#dayContext [role="group"][aria-label="Voiture active"]');
+  if (!group) return false;
+  group.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+  return true;
 }
 
 function renderDecisionCore() {
@@ -881,7 +935,7 @@ function renderDecisionCore() {
   el.hidden = false;
   el.innerHTML = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + '</p></div>' +
     '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b></span></div>' +
-    '<div class="decision-meta"><span>Destination · <b>' + esc(destination) + '</b></span><span>Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + '</span><span>' + esc(fresh) + '</span></div>' +
+    '<div class="decision-meta"><span>Destination · <b>' + esc(destination) + '</b></span><span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span><span>' + esc(fresh) + '</span></div>' +
     (confidence.level > 0 && confidence.reasons.length ? '<div class="decision-why">' + confidence.reasons.map(r => '<span>' + esc(r) + '</span>').join('') + '</div>' : '') + changesHtml;
 }
 
@@ -1453,11 +1507,7 @@ async function backupExport() {
   } catch (e) { bkMsg('Échec de la sauvegarde : ' + (e.message || e)); }
 }
 function backupApplyPlan(plan) {
-  const keys = [];
-  try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch (e) { /* stockage indisponible */ }
-  keys.filter(Boolean).filter(k => plan.removePrefixes.some(p => k.startsWith(p))).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
-  plan.remove.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
-  Object.entries(plan.writes).forEach(([k, v]) => lsSet(k, v));
+  DeviceStorage.apply(localStorage, plan);
 }
 async function backupImport(f) {
   bkMsg('Lecture du fichier…');
@@ -1477,9 +1527,12 @@ async function backupImport(f) {
   const version = data.v >= 2 ? 'V2' : 'V1';
   const kept = plan.kept ? `\n\nJournal des trajets conservé : ${plan.kept} trajet${plan.kept > 1 ? 's' : ''} de ce téléphone ${data.v >= 2 ? 'ajouté' : 'gardé'}${plan.kept > 1 ? 's' : ''}.` : '';
   if (!confirm(`Remplacer les réglages de ce téléphone par la sauvegarde ${version} du ${when} ?${kept}`)) { bkMsg('Import annulé.'); return; }
-  backupApplyPlan(plan);
-  if (window.TWRC_PRESET_V) lsSet('twrc.presetv', window.TWRC_PRESET_V);
-  lsSet('twrc.lastbackup', String(data.at).slice(0, 10));
+  if (window.TWRC_PRESET_V) plan.writes['twrc.presetv'] = String(window.TWRC_PRESET_V);
+  plan.writes['twrc.lastbackup'] = String(data.at).slice(0, 10);
+  try { backupApplyPlan(plan); }
+  catch (e) { bkMsg(e.recoveryPending ? 'Import interrompu : la copie de récupération est conservée. Libère de l’espace puis rouvre l’app.' : 'Import non appliqué : stockage local indisponible. Tes réglages et ton journal précédents sont conservés.'); return; }
+  // Les anciens moteurs encore en mémoire ne doivent pas réécrire l'état importé avant le rechargement.
+  DeviceStorage.freeze(true);
   bkMsg(`✅ Sauvegarde ${version} restaurée. Redémarrage…`);
   setTimeout(() => location.reload(), 600);
 }
@@ -1801,7 +1854,7 @@ function liveDoneHas(t, all) {
 const TRIPDONE = 'twrc.tripdone';
 // « 🚗 Je pars maintenant » : départ déclaré (clé du trajet, heure, origine), relu au rechargement ; fin de trajet : résumé pour Analyse
 const TRIPSTART_KEY = 'twrc.tripstart.v1', TRIPEND_KEY = 'twrc.tripend.v1';
-const lsPut = (k, v) => { if (v) lsSet(k, JSON.stringify(v)); else { try { localStorage.removeItem(k); } catch (e) { /* stockage indisponible */ } } };
+const lsPut = (k, v) => { if (v) lsSet(k, JSON.stringify(v)); else { try { APP_STORAGE.removeItem(k); } catch (e) { /* stockage indisponible */ } } };
 const tripStartSave = v => { TRIPSTART = v; USER_STORE.flush(); };
 const tripEndSave = v => { TRIPEND = v; USER_STORE.flush(); };
 function liveDonePersist(key, how) {
@@ -2263,7 +2316,7 @@ function tripCancelSchedulePurge() {
   TRIPCANCELTIMER = setTimeout(() => {
     TRIPCANCELTIMER = null;
     const before = Object.keys(TRIPCANCEL || {}).length;
-    TRIPCANCEL = TripCancel.save(localStorage, TRIPCANCEL, Date.now());
+    TRIPCANCEL = TripCancel.save(APP_STORAGE, TRIPCANCEL, Date.now());
     const changed = Object.keys(TRIPCANCEL || {}).length !== before;
     tripCancelSchedulePurge();
     if (changed) tripCancelChanged();
@@ -2312,13 +2365,13 @@ function tripCancelStart(key) {
   if (!window.confirm(t.src === 'work' ? 'Annuler les trajets aller et retour domicile-travail pour aujourd’hui sur cet appareil ?' : 'Annuler les trajets aller et retour de ce rendez-vous sur cet appareil ? Le rendez-vous reste dans Google Agenda.')) return;
   TRIPCANCELNOTICE = '';
   TRIPCANCEL = TripCancel.cancel(TRIPCANCEL, id, exp, now);
-  try { TRIPCANCEL = TripCancel.save(localStorage, TRIPCANCEL, now); } catch (e) { /* état en mémoire */ }
+  try { TRIPCANCEL = TripCancel.save(APP_STORAGE, TRIPCANCEL, now); } catch (e) { /* état en mémoire */ }
   tripCancelChanged();
 }
 function tripCancelUndo(id) {
   if (!TripCancel.undoable(TRIPCANCEL, Date.now()).some(e => e.id === id)) return;
   TRIPCANCEL = TripCancel.undo(TRIPCANCEL, id, Date.now());
-  try { TRIPCANCEL = TripCancel.save(localStorage, TRIPCANCEL, Date.now()); } catch (e) { /* état en mémoire */ }
+  try { TRIPCANCEL = TripCancel.save(APP_STORAGE, TRIPCANCEL, Date.now()); } catch (e) { /* état en mémoire */ }
   tripCancelChanged();
 }
 // navigation externe : Waze (lien universel), ouvert UNIQUEMENT par un geste de l'utilisateur. Seule la destination est transmise :
@@ -3326,6 +3379,7 @@ function renderAlerts() {
 const bindIn = (path, val, o = {}) => `<div class="fld${o.wide ? ' wide' : ''}"><label for="f-${path.replace(/\./g, '-')}">${o.label}</label><input type="${o.type || 'text'}" id="f-${path.replace(/\./g, '-')}" data-bind="${path}" ${o.num ? 'data-num="1"' : ''} ${o.attrs || ''} value="${esc(val == null ? '' : val)}" ${o.ph ? `placeholder="${esc(o.ph)}"` : ''}></div>`;
 function renderSettings(force) {
   const el = $('#settingsBody'); if (!el) return;
+  if (DeviceStorage.isLocked(localStorage) || window.TWRC_STORAGE_ERROR) { el.innerHTML = '<p>Déverrouille la configuration pour retrouver tes réglages et ton journal conservés sur cet appareil.</p>'; return; }
   const d = $('#settings'); if (!force && d && !d.open) { el.innerHTML = ''; el.dataset.stale = '1'; return; }
   el.dataset.stale = '';
   const carSet = S.cars.map((c, i) => `<div class="set-sec"><h3>${esc(c.name)}</h3>${c.photo ? `<div class="chips"><button class="btn sm" data-act="photo-del" data-i="${i}">Retirer la photo</button></div>` : ''}
@@ -3432,12 +3486,13 @@ document.addEventListener('click', async e => {
   if (a === 'day-destination') { if (t.dataset.agendaKey) appChooseAgendaDestination(t.dataset.agendaKey); else appChooseDestination(t.dataset.id || null); return; }
   if (a === 'day-type') { appSetDayType(t.dataset.v); return; }
   if (a === 'day-car') { appSetCar(t.dataset.id || null); return; }
+  if (a === 'decision-car-change') { decisionOpenCarChooser(); return; }
   if (a === 'refresh') refreshAll();
   else if (a === 'unlock') {
     const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
-    const ok = await unseal(pw.trim()); if (ok) { try { localStorage.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } location.reload(); } else if (msg) msg.textContent = 'Code incorrect.';
+    const ok = await unseal(pw.trim()); if (ok) { if (!unseal.restored) { try { APP_STORAGE.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } } location.reload(); } else if (msg) msg.textContent = unseal.error || 'Code incorrect.';
   }
-  else if (a === 'lock') { ['twrc.plain', 'twrc.plain.v', 'twrc.key'].forEach(k => { try { localStorage.removeItem(k); } catch (err) { /* stockage */ } }); location.reload(); }
+  else if (a === 'lock') { await lockDevice(t); }
   else if (a === 'locate') locate(true);
   else if (a === 'trip-preview') tripPreviewStart(t.dataset.key);
   else if (a === 'trip-cancel') tripCancelStart(t.dataset.key);
@@ -3509,6 +3564,12 @@ document.addEventListener('click', async e => {
   else if (a === 'debrief-clear') debriefClear();
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
   else if (a === 'trip-start') liveStart(t.dataset.key);
+  else if (a === 'lab-drive-forget') {
+    const car = labCar(); if (!car || DEMO.on || LIVE.phase === 'active') return;
+    const history = ttLoad(); delete history[car.id]; lsSet(TT_KEY, JSON.stringify(history));
+    LAB_DRIVE_NOTE[car.id] = { text: 'Historique thermique oublié pour cette voiture.' };
+    renderLab.clearDriveDraft = true; renderAll();
+  }
   else if (a === 'place-confirm') placeConfirm(t.dataset.place, t.dataset.how);
   else if (a === 'place-toggle') {
     const d = placeDisclosure(placeNow()), focused = document.activeElement === t;
@@ -3565,10 +3626,22 @@ function resizePhoto(file, maxW) {
   });
 }
 document.addEventListener('submit', async e => {
+  if (e.target && e.target.id === 'labLastDriveForm') {
+    e.preventDefault(); const form = e.target, car = labCar(); if (!car || form.dataset.car !== car.id || DEMO.on) return;
+    const data = new FormData(form), input = labInput(car);
+    if (LIVE.phase === 'active') input.drive = { ...(input.drive || {}), active: true };
+    const result = tyreLabLastDrive(input, { at: data.get('at'), minutes: data.get('minutes'), kind: data.get('kind') });
+    if (result.ok) {
+      ttLoad()[car.id] = result.history; lsSet(TT_KEY, JSON.stringify(ttLoad()));
+      LAB_DRIVE_NOTE[car.id] = { text: 'Roulage enregistré sur cet appareil. Température estimée à partir de votre saisie.' };
+      renderLab.clearDriveDraft = true;
+    } else LAB_DRIVE_NOTE[car.id] = { text: result.error, error: true };
+    renderAll(); return;
+  }
   if (!e.target || e.target.id !== 'unlockForm') return;
   e.preventDefault();
   const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
-  const ok = await unseal(pw.trim()); if (ok) { try { localStorage.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } location.reload(); } else if (msg) msg.textContent = 'Code incorrect.';
+  const ok = await unseal(pw.trim()); if (ok) { if (!unseal.restored) { try { APP_STORAGE.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } } location.reload(); } else if (msg) msg.textContent = unseal.error || 'Code incorrect.';
 });
 document.addEventListener('change', e => {
   const t = e.target;

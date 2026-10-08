@@ -9,8 +9,10 @@ const defer = () => { let resolve, reject; const promise = new Promise((ok, no) 
 const weather = origin => ({ hourly: { time: ['2026-10-04T00:00'] }, origin });
 const turn = () => new Promise(resolve => setImmediate(resolve));
 function setup() {
+  const DeviceStorage = { isFrozen: () => false, isLocked: () => false };
   const c = { Date, Promise, Map, Set, GPS: { ...A }, gpsWeatherGen: 1, DEMO: { on: false }, ENSRAW: {}, AQRAW: {}, AQERR: {}, AQBUSY: new Set(), AQREQ: new Map(), RAW: {}, ERR: {}, UI: { loc: 'gps' }, busy: false, lastOk: null, lastTry: null, MIDP: {}, OBS: null, location: { protocol: 'http:' } };
   c.distKm = (a, b) => Math.abs(a.lat - b.lat) * 111;
+  Object.assign(c, { DeviceStorage, localStorage: {}, window: {} });
   c.allLocs = () => c.GPS ? [c.GPS] : [];
   c.offlineNow = () => false; c.markOfflineCache = () => {};
   for (const name of ['rebuild', 'softRender', 'renderAll', 'renderStatus', 'fetchVigi', 'radarRefresh', 'loadCalendar', 'renderAir']) c[name] = () => {};

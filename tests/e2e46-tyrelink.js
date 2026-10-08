@@ -1,6 +1,7 @@
 // Liaison Pneus → Analyse (une seule source de vérité) : une saisie dans l'onglet Pneus (profondeur, pression, DOT, type de
 // monte) est reprise immédiatement par Analyse, survit au rechargement et reste disponible hors connexion ; un changement de
-// monte invalide l'ancienne mémoire thermique ; un jeu stocké n'est jamais analysé ; aucune saisie dans Analyse.
+// monte invalide l'ancienne mémoire thermique ; un jeu stocké n'est jamais analysé ; aucune seconde saisie des pneus
+// dans Analyse. Le formulaire distinct « Dernier roulage » ne renseigne que l'historique de conduite.
 const fs = require('fs'), vm = require('vm');
 const src = fs.readFileSync('engine.js', 'utf8') + fs.readFileSync('demo.js', 'utf8');
 const PW = fs.readFileSync('.passphrase', 'utf8').trim(), SP = process.env.SP, html = fs.readFileSync('site/index.html', 'utf8');
@@ -59,7 +60,8 @@ const diag = p => p.evaluate(() => { document.getElementById('settings').open = 
   try {
     const s = await session(b, { at: '2026-10-03T07:00:00+02:00', scn: 'pluie', dev: 'pc' });
     let t = await labTxt(s.p);
-    check('F · Analyse lit la monte active de Pneus (pneu été, dimension saisie), sans formulaire propre', /Monte active : été/.test(t) && /215\/40 ZR18 89Y XL/.test(t) && !(await s.p.$('#secLab input')), t.slice(0, 200));
+    const tyreInputsAbsent = await s.p.evaluate(() => [...document.querySelectorAll('#secLab input, #secLab select')].every(e => e.closest('#labLastDriveForm') && !e.dataset.bind));
+    check('F · Analyse lit la monte active de Pneus (pneu été, dimension saisie), sans seconde saisie des pneus', /Monte active : été/.test(t) && /215\/40 ZR18 89Y XL/.test(t) && tyreInputsAbsent, t.slice(0, 200));
     // A · profondeur saisie dans Pneus → Analyse (aquaplaning, qualité des données)
     await field(s.p, 'cars.0.tire.treadAv', '2.4'); await field(s.p, 'cars.0.tire.treadAr', '2.4'); await s.settle(2); t = await labTxt(s.p);
     check('A · profondeur 2,4 mm saisie dans Pneus : reprise immédiatement (mesurée par vous) et aquaplaning recalculé', /Profondeur : 2,4 mm, mesurée par vous/.test(t) && /Profondeur 2,4 mm/.test(t), t.slice(0, 600));

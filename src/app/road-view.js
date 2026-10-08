@@ -2,7 +2,7 @@
 const ROAD = { manager: null, alert: null, alertAt: 0, key: null, route: null };
 function roadManager() {
   if (!ROAD.manager) {
-    let storage = null; try { storage = localStorage; } catch (e) { /* stockage bloqué */ }
+    let storage = null; try { storage = APP_STORAGE; } catch (e) { /* stockage bloqué */ }
     ROAD.manager = new RoadProviders.Manager({ providers: [new RoadProviders.DatexRoadProvider((u, o) => fetch(u, o))], storage, onChange: renderRoad });
   }
   return ROAD.manager;

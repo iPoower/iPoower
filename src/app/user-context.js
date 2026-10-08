@@ -3,7 +3,7 @@
  * projection commune AVANT le rendu de Pneus, Météo, Tenue, Analyse et Agenda.
  */
 const USER_STORE = userContextStore({ read: lsGet, write: (k, v) => {
-  if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v);
+  if (v == null) APP_STORAGE.removeItem(k); else APP_STORAGE.setItem(k, v);
 } });
 ['GPS', 'PLACE', 'TRIPSTART', 'TRIPEND', 'RETURNHOME'].forEach((name, i) => {
   const field = ['gps', 'place', 'tripStart', 'tripEnd', 'returnHome'][i];
@@ -117,6 +117,8 @@ function appRefreshContext({ persist = true } = {}) {
 }
 USER_STORE.subscribe(() => { if (APP_CONTEXT.ready && !APP_CONTEXT.rendering) renderAll(); });
 window.addEventListener('storage', e => {
+  if (e.key === DeviceStorage.VAULT) { DeviceStorage.freeze(!!e.newValue); location.reload(); return; }
+  if (LOCKED()) return;
   if (e.key !== USER_STORE.key || !e.newValue) return;
   APP_CONTEXT.rendering = true;
   const changed = USER_STORE.receive(e.newValue);
