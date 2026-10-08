@@ -161,6 +161,7 @@ check('AGENDA : lieu B confirmé sans GPS invalide la route de démonstration du
   const adapted = a.appAgendaLeg(first, old);
   assert.equal(adapted.from.id, 'b'); assert.equal(adapted.from.city, 'Lieu B');
   assert.equal(adapted.originName, 'Lieu B'); assert.equal(adapted.targetArr, old.arr);
+  assert.equal(adapted.originPlannedDep, old.dep);
   assert.equal(adapted.originRecalc, true); assert.equal(adapted.originPending, true);
   assert.equal(adapted.km, null); assert.equal(adapted.min, null); assert.equal(adapted.routed, false);
   assert.deepEqual(Array.from(adapted.g), []); assert.deepEqual(Array.from(adapted.pts), []);
@@ -176,6 +177,15 @@ check('AGENDA : lieu B confirmé sans GPS invalide la route de démonstration du
   assert.equal(a.appAgendaLeg(first, old), old, 'confirmation de la veille non imposée');
   a.placeNow = () => ({ source: 'manual', confirmed: { at: now }, place: places[0] });
   assert.equal(a.appAgendaLeg(first, old), old, 'pas de recalcul si origine identique');
+  a.placeNow = () => ({ source: 'manual', confirmed: { at: now }, place: places[2] });
+  const appSource = fs.readFileSync(require('node:path').resolve(__dirname, '../src/app.js'), 'utf8');
+  a.TripCancel = { eventId: () => 'id-fixture' };
+  vm.runInContext(appSource.slice(appSource.indexOf('function calendarTripKey('), appSource.indexOf('function liveDoneHas(')), a);
+  const key = a.calendarTripKey(first, old);
+  assert.equal(a.calendarTripKey(first, adapted), key, 'même clé technique après recalcul de départ');
+  a.USER_STORE.state.done = { [key]: { how: 'confirmé', at: now, exp: now + 86400000 } };
+  assert.equal(a.appAgendaLeg(first, old), old, 'arrivée enregistrée : aucun nouveau trajet créé');
+  assert.equal(a.appAgendaLeg(second, later).from.id, 'b', 'prochain aller non terminé devient le suivant');
 });
 check('observation GPS cohérente plus récente invalide une ancienne origine sans inventer de destination', () => {
   const a = appFixture(); a.placeToday = () => '2026-10-06'; a.placeNow = () => ({ source: 'last', place: places[1] });
