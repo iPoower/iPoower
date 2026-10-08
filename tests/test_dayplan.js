@@ -112,6 +112,12 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(endings.length, 1); assert.equal(endings[0].time, time('10:00'));
     assert(!result.timeline.find(row => row.start === time('09:00')).actions.length);
   });
+  test('désaccord de modèles (AROME 0 mm, modèle de base 0,5 mm) : la pluie n’est pas déclarée finie', () => {
+    const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { P: 1 }) }),
+      moment('09:00', '10:00', 22, { weather: sample(22, { P: 0, pp: 0, Pb: 0.5 }) }), moment('10:00', '20:00', 22)]);
+    const endings = result.actions.filter(action => /range l.imperméable/.test(action.text));
+    assert.equal(endings.length, 1); assert.equal(endings[0].time, time('10:00'));
+  });
   test('quantité ou probabilité isolées et code inconnu ne prouvent pas un temps sec', () => {
     for (const partial of [{ P: 0, pp: null }, { P: null, pp: 0 }, { P: null, pp: null, code: 999 }]) {
       const result = plan([moment('08:00', '09:00', 22, { weather: sample(22, { P: 1 }) }),

@@ -178,7 +178,7 @@ function buildHours(p) {
     t: ts, date: ts.slice(0, 10), hh: +ts.slice(11, 13),
     T: g('temperature_2m', i), RH: g('relative_humidity_2m', i), Td: g('dew_point_2m', i), Tapp: g('apparent_temperature', i),
     pp: g('precipitation_probability', i), P: g('precipitation', i), rain: g('rain', i), snow: g('snowfall', i),
-    code: g('weather_code', i), pres: g('pressure_msl', i), cloud: g('cloud_cover', i), vis: g('visibility', i),
+    code: g('weather_code', i), Pb: g('precipitation_base', i), ar: g('precipitation_arome', i) === 1, pres: g('pressure_msl', i), cloud: g('cloud_cover', i), vis: g('visibility', i),
     wind: g('wind_speed_10m', i), gust: g('wind_gusts_10m', i), rad: g('shortwave_radiation', i), uv: g('uv_index', i)
   }));
   hs.forEach(x => { x.Pl = (x.snow || 0) > 0.05 ? 0 : x.P; });
@@ -583,18 +583,29 @@ function validForecast(p) {
   if (T.filter(v => typeof v === 'number' && isFinite(v)).length < t.length / 2) return 'températures majoritairement manquantes';
   return null;
 }
-function mergeArome(base, ar) {
+function mergeArome(src, ar) {
+  // Copie : la réponse de base reste intacte dans le cache de requêtes (un ancien AROME ne s'y incruste jamais).
+  // La quantité du modèle de base remplacée par AROME est gardée (precipitation_base) : la probabilité de pluie, elle,
+  // vient toujours du modèle de base ; leur désaccord doit pouvoir être expliqué au lieu de produire deux messages opposés.
+  const base = src && typeof src === 'object' ? { ...src } : src;
+  if (!base) return base;
   base.__arome = { hours: 0, until: null };
   if (!ar || !ar.hourly || !Array.isArray(ar.hourly.time) || !base.hourly) return base;
-  const H = base.hourly, A = ar.hourly, idx = new Map(H.time.map((t, i) => [t, i]));
+  const H = base.hourly = { ...base.hourly }, A = ar.hourly, idx = new Map(H.time.map((t, i) => [t, i]));
+  Object.keys(H).forEach(k => { if (Array.isArray(H[k])) H[k] = H[k].slice(); });
+  if (base.current) base.current = { ...base.current };
   const ct = (base.current && base.current.time) || (ar.current && ar.current.time);
   const limit = ct ? addMin(ct.slice(0, 13) + ':00', 48 * 60) : null;
+  const Pb = H.time.map(() => null), ARH = H.time.map(() => 0);
   A.time.forEach((t, j) => {
     const i = idx.get(t); if (i == null || (limit && t > limit)) return;
     let any = false;
-    Object.keys(A).forEach(k => { if (k === 'time' || !Array.isArray(H[k]) || !Array.isArray(A[k])) return; const v = A[k][j]; if (typeof v === 'number' && isFinite(v)) { H[k][i] = v; any = true; } });
+    Object.keys(A).forEach(k => { if (k === 'time' || !Array.isArray(H[k]) || !Array.isArray(A[k])) return; const v = A[k][j]; if (typeof v === 'number' && isFinite(v)) {
+      if (k === 'precipitation') { Pb[i] = num(H[k][i]); ARH[i] = 1; }
+      H[k][i] = v; any = true; } });
     if (any) { base.__arome.hours++; base.__arome.until = t; }
   });
+  if (base.__arome.hours) { H.precipitation_base = Pb; H.precipitation_arome = ARH; }
   if (ar.current && base.current) Object.keys(ar.current).forEach(k => { const v = ar.current[k]; if (k !== 'time' && k !== 'interval' && typeof v === 'number' && isFinite(v)) base.current[k] = v; });
   return base;
 }

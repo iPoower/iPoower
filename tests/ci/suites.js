@@ -66,6 +66,7 @@ SUITE.push(['test_reliability.js', 'fiabilité : journal runtime privé, anti-bo
 SUITE.push(['test_backup.js', 'sauvegarde V2 : contexte durable, confidentialité, compatibilité V1 et journal des trajets jamais effacé', false],
   ['e2e58-import-journal.js', 'import d’une sauvegarde : journal des trajets conservé, trajet clos non redemandé, iPhone/PC et reload', true]);
 SUITE.push(['e2e60-lock.js', 'verrouillage réel puis déverrouillage, import refusé sans faux succès, iPhone/PC (vérification indépendante de l’audit A01/A02)', true]);
+SUITE.push(['e2e61-rain-signal.js', 'pluie possible : AROME 0 mm contre 90 % du modèle de base, sources citées, score prudent et Tenue cohérente, iPhone/PC (audit A03)', true]);
 SUITE.push(['e2e59-brief-gum.js', 'briefing : gomme estimée au départ et à l’arrivée, fenêtre atteinte ou non, Détail → Analyse, iPhone/PC', true]);
 SUITE.push(['test_decision.js', 'synthèse : décision, confiance qualitative et changements significatifs', false]);
 SUITE.push(['test_geosearch.js', 'géocodage : adresse France IGN/BAN, monde OSM et replis réseau', false]);

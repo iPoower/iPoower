@@ -30,7 +30,7 @@ function sartorialAdvice(samples, occasion) {
   const freezingRain = samples.some(x => [56, 57, 66, 67].includes(x.code));
   const storm = samples.some(x => [95, 96, 99].includes(x.code));
   const wet = snowy || freezingRain || storm || (pp != null && pp >= 50) || (rain != null && rain >= 0.1) ||
-    samples.some(x => [51, 53, 55, 61, 63, 65, 80, 81, 82].includes(x.code));
+    samples.some(x => [51, 53, 55, 61, 63, 65, 80, 81, 82].includes(x.code) || (finite(x.Pb) && x.Pb >= 0.2));   // même signal que « pluie possible » de l'onglet Météo
   const breezy = (gust != null && gust >= 35) || (wind != null && wind >= 25);
   const strongWind = (gust != null && gust >= 50) || (wind != null && wind >= 40);
   const walk = occasion === 'walk', formal = occasion === 'office';
