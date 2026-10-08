@@ -63,7 +63,7 @@ console.log(relevantCount+'/'+relevantCount+' scénarios pertinence agenda OK');
 const cars=[
  {id:'i20',short:'i20 N',sporty:true,tire:{type:'summer',size:'215/40 R18 89Y XL',tread:null},plan:{on:true,date:''}},
  {id:'308',short:'308',sporty:false,tire:{type:'allseason',size:'225/45 R17 94W',tread:null},plan:{on:false}}];
-const loc={id:'ros',lat:49.8167,lon:2.7};
+const loc={id:'villeA',lat:48.85,lon:2.35};   // lieu fictif (aucune donnée personnelle)
 for(const k of ['froid','pluie','neige','doux']){
   const p=A.makeDemoPayload(k,loc); const m=A.makeModel(p,'demo',loc);
   console.log('\n=== '+k+' nowI',m.nowI,m.nowStr,'hours',m.hs.length,'days',m.days.length);
@@ -79,4 +79,29 @@ for(const k of ['froid','pluie','neige','doux']){
   const s1=A.seasonAnalysis(m,cars[0]); console.log(' season i20:',s1.level,s1.title,'|',s1.text, 'days',s1.days.length);
   const s2=A.seasonAnalysis(m,cars[1]); console.log(' season 308:',s2.level,s2.title);
   const al=A.computeAlerts(m,cars,{rainThr:5},{i20:s1,'308':s2}); console.log(' alerts',Object.values(al).map(a=>a.id+':'+a.sev).join(' '));
+}
+
+const plusDays=(date,n)=>{const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
+{
+  const p=A.makeDemoPayload('froid',loc),m=A.makeModel(p,'demo',loc),today=m.nowStr.slice(0,10);
+  const estimated=plusDays(today,30),appointment=plusDays(today,20);
+  const car={id:'winter-plan',short:'Test',sporty:false,tire:{type:'summer',size:'205/55 R16',tread:null},
+    plan:{on:true,date:estimated,appointmentDate:appointment,appointmentConfirmed:0,etaFrom:plusDays(today,24),etaTo:plusDays(today,25)}};
+  let s=A.seasonAnalysis(m,car);
+  assert.equal(s.countdown.kind,'estimated');
+  assert.equal(s.countdown.date,estimated);
+  assert.equal(s.countdown.n,30);
+  assert(s.countdown.weatherCoveredDays>0);
+  assert(s.countdown.weatherRemainingDays>0);
+  assert.equal(s.countdown.weatherCoveredDays+s.countdown.weatherRemainingDays,30);
+  car.plan.appointmentConfirmed=1;
+  s=A.seasonAnalysis(m,car);
+  assert.equal(s.countdown.kind,'confirmed');
+  assert.equal(s.countdown.date,appointment);
+  assert.equal(s.countdown.n,20);
+  assert.equal(s.countdown.weatherCoveredDays+s.countdown.weatherRemainingDays,20);
+  car.plan.date='';
+  s=A.seasonAnalysis(m,car);
+  assert.equal(s.countdown.date,appointment);
+  console.log('✅ cycle hiver : estimation, rendez-vous confirmé et couverture météo séparés');
 }

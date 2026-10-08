@@ -76,7 +76,7 @@ async function session(b, iso, opt = {}) {
   const txt = () => p.$eval('#secBrf', x => x.innerText.replace(/\n+/g, ' ⏎ ').replace(/[ \t]+/g, ' ').trim()).catch(() => '(absent)');
   const waitFor = async (re, n = 40) => { let t = ''; for (let k = 0; k < n; k++) { t = await txt(); if (re.test(t) && !/⏳/.test(t)) return t; await p.clock.runFor(700); await p.waitForTimeout(200); } return t; };
   const to = async iso2 => { const t = new Date(iso2).getTime(); if (t > S.now) await p.clock.fastForward(t - S.now); S.now = t; };
-  const fix = async (g, o = {}) => { await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { lat: g.lat, lon: g.lon, acc: 25, age: 0, speed: null, ...o }); };
+  const fix = async (g, o = {}) => { await require('./lib/geo-fixture-time').coherentTime(p, g, o); await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { lat: g.lat, lon: g.lon, acc: 25, age: 0, speed: null, ...o }); };
   const enableGps = async (g, o = {}) => { await p.evaluate(x => window.__geoSet(x), { lat: g.lat, lon: g.lon, acc: 25, age: 0, ...o }); await p.evaluate(() => locate(true)); await settle(6); };
   return { c, p, S, txt, waitFor, to, fix, enableGps, settle };
 }
@@ -100,7 +100,7 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
     check('7 · arrivée mémorisée : clé du trajet seulement, aucune coordonnée', /leg\|2026-10-03T15:35\|go/.test(ls) && !/\d\.\d/.test(ls), ls);
     s.S.reloading = true; await p.reload(); for (let k = 0; k < 40; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(300); await p.waitForTimeout(200); } s.S.reloading = false;
     await s.settle(6); t = await s.txt();
-    check('7 · après rechargement : le trajet terminé ne réapparaît pas', !/Assurance/.test(t) && /Concert/.test(t), t.slice(0, 140));
+    check('7 · après rechargement : le trajet terminé ne redevient pas le trajet actif', !/Assurance/.test(main(t)) && /Concert/.test(t), t.slice(0, 140));
   }
   // ===== 13. annuler l'arrivée : le trajet revient, plus d'arrivée automatique pendant 10 min (confirmation manuelle) =====
   {
@@ -204,7 +204,7 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
     await p.evaluate(() => { const o = JSON.parse(localStorage.getItem('twrc.tripdone') || '{}'); o['leg|2026-09-30T08:00|go|vieux'] = { how: 'auto', at: Date.now() - 25 * 3600e3, exp: Date.now() - 3600e3 }; localStorage.setItem('twrc.tripdone', JSON.stringify(o)); });
     await reload(); const ls1 = await p.evaluate(() => localStorage.getItem('twrc.tripdone') || '');
     check('16 · entrée expirée effacée du stockage au chargement, entrée valide conservée', !/vieux/.test(ls1) && /15:35\|go/.test(ls1), ls1);
-    await p.evaluate(() => localStorage.setItem('twrc.tripdone', JSON.stringify({ 'leg|2026-09-30T08:00|go|vieux': { how: 'auto', at: Date.now() - 25 * 3600e3, exp: Date.now() - 3600e3 } })));
+    await p.evaluate(() => { localStorage.removeItem('twrc.context.v1'); localStorage.setItem('twrc.tripdone', JSON.stringify({ 'leg|2026-09-30T08:00|go|vieux': { how: 'auto', at: Date.now() - 25 * 3600e3, exp: Date.now() - 3600e3 } })); });
     await reload(); const ls2 = await p.evaluate(() => localStorage.getItem('twrc.tripdone'));
     check('16 · uniquement des entrées expirées : clé twrc.tripdone supprimée', ls2 === null, String(ls2));
   }
@@ -230,4 +230,4 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
   for (const s of all) await s.c.close();
   console.log(rows.join('\n') + `\n\n${rows.length - fail}/${rows.length} scénarios OK · erreurs JS : ${errs.length ? errs.join(' | ') : 'aucune'}`);
   await b.close(); process.exit(fail || errs.length ? 1 : 0);
-})();
+})().catch(e => { console.log(rows.join('\n')); console.error(e); process.exit(1); });

@@ -253,7 +253,7 @@ function tireAssess(car, hs, i) {
   const snow = (x.snow || 0) > 0.05 || SNOW_CODES.has(x.code);
   const fz = FZ_CODES.has(x.code);
   const ice = x.ice && x.ice.score != null ? x.ice.score : 0;
-  const tread = tire.tread;
+  const tread = typeof treadAxles === 'function' ? treadAxles(tire).worst : tire.tread;   // essieu le plus usé (page) ; relais : valeur effective
   // — météo seule (indépendant du type de pneu)
   if (x.vis != null) add(`Visibilité ${Math.round(x.vis)} m`, x.vis < 200 ? 30 : x.vis < 500 ? 20 : x.vis < 1000 ? 10 : 0, 'hazard');
   if (x.gust != null) add(`Rafales ${Math.round(x.gust)} km/h`, x.gust >= 90 ? 20 : x.gust >= 70 ? 12 : x.gust >= 55 ? 6 : 0, 'hazard');
@@ -444,20 +444,25 @@ function seasonAnalysis(model, car) {
     level = 0; title = '4 saisons 3PMSF : polyvalents';
     text = firstSevere ? 'Conditions hivernales annoncées : le 4 saisons reste utilisable mais n’égale pas un excellent pneu hiver.' : 'Aucune contrainte particulière détectée. En été, ils ne donnent pas les performances maximales d’un pneu été sportif.';
   }
-  // compte à rebours + période froide avant montage
+  // compte à rebours + période froide avant montage.
+  // Un rendez-vous confirmé est un fait plus fort que l'estimation ; l'ETA fournisseur
+  // reste informative et ne pilote jamais seule le verdict météo.
   let countdown = null, coldBefore = null;
   const plan = car.plan;
   if (plan && plan.on && type !== 'winter') {
-    if (plan.date) {
-      const n = dayDiff(model.nowStr.slice(0, 10), plan.date);
-      countdown = { n, date: plan.date };
-      const before = di.filter(d => d.date < plan.date);
+    const confirmed = !!plan.appointmentConfirmed && !!plan.appointmentDate;
+    const mountDate = confirmed ? plan.appointmentDate : plan.date;
+    if (mountDate) {
+      const n = dayDiff(model.nowStr.slice(0, 10), mountDate);
+      const before = di.filter(d => d.date < mountDate);
+      const covered = Math.max(0, Math.min(Math.max(0, n), before.length));
+      const remaining = Math.max(0, n - covered);
+      countdown = { n, date: mountDate, kind: confirmed ? 'confirmed' : 'estimated', weatherCoveredDays: covered, weatherRemainingDays: remaining, partial: remaining > 0 };
       const ev = before.filter(d => severeDay(d) || (d.tmin != null && d.tmin <= 2));
       const sev = before.find(severeDay);
       const cold2 = before.filter(d => d.tmin != null && d.tmin <= 2).length;
-      if (sev || cold2 >= 2) coldBefore = { first: sev || ev[0], severe: !!sev, cold2, partial: dayDiff(model.nowStr.slice(0, 10), plan.date) > 14 };
-      countdown.partial = n > 14;
-    } else countdown = { n: null };
+      if (sev || cold2 >= 2) coldBefore = { first: sev || ev[0], severe: !!sev, cold2, partial: remaining > 0 };
+    } else countdown = { n: null, kind: confirmed ? 'confirmed' : 'estimated', weatherCoveredDays: 0, weatherRemainingDays: 0, partial: false };
   }
   return { level, title, text, days: di, countdown, coldBefore };
 }
@@ -502,7 +507,7 @@ function computeAlerts(model, cars, S, seasonByCar) {
   for (let k = 0; k + 3 < seq.length; k++) { const a = seq[k].hs[seq[k].i], b = seq[k + 3].hs[seq[k + 3].i]; if (a.T != null && b.T != null && a.T - b.T >= 5 && (!drop || a.T - b.T > drop.d)) drop = { d: a.T - b.T, s: seq[k + 3], from: a.T, to: b.T }; }
   if (drop) set('drop', drop.d >= 8 ? 3 : 2, `Baisse brutale : −${f1(drop.d)} °C en 3 h`, `De ${f1(drop.from)} à ${f1(drop.to)} °C vers ${hhmm(drop.s)}.`);
   const pre = cars.map(c => ({ c, s: seasonByCar[c.id] })).filter(o => o.s && o.s.coldBefore && effType(o.c) === 'summer');
-  if (pre.length) { const o = pre[0]; set('pre', 3, `Météo hivernale avant le montage hiver (${o.c.short})`, `Premier épisode : ${fmtDay(o.s.coldBefore.first.date)}, avant le montage prévu le ${fmtDay(o.s.countdown.date)}.${o.s.coldBefore.partial ? ' Prévision au-delà de 14 j non disponible : analyse partielle.' : ''}`); }
+  if (pre.length) { const o = pre[0], when = o.s.countdown.kind === 'confirmed' ? 'rendez-vous confirmé' : 'montage estimé'; set('pre', 3, `Météo hivernale avant le montage hiver (${o.c.short})`, `Premier épisode : ${fmtDay(o.s.coldBefore.first.date)}, avant le ${when} du ${fmtDay(o.s.countdown.date)}.${o.s.coldBefore.partial ? ' La météo disponible ne couvre pas toute la période restante.' : ''}`); }
   return res;
 }
 
@@ -655,13 +660,24 @@ function nowcast(p, nowStr) {
   return { slots, nowWet, startIn: !nowWet && firstWet ? Math.max(0, mins(firstWet.ts)) : null, stopAt: nowWet && firstDry ? firstDry.ts.slice(11, 16) : null,
     snow: slots.some(s => (s.S || 0) > 0), total: slots.reduce((a, s) => a + (s.P || 0), 0) };
 }
-// calibration : givre vu → chaussée réelle ≤ 0 ; mouillé non gelé → chaussée réelle > 0
-function calibBias(list) {
-  const inf = (list || []).filter(r => r && (r.kind === 'ice' || r.kind === 'wet') && r.Tr != null).slice(-12);
-  if (!inf.length) return { bias: 0, n: 0 };
+// Retours terrain : une observation n'est pas une calibration.
+//  - givre vu → chaussée réelle ≤ 0 ; mouillé non gelé → chaussée réelle > 0 ; « Sec, RAS » ne dit rien du gel (noté, sans effet).
+//  - PAR LIEU : seuls les retours faits à ce lieu comptent (un retour ailleurs ne décale jamais ce lieu).
+//  - 1 retour utile = observation · 2 = motif · 3–4 = signal · 5+ = suggestion ; la correction n'est appliquée qu'à partir
+//    de 5 retours utiles au même lieu ET cohérents (aucun écart de sens opposé). Sinon 0 °C.
+const CALIB_MIN = 5, CALIB_KEEP = 12;
+function calibBias(list, loc) {
+  const here = (list || []).filter(r => r && loc != null && r.loc === loc);
+  const dry = here.filter(r => r.kind === 'dry').length;
+  const inf = here.filter(r => (r.kind === 'ice' || r.kind === 'wet') && Number.isFinite(r.Tr)).slice(-CALIB_KEEP);
+  const n = inf.length, level = n >= CALIB_MIN ? 'suggestion' : n >= 3 ? 'signal' : n === 2 ? 'motif' : n === 1 ? 'observation' : null;
+  if (!n) return { bias: 0, n: 0, level, dry, applied: false, coherent: true };
   const errs = inf.map(r => r.kind === 'ice' ? Math.min(0, -0.3 - r.Tr) : Math.max(0, 0.5 - r.Tr));
-  const mean = errs.reduce((a, b) => a + b, 0) / errs.length;
-  return { bias: Math.round(clamp(mean * inf.length / (inf.length + 2), -3, 3) * 10) / 10, n: inf.length };
+  const coherent = !(errs.some(e => e > 0) && errs.some(e => e < 0));
+  const mean = errs.reduce((a, b) => a + b, 0) / n;
+  const proposed = Math.round(clamp(mean * n / (n + 2), -3, 3) * 10) / 10;
+  const applied = n >= CALIB_MIN && coherent && proposed !== 0;
+  return { bias: applied ? proposed : 0, proposed, n, level, dry, applied, coherent };
 }
 
 /* ===================== BASE PNEUS + DÉCODAGE AUTOMATIQUE ===================== */

@@ -13,12 +13,19 @@
 // watchdog GitHub) est en file ou en cours, ni si un run a démarré après que les données sont devenues dues, il y a moins de
 // COOLDOWN_MIN (temps de publication de GitHub Pages). Au pire un dispatch par COOLDOWN_MIN tant que le relais reste en panne.
 // Seconde protection côté GitHub : concurrency `race-control-relay` et contrôle de fraîcheur du workflow.
+//
+// Auto-réparation (incident du 7 octobre 2026) : un run du watchdog est resté « waiting » (environnement production) de
+// 10:49 à 12:18 UTC. Compté comme « relais en cours », il bloquait la garde ; et comme il tenait la concurrence
+// `race-control-relay`, tout nouveau run restait derrière lui : 1 h 36 sans relais. Désormais, quand les données sont
+// dues, un run du relais encore actif après STUCK_MIN (le job a un timeout de 8 min) est annulé ; le relais est relancé
+// au tick suivant. Rien n'est annulé tant qu'obs.json est frais (aucun appel GitHub dans ce cas).
 export const REPO = 'iPoower/iPoower';
 export const WORKFLOW = 'race-control.yml';
 export const RELAY_WORKFLOWS = ['race-control.yml', 'race-control-watchdog.yml'];
 export const OBS_URL = 'https://ipoower.github.io/iPoower/race-control/obs.json';
 export const DUE_MIN = 8;        // même seuil que l'étape « Vérifier si une vraie synchronisation est due » du workflow
 export const COOLDOWN_MIN = 6;   // run récent après le passage à « dû » : on attend sa publication par GitHub Pages
+export const STUCK_MIN = 20;     // run du relais toujours actif après 20 min (timeout du job : 8 min) : bloqué
 const ACTIVE = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
 const GH = 'https://api.github.com/repos/' + REPO + '/actions';
 
@@ -31,6 +38,10 @@ export function decide(obs, now) {
   return { decision: age >= DUE_MIN ? 'stale' : 'fresh', age, staleSince: t + DUE_MIN * 60e3 };
 }
 
+// Runs bloqués : actifs (en file, en attente, en cours) depuis au moins STUCK_MIN. Pur.
+export function stuckRuns(runs, now) {
+  return runs.filter(r => ACTIVE.has(r.status) && Number.isFinite(Date.parse(r.created_at)) && now - Date.parse(r.created_at) >= STUCK_MIN * 60e3);
+}
 // Garde pure : runs = [{ status, created_at }] des workflows du relais. staleSince inconnu (obs illisible) : tout run récent compte.
 export function guard(runs, now, staleSince) {
   if (runs.some(r => ACTIVE.has(r.status))) return { go: false, reason: 'relais déjà en cours' };
@@ -54,7 +65,7 @@ async function relayRuns(env, fetchImpl) {
     // liste indisponible : erreur, et surtout aucun dispatch à l'aveugle (risque de tempête)
     if (!r.ok) throw new Error(`Liste des runs indisponible : HTTP ${r.status}`);
     const j = await r.json();
-    return (j && Array.isArray(j.workflow_runs) ? j.workflow_runs : []).map(x => ({ status: x.status, created_at: x.created_at }));
+    return (j && Array.isArray(j.workflow_runs) ? j.workflow_runs : []).map(x => ({ id: x.id, status: x.status, created_at: x.created_at }));
   }));
   return lists.flat();
 }
@@ -69,7 +80,18 @@ export async function tick(env, { fetchImpl = fetch, now = Date.now(), log = con
   const emit = () => log(JSON.stringify({ t: new Date(now).toISOString(), decision: out.decision, age_min: out.age == null ? null : Math.round(out.age * 10) / 10, action: out.action, reason: out.reason, status: out.status }));
   try {
     if (d.decision === 'fresh') return out;
-    const g = guard(await relayRuns(env, fetchImpl), now, d.staleSince);
+    const runs = await relayRuns(env, fetchImpl), stuck = stuckRuns(runs, now).filter(r => Number.isSafeInteger(r.id)).slice(0, 3);
+    if (stuck.length) {   // auto-réparation : annuler, puis relancer au tick suivant (le run annulé libère la concurrence)
+      for (const r of stuck) {
+        const c = await fetchImpl(`${GH}/runs/${r.id}/cancel`, { method: 'POST', headers: ghHeaders(env), signal: AbortSignal.timeout(15000) });
+        out.status = c.status;
+        if (c.status < 200 || c.status >= 300) { out.action = 'error'; out.reason = 'annulation du run bloqué refusée'; throw new Error(`Annulation d'un run bloqué refusée par GitHub : HTTP ${c.status}`); }
+      }
+      const oldest = Math.max(...stuck.map(r => now - Date.parse(r.created_at)));
+      out.action = 'cancelled'; out.reason = `${stuck.length} run${stuck.length > 1 ? 's' : ''} bloqué${stuck.length > 1 ? 's' : ''} depuis ${Math.round(oldest / 60e3)} min annulé${stuck.length > 1 ? 's' : ''}`;
+      return out;
+    }
+    const g = guard(runs, now, d.staleSince);
     if (!g.go) { out.action = 'skipped'; out.reason = g.reason; return out; }
     const r = await fetchImpl(`${GH}/workflows/${WORKFLOW}/dispatches`, {
       method: 'POST', signal: AbortSignal.timeout(15000), headers: { ...ghHeaders(env), 'content-type': 'application/json' },

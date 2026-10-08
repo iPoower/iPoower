@@ -4,7 +4,7 @@ const source = fs.readFileSync(path.join(__dirname, '../src/trip-cancel.js'), 'u
 function engine(text = source) { const ctx = {}; vm.createContext(ctx); vm.runInContext(text + ';this.api=TripCancel;', ctx); return ctx.api; }
 const api = engine(), plain = value => JSON.parse(JSON.stringify(value));
 const now = Date.parse('2026-10-04T07:00:00Z'), day = '2026-10-04';
-const H = { lat: 48.86, lon: 2.35, label: 'Domicile' }, A = { lat: 49.9, lon: 2.3, label: 'Lieu privé A' }, B = { lat: 50.63, lon: 3.06, label: 'Lieu privé B' }, C = { lat: 49.25, lon: 4.03, label: 'Lieu privé C' };
+const H = { lat: 48.86, lon: 2.35, label: 'Domicile' }, A = { lat: 48.9, lon: 1.9, label: 'Lieu privé A' }, B = { lat: 50.63, lon: 3.06, label: 'Lieu privé B' }, C = { lat: 49.25, lon: 4.03, label: 'Lieu privé C' };
 const leg = (k, from, to, dep, arr, fromKind = 'home') => ({ k, from, to, fromKind, dep: day + 'T' + dep, arr: day + 'T' + arr, min: 40, km: 60,
   routed: true, byTime: true, pts: [{ f: .5, lat: from.lat, lon: from.lon, name: 'Ancienne origine privée' }], g: [[from.lat, from.lon], [to.lat, to.lon]] });
 function chain() {

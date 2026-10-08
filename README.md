@@ -1,4 +1,21 @@
-# Tyre Weather Race Control
+# Bryan — Cloud · DevSecOps · Cybersecurity
+
+> Building production-minded projects while progressing toward Cloud, DevSecOps and cybersecurity roles — with a strong focus on reliability, automation, testing and privacy-by-design.
+
+## Featured work
+
+- **🏎️ Tyre Weather Race Control** — this repository. Mobile-first PWA combining weather, GPS, routing and tyre-state logic, with Playwright E2E tests, GitHub Actions CI/CD, offline support and privacy controls.  
+  **Live:** https://ipoower.github.io/iPoower/race-control/
+- **🎓 [Reconversion Control](https://github.com/iPoower/Reconversion-Control)** — learning cockpit for Cyber · Cloud · DevSecOps, with guided progression, practical labs, bilingual learning and automated browser tests.  
+  **Live:** https://ipoower.github.io/Reconversion-Control/
+
+**Current engineering focus:** Linux · Networking · JavaScript · PWA · Playwright · GitHub Actions · CI/CD · Cloud · DevSecOps · Security
+
+> **FR —** Je construis des projets concrets et testés pour transformer ma reconversion Cloud / DevSecOps / cybersécurité en compétences démontrables.
+
+---
+
+## 🏎️ Tyre Weather Race Control — technical documentation
 
 Application web personnelle : avant chaque trajet (domicile-travail ou agenda), elle croise météo, observations, température de chaussée estimée, pneus montés et itinéraire pour donner un verdict de GO à NO GO.
 
@@ -175,13 +192,14 @@ expose à toute l’app ; Analyse, le diagnostic, l’entretien et la mémoire t
 | Type, marque, modèle, dimension (charge, vitesse, XL, ZR) | saisie | permanente tant que la monte ne change pas | Analyse (fenêtres, profil technique), Pneus, relais |
 | DOT (semaine, année) | saisie | permanent | âge depuis la fabrication : surveillance, confiance, entretien (jamais une pénalité d’adhérence calculée) |
 | Date et compteur de montage | saisie | permanents | âge d’usage, kilomètres depuis le montage (si le compteur est connu) |
-| Profondeur et historique | mesure | fraîche ≤ 60 j, ancienne > 180 j | aquaplaning, freinage mouillé, confiance, usure (≥ 2 mesures avec compteur) |
+| Profondeur AV / AR et historique | mesure (jauge) ou estimation, signalée comme telle | fraîche ≤ 60 j, ancienne > 180 j | aquaplaning, freinage mouillé et verdict sur l’essieu le plus usé, confiance (estimation : −0,25 et jauge demandée), usure (≥ 2 mesures réelles du même essieu avec compteur) |
 | Pression cible (AV / AR) et dernier contrôle | plaque du véhicule + contrôle | contrôle frais ≤ 14 j, ancien > 30 j | estimation à froid / à chaud, sous-gonflage, confiance, entretien |
 
 Changer une valeur dans Pneus recalcule Analyse au rendu suivant (aucun cache de résultat). Changer de jeu change
 l’identité de la monte : l’ancienne mémoire thermique est ignorée. Un jeu stocké n’est jamais analysé. Avant et arrière
-sont distingués quand les pressions diffèrent ; aucune différence n’est inventée (un seul modèle et une seule profondeur
-sont saisis). L’entretien (âge ≥ 10 ans, 5 ans d’usage, profondeur, contrôle de pression) reste séparé du verdict de conduite.
+sont distingués quand les pressions ou les profondeurs diffèrent ; aucune différence n’est inventée (un seul modèle ; un essieu
+jamais saisi reste inconnu, l’ancienne profondeur commune `tread` vaut pour les deux essieux tant qu’aucun n’est saisi à part).
+`tread` reste la valeur effective lue par le moteur et le relais : toujours l’essieu le plus usé, jamais une moyenne. L’entretien (âge ≥ 10 ans, 5 ans d’usage, profondeur, contrôle de pression) reste séparé du verdict de conduite.
 Aucune migration : la structure existante est conservée telle quelle.
 
 ## Onglet Analyse : ingénieur pneumatique embarqué
@@ -197,6 +215,10 @@ MOTEUR   src/tyrelab.js (pur, déterministe, testé) + src/tirespecs.js (fiches 
    ↓     température estimée · mise en température · refroidissement · adhérence · freinage · aquaplaning · pression · confiance
 INTERFACE  verdict, fenêtre, freinage, adhérence, aquaplaning, comparaison, trajet, pression, fiche, confiance (détails au toucher)
 ```
+
+Le **briefing du trajet** (onglet Pneus) reprend la même estimation sur une ligne « 🌡️ Gomme · estimation » : état et plage °C
+au départ → à l’arrivée (ou maintenant, en roulage), fenêtre favorable atteinte ou non, bouton Détail vers Analyse. Même calcul
+`tyreLab` sur les mêmes points datés que la prévision figée au départ pour le débrief (`tripLab`), donc aucun chiffre divergent.
 
 **Aucun capteur** : toutes les valeurs sont des estimations en plages (jamais « vos pneus sont à 42 °C »), et l’état affiché
 est le plus prudent de la plage. Modèle thermique du premier ordre avec mémoire :
@@ -313,6 +335,9 @@ Cron Cloudflare (1 min) ──► lit l'âge public d'obs.json (Pages, sans jeto
    │ fresh  (< 8 min)          → rien (aucun appel à GitHub)
    │ stale / invalid / unreachable
    ▼
+auto-réparation : run du relais encore actif (en file, en attente, en cours) depuis ≥ 20 min (timeout du job : 8 min)
+   │                                  → annulé (« cancelled ») ; il libère la concurrence, relais relancé au tick suivant
+   ▼
 garde anti-tempête (API GitHub, runs de race-control.yml et race-control-watchdog.yml)
    │ run en file ou en cours             → skipped « relais déjà en cours »
    │ run démarré après le passage à « dû », il y a < 6 min → skipped « cooldown » (publication Pages)
@@ -327,6 +352,7 @@ workflow_dispatch race-control.yml (main, source=horloge)
 | Pas de tempête si le relais est cassé | au plus un dispatch par période de 6 min | 60 min de relais cassé |
 | Pas de dispatch à l'aveugle | liste des runs indisponible → erreur, aucun dispatch | panne de l'API GitHub |
 | Panne GitHub visible | dispatch refusé (401/403/422/5xx) → invocation en échec | erreurs propres, sans secret |
+| Aucun blocage durable | run coincé ≥ 20 min annulé, seulement quand les données sont dues (incident du 7 octobre : watchdog « waiting » 1 h 36) | rejeu de l'incident : âge max 24 min ; run de moins de 20 min jamais annulé ; annulation refusée → erreur, aucun dispatch |
 | Aucune donnée personnelle | journal : `t`, `decision`, `age_min`, `action`, `reason`, `status` uniquement | contrôle des clés et du contenu des journaux |
 
 **Observabilité, sans donnée personnelle :**

@@ -70,13 +70,21 @@ async function session(b, iso, opt = {}) {
     return r.abort();
   });
   await p.goto(U); await p.clock.runFor(3000);
-  await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
+  await p.fill('#unlockPw', PW);
+  // Reproduire une réponse de démarrage pendant la saisie : aucun code ne doit être perdu.
+  const inputKept = await p.evaluate(() => {
+    const field = document.querySelector('#unlockPw'), value = field.value;
+    renderNotice();
+    return value.length > 0 && document.querySelector('#unlockPw') === field && field.value === value && document.activeElement === field;
+  });
+  check('Déverrouillage · rafraîchissement pendant la saisie : code et focus conservés · ' + iso, inputKept);
+  await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
   for (let k = 0; k < 60; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(200); await p.waitForTimeout(250); }
   const settle = async (n = 12) => { for (let k = 0; k < n; k++) { await p.clock.runFor(700); await p.waitForTimeout(150); } };
   const txt = () => p.$eval('#secBrf', x => x.innerText.replace(/\n+/g, ' ⏎ ').replace(/[ \t]+/g, ' ').trim()).catch(() => '(absent)');
   const waitFor = async (re, n = 40) => { let t = ''; for (let k = 0; k < n; k++) { t = await txt(); if (re.test(t) && !/⏳/.test(t)) return t; await p.clock.runFor(700); await p.waitForTimeout(200); } return t; };
   const to = async iso2 => { const t = new Date(iso2).getTime(); if (t > S.now) await p.clock.fastForward(t - S.now); S.now = t; };
-  const fix = async (g, o = {}) => { await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { lat: g.lat, lon: g.lon, acc: 25, age: 0, speed: null, ...o }); };
+  const fix = async (g, o = {}) => { await require('./lib/geo-fixture-time').coherentTime(p, g, o); await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { lat: g.lat, lon: g.lon, acc: 25, age: 0, speed: null, ...o }); };
   const enableGps = async (g, o = {}) => { await p.evaluate(x => window.__geoSet(x), { lat: g.lat, lon: g.lon, acc: 25, age: 0, ...o }); await p.evaluate(() => locate(true)); await settle(6); };
   return { c, p, S, txt, waitFor, to, fix, enableGps, settle };
 }
@@ -105,8 +113,8 @@ const osrmFromGps = S => S.osrm.filter(x => GPS_MARK.some(v => x.includes(v)));
     const o1 = osrmFromGps(S)[0] || '';
     check('A2 · OSRM : origine GPS arrondie à 0,001°, destination agenda à 0,001°', /^3\.306,49\.385;2\.586,49\.207$/.test(o1), o1);
     check('A2 · avant le départ : pas de suivi haute précision continu', !(await p.evaluate(() => window.__geoWatches())).includes(true));
-    const live = await p.evaluate(() => ({ k: Object.keys(localStorage).join(','), lv: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
-    check('A2 · rien du trajet vivant dans le stockage local', !/live|route(?!s?\b)/i.test(live.k.replace('twrc.croute', '')) && !GPS_MARK.some(v => live.lv.includes(v)));
+    const live = await p.evaluate(() => ({ canonical: JSON.parse(localStorage.getItem('twrc.context.v1')), k: Object.keys(localStorage).join(','), lv: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps|context\.v1)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
+    check('A2 · aucun itinéraire GPS persisté ; seul le point courant du contexte canonique est local', !/live|route(?!s?\b)/i.test(live.k.replace('twrc.croute', '')) && !GPS_MARK.some(v => live.lv.includes(v)) && !/\"(?:route|pts|g|history|startFix|lastFix)\"/.test(JSON.stringify(live.canonical)));
     await s.to('2026-10-03T15:40:00+02:00'); await s.fix(G.lille); await s.settle(4); t = await s.txt();
     check('A3a · 15:40 : départ prévu (15:35) passé mais départ conseillé (15:50) à venir : pas « dépassé »', /départ conseillé 15:50/i.test(t) && !/dépassé/i.test(t), t.slice(0, 140));
     await s.to('2026-10-03T15:52:00+02:00'); await s.fix(G.lille);
@@ -217,8 +225,17 @@ const osrmFromGps = S => S.osrm.filter(x => GPS_MARK.some(v => x.includes(v)));
     await s.to('2026-10-03T12:45:00+02:00'); await s.fix(G.loin3); await s.settle(6);
     check('I4 · aperçu : route de plus de 30 min → recalcul', osrmFromGps(S).length === n1 + 2);
     check('I4 · aperçu : jamais de haute précision (ni demande, ni suivi)', !(await p.evaluate(n => window.__geoLog.slice(n).some(x => x.hi), hi0)) && !(await p.evaluate(() => window.__geoWatches())).includes(true));
-    const ls = await p.evaluate(() => Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps)$/.test(k)).map(k => k + '=' + localStorage.getItem(k)).join('|'));
-    check('I4 · aperçu : rien dans le stockage local', !/live/i.test(ls) && !GPS_MARK.some(v => ls.includes(v)));
+    // l'agenda chiffré (base64 aléatoire) est opaque. La synthèse Race Control peut mémoriser
+    // le mot « live » comme mode météo, mais jamais le tracé, l'état LIVE ni des coordonnées GPS.
+    const persisted = await p.evaluate(() => ({
+      decision: localStorage.getItem('twrc.decision.latest.v1') || '',
+      other: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps|context\.v1|calendar\.sealed\.v1|decision\.latest\.v1)$/.test(k))
+        .map(k => k + '=' + localStorage.getItem(k)).join('|')
+    }));
+    check('I4 · aperçu : aucun itinéraire ni état de suivi persisté hors du contexte canonique',
+      !/live/i.test(persisted.other) &&
+      !GPS_MARK.some(v => persisted.other.includes(v) || persisted.decision.includes(v)) &&
+      !/"(?:route|pts|startFix|lastFix|lat|lon)"\s*:/.test(persisted.decision));
     await s.to('2026-10-03T14:10:00+02:00'); await s.fix(G.loin3); await s.settle(6);
     check('I5 · 14:10 : suivi vivant activé dès min(départ prévu, départ conseillé) − 90 min', (await p.evaluate(() => LIVE.phase)) === 'imminent');
   }

@@ -95,7 +95,7 @@ async function session(browser, iso, options = {}) {
   const waitFor = async re => { let t = ''; for (let i = 0; i < 35; i++) { t = await txt(); if (re.test(t) && !/⏳/.test(t)) return t; await settle(1); } return t; };
   // La météo live utilise payload.current.time : son horloge doit avancer comme celle du navigateur.
   const to = async next => { const now = await p.evaluate(() => Date.now()), target = typeof next === 'number' ? next : clock(next); if (target > now) { forecastTime = target; await p.clock.fastForward(target - now); } };
-  const fix = async (g, extra = {}) => { await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { ...g, age: 0, acc: 25, speed: null, ...extra }); await settle(3); };
+  const fix = async (g, extra = {}) => { await require('./lib/geo-fixture-time').coherentTime(p, g, extra); await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { ...g, age: 0, acc: 25, speed: null, ...extra }); await settle(3); };
   const enableGps = async (g = G.here, extra = {}) => { await p.evaluate(x => window.__geoSet(x), { ...g, age: 0, acc: 25, speed: null, ...extra }); await p.evaluate(() => locate(true)); await settle(8); };
   const reload = async () => { S.reloading = true; await p.reload(); await boot(); await fixture(); await settle(8); S.reloading = false; };
   const cancel = async accept => { const button = p.locator('#secBrf [data-act="trip-cancel"]').first(); let asked = false; p.once('dialog', async d => { asked = d.type() === 'confirm'; await (accept ? d.accept() : d.dismiss()); }); await button.click(); await settle(4); return asked; };
@@ -104,7 +104,7 @@ async function session(browser, iso, options = {}) {
 const phase = s => s.p.evaluate(() => LIVE.phase);
 const gpsRoutes = s => s.S.osrm.filter(u => /3\.306,49\.385|3\.333,49\.399/.test(u));
 const privacy = async s => {
-  const local = await s.p.evaluate(() => ({ cancel: localStorage.getItem('twrc.tripcancel'), done: localStorage.getItem('twrc.tripdone'), other: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
+  const local = await s.p.evaluate(() => ({ cancel: localStorage.getItem('twrc.tripcancel'), done: localStorage.getItem('twrc.tripdone'), other: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps|context\.v1)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
   const sent = s.S.reqs.filter(r => /49\.3847|3\.3061|49\.385|3\.306|49\.399|3\.333/.test(r.u));
   const gpsHostAllowed = /^(router\.project-osrm\.org|[a-z-]*api\.open-meteo\.com|api\.bigdatacloud\.net)$/;
   const unexpectedProviders = [...new Set(s.S.reqs.filter(r => !allowed.test(new URL(r.u).hostname)).map(r => new URL(r.u).hostname))];
@@ -421,7 +421,7 @@ const privacy = async s => {
     const migration = await p.evaluate(() => {
       const ev = CAL.events[0], leg = ev.legs.find(l => l.k === 'go'), legacy = calendarTripLegacyKey(ev, leg), current = calendarTripKey(ev, leg);
       localStorage.setItem('twrc.tripdone', JSON.stringify({ [legacy]: { how: 'auto', at: Date.now(), exp: Date.now() + 24 * 3600e3 } }));
-      LIVE.done = {}; liveDoneLoad();
+      LIVE.done = {}; liveDoneLoad(true);   // migration explicite de la fixture d'ancienne version
       const filtered = liveApply(BRF_TRIPS.slice(), liveNow());
       return { legacy, current, visible: filtered.some(t => t.key === current), raw: localStorage.getItem('twrc.tripdone') };
     });

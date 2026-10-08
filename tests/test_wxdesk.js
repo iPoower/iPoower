@@ -21,6 +21,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const r = desk({ now: '2026-10-06T10:20', hours: H(), cur: { T: 12.4, Tapp: 11.2 } });
     assert.equal(r.level, 0); assert.equal(r.hero.title, 'CONDITIONS NORMALES'); assert.equal(r.hero.emoji, '🟢');
     assert.match(r.hero.lines[0], /^12 °C · ressenti 11 °C$/); assert.match(r.hero.lines[1], /Aucun phénomène notable jusqu’à 23:00/);
+    assert.deepEqual(r.current, { T: 12.4, Tapp: 11.2, source: 'current' });
     assert.equal(r.matters.length, 1); assert.match(r.matters[0].text, /Rien de notable/);
     assert.equal(r.road.score, 100); assert.equal(r.road.level, 0); assert.equal(r.trip, null);
   });
@@ -34,6 +35,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const hs = H().map(x => ({ t: x.t }));
     const r = desk({ now: '2026-10-06T10:20', hours: hs, cur: {} });
     assert.equal(r.level, 0); assert.match(r.hero.lines[0], /^— °C · ressenti — °C$/);
+    assert.deepEqual(r.current, { T: null, Tapp: null, source: 'hourly' });
     assert.equal(r.phen.find(p => p.id === 'fog').line, 'Visibilité non fournie');
     assert.equal(r.road.factors.find(f => f.id === 'fog').why, 'non fournie');
   });
@@ -131,6 +133,11 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   test('trajet sans météo encore chargée : affiché en attente, sans conditions inventées', () => {
     const r = desk({ now: '2026-10-06T07:00', hours: H(), trips: [{ ...trip('07:45', '08:25'), points: [] }] });
     assert.equal(r.trip.waiting, true); assert.deepEqual(r.trip.points, []); assert.equal(r.trip.crit, null); assert.match(r.road.window.label, /^maintenant →/);
+  });
+  test('le statut réel de trajet prime sur un horaire de départ déjà passé', () => {
+    const input = { now: '2026-10-06T07:00', hours: H(), trips: [trip('06:50', '07:30', { running: false })] };
+    assert.equal(desk(input).trip.running, false);
+    input.trips[0].running = true; assert.equal(desk(input).trip.running, true);
   });
   test('trajet passé ignoré, trajet en cours conservé jusqu’à l’arrivée', () => {
     const hs = set(H(), '05', { vis: 300 });

@@ -10,6 +10,31 @@
    jamais converti en perte d'adhérence : il nourrit la surveillance, l'incertitude et l'entretien. */
 const TS_TREAD = [60, 180], TS_PRESS = [14, 30];
 const TS_TYPES = { summer: 'été', winter: 'hiver', allseason: '4 saisons' };
+/* Profondeur par essieu : tire.treadAv / tire.treadAr (mm), tire.treadEst = 1 quand la valeur est une estimation de
+   l'utilisateur (pas une mesure à la jauge). tire.tread reste la valeur effective lue par le moteur et l'Analyse :
+   l'essieu le PLUS USÉ (jamais une moyenne). Ancien format (tread seul) : même profondeur aux deux essieux.
+   Un essieu jamais saisi reste inconnu (null) : aucune valeur inventée. */
+function treadAxles(t) {
+  const num = v => { const x = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v; return typeof x === 'number' && Number.isFinite(x) ? x : null; };
+  if (!t) return { av: null, ar: null, worst: null, ax: null, split: false };
+  const av = num(t.treadAv), ar = num(t.treadAr), base = num(t.tread);
+  if (av == null && ar == null) return { av: base, ar: base, worst: base, ax: null, split: false };
+  const worst = av == null ? ar : ar == null ? av : Math.min(av, ar);
+  return { av, ar, worst, ax: av != null && ar != null && av !== ar ? (av < ar ? 'av' : 'ar') : av != null && ar == null ? 'av' : av == null ? 'ar' : null, split: true };
+}
+// saisie d'un essieu : l'autre garde l'ancienne profondeur commune s'il n'a jamais été saisi ; tread = essieu le plus usé
+function setTreadAxle(t, ax, mm) {
+  const legacy = treadAxles(t).split ? null : t.tread;
+  if (ax === 'both') { t.treadAv = mm; t.treadAr = mm; }
+  else { const k = ax === 'av' ? 'treadAv' : 'treadAr', o = ax === 'av' ? 'treadAr' : 'treadAv'; t[k] = mm; if (t[o] == null && legacy != null) t[o] = legacy; }
+  const x = treadAxles(t); t.tread = x.split ? x.worst : (t.treadAv == null && t.treadAr == null ? null : t.tread);
+  return t;
+}
+// « AV 2,3 / AR 5,0 mm » quand les essieux diffèrent, sinon « 2,3 mm »
+function treadTxt(x, mm) {
+  const f = v => v == null ? '?' : String(Math.round(v * 10) / 10).replace('.', ',');
+  return x && x.split && x.av !== x.ar ? `AV ${f(x.av)} / AR ${f(x.ar)} mm` : `${f(mm)} mm`;
+}
 function tyreState(car, opt = {}) {
   if (!car || !car.tire) return null;
   const t = car.tire, type = t.type, today = opt.today || null;
@@ -33,12 +58,16 @@ function tyreState(car, opt = {}) {
   const mount = { date: t.mounted || null, serviceY: serviceD != null && serviceD >= 0 ? serviceD / 365.25 : null, km: mountKm,
     kmSince: lastOdo && mountKm != null && lastOdo.km >= mountKm ? Math.round(lastOdo.km - mountKm) : null, odoDate: lastOdo ? lastOdo.d : null };
   // profondeur : dernière mesure de l'utilisateur, date, tendance seulement avec au moins deux mesures et du kilométrage
+  // par essieu (treadAv / treadAr) : la valeur effective est l'essieu le plus usé ; estimation ≠ mesure (treadEst)
+  const tx = treadAxles(t), est = !!t.treadEst;
   const hist = (t.treads || []).filter(x => x && num(x.mm) != null);
-  const last = hist[hist.length - 1] || null, mm = num(t.tread) ?? (last ? num(last.mm) : null);
-  const withKm = hist.filter(x => num(x.km) != null).sort((a, b) => a.km - b.km);
+  const last = hist[hist.length - 1] || null, mm = tx.split ? tx.worst : num(t.tread) ?? (last ? num(last.mm) : null);
+  // tendance : mesures réelles seulement (jamais une estimation), du même essieu que la valeur effective
+  const withKm = hist.filter(x => num(x.km) != null && !x.est && (!x.ax || !tx.ax || x.ax === tx.ax)).sort((a, b) => a.km - b.km);
   let rate = null; if (withKm.length >= 2) { const a = withKm[0], b = withKm[withKm.length - 1]; if (b.km - a.km >= 1000 && a.mm > b.mm) rate = (a.mm - b.mm) / (b.km - a.km) * 1000; }
   const treadAge = last ? days(last.d) : null;
-  const tread = { mm, src: mm != null ? 'USER_MEASURED' : null, date: last ? last.d : null, ageD: treadAge, fresh: mm == null ? 'unknown' : fresh(treadAge, TS_TREAD), n: hist.length, rate };
+  const tread = { mm, av: tx.av, ar: tx.ar, worstAxle: tx.ax, split: tx.split, est: mm != null && est,
+    src: mm != null ? (est ? 'USER_ESTIMATED' : 'USER_MEASURED') : null, date: last ? last.d : null, ageD: treadAge, fresh: mm == null ? 'unknown' : fresh(treadAge, TS_TREAD), n: hist.length, rate };
   // pression : cible saisie (plaque constructeur du véhicule), éventuellement par essieu ; dernier contrôle daté
   const pz = String(t.press || ''), N = '(\\d+(?:[.,]\\d+)?)';
   const ax = new RegExp(N + '\\s*(?:bar\\s*)?AV\\b[^]*?' + N + '\\s*(?:bar\\s*)?AR\\b', 'i').exec(pz) || new RegExp('AV\\D{0,3}' + N + '[^]*?AR\\D{0,3}' + N, 'i').exec(pz);
@@ -47,9 +76,12 @@ function tyreState(car, opt = {}) {
   const pressure = { target, src: target != null ? 'VEHICLE_MANUFACTURER' : null, axles: ax ? { av: num(ax[1]), ar: num(ax[2]) } : null,
     check: pc.date ? { date: pc.date, T: num(pc.T), ageD: pcAge, fresh: fresh(pcAge, TS_PRESS), src: 'USER_MEASURED' } : null, sensor: null };
   // essieux : même modèle avant/arrière (Race Control ne stocke qu'un jeu) ; pressions distinctes si saisies ; rien d'inventé
-  const axle = p => ({ model: t.brand && t.model ? `${t.brand} ${t.model}` : null, size: t.size || null, dot: dot ? dot.raw : null, tread: mm, press: p });
-  const axles = { front: axle(ax ? num(ax[1]) : target), rear: axle(ax ? num(ax[2]) : target), differ: !!ax && Math.abs(num(ax[1]) - num(ax[2])) >= 0.05,
-    note: 'Même pneu, même profondeur saisie à l’avant et à l’arrière : pas de différence inventée entre essieux' };
+  const axle = (p, d) => ({ model: t.brand && t.model ? `${t.brand} ${t.model}` : null, size: t.size || null, dot: dot ? dot.raw : null, tread: d, press: p });
+  const trDiff = tx.av != null && tx.ar != null && Math.abs(tx.av - tx.ar) >= 0.5;
+  const axles = { front: axle(ax ? num(ax[1]) : target, tx.av), rear: axle(ax ? num(ax[2]) : target, tx.ar),
+    differ: (!!ax && Math.abs(num(ax[1]) - num(ax[2])) >= 0.05) || trDiff, treadDiffer: trDiff,
+    note: tx.split ? 'Profondeur saisie par essieu : les calculs utilisent l’essieu le plus usé'
+      : 'Même pneu, même profondeur saisie à l’avant et à l’arrière : pas de différence inventée entre essieux' };
   // profil technique : fiche constructeur sourcée si elle existe, sinon profil générique de la saison
   const spec = typeof tireSpecFor === 'function' ? tireSpecFor(t.brand, t.model) : null, uhp = type === 'summer' && d && (d.zr || d.si === 'W' || d.si === 'Y');
   const profile = spec ? { kind: 'manufacturer-specific', label: `${spec.b} ${spec.m} (fiche constructeur)`, conf: 'élevée' }
@@ -61,7 +93,8 @@ function tyreState(car, opt = {}) {
   const quality = [
     Q('Modèle exact', t.brand && t.model ? '🟢' : '🟠', t.brand && t.model ? 'connu' : 'non renseigné : profil générique'),
     Q('DOT', dot ? '🟢' : '⚪', dot ? `renseigné (${dot.raw})` : 'non renseigné'),
-    Q('Profondeur', tread.fresh === 'fresh' ? '🟢' : tread.fresh === 'aging' ? '🟡' : tread.fresh === 'stale' ? '🟠' : '⚪', mm == null ? 'non mesurée' : `${String(mm).replace('.', ',')} mm mesurée${treadAge != null ? ' il y a ' + treadAge + ' j' : ''}`),
+    Q('Profondeur', mm == null ? '⚪' : tread.fresh === 'stale' ? '🟠' : est ? '🟡' : tread.fresh === 'fresh' ? '🟢' : tread.fresh === 'aging' ? '🟡' : '⚪',
+      mm == null ? 'non mesurée' : `${treadTxt(tx, mm)} ${est ? 'estimée (pas mesurée à la jauge)' : 'mesurée'}${treadAge != null ? ' il y a ' + treadAge + ' j' : ''}`),
     Q('Pression', !pressure.check ? (target != null ? '🟠' : '⚪') : pressure.check.fresh === 'fresh' ? '🟢' : pressure.check.fresh === 'aging' ? '🟡' : '🟠',
       target == null ? 'cible non renseignée' : pressure.check ? `contrôlée il y a ${pcAge} j` : 'cible connue, contrôle non daté'),
     Q('Température gomme', '⚪', 'aucun capteur : estimation'),
@@ -75,9 +108,40 @@ function tyreState(car, opt = {}) {
   if (mm != null && mm < (type === 'winter' ? 4 : 3)) maint.push({ lv: mm < 1.6 ? 3 : 1, text: mm < 1.6 ? 'Profondeur sous le minimum légal (1,6 mm)' : `Profondeur ${String(mm).replace('.', ',')} mm : performances sur mouillé réduites, remplacement à prévoir` });
   if (target != null && (!pressure.check || pressure.check.fresh === 'stale')) maint.push({ lv: 1, text: 'Pression à contrôler à froid (dernier contrôle ancien ou non daté)' });
   if (tread.fresh === 'stale') maint.push({ lv: 1, text: 'Profondeur à remesurer (mesure de plus de 6 mois)' });
+  if (tread.est && tread.fresh !== 'stale') maint.push({ lv: 1, text: 'Profondeur estimée : à confirmer avec une jauge (témoins d’usure à 1,6 mm)' });
   const sig = [type, t.brand || '', t.model || '', t.size || ''].join('|');   // identité de la monte : change seulement avec un autre jeu
   return { vehicle: { id: car.id, name: car.name || car.short || car.id }, known, active: known ? { type, label: TS_TYPES[type] } : null, stored,
     model: { brand: t.brand || null, model: t.model || null, src: t.brand && t.model ? 'USER_ENTERED' : null }, size: d, dot, mount, tread, pressure, axles, profile, quality, maint, sig };
 }
 // mémoire thermique : valable seulement pour la même monte (un changement de jeu invalide l'ancienne estimation)
 function tyreMemoryValid(rec, state) { return !!rec && !!state && (rec.sig == null ? false : rec.sig === state.sig); }
+
+// chaque type (été / hiver / 4 saisons / inconnu) garde son propre jeu de pneus
+const SET_KEYS = ['brand', 'model', 'size', 'tread', 'treadAv', 'treadAr', 'treadEst', 'press', 'mounted', 'dot', 'pchk', 'info', 'treads', 'mountKm', 'lastRot'];
+function switchTire(car, type) {
+  if (car.tire.type === type) return;
+  car.sets = car.sets || {};
+  car.sets[car.tire.type] = Object.fromEntries(SET_KEYS.map(k => [k, car.tire[k] ?? null]));
+  let next = car.sets[type];
+  if (!next && type === 'winter' && car.plan && car.plan.on && (car.plan.brand || car.plan.model))
+    next = { brand: car.plan.brand, model: car.plan.model, size: car.plan.size || car.tire.size, tread: null, press: car.tire.press, mounted: '' };
+  if (!next) next = { brand: '', model: '', size: (car.sets.summer && car.sets.summer.size) || car.tire.size, tread: null, press: car.tire.press, mounted: '' };
+  car.tire = { type, dot: '', info: '', pchk: { date: '', T: null }, ...JSON.parse(JSON.stringify(next)) };
+  if (!car.tire.pchk) car.tire.pchk = { date: '', T: null };
+}
+// Un montage est un fait confirmé, distinct de la date prévisionnelle. Aucun effet sur l'entrée en cas d'erreur.
+function confirmWinterMount(car, { date, km, today } = {}) {
+  if (!car || !car.tire || !car.plan || !car.plan.on || car.tire.type === 'winter') return { error: 'Le montage hiver n’est plus en attente.' };
+  const validDate = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d + 'T12:00:00Z')) && new Date(d + 'T12:00:00Z').toISOString().slice(0, 10) === d;
+  if (!validDate(date) || !validDate(today) || date > today) return { error: 'Choisis la date réelle du montage, aujourd’hui ou avant.' };
+  const value = km == null || String(km).trim() === '' ? null : Number(km);
+  if (value != null && (!Number.isSafeInteger(value) || value < 0)) return { error: 'Le compteur doit être un nombre entier positif ou nul.' };
+  const readings = (car.odo || []).filter(o => o && Number.isFinite(o.km));
+  if (value != null && readings.some(o => o.d <= date && o.km > value || o.d > date && o.km < value)) return { error: 'Ce compteur ne correspond pas à la chronologie des relevés enregistrés.' };
+  const next = JSON.parse(JSON.stringify(car));
+  switchTire(next, 'winter');
+  Object.assign(next.tire, { mounted: date, mountKm: value, lastRot: null, pchk: { date: '', T: null } });
+  if (value != null) next.odo = [...(next.odo || []).filter(o => o.d !== date), { d: date, km: value }].sort((a, b) => String(a.d).localeCompare(String(b.d)));
+  next.plan.on = 0;
+  return { car: next };
+}

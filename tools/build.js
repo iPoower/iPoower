@@ -17,7 +17,7 @@ const RCK=PRIV&&has(PD+'/.rc_key')?norm(r(PD+'/.rc_key')):null;   // facultative
 if(RCK&&RCK.length<16)throw new Error(PD+'/.rc_key trop courte (16 caractères minimum)');
 if(RCK&&RCK===norm(PASS))throw new Error('APP_KEY et RC_KEY identiques : les deux clés doivent être différentes');
 const fonts='<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" media="print" onload="this.media=\'all\'" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">';
-const js=[r('src/engine.js'),r('src/demo.js'),r('src/wardrobe.js'),r('src/dayplan.js'),r('src/wxdesk.js'),r('src/tirespecs.js'),r('src/tyrestate.js'),r('src/tyrelab.js'),r('src/placectx.js'),r('src/evidence.js'),r('src/trip-cancel.js'),r('src/app.js')].join('\n');
+const js=[r('src/reliability.js'),r('src/decision.js'),r('src/geosearch.js'),r('src/engine.js'),r('src/demo.js'),r('src/wardrobe.js'),r('src/dayplan.js'),r('src/wxdesk.js'),r('src/tirespecs.js'),r('src/tyrestate.js'),r('src/tyrelab.js'),r('src/placectx.js'),r('src/evidence.js'),r('src/trip-cancel.js'),r('src/weather-requests.js'),r('src/road-intelligence.js'),r('src/road-providers.js'),r('src/debrief.js'),r('src/userctx.js'),r('src/backup.js'),require('./app-source').appSource(ROOT)].join('\n');
 const title='<title>TYRE WEATHER RACE CONTROL</title>';
 const style=`<style>\n${r('src/style.css')}\n</style>`;
 const body=pre=>`${r('src/shell.html')}\n${pre||''}<script>\n${js}\n</script>\n`;
@@ -37,7 +37,9 @@ const sealedV=PRIV?hash(preset):prevSealed.v;
 // même contenu ET même clé : même chiffré (pas de faux changement de version) ; sinon rechiffré avec APP_KEY
 const sealed=(prevSealed&&prevSealed.v===sealedV&&(!PRIV||tryUnseal(prevSealed.sealed,PASS)))?prevSealed.sealed:seal(presetObj,PASS);
 w(ENC+'/preset.sealed.json',JSON.stringify({v:sealedV,sealed}));
-const boot=`<script>window.TWRC_TIREDB=${tdb};window.TWRC_SEALED=${JSON.stringify(sealed)};window.TWRC_SEALED_V=${JSON.stringify(sealedV)};
+// Identité de l'application effectivement chargée : version.json peut être plus récent que le shell offline.
+const buildId=crypto.createHash('sha256').update(js).update(style).update(r('src/shell.html')).digest('hex').slice(0,12);
+const boot=`<script>window.TWRC_BUILD=${JSON.stringify(buildId)};window.TWRC_TIREDB=${tdb};window.TWRC_SEALED=${JSON.stringify(sealed)};window.TWRC_SEALED_V=${JSON.stringify(sealedV)};
 (function(){try{var v=localStorage.getItem('twrc.plain.v'),p=localStorage.getItem('twrc.plain');if(p&&v===window.TWRC_SEALED_V){var o=JSON.parse(p);window.TWRC_PRESET=o;window.TWRC_PRESET_V=v;window.TWRC_NTFY=o.ntfy||'';}}catch(e){}})();</script>\n`;
 const head='<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Race Control"><meta name="theme-color" content="#080c11"><meta name="robots" content="noindex,nofollow"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" type="image/png" href="icon-192.png">';
 const reset='<style>html{color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}[hidden]{display:none!important}</style>';

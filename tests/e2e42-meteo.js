@@ -54,6 +54,7 @@ const wx = p => p.evaluate(() => {
   const q = s => el ? [...el.querySelectorAll(s)] : [], t = s => q(s).map(x => x.innerText.replace(/\s+/g, ' ').trim());
   const first = [...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details')].filter(vis)[0];
   return { shown: vis(el), first: first ? first.id : null, hero: t('.wx-hero')[0] || '', title: t('.wx-ht')[0] || '', heroLv: (q('.wx-hero')[0] || { className: '' }).className,
+    current: t('.wx-now')[0] || '',
     trip: t('.wx-trip')[0] || '', moments: t('.wx-tl li'), ts: q('.wx-tl li[data-ts]').map(x => x.dataset.ts), strip: q('.wx-strip li').length, matters: t('.wx-mat li'), phen: q('.wx-pc:not(.ev)').map(x => x.dataset.k),
     road: t('.wx-road')[0] || '', score: (q('.wx-rs b')[0] || {}).textContent || '', factors: t('.wx-rf li'), tireBtn: q('.wx-tire [data-act=view][data-v=pneus]').length,
     gauges: q('.gauge').length, notice: (document.getElementById('notice').innerText || '').replace(/\s+/g, ' '),
@@ -63,8 +64,9 @@ const layout = (p, mobile) => p.evaluate(mobile => {
   const W = document.documentElement.clientWidth, el = document.getElementById('secWx'), small = [], wide = [];
   el.querySelectorAll('button, summary, a.btn').forEach(e => { const b = e.getBoundingClientRect(); if (b.height > 0 && mobile && b.height < 43.5) small.push((e.dataset.act || e.tagName) + ' ' + Math.round(b.height)); });
   el.querySelectorAll('*').forEach(e => { if (e.closest('.wx-strip')) return; const b = e.getBoundingClientRect(); if (b.width > 0 && b.right > W + 1) wide.push(e.className || e.tagName); });
-  const hero = el.querySelector('.wx-hero').getBoundingClientRect();
-  return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6), heroBottom: Math.round(hero.bottom), heroTop: Math.round(hero.top) };
+  const hero = el.querySelector('.wx-hero').getBoundingClientRect(), decision = document.getElementById('decisionCore').getBoundingClientRect();
+  return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6),
+    heroBottom: Math.round(hero.bottom), heroTop: Math.round(hero.top), decisionBottom: Math.round(decision.bottom) };
 }, mobile);
 
 (async () => {
@@ -77,7 +79,9 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     // capture locale facultative (jamais dans la CI)
     if (process.env.WX_SHOT) { await s.p.locator('#secWx').screenshot({ path: process.env.WX_SHOT + '-iphone.png' }); await s.p.evaluate(() => window.scrollTo(0, 0)); }
     check('1 · Météo : le poste météo est la première section, avant les mesures détaillées', w.shown && w.first === 'secWx' && w.beforeCur, JSON.stringify({ first: w.first, shown: w.shown }));
-    check('1 · verdict lisible : niveau 🟢🟡🟠🔴, titre, température et ressenti', /lv[0-3]/.test(w.heroLv) && w.title.length > 4 && /°C · ressenti .* °C/.test(w.hero), w.hero);
+    // innerText restitue les majuscules de text-transform : le libellé reste le même.
+    check('1 · verdict lisible : niveau 🟢🟡🟠🔴, titre, température et ressenti', /lv[0-3]/.test(w.heroLv) && w.title.length > 4 && /Température actuelle/i.test(w.hero) && /Ressenti .* °C/.test(w.hero), w.hero);
+    check('1 · température actuelle : carte dédiée et immédiatement lisible', /Température actuelle/i.test(w.current) && /°C/.test(w.current) && /Ressenti/.test(w.current), w.current);
     check('1 · prochain trajet de l’agenda : origine → destination, horaires, départ et arrivée', /Prochain trajet/i.test(w.trip) && /→/.test(w.trip) && /Départ/.test(w.trip) && /Arrivée/.test(w.trip), w.trip);
     check('1 · plusieurs trajets : la chronologie montre plusieurs départs, triés', w.moments.filter(x => /départ/.test(x)).length >= 2, w.moments.join(' | '));
     check('1 · chronologie dans l’ordre des heures, lendemain signalé', w.ts.length > 2 && w.ts.every((x, i) => !i || w.ts[i - 1] <= x) && w.moments.filter((x, i) => w.ts[i].slice(0, 10) > '2026-10-03').every(x => /^dem\. /.test(x)), w.moments.join(' | '));
@@ -89,7 +93,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     const L = await layout(s.p, true);
     check('1 · iPhone : aucun défilement horizontal de la page, rien ne dépasse', L.sw <= L.W && !L.wide.length, JSON.stringify(L));
     check('1 · iPhone : cibles tactiles ≥ 44 pt dans le poste météo', !L.small.length, L.small.join(', '));
-    check('1 · iPhone : verdict visible sans défiler (haut de l’écran)', L.heroBottom > 0 && L.heroBottom < 896, JSON.stringify(L));
+    check('1 · iPhone : synthèse Race Control entièrement visible et verdict météo déjà engagé sans défiler', L.decisionBottom > 0 && L.decisionBottom < 896 && L.heroTop > 0 && L.heroTop < 896, JSON.stringify(L));
     // détail au toucher, conservé après une actualisation
     await s.p.locator('#secWx details[data-k=fog] summary').click(); await s.settle(1);
     await s.p.evaluate(() => renderAll()); await s.settle(2);
@@ -149,6 +153,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     check('6 · « ce qui compte » commence par le plus grave', /^🔴|^🟠/.test(w.matters[0] || ''), w.matters.join(' | '));
     await s.c.close();
 
+    await require('./lib/temperature-card')(b, check);
     const extra = [...hosts].filter(h => !KNOWN.test(h));
     check('7 · aucun fournisseur externe supplémentaire', !extra.length, extra.join(', '));
     check('7 · aucune erreur JavaScript', !errors.length, errors.slice(0, 3).join(' | '));

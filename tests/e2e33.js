@@ -42,7 +42,7 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
     const u = r.request().url(); requests.push(u);
     const J = o => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
     const q = new URL(u).searchParams;
-    if (hold && q.get('latitude') === hold.lat && /api\.bigdatacloud\.net|api\.open-meteo\.com/.test(u)) { hold.count++; await hold.wait; }
+    if (hold && q.get('latitude') === hold.lat && /api\.bigdatacloud\.net|api\.open-meteo\.com/.test(u)) { if (u.includes('api.bigdatacloud.net')) hold.geocode++; else hold.weather++; await hold.wait; }
     if (u.includes('api.bigdatacloud.net')) return J({ locality: 'Ville ' + Number(q.get('latitude')).toFixed(4), principalSubdivision: 'Région test' });
     if (u.includes('open-meteo.com')) {
       const base = ctx.mk('doux', { lat: +q.get('latitude'), lon: +q.get('longitude') }, 'Europe/Paris', 0);
@@ -60,9 +60,9 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
   });
   const settle = async (n = 4) => { for (let i = 0; i < n; i++) { await p.clock.runFor(700); await p.waitForTimeout(100); } };
   const state = () => p.evaluate(() => ({ gps: GPS && { ...GPS }, raw: RAW.gps && { lat: RAW.gps.lat, lon: RAW.gps.lon }, fix: FIX && { ...FIX }, busy: gpsBusy, loc: UI.loc }));
-  const move = async (g, o = {}) => { await p.clock.runFor(1000); await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { ...g, age: 0, ...o }); await settle(); };
+  const move = async (g, o = {}) => { await p.clock.runFor(1000); await require('./lib/geo-fixture-time').coherentTime(p, g, o); await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { ...g, age: 0, ...o }); await settle(); };
   const gpsRequests = () => requests.filter(u => { const q = new URL(u).searchParams; return Number(q.get('longitude')) === rounded(A).lon && /api\.bigdatacloud\.net|\/v1\/forecast/.test(u); });
-  const pauseNetwork = g => { let release; hold = { lat: g.lat.toFixed(4), count: 0, wait: new Promise(r => { release = r; }), release: () => release() }; return hold; };
+  const pauseNetwork = g => { let release; hold = { lat: g.lat.toFixed(4), geocode: 0, weather: 0, wait: new Promise(r => { release = r; }), release: () => release() }; return hold; };
   await p.goto(U); await p.clock.runFor(3000);
   await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
   for (let i = 0; i < 60; i++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE)) break; await p.clock.runFor(200); await p.waitForTimeout(150); }
@@ -87,7 +87,7 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
   const resume = await p.evaluate(() => ({ watches: window.__geoWatches(), logs: window.__geoLog }));
   check('5 · sortie de veille : demande débloquée, watch recréé et coordonnées fraîches', stopped === 0 && !s.busy && resume.watches.length === 1 && resume.watches[0] !== oldWatch && eq(s.gps, G(5)));
   const gets = resume.logs.filter(x => x.kind === 'get');
-  check('6 · reprise fraîche, basse consommation ; événements rapprochés regroupés', gets.at(-1).options.maximumAge === 0 && !gets.at(-1).options.enableHighAccuracy && resume.logs.filter(x => x.kind === 'watch').every(x => !x.options.enableHighAccuracy));
+  check('6 · reprise fraîche, acquisition précise puis suivi économique ; événements rapprochés regroupés', gets.at(-1).options.maximumAge === 0 && gets.at(-1).options.enableHighAccuracy && resume.logs.filter(x => x.kind === 'watch').every(x => !x.options.enableHighAccuracy));
   const latest = await state();
   await p.evaluate(({ id, g }) => { window.__geoFlushGets(); window.__geoOldWatch(id, g); }, { id: oldWatch, g: G(-30) }); await settle(2); s = await state();
   check('7 · ancienne demande et ancien watch : callbacks ignorés après la reprise', JSON.stringify(s.gps) === JSON.stringify(latest.gps) && s.fix.ts === latest.fix.ts);
@@ -98,7 +98,8 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
   const delayed = pauseNetwork(G(8)); await move(G(8));
   await move(G(12)); const current = await state();
   delayed.release(); hold = null; await settle(8); s = await state();
-  check('9 · géocode/météo dans le désordre : la dernière ville et ses coordonnées gagnent', delayed.count >= 4 && eq(current.raw, G(12)) && eq(s.raw, G(12)) && eq(s.gps, G(12)) && s.gps.name === city(G(12)));
+  // La limite de deux appels ne lance plus les trois modèles ensemble ; les deux sources anciennes doivent bien être retardées.
+  check('9 · géocode/météo dans le désordre : la dernière ville et ses coordonnées gagnent', delayed.geocode >= 1 && delayed.weather >= 1 && eq(current.raw, G(12)) && eq(s.raw, G(12)) && eq(s.gps, G(12)) && s.gps.name === city(G(12)));
   // Le cache météo reste valide après un petit mouvement, même si ses coordonnées ne sont pas celles du dernier fix.
   await move(G(13));
   const cached = await p.evaluate(() => { delete RAW.gps; loadCache(); return RAW.gps && { mode: RAW.gps.mode, lat: RAW.gps.lat, lon: RAW.gps.lon }; });
@@ -107,9 +108,9 @@ const city = g => 'Ville ' + g.lat.toFixed(4);
   await p.reload(); await settle(10); s = await state();
   check('10b · premier fix après mise à jour : ancien nom persistant corrigé sans déplacement', eq(s.gps, G(13)) && s.gps.name === city(G(13)));
   const gpsMarks = [A, G(3), G(8), G(12), G(13)].map(g => g.lat.toFixed(4));
-  const privacy = await p.evaluate(() => ({ keys: Object.keys(localStorage), other: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
+  const privacy = await p.evaluate(() => ({ keys: Object.keys(localStorage), other: Object.keys(localStorage).filter(k => !/^twrc\.(gps|cache\.gps|context\.v1)$/.test(k)).map(k => localStorage.getItem(k)).join('|') }));
   const sent = requests.filter(u => gpsMarks.some(v => u.includes(v)));
-  check('11 · confidentialité : coordonnées uniquement aux fournisseurs autorisés, aucun stockage ajouté', sent.every(u => /^(api\.bigdatacloud\.net|[a-z-]*api\.open-meteo\.com)$/.test(new URL(u).hostname)) && !gpsMarks.some(v => privacy.other.includes(v)) && !privacy.keys.some(k => /gps.*(?:history|origin|raw|fix)/i.test(k)));
+  check('11 · confidentialité : coordonnées uniquement aux fournisseurs autorisés, contexte courant local, aucun historique GPS ajouté', sent.every(u => /^(api\.bigdatacloud\.net|[a-z-]*api\.open-meteo\.com)$/.test(new URL(u).hostname)) && !gpsMarks.some(v => privacy.other.includes(v)) && !privacy.keys.some(k => /gps.*(?:history|origin|raw|fix)/i.test(k)));
   const forgotten = pauseNetwork(G(17)); await move(G(17));
   await p.evaluate(() => { window.__geoHoldGets(true); locate(true); renderSettings(true); document.querySelector('[data-act="gps-forget"]').click(); window.__geoFlushGets(); });
   forgotten.release(); hold = null; await settle(8);

@@ -1,0 +1,183 @@
+// Régression fonctionnelle : vrais clics, quatre vues, départs/arrivées précoces,
+// profil propre public et profil configuré fictif, reload et nouvelle fenêtre.
+'use strict';
+const assert = require('node:assert/strict');
+const { session, BR, errors, U } = require('./lib/context-session');
+const { revealPlaceControls } = require('./lib/place-controls');
+let n = 0, stage = 'initialisation';
+let scope = { device: '', profil: '', phase: 'initialisation' };
+async function check(label, fn) {
+  try { await fn(); n++; console.log('✅ ' + label); }
+  catch (e) { console.log('❌ ' + label); console.log(String(e.message).replace(/\n/g, ' ')); throw e; }
+}
+const text = async (p, id) => (await p.locator(id).innerText()).replace(/\s+/g, ' ');
+const state = p => p.evaluate(() => {
+  const c = APP_CONTEXT.snapshot;
+  return { status: c.status, location: c.currentLocation && c.currentLocation.id, origin: c.origin && c.origin.id,
+    destination: c.destination && c.destination.id, active: c.activeTrip && c.activeTrip.key,
+    activeDir: c.activeTrip && c.activeTrip.td && c.activeTrip.td.dir,
+    nextDir: c.nextTrip && c.nextTrip.td && c.nextTrip.td.dir, weather: c.weatherLocationId,
+    departure: c.departureTime, activeArrival: c.activeTrip && c.activeTrip.arr,
+    forecastTimes: c.activeTrip && c.activeTrip.seq.map(q => q.hs[q.i].t),
+    confirmation: c.confirmation && c.confirmation.placeId, done: Object.keys(USER_STORE.state.done),
+    stored: JSON.parse(localStorage.getItem(USER_STORE.key)), updatedAt: c.updatedAt, revision: c.revision };
+});
+async function click(p, selector) {
+  await revealPlaceControls(p, selector);
+  const element = p.locator(selector).first();
+  try { await element.click(); }
+  catch (e) {
+    const present = await element.count(), visible = !!present && await element.isVisible(), enabled = !!present && await element.isEnabled();
+    const detail = await p.evaluate(selector => {
+      const el = document.querySelector(selector), r = el && el.getBoundingClientRect();
+      const top = r && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      const c = APP_CONTEXT.snapshot, trip = t => t && ({ key: t.key, dir: t.td && t.td.dir, dep: t.dep, arr: t.arr });
+      return { onglet: UI.view, overlay: top && el && !el.contains(top) ? top.outerHTML.slice(0, 600) : null,
+        USER_STORE: USER_STORE.state, APP_CONTEXT: { status: c.status, currentLocation: c.currentLocation, origin: c.origin,
+          destination: c.destination, activeTrip: trip(c.activeTrip), nextTrip: trip(c.nextTrip), confirmation: c.confirmation,
+          departureTime: c.departureTime, weatherLocationId: c.weatherLocationId, revision: c.revision, updatedAt: c.updatedAt } };
+    }, selector);
+    console.log('DIAGNOSTIC CLIC ' + JSON.stringify({ ...scope, selecteur: selector, present, visible, enabled, ...detail }));
+    throw e;
+  }
+}
+async function tab(p, value) { stage = 'onglet ' + value; await click(p, '#viewSeg [data-act=view][data-v=' + value + ']'); }
+async function action(p, selector, label) { stage = scope.phase = label; await click(p, selector); }
+const workday = p => p.evaluate(() => { S.work.days = [1, 2, 3, 4, 5]; saveSettings(); rebuild(); renderAll(); });
+async function allViews(s, stage, expected, home, work) {
+  const { p } = s;
+  for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) {
+    await tab(p, view);
+    await check(stage + ' · ' + view + ' partage lieu, statut, trajet et persistance', async () => {
+      const x = await state(p); for (const [k, v] of Object.entries(expected)) assert.equal(x[k], v, k + ' · ' + JSON.stringify(x));
+      assert(x.updatedAt > 0 && x.revision > 0, 'horodatage et révision publiés · ' + JSON.stringify(x)); assert.equal(x.stored.place.conf && x.stored.place.conf.placeId, x.confirmation);
+      assert.equal(x.stored.tripStart && x.stored.tripStart.key, x.active);
+      if (x.active) {
+        const dep = await p.evaluate(at => localTs(at), x.stored.tripStart.at);
+        assert.equal(x.departure, dep, 'départ réel partagé');
+        assert(x.forecastTimes.length > 0, 'prévisions du trajet disponibles · ' + JSON.stringify(x));
+        assert(x.forecastTimes.every(t => t >= dep.slice(0, 13) + ':00' && t <= x.activeArrival.slice(0, 13) + ':00'), 'prévisions du créneau réel · ' + JSON.stringify(x));
+      }
+      const bar = await text(p, '#placeBar');
+      if (expected.status === 'work') assert.match(bar, /AU TRAVAIL/);
+      if (expected.status === 'home') assert.match(bar, /À LA MAISON/);
+      if (expected.status === 'travel') assert.match(bar, /EN ROUTE/);
+      if (expected.status === 'home' && expected.nextDir === 'go') {
+        const futureReturn = await p.evaluate(() => {
+          const t = APP_CONTEXT.snapshot.plannedTrips.find(t => t.src === 'work' && t.td.dir === 'ret');
+          return t && { from: t.td.LA.id, to: t.td.LB.id };
+        });
+        if (futureReturn) { assert.equal(futureReturn.from, 'work', 'origine du retour futur conservée'); assert.equal(futureReturn.to, 'home'); }
+      }
+      if (view === 'pneus' && expected.status !== 'travel') {
+        const weather = await text(p, '#secWeatherLink'), label = x.location === 'work' ? work : home;
+        assert(weather.toLowerCase().includes(label.toLowerCase()), 'météo actuelle du lieu confirmé · ' + label + ' · ' + weather);
+      }
+      if (view === 'tenue') {
+        const first = await text(p, '#secTenue .outfit-moment:first-child .outfit-moment-heading');
+        if (expected.status === 'work') { assert(first.toLowerCase().includes(work.toLowerCase()), 'premier moment au travail · ' + first); assert(!first.includes('→'), first); }
+        if (expected.status === 'home') { assert(first.toLowerCase().includes(home.toLowerCase()), 'premier moment au domicile · ' + first); assert(!first.includes('→'), first); }
+        if (expected.status === 'travel') assert(first.toLowerCase().includes((expected.activeDir === 'go' ? home + ' → ' + work : work + ' → ' + home).toLowerCase()), first);
+      }
+      if (view === 'meteo' && expected.status === 'work') { const wx = await text(p, '#secWx'); assert(wx.toLowerCase().includes((work + ' → ' + home).toLowerCase()), 'météo du retour · ' + wx); assert(!/Prochain trajet · en cours/i.test(wx), wx); }
+      if (view === 'analyse' && expected.status === 'travel') assert.match(await text(p, '#secLab'), /TRAJET EN COURS/i);
+    });
+  }
+}
+(async () => {
+  const browser = await BR.launch();
+  try {
+    // Jeudi travaillé, sans rendez-vous intermédiaire dans l’agenda fictif.
+    for (const dev of ['pc', 'iphone']) for (const profile of ['public-propre', 'configure']) {
+      scope = { device: dev, profil: profile, phase: 'premier lancement' };
+      const s = await session(browser, { at: '2026-10-08T06:20:00+02:00', dev, unlock: profile === 'configure',
+        storedGps: dev === 'pc' && profile === 'configure' ? { id: 'gps', gps: 1, name: 'GPS domicile précédent', lat: 48.8502, lon: 2.3501, acc: 20, t: Date.parse('2026-10-08T06:19:40+02:00') } : null });
+      let p = s.p;
+      if (profile === 'public-propre') { await action(p, '[data-act=nocode]', 'profil public'); await s.settle(8); }
+      // Le préréglage fictif ne travaille que lundi/mardi/mercredi ; ce cycle porte sur un jeudi travaillé.
+      await workday(p);
+      const tag = dev + ' · ' + profile, home = profile === 'configure' ? 'Maison test' : 'Lieu principal', work = profile === 'configure' ? 'Travail test' : 'Lieu de travail';
+      let navigations = 0; const onNav = f => { if (f === p.mainFrame()) navigations++; }; p.on('framenavigated', onNav);
+      await action(p, '#placeBar [data-act=place-confirm][data-place=home]', 'confirmation au domicile');
+      await allViews(s, tag + ' · maison', { status: 'home', location: 'home', origin: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
+      await tab(p, 'pneus'); await action(p, '#secBrf [data-act=trip-start]', 'départ de l’aller');
+      await allViews(s, tag + ' · aller commencé', { status: 'travel', origin: 'home', destination: 'work', activeDir: 'go', confirmation: null }, home, work);
+      await p.clock.fastForward(5 * 60e3); await s.settle(2);
+      // L'arrivée est déclarée depuis Météo, avant l'heure de départ prévue.
+      await tab(p, 'meteo'); await action(p, '#placeBar [data-act=place-confirm][data-place=work]', 'confirmation au travail');
+      await allViews(s, tag + ' · déjà au travail', { status: 'work', location: 'work', origin: 'work', destination: 'home', confirmation: 'work', active: null, nextDir: 'ret', weather: 'work' }, home, work);
+      await check(tag + ' · l’aller est clôturé et aucun clic n’a rechargé la page', async () => { assert((await state(p)).done.some(k => /^commute\|.*\|go$/.test(k))); assert.equal(navigations, 0); });
+      p.off('framenavigated', onNav); await p.reload(); await s.settle(8);
+      await allViews(s, tag + ' · reload au travail', { status: 'work', location: 'work', confirmation: 'work', active: null, nextDir: 'ret', weather: 'work' }, home, work);
+      let other = null;
+      if (dev === 'pc' && profile === 'configure') {
+        // L'horloge Playwright appartient au contexte : les nouvelles pages en héritent.
+        other = await s.c.newPage(); other.on('pageerror', e => errors.push(e.message)); await other.goto(U);
+        for (let i = 0; i < 8; i++) { await other.clock.runFor(500); await other.waitForTimeout(80); }
+        await allViews({ p: other }, tag + ' · seconde fenêtre au travail', { status: 'work', location: 'work', confirmation: 'work', nextDir: 'ret' }, home, work);
+      }
+      // Maison est choisie explicitement ; quitter le travail ne déduit aucune destination.
+      // Analyse utilise son sélecteur voiture compact ; l’éditeur complet du jour reste dans les vues de pilotage.
+      await tab(p, 'pneus');
+      await action(p, '#dayContext .day-editor > summary', 'ouvrir Aujourd’hui');
+      await action(p, '#dayContext .day-destination > summary', 'choisir une destination');
+      await action(p, '#dayContext [data-act=day-destination][data-id=home]', 'confirmer la destination Maison');
+      // Départ depuis Analyse : le bouton global démarre le même retour anticipé.
+      await tab(p, 'analyse'); await action(p, '#placeBar [data-act=place-leave]', 'départ du travail');
+      await allViews(s, tag + ' · retour commencé', { status: 'travel', origin: 'work', destination: 'home', activeDir: 'ret', confirmation: null, weather: 'work' }, home, work);
+      const activeKey = (await state(p)).active;
+      await p.reload(); await s.settle(8); assert.equal((await state(p)).active, activeKey);
+      await allViews(s, tag + ' · reload en retour', { status: 'travel', origin: 'work', destination: 'home', activeDir: 'ret', confirmation: null, weather: 'work' }, home, work);
+      if (other) {
+        await other.waitForFunction(() => APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.td.dir === 'ret');
+        await tab(other, 'meteo'); await action(other, '#placeBar [data-act=place-confirm][data-place=home]', 'arrivée maison depuis seconde fenêtre');
+        await p.waitForFunction(() => APP_CONTEXT.snapshot.status === 'home');
+        await check(tag + ' · arrivée depuis une autre fenêtre propagée sans reload', async () => { assert.equal((await state(other)).confirmation, 'home'); assert.equal((await state(p)).confirmation, 'home'); });
+        await other.close();
+      } else { await tab(p, 'tenue'); await action(p, '#placeBar [data-act=place-confirm][data-place=home]', 'confirmation au domicile'); }
+      await allViews(s, tag + ' · arrivé maison', { status: 'home', location: 'home', origin: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
+      const stored = (await state(p)).stored;
+      const reopenedAt = await p.evaluate(() => Date.now());
+      await p.close(); p = await s.c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.goto(U);
+      assert(await p.evaluate(() => Date.now()) >= reopenedAt, 'réouverture sans recul de l’horloge partagée');
+      s.p = p; s.settle = async (count = 6) => { for (let i = 0; i < count; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } };
+      await s.settle(8);
+      await allViews(s, tag + ' · fermeture/réouverture', { status: 'home', location: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
+      await check(tag + ' · réouverture conserve les deux arrivées et le contexte ; aucun autre fournisseur', async () => { const x = await state(p); assert.deepEqual(x.stored.done, stored.done); assert.equal(x.stored.place.conf.at, stored.place.conf.at); });
+      if (dev === 'pc' && profile === 'configure') {
+        await action(p, '#placeBar [data-act=place-confirm][data-place=work]', 'confirmation au travail');
+        await allViews(s, 'nouvelle confirmation au travail après un retour déjà terminé', { status: 'work', location: 'work', nextDir: 'ret', active: null, weather: 'work' }, home, work);
+      }
+      await s.c.close();
+    }
+    const late = await session(browser, { at: '2026-10-08T18:45:00+02:00' });
+    scope = { device: 'pc', profil: 'configure', phase: 'travail après horaire retour' };
+    await workday(late.p);
+    await action(late.p, '#placeBar [data-act=place-confirm][data-place=work]', scope.phase);
+    await allViews(late, 'travail après l’heure prévue du retour', { status: 'work', location: 'work', origin: 'work', destination: 'home', active: null, nextDir: 'ret', weather: 'work' }, 'Maison test', 'Travail test');
+    await check('au travail le soir : aller clôturé et météo du retour évaluée au créneau actuel', async () => {
+      assert((await state(late.p)).done.some(k => /^commute\|.*\|go$/.test(k)));
+      assert(await late.p.evaluate(() => APP_CONTEXT.snapshot.nextTrip.arr > localTs(Date.now()) && APP_CONTEXT.snapshot.nextTrip.seq.every(q => q.hs[q.i].t >= localTs(Date.now()).slice(0, 13) + ':00')));
+    }); await late.c.close();
+    const cold = await session(browser, { at: '2026-10-08T06:20:00+02:00', unlock: false, meteo: '503', dev: 'iphone' });
+    scope = { device: 'iphone', profil: 'public-propre · météo 503', phase: 'premier lancement' };
+    await action(cold.p, '[data-act=nocode]', 'profil public sans météo'); await cold.settle(8);
+    await action(cold.p, '#placeBar [data-act=place-confirm][data-place=work]', 'confirmation travail sans météo');
+    await check('premier lancement sans météo : confirmation au travail et prochain retour conservés partout', async () => {
+      for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) { await tab(cold.p, view); const x = await state(cold.p); assert.equal(x.status, 'work'); assert.equal(x.location, 'work'); assert.equal(x.nextDir, 'ret'); assert.match(await text(cold.p, '#placeBar'), /AU TRAVAIL/); }
+    });
+    await cold.p.reload(); await cold.settle(4);
+    await check('premier lancement sans météo : reload conserve l’état sans inventer de données', async () => { const x = await state(cold.p); assert.equal(x.location, 'work'); assert.equal(x.confirmation, 'work'); assert.equal(x.nextDir, 'ret'); assert.match(await text(cold.p, '#notice'), /Météo indisponible|Chargement de la météo/i); });
+    await tab(cold.p, 'pneus'); cold.p.once('dialog', d => d.accept()); await action(cold.p, '#secBrf [data-act=trip-cancel]', 'annulation retour sans météo');
+    await action(cold.p, '#placeBar [data-act=place-leave]', 'départ sans trajet pertinent');
+    await check('départ sans trajet pertinent : contexte en déplacement, origine connue, destination non inventée', async () => {
+      for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) { await tab(cold.p, view); const x = await state(cold.p); assert.equal(x.status, 'travel'); assert.equal(x.origin, 'work'); assert.equal(x.destination, null); assert.equal(x.active, null); assert.match(await text(cold.p, '#placeBar'), /EN ROUTE/); }
+    });
+    await cold.p.reload(); await cold.settle(4);
+    await check('départ sans trajet puis reload : le domicile ne remplace pas l’origine au travail', async () => { const x = await state(cold.p); assert.equal(x.status, 'travel'); assert.equal(x.origin, 'work'); assert.equal(x.weather, 'work'); });
+    await action(cold.p, '#placeBar [data-act=place-confirm][data-place=home]', 'arrivée maison sans météo'); assert.equal((await state(cold.p)).status, 'home');
+    await cold.c.close();
+    await check('aucune erreur JavaScript sur les quatre parcours', async () => assert.deepEqual(errors, []));
+  } finally { await browser.close(); }
+  console.log(`${n}/${n} scénarios OK · erreurs JS : aucune`);
+})().catch(e => { console.error('❌ contexte global · ' + stage); console.error(String(e.message).replace(/\n/g, ' ')); console.error(e); process.exit(1); });

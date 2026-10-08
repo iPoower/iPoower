@@ -53,8 +53,10 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
     const timeline = () => p.locator('.outfit-timeline .outfit-moment').evaluateAll(a => a.map(x => ({ start: x.dataset.start, end: (x.querySelector('time').innerText.split('–')[1] || '').trim(), kind: x.dataset.kind, text: x.innerText })));
     // On remplit uniquement les mémoires déjà utilisées par l'app. Aucun appel
     // à buildTenueDay/dayplan dans les assertions, ni météo/agenda réellement lus.
-    const scenario = opt => p.evaluate(o => {
-      DEMO.on = false; GPS = o.gps || null; S.locs = o.locs; S.customs = [];
+    const renderReads = [];
+    const scenario = async opt => {
+    await p.evaluate(o => {
+      DEMO.on = false; GPS = o.gps || null; S.locs = o.locs; S.customs = []; S.gpsAuto = 0;
       S.work = { from: 'home', to: 'work', dep: '08:00', ret: '18:00', durMin: 30, days: [1, 2, 3, 4, 5], ...(o.work || {}) };
       S.calDirect = o.direct || {}; UI.loc = o.loc || 'home'; UI.view = 'tenue'; UI.outfitDay = 0; UI.outfitOccasion = 'outing';
       M = {}; for (const k of Object.keys(RAW)) delete RAW[k];
@@ -79,8 +81,15 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
         const v = create({ ...item.loc, id, name: item.loc.label || item.loc.loc }, item.changes, item.mode);
         CALM[id] = { t: Date.now() - (item.age || 0), m: v.model };
       }
-      renderTenue();
+      // Injection de météo/planning : préparer la projection commune sans
+      // persister les points fictifs. Le rendu Tenue reste une lecture seule.
+      appRefreshContext({ persist: false });
     }, { locs: [home, work], ...opt });
+    await p.waitForTimeout(50);
+    const before = requests.length, writes = await p.evaluate(() => window.__tenueWrites.length);
+    await p.evaluate(() => renderTenue()); await p.waitForTimeout(30);
+    renderReads.push({ requests: requests.length - before, writes: await p.evaluate(n => window.__tenueWrites.length - n, writes) });
+    };
     const patch = (from, to, values) => ({ from, to, values, day: DAY });
     await p.goto(U); await settle(); await p.fill('#unlockPw', PW);
     await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); await settle();
@@ -151,9 +160,10 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
     await scenario({ events: [event('18:00', '20:00', venue)] });
     const unavailable = (await timeline()).filter(x => /Salle test/.test(x.text));
     check('lieu connu sans modèle : météo indisponible sans repli sur le domicile', unavailable.length > 0 && unavailable.every(x => /météo locale non calculée|météo indisponible/i.test(x.text) && !/22(?:,0)?\s*°|manteau/i.test(x.text)));
-    check('tous les premiers plans sont rendus sans appel météo ou agenda', requests.length === networkAt);
+    check('chaque rendu Tenue lit le contexte sans appel météo, agenda ni écriture', renderReads.every(x => x.requests === 0 && x.writes === 0));
     // Une récupération déjà prévue par l'agenda termine : son vrai callback
     // doit actualiser aussi la vue Tenue, qui ne lance pas sa propre récupération.
+    networkAt = requests.length;
     await p.evaluate(e => calModel(e), event('18:00', '20:00', venue)); await settle();
     check('réception de la météo agenda : le plan se met à jour immédiatement', (await timeline()).some(x => x.kind === 'event' && /Salle test/.test(x.text) && /Ressenti \d/.test(x.text) && !/météo locale non calculée/i.test(x.text)));
     check('seule la récupération existante de l’agenda est appelée', requests.length === networkAt + 1 && requests[networkAt].url.includes('open-meteo.com'));
@@ -177,6 +187,9 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
       if (undersized.length) console.log('Commandes sous 44 px à ' + width + ' px : ' + JSON.stringify(undersized));
     }
     await p.setViewportSize({ width: 414, height: 896 });
+    // Les callbacks globaux de la météo peuvent écrire le journal et les
+    // tendances pendant les fixtures. Isoler les commandes Tenue après cela.
+    const controlsAt = await p.evaluate(() => window.__tenueWrites.length);
     await p.click('[data-act=outfit-day][data-v="1"]');
     check('Demain sélectionne une journée locale distincte', /04\/10/.test(await txt()) && /demain/i.test(await txt()));
     await p.click('[data-act=outfit-occasion][data-v=office]');
@@ -186,7 +199,14 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
     await p.click('[data-act=outfit-day][data-v="0"]');
     check('rendus et réglages Tenue sans nouvelle requête météo ou agenda', requests.length === networkAt);
     const writes = await p.evaluate(n => window.__tenueWrites.slice(n), writesAt);
-    check('aucun stockage du plan, des événements ou des coordonnées', writes.every(x => ['twrc.outfit.occasion', 'twrc.view'].includes(x.key)) && !JSON.stringify(writes).includes(PRIVATE));
+    const controlWrites = await p.evaluate(n => window.__tenueWrites.slice(n), controlsAt);
+    const contextKeys = /^(?:twrc\.(?:context\.v1|debrief\.v1|gps|place\.v1|tripstart\.v1|tripend\.v1|returnhome\.v1|tripdone))$/;
+    const decisionKey = 'twrc.decision.latest.v1';
+    check('aucun stockage du plan, des événements ou des tracés ; commandes Tenue limitées aux préférences et synthèse locale sûre',
+      controlWrites.every(x => ['twrc.outfit.occasion', 'twrc.view', decisionKey].includes(x.key) || contextKeys.test(x.key)) &&
+      !JSON.stringify(writes).includes(PRIVATE) &&
+      !writes.some(x => /\"(?:moments|timeline|events)\"/.test(x.value)) &&
+      !writes.some(x => (contextKeys.test(x.key) || x.key === decisionKey) && /\"(?:route|pts|g|history|lat|lon|title|address)\"\s*:/.test(x.value)));
     check('aucun titre d’agenda transmis ou publié', !JSON.stringify(requests).includes(PRIVATE) && requests.every(x => ['GET', 'HEAD'].includes(x.method)));
     await scenario({});
     await p.click('[data-act=view][data-v=meteo]');

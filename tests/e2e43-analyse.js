@@ -18,8 +18,12 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
   vm.createContext(ctx); vm.runInContext(src + ';this.mk=makeDemoPayload;this.me=makeDemoEnsemble;this.mn=makeDemoNowcast;', ctx);
   const c = await b.newContext({ ...VP[dev], timezoneId: 'Europe/Paris', locale: 'fr-FR' });
   const p = await c.newPage(); await p.clock.install({ time: T0 });
-  const S = { meteo, calls: 0 };
-  p.on('pageerror', e => errors.push(dev + ' · ' + e.message));
+  const S = { meteo, calls: 0, phase: 'démarrage' };
+  p.on('pageerror', e => {
+    // Garder la cause et l'étape avant les longues URL : le rapport CI borne chaque diagnostic.
+    const detail = String(e.stack || e.message).replace(/\S*open-meteo\.com[^\s]*/g, '[requête météo fictive]').replace(/\n/g, ' ⏎ ');
+    errors.push(dev + ' · ' + at.slice(0, 10) + ' · ' + S.phase + ' · ' + e.name + ' · ' + detail.slice(0, 500));
+  });
   p.on('request', r => { try { hosts.add(new URL(r.url()).host); } catch (e) { /* url illisible */ } });
   await p.route('**/*', r => {
     const u = r.request().url(), J = o => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
@@ -44,11 +48,20 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
     return r.abort();
   });
   await p.goto(U); await p.clock.runFor(2500);
-  if (unlock) { await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); }
+  if (unlock) { S.phase = 'déverrouillage'; await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); }
   const settle = async (n = 14) => { for (let i = 0; i < n; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } };
+  const weatherIdle = async () => {
+    for (let i = 0; i < 40; i++) {
+      await settle(1);
+      if (await p.evaluate(() => { const r = WEATHER_REQUESTS.state(); return !busy && r.active === 0 && r.queued === 0; })) return;
+    }
+    throw new Error('Actualisation météo fictive encore en cours');
+  };
   await settle();
   await p.evaluate(() => window.scrollTo(0, 0));
-  return { p, c, S, settle, T0 };
+  S.phase = 'parcours';
+  const close = () => { S.phase = 'fermeture'; return c.close(); };
+  return { p, c, S, settle, weatherIdle, T0, close };
 }
 const lab = p => p.evaluate(() => {
   document.querySelectorAll('#secLab details[data-k=spec], #secLab details[data-k=conf]').forEach(d => { d.open = true; });
@@ -63,10 +76,13 @@ const layout = (p, mobile) => p.evaluate(mobile => {
   const W = document.documentElement.clientWidth, el = document.getElementById('secLab'), small = [], wide = [];
   document.querySelectorAll('#secLab button, #secLab summary, #viewSeg button').forEach(e => { const b = e.getBoundingClientRect(); if (b.height > 0 && mobile && b.height < 43.5) small.push((e.dataset.act || e.tagName) + ' ' + Math.round(b.height)); });
   el.querySelectorAll('*').forEach(e => { const b = e.getBoundingClientRect(); if (b.width > 0 && b.right > W + 1) wide.push(e.className || e.tagName); });
-  return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6), heroBottom: Math.round(el.querySelector('.lab-hero').getBoundingClientRect().bottom) };
+  const hero = el.querySelector('.lab-hero').getBoundingClientRect(), decision = document.getElementById('decisionCore').getBoundingClientRect();
+  return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6),
+    heroBottom: Math.round(hero.bottom), heroTop: Math.round(hero.top), decisionBottom: Math.round(decision.bottom) };
 }, mobile);
 const toLab = async s => { await s.p.click('[data-act=view][data-v=analyse]'); await s.settle(3); await s.p.evaluate(() => window.scrollTo(0, 0)); };
-const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
+// libellé « tendance · niveau » : la tendance (en chauffe, stabilisé, en refroidissement, au repos) est distincte du niveau (froid … très chaud)
+const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT|FROID|SOUS LA PLAGE FAVORABLE|FAVORABLE|CHAUD|TRÈS CHAUD))|SUPPOSÉ AMBIANT/;
 
 (async () => {
   const b = await BR.launch();
@@ -75,7 +91,7 @@ const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
     let s = await session(b, { at: '2026-10-03T05:40:00+02:00', scn: 'froid' });
     await toLab(s); let a = await lab(s.p);
     if (process.env.LAB_DUMP) console.log(JSON.stringify(a, null, 1));
-    check('1 · quatre onglets, Analyse en dernier', a.tabs === 'pneus,meteo,tenue,analyse', a.tabs);
+    check('1 · cinq onglets (Météo · Pneus · TRAJET · Tenue · Analyse), Analyse en dernier', a.tabs === 'meteo,pneus,trajet,tenue,analyse', a.tabs);
     check('1 · Analyse : seule section visible avec les réglages, en tête', a.shown && a.first === 'secLab' && !a.others.length, JSON.stringify({ first: a.first, others: a.others }));
     check('1 · verdict : pneu réellement monté (modèle non renseigné → analyse générique été), dimension, état, plage estimée', /Modèle non renseigné · pneu été/.test(a.hero) && /215\/40 ZR18 89Y XL/.test(a.hero) && STATES.test(a.hero) && /Gomme estimée ≈ −?\d+ à −?\d+ °C/.test(a.hero), a.hero);
     check('1 · verdict : freinage, virage, pluie, facteur limitant, confiance', /Freinage : \S+/.test(a.hero) && /Virage : \S+/.test(a.hero) && /(Si pluie|Pluie) : \S+/.test(a.hero) && /Facteur limitant : /.test(a.hero) && /Confiance : (faible|moyenne|élevée)/.test(a.hero), a.hero);
@@ -86,7 +102,7 @@ const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
     check('1 · fiche : DONNÉE CONSTRUCTEUR séparée, rubriques « non disponible » sans modèle', /DONNÉE CONSTRUCTEUR/.test(a.all) && /DÉCODAGE DE LA MONTE SAISIE/.test(a.all) && /Étiquette UE : non disponible/.test(a.all) && !a.links.length);
     check('1 · aucune fausse précision : pas de « exactement », mention estimation et absence de capteur', !/exactement/i.test(a.all) && /aucune mesure de capteur/.test(a.all) && /aucun capteur direct/.test(a.all));
     const L = await layout(s.p, true);
-    check('1 · iPhone : aucun débordement, cibles ≥ 44 pt (onglets compris), verdict visible sans défiler', L.sw <= L.W && !L.wide.length && !L.small.length && L.heroBottom < 896, JSON.stringify(L));
+    check('1 · iPhone : aucun débordement, cibles ≥ 44 pt, synthèse globale visible et verdict Analyse déjà engagé', L.sw <= L.W && !L.wide.length && !L.small.length && L.decisionBottom > 0 && L.decisionBottom < 896 && L.heroTop > 0 && L.heroTop < 896, JSON.stringify(L));
     if (process.env.LAB_SHOT) await s.p.locator('#secLab').screenshot({ path: process.env.LAB_SHOT + '-iphone.png' });   // capture locale facultative, après les mesures
     await s.p.locator('#secLab details[data-k=why] summary').click(); await s.p.locator('#secLab details[data-k=b-brake] summary').click(); await s.settle(1);
     await s.p.evaluate(() => renderAll()); await s.settle(2);
@@ -104,7 +120,7 @@ const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
     await setMem(10, 40); await s.settle(1); a = await lab(s.p);
     check('2 · arrêt de 10 min après un trajet : « À l’arrêt », température conservée', /À L’ARRÊT/i.test(a.hero) && /Température conservée/.test(a.all), a.hero + ' | ' + a.all.slice(0, 400));
     await setMem(14 * 60, 40); await s.settle(1); a = await lab(s.p);
-    check('2 · nuit entière : retour proche de l’état froid', /Retour proche de l’état froid/.test(a.all) && /PNEU FROID|EN CHAUFFE/.test(a.hero), a.hero);
+    check('2 · nuit entière : retour proche de l’état froid', /Retour proche de l’état froid/.test(a.all) && /AU REPOS · AMBIANT · FROID/.test(a.hero) && !/EN CHAUFFE/.test(a.hero), a.hero);
     // 3. roulage suivi au GPS : état « en roulage », mémoire écrite sans aucune position
     const mem = await s.p.evaluate(() => { const l = allLocs()[0]; LIVE.phase = 'active'; LIVE.key = 'test'; LIVE.startFix = { ts: Date.now() - 14 * 60e3, lat: l.lat, lon: l.lon, acc: 20 }; FIX = { ts: Date.now(), lat: l.lat + 0.12, lon: l.lon, acc: 20 };
       labThermTick.at = 0; renderAll(); const r = localStorage.getItem('twrc.tyretherm.v1'); LIVE.phase = 'idle'; LIVE.key = null; LIVE.startFix = null; FIX = null; return r; });
@@ -124,27 +140,116 @@ const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
     check('5 · Météo intacte (poste météo visible), Analyse masquée', await s.p.evaluate(() => !document.getElementById('secWx').hidden && document.getElementById('secLab').hidden));
     await s.p.click('[data-act=view][data-v=tenue]'); await s.settle(2);
     check('5 · Tenue intacte, Analyse masquée', await s.p.evaluate(() => !document.getElementById('secTenue').hidden && getComputedStyle(document.getElementById('secLab')).display === 'none' || document.getElementById('secLab').hidden));
-    await s.c.close();
+    await s.close();
 
     // 6. PC 1280 : même contenu, sans débordement
     s = await session(b, { at: '2026-10-03T14:00:00+02:00', scn: 'pluie', dev: 'pc' }); await toLab(s); a = await lab(s.p); const Lp = await layout(s.p, false);
     if (process.env.LAB_SHOT) await s.p.locator('#secLab').screenshot({ path: process.env.LAB_SHOT + '-pc.png' });
     check('6 · PC : mêmes blocs que l’iPhone, sans débordement', a.shown && a.bars === 5 && a.cmp === 5 && Lp.sw <= Lp.W && !Lp.wide.length, JSON.stringify(Lp));
     check('6 · pluie : aquaplaning et freinage pluie évalués', /AQUAPLANING/i.test(a.all) && /Pluie : \S+/.test(a.hero), a.hero);
-    await s.c.close();
+    await s.close();
 
     // 7. météo absente au premier lancement : pneu identifié, aucune estimation inventée
     s = await session(b, { at: '2026-10-03T05:40:00+02:00', meteo: '503' }); await toLab(s); a = await lab(s.p);
     check('7 · météo absente : pneu affiché, « aucune estimation thermique », aucune barre', a.shown && /Météo indisponible : aucune estimation thermique/.test(a.hero) && a.bars === 0, a.hero);
-    await s.c.close();
+    await s.close();
+
+    // 8. Régression prod-38 : le libellé marginal long repoussait le bas du verdict à 922 px
+    // sur iPhone, après confirmation du domicile. Seules les entrées météo / mémoire sont préparées.
+    s = await session(b, { at: '2026-10-06T06:15:00+02:00' }); await toLab(s);
+    await s.p.locator('#placeBar [data-act=place-confirm][data-place=home]').tap();
+    await s.p.waitForFunction(() => APP_CONTEXT.snapshot.confirmation?.placeId === 'home');
+    const cooling = await s.p.evaluate(() => {
+      const car = labCar(), m = CX.m, now = Date.now();
+      Object.assign(car.tire, { type: 'summer', brand: '', model: '', size: '215/40 ZR18 89Y XL', press: '2,4', tread: 6, pchk: { date: '2026-09-20', T: 15 } });
+      m.hs = m.hs.map(h => ({ ...h, T: 12, Tr: 13, RH: 70, P: 0, Pl: 0, snow: 0, code: 1, gust: 15, rad: 0, ice: { ...h.ice, level: 0, score: 0 } }));
+      RAW[UI.loc].t = now; localStorage.removeItem(TT_KEY);
+      TT = { [car.id]: { at: localTs(now - 30 * 60000), T: 45, sig: tyreStateOf(car).sig } };
+      LIVE.phase = 'idle'; LIVE.key = LIVE.startFix = LIVE.base = LIVE.route0 = LIVE.route = LIVE.lastFix = FIX = TRIPSTART = null; labThermTick.at = now;
+      const r = tyreLab(labInput(car)); renderLab();
+      return { state: r.hero.state, trend: r.thermal.trend, range: r.thermal.range, warm: r.hero.warm, why: r.thermal.why };
+    });
+    a = await lab(s.p); const Lc = await layout(s.p, true);
+    check('8 · arrêt récent : en refroidissement sous la plage favorable, estimation prudente inchangée', cooling.state === 'En refroidissement · sous la plage favorable' && cooling.trend === 'cooling' && cooling.range.join(',') === '22,38' && cooling.warm === 'limite' && a.all.includes('Avant la zone favorable : limite') && cooling.why.some(x => /bas de plage/.test(x) && /prudence/.test(x)), JSON.stringify(cooling));
+    check('8 · iPhone domicile confirmé : synthèse globale visible, verdict Analyse engagé, aucune cible masquée ni débordement', a.hero.includes('EN REFROIDISSEMENT · SOUS LA PLAGE FAVORABLE') && Lc.sw <= Lc.W && !Lc.wide.length && !Lc.small.length && Lc.decisionBottom > 0 && Lc.decisionBottom < 896 && Lc.heroTop > 0 && Lc.heroTop < 896, JSON.stringify(Lc));
+    if (process.env.LAB_SHOT) await s.p.screenshot({ path: process.env.LAB_SHOT + '-iphone-cooling.png' });
+    await s.close();
+
+    // 10. Ergonomie et montage confirmé : parcours réels PC/iPhone, brouillon, erreur, archive et offline.
+    for (const dev of ['pc', 'iphone']) {
+      s = await session(b, { at: '2026-10-05T12:00:00+02:00', dev });
+      await s.p.evaluate(() => {
+        const car = S.cars[0]; car.plan = { on: 1, brand: 'Goodyear', model: 'UltraGrip Performance 3', size: '215/40 R18 89V', date: '2026-11-26' };
+        car.odo = [{ d: '2026-10-01', km: 23000 }]; car.tire.type = 'summer'; car.tire.tread = 6.4;
+        car.tire.pchk = { date: '2026-10-01', T: 15 };
+        car.sets = { winter: { brand: 'Goodyear', model: 'UltraGrip Performance 3', size: '215/40 R18 89V', tread: 7.2, dot: '1825', pchk: { date: '2026-03-01', T: 8 } } };
+        TT = { [car.id]: { at: nowIn('Europe/Paris'), T: 40, sig: tyreStateOf(car).sig }, other: { at: nowIn('Europe/Paris'), T: 18, sig: 'other' } };
+        lsSet(TT_KEY, JSON.stringify(TT)); saveSettings(); renderAll();
+        TRIPEND = { carId: car.id, at: Date.now(), range: [30, 40], state: 'favorable', conf: 'moyenne', min: 20 };
+      });
+      await s.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await s.settle(1);
+      check('10 · ' + dev + ' · Pneus : départ et voitures prioritaires, détails météo regroupés dans Météo', await s.p.evaluate(() => {
+        const shown = id => !!document.getElementById(id).getClientRects().length;
+        const ids = [...document.querySelectorAll('.wrap > section,.wrap > .grid2')].filter(e => e.getClientRects().length).map(e => e.id);
+        return ids[0] === 'secBrf' && ids.indexOf('secCars') < ids.indexOf('secWeatherLink') && shown('secWeatherLink') && ['secCur','secChart','secDays','secRadar','secAir'].every(id => !shown(id));
+      }));
+      await s.p.locator('#secWeatherLink [data-act=weather-details]').click(); await s.settle(1);
+      check('10 · ' + dev + ' · bouton météo ouvre les détails conservés', await s.p.locator('#secCur').isVisible() && await s.p.locator('#secChart').isVisible() && await s.p.locator('#secRadar').isVisible());
+      await toLab(s);
+      check('10 · ' + dev + ' · raccourcis avant Analyse, semaines distinguées, légende explicite', await s.p.evaluate(() => {
+        return !!(document.getElementById('jump').compareDocumentPosition(document.getElementById('secLab')) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+          document.querySelectorAll('#secSeason .season-week').length >= 2 && /tendance plus incertaine/.test(document.getElementById('secSeason').textContent) &&
+          document.querySelectorAll('#secSeason .season-legend span').length >= 5 && document.querySelector('#secSeason .cell').getAttribute('aria-label').includes('minimum');
+      }));
+      check('10 · ' + dev + ' · freinage présenté comme potentiel estimé, avec confiance', /estimé/i.test(await s.p.locator('.lab-brk').innerText()) && /confiance/i.test(await s.p.locator('.lab-brk').innerText()) && !/OPTIMAL/.test(await s.p.locator('.lab-brk').innerText()));
+      if (dev === 'iphone') {
+        await s.p.locator('#secJournal').scrollIntoViewIfNeeded();
+        check('10 · iPhone · onglets accessibles après défilement, contenu final hors du bandeau', await s.p.evaluate(() => {
+          const nav = document.getElementById('viewSeg'), r = nav.getBoundingClientRect(), b = nav.querySelector('button').getBoundingClientRect();
+          const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+          return getComputedStyle(nav).position === 'fixed' && r.top >= 0 && r.bottom <= innerHeight + 1 && !!hit.closest('#viewSeg');
+        }));
+        await s.p.locator('#viewSeg [data-act=view][data-v=tenue]').tap(); await s.settle(1);
+        check('10 · iPhone · onglet fixe activable au toucher', await s.p.locator('#secTenue').isVisible()); await toLab(s);
+      }
+      await s.p.locator('[data-act=mount-open][data-car=carA]').click();
+      await s.p.fill('#mountKm', '24567'); await s.p.evaluate(() => renderAll());
+      check('10 · ' + dev + ' · brouillon et focus conservés pendant le rafraîchissement', await s.p.inputValue('#mountKm') === '24567' && await s.p.evaluate(() => document.activeElement.id === 'mountKm' && S.cars[0].tire.type === 'summer'));
+      await s.p.locator('[data-act=mount-cancel]').click();
+      check('10 · ' + dev + ' · annulation sans changement de monte', !(await s.p.locator('.mount-form').count()) && await s.p.evaluate(() => S.cars[0].tire.type === 'summer' && S.cars[0].plan.on === 1));
+      s.S.phase = 'montage hors connexion';
+      await s.c.setOffline(true); await s.p.evaluate(() => window.dispatchEvent(new Event('offline'))); await s.settle(1);
+      await s.p.locator('[data-act=mount-open][data-car=carA]').click(); await s.p.fill('#mountDate', '2026-10-06'); await s.p.fill('#mountKm', '24567');
+      await s.p.locator('[data-act=mount-save]').click();
+      check('10 · ' + dev + ' · date future refusée, erreur visible, pneus inchangés', /date réelle/.test(await s.p.locator('.mount-message').innerText()) && await s.p.evaluate(() => S.cars[0].tire.type === 'summer'));
+      await s.p.fill('#mountDate', '2026-10-05'); await s.p.fill('#mountKm', '22000'); await s.p.locator('[data-act=mount-save]').click();
+      check('10 · ' + dev + ' · compteur incohérent refusé', /chronologie/.test(await s.p.locator('.mount-message').innerText()));
+      await s.p.fill('#mountKm', '24567'); await s.p.locator('[data-act=mount-save]').click(); await s.settle(1);
+      const mounted = await s.p.evaluate(() => { const c = S.cars[0], mem = JSON.parse(lsGet(TT_KEY)); return {
+        type: c.tire.type, model: c.tire.model, date: c.tire.mounted, km: c.tire.mountKm, pressure: c.tire.pchk.date, tread: c.tire.tread,
+        summerTread: c.sets.summer.tread, summerPressure: c.sets.summer.pchk.date, plan: c.plan.on, thermalGone: !mem[c.id] && !!mem.other && !TRIPEND,
+        shared: tyreStateOf(labCar()).active.type, title: document.querySelector('.lab-tyre').textContent }; });
+      check('10 · ' + dev + ' · confirmation offline : bon jeu hiver, archive été, date réelle, compteur, pression non inventée', mounted.type === 'winter' && mounted.model === 'UltraGrip Performance 3' && mounted.date === '2026-10-05' && mounted.km === 24567 && mounted.pressure === '' && mounted.tread === 7.2 && mounted.summerTread === 6.4 && mounted.summerPressure === '2026-10-01' && mounted.plan === 0 && mounted.thermalGone && mounted.shared === 'winter' && /UltraGrip Performance 3/.test(mounted.title), JSON.stringify(mounted));
+      check('10 · ' + dev + ' · montage enregistré visible, formulaire et compte à rebours retirés', /Montage enregistré/.test(await s.p.locator('#secSeason').innerText()) && !(await s.p.locator('.mount-form').count()) && !(await s.p.locator('[data-act=mount-open][data-car=carA]').count()));
+      s.S.phase = 'retour en ligne'; await s.c.setOffline(false);
+      // Le retour en ligne relance les prévisions. Vérifier ensuite la persistance, sans interrompre
+      // les réponses routées : WebKit signale leur interruption comme une erreur CORS de fetch.
+      await s.p.evaluate(() => window.dispatchEvent(new Event('online'))); await s.weatherIdle();
+      s.S.phase = 'rechargement'; await s.p.reload(); await s.settle(8); s.S.phase = 'après rechargement';
+      check('10 · ' + dev + ' · montage et archive conservés au rechargement', await s.p.evaluate(() => S.cars[0].tire.type === 'winter' && S.cars[0].tire.mountKm === 24567 && S.cars[0].sets.summer.tread === 6.4 && S.cars[0].plan.on === 0));
+      await s.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await s.settle(1);
+      check('10 · ' + dev + ' · Pneus reprend le montage confirmé dans Analyse', /Pneus montés : hiver/.test(await s.p.locator('#secCars').innerText()));
+      await s.close();
+    }
 
     // 9. dernier roulage déclaré : interface réelle, mémoire par voiture, reprise et garde sur les dates.
     for (const dev of ['iphone', 'pc']) {
       s = await session(b, { at: '2026-10-05T09:30:00+02:00', dev }); await toLab(s);
       await s.p.locator('[data-k=last-drive] > summary').click();
       await s.p.fill('#labDriveAt', '2026-10-05T09:00'); await s.p.fill('#labDriveMinutes', '40'); await s.p.selectOption('#labDriveKind', 'route');
-      await s.p.evaluate(() => renderAll());
-      check(`9 · ${dev} : saisie conservée pendant une actualisation`, await s.p.inputValue('#labDriveAt') === '2026-10-05T09:00' && await s.p.inputValue('#labDriveMinutes') === '40');
+      await s.p.locator('#labDriveMinutes').focus();
+      await s.p.evaluate(() => { RAW[UI.loc].t -= 3600e3; renderAll(); });
+      check(`9 · ${dev} : saisie et focus conservés pendant une actualisation`, await s.p.inputValue('#labDriveAt') === '2026-10-05T09:00' && await s.p.inputValue('#labDriveMinutes') === '40' && await s.p.evaluate(() => document.activeElement.id === 'labDriveMinutes'));
       const formLayout = await layout(s.p, dev === 'iphone');
       check(`9 · ${dev} : formulaire ouvert sans débordement, cibles ≥ 44 pt`, formLayout.sw <= formLayout.W && !formLayout.wide.length && !formLayout.small.length, JSON.stringify(formLayout));
       await s.p.locator('#labLastDriveForm button[type=submit]').click(); await s.settle(2); a = await lab(s.p);
@@ -156,13 +261,19 @@ const STATES = /PNEU FROID|EN CHAUFFE|FENÊTRE FAVORABLE|CHAUD|TRÈS CHAUD/;
       await s.p.fill('#labDriveAt', '2026-10-05T10:00');
       await s.p.evaluate(() => document.getElementById('labLastDriveForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
       check(`9 · ${dev} : arrivée future refusée sans écraser l’historique`, /pas dans le futur/.test(await s.p.locator('[data-k=last-drive] [role=alert]').innerText()) && before === await s.p.evaluate(() => localStorage.getItem('twrc.tyretherm.v1')));
+      await s.p.evaluate(() => { LIVE.phase = 'active'; LIVE.startFix = null; renderAll(); });
+      check(`9 · ${dev} : saisie désactivée pendant un trajet actif sans relevé GPS`, await s.p.locator('#labDriveAt').isDisabled() && await s.p.locator('[data-act=lab-drive-forget]').isDisabled());
+      await s.p.evaluate(() => document.getElementById('labLastDriveForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+      check(`9 · ${dev} : soumission forcée en roulage refusée sans écraser l’historique`, /trajet est en cours/.test(await s.p.locator('[data-k=last-drive] [role=alert]').innerText()) && before === await s.p.evaluate(() => localStorage.getItem('twrc.tyretherm.v1')));
+      await s.p.evaluate(() => { LIVE.phase = 'idle'; ttLoad().carB = { at: '2026-10-05T08:00', T: 42, sig: 'autre-monte' }; lsSet(TT_KEY, JSON.stringify(ttLoad())); renderAll(); });
       await s.p.click('[data-act=lab-drive-forget]'); await s.settle(2);
       check(`9 · ${dev} : oubli volontaire rétablit « Historique inconnu »`, /HISTORIQUE INCONNU/.test((await lab(s.p)).hero) && !await s.p.evaluate(() => JSON.parse(localStorage.getItem('twrc.tyretherm.v1') || '{}').carA));
+      check(`9 · ${dev} : oubli ne touche pas à la mémoire de l’autre voiture`, await s.p.evaluate(() => JSON.parse(localStorage.getItem('twrc.tyretherm.v1')).carB.T === 42));
       await s.c.close();
     }
     const extra = [...hosts].filter(h => !KNOWN.test(h));
-    check('8 · aucun fournisseur externe supplémentaire', !extra.length, extra.join(', '));
-    check('8 · aucune erreur JavaScript', !errors.length, errors.slice(0, 3).join(' | '));
+    check('9 · aucun fournisseur externe supplémentaire', !extra.length, extra.join(', '));
+    check('9 · aucune erreur JavaScript', !errors.length, errors.slice(0, 3).join(' | '));
   } finally { await b.close(); }
   console.log(rows.join('\n')); console.log('erreurs JS : ' + (errors.length ? errors.slice(0, 3).join(' | ') : 'aucune'));
   console.log(`${rows.length - fail}/${rows.length} scénarios OK`); process.exitCode = fail ? 1 : 0;

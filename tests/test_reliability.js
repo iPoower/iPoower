@@ -1,0 +1,26 @@
+'use strict';
+const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
+const source = fs.readFileSync(path.join(__dirname, '../src/reliability.js'), 'utf8');
+const ctx = { console, Date, JSON, String }; vm.createContext(ctx); vm.runInContext(source + ';this.R=Reliability;', ctx);
+const R = ctx.R; let n = 0; const check = (label, fn) => { fn(); n++; console.log('✅ ' + label); };
+check('version identique : aucune action', () => assert.equal(R.versionDecision({ loaded: 'a', published: 'a' }), 'current'));
+check('version différente pendant trajet : rechargement différé', () => assert.equal(R.versionDecision({ loaded: 'a', published: 'b', travelling: true }), 'deferred'));
+check('version différente hors ligne : aucun rechargement', () => assert.equal(R.versionDecision({ loaded: 'a', published: 'b', online: false }), 'offline'));
+check('version différente au repos : un rechargement autorisé', () => assert.equal(R.versionDecision({ loaded: 'a', published: 'b' }), 'reload'));
+check('même cible déjà tentée : aucune boucle de rechargement', () => assert.equal(R.versionDecision({ loaded: 'a', published: 'b', attempted: true }), 'stale'));
+check('métadonnées anciennes sans build : garde neutre', () => assert.equal(R.versionDecision({ loaded: 'a', published: null }), 'unknown'));
+check('journal limité et persistant, sans URL ni coordonnées précises', () => {
+  const data = new Map(), listeners = {};
+  const storage = { getItem:k=>data.get(k)||null, setItem:(k,v)=>data.set(k,v), removeItem:k=>data.delete(k) };
+  const target = { addEventListener:(k,f)=>listeners[k]=f, removeEventListener:k=>delete listeners[k] };
+  let at = 100; const rec = R.runtimeRecorder({ target, storage, now:()=>++at, limit:3 });
+  listeners.error({ message:'boom https://example.test/x?lat=48.8566,2.3522' });
+  listeners.unhandledrejection({ reason:new Error('raté 48.8566, 2.3522') });
+  rec.record('manual', 'trois'); rec.record('manual', 'quatre');
+  assert.equal(rec.count(), 3); assert.equal(rec.last().message, 'quatre');
+  const raw = data.get(rec.key); assert(!/https?:|48\.8566|2\.3522/.test(raw), raw);
+  const restored = R.runtimeRecorder({ target:null, storage, now:()=>200, limit:3 });
+  assert.equal(restored.count(), 3);
+});
+check('texte runtime borné', () => assert(R.clip('x'.repeat(500)).length <= 180));
+console.log(n + '/' + n + ' scénarios OK');

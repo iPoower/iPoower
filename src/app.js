@@ -18,15 +18,15 @@ const BASE = {
   ],
   customs: [],
   work: { from: 'home', to: 'work', durMin: 40, dep: '07:30', ret: '17:30', days: [1, 2, 3, 4, 5] },
-  horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on' },
+  horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on' }, road: { on: 1 },
   alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
   cars: [
     { id: 'car1', name: 'Voiture 1', short: 'Voiture 1', spec: '', sporty: 0,
-      tire: { type: 'summer', brand: '', model: '', size: '', tread: null, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
-      plan: { on: 0, brand: '', model: '', size: '', date: '' } },
+      tire: { type: 'summer', brand: '', model: '', size: '', tread: null, treadAv: null, treadAr: null, treadEst: 0, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
+      plan: { on: 0, brand: '', model: '', size: '', ordered: '', etaFrom: '', etaTo: '', etaChecked: '', date: '', appointmentDate: '', appointmentConfirmed: 0 } },
     { id: 'car2', name: 'Voiture 2', short: 'Voiture 2', spec: '', sporty: 0,
-      tire: { type: 'allseason', brand: '', model: '', size: '', tread: null, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
-      plan: { on: 0, brand: '', model: '', size: '', date: '' } }
+      tire: { type: 'allseason', brand: '', model: '', size: '', tread: null, treadAv: null, treadAr: null, treadEst: 0, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
+      plan: { on: 0, brand: '', model: '', size: '', ordered: '', etaFrom: '', etaTo: '', etaChecked: '', date: '', appointmentDate: '', appointmentConfirmed: 0 } }
   ]
 };
 const clone = o => JSON.parse(JSON.stringify(o));
@@ -45,6 +45,17 @@ function normalize(saved, base) {
   S.customs = saved && Array.isArray(saved.customs) ? saved.customs : clone(base.customs);
   return S;
 }
+// Migration étroite d'une ancienne identité véhicule déjà enregistrée.
+// Elle ne touche qu'à la combinaison historique exacte ; aucun véhicule générique n'est renommé.
+function repairVehicleIdentity(settings) {
+  if (!settings || !Array.isArray(settings.cars)) return false;
+  const car = settings.cars.find(c => c && c.id === '308');
+  if (!car || car.name !== 'Peugeot 308 Féline 2.0 HDi' || car.spec !== '136 ch FAP · 2009 · BVM6 · traction avant') return false;
+  car.name = 'Peugeot 308 2.0 HDi 136 Premium Pack';
+  car.short = '308';
+  car.spec = '136 ch FAP · Premium Pack · 2009 · BVM6 · traction avant';
+  return true;
+}
 // réglages chiffrés (site public) : déchiffrés une fois avec le code, puis gardés sur l'appareil
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function unseal(pass) {
@@ -60,7 +71,8 @@ async function unseal(pass) {
 }
 const LOCKED = () => !!window.TWRC_SEALED && !window.TWRC_PRESET;
 // Préréglage éventuel injecté à la construction (version privée uniquement)
-const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET) ? normalize(window.TWRC_PRESET, BASE) : clone(BASE);
+const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET) ? normalize({ ...window.TWRC_PRESET, configured: 1 }, BASE) : clone(BASE);
+repairVehicleIdentity(DEFAULTS);
 // Configuration privée transmise dans le fragment d'URL (#cfg=...) : jamais envoyée au serveur
 let CFG_IMPORTED = false;
 function hashCfg() {
@@ -100,13 +112,13 @@ function loadSettings() {
   if (window.TWRC_PRESET && window.TWRC_PRESET_V && lsGet('twrc.presetv') !== window.TWRC_PRESET_V) {
     // on garde ce qui ne se trouve que sur le téléphone : contrôles de pression, DOT, profondeurs, jeux de pneus
     const old = saved;
-    const keep = saved && Array.isArray(saved.cars) ? Object.assign(saved.cars.map(c => c ? { tire: c.tire ? { pchk: c.tire.pchk, dot: c.tire.dot, tread: c.tire.tread, treads: c.tire.treads, mountKm: c.tire.mountKm, lastRot: c.tire.lastRot } : null, sets: c.sets, photo: c.photo, odo: c.odo } : null), { calib: saved.calib, journal: saved.journal }) : null;
+    const keep = saved && Array.isArray(saved.cars) ? Object.assign(saved.cars.map(c => c ? { tire: c.tire ? { pchk: c.tire.pchk, dot: c.tire.dot, tread: c.tire.tread, treadAv: c.tire.treadAv, treadAr: c.tire.treadAr, treadEst: c.tire.treadEst, treads: c.tire.treads, mountKm: c.tire.mountKm, lastRot: c.tire.lastRot } : null, sets: c.sets, photo: c.photo, odo: c.odo } : null), { calib: saved.calib, journal: saved.journal }) : null;
     saved = null; lsSet('twrc.presetv', window.TWRC_PRESET_V);
     try { localStorage.removeItem('twrc.settings.v1'); } catch (e) { /* stockage indisponible */ }
     if (keep) {
       const fresh = normalize(null, DEFAULTS);
       keep.forEach((k, i) => { const c = fresh.cars[i]; if (!k || !c) return; if (k.sets) c.sets = k.sets; if (k.photo) c.photo = k.photo; if (k.odo) c.odo = k.odo;
-        if (k.tire) ['pchk', 'dot', 'tread', 'treads', 'mountKm', 'lastRot'].forEach(f => { const v = k.tire[f]; if (v != null && v !== '' && !(f === 'pchk' && !v.date)) c.tire[f] = v; }); });
+        if (k.tire) ['pchk', 'dot', 'tread', 'treadAv', 'treadAr', 'treadEst', 'treads', 'mountKm', 'lastRot'].forEach(f => { const v = k.tire[f]; if (v != null && v !== '' && !(f === 'pchk' && !v.date)) c.tire[f] = v; }); });
       const oldCalib = keep.calib;
       saved = { ...fresh, configured: 1, calib: oldCalib || [], journal: keep.journal || {} }; reapplyEdits(saved, old); lsSet('twrc.settings.v1', JSON.stringify(saved));
     }
@@ -117,6 +129,7 @@ function loadSettings() {
     saved = { ...hc.cfg, configured: 1 }; CFG_IMPORTED = true;
     lsSet('twrc.cfghash', hc.raw); lsSet('twrc.settings.v1', JSON.stringify(saved));
   }
+  if (repairVehicleIdentity(saved)) lsSet('twrc.settings.v1', JSON.stringify(saved));
   return normalize(saved, DEFAULTS);
 }
 let S = loadSettings();
@@ -124,21 +137,19 @@ const saveSettings = () => { S.configured = 1; lsSet('twrc.settings.v1', JSON.st
 let TRIPCANCEL = {}; try { TRIPCANCEL = TripCancel.load(localStorage, Date.now()); } catch (e) { /* stockage indisponible */ }
 let TRIPCANCELTIMER = null;
 // position réelle (GPS du téléphone) : reste sur l'appareil
-let GPS = null; try { GPS = JSON.parse(lsGet('twrc.gps') || 'null'); } catch (e) { GPS = null; }
-const allLocs = () => [...(GPS ? [GPS] : []), ...S.locs, ...S.customs];
-// chaque type (été / hiver / 4 saisons / inconnu) garde son propre jeu de pneus
-const SET_KEYS = ['brand', 'model', 'size', 'tread', 'press', 'mounted', 'dot', 'pchk', 'info', 'treads', 'mountKm', 'lastRot'];
-function switchTire(car, type) {
-  if (car.tire.type === type) return;
-  car.sets = car.sets || {};
-  car.sets[car.tire.type] = Object.fromEntries(SET_KEYS.map(k => [k, car.tire[k] ?? null]));
-  let next = car.sets[type];
-  if (!next && type === 'winter' && car.plan && car.plan.on && (car.plan.brand || car.plan.model))
-    next = { brand: car.plan.brand, model: car.plan.model, size: car.plan.size || car.tire.size, tread: null, press: car.tire.press, mounted: '' };
-  if (!next) next = { brand: '', model: '', size: (car.sets.summer && car.sets.summer.size) || car.tire.size, tread: null, press: car.tire.press, mounted: '' };
-  car.tire = { type, dot: '', info: '', pchk: { date: '', T: null }, ...clone(next) };
-  if (!car.tire.pchk) car.tire.pchk = { date: '', T: null };
+// @include app/user-context.js
+// @include app/trip-view.js
+function tripContextLocs() {
+  const n = USER_STORE.state.dayContext && USER_STORE.state.dayContext.nextDestination;
+  return n ? [n.originPoint, n.destinationPoint].filter(locHasCoords) : [];
 }
+const allLocs = () => {
+  const seen = new Set();
+  return [...(GPS ? [GPS] : []), ...S.locs, ...S.customs, ...tripContextLocs(), ...(PLACE.extra ? [PLACE.extra] : [])].filter(l => {
+    if (!l || !l.id) return !!l;
+    if (seen.has(l.id)) return false; seen.add(l.id); return true;
+  });
+};
 // réglages modifiés à la main : ils survivent aux nouvelles versions du préréglage
 function getPath(o, p) { return p.split('.').reduce((a, k) => a == null ? undefined : a[k], o); }  // déclaration hissée : utilisée dès loadSettings
 function markEdit(p) { (S.edits || (S.edits = {}))[p] = 1; }
@@ -183,7 +194,7 @@ const urlNow = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&minutely_15=pre
 async function fetchEns(l) {
   if (!locHasCoords(l)) return null;
   for (const mdl of ENS_MODELS) {
-    try { const p = await fetchJSON(urlEns(l, mdl), 20000); if (p && p.hourly && Object.keys(p.hourly).some(k => /_member\d+$/.test(k))) return { p, model: mdl, t: Date.now() }; } catch (e) { /* modèle suivant */ }
+    try { const p = await fetchJSON(urlEns(l, mdl), 20000, l.gps ? 'gps' : 'shared'); if (p && p.hourly && Object.keys(p.hourly).some(k => /_member\d+$/.test(k))) return { p, model: mdl, t: Date.now() }; } catch (e) { if (e.status === 429 || e.cancelled) return null; /* modèle suivant */ }
   }
   return null;
 }
@@ -212,7 +223,10 @@ async function refreshTireDB() {
     if (js && (js.version > cur.version || (js.updated && (!cur.updated || js.updated > cur.updated)))) { if (loadTireDB(js, 'en ligne')) { renderSettings(); softRender(); } }
   } catch (e) { /* hors ligne : base intégrée */ }
 }
-function applyCalib() { const c = calibBias(S.calib); setRoadBias(c.bias); return c; }
+// La correction de chaussée est propre à chaque lieu (calibBias) : appliquée seulement pendant la construction du modèle de CE lieu.
+// Hors de cette fenêtre (points de trajet, agenda, démo), aucune correction.
+function applyCalib() { setRoadBias(0); }
+const calibFor = id => calibBias(S.calib, id);
 const locById = id => allLocs().find(l => l.id === id);
 let lastOk = null, lastTry = null, busy = false, CX = null;
 const offlineNow = () => typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -230,10 +244,20 @@ function markOfflineCache() {
 }
 applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
-  view: ['meteo', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
-  outfitOccasion: ['office', 'walk'].includes(lsGet('twrc.outfit.occasion')) ? lsGet('twrc.outfit.occasion') : 'outing' };
+  // dernier onglet ouvert restauré, TRAJET compris (reprise hors connexion)
+  view: ['meteo', 'trajet', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
+  outfitOccasion: 'outing', placeExpanded: null };
+const DECISION_HISTORY = Decision.history(typeof localStorage !== 'undefined' ? localStorage : null);
+let DECISION_LAST = null;
 
-async function fetchJSON(url, ms) {
+const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
+  read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
+async function fetchJSON(url, ms, group = 'shared') {
+  // hors connexion déclaré par l'appareil : aucune requête vers un service EXTERNE (inutile, coûteuse en batterie ; Safari la
+  // signale en erreur). Les fichiers de l'app (agenda chiffré, base pneus, observations, version) restent demandés : le service
+  // worker les sert depuis son cache, c'est ce qui permet le démarrage à froid hors ligne.
+  if (offlineNow() && /^https?:\/\//i.test(url) && new URL(url).origin !== location.origin) { const e = new Error('Hors connexion : requête non envoyée'); e.offline = true; throw e; }
+  if (WEATHER_REQUESTS.owns(url)) return WEATHER_REQUESTS.get(url, ms || 12000, group);
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms || 12000);
   try {
     const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
@@ -256,8 +280,9 @@ function loadCache() {
 async function loadLoc(l) {
   if (!locHasCoords(l)) throw new Error('Coordonnées du lieu à renseigner.');
   const origin = { lat: l.lat, lon: l.lon }, gen = l.gps ? ++gpsWeatherGen : null;
-  if (l.gps) gpsWeatherOrigin = origin;
-  const [b, ar, nc] = await Promise.allSettled([fetchJSON(urlFor(l)), fetchJSON(urlArome(l)), fetchJSON(urlNow(l))]);
+  if (l.gps) { WEATHER_REQUESTS.cancelGroup('gps'); gpsWeatherOrigin = origin; }
+  const group = l.gps ? 'gps' : 'shared';
+  const [b, ar, nc] = await Promise.allSettled([fetchJSON(urlFor(l), 12000, group), fetchJSON(urlArome(l), 12000, group), fetchJSON(urlNow(l), 12000, group)]);
   // Validation AVANT toute écriture : une réponse 200 vide, tronquée ou d'un portail ne remplace jamais la dernière météo valide.
   const invalid = b.status === 'fulfilled' ? validForecast(b.value) : null;
   if (b.status !== 'fulfilled' || invalid) { if (l.gps && gen === gpsWeatherGen) gpsWeatherOrigin = null; throw b.status !== 'fulfilled' ? b.reason : new Error('réponse météo invalide : ' + invalid); }
@@ -277,64 +302,97 @@ async function reverseName(lat, lon) {
   } catch (e) { return { name: 'Ma position', sub: '' }; }
 }
 let gpsWatch = null, gpsWatchHi = false, gpsBusy = false, gpsRequestGen = 0, gpsWatchGen = 0;
+// Provenance séparée : cette API est celle du navigateur, quel que soit son fournisseur réel.
+let GEO = { permission: 'inconnue', status: 'aucune demande', raw: null, error: null, reason: '' }, geoPermission = null;
+let PLACE_FIX = null, PLACE_PENDING = null, PLACE_HOLD = false;
+function geoFailure(err) {
+  const code = err && err.code, status = code === 1 ? 'PERMISSION_DENIED' : code === 2 ? 'POSITION_UNAVAILABLE' : code === 3 ? 'TIMEOUT' : 'UNAVAILABLE';
+  const msg = code === 1 ? 'Localisation refusée : autorise ce site dans les réglages de localisation du navigateur.'
+    : code === 2 ? 'Position navigateur indisponible : vérifie le service de localisation et réessaie.'
+    : code === 3 ? 'Délai de localisation dépassé : réessaie au premier plan, avec le service de localisation actif.'
+    : 'Localisation indisponible sur ce navigateur ou dans ce contexte.';
+  GEO.status = status; GEO.error = { code: status, message: msg, at: Date.now() };
+  if (code === 1) { GEO.permission = 'refusée'; if (gpsWatch != null) { try { navigator.geolocation.clearWatch(gpsWatch); } catch (e) { /* arrêté */ } gpsWatch = null; gpsWatchGen++; } }
+  alertLoc(msg); renderPlace(); renderDiag();
+}
+function readGeoPermission() {
+  if (!navigator.permissions || !navigator.permissions.query || geoPermission) return;
+  try {
+  navigator.permissions.query({ name: 'geolocation' }).then(p => {
+    geoPermission = p;
+    const update = () => { GEO.permission = p.state === 'granted' ? 'autorisée' : p.state === 'denied' ? 'refusée' : GEO.raw ? 'autorisée' : 'à demander'; renderPlace(); renderDiag(); };
+    update(); p.onchange = () => { update(); if (p.state === 'denied') { stopGps(); geoFailure({ code: 1 }); } else if (p.state === 'granted' && S.gpsAuto) resumeGps(); };
+  }).catch(() => { /* Safari : Permissions API optionnelle ; le résultat de la demande fait foi. */ });
+  } catch (e) { /* Ancien navigateur : query peut aussi lever une exception synchrone. */ }
+}
+function receivePosition(pos, focus) {
+  onPos(pos, focus).catch(() => { GEO.status = 'traitement interrompu'; alertLoc('Position reçue, traitement interrompu : réessaie.'); renderDiag(); });
+}
 // Le nom persistant peut provenir d'une ancienne version : le premier fix le résout à nouveau.
 let gpsWeatherOrigin = null, gpsNameOrigin = null, gpsWeatherGen = 0, gpsNameGen = 0;
 function stopGps() {
-  gpsRequestGen++; gpsBusy = false; gpsWatchGen++;
+  gpsRequestGen++; gpsBusy = false; gpsWatchGen++; PLACE_PENDING = null;
   if (gpsWatch != null) { try { navigator.geolocation.clearWatch(gpsWatch); } catch (e) { /* déjà arrêté */ } gpsWatch = null; }
 }
 function liveGpsRequest(options) {
   const gen = gpsRequestGen;
-  try { navigator.geolocation.getCurrentPosition(p => { if (gen === gpsRequestGen && S.gpsAuto) onPos(p, false); }, () => {}, options); } catch (e) { /* indisponible */ }
+  try { navigator.geolocation.getCurrentPosition(p => { if (gen === gpsRequestGen && S.gpsAuto) receivePosition(p, false); }, e => { if (gen === gpsRequestGen && S.gpsAuto) geoFailure(e); }, options); } catch (e) { geoFailure(e); }
 }
 function locate(manual, fresh) {
-  if (!('geolocation' in navigator)) { if (manual) alertLoc('Localisation indisponible sur ce navigateur.'); return; }
-  if (gpsBusy) return; gpsBusy = true; const gen = ++gpsRequestGen; if (manual) alertLoc('Recherche de ta position…');
-  const error = err => { if (gen !== gpsRequestGen) return; gpsBusy = false; if (manual) alertLoc(err.code === 1 ? 'Localisation refusée : Réglages iPhone → Confidentialité → Service de localisation → Safari → « Lorsque l’app est active ».' : 'Position introuvable pour le moment.'); };
+  if (!('geolocation' in navigator) || (location.protocol !== 'https:' && location.hostname !== 'localhost')) { geoFailure({ code: 0 }); return; }
+  if (manual && !S.gpsAuto) { S.gpsAuto = 1; saveSettings(); }
+  readGeoPermission();
+  if (gpsBusy) { if (manual) alertLoc('Recherche de ta position déjà en cours…'); return; }
+  gpsBusy = true; GEO.status = 'recherche en cours'; const gen = ++gpsRequestGen; if (manual) alertLoc('Recherche de ta position…'); renderDiag();
+  const error = err => { if (gen !== gpsRequestGen) return; gpsBusy = false; geoFailure(err); if (err && err.code !== 1) startWatch(true); };
   try {
-    navigator.geolocation.getCurrentPosition(pos => { if (gen !== gpsRequestGen) return; gpsBusy = false; if (manual) alertLoc(''); onPos(pos, true); startWatch(LIVE.phase === 'active'); },
-      error, { enableHighAccuracy: !!manual || LIVE.phase === 'active', timeout: 15000, maximumAge: manual || fresh ? 0 : 120000 });
+    navigator.geolocation.getCurrentPosition(pos => { if (gen !== gpsRequestGen) return; gpsBusy = false; if (manual) alertLoc(''); receivePosition(pos, !!manual); startWatch(LIVE.phase === 'active' || !FIX || FIX.acc > PLACE_ACC_GPS); },
+      error, { enableHighAccuracy: true, timeout: 15000, maximumAge: manual || fresh ? 0 : 10000 });
   } catch (e) { error({ code: 0 }); }
 }
-// hi = false : suivi basse consommation (normal) ; hi = true : haute précision continue, seulement pendant un trajet réellement commencé
+// Haute précision pour acquérir un point exploitable et pendant le trajet ; suivi économique ensuite, avec cache court et délai borné.
 function startWatch(hi, restart) {
   hi = !!hi; if (!('geolocation' in navigator) || document.hidden || (gpsWatch != null && gpsWatchHi === hi && !restart)) return;
   if (gpsWatch != null) { try { navigator.geolocation.clearWatch(gpsWatch); } catch (e) { /* déjà arrêté */ } gpsWatch = null; }
   gpsWatchHi = hi; const gen = ++gpsWatchGen;
-  try { gpsWatch = navigator.geolocation.watchPosition(p => { if (gen === gpsWatchGen) onPos(p, false); }, () => {}, hi ? { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 } : { enableHighAccuracy: false, maximumAge: 300000 }); } catch (e) { /* non disponible */ }
+  try { gpsWatch = navigator.geolocation.watchPosition(p => { if (gen === gpsWatchGen && S.gpsAuto) receivePosition(p, false); }, e => { if (gen === gpsWatchGen && S.gpsAuto) geoFailure(e); }, { enableHighAccuracy: hi, maximumAge: 10000, timeout: 30000 }); } catch (e) { geoFailure(e); }
 }
 async function onPos(pos, focus) {
-  if (!pos || !pos.coords) return;
+  if (!pos || !pos.coords) { geoFailure({ code: 2 }); return; }
   const c = pos.coords, ts = Number.isFinite(pos.timestamp) && pos.timestamp > 0 ? pos.timestamp : Date.now();
-  if (!Number.isFinite(c.latitude) || !Number.isFinite(c.longitude) || Math.abs(c.latitude) > 90 || Math.abs(c.longitude) > 180 || (FIX && ts < FIX.ts) || (!FIX && GPS && ts < GPS.t)) return;
-  const np = { lat: +c.latitude.toFixed(4), lon: +c.longitude.toFixed(4) };
-  // garde de confiance : une position réseau (IP, VPN, > 1,5 km) ou incohérente avec un lieu confirmé n'est jamais la position
-  // physique ; elle ne nourrit ni « Ma position », ni la météo, ni le trajet vivant (donnée technique seulement)
-  const raw = { lat: c.latitude, lon: c.longitude, acc: c.accuracy == null ? Infinity : c.accuracy, ts }, refused = placeGate(raw);
+  const raw = { lat: c.latitude, lon: c.longitude, acc: c.accuracy == null ? Infinity : c.accuracy, ts, speed: Number.isFinite(c.speed) ? c.speed : null };
+  const context = placeContext(placeInput());
+  GEO.raw = raw; GEO.permission = 'autorisée'; GEO.error = null; GEO.status = placeFixClass(raw) === 'gps' ? 'position précise reçue' : 'position approximative reçue';
+  const previous = FIX || (GPS ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null);
+  const observation = placeObserve({ fix: raw, previous, logical: PLACE_FIX || (GPS && GPS.placePending ? null : previous), context, pending: PLACE_PENDING, places: placeList(), now: Date.now() });
+  const refused = observation.accept ? placeGate(raw) : observation.reason;
+  GEO.reason = refused || observation.reason;
   if (refused) {
-    if (refused === 'réseau') {
-      const moved = !NETLOC || distKm(NETLOC, raw) > 3; NETLOC = { ...raw, name: moved ? null : NETLOC.name };
-      if (moved && !offlineNow()) reverseName(np.lat, np.lon).then(nm => { if (NETLOC && distKm(NETLOC, raw) <= 3 && nm.name !== 'Ma position') { NETLOC.name = nm.name; renderPlace(); } });
-    } else PLACE_REJ = { source: placeFixClass(raw) === 'gps' ? 'GPS' : 'position approximative', reason: refused };
-    if (focus) alertLoc(refused === 'réseau' ? `Position réseau seulement (± ${Math.round(raw.acc / 1000)} km) : localisation physique indisponible, VPN possible.` : 'Position ignorée : incohérente avec le lieu confirmé.');
-    renderPlace(); if (typeof renderDiag === 'function') renderDiag(); return;
+    PLACE_PENDING = null; PLACE_REJ = { source: 'navigateur', reason: refused };
+    if (focus) alertLoc(placeFixClass(raw) === 'coarse' ? `Localisation navigateur approximative · précision ~${Math.round(raw.acc / 1000)} km. Confirmation manuelle disponible.` : 'Position ignorée : ' + refused + '.');
+    renderAll(); if (typeof renderDiag === 'function') renderDiag(); return;
   }
-  PLACE_REJ = null;
+  const tasks = []; let weatherMoved;
+  appAction(() => {
+  PLACE_FIX = observation.logical; PLACE_PENDING = observation.pending; PLACE_HOLD = !!observation.hold;
+  if (USER_STORE.state.lastDeparture && !PLACE_HOLD && placeFixClass(PLACE_FIX) === 'gps') {
+    const found = placeContext(placeInput({ moving: false, movingSince: null, conf: null, fix: PLACE_FIX }));
+    if (found.place && found.place.id !== USER_STORE.state.lastDeparture.placeId) USER_STORE.state.lastDeparture = null;
+  }
+  PLACE_REJ = PLACE_PENDING || /hystérésis/.test(observation.reason) ? { source: 'navigateur', reason: observation.reason } : null;
+  const np = { lat: +c.latitude.toFixed(4), lon: +c.longitude.toFixed(4) };
   // relevé brut pour le trajet vivant (mémoire uniquement) : horodatage réel du relevé, pas l'heure de réception
-  FIXPREV = FIX; FIX = { lat: c.latitude, lon: c.longitude, acc: c.accuracy == null ? Infinity : c.accuracy, ts, speed: c.speed == null || isNaN(c.speed) ? null : c.speed };
+  FIXPREV = FIX; FIX = raw;
   liveOnFix(FIX);
   // Références fixes : des pas successifs de moins de 3 km doivent aussi finir par changer de ville/météo.
-  const nameMoved = !gpsNameOrigin || distKm(gpsNameOrigin, np) > 3, weatherMoved = !gpsWeatherOrigin || distKm(gpsWeatherOrigin, np) > 3;
+  const nameMoved = !gpsNameOrigin || distKm(gpsNameOrigin, np) > 3; weatherMoved = !gpsWeatherOrigin || distKm(gpsWeatherOrigin, np) > 3;
   const prevName = GPS && !nameMoved ? { name: GPS.name, sub: GPS.sub } : null;
-  GPS = { id: 'gps', gps: true, ...np, acc: Math.round(c.accuracy), t: ts, name: prevName ? prevName.name : 'Ma position', sub: prevName ? prevName.sub : '' };
+  GPS = { id: 'gps', gps: true, ...np, acc: Math.round(c.accuracy), t: ts, placePending: !!observation.hold, name: prevName ? prevName.name : 'Ma position', sub: prevName ? prevName.sub : '' };
   if (!S.gpsAuto) { S.gpsAuto = 1; saveSettings(); }
   if (focus && !PLACE.conf) UI.loc = 'gps';   // un lieu confirmé reste le contexte, même après « Ma position »
-  lsSet('twrc.gps', JSON.stringify(GPS)); renderStatus(); renderLocChips(); renderSrc();
-  if (focus && !weatherMoved && M.gps) renderAll();
-  const tasks = [];
   if (nameMoved && !offlineNow()) {
     gpsNameOrigin = np; const gen = ++gpsNameGen;
-    tasks.push(reverseName(np.lat, np.lon).then(nm => { if (!GPS || gen !== gpsNameGen || distKm(np, GPS) > 3) return; Object.assign(GPS, nm); lsSet('twrc.gps', JSON.stringify(GPS)); renderLocChips(); }));
+    tasks.push(reverseName(np.lat, np.lon).then(nm => { if (!GPS || gen !== gpsNameGen || distKm(np, GPS) > 3) return; appAction(() => Object.assign(GPS, nm)); }));
   }
   if (weatherMoved) {
     delete ENSRAW.gps; delete NOWRAW.gps; delete RAW.gps; delete AQRAW.gps;
@@ -344,36 +402,39 @@ async function onPos(pos, focus) {
       tasks.push(request.then(() => { if (GPS && gen === gpsWeatherGen) lastOk = Date.now(); }, e => { if (GPS && gen === gpsWeatherGen) ERR.gps = e.message; }));
     }
   }
+  rebuild();
+  });
   if (tasks.length) { await Promise.all(tasks); if (!GPS) return; rebuild(); renderAll(); if (weatherMoved) refreshEns(); }
 }
 /* ===================== LIEU COURANT (localisation métier, une seule source de vérité) ===================== */
 // Tout est décidé par placeContext (src/placectx.js, pur et testé). Ici : stockage local, relevés du navigateur, actions et rendu.
 // twrc.place.v1 = { conf: { placeId, at, how, day } | null, last: { placeId, at, source } | null } : identifiants de lieux et heures,
-// AUCUNE coordonnée. NETLOC (mémoire seulement) : dernière position réseau écartée (IP, VPN), pour le badge et le diagnostic.
+// AUCUNE coordonnée. NETLOC est réservé à une éventuelle source réseau indépendante. Le navigateur ne le remplit jamais.
 const PLACE_KEY = 'twrc.place.v1';
-let PLACE = { conf: null, last: null }; try { PLACE = Object.assign({ conf: null, last: null }, JSON.parse(lsGet(PLACE_KEY) || '{}') || {}); } catch (e) { PLACE = { conf: null, last: null }; }
 let NETLOC = null, PLACE_REJ = null;
-const placeSave = () => lsSet(PLACE_KEY, JSON.stringify({ conf: PLACE.conf, last: PLACE.last }));
+const placeSave = () => USER_STORE.flush();
 const placeToday = () => nowIn('Europe/Paris').slice(0, 10);
 function placeList() {
   const home = S.locs[0];
-  return [...S.locs, ...S.customs].filter(locHasCoords).map(l => ({ id: l.id, name: l.name, lat: l.lat, lon: l.lon, kind: l.id === S.work.to ? 'work' : l === home ? 'home' : 'custom' }));
+  const seen = new Set();
+  return [...S.locs, ...S.customs, ...tripContextLocs(), ...(PLACE.extra ? [PLACE.extra] : [])].filter(l => locHasCoords(l) && (!l.id || !seen.has(l.id) && seen.add(l.id)))
+    .map(l => ({ ...l, id: l.id, name: l.name || l.label || 'Lieu', lat: l.lat, lon: l.lon, kind: l.id === S.work.to ? 'work' : l.id === home.id ? 'home' : 'custom' }));
 }
 function placeInput(extra) {
-  const precise = FIX && placeFixClass(FIX) !== 'network' ? FIX : GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null;
+  if (USER_STORE.state.lastDeparture && Date.now() - USER_STORE.state.lastDeparture.at >= 20 * 3600e3) USER_STORE.state.lastDeparture = null;
+  const precise = PLACE_HOLD || GPS && GPS.placePending ? PLACE_FIX : PLACE_FIX || (GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null) || GEO.raw;
   return { now: Date.now(), today: placeToday(), places: placeList(), conf: PLACE.conf, last: PLACE.last, fix: precise, net: NETLOC,
-    moving: LIVE.phase === 'active', movingSince: LIVE.startFix ? LIVE.startFix.ts : null, fmt: hmLocal, ...(extra || {}) };
+    moving: LIVE.phase === 'active' || !!TRIPSTART || !!USER_STORE.state.lastDeparture, movingSince: TRIPSTART ? TRIPSTART.at : LIVE.startFix ? LIVE.startFix.ts : USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at, fmt: hmLocal, ...(extra || {}) };
 }
 // contexte courant ; une confirmation terminée (départ, GPS précis ailleurs, fin de journée) est effacée une seule fois
 function placeNow() {
   const c = placeContext(placeInput());
-  if (c.ended && PLACE.conf) { PLACE.last = { placeId: PLACE.conf.placeId, at: Date.now(), source: 'fin : ' + c.ended.reason }; PLACE.conf = null; placeSave(); }
+  if (c.ended && PLACE.conf) { PLACE.last = { placeId: PLACE.conf.placeId, at: PLACE.conf.at, source: 'fin : ' + c.ended.reason }; PLACE.conf = null; placeSave(); }
   if (!PLACE.conf && c.source === 'gps' && c.place && (!PLACE.last || PLACE.last.placeId !== c.place.id || Date.now() - PLACE.last.at > 10 * 60e3)) { PLACE.last = { placeId: c.place.id, at: Date.now(), source: 'gps' }; placeSave(); }
   return c;
 }
 // garde à l'entrée des relevés du navigateur : renvoie la raison d'un refus, ou null si le relevé peut être utilisé
 function placeGate(fix) {
-  if (placeFixClass(fix) === 'network') return 'réseau';
   const c = placeContext(placeInput({ fix, net: null }));
   const r = c.rejected.find(x => x.source !== 'réseau');
   return r ? r.reason : null;
@@ -392,45 +453,98 @@ function placeArriveBtn(t) {
   return `<button class="btn sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="arrival">✅ ${esc((PLACE_KIND[p.kind] || PLACE_KIND.custom).arrive)}</button>`;
 }
 function placeConfirm(placeId, how) {
+  return appAction(() => {
   const p = placeList().find(x => x.id === placeId); if (!p) return;
   const now = Date.now();
-  PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' }; placeSave();
+  UI.placeExpanded = null;
+  const previous = placeNow().place;
+  PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false;
+  PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' };
+  const activeTrip = APP_CONTEXT.snapshot.activeTrip;
+  const intention = appDay().nextDestination;
+  const chosenTrip = activeTrip && (appTripPlace(activeTrip, 'to') || {}).id === placeId ? activeTrip : BRF_SHOWN.find(t => (appTripPlace(t, 'to') || {}).id === placeId
+    && t.dep && t.dep.slice(0, 10) === placeToday() && (t.dep <= liveNow() || intention && intention.placeId === placeId && (!intention.tripKey || intention.tripKey === t.key)));
+  if (appDay().nextDestination && (!appDay().nextDestination.placeId || appDay().nextDestination.placeId === placeId)) {
+    appConfirmedPlace(placeId, now);
+  } else { appDay().lastConfirmedPlace = { placeId, at: now, source: 'manual' }; appDay().departedAt = null; }
+  USER_STORE.state.lastDeparture = null;
+  appReopenReturn(placeId, now);
   // la machine de trajet existante termine proprement l'aller : arrivée du trajet vivant, sinon trajet planifié marqué arrivé
-  const t = placeArrivalTrip(placeId);
-  if (LIVE.key && t && LIVE.key === t.key) liveArrive('confirmé');
-  else if (t && t.key) { liveDonePersist(t.key, 'confirmé'); LIVE.done[t.key] = 'arrivé'; LIVE.lastDone = { key: t.key, name: t.name || p.name, at: now }; if (TRIPPREVIEW.key === t.key) tripPreviewReset(); }
-  UI.loc = placeId; rebuild(); renderAll();
+  let t = placeArrivalTrip(placeId) || chosenTrip || (p.kind === 'work' ? BRF_TRIPS.find(t => t.src === 'work' && t.td.dir === 'go' && t.dep.slice(0, 10) === placeToday()) : null);
+  if (!t && p.kind === 'work' && appWorkOn(placeToday())) {
+    const td = appWorkTripData('go', 0);
+    if (!td.err) t = { src: 'work', td, dep: td.dep, arr: td.arr, from: td.fromName, to: td.toName, name: 'Aller domicile-travail', key: 'commute|' + td.dep + '|go' };
+  }
+  if (!t && p.kind === 'home' && previous && previous.id === S.work.to && appWorkOn(placeToday())) {
+    const td = appWorkTripData('ret', 0);
+    if (!td.err) t = { src: 'work', td, dep: td.dep, arr: td.arr, from: td.fromName, to: td.toName, name: 'Retour domicile-travail', key: 'commute|' + td.dep + '|ret' };
+  }
+  if (t && t.key) closeTrip(t, 'confirmé');
+  if (PLACE.conf && PLACE.conf.placeId === placeId) PLACE.conf.how = how === 'arrival' ? 'arrival' : 'manual';
+  if (LIVE.phase === 'active') liveReset();
+  APP_CONTEXT.weatherPreview = null; UI.loc = placeId; rebuild();
+  });
 }
 function placeLeave() {
+  UI.placeExpanded = null;
+  return appAction(() => {
   if (!PLACE.conf) return;
+  if (!appDay().nextDestination && !BRF_SHOWN.some(t => t.src === 'cal' && (appTripPlace(t, 'from') || {}).id === PLACE.conf.placeId && t.dep.slice(0, 10) === placeToday())) appChooseDestination(null, 'pending');
+  const intention = appDay().nextDestination;
+  const next = intention && !intention.placeId ? null : BRF_SHOWN.find(t => !t.originPending && (appTripPlace(t, 'from') || {}).id === PLACE.conf.placeId && (!intention || t.key === intention.tripKey));
+  if (next) { liveStart(next.key); return; }
   PLACE.last = { placeId: PLACE.conf.placeId, at: Date.now(), source: 'départ annoncé' }; PLACE.conf = null; placeSave();
+  USER_STORE.state.lastDeparture = { placeId: PLACE.last.placeId, at: Date.now() };
+  appDay().departedAt = Date.now();
   // prépare le retour sans l'inventer : la détection de déplacement reprend, le trajet prévu reste celui du planning ou de l'agenda
   if (liveAllowed()) { LIVE.hiAt = 0; liveAskFix(); }
-  renderAll();
+  APP_CONTEXT.weatherPreview = null;
+  });
+}
+// Le repli est dérivé du contexte canonique. Seule l'ouverture demandée est locale à l'UI ;
+// sa clé de confirmation la referme aussi après une arrivée ou une confirmation dans une autre fenêtre.
+function placeDisclosure(c) {
+  const destination = appDay().nextDestination;
+  const compact = c.source === 'manual' && !!c.confirmed && !!c.place && !PLACE_PENDING
+    && LIVE.phase !== 'active' && !USER_STORE.state.lastDeparture && !(destination && !destination.placeId);
+  const key = c.confirmed ? c.confirmed.placeId + '|' + c.confirmed.at : null;
+  return { compact, key, expanded: !compact || UI.placeExpanded === key };
 }
 function renderPlace() {
   const el = $('#placeBar'); if (!el) return;
   const c = placeNow(), K = PLACE_KIND, pl = placeList(), work = pl.find(p => p.kind === 'work'), home = pl.find(p => p.kind === 'home');
+  const confirm = (p, arrival = false) => `<button class="btn${arrival ? ' pri' : ''} sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="${arrival ? 'arrival' : 'manual'}"><span aria-hidden="true">${arrival ? '✅' : (K[p.kind] || K.custom).icon}</span><span class="pl-copy"><span>${esc(arrival ? (K[p.kind] || K.custom).arrive : (K[p.kind] || K.custom).already)}</span><small>${esc(p.name)}</small></span></button>`;
+  const { compact, expanded } = placeDisclosure(c);
+  const details = $('#locChips'); if (details) details.hidden = compact && !expanded;
   let h;
   if (c.source === 'manual') {
-    const k = K[c.place.kind] || K.custom;
-    h = `<div class="place on" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span>${esc(c.badge)}</span>${c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}<button class="btn sm" data-act="place-leave">🚗 ${esc(k.leave)}</button></div>`;
+    const k = K[c.place.kind] || K.custom, weather = allLocs().find(p => p.id === UI.loc);
+    const weatherLabel = weather && weather.id === c.place.id ? '🌦 météo locale' : weather ? '🌦 Météo : ' + weather.name : '🌦 Météo à choisir';
+    const gpsUnavailable = GEO.permission === 'refusée' || !!GEO.error;
+    const meta = expanded ? c.badge : 'Confirmé ' + hmLocal(c.confirmed.at);
+    h = `<div class="place on${compact ? ' compact' : ''}${expanded ? ' expanded' : ''}"><span class="pl-info" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span class="pl-meta" title="Source : confirmation utilisateur">${esc(meta)} · ${esc(weatherLabel)}${gpsUnavailable ? ' · <span class="pl-gps">📍 GPS indisponible</span>' : ''}</span>${expanded && c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}</span><span class="pl-main"><button class="btn sm" data-act="place-leave"><span aria-hidden="true">🚗</span><span>${esc(k.leave)}</span></button>${compact ? `<button class="btn sm pl-toggle" data-act="place-toggle" aria-expanded="${expanded}" aria-controls="placeActions locChips"><span>${expanded ? 'Réduire' : 'Modifier'}</span><span aria-hidden="true">${expanded ? '▴' : '▾'}</span></button>` : ''}</span><span class="pl-act" id="placeActions" ${expanded ? '' : 'hidden'}>${pl.filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</span></div>`;
   } else {
     const arr = [work, home].filter(Boolean).map(p => ({ p, t: placeArrivalTrip(p.id) })).find(x => x.t);
-    const btns = arr ? `<button class="btn pri sm" data-act="place-confirm" data-place="${esc(arr.p.id)}" data-how="arrival">✅ ${esc((K[arr.p.kind] || K.custom).arrive)}</button>`
-      : [work, home].filter(Boolean).map(p => `<button class="btn sm" data-act="place-confirm" data-place="${esc(p.id)}" data-how="manual">${(K[p.kind] || K.custom).icon} ${esc((K[p.kind] || K.custom).already)} · ${esc(p.name)}</button>`).join('');
-    h = `<div class="place${arr ? ' arr' : ''}">${arr ? `<b>ARRIVÉE · ${(K[arr.p.kind] || K.custom).icon} ${esc(arr.p.name)}</b>` : `<span class="pl-src"><b>${esc(c.title)}</b> · ${esc(c.trust)}${c.badge ? ' · ' + esc(c.badge) : ''}</span>`}<span class="pl-act">${btns}</span></div>`;
+    const btns = pl.filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
+    h = `<div class="place${arr ? ' arr' : ''}">${arr ? `<b>${c.source === 'trip' ? '🚗 EN ROUTE · destination' : 'ARRIVÉE'} · ${(K[arr.p.kind] || K.custom).icon} ${esc(arr.p.name)}</b>` : `<span class="pl-src"><b>${esc(c.title)}</b> · ${esc(c.trust)}${c.badge ? ' · ' + esc(c.badge) : ''}</span>`}<span class="pl-act">${btns}</span></div>`;
   }
   if (el.innerHTML !== h) el.innerHTML = h;
 }
 // diagnostic interne : brut navigateur, réseau, lieu logique, source gagnante et sources écartées (coordonnées arrondies à ~1 km)
-function placeDiagRows() {
-  const c = placeContext(placeInput()), rd = v => (Math.round(v * 100) / 100).toFixed(2);
-  const raw = FIX ? `${rd(FIX.lat)}, ${rd(FIX.lon)} · ±${Math.round(FIX.acc)} m · ${placeFixClass(FIX)} · il y a ${ageTxt(ageOf(FIX.ts))}` : 'aucun relevé';
+function placeDiagRows(forCopy) {
+  const c = placeContext(placeInput()), rd = v => Number.isFinite(v) ? v.toFixed(forCopy ? 2 : 5) : '—', f = GEO.raw || FIX;
+  const seconds = f ? Math.max(0, Math.round((Date.now() - f.ts) / 1000)) : null;
+  const raw = f ? `${rd(f.lat)}, ${rd(f.lon)} · ±${Math.round(f.acc)} m · il y a ${seconds < 60 ? seconds + ' s' : ageTxt(seconds / 60)} · source : API navigateur` : 'aucun relevé';
   const net = NETLOC ? `${NETLOC.name || 'nom inconnu'} · ±${Math.round(NETLOC.acc / 1000)} km · il y a ${ageTxt(ageOf(NETLOC.ts))}` : 'aucune';
   const rej = c.rejected.concat(PLACE_REJ ? [PLACE_REJ] : []);
-  return [['Géolocalisation navigateur (brute)', raw], ['Position réseau / IP', net],
-    ['Lieu logique Race Control', `${c.place ? c.place.name : c.title.replace(/^\S+ /, '')} · ${c.trust}`], ['Source retenue', `${c.source}${c.originLock ? ' · origine verrouillée : ' + c.originLock : ''}`],
+  const used = FIX || f, distances = used && placeFixClass(used) === 'gps' ? placeList().map(p => [(p.kind === 'home' ? 'Distance domicile' : p.kind === 'work' ? 'Distance travail' : 'Distance ' + p.name), Math.round(placeDistance(used, p) * 1000) + ' m']) : [];
+  const source = { gps: 'GPS navigateur', approx: 'navigateur approximatif', coarse: 'navigateur trop imprécis', manual: 'confirmation utilisateur', network: 'position réseau', last: 'dernier lieu fiable', trip: 'mouvement confirmé', none: 'aucune' }[c.source];
+  return [['Permission localisation', GEO.permission], ['Statut localisation navigateur', GEO.status + (document.hidden ? ' · suivi suspendu en arrière-plan' : '')],
+    ['Géolocalisation navigateur (brute)', raw], ['Position navigateur retenue', FIX ? `±${Math.round(FIX.acc)} m · il y a ${ageTxt(ageOf(FIX.ts))}` : 'aucune'],
+    ['Dernière erreur localisation', GEO.error ? GEO.error.code + ' · ' + GEO.error.message : 'aucune'], ['Position réseau / IP', net],
+    ...distances,
+    ['Lieu logique Race Control', `${c.place ? c.place.name : c.title.replace(/^\S+ /, '')} · ${c.trust} · ${c.place ? c.place.kind === 'home' ? 'domicile' : c.place.kind === 'work' ? 'travail' : 'destination connue' : c.source === 'gps' ? 'autre' : 'indéterminé'}`], ['Source retenue', `${c.source} · ${source}${c.originLock ? ' · origine verrouillée : ' + c.originLock : ''}`],
+    ['Raison localisation', c.source === 'manual' ? 'confirmation utilisateur' : c.source === 'trip' ? 'déplacement confirmé · trajet en cours' : GEO.reason || (c.source === 'last' ? 'dernier lieu fiable · attente de position fraîche' : c.source === 'gps' ? 'position navigateur précise dans la géofence' : 'position insuffisante · confirmation manuelle disponible')],
     ['Sources écartées', rej.length ? rej.map(x => `${x.source} : ${x.reason}`).join(' | ') : 'aucune']];
 }
 function alertLoc(msg) { const el = $('#locMsg'); if (el) { el.textContent = msg; el.hidden = !msg; } }
@@ -478,13 +592,15 @@ function rebuild() {
       m.ens = ensembleStats(makeDemoEnsemble(pl), m); m.ensModel = 'demo'; m.nc = nowcast(makeDemoNowcast(pl), m.nowStr); M[l.id] = m; return;
     }
     const r = RAW[l.id]; if (!r) return;
+    const cb = calibFor(l.id);
     try {
+      setRoadBias(cb.bias);
       const m = makeModel(r.p, r.mode, l);
       const en = ENSRAW[l.id]; if (en) { m.ens = ensembleStats(en.p, m); m.ensModel = en.model; }
       if (NOWRAW[l.id] && r.mode === 'live') m.nc = nowcast(NOWRAW[l.id], m.nowStr);
       if (OBS && r.mode === 'live') m.obs = applyObs(m, OBS.stations, 35);
-      M[l.id] = m;
-    } catch (e) { ERR[l.id] = 'données illisibles'; }
+      m.roadBias = cb.bias; M[l.id] = m;
+    } catch (e) { ERR[l.id] = 'données illisibles'; } finally { setRoadBias(0); }
   });
 }
 // Vigilance Météo-France (relais Opendatasoft). Lecture tolérante : le format exact n'est pas garanti.
@@ -529,10 +645,7 @@ function vigiBlock() {
   else body = 'Chargement…';
   return `<div class="note lvx"><b>VIGILANCE ${esc((S.dept.name || S.dept.code).toUpperCase())}</b><span>${body} Référence officielle : ${link}</span></div>`;
 }
-async function geocode(q) {
-  const j = await fetchJSON('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(q) + '&count=6&language=fr&format=json', 10000);
-  return (j.results || []).map(r => ({ name: r.name, sub: [r.admin2, r.admin1, r.country].filter(Boolean).join(', '), dept: r.country_code === 'FR' ? (r.admin2 || '') : '', lat: r.latitude, lon: r.longitude }));
-}
+async function geocode(q) { return GeoSearch.search(q, fetchJSON); }
 
 /* ---------- formats ---------- */
 const hmLocal = ms => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -635,27 +748,26 @@ function renderStatus() {
   else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(dataAt()) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
   else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
   else u = 'Aucune donnée météo';
+  const pause = WEATHER_REQUESTS.state(), limited = !DEMO.on && pause.until > Date.now();
+  const blocked = busy || limited && !off;
+  document.querySelectorAll('[data-act="refresh"]').forEach(button => { button.disabled = blocked; button.title = busy ? 'Actualisation en cours' : limited && !off ? 'Reprise automatique après la pause du fournisseur météo' : ''; });
+  if (limited && !off) u += ' · fournisseur météo limité · reprise automatique après ' + new Date(pause.until).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
   if (busy && !off && mode !== 'demo') u += ' <span class="sync">· actualisation…</span>';   // HORS LIGNE → actualisation → LIVE
   if (typeof renderDiag === 'function') renderDiag();
   $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
-    <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${busy ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
+    <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${blocked ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
 }
 function renderLocChips() {
-  const gpsChip = GPS ? `<button class="chip gpsc" data-act="loc" data-id="gps" aria-pressed="${UI.loc === 'gps'}">📍 ${esc(GPS.name)}${GPS.acc ? ` <small>±${GPS.acc < 1000 ? GPS.acc + ' m' : (GPS.acc / 1000).toFixed(1) + ' km'}</small>` : ''}</button>`
-    : `<button class="chip gpsc" data-act="locate">📍 Ma position</button>`;
-  const fixed = allLocs().filter(l => !l.gps), chips = fixed.map(l => { const role = l.id === S.work.to ? '🏢 Travail' : l.id === S.locs[0].id ? '🏠 Domicile' : '📌 Destination'; return `<button class="chip" data-act="loc" data-id="${esc(l.id)}" aria-label="Météo : ${esc(l.name)} · ${role}" aria-pressed="${l.id === UI.loc}">${role.split(' ')[0]} ${esc(l.name)}</button>`; }).join('');
-  const refresh = GPS ? '<button class="chip" data-act="locate" aria-label="Actualiser ma position">↻ 📍</button>' : '';
-  if (UI.view === 'meteo') {
-    // mode Météo : ma position en avant, les lieux fixes repliés dans un seul bouton
-    const sel = fixed.find(l => l.id === UI.loc);
-    $('#locChips').innerHTML = gpsChip + refresh +
-      `<button class="chip${sel ? ' on' : ''}" data-act="locs-toggle" aria-expanded="${!!UI.locsOpen}">📌 ${sel ? esc(sel.name) : 'Mes lieux'} ${UI.locsOpen ? '▴' : '▾'}</button>` +
-      (UI.locsOpen ? `<div class="chips locs-more">${chips}<button class="chip" data-act="goset">+ Destination</button></div>` : '') + '<span class="sub" id="locMsg" hidden></span>';
-    renderPlace(); return;
-  }
-  $('#locChips').innerHTML = gpsChip + chips + `<button class="chip" data-act="goset">+ Destination</button>${refresh}<span class="sub" id="locMsg" hidden></span>`;
-  const selected = allLocs().find(l => l.id === UI.loc);
-  if (selected) $('#locChips').insertAdjacentHTML('beforeend', `<span class="sub" style="flex-basis:100%">Météo affichée : ${esc(selected.name)}</span>`);
+  const el = $('#locChips');
+  const gpsChip = GPS ? `<button class="chip gpsc" data-act="loc" data-id="gps" aria-label="Météo : ${esc(GPS.name)} · Ma position${GPS.acc ? ' · précision ±' + esc(GPS.acc) + ' m' : ''}" aria-pressed="${UI.loc === 'gps'}"><span aria-hidden="true">📍</span><span class="loc-copy"><span>Ma position</span><small>${esc(GPS.name)}</small></span></button>`
+    : `<button class="chip gpsc" data-act="locate"><span aria-hidden="true">📍</span><span>Ma position</span></button>`;
+  const fixed = allLocs().filter(l => !l.gps), chips = fixed.map(l => { const role = l.id === S.work.to ? '🏢 Travail' : l.id === S.locs[0].id ? '🏠 Domicile' : '📌 Destination'; return `<button class="chip" data-act="loc" data-id="${esc(l.id)}" aria-label="Météo : ${esc(l.name)} · ${role}" aria-pressed="${l.id === UI.loc}"><span aria-hidden="true">${role.split(' ')[0]}</span><span class="loc-copy"><small>${role.slice(role.indexOf(' ') + 1)}</small><span>${esc(l.name)}</span></span></button>`; }).join('');
+  const refresh = GPS ? '<button class="chip" data-act="locate" aria-label="Actualiser ma position">↻</button>' : '';
+  const sel = fixed.find(l => l.id === UI.loc);
+  el.classList.toggle('has-gps', !!GPS);
+  el.innerHTML = gpsChip +
+    `<button class="chip loc-toggle${sel ? ' on' : ''}" data-act="locs-toggle" aria-label="Mes lieux météo${sel ? ' · ' + esc(sel.name) : ''}" aria-controls="locChoices" aria-expanded="${!!UI.locsOpen}"><span class="loc-copy"><small>${sel ? 'Météo consultée' : 'Météo des lieux'}</small><span>${sel ? esc(sel.name) : 'Mes lieux'}</span></span><span aria-hidden="true">${UI.locsOpen ? '▴' : '▾'}</span></button>` + refresh +
+    `<div id="locChoices" class="locs-more" ${UI.locsOpen ? '' : 'hidden'}><div class="loc-grid">${chips}</div><button class="chip loc-manage" data-act="goset">Gérer mes lieux</button></div><span class="sub" id="locMsg" ${GEO.error ? '' : 'hidden'}>${GEO.error ? esc(GEO.error.message) : ''}</span>`;
   renderPlace();
 }
 function renderSrc() {
@@ -678,13 +790,22 @@ function renderNotice() {
       <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button></form><span class="sub">Accepte « Enregistrer le mot de passe » : l’iPhone le remplira ensuite avec Face ID.</span><span class="sub">Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button></span><span class="sub" id="unlockMsg"></span></span></div>` : '';
   const setup = lock || (CFG_IMPORTED ? `<div class="note lv0"><b>CONFIGURÉ</b><span>Tes lieux et tes voitures sont enregistrés sur cet appareil. Ajoute la page à l’écran d’accueil depuis ce lien.</span></div>`
     : !S.configured ? `<div class="note lvx"><b>À CONFIGURER</b><span>Renseigne tes lieux et tes voitures dans les paramètres. Ils restent sur cet appareil. <button class="btn sm" data-act="goset-cfg">Ouvrir les paramètres</button></span></div>` : '');
-  if (m && CX) { el.innerHTML = setup; return; }
+  // Une réponse météo peut arriver entre la saisie et la validation du code.
+  // Garder le formulaire en place conserve la valeur, le focus et le remplissage du gestionnaire de mots de passe.
+  const setContent = extra => {
+    const form = el.querySelector('.unlock');
+    if (lock && form) {
+      Array.from(el.childNodes).forEach(node => { if (node !== form) node.remove(); });
+      if (extra) form.insertAdjacentHTML('afterend', extra);
+    } else el.innerHTML = setup + extra;
+  };
+  if (m && CX) { setContent(''); return; }
   const err = ERR[UI.loc];
   // le déverrouillage reste possible quand la météo manque (premier lancement hors ligne, fournisseur en panne)
-  el.innerHTML = setup + `<div class="notice"><h3>${busy ? 'Chargement de la météo…' : 'Météo indisponible'}</h3>
+  setContent(`<div class="notice"><h3>${busy ? 'Chargement de la météo…' : 'Météo indisponible'}</h3>
     <p class="muted">${busy ? 'Interrogation d’Open-Meteo.' : `Open-Meteo n’a pas répondu${err ? ' (' + esc(err) + ')' : ''}. Aucune valeur n’est inventée : l’analyse reste vide tant que les données réelles manquent. Cela arrive hors ligne ou quand le réseau bloque l’accès aux services externes.`}</p>
     ${window.TWRC_LIVE_URL ? `<p><a href="${esc(window.TWRC_LIVE_URL)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Ouvrir la version en temps réel ↗</a></p>` : ''}
-    <div class="chips"><button class="btn pri" data-act="refresh">Réessayer</button><button class="btn" data-act="demo" data-scn="froid">Voir la démo (données simulées)</button></div></div>`;
+    <div class="chips"><button class="btn pri" data-act="refresh">Réessayer</button><button class="btn" data-act="demo" data-scn="froid">Voir la démo (données simulées)</button></div></div>`);
 }
 function renderBanners() {
   const el = $('#banners'); if (!CX) { el.innerHTML = ''; return; }
@@ -703,6 +824,72 @@ function renderBanners() {
   const top = Object.values(alerts).filter(a => S.alerts[a.id] && a.sev >= 2 && a.id !== 'fog' && a.id !== 'vis' && !(UI.view === 'meteo' && TIRE_ALERTS.includes(a.id))).sort((a, b) => b.sev - a.sev).slice(0, 3);
   if (top.length) h += '<div class="notes">' + top.map(a => `<div class="note lv${a.sev}"><b>${a.sev >= 3 ? 'DANGER' : 'ATTENTION'}</b><span>${esc(a.title)}</span></div>`).join('') + '</div>';
   el.innerHTML = h;
+}
+
+function decisionOpenCarChooser() {
+  if (UI.view === 'analyse' || UI.view === 'trajet') chooseView('pneus');
+  const editor = $('#dayContext details.day-editor');
+  if (!editor) return false;
+  editor.open = true;
+  const group = $('#dayContext [role="group"][aria-label="Voiture active"]');
+  if (!group) return false;
+  group.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+  return true;
+}
+
+function renderDecisionCore() {
+  const el = $('#decisionCore');
+  if (!el) return;
+  if (!CX || !APP_CONTEXT.snapshot || DEMO.on || LOCKED()) {
+    el.hidden = true; el.innerHTML = ''; DECISION_LAST = null; return;
+  }
+  const snap = APP_CONTEXT.snapshot, now = Date.now(), raw = RAW[UI.loc];
+  const ageMin = value => {
+    const t = typeof value === 'number' ? value : Date.parse(value || '');
+    return Number.isFinite(t) ? Math.max(0, (now - t) / 60000) : null;
+  };
+  const car = appActiveCar(), carEval = car && CX.cars.find(x => x.car.id === car.id);
+  const active = !!snap.activeTrip, gpsAge = FIX && Number.isFinite(FIX.ts) ? ageMin(FIX.ts) : null;
+  const agendaRequired = !!snap.agendaEvent, calAge = CAL ? ageMin(CAL.updated) : null;
+  const confidence = Decision.confidence({
+    weather: { available: !!raw && !!CX.m, ageMin: raw ? ageMin(raw.t) : null, mode: raw && raw.mode },
+    online: !offlineNow(), contextKnown: snap.status !== 'unknown',
+    storageDurable: USER_STORE.durability().status === 'durable',
+    tyresRequired: true, tyresKnown: !!(car && hasTires(car) && carEval && carEval.w),
+    activeTrip: active, gpsAgeMin: gpsAge,
+    routeReady: !active || !!(LIVE.route && !LIVE.routeErr && Number.isFinite(LIVE.lastOk) && now - LIVE.lastOk <= 5 * 60e3),
+    agendaRequired, agendaAvailable: !!CAL, agendaAgeMin: calAge
+  });
+  const alerts = Object.values(CX.alerts || {}).filter(a => S.alerts[a.id] && Number.isFinite(a.sev) && (!car || !TIRE_ALERTS.includes(a.id)));
+  const decision = Decision.decide({ alerts, tyreLevel: carEval && carEval.w ? carEval.w.level : null,
+    tyreReason: carEval && carEval.nar ? carEval.nar.head : '', confidence });
+  const hour = CX.m && CX.m.hs[CX.m.nowI] || {}, tyre = car && car.tire || {};
+  const state = Decision.snapshot({
+    at: raw && raw.t || now, riskLevel: decision.riskLevel, confidenceKey: confidence.key,
+    weatherMode: raw && raw.mode, weatherAt: raw && raw.t,
+    temperature: CX.m && CX.m.cur && CX.m.cur.T, roadTemp: hour.Tr, visibility: hour.vis,
+    destinationKey: snap.nextTrip && snap.nextTrip.key || snap.dayContext && snap.dayContext.nextDestination && snap.dayContext.nextDestination.tripKey,
+    destinationId: snap.destination && snap.destination.id,
+    carId: car && car.id,
+    tyreSig: car ? [tyre.type || '', tyre.brand || '', tyre.model || '', tyre.size || ''].join('|') : null,
+    placeId: snap.currentLocation && snap.currentLocation.id
+  });
+  const changes = DECISION_HISTORY.changes(state).slice(0, 4);
+  DECISION_HISTORY.save(state);
+  DECISION_LAST = { confidence, decision, state, changes };
+  const icon = ['✓', '◌', '⚠', '⛔'][decision.displayLevel] || '•';
+  const confClass = 'lv' + Math.min(2, confidence.level);
+  const destination = snap.destination && snap.destination.name || (snap.destination ? 'Destination' : 'Aucune destination immédiate');
+  const carLabel = car ? (car.short || car.name || car.id) : 'À choisir';
+  const wAge = raw ? ageMin(raw.t) : null, fresh = wAge == null ? 'météo —' : 'météo ' + (wAge < 1 ? 'moins de 1 min' : Math.round(wAge) + ' min');
+  const changesHtml = changes.length ? '<details class="decision-changes"><summary>Depuis la dernière ouverture · ' + changes.length + ' changement' + (changes.length > 1 ? 's' : '') + '</summary><div>' +
+    changes.map(c => '<span class="' + esc(c.kind) + '">' + (c.kind === 'up' ? '↑ ' : c.kind === 'down' ? '↓ ' : '↔ ') + esc(c.text) + '</span>').join('') + '</div></details>' : '';
+  el.className = 'decision-core lv' + decision.displayLevel;
+  el.hidden = false;
+  el.innerHTML = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + '</p></div>' +
+    '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b></span></div>' +
+    '<div class="decision-meta"><span>Destination · <b>' + esc(destination) + '</b></span><span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span><span>' + esc(fresh) + '</span></div>' +
+    (confidence.level > 0 && confidence.reasons.length ? '<div class="decision-why">' + confidence.reasons.map(r => '<span>' + esc(r) + '</span>').join('') + '</div>' : '') + changesHtml;
 }
 
 /* ---------- probabilités et pluie 15 min ---------- */
@@ -737,7 +924,7 @@ function renderCurrent() {
   const cls = rainClass(c.P);
   const ev = [3, 6, 12].map(k => { const x = hs[n + k]; if (!x) return ''; return `<div><span>Dans ${k} h · ${x.t.slice(11, 16)}</span><b>${f1(x.T)} °C</b><span>${(x.Pl || 0) >= 0.1 ? f1(x.Pl) + ' mm/h' : 'sec'} · vis. ${visTxt(x.vis)}</span></div>`; }).join('');
   const l = allLocs().find(x => x.id === UI.loc);
-  el.innerHTML = `<div class="mod-h"><h2>Météo actuelle · ${esc(l ? l.name : '')}</h2><span class="src obs">mesuré/prévision météo</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>🌡️ Météo actuelle · ${esc(l ? l.name : '')}</h2><span class="src obs">mesuré/prévision météo</span></div>
   <div class="cur"><div class="bigT num">${c.T == null ? '—' : f1(c.T)}<sup>°C</sup></div>
     <div class="cond"><span class="lbl">${icon(c.code)}${esc(wx(c.code))}</span><span class="sub">Ressentie ${f1(c.Tapp)} °C · min ${f1(day.tmin)} / max ${f1(day.tmax)} °C aujourd’hui</span></div></div>
   <div class="metrics">
@@ -767,362 +954,43 @@ function renderCurrent() {
   <div><div class="sub" style="margin-bottom:6px">ÉVOLUTION · PRÉVISIONS</div><div class="evo">${ev}</div></div>`;
 }
 
-/* ---------- onglet Météo : poste météo (verdict, prochain trajet, chronologie, ce qui compte, phénomènes, route) ---------- */
-// Toute la décision vient de wxDesk (src/wxdesk.js, pur et testé) ; ici, seulement l'adaptation des données déjà chargées et le rendu.
-// Trajets : ceux du briefing (domicile-travail + rendez-vous de l'agenda reconnus comme trajets), jamais tous les événements de l'agenda.
-const WX_IC = { rain: '🌧', snow: '🌨', fog: '🌫', wind: '💨', ice: '❄️', temp: '🌡', sun: '🌅', better: '🌤', zero: '🧊', dep: '🚗', arr: '🏁' };
-function wxTrips(clockModel) {
-  const offSec = clockModel && clockModel.payload && clockModel.payload.utc_offset_seconds != null ? clockModel.payload.utc_offset_seconds : 7200;
-  return BRF_SHOWN.filter(t => !t.originPending && t.dep).map((t, k) => {
-    const seq = t.seq || [], last = seq.length - 1;
-    const points = seq.map((q, j) => {
-      const x = q.hs && q.hs[q.i]; if (!x) return null;
-      // agenda : heure et kilomètre de passage calculés par le relais ; domicile-travail : départ, heures pleines, arrivée
-      const at = q.t || (j === 0 ? t.dep : j === last && t.arr ? t.arr : x.t);
-      return { t: at, f: q.f != null ? q.f : last > 0 ? j / last : 0, km: q.km != null ? q.km : null, name: q.name || q.loc || null, x };
-    }).filter(Boolean);
-    let glare = t.td && t.td.glare ? { ts: t.td.glare.ts } : null;
-    if (!glare && t.l && locHasCoords(t.l.from) && locHasCoords(t.l.to) && t.l.min) {
-      const cloudAt = ts => { const p = points.reduce((b, q) => !b || Math.abs(tsToDate(q.t) - tsToDate(ts)) < Math.abs(tsToDate(b.t) - tsToDate(ts)) ? q : b, null); return p ? p.x.cloud : null; };
-      const g = glareCheck(t.l.from, t.l.to, t.dep, t.l.min, offSec, cloudAt).glare; if (g) glare = { ts: g.ts };
-    }
-    const label = t.src === 'work' ? (t.td && t.td.dir === 'ret' ? 'trajet retour' : 'trajet aller') : t.l && t.l.k === 'ret' ? 'trajet retour' : `trajet vers ${t.to || 'le rendez-vous'}`;
-    return { id: t.key || 'trip' + k, label, from: t.from || null, to: t.to || null, dep: t.dep, arr: t.arr || t.dep, km: t.l && t.l.km != null ? t.l.km : null, glare, points };
-  });
-}
-function wxInput() {
-  const m = CX.m, now = DEMO.on ? m.nowStr.slice(0, 16) : nowIn(m.tz || 'Europe/Paris');
-  const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Math.max(0, (Date.now() - raw.t) / 60e3);
-  const day = m.days.find(d => d.date === now.slice(0, 10)) || {};
-  // valeurs « actuelles » d'une réponse ancienne : on préfère l'heure prévue pour maintenant
-  const cur = ageMin != null && ageMin > 90 ? {} : { T: m.cur.T, Tapp: m.cur.Tapp };
-  return { now, hours: m.hs.slice(Math.max(0, m.nowI - 4)), cur, trips: wxTrips(m), nowcast: ageMin != null && ageMin > 30 ? null : m.nc || null,
-    sun: { sunrise: day.sunrise || null, sunset: day.sunset || null }, ageMin };
-}
-function renderWx() {
-  const el = $('#secWx'); if (!el) return;
-  if (UI.view !== 'meteo' || !CX) { if (!el.hidden || el.innerHTML) { el.hidden = true; el.innerHTML = ''; renderWx.last = ''; } return; }
-  const input = wxInput(), d = wxDesk(input);
-  if (!d) { el.hidden = true; el.innerHTML = ''; renderWx.last = ''; return; }
-  el.hidden = false;
-  const m = CX.m, l = curLoc(), today = input.now.slice(0, 10), E = WXD_EMO;
-  const dayLbl = day => { const n = dayDiff(today, day); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(day); };
-  const mode = DEMO.on ? 'DÉMO · simulé' : offlineNow() ? 'HORS LIGNE' : m.mode === 'live' ? 'LIVE' : 'CACHE';
-  const age = input.ageMin == null ? '' : ` · ${freshState(input.ageMin)} · ${ageTxt(input.ageMin)}`;
-  const h = d.hero;
-  const hero = `<div class="wx-hero lv${h.level}" role="status" aria-live="polite">
-    <div class="wx-hk"><span>${esc(l ? l.name : '')}</span><span class="wx-age">${mode}${age}</span></div>
-    <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.title)}</h2>
-    ${h.lines.map((x, i) => `<p class="${i ? 'wx-hl' : 'wx-hl wx-h1'}">${esc(x)}</p>`).join('')}
-    ${h.stale ? `<p class="wx-stale">⚠ Prévisions reçues il y a ${esc(ageTxt(input.ageMin))} : verdict indicatif, actualise dès que possible.</p>` : ''}</div>`;
-  // prochain trajet
-  const t = d.trip;
-  const tripHtml = !t ? `<div class="wx-blk wx-trip wx-none"><h3>Prochain trajet</h3><p class="sub">Aucun trajet prévu dans les 24 h. Les rendez-vous sans lieu reconnu ne sont pas des trajets.</p></div>`
-    : `<div class="wx-blk wx-trip lv${t.lv}"><h3>Prochain trajet${t.running ? ' · en cours' : ' · ' + esc(dayLbl(t.day))}</h3>
-      <p class="wx-route"><b>${esc(t.from || 'Départ')} → ${esc(t.to || 'Arrivée')}</b></p>
-      <p class="wx-when num">${t.dep} → ${t.arr} · ${t.durMin} min${t.km != null ? ' · ' + f0(t.km) + ' km' : ''}</p>
-      ${t.waiting ? '<p class="sub">⏳ Météo du trajet en cours de chargement…</p>' : `<ul class="wx-pts">${t.points.map(p => `<li class="lv${p.lv}"><span class="k">${esc(p.label)} <i class="num">${esc(p.t)}</i></span><span>${p.T != null ? '<b class="num">' + f0(p.T) + ' °C</b> · ' : ''}${esc(p.text)}${p.place && p.label === 'Mi-parcours' ? ' · ' + esc(p.place) : ''}</span></li>`).join('')}</ul>`}
-      ${t.crit ? `<p class="wx-crit lv${t.crit.lv}">${E[t.crit.lv]} ${esc(t.crit.text)}</p>` : t.waiting ? '' : '<p class="wx-crit lv0">🟢 Aucun phénomène critique sur le trajet</p>'}
-      ${t.later.length ? `<p class="sub">Ensuite : ${t.later.map(x => `${E[x.lv]} ${x.day !== today ? esc(dayLbl(x.day)) + ' ' : ''}${esc(x.dep)} ${esc(x.label)}`).join(' · ')}</p>` : ''}</div>`;
-  // chronologie : moments clés, puis bande horaire défilante
-  const tday = x => x.ts.slice(0, 10) !== today && x.t !== 'maintenant' ? (dayDiff(today, x.ts) === 1 ? 'dem. ' : fmtDay(x.ts.slice(0, 10)) + ' ') : '';
-  const mom = d.timeline.moments.map(x => `<li class="lv${x.lv}${x.kind !== 'wx' ? ' trip' : ''}" data-ts="${esc(x.ts)}"><time class="num">${esc(tday(x) + x.t)}</time><span aria-hidden="true">${WX_IC[x.kind === 'wx' ? x.id : x.kind] || '•'}</span><span>${esc(x.text)}</span></li>`).join('');
-  const skyIc = x => { const dd = m.days.find(z => z.date === x.t.slice(0, 10)) || {}, night = dd.sunrise && dd.sunset && (x.t < dd.sunrise.slice(0, 13) + ':00' || x.t > dd.sunset);
-    return x.code == null ? '·' : x.code <= 1 ? (night ? '🌙' : '☀️') : x.code === 2 ? (night ? '☁️' : '⛅') : '☁️'; };
-  const strip = d.timeline.strip.map(x => {
-    const bar = x.P == null ? 0 : Math.min(100, Math.round(x.P / 4 * 100));
-    return `<li class="lv${x.lv}${x.trip ? ' trip' : ''}${x.now ? ' now' : ''}"><span class="hh num">${x.now ? 'maint.' : x.t.slice(0, 10) !== today && x.hh === '00:00' ? 'dem.' : esc(x.hh)}</span><span class="ic" aria-hidden="true">${x.ic ? WX_IC[x.ic] : skyIc(x)}</span><b class="num">${x.T == null ? '—' : f0(x.T) + '°'}</b><span class="rb" title="${x.P == null ? '' : f1(x.P) + ' mm/h'}"><i style="height:${bar}%"></i></span><span class="pp num">${x.pp != null && x.pp >= 20 ? f0(x.pp) + '%' : ''}</span>${x.trip ? '<span class="tm" aria-label="trajet">🚗</span>' : ''}</li>`;
-  }).join('');
-  const tl = `<div class="wx-blk wx-tlb"><h3>Chronologie · jusqu’à ${esc(d.window.to)}</h3><ol class="wx-tl">${mom || '<li class="lv0"><time>—</time><span></span><span>Aucun changement notable</span></li>'}</ol>
-    <ol class="wx-strip" aria-label="Heure par heure : température, pluie, phénomènes, trajets">${strip}</ol>
-    <p class="sub">Barre bleue : pluie (pleine à 4 mm/h) · % : probabilité de pluie · 🚗 : heure de trajet.</p></div>`;
-  const matters = `<div class="wx-blk wx-matb"><h3>Ce qui compte aujourd’hui</h3><ul class="wx-mat">${d.matters.map(x => `<li class="lv${x.lv}"><span aria-hidden="true">${E[x.lv]}</span><span>${esc(x.text)}</span></li>`).join('')}</ul></div>`;
-  const open = new Set([...el.querySelectorAll('details[open][data-k]')].map(x => x.dataset.k));
-  const ph = `<div class="wx-blk"><h3>Phénomènes</h3><div class="wx-ph">${d.phen.map(p => `<details class="wx-pc lv${p.lv}" data-k="${p.id}"${open.has(p.id) ? ' open' : ''}><summary><span class="ic" aria-hidden="true">${p.icon}</span><span class="tt">${esc(p.title)}</span><span class="ln">${p.lv ? E[p.lv] + ' ' : ''}${esc(p.line)}</span></summary><ul>${p.detail.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`).join('')}</div></div>`;
-  // conditions route + lien court vers Pneus (aucune analyse pneumatique ici)
-  const r = d.road, tires = (CX.cars || []).filter(c => hasTires(c.car) && c.w), tl2 = tires.length ? tires.reduce((a, c) => Math.max(a, c.w.level), 0) : null;
-  const road = `<div class="wx-blk wx-road lv${r.level}"><h3>Conditions route</h3>
-    <div class="wx-rs"><b class="num">${r.score}</b><span>/ 100 ${E[r.level]}</span><span class="sub">${esc(r.window.label)}</span></div>
-    <ul class="wx-rf">${r.factors.map(f => `<li class="lv${f.lv}"><span aria-hidden="true">${E[f.lv]}</span><b>${esc(f.label)}</b><span class="sub">${esc(f.why)}</span><span class="num">${f.pen ? '−' + f.pen : '0'}</span></li>`).join('')}</ul>
-    <details class="wx-how" data-k="how"${open.has('how') ? ' open' : ''}><summary>Comment ce score est calculé</summary><p class="sub">100 moins les points listés : gel jusqu’à −45 (verglas élevé ou pluie verglaçante), neige −35, visibilité −15 à −35 (sous 1 000, 500 et 200 m), pluie −5 à −30 (probabilité ≥ 60 %, 0,2, 2 et 7,6 mm/h), rafales −10 à −30 (55, 70 et 90 km/h), froid ou chaleur −5, air saturé −5, soleil rasant −5. La couleur n’est jamais plus douce que le pire facteur. Environnement seulement : l’adhérence des pneus est dans l’onglet Pneus.</p></details>
-    ${tl2 != null ? `<div class="wx-tire"><span>Impact pneus : <b>${['faible', 'modéré', 'élevé', 'critique'][tl2]}</b> ${E[tl2]}</span><button class="btn sm" data-act="view" data-v="pneus">Voir analyse Pneus →</button></div>` : ''}</div>`;
-  const foot = `<p class="sub wx-foot">Détails techniques plus bas : <a href="#secCur">mesures</a> · <a href="#secChart">graphique 24 h</a> · <a href="#hdrMore">sources et fraîcheur</a>.</p>`;
-  const evH = evidenceHtml(), evOn = EV_FLAG() === 'on' && /class="ev-crit/.test(evH) && d.level < 2;
-  const html = (evOn ? evH + hero : hero + evH) + tripHtml + tl + matters + ph + road + foot;
-  if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
-  const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
-  el.className = 'mod wx lv' + d.level; el.innerHTML = html; renderWx.last = html;
-  const ns = el.querySelector('.wx-strip'); if (ns && left) ns.scrollLeft = left;
-}
-/* ---------- moteur de preuves météo v2 (weatherEvidenceV2) : actif par défaut ---------- */
-// Réglage S.flags.weatherEvidenceV2 : 'on' (défaut) ; 'shadow' calcule, journalise et montre la carte « Preuves » marquée expérimentale
-// sans toucher aux verdicts ; 'on' place en plus le phénomène critique v2 en tête de l'onglet Météo ; 'off' n'affiche rien.
-// Signalements terrain : twrc.reports.v1 (type, heure, lieu arrondi à ~1 km, gardés 6 h). Journal fantôme : twrc.shadow.v1
-// (200 entrées max : heure, identifiant du lieu affiché, brouillard v1, brouillard v2 et confiance, observation éventuelle).
-const EV_FLAG = () => { const f = S.flags && S.flags.weatherEvidenceV2; return ['shadow', 'off'].includes(f) ? f : 'on'; };
-const REPORT_KEY = 'twrc.reports.v1', SHADOW_KEY = 'twrc.shadow.v1';
-const REPORT_KINDS = { fog: '🌫 Brouillard', lowvis: '👁 Visibilité très réduite', rain: '🌧 Pluie', wet: '💧 Route humide', snow: '❄️ Neige', ice: '🧊 Verglas', slippery: '⚠️ Route glissante' };
-let REPORTS = []; try { REPORTS = JSON.parse(lsGet(REPORT_KEY) || '[]') || []; } catch (e) { REPORTS = []; }
-const reportsLive = () => { const n = Date.now(); REPORTS = REPORTS.filter(r => r && n - r.at < 6 * 3600e3); return REPORTS; };
-function reportAdd(kind) {
-  if (!REPORT_KINDS[kind]) return;
-  const c = placeNow(), l = c.place || (GPS && placeFixClass({ acc: GPS.acc }) !== 'network' ? GPS : null) || curLoc();
-  if (!l || !locHasCoords(l)) return;
-  REPORTS = reportsLive().concat([{ kind, at: Date.now(), lat: Math.round(l.lat * 100) / 100, lon: Math.round(l.lon * 100) / 100, place: c.place ? c.place.id : null }]).slice(-30);
-  lsSet(REPORT_KEY, JSON.stringify(REPORTS));
-  // journal prévision / observation : ce que les deux moteurs disaient juste avant le signalement
-  if (kind === 'fog' || kind === 'lowvis') { const v = evNow(); if (v) shadowPush({ obs: 1, src: 'utilisateur', v1: v.v1, v2: v.prevLv }); }
-  UI.evOpen = true; renderAll();
-}
-function shadowLoad() { try { return JSON.parse(lsGet(SHADOW_KEY) || '[]') || []; } catch (e) { return []; } }
-function shadowPush(e) { const L = shadowLoad(); L.push({ at: Date.now(), loc: UI.loc, ...e }); lsSet(SHADOW_KEY, JSON.stringify(L.slice(-200))); }
-function evStations() {
-  const src = OBS || (offlineNow() ? OBS_LAST : null);
-  return Object.values((src && src.stations) || {}).filter(s => s && Number.isFinite(s.lat)).map(s => ({ id: s.id, name: s.name, lat: s.lat, lon: s.lon, kind: 'METAR', obs: s.hist || (s.last ? [s.last] : []) }));
-}
-function evLocTrust() {
-  if (PLACE.conf && PLACE.conf.placeId === UI.loc) return 'Confirmée';
-  if (UI.loc === 'gps') return GPS && placeFixClass({ acc: GPS.acc }) === 'gps' ? 'Fiable' : 'Estimée';
-  return 'Fiable';   // lieu enregistré : la prévision porte exactement sur ses coordonnées
-}
-function evInput() {
-  if (!CX) return null;
-  const m = CX.m, off = (m.payload && m.payload.utc_offset_seconds) || 0, now = DEMO.on ? Date.parse(m.nowStr + ':00Z') - off * 1000 : Date.now();
-  const nowL = DEMO.on ? m.nowStr.slice(0, 16) : nowIn(m.tz || 'Europe/Paris'), l = curLoc();
-  const msOf = t => Date.parse(t.slice(0, 16) + ':00Z') - off * 1000;
-  // points : prochain trajet dans les 3 h (départ, passages, arrivée), sinon le lieu affiché pour les 3 prochaines heures
-  const trip = wxTrips(m).find(t => t.points.length && t.arr > nowL && msOf(t.dep) - now <= 3 * 3600e3);
-  const labels = ['départ', '25 %', '50 %', '75 %', 'arrivée'];
-  const points = trip ? trip.points.map((p, k, a) => ({ lat: p.lat ?? (k === 0 ? (l && l.lat) : null), lon: p.lon ?? (k === 0 ? (l && l.lon) : null), t: p.t, ms: msOf(p.t), x: p.x, label: a.length === 5 ? labels[k] : k === 0 ? 'départ' : k === a.length - 1 ? 'arrivée' : `point ${k}` }))
-    : [0, 1, 2, 3].map(k => m.hs[m.nowI + k]).filter(Boolean).map((x, k) => ({ lat: l.lat, lon: l.lon, t: x.t, ms: msOf(x.t), x, label: k ? '+' + k + ' h' : 'maintenant' }));
-  const raw = RAW[UI.loc];
-  return { now, points: points.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon)), stations: evStations(), reports: reportsLive(), community: { available: false },
-    location: { trust: evLocTrust() }, fresh: { modelAgeMin: raw && raw.t ? (Date.now() - raw.t) / 60e3 : null, offline: offlineNow() }, onTrip: !!trip };
-}
-function evNow() {
-  const i = evInput(); if (!i || !i.points.length) return null;
-  const r = evidenceEngine(i); if (!r) return null;
-  const v1 = CX.alerts.fog ? CX.alerts.fog.sev : CX.alerts.vis ? 1 : 0;
-  return { r, v1, prevLv: r.worst.lv };
-}
-function evShadowTick(v) {
-  if (!v || DEMO.on) return;
-  const L = shadowLoad(), last = L.filter(e => e.loc === UI.loc && e.obs == null).slice(-1)[0];
-  if (last && Date.now() - last.at < 15 * 60e3) return;
-  // observation proche et récente (≤ 25 km, ≤ 60 min) : sert de vérité terrain pour mesurer v1 et v2
-  const o = v.r.worst.ev.find(e => e.layer === 'A' && e.w >= 0.6);
-  shadowPush({ v1: v.v1, v2: v.r.worst.lv, trust: v.r.worst.trust, contra: !!v.r.contradiction, ...(o ? { obs: o.lv >= 2 ? 1 : 0, src: 'station' } : {}) });
-}
-function evidenceHtml() {
-  const flag = EV_FLAG(); if (flag === 'off') return '';
-  const v = evNow(); if (!v) return '';
-  evShadowTick(v);
-  const r = v.r, E = WXD_EMO, h = r.headline, T = ['faible', 'moyenne', 'élevée'];
-  const lastObs = r.fog.flatMap(f => f.ev).filter(e => e.layer === 'A').sort((a, b) => b.w - a.w)[0];   // observation la plus pertinente, tous points confondus
-  const off = offlineNow() ? `<p class="wx-stale">⚠ Hors connexion : conditions actuelles non vérifiables · ${lastObs ? 'dernière observation : ' + esc(lastObs.text) : 'aucune observation en cache'}</p>` : '';
-  const head = h ? `<div class="ev-crit lv${r.worst.lv}"><b>${h.icon} ${esc(h.text)}</b><span>${esc(h.sub)}${h.window ? ` · ${esc(h.window[0])} → ${esc(h.window[1])}` : ''}${h.where ? ' · ' + esc(h.where) : ''}</span>
-    <span class="sub">Preuves : ${h.proofs.map(esc).join(' · ')}</span><span class="sub">Confiance : ${esc(h.trust)} · variabilité locale importante</span></div>` : '';
-  const contra = r.contradiction ? `<p class="ev-contra">⚠ CONTRADICTION DÉTECTÉE · ${esc(r.contradiction)}</p>` : '';
-  const rows = r.phen.map(p => `<li class="lv${p.lv}"><span>${p.icon} ${esc(p.label)}</span><b>${esc(p.value)}</b><span class="ev-t ev-${p.trust}">${['🔴', '🟠', '🟢'][Math.max(0, Math.min(2, p.trust))]} ${esc(p.trustTxt)}</span></li>`).join('');
-  const prov = r.worst.ev.map(e => `<li><span class="ev-l">${e.layer}</span> ${e.dir === '+' ? '▲' : '▽'} ${esc(e.source)} : ${esc(e.text)}</li>`).join('');
-  const rep = Object.entries(REPORT_KINDS).map(([k, t]) => `<button class="btn sm" data-act="ev-report" data-k="${k}">${t}</button>`).join('');
-  const mine = reportsLive().slice(-3).reverse().map(x => `${REPORT_KINDS[x.kind]} à ${hmLocal(x.at)}`).join(' · ');
-  return `<details class="wx-pc ev" data-k="ev"${UI.evOpen || (flag === 'on' && h) ? ' open' : ''}><summary><span class="ic" aria-hidden="true">🧪</span><span class="tt">Preuves météo · moteur v2${flag === 'shadow' ? ' (mode observation)' : ''}</span><span class="ln">${h ? E[r.worst.lv] + ' ' + esc(h.text.toLowerCase()) : 'aucun phénomène critique prouvé'}${r.contradiction ? ' · contradiction' : ''}</span></summary>
-    <div class="ev-b">${off}${head}${contra}<ul class="ev-ph">${rows}</ul>
-    <p class="sub">Axes : données ${esc(r.axes.data)} · modèles ${esc(r.axes.models)} · localisation ${esc(r.axes.location)} · ${esc(r.axes.observations)} · ${esc(r.axes.freshness)} · communauté ${esc(r.community)}.</p>
-    <details class="wx-how" data-k="evprov"><summary>Provenance du verdict brouillard${r.worst.label ? ' (' + esc(r.worst.label) + ')' : ''}</summary><ul class="lab-why">${prov}</ul><p class="sub">A observation · C modèle · D terrain · E physique. Une observation pèse selon sa distance, son âge et l’échéance ; l’absence de signalement ne prouve rien.</p></details>
-    <div class="ev-rep"><p class="sub"><b>Signaler les conditions réelles</b> (votre observation, non officielle)${mine ? ' · récents : ' + esc(mine) : ''}</p><div class="chips">${rep}</div></div></div></details>`;
-}
-
-
-/* ---------- onglet Analyse : pneus réellement montés, état thermique estimé, adhérence, freinage, trajet ---------- */
-// Toute la physique vit dans tyreLab (src/tyrelab.js, pur et testé) ; ici, seulement les données d'entrée, la mémoire thermique et le rendu.
-// Mémoire thermique : twrc.tyretherm.v1 = { [id voiture]: { at: heure locale, T: gomme estimée } } — ni position, ni trajet, ni lieu.
-const TT_KEY = 'twrc.tyretherm.v1';
-let TT = null;
-function ttLoad() { if (!TT) { try { TT = JSON.parse(lsGet(TT_KEY) || '{}') || {}; } catch (e) { TT = {}; } } return TT; }
-function ttSave(carId, at, T, sig) {
-  if (!carId || !at || !Number.isFinite(T)) return;
-  const o = ttLoad(); o[carId] = { at, T: Math.round(T * 10) / 10, sig: sig || null };   // sig : identité de la monte (invalidation au changement de jeu)
-  Object.keys(o).forEach(k => { if (!S.cars.some(c => c.id === k)) delete o[k]; });
-  lsSet(TT_KEY, JSON.stringify(o));
-}
-const labCar = () => S.cars.find(c => c.id === UI.labCar) || S.cars.find(hasTires) || S.cars[0];
-const LAB_DRIVE_NOTE = {};
-function labLastDriveHtml(car, li) {
-  const h = li.history, manual = h && h.source === 'manual', note = LAB_DRIVE_NOTE[car.id], locked = DEMO.on || !!li.drive;
-  const kinds = { ville: 'Ville', route: 'Route', autoroute: 'Autoroute' };
-  const summary = manual ? `Saisi par vous · ${h.at.slice(11, 16)} · ${h.minutes} min · ${kinds[h.kind] || 'route'}` : h ? 'Historique automatique disponible' : 'Renseigner mon dernier trajet';
-  return `<details class="wx-pc lab-d lab-last-drive" data-k="last-drive"><summary><span class="ic" aria-hidden="true">🚗</span><span class="tt">Dernier roulage</span><span class="ln">${esc(summary)}</span></summary>
-    <div class="lab-sp"><p class="sub">Renseigne un roulage terminé dans les dernières 24 h. La chauffe puis le refroidissement sont estimés avec la météo disponible et un départ supposé froid.</p>
-    ${manual ? `<p>Dernier roulage saisi : <b>${esc(h.at.replace('T', ' à '))}</b> · ${h.minutes} min · ${esc(kinds[h.kind] || 'route')}.</p>` : ''}
-    ${locked ? `<p class="sub">${DEMO.on ? 'Saisie indisponible en démonstration.' : 'Un trajet est en cours : termine-le avant de renseigner un roulage passé.'}</p>` : ''}
-    <form id="labLastDriveForm" data-car="${esc(car.id)}"><fieldset class="lab-drive-fields" ${locked ? 'disabled' : ''}>
-      <label for="labDriveAt">Date et heure d’arrivée<input id="labDriveAt" name="at" type="datetime-local" required max="${esc(li.now)}" value="${esc(manual ? h.at : li.now)}"></label>
-      <label for="labDriveMinutes">Durée du roulage (minutes)<input id="labDriveMinutes" name="minutes" type="number" required min="1" max="720" step="1" value="${manual ? h.minutes : 40}"></label>
-      <label for="labDriveKind">Type de route<select id="labDriveKind" name="kind">${Object.entries(kinds).map(([k, v]) => `<option value="${k}" ${k === (manual ? h.kind : 'route') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-      <div class="cal-v"><button class="btn" type="submit">Enregistrer le roulage</button>${h ? '<button class="btn" type="button" data-act="lab-drive-forget">Oublier cet historique</button>' : ''}</div>
-    </fieldset></form><p class="sub">Source : saisie utilisateur. Estimation thermique, aucun capteur.</p>
-    ${note ? `<p role="${note.error ? 'alert' : 'status'}">${esc(note.text)}</p>` : ''}</div></details>`;
-}
-// état pneumatique unique (onglet Pneus = source de vérité) : recalculé à chaque rendu, donc jamais périmé après une saisie
-const tyreStateOf = car => tyreState(car, { today: nowIn('Europe/Paris').slice(0, 10) });
-const localTs = (ms, tz) => new Date(ms).toLocaleString('sv-SE', { timeZone: tz || 'Europe/Paris', hour12: false }).replace(' ', 'T').slice(0, 16);
-function labInput(car) {
-  const m = CX && CX.m, tz = (m && m.tz) || 'Europe/Paris';
-  if (!m) return { now: nowIn(tz), car, hours: [], state: tyreStateOf(car) };
-  const now = DEMO.on ? m.nowStr.slice(0, 16) : nowIn(tz);
-  const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Math.max(0, (Date.now() - raw.t) / 60e3);
-  let drive = null;
-  if (!DEMO.on && LIVE.phase === 'active' && LIVE.startFix) {
-    const sf = LIVE.startFix, geo = Number.isFinite(sf.lat), cand = [FIX, LIVE.lastFix].find(f => f && f.ts > sf.ts), lf = geo && cand ? cand : null;
-    const dmin = Math.max(0, (Date.now() - sf.ts) / 60e3), b = LIVE.base || {}, planMin = b.l && b.l.min ? b.l.min : b.dep && b.arr ? Math.max(1, liveMin(b.dep, b.arr)) : null;
-    // progression le long de l'itinéraire OSRM (km du premier itinéraire − km restants) ; sinon vol d'oiseau ×1,2 ; sans GPS (hors ligne,
-    // GPS coupé) : temps écoulé / durée prévue × distance prévue. La source est toujours affichée.
-    const R0 = LIVE.route0, R = LIVE.route, onRoute = !!lf && R0 && R && R0.key === LIVE.key && R.key === LIVE.key && R0.km >= R.km;
-    const total = R0 && R0.key === LIVE.key ? R0.km : b.l && b.l.km != null ? b.l.km : null;
-    const km = onRoute ? (R0.km - R.km) + (distKm(sf, R0.o) + distKm(R.o, lf)) * 1.2 : lf ? distKm(sf, lf) * 1.2 : total != null && planMin ? total * Math.min(1, dmin / planMin) : null;
-    drive = { active: true, since: localTs(sf.ts, tz), startTs: sf.ts, km, total, kmSrc: onRoute ? 'route' : lf ? 'estimate' : km != null ? 'time' : null, speedKmh: dmin >= 2 && km != null ? km / dmin * 60 : null };
-  }
-  // prochain trajet réellement prévu (briefing) : points datés, kilomètres de l'agenda ou distance domicile-travail ×1,3
-  const trips = wxTrips(m).filter(t => t.arr > now && t.points.length), t0 = trips[0] || null;
-  let trip = null;
-  if (t0) {
-    const b = BRF_SHOWN.find(x => x.key === t0.id), km = t0.km != null ? t0.km : b && b.td && b.td.dist ? b.td.dist * 1.3 : null;
-    const dur = (tsToDate(t0.arr) - tsToDate(t0.dep)) / 60e3, v = km && dur > 0 ? km / dur * 60 : null;
-    trip = { label: t0.label, km, kind: v == null ? null : v < 45 ? 'ville' : v < 80 ? 'route' : 'autoroute', points: t0.points.map(p => ({ t: p.t, f: p.f, km: p.km, name: p.name, x: p.x })) };
-  }
-  const h = ttLoad()[car.id], state = tyreStateOf(car);
-  const reports = reportsLive().map(r => ({ kind: r.kind, at: localTs(r.at, tz) }));
-  return { now, car, hours: m.hs.slice(Math.max(0, m.nowI - 36), m.nowI + 40), history: h && h.at <= now && tyreMemoryValid(h, state) ? h : null, state, drive, trip, ageMin, reports,
-    db: car.tire && (car.tire.brand || car.tire.model) ? findTire(car.tire.brand, car.tire.model) : null };
-}
-// suivi de la mémoire thermique : pendant un trajet vivant (toutes les 2 min au plus) et à l'arrivée
-// état du trajet vu par Analyse (même état LIVE que le briefing) : simulation avant départ, suivi en cours, bilan à l'arrivée
-function labTripState(r, li) {
-  const d = li && li.drive, hm = ms => localTs(ms).slice(11, 16), rg = x => `${String(x[0]).replace('-', '−')}–${String(x[1]).replace('-', '−')} °C`, km = x => f1(x).replace(/,0$/, '');
-  if (d) {
-    const src = d.kmSrc === 'route' ? 'le long de l’itinéraire' : d.kmSrc === 'estimate' ? 'estimée : GPS, vol d’oiseau ×1,2' : d.kmSrc === 'time' ? 'estimée au temps écoulé, sans GPS' : null;
-    return `<div class="wx-blk lab-live" data-k="live"><h3>🚗 Trajet en cours</h3><ul class="lab-why"><li>Départ réel : <b>${hm(d.startTs)}</b></li>
-      ${d.km != null ? `<li>Progression : <b>${km(d.km)}${d.total != null ? ' / ' + km(d.total) : ''} km</b>${src ? ` <span class="sub">(${src})</span>` : ''}</li>` : ''}
-      <li>Pneu : <b>${esc(r.thermal.state.toLowerCase())}</b> · gomme ≈ ${rg(r.thermal.range)}${r.hero.warm && !r.warm.reached ? ' · ' + esc(r.hero.warm) + ' restantes' : ''}</li></ul></div>`;
-  }
-  if (!(li && li.history && li.history.source === 'manual') && TRIPEND && Date.now() - TRIPEND.at < 3 * 3600e3) {
-    const e = TRIPEND;
-    return `<div class="wx-blk lab-live" data-k="end"><h3>🏁 Trajet terminé${e.name ? ' · ' + esc(e.name) : ''} · ${hm(e.at)}</h3><ul class="lab-why">${e.km != null ? `<li><b>${km(e.km)} km</b>${e.kmSrc === 'route' ? '' : ' <span class="sub">(estimé)</span>'}</li>` : ''}<li><b>${e.min} min</b></li>
-      <li>État thermique final estimé : <b>${rg(e.range)}</b> (${esc(String(e.state).toLowerCase())})</li><li>Confiance : ${esc(e.conf)} · sert de point de départ au prochain trajet</li></ul></div>`;
-  }
-  if (r.trip && r.trip.rows.length) {
-    const rain = r.trip.rows.find(x => x.events.some(ev => ev.ic === '🌧')), last = r.trip.rows[r.trip.rows.length - 1];
-    return `<div class="wx-blk lab-live" data-k="pre"><h3>⏳ Avant départ · ${esc(r.trip.label)} ${esc(r.trip.dep)}</h3><ul class="lab-why"><li><b>${esc(TL_STATES[r.trip.startS])}</b> probable au départ${r.hero.warm && !r.warm.reached ? ' · ' + esc(r.hero.warm) + ' avant plage favorable' : ''}</li>
-      ${rain ? `<li>Pluie prévue ${rain.km != null ? 'après ≈ ' + rain.km + ' km' : 'vers ' + esc(rain.t)}</li>` : ''}<li>État thermique estimé à l’arrivée : <b>${esc(last.state.toLowerCase())}</b> · ≈ ${rg(last.range)}</li></ul></div>`;
-  }
-  return '';
-}
-function labThermTick(arrived) {
-  if (DEMO.on || !CX) return;
-  const car = labCar(); if (!car || !hasTires(car)) return;
-  if (!arrived && !(LIVE.phase === 'active' && Date.now() - (labThermTick.at || 0) > 120e3)) return;
-  const inp = labInput(car), r = tyreLab(inp); if (!r || !r.thermal) return;
-  labThermTick.at = Date.now(); ttSave(car.id, r.now, r.thermal.T, r.state && r.state.sig);
-  return { r, inp };
-}
-function renderLab() {
-  const el = $('#secLab'); if (!el) return;
-  if (UI.view !== 'analyse') { if (!el.hidden) { el.hidden = true; el.innerHTML = ''; renderLab.last = ''; } return; }
-  el.hidden = false;
-  const car = labCar(), E = WXD_EMO, lvc = l => 'lv' + (l == null ? 'x' : l), sg = v => String(v).replace('-', '−'), rg = r => `${sg(r[0])} à ${sg(r[1])} °C`;
-  const cars = S.cars.length > 1 ? `<div class="chips lab-cars" role="group" aria-label="Véhicule analysé">${S.cars.map(c => `<button class="chip" data-act="labcar" data-car="${esc(c.id)}" aria-pressed="${c === car}">${esc(c.short || c.name)}</button>`).join('')}</div>` : '';
-  const li = car ? labInput(car) : null, r = car ? tyreLab(li) : { known: false, reason: 'Monte active inconnue — sélectionner les pneus montés.' };
-  let html;
-  if (!r.known) html = `${cars}<div class="lab-hero lvx"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car ? car.short || car.name : '')}</span></div>
-      <h2 class="wx-ht">${esc(r.reason)}</h2><p class="wx-hl">Race Control n’analyse jamais un autre pneu que celui réellement monté.</p>
-      <div class="cal-v"><button class="btn" data-act="goset-cfg">Renseigner les pneus montés</button><button class="btn" data-act="view" data-v="pneus">Onglet Pneus</button></div></div>`;
-  else {
-    const t = r.tyre, idx = [t.li != null ? `charge ${t.li}${t.kg ? ' (' + t.kg + ' kg)' : ''}` : null, t.si ? `vitesse ${t.si}${t.kmh ? ' (' + t.kmh + ' km/h)' : ''}` : null, t.xl ? 'XL renforcé' : null, t.fp ? 'protège-jante' : null, t.rf ? 'roulage à plat' : null, t.pmsf === true ? '3PMSF' : null].filter(Boolean);
-    const fiche = `<details class="wx-pc lab-d" data-k="spec"><summary><span class="ic" aria-hidden="true">📋</span><span class="tt">Fiche du pneu monté</span><span class="ln">${esc(t.title)}${t.size ? ' · ' + esc(t.size) : ''}</span></summary>
-      <div class="lab-sp"><p class="lab-tag est">DÉCODAGE DE LA MONTE SAISIE</p><ul><li>Saison : ${esc(t.season)}${t.uhp ? ' · haute performance (fenêtre décalée de +5 °C, hypothèse Race Control)' : ''}</li>${idx.length ? `<li>${esc(idx.join(' · '))}</li>` : ''}<li>${esc(t.axles)}</li>${r.spec.db && r.spec.db.cat ? `<li>Base Race Control : ${esc(r.spec.db.cat)}${r.spec.db.tier ? ' · gamme ' + esc(r.spec.db.tier) : ''}</li>` : ''}</ul>
-      <p class="lab-tag fab">DONNÉE CONSTRUCTEUR</p><ul>${r.spec.known.map(f => f.v ? `<li><b>${esc(f.k)}</b> : ${esc(f.v)} · <a href="${esc(f.src)}" target="_blank" rel="noopener">source ↗</a>${f.check ? ' <span class="sub">(relevé via recherche le 05/10/2026, à confirmer)</span>' : ''}</li>` : `<li class="muted"><b>${esc(f.k)}</b> : non disponible</li>`).join('')}</ul>
-      <p class="sub">Étiquette européenne : elle dépend de la dimension exacte (registre EPREL) et n’est jamais déduite du modèle seul.</p></div></details>`;
-    // état du pneu monté, lu dans l'onglet Pneus (aucune saisie ici) : provenance, fraîcheur, essieux, jeux stockés, entretien
-    const st = r.state, stHtml = st ? `<details class="wx-pc lab-d" data-k="state"><summary><span class="ic" aria-hidden="true">🛞</span><span class="tt">État du pneu monté · onglet Pneus</span><span class="ln">${esc(st.active ? 'Monte active : ' + st.active.label : 'Monte inconnue')}${st.dot ? ' · ' + esc(st.dot.raw) : ''}${st.tread.mm != null ? ' · ' + f1(st.tread.mm) + ' mm' : ''}</span></summary>
-      <div class="lab-sp"><p class="lab-tag est">QUALITÉ DES DONNÉES</p><ul>${st.quality.map(q => `<li>${q.st} <b>${esc(q.k)}</b> : ${esc(q.txt)}</li>`).join('')}</ul>
-      <p class="lab-tag est">DONNÉES SAISIES DANS PNEUS</p><ul>${st.dot ? `<li>${esc(st.dot.txt)}</li>` : '<li class="muted">DOT non renseigné</li>'}
-        <li>${st.mount.date ? `Monté le ${esc(fmtDay(st.mount.date))}${st.mount.serviceY != null ? ' · usage ≈ ' + f1(st.mount.serviceY) + ' an' : ''}` : 'Date de montage non renseignée'}${st.mount.kmSince != null ? ` · ≈ ${st.mount.kmSince.toLocaleString('fr-FR')} km depuis le montage` : st.mount.km != null ? ' · compteur actuel inconnu' : ''}</li>
-        <li>Profondeur : ${st.tread.mm != null ? `${f1(st.tread.mm)} mm, mesurée par vous${st.tread.date ? ' le ' + esc(fmtDay(st.tread.date)) : ''}` : 'non mesurée (jamais estimée)'}${st.tread.rate ? ` · usure ≈ ${st.tread.rate.toFixed(2).replace('.', ',')} mm / 1 000 km` : st.tread.n === 1 ? ' · tendance après une 2e mesure' : ''}</li>
-        <li>Pression : ${st.pressure.target != null ? `cible ${f1(st.pressure.target)} bar (plaque du véhicule)` : 'cible non renseignée'}${st.pressure.check ? ` · contrôlée le ${esc(fmtDay(st.pressure.check.date))}${st.pressure.check.T != null ? ' à ' + f1(st.pressure.check.T) + ' °C' : ''}` : ''}</li>
-        <li>Essieux : AV ${st.axles.front.press != null ? f1(st.axles.front.press) + ' bar' : '—'} · AR ${st.axles.rear.press != null ? f1(st.axles.rear.press) + ' bar' : '—'} · ${esc(st.axles.note)}</li>
-        <li>Profil technique : ${esc(st.profile.label)}</li>
-        ${st.stored.length ? `<li>Jeux stockés (jamais analysés) : ${st.stored.map(x => esc(x.label + ' · ' + x.title)).join(' ; ')}</li>` : ''}</ul>
-      ${st.maint.length ? `<p class="lab-tag est">ENTRETIEN (hors verdict de conduite)</p><ul>${st.maint.map(x => `<li>${WXD_EMO[Math.min(3, x.lv)]} ${esc(x.text)}</li>`).join('')}</ul>` : ''}</div></details>` : '';
-    if (r.noWeather) html = `${cars}<div class="lab-hero lvx"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car.short || car.name)}</span></div><h2 class="wx-ht">${esc(t.title)}</h2><p class="wx-hl">${esc(t.size || 'dimension non renseignée')}</p>
-      <p class="wx-hl">Météo indisponible : aucune estimation thermique ni d’adhérence (rien n’est inventé).</p></div>${stHtml}${fiche}`;
-    else {
-      const h = r.hero, th = r.thermal, g = r.grip, cf = r.confidence;
-      const hero = `<div class="lab-hero ${lvc(h.lvl)}" role="status"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car.short || car.name)}</span><span class="wx-age">${r.phase === 'driving' ? 'EN ROULAGE' : r.phase === 'parked' ? 'À L’ARRÊT' : 'HISTORIQUE INCONNU'}</span></div>
-        <p class="lab-tyre"><b>${esc(t.title)}</b>${t.size ? ' · ' + esc(t.size) : ''}</p>
-        <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.state.toUpperCase())}</h2>
-        <p class="wx-hl wx-h1">Gomme estimée ≈ ${rg(th.range)}${h.warm ? ' · ' + esc(h.warm) : ''}</p>
-        <p class="wx-hl">Freinage : <b>${esc(h.brake)}</b> · Virage : <b>${esc(h.corner)}</b> · ${['rain', 'heavy', 'pool'].includes(r.env.surf) ? 'Pluie' : 'Si pluie'} : <b>${esc(h.rain)}</b></p>
-        <p class="wx-hl">Facteur limitant : <b>${esc(h.limiting)}</b> · Confiance : <b>${esc(cf.level)}</b></p></div>`;
-      const pct = x => Math.round(x * 1000) / 10;
-      const warmTxt = r.warm.reached ? (r.warm.sinceMin != null ? `Zone favorable atteinte depuis ~${r.warm.sinceMin} min` : 'Zone favorable : gomme estimée dans la plage') : r.warm.never ? 'Zone favorable non atteinte dans ces conditions' : `Avant la zone favorable : ${esc(h.warm)}`;
-      const win = `<div class="wx-blk lab-win"><h3>Fenêtre de fonctionnement</h3>
-        <div class="lab-scale" role="img" aria-label="État estimé : ${esc(th.state)}"><i class="z0" style="width:${pct(th.marks[0])}%"></i><i class="z1" style="width:${pct(th.marks[1] - th.marks[0])}%"></i><i class="z2" style="width:${pct(th.marks[2] - th.marks[1])}%"></i><i class="z3" style="width:${pct(th.marks[3] - th.marks[2])}%"></i><i class="z4" style="width:${pct(1 - th.marks[3])}%"></i><b class="lab-mk" style="left:${pct(th.pos)}%"></b></div>
-        <div class="lab-sl"><span>FROID</span><span>EN CHAUFFE</span><span>FAVORABLE</span><span>CHAUD</span></div>
-        <p class="wx-hl">${warmTxt}${r.warm.hyp ? ` <span class="sub">(${esc(r.warm.hyp)})</span>` : ''}</p>
-        ${r.cool ? `<p class="sub">${esc(r.cool.label)} · ≈ ${r.cool.kept} % de l’échauffement conservé</p>` : ''}
-        <details class="wx-how" data-k="why"><summary>Pourquoi « ${esc(th.state)} » ?</summary><ul class="lab-why">${th.why.map(x => `<li>+ ${esc(x)}</li>`).join('')}<li>→ gomme estimée ≈ ${rg(th.range)} ; seuils ${esc(t.season)} : froid sous ${sg(th.win[0])} °C, favorable de ${sg(th.win[1])} à ${sg(th.win[2])} °C, chaud au-delà de ${sg(th.win[2])} °C (hypothèses Race Control)</li></ul></details></div>`;
-      const d = g.dist;
-      const brake = `<div class="wx-blk lab-brk ${lvc(g.lv)}"><h3>🛑 Freinage</h3><p class="lab-big">${E[g.lv]} ${esc(g.word.toUpperCase())}</p>
-        <p class="wx-hl">${g.dom ? 'Facteur dominant : <b>' + esc(g.dom.k) + '</b>' : 'Aucun facteur limitant notable'}</p>
-        <details class="wx-how" data-k="brk"><summary>Pourquoi ? Potentiel relatif ${Math.round(g.mu * 100)} %</summary><ul class="lab-why">${g.f.map(x => `<li>${esc(x.k)} : ×${Math.round(x.v * 100)} %</li>`).join('')}</ul></details>
-        ${d ? `<details class="wx-how" data-k="dist"><summary>Ordre de grandeur à ${d.v} km/h (modèle, pas une mesure)</summary><ul class="lab-why"><li>Maintenant : ≈ ${d.now[0]}–${d.now[1]} m de freinage</li><li>Référence sec, pneu en température : ≈ ${d.dry[0]}–${d.dry[1]} m</li><li>Référence mouillé : ≈ ${d.wet[0]}–${d.wet[1]} m</li><li>+ temps de réaction (1 s) : ≈ ${d.react} m parcourus avant de freiner</li></ul>
-          <p class="sub">Modèle Race Control : d = v² / (2 µ g), µ sec 0,7–0,9 et mouillé 0,4–0,55 (ordre de grandeur), multiplié par les facteurs ci-dessus. Pas un test indépendant de ce pneu, pas une mesure de ce véhicule, aucune garantie.</p></details>` : '<p class="sub">Neige ou verglas : aucune distance affichée, l’incertitude est trop grande. Indice relatif seulement.</p>'}</div>`;
-      const grip = `<div class="wx-blk lab-grip"><h3>🧲 Adhérence actuelle</h3>${g.bars.map(b => `<details class="lab-bar ${lvc(b.lv)}" data-k="b-${b.id}"><summary><span class="k">${esc(b.label)}</span><span class="bars" aria-hidden="true">${'<i class="on"></i>'.repeat(b.b)}${'<i></i>'.repeat(10 - b.b)}</span><b>${esc(b.word)}</b></summary><ul class="lab-why">${b.why.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`).join('')}</div>`;
-      const aqua = `<div class="wx-blk lab-aq ${lvc(g.aqua.lv)}"><h3>🌊 Aquaplaning</h3><p class="lab-big">${E[g.aqua.lv]} ${esc(g.aqua.word.toUpperCase())}</p><ul class="lab-why">${g.aqua.why.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
-      const c = r.compare, cmp = `<div class="wx-blk lab-cmp"><h3>Comparaison</h3><table class="lab-t"><thead><tr><th></th><th>${esc(c.a)}</th><th>${esc(c.b)}</th></tr></thead><tbody>${c.rows.map(x => `<tr><th>${esc(x.label)}</th><td>${E[x.a.lv]} ${esc(x.a.word)}</td><td>${E[x.b.lv]} ${esc(x.b.word)}</td></tr>`).join('')}</tbody></table></div>`;
-      const tr = r.trip ? `<div class="wx-blk lab-trip"><h3>Analyse du trajet · ${esc(r.trip.label)} ${esc(r.trip.dep)} → ${esc(r.trip.arr)}</h3><ol class="lab-tl">${r.trip.rows.map(x => `${x.events.map(ev => `<li class="ev lv2"><time class="num">${esc(x.t)}</time><span>${ev.ic} ${esc(ev.text)}<br><span class="sub">Impact : ${esc(ev.impact.join(' · '))}</span></span></li>`).join('')}<li class="${lvc(x.lv)}"><time class="num">${esc(x.t)}</time><span><b>${esc(x.name || (x.km != null ? 'km ' + x.km : 'point de passage'))}</b>${x.km != null && x.name ? ` <span class="sub">km ${x.km}</span>` : ''}<br>${E[x.lv]} ${esc(x.state)} · ≈ ${rg(x.range)} · freinage ${esc(x.brake.toLowerCase())}</span></li>`).join('')}</ol></div>`
-        : `<div class="wx-blk lab-trip"><h3>Analyse du trajet</h3><p class="sub">Aucun trajet prévu : l’analyse suppose un départ sur route (≈ 70 km/h).</p></div>`;
-      const p = r.press, press = `<div class="wx-blk lab-pr ${p.known && p.low ? 'lv2' : ''}"><h3>Pression</h3>${p.known ? `<ul class="lab-why">${p.notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="sub">Source : ${esc(p.src)}.</p>` : `<p class="sub">${esc(p.text)}</p>`}</div>`;
-      const conf = `<details class="wx-pc lab-d" data-k="conf"><summary><span class="ic" aria-hidden="true">🎯</span><span class="tt">Niveau de confiance</span><span class="ln">${esc(cf.level[0].toUpperCase() + cf.level.slice(1))}</span></summary><ul>${(cf.axes || []).map(([k, v]) => `<li><b>${esc(k)}</b> : ${esc(v)}</li>`).join('')}${cf.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
-      html = cars + hero + labLastDriveHtml(car, li) + labTripState(r, li) + win + brake + grip + aqua + cmp + tr + press + stHtml + fiche + conf;
-    }
-  }
-  html += `<p class="sub lab-foot">Estimations Race Control (plages, tendances, indicateurs) : aucune mesure de capteur, aucune distance de freinage garantie. État, références et montage : <button class="btn sm" data-act="view" data-v="pneus">onglet Pneus</button></p>`;
-  if (html === renderLab.last) return;
-  const open = new Set([...el.querySelectorAll('details[open][data-k]')].map(x => x.dataset.k));
-  const form = el.querySelector('#labLastDriveForm'), draft = !renderLab.clearDriveDraft && form && car && form.dataset.car === car.id ? [...form.querySelectorAll('[name]')].map(x => [x.name, x.value]) : null;
-  renderLab.clearDriveDraft = false;
-  el.innerHTML = html; renderLab.last = html;
-  el.querySelectorAll('details[data-k]').forEach(x => { if (open.has(x.dataset.k)) x.open = true; });
-  if (draft) draft.forEach(([name, value]) => { const x = el.querySelector(`#labLastDriveForm [name="${name}"]`); if (x) x.value = value; });
-}
-
-
+// @include app/weather-view.js
+// @include app/analysis-view.js
+// @include app/debrief-view.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 const TIRE_ALERTS = ['press', 'age', 'mont'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
+const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+function chooseView(view) {
+  UI.view = ['pneus', 'meteo', 'trajet', 'tenue', 'analyse'].includes(view) ? view : 'pneus';
+  lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: scrollBehavior() });
+}
 function renderView() {
-  const vm = UI.view === 'meteo', vt = UI.view === 'tenue', va = UI.view === 'analyse';
+  const vm = UI.view === 'meteo', vtr = UI.view === 'trajet', vt = UI.view === 'tenue', va = UI.view === 'analyse', vp = !vm && !vtr && !vt && !va;
   document.body.classList.toggle('vm', vm);
+  document.body.classList.toggle('vtr', vtr);
   document.body.classList.toggle('vt', vt);
   document.body.classList.toggle('va', va);
-  $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="pneus" aria-pressed="${!vm && !vt && !va}">🛞 Pneus</button><button data-act="view" data-v="meteo" aria-pressed="${vm}">🌦️ Météo</button><button data-act="view" data-v="tenue" aria-pressed="${vt}">👔 Tenue</button><button data-act="view" data-v="analyse" aria-pressed="${va}">🔬 Analyse</button></div>`;
-  const links = va ? [['secLab', 'Analyse'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
+  $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-pressed="${vm}"><span class="tab-ic" aria-hidden="true">🌦️</span> Météo</button><button data-act="view" data-v="pneus" aria-pressed="${vp}"><span class="tab-ic" aria-hidden="true">🛞</span> Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-pressed="${vtr}"><span class="tab-ic" aria-hidden="true">🧭</span> TRAJET</button><button data-act="view" data-v="tenue" aria-pressed="${vt}"><span class="tab-ic" aria-hidden="true">👔</span> Tenue</button><button data-act="view" data-v="analyse" aria-pressed="${va}"><span class="tab-ic" aria-hidden="true">🔬</span> Analyse</button></div>`;
+  const links = vtr ? [['secTrip', 'Planifier'], ['settings', 'Réglages']] : va ? [['secLab', 'Analyse'], ['secSeason', 'Saison pneus'], ['secJournal', 'Journal de saison'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
     ? [['secWx', 'Synthèse'], ['secRadar', 'Radar'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secCur', 'Détails'], ['secAir', 'Air · UV'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
-    : [['secCars', 'Voitures'], ['secBrief', 'Départ'], ['secIce', 'Verglas'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secRadar', 'Radar'], ['secAir', 'Air · UV'], ['secSeason', 'Saison'], ['secJournal', 'Journal'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
+    : [['secBrf', 'Départ'], ['secCars', 'Voitures'], ['secBrief', 'Préparer'], ['secWeatherLink', 'Météo'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
+  if (!vtr && USER_STORE.state.debrief.entries.length && !DEMO.on) links.splice(1, 0, ['secDebrief', 'Journal des trajets']);
   $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
-  const order = va
-    ? ['secLab', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx'] : vt
+  const order = vtr
+    ? ['secTrip', 'secTripSummary', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue']
+    : va
+    ? ['jump', 'secLab', 'secSeason', 'secJournal', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secAlerts', 'secWx'] : vt
     ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vm
-    // Météo : synthèse d'abord (verdict, trajet, chronologie, phénomènes, route), puis cartes et graphiques, puis les détails techniques
     ? ['secWx', 'banners', 'hdrMore', 'secRadar', 'secChart', 'secDays', 'secCur', 'secAir', 'secIce', 'secAlerts', 'secTip', 'secCal', 'secBrf', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal', 'secLab']
-    : ['secBrf', 'secCal', 'banners', 'hdrMore', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'];
+    : ['secTripSummary', 'secBrf', 'banners', 'hdrMore', 'secCars', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue'];
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#notice');
+  if (!va && !vtr) order.splice(order.indexOf('hdrMore') + 1, 0, 'jump');
+  const brf = order.indexOf('secBrf'); if (brf >= 0) order.splice(brf + 1, 0, 'secRoad');
+  if (!vtr) order.splice(va ? 2 : 1, 0, 'secDebrief');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
-  if (RADAR.map) setTimeout(() => RADAR.map.invalidateSize(), 60);
+  if (RADAR.map) { const map = RADAR.map; setTimeout(() => { if (RADAR.map === map) map.invalidateSize(); }, 60); }
 }
 
 /* ---------- tenue : adaptation en mémoire, sans réseau ni nouveau stockage ---------- */
@@ -1142,6 +1010,7 @@ function tenueZoneTime(ts, fromZone, toZone) {
   return local(instant, toZone);
 }
 function buildTenueDay(options = {}) {
+  const context = options.context || null;
   const settings = options.settings || S, models = options.models || M, raw = options.raw || RAW;
   const calendar = Object.prototype.hasOwnProperty.call(options, 'calendar') ? options.calendar : CAL;
   const calendarModels = options.calendarModels || CALM, legModels = options.legModels || LEGM, midModels = options.midModels || MIDM;
@@ -1155,7 +1024,7 @@ function buildTenueDay(options = {}) {
   // Après 23 h, on couvre encore la fin de l'heure courante jusqu'à minuit.
   const end = start < date + 'T23:00' ? date + 'T23:00' : addMin(midnight, 1440);
   const retrievalNow = options.retrievalNow == null ? Date.now() : options.retrievalNow;
-  const cancelState = options.cancelState || TRIPCANCEL, cancelNow = options.cancelNow == null ? Date.now() : options.cancelNow;
+  const cancelState = settings === S ? appCalendarCancelState(options.cancelState || TRIPCANCEL) : options.cancelState || TRIPCANCEL, cancelNow = options.cancelNow == null ? Date.now() : options.cancelNow;
   const events = (calendar && calendar.events || []).filter(e => e.s);
   const eventCancelled = e => calendarCancelled(e, events, cancelState, cancelNow);
   const commuteCancelled = day => workCancelled(day, cancelState, cancelNow);
@@ -1226,9 +1095,9 @@ function buildTenueDay(options = {}) {
       if (!/^\d{2}:\d{2}$/.test(time || '')) return;
       const sourceZone = models[a.id] && models[a.id].tz || zone;
       const sourceDay = tenueZoneTime(day + 'T12:00', zone, sourceZone).slice(0, 10);
-      if (!isCommuteDay(sourceDay, work.days) || commuteCancelled(sourceDay)) return;
+      if (!appWorkOn(sourceDay, work.days) || commuteCancelled(sourceDay)) return;
       const dep = tenueZoneTime(sourceDay + 'T' + time, sourceZone, zone), pts = [{ f: 0, ...knownModel(a) }, ...midPoints(a, b).filter(p => midModels[p.id]).map(p => ({ f: p.f, m: midModels[p.id], t: midModels[p.id].retrievedAt ?? null })), { f: 1, ...knownModel(b) }];
-      trip(a, b, dep, addMin(dep, dur), dir === 'go' ? 'work-go' : 'work-ret', 10, pts, null);
+      trip(a, b, dep, addMin(dep, dur), dir === 'go' ? 'work-go' : 'work-ret', 10, pts, 'commute|' + sourceDay + 'T' + time + '|' + dir);
     });
   };
   commute(addMin(midnight, -1440).slice(0, 10)); commute(date); commute(addMin(midnight, 1440).slice(0, 10));
@@ -1262,7 +1131,7 @@ function buildTenueDay(options = {}) {
       if (!l.from || !l.to || !l.dep) continue;
       const dep = agendaTime(l.dep), arr = agendaTime(l.arr || addMin(l.dep, +l.min || 0));
       const c = legModels[legKey(l)], pts = legPoints(l).map((p, i) => ({ f: p.f, ...(c && c.models && c.models[i] ? { m: c.models[i], t: c.t } : knownModel(p)) }));
-      trip(l.from, l.to, dep, arr, 'agenda', 40, pts, l.k);
+      trip(l.from, l.to, dep, arr, 'agenda', 40, pts, context ? calendarTripKey(e, l) : l.k);
     }
   }
   if (!calendar) warnings.push('Agenda indisponible : le plan suit les lieux et trajets déjà connus.');
@@ -1271,7 +1140,25 @@ function buildTenueDay(options = {}) {
   // auparavant. Aucun trajet implicite vers son ancienne origine n'est ajouté.
   // start est arrondi à la minute : l'observation peut déjà être postérieure à
   // un départ/événement de cette même minute, qui ne remplace donc pas le GPS.
-  if (gpsSeed) segments.forEach(s => { if (!s.nonSpatial && s.start <= start) s.beforeGps = true; });
+  const contextSeed = context && offset !== 1 && (context.activeTrip ? context.origin : context.location.source === 'gps' && context.gps ? context.gps : context.currentLocation);
+  if (context && offset !== 1) {
+    // Les trajets effectifs viennent du même plan que Météo et Analyse. Le
+    // calendrier reste une prévision des activités, jamais une preuve d'arrivée.
+    const templates = segments.filter(s => s.kind === 'trip');
+    for (let i = segments.length - 1; i >= 0; i--) if (segments[i].kind === 'trip' && (contextSeed || segments[i].end > start)) segments.splice(i, 1);
+    if (contextSeed) segments.forEach(s => {
+      if (!s.nonSpatial && s.start <= start && (context.location.source === 'gps' || !s.to || !samePlace(s.to, contextSeed))) s.beforeGps = true;
+    });
+    context.trips.forEach(t => {
+      if (t.originPending || !t.dep || !t.arr) return;
+      const from = appTripPlace(t, 'from'), to = appTripPlace(t, 'to'); if (!from || !to) return;
+      const template = templates.find(s => s.key === t.key);
+      const sources = template && samePlace(template.from, from) ? template.sources : [{ f: 0, ...knownModel(from) }, { f: 1, ...knownModel(to) }];
+      const active = context.activeTrip && context.activeTrip.key === t.key;
+      if (contextSeed && !active && agendaTime(t.dep) <= start) return;
+      trip(from, to, agendaTime(t.dep), agendaTime(t.arr), t.src === 'work' ? t.td.dir === 'ret' ? 'work-ret' : 'work-go' : 'agenda', active ? 50 : t.src === 'work' ? 10 : 40, sources, t.key);
+    });
+  } else if (gpsSeed) segments.forEach(s => { if (!s.nonSpatial && s.start <= start) s.beforeGps = true; });
   const boundaries = new Set([midnight, start, end]);
   for (let t = midnight; t < end; t = addMin(t, 60)) boundaries.add(t);
   segments.forEach(s => {
@@ -1291,10 +1178,10 @@ function buildTenueDay(options = {}) {
   // le modèle se trouve dans un fuseau à décalage non entier.
   Object.values(models).forEach(m => { if (m && m.hs) m.hs.forEach(x => { const t = tenueZoneTime(x.t, m.tz || zone, zone); if (t > midnight && t < end) boundaries.add(t); }); });
   const times = [...boundaries].filter(t => t <= end).sort(), moments = [];
-  let current = place(gpsSeed ? gps : segments.some(s => s.kind === 'trip' || s.to) ? home : selected || home);
+  let current = place(contextSeed || (gpsSeed ? gps : segments.some(s => s.kind === 'trip' || s.to) ? home : selected || home));
   for (let i = 0; i < times.length - 1; i++) {
     const at = times[i], until = times[i + 1];
-    if (gpsSeed && at < start) continue;
+    if ((gpsSeed || contextSeed) && at < start) continue;
     // Un rendez-vous sans lieu peut masquer la frise du trajet, mais ne peut
     // effacer son arrivée connue. Une diversion localisée prioritaire remplace
     // en revanche le trajet prévu et conserve son dernier lieu.
@@ -1330,16 +1217,16 @@ function buildTenueDay(options = {}) {
     const weather = unknown ? null : sample(source, at);
     moments.push({ start: at, end: until > end ? end : until, location, kind, event: physicalEvent, weather, unknown, stale: sourceStale(source) });
   }
-  return { date, start, end, occasion: options.occasion || UI.outfitOccasion, moments, warnings: [...new Set(warnings)] };
+  return { date, start, end, occasion: options.occasion || appOutfitOccasion(offset), moments, warnings: [...new Set(warnings)] };
 }
 /* ---------- vue du plan : le détail lit exactement le conseil du moteur ---------- */
 function renderTenue() {
   const el = $('#secTenue'); el.hidden = UI.view !== 'tenue'; if (el.hidden) return;
-  const m = M[UI.loc], l = curLoc(), tomorrow = UI.outfitDay === 1;
+  const context = APP_CONTEXT.snapshot, l = context.currentLocation || curLoc(), m = M[l.id], tomorrow = UI.outfitDay === 1; UI.outfitOccasion = appOutfitOccasion();
   const controls = `<div class="outfit-controls"><div class="seg" role="group" aria-label="Jour de la tenue">${[[0, 'Aujourd’hui'], [1, 'Demain']].map(([v, t]) => `<button data-act="outfit-day" data-v="${v}" aria-pressed="${UI.outfitDay === v}">${t}</button>`).join('')}</div>
     <div class="seg" role="group" aria-label="Usage de la tenue">${[['office', 'Bureau'], ['outing', 'Sortie'], ['walk', 'Promenade']].map(([v, t]) => `<button data-act="outfit-occasion" data-v="${v}" aria-pressed="${UI.outfitOccasion === v}">${t}</button>`).join('')}</div></div>`;
   const head = `<div class="mod-h"><h2>👔 Tenue · ${esc(l.name)}</h2><span class="src obs">Sartorial</span></div>${controls}`;
-  const input = buildTenueDay({ currentLoc: l }), plan = dayplan(input), a = plan && plan.advice;
+  const input = buildTenueDay({ currentLoc: l, context }), plan = dayplan(input), a = plan && plan.advice;
   if (!a) {
     el.innerHTML = `${head}<div class="outfit-empty" role="status"><h3>${busy ? 'Météo en cours de chargement' : 'Météo insuffisante pour cette tenue'}</h3><p>${tomorrow ? 'Les prévisions de demain ne sont pas encore disponibles pour ce lieu.' : 'Il faut une température pour proposer des couches adaptées.'}</p><button class="btn" data-act="refresh" ${busy ? 'disabled' : ''}>Actualiser la météo</button></div>`; return;
   }
@@ -1362,16 +1249,16 @@ function renderTenue() {
   }).join('');
   const carry = [...new Set([...plan.carry, ...a.accessories])];
   el.innerHTML = `${head}<div class="outfit-context${stale ? ' old' : ''}"><span>${esc(state)}</span><b>${esc(interval)}</b></div>
-    <div class="outfit-dayplan"><div class="outfit-plan-heading"><h3>Plan de tenue de la journée</h3><span class="outfit-indicator" data-level="${esc(plan.indicator.level)}">${esc(plan.indicator.text)}</span>${plan.weatherWarning ? `<span class="outfit-weather-warning" data-level="warning" data-risks="${esc(plan.weatherWarning.risks.join(' '))}" role="status">${esc(plan.weatherWarning.text)}</span>` : ''}</div>
+    <div class="outfit-dayplan"><div class="outfit-plan-heading"><h3>🧥 Plan de tenue de la journée</h3><span class="outfit-indicator" data-level="${esc(plan.indicator.level)}">${esc(plan.indicator.text)}</span>${plan.weatherWarning ? `<span class="outfit-weather-warning" data-level="warning" data-risks="${esc(plan.weatherWarning.risks.join(' '))}" role="status">${esc(plan.weatherWarning.text)}</span>` : ''}</div>
       <div class="outfit-base"><span class="outfit-label">Kit complet de la journée · N${plan.base.level} max</span><p>${plan.base.layers.map(esc).join(' + ')}</p></div>
-      <div class="outfit-extra outfit-carry"><h3>À emporter</h3>${carry.length ? `<ul>${carry.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p>Aucune pièce supplémentaire prévue.</p>'}</div>
-      ${plan.actions.length ? `<div class="outfit-extra outfit-actions"><h3>Adaptations prévues</h3><ul>${plan.actions.map(x => `<li data-time="${esc(x.time)}"><b>${esc(x.time.slice(11, 16))}</b> · ${esc(x.text)}</li>`).join('')}</ul></div>` : ''}
+      <div class="outfit-extra outfit-carry"><h3>🎒 À emporter</h3>${carry.length ? `<ul>${carry.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p>Aucune pièce supplémentaire prévue.</p>'}</div>
+      ${plan.actions.length ? `<div class="outfit-extra outfit-actions"><h3>🔄 Adaptations prévues</h3><ul>${plan.actions.map(x => `<li data-time="${esc(x.time)}"><b>${esc(x.time.slice(11, 16))}</b> · ${esc(x.text)}</li>`).join('')}</ul></div>` : ''}
       <ol class="outfit-timeline" aria-label="Heures, lieux et adaptations de la tenue">${timeline}</ol></div>
     <div class="outfit-verdict"><span class="outfit-label">${tomorrow ? 'Ta tenue de demain' : 'Ta tenue pour la suite de la journée'} · kit complet</span><h3>${esc(a.title)}</h3><p>Détail du kit complet du plan ; la timeline indique les couches portées à chaque moment.</p></div>
     <div class="outfit-metrics">${metric('Ressenti' + (a.tempFallback ? ' / air' : ''), f0(a.low) + ' à ' + f0(a.high) + ' °C')}${metric('Pluie · max', a.pp == null ? '—' : f0(a.pp) + ' %')}${metric('Rafales · max', a.gust == null ? '—' : f0(a.gust) + ' km/h')}</div>
     <div class="outfit-pieces">${a.pieces.map((p, i) => `<div class="outfit-piece"><span class="outfit-no mono">0${i + 1}</span><div><span class="outfit-label">${esc(p.label)}</span><h4>${esc(p.item)}</h4><p>${esc(p.detail)}</p></div></div>`).join('')}</div>
     <div class="outfit-palette"><span class="outfit-label">Accord de couleurs suggéré</span><div>${a.palette.map(t => `<span>${esc(t)}</span>`).join('')}</div></div>
-    ${detail.length ? `<div class="outfit-extra"><h3>À prévoir</h3><ul>${detail.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
+    ${detail.length ? `<div class="outfit-extra"><h3>📝 À prévoir</h3><ul>${detail.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
     <p class="outfit-method">Suggestions de pièces, à adapter à ce que tu possèdes et à ta sensibilité au froid. Les seuils sont des repères de confort. Le ressenti météo intègre déjà le vent ; aucune température de chaussée ni score pneus n’intervient ici.</p>`;
 }
 
@@ -1396,7 +1283,7 @@ async function fetchAQ(l) {
   if (AQBUSY.has(l.id) && (!l.gps || previous && gpsSourceCurrent(previous.origin, previous.gen))) return;
   const request = { origin: { ...l }, gen }; AQREQ.set(l.id, request); AQBUSY.add(l.id);
   try {
-    const p = await fetchJSON(urlAQ(l), 12000); if (!p || !p.hourly) throw new Error('réponse invalide');
+    const p = await fetchJSON(urlAQ(l), 12000, l.gps ? 'gps' : 'shared'); if (!p || !p.hourly) throw new Error('réponse invalide');
     if (gpsSourceCurrent(request.origin, gen)) { AQRAW[l.id] = { p, t: Date.now() }; delete AQERR[l.id]; }
   } catch (e) { if (gpsSourceCurrent(request.origin, gen)) AQERR[l.id] = { t: Date.now(), msg: e.message }; }
   finally {
@@ -1421,7 +1308,7 @@ function renderAir() {
   } else if (a) pol = '<div class="sub">🌿 Pollens : aucune donnée pour ce lieu (hors saison ou hors Europe).</div>';
   const pollu = a ? [['PM2,5', a.pm25], ['PM10', a.pm10], ['O₃', a.o3], ['NO₂', a.no2]].filter(x => x[1] != null).map(x => `<span><b class="num">${f0(x[1])}</b> ${x[0]}</span>`).join('') : '';
   const msg = !a ? `<div class="sub">${AQBUSY.has(id) ? 'Chargement de la qualité de l’air…' : er ? 'Qualité de l’air indisponible (' + esc(er.msg) + ').' : 'Qualité de l’air en attente.'}</div>` : '';
-  el.innerHTML = `<div class="mod-h"><h2>Air · UV · pollens</h2><span class="src obs">prévision</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>🌿 Air · UV · pollens</h2><span class="src obs">prévision</span></div>
     <div class="airg">${tile('UV maintenant', uN, 'uv', uN ? '' : '')}${tile('UV max auj.', uM, 'uv', pk && uM ? 'vers ' + pk.t.slice(11, 16) : '')}${tile('Qualité de l’air', a && a.aqi, 'aqi', a && a.aqiPk && a.aqiPk.v > (a.aqi ? a.aqi.v : 0) + 9 ? 'pic ' + a.aqiPk.v + (a.aqiPkAt ? ' vers ' + a.aqiPkAt : '') : '')}</div>
     ${uM && uM.lv >= 1 ? `<div class="note lv${uM.lv}"><b>☀️ UV</b><span>${esc(uM.tip)}.</span></div>` : ''}
     ${pollu ? `<div class="obs-row airp">${pollu}<span class="sub">µg/m³</span></div>` : ''}${msg}${pol}
@@ -1463,10 +1350,10 @@ function renderRadar() {
   const el = $('#secRadar'); if (!el) return;
   if (!el.dataset.ready) {
     el.dataset.ready = 1;
-    el.innerHTML = `<div class="mod-h"><h2>Radar pluie</h2><span class="src obs">mesuré · radar</span></div>
+    el.innerHTML = `<div class="mod-h"><h2>📡 Radar pluie</h2><span class="src obs">mesuré · radar</span></div>
       <div class="radar"><div id="rmap" class="rmap" role="img" aria-label="Carte radar des précipitations"></div><div class="rmsg" id="rmsg">La carte se charge quand tu arrives ici.</div>
-        <button class="btn sm rctr" data-act="rcenter" aria-label="Recentrer sur le lieu">◎</button></div>
-      <div class="rctl"><button class="btn sm" data-act="rplay" id="rplay" aria-label="Lecture">▶</button><input type="range" id="rslide" min="0" max="0" value="0" aria-label="Heure de l’image radar"><span class="num" id="rtime">—</span></div>
+        <button class="btn sm rctr" data-act="rcenter" aria-label="Recentrer sur le lieu" disabled>◎</button></div>
+      <div class="rctl"><button class="btn sm" data-act="rplay" id="rplay" aria-label="Lecture" disabled>▶</button><input type="range" id="rslide" min="0" max="0" value="0" aria-label="Heure de l’image radar" disabled><span class="num" id="rtime">—</span></div>
       <div class="rleg"><span>faible</span><i></i><span>forte</span></div>
       <div class="disc">Pluie et neige réellement mesurées par les radars sur les 2 dernières heures (RainViewer, précision régionale). Pour les 2 prochaines heures, voir « Pluie au quart d’heure » dans la météo actuelle. Un doigt fait défiler la page, deux doigts déplacent et zooment la carte.</div>`;
     $('#rslide').addEventListener('input', e => { radarPlay(false); radarShow(+e.target.value); });
@@ -1476,15 +1363,17 @@ function renderRadar() {
     } else initRadar();
   }
   el.hidden = !CX;
-  if (RADAR.state === 'ready') { radarCenter(false); if (Date.now() - RADAR.t > 10 * 60e3) radarFrames(); }
+  if (RADAR.state === 'ready') { radarCenter(false); if (Date.now() - RADAR.t > 10 * 60e3) radarRefresh(); }
 }
+function radarControls() { const ready = !!RADAR.map && RADAR.layers.length > 0; document.querySelectorAll('#secRadar [data-act], #rslide').forEach(b => { b.disabled = !ready; }); }
 async function initRadar() {
   if (RADAR.state === 'loading' || RADAR.state === 'ready') return;
-  RADAR.state = 'loading'; radarMsg('Chargement du radar…');
+  RADAR.wanted = true; RADAR.state = 'loading'; radarMsg('Chargement du radar…'); radarControls();
   try {
     await loadLeaflet();
     const l = curLoc(), mob = L.Browser.mobile;
     if (!locHasCoords(l)) { RADAR.state = 'idle'; radarMsg('Coordonnées du lieu à renseigner.'); return; }
+    if (!RADAR.map) {
     const map = L.map('rmap', { zoomControl: false, minZoom: 5, maxZoom: 10, dragging: !mob, touchZoom: true, scrollWheelZoom: false, tap: false, attributionControl: true }).setView([l.lat, l.lon], 8);
     map.attributionControl.setPrefix(false);
     map.createPane('labels'); map.getPane('labels').style.zIndex = 450; map.getPane('labels').style.pointerEvents = 'none';
@@ -1492,20 +1381,20 @@ async function initRadar() {
     L.control.zoom({ position: 'topright' }).addTo(map);
     RADAR.marker = L.circleMarker([l.lat, l.lon], { radius: 6, color: '#ffffff', weight: 2, fillColor: '#ff8c2b', fillOpacity: 1 }).addTo(map);
     RADAR.map = map; RADAR.at = l.id;
+    }
     await radarFrames();
-    RADAR.state = 'ready';
-  } catch (e) { RADAR.state = 'idle'; RADAR.err = e.message; radarMsg('Radar indisponible pour le moment (' + e.message + ').'); }
+    RADAR.state = 'ready'; RADAR.err = null; radarControls();
+  } catch (e) { RADAR.state = 'idle'; RADAR.err = e.message; radarControls(); radarMsg('Radar indisponible pour le moment. Réessaie avec « Actualiser ».'); }
 }
 async function radarFrames() {
   if (!RADAR.map) return;
-  RADAR.t = Date.now();
   const js = await fetchJSON('https://api.rainviewer.com/public/weather-maps.json', 10000);
   const past = (js && js.radar && js.radar.past) || []; if (!past.length) throw new Error('aucune image');
   RADAR.layers.forEach(x => RADAR.map.removeLayer(x));
   RADAR.frames = past;
   RADAR.layers = past.map(f => L.tileLayer(`${js.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, maxNativeZoom: 7, maxZoom: 10, zIndex: 5 }).addTo(RADAR.map));
   const sl = $('#rslide'); if (sl) sl.max = past.length - 1;
-  radarShow(past.length - 1); radarMsg('');
+  RADAR.t = Date.now(); radarShow(past.length - 1); radarMsg(''); radarControls();
 }
 function radarShow(i) {
   if (!RADAR.layers.length) return;
@@ -1529,7 +1418,13 @@ function radarCenter(force) {
   if (!force && RADAR.at === l.id) return;
   RADAR.at = l.id; RADAR.marker.setLatLng([l.lat, l.lon]); RADAR.map.setView([l.lat, l.lon], force ? Math.max(8, RADAR.map.getZoom()) : 8, { animate: true });
 }
-function radarRefresh() { if (RADAR.state === 'ready' && Date.now() - RADAR.t > 9 * 60e3) radarFrames().catch(() => {}); }
+function radarRefresh() {
+  if (offlineNow()) return;
+  if (RADAR.wanted && RADAR.state === 'idle') { initRadar(); return; }
+  if (RADAR.state === 'ready' && Date.now() - RADAR.t > 9 * 60e3 && !radarRefresh.busy) {
+    radarRefresh.busy = true; radarFrames().catch(() => radarMsg('Radar non actualisé. Réessaie avec « Actualiser ».')).finally(() => { radarRefresh.busy = false; });
+  }
+}
 
 
 /* ---------- sauvegarde chiffrée (export / import entre téléphones) ---------- */
@@ -1546,11 +1441,11 @@ async function backupExport() {
   if (!crypto || !crypto.subtle) { bkMsg('Chiffrement indisponible sur ce navigateur.'); return; }
   bkMsg('Chiffrement…');
   try {
-    const data = { app: 'twrc', v: 1, at: new Date().toISOString(), settings: S, view: UI.view };
+    const data = Backup.make({ settings: S, view: UI.view, context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL, at: new Date().toISOString() });
     const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)), it = 600000;
     const key = await bkKey(pass, salt, it, 'encrypt');
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(data))));
-    const txt = JSON.stringify({ app: 'twrc-backup', v: 1, kdf: 'PBKDF2-SHA256', it, s: b64e(salt), i: b64e(iv), c: b64e(ct) });
+    const txt = JSON.stringify({ app: 'twrc-backup', v: Backup.VERSION, kdf: 'PBKDF2-SHA256', it, s: b64e(salt), i: b64e(iv), c: b64e(ct) });
     const day = new Date().toISOString().slice(0, 10), name = `race-control-sauvegarde-${day}.json`;
     const file = new File([txt], name, { type: 'application/json' });
     let done = false;
@@ -1560,9 +1455,16 @@ async function backupExport() {
     }
     if (!done) { const u = URL.createObjectURL(file), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
     lsSet('twrc.lastbackup', day);
-    bkMsg(`✅ Sauvegarde prête (${Math.max(1, Math.round(txt.length / 1024))} Ko). Range-la dans Fichiers ou iCloud Drive.`);
+    bkMsg(`✅ Sauvegarde V2 prête (${Math.max(1, Math.round(txt.length / 1024))} Ko) · contexte durable inclus.`);
     const p = $('#bkSec .sub b'); if (p) p.textContent = fmtDay(day);
   } catch (e) { bkMsg('Échec de la sauvegarde : ' + (e.message || e)); }
+}
+function backupApplyPlan(plan) {
+  const keys = [];
+  try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch (e) { /* stockage indisponible */ }
+  keys.filter(Boolean).filter(k => plan.removePrefixes.some(p => k.startsWith(p))).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  plan.remove.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+  Object.entries(plan.writes).forEach(([k, v]) => lsSet(k, v));
 }
 async function backupImport(f) {
   bkMsg('Lecture du fichier…');
@@ -1575,14 +1477,17 @@ async function backupImport(f) {
     const key = await bkKey(pass, b64(o.s), o.it || 600000, 'decrypt');
     data = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(o.i) }, key, b64(o.c))));
   } catch (e) { bkMsg('Code incorrect : entre le code utilisé lors de la sauvegarde.'); return; }
-  if (!data || data.app !== 'twrc' || !data.settings) { bkMsg('Sauvegarde incomplète.'); return; }
+  // le journal des trajets de ce téléphone (ressenti conducteur) est fusionné, jamais effacé par l'import
+  const plan = Backup.restorePlan(data, Date.now(), { context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL });
+  if (!plan) { bkMsg('Sauvegarde incomplète.'); return; }
   const when = new Date(data.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  if (!confirm(`Remplacer les données de ce téléphone par la sauvegarde du ${when} ?`)) { bkMsg('Import annulé.'); return; }
-  lsSet('twrc.settings.v1', JSON.stringify({ ...data.settings, configured: 1 }));
+  const version = data.v >= 2 ? 'V2' : 'V1';
+  const kept = plan.kept ? `\n\nJournal des trajets conservé : ${plan.kept} trajet${plan.kept > 1 ? 's' : ''} de ce téléphone ${data.v >= 2 ? 'ajouté' : 'gardé'}${plan.kept > 1 ? 's' : ''}.` : '';
+  if (!confirm(`Remplacer les réglages de ce téléphone par la sauvegarde ${version} du ${when} ?${kept}`)) { bkMsg('Import annulé.'); return; }
+  backupApplyPlan(plan);
   if (window.TWRC_PRESET_V) lsSet('twrc.presetv', window.TWRC_PRESET_V);
-  if (data.view) lsSet('twrc.view', data.view);
   lsSet('twrc.lastbackup', String(data.at).slice(0, 10));
-  bkMsg('✅ Sauvegarde restaurée. Redémarrage…');
+  bkMsg(`✅ Sauvegarde ${version} restaurée. Redémarrage…`);
   setTimeout(() => location.reload(), 600);
 }
 
@@ -1679,18 +1584,18 @@ function liveTips() {
   // UV
   const pk = uvToday(m); if (pk && pk.uv >= 3 && pk.t >= m.nowStr.slice(0, 13)) add(`Indice UV maximal de ${f0(pk.uv)} vers ${at(pk)} aujourd’hui. Lunettes de soleil dans la voiture, surtout avec le soleil bas.`, 'indice UV (OMS)');
   // départ et retour de nuit
-  const cdToday = isCommuteDay(today, S.work.days);   // les astuces du trajet domicile-travail ne valent que les jours de trajet
+  const cdToday = appWorkOn(today);   // les astuces du trajet domicile-travail ne valent que les jours de trajet
   if (cdToday && day.sunrise && S.work.dep && day.sunrise.slice(11, 16) > S.work.dep) add(`Lever du soleil à ${day.sunrise.slice(11, 16)}, après ton départ de ${S.work.dep} : trajet de nuit. Vérifie que tes feux et ton pare-brise sont propres.`, 'éphéméride');
   if (cdToday && day.sunset && S.work.ret) { const s0 = day.sunset.slice(11, 16), r = toMin(S.work.ret) - toMin(s0); if (r >= -45 && r <= 30) add(`Coucher du soleil à ${s0}, autour de ton retour de ${S.work.ret} : soleil rasant puis pénombre. Lunettes de soleil et feux allumés tôt.`, 'éphéméride'); }
   // voitures : pression, pneus été au froid, âge, montage hiver
   TCARS().forEach(car => {
     const t = car.tire, pc = t.pchk, tgt = pressTarget(t.press);
     if (pc && pc.T != null && tmin && pc.T - tmin.T >= 8) add(`${car.short} : pression contrôlée à ${f0(pc.T)} °C. À ${f1(tmin.T)} °C vers ${at(tmin)}, elle aura perdu environ ${f1(pressLoss(tgt, pc.T, tmin.T))} bar. Recontrôle à froid.`, 'ton contrôle du ' + fmtDay(pc.date), 1);
-    if (effType(car) === 'summer') { const dh = (S.work.dep || '06:30').slice(0, 5), co = commuteOff(today, dh, m.nowStr.slice(11, 16), S.work.days);
+    if (effType(car) === 'summer') { const dh = (S.work.dep || '06:30').slice(0, 5), co = appCommuteOff(today, dh, m.nowStr.slice(11, 16));
       const dd = co == null ? null : addMin(today + 'T00:00', co * 1440).slice(0, 10), dep = dd ? m.byTime.get(dd + 'T' + dh.slice(0, 2) + ':00') : null, x = dep != null ? hs[dep] : null;
       if (x && x.T != null && x.T < 7) add(`${co === 0 ? 'Ce matin' : co === 1 ? 'Demain' : cap1(fmtDay(dd))} à ${dh} : ${f1(x.T)} °C, sous le seuil de 7 °C des pneus été de la ${car.short}. Freinages plus longs, surtout sur le mouillé.`, 'prévision horaire', 1); }
     const age = dotAge(t.dot, m.nowStr); if (age != null && age >= 5) add(`${car.short} : pneus de ${f1(age)} ans (DOT ${t.dot}). À partir de 5 ans, fais-les inspecter chaque année.`, 'code DOT', age >= 8 ? 2 : 1);
-    if (car.plan && car.plan.on && car.plan.date && effType(car) !== 'winter') { const j = dayDiff(today, car.plan.date); if (j >= 0 && j <= 21) add(`${car.short} : montage des pneus hiver dans ${j} jour${j > 1 ? 's' : ''} (${fmtDay(car.plan.date)}). Pense à confirmer le rendez-vous et à vérifier l’état des pneus stockés.`, 'ton planning', 1); }
+    if (car.plan && car.plan.on && effType(car) !== 'winter') { const pd = car.plan.appointmentConfirmed && car.plan.appointmentDate ? car.plan.appointmentDate : car.plan.date; if (pd) { const j = dayDiff(today, pd); if (j >= 0 && j <= 21) add(`${car.short} : ${car.plan.appointmentConfirmed && car.plan.appointmentDate ? 'rendez-vous de montage' : 'montage estimé'} dans ${j} jour${j > 1 ? 's' : ''} (${fmtDay(pd)}). ${car.plan.appointmentConfirmed && car.plan.appointmentDate ? 'Vérifie l’état des pneus stockés.' : 'Pense à confirmer le rendez-vous et à vérifier l’état des pneus stockés.'}`, 'ton planning', 1); } }
   });
   // air et pollens
   const aq = AQRAW[UI.loc], a = !DEMO.on && aq ? airSummary(aq.p, m.nowStr) : null;
@@ -1732,16 +1637,20 @@ function frostBand(Tr) {
   return null;
 }
 function nextTrip() {
-  const m = M[S.work.from] || M[S.locs[0].id]; if (!m) return null;
-  const clock = DEMO.on ? m.nowStr : nowIn(m.tz || 'Europe/Paris');
-  const now = toMin(clock.slice(11, 16)), dep = toMin(S.work.dep), ret = toMin(S.work.ret);
-  const dir = isCommuteDay(clock, S.work.days) && now >= dep && now < ret ? 'ret' : 'go';   // télétravail, repos : prochain aller d'un jour de trajet
-  const td = tripData(dir, 'auto'); if (td && !td.err) return td;
-  if (td && td.cancelled) {
+  const m = M[S.work.from] || M[S.locs[0].id];
+  const clock = DEMO.on && m ? m.nowStr : nowIn(m && m.tz || 'Europe/Paris');
+  const now = toMin(clock.slice(11, 16)), ret = toMin(S.work.ret);
+  const place = placeNow(), atWork = place.place && place.place.id === S.work.to, atHome = place.place && place.place.id === S.work.from;
+  const workingDay = appWorkOn(clock);
+  const dir = appCommuteDirection(clock);
+  const td = appWorkTripData(dir, workingDay && (atWork || atHome && now < ret) ? 0 : 'auto');
+  const completed = td && LIVE.done['commute|' + td.dep + '|' + td.dir];
+  if (td && !td.err && !completed) return td;
+  if (completed || td && td.cancelled) {
     for (let off = 1; off <= 8; off++) {
       const date = addMin(clock.slice(0, 10) + 'T00:00', off * 1440).slice(0, 10);
-      if (!isCommuteDay(date, S.work.days)) continue;
-      const next = tripData('go', off); if (next && !next.err) return next;
+      if (!appWorkOn(date)) continue;
+      const next = appWorkTripData('go', off); if (next && !next.err && !LIVE.done['commute|' + next.dep + '|go']) return next;
     }
   }
   return null;
@@ -1778,8 +1687,9 @@ function gaugeSvg(score, lv) {
 // Aperçu (advice) : prochain aller seulement, jusqu'à 4 h avant le départ prévu, GPS frais et à plus de 1 km de l'origine prévue ;
 //   relevés basse consommation uniquement, recalcul après 5 km ou 30 min. Suivi vivant dès min(départ prévu, départ conseillé) − 90 min.
 // Les notifications du relais restent calculées depuis le trajet planifié : la position n'est jamais envoyée à GitHub.
-// Rien n'est stocké (ni localStorage, ni twrc.croute) ni publié (ni obs.json, ni agenda, ni relais) : route, météo, relevé de
-// référence et phase vivent en mémoire et disparaissent à la fermeture. Aucun nouveau fournisseur externe : en mode trajet vivant,
+// Route, météo de route et références du moteur restent en mémoire : aucun tracé n'est stocké dans localStorage ou twrc.croute.
+// Le contexte canonique conserve le point courant et les faits minimaux de départ/arrivée ; rien n'est publié dans obs.json,
+// l'agenda ou le relais. Aucun nouveau fournisseur externe : en mode trajet vivant,
 // la position courante arrondie à 0,001° est en plus transmise à OSRM pour calculer le trajet restant.
 const ROUTE_MARGIN_MAX = 15;
 const routeTravelMin = (raw, reserved = 0) => {
@@ -1789,24 +1699,31 @@ const routeTravelMin = (raw, reserved = 0) => {
 const LIVE_WIN = 90, LIVE_ADV = 240, LIVE_ADV_KM = 5, LIVE_ADV_AGE = 30 * 60e3, LIVE_ACC = 250, LIVE_ACC_ARR = 150, LIVE_ARR_KM = 0.3, LIVE_AGE_IMM = 5 * 60e3, LIVE_AGE_RUN = 2 * 60e3, LIVE_GRACE = 5 * 60e3;
 const LIVE = { key: null, phase: 'idle', base: null, startFix: null, lastFix: null, carN: 0, near: null, arrN: 0, arrTs: 0, gen: 0, route: null, routeAt: 0, routeOrigin: null, routeTry: 0, routeErr: false,
   last: null, lastOk: 0, hiAt: 0, loAt: 0, nowAt: 0, done: {}, noAuto: {}, lastDone: null };
+APP_CONTEXT.live = LIVE;
+Object.defineProperty(LIVE, 'lastDone', { get: () => USER_STORE.state.lastArrival, set: v => { USER_STORE.state.lastArrival = v; } });
+const DONE_VIEW = new Proxy({}, {
+  get: (_, k) => USER_STORE.state.done[k] && (USER_STORE.state.done[k].reason || 'arrivé'),
+  set: (_, k, v) => { if (!USER_STORE.state.done[k]) USER_STORE.state.done[k] = { how: v === 'arrivé' ? 'confirmé' : v, reason: v, at: Date.now(), exp: Date.now() + 24 * 3600e3 }; return true; },
+  deleteProperty: (_, k) => { delete USER_STORE.state.done[k]; return true; },
+  ownKeys: () => Object.keys(USER_STORE.state.done),
+  getOwnPropertyDescriptor: (_, k) => USER_STORE.state.done[k] ? { enumerable: true, configurable: true } : undefined
+});
+Object.defineProperty(LIVE, 'done', { get: () => DONE_VIEW, set: values => {
+  USER_STORE.state.done = {}; Object.entries(values || {}).forEach(([k, v]) => { DONE_VIEW[k] = v; });
+} });
 // Aperçu demandé par l'utilisateur hors de la fenêtre de 4 h : automate séparé, aucune persistance.
 // Il ne peut constater ni un départ ni une arrivée et ne demande aucun suivi GPS continu.
 const TRIPPREVIEW = { key: null, phase: 'idle', gen: 0, base: null, planSignature: null, fix: null, origin: null, route: null, requestedAt: 0, readyAt: 0, exp: 0, message: '' };
 const TRIPPREVIEW_AGE = 30 * 60e3, TRIPPREVIEW_KM = 1;
-let BRF_TRIPS = [], BRF_SHOWN = [];
+Object.defineProperty(window, 'BRF_TRIPS', { get: () => APP_CONTEXT.planned });
+Object.defineProperty(window, 'BRF_SHOWN', { get: () => APP_CONTEXT.trips });
 const RETURNHOME_KEY = 'twrc.returnhome.v1';
-let RETURNHOME = null;
 function returnHomeLoad() {
-  try {
-    const x = JSON.parse(lsGet(RETURNHOME_KEY) || 'null');
-    if (x && typeof x.key === 'string' && Number.isFinite(x.at) && Number.isFinite(x.exp) && x.exp > Date.now()) { RETURNHOME = x; return; }
-    localStorage.removeItem(RETURNHOME_KEY);
-  } catch (e) { try { localStorage.removeItem(RETURNHOME_KEY); } catch (_) {} }
-  RETURNHOME = null;
+  if (RETURNHOME && RETURNHOME.exp <= Date.now()) RETURNHOME = null;
 }
 function returnHomeSave(x) {
   RETURNHOME = x || null;
-  try { if (RETURNHOME) localStorage.setItem(RETURNHOME_KEY, JSON.stringify(RETURNHOME)); else localStorage.removeItem(RETURNHOME_KEY); } catch (e) { /* état en mémoire seulement */ }
+  USER_STORE.flush();
 }
 function returnHomeClear(key) {
   if (!RETURNHOME || (key && RETURNHOME.key !== key)) return;
@@ -1831,34 +1748,37 @@ function returnHomeApply(T, now) {
   });
 }
 function returnHomeStart(key) {
+  return appAction(() => {
   const t = BRF_TRIPS.find(x => x.key === key && x.src === 'cal' && x.l && x.l.k === 'ret');
   if (!t) return;
+  appChooseDestination((homeExact() || {}).id);
+  appDay().nextDestination.tripKey = key;
   returnHomeSave({ key, at: Date.now(), exp: Date.now() + 6 * 3600e3 });
   if (LIVE.key) liveReset();
   if (TRIPPREVIEW.key) tripPreviewReset();
-  renderAll();
   if (liveAllowed()) { LIVE.hiAt = 0; liveAskFix(); }
+  });
 }
 function returnHomeUndo() {
+  return appAction(() => {
   const key = RETURNHOME && RETURNHOME.key;
   if (key && LIVE.key === key && LIVE.phase !== 'active') liveReset();
-  returnHomeClear(); renderAll();
+  returnHomeClear();
+  });
 }
 // Confirmation manuelle a posteriori : l'utilisateur affirme qu'il est déjà rentré.
 // Aucun mouvement n'est inventé ; seul le trajet retour ciblé est marqué terminé.
 function returnHomeDone(key) {
+  return appAction(() => {
   const t = BRF_TRIPS.find(x => x.key === key && x.src === 'cal' && x.l && x.l.k === 'ret');
   if (!t) return;
-  liveDonePersist(key, 'confirmé');
-  if (LIVE.key === key) liveReset('arrivé'); else LIVE.done[key] = 'arrivé';
-  if (TRIPPREVIEW.key === key) tripPreviewReset();
-  returnHomeClear(key);
-  LIVE.lastDone = { key, name: t.name || 'Retour maison', at: Date.now() };
-  renderAll();
+  closeTrip(t, 'confirmé');
+  });
 }
 function returnHomeButtonForTrip(t) {
   const plan = t && (t.planL || t.l);
   if (!t || t.src !== 'cal' || !t.e || !plan || plan.k !== 'ret') return '';
+  if (t.l && t.l.destinationOverride && (tripTo(t) || {}).id !== (homeExact() || {}).id) return `<button class="btn sm" data-act="trip-start" data-key="${esc(t.key)}">🚗 Je pars maintenant</button>`;
   const now = liveNow(), planDep = t.planDep || plan.dep || t.dep, sameDay = planDep.slice(0, 10) === now.slice(0, 10), started = t.e.allDay || !t.e.s || t.e.s <= now;
   if (!sameDay || !started) return '';
   if (LIVE.done[t.key]) return '<span class="sub">✓ Déjà rentré confirmé</span>';
@@ -1888,25 +1808,22 @@ function liveDoneHas(t, all) {
 const TRIPDONE = 'twrc.tripdone';
 // « 🚗 Je pars maintenant » : départ déclaré (clé du trajet, heure, origine), relu au rechargement ; fin de trajet : résumé pour Analyse
 const TRIPSTART_KEY = 'twrc.tripstart.v1', TRIPEND_KEY = 'twrc.tripend.v1';
-let TRIPSTART = null, TRIPEND = null;
-try { TRIPSTART = JSON.parse(lsGet(TRIPSTART_KEY) || 'null'); } catch (e) { TRIPSTART = null; }
-try { TRIPEND = JSON.parse(lsGet(TRIPEND_KEY) || 'null'); } catch (e) { TRIPEND = null; }
 const lsPut = (k, v) => { if (v) lsSet(k, JSON.stringify(v)); else { try { localStorage.removeItem(k); } catch (e) { /* stockage indisponible */ } } };
-const tripStartSave = v => { TRIPSTART = v; lsPut(TRIPSTART_KEY, v); };
-const tripEndSave = v => { TRIPEND = v; lsPut(TRIPEND_KEY, v); };
+const tripStartSave = v => { TRIPSTART = v; USER_STORE.flush(); };
+const tripEndSave = v => { TRIPEND = v; USER_STORE.flush(); };
 function liveDonePersist(key, how) {
-  let o = {}; try { o = JSON.parse(lsGet(TRIPDONE) || '{}') || {}; } catch (e) { o = {}; }
+  const o = USER_STORE.state.done;
   const n = Date.now(); Object.keys(o).forEach(k => { if (!(o[k] && o[k].exp > n)) delete o[k]; });
   if (how) o[key] = { how, at: n, exp: n + 24 * 3600e3 }; else delete o[key];
-  if (Object.keys(o).length) lsSet(TRIPDONE, JSON.stringify(o)); else { try { localStorage.removeItem(TRIPDONE); } catch (e) { /* stockage indisponible */ } }
+  USER_STORE.flush();
 }
 // chargement : les entrées expirées sont réellement effacées du stockage (clé supprimée si plus rien n'est à garder)
-function liveDoneLoad() {
-  let o = null; try { o = JSON.parse(lsGet(TRIPDONE) || 'null'); } catch (e) { o = null; }
-  if (o === null && lsGet(TRIPDONE) == null) return;
+function liveDoneLoad(legacy = false) {
+  let o = USER_STORE.state.done;
+  if (legacy) { try { o = JSON.parse(lsGet(TRIPDONE) || 'null'); } catch (e) { o = null; } }
   const n = Date.now(), keep = {};
-  if (o && typeof o === 'object') Object.keys(o).forEach(k => { if (o[k] && o[k].exp > n) { keep[k] = o[k]; LIVE.done[k] = 'arrivé'; } });
-  try { if (Object.keys(keep).length) localStorage.setItem(TRIPDONE, JSON.stringify(keep)); else localStorage.removeItem(TRIPDONE); } catch (e) { /* stockage indisponible */ }
+  if (o && typeof o === 'object') Object.keys(o).forEach(k => { if (o[k] && o[k].exp > n) keep[k] = o[k]; });
+  USER_STORE.state.done = keep; USER_STORE.flush();
 }
 liveDoneLoad();
 let FIX = null, FIXPREV = null;   // derniers relevés bruts ; ts = pos.timestamp (heure réelle du relevé, pas l'heure de réception)
@@ -1920,13 +1837,13 @@ function liveAllowed() {
 // destination réelle (jamais envoyée telle quelle : domicile et travail arrondis à 0,01°, comme pour la mini-carte)
 function liveDest(t) {
   if (t.originPending || t.l && t.l.originPending) return null;
-  if (t.src === 'cal' && t.l && locHasCoords(t.l.to)) return { lat: t.l.to.lat, lon: t.l.to.lon, name: t.to, priv: t.l.k === 'ret' };
+  if ((t.src === 'cal' || t.src === 'local') && t.l && locHasCoords(t.l.to)) return { lat: t.l.to.lat, lon: t.l.to.lon, name: t.to, priv: t.l.k === 'ret' };
   if (t.src === 'work' && t.td && locHasCoords(t.td.LB)) return { lat: t.td.LB.lat, lon: t.td.LB.lon, name: t.to, priv: true };
   return null;
 }
 // aller (l'arrivée est la contrainte) ; origine prévue du trajet ; départ effectif (conseillé pour un aller dont la route est connue)
 const liveOut = t => (t.src === 'cal' && !!t.l && t.l.k === 'go') || (t.src === 'work' && !!t.td && t.td.dir === 'go');
-const livePlanFrom = t => t.src === 'cal' ? (t.l && t.l.from) : (t.td && t.td.LA);
+const livePlanFrom = t => t.src === 'cal' || t.src === 'local' ? (t.l && t.l.from) : (t.td && t.td.LA);
 // départ adaptatif seulement pour un aller, et seulement si la route part à plus de 1 km de l'origine prévue : chez soi, l'heure
 // planifiée (et, pour le boulot, la durée choisie dans les réglages) n'est jamais modifiée
 const liveAdapt = (b, R) => liveOut(b) && !!b.arr && !!R && !!livePlanFrom(b) && distKm(R.o, livePlanFrom(b)) > 1;
@@ -1938,10 +1855,11 @@ function liveReset(reason) {
   Object.assign(LIVE, { key: null, phase: 'idle', base: null, startFix: null, lastFix: null, carN: 0, near: null, arrN: 0, arrTs: 0, route: null, routeAt: 0, routeOrigin: null, routeTry: 0, routeErr: false, last: null, lastOk: 0, hiAt: 0, loAt: 0, nowAt: 0 });
   LIVE.gen++;   // toute réponse encore en route est désormais ignorée
   LIVE.manual = 0; if (TRIPSTART) tripStartSave(null);
+  USER_STORE.state.debrief.active = null;
   if (gpsWatch != null && gpsWatchHi) startWatch(false);   // retour au suivi basse consommation
 }
 // destination pour l'ARRIVÉE : un retour vise le domicile local exact (le relais n'a qu'un domicile arrondi à 0,01°)
-const liveArrDest = b => b.src === 'cal' && b.l && b.l.k === 'ret' ? (homeExact() || liveDest(b)) : liveDest(b);
+const liveArrDest = b => b.src === 'cal' && b.l && b.l.k === 'ret' && !b.l.destinationOverride ? (homeExact() || liveDest(b)) : liveDest(b);
 // vitesse entre deux relevés (m/s) : vitesse GPS si fournie, sinon déduite (distance / Δt) — seulement si le déplacement dépasse
 // deux fois l'incertitude cumulée des deux relevés (le bruit GPS ne crée aucune vitesse) ; null si non mesurable
 const LIVE_CAR = 2;
@@ -1961,20 +1879,19 @@ function liveBegin(t, s) {
   if (liveAllowed()) startWatch(true);   // suivi continu si le GPS est autorisé
 }
 function liveStart(key) {
-  const t = BRF_SHOWN.find(x => x.key === key); if (!t || !liveDest(t)) return;
+  return appAction(() => {
+  const t = BRF_SHOWN.find(x => x.key === key); if (!t || !liveDest(t) || LIVE.key === key && LIVE.phase === 'active') return;
   const base = LIVE.key === key && LIVE.base ? LIVE.base : t; if (LIVE.key && LIVE.key !== key) liveReset();
-  const pc = PLACE.conf && placeList().find(p => p.id === PLACE.conf.placeId), fix = liveFresh(FIX, LIVE_AGE_IMM) ? FIX : null;
+  const pc = PLACE.conf && placeList().find(p => p.id === PLACE.conf.placeId), fix = !pc && liveFresh(FIX, LIVE_AGE_IMM) ? FIX : null;
   const o = fix || (pc && locHasCoords(pc) ? pc : null) || livePlanFrom(base);
   const s = { key, at: Date.now(), o: o && locHasCoords(o) ? { lat: +o.lat, lon: +o.lon } : null, acc: fix ? fix.acc : 100, src: fix ? 'gps' : pc ? 'lieu confirmé' : 'origine prévue' };
-  tripStartSave(s); liveBegin(base, s); renderAll();
+  appDeparture(base, s); liveBegin(base, s);
+  });
 }
 function liveArrive(how) {
-  const k = LIVE.key, b = LIVE.base; if (!k) return;
-  liveDonePersist(k, how); LIVE.lastDone = { key: k, name: b ? b.name : '', at: Date.now() };
-  const fin = labThermTick(true);   // mémoire thermique : l'état estimé à l'arrivée sert de point de départ au refroidissement (et au trajet suivant)
-  if (fin && fin.inp.drive) { const d = fin.inp.drive, r = fin.r; tripEndSave({ at: Date.now(), name: b ? b.name : '', km: d.km, kmSrc: d.kmSrc, min: Math.round((Date.now() - d.startTs) / 60e3), range: r.thermal.range, state: r.thermal.state, conf: r.confidence.level }); }
-  returnHomeClear(k);
-  liveReset('arrivé'); renderBrf();
+  return appAction(() => {
+  if (LIVE.key && LIVE.base) closeTrip(LIVE.base, how);
+  });
 }
 // relevé de confirmation demandé tout de suite (arrivée à confirmer), au plus un toutes les 10 s ; jamais de haute précision en aperçu
 function liveAskNow() {
@@ -1988,6 +1905,8 @@ function liveAskNow() {
 //   départ : référence figée une seule fois + déplacement > max(300 m, 2 × incertitude) + vitesse automobile (> 2 m/s) sur 2 relevés successifs,
 //            mesurée ou déduite ; dès la fenêtre vivante (90 min avant le plus tôt des départs prévu / conseillé), sans attendre l'heure
 function liveOnFix(fix) {
+  if (PLACE.conf && fix.ts <= PLACE.conf.at) return;   // un GPS antérieur ne défait jamais une confirmation plus récente
+  if (TRIPSTART && fix.ts < TRIPSTART.at) return;
   if (!LIVE.key || !LIVE.base) { if (liveAllowed()) { clearTimeout(liveOnFix.t); liveOnFix.t = setTimeout(renderBrf, 300); } return; }
   const ad = liveArrDest(LIVE.base);
   if (LIVE.phase === 'advice') { LIVE.arrN = 0; LIVE.near = null; }   // aperçu (jusqu'à 4 h avant) : ni arrivée automatique, ni arrivée probable
@@ -2005,7 +1924,9 @@ function liveOnFix(fix) {
       const v = liveSpeed(LIVE.lastFix, fix), gap = fix.ts - LIVE.lastFix.ts > LIVE_AGE_IMM;
       LIVE.carN = v != null && v > LIVE_CAR ? (gap ? 1 : LIVE.carN + 1) : 0;   // mesure impossible = série cassée ; plus de 5 min d'écart = nouvelle série
       const sf = LIVE.startFix, thr = Math.max(0.3, 2 * Math.max(fix.acc, sf.acc) / 1000);
-      if (LIVE.phase !== 'advice' && LIVE.carN >= 2 && distKm(sf, fix) > thr) { LIVE.phase = 'active'; startWatch(true); }   // suivi haute précision continu
+      if (LIVE.phase !== 'advice' && LIVE.carN >= 2 && distKm(sf, fix) > thr) {
+        appAction(() => { appDeparture(LIVE.base, { key: LIVE.key, at: fix.ts, o: { lat: sf.lat, lon: sf.lon }, acc: sf.acc, src: 'gps' }); LIVE.phase = 'active'; startWatch(true); });
+      }   // suivi haute précision continu
       LIVE.lastFix = fix;
     }
   }
@@ -2035,7 +1956,9 @@ function liveParse(j) {
   const g = [], step = totD / 80; let nxt = 0;
   for (let i = 0; i < co.length; i++) if (cumD[i] >= nxt || i === co.length - 1) { g.push([+co[i][1].toFixed(3), +co[i][0].toFixed(3)]); nxt = cumD[i] + step; }
   const km = r.distance != null ? r.distance / 1000 : totD, sec = r.duration != null ? r.duration : totT, rawMin = Math.max(1, sec / 60);
-  return { km: Math.round(km * 10) / 10, rawMin, min: routeTravelMin(rawMin), pts, g };   // marge routière plafonnée ; l'aller réserve séparément 10 min avant le rendez-vous
+  let road = null;
+  try { if (typeof RoadIntelligence !== 'undefined') road = RoadIntelligence.fromOSRM(j); } catch (e) { /* le trajet météo reste utilisable */ }
+  return { km: Math.round(km * 10) / 10, rawMin, min: routeTravelMin(rawMin), pts, g, road };   // marge routière plafonnée ; l'aller réserve séparément 10 min avant le rendez-vous
 }
 function tripPreviewReset() {
   const gen = TRIPPREVIEW.gen + 1;
@@ -2079,7 +2002,7 @@ function tripPreviewRoute(fix, b, gen) {
   const o = liveOrigin(fix), d = liveDest(b); if (!d) { tripPreviewReset(); return; }
   const dd = d.priv ? { lat: rc2(d.lat), lon: rc2(d.lon) } : { lat: +(+d.lat).toFixed(3), lon: +(+d.lon).toFixed(3) };
   TRIPPREVIEW.origin = o; TRIPPREVIEW.phase = 'loading';
-  fetchJSON(`https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${dd.lon},${dd.lat}?overview=full&geometries=geojson&annotations=duration`, 10000)
+  fetchJSON(`https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${dd.lon},${dd.lat}?overview=full&geometries=geojson&annotations=duration&steps=true`, 10000)
     .then(j => {
       if (gen !== TRIPPREVIEW.gen || b.key !== TRIPPREVIEW.key) return;
       if (!tripPreviewMatches(BRF_TRIPS.find(t => t.key === b.key))) { tripPreviewReset(); renderBrf(); return; }
@@ -2135,7 +2058,7 @@ function liveRoute(fix, b) {
   const d = liveDest(b); if (!d) return;
   const dd = d.priv ? { lat: rc2(d.lat), lon: rc2(d.lon) } : { lat: +(+d.lat).toFixed(3), lon: +(+d.lon).toFixed(3) };
   LIVE.routeTry = Date.now(); const gen = ++LIVE.gen, key = LIVE.key;
-  fetchJSON(`https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${dd.lon},${dd.lat}?overview=full&geometries=geojson&annotations=duration`, 10000)
+  fetchJSON(`https://router.project-osrm.org/route/v1/driving/${o.lon},${o.lat};${dd.lon},${dd.lat}?overview=full&geometries=geojson&annotations=duration&steps=true`, 10000)
     .then(j => {
       if (gen !== LIVE.gen || key !== LIVE.key) return;   // OSRM : réponse d'une ancienne position ou d'un autre trajet, ignorée (génération)
       // (météo : chaque route a sa propre clé géographique legKey/LEGM ; une réponse tardive d'une ancienne route n'est jamais lue pour la route courante)
@@ -2149,7 +2072,7 @@ const liveAgo = ms => { const s = Math.round(ms / 1000); return s < 60 ? `${s} s
 // Une analyse n'est COURANTE que si : relevé frais + route courante pour ce relevé + météo de cette route prête. Seule une analyse
 // courante est présentée comme actuelle et fait avancer lastOk ; sinon la dernière analyse est affichée, marquée ancienne, 5 min au plus.
 function liveTrip(b, now) {
-  const run = LIVE.phase === 'active', fix = FIX, fresh = liveFresh(fix, run ? LIVE_AGE_RUN : LIVE_AGE_IMM);
+  const run = LIVE.phase === 'active', fix = FIX, fresh = liveFresh(fix, run ? LIVE_AGE_RUN : LIVE_AGE_IMM) && fix.ts >= appGpsFloor();
   if (fresh) liveRoute(fix, b);
   if (!liveAllowed()) { /* départ déclaré, GPS coupé : aucune demande de position */ }
   else if (LIVE.phase === 'advice') { if (!fresh) liveAskLow(); } else if (!fresh || LIVE.phase === 'late') liveAskFix();
@@ -2164,7 +2087,17 @@ function liveTrip(b, now) {
   }
   let old = null;
   if (!a && LIVE.last && Date.now() - LIVE.lastOk <= LIVE_GRACE) { a = LIVE.last; old = fresh ? 'route' : 'gps'; }   // dernière analyse, marquée ancienne
-  if (!a) { const mb = run && LIVE.manual ? { ...b, running: true, dep: localTs(LIVE.manual), arr: addMin(localTs(LIVE.manual), Math.max(1, liveMin(b.dep, b.arr || b.dep))) } : b; return LIVE.last ? { ...mb, liveLost: true } : mb; }   // repli explicite après un premier résultat ; sinon trajet planifié, sans mention
+  if (!a) {
+    const started = TRIPSTART && TRIPSTART.key === b.key ? TRIPSTART.at : LIVE.manual;
+    const mb = run && started ? { ...b, running: true, dep: localTs(started), arr: addMin(localTs(started), Math.max(1, liveMin(b.dep, b.arr || b.dep))) } : { ...b, running: false };
+    // Une météo de route en attente n'efface pas une heure conseillée déjà
+    // validée depuis la même origine, avec une géométrie encore courante.
+    if (!run && LIVE.last && LIVE.last.adv && fresh && liveRouteCurrent(LIVE.route, liveOrigin(fix))) {
+      mb.dep = liveEffDep(b); mb.adv = { target: b.arr, dep: mb.dep }; mb.live = LIVE.phase; mb.planDep = b.dep;
+      if (LIVE.phase === 'late') { mb.dep = now; mb.arr = addMin(now, liveRouteMin(b, LIVE.route)); }
+    }
+    return LIVE.last ? { ...mb, liveLost: true } : mb;
+  }
   const { leg, r } = a, hm = new Date(LIVE.lastOk).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
   return { ...b, live: LIVE.phase, liveGen: a.gen, planDep: b.dep, planL: b.l, adv: a.adv, dep: leg.dep, arr: leg.arr, running: run, from: '📍 Ma position', l: leg, obs: null,
     res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.worst, wait: false,
@@ -2195,7 +2128,9 @@ function liveApply(T, now) {
     if (pf && liveFresh(FIX, LIVE_AGE_IMM) && distKm(FIX, pf) <= 1) { liveReset(); cur = null; }
   }
   if (!LIVE.key) {
-    const nxt = T.filter(t => liveDest(t)).sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : 0)[0];
+    // Une météo réévaluée pour « maintenant » ne rouvre pas toute seule la
+    // fenêtre GPS d'un départ planifié ancien. Un départ explicite la rouvre.
+    const nxt = T.filter(t => liveDest(t) && (t.manualReturn || liveMin(t.planDep || t.dep, now) <= Math.max(1, liveMin(t.dep, t.arr || t.dep)) + 30)).sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : 0)[0];
     if (!nxt) return T;
     let ph = null;
     if (liveMin(now, nxt.dep) <= LIVE_WIN) ph = 'imminent';
@@ -2222,43 +2157,70 @@ function liveApply(T, now) {
 setInterval(() => { if ((LIVE.key || TRIPPREVIEW.key) && !document.hidden) renderBrf(); }, 15e3);
 
 // Le poste météo (onglet Météo) suit chaque mise à jour du briefing : mêmes trajets, mêmes modèles, aucun appel en plus.
-function renderBrf() { BRF_SHOWN = []; try { renderBrfCore(); } finally { renderWx(); renderLab(); labThermTick(false); } }
-function renderBrfCore() {
-  const el = $('#secBrf'); if (!el) return;
-  // La météo du GPS peut être en cours de chargement ; les trajets ont leurs propres modèles.
+// @include app/road-view.js
+function renderBrf() { renderAll(); }
+function appBuildTrips() {
   const clockModel = (CX && CX.m) || M[S.locs[0].id] || Object.values(M).find(Boolean);
-  if (!clockModel) { el.innerHTML = ''; el.hidden = true; return; }
-  const cars = TCARS(); if (!cars.length) { el.hidden = true; return; } el.hidden = false;
-  // heure réelle (l'heure du modèle météo est arrondie au quart d'heure) : départ, trajet en cours, arrivée à la minute près
-  const now = DEMO.on ? clockModel.nowStr.slice(0, 16) : nowIn((clockModel.payload && clockModel.payload.timezone) || 'Europe/Paris'), today = now.slice(0, 10), nowHm = now.slice(11, 16);
-  // briefing complet : aujourd'hui, ou demain à partir de la veille au soir (18:00, ou dès le retour du boulot un jour de trajet)
-  const eve = toMin(nowHm) >= Math.min(18 * 60, isCommuteDay(today, S.work.days) ? toMin(S.work.ret) : 1440);
-  const fullFor = d => { const n = dayDiff(today, d.slice(0, 10)); return n <= 0 || (n === 1 && eve); };
-  const dayLbl = d => { const n = dayDiff(today, d.slice(0, 10)); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(d.slice(0, 10)); };
+  const cars = appTripCars();
+  const now = DEMO.on && clockModel ? clockModel.nowStr.slice(0, 16) : nowIn(clockModel && clockModel.payload && clockModel.payload.timezone || 'Europe/Paris');
+  const today = now.slice(0, 10), nowHm = now.slice(11, 16);
   // une seule timeline : trajet domicile-travail + trajets agenda, triés par heure réelle de départ
-  // modèle commun Trip : { src: 'work' | 'cal', carId (choix de voiture par trajet, prévu, pas encore utilisé), dep, arr, running, from, to, res, sum, seq, worst }
+  // modèle commun Trip : { src: 'work' | 'cal' | 'local', carId (voiture active ou comparaison), dep, arr, running, from, to, res, sum, seq, worst }
   let T = []; const workT = (td, running) => {
     if (workCancelled(td.dep.slice(0, 10))) return;
-    const res = cars.map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w); if (!res.length) return;
-    T.push({ src: 'work', carId: null, dep: td.dep, arr: td.arr, running, name: `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail`, from: td.fromName, to: td.toName,
-      res, sum: summarize(td.seq), seq: td.seq, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0), key: 'commute|' + td.dep + '|' + td.dir, obs: td.A.obs, td });
+    const plannedDep = td.dep, key = 'commute|' + plannedDep + '|' + td.dir;
+    const current = placeNow().place;
+    if (td.dir === 'go' && plannedDep.slice(0, 10) === today && current && current.id === S.work.to && !(TRIPSTART && TRIPSTART.key === key)) return;
+    const place = placeNow().place, overdue = td.dep <= now && place && place.id === (td.dir === 'go' ? S.work.from : S.work.to);
+    if (TRIPSTART && TRIPSTART.key === key || overdue) {
+      const actual = appWorkTripData(td.dir, dayDiff(today, plannedDep.slice(0, 10)), TRIPSTART && TRIPSTART.key === key ? localTs(TRIPSTART.at) : now);
+      if (!actual.err) td = actual;
+    }
+    const res = td.seq.length ? cars.map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w) : [];
+    T.push({ src: 'work', carId: appDay().activeCarId, dep: td.dep, planDep: plannedDep, arr: td.arr, running: false, name: appCommuteLabel(td), customRoute: appCommuteLabel(td).startsWith('Trajet ·'), from: td.fromName, to: td.toName,
+      res: res.length ? res : null, sum: td.seq.length ? summarize(td.seq) : null, seq: td.seq, wait: !td.seq.length, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, key, obs: td.A && td.A.obs, td });
   };
   // trajet domicile-travail en cours (entre le départ et l'arrivée) : il reste affiché jusqu'à l'arrivée
-  if (isCommuteDay(today, S.work.days)) ['go', 'ret'].forEach(d => { const t0 = toMin(d === 'go' ? S.work.dep : S.work.ret), n = toMin(nowHm);
-    if (n >= t0 && n < t0 + (+S.work.durMin || 30)) { const r = tripData(d, 0); if (r && !r.err) workT(r, true); } });
-  const td = nextTrip(); if (td) workT(td, false);
+  if (appWorkOn(today)) ['go', 'ret'].forEach(d => { const t0 = toMin(d === 'go' ? S.work.dep : S.work.ret), n = toMin(nowHm);
+    if (n >= t0 && n < t0 + (+S.work.durMin || 30)) { const r = appWorkTripData(d, 0); if (r && !r.err) workT(r, true); } });
+  if (appWorkOn(today)) ['go', 'ret'].forEach(d => {
+    const time = d === 'go' ? S.work.dep : S.work.ret;
+    if (today + 'T' + time > now) { const r = appWorkTripData(d, 0); if (r && !r.err) workT(r, false); }
+  });
+  const td = nextTrip(); if (td && !T.some(t => t.key === 'commute|' + td.dep + '|' + td.dir)) workT(td, false);
   if (CAL && CAL.events) CAL.events.filter(calendarSpatial).forEach(e => effLegs(e).forEach(l => {
-    if ((l.arr || l.dep) < now) return;   // gardé jusqu'à l'arrivée
+    if ((l.arr || l.dep) < now && !(TRIPSTART && calendarTripKey(e, l) === TRIPSTART.key)) return;   // gardé jusqu'à l'arrivée
+    const key = calendarTripKey(e, l), planned = l;
+    if (TRIPSTART && TRIPSTART.key === key) {
+      const dep = localTs(TRIPSTART.at), dur = +l.min || Math.max(1, liveMin(l.dep, l.arr));
+      l = { ...l, dep, arr: addMin(dep, dur) };
+    }
     const r = legEval(l);
-    T.push({ src: 'cal', carId: null, dep: l.dep, arr: l.arr, running: !l.originPending && l.dep <= now, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
-      res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading, key: calendarTripKey(e, l) });
+    T.push({ src: 'cal', carId: appDay().activeCarId, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: false, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
+      res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading, key });
   }));
-  BRF_TRIPS = T.slice();   // cibles des actions explicites, uniquement en mémoire
+  // Un départ déclaré reste restorable après l'heure d'arrivée prévue.
+  if (TRIPSTART && TRIPSTART.trip && TRIPSTART.trip.src === 'work' && !T.some(t => t.key === TRIPSTART.key)) {
+    const r = appWorkTripData(TRIPSTART.trip.dir, dayDiff(today, TRIPSTART.trip.dep.slice(0, 10)));
+    if (r && !r.err) workT(r, false);
+  }
+  T = appLocalTrips(T, now);
+  APP_CONTEXT.planned = T.slice();   // cibles des actions explicites, uniquement en mémoire
   T = returnHomeApply(T, now);   // action explicite : le retour choisi devient le prochain départ, sans déclarer la voiture partie
   T = liveApply(T, now);   // trajet vivant (position GPS réelle) : un seul, en mémoire uniquement
   T = tripPreviewApply(T, now);
   T.sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : a.src === 'work' ? -1 : 1);
-  BRF_SHOWN = T.slice();   // trajets réellement affichés (travail + agenda reconnus), relus par le poste météo
+  return DayContext.prioritize(T, appDay(), Date.now());
+}
+function renderBrfCore() {
+  const el = $('#secBrf'); if (!el) return;
+  const clockModel = (CX && CX.m) || M[S.locs[0].id] || Object.values(M).find(Boolean), cars = TCARS();
+  if (!cars.length) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
+  const now = DEMO.on && clockModel ? clockModel.nowStr.slice(0, 16) : nowIn(clockModel && clockModel.payload && clockModel.payload.timezone || 'Europe/Paris');
+  const today = now.slice(0, 10), nowHm = now.slice(11, 16), T = APP_CONTEXT.snapshot.trips;
+  const eve = toMin(nowHm) >= Math.min(18 * 60, appWorkOn(today) ? toMin(S.work.ret) : 1440);
+  const fullFor = d => { const n = dayDiff(today, d.slice(0, 10)); return n <= 0 || (n === 1 && eve); };
+  const dayLbl = d => { const n = dayDiff(today, d.slice(0, 10)); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(d.slice(0, 10)); };
   const full = T.filter(t => fullFor(t.dep)), main = full[0], rest = full.slice(1);
   const wk = T.find(t => t.src === 'work'), ag = T.find(t => t.src === 'cal');
   const emo = t => t.worst == null ? (t.wait ? '⏳' : '·') : LV[t.worst].emoji;
@@ -2283,7 +2245,7 @@ function renderBrfCore() {
     ${nrLine}`;
   if (!main) {   // plus aucun trajet aujourd'hui : seulement des lignes discrètes vers la suite
     el.className = 'mod brf lv0';
-    const msg = !CAL && !CALDONE && lsGet('twrc.key') ? '⏳ Lecture de l’agenda…' : `💤 ${isCommuteDay(today, S.work.days) && wk && wk.dep.slice(0, 10) > today ? 'Plus de trajet prévu aujourd’hui' : 'Aucun trajet prévu aujourd’hui'}`;
+    const msg = !CAL && !CALDONE && lsGet('twrc.key') ? '⏳ Lecture de l’agenda…' : `💤 ${appWorkOn(today) && wk && wk.dep.slice(0, 10) > today ? 'Plus de trajet prévu aujourd’hui' : 'Aucun trajet prévu aujourd’hui'}`;
     el.innerHTML = `${liveUndoHtml()}${tripCancelUndoHtml()}<div class="brf-h"><span class="brf-k">${msg}</span></div>${tail}`;
     return;
   }
@@ -2314,7 +2276,7 @@ function tripCancelSchedulePurge() {
     if (changed) tripCancelChanged();
   }, delay);
 }
-const cancelAffectedDay = e => workCancelled(e.s.slice(0, 10)) || !!(CAL && CAL.events && CAL.events.some(other => other.s.slice(0, 10) === e.s.slice(0, 10) && (TripCancel.nonSpatialNeedsRebuild(other, calendarSpatial, calendarPlace) || calendarCancelled(other))));
+const cancelAffectedDay = e => workCancelled(e.s.slice(0, 10), appCalendarCancelState()) || !!(CAL && CAL.events && CAL.events.some(other => other.s.slice(0, 10) === e.s.slice(0, 10) && (TripCancel.nonSpatialNeedsRebuild(other, calendarSpatial, calendarPlace) || calendarCancelled(other))));
 function tripCancelButton(t) {
   const allowed = t && (t.src === 'cal' && t.e || t.src === 'work' && t.dep.slice(0, 10) === liveNow().slice(0, 10));
   return allowed ? `<button class="btn sm" data-act="trip-cancel" data-key="${esc(t.key)}">${t.src === 'work' ? '✕ Pas de trajet aujourd’hui' : '✕ Je n’y vais pas'}</button>` : '';
@@ -2332,7 +2294,7 @@ function tripCancelChanged() {
     const e = CAL.events.find(e => e === t.e || TripCancel.eventId(e) === TripCancel.eventId(t.e));
     if (!e || !calendarSpatial(e) || calendarCancelled(e)) return true;
     const old = t.planL || t.l;
-    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), TRIPCANCEL, Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
+    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), appCalendarCancelState(), Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
     const next = (chains.get(e) || []).find(l => l.k === (old && old.k));
     if (!old || !next || next.originUncertain) return true;
     const same = (a, b, privatePoint) => a && b && Number.isFinite(a.lat) && Number.isFinite(a.lon) && Number.isFinite(b.lat) && Number.isFinite(b.lon) && (privatePoint ? rc2(a.lat) === rc2(b.lat) && rc2(a.lon) === rc2(b.lon) : +a.lat.toFixed(3) === +b.lat.toFixed(3) && +a.lon.toFixed(3) === +b.lon.toFixed(3));
@@ -2373,15 +2335,16 @@ const wazeBtn = p => { const u = wazeUrl(p); return u ? `<a class="btn sm" href=
 // domicile local EXACT (préréglage de l'appareil). Le relais n'a qu'un domicile arrondi à 0,01° (confidentialité des appels OSRM) :
 // pour Waze, ouvert par l'utilisateur, un retour vise le vrai domicile. L'arrondi OSRM, le relais et l'agenda chiffré ne changent pas.
 const homeExact = () => { const L = S.locs || [], h = L.find(l => l.id === 'home') || L[0]; return locHasCoords(h) ? h : null; };
-const legNavTo = leg => leg && leg.k === 'ret' ? (homeExact() || leg.to) : leg && (leg.navTo || leg.to);
+const legNavTo = leg => leg && leg.k === 'ret' && !leg.destinationOverride ? (homeExact() || leg.to) : leg && (leg.navTo || leg.to);
 // destination du trajet AFFICHÉ (vivant, adaptatif, agenda ou boulot) ; planL = trajet agenda d'origine d'un trajet vivant
-const tripTo = t => t.src === 'cal' ? ((t.planL || t.l || {}).k === 'ret' ? homeExact() || (t.l && t.l.to) : (t.l && (t.l.navTo || t.l.to))) : (t.td && t.td.LB) || (t.l && t.l.to) || null;
+const tripTo = t => t.src === 'cal' ? (t.planL || t.l || {}).k === 'ret' && !(t.planL || t.l || {}).destinationOverride ? homeExact() || (t.l && t.l.to) : legNavTo(t.l) : (t.td && t.td.LB) || (t.l && (t.l.navTo || t.l.to)) || null;
 // départ déclaré / arrivée confirmée : actions globales du trajet (même automate, lues par tous les onglets)
 const liveStartBtn = t => !DEMO.on && !t.running && t.live !== 'active' && !t.manualPreview && !t.manualReturn && LIVE.phase !== 'active' && liveDest(t) ? `<button class="btn sm" data-act="trip-start" data-key="${esc(t.key)}">🚗 Je pars maintenant</button>` : '';
 const liveArrBtn = t => (t.running || t.live === 'active') && LIVE.key === t.key ? `<button class="btn sm" data-act="trip-arrived">✅ Bien arrivé</button>` : '';
 // carte de briefing complète, identique pour un trajet domicile-travail et un trajet agenda
 function briefCard(t, dayLbl) {
-  const src = t.src === 'work' ? 'domicile-travail' : 'agenda';
+  if (t.destinationPending || t.l && t.l.destinationOverride && !t.l.to) return `<div class="brf-h"><span class="brf-k">${APP_CONTEXT.snapshot.status === 'travel' ? '🚗 En trajet' : '🏁 Prochain trajet'}</span></div><div class="brf-ev"><b>${esc(t.from || 'Origine à confirmer')} → Destination à confirmer</b></div><p class="brf-why" role="status">Choisis la destination dans Aujourd’hui pour calculer le trajet.</p>`;
+  const src = t.customRoute || t.src === 'local' ? 'trajet choisi' : t.src === 'work' ? 'domicile-travail' : 'agenda';
   if (t.l && t.l.originPending) return `<div class="brf-h"><span class="brf-k">🏁 Prochain trajet · ${src}</span></div><div class="brf-ev">📅 <b>${esc(t.name)}</b></div><p class="brf-why" role="status">Origine à confirmer après annulation du trajet précédent</p><div class="cal-v">${tripCancelButton(t)}</div>`;
   const head = `<div class="brf-h">${t.manualPreview ? `<span class="brf-k">📍 Aperçu depuis ma position · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · départ estimé <b>${t.previewDep.slice(11, 16)}</b> · arrivée estimée ${t.previewArr.slice(11, 16)}</span>`
     : t.live === 'active' ? `<span class="brf-k">🏎️ Trajet en cours · ${src}</span><span class="brf-w">${f0(t.l.km)} km restants · ${t.l.min} min · arrivée estimée <b>${t.arr.slice(11, 16)}</b></span>`
@@ -2389,11 +2352,11 @@ function briefCard(t, dayLbl) {
     : t.live === 'late' && t.adv ? `<span class="brf-k">⏱ Départ conseillé dépassé · ${src}</span><span class="brf-w">arrivée estimée <b>${t.arr.slice(11, 16)}</b> · ${liveMin(t.adv.target, t.arr) > 0 ? `retard estimé +${Math.round(liveMin(t.adv.target, t.arr))} min` : `dans les temps (cible ${t.adv.target.slice(11, 16)})`}</span>`
     : t.live === 'late' ? `<span class="brf-k">⏱ Départ prévu dépassé · ${src}</span><span class="brf-w">prévu ${t.planDep.slice(11, 16)} · itinéraire depuis ma position</span>`
     : t.adv && (t.live === 'imminent' || t.live === 'advice') ? `<span class="brf-k">🏁 Prochain trajet · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · départ conseillé <b>${t.adv.dep.slice(11, 16)}</b> · arrivée cible ${t.adv.target.slice(11, 16)} · ${cdSpan(t.adv.dep)}</span>`
-    : t.running ? `<span class="brf-k">🏎️ Trajet en cours · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">parti à ${t.dep.slice(11, 16)} · arrivée prévue <b>${(t.arr || '').slice(11, 16)}</b></span>`
-    : `<span class="brf-k">🏁 Prochain trajet · ${t.src === 'work' ? 'domicile-travail' : 'agenda'}</span><span class="brf-w">${dayLbl(t.dep)} · ${t.dep.slice(11, 16)} → ${(t.arr || '').slice(11, 16)} · ${cdSpan(t.dep)}</span>`}</div>
+    : t.running ? `<span class="brf-k">🏎️ Trajet en cours · ${src}</span><span class="brf-w">parti à ${t.dep.slice(11, 16)} · arrivée prévue <b>${(t.arr || '').slice(11, 16)}</b></span>`
+    : `<span class="brf-k">🏁 Prochain trajet · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · ${t.dep.slice(11, 16)} → ${(t.arr || '').slice(11, 16)} · ${cdSpan(t.dep)}</span>`}</div>
     <div class="brf-ev">${t.src === 'cal' ? '📅' : '🏁'} <b>${esc(t.name)}</b>${t.l ? ` · ${f0(t.l.km)} km · ${t.l.min} min${t.live ? ' depuis ici' : ''}${t.l.routed ? ' · route analysée' : ' (estimé)'}` : ''}</div>
     ${tripOriginHtml(t)}<div class="cal-v">${tripCancelButton(t)}${returnHomeButtonForTrip(t)}${liveStartBtn(t)}${placeArriveBtn(t) || liveArrBtn(t)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
-  if (!t.res) return head + `<p class="muted">${t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;
+  if (!t.res) return head + `<p class="muted">${appActiveCar() && !hasTires(appActiveCar()) ? 'Pneus de la voiture active à renseigner.' : t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;
   const sum = t.sum, top = t.res[0], lv = top.w.level, xs = t.seq.map(q => q.hs[q.i]);
   const ppMax = Math.max(...xs.map(x => x.pp || 0)), Pmax = Math.max(...xs.map(x => x.P || 0));
   const parts = ((top.w.worst && top.w.worst.parts) || []).slice().sort((a, b) => b.v - a.v).slice(0, 2).map(p => p.label);
@@ -2419,6 +2382,7 @@ function briefCard(t, dayLbl) {
       ${k('Visib.', visV(sum.visMin), visU(sum.visMin), 'prev', (sum.visMin != null && sum.visMin < 1000 ? 'lv2' : ''))}
     </div>
     ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
+    ${briefThermalHtml(t, top.c)}
     ${cr && cr.q.f > 0 && cr.q.f < 1 && cr.sc >= 20 ? `<div class="brf-why">📍 Point le plus délicat : km ${f0(cr.q.f * t.l.km)}${cr.q.name ? ' (' + esc(cr.q.name) + ')' : ''} vers ${cr.q.t.slice(11, 16)}</div>` : ''}
     ${ob && ob.T != null ? `<div class="brf-obs"><i class="tag obs">mesuré</i> ${esc(ob.name)} · ${new Date(ob.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · <b>${f1(ob.T)} °C</b>${ob.vis != null && ob.vis < 5000 ? ' · visibilité ' + ob.vis + ' m' : ''}${ob.wx ? ' · ' + esc(wxFr(ob.wx)) : ''}</div>` : ''}
     <div class="brf-t">${trendHtml(tr)}</div>
@@ -2431,7 +2395,7 @@ const TMAP = { node: null, map: null, key: '' };
 const wideScreen = () => matchMedia('(min-width: 760px)').matches;
 const rc2 = v => Math.round(v * 100) / 100;   // domicile et travail arrondis à ~1 km avant tout appel externe
 async function tripGeo(t) {
-  if (t.src === 'cal' || t.live || t.manualPreview) {   // route agenda, vivante ou aperçu : mémoire uniquement
+  if (t.src === 'cal' || t.src === 'local' || t.live || t.manualPreview) {   // route agenda/locale, vivante ou aperçu : mémoire uniquement
     const P = legPoints(t.l), pts = t.l.g && t.l.g.length > 1 ? t.l.g : P.map(p => [p.lat, p.lon]), cr = t.crit;
     // point critique : seulement en cas de vrai risque (verdict orange ou rouge, verglas, brouillard)
     const cp = cr && (cr.lv >= 2 || cr.ice >= 1 || cr.fog) && P[cr.q.k] ? { at: [P[cr.q.k].lat, P[cr.q.k].lon], lv: Math.max(2, cr.lv), t: cr.q.t } : null;
@@ -2452,7 +2416,7 @@ function tripMapMount(t) {
   const wide = wideScreen(), slot = wide ? $('#tmapW') : lsGet('twrc.tripmap') === '1' ? $('#tmapM') : null;
   if (!slot) return;
   const key = `${t.key}|${t.worst}|${t.live ? 'L' + t.liveGen : t.manualPreview ? 'P' + t.previewGen : ''}|${wide ? 'w' : 'm'}`;
-  if (TMAP.node && TMAP.key === key) { slot.appendChild(TMAP.node); if (TMAP.map) setTimeout(() => TMAP.map.invalidateSize(), 0); return; }
+  if (TMAP.node && TMAP.key === key) { slot.appendChild(TMAP.node); if (TMAP.map) { const map = TMAP.map; setTimeout(() => { if (TMAP.map === map) map.invalidateSize(); }, 0); } return; }
   if (TMAP.map) { try { TMAP.map.remove(); } catch (e) { /* déjà retirée */ } TMAP.map = null; }
   const node = document.createElement('div'); node.className = 'tmap'; node.setAttribute('role', 'img'); node.setAttribute('aria-label', `Carte du trajet ${t.from} → ${t.to}`);
   slot.appendChild(node); TMAP.node = node; TMAP.key = key;
@@ -2540,8 +2504,8 @@ function calTrip(ev) {
   const dep = addMin(day + 'T00:00', startMin - dur - 10), arr = addMin(dep, dur), seq = [];
   for (let t = dep.slice(0, 13) + ':00'; t <= arr.slice(0, 13) + ':00'; t = addMin(t, 60)) { const a = home.byTime.get(t), b = B.byTime.get(t); if (a != null) seq.push({ hs: home.hs, i: a }); if (b != null) seq.push({ hs: B.hs, i: b }); }
   if (!seq.length) return { km, dur, dep, beyond: true };
-  const res = TCARS().map(c => ({ c, w: windowAssess(c, seq, 'trip') })).filter(r => r.w);
-  return { km, dur, dep, arr, sum: summarize(seq), res, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0) };
+  const res = appTripCars().map(c => ({ c, w: windowAssess(c, seq, 'trip') })).filter(r => r.w);
+  return { km, dur, dep, arr, sum: summarize(seq), res: res.length ? res : null, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null };
 }
 
 // trajets calculés par le relais (itinéraire routier, aller / retour, enchaînement) : météo aux points de passage
@@ -2563,8 +2527,8 @@ function legEval(leg) {
   if (!c || Date.now() - c.t > PT_TTL) { fetchLeg(leg); if (!c) return { loading: true }; }
   if (!c.models) return { err: true };
   const seq = legSeq(c.models, legPoints(leg), leg.dep, leg.min); if (!seq.length) return { beyond: true };
-  const res = TCARS().map(car => ({ c: car, w: windowAssess(car, seq, 'trip') })).filter(r => r.w);
-  return { seq, sum: summarize(seq), res, worst: res.reduce((m, r) => Math.max(m, r.w.level), 0), crit: legCritical(seq, TCARS()) };
+  const res = appTripCars().map(car => ({ c: car, w: windowAssess(car, seq, 'trip') })).filter(r => r.w);
+  return { seq, sum: summarize(seq), res: res.length ? res : null, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, crit: legCritical(seq, appTripCars()) };
 }
 function calDirectSet() { return S.calDirect || {}; }
 const CANCELROUTES = new Map(); let CANCELROUTEGEN = 0;
@@ -2573,7 +2537,9 @@ function tripCancelBeforeFirst(e, settings = S, state = TRIPCANCEL, now = Date.n
   const home = locs.find(l => l.id === 'home') || (settings.locs || [])[0], work = settings.work || {}, date = e.s.slice(0, 10);
   const valid = p => p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
   const homePoint = valid(home) ? { ...home, label: 'Domicile', city: 'Domicile' } : null;
-  if (!isCommuteDay(date, work.days) || workCancelled(date, state, now)) return homePoint;
+  const real = settings === S && date === placeToday() && e.s >= liveNow() ? appRealOrigin(date) : null;
+  if (real) return { ...real, label: real.name, city: real.name };
+  if (!appWorkOn(date, work.days) || workCancelled(date, state, now)) return homePoint;
   const dep = date + 'T' + work.dep, ret = date + 'T' + work.ret, duration = +work.durMin || 30;
   const target = e.allDay ? date + 'T09:00' : e.s;
   if (target < dep || target >= addMin(ret, duration)) return homePoint;
@@ -2582,6 +2548,25 @@ function tripCancelBeforeFirst(e, settings = S, state = TRIPCANCEL, now = Date.n
   return valid(loc) ? { ...loc, kind: 'work', label: loc.name || 'Travail', city: loc.name || 'Travail' } : null;
 }
 const tripCancelRouteKey = (e, leg) => JSON.stringify([TripCancel.eventId(e), leg.k, leg.from, leg.to, leg.dep, leg.targetArr]);
+function manualRouteCacheKey(leg) {
+  if (!leg || !leg.manual || !locHasCoords(leg.from) || !locHasCoords(leg.to)) return null;
+  const p = x => (+x.lat).toFixed(3) + ',' + (+x.lon).toFixed(3);
+  return 'manual|' + p(leg.from) + '>' + p(leg.to);
+}
+function manualRouteCacheRead(leg) {
+  const key = manualRouteCacheKey(leg); if (!key) return null;
+  let C = {}; try { C = JSON.parse(lsGet('twrc.croute') || '{}'); } catch (e) { return null; }
+  const r = C[key];
+  return r && Number.isFinite(r.km) && Number.isFinite(r.min) && Array.isArray(r.g) && r.g.length > 1 ? r : null;
+}
+function manualRouteCacheWrite(leg, route) {
+  const key = manualRouteCacheKey(leg); if (!key || !route) return;
+  let C = {}; try { C = JSON.parse(lsGet('twrc.croute') || '{}'); } catch (e) { C = {}; }
+  const oldManual = Object.keys(C).filter(k => k.startsWith('manual|')).sort((a, b) => (C[b].at || 0) - (C[a].at || 0));
+  oldManual.slice(7).forEach(k => delete C[k]);
+  C[key] = { at: Date.now(), km: route.km, min: route.min, pts: (route.pts || []).slice(0, 8), g: (route.g || []).slice(0, 100) };
+  lsSet('twrc.croute', JSON.stringify(C));
+}
 function tripCancelReadyLeg(e, leg) {
   const entry = CANCELROUTES.get(tripCancelRouteKey(e, leg));
   return entry && entry.phase === 'ready' ? entry.leg : null;
@@ -2592,38 +2577,51 @@ function tripCancelRouteLeg(e, leg) {
   const roundPoint = p => p.id === S.locs[0].id || p.id === S.work.from || p.id === S.work.to || p.label === 'Domicile' ? { lat: rc2(p.lat), lon: rc2(p.lon) } : { lat: +p.lat.toFixed(3), lon: +p.lon.toFixed(3) };
   if (!leg.originPending) return { ...leg, from: { ...leg.from, ...roundPoint(leg.from) }, to: { ...leg.to, ...roundPoint(leg.to) }, navTo: leg.navTo || { ...leg.to }, pts: (leg.pts || []).map(p => ({ ...p, lat: +p.lat.toFixed(3), lon: +p.lon.toFixed(3) })), g: (leg.g || []).map(p => [+p[0].toFixed(3), +p[1].toFixed(3)]) };
   if (leg.originUncertain) return leg;
+  const a = roundPoint(leg.from), b = roundPoint(leg.to), cached = leg.manual ? manualRouteCacheRead(leg) : null;
+  if (leg.manual && offlineNow()) {
+    return cached ? { ...leg, ...cached, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, dep: leg.dep, arr: addMin(leg.dep, cached.min), routed: true, cachedRoute: true, originPending: false }
+      : { ...leg, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, min: null, km: null, pts: [], g: [], routed: false, routeOffline: true, originPending: true };
+  }
   const key = tripCancelRouteKey(e, leg);
   let entry = CANCELROUTES.get(key);
   if (!entry) {
     const gen = CANCELROUTEGEN; entry = { phase: 'loading', leg: null }; CANCELROUTES.set(key, entry);
-    const a = roundPoint(leg.from), b = roundPoint(leg.to);
     fetchJSON(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson&annotations=duration`, 10000)
       .then(j => {
-        if (gen !== CANCELROUTEGEN || calendarCancelled(e)) return;
+        if (gen !== CANCELROUTEGEN || !e.manual && calendarCancelled(e)) return;
         const route = liveParse(j); if (!route) throw new Error('itinéraire vide');
         const routeMin = routeTravelMin(route.rawMin ?? route.min, leg.k === 'go' && leg.targetArr ? 10 : 0);
         const dep = leg.k === 'go' && leg.targetArr ? addMin(leg.targetArr, -routeMin) : leg.dep;
         entry.leg = { ...leg, ...route, min: routeMin, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, dep, arr: addMin(dep, routeMin), routed: true, byTime: true, rebuilt: true };
         delete entry.leg.originPending; delete entry.leg.originUncertain; delete entry.leg.rebuildFrom;
+        if (leg.manual) manualRouteCacheWrite(leg, entry.leg);
         entry.phase = 'weather'; renderCal(); renderBrf(); renderTenue();
       })
-      .catch(() => { if (gen !== CANCELROUTEGEN) return; entry.phase = 'error'; renderCal(); renderBrf(); renderTenue(); });
+      .catch(() => {
+        if (gen !== CANCELROUTEGEN) return;
+        const old = leg.manual ? manualRouteCacheRead(leg) : null;
+        if (old) {
+          entry.leg = { ...leg, ...old, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, dep: leg.dep, arr: addMin(leg.dep, old.min), routed: true, cachedRoute: true };
+          delete entry.leg.originPending; entry.phase = 'weather';
+        } else entry.phase = 'error';
+        renderCal(); renderBrf(); renderTenue();
+      });
   }
-  if (entry.leg && legEval(entry.leg).res) { entry.phase = 'ready'; return entry.leg; }
+  if (entry.leg && legEval(entry.leg).sum) { entry.phase = 'ready'; return entry.leg; }
   // Ne pas exposer une ancienne route ou une nouvelle heure tant que route ET météo ne sont pas prêtes.
   return { ...leg, from: null, min: null, km: null, pts: [], g: [], routed: false, originPending: true };
 }
 function effLegs(e, all) {
   if (!calendarSpatial(e) || calendarCancelled(e)) return [];
   if (cancelAffectedDay(e)) {
-    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), TRIPCANCEL, Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
-    return (chains.get(e) || chains.get(TripCancel.eventId(e)) || []).map(leg => tripCancelRouteLeg(e, leg));
+    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), appCalendarCancelState(), Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
+    return (chains.get(e) || chains.get(TripCancel.eventId(e)) || []).map(leg => tripCancelRouteLeg(e, appAgendaLeg(e, leg)));
   }
   const D = calDirectSet(); let legs = (e.legs || []).slice();
   // le retour maison d'un rendez-vous disparaît si le suivant est enchaîné directement
   legs = legs.filter(l => !(l.k === 'ret' && l.brk && D[l.brk]));
   if (e.alt && D[e.alt.key]) legs = legs.map(l => l.k === 'go' && l.brk === e.alt.key ? { ...e.alt.direct, chosen: true } : l);
-  return legs;
+  return legs.map(l => { const effective = appAgendaLeg(e, l); return effective === l ? l : tripCancelRouteLeg(e, effective); });
 }
 function altHtml(e) {
   if (cancelAffectedDay(e)) return '';
@@ -2650,6 +2648,12 @@ function legHtml(leg, ev) {
   if (r.loading) body = `<div class="cal-v"><span class="sub">Analyse de la météo le long de la route…</span>${nav}</div>`;
   else if (r.err) body = `<div class="cal-v"><span class="sub">Météo indisponible pour ce trajet.</span>${nav}</div>`;
   else if (r.beyond) body = `<div class="cal-v"><span class="sub">Trop loin pour les prévisions horaires.</span>${nav}</div>`;
+  else if (!r.res || !r.res.length) {
+    const fb = frostBand(r.sum.TrMin);
+    body = `<div class="cal-v"><span class="sub">Pneus de la voiture active à renseigner · météo du trajet conservée.</span>${nav}</div>
+      <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
+      ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}`;
+  }
   else {
     const fb = frostBand(r.sum.TrMin), c = r.crit;
     let crit = '';
@@ -2726,6 +2730,13 @@ function renderCal() {
     else if (tr.near) body = `<span class="sub">À moins de 3 km de chez toi : pas de trajet à analyser.</span>`;
     else if (tr.loading) body = `<span class="sub">${f0(tr.km)} km · analyse de la météo du trajet…</span>`;
     else if (tr.beyond) body = `<span class="sub">${f0(tr.km)} km · départ ≈ ${tr.dep.slice(11, 16)} · trop loin pour les prévisions horaires.</span>`;
+    else if (!tr.res || !tr.res.length) {
+      const fb = frostBand(tr.sum.TrMin);
+      body = `<div class="cal-v"><span class="sub">Pneus de la voiture active à renseigner · météo du trajet conservée.</span>
+        <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span>${wazeBtn(e)}</div>
+        <div class="cal-k"><span>Route <b>${f1(tr.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(tr.sum.Tmin)} °C</b></span><span>Pluie <b>${(tr.sum.Pmax || 0) >= 0.1 ? f1(tr.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(tr.sum.visMin)}</b></span></div>
+        ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}`;
+    }
     else {
       const fb = frostBand(tr.sum.TrMin), lvw = tr.worst;
       body = `<div class="cal-v"><span class="pill lv${lvw}">${LV[lvw].emoji} ${LV[lvw].name}${tr.res[0] ? ' ' + tr.res[0].w.score : ''}</span>
@@ -2751,7 +2762,7 @@ function cdText(dep) {
   return { t: m < 60 ? `départ dans ${m} min` : m < 24 * 60 ? `départ dans ${Math.floor(m / 60)} h ${pad(m % 60)}` : `départ dans ${Math.floor(m / 1440)} j`, cls: '' };
 }
 const cdSpan = dep => { const c = cdText(dep); return `<span class="cd ${c.cls}" data-dep="${dep}">${c.t}</span>`; };
-setInterval(() => { document.querySelectorAll('.cd[data-dep]').forEach(el => { const c = cdText(el.dataset.dep); el.textContent = c.t; el.className = 'cd ' + c.cls; }); }, 30e3);
+setInterval(() => { if (document.hidden) return; document.querySelectorAll('.cd[data-dep]').forEach(el => { const c = cdText(el.dataset.dep); el.textContent = c.t; el.className = 'cd ' + c.cls; }); }, 30e3);
 // tendance : première prévision vue pour un trajet (sur ce téléphone uniquement), comparée à l'actuelle
 let TREND = null;
 function trendStore() { if (!TREND) { try { TREND = JSON.parse(lsGet('twrc.trend') || '{}'); } catch (e) { TREND = {}; } } return TREND; }
@@ -2802,7 +2813,7 @@ function dayBriefHtml(td, tdLv) {
 /* ---------- rendu : voitures ---------- */
 const tireTxt = car => {
   const t = car.tire, a = [t.brand, t.model].filter(Boolean).join(' ');
-  return `${a ? esc(a) : '<span class="muted">marque / modèle non renseignés</span>'} · <span class="tt">${esc(t.size || '—')}</span>${t.tread != null ? ` · <span class="tt">${f1(t.tread)} mm</span>` : ''}`;
+  return `${a ? esc(a) : '<span class="muted">marque / modèle non renseignés</span>'} · <span class="tt">${esc(t.size || '—')}</span>${t.tread != null ? ` · <span class="tt">${esc(treadTxt(treadAxles(t), treadAxles(t).worst))}${t.treadEst ? ' (estimée)' : ''}</span>` : ''}`;
 };
 const lastOdo = car => (car.odo || []).slice().sort((x, y) => x.km - y.km).slice(-1)[0] || null;
 function kmPerDay(car) {
@@ -2810,7 +2821,7 @@ function kmPerDay(car) {
   const days = dayDiff(o[0].d, o[o.length - 1].d); return days >= 7 ? (o[o.length - 1].km - o[0].km) / days : null;
 }
 function wearInfo(car) {
-  const t = car.tire, tr = (t.treads || []).filter(x => x.km != null && x.mm != null).sort((x, y) => x.km - y.km);
+  const t = car.tire, wx = treadAxles(t).ax, tr = (t.treads || []).filter(x => x.km != null && x.mm != null && !x.est && (!x.ax || !wx || x.ax === wx)).sort((x, y) => x.km - y.km);
   const thr = t.type === 'winter' ? 4 : 3, last = (t.treads || []).slice(-1)[0] || null, out = { last, thr };
   if (tr.length >= 2) {
     const a = tr[0], b = tr[tr.length - 1], rate = (a.mm - b.mm) / Math.max(1, b.km - a.km) * 1000;
@@ -2876,7 +2887,6 @@ function renderCars() {
     const strip = []; for (let k = 0; k <= 24; k++) { const v = hourVerdict(car, m.hs, i + k); strip.push(v ? `<i class="lv${v.level}" title="${m.hs[i + k].t.slice(11, 16)} · ${LV[v.level].name} · ${v.score}/100"></i>` : ''); }
     const labels = [0, 6, 12, 18, 24].map(k => `<span>${m.hs[i + k] ? m.hs[i + k].t.slice(11, 16) : ''}</span>`).join('');
     const wi = w.worst;
-    const segs = ['summer', 'winter', 'allseason', 'unknown'].map(t => `<button data-act="tire" data-car="${esc(car.id)}" data-type="${t}" aria-pressed="${car.tire.type === t}">${t === 'summer' ? 'Été' : t === 'winter' ? 'Hiver' : t === 'allseason' ? '4 saisons' : 'Inconnu'}</button>`).join('');
     return `<article class="car lv${w.level}">
       <div class="car-h"><div class="car-top"><div><h3>${esc(car.name)}</h3><span class="spec">${esc(car.spec)}</span></div>${carThumb(car)}</div>
         <div class="tirebox"><span><b>Pneus montés : ${TYPE_LABEL[car.tire.type]}</b></span><span>${tireTxt(car)}</span></div>
@@ -2924,20 +2934,24 @@ async function ensureMids(pts) {
   softRender();
 }
 // dir : 'go' | 'ret' ; off : null = choix de l'interface, 'auto' = prochain départ
-function tripData(dir = UI.dir, off = null) {
-  const w = S.work, fromId = dir === 'go' ? w.from : w.to, toId = dir === 'go' ? w.to : w.from;
-  const A = M[fromId], B = M[toId], LA = locById(fromId), LB = locById(toId);
+function tripData(dir = UI.dir, off = null, departure = null) {
+  const w = S.work;
   const nm = id => (locById(id) || {}).name || id;
-  if (!A || !B || A.nowI < 0 || B.nowI < 0 || !locHasCoords(LA) || !locHasCoords(LB)) return { err: `Données ou coordonnées manquantes pour ${!A || !locHasCoords(LA) ? nm(fromId) : nm(toId)}.` };
-  const clock = DEMO.on ? A.nowStr : nowIn(A.tz || 'Europe/Paris');
+  const model = M[dir === 'go' ? w.from : w.to];
+  const clock = DEMO.on && model ? model.nowStr : nowIn(model && model.tz || 'Europe/Paris');
   const time = dir === 'go' ? w.dep : w.ret, today = clock.slice(0, 10);
-  const auto = commuteOff(today, time, clock.slice(11, 16), w.days);   // saute les jours sans trajet domicile-travail
+  const auto = appCommuteOff(today, time, clock.slice(11, 16), w.days);   // saute les jours sans trajet domicile-travail
   if (auto == null) return { err: 'Aucun jour de trajet domicile-travail coché (Réglages → Trajet).' };
   if (off === 'auto') off = auto;
   else if (off == null) { if (UI.dayOff == null) UI.dayOff = auto; off = UI.dayOff; }   // un nombre = décalage imposé
   const dur = +w.durMin || 30;
-  const dep = addMin(today + 'T00:00', off * 1440 + toMin(time)), arr = addMin(dep, dur);
+  const dep = departure || addMin(today + 'T00:00', off * 1440 + toMin(time)), arr = addMin(dep, dur);
+  if (!appWorkOn(dep.slice(0, 10)) && !(TRIPSTART && TRIPSTART.trip && TRIPSTART.trip.src === 'work')) return { err: 'Pas de travail prévu pour cette journée.', cancelled: true };
   if (workCancelled(dep.slice(0, 10))) return { err: 'Trajets domicile-travail annulés pour cette journée sur cet appareil.', cancelled: true };
+  const ends = appCommuteEndpoints(dir, dep.slice(0, 10), 'commute|' + dep.slice(0, 10) + 'T' + time + '|' + dir), LA = ends.from, LB = ends.to;
+  const fromId = LA && LA.id, toId = LB && LB.id, A = M[fromId], B = M[toId];
+  if (!LB) return { err: 'Destination à confirmer.', destinationPending: true };
+  if (!A || !B || A.nowI < 0 || B.nowI < 0 || !locHasCoords(LA) || !locHasCoords(LB)) return { err: `Données ou coordonnées manquantes pour ${!A || !locHasCoords(LA) ? nm(fromId) : nm(toId)}.` };
   const hDep = dep.slice(0, 13) + ':00', hArr = arr.slice(0, 13) + ':00', seq = [];
   const dist = distKm(LA, LB), mids = midPoints(LA, LB);
   const missing = mids.filter(p => MIDM[p.id] === undefined);
@@ -2967,24 +2981,28 @@ function colStats(seq) {
   return { T: s.Tmin, Tmax: s.Tmax, Tr: s.TrMin, P: s.Pmax, pp: s.ppMax, vis: s.visMin, fog: (s.visMin != null && s.visMin < 1000) || s.fog, frost: s.Tmin != null && s.Tmin <= 1,
     ice: s.iceLevel, snow: s.snowSum > 0 || s.snowCode, sleet: s.sleet, gust: s.gustMax, wind: s.windMax, code: single ? x.code : null };
 }
+const CALIB_LV = { observation: 'observation', motif: 'motif possible', signal: 'signal', suggestion: 'suggestion' };
 function feedbackBlock() {
-  const c = calibBias(S.calib), last = (S.calib || []).slice(-1)[0];
-  return `<div class="fb"><div class="sub">RETOUR TERRAIN · ce que tu as vu sur la route (calibre l’estimation de chaussée)</div>
+  const l = curLoc(), c = calibFor(l && l.id), last = (S.calib || []).filter(r => r && l && r.loc === l.id).slice(-1)[0];
+  const state = c.applied ? `correction appliquée ici : <b class="mono">${c.bias > 0 ? '+' : ''}${f1(c.bias)} °C</b> (${c.n} retours utiles cohérents)`
+    : c.n ? `<b class="mono">aucune correction</b> · ${c.n} retour${c.n > 1 ? 's' : ''} utile${c.n > 1 ? 's' : ''} ici = ${CALIB_LV[c.level]}${c.coherent ? '' : ', contradictoires'} (correction à partir de ${CALIB_MIN} retours cohérents au même lieu)`
+    : '<b class="mono">aucune correction</b>';
+  return `<div class="fb"><div class="sub">RETOUR TERRAIN · ce que tu as vu sur la route (noté comme observation pour ce lieu)</div>
     <div class="chips"><button class="btn sm" data-act="fb" data-k="ice">❄️ Givre / verglas vu</button><button class="btn sm" data-act="fb" data-k="wet">💧 Mouillé, pas gelé</button><button class="btn sm" data-act="fb" data-k="dry">✅ Sec, RAS</button></div>
-    <div class="disc">Calibration actuelle : <b class="mono">${c.n ? (c.bias > 0 ? '+' : '') + f1(c.bias) + ' °C' : 'aucune'}</b>${c.n ? ` (${c.n} retour${c.n > 1 ? 's' : ''} utile${c.n > 1 ? 's' : ''})` : ''}${last ? ` · dernier : ${fmtDay(last.t.slice(0, 10))} ${last.t.slice(11, 16)}` : ''}.</div></div>`;
+    <div class="disc">Chaussée : ${state}${c.dry ? ` · ${c.dry} « Sec, RAS » noté${c.dry > 1 ? 's' : ''}, sans effet sur la température (ne renseigne pas le gel)` : ''}${last ? ` · dernier : ${fmtDay(last.t.slice(0, 10))} ${last.t.slice(11, 16)}` : ''}.</div></div>`;
 }
 function renderBrief() {
   const el = $('#secBrief'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
-  const td = tripData(), w = S.work, dir = UI.dir;
+  const td = tripData(), w = S.work, dir = UI.dir; if (appActiveCar()) UI.bcar = appActiveCar().id;
   const time = dir === 'go' ? w.dep : w.ret;
   const locOpts = (sel, key) => allLocs().map(l => `<option value="${esc(l.id)}" ${l.id === sel ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
-  if (!TCARS().some(c => c.id === UI.bcar) && TCARS().length) UI.bcar = TCARS()[0].id;
+  if (!appActiveCar() && !TCARS().some(c => c.id === UI.bcar) && TCARS().length) UI.bcar = TCARS()[0].id;
   const carSeg = TCARS().map(c => `<button data-act="bcar" data-car="${esc(c.id)}" aria-pressed="${UI.bcar === c.id}">${esc(c.short)}</button>`).join('');
   const mFrom = M[w.from] || M[S.locs[0].id], day0 = mFrom ? (DEMO.on ? mFrom.nowStr : nowIn(mFrom.tz || 'Europe/Paris')).slice(0, 10) : null, dOffs = [];
-  if (day0) for (let o = 0; o < 10 && dOffs.length < 3; o++) if (isCommuteDay(addMin(day0 + 'T00:00', o * 1440), w.days)) dOffs.push(o);
+  if (day0) for (let o = 0; o < 10 && dOffs.length < 3; o++) if (appWorkOn(addMin(day0 + 'T00:00', o * 1440), w.days)) dOffs.push(o);
   if (UI.dayOff != null && !dOffs.includes(UI.dayOff)) { dOffs.push(UI.dayOff); dOffs.sort((a, b) => a - b); }
   const dayLbl = o => o === 0 ? 'Aujourd’hui' : o === 1 ? 'Demain' : cap1(fmtDay(addMin(day0 + 'T00:00', o * 1440).slice(0, 10)));
-  let head = `<div class="mod-h"><h2>Briefing départ</h2><span class="src obs">prévision météo</span></div>
+  let head = `<div class="mod-h"><h2>🚦 Briefing départ</h2><span class="src obs">prévision météo</span></div>
   <div class="ctrl">
     <div class="fld"><span class="l">Voiture</span><div class="seg">${carSeg}</div></div>
     <div class="fld"><span class="l">Sens</span><div class="seg"><button data-act="dir" data-d="go" aria-pressed="${dir === 'go'}">Aller</button><button data-act="dir" data-d="ret" aria-pressed="${dir === 'ret'}">Retour</button></div></div>
@@ -2996,8 +3014,9 @@ function renderBrief() {
     <div class="fld"><label for="f-work-to">Vers</label><select id="f-work-to" data-bind="work.to">${locOpts(w.to)}</select></div>
   </div>`;
   if (td.err) { el.innerHTML = head + `<p class="muted">${esc(td.err)}</p>`; return; }
-  const car = TCARS().find(c => c.id === UI.bcar) || TCARS()[0];
+  const car = appActiveCar() || TCARS().find(c => c.id === UI.bcar) || TCARS()[0];
   if (!car) { el.innerHTML = head + '<p class="muted">Aucune voiture équipée de pneus.</p>'; return; }
+  if (!hasTires(car)) { el.innerHTML = head + '<p class="muted">Pneus de la voiture active à renseigner.</p>'; return; }
   const wa = windowAssess(car, td.seq, 'trip'), sm = summarize(td.seq);
   if (!wa) { el.innerHTML = head + '<p class="muted">Données insuffisantes.</p>'; return; }
   const nar = narrate(car, wa, sm, 'au départ');
@@ -3042,7 +3061,7 @@ function renderCompare() {
   const mode = td.err ? 'card' : 'trip', sm = summarize(seq);
   const res = TCARS().map(car => ({ car, w: windowAssess(car, seq, mode) })).filter(r => r.w);
   if (res.length < 2) { const wait = S.cars.filter(c => !hasTires(c)).map(c => c.short); el.hidden = false;
-    el.innerHTML = `<div class="mod-h"><h2>Quelle voiture prendre ?</h2><span class="src">comparaison factuelle</span></div><p class="sub">${wait.length ? `Comparaison suspendue : ${esc(wait.join(', '))} en attente de pneus. Seule ${esc(res.map(r => r.car.short).join(', ') || 'aucune voiture')} est analysée.` : 'Comparaison indisponible.'}</p>`; return; }
+    el.innerHTML = `<div class="mod-h"><h2>🚗 Quelle voiture prendre ?</h2><span class="src">comparaison factuelle</span></div><p class="sub">${wait.length ? `Comparaison suspendue : ${esc(wait.join(', '))} en attente de pneus. Seule ${esc(res.map(r => r.car.short).join(', ') || 'aucune voiture')} est analysée.` : 'Comparaison indisponible.'}</p>`; return; }
   const wet = seq.some(s => { const x = s.hs[s.i]; return (x.P || 0) >= 0.1 || recentPrecip(s.hs, s.i, 2) >= 0.3; });
   const cold = sm.Tmin != null && sm.Tmin < 7;
   const best = [...res].sort((a, b) => b.w.score - a.w.score)[0], gap = Math.abs(res[0].w.score - res[1].w.score);
@@ -3076,7 +3095,7 @@ function renderCompare() {
     sporty && (cold || wet) ? `${esc(sporty.car.short)} (usage sportif, ${esc(sporty.car.spec || 'puissance élevée')}) sollicite davantage l’adhérence disponible au démarrage et en sortie de courbe quand le pneu est froid.` : '',
     'Cette comparaison ne porte que sur les pneus et la météo. Elle ne tient pas compte de l’état des freins, de l’usure réelle, du chargement ni de ton expérience : le choix t’appartient.'
   ].filter(Boolean);
-  el.innerHTML = `<div class="mod-h"><h2>Quelle voiture prendre ?</h2><span class="src">comparaison factuelle</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>🚗 Quelle voiture prendre ?</h2><span class="src">comparaison factuelle</span></div>
     <div class="cmp">${cards}</div><div class="why">${why.map(t => `<span>${t}</span>`).join('')}</div>`;
 }
 
@@ -3101,7 +3120,7 @@ function renderIce() {
 /* ---------- graphique 24 h ---------- */
 function renderChartShell() {
   const el = $('#secChart'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
-  el.innerHTML = `<div class="mod-h"><h2>Graphique 24 h</h2><span class="src">mesuré/prévision + estimé</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>📈 Graphique 24 h</h2><span class="src">mesuré/prévision + estimé</span></div>
    <div class="legend"><span><svg viewBox="0 0 22 8"><line x1="0" y1="4" x2="22" y2="4" stroke="var(--c-air)" stroke-width="2.4"/></svg>Air (prévision)</span>
    <span><svg viewBox="0 0 22 8"><line x1="0" y1="4" x2="22" y2="4" stroke="var(--c-road)" stroke-width="2.4" stroke-dasharray="5 3"/></svg>Chaussée (estimé)</span>
    <span><svg viewBox="0 0 22 8"><line x1="0" y1="4" x2="22" y2="4" stroke="var(--c-dew)" stroke-width="2" stroke-dasharray="1.5 3"/></svg>Point de rosée</span>
@@ -3186,35 +3205,81 @@ function renderDays() {
       <div class="pr"><span class="num" style="color:var(--c-air)">${f0(d.tmin)}°</span> / <span class="num" style="color:var(--fg)">${f0(d.tmax)}°</span><br>${(d.psum || 0) >= 0.1 ? f1(d.psum) + ' mm' : '—'}${(d.ssum || 0) > 0 ? ' · ❄ ' + f1(d.ssum) + ' cm' : ''}</div>
       ${UI.view === 'meteo' ? `<div class="pips dm">${d.pmax != null ? '☂ ' + f0(d.pmax) + ' %' : ''}${d.uv != null ? '<br>UV ' + f0(d.uv) : ''}</div>` : `<div class="pips">${pips}</div>`}</div>`;
   }).join('');
-  el.innerHTML = `<div class="mod-h"><h2>Prévisions 7 jours</h2><span class="src obs">prévision météo</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>📆 Prévisions 7 jours</h2><span class="src obs">prévision météo</span></div>
    <div class="sub">Barre = min → max. Repères : 0 °C (bleu) et 7 °C (jaune). ${UI.view === 'meteo' ? 'À droite : probabilité de pluie maximale et indice UV maximal du jour.' : `Carrés = verdict pneus du jour (${CX.cars.filter(c => hasTires(c.car)).map(c => esc(c.car.short)).join(', ')}).`}</div><div class="days">${rows}</div>`;
 }
 function dayInfosOne(m, car, date) {
   const idx = []; m.hs.forEach((x, i) => { if (x.date === date) idx.push({ hs: m.hs, i }); });
   const w = idx.length ? windowAssess(car, idx, 'trip') : null; return w ? w.level : null;
 }
+function renderWeatherLink() {
+  const el = $('#secWeatherLink'); el.hidden = UI.view !== 'pneus';
+  if (el.hidden) return;
+  const c = CX && CX.m.cur, l = curLoc();
+  el.innerHTML = `<div><h3>🌦️ Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="weather-details">Détails météo →</button>`;
+}
 
+// @include app/season-actions.js
 /* ---------- saison pneus ---------- */
 function renderSeason() {
+  // Une actualisation météo ne doit pas interrompre la saisie de la confirmation.
+  if (MOUNT_FORM && document.activeElement && document.activeElement.matches('#secSeason input[data-mount-field]')) return;
   const el = $('#secSeason'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
   const cards = CX.cars.filter(c => c.season).map(({ car, season: s }) => { const ci = S.cars.indexOf(car);
     const di = s.days.slice(0, 14);
-    const cal = di.map(d => { const dt = new Date(d.date + 'T12:00:00Z'); return `<div class="cell lv${d.level == null ? 'x' : d.level}" title="${fmtDay(d.date)} · ${d.level == null ? '' : LV[d.level].name}"><b>${DAYN[dt.getUTCDay()]}${pad(dt.getUTCDate())}</b><span class="lo">${f0(d.tmin)}°</span>/<span class="hi">${f0(d.tmax)}°</span></div>`; }).join('');
+    const cells = days => days.map(d => { const dt = new Date(d.date + 'T12:00:00Z'), label = d.level == null ? 'Données insuffisantes' : LV[d.level].name;
+      return `<div class="cell lv${d.level == null ? 'x' : d.level}" role="img" aria-label="${fmtDay(d.date)} · minimum ${f0(d.tmin)} degrés, maximum ${f0(d.tmax)} degrés · ${label}" title="${fmtDay(d.date)} · ${label}"><b>${DAYN[dt.getUTCDay()]}${pad(dt.getUTCDate())}</b><span class="lo">${f0(d.tmin)}°</span>/<span class="hi">${f0(d.tmax)}°</span></div>`; }).join('');
+    const cal = `<div class="season-week"><div class="sub">Jours 1 à 7 · prévisions min / max</div><div class="cal">${cells(di.slice(0, 7))}</div></div>${di.length > 7 ? `<div class="season-week trend"><div class="sub">Jours 8 à 14 · tendance plus incertaine</div><div class="cal">${cells(di.slice(7))}</div></div>` : ''}`;
     let cd = '';
     if (car.plan && car.plan.on && car.tire.type !== 'winter') {
-      const n = s.countdown && s.countdown.n;
-      const planTxt = [car.plan.brand, car.plan.model].filter(Boolean).join(' ') || 'pneus hiver';
-      cd = `<div class="stat lvx"><span class="sub">Montage prévu : ${esc(planTxt)}${car.plan.size ? ' · ' + esc(car.plan.size) : ''}</span>
-        ${n == null ? '<span class="sub">Date d’arrivée/montage non renseignée.</span>' : `<span class="cd num">${n > 0 ? 'J-' + pad(n) : n === 0 ? 'Jour J' : 'J+' + pad(-n)}</span><span class="sub">${n > 0 ? 'avant montage pneus hiver' : 'date de montage atteinte ou dépassée'} · ${fmtDay(car.plan.date)}</span>`}
-        <div class="fld" style="margin-top:4px"><label for="f-cars-${ci}-plan-date">Date prévisionnelle de montage</label><input type="date" id="f-cars-${ci}-plan-date" data-bind="cars.${ci}.plan.date" value="${esc(car.plan.date)}"></div></div>`;
-      if (s.coldBefore) cd += `<div class="note lv3"><b>ALERTE</b><span>Période froide ${s.coldBefore.severe ? 'avec conditions hivernales' : '(≥ 2 nuits à 2 °C ou moins)'} prévue dès le ${fmtDay(s.coldBefore.first.date)}, avant le montage du ${fmtDay(s.countdown.date)}.${s.coldBefore.partial ? ' Prévisions limitées à 14 jours : analyse partielle.' : ''}</span></div>`;
+      const plan = car.plan, n = s.countdown && s.countdown.n;
+      const planTxt = [plan.brand, plan.model].filter(Boolean).join(' ') || 'pneus hiver';
+      const etaDate = plan.etaTo || plan.etaFrom, etaTxt = plan.etaFrom && plan.etaTo && plan.etaFrom !== plan.etaTo
+        ? `${fmtDay(plan.etaFrom)} → ${fmtDay(plan.etaTo)}`
+        : etaDate ? fmtDay(etaDate) : 'non renseignée';
+      const today = CX.m.nowStr.slice(0, 10);
+      const supplyStatus = !etaDate ? 'À RENSEIGNER' : today < (plan.etaFrom || etaDate) ? 'EN ATTENTE' : today <= etaDate ? 'FENÊTRE ETA' : 'ETA DÉPASSÉE';
+      const apptTxt = plan.appointmentConfirmed && !plan.appointmentDate
+        ? 'confirmation incomplète · date à renseigner'
+        : plan.appointmentDate ? `${plan.appointmentConfirmed ? 'confirmé' : 'à confirmer'} · ${fmtDay(plan.appointmentDate)}` : 'non confirmé';
+      const mountLabel = s.countdown && s.countdown.kind === 'confirmed' ? 'avant rendez-vous confirmé' : 'avant montage estimé';
+      const covered = s.countdown ? s.countdown.weatherCoveredDays || 0 : 0, remaining = s.countdown ? s.countdown.weatherRemainingDays || 0 : 0;
+      const etaConflict = !!(plan.date && etaDate && plan.date < etaDate && !(plan.appointmentConfirmed && plan.appointmentDate));
+      const etaRangeInvalid = !!(plan.etaFrom && plan.etaTo && plan.etaFrom > plan.etaTo);
+      const apptIncomplete = !!plan.appointmentConfirmed && !plan.appointmentDate;
+      cd = `<div class="stat lvx"><span class="sub">Prochaine monte : ${esc(planTxt)}${plan.size ? ' · ' + esc(plan.size) : ''}</span>
+        ${n == null ? '<span class="sub">Date de montage estimée non renseignée.</span>' : `<span class="cd num">${n > 0 ? 'J-' + pad(n) : n === 0 ? 'Jour J' : 'J+' + pad(-n)}</span><span class="sub">${n > 0 ? esc(mountLabel) : 'date de montage atteinte ou dépassée'} · ${fmtDay(s.countdown.date)}</span>`}
+        <span class="sub"><b>Commande</b> · ${plan.ordered ? fmtDay(plan.ordered) : 'date non renseignée'}</span>
+        <span class="sub"><b>Approvisionnement</b> · ${esc(supplyStatus)} · ETA ${esc(etaTxt)}${plan.etaChecked ? ' · vérifié ' + fmtDay(plan.etaChecked) : ''}</span>
+        <span class="sub"><b>Rendez-vous</b> · ${esc(apptTxt)}</span>
+        ${etaConflict ? '<div class="note lv2"><b>COHÉRENCE</b><span>Le montage estimé est antérieur à la dernière ETA fournisseur. Vérifie les deux dates.</span></div>' : ''}
+        ${etaRangeInvalid ? '<div class="note lv2"><b>COHÉRENCE</b><span>La fin de l’ETA fournisseur est antérieure à son début. Corrige la fenêtre.</span></div>' : ''}
+        ${apptIncomplete ? '<div class="note lv2"><b>COHÉRENCE</b><span>Le rendez-vous est marqué confirmé mais aucune date n’est renseignée. Il ne remplace pas le montage estimé.</span></div>' : ''}
+        ${n == null ? '' : `<div class="note lv${remaining > 0 ? 1 : 0}"><b>COUVERTURE MÉTÉO</b><span>${covered} jour${covered > 1 ? 's' : ''} analysé${covered > 1 ? 's' : ''} sur ${Math.max(0, n)} avant ${s.countdown.kind === 'confirmed' ? 'le rendez-vous' : 'le montage'}.${remaining > 0 ? ` ${remaining} jour${remaining > 1 ? 's' : ''} encore non évaluable${remaining > 1 ? 's' : ''} : aucune conclusion météo n’est extrapolée au-delà de la fenêtre disponible.` : ' Toute la période restante est couverte par les prévisions disponibles.'}</span></div>`}
+        <details class="wx-how"><summary>Mettre à jour le suivi</summary>
+          <div class="frow">
+            <div class="fld"><label for="f-cars-${ci}-plan-ordered">Commande passée</label><input type="date" id="f-cars-${ci}-plan-ordered" data-bind="cars.${ci}.plan.ordered" value="${esc(plan.ordered)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-eta-from">ETA fournisseur · début</label><input type="date" id="f-cars-${ci}-plan-eta-from" data-bind="cars.${ci}.plan.etaFrom" value="${esc(plan.etaFrom)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-eta-to">ETA fournisseur · fin</label><input type="date" id="f-cars-${ci}-plan-eta-to" data-bind="cars.${ci}.plan.etaTo" value="${esc(plan.etaTo)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-eta-checked">ETA vérifiée le</label><input type="date" id="f-cars-${ci}-plan-eta-checked" data-bind="cars.${ci}.plan.etaChecked" value="${esc(plan.etaChecked)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-date">Montage estimé</label><input type="date" id="f-cars-${ci}-plan-date" data-bind="cars.${ci}.plan.date" value="${esc(plan.date)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-appt">Date du rendez-vous</label><input type="date" id="f-cars-${ci}-plan-appt" data-bind="cars.${ci}.plan.appointmentDate" value="${esc(plan.appointmentDate)}"></div>
+            <div class="fld"><label for="f-cars-${ci}-plan-appt-ok">Rendez-vous confirmé</label><select id="f-cars-${ci}-plan-appt-ok" data-bind="cars.${ci}.plan.appointmentConfirmed" data-num="1"><option value="1" ${plan.appointmentConfirmed ? 'selected' : ''}>Oui</option><option value="0" ${plan.appointmentConfirmed ? '' : 'selected'}>Non</option></select></div>
+          </div>
+        </details>
+        <div class="chips"><button class="btn" data-act="mount-open" data-car="${esc(car.id)}"${DEMO.on ? ' disabled' : ''}>Montage effectué</button></div>${mountDraft(car)}</div>`;
+      if (s.coldBefore) cd += `<div class="note lv3"><b>ALERTE</b><span>Période froide ${s.coldBefore.severe ? 'avec conditions hivernales' : '(≥ 2 nuits à 2 °C ou moins)'} prévue dès le ${fmtDay(s.coldBefore.first.date)}, avant ${s.countdown.kind === 'confirmed' ? 'le rendez-vous confirmé' : 'le montage estimé'} du ${fmtDay(s.countdown.date)}.${s.coldBefore.partial ? ' La météo disponible ne couvre pas toute la période restante.' : ''}</span></div>`;
     }
     return `<div class="season lv${s.level}"><h3>${esc(car.name)} · pneus ${TYPE_LABEL[car.tire.type]}</h3>
       <div class="stat"><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div>${cd}
-      <div><div class="sub" style="margin-bottom:4px">14 prochains jours · min / max · couleur = verdict pneus du jour</div><div class="cal">${cal}</div></div></div>`;
+      ${car.tire.type === 'winter' && car.tire.mounted ? `<p class="sub" role="status">Montage enregistré : ${esc(fmtDay(car.tire.mounted))}${Number.isFinite(car.tire.mountKm) ? ' · compteur ' + car.tire.mountKm.toLocaleString('fr-FR') + ' km' : ''}</p>` : ''}
+      ${cal}<div class="season-legend" aria-label="Légende des verdicts pneus">${[['lv0', 'Adapté'], ['lv1', 'Vigilance'], ['lv2', 'Risque élevé'], ['lv3', 'Déconseillé'], ['lvx', 'Données insuffisantes']].map(([lv, text]) => `<span class="${lv}"><i aria-hidden="true"></i>${text}</span>`).join('')}</div></div>`;
   }).join('');
-  el.innerHTML = `<div class="mod-h"><h2>Saison pneus</h2><span class="src">analyse des prévisions, pas du calendrier</span></div><div class="grid2">${cards}</div>
+  const form = el.querySelector('.mount-form');
+  el.innerHTML = `<div class="mod-h"><h2>🍂 Saison pneus</h2><span class="src">prévisions + suivi du montage</span></div><div class="grid2">${cards}</div>
    <p class="disc">Fiabilité décroissante au-delà de 5 à 7 jours. Le seuil de 7 °C est une règle pratique, pas une frontière physique.</p>`;
+  const fresh = el.querySelector('.mount-form');
+  if (form && fresh && form.dataset.car === fresh.dataset.car) { fresh.replaceWith(form); form.querySelector('.mount-message').textContent = MOUNT_FORM.msg; }
 }
 
 /* ---------- journal de saison ---------- */
@@ -3231,7 +3296,7 @@ function recordJournal() {
     if (JSON.stringify(J[date]) !== JSON.stringify(rec)) { J[date] = rec; changed = true; }
   });
   const keys = Object.keys(J).sort(); if (keys.length > 400) keys.slice(0, keys.length - 400).forEach(k => delete J[k]);
-  if (changed) saveSettings();
+  if (changed) lsSet('twrc.settings.v1', JSON.stringify(S));   // un journal automatique ne configure pas les lieux et voitures
 }
 function renderJournal() {
   const el = $('#secJournal'); if (!el) return; if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
@@ -3243,7 +3308,7 @@ function renderJournal() {
   const cells = []; for (let k = 59; k >= 0; k--) { const d = addMin(today + 'T00:00', -k * 1440).slice(0, 10), r = J[d];
     const c = !r ? 'lvx' : r.T <= 0 ? 'lv3' : r.T < 3 ? 'lv2' : r.T < 7 ? 'lv1' : 'lv0';
     cells.push(`<i class="${c}" title="${fmtDay(d)}${r ? ' · min ' + f1(r.T) + ' °C · chaussée ' + f1(r.Tr) + ' °C' : ' · non enregistré'}"></i>`); }
-  el.innerHTML = `<div class="mod-h"><h2>Journal de saison</h2><span class="src">depuis le ${fmtDay(start)}</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>📓 Journal de saison</h2><span class="src">depuis le ${fmtDay(start)}</span></div>
    <div class="metrics">${tile('Matins enregistrés', rec.length, '')}${tile('Sous 7 °C', cnt(r => r.T < 7), 'repère pneus hiver')}${tile('Sous 3 °C', cnt(r => r.T < 3), '')}${tile('Gel (≤ 0 °C)', cnt(r => r.T <= 0), '')}${tile('Verglas modéré ou plus', cnt(r => r.ice >= 1), 'estimé')}${tile('Premier gel', ff ? fmtDay(ff) : '—', fr ? 'chaussée ≤ 0 °C : ' + fmtDay(fr) : 'chaussée : pas encore')}</div>
    <div><div class="sub" style="margin-bottom:4px">60 derniers matins (0–9 h, ${esc(S.locs[0].name)}) · gris = non enregistré</div><div class="strip jr">${cells.join('')}</div>
    <div class="strip-l"><span>${fmtDay(addMin(today + 'T00:00', -59 * 1440).slice(0, 10))}</span><span>aujourd’hui</span></div></div>
@@ -3257,9 +3322,9 @@ function renderAlerts() {
   const rank = i => (i.on && i.a) ? 10 + i.a.sev : i.on ? 1 : 0;
   items.sort((x, y) => rank(y) - rank(x));
   const act = items.filter(i => i.on && i.a).length;
-  el.innerHTML = `<div class="mod-h"><h2>Alertes</h2><span class="src">${act} active${act > 1 ? 's' : ''} · 24 h</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>🔔 Alertes</h2><span class="src">${act} active${act > 1 ? 's' : ''} · 24 h</span></div>
    ${vigiBlock()}<div>${items.map(({ d, a, on }) => `<div class="al${on ? '' : ' off'}"><div><label class="sw"><input type="checkbox" data-alert="${d.id}" ${on ? 'checked' : ''} aria-label="${esc(d.label)}"><i></i></label></div>
-     <div style="display:flex;justify-content:space-between;gap:10px;align-items:start;min-width:0"><div style="min-width:0"><div class="t">${esc(a && on ? a.title : d.label)}</div><div class="d">${on ? (a ? esc(a.detail) : (d.id === 'pre' && S.cars.some(c => c.plan.on && c.tire.type !== 'winter' && !c.plan.date) ? 'Renseigne la date de montage des pneus hiver (Saison pneus) pour activer cette alerte.' : 'Non déclenchée')) : 'Désactivée'}</div></div>
+     <div style="display:flex;justify-content:space-between;gap:10px;align-items:start;min-width:0"><div style="min-width:0"><div class="t">${esc(a && on ? a.title : d.label)}</div><div class="d">${on ? (a ? esc(a.detail) : (d.id === 'pre' && S.cars.some(c => c.plan.on && c.tire.type !== 'winter' && !(c.plan.date || (c.plan.appointmentConfirmed && c.plan.appointmentDate))) ? 'Renseigne un montage estimé ou un rendez-vous confirmé (Saison pneus) pour activer cette alerte.' : 'Non déclenchée')) : 'Désactivée'}</div></div>
      ${on && a ? `<span class="sev lv${a.sev}">${a.sev >= 3 ? 'DANGER' : a.sev === 2 ? 'ATTENTION' : 'INFO'}</span>` : `<span class="sev none">${on ? 'RAS' : 'OFF'}</span>`}</div></div>`).join('')}</div>
    <p class="disc">Les alertes sont recalculées à chaque actualisation et visibles à l’ouverture de la page. Aucune notification n’est envoyée quand la page est fermée.</p>`;
 }
@@ -3283,122 +3348,98 @@ function renderSettings(force) {
         return `<div class="fld wide"><label for="f-db-${i}">Choisir dans la base · ${comp.length} modèles en ${esc(k || 'dimension inconnue')}</label><select id="f-db-${i}" data-db="${i}"><option value="">—</option>
           ${grp(by('summer'), 'Été · ' + (k || ''))}${grp(by('winter'), 'Hiver · ' + (k || ''))}${grp(by('allseason'), '4 saisons · ' + (k || ''))}${grp(others, 'Autres dimensions')}</select></div>`; })()}
       ${bindIn(`cars.${i}.tire.brand`, c.tire.brand, { label: 'Marque du pneu', ph: 'ex. Michelin' })}${bindIn(`cars.${i}.tire.model`, c.tire.model, { label: 'Modèle exact', ph: 'ex. Pilot Sport 4' })}
-      ${bindIn(`cars.${i}.tire.size`, c.tire.size, { label: 'Dimensions / indices' })}${bindIn(`cars.${i}.tire.tread`, c.tire.tread, { label: 'Profondeur restante (mm)', type: 'number', num: 1, attrs: 'min="0" max="12" step="0.1"' })}
+      ${bindIn(`cars.${i}.tire.size`, c.tire.size, { label: 'Dimensions / indices' })}${(() => { const x = treadAxles(c.tire); return bindIn(`cars.${i}.tire.treadAv`, x.av, { label: 'Profondeur avant (mm)', type: 'number', num: 1, attrs: 'min="0" max="12" step="0.1" inputmode="decimal"' }) + bindIn(`cars.${i}.tire.treadAr`, x.ar, { label: 'Profondeur arrière (mm)', type: 'number', num: 1, attrs: 'min="0" max="12" step="0.1" inputmode="decimal"' }); })()}
+      <div class="fld"><label for="f-cars-${i}-tire-treadEst">Origine des profondeurs</label><select id="f-cars-${i}-tire-treadEst" data-bind="cars.${i}.tire.treadEst" data-num="1"><option value="0" ${c.tire.treadEst ? '' : 'selected'}>Mesurées (jauge)</option><option value="1" ${c.tire.treadEst ? 'selected' : ''}>Estimées</option></select></div>
       ${bindIn(`cars.${i}.tire.press`, c.tire.press, { label: 'Pression recommandée (bar)', ph: 'ex. 2,4 AV / 2,3 AR' })}${bindIn(`cars.${i}.tire.mounted`, c.tire.mounted, { label: 'Date de montage', type: 'date' })}
       ${bindIn(`cars.${i}.tire.dot`, c.tire.dot, { label: 'Code DOT (semaine + année)', ph: 'ex. 2321', attrs: 'inputmode="numeric" maxlength="4"' })}
       ${bindIn(`cars.${i}.tire.info`, c.tire.info, { label: 'Fiche du pneu (fabrication, indices…)', wide: 1 })}
       <div class="fld"><label for="odo-${i}">Compteur actuel (km)</label><div style="display:flex;gap:6px"><input type="number" id="odo-${i}" inputmode="numeric" min="0" step="1" placeholder="${lastOdo(c) ? lastOdo(c).km : 'ex. 42150'}" style="flex:1;min-width:0"><button class="btn sm" data-act="odo" data-i="${i}">Enregistrer</button></div></div>
-      <div class="fld"><label for="trd-${i}">Profondeur mesurée (mm)</label><div style="display:flex;gap:6px"><input type="number" id="trd-${i}" inputmode="decimal" min="0" max="12" step="0.1" placeholder="ex. 6,5" style="flex:1;min-width:0"><button class="btn sm" data-act="tread-add" data-i="${i}">Enregistrer</button></div></div>
+      <div class="fld wide"><label for="trd-${i}">Nouveau relevé de profondeur (mm)</label><div style="display:flex;gap:6px"><input type="number" id="trd-${i}" inputmode="decimal" min="0" max="12" step="0.1" placeholder="ex. 6,5" style="flex:1;min-width:0"><button class="btn sm" data-act="tread-add" data-i="${i}">Enregistrer</button></div>
+        <div style="display:flex;gap:6px;margin-top:6px"><select id="trdax-${i}" aria-label="Essieu du relevé" style="flex:1;min-width:0"><option value="both">AV + AR</option><option value="av">Avant seul</option><option value="ar">Arrière seul</option></select><select id="trdest-${i}" aria-label="Origine du relevé" style="flex:1;min-width:0"><option value="0">Mesure (jauge)</option><option value="1">Estimation</option></select></div></div>
       ${bindIn(`cars.${i}.tire.mountKm`, c.tire.mountKm, { label: 'Compteur au montage (km)', type: 'number', num: 1, attrs: 'step="1" inputmode="numeric"' })}
       <div class="fld"><span class="l">Permutation AV/AR</span><button class="btn sm" data-act="rot" data-i="${i}">Permutation faite aujourd’hui</button></div>
       ${bindIn(`cars.${i}.tire.pchk.date`, (c.tire.pchk || {}).date, { label: 'Dernier contrôle pression', type: 'date' })}${bindIn(`cars.${i}.tire.pchk.T`, (c.tire.pchk || {}).T, { label: 'Température au contrôle (°C)', type: 'number', num: 1, attrs: 'step="0.5"' })}</div>
     <div class="frow"><div class="fld wide"><label for="f-cars-${i}-plan-on">Pneus hiver prévus</label><select id="f-cars-${i}-plan-on" data-bind="cars.${i}.plan.on" data-num="1"><option value="1" ${c.plan.on ? 'selected' : ''}>Oui, suivre le montage</option><option value="0" ${c.plan.on ? '' : 'selected'}>Non</option></select></div>
-      ${bindIn(`cars.${i}.plan.brand`, c.plan.brand, { label: 'Marque' })}${bindIn(`cars.${i}.plan.model`, c.plan.model, { label: 'Modèle' })}${bindIn(`cars.${i}.plan.size`, c.plan.size, { label: 'Dimensions / indices' })}${bindIn(`cars.${i}.plan.date`, c.plan.date, { label: 'Arrivée / montage prévu', type: 'date' })}</div></div>`).join('');
+      ${bindIn(`cars.${i}.plan.brand`, c.plan.brand, { label: 'Marque' })}${bindIn(`cars.${i}.plan.model`, c.plan.model, { label: 'Modèle' })}${bindIn(`cars.${i}.plan.size`, c.plan.size, { label: 'Dimensions / indices' })}</div>
+    <div class="frow">
+      ${bindIn(`cars.${i}.plan.ordered`, c.plan.ordered, { label: 'Commande passée', type: 'date' })}${bindIn(`cars.${i}.plan.etaFrom`, c.plan.etaFrom, { label: 'ETA fournisseur · début', type: 'date' })}${bindIn(`cars.${i}.plan.etaTo`, c.plan.etaTo, { label: 'ETA fournisseur · fin', type: 'date' })}${bindIn(`cars.${i}.plan.etaChecked`, c.plan.etaChecked, { label: 'ETA vérifiée le', type: 'date' })}</div>
+    <div class="frow">
+      ${bindIn(`cars.${i}.plan.date`, c.plan.date, { label: 'Montage estimé', type: 'date' })}${bindIn(`cars.${i}.plan.appointmentDate`, c.plan.appointmentDate, { label: 'Date du rendez-vous', type: 'date' })}
+      <div class="fld"><label for="f-cars-${i}-plan-appt-ok">Rendez-vous confirmé</label><select id="f-cars-${i}-plan-appt-ok" data-bind="cars.${i}.plan.appointmentConfirmed" data-num="1"><option value="1" ${c.plan.appointmentConfirmed ? 'selected' : ''}>Oui</option><option value="0" ${c.plan.appointmentConfirmed ? '' : 'selected'}>Non</option></select></div></div></div>`).join('');
   const locSet = S.locs.map((l, i) => `<div class="frow">${bindIn(`locs.${i}.name`, l.name, { label: i === 0 ? 'Zone principale' : 'Lieu de travail / 2e zone', wide: 1 })}${bindIn(`locs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`locs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}</div>`).join('') +
     S.customs.map((l, i) => `<div class="frow">${bindIn(`customs.${i}.name`, l.name, { label: 'Destination', wide: 1 })}${bindIn(`customs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`customs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}<div class="fld"><span class="l">&nbsp;</span><button class="btn sm" data-act="loc-del" data-i="${i}">Retirer</button></div></div>`).join('');
-  el.innerHTML = `<div class="set-sec"><h3>Voitures et pneus</h3></div>${carSet}
-    <div class="set-sec"><h3>Lieux</h3>${locSet}
-      <div class="fld"><label for="geoQ">Ajouter une destination (vacances, trajet long)</label><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="search" id="geoQ" placeholder="Ville ou lieu" style="flex:1;min-width:140px"><button class="btn" data-act="geo-search">Rechercher</button></div></div><div class="hits" id="geoHits"></div></div>
-    <div class="set-sec"><h3>Base pneus</h3><p class="sub">${TIRE_DB_META.count} modèles · ${TIRE_DB_META.version ? 'version ' + TIRE_DB_META.version + ' du ' + esc(TIRE_DB_META.updated || '') : 'base de secours'} (${esc(TIRE_DB_META.source)}). ${S.cars.map(c => `${esc(c.short)} : ${compatible(c).length} compatibles`).join(' · ')}. Mise à jour automatique chaque mois ; ★ = nouveauté de moins de 60 jours.</p></div>
-    <div class="set-sec"><h3>Calibration terrain</h3><p class="sub">Correction apprise de tes retours : <b class="mono">${(() => { const c = calibBias(S.calib); return c.n ? (c.bias > 0 ? '+' : '') + f1(c.bias) + ' °C sur ' + c.n + ' retour(s)' : 'aucune'; })()}</b>. Elle s’applique à toutes les températures de chaussée estimées.</p><div class="chips"><button class="btn sm" data-act="calib-reset">Effacer la calibration</button></div></div>
-    <div class="set-sec"><h3>Ma position</h3><p class="sub">${GPS ? `Dernière position : <b>${esc(GPS.name)}</b>${GPS.sub ? ', ' + esc(GPS.sub) : ''} (±${GPS.acc || '?'} m, ${new Date(GPS.t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}). L’app s’ouvre sur ta position et se recale quand tu te déplaces de plus de 3 km. La position reste sur ce téléphone.` : 'Touche « 📍 Ma position » en haut pour suivre la météo de l’endroit où tu es.'}</p>
+  el.innerHTML = `<div class="set-sec"><h3>🚗 Voitures et pneus</h3></div>${carSet}
+    <div class="set-sec"><h3>📍 Lieux</h3>${locSet}
+      <div class="fld"><label for="geoQ">Ajouter une destination ou une adresse</label><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="search" id="geoQ" placeholder="Adresse, ville ou lieu" style="flex:1;min-width:140px"><button class="btn" data-act="geo-search">Rechercher</button></div><span class="sub">France : IGN / Base Adresse Nationale · monde : OpenStreetMap. Recherche uniquement quand tu appuies sur « Rechercher ».</span></div><div class="hits" id="geoHits"></div></div>
+    <div class="set-sec"><h3>📚 Base pneus</h3><p class="sub">${TIRE_DB_META.count} modèles · ${TIRE_DB_META.version ? 'version ' + TIRE_DB_META.version + ' du ' + esc(TIRE_DB_META.updated || '') : 'base de secours'} (${esc(TIRE_DB_META.source)}). ${S.cars.map(c => `${esc(c.short)} : ${compatible(c).length} compatibles`).join(' · ')}. Mise à jour automatique chaque mois ; ★ = nouveauté de moins de 60 jours.</p></div>
+    <div class="set-sec"><h3>🎯 Calibration terrain</h3><p class="sub">Corrections apprises de tes retours, lieu par lieu : <b class="mono">${(() => { const xs = allLocs().map(l => ({ l, c: calibFor(l.id) })).filter(x => x.c.n); return xs.length ? xs.map(x => esc(x.l.name) + ' ' + (x.c.applied ? (x.c.bias > 0 ? '+' : '') + f1(x.c.bias) + ' °C' : 'aucune (' + x.c.n + '/' + CALIB_MIN + ')')).join(' · ') : 'aucune'; })()}</b>. Un retour isolé est une observation : une correction n’est appliquée qu’à partir de ${CALIB_MIN} retours cohérents au même lieu, et seulement à ce lieu.</p><div class="chips"><button class="btn sm" data-act="calib-reset">Effacer la calibration</button></div></div>
+    <div class="set-sec"><h3>📡 Ma position</h3><p class="sub">${GPS ? `Dernière position : <b>${esc(GPS.name)}</b>${GPS.sub ? ', ' + esc(GPS.sub) : ''} (±${GPS.acc || '?'} m, ${new Date(GPS.t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}). L’app s’ouvre sur ta position et se recale quand tu te déplaces de plus de 3 km. La position reste sur ce téléphone.` : 'Touche « 📍 Ma position » en haut pour suivre la météo de l’endroit où tu es.'}</p>
       ${GPS ? '<div class="chips"><button class="btn sm" data-act="locate">Actualiser ma position</button><button class="btn sm" data-act="gps-forget">Oublier ma position</button></div>' : ''}</div>
-    <div class="set-sec"><h3>Notifications du matin</h3>
+    <div class="set-sec"><h3>🔔 Notifications du matin</h3>
       <p class="sub">Chaque matin de trajet domicile-travail (${daysTxt(S.work.days)}), de 90 à 5 minutes avant ton départ de ${esc(S.work.dep)}, un relais automatique (GitHub) recalcule le verdict du trajet toutes les 15 minutes depuis tes deux points de départ. Il t’envoie une notification si une voiture passe en 🟠 ou 🔴, s’il y a un risque de verglas ou du brouillard sous 500 m, puis une nouvelle uniquement si la situation s’aggrave (3 au maximum). Aucun nom de lieu n’apparaît dans les notifications. 1. Installe l’app gratuite <b>ntfy</b> (App Store). 2. <b>+</b> → sujet ci-dessous, serveur ntfy.sh. 3. Autorise les notifications.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="ntfyTopic" readonly value="${esc(window.TWRC_NTFY || '')}" style="flex:1;min-width:160px"><button class="btn" data-act="copy" data-for="ntfyTopic" data-v="${esc(window.TWRC_NTFY || '')}">Copier</button><button class="btn" data-act="ntfy-test">Envoyer un test</button></div></div>
-    <div class="set-sec"><h3>Widget écran d’accueil</h3>
+    <div class="set-sec"><h3>📱 Widget écran d’accueil</h3>
       <p class="sub">1. Installe l’app gratuite <b>Scriptable</b> (App Store). 2. Dans Scriptable, <b>+</b> → colle le script (bouton ci-dessous) → nomme-le « Race Control ». 3. Écran d’accueil : appui long → <b>+</b> → Scriptable → taille <b>moyenne</b> → touche le widget → Script : « Race Control ». Le widget se met à jour seul (iOS décide du rythme, en général toutes les 15 à 30 min).</p>
       <div class="chips"><button class="btn" data-act="copy-widget">Copier le script du widget</button><a class="btn" href="widget.js" target="_blank" rel="noopener">Voir le script</a></div></div>
-    <div class="set-sec"><h3>Moteur météo v2 (preuves)</h3><p class="sub">Observation : calculé et journalisé à côté du moteur actuel, sans changer les verdicts. Actif : le phénomène critique prouvé passe en tête de l’onglet Météo.</p><div class="seg" role="group" aria-label="Moteur v2">${[['off', 'Désactivé'], ['shadow', 'Observation'], ['on', 'Actif']].map(([v, t]) => `<button data-act="ev-flag" data-v="${v}" aria-pressed="${EV_FLAG() === v}">${t}</button>`).join('')}</div></div>
-    <div class="set-sec"><h3>Vigilance Météo-France</h3><div class="frow">${bindIn('dept.code', S.dept.code, { label: 'Département (numéro)', ph: 'ex. 33' })}${bindIn('dept.name', S.dept.name, { label: 'Nom du département', ph: 'ex. Gironde' })}</div></div>
-    <div class="set-sec"><h3>Ouverture automatique le matin</h3>
+    <div class="set-sec"><h3>🧪 Moteur météo v2 (preuves)</h3><p class="sub">Observation : calculé et journalisé à côté du moteur actuel, sans changer les verdicts. Actif : le phénomène critique prouvé passe en tête de l’onglet Météo.</p><div class="seg" role="group" aria-label="Moteur v2">${[['off', 'Désactivé'], ['shadow', 'Observation'], ['on', 'Actif']].map(([v, t]) => `<button data-act="ev-flag" data-v="${v}" aria-pressed="${EV_FLAG() === v}">${t}</button>`).join('')}</div></div>
+    <div class="set-sec"><h3>⚠️ Vigilance Météo-France</h3><div class="frow">${bindIn('dept.code', S.dept.code, { label: 'Département (numéro)', ph: 'ex. 33' })}${bindIn('dept.name', S.dept.name, { label: 'Nom du département', ph: 'ex. Gironde' })}</div></div>
+    <div class="set-sec"><h3>⏰ Ouverture automatique le matin</h3>
       <p class="sub">Sur iPhone : app <b>Raccourcis</b> → <b>Automatisation</b> → <b>+</b> → <b>Heure de la journée</b> (ex. 06:45, jours de semaine) → <b>Exécuter immédiatement</b> → action <b>Ouvrir les URL</b> avec l’adresse ci-dessous. La page s’ouvre seule chaque matin avec les verdicts à jour.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="autoUrl" readonly value="${esc(location.href.split('#')[0].split('?')[0])}" style="flex:1;min-width:160px"><button class="btn" data-act="copy" data-for="autoUrl" data-v="${esc(location.href.split('#')[0].split('?')[0])}">Copier</button></div></div>
-    <div class="set-sec"><h3>Trajet</h3><div class="frow">${bindIn('work.dep', S.work.dep, { label: 'Départ aller', type: 'time' })}${bindIn('work.ret', S.work.ret, { label: 'Départ retour', type: 'time' })}${bindIn('work.durMin', S.work.durMin, { label: 'Durée (min)', type: 'number', num: 1, attrs: 'min="5" max="1200" step="5"' })}</div>
+    <div class="set-sec"><h3>🧭 Trajet</h3><div class="frow">${bindIn('work.dep', S.work.dep, { label: 'Départ aller', type: 'time' })}${bindIn('work.ret', S.work.ret, { label: 'Départ retour', type: 'time' })}${bindIn('work.durMin', S.work.durMin, { label: 'Durée (min)', type: 'number', num: 1, attrs: 'min="5" max="1200" step="5"' })}</div>
       <div class="fld"><span class="l">Jours de trajet domicile-travail</span><div class="seg wdays">${WDN.map((n, k) => `<button data-act="wday" data-d="${k + 1}" aria-pressed="${commuteDays(S.work.days).includes(k + 1)}">${n}</button>`).join('')}</div></div>
       <p class="sub">Les autres jours (télétravail, repos) : pas de briefing domicile-travail, le briefing passe directement au prochain jour de trajet. L’agenda reste actif 7 j/7. Les notifications du matin suivent la configuration chiffrée du relais : si ton rythme change, fais-la mettre à jour aussi.</p></div>
-    <div class="set-sec"><h3>Analyse</h3><div class="frow"><div class="fld"><label for="f-horizon">Horizon des verdicts</label><select id="f-horizon" data-bind="horizon" data-num="1">${[6, 12, 24].map(h => `<option value="${h}" ${S.horizon === h ? 'selected' : ''}>${h} h</option>`).join('')}</select></div>${bindIn('rainThr', S.rainThr, { label: 'Forte pluie (mm/h)', type: 'number', num: 1, attrs: 'min="1" max="30" step="0.5"' })}</div></div>
+    <div class="set-sec"><h3>🚧 Événements routiers</h3><p class="sub">DATEX · Bison Futé / DIR. Couverture partielle du réseau national non concédé. Filtrage local sur le trajet OSRM ; aucune position transmise à DATEX. Alertes visuelles pendant le trajet, app ouverte. Vitesses et ETA trafic indisponibles.</p><div class="fld"><label for="f-road-on">Signalements sur mon trajet</label><select id="f-road-on" data-bind="road.on" data-num="1"><option value="1" ${S.road.on ? 'selected' : ''}>Activés</option><option value="0" ${S.road.on ? '' : 'selected'}>Désactivés</option></select></div></div>
+    <div class="set-sec"><h3>🔬 Analyse</h3><div class="frow"><div class="fld"><label for="f-horizon">Horizon des verdicts</label><select id="f-horizon" data-bind="horizon" data-num="1">${[6, 12, 24].map(h => `<option value="${h}" ${S.horizon === h ? 'selected' : ''}>${h} h</option>`).join('')}</select></div>${bindIn('rainThr', S.rainThr, { label: 'Forte pluie (mm/h)', type: 'number', num: 1, attrs: 'min="1" max="30" step="0.5"' })}</div></div>
     <div class="set-sec" id="bkSec"><h3>💾 Sauvegarde</h3>
       <p class="sub">Journal, DOT, usure, kilométrage, pressions, photos, calibration et réglages, dans un seul fichier <b>chiffré avec ton code</b>. À faire avant de changer de téléphone ou de vider Safari. Sur le nouveau téléphone : Importer, puis le même code. Dernière sauvegarde : <b>${lsGet('twrc.lastbackup') ? fmtDay(lsGet('twrc.lastbackup')) : 'jamais'}</b>.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="password" id="bkPw" autocomplete="current-password" placeholder="${lsGet('twrc.key') ? 'code (vide = code de déverrouillage)' : 'code, 8 caractères minimum'}" style="flex:1;min-width:160px">
         <button class="btn pri" data-act="bk-export">Exporter</button><label class="btn" for="bkFile">Importer</label><input type="file" id="bkFile" accept=".json,application/json,text/plain" hidden></div>
       <p class="sub" id="bkMsg" aria-live="polite"></p></div>
-    <div class="set-sec"><h3>Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
+    <div class="set-sec"><h3>🗂️ Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
       <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>
-    <div class="set-sec"><h3>Version</h3><p class="sub" id="verLine">${verLine()}</p></div>
-    <div class="set-sec"><h3>Diagnostic</h3><p class="sub">État interne, sans aucune coordonnée, adresse ni titre de rendez-vous : à copier pour signaler une anomalie.</p>
+    <div class="set-sec"><h3>🏷️ Version</h3><p class="sub" id="verLine">${verLine()}</p></div>
+    <div class="set-sec"><h3>🩺 Diagnostic</h3><p class="sub">Sources et précision à l’écran ; positions arrondies à environ 1 km dans la copie, sans adresse ni titre de rendez-vous.</p>
       <dl class="diag" id="diagBox">${diagHtml()}</dl><div class="chips"><button class="btn" data-act="diag-copy">Copier le diagnostic</button></div></div>`;
   loadVersion(); loadSwVersion();
 }
-/* ---------- diagnostic (observabilité) ---------- */
-// FRESH ≤ 15 min (décision possible) · AGING ≤ 60 min (à confirmer) · STALE au-delà · UNAVAILABLE sans donnée
-const freshState = ageMin => ageMin == null || !Number.isFinite(ageMin) ? 'UNAVAILABLE' : ageMin <= 15 ? 'FRESH' : ageMin <= 60 ? 'AGING' : 'STALE';
-const ageOf = t => { const v = typeof t === 'number' ? t : Date.parse(t || ''); return Number.isFinite(v) ? Math.max(0, (Date.now() - v) / 60000) : null; };
-const ageTxt = m => m == null ? '—' : m < 1 ? '< 1 min' : m < 90 ? Math.round(m) + ' min' : (m / 60).toFixed(1).replace('.', ',') + ' h';
-const noUrl = t => String(t || '').replace(/https?:\S+/g, 'url').slice(0, 120);
-let SWV = null;
-async function loadSwVersion() {
-  try {
-    const ctl = navigator.serviceWorker && navigator.serviceWorker.controller;
-    if (!ctl) { SWV = 'aucun (page non contrôlée)'; return; }
-    const ch = new MessageChannel();
-    SWV = await new Promise(res => { ch.port1.onmessage = e => res(e.data && e.data.static || 'inconnu'); setTimeout(() => res('sans réponse'), 1500); ctl.postMessage({ type: 'twrc-version' }, [ch.port2]); });
-  } catch (e) { SWV = 'indisponible'; }
-  renderDiag();
-}
-function diagRows() {
-  const r = RAW[UI.loc], wAge = r ? ageOf(r.t) : null, withData = allLocs().filter(l => RAW[l.id]).length;
-  let n = 0, bytes = 0; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^twrc\./.test(k)) { n++; bytes += k.length + (localStorage.getItem(k) || '').length; } } } catch (e) { /* stockage bloqué */ }
-  const calAge = CAL ? ageOf(CAL.updated) : null, relayAge = ageOf(RELAY_AT);
-  return [
-    ['Application', VER ? `prod-${VER.run} · ${String(VER.sha).slice(0, 7)}` : 'version locale'],
-    ['Service Worker', SWV || '…'],
-    ['Réseau', DEMO.on ? 'démo (aucune donnée réelle)' : offlineNow() ? 'hors ligne' : busy ? 'en ligne · actualisation en cours' : 'en ligne'],
-    ['Dernière actualisation', lastOk ? `${hmLocal(lastOk)} (il y a ${ageTxt(ageOf(lastOk))})` : 'aucune réussie' + (lastTry ? ` · tentative ${hmLocal(lastTry)}` : '')],
-    ['Météo du lieu affiché', r ? `${freshState(wAge)} · ${r.mode === 'live' ? 'LIVE' : r.mode === 'cache' ? 'cache' : r.mode} · ${ageTxt(wAge)}${ERR[UI.loc] ? ' · erreur : ' + noUrl(ERR[UI.loc]) : ''}` : 'UNAVAILABLE' + (ERR[UI.loc] ? ' · ' + noUrl(ERR[UI.loc]) : '')],
-    ['Lieux avec météo', `${withData}/${allLocs().length}`],
-    ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
-    ['Agenda', CAL ? `${freshState(calAge)} · relais il y a ${ageTxt(calAge)} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}` : CALDONE ? 'indisponible' : 'chargement…'],
-    ['Stockage local', `${n} clés · ${Math.round(bytes / 1024)} Ko`],
-    ...placeDiagRows(),
-    ...(() => { const car = labCar(), st = car ? tyreStateOf(car) : null; if (!st) return [['Pneus (Analyse)', 'aucun véhicule']];
-      const ax = a => `${a.model || 'modèle ?'} · ${a.size || 'dimension ?'} · DOT ${a.dot || '?'} · ${a.tread != null ? a.tread + ' mm' : 'profondeur ?'} · ${a.press != null ? a.press + ' bar' : 'pression ?'}`;
-      return [['Véhicule (Analyse)', st.vehicle.name], ['Monte active', st.active ? st.active.label : 'inconnue'], ['Avant', ax(st.axles.front)], ['Arrière', ax(st.axles.rear)],
-        ['Profil pneu', `${st.profile.kind} · ${st.profile.label}`], ['Données pneu', st.quality.map(q => q.st + ' ' + q.k).join(' · ')], ['Mémoire thermique', (() => { const h = ttLoad()[car.id]; return !h ? 'aucune' : tyreMemoryValid(h, st) ? `valide · ${h.at}` : 'ignorée (autre monte ou ancienne version)'; })()]]; })(),
-    ['Moteur v2 (preuves)', (() => { const L = shadowLoad(), s2 = evidenceScore(L.map(e => ({ pred: e.v2, obs: e.obs }))), s1 = evidenceScore(L.map(e => ({ pred: e.v1, obs: e.obs })));
-      return `mode ${EV_FLAG()} · ${L.length} entrées · vérités terrain ${s2.n} · faux négatifs v1 ${s1.fn} / v2 ${s2.fn} · faux positifs v1 ${s1.fp} / v2 ${s2.fp}`; })()],
-    ['Trajet vivant', `${LIVE.phase}${FIX ? ` · dernier relevé GPS il y a ${ageTxt(ageOf(FIX.ts))} (${Number.isFinite(FIX.acc) ? '±' + Math.round(FIX.acc) + ' m' : 'précision inconnue'})` : ' · aucun relevé GPS'}`]
-  ];
-}
-const diagHtml = () => diagRows().map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
-const diagText = () => `Race Control · diagnostic du ${new Date().toISOString()}\n` + diagRows().map(([k, v]) => `${k} : ${v}`).join('\n');
-function renderDiag() { const el = $('#diagBox'); if (el && $('#settings') && $('#settings').open) el.innerHTML = diagHtml(); }
-// version en production (version.json écrit par le déploiement automatique : n° de mise en production, date, commit)
-let VER = null;
-const verLine = () => VER ? `En ligne : <b>prod-${esc(String(VER.run))}</b> du ${new Date(VER.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} · commit <span class="mono">${esc(String(VER.sha).slice(0, 7))}</span> · ${VER.rollback ? '<b>retour arrière</b> après tests verts' : 'déployée après tests verts'}.` : 'Version de production : information indisponible.';
-async function loadVersion() {
-  if (VER || loadVersion.busy) return; loadVersion.busy = 1;
-  try { const v = await fetchJSON('version.json?t=' + Date.now(), 6000); if (v && v.run && v.sha && v.at) { VER = v; const e = $('#verLine'); if (e) e.innerHTML = verLine(); } } catch (e) { /* pas encore publiée */ }
-  loadVersion.busy = 0;
-}
-
+// @include app/diagnostics.js
 /* ---------- orchestration du rendu ---------- */
 function renderAll() {
-  recordJournal();
-  CX = computeCtx();
-  renderView(); renderStatus(); renderLocChips(); renderSrc(); renderNotice(); renderBanners(); renderBrf(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+  if (APP_CONTEXT.rendering) return;
+  APP_CONTEXT.rendering = true;
+  try {
+    appRefreshContext(); recordJournal();
+    renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+    renderWx(); renderLab(); renderDebrief(); labThermTick(false); roadSync();
+  } finally { APP_CONTEXT.rendering = false; }
 }
-function softRender() { // après un réglage : tout sauf le panneau de paramètres
-  CX = computeCtx(); renderBanners(); renderBrf(); renderCal(); renderCurrent(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts(); renderSrc();
-}
+function softRender() { renderAll(); } // paramètres inchangés ; mêmes sélecteurs de contexte
+
 
 /* ---------- événements ---------- */
+let geoSearchGen = 0;
+function commandFeedback(button, message, input) {
+  if (button) { button.textContent = message; button.setAttribute('aria-live', 'polite'); }
+  if (input) input.focus();
+}
 document.addEventListener('click', async e => {
   const j = e.target.closest('.jump a');
-  if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } return; }
+  if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); } return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act;
+  if (a === 'trip-dest-search') { await tripSearch('destination', t); return; }
+  if (a === 'trip-origin-search') { await tripSearch('origin', t); return; }
+  if (a === 'trip-dest-pick') { tripPick('destination', t.dataset.i); return; }
+  if (a === 'trip-origin-pick') { tripPick('origin', t.dataset.i); return; }
+  if (a === 'trip-dest-known') { tripPickKnown(t.dataset.id); return; }
+  if (a === 'trip-plan') { tripProgram(t); return; }
+  if (a === 'trip-plan-cancel') { tripCancelPlan(); return; }
+  if (a === 'day-destination') { if (t.dataset.agendaKey) appChooseAgendaDestination(t.dataset.agendaKey); else appChooseDestination(t.dataset.id || null); return; }
+  if (a === 'day-type') { appSetDayType(t.dataset.v); return; }
+  if (a === 'day-car') { appSetCar(t.dataset.id || null); return; }
+  if (a === 'decision-car-change') { decisionOpenCarChooser(); return; }
   if (a === 'refresh') refreshAll();
   else if (a === 'unlock') {
     const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
@@ -3414,42 +3455,47 @@ document.addEventListener('click', async e => {
   else if (a === 'return-home-undo') returnHomeUndo();
   else if (a === 'caldirect') { const k = t.dataset.k; S.calDirect = { ...(S.calDirect || {}) }; if (S.calDirect[k]) delete S.calDirect[k]; else S.calDirect[k] = 1; markEdit('calDirect'); saveSettings(); renderCal(); renderBrf(); renderTenue(); }
   else if (a === 'tip') { TIP_OFF += +t.dataset.d || 1; renderTip(); }
-  else if (a === 'nocode') { lsSet('twrc.nocode', '1'); renderNotice(); const d = $('#settings'); if (d) { d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
-  else if (a === 'withcode') { try { localStorage.removeItem('twrc.nocode'); } catch (err) { /* stockage */ } renderNotice(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  else if (a === 'nocode') { lsSet('twrc.nocode', '1'); renderNotice(); roadSync(); const d = $('#settings'); if (d) { d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); } }
+  else if (a === 'withcode') { try { localStorage.removeItem('twrc.nocode'); } catch (err) { /* stockage */ } renderNotice(); roadSync(); window.scrollTo({ top: 0, behavior: scrollBehavior() }); }
   else if (a === 'bk-export') backupExport();
-  else if (a === 'view') { UI.view = ['meteo', 'tenue', 'analyse'].includes(t.dataset.v) ? t.dataset.v : 'pneus'; lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  else if (a === 'view') chooseView(t.dataset.v);
+  else if (a === 'brf-lab') { chooseView('analyse'); try { window.scrollTo(0, 0); } catch (e) { /* défilement indisponible */ } }
+  else if (a === 'weather-details') chooseView('meteo');
   else if (a === 'outfit-day') { UI.outfitDay = t.dataset.v === '1' ? 1 : 0; renderTenue(); }
-  else if (a === 'outfit-occasion') { UI.outfitOccasion = ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing'; lsSet('twrc.outfit.occasion', UI.outfitOccasion); renderTenue(); }
+  else if (a === 'outfit-occasion') { appAction(() => { appDay().outfitChoice = { date: addMin(placeToday() + 'T00:00', UI.outfitDay * 1440).slice(0, 10), occasion: ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing' }; }); }
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
-  else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
-  else if (a === 'loc') { UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false; renderAll(); }
+  else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; GEO.raw = null; GEO.error = null; GEO.reason = ''; GEO.status = 'suivi désactivé'; PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; alertLoc('Suivi de position désactivé.'); WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
+  else if (a === 'loc') { APP_CONTEXT.weatherPreview = t.dataset.id; UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false; renderAll(); }
   else if (a === 'locs-toggle') { UI.locsOpen = !UI.locsOpen; renderLocChips(); }
   else if (a === 'tire') { const c = S.cars.find(x => x.id === t.dataset.car); switchTire(c, t.dataset.type); const ci = S.cars.indexOf(c); markEdit(`cars.${ci}.tire`); markEdit(`cars.${ci}.sets`); saveSettings(); renderSettings(); softRender(); }
   else if (a === 'fb') {
-    const m = M[UI.loc]; if (!m || m.nowI < 0) return;
-    const x = m.hs[m.nowI], raw = x.Tr != null ? Math.round((x.Tr - ROAD_BIAS) * 10) / 10 : null;
+    const m = M[UI.loc]; if (!m || m.nowI < 0) { commandFeedback(t, 'Météo indisponible pour ce relevé'); return; }
+    const x = m.hs[m.nowI], raw = x.Tr != null ? Math.round((x.Tr - (m.roadBias || 0)) * 10) / 10 : null;
     S.calib = (S.calib || []).concat([{ t: m.nowStr, loc: UI.loc, kind: t.dataset.k, Tr: raw, T: x.T }]).slice(-30);
     saveSettings(); applyCalib(); rebuild(); renderAll();
   }
   else if (a === 'photo-del') { const c = S.cars[+t.dataset.i]; if (c) { delete c.photo; saveSettings(); renderSettings(); softRender(); } }
   else if (a === 'odo' || a === 'tread-add' || a === 'rot') {
     const i = +t.dataset.i, c = S.cars[i], today = (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10);
-    if (a === 'odo') { const v = parseFloat(($('#odo-' + i) || {}).value); if (!isFinite(v) || v <= 0) return; c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).slice(-60); }
-    if (a === 'tread-add') { const v = parseFloat(String(($('#trd-' + i) || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) return; const lo = lastOdo(c);
-      c.tire.treads = (c.tire.treads || []).concat([{ d: today, mm: Math.round(v * 10) / 10, km: lo ? lo.km : null }]).slice(-30); c.tire.tread = Math.round(v * 10) / 10; }
+    if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; }
+    if (a === 'odo') { const input = $('#odo-' + i), v = parseFloat((input || {}).value); if (!isFinite(v) || v < 0) { commandFeedback(t, 'Saisis un compteur positif ou nul', input); return; } c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).slice(-60); }
+    if (a === 'tread-add') { const input = $('#trd-' + i), v = parseFloat(String((input || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) { commandFeedback(t, 'Saisis une profondeur de 0 à 12 mm', input); return; } const lo = lastOdo(c);
+      const mm = Math.round(v * 10) / 10, ax = ($('#trdax-' + i) || {}).value || 'both', est = ($('#trdest-' + i) || {}).value === '1';
+      c.tire.treads = (c.tire.treads || []).concat([{ d: today, mm, km: lo ? lo.km : null, ...(ax !== 'both' ? { ax } : {}), ...(est ? { est: 1 } : {}) }]).slice(-30);
+      setTreadAxle(c.tire, ax === 'av' || ax === 'ar' ? ax : 'both', mm); c.tire.treadEst = est ? 1 : 0; }
     if (a === 'rot') { const lo = lastOdo(c); if (!lo) { t.textContent = 'Enregistre d’abord le compteur'; return; } c.tire.lastRot = lo.km; }
-    saveSettings(); renderSettings(); softRender();
+    saveSettings(); renderSettings(); softRender(); commandFeedback($(`#settings [data-act="${a}"][data-i="${i}"]`), 'Enregistré');
   }
   else if (a === 'calib-reset') { S.calib = []; saveSettings(); applyCalib(); rebuild(); renderSettings(); renderAll(); }
-  else if (a === 'pchk') { const c = S.cars.find(x => x.id === t.dataset.car), m = M[UI.loc]; if (!c || !m) return; c.tire.pchk = { date: m.nowStr.slice(0, 10), T: m.cur.T != null ? Math.round(m.cur.T * 10) / 10 : null }; saveSettings(); renderSettings(); softRender(); }
+  else if (a === 'pchk') { const c = S.cars.find(x => x.id === t.dataset.car), m = M[UI.loc]; if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; } c.tire.pchk = { date: m ? m.nowStr.slice(0, 10) : new Date().toISOString().slice(0, 10), T: m && m.cur.T != null ? Math.round(m.cur.T * 10) / 10 : null }; saveSettings(); renderSettings(); softRender(); }
   else if (a === 'ntfy-test') {
     try { const r = await fetch('https://ntfy.sh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: window.TWRC_NTFY, title: 'Race Control · test', message: 'Les notifications du matin arrivent bien sur ce téléphone.', tags: ['white_check_mark'], click: location.href.split('#')[0] }) });
       t.textContent = r.ok ? 'Test envoyé' : 'Échec (' + r.status + ')'; } catch (err) { t.textContent = 'Réseau indisponible'; }
   }
   else if (a === 'copy-widget') {
     try {
-      if (!window.__wjs) { const r = await fetch('widget.js', { cache: 'no-store' }); window.__wjs = await r.text(); }
+      if (!window.__wjs) { const r = await fetch('widget.js', { cache: 'no-store' }); if (!r.ok) throw new Error('Script indisponible'); window.__wjs = await r.text(); }
       const home = S.locs[0], work = S.locs[1];
       const cfg = { home: { id: home.id, name: home.name, lat: home.lat, lon: home.lon }, work: { id: work.id, name: work.name, lat: work.lat, lon: work.lon }, dep: S.work.dep, durMin: S.work.durMin, days: commuteDays(S.work.days),
         cars: S.cars.map(c => ({ short: c.short, sporty: c.sporty, tire: { type: c.tire.type, size: c.tire.size, tread: c.tire.tread ?? null, dot: c.tire.dot || '' }, plan: { on: 0 } })) };
@@ -3459,44 +3505,60 @@ document.addEventListener('click', async e => {
     catch (err) { t.textContent = 'Copie impossible : ouvre « Voir le script »'; }
   }
   else if (a === 'diag-copy') { renderDiag(); try { await navigator.clipboard.writeText(diagText()); t.textContent = 'Copié'; } catch (err) { t.textContent = 'Copie impossible'; } }
-  else if (a === 'copy') { const v = t.dataset.v; try { await navigator.clipboard.writeText(v); t.textContent = 'Copié'; } catch (err) { const i = document.getElementById(t.dataset.for); if (i) { i.focus(); i.select(); } } }
+  else if (a === 'copy') { const v = t.dataset.v; try { await navigator.clipboard.writeText(v); t.textContent = 'Copié'; } catch (err) { const i = document.getElementById(t.dataset.for); if (i) { i.focus(); i.select(); } commandFeedback(t, i ? 'Texte sélectionné : copie manuellement' : 'Copie impossible'); } }
   else if (a === 'from') { if (UI.dir === 'go') { S.work.from = t.dataset.id; markEdit('work.from'); } else { S.work.to = t.dataset.id; markEdit('work.to'); } saveSettings(); softRender(); }
   else if (a === 'dir') { UI.dir = t.dataset.d; UI.dayOff = null; softRender(); }
   else if (a === 'day') { UI.dayOff = +t.dataset.off; softRender(); }
+  else if (a === 'debrief-condition') debriefPick('condition', t.dataset.v);
+  else if (a === 'debrief-grip') debriefPick('grip', t.dataset.v);
+  else if (a === 'debrief-save') debriefSave();
+  else if (a === 'debrief-later') debriefLater();
+  else if (a === 'debrief-open') debriefOpen(t.dataset.key);
+  else if (a === 'debrief-clear') debriefClear();
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
   else if (a === 'trip-start') liveStart(t.dataset.key);
   else if (a === 'lab-drive-forget') {
     const car = labCar(); if (!car || DEMO.on || LIVE.phase === 'active') return;
-    delete ttLoad()[car.id]; lsSet(TT_KEY, JSON.stringify(ttLoad()));
+    const history = ttLoad(); delete history[car.id]; lsSet(TT_KEY, JSON.stringify(history));
     LAB_DRIVE_NOTE[car.id] = { text: 'Historique thermique oublié pour cette voiture.' };
     renderLab.clearDriveDraft = true; renderAll();
   }
   else if (a === 'place-confirm') placeConfirm(t.dataset.place, t.dataset.how);
+  else if (a === 'place-toggle') {
+    const d = placeDisclosure(placeNow()), focused = document.activeElement === t;
+    UI.placeExpanded = d.expanded ? null : d.key; renderPlace();
+    const button = $('#placeBar [data-act=place-toggle]'); if (focused && button) button.focus({ preventScroll: true });
+  }
   else if (a === 'place-leave') placeLeave();
   else if (a === 'ev-report') reportAdd(t.dataset.k);
   else if (a === 'ev-flag') { S.flags = S.flags || {}; S.flags.weatherEvidenceV2 = t.dataset.v; saveSettings(); renderSettings(true); renderAll(); }
-  else if (a === 'trip-undo') { const d = LIVE.lastDone; if (d) { delete LIVE.done[d.key]; liveDonePersist(d.key, null); LIVE.noAuto[d.key] = Date.now() + 10 * 60e3; LIVE.lastDone = null; renderAll(); } }
+  else if (a === 'trip-undo') appAction(() => { const d = LIVE.lastDone; if (d) { USER_STORE.state.debrief = Debrief.undo(USER_STORE.state.debrief, d.key); if (TRIPEND && TRIPEND.key === d.key) TRIPEND = null; DEBRIEF_FORM = null; delete LIVE.done[d.key]; liveDonePersist(d.key, null); LIVE.noAuto[d.key] = Date.now() + 10 * 60e3; if (PLACE.conf && (d.placeId === PLACE.conf.placeId || PLACE.conf.at === d.at)) PLACE.conf = null; LIVE.lastDone = null; } });
   else if (a === 'tripmap') { lsSet('twrc.tripmap', lsGet('twrc.tripmap') === '1' ? '0' : '1'); renderBrf(); }
   else if (a === 'wday') {
     const d = +t.dataset.d, cur = commuteDays(S.work.days).slice(), k = cur.indexOf(d);
-    if (k >= 0) { if (cur.length === 1) return; cur.splice(k, 1); } else cur.push(d);   // au moins un jour de trajet
+    if (k >= 0) { if (cur.length === 1) { commandFeedback(t, 'Garde au moins un jour de trajet'); return; } cur.splice(k, 1); } else cur.push(d);   // au moins un jour de trajet
     S.work.days = cur.sort((a, b) => a - b); markEdit('work.days'); UI.dayOff = null; saveSettings(); renderSettings(); softRender();
   }
-  else if (a === 'bcar') { UI.bcar = t.dataset.car; renderBrief(); }
+  else if (a === 'bcar') { appSetCar(t.dataset.car); }
   else if (a === 'demo') startDemo(t.dataset.scn || 'froid');
   else if (a === 'demo-sel') startDemo(($('#demoSel') || {}).value || 'froid');
   else if (a === 'demo-off') { DEMO.on = false; rebuild(); renderAll(); refreshAll(); }
-  else if (a === 'labcar') { UI.labCar = t.dataset.car; renderLab(); }
-  else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  else if (a === 'goset') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
-  else if (a === 'reset') { S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
+  else if (a === 'mount-open') mountOpen(t.dataset.car);
+  else if (a === 'mount-save') mountSave();
+  else if (a === 'mount-cancel') { MOUNT_FORM = null; renderSeason(); }
+  else if (a === 'labcar') { appSetCar(t.dataset.car); }
+  else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); }
+  else if (a === 'goset') { UI.locsOpen = false; renderLocChips(); const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
+  else if (a === 'reset') { PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; USER_STORE.state.dayContext = {}; APP_CONTEXT.weatherPreview = null; DECISION_HISTORY.reset(); liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
   else if (a === 'geo-search') {
-    const q = ($('#geoQ').value || '').trim(), box = $('#geoHits'); if (q.length < 2) return;
+    const input = $('#geoQ'), q = (input.value || '').trim(), box = $('#geoHits'), gen = ++geoSearchGen; window.__hits = [];
+    if (q.length < 2) { box.innerHTML = '<span class="sub" role="status">Saisis au moins deux caractères.</span>'; input.focus(); return; }
     box.innerHTML = '<span class="sub">Recherche…</span>';
-    try { const r = await geocode(q); window.__hits = r; box.innerHTML = r.length ? r.map((h, i) => `<button data-act="geo-add" data-i="${i}">${esc(h.name)} <span class="muted">· ${esc(h.sub)} · ${h.lat.toFixed(2)}, ${h.lon.toFixed(2)}</span></button>`).join('') : '<span class="sub">Aucun résultat.</span>'; }
-    catch (err) { box.innerHTML = '<span class="sub">Recherche impossible (réseau indisponible). Tu peux aussi saisir latitude et longitude à la main.</span>'; }
+    const current = () => gen === geoSearchGen && box.isConnected && input.isConnected && input.value.trim() === q;
+    try { const r = await geocode(q); if (!current()) return; window.__hits = r; box.innerHTML = r.length ? r.map((h, i) => `<button data-act="geo-add" data-i="${i}">${esc(h.name)} <span class="muted">· ${esc(h.sub)} · ${h.provider ? esc(h.provider) + ' · ' : ''}${h.lat.toFixed(4)}, ${h.lon.toFixed(4)}</span></button>`).join('') : '<span class="sub">Aucun résultat. Vérifie le numéro, la rue et le code postal.</span>'; }
+    catch (err) { if (current()) box.innerHTML = '<span class="sub" role="status">Recherche impossible (réseau indisponible). Tu peux aussi saisir latitude et longitude à la main.</span>'; }
   } else if (a === 'geo-add') {
-    const h = (window.__hits || [])[+t.dataset.i]; if (!h || S.customs.length >= 4) return;
+    const h = (window.__hits || [])[+t.dataset.i]; if (!h) { commandFeedback(t, 'Relance la recherche'); return; } if (S.customs.length >= 4) { commandFeedback(t, 'Limite de quatre destinations : supprime un lieu'); return; } geoSearchGen++;
     markEdit('customs'); S.customs.push({ id: 'c' + Date.now().toString(36), name: h.name, sub: h.sub, dept: h.dept || '', lat: +h.lat.toFixed(4), lon: +h.lon.toFixed(4) });
     saveSettings(); renderSettings(); refreshAll();   // une destination ajoutée ne remplace jamais le lieu de travail (domicile-travail, « Au travail »)
   } else if (a === 'loc-del') {
@@ -3504,6 +3566,7 @@ document.addEventListener('click', async e => {
     saveSettings(); renderSettings(); rebuild(); renderAll();
   }
 });
+document.addEventListener('keydown', e => { if (e.target.id === 'geoQ' && e.key === 'Enter') { e.preventDefault(); const b = $('[data-act="geo-search"]'); if (b) b.click(); } });
 function resizePhoto(file, maxW) {
   return new Promise((res, rej) => {
     const rd = new FileReader();
@@ -3518,7 +3581,9 @@ function resizePhoto(file, maxW) {
 document.addEventListener('submit', async e => {
   if (e.target && e.target.id === 'labLastDriveForm') {
     e.preventDefault(); const form = e.target, car = labCar(); if (!car || form.dataset.car !== car.id || DEMO.on) return;
-    const data = new FormData(form), result = tyreLabLastDrive(labInput(car), { at: data.get('at'), minutes: data.get('minutes'), kind: data.get('kind') });
+    const data = new FormData(form), input = labInput(car);
+    if (LIVE.phase === 'active') input.drive = { ...(input.drive || {}), active: true };
+    const result = tyreLabLastDrive(input, { at: data.get('at'), minutes: data.get('minutes'), kind: data.get('kind') });
     if (result.ok) {
       ttLoad()[car.id] = result.history; lsSet(TT_KEY, JSON.stringify(ttLoad()));
       LAB_DRIVE_NOTE[car.id] = { text: 'Roulage enregistré sur cet appareil. Température estimée à partir de votre saisie.' };
@@ -3533,10 +3598,11 @@ document.addEventListener('submit', async e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t && t.dataset && t.dataset.tripField) { tripFieldChanged(t); return; }
   if (t.id === 'bkFile') { if (t.files && t.files[0]) backupImport(t.files[0]); t.value = ''; return; }
   if (t.dataset.photo != null && t.files && t.files[0]) {
     const car = S.cars[+t.dataset.photo];
-    resizePhoto(t.files[0], 360).then(url => { car.photo = url; saveSettings(); renderSettings(); softRender(); }).catch(() => {});
+    resizePhoto(t.files[0], 360).then(url => { car.photo = url; saveSettings(); renderSettings(); softRender(); }).catch(() => { const label = t.closest('label'); if (label) { label.title = 'Image illisible : choisis une autre photo'; const msg = label.querySelector('span'); if (msg) { msg.textContent = 'Image illisible'; msg.setAttribute('role', 'status'); } else label.insertAdjacentHTML('beforeend', '<span role="status">Image illisible</span>'); } });
     return;
   }
   if (t.dataset.actChange === 'demoScn') { startDemo(t.value); return; }
@@ -3554,7 +3620,9 @@ document.addEventListener('change', e => {
     const pm = /^cars\.(\d+)\.tire\.pchk\./.exec(t.dataset.bind);
     if (pm && !S.cars[+pm[1]].tire.pchk) S.cars[+pm[1]].tire.pchk = { date: '', T: null };
     const tm = /^cars\.(\d+)\.tire\.type$/.exec(t.dataset.bind);
-    if (tm) switchTire(S.cars[+tm[1]], v); else setPath(S, t.dataset.bind, v);
+    const trm = /^cars\.(\d+)\.tire\.tread(Av|Ar)$/.exec(t.dataset.bind);
+    if (tm) switchTire(S.cars[+tm[1]], v); else if (trm) setTreadAxle(S.cars[+trm[1]].tire, trm[2] === 'Av' ? 'av' : 'ar', v); else setPath(S, t.dataset.bind, v);
+    if (trm) { markEdit(`cars.${trm[1]}.tire.tread`); markEdit(`cars.${trm[1]}.tire.treadAv`); markEdit(`cars.${trm[1]}.tire.treadAr`); }
     if (tm) { markEdit(`cars.${tm[1]}.tire`); markEdit(`cars.${tm[1]}.sets`); } else markEdit(t.dataset.bind);
     // modèle reconnu dans la base : le type de pneu se met à jour tout seul
     const bm = /^cars\.(\d+)\.tire\.(brand|model)$/.exec(t.dataset.bind);
@@ -3566,51 +3634,8 @@ document.addEventListener('change', e => {
     if (b.startsWith('dept.')) fetchVigi();
     if (b.startsWith('work.')) UI.dayOff = b === 'work.dep' || b === 'work.ret' ? null : UI.dayOff;
     softRender();
-    if (/\.tire\.type$/.test(b) || /plan\.on$/.test(b)) renderSettings();
+    if (/\.tire\.type$/.test(b) || /plan\.on$/.test(b) || /\.tire\.tread(Av|Ar)$/.test(b)) renderSettings();
   }
 });
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#cfg=')) location.reload(); });
-let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (CX) drawChart(); }, 150); });
-let gpsResumeAt = -Infinity;
-function resumeGps() {
-  if (document.hidden || !S.gpsAuto || location.protocol !== 'https:' || Date.now() - gpsResumeAt < 750) return;
-  gpsResumeAt = Date.now(); stopGps(); startWatch(LIVE.phase === 'active', true); locate(false, true);
-}
-// iOS peut abandonner le watch et une demande ponctuelle pendant la veille : recréer les deux à la reprise.
-document.addEventListener('visibilitychange', () => { if (document.hidden) { stopGps(); gpsResumeAt = -Infinity; } else { tripCancelSchedulePurge(); resumeGps(); } });
-['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { tripCancelSchedulePurge(); resumeGps(); }));
-// actualisation automatique : toutes les 5 min tant que l'app est à l'écran, et dès le retour dans l'app
-// (vérification toutes les 30 s : résiste à la mise en veille des minuteurs par iOS)
-const AUTO_MS = 5 * 60e3;
-function autoTick() {
-  if (document.hidden) return;
-  if (!DEMO.on && expireLive()) { rebuild(); renderAll(); }   // reprise : la donnée vieillie est requalifiée avant toute requête
-  if (DEMO.on || busy || (navigator.onLine === false)) return;
-  const ref = Math.max(lastOk || 0, lastTry || 0);
-  if (Date.now() - ref >= AUTO_MS) refreshAll();
-}
-setInterval(autoTick, 30e3);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });
-function networkChanged() {
-  if (offlineNow()) { markOfflineCache(); rebuild(); renderAll(); loadCalendar(); }
-  else { renderStatus(); refreshAll(); }
-}
-window.addEventListener('offline', networkChanged);
-window.addEventListener('online', networkChanged);
-['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => setTimeout(autoTick, 300)));
-
-/* ---------- démarrage ---------- */
-function registerSW() {
-  try { if ('serviceWorker' in navigator && location.protocol === 'https:' && /github\.io$/.test(location.hostname)) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {}); } catch (e) { /* non disponible */ }
-}
-document.addEventListener('toggle', e => { if (e.target && e.target.id === 'settings' && e.target.open) renderSettings(true); }, true);
-(function init() {
-  if (LOCKED() && lsGet('twrc.key')) unseal(lsGet('twrc.key')).then(ok => { if (ok) location.reload(); });
-  registerSW(); refreshTireDB(); tripCancelSchedulePurge();
-  if (GPS && !(Number.isFinite(GPS.acc) && GPS.acc <= PLACE_ACC_APPROX)) { GPS = null; try { localStorage.removeItem('twrc.gps'); } catch (e) { /* stockage */ } }   // ancienne position réseau : jamais une position
-  if (S.gpsAuto && GPS) UI.loc = 'gps';
-  { const c = placeNow(); if (c.source === 'manual') UI.loc = c.place.id; }   // lieu confirmé : contexte de tous les modules (origine verrouillée)
-  if (S.gpsAuto && location.protocol === 'https:') setTimeout(() => locate(false), 400);
-  loadCache(); if (offlineNow()) markOfflineCache(); rebuild(); renderSettings(); renderAll();
-  if (offlineNow()) loadCalendar(); else refreshAll();
-})();
+// @include app/lifecycle.js

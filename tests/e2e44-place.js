@@ -1,6 +1,6 @@
-// Lieu courant de confiance (PC au travail, VPN) : « Bien arrivé », « Je suis déjà au travail », « Je quitte le travail »,
-// « Bien rentré » ; une position réseau (IP / VPN) ne remplace jamais un lieu confirmé ni ne s'affiche comme position réelle.
-// Lieux fictifs : Maison test (48,85 ; 2,35), Travail test (48,90 ; 2,25), « Ville VPN » ≈ 100 km plus loin (IP de sortie simulée).
+// Lieu courant de confiance (PC au travail, COARSE) : « Bien arrivé », « Je suis déjà au travail », « Je quitte le travail »,
+// « Bien rentré » ; une position réseau (IP / COARSE) ne remplace jamais un lieu confirmé ni ne s'affiche comme position réelle.
+// Lieux fictifs : Maison test (48,85 ; 2,35), Travail test (48,90 ; 2,25), « Ville approximative test » ≈ 100 km plus loin (fournisseur navigateur inconnu).
 const fs = require('fs'), vm = require('vm');
 const src = fs.readFileSync('engine.js', 'utf8') + fs.readFileSync('demo.js', 'utf8');
 const PW = fs.readFileSync('.passphrase', 'utf8').trim(), SP = process.env.SP, html = fs.readFileSync('site/index.html', 'utf8');
@@ -10,7 +10,7 @@ const KNOWN = /open-meteo\.com|opendatasoft\.com|ipoower\.github\.io|rainviewer|
 let fail = 0; const rows = [], errors = [], hosts = new Set();
 const check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ? '' : ' · ' + String(d).slice(0, 400))); if (!ok) fail++; };
 const VP = { iphone: { viewport: { width: 414, height: 896 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 }, pc: { viewport: { width: 1280, height: 800 } } };
-const VPN = { lat: 48.75, lon: 0.95, acc: 20000 }, VPN2 = { lat: 49.4, lon: 1.1, acc: 35000 }, WORK = { lat: 48.9005, lon: 2.2502, acc: 25 }, HOME = { lat: 48.8502, lon: 2.3501, acc: 20 };
+const COARSE = { lat: 48.75, lon: 0.95, acc: 20000 }, COARSE2 = { lat: 49.4, lon: 1.1, acc: 35000 }, WORK = { lat: 48.9005, lon: 2.2502, acc: 25 }, HOME = { lat: 48.8502, lon: 2.3501, acc: 20 };
 
 async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock = true, geo = null }) {
   const T0 = new Date(at).getTime();
@@ -43,7 +43,7 @@ async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock =
     }
     if (u.includes('/race-control/calendar.sealed.json')) return r.fulfill({ status: 200, contentType: 'application/json', body: fs.readFileSync(SP + '/cal.fake.json', 'utf8') });
     if (u.includes('router.project-osrm.org')) return r.abort();
-    if (u.includes('api.bigdatacloud.net')) { S.rev = (S.rev || 0) + 1; const q = new URL(u).searchParams; return J({ locality: +q.get('longitude') < 1.5 ? 'Ville VPN' : 'Ville proche', city: '', principalSubdivision: 'Région test' }); }
+    if (u.includes('api.bigdatacloud.net')) { S.rev = (S.rev || 0) + 1; const q = new URL(u).searchParams; return J({ locality: +q.get('longitude') < 1.5 ? 'Ville approximative test' : 'Ville proche', city: '', principalSubdivision: 'Région test' }); }
     if (u.includes('api.rainviewer.com')) { const n = Math.floor(T0 / 600000) * 600; return J({ version: '2.0', host: 'https://tilecache.rainviewer.com', radar: { past: [{ time: n, path: '/v2/radar/' + n }] } }); }
     if (/tilecache\.rainviewer|arcgisonline|tile\.openstreetmap/.test(u)) return r.fulfill({ status: 200, contentType: 'image/png', body: PX });
     if (u.includes('leaflet@1.9.4/dist/leaflet.js')) return r.fulfill({ status: 200, contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' }, body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') });
@@ -64,7 +64,7 @@ const st = p => p.evaluate(() => { const b = document.getElementById('placeBar')
   const dd = [...document.querySelectorAll('#diagBox dt')].reduce((o, dt) => (o[dt.textContent] = dt.nextElementSibling.textContent, o), {});
   return { bar: b ? b.innerText.replace(/\s+/g, ' ').trim() : '', loc: UI.loc, conf: PLACE.conf, gps: GPS ? { name: GPS.name, acc: GPS.acc } : null, chips: document.getElementById('locChips').innerText.replace(/\s+/g, ' '),
     stored: localStorage.getItem('twrc.place.v1'), diag: dd, brief: (document.getElementById('secBrf').innerText || '').replace(/\s+/g, ' ') }; });
-const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }, g); await s.p.evaluate(() => locate(true)); await s.settle(4); };
+const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }, g); await s.p.evaluate(() => locate(true)); await s.settle(2); await s.p.evaluate(() => window.__geoPush()); await s.settle(2); };
 
 (async () => {
   const b = await BR.launch();
@@ -73,17 +73,17 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     let s = await session(b, { at: '2026-10-05T06:50:00+02:00' }); let x = await st(s.p);
     check('1 · trajet aller en cours : « ARRIVÉE · 🏢 Travail test » et bouton « ✅ Bien arrivé »', /ARRIVÉE · 🏢 Travail test/.test(x.bar) && /✅ Bien arrivé/.test(x.bar), x.bar);
     await s.p.locator('#placeBar [data-act=place-confirm][data-how=arrival]').click(); await s.settle(2); x = await st(s.p);
-    check('1 · confirmé : « 🏢 AU TRAVAIL · Confirmé à 06:50 · source : confirmation utilisateur »', /🏢 AU TRAVAIL/.test(x.bar) && /Confirmé à 06:50 · source : confirmation utilisateur/.test(x.bar) && x.loc === 'work', JSON.stringify({ bar: x.bar, loc: x.loc }));
+    check('1 · confirmé compact : AU TRAVAIL, heure et provenance canonique', /🏢 AU TRAVAIL/.test(x.bar) && /Confirmé 06:50/.test(x.bar) && /^manual/.test(x.diag['Source retenue']) && x.loc === 'work', JSON.stringify({ bar: x.bar, loc: x.loc }));
     check('1 · trajet aller terminé proprement (plus affiché en cours)', !/Trajet en cours · domicile-travail/.test(x.brief) && /commute\|/.test(await s.p.evaluate(() => localStorage.getItem('twrc.tripdone') || '')), x.brief.slice(0, 200));
     check('1 · stockage : identifiant de lieu et heure seulement, aucune coordonnée', !!x.stored && /"placeId":"work"/.test(x.stored) && !/lat|lon|48\.|2\.2/.test(x.stored), x.stored);
-    // 2. VPN : position IP à ~100 km, précision 20 km → ignorée
-    await locateAt(s, VPN); x = await st(s.p);
-    check('2 · VPN à ~100 km juste après la confirmation : le lieu reste Travail', /🏢 AU TRAVAIL/.test(x.bar) && x.loc === 'work' && !x.gps, JSON.stringify({ bar: x.bar, loc: x.loc, gps: x.gps }));
-    check('2 · VPN signalé discrètement, jamais affiché comme position réelle', /VPN\/réseau ignoré pour la position physique/.test(x.bar) && !/Ville VPN/.test(x.chips), x.bar + ' | ' + x.chips);
-    check('2 · diagnostic : brut, réseau, lieu logique, source gagnante, source écartée', /Ville VPN/.test(x.diag['Position réseau / IP'] || '') && /Travail test · Confirmée/.test(x.diag['Lieu logique Race Control'] || '') && /^manual/.test(x.diag['Source retenue'] || '') && /réseau : précision insuffisante/.test(x.diag['Sources écartées'] || ''), JSON.stringify(['Position réseau / IP', 'Lieu logique Race Control', 'Source retenue', 'Sources écartées'].map(k => x.diag[k])));
-    await locateAt(s, VPN2); x = await st(s.p);
-    check('2 · changement de VPN sans déplacement : toujours Travail', /🏢 AU TRAVAIL/.test(x.bar) && x.loc === 'work', x.bar);
-    // 3. rafraîchissement / réouverture : la confirmation survit, le VPN aussi est toujours ignoré
+    // 2. COARSE : position IP à ~100 km, précision 20 km → lieu non déduit
+    await locateAt(s, COARSE); await s.p.locator('#placeBar [data-act=place-toggle]').click(); x = await st(s.p);
+    check('2 · relevé approximatif à ~100 km juste après la confirmation : le lieu reste Travail', /🏢 AU TRAVAIL/.test(x.bar) && x.loc === 'work' && !x.gps, JSON.stringify({ bar: x.bar, loc: x.loc, gps: x.gps }));
+    check('2 · Relevé navigateur approximatif signalé sans inférer un fournisseur, jamais affiché comme position réelle', /Position approximative ignorée pour le lieu confirmé/.test(x.bar) && !/Ville approximative test/.test(x.chips), x.bar + ' | ' + x.chips);
+    check('2 · diagnostic : brut, réseau, lieu logique, source gagnante, source écartée', x.diag['Position réseau / IP'] === 'aucune' && /±20000 m/.test(x.diag['Géolocalisation navigateur (brute)'] || '') && /Travail test · Confirmée/.test(x.diag['Lieu logique Race Control'] || '') && /^manual/.test(x.diag['Source retenue'] || '') && /navigateur : précision insuffisante/.test(x.diag['Sources écartées'] || ''), JSON.stringify(['Position réseau / IP', 'Lieu logique Race Control', 'Source retenue', 'Sources écartées'].map(k => x.diag[k])));
+    await locateAt(s, COARSE2); x = await st(s.p);
+    check('2 · changement de position approximative sans déplacement : toujours Travail', /🏢 AU TRAVAIL/.test(x.bar) && x.loc === 'work', x.bar);
+    // 3. rafraîchissement / réouverture : la confirmation survit, le relevé approximatif aussi est toujours ignoré
     await s.p.reload(); await s.settle(10); x = await st(s.p);
     check('3 · après rechargement (PWA rouverte) : AU TRAVAIL, lieu Travail sélectionné', /🏢 AU TRAVAIL/.test(x.bar) && x.loc === 'work', JSON.stringify({ bar: x.bar, loc: x.loc }));
     // 4. relevé précis impossible (100 km en 3 min) : rejeté
@@ -91,32 +91,32 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     check('4 · relevé « précis » à 100 km en 3 min : rejeté comme incohérent', /🏢 AU TRAVAIL/.test(x.bar) && /déplacement impossible/.test(x.diag['Sources écartées'] || ''), JSON.stringify(x.diag));
     // 5. « Je quitte le travail » : fin de l'état, dernier lieu fiable conservé
     await s.p.locator('#placeBar [data-act=place-leave]').click(); await s.settle(2); x = await st(s.p);
-    check('5 · « Je quitte le travail » : état terminé, Travail reste le dernier lieu fiable', !x.conf && /Travail test · Estimée/.test(x.diag['Lieu logique Race Control'] || '') && /🏢 Je suis déjà au travail/.test(x.bar), JSON.stringify({ bar: x.bar, diag: x.diag['Lieu logique Race Control'] }));
+    check('5 · « Je quitte le travail » : départ global sans inventer une destination Maison', !x.conf && await s.p.evaluate(() => APP_CONTEXT.snapshot.status === 'travel' && APP_CONTEXT.snapshot.activeTrip === null && APP_CONTEXT.snapshot.origin.id === 'work' && APP_CONTEXT.snapshot.destination === null), JSON.stringify({ bar: x.bar, diag: x.diag['Lieu logique Race Control'] }));
     await s.c.close();
 
-    // 6. ouvert après l'arrivée, hors ligne, sans GPS : « Je suis déjà au travail », puis reconnexion avec VPN
+    // 6. ouvert après l'arrivée, hors ligne, sans GPS : « Je suis déjà au travail », puis reconnexion avec une position approximative
     s = await session(b, { at: '2026-10-05T08:15:00+02:00', geo: null }); x = await st(s.p);
     check('6 · aucune position disponible : « Localisation physique indisponible »', /Localisation physique indisponible/.test(x.bar), x.bar);
     await s.c.setOffline(true); await s.p.evaluate(() => window.dispatchEvent(new Event('offline'))); await s.settle(1);
     await s.p.locator('#placeBar [data-act=place-confirm][data-place=work]').click(); await s.settle(2); x = await st(s.p);
     check('6 · hors connexion : « Je suis déjà au travail » enregistré localement', /🏢 AU TRAVAIL/.test(x.bar) && /"how":"manual"/.test(x.stored || '') && x.loc === 'work', x.bar);
     await s.c.setOffline(false); await s.p.evaluate(() => window.dispatchEvent(new Event('online'))); await s.settle(4);
-    await locateAt(s, VPN); x = await st(s.p);
-    check('6 · reconnexion + VPN : pas de bascule Travail → ville du VPN', /🏢 AU TRAVAIL/.test(x.bar) && x.loc === 'work' && !/Ville VPN/.test(x.chips), x.bar);
+    await locateAt(s, COARSE); x = await st(s.p);
+    check('6 · reconnexion + position approximative : pas de bascule Travail → ville du COARSE', /🏢 AU TRAVAIL/.test(x.bar) && x.loc === 'work' && !/Ville approximative test/.test(x.chips), x.bar);
     // 7. GPS précis qui contredit légitimement (rentré à la maison 45 min plus tard)
     await s.p.clock.runFor(45 * 60e3); await locateAt(s, HOME); x = await st(s.p);
     check('7 · GPS précis et cohérent à la maison 45 min plus tard : la confirmation du travail se termine', !x.conf && /Maison test/.test(x.bar) && /Fiable/.test(x.bar) && /GPS/.test(x.bar), JSON.stringify({ bar: x.bar, conf: x.conf }));
     await s.c.close();
 
-    // 8. seulement le VPN, sans confirmation : jamais présenté comme position réelle
-    s = await session(b, { at: '2026-10-05T10:00:00+02:00', geo: VPN }); await locateAt(s, VPN); x = await st(s.p);
-    check('8 · VPN seul : « Localisation physique indisponible », « Position réseau approximative : Ville VPN · fiabilité faible — VPN possible »', /Localisation physique indisponible/.test(x.bar) && /Position réseau approximative : Ville VPN · fiabilité faible — VPN possible/.test(x.bar) && !x.gps && x.loc !== 'gps', JSON.stringify({ bar: x.bar, gps: x.gps, loc: x.loc }));
+    // 8. seulement le relevé approximatif, sans confirmation : jamais présenté comme position réelle
+    s = await session(b, { at: '2026-10-05T10:00:00+02:00', geo: COARSE }); await locateAt(s, COARSE); x = await st(s.p);
+    check('8 · position navigateur approximative seule : « Localisation physique indisponible », « Position réseau approximative : précision ~20 km »', /Localisation physique indisponible/.test(x.bar) && /Localisation navigateur approximative · précision ~20 km/.test(x.bar) && !x.gps && x.loc !== 'gps', JSON.stringify({ bar: x.bar, gps: x.gps, loc: x.loc }));
     // 9. précision moyenne (± 900 m) près du travail : estimée seulement
     await locateAt(s, { lat: 48.902, lon: 2.252, acc: 900 }); x = await st(s.p);
     check('9 · localisation navigateur ± 900 m : « Estimée », jamais « Confirmée »', /Travail test · Estimée/.test(x.bar), x.bar);
     // 10. GPS précis au travail : lieu reconnu, « Fiable »
     await locateAt(s, WORK); x = await st(s.p);
-    check('10 · GPS précis au travail : 🏢 Travail test · Fiable · GPS', /Travail test · Fiable · GPS · ± 25 m/.test(x.bar), x.bar);
+    check('10 · GPS précis au travail : 🏢 Travail test · Fiable · GPS', /Travail test · Fiable · GPS navigateur · ± 25 m/.test(x.bar), x.bar);
     await s.c.close();
 
     // 11. retour à la maison : trajet retour en cours (départ 16:00) → « Bien rentré »
@@ -151,6 +151,8 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     await s.p.locator('[data-act=view][data-v=pneus]').click(); await s.settle(2); x = await st(s.p);
     const route = await s.p.locator('#secBrf .brf-r').innerText();
     check('11 ter · lieu confirmé nommé, retour depuis le vrai Travail', /AU TRAVAIL · Travail test/.test(x.bar) && route.replace(/\s+/g, ' ').trim().toLowerCase() === 'travail test → maison test', route + ' | ' + x.bar);
+    await s.p.locator('#placeBar [data-act=place-toggle]').click();
+    await s.p.locator('#locChips [data-act=locs-toggle]').click();
     const labels = await s.p.locator('#locChips [data-act=loc]').evaluateAll(els => els.map(e => e.getAttribute('aria-label') || '').join(' | '));
     check('11 ter · lieux météo : domicile, travail et destination identifiés', /Météo : Travail test · 🏢 Travail/.test(labels) && /Météo : Destination ancienne test · 📌 Destination/.test(labels), labels);
     await s.p.evaluate(() => { S.work.to = 'c-legacy'; markEdit('work.to'); saveSettings(); });
@@ -171,4 +173,4 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
   } finally { await b.close(); }
   console.log(rows.join('\n')); console.log('erreurs JS : ' + (errors.length ? errors.slice(0, 3).join(' | ') : 'aucune'));
   console.log(`${rows.length - fail}/${rows.length} scénarios OK`); process.exitCode = fail ? 1 : 0;
-})().catch(e => { console.error(e); process.exitCode = 1; });
+})().catch(e => { console.log(rows.join('\n')); console.error(e); process.exitCode = 1; });

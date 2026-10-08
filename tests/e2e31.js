@@ -32,8 +32,8 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
     const visible = id => p.locator('#' + id).isVisible();
     await p.goto(U); await settle(); await p.fill('#unlockPw', PW);
     await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); await settle();
-    check('même titre, onglets Pneus / Météo / Tenue / Analyse dans cet ordre', await p.locator('.title').innerText().then(t => /TYRE WEATHER RACE CONTROL/i.test(t)) &&
-      await p.locator('#viewSeg button').evaluateAll(a => a.map(x => x.dataset.v).join(',') === 'pneus,meteo,tenue,analyse'));
+    check('même titre, onglets Météo / Pneus / TRAJET / Tenue / Analyse dans cet ordre', await p.locator('.title').innerText().then(t => /TYRE WEATHER RACE CONTROL/i.test(t)) &&
+      await p.locator('#viewSeg button').evaluateAll(a => a.map(x => x.dataset.v).join(',') === 'meteo,pneus,trajet,tenue,analyse'));
     check('la tenue est masquée dans le cockpit Pneus', !(await visible('secTenue')) && await visible('secCars'));
     const n = forecasts;
     await p.click('[data-act=view][data-v=tenue]'); await settle();
@@ -69,6 +69,7 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
     await p.evaluate(() => { M = {}; renderTenue(); });
     check('météo absente : aucun vêtement prétendument calculé', /Météo insuffisante/.test(await txt()) && await p.locator('.outfit-piece').count() === 0);
     await p.evaluate(() => startDemo('doux'));
+    await p.click('[data-act=locs-toggle]');
     await p.click('[data-act=loc][data-id=work]');
     check('le lieu choisi met à jour le panneau Tenue', /Travail test/i.test(await p.locator('#secTenue h2').innerText()));
     for (const width of [320, 414, 1280]) {
@@ -80,7 +81,9 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
     // Capture locale, seulement si demandée par l'atelier (jamais publiée dans la CI).
     if (process.env.RC_OUTFIT_SHOT) await p.locator('body').screenshot({ path: process.env.RC_OUTFIT_SHOT, fullPage: true });
     await p.reload(); await settle();
-    check('onglet Tenue et usage Promenade conservés au rechargement', await visible('secTenue') && await p.locator('[data-act=outfit-occasion][data-v=walk]').getAttribute('aria-pressed') === 'true');
+    check('onglet Tenue conservé ; Promenade du lendemain ne remplace pas aujourd’hui', await visible('secTenue') && await p.locator('[data-act=outfit-occasion][data-v=walk]').getAttribute('aria-pressed') === 'false');
+    await p.click('[data-act=outfit-day][data-v="1"]');
+    check('usage Promenade conservé pour le lendemain choisi après rechargement', await p.locator('[data-act=outfit-occasion][data-v=walk]').getAttribute('aria-pressed') === 'true');
     await p.click('[data-act=view][data-v=meteo]');
     check('Météo reste utilisable et masque la tenue', await visible('secCur') && !(await visible('secTenue')));
     await p.click('[data-act=view][data-v=pneus]');
