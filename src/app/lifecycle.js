@@ -24,7 +24,7 @@ function autoTick() {
   if (!DEMO.on && expireLive()) { rebuild(); renderAll(); }   // reprise : la donnée vieillie est requalifiée avant toute requête
   if (DEMO.on || busy || (navigator.onLine === false)) return;
   const ref = Math.max(lastOk || 0, lastTry || 0);
-  if (Date.now() - ref >= AUTO_MS) refreshAll();
+  if (Date.now() - ref >= AUTO_MS) refreshAll(false);
 }
 setInterval(autoTick, 30e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });
