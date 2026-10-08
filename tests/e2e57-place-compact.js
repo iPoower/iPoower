@@ -141,6 +141,58 @@ async function capture(p, dev, name) {
       await capture(q, dev, 'gps-denied'); await modify(q, dev);
       await check(dev + ' · l’aide existante pour réactiver le GPS reste accessible', async () => { assert(await q.locator('#locMsg').isVisible()); assert.match(await q.locator('#locMsg').innerText(), /Localisation refusée.*réglages/); assert(await q.locator('#locChips [data-act=locate]').isVisible()); });
       await denied.c.close();
+
+      // Régression de l'écran réel : GPS fiable sans aucune confirmation manuelle.
+      // Le navigateur simule les relevés ; aucune géolocalisation personnelle n'est utilisée.
+      const auto = await setup(b, dev), g = auto.p;
+      await g.evaluate(() => { window.__geo = { lat: 48.8502, lon: 2.3501, acc: 18 }; locate(true); });
+      await auto.settle(6);
+      await g.evaluate(() => window.__geoPush());
+      await auto.settle(6);
+      await check(dev + ' · GPS fiable : aucun clic manuel, panneau replié et une seule action Changer', async () => {
+        const x = await state(g);
+        assert.equal(await g.evaluate(() => placeNow().source), 'gps');
+        assert.equal(x.confirmation, null); assert.equal(x.stored.place.conf, null);
+        assert.equal(await g.locator('#placeBar .gps-compact:not(.expanded)').count(), 1);
+        assert(!await g.locator('#locChips').isVisible());
+        assert.equal(await g.locator('#placeBar button:visible').count(), 1);
+        assert.match(await g.locator('#placeBar').innerText(), /Fiable.*GPS navigateur.*18 m/);
+        assert.match(await g.locator('#placeBar [data-act=place-toggle]').innerText(), /Changer/);
+        const m = await layout(g); assert(m.height <= 140, JSON.stringify(m));
+        assert(!m.overflow); assert.deepEqual(m.clipped, []); assert.deepEqual(m.small, []);
+      });
+      await modify(g, dev);
+      await check(dev + ' · Changer rouvre les lieux enregistrés sans inventer une arrivée', async () => {
+        assert.equal(await g.locator('#placeBar [data-act=place-toggle]').getAttribute('aria-expanded'), 'true');
+        assert.equal(await g.locator('#placeBar [data-act=place-confirm]:visible').count(), 4);
+        assert(await g.locator('#locChips').isVisible());
+        assert.equal((await state(g)).confirmation, null);
+      });
+      await tap(g, dev, '#locChips [data-act=locs-toggle]');
+      await tap(g, dev, '#locChips [data-act=loc][data-id=work]');
+      await check(dev + ' · météo distante : GPS conservé, sélecteur automatiquement refermé', async () => {
+        const x = await state(g);
+        assert.equal(x.weather, 'work'); assert.equal(x.place, 'home'); assert.equal(x.confirmation, null);
+        assert.equal(await g.locator('#placeBar .gps-compact:not(.expanded)').count(), 1);
+        assert(!await g.locator('#locChips').isVisible());
+        assert.match(await g.locator('#placeBar').innerText(), /météo consultée : Commune fictive/);
+      });
+      await modify(g, dev);
+      await tap(g, dev, '#locChips [data-act=loc][data-id=gps]');
+      await check(dev + ' · retour météo GPS : une commande, quatre vues et position intacte', async () => {
+        assert.equal((await state(g)).weather, 'gps');
+        for (const view of ['meteo', 'pneus', 'tenue', 'analyse']) {
+          await tap(g, dev, '#viewSeg [data-act=view][data-v=' + view + ']');
+          const x = await state(g); assert.equal(x.place, 'home'); assert.equal(x.confirmation, null);
+          assert.equal(await g.locator('#placeBar button:visible').count(), 1);
+        }
+      });
+      await modify(g, dev); await confirm(g, dev, 'home');
+      await check(dev + ' · validation facultative : une confirmation réelle, sans changement de trajet', async () => {
+        assert.equal((await state(g)).confirmation.placeId, 'home');
+        await compact(g);
+      });
+      await auto.c.close();
     }
     await check('aucune erreur JavaScript', async () => assert.deepEqual(errors, []));
     console.log(n + '/' + n + ' scénarios OK');
