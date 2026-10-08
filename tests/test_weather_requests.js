@@ -165,6 +165,16 @@ async function test(name, fn) { await fn(); count++; console.log('✅ ' + name);
     p = s.c.get(U + 'other', 12000, 'shared', 15 * 60e3); assert.equal(s.calls.length, 4);
     s.calls[3].resolve(reply()); await p;
   });
+  await test('volume : 12 consultations 5 min d’une prévision 30 min = 2 appels HTTP, jamais 12', async () => {
+    const s = setup(), u = U + 'volume';
+    for (let i = 0; i < 12; i++) {
+      const n = s.calls.length;
+      const p = s.c.get(u, 12000, 'shared', 30 * 60e3);
+      if (s.calls.length > n) s.calls[n].resolve(reply());
+      await p; await s.advance(5 * 60e3);
+    }
+    assert.equal(s.calls.length, 2);
+  });
   await test('429 reste bloquant même si une ancienne réponse de la même URL est en cache', async () => {
     const s = setup(), u = U + 'cached';
     let p = s.c.get(u, 12000, 'shared', 30 * 60e3); s.calls[0].resolve(reply()); await p;
