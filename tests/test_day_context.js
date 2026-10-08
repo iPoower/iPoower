@@ -55,6 +55,13 @@ check('TRAJET manuel explicite reste prioritaire sur commute et agenda plus tôt
     { key:'manual|x', dep:'2026-10-06T19:15', arr:'2026-10-06T19:45' }, { key:'after', dep:'2026-10-06T20:00', arr:'2026-10-06T20:30' }];
   assert.deepEqual(Array.from(D.prioritize(T, v, now), x => x.key), ['manual|x','after']);
 });
+check('audit A05 · point manuel : département, commune et code postal conservés, valeurs invalides retirées', () => {
+  const ok = D.cleanPoint({ id: 'manual-destination', name: 'Place fictive', lat: 45.9, lon: 6.13, deptCode: '74', dept: 'Haute-Savoie', city: 'Annecy', cityCode: '74010', postcode: '74000' }, 'x');
+  assert.deepEqual([ok.deptCode, ok.dept, ok.city, ok.cityCode, ok.postcode], ['74', 'Haute-Savoie', 'Annecy', '74010', '74000']);
+  const bad = D.cleanPoint({ id: 'm', lat: 45.9, lon: 6.13, deptCode: '74; DROP', cityCode: 'abc', postcode: '7400' }, 'x');
+  assert.deepEqual([bad.deptCode, bad.dept, bad.cityCode, bad.postcode], ['', '', '', '']);
+  assert.equal(D.cleanPoint({ id: 'c', lat: 41.9, lon: 8.7, deptCode: '2a' }, 'x').deptCode, '2A');
+});
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0); }
 for (const [label, date, value, days, expected] of [['B1', '2026-10-06', 'work', [2], true], ['B2', '2026-10-06', 'off', [2], false], ['B3', '2026-10-06', 'work', [], true], ['E7', '2026-10-07', 'off', [3], true]]) check(label + ' journée datée', () => assert.equal(D.workOn(date, { dayType: { date: '2026-10-06', value } }, days), expected));
 check('E8 choix exceptionnel ne réécrit jamais planning', () => { const days = [1]; D.workOn('2026-10-06', { dayType: { date: '2026-10-06', value: 'work' } }, days); assert.deepEqual(days, [1]); });
@@ -172,5 +179,12 @@ check('voiture active sans pneus : météo route conservée, aucun verdict d’u
   a.legSeq = () => [{ hs: [{}], i: 0 }]; a.legPoints = () => []; a.summarize = () => ({}); a.legCritical = () => null;
   vm.runInContext(app.slice(app.indexOf('function legEval('), app.indexOf('function calDirectSet(')), a);
   const r = a.legEval({ from: places[0], to: places[1], dep: '2026-10-06T17:30', min: 30 }); assert.equal(r.res, null); assert.equal(r.seq.length, 1); assert.equal(r.worst, null);
+});
+check('audit A05 · point manuel : département, commune et code postal conservés, valeurs invalides retirées', () => {
+  const ok = D.cleanPoint({ id: 'manual-destination', name: 'Place fictive', lat: 45.9, lon: 6.13, deptCode: '74', dept: 'Haute-Savoie', city: 'Annecy', cityCode: '74010', postcode: '74000' }, 'x');
+  assert.deepEqual([ok.deptCode, ok.dept, ok.city, ok.cityCode, ok.postcode], ['74', 'Haute-Savoie', 'Annecy', '74010', '74000']);
+  const bad = D.cleanPoint({ id: 'm', lat: 45.9, lon: 6.13, deptCode: '74; DROP', cityCode: 'abc', postcode: '7400' }, 'x');
+  assert.deepEqual([bad.deptCode, bad.dept, bad.cityCode, bad.postcode], ['', '', '', '']);
+  assert.equal(D.cleanPoint({ id: 'c', lat: 41.9, lon: 8.7, deptCode: '2a' }, 'x').deptCode, '2A');
 });
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);
