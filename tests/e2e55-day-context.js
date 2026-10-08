@@ -93,7 +93,22 @@ async function views(p, expected) {
         assert.equal(await p.evaluate(() => TCARS().length), 2); assert.equal(await p.evaluate(() => appTripCars().length), 1);
         assert.equal(await p.locator('#dayContext [data-act=day-car][data-id=""]').count(), 0);
         assert.equal((await read(p)).next.car, 'carB');
-        const decision = p.locator('#decisionCore'); if (await decision.isVisible()) assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
+        for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) {
+          await tap(p, '#viewSeg [data-act=view][data-v=' + view + ']');
+          const editor = p.locator('#dayContext details.day-editor');
+          if (await editor.isVisible() && await editor.getAttribute('open') != null) await tap(p, '#dayContext .day-editor > summary');
+          const decision = p.locator('#decisionCore');
+          if (profile === 'clean') {
+            assert.equal(await decision.isVisible(), false, view + ' : synthèse privée masquée sans code');
+            continue;
+          }
+          assert(await decision.isVisible(), view + ' : synthèse visible');
+          assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
+          await tap(p, '#decisionCore [data-act=decision-car-change]');
+          assert.notEqual(await p.locator('#dayContext details.day-editor').getAttribute('open'), null);
+          assert(await p.locator('#dayContext [role=group][aria-label="Voiture active"]').isVisible(), view + ' : sélecteur visible');
+          assert.equal(await p.locator('#dayContext [data-act=day-car][data-id=carB]').getAttribute('aria-pressed'), 'true');
+        }
       });
       await tap(p, '[data-act=day-car][data-id=carA]');
       await check('changement manuel de voiture : propagation globale immédiate', async () => {
