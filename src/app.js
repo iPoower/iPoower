@@ -1872,13 +1872,13 @@ function returnHomeButtonForTrip(t) {
 // Deux rendez-vous simultanés restent deux cibles d'action. Les anciennes clés
 // restent valides quand l'agenda ne fournit aucun identifiant et n'est pas ambigu.
 function calendarTripKey(e, l) {
-  const key = 'leg|' + l.dep + '|' + l.k + '|' + e.s;
+  const key = 'leg|' + (l.originPlannedDep || l.dep) + '|' + l.k + '|' + e.s;
   if (e.id || e.uid || e.UID) return key + '|' + TripCancel.eventId(e);
   const events = CAL && CAL.events || [];
   return TripCancel.identifiable(events, e) ? key : key + '|duplicate|' + events.indexOf(e);
 }
 // Compatibilité d'une version : les anciennes arrivées agenda utilisaient une clé sans ID d'occurrence.
-function calendarTripLegacyKey(e, l) { return e && l ? 'leg|' + l.dep + '|' + l.k + '|' + e.s : null; }
+function calendarTripLegacyKey(e, l) { return e && l ? 'leg|' + (l.originPlannedDep || l.dep) + '|' + l.k + '|' + e.s : null; }
 function liveDoneHas(t, all) {
   if (!t || LIVE.done[t.key]) return !!t;
   const l = t.planL || t.l, legacy = t.src === 'cal' && t.e ? calendarTripLegacyKey(t.e, l) : null;
