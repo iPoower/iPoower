@@ -71,6 +71,8 @@ async function session(b, dev, T0) {
       check(dev + ' · le trajet du matin reste clos : aucun débrief redemandé', st.done && !st.pending.includes(key) && !st.form, JSON.stringify(st));
       check(dev + ' · l’état propre à l’appareil repart de zéro (aucun GPS restauré)', st.gps == null, JSON.stringify(st.gps));
       // Un refus au milieu de l'import ne peut annoncer une réussite ni mélanger les états.
+      // Le rechargement referme ce panneau : le rouvrir par l'interface avant les actions suivantes.
+      if (!await p.$eval('#settings', d => d.open)) await p.click('#settings > summary');
       await p.evaluate(() => {
         S.cars[0].name = 'Véhicule local fictif'; markEdit('cars.0.name'); saveSettings(); USER_STORE.flush();
         window.storageBeforeImport = { settings: localStorage.getItem('twrc.settings.v1'), context: localStorage.getItem('twrc.context.v1') };
@@ -113,4 +115,4 @@ async function session(b, dev, T0) {
   check('aucune erreur JavaScript', !errors.length, errors.join(' | '));
   console.log(rows.join('\n')); console.log(`${rows.length - fail}/${rows.length} scénarios OK`);
   process.exit(fail ? 1 : 0);
-})().catch(e => { console.error('❌', e); process.exit(1); });
+})().catch(e => { console.log(rows.join('\n')); console.error('❌', e); process.exit(1); });
