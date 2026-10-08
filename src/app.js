@@ -280,7 +280,11 @@ async function loadLoc(l, force = false) {
   // Validation AVANT toute écriture : une réponse 200 vide, tronquée ou d'un portail ne remplace jamais la dernière météo valide.
   const invalid = b.status === 'fulfilled' ? validForecast(b.value) : null;
   if (b.status !== 'fulfilled' || invalid) { if (l.gps && gen === gpsWeatherGen) gpsWeatherOrigin = null; throw b.status !== 'fulfilled' ? b.reason : new Error('réponse météo invalide : ' + invalid); }
-  const p = mergeArome(b.value, ar.status === 'fulfilled' ? ar.value : null);
+  // Ne jamais laisser un ancien AROME en cache écraser une prévision de base reçue plus récemment :
+  // en cas de décalage de fraîcheur, le modèle de base fait foi jusqu'au prochain vrai relevé AROME.
+  const arFresh = ar.status === 'fulfilled' && !!ar.value
+    && (WEATHER_REQUESTS.fetchedAt(urlArome(l)) || 0) >= (WEATHER_REQUESTS.fetchedAt(baseUrl) || 0) - 60e3;
+  const p = mergeArome(b.value, arFresh ? ar.value : null);
   // Un ancien lieu GPS ne remplace jamais la météo d'une position plus récente, ni un GPS oublié.
   if (l.gps && (gen !== gpsWeatherGen || !GPS || distKm(origin, GPS) > 3)) return p;
   if (nc.status === 'fulfilled' && nc.value && nc.value.minutely_15) NOWRAW[l.id] = nc.value; else delete NOWRAW[l.id];
