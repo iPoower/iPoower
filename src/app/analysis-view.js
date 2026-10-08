@@ -11,6 +11,23 @@ function ttSave(carId, at, T, sig) {
   lsSet(TT_KEY, JSON.stringify(o));
 }
 const labCar = () => appActiveCar() || S.cars.find(c => c.id === UI.labCar) || S.cars.find(hasTires) || S.cars[0];
+const LAB_DRIVE_NOTE = {};
+function labLastDriveHtml(car, li) {
+  const h = li.history, manual = h && h.source === 'manual', note = LAB_DRIVE_NOTE[car.id], locked = DEMO.on || LIVE.phase === 'active';
+  const kinds = { ville: 'Ville', route: 'Route', autoroute: 'Autoroute' };
+  const summary = manual ? `Saisi par vous · ${h.at.slice(11, 16)} · ${h.minutes} min · ${kinds[h.kind] || 'route'}` : h ? 'Historique automatique disponible' : 'Renseigner mon dernier trajet';
+  return `<details class="wx-pc lab-d lab-last-drive" data-k="last-drive"><summary><span class="ic" aria-hidden="true">🚗</span><span class="tt">Dernier roulage</span><span class="ln">${esc(summary)}</span></summary>
+    <div class="lab-sp"><p class="sub">Renseigne un roulage terminé dans les dernières 24 h. La chauffe puis le refroidissement sont estimés avec la météo disponible et un départ supposé froid.</p>
+    ${manual ? `<p>Dernier roulage saisi : <b>${esc(h.at.replace('T', ' à '))}</b> · ${h.minutes} min · ${esc(kinds[h.kind] || 'route')}.</p>` : ''}
+    ${locked ? `<p class="sub">${DEMO.on ? 'Saisie indisponible en démonstration.' : 'Un trajet est en cours : termine-le avant de renseigner un roulage passé.'}</p>` : ''}
+    <form id="labLastDriveForm" data-car="${esc(car.id)}"><fieldset class="lab-drive-fields" ${locked ? 'disabled' : ''}>
+      <label for="labDriveAt">Date et heure d’arrivée<input id="labDriveAt" name="at" type="datetime-local" required max="${esc(li.now)}" value="${esc(manual ? h.at : li.now)}"></label>
+      <label for="labDriveMinutes">Durée du roulage (minutes)<input id="labDriveMinutes" name="minutes" type="number" required min="1" max="720" step="1" value="${manual ? h.minutes : 40}"></label>
+      <label for="labDriveKind">Type de route<select id="labDriveKind" name="kind">${Object.entries(kinds).map(([k, v]) => `<option value="${k}" ${k === (manual ? h.kind : 'route') ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <div class="cal-v"><button class="btn" type="submit">Enregistrer le roulage</button>${h ? '<button class="btn" type="button" data-act="lab-drive-forget">Oublier cet historique</button>' : ''}</div>
+    </fieldset></form><p class="sub">Source : saisie utilisateur. Estimation thermique, aucun capteur.</p>
+    ${note ? `<p role="${note.error ? 'alert' : 'status'}">${esc(note.text)}</p>` : ''}</div></details>`;
+}
 // Les calculs gardent leurs seuils ; l'interface nomme un potentiel relatif estimé, jamais une garantie.
 const labBrakeText = word => word === 'Optimal' ? 'Favorable estimé' : word + ' estimé';
 // état pneumatique unique (onglet Pneus = source de vérité) : recalculé à chaque rendu, donc jamais périmé après une saisie
@@ -82,7 +99,7 @@ function labTripState(r, li) {
       ${d.km != null ? `<li>Progression : <b>${km(d.km)}${d.total != null ? ' / ' + km(d.total) : ''} km</b>${src ? ` <span class="sub">(${src})</span>` : ''}</li>` : ''}
       <li>Pneu : <b>${esc(r.thermal.state.toLowerCase())}</b> · gomme ≈ ${rg(r.thermal.range)}${r.hero.warm && !r.warm.reached ? ' · ' + esc(r.hero.warm) + ' restantes' : ''}</li></ul></div>`;
   }
-  if (TRIPEND && (!TRIPEND.carId || li && li.car && li.car.id === TRIPEND.carId) && Date.now() - TRIPEND.at < 3 * 3600e3) {
+  if (!(li && li.history && li.history.source === 'manual') && TRIPEND && (!TRIPEND.carId || li && li.car && li.car.id === TRIPEND.carId) && Date.now() - TRIPEND.at < 3 * 3600e3) {
     const e = TRIPEND;
     return `<div class="wx-blk lab-live" data-k="end"><h3>🏁 Trajet terminé${e.name ? ' · ' + esc(e.name) : ''} · ${hm(e.at)}</h3><ul class="lab-why">${e.km != null ? `<li><b>${km(e.km)} km</b>${e.kmSrc === 'route' ? '' : ' <span class="sub">(estimé)</span>'}</li>` : ''}<li><b>${e.min} min</b></li>
       <li>État thermique final estimé : <b>${rg(e.range)}</b> (${esc(String(e.state).toLowerCase())})</li><li>Confiance : ${esc(e.conf)} · sert de point de départ au prochain trajet</li></ul></div>`;
@@ -98,7 +115,9 @@ function labThermTick(arrived, vehicle = null) {
   if (DEMO.on || !CX) return;
   const car = vehicle || labCar(); if (!car || !hasTires(car)) return;
   if (!arrived && !(LIVE.phase === 'active' && Date.now() - (labThermTick.at || 0) > 120e3)) return;
-  const inp = labInput(car), r = tyreLab(inp); if (!r || !r.thermal) return;
+  const inp = labInput(car);
+  if (!arrived && !(inp.drive && inp.drive.active)) return;
+  const r = tyreLab(inp); if (!r || !r.thermal) return;
   labThermTick.at = Date.now(); ttSave(car.id, r.now, r.thermal.T, r.state && r.state.sig);
   return { r, inp };
 }
@@ -161,12 +180,17 @@ function renderLab() {
         : `<div class="wx-blk lab-trip"><h3>🧭 Analyse du trajet</h3><p class="sub">Aucun trajet prévu : l’analyse suppose un départ sur route (≈ 70 km/h).</p></div>`;
       const p = r.press, press = `<div class="wx-blk lab-pr ${p.known && p.low ? 'lv2' : ''}"><h3>🎈 Pression</h3>${p.known ? `<ul class="lab-why">${p.notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="sub">Source : ${esc(p.src)}.</p>` : `<p class="sub">${esc(p.text)}</p>`}</div>`;
       const conf = `<details class="wx-pc lab-d" data-k="conf"><summary><span class="ic" aria-hidden="true">🎯</span><span class="tt">Niveau de confiance</span><span class="ln">${esc(cf.level[0].toUpperCase() + cf.level.slice(1))}</span></summary><ul>${(cf.axes || []).map(([k, v]) => `<li><b>${esc(k)}</b> : ${esc(v)}</li>`).join('')}${cf.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
-      html = cars + hero + labTripState(r, li) + win + brake + grip + aqua + cmp + tr + press + stHtml + fiche + conf;
+      html = cars + hero + labLastDriveHtml(car, li) + labTripState(r, li) + win + brake + grip + aqua + cmp + tr + press + stHtml + fiche + conf;
     }
   }
   html += `<p class="sub lab-foot">Estimations Race Control (plages, tendances, indicateurs) : aucune mesure de capteur, aucune distance de freinage garantie. État, références et montage : <button class="btn sm" data-act="view" data-v="pneus">onglet Pneus</button></p>`;
   if (html === renderLab.last) return;
   const open = new Set([...el.querySelectorAll('details[open][data-k]')].map(x => x.dataset.k));
+  const form = el.querySelector('#labLastDriveForm'), draft = !renderLab.clearDriveDraft && form && car && form.dataset.car === car.id ? [...form.querySelectorAll('[name]')].map(x => [x.name, x.value]) : null;
+  const focused = draft && form.contains(document.activeElement) ? document.activeElement.name : null;
+  renderLab.clearDriveDraft = false;
   el.innerHTML = html; renderLab.last = html;
   el.querySelectorAll('details[data-k]').forEach(x => { if (open.has(x.dataset.k)) x.open = true; });
+  if (draft) draft.forEach(([name, value]) => { const x = el.querySelector(`#labLastDriveForm [name="${name}"]`); if (x) x.value = value; });
+  if (focused) { const field = el.querySelector(`#labLastDriveForm [name="${focused}"]`); if (field) field.focus({ preventScroll: true }); }
 }

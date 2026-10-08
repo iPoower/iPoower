@@ -124,7 +124,9 @@ const Backup = (() => {
     if (!obj(v)) return out;
     Object.entries(v).slice(0, 32).forEach(([id, h]) => {
       if (!text(id, 120) || !obj(h) || !local(h.at) || !Number.isFinite(h.T) || h.T < -80 || h.T > 160) return;
+      if (h.source === 'manual' && (!Number.isInteger(h.minutes) || h.minutes < 1 || h.minutes > 720 || !['ville', 'route', 'autoroute'].includes(h.kind))) return;
       out[text(id, 120)] = { at: h.at, T: Math.round(h.T * 10) / 10, sig: text(h.sig, 240) };
+      if (h.source === 'manual') Object.assign(out[text(id, 120)], { source: 'manual', minutes: h.minutes, kind: h.kind });
     });
     return out;
   }

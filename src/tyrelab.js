@@ -140,13 +140,14 @@ function tyreLab(input) {
     const at = mins(hist.at); parkedMin = nowM - at;
     T = evolve(hist.T, at, nowM, null).T; phase = 'parked';
     why.push(`À l’arrêt depuis ${parkedMin < 90 ? Math.round(parkedMin) + ' min' : r1(parkedMin / 60) + ' h'} (dernier état estimé ${r0(hist.T)} °C)`);
+    if (hist.source === 'manual') why.push('Dernier roulage saisi par vous : départ supposé froid, température estimée');
   } else { T = eNow.Tenv; phase = 'unknown'; why.push('Historique de roulage inconnu : pneu supposé froid (hypothèse prudente)'); }
   why.unshift(`Air : ${r1(eNow.Ta)} °C`, `Chaussée estimée : ${r1(eNow.Tr)} °C`);
   why.push(`Pneu ${TYPES[type]}${uhp ? ' haute performance (indice ' + (d.si || 'ZR') + ')' : ''}`, `Chaussée : ${SURF_TXT[eNow.surf]}${eNow.reported ? ' (signalée par vous)' : ''}`);
   /* ---------- 5. incertitude, état, fenêtre ---------- */
   const stale = finite(inp.ageMin) && inp.ageMin > 90;
   // l'incertitude sur l'état de départ inconnu s'estompe avec la distance roulée (même constante que l'échauffement)
-  const unk = km => phase === 'unknown' || (phase === 'driving' && !hist) ? 3 * Math.exp(-(km || 0) / 10) : 0;
+  const unk = km => phase === 'unknown' || (phase === 'driving' && !hist) ? 3 * Math.exp(-(km || 0) / 10) : hist && hist.source === 'manual' ? 3 : 0;
   const u = 3 + 0.25 * Math.abs(T - eNow.Tenv) + unk(drivenKm) + (stale ? 3 : 0);
   const lo = T - u, hi = T + u;
   const cls = t => t < win[0] ? 0 : t < win[1] ? 1 : t < win[2] ? 2 : t < win[3] ? 3 : 4;
@@ -319,6 +320,7 @@ function tyreLab(input) {
   }
   /* ---------- 11. confiance ---------- */
   const reasons = ['Température du pneu estimée : aucun capteur direct n’est disponible'];
+  if (hist && hist.source === 'manual') reasons.push('Historique déclaré par vous : heure, durée et type de route ; départ supposé froid');
   let score = 3;
   if (phase === 'unknown') { score -= 1; reasons.push('Historique de roulage inconnu (pneu supposé froid)'); }
   if (!modelKnown) { score -= 1; reasons.push('Modèle exact non renseigné : analyse générique de la saison'); }
@@ -347,4 +349,33 @@ function tyreLab(input) {
     brake: gNow.word, corner: gNow.bars[2].word, rain: gNow.aqua.lv ? ['Faible', 'Vigilance', 'Risque élevé', 'Critique'][gNow.aqua.lv] : gripAt({ ...eNow, surf: 'rain', Pl: 1 }, st, kind).word, limiting, confidence: confidence.level };
   return { known: true, tyre, spec: specOut, now: inp.now, phase, parkedMin, drivenKm, drivenMin, kind, env: { Ta: eNow.Ta, Tr: eNow.Tr, Tenv: eNow.Tenv, surf: eNow.surf, surfTxt: SURF_TXT[eNow.surf], Pl: eNow.Pl },
     thermal: { T, range, state: stateTxt, level: TL_STATES[st], trend, trendTxt: TL_TREND_TXT[trend], eq: Math.round(eq * 10) / 10, s: st, lv: stLv(st), win, pos, marks, why, uhp }, warm, cool, grip: gNow, trip, compare, press, confidence, hero, state: inp.state || null };
+}
+
+// Convertit un roulage déclaré en point de départ thermique, avec le même modèle que le suivi automatique.
+// Les dates sont locales comme celles du moteur. Aucune température ni position n’est saisie ou inventée.
+function tyreLabLastDrive(input, record) {
+  const inp = input || {}, r = record || {};
+  const stamp = s => {
+    if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) return NaN;
+    const t = Date.parse(s + ':00Z');
+    return Number.isFinite(t) && new Date(t).toISOString().slice(0, 16) === s ? t / 60000 : NaN;
+  };
+  const now = stamp(inp.now), end = stamp(r.at), minutes = Number(r.minutes), kind = r.kind;
+  const bad = error => ({ ok: false, error });
+  if (inp.drive && inp.drive.active) return bad('Un trajet est en cours : terminez-le avant de renseigner un roulage passé.');
+  if (!Number.isFinite(now) || !Number.isFinite(end)) return bad('Renseignez une date et une heure d’arrivée valides.');
+  if (end > now) return bad('L’arrivée doit être passée, pas dans le futur.');
+  if (now - end > 24 * 60) return bad('Renseignez un roulage terminé dans les dernières 24 heures.');
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 720) return bad('La durée doit être comprise entre 1 et 720 minutes.');
+  if (!Object.prototype.hasOwnProperty.call(TL_KIND, kind)) return bad('Choisissez ville, route ou autoroute.');
+  const start = end - minutes, H = (inp.hours || []).filter(x => x && Number.isFinite(stamp(x.t)) && Number.isFinite(x.T)).sort((a, b) => stamp(a.t) - stamp(b.t));
+  // Ne pas appliquer la météo actuelle à un ancien trajet dont les heures ne sont pas disponibles.
+  if (!H.length || stamp(H[0].t) > start || stamp(H[H.length - 1].t) + 60 < end ||
+      H.some((x, i) => i && stamp(x.t) > start && stamp(H[i - 1].t) < end && stamp(x.t) - stamp(H[i - 1].t) > 60))
+    return bad('La météo de ce roulage est indisponible : aucune température ne peut être estimée.');
+  const since = new Date(start * 60000).toISOString().slice(0, 16);
+  const result = tyreLab({ ...inp, now: r.at, history: null, trip: null, drive: { active: true, since, kind, speedKmh: TL_KIND[kind].v } });
+  if (!result.thermal || !Number.isFinite(result.thermal.T)) return bad('Pneus ou météo non renseignés : estimation impossible.');
+  return { ok: true, history: { at: r.at, T: Math.round(result.thermal.T * 10) / 10, sig: inp.state && inp.state.sig || null,
+    source: 'manual', minutes, kind } };
 }

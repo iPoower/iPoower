@@ -133,9 +133,13 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     await s.c.setOffline(true); await s.p.evaluate(() => window.dispatchEvent(new Event('offline'))); await s.settle(2); a = await lab(s.p);
     check('4 · hors connexion : analyse affichée depuis le cache', a.shown && STATES.test(a.hero), a.hero);
     await s.c.setOffline(false);
+    // Le retour en ligne actualise les données et remplace les boutons d'onglet : attendre la fin
+    // des réponses avant le clic réel évite un pointerdown sur un bouton ensuite détaché sous WebKit.
+    await s.p.evaluate(() => window.dispatchEvent(new Event('online'))); await s.weatherIdle();
     // 5. les autres onglets restent intacts
-    await s.p.click('[data-act=view][data-v=pneus]'); await s.settle(2);
-    check('5 · Pneus intact (voitures visibles), Analyse masquée', await s.p.evaluate(() => !!document.querySelector('#secCars .car') && document.getElementById('secLab').hidden));
+    await s.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await s.settle(2);
+    const pneusView = await s.p.evaluate(() => ({ view: UI.view, cars: !!document.querySelector('#secCars .car'), shown: getComputedStyle(document.getElementById('secCars')).display !== 'none', labHidden: document.getElementById('secLab').hidden }));
+    check('5 · Pneus intact (voitures visibles), Analyse masquée', pneusView.view === 'pneus' && pneusView.cars && pneusView.shown && pneusView.labHidden, JSON.stringify(pneusView));
     await s.p.click('[data-act=view][data-v=meteo]'); await s.settle(2);
     check('5 · Météo intacte (poste météo visible), Analyse masquée', await s.p.evaluate(() => !document.getElementById('secWx').hidden && document.getElementById('secLab').hidden));
     await s.p.click('[data-act=view][data-v=tenue]'); await s.settle(2);
@@ -242,6 +246,35 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
       await s.close();
     }
 
+    // 9. dernier roulage déclaré : interface réelle, mémoire par voiture, reprise et garde sur les dates.
+    for (const dev of ['iphone', 'pc']) {
+      s = await session(b, { at: '2026-10-05T09:30:00+02:00', dev }); await toLab(s);
+      await s.p.locator('[data-k=last-drive] > summary').click();
+      await s.p.fill('#labDriveAt', '2026-10-05T09:00'); await s.p.fill('#labDriveMinutes', '40'); await s.p.selectOption('#labDriveKind', 'route');
+      await s.p.locator('#labDriveMinutes').focus();
+      await s.p.evaluate(() => { RAW[UI.loc].t -= 3600e3; renderAll(); });
+      check(`9 · ${dev} : saisie et focus conservés pendant une actualisation`, await s.p.inputValue('#labDriveAt') === '2026-10-05T09:00' && await s.p.inputValue('#labDriveMinutes') === '40' && await s.p.evaluate(() => document.activeElement.id === 'labDriveMinutes'));
+      const formLayout = await layout(s.p, dev === 'iphone');
+      check(`9 · ${dev} : formulaire ouvert sans débordement, cibles ≥ 44 pt`, formLayout.sw <= formLayout.W && !formLayout.wide.length && !formLayout.small.length, JSON.stringify(formLayout));
+      await s.p.locator('#labLastDriveForm button[type=submit]').click(); await s.settle(2); a = await lab(s.p);
+      const stored = await s.p.evaluate(() => JSON.parse(localStorage.getItem('twrc.tyretherm.v1')));
+      check(`9 · ${dev} : historique déclaré enregistré, à l’arrêt, sans fausse mesure`, /À L’ARRÊT/i.test(a.hero) && /Saisi par vous/i.test(a.all) && stored.carA.source === 'manual' && stored.carA.minutes === 40 && stored.carA.kind === 'route' && !stored.carB && !/lat|lon/.test(JSON.stringify(stored)), JSON.stringify(stored));
+      await s.p.reload(); await s.settle(10); await toLab(s); await s.p.locator('[data-k=last-drive] > summary').click();
+      check(`9 · ${dev} : déclaration reprise après rechargement`, /Saisi par vous/i.test(await s.p.locator('[data-k=last-drive]').innerText()) && /À L’ARRÊT/i.test((await lab(s.p)).hero));
+      const before = await s.p.evaluate(() => localStorage.getItem('twrc.tyretherm.v1'));
+      await s.p.fill('#labDriveAt', '2026-10-05T10:00');
+      await s.p.evaluate(() => document.getElementById('labLastDriveForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+      check(`9 · ${dev} : arrivée future refusée sans écraser l’historique`, /pas dans le futur/.test(await s.p.locator('[data-k=last-drive] [role=alert]').innerText()) && before === await s.p.evaluate(() => localStorage.getItem('twrc.tyretherm.v1')));
+      await s.p.evaluate(() => { LIVE.phase = 'active'; LIVE.startFix = null; renderAll(); });
+      check(`9 · ${dev} : saisie désactivée pendant un trajet actif sans relevé GPS`, await s.p.locator('#labDriveAt').isDisabled() && await s.p.locator('[data-act=lab-drive-forget]').isDisabled());
+      await s.p.evaluate(() => document.getElementById('labLastDriveForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+      check(`9 · ${dev} : soumission forcée en roulage refusée sans écraser l’historique`, /trajet est en cours/.test(await s.p.locator('[data-k=last-drive] [role=alert]').innerText()) && before === await s.p.evaluate(() => localStorage.getItem('twrc.tyretherm.v1')));
+      await s.p.evaluate(() => { LIVE.phase = 'idle'; ttLoad().carB = { at: '2026-10-05T08:00', T: 42, sig: 'autre-monte' }; lsSet(TT_KEY, JSON.stringify(ttLoad())); renderAll(); });
+      await s.p.click('[data-act=lab-drive-forget]'); await s.settle(2);
+      check(`9 · ${dev} : oubli volontaire rétablit « Historique inconnu »`, /HISTORIQUE INCONNU/.test((await lab(s.p)).hero) && !await s.p.evaluate(() => JSON.parse(localStorage.getItem('twrc.tyretherm.v1') || '{}').carA));
+      check(`9 · ${dev} : oubli ne touche pas à la mémoire de l’autre voiture`, await s.p.evaluate(() => JSON.parse(localStorage.getItem('twrc.tyretherm.v1')).carB.T === 42));
+      await s.c.close();
+    }
     const extra = [...hosts].filter(h => !KNOWN.test(h));
     check('9 · aucun fournisseur externe supplémentaire', !extra.length, extra.join(', '));
     check('9 · aucune erreur JavaScript', !errors.length, errors.slice(0, 3).join(' | '));

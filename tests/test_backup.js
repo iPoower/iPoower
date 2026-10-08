@@ -98,6 +98,22 @@ check('V2 conserve un trajet manuel programmé avec points normalisés, sans GPS
   assert.equal(n.destinationPoint.address,'29 Rue Jean Jaurès, 80610 Saint-Ouen');
   assert.equal(d.durable.context.gps,null); assert.equal(d.durable.context.place.extra,null); assert(!/"route"\s*:/.test(JSON.stringify(d.durable.context)));
 });
+check('dernier roulage déclaré : provenance et incertitude conservées après sauvegarde V2 et import V1', () => {
+  const history = { at: '2026-10-07T07:10', T: 21.4, sig: 'summer', source: 'manual', minutes: 40, kind: 'route', lat: 9, lon: 8 };
+  const expected = { at: history.at, T: history.T, sig: history.sig, source: 'manual', minutes: 40, kind: 'route' };
+  const d = B.make({ settings: {}, tyreTherm: { car1: history }, at: new Date(at).toISOString() });
+  assert.deepEqual(json(d.durable.tyreTherm.car1), expected);
+  for (const [data, current] of [[d, {}], [v1, { ...phone, tyreTherm: { car1: history } }]]) {
+    const p = B.restorePlan(data, at, current);
+    assert.deepEqual(JSON.parse(p.writes['twrc.tyretherm.v1']).car1, expected);
+  }
+});
+check('dernier roulage déclaré invalide : jamais restauré comme historique automatique', () => {
+  for (const invalid of [{ minutes: 0 }, { minutes: 721 }, { minutes: 2.5 }, { minutes: '40' }, { kind: 'piste' }]) {
+    const d = B.make({ settings: {}, tyreTherm: { car1: { at: '2026-10-07T07:10', T: 21.4, sig: 'summer', source: 'manual', minutes: 40, kind: 'route', ...invalid } } });
+    assert.deepEqual(json(d.durable.tyreTherm), {});
+  }
+});
 check('payload invalide refusé', () => {
   assert.equal(B.restorePlan(null, at), null); assert.equal(B.restorePlan({ app: 'other', settings: {} }, at), null); assert.equal(B.restorePlan({ app: 'twrc' }, at), null);
 });

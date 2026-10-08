@@ -287,6 +287,10 @@
     "suite": "e2e55-day-context.js",
     "result": "le raccourci Changer du bandeau Race Control ouvre le panneau Aujourd’hui sur le sélecteur de voiture active"
   },
+  "lab-drive-forget": {
+    "suite": "e2e43-analyse.js",
+    "result": "oubli volontaire du dernier roulage par voiture ; refus pendant un trajet actif"
+  },
   "trip-dest-search": {
     "suite": "e2e59-trip-tab.js",
     "result": "adresse recherchée via le géocodeur partagé ou erreur visible"

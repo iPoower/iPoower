@@ -3517,6 +3517,12 @@ document.addEventListener('click', async e => {
   else if (a === 'debrief-clear') debriefClear();
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
   else if (a === 'trip-start') liveStart(t.dataset.key);
+  else if (a === 'lab-drive-forget') {
+    const car = labCar(); if (!car || DEMO.on || LIVE.phase === 'active') return;
+    const history = ttLoad(); delete history[car.id]; lsSet(TT_KEY, JSON.stringify(history));
+    LAB_DRIVE_NOTE[car.id] = { text: 'Historique thermique oublié pour cette voiture.' };
+    renderLab.clearDriveDraft = true; renderAll();
+  }
   else if (a === 'place-confirm') placeConfirm(t.dataset.place, t.dataset.how);
   else if (a === 'place-toggle') {
     const d = placeDisclosure(placeNow()), focused = document.activeElement === t;
@@ -3573,6 +3579,18 @@ function resizePhoto(file, maxW) {
   });
 }
 document.addEventListener('submit', async e => {
+  if (e.target && e.target.id === 'labLastDriveForm') {
+    e.preventDefault(); const form = e.target, car = labCar(); if (!car || form.dataset.car !== car.id || DEMO.on) return;
+    const data = new FormData(form), input = labInput(car);
+    if (LIVE.phase === 'active') input.drive = { ...(input.drive || {}), active: true };
+    const result = tyreLabLastDrive(input, { at: data.get('at'), minutes: data.get('minutes'), kind: data.get('kind') });
+    if (result.ok) {
+      ttLoad()[car.id] = result.history; lsSet(TT_KEY, JSON.stringify(ttLoad()));
+      LAB_DRIVE_NOTE[car.id] = { text: 'Roulage enregistré sur cet appareil. Température estimée à partir de votre saisie.' };
+      renderLab.clearDriveDraft = true;
+    } else LAB_DRIVE_NOTE[car.id] = { text: result.error, error: true };
+    renderAll(); return;
+  }
   if (!e.target || e.target.id !== 'unlockForm') return;
   e.preventDefault();
   const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';

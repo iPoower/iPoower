@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm'), assert = r
 const sourcePath = path.join(__dirname, '../src/tyrelab.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = {}; vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tirespecs.js'), 'utf8') + source + '\nthis.lab = tyreLab;', ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tirespecs.js'), 'utf8') + source + '\nthis.lab = tyreLab; this.lastDrive = tyreLabLastDrive;', ctx);
   const plain = v => JSON.parse(JSON.stringify(v));
   const lab = input => plain(ctx.lab(plain(input)));
   const ts = (h, day = '2026-10-06') => `${day}T${h}`;
@@ -175,6 +175,45 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const c = car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), base = { now: ts('10:20'), car: c, hours: H(), drive: drive('10:00', 'route'), ageMin: 10 };
     const cold = lab(base), warm = lab({ ...base, history: { at: ts('10:15'), T: 45 } });
     assert(warm.thermal.T > cold.thermal.T + 3, `${cold.thermal.T} → ${warm.thermal.T}`);
+  });
+  const lastDrive = (input, record) => plain(ctx.lastDrive(plain(input), plain(record)));
+  const manualInput = () => ({ now: ts('10:00'), car: car(), hours: H(), state: { sig: 'monte-test' } });
+  const record = extra => ({ at: ts('09:00'), minutes: 40, kind: 'route', ...extra });
+  test('dernier roulage déclaré : estimation, provenance, identité de la monte, aucune position', () => {
+    const input = manualInput(), entry = record(), before = JSON.stringify({ input, entry }), result = lastDrive(input, entry);
+    assert(result.ok, result.error); assert.equal(result.history.source, 'manual'); assert.equal(result.history.sig, 'monte-test');
+    assert(result.history.T > 20); assert.deepEqual(Object.keys(result.history).sort(), ['T', 'at', 'kind', 'minutes', 'sig', 'source']);
+    assert.equal(JSON.stringify({ input, entry }), before); assert.deepEqual(lastDrive(input, entry), result);
+    assert.equal(lastDrive(input, { ...entry, T: 200 }).history.T, result.history.T, 'aucune température saisie acceptée');
+  });
+  test('dernier roulage : durée, ville/autoroute et pluie influencent la chauffe estimée', () => {
+    const input = manualInput(), short = lastDrive(input, record({ minutes: 2 })), long = lastDrive(input, record({ minutes: 60 }));
+    const city = lastDrive(input, record({ kind: 'ville' })), highway = lastDrive(input, record({ kind: 'autoroute' }));
+    const rain = lastDrive({ ...input, hours: H({ P: 3, Pl: 3 }) }, record());
+    assert(long.history.T > short.history.T + 5); assert(highway.history.T > city.history.T + 3); assert(rain.history.T < long.history.T);
+  });
+  test('dernier roulage : dates impossibles, futur, ancien, durée et route invalides rejetés', () => {
+    for (const extra of [{ at: '2026-02-30T09:00' }, { at: ts('11:00') }, { at: ts('08:00', '2026-10-05') },
+      { minutes: 0 }, { minutes: -1 }, { minutes: 721 }, { minutes: 2.5 }, { minutes: 'abc' }, { kind: '__proto__' }, { kind: 'piste' }])
+      assert.equal(lastDrive(manualInput(), record(extra)).ok, false, JSON.stringify(extra));
+  });
+  test('dernier roulage : météo absente ou incomplète et monte inconnue refusées', () => {
+    const input = manualInput();
+    for (const hours of [[], H({}, ts('09:00'), 3), H().filter(x => x.t !== ts('08:00'))])
+      assert.equal(lastDrive({ ...input, hours }, record()).ok, false);
+    assert.equal(lastDrive({ ...input, car: car({ type: 'none' }) }, record()).ok, false);
+  });
+  test('dernier roulage : ne remplace jamais le suivi pendant un trajet en cours', () => {
+    const input = { ...manualInput(), drive: drive('09:00', 'route') };
+    assert.equal(lastDrive(input, record()).ok, false);
+  });
+  test('dernier roulage : refroidissement après saisie, incertitude conservée, aucun capteur', () => {
+    const input = manualInput(), history = lastDrive(input, record()).history;
+    const parked = lab({ ...input, history }), later = lab({ ...input, now: ts('13:00'), history });
+    const tracked = lab({ ...input, history: { at: history.at, T: history.T } });
+    assert.equal(parked.phase, 'parked'); assert(later.thermal.T < parked.thermal.T);
+    assert(parked.thermal.range[1] - parked.thermal.range[0] > tracked.thermal.range[1] - tracked.thermal.range[0]);
+    assert(parked.confidence.reasons.some(x => /Historique déclaré par vous/.test(x))); assert.notEqual(parked.confidence.level, 'élevée');
   });
   /* ---------- ÉTAT ≠ TENDANCE : « en chauffe » n'est plus un état permanent ---------- */
   const UHP = (extra = {}) => car({ size: '215/40 ZR18 89Y XL', ...extra });   // été haute performance : fenêtre 15 / 25 / 50 / 65 °C
