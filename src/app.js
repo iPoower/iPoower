@@ -3,6 +3,9 @@ const $ = s => document.querySelector(s);
 const APP_STORAGE = (() => { try { return DeviceStorage.guard(localStorage, () => !!window.TWRC_STORAGE_ERROR); }
   catch (e) { return { getItem: () => null, setItem: () => {}, removeItem: () => {}, key: () => null, length: 0 }; } })();
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Données du relais (observations, agenda chiffré, DATEX) : même origine sur GitHub Pages ; sur une origine dédiée
+// (Cloudflare Pages), lues depuis RC_DATA_BASE fixé à la construction. Rien de personnel n'y transite en clair.
+const dataUrl = f => (window.TWRC_DATA_BASE || '') + f;
 const lsGet = k => { try { return APP_STORAGE.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { APP_STORAGE.setItem(k, v); } catch (e) { /* stockage indisponible */ } };
 const locHasCoords = l => !!l && Number.isFinite(l.lat) && Number.isFinite(l.lon) && Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180;
@@ -80,14 +83,10 @@ async function unseal(pass) {
     }
     window.TWRC_STORAGE_ERROR = false; unseal.restored = had; return true;
   }
-  // Navigateur sans coffre de session (chiffrement indisponible au démarrage) : ancien comportement.
-  try {
-    const restored = await DeviceStorage.unlockPlan(localStorage, pass, crypto);
-    const plan = restored || { writes: {}, remove: [], removePrefixes: [] };
-    Object.assign(plan.writes, { 'twrc.plain': txt, 'twrc.plain.v': String(window.TWRC_SEALED_V), 'twrc.key': pass });
-    DeviceStorage.apply(localStorage, plan); window.TWRC_STORAGE_ERROR = false; unseal.restored = !!restored;
-    return true;
-  } catch (e) { unseal.error = e.name === 'OperationError' ? 'Code incorrect.' : 'Déverrouillage impossible : stockage local indisponible. Tes données restent conservées.'; return false; }
+  // Sans coffre de session (stockage en récupération, chiffrement indisponible au démarrage) : aucun déverrouillage plutôt
+  // qu'une copie en clair du code ou des réglages (sécurité V1). Les données restent conservées ; un redémarrage relance le coffre.
+  unseal.error = 'Déverrouillage impossible pour l’instant : stockage local en récupération ou chiffrement indisponible. Tes données restent conservées ; rouvre l’app.';
+  return false;
 }
 // coffre de session verrouillé (code demandé) ; ancien coffre v1 lu sur le stockage brut
 const vaultLocked = () => !!(window.TWRC_VAULT && window.TWRC_VAULT.locked());
@@ -641,7 +640,7 @@ async function refreshAll(force = true) {
   const locs = allLocs(), gpsStart = gpsWeatherGen, generations = new Map();
   try {
     if (location.protocol === 'https:') {
-      const o = await fetchJSON('obs.json?t=' + Math.floor(Date.now() / 300e3), 8000);
+      const o = await fetchJSON(dataUrl('obs.json') + '?t=' + Math.floor(Date.now() / 300e3), 8000);
       // Les observations stations sont un enrichissement du modèle live : si le relais est trop vieux,
       // on les ignore plutôt que d'injecter une pseudo-observation périmée dans une météo fraîche.
       OBS = relayAgeMin(o && o.updated) <= RELAY_OBS_MAX_MIN ? o : null; if (o && o.stations) OBS_LAST = o;
@@ -2631,7 +2630,7 @@ async function loadCalendar() {
   const pass = lsGet('twrc.key'); if (!pass || location.protocol !== 'https:' || !crypto.subtle) return;
   let S0 = null, fallback = null;
   try {
-    S0 = await fetchJSON('calendar.sealed.json?t=' + Math.floor(Date.now() / 300e3), 8000);
+    S0 = await fetchJSON(dataUrl('calendar.sealed.json') + '?t=' + Math.floor(Date.now() / 300e3), 8000);
   } catch (e) {
     fallback = calendarSealedCache(); S0 = fallback && fallback.sealed;
   }
