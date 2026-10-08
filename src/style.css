@@ -774,6 +774,12 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .place .pl-meta { color: var(--fg2); font-size: 11px; line-height: 1.4; }
 .place .pl-gps { white-space: nowrap; }
 .place.on.compact .pl-act { width: 100%; margin-top: 2px; }
+/* GPS fiable : un seul contrôle de lieu, sans imposer une confirmation répétée. */
+.place.gps-compact { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.place.gps-compact .pl-info { min-width: 0; }
+.place.gps-compact .pl-main { display: block; }
+.place.gps-compact .pl-main .btn { min-height: 44px; }
+.place.gps-compact .pl-act { grid-column: 1 / -1; width: 100%; }
 
 /* ---------- moteur de preuves v2 : carte expérimentale de l'onglet Météo ---------- */
 .ev .ev-b { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
