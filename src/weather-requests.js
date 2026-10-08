@@ -4,7 +4,20 @@ function weatherRequestManager(options) {
   const net = options.fetch, now = options.now || (() => Date.now());
   const later = options.setTimeout || setTimeout, cancel = options.clearTimeout || clearTimeout;
   const read = options.read || (() => null), write = options.write || (() => {});
-  const queue = [], pending = new Map(); let active = 0, limit = { until: 0, failures: 0, kind: '' };
+  const queue = [], pending = new Map(), snapshots = new Map(); let active = 0, limit = { until: 0, failures: 0, kind: '' };
+  // Cache mémoire borné : les prévisions sont partagées par URL exacte, jamais enregistrées en stockage persistant.
+  // Les appels 5 min du cockpit ne doivent pas redemander à chaque fois les modèles horaires/itinéraires inchangés.
+  const CACHE_LIMIT = 48;
+  const validSnapshot = v => v && !v.error && (Array.isArray(v)
+    ? v.length > 0 && v.every(x => x && x.hourly && Array.isArray(x.hourly.time) && x.hourly.time.length)
+    : !!((v.hourly && Array.isArray(v.hourly.time) && v.hourly.time.length)
+      || (v.minutely_15 && Array.isArray(v.minutely_15.time) && v.minutely_15.time.length)));
+  function remember(url, value) {
+    if (!validSnapshot(value)) return;
+    snapshots.delete(url); snapshots.set(url, { value, at: now() });
+    if (snapshots.size > CACHE_LIMIT) snapshots.delete(snapshots.keys().next().value);
+  }
+  const fetchedAt = url => snapshots.get(url)?.at || null;
   // Quota journalier Open-Meteo (« try again tomorrow ») : reprise à minuit UTC (+2 min), pas 24 h plus tard. Si la porte se
   // referme juste après minuit, ou si le quota est encore épuisé à la reprise, nouvelle tentative dans 1 h.
   // Incident du 7 octobre 2026 : 429 journalier à 14:44, pause jusqu'au lendemain 14:44 → matinée entière sur le cache.
@@ -61,6 +74,7 @@ function weatherRequestManager(options) {
       if (job.done || job.ctl.signal.aborted) throw abortError();
       // Une réponse lancée avant le refus ne doit pas effacer une pause encore active.
       if (state().until <= now() && limit.failures) { limit = { until: 0, failures: 0, kind: '' }; save(); }
+      remember(job.url, value);
       finish(job, null, value);
     } catch (e) { finish(job, e); }
     finally { active--; pump(); }
@@ -79,9 +93,12 @@ function weatherRequestManager(options) {
     }
     pump();
   }
-  function get(url, ms = 12000, group = 'shared') {
+  function get(url, ms = 12000, group = 'shared', cacheMs = 0) {
     if (pending.has(url)) { const job = pending.get(url); job.groups.add(group); return job.promise; }
+    // Un 429 reste prioritaire sur le cache : l'interface sait qu'elle affiche une donnée de secours.
     if (state().until > now()) return Promise.reject(limitedError());
+    const snap = snapshots.get(url), ttl = Math.max(0, Math.min(2 * 3600e3, Number(cacheMs) || 0));
+    if (ttl && snap && now() >= snap.at && now() - snap.at < ttl) return Promise.resolve(snap.value);
     const job = { url, priority: priority(url), ctl: new AbortController(), done: false, groups: new Set([group]) };
     job.promise = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject; });
     pending.set(url, job);
@@ -89,5 +106,5 @@ function weatherRequestManager(options) {
     job.timer = later(() => { job.ctl.abort(); finish(job, abortError()); pump(); }, ms);
     queue.push(job); queue.sort((a, b) => a.priority - b.priority); pump(); return job.promise;
   }
-  return { owns, get, state, cancelGroup };
+  return { owns, get, state, cancelGroup, fetchedAt };
 }
