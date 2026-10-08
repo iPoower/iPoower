@@ -77,7 +77,8 @@ const DayContext = (() => {
     if (!leg || leg.k !== 'go' || !leg.to || !place || !local(leg.arr)) return leg;
     const name = text(place.name || place.label, 220) || 'Lieu confirmé';
     return { ...leg, from: { ...place, name, label: name, city: name }, fromKind: 'confirmed',
-      originName: name, originRecalc: true, originPending: true, originUncertain: false,
+      originName: name, originRecalc: true, originPlannedDep: leg.originPlannedDep || leg.dep,
+      originPending: true, originUncertain: false,
       targetArr: leg.arr, km: null, min: null, pts: [], g: [], routed: false, byTime: false };
   }
   function workOn(day, v, days) {
