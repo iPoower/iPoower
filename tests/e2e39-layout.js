@@ -67,8 +67,9 @@ for(const [name,vp,mobile,inset] of VPS){
     const snap=()=>p.evaluate(()=>({cols:!!document.getElementById('deskCols'),n:document.querySelectorAll('main.wrap section[id], main.wrap .grid2[id]').length,
       inWrap:[...document.querySelectorAll('section[id], .grid2[id]')].every(e=>e.closest('main.wrap'))}));
     for(const v of ['meteo','pneus']){await p.evaluate(v=>{UI.view=v;renderAll();},v);await p.clock.runFor(300);
-      const a=await snap();await p.setViewportSize({width:1000,height:800});await p.clock.runFor(300);await p.waitForTimeout(150);const m=await snap();
-      await p.setViewportSize({width:1280,height:800});await p.clock.runFor(300);await p.waitForTimeout(150);const d=await snap();
+      const until=async want=>{let x;for(let i=0;i<20;i++){await p.clock.runFor(200);await p.waitForTimeout(100);x=await snap();if(x.cols===want)break;}return x;};
+      const a=await snap();await p.setViewportSize({width:1000,height:800});const m=await until(false);
+      await p.setViewportSize({width:1280,height:800});const d=await until(true);
       check(`39 · ${v} : bureau ⇄ fenêtre étroite sans perte de section`,a.cols&&!m.cols&&d.cols&&a.n===m.n&&m.n===d.n&&m.inWrap,JSON.stringify({a,m,d}));}
   }
   await c.close();

@@ -996,7 +996,9 @@ function deskLayout(order) {
   });
   document.body.classList.toggle('desk-solo', !rail.size);
 }
-if (DESK.addEventListener) DESK.addEventListener('change', () => { renderView.last = null; renderView(); });
+const deskSync = () => { if (!!DESK.matches !== document.body.classList.contains('desk')) { renderView.last = null; renderView(); } };
+if (DESK.addEventListener) DESK.addEventListener('change', deskSync);
+window.addEventListener('resize', deskSync);   // filet : certains navigateurs signalent le changement de média plus tard
 function renderView() {
   const vm = UI.view === 'meteo', vtr = UI.view === 'trajet', vt = UI.view === 'tenue', va = UI.view === 'analyse', vp = !vm && !vtr && !vt && !va;
   document.body.classList.toggle('vm', vm);
