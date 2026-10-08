@@ -35,8 +35,12 @@ check('47.2 · sans clic : le minuteur relance l’actualisation (nouvelles requ
 check('47.3 · « Dernière mise à jour » = heure de la donnée du lieu affiché (14:06)',/LIVE/.test(b1)&&/14:06/.test(b1),b1);
 check('47.4 · Pneus (onglet visible) recalculé avec la nouvelle météo',pneusNow!==before.pneus,pneusNow.slice(0,160));
 for(const v of ['meteo','tenue','analyse']){const now=await tab(v);const strip=x=>x.replace(/\d{1,2}[:h]\d{2}|\d+ ?min|LIVE|FRESH|CACHE/gi,'');check(`47.5 · ${v} (masqué pendant l’actualisation) : nouvelle météo utilisée dès l’ouverture`,now.length>40&&strip(now)!==strip(before[v]),now.slice(0,160));}
-const ten=await tab('tenue');check('47.7 · Tenue : météo des rendez-vous de l’agenda renouvelée au même cycle (ressenti 20 °C → frais)',/Ressenti/.test(before.tenue)&&/Ressenti 19,/.test(before.tenue)&&!/Ressenti 19,/.test(ten),ten.slice(0,240));
+const ten=await tab('tenue');check('47.7 · Tenue : modèles de rendez-vous conservés après 6 min (économie API)',/Ressenti/.test(before.tenue)&&/Ressenti 19,/.test(before.tenue)&&/Ressenti 19,/.test(ten),ten.slice(0,240));
 const one=await p.evaluate(()=>{const m=M[UI.loc],i=m.nowI,car=labCar(),r=car&&tyreLab(labInput(car));return{shared:CX&&CX.m===m,T:m.hs[i].T,Tr:m.hs[i].Tr,labT:r&&r.env?r.env.Tenv:null,labOk:!!(r&&r.thermal&&r.press&&r.grip&&r.confidence)};});
 check('47.6 · un seul état : Météo, Pneus et Analyse lisent le même modèle (CX.m = M[lieu])',one.shared&&one.labOk,JSON.stringify(one));
+// Le modèle horaire n'est redemandé qu'après 25 min ; il doit alors rejoindre le nouveau scénario météo.
+await p.clock.fastForward(26 * 60e3); await settle(12);
+const updatedTen=await tab('tenue');
+check('47.8 · Tenue : météo de rendez-vous renouvelée après TTL (et pas conservée indéfiniment)',!/Ressenti 19,/.test(updatedTen),updatedTen.slice(0,240));
 console.log(rows.join('\n')+'\n\n'+(rows.length-fail)+'/'+rows.length+' scénarios OK · erreurs JS : '+(rows.some(x=>x.startsWith('ERR '))?'présentes':'aucune'));
 await c.close();await b.close();process.exit(fail||rows.some(x=>x.startsWith('ERR '))?1:0);})();
