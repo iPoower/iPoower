@@ -46,6 +46,15 @@ Application web personnelle : avant chaque trajet (domicile-travail ou agenda), 
   Le relais refuse toute clé de relais égale à `APP_KEY`, même si elle ouvrirait la configuration.
   Une fuite de `RC_KEY` n'ouvre ni l'app ni l'agenda. `tools/check-keys.js` vérifie, sans rien afficher, que chaque clé n'ouvre que ses fichiers (CI : job `confidentialite` ; en ligne : « contrôle des sources » lancé à la main).
 - `tools/check-secrets.js` compare chaque fichier aux valeurs privées (lues localement ou déchiffrées avec les secrets) et bloque le commit (`tools/pre-commit`) ou le build.
+- **Verrouiller cet appareil** (`src/vault.js`, `SafeStore.lock`) : toutes les données personnelles de l'appareil (réglages, contexte,
+  journal des trajets, lieux, GPS, caches de météo et de route, configuration importée) sont chiffrées avec le code
+  (PBKDF2-SHA256 600 000 itérations → AES-256-GCM) dans `twrc.vault.v1`, relues, puis effacées en clair avec le code lui-même.
+  Verrouillée, l'app ne charge, n'affiche ni n'envoie aucun lieu personnel. Le déverrouillage avec le même code les rend
+  intactes ; un stockage plein annule le verrouillage sans rien effacer. Restent en clair : la pause météo, l'onglet ouvert,
+  le choix « sans code ».
+- **Import de sauvegarde vérifié** (`SafeStore.apply`) : chaque donnée est écrasée avant tout retrait, chaque écriture est
+  relue ; au moindre écart (quota, refus, écriture altérée), retour à l'état d'avant et message d'échec, sans rechargement.
+  « Sauvegarde restaurée » n'apparaît qu'après la relecture complète.
 
 ## GPS dynamique (trajet vivant)
 

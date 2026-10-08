@@ -70,6 +70,18 @@ async function unseal(pass) {
   } catch (e) { return false; }
 }
 const LOCKED = () => !!window.TWRC_SEALED && !window.TWRC_PRESET;
+// Déverrouillage : préréglage déchiffré, puis données personnelles de l'appareil rendues par le coffre (SafeStore) si cet
+// appareil avait été verrouillé. Aucun rechargement avant la fin de la restauration vérifiée.
+async function unlockWith(pass, msg) {
+  if (msg) msg.textContent = 'Déchiffrement…';
+  if (!(await unseal(pass))) { if (msg) msg.textContent = 'Code incorrect.'; return; }
+  const v = await SafeStore.unlock(localStorage, pass, crypto);
+  try { localStorage.removeItem('twrc.presetv'); } catch (err) { /* stockage */ }
+  if (!v.ok && msg) msg.textContent = v.error === 'code'
+    ? 'Code accepté. Les données de cet appareil ont été verrouillées avec un autre code : elles restent chiffrées.'
+    : 'Code accepté, mais les données de cet appareil n’ont pas pu être restaurées (stockage plein ou refusé) : elles restent chiffrées, rien n’est perdu.';
+  setTimeout(() => location.reload(), v.ok ? 0 : 3500);
+}
 // Préréglage éventuel injecté à la construction (version privée uniquement)
 const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET) ? normalize({ ...window.TWRC_PRESET, configured: 1 }, BASE) : clone(BASE);
 repairVehicleIdentity(DEFAULTS);
@@ -1494,13 +1506,6 @@ async function backupExport() {
     const p = $('#bkSec .sub b'); if (p) p.textContent = fmtDay(day);
   } catch (e) { bkMsg('Échec de la sauvegarde : ' + (e.message || e)); }
 }
-function backupApplyPlan(plan) {
-  const keys = [];
-  try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); } catch (e) { /* stockage indisponible */ }
-  keys.filter(Boolean).filter(k => plan.removePrefixes.some(p => k.startsWith(p))).forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
-  plan.remove.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
-  Object.entries(plan.writes).forEach(([k, v]) => lsSet(k, v));
-}
 async function backupImport(f) {
   bkMsg('Lecture du fichier…');
   let o; try { o = JSON.parse(await f.text()); } catch (e) { bkMsg('Fichier illisible.'); return; }
@@ -1519,9 +1524,16 @@ async function backupImport(f) {
   const version = data.v >= 2 ? 'V2' : 'V1';
   const kept = plan.kept ? `\n\nJournal des trajets conservé : ${plan.kept} trajet${plan.kept > 1 ? 's' : ''} de ce téléphone ${data.v >= 2 ? 'ajouté' : 'gardé'}${plan.kept > 1 ? 's' : ''}.` : '';
   if (!confirm(`Remplacer les réglages de ce téléphone par la sauvegarde ${version} du ${when} ?${kept}`)) { bkMsg('Import annulé.'); return; }
-  backupApplyPlan(plan);
-  if (window.TWRC_PRESET_V) lsSet('twrc.presetv', window.TWRC_PRESET_V);
-  lsSet('twrc.lastbackup', String(data.at).slice(0, 10));
+  // import vérifié : retraits, écritures et relecture ; au moindre écart, retour à l'état d'avant (SafeStore.apply)
+  if (window.TWRC_PRESET_V) plan.writes['twrc.presetv'] = window.TWRC_PRESET_V;
+  plan.writes['twrc.lastbackup'] = String(data.at).slice(0, 10);
+  const applied = SafeStore.apply(plan, localStorage);
+  if (!applied.ok) {
+    bkMsg(applied.rolledBack
+      ? `❌ Import impossible (${applied.error === 'quota' ? 'stockage plein' : 'écriture refusée'}) : rien n’a été modifié sur ce téléphone.`
+      : '❌ Import interrompu et retour incomplet : exporte une sauvegarde de cet appareil avant toute autre action, puis réessaie.');
+    return;
+  }
   bkMsg(`✅ Sauvegarde ${version} restaurée. Redémarrage…`);
   setTimeout(() => location.reload(), 600);
 }
@@ -3432,7 +3444,7 @@ function renderSettings(force) {
         <button class="btn pri" data-act="bk-export">Exporter</button><label class="btn" for="bkFile">Importer</label><input type="file" id="bkFile" accept=".json,application/json,text/plain" hidden></div>
       <p class="sub" id="bkMsg" aria-live="polite"></p></div>
     <div class="set-sec"><h3>🗂️ Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
-      <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
+      <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock" title="Chiffre tes lieux, voitures, journal et caches avec ton code, puis les efface en clair. Ton code les rend intacts.">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
       <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>
     <div class="set-sec"><h3>🏷️ Version</h3><p class="sub" id="verLine">${verLine()}</p></div>
     <div class="set-sec"><h3>🩺 Diagnostic</h3><p class="sub">Sources et précision à l’écran ; positions arrondies à environ 1 km dans la copie, sans adresse ni titre de rendez-vous.</p>
@@ -3477,10 +3489,23 @@ document.addEventListener('click', async e => {
   if (a === 'decision-car-change') { decisionOpenCarChooser(); return; }
   if (a === 'refresh') refreshAll();
   else if (a === 'unlock') {
-    const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
-    const ok = await unseal(pw.trim()); if (ok) { try { localStorage.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } location.reload(); } else if (msg) msg.textContent = 'Code incorrect.';
+    await unlockWith((($('#unlockPw') || {}).value || '').trim(), $('#unlockMsg'));
   }
-  else if (a === 'lock') { ['twrc.plain', 'twrc.plain.v', 'twrc.key'].forEach(k => { try { localStorage.removeItem(k); } catch (err) { /* stockage */ } }); location.reload(); }
+  else if (a === 'lock') {
+    // verrouillage réel : données personnelles chiffrées dans le coffre puis effacées en clair (SafeStore.lock)
+    t.textContent = 'Verrouillage…';
+    const r = await SafeStore.lock(localStorage, lsGet('twrc.key') || '', crypto);
+    if (r.ok) {
+      // jusqu'au rechargement, plus aucune écriture personnelle : les sauvegardes automatiques (sortie de page, minuteries)
+      // réécriraient sinon en clair les réglages et le contexte que le coffre vient de protéger
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) { if (this === localStorage && /^twrc\./.test(k) && !SafeStore.TECHNICAL.has(k)) return; return set.call(this, k, v); };
+      location.reload(); return;
+    }
+    commandFeedback(t, r.error === 'quota' ? 'Stockage plein : exporte une sauvegarde, puis réessaie (rien n’a été modifié)'
+      : r.error === 'nocode' ? 'Code introuvable sur cet appareil : déverrouille de nouveau, puis verrouille'
+      : 'Verrouillage impossible : rien n’a été modifié');
+  }
   else if (a === 'locate') locate(true);
   else if (a === 'trip-preview') tripPreviewStart(t.dataset.key);
   else if (a === 'trip-cancel') tripCancelStart(t.dataset.key);
@@ -3628,8 +3653,7 @@ document.addEventListener('submit', async e => {
   }
   if (!e.target || e.target.id !== 'unlockForm') return;
   e.preventDefault();
-  const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
-  const ok = await unseal(pw.trim()); if (ok) { try { localStorage.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } location.reload(); } else if (msg) msg.textContent = 'Code incorrect.';
+  await unlockWith((($('#unlockPw') || {}).value || '').trim(), $('#unlockMsg'));
 });
 document.addEventListener('change', e => {
   const t = e.target;
