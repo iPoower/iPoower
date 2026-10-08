@@ -51,7 +51,7 @@ function labInput(car) {
     drive = { active: true, since: localTs(startTs, tz), startTs, km, total, kmSrc: onRoute ? 'route' : lf ? 'estimate' : km != null ? 'time' : null, speedKmh: dmin >= 2 && km != null ? km / dmin * 60 : null };
   }
   // prochain trajet réellement prévu (briefing) : points datés, kilomètres de l'agenda ou distance domicile-travail ×1,3
-  const trips = wxTrips(m).filter(t => t.arr > now && t.points.length), t0 = trips[0] || null;
+  const trips = wxTrips(m).filter(t => t.arr > now && t.points.length && !workCommuteBad(t)), t0 = trips[0] || null;   // planning impossible : jamais simulé
   let trip = null;
   if (t0) {
     const b = BRF_SHOWN.find(x => x.key === t0.id), km = t0.km != null ? t0.km : b && b.td && b.td.dist ? b.td.dist * 1.3 : null;
@@ -65,9 +65,11 @@ function labInput(car) {
 }
 // Gomme estimée le long d'un trajet du briefing (mêmes points datés que la météo du trajet) : tyreLab pur, aucune donnée nouvelle.
 // Partagé par le briefing (ligne « Gomme ») et le débrief (prévision figée au départ). null sans météo ni points.
+// planning domicile-travail impossible (distance/durée) : aucune échéance de chauffe calculée dessus (audit A06)
+const workCommuteBad = t => t && t.src === 'work' && !PROFILE().commuteOk;
 function tripLab(t, car) {
   const seq = t && t.seq || [];
-  if (!car || !CX || !seq.length || !seq.every(q => q && q.hs && q.hs[q.i])) return null;
+  if (!car || !CX || !seq.length || !seq.every(q => q && q.hs && q.hs[q.i]) || workCommuteBad(t)) return null;
   const li = labInput(car);
   li.trip = { label: t.name, km: t.l && t.l.km != null ? t.l.km : t.td && t.td.dist != null ? t.td.dist * 1.3 : null,
     points: seq.map((q, i) => ({ t: q.t || (i === 0 ? t.dep : i === seq.length - 1 ? t.arr : q.hs[q.i].t),
@@ -76,6 +78,7 @@ function tripLab(t, car) {
 }
 // ligne du briefing : état de la gomme au départ → à l'arrivée (ou maintenant, en roulage), plage °C, fenêtre atteinte ou non
 function briefThermalHtml(t, car) {
+  if (workCommuteBad(t)) return `<div class="frost lv1 brf-gum" data-k="gum"><b>🌡️ Gomme · estimation suspendue</b><span>${esc(cap1(PROFILE().commute.why))} : corrige la durée dans Réglages → Trajet avant toute estimation de chauffe.</span></div>`;
   const r = tripLab(t, car), rows = r && r.trip && r.trip.rows;
   if (!rows || !rows.length) return '';
   const rg = x => `${String(x[0]).replace('-', '−')}–${String(x[1]).replace('-', '−')} °C`, low = x => esc(TL_LEVEL_TXT[x.s] || String(x.state || '').toLowerCase());
@@ -152,13 +155,13 @@ function renderLab() {
     if (r.noWeather) html = `${cars}<div class="lab-hero lvx"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car.short || car.name)}</span></div><h2 class="wx-ht">${esc(t.title)}</h2><p class="wx-hl">${esc(t.size || 'dimension non renseignée')}</p>
       <p class="wx-hl">Météo indisponible : aucune estimation thermique ni d’adhérence (rien n’est inventé).</p></div>${stHtml}${fiche}`;
     else {
-      const h = r.hero, th = r.thermal, g = r.grip, cf = r.confidence;
-      const hero = `<div class="lab-hero ${lvc(h.lvl)}" role="status"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car.short || car.name)}</span><span class="wx-age">${r.phase === 'driving' ? 'EN ROULAGE' : r.phase === 'parked' ? 'À L’ARRÊT' : 'HISTORIQUE INCONNU'}</span></div>
+      const h = r.hero, th = r.thermal, g = r.grip, cf = r.confidence, pf = carProfile(car);
+      const hero = `<div class="lab-hero ${pf.generic ? 'lvx' : lvc(h.lvl)}" role="status"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car.short || car.name)}</span><span class="wx-age">${r.phase === 'driving' ? 'EN ROULAGE' : r.phase === 'parked' ? 'À L’ARRÊT' : 'HISTORIQUE INCONNU'}</span></div>
         <p class="lab-tyre"><b>${esc(t.title)}</b>${t.size ? ' · ' + esc(t.size) : ''}</p>
         <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.state.toUpperCase())}</h2>
         <p class="wx-hl wx-h1">Gomme estimée ≈ ${rg(th.range)}${h.warm ? ' · ' + esc(h.warm) : ''}</p>
         <p class="wx-hl">Freinage : <b>${esc(labBrakeText(h.brake))}</b> · Virage : <b>${esc(h.corner === 'Excellente' ? 'Favorable' : h.corner)}</b> · ${['rain', 'heavy', 'pool'].includes(r.env.surf) ? 'Pluie' : 'Si pluie'} : <b>${esc(h.rain)}</b></p>
-        <p class="wx-hl">Facteur limitant : <b>${esc(h.limiting)}</b> · Confiance : <b>${esc(cf.level)}</b></p></div>`;
+        <p class="wx-hl">Facteur limitant : <b>${esc(h.limiting)}</b> · Confiance : <b>${esc(cf.level)}</b></p>${pf.generic ? genericLine(pf.gaps) : ''}</div>`;
       const pct = x => Math.round(x * 1000) / 10;
       const warmTxt = r.warm.reached ? (r.warm.sinceMin != null ? `Zone favorable atteinte depuis ~${r.warm.sinceMin} min` : 'Zone favorable : gomme estimée dans la plage') : r.warm.never ? 'Zone favorable non atteinte dans ces conditions' : `Avant la zone favorable : ${esc(h.warm)}`;
       const win = `<div class="wx-blk lab-win"><h3>🌡️ Fenêtre de fonctionnement</h3>

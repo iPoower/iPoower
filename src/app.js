@@ -719,6 +719,13 @@ function icon(code) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${b}</svg>`;
 }
 const verdictHtml = (l, sm) => `<div class="verdict lv${l}${sm ? ' sm' : ''}"><span class="em">${LV[l].emoji}</span><span>${LV[l].label}</span></div>`;
+// Profil générique (audit A06) : tant que les lieux et la monte ne sont pas renseignés (ou appareil verrouillé), les conclusions
+// sont un APERÇU : jamais GO ni un score /100 présenté comme un conseil personnel. Seuls les paramètres nécessaires comptent.
+const PROFILE = () => ProfileCheck.check({ locked: LOCKED(), locs: S.locs, work: S.work });
+const carProfile = car => PROFILE().car(car);
+// variante compacte, dans le bloc de verdict lui-même (le verdict reste visible sans défilement sur iPhone)
+const genericLine = gaps => `<p class="wx-hl generic-note" data-k="generic">🧪 <b>Aperçu générique — configure tes lieux et ta monte</b> · ${gaps.map(g => esc(g.text)).join(' · ')} <button class="btn sm" data-act="goset-cfg">Configurer</button></p>`;
+const genericNote = gaps => `<div class="note lvx generic-note" data-k="generic" role="note"><b>🧪 APERÇU GÉNÉRIQUE — configure tes lieux et ta monte</b><span>${gaps.map(g => esc(g.text)).join(' · ')}. Verdicts et estimations : un exemple de calcul, pas un conseil pour ta voiture. <button class="btn sm" data-act="goset-cfg">${LOCKED() ? 'Déverrouiller ou configurer' : 'Configurer'}</button></span></div>`;
 const iceName = l => l == null ? '—' : ICE_LV[l];
 const mt = (k, v, unit, note, warn) => `<div class="mt${warn ? ' warn' : ''}"><span class="k">${k}</span><span class="v">${v}${unit ? `<small>${unit}</small>` : ''}</span>${note ? `<span class="n">${note}</span>` : ''}</div>`;
 
@@ -1757,9 +1764,9 @@ function nextRisk(afterTs) {
 }
 function gaugeSvg(score, lv) {
   const r = 46, c = 2 * Math.PI * r, f = Math.max(0, Math.min(100, score || 0)) / 100;
-  return `<svg class="gauge lv${lv}" viewBox="0 0 120 120" role="img" aria-label="Score ${score} sur 100">
+  return `<svg class="gauge lv${lv}" viewBox="0 0 120 120" role="img" aria-label="${score == null ? 'Aperçu : aucun score calculé' : 'Score ' + score + ' sur 100'}">
     <circle cx="60" cy="60" r="${r}" class="g-bg"/><circle cx="60" cy="60" r="${r}" class="g-fg" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 60 60)"/>
-    <text x="60" y="58" class="g-n">${score == null ? '—' : score}</text><text x="60" y="78" class="g-l">/ 100</text></svg>`;
+    <text x="60" y="58" class="g-n">${score == null ? '—' : score}</text><text x="60" y="78" class="g-l">${score == null ? 'aperçu' : '/ 100'}</text></svg>`;
 }
 /* ===================== TRAJET VIVANT : origine GPS réelle (navigateur uniquement, mémoire uniquement) ===================== */
 // Un seul trajet vivant à la fois : le trajet commencé, sinon le prochain trajet qui part dans 90 min ou moins.
@@ -2458,7 +2465,7 @@ function briefCard(t, dayLbl) {
     <div class="brf-ev">${t.src === 'cal' ? '📅' : '🏁'} <b>${esc(t.name)}</b>${t.l ? ` · ${f0(t.l.km)} km · ${t.l.min} min${t.live ? ' depuis ici' : ''}${t.l.routed ? ' · route analysée' : ' (estimé)'}` : ''}</div>
     ${tripOriginHtml(t)}<div class="cal-v">${tripCancelButton(t)}${returnHomeButtonForTrip(t)}${liveStartBtn(t)}${placeArriveBtn(t) || liveArrBtn(t)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
   if (!t.res) return head + `<p class="muted">${appActiveCar() && !hasTires(appActiveCar()) ? 'Pneus de la voiture active à renseigner.' : t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;
-  const sum = t.sum, top = t.res[0], lv = top.w.level, xs = t.seq.map(q => q.hs[q.i]);
+  const sum = t.sum, top = t.res[0], lv = top.w.level, xs = t.seq.map(q => q.hs[q.i]), genP = carProfile(top.c), genTop = genP.generic ? genP : null;
   const ppMax = Math.max(...xs.map(x => x.pp || 0)), Pmax = Math.max(...xs.map(x => x.P || 0));
   const parts = ((top.w.worst && top.w.worst.parts) || []).slice().sort((a, b) => b.v - a.v).slice(0, 2).map(p => p.label);
   const fb = frostBand(sum.TrMin), ob = t.obs;
@@ -2469,11 +2476,12 @@ function briefCard(t, dayLbl) {
   const tr = trendOf(t.key, t.planDep || t.dep, snapOf(t.res, sum, t.seq)), cr = t.crit;
   const mOpen = lsGet('twrc.tripmap') === '1';
   return head + `
-    <div class="brf-m hasmap">${gaugeSvg(top.w.score, lv)}
-      <div class="brf-v"><span class="brf-lv">${LV[lv].emoji} ${LV[lv].name}</span>
+    ${genTop ? genericNote(genTop.gaps) : ''}
+    <div class="brf-m hasmap">${genTop ? gaugeSvg(null, 'x') : gaugeSvg(top.w.score, lv)}
+      <div class="brf-v"><span class="brf-lv">${genTop ? '🧪 APERÇU' : LV[lv].emoji + ' ' + LV[lv].name}</span>
         <span class="brf-car">${esc(top.c.short)} · ${esc(TYPE_LABEL[effType(top.c)] || '')}</span>
-        <span class="brf-why">${parts.length ? 'Points d’attention : ' + parts.map(esc).join(' · ') : '✓ Pneus actuels adaptés au trajet'}</span>
-        ${t.res.slice(1).map(r => `<span class="brf-why">${LV[r.w.level].emoji} ${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}/100</span>`).join('')}</div>
+        <span class="brf-why">${parts.length ? 'Points d’attention : ' + parts.map(esc).join(' · ') : genTop ? 'Aucune pénalité dans cet exemple de calcul' : '✓ Pneus actuels adaptés au trajet'}</span>
+        ${t.res.slice(1).map(r => carProfile(r.c).generic ? `<span class="brf-why">🧪 ${esc(r.c.short)} : aperçu</span>` : `<span class="brf-why">${LV[r.w.level].emoji} ${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}/100</span>`).join('')}</div>
       <div class="brf-map" id="tmapW"></div></div>
     <div class="kpis">
       ${k('Route', deg(sum.TrMin), '±2', 'est', fb ? 'lv' + fb.lv : '')}
@@ -2988,18 +2996,18 @@ function renderCars() {
     const c = m.cur, i = m.nowI;
     const strip = []; for (let k = 0; k <= 24; k++) { const v = hourVerdict(car, m.hs, i + k); strip.push(v ? `<i class="lv${v.level}" title="${m.hs[i + k].t.slice(11, 16)} · ${LV[v.level].name} · ${v.score}/100"></i>` : ''); }
     const labels = [0, 6, 12, 18, 24].map(k => `<span>${m.hs[i + k] ? m.hs[i + k].t.slice(11, 16) : ''}</span>`).join('');
-    const wi = w.worst;
-    return `<article class="car lv${w.level}">
+    const wi = w.worst, pf = carProfile(car), gen = pf.generic;
+    return `<article class="car ${gen ? 'lvx generic' : 'lv' + w.level}">
       <div class="car-h"><div class="car-top"><div><h3>${esc(car.name)}</h3><span class="spec">${esc(car.spec)}</span></div>${carThumb(car)}</div>
         <div class="tirebox"><span><b>Pneus montés : ${TYPE_LABEL[car.tire.type]}</b></span><span>${tireTxt(car)}</span></div>
         ${tireExtra(car, m)}</div>
-      ${verdictHtml(w.level)}
+      ${gen ? genericNote(pf.gaps) : verdictHtml(w.level)}
       <div class="car-b">
-        <div class="scoreRow"><div><div class="lab">TYRE WEATHER SCORE</div><div class="score num">${w.score}<small>/100</small></div></div>
-          <div style="display:flex;flex-direction:column;gap:6px"><div class="lab">Niveau de risque : <b style="color:var(--lv-t)">${RISKTXT[w.level]}</b></div><div class="bar"><i style="width:${w.score}%"></i></div>
+        <div class="scoreRow"><div><div class="lab">TYRE WEATHER SCORE</div><div class="score num">${gen ? '—' : w.score}<small>${gen ? 'aperçu' : '/100'}</small></div></div>
+          <div style="display:flex;flex-direction:column;gap:6px"><div class="lab">Niveau de risque : <b style="color:var(--lv-t)">${gen ? 'aperçu (profil générique)' : RISKTXT[w.level]}</b></div><div class="bar"><i style="width:${gen ? 0 : w.score}%"></i></div>
           <div class="sub">${f1(c.T)} °C · ${esc(wx(c.code))} · chaussée est. ${f1(c.Tr)} °C</div></div></div>
         <p class="expl"><b>${esc(nar.head)}</b> ${esc(nar.body)}</p>
-        <div><div class="sub" style="margin-bottom:4px">Évolution heure par heure · 24 h</div><div class="strip" role="img" aria-label="Verdict heure par heure sur 24 heures">${strip.join('')}</div><div class="strip-l">${labels}</div></div>
+        ${gen ? '' : `<div><div class="sub" style="margin-bottom:4px">Évolution heure par heure · 24 h</div><div class="strip" role="img" aria-label="Verdict heure par heure sur 24 heures">${strip.join('')}</div><div class="strip-l">${labels}</div></div>`}
         <details><summary>Détail du calcul · pire heure ${hhmm({ hs: wi.x ? m.hs : m.hs, i: m.hs.indexOf(wi.x) })}</summary>
           <ul class="parts">${wi.parts.length ? wi.parts.map(p => `<li><span>${esc(p.label)}${p.kind === 'hazard' ? ' <span class="muted">(météo)</span>' : ''}</span><b>−${p.v}</b></li>`).join('') : '<li><span>Aucune pénalité notable</span><b>0</b></li>'}</ul>
           <p class="disc" style="margin-top:6px">Indice = 100 − moyenne (heure actuelle, pire heure des ${S.horizon} h). Les seuils de température sont des repères pratiques, pas des bascules.</p></details>
@@ -3142,7 +3150,7 @@ function renderBrief() {
   const montTxt = mc.concerned ? montNoteHtml([{ name: td.toName, mc }], td.dep, car) : '';
   const routeTxt = `Cap ${capTxt(td.cap)} (${f0(td.cap)}°) · ${f0(td.dist)} km à vol d’oiseau${td.mids.length ? ` · ${td.midsLoaded}/${td.mids.length} points intermédiaires analysés (≈ tous les 50 km)` : ''}`;
   el.innerHTML = head + `<div class="sub">${esc(td.fromName)} → ${esc(td.toName)} · départ <b class="mono">${td.dep.slice(11, 16)}</b> le ${fmtDay(td.dep.slice(0, 10))} · arrivée <b class="mono">${td.arr.slice(11, 16)}</b>${td.past ? ' · <b style="color:var(--risk-t)">horaire déjà passé</b>' : ''}</div>
-  ${verdictHtml(wa.level)}
+  ${carProfile(car).generic ? genericNote(carProfile(car).gaps) : verdictHtml(wa.level)}
   <p class="expl"><b>${esc(nar.head)}</b> ${esc(nar.body)}</p>
   <div class="sub">Réponse à « puis-je partir avec cette voiture et ces pneus ? » : un indice, pas une autorisation. La décision te revient.</div>
   <div class="scroll"><table class="tbl"><thead><tr><th></th><th>Départ · ${td.dep.slice(11, 16)}<br><span class="muted" style="text-transform:none;letter-spacing:0">${esc(td.fromName)}</span></th><th>Pendant le trajet</th><th>Arrivée · ${td.arr.slice(11, 16)}<br><span class="muted" style="text-transform:none;letter-spacing:0">${esc(td.toName)}</span></th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -3186,7 +3194,8 @@ function renderCompare() {
     if (sm.Pmax >= 4) L.push(['⚠️', `Pluie jusqu’à ${f1(sm.Pmax)} mm/h`]);
     if (sm.visMin != null && sm.visMin < 1000) L.push(['⚠️', `Brouillard (${f0(sm.visMin)} m) : prudence quel que soit le pneu`]);
     if (!L.length) L.push(['✅', 'Aucune contrainte particulière détectée']);
-    return `<div class="cmpc lv${w.level}"><div class="verdict sm lv${w.level}"><span class="em">${LV[w.level].emoji}</span><span>${esc(car.short)} · ${w.score}/100</span></div>
+    const gen = carProfile(car).generic;
+    return `<div class="cmpc ${gen ? 'lvx' : 'lv' + w.level}"><div class="verdict sm ${gen ? 'lvx' : 'lv' + w.level}"><span class="em">${gen ? '🧪' : LV[w.level].emoji}</span><span>${esc(car.short)} · ${gen ? 'aperçu' : w.score + '/100'}</span></div>
       <div class="body"><b>Pneus ${TYPE_LABEL[car.tire.type]}</b><span class="muted mono" style="font-size:12px">${esc(car.tire.size)}</span>${L.map(([i, t]) => `<div>${i} ${esc(t)}</div>`).join('')}</div></div>`;
   }).join('');
   const [a, b] = res, sporty = res.find(r => r.car.sporty && effType(r.car) === 'summer');
@@ -3284,7 +3293,7 @@ function drawChart() {
 function renderReadout() {
   const el = $('#readout'); if (!el || !CX) return;
   const m = CX.m, x = m.hs[UI.chartIdx]; if (!x) return;
-  const cars = TCARS().map(car => { const v = hourVerdict(car, m.hs, UI.chartIdx); return v ? `<span class="pill lv${v.level}">${esc(car.short)} ${LV[v.level].emoji} ${v.score}/100</span>` : ''; }).join('');
+  const cars = TCARS().map(car => { const v = hourVerdict(car, m.hs, UI.chartIdx); return v ? (carProfile(car).generic ? `<span class="pill lvx">${esc(car.short)} 🧪 aperçu</span>` : `<span class="pill lv${v.level}">${esc(car.short)} ${LV[v.level].emoji} ${v.score}/100</span>`) : ''; }).join('');
   const kv = (k, v) => `<div><span class="k">${k}</span><span class="v">${v}</span></div>`;
   el.innerHTML = `<div class="hh">${fmtDay(x.date)} · ${pad(x.hh)}:00 · ${esc(wx(x.code))}</div>
    <div class="ro-grid">${kv('Air', f1(x.T) + ' °C')}${kv('Ressentie', f1(x.Tapp) + ' °C')}${kv('Chaussée (est.)', f1(x.Tr) + ' °C')}${kv('Point de rosée', f1(x.Td) + ' °C')}${kv('Humidité', f0(x.RH) + ' %')}

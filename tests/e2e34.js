@@ -130,7 +130,7 @@ const privacy = async s => {
     check('3 · bouton volontaire « Calculer depuis ici maintenant » présent', await first.count() === 1 && /Calculer depuis ici maintenant/.test(await first.innerText()));
     let release; S.meteoHold = new Promise(r => { release = r; });
     await first.click(); await s.settle(5); t = await s.txt();
-    check('3 · route prête, météo retardée : le briefing planifié reste complet, jamais de mélange', S.meteoHeld > 0 && /Origine planifiée/i.test(t) && !/Aperçu depuis ma position/i.test(t) && /\/ 100|Route/i.test(t), short(t));
+    check('3 · route prête, météo retardée : le briefing planifié reste complet, jamais de mélange', S.meteoHeld > 0 && /Origine planifiée/i.test(t) && !/Aperçu depuis ma position/i.test(t) && /\/ 100|🧪 APERÇU|Route/i.test(t), short(t));
     release(); S.meteoHold = null; await s.settle(8); t = await s.waitFor(/Aperçu depuis ma position/i);
     check('3 · route et météo prêtes : aperçu réel atomique, LIVE idle, jamais active', /Aperçu depuis ma position/i.test(t) && /Ma position\s*→\s*Alpha/i.test(t) && (await phase(s)) === 'idle', short(t));
     check('3 · origine GPS arrondie à .001°, aperçu sans suivi haute précision continu', gpsRoutes(s).length === 1 && /driving\/3\.306,49\.385;2\.587,49\.208/.test(gpsRoutes(s)[0]) && !(await p.evaluate(() => window.__geoWatches())).includes(true));
