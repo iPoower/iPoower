@@ -546,9 +546,14 @@ function placeLeave() {
 // sa clé de confirmation la referme aussi après une arrivée ou une confirmation dans une autre fenêtre.
 function placeDisclosure(c) {
   const destination = appDay().nextDestination;
-  const compact = c.source === 'manual' && !!c.confirmed && !!c.place && !PLACE_PENDING
+  // Une position GPS réellement fiable n'a pas besoin d'une seconde validation utilisateur.
+  // Les confirmations manuelles et la météo consultée conservent leurs états distincts.
+  const manual = c.source === 'manual' && !!c.confirmed && !!c.place;
+  const trustedGps = c.source === 'gps' && c.trust === 'Fiable';
+  const compact = (manual || trustedGps) && !PLACE_PENDING
     && LIVE.phase !== 'active' && !USER_STORE.state.lastDeparture && !(destination && !destination.placeId);
-  const key = c.confirmed ? c.confirmed.placeId + '|' + c.confirmed.at : null;
+  const key = manual ? c.confirmed.placeId + '|' + c.confirmed.at
+    : trustedGps ? 'gps|' + (c.place ? c.place.id : 'position') : null;
   return { compact, key, expanded: !compact || UI.placeExpanded === key };
 }
 function renderPlace() {
@@ -564,6 +569,17 @@ function renderPlace() {
     const gpsUnavailable = GEO.permission === 'refusée' || !!GEO.error;
     const meta = expanded ? c.badge : 'Confirmé ' + hmLocal(c.confirmed.at);
     h = `<div class="place on${compact ? ' compact' : ''}${expanded ? ' expanded' : ''}"><span class="pl-info" role="status"><b>${esc(c.title)} · ${esc(c.place.name)}</b><span class="pl-meta" title="Source : confirmation utilisateur">${esc(meta)} · ${esc(weatherLabel)}${gpsUnavailable ? ' · <span class="pl-gps">📍 GPS indisponible</span>' : ''}</span>${expanded && c.net ? `<span class="sub">${esc(c.net)}</span>` : ''}</span><span class="pl-main"><button class="btn sm" data-act="place-leave"><span aria-hidden="true">🚗</span><span>${esc(k.leave)}</span></button>${compact ? `<button class="btn sm pl-toggle" data-act="place-toggle" aria-expanded="${expanded}" aria-controls="placeActions locChips"><span>${expanded ? 'Réduire' : 'Modifier'}</span><span aria-hidden="true">${expanded ? '▴' : '▾'}</span></button>` : ''}</span><span class="pl-act" id="placeActions" ${expanded ? '' : 'hidden'}>${pl.filter(p => p && p.id !== c.place.id).map(p => confirm(p)).join('')}</span></div>`;
+  } else if (c.source === 'gps' && compact) {
+    const where = c.place ? c.place.name : GPS && GPS.name ? GPS.name : 'Ma position';
+    const weather = allLocs().find(p => p.id === UI.loc);
+    const weatherLabel = UI.loc === 'gps' || weather && c.place && weather.id === c.place.id
+      ? 'météo locale' : weather ? 'météo consultée : ' + weather.name : 'météo à choisir';
+    const precision = GPS && Number.isFinite(GPS.acc) ? ' · ±' + Math.round(GPS.acc) + ' m' : '';
+    h = `<div class="place compact gps-compact${expanded ? ' expanded' : ''}">
+      <span class="pl-info" role="status"><b>📍 ${esc(where)}</b><span class="pl-meta">GPS fiable${esc(precision)} · ${esc(weatherLabel)}</span></span>
+      <span class="pl-main"><button class="btn sm pl-toggle" data-act="place-toggle" aria-expanded="${expanded}" aria-controls="placeActions locChips" aria-label="${expanded ? 'Réduire les choix de localisation' : 'Changer de lieu ou confirmer ma position'}"><span>${expanded ? 'Réduire' : 'Changer'}</span><span aria-hidden="true">${expanded ? '▴' : '▾'}</span></button></span>
+      <span class="pl-act" id="placeActions" ${expanded ? '' : 'hidden'}>${pl.map(p => confirm(p)).join('')}</span>
+    </div>`;
   } else {
     const arr = [work, home].filter(Boolean).map(p => ({ p, t: placeArrivalTrip(p.id) })).find(x => x.t);
     const btns = pl.filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
@@ -3578,7 +3594,10 @@ document.addEventListener('click', async e => {
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
   else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; GEO.raw = null; GEO.error = null; GEO.reason = ''; GEO.status = 'suivi désactivé'; PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; alertLoc('Suivi de position désactivé.'); WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
-  else if (a === 'loc') { APP_CONTEXT.weatherPreview = t.dataset.id; UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false; renderAll(); }
+  else if (a === 'loc') { APP_CONTEXT.weatherPreview = t.dataset.id; UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false;
+    // Après un choix météo depuis le GPS, retrouver le cockpit sans les raccourcis dépliés.
+    if (placeNow().source === 'gps') UI.placeExpanded = null;
+    renderAll(); }
   else if (a === 'locs-toggle') { UI.locsOpen = !UI.locsOpen; renderLocChips(); }
   else if (a === 'tire') { const c = S.cars.find(x => x.id === t.dataset.car); switchTire(c, t.dataset.type); const ci = S.cars.indexOf(c); markEdit(`cars.${ci}.tire`); markEdit(`cars.${ci}.sets`); saveSettings(); renderSettings(); softRender(); }
   else if (a === 'fb') {
