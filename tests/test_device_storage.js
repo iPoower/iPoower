@@ -85,6 +85,16 @@ async function check(name, test) { await test(); n++; console.log('✅ ' + name)
     const s = storage(old), safe = D.guard(s); D.freeze(true); safe.setItem('twrc.gps', 'late');
     assert.equal(s.getItem('twrc.gps'), 'old position'); assert.equal(safe.getItem('twrc.settings.v1'), null); D.freeze(false);
   });
+  await check('coffre déjà invalide : aucun effacement des réglages au démarrage', () => {
+    const s = storage({ ...old, [D.VAULT]: 'broken' }), target = {};
+    D.bootstrap(target, s); assert.equal(target.TWRC_STORAGE_ERROR, true);
+    assert.equal(s.getItem('twrc.settings.v1'), 'old settings'); assert.equal(s.getItem('twrc.context.v1'), 'old journal');
+  });
+  await check('écriture altérant le coffre : données originales intactes, verrouillage refusé', async () => {
+    const s = storage(old), original = s.setItem;
+    s.setItem = function(k, v) { return original.call(this, k, k === D.VAULT ? 'broken' : v); };
+    await assert.rejects(D.lock(s, CODE, crypto)); assert.deepEqual(Object.fromEntries(s.map), old);
+  });
   console.log(`${n}/${n} scénarios OK`);
 })().catch(e => { console.error(e); process.exitCode = 1; });
 function oldWithoutOther() { return Object.fromEntries(Object.entries(old).filter(([k]) => k.startsWith('twrc.'))); }

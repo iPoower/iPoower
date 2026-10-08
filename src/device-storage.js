@@ -55,6 +55,7 @@ const DeviceStorage = (() => {
   const isLocked = storage => { try { return !!read(storage, VAULT); } catch (e) { return false; } };
   function finishLock(storage) {
     if (!isLocked(storage)) return;
+    if (!validVault(JSON.parse(read(storage, VAULT)))) throw new Error('Copie chiffrée invalide : données locales conservées.');
     keys(storage).filter(k => k.startsWith('twrc.') && k !== VAULT).forEach(k => put(storage, k, null));
   }
   function bootstrap(target, storage) {
@@ -82,7 +83,8 @@ const DeviceStorage = (() => {
       { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   }
   function validVault(v) {
-    return v && v.v === 1 && v.it === 600000 && typeof v.s === 'string' && typeof v.i === 'string' && typeof v.c === 'string';
+    try { return v && v.v === 1 && v.it === 600000 && typeof v.s === 'string' && typeof v.i === 'string' && typeof v.c === 'string' &&
+      decode(v.s).length === 16 && decode(v.i).length === 12 && decode(v.c).length >= 16; } catch (e) { return false; }
   }
   async function lock(storage, pass, crypto) {
     recover(storage);
@@ -93,7 +95,11 @@ const DeviceStorage = (() => {
     const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(text)));
     const checked = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipher));
     if (checked !== text) throw new Error('Copie chiffrée non confirmée.');
-    put(storage, VAULT, JSON.stringify({ v: 1, it: 600000, s: encode(salt), i: encode(iv), c: encode(cipher) }));
+    const sealed = JSON.stringify({ v: 1, it: 600000, s: encode(salt), i: encode(iv), c: encode(cipher) });
+    try { put(storage, VAULT, sealed); } catch (error) {
+      try { if (read(storage, VAULT) !== sealed) put(storage, VAULT, null); } catch (e) { /* aucun nettoyage des données lisibles */ }
+      throw error;
+    }
     // Le coffre est déjà relu et authentifié : une interruption reprend ce nettoyage au démarrage.
     finishLock(storage);
   }
