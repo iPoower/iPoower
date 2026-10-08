@@ -559,15 +559,69 @@ function dotAge(dot, nowStr) {
 // pression : loi des gaz parfaits sur la pression absolue
 function pressTarget(s) { const m = /(\d+(?:[.,]\d+)?)/.exec(String(s || '')); const v = m ? parseFloat(m[1].replace(',', '.')) : null; return v != null && v > 0.8 && v < 5 ? v : null; }
 function pressLoss(target, Tcheck, Tnow) { const p = target != null ? target : 2.4; return (p + 1.013) * (Tcheck - Tnow) / (273.15 + Tcheck); }
-// Loi Montagne : 34 départements (liste 2025-2026), communes fixées par arrêté préfectoral
-const MONT_DEPTS = ['Ain', 'Allier', 'Alpes-de-Haute-Provence', 'Alpes-Maritimes', 'Ardèche', 'Ariège', 'Aude', 'Aveyron', 'Bas-Rhin', 'Cantal', 'Doubs', 'Drôme', 'Haute-Garonne', 'Haute-Loire', 'Hautes-Alpes', 'Haute-Saône', 'Haute-Savoie', 'Hautes-Pyrénées', 'Haut-Rhin', 'Isère', 'Jura', 'Loire', 'Lozère', 'Moselle', 'Puy-de-Dôme', 'Pyrénées-Atlantiques', 'Pyrénées-Orientales', 'Rhône', 'Savoie', 'Tarn', 'Territoire de Belfort', 'Var', 'Vaucluse', 'Vosges'];
+// Départements français (code officiel → nom). Sert à reconnaître un même département quelle que soit la source
+// (IGN/BAN « 74, Haute-Savoie, Auvergne-Rhône-Alpes », OSM « FR-74 », Open-Meteo « Haute-Savoie », code postal 74000).
+const FR_DEPT = { '01': 'Ain', '02': 'Aisne', '03': 'Allier', '04': 'Alpes-de-Haute-Provence', '05': 'Hautes-Alpes', '06': 'Alpes-Maritimes', '07': 'Ardèche', '08': 'Ardennes',
+  '09': 'Ariège', '10': 'Aube', '11': 'Aude', '12': 'Aveyron', '13': 'Bouches-du-Rhône', '14': 'Calvados', '15': 'Cantal', '16': 'Charente', '17': 'Charente-Maritime', '18': 'Cher',
+  '19': 'Corrèze', '2A': 'Corse-du-Sud', '2B': 'Haute-Corse', '21': 'Côte-d’Or', '22': 'Côtes-d’Armor', '23': 'Creuse', '24': 'Dordogne', '25': 'Doubs', '26': 'Drôme', '27': 'Eure',
+  '28': 'Eure-et-Loir', '29': 'Finistère', '30': 'Gard', '31': 'Haute-Garonne', '32': 'Gers', '33': 'Gironde', '34': 'Hérault', '35': 'Ille-et-Vilaine', '36': 'Indre', '37': 'Indre-et-Loire',
+  '38': 'Isère', '39': 'Jura', '40': 'Landes', '41': 'Loir-et-Cher', '42': 'Loire', '43': 'Haute-Loire', '44': 'Loire-Atlantique', '45': 'Loiret', '46': 'Lot', '47': 'Lot-et-Garonne',
+  '48': 'Lozère', '49': 'Maine-et-Loire', '50': 'Manche', '51': 'Marne', '52': 'Haute-Marne', '53': 'Mayenne', '54': 'Meurthe-et-Moselle', '55': 'Meuse', '56': 'Morbihan', '57': 'Moselle',
+  '58': 'Nièvre', '59': 'Nord', '60': 'Oise', '61': 'Orne', '62': 'Pas-de-Calais', '63': 'Puy-de-Dôme', '64': 'Pyrénées-Atlantiques', '65': 'Hautes-Pyrénées', '66': 'Pyrénées-Orientales',
+  '67': 'Bas-Rhin', '68': 'Haut-Rhin', '69': 'Rhône', '70': 'Haute-Saône', '71': 'Saône-et-Loire', '72': 'Sarthe', '73': 'Savoie', '74': 'Haute-Savoie', '75': 'Paris', '76': 'Seine-Maritime',
+  '77': 'Seine-et-Marne', '78': 'Yvelines', '79': 'Deux-Sèvres', '80': 'Somme', '81': 'Tarn', '82': 'Tarn-et-Garonne', '83': 'Var', '84': 'Vaucluse', '85': 'Vendée', '86': 'Vienne',
+  '87': 'Haute-Vienne', '88': 'Vosges', '89': 'Yonne', '90': 'Territoire de Belfort', '91': 'Essonne', '92': 'Hauts-de-Seine', '93': 'Seine-Saint-Denis', '94': 'Val-de-Marne', '95': 'Val-d’Oise',
+  '971': 'Guadeloupe', '972': 'Martinique', '973': 'Guyane', '974': 'La Réunion', '976': 'Mayotte' };
 const normTxt = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
-const MONT_SET = new Set(MONT_DEPTS.map(normTxt));
+const FR_DEPT_BY_NAME = new Map(Object.entries(FR_DEPT).map(([c, n]) => [normTxt(n), c]).concat([['reunion', '974']]));
+const deptCodeOk = c => typeof c === 'string' && Object.prototype.hasOwnProperty.call(FR_DEPT, c) ? c : null;
+// Code département depuis un texte libre : « 74 », « 2a », « FR-74 », « FR-75C », « 74, Haute-Savoie, Auvergne-Rhône-Alpes », « Haute Savoie ».
+function deptCodeOf(v) {
+  const s = String(v == null ? '' : v).trim(); if (!s) return null;
+  const iso = /^FR-(\d{2,3}|2[AB])[A-Z]?$/i.exec(s); if (iso) return deptCodeOk(iso[1].toUpperCase()) || deptCodeOk(iso[1].slice(0, 2));
+  const head = /^(97[1-6]|\d{2}|2[AB])(?=$|[\s,·-])/i.exec(s); if (head) return deptCodeOk(head[1].toUpperCase());
+  for (const part of s.split(/[,·]/)) { const c = FR_DEPT_BY_NAME.get(normTxt(part)); if (c) return c; }
+  return null;
+}
+// Code département depuis un code postal (repli) : 97x → 3 chiffres, Corse 200xx–201xx → 2A, 202xx–206xx → 2B.
+function deptFromPostcode(pc) {
+  const m = /^(\d{5})$/.exec(String(pc || '').trim()); if (!m) return null;
+  const z = m[1]; if (z.startsWith('97')) return deptCodeOk(z.slice(0, 3)); if (z.startsWith('98')) return null;
+  if (z.startsWith('20')) return +z.slice(2, 3) <= 1 ? '2A' : '2B';
+  return deptCodeOk(z.slice(0, 2));
+}
+// Métadonnées administratives normalisées d'un lieu (recherche, lieu enregistré, point manuel, ancienne donnée) :
+// toujours les mêmes champs, quelle que soit la source. Code commune INSEE et code postal gardés tels quels s'ils sont valides.
+function frAdmin(x) {
+  x = x && typeof x === 'object' ? x : {};
+  const pc = /^\d{5}$/.test(String(x.postcode || '').trim()) ? String(x.postcode).trim() : '', cc = /^(\d{5}|2[AB]\d{3})$/i.test(String(x.cityCode || '').trim()) ? String(x.cityCode).trim().toUpperCase() : '';
+  const code = deptCodeOk(String(x.deptCode || '').toUpperCase()) || deptCodeOf(x.dept) || deptCodeOf(x.iso) || (cc ? deptCodeOk(cc.slice(0, cc.startsWith('97') ? 3 : 2)) : null) || deptFromPostcode(pc);
+  const city = typeof x.city === 'string' ? x.city.trim().replace(/\s+/g, ' ').slice(0, 120) : '';
+  return { deptCode: code || '', dept: code ? FR_DEPT[code] : '', city, cityCode: cc, postcode: pc };
+}
+// Loi Montagne : 34 départements où des communes sont soumises à l'obligation d'équipements hiver (1er novembre – 31 mars).
+// Le département et l'altitude sont des indicateurs de VIGILANCE : seule la liste de communes fixée par arrêté préfectoral fait foi.
+const MONT_CODES = new Set(['01', '03', '04', '05', '06', '07', '09', '11', '12', '15', '25', '26', '31', '38', '39', '42', '43', '48', '57', '63', '64', '65', '66', '67', '68', '69', '70', '73', '74', '81', '83', '84', '88', '90']);
+const MONT_DEPTS = [...MONT_CODES].map(c => FR_DEPT[c]);
+const MONT_SRC = { asOf: '2025-10-29', season: '2025-2026', text: 'décret n° 2020-1264 ; liste des 34 départements de la saison 2025-2026 (service-public.gouv.fr, 29/10/2025)',
+  url: 'https://www.service-public.gouv.fr/particuliers/actualites/A14389', communes: 'https://www.securite-routiere.gouv.fr/equipements-hivernaux-departements-et-communes' };
 function montagneInfo(loc, dateStr, elev) {
-  const inDept = !!(loc && loc.dept && MONT_SET.has(normTxt(loc.dept)));
-  const md = dateStr.slice(5, 10), season = md >= '11-01' || md <= '03-31';
+  const a = frAdmin(loc), inDept = MONT_CODES.has(a.deptCode);
+  const md = String(dateStr || '').slice(5, 10), season = md >= '11-01' || md <= '03-31';
   const high = elev != null && elev >= 700;
-  return { inDept, season, elev, high, concerned: inDept || high };
+  return { inDept, season, elev, high, concerned: inDept || high, deptCode: a.deptCode, deptName: a.dept, src: MONT_SRC };
+}
+// Saison hivernale d'une date (1er novembre – 31 mars) et réserve si la liste embarquée date d'une autre saison.
+function montagneSeason(dateStr) {
+  const y = +String(dateStr || '').slice(0, 4), m = +String(dateStr || '').slice(5, 7); if (!y || !m) return { season: '', listOk: false, note: '' };
+  const season = m >= 7 ? `${y}-${y + 1}` : `${y - 1}-${y}`, listOk = season === MONT_SRC.season;
+  return { season, listOk, note: listOk ? '' : `liste de la saison ${MONT_SRC.season} : celle de ${season} reste à confirmer` };
+}
+// Phrase courte et sourcée : jamais « obligation » pour un lieu dont la commune n'est pas vérifiée.
+function montagneWhy(mc, name) {
+  const where = mc.deptName ? `${mc.deptName} (${mc.deptCode})` : '';
+  return mc.inDept ? `${name}${where ? ' · ' + where : ''} : département où certaines communes imposent les équipements hiver`
+    : `${name} est en altitude (${Math.round(mc.elev)} m)${where ? ' · ' + where : ''} : équipements hiver possibles selon la commune`;
 }
 
 /* ===================== AJOUTS 2 : AROME, ensemble, pluie 15 min, calibration ===================== */
