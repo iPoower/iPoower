@@ -133,9 +133,13 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     await s.c.setOffline(true); await s.p.evaluate(() => window.dispatchEvent(new Event('offline'))); await s.settle(2); a = await lab(s.p);
     check('4 · hors connexion : analyse affichée depuis le cache', a.shown && STATES.test(a.hero), a.hero);
     await s.c.setOffline(false);
+    // Le retour en ligne actualise les données et remplace les boutons d'onglet : attendre la fin
+    // des réponses avant le clic réel évite un pointerdown sur un bouton ensuite détaché sous WebKit.
+    await s.p.evaluate(() => window.dispatchEvent(new Event('online'))); await s.weatherIdle();
     // 5. les autres onglets restent intacts
-    await s.p.click('[data-act=view][data-v=pneus]'); await s.settle(2);
-    check('5 · Pneus intact (voitures visibles), Analyse masquée', await s.p.evaluate(() => !!document.querySelector('#secCars .car') && document.getElementById('secLab').hidden));
+    await s.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await s.settle(2);
+    const pneusView = await s.p.evaluate(() => ({ view: UI.view, cars: !!document.querySelector('#secCars .car'), shown: getComputedStyle(document.getElementById('secCars')).display !== 'none', labHidden: document.getElementById('secLab').hidden }));
+    check('5 · Pneus intact (voitures visibles), Analyse masquée', pneusView.view === 'pneus' && pneusView.cars && pneusView.shown && pneusView.labHidden, JSON.stringify(pneusView));
     await s.p.click('[data-act=view][data-v=meteo]'); await s.settle(2);
     check('5 · Météo intacte (poste météo visible), Analyse masquée', await s.p.evaluate(() => !document.getElementById('secWx').hidden && document.getElementById('secLab').hidden));
     await s.p.click('[data-act=view][data-v=tenue]'); await s.settle(2);
