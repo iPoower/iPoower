@@ -71,6 +71,15 @@ const DayContext = (() => {
     return { ...leg, to, navTo: to, destinationOverride: true, g: [], pts: [], km: null, min: null, routed: false,
       originPending: true, originUncertain: !to || !leg.from, targetArr: null };
   }
+  // Un départ de l'agenda confirmé ailleurs invalide toutes les données routières de l'ancienne origine.
+  // Pur : ne modifie ni l'événement du relais ni les trajets futurs ou les retours.
+  function rebaseAgendaOrigin(leg, place) {
+    if (!leg || leg.k !== 'go' || !leg.to || !place || !local(leg.arr)) return leg;
+    const name = text(place.name || place.label, 220) || 'Lieu confirmé';
+    return { ...leg, from: { ...place, name, label: name, city: name }, fromKind: 'confirmed',
+      originName: name, originRecalc: true, originPending: true, originUncertain: false,
+      targetArr: leg.arr, km: null, min: null, pts: [], g: [], routed: false, byTime: false };
+  }
   function workOn(day, v, days) {
     day = day.slice(0, 10); const explicit = v && v.dayType;
     if (explicit && explicit.date === day) return explicit.value === 'work';
@@ -88,7 +97,7 @@ const DayContext = (() => {
     // ne pilotent aucune vue. Les trajets ultérieurs restent des prévisions.
     return [chosen, ...trips.filter(t => t.key !== chosen.key && (!chosen.arr || !t.dep || t.dep >= chosen.arr))];
   }
-  return { date, expiry, tripExpiry, cleanPoint, clean, morningOrigin, destination, returnLeg, workOn, occasion, prioritize };
+  return { date, expiry, tripExpiry, cleanPoint, clean, morningOrigin, destination, returnLeg, rebaseAgendaOrigin, workOn, occasion, prioritize };
 })();
 function userContextStore({ read, write, now = () => Date.now() }) {
   const key = 'twrc.context.v1', listeners = new Set();
