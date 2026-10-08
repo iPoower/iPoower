@@ -1273,7 +1273,7 @@ async function fetchAQ(l) {
   const request = { origin: { ...l }, gen }; AQREQ.set(l.id, request); AQBUSY.add(l.id);
   try {
     const p = await fetchJSON(urlAQ(l), 12000, l.gps ? 'gps' : 'shared', 45 * 60e3); if (!p || !p.hourly) throw new Error('réponse invalide');
-    if (gpsSourceCurrent(request.origin, gen)) { AQRAW[l.id] = { p, t: Date.now() }; delete AQERR[l.id]; }
+    if (gpsSourceCurrent(request.origin, gen)) { AQRAW[l.id] = { p, t: WEATHER_REQUESTS.fetchedAt(urlAQ(l)) || Date.now() }; delete AQERR[l.id]; }
   } catch (e) { if (gpsSourceCurrent(request.origin, gen)) AQERR[l.id] = { t: Date.now(), msg: e.message }; }
   finally {
     // Une ancienne requête ne libère pas le verrou de celle qui la remplace.
@@ -1284,7 +1284,7 @@ const polCls = l => l == null || l === 0 ? 'lvx' : 'lv' + Math.min(3, l - 1);
 function renderAir() {
   const el = $('#secAir'); if (!el) return; if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
   const m = CX.m, l = curLoc(), id = l.id, r = AQRAW[id], er = AQERR[id];
-  if (!DEMO.on && (!r || Date.now() - r.t > 30 * 60e3) && !(er && Date.now() - er.t < 5 * 60e3)) fetchAQ(l);
+  if (!DEMO.on && (!r || Date.now() - r.t > 45 * 60e3) && !(er && Date.now() - er.t < 5 * 60e3)) fetchAQ(l);
   const a = DEMO.on ? airSummary(makeDemoAir(m.payload), m.nowStr) : r ? airSummary(r.p, m.nowStr) : null;
   const day = m.days.find(d => d.date === m.nowStr.slice(0, 10)) || {};
   const uN = uvInfo((m.hs[m.nowI] || {}).uv), pk = uvToday(m), uM = uvInfo(day.uv != null ? day.uv : pk ? pk.uv : null);
@@ -2480,7 +2480,7 @@ async function calModel(ev) {
   if (CALM[id] && Date.now() - CALM[id].t < PT_TTL) return CALM[id].m;
   if (CALBUSY.has(id)) return null; CALBUSY.add(id);
   try { const p = await fetchJSON(`${API}?latitude=${ev.lat}&longitude=${ev.lon}&hourly=${Q_HR}&daily=${Q_DY}&timezone=auto&past_days=1&forecast_days=10`, 12000); const bad = validForecast(p); if (bad) throw new Error(bad); CALM[id] = { t: Date.now(), m: makeModel(p, 'live', { id, lat: ev.lat, lon: ev.lon, name: ev.label || ev.loc }) }; }
-  catch (e) { CALM[id] = { t: Date.now() - PT_TTL + 2 * 60e3, m: null }; }
+  catch (e) { CALM[id] = { t: Date.now() - PT_TTL + 10 * 60e3, m: null }; }
   CALBUSY.delete(id); renderCal(); renderTenue(); return CALM[id].m;
 }
 function calTrip(ev) {
@@ -2507,7 +2507,7 @@ async function fetchLeg(leg) {
     let js = await fetchJSON(`${API}?latitude=${pts.map(p => p.lat).join(',')}&longitude=${pts.map(p => p.lon).join(',')}&hourly=${Q_HR}&timezone=Europe%2FParis&past_days=1&forecast_days=10`, 15000);
     if (!Array.isArray(js)) js = [js];
     LEGM[k] = { t: Date.now(), models: js.map((p, i) => { try { return validForecast(p) ? null : makeModel(p, 'live', pts[i]); } catch (e) { return null; } }) };
-  } catch (e) { LEGM[k] = { t: Date.now() - PT_TTL + 2 * 60e3, models: null }; }
+  } catch (e) { LEGM[k] = { t: Date.now() - PT_TTL + 10 * 60e3, models: null }; }
   LEGBUSY.delete(k); clearTimeout(fetchLeg.t); fetchLeg.t = setTimeout(() => { renderCal(); renderBrf(); renderTenue(); }, 150);
 }
 function legEval(leg) {
