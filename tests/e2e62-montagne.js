@@ -55,8 +55,14 @@ const briefText = p => p.evaluate(() => (document.getElementById('secBrf') || {}
       });
       await check(dev + ' · même adresse ajoutée en Réglages : mêmes métadonnées et même vigilance que le trajet manuel', async () => {
         await p.evaluate(() => { const d = document.getElementById('settings'); d.open = true; renderSettings(true); document.querySelectorAll('#settings details').forEach(x => { x.open = true; }); });
-        await p.fill('#geoQ', '1 Place Fictive, 74000 Annecy'); await p.locator('[data-act=geo-search]').click();
-        await p.waitForFunction(() => document.querySelectorAll('[data-act=geo-add]').length > 0, null, { timeout: 10000 });
+        // la recherche passe par des minuteries (délai réseau, file de requêtes) : l'horloge simulée doit avancer pendant l'attente
+        // (sinon WebKit attend indéfiniment) ; un rafraîchissement des réglages peut aussi effacer la saisie, d'où la relance
+        const Q = '1 Place Fictive, 74000 Annecy';
+        for (let i = 0; i < 40 && !(await p.locator('[data-act=geo-add]').count()); i++) {
+          if (i % 10 === 0 && !/Recherche…/.test(await p.locator('#geoHits').textContent())) { await p.fill('#geoQ', Q); await p.locator('[data-act=geo-search]').click(); }
+          await s.settle(1);
+        }
+        assert(await p.locator('[data-act=geo-add]').count() > 0, 'résultats de recherche affichés : ' + await p.locator('#geoHits').textContent());
         await p.locator('[data-act=geo-add]').first().click(); await s.settle(2);
         const r = await p.evaluate(() => { const c = S.customs[S.customs.length - 1], m = USER_STORE.state.dayContext.nextDestination.destinationPoint, j = x => JSON.stringify(montagneInfo(x, '2026-11-03T17:15', null));
           return { meta: [c.deptCode, c.dept, c.city, c.postcode], same: j(c) === j(m), inDept: montagneInfo(c, '2026-11-03', null).inDept }; });
