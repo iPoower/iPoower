@@ -115,7 +115,9 @@ function labThermTick(arrived, vehicle = null) {
   if (DEMO.on || !CX) return;
   const car = vehicle || labCar(); if (!car || !hasTires(car)) return;
   if (!arrived && !(LIVE.phase === 'active' && Date.now() - (labThermTick.at || 0) > 120e3)) return;
-  const inp = labInput(car), r = tyreLab(inp); if (!r || !r.thermal) return;
+  const inp = labInput(car);
+  if (!arrived && !(inp.drive && inp.drive.active)) return;
+  const r = tyreLab(inp); if (!r || !r.thermal) return;
   labThermTick.at = Date.now(); ttSave(car.id, r.now, r.thermal.T, r.state && r.state.sig);
   return { r, inp };
 }
