@@ -34,7 +34,23 @@ const b1=await bar(),pneusNow=await p.evaluate(()=>document.querySelector('#secC
 check('47.2 · sans clic : le minuteur relance l’actualisation (nouvelles requêtes météo)',meteo>m0,`${m0} → ${meteo}`);
 check('47.3 · « Dernière mise à jour » = heure de la donnée du lieu affiché (14:06)',/LIVE/.test(b1)&&/14:06/.test(b1),b1);
 check('47.4 · Pneus (onglet visible) recalculé avec la nouvelle météo',pneusNow!==before.pneus,pneusNow.slice(0,160));
-for(const v of ['meteo','tenue','analyse']){const now=await tab(v);const strip=x=>x.replace(/\d{1,2}[:h]\d{2}|\d+ ?min|LIVE|FRESH|CACHE/gi,'');check(`47.5 · ${v} (masqué pendant l’actualisation) : nouvelle météo utilisée dès l’ouverture`,now.length>40&&strip(now)!==strip(before[v]),now.slice(0,160));}
+for(const v of ['meteo','tenue','analyse']) {
+  const now=await tab(v), strip=x=>x.replace(/\d{1,2}[:h]\d{2}|\d+ ?min|LIVE|FRESH|CACHE/gi,'');
+  if(v==='tenue'){
+    // Le planning peut rester identique tant que la météo des rendez-vous (TTL 25 min)
+    // et les seuils de vêtements sont inchangés. Ne pas exiger un changement de texte.
+    // Si la tenue possède un créneau local ACTUEL, il doit utiliser le modèle frais.
+    const source=await p.evaluate(()=>{
+      const current=APP_CONTEXT.snapshot.currentLocation||curLoc(), m=current&&M[current.id];
+      const input=buildTenueDay({currentLoc:current,context:APP_CONTEXT.snapshot});
+      if(!input||!m||!m.cur)return {ok:false,reason:'plan ou modèle absent'};
+      const active=input.moments.filter(x=>x.weather&&x.location===current.name&&x.start<=m.nowStr.slice(0,16)&&x.end>m.nowStr.slice(0,16));
+      return {ok:active.every(x=>Math.abs(x.weather.T-m.cur.T)<0.6),tested:active.length};
+    });
+    check('47.5 · Tenue : plan valide, lieu actuel synchronisé lorsqu’un créneau local est affiché',
+      now.length>40&&/Plan de tenue/.test(now)&&source.ok,JSON.stringify(source)+' '+now.slice(0,130));
+  }else check(`47.5 · ${v} (masqué pendant l’actualisation) : nouvelle météo utilisée dès l’ouverture`,now.length>40&&strip(now)!==strip(before[v]),now.slice(0,160));
+}
 const ten=await tab('tenue');check('47.7 · Tenue : modèles de rendez-vous conservés après 6 min (économie API)',/Ressenti/.test(before.tenue)&&/Ressenti 19,/.test(before.tenue)&&/Ressenti 19,/.test(ten),ten.slice(0,240));
 const one=await p.evaluate(()=>{const m=M[UI.loc],i=m.nowI,car=labCar(),r=car&&tyreLab(labInput(car));return{shared:CX&&CX.m===m,T:m.hs[i].T,Tr:m.hs[i].Tr,labT:r&&r.env?r.env.Tenv:null,labOk:!!(r&&r.thermal&&r.press&&r.grip&&r.confidence)};});
 check('47.6 · un seul état : Météo, Pneus et Analyse lisent le même modèle (CX.m = M[lieu])',one.shared&&one.labOk,JSON.stringify(one));
