@@ -87,8 +87,8 @@ async function calOriginAction(action, button) {
     const q = CAL_ORIGIN.query.trim();
     if (q.length < 2) { CAL_ORIGIN.message = 'Saisis au moins deux caractères.'; renderWx(); return; }
     if (offlineNow()) { CAL_ORIGIN.message = 'Recherche indisponible hors connexion.'; renderWx(); return; }
-    const gen = ++CAL_ORIGIN.generation, key = CAL_ORIGIN.key;
     if (CAL_ORIGIN.busy) return;
+    const gen = ++CAL_ORIGIN.generation, key = CAL_ORIGIN.key;
     CAL_ORIGIN.busy = true; CAL_ORIGIN.message = 'Recherche en cours…'; renderWx();
     try {
       const results = await geocode(q);
@@ -98,7 +98,7 @@ async function calOriginAction(action, button) {
     } catch (e) {
       if (CAL_ORIGIN.key === key && CAL_ORIGIN.generation === gen) CAL_ORIGIN.message = 'Recherche impossible : réessaie.';
     } finally {
-      if (CAL_ORIGIN.key === key && CAL_ORIGIN.generation === gen) {
+      if (CAL_ORIGIN.key === key) {
         CAL_ORIGIN.busy = false; renderWx();
       }
     }
