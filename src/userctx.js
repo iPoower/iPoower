@@ -32,6 +32,26 @@ const DayContext = (() => {
       deptCode: pat(v.deptCode, /^(\d{2}|2[AB]|97[1-6])$/i), dept: text(v.dept, 100) || '', city: text(v.city, 120) || '',
       cityCode: pat(v.cityCode, /^(\d{5}|2[AB]\d{3})$/i), postcode: pat(v.postcode, /^\d{5}$/) };
   }
+  // Départ explicite d'une occurrence Agenda : uniquement une annotation canonique,
+  // jamais un second trajet, une position GPS vivante ou une géométrie en cache.
+  function agendaOrigins(v, now, places = null) {
+    const out = {}, source = v && v.agendaOrigins;
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return out;
+    const exists = placeId => !places || places.some(p => p.id === placeId);
+    Object.entries(source).slice(-32).forEach(([eventId, row]) => {
+      if (!/^cal-[0-9a-f]{32}$/.test(eventId) || !row || typeof row !== 'object' || Array.isArray(row)) return;
+      const eventStart = typeof row.eventStart === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(row.eventStart) ? row.eventStart : null;
+      const originId = id(row.originId) && exists(row.originId) ? row.originId : null;
+      const originPoint = cleanPoint(row.originPoint, 'agenda-origin');
+      if (!eventStart || !['saved', 'manual', 'gps'].includes(row.source) || (!originId && !originPoint)
+        || !timestamp(row.confirmedAt, now) || !timestamp(row.updatedAt, now)
+        || !Number.isFinite(row.expiresAt) || row.expiresAt <= now || row.expiresAt > now + 366 * 864e5) return;
+      if (row.source === 'saved' && !originId || row.source !== 'saved' && !originPoint) return;
+      out[eventId] = { eventStart, originId, originPoint, source: row.source,
+        confirmedAt: row.confirmedAt, updatedAt: row.updatedAt, expiresAt: row.expiresAt };
+    });
+    return out;
+  }
   function clean(v, now, places = null, cars = null) {
     v = v || {}; const n = v.nextDestination, c = v.lastConfirmedPlace;
     const exists = x => !places || places.some(p => p.id === x);
@@ -51,6 +71,7 @@ const DayContext = (() => {
       lastConfirmedPlace: c && id(c.placeId) && exists(c.placeId) && timestamp(c.at, now) && c.source === 'manual' ? { placeId: c.placeId, at: c.at, source: 'manual' } : null,
       departedAt: timestamp(v.departedAt, now) ? v.departedAt : null, arrivedAt,
       dayType: v.dayType && v.dayType.date === date(now) && ['work', 'off'].includes(v.dayType.value) ? { date: v.dayType.date, value: v.dayType.value } : null,
+      agendaOrigins: agendaOrigins(v, now, places),
       activeCarId: id(v.activeCarId) && (!cars || cars.some(c => c.id === v.activeCarId)) ? v.activeCarId : null,
       outfitChoice: v.outfitChoice && [date(now), nextDate(date(now))].includes(v.outfitChoice.date) && ['office', 'outing', 'walk'].includes(v.outfitChoice.occasion) ? { date: v.outfitChoice.date, occasion: v.outfitChoice.occasion } : null };
   }
@@ -98,7 +119,7 @@ const DayContext = (() => {
     // ne pilotent aucune vue. Les trajets ultérieurs restent des prévisions.
     return [chosen, ...trips.filter(t => t.key !== chosen.key && (!chosen.arr || !t.dep || t.dep >= chosen.arr))];
   }
-  return { date, expiry, tripExpiry, cleanPoint, clean, morningOrigin, destination, returnLeg, rebaseAgendaOrigin, workOn, occasion, prioritize };
+  return { date, expiry, tripExpiry, cleanPoint, clean, agendaOrigins, morningOrigin, destination, returnLeg, rebaseAgendaOrigin, workOn, occasion, prioritize };
 })();
 function userContextStore({ read, write, now = () => Date.now() }) {
   const key = 'twrc.context.v1', listeners = new Set();
