@@ -231,4 +231,26 @@ check('audit A05 · point manuel : département, commune et code postal conserv�
   assert.deepEqual([bad.deptCode, bad.dept, bad.cityCode, bad.postcode], ['', '', '', '']);
   assert.equal(D.cleanPoint({ id: 'c', lat: 41.9, lon: 8.7, deptCode: '2a' }, 'x').deptCode, '2A');
 });
+
+// Origine par occurrence : le champ reste canonique, borné et distinct du lieu météo.
+check('agenda origins : une seule occurrence, point manuel contrôlé et autres rendez-vous inchangés', () => {
+  const key = 'cal-0123456789abcdef0123456789abcdef', exp = now + 86400000;
+  const point = { id: 'agenda-origin', name: 'Site test', address: 'Adresse fictive', lat: 49.1, lon: 2.3 };
+  const raw = { agendaOrigins: { [key]: { eventStart: '2026-10-07T10:00', source: 'manual',
+    originId: null, originPoint: point, confirmedAt: now, updatedAt: now, expiresAt: exp } } };
+  const result = D.clean(raw, now, places, cars);
+  assert.equal(result.agendaOrigins[key].originPoint.name, 'Site test');
+  assert.equal(result.nextDestination, null);
+  assert.equal(Object.keys(result.agendaOrigins).length, 1);
+  assert.equal(D.clean(raw, exp, places, cars).agendaOrigins[key], undefined);
+});
+check('agenda origins : identifiants et provenances douteuses refusés ; lieu enregistré reconnu', () => {
+  const key = 'cal-abcdef0123456789abcdef0123456789', rec = { eventStart: '2026-10-07T09:30',
+    source: 'saved', originId: 'b', confirmedAt: now, updatedAt: now, expiresAt: now + 86400000 };
+  const d = D.clean({ agendaOrigins: { [key]: rec, invalide: rec } }, now, places, cars);
+  assert.equal(d.agendaOrigins[key].originId, 'b'); assert(!d.agendaOrigins.invalide);
+  assert.equal(Object.keys(D.clean({ agendaOrigins: { [key]: { ...rec, originId: 'missing' } } }, now, places, cars).agendaOrigins).length, 0);
+  assert.equal(Object.keys(D.clean({ agendaOrigins: { [key]: { ...rec, eventStart: 'not-a-date' } } }, now, places, cars).agendaOrigins).length, 0);
+});
+
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);
