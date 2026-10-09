@@ -134,7 +134,7 @@ function wxDesk(input) {
   };
 
   // Pluie possible sur des heures/points : niveau, moment, et explication sourcée (aucune certitude dans un sens ou l'autre).
-  const tripRows = t => t.pts.length ? t.pts : H.filter(r => r.m + 60 > t.depM && r.m <= t.arrM);
+  const tripRows = t => t.pending ? [] : t.pts.length ? t.pts : H.filter(r => r.m + 60 > t.depM && r.m <= t.arrM);
   function maybeOf(rows) {
     if (rows.some(r => r.h.rain || r.h.snow)) return null;
     const R = rows.filter(r => r.maybe); if (!R.length) return null;
@@ -314,7 +314,7 @@ function wxDesk(input) {
       crit = { lv: worst.lv, id, text: `${cap(id === 'rain' ? (worst.lv >= 2 ? rainTxt(worst.x) : 'pluie probable') : id === 'ice' ? ICE_TXT[worst.lv] : id === 'fog' ? 'brouillard ' + visTxt(n(worst.x.vis)) : id === 'wind' ? 'rafales ' + r0(worst.x.gust) + ' km/h' : NAME[id])}${kmTxt}`, at: hm(P[i].t) };
     }
     if (!crit && tt.glare) crit = { lv: 1, id: 'sun', text: `Soleil rasant vers ${hm(tt.glare.ts)}`, at: hm(tt.glare.ts) };
-    const tmb = !crit && maybeOf(tripRows(tt));
+    const tmb = !tt.pending && !crit && maybeOf(tripRows(tt));
     if (tmb) crit = { lv: tmb.lv, id: 'rain', text: `Pluie possible ${tmb.m <= tt.depM ? 'dès le départ' : 'vers ' + hm(tmb.t)} · ${tmb.text}`, at: hm(tmb.t), possible: true };
     const later = tripList.filter(t => !t.pending && t !== tt && t.depM > tt.depM).slice(0, 3).map(t => ({ dep: hm(t.dep), label: t.label || 'trajet', lv: t.pts.reduce((a, p) => Math.max(a, p.lv), 0), day: t.dep.slice(0, 10) }));
     trip = { id: tt.id || null, label: tt.label || 'trajet', from: tt.from || null, to: tt.to || null, dep: hm(tt.dep), arr: hm(tt.arr || tt.dep), day: tt.dep.slice(0, 10), durMin: Math.max(0, Math.round(tt.arrM - tt.depM)),

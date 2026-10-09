@@ -80,6 +80,8 @@ async function apply(s, dev, mode) {
   try {
     for (const dev of ['pc', 'iphone']) {
       const s = await session(browser, { at: day + 'T08:00:00+02:00', dev }), p = s.p, ctl = await setup(s);
+      // session() impose Météo pour ses captures sans sauvegarder l'onglet ; le reload doit restaurer un vrai choix utilisateur.
+      await p.evaluate(() => chooseView('meteo'));
       const original = await ready(s), key = original.key;
       await check(dev + ' · commande discrète dans Prochain trajet, cinq onglets conservés', async () => {
         assert.match(original.wx, /Domicile → Alpha/); assert.equal(await p.locator('#secWx [data-act=cal-origin-open]').count(), 1);

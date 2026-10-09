@@ -134,6 +134,17 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const r = desk({ now: '2026-10-06T07:00', hours: H(), trips: [{ ...trip('07:45', '08:25'), points: [] }] });
     assert.equal(r.trip.waiting, true); assert.deepEqual(r.trip.points, []); assert.equal(r.trip.crit, null); assert.match(r.road.window.label, /^maintenant →/);
   });
+  test('origine à recalculer : aucun risque ni passage horaire inventé depuis les anciennes heures', () => {
+    const hs = set(H(), '08', { pp: 90, Pb: .3, Pl: 0, P: 0, code: 61 });
+    const t = { ...trip('07:45', '08:25'), pending: true, km: null, points: [] };
+    const r = desk({ now: '2026-10-06T07:00', hours: hs, trips: [t] });
+    assert.equal(r.trip.id, 'go'); assert.equal(r.trip.pending, true);
+    assert.equal(r.trip.dep, null); assert.equal(r.trip.arr, null); assert.equal(r.trip.km, null);
+    assert.equal(r.trip.crit, null); assert.deepEqual(r.trip.points, []);
+    assert(!r.timeline.moments.some(m => m.trip === 'go'));
+    assert(!r.timeline.strip.some(m => m.trip === 'go'));
+    assert(!r.matters.some(m => /pendant le trajet aller/.test(m.text)));
+  });
   test('le statut réel de trajet prime sur un horaire de départ déjà passé', () => {
     const input = { now: '2026-10-06T07:00', hours: H(), trips: [trip('06:50', '07:30', { running: false })] };
     assert.equal(desk(input).trip.running, false);
