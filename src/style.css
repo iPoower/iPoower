@@ -668,6 +668,12 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .wx-blk.lv1, .wx-blk.lv2, .wx-blk.lv3 { border-left: 3px solid var(--lv); }
 .wx-route { font-size: 16px; overflow-wrap: anywhere; }
 .wx-when { font-size: 13px; color: var(--fg2); }
+.wx-origin-command { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; }
+.wx-origin-command .btn { min-height: 44px; }
+.wx-origin-editor { display: grid; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.wx-origin-editor select, .wx-origin-editor input { width: 100%; min-width: 0; min-height: 44px; }
+.wx-origin-editor .btn, .wx-origin-editor .trip-suggestion { min-height: 44px; }
+.wx-origin-editor p { margin: 0; overflow-wrap: anywhere; }
 .wx-pts, .wx-mat, .wx-rf, .wx-tl, .wx-pc ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .wx-pts li { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 8px; font-size: 13.5px; align-items: baseline; }
 .wx-pts .k { color: var(--fg2); font-size: 12px; } .wx-pts .k i { font-style: normal; }

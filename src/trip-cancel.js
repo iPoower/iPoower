@@ -173,6 +173,12 @@ const TripCancel = (() => {
         } : l));
       });
     }
+    // Une préférence ne reconstruit pas la chaîne : elle adapte uniquement la
+    // jambe déjà sélectionnée, APRÈS les tags, enchaînements et annulations.
+    if (typeof context.origin === 'function') (events || []).forEach(e => {
+      if (counts.get(eventId(e)) !== 1 || cancelled(e) || !relevant(e)) return;
+      set(e, result.get(e).map(leg => context.origin(e, leg) || leg));
+    });
     return result;
   }
   return { KEY, UNDO_MS, EVENT_MARGIN_MS, eventId, workId, identifiable, clean, save, load, has, cancel, undo, undoable, eventExpiration, workExpiration, localEpoch, rebuild, selectedLegs, nonSpatialNeedsRebuild };

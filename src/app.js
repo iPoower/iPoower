@@ -48,6 +48,7 @@ function normalize(saved, base) {
   if (saved && Array.isArray(saved.locs)) S.locs = base.locs.map((d, i) => deepMerge(d, saved.locs[i]));
   if (saved && Array.isArray(saved.cars)) S.cars = base.cars.map((d, i) => deepMerge(d, saved.cars[i]));
   S.customs = saved && Array.isArray(saved.customs) ? saved.customs : clone(base.customs);
+  S.calOrigins = CalendarOrigin.clean(saved && saved.calOrigins);
   return S;
 }
 // Migration étroite d'une ancienne identité véhicule déjà enregistrée.
@@ -188,12 +189,19 @@ function loadSettings() {
   return normalize(saved, DEFAULTS);
 }
 let S = loadSettings();
-const saveSettings = () => { S.configured = 1; lsSet('twrc.settings.v1', JSON.stringify(S)); };
+const saveSettings = () => {
+  S.configured = 1;
+  // Préserver les choix reçus d'un autre onglet lors d'un réglage sans rapport.
+  let latest = null; try { latest = JSON.parse(lsGet('twrc.settings.v1') || 'null'); } catch (e) { /* ancienne donnée */ }
+  S.calOrigins = CalendarOrigin.merge(S.calOrigins, latest && latest.calOrigins);
+  lsSet('twrc.settings.v1', JSON.stringify(S));
+};
 let TRIPCANCEL = {}; try { TRIPCANCEL = TripCancel.load(APP_STORAGE, Date.now()); } catch (e) { /* stockage indisponible */ }
 let TRIPCANCELTIMER = null;
 // position réelle (GPS du téléphone) : reste sur l'appareil
 // @include app/user-context.js
 // @include app/trip-view.js
+// @include app/calendar-origin-editor.js
 function tripContextLocs() {
   const n = USER_STORE.state.dayContext && USER_STORE.state.dayContext.nextDestination;
   return n ? [n.originPoint, n.destinationPoint].filter(locHasCoords) : [];
@@ -1277,7 +1285,8 @@ function buildTenueDay(options = {}) {
   const effective = TripCancel.rebuild(events, home, direct, cancelState, cancelNow, {
     beforeFirst: e => tripCancelBeforeFirst(e, settings, cancelState, cancelNow),
     relevant: e => !!calendarEventPlace(e, calendarPlaces(settings)),
-    place: e => calendarEventPlace(e, calendarPlaces(settings))
+    place: e => calendarEventPlace(e, calendarPlaces(settings)),
+    origin: (e, leg) => calendarOriginLeg(e, leg, settings, cancelNow)
   });
   for (const e of events) {
     if (!calendarEventRelevant(e, calendarPlaces(settings)) || eventCancelled(e)) continue;
@@ -1654,7 +1663,7 @@ async function backupImport(f) {
     data = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(o.i) }, key, b64(o.c))));
   } catch (e) { bkMsg('Code incorrect : entre le code utilisé lors de la sauvegarde.'); return; }
   // le journal des trajets de ce téléphone (ressenti conducteur) est fusionné, jamais effacé par l'import
-  const plan = Backup.restorePlan(data, Date.now(), { context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL });
+  const plan = Backup.restorePlan(data, Date.now(), { context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL, calOrigins: S.calOrigins });
   if (!plan) { bkMsg('Sauvegarde incomplète.'); return; }
   const when = new Date(data.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const version = data.v >= 2 ? 'V2' : 'V1';
@@ -2088,7 +2097,7 @@ function liveOnFix(fix) {
   if (TRIPSTART && fix.ts < TRIPSTART.at) return;
   if (!LIVE.key || !LIVE.base) { if (liveAllowed()) { clearTimeout(liveOnFix.t); liveOnFix.t = setTimeout(renderBrf, 300); } return; }
   const ad = liveArrDest(LIVE.base);
-  if (LIVE.phase === 'advice') { LIVE.arrN = 0; LIVE.near = null; }   // aperçu (jusqu'à 4 h avant) : ni arrivée automatique, ni arrivée probable
+  if (LIVE.phase === 'advice' || LIVE.phase !== 'active' && (LIVE.base.planL || LIVE.base.l || {}).originExplicit) { LIVE.arrN = 0; LIVE.near = null; }   // Un départ choisi ne prouve pas une arrivée.
   else if (ad && fix.ts !== LIVE.arrTs && liveFresh(fix, LIVE_AGE_RUN)) {   // un relevé périmé ne compte pas et n'interrompt pas la série
     LIVE.arrTs = fix.ts;
     const d = distKm(fix, ad), sure = fix.acc <= LIVE_ACC_ARR;
@@ -2252,6 +2261,7 @@ const liveAgo = ms => { const s = Math.round(ms / 1000); return s < 60 ? `${s} s
 // courante est présentée comme actuelle et fait avancer lastOk ; sinon la dernière analyse est affichée, marquée ancienne, 5 min au plus.
 function liveTrip(b, now) {
   const run = LIVE.phase === 'active', fix = FIX, fresh = liveFresh(fix, run ? LIVE_AGE_RUN : LIVE_AGE_IMM) && fix.ts >= appGpsFloor();
+  if (!run && (b.planL || b.l || {}).originExplicit) return { ...b, running: false };
   if (fresh) liveRoute(fix, b);
   if (!liveAllowed()) { /* départ déclaré, GPS coupé : aucune demande de position */ }
   else if (LIVE.phase === 'advice') { if (!fresh) liveAskLow(); } else if (!fresh || LIVE.phase === 'late') liveAskFix();
@@ -2313,7 +2323,7 @@ function liveApply(T, now) {
     if (!nxt) return T;
     let ph = null;
     if (liveMin(now, nxt.dep) <= LIVE_WIN) ph = 'imminent';
-    else if (liveOut(nxt) && nxt.arr && liveMin(now, nxt.dep) <= LIVE_ADV && liveFresh(FIX, LIVE_AGE_IMM) && livePlanFrom(nxt) && distKm(FIX, livePlanFrom(nxt)) > 1) ph = 'advice';
+    else if (!(nxt.planL || nxt.l || {}).originExplicit && liveOut(nxt) && nxt.arr && liveMin(now, nxt.dep) <= LIVE_ADV && liveFresh(FIX, LIVE_AGE_IMM) && livePlanFrom(nxt) && distKm(FIX, livePlanFrom(nxt)) > 1) ph = 'advice';
     if (!ph) return T;
     Object.assign(LIVE, { key: nxt.key, base: nxt, phase: ph }); cur = nxt;
     if (liveFresh(FIX, LIVE_AGE_IMM)) LIVE.startFix = LIVE.lastFix = FIX;
@@ -2475,7 +2485,7 @@ function tripCancelChanged() {
     const e = CAL.events.find(e => e === t.e || TripCancel.eventId(e) === TripCancel.eventId(t.e));
     if (!e || !calendarSpatial(e) || calendarCancelled(e)) return true;
     const old = t.planL || t.l;
-    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), appCalendarCancelState(), Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
+    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), appCalendarCancelState(), Date.now(), calendarChainContext());
     const next = (chains.get(e) || []).find(l => l.k === (old && old.k));
     if (!old || !next || next.originUncertain) return true;
     const same = (a, b, privatePoint) => a && b && Number.isFinite(a.lat) && Number.isFinite(a.lon) && Number.isFinite(b.lat) && Number.isFinite(b.lon) && (privatePoint ? rc2(a.lat) === rc2(b.lat) && rc2(a.lon) === rc2(b.lon) : +a.lat.toFixed(3) === +b.lat.toFixed(3) && +a.lon.toFixed(3) === +b.lon.toFixed(3));
@@ -2736,6 +2746,12 @@ function legEval(leg) {
 }
 function calDirectSet() { return S.calDirect || {}; }
 const CANCELROUTES = new Map(); let CANCELROUTEGEN = 0;
+function calendarOriginLeg(e, leg, settings = S, now = Date.now()) {
+  return CalendarOrigin.apply(leg, CalendarOrigin.get(settings.calOrigins, TripCancel.eventId(e), leg.k, now), settings);
+}
+function calendarChainContext() {
+  return { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace, origin: calendarOriginLeg };
+}
 function tripCancelBeforeFirst(e, settings = S, state = TRIPCANCEL, now = Date.now()) {
   const locs = [...(settings.locs || []), ...(settings.customs || [])];
   const home = locs.find(l => l.id === 'home') || (settings.locs || [])[0], work = settings.work || {}, date = e.s.slice(0, 10);
@@ -2788,11 +2804,12 @@ function tripCancelRouteLeg(e, leg) {
   }
   const key = tripCancelRouteKey(e, leg);
   let entry = CANCELROUTES.get(key);
+  if (!entry && offlineNow()) return { ...leg, min: null, km: null, pts: [], g: [], routed: false, routeOffline: true, originPending: true };
   if (!entry) {
-    const gen = CANCELROUTEGEN; entry = { phase: 'loading', leg: null }; CANCELROUTES.set(key, entry);
+    const gen = CANCELROUTEGEN; entry = { phase: 'loading', leg: null, originExplicit: !!leg.originExplicit }; CANCELROUTES.set(key, entry);
     fetchJSON(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson&annotations=duration`, 10000)
       .then(j => {
-        if (gen !== CANCELROUTEGEN || !e.manual && calendarCancelled(e)) return;
+        if (gen !== CANCELROUTEGEN || CANCELROUTES.get(key) !== entry || !e.manual && calendarCancelled(e)) return;
         const route = liveParse(j); if (!route) throw new Error('itinéraire vide');
         const routeMin = routeTravelMin(route.rawMin ?? route.min, leg.k === 'go' && leg.targetArr ? 10 : 0);
         const dep = leg.k === 'go' && leg.targetArr ? addMin(leg.targetArr, -routeMin) : leg.dep;
@@ -2802,7 +2819,7 @@ function tripCancelRouteLeg(e, leg) {
         entry.phase = 'weather'; renderCal(); renderBrf(); renderTenue();
       })
       .catch(() => {
-        if (gen !== CANCELROUTEGEN) return;
+        if (gen !== CANCELROUTEGEN || CANCELROUTES.get(key) !== entry) return;
         const old = leg.manual ? manualRouteCacheRead(leg) : null;
         if (old) {
           entry.leg = { ...leg, ...old, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, dep: leg.dep, arr: addMin(leg.dep, old.min), routed: true, cachedRoute: true };
@@ -2817,25 +2834,25 @@ function tripCancelRouteLeg(e, leg) {
 }
 function effLegs(e, all) {
   if (!calendarSpatial(e) || calendarCancelled(e)) return [];
-  if (cancelAffectedDay(e)) {
-    const chains = TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), appCalendarCancelState(), Date.now(), { beforeFirst: tripCancelBeforeFirst, relevant: calendarSpatial, place: calendarPlace });
-    return (chains.get(e) || chains.get(TripCancel.eventId(e)) || []).map(leg => tripCancelRouteLeg(e, appAgendaLeg(e, leg)));
-  }
-  const D = calDirectSet(); let legs = (e.legs || []).slice();
-  // le retour maison d'un rendez-vous disparaît si le suivant est enchaîné directement
-  legs = legs.filter(l => !(l.k === 'ret' && l.brk && D[l.brk]));
-  if (e.alt && D[e.alt.key]) legs = legs.map(l => l.k === 'go' && l.brk === e.alt.key ? { ...e.alt.direct, chosen: true } : l);
-  return legs.map(l => { const effective = appAgendaLeg(e, l); return effective === l ? l : tripCancelRouteLeg(e, effective); });
+  // Projection dérivée pour ce rendu seulement : une unique reconstruction,
+  // partagée par les vues, jamais une source persistée de trajets.
+  const chains = APP_CONTEXT.rendering && APP_CONTEXT.calendarLegs || TripCancel.rebuild(CAL.events, homeExact(), calDirectSet(), appCalendarCancelState(), Date.now(), calendarChainContext());
+  if (APP_CONTEXT.rendering) APP_CONTEXT.calendarLegs = chains;
+  return (chains.get(e) || []).map(l => {
+    const effective = appAgendaLeg(e, l);
+    return cancelAffectedDay(e) || effective.originPending || effective !== l ? tripCancelRouteLeg(e, effective) : effective;
+  });
 }
 function altHtml(e) {
   if (cancelAffectedDay(e)) return '';
+  const localOrigin = CalendarOrigin.get(S.calOrigins, TripCancel.eventId(e), 'go');
   if (e.mode === 'conflit') return '<div class="alt"><span class="sub">⚠️ <b>#maison</b> et <b>#direct</b> sont tous les deux dans ce rendez-vous : règle par défaut appliquée. Garde un seul mot-clé.</span></div>';
-  if (e.mode === 'direct' || e.mode === 'maison') return `<div class="alt"><span class="sub">📌 Selon ton agenda (<b>#${e.mode}</b>) : ${e.mode === 'direct' ? 'enchaîné directement depuis le rendez-vous précédent' : 'retour maison avant ce rendez-vous'}. Appli et notifications suivent ce choix.</span></div>`;
+  if (e.mode === 'direct' || e.mode === 'maison') return `<div class="alt"><span class="sub">📌 Selon ton agenda (<b>#${e.mode}</b>) : ${e.mode === 'direct' ? 'enchaîné directement depuis le rendez-vous précédent' : 'retour maison avant ce rendez-vous'}. ${localOrigin ? 'Départ choisi dans l’app pour ce rendez-vous ; les notifications cloud suivent toujours l’agenda.' : 'Appli et notifications suivent ce choix.'}</span></div>`;
   if (!e.alt || !e.alt.direct) return '';
   const on = !!calDirectSet()[e.alt.key], d = e.alt.direct, v = e.alt.viaHome, dk = v.km - d.km, dm = v.min - d.min;
   const cmp = `Retour maison : ${f0(v.km)} km · ${v.min} min · Direct : ${f0(d.km)} km · ${d.min} min (${dk >= 0 ? '−' : '+'}${f0(Math.abs(dk))} km, ${dm >= 0 ? '−' : '+'}${Math.abs(dm)} min)`;
   return `<div class="alt"><span class="sub">${on ? '↪ Enchaîné directement depuis ' + esc(e.alt.fromLabel || 'le rendez-vous précédent') : 'Plus de 3 h depuis le rendez-vous précédent : retour maison supposé.'} ${cmp}</span>
-    <button class="btn sm" data-act="caldirect" data-k="${esc(e.alt.key)}">${on ? '🏠 Repasser par la maison' : '↪ Je ne rentre pas : enchaîner directement'}</button></div>`;
+    ${localOrigin ? '<span class="sub">Départ choisi dans l’app pour ce rendez-vous ; départ automatique pour rétablir cette origine.</span>' : ''}<button class="btn sm" data-act="caldirect" data-k="${esc(e.alt.key)}">${on ? '🏠 Repasser par la maison' : '↪ Je ne rentre pas : enchaîner directement'}</button></div>`;
 }
 function legHtml(leg, ev) {
   const trip = ev ? { src: 'cal', e: ev, dep: leg.dep, arr: leg.arr, l: leg, key: calendarTripKey(ev, leg) } : null;
@@ -3615,6 +3632,7 @@ function renderSettings(force) {
 function renderAll() {
   if (APP_CONTEXT.rendering) return;
   APP_CONTEXT.rendering = true;
+  APP_CONTEXT.calendarLegs = null;
   try {
     appRefreshContext(); recordJournal();
     renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
@@ -3635,6 +3653,16 @@ document.addEventListener('click', async e => {
   if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); } return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act;
+  if (a === 'cal-origin-open') { calendarOriginOpen(t.dataset.key); return; }
+  if (a === 'cal-origin-close') { calendarOriginClose(); return; }
+  if (a === 'cal-origin-search') { await calendarOriginSearch(); return; }
+  if (a === 'cal-origin-gps') { calendarOriginGps(); return; }
+  if (a === 'cal-origin-pick') {
+    const f = CAL_ORIGIN_FORM, hit = f && f.results[+t.dataset.i];
+    if (f && !f.saving && hit) { f.hit = hit; f.results = []; f.message = 'Adresse retenue.'; calendarOriginRenderEditor(); }
+    return;
+  }
+  if (a === 'cal-origin-apply') { await calendarOriginApply(); return; }
   if (a === 'trip-dest-search') { await tripSearch('destination', t); return; }
   if (a === 'trip-origin-search') { await tripSearch('origin', t); return; }
   if (a === 'trip-dest-pick') { tripPick('destination', t.dataset.i); return; }

@@ -318,5 +318,29 @@
   "trip-plan-cancel": {
     "suite": "e2e59-trip-tab.js",
     "result": "trajet manuel annulé et planning automatique restauré"
+  },
+  "cal-origin-open": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "sélecteur attaché à une occurrence et un sens"
+  },
+  "cal-origin-close": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "brouillon abandonné sans changement du trajet"
+  },
+  "cal-origin-search": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "recherche d’adresse avec réponses anciennes rejetées"
+  },
+  "cal-origin-pick": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "adresse de départ retenue dans le brouillon"
+  },
+  "cal-origin-gps": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "position ponctuelle sans modifier GPS ou lieu météo"
+  },
+  "cal-origin-apply": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "origine conservée dans le coffre, recalcul via effLegs"
   }
 }
