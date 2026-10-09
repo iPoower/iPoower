@@ -113,6 +113,24 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     vs.store.setItem('twrc.context.v1', 'y'.repeat(5000)); await tick(); await vs.flush();
     assert.match(vs.error, /restent en mémoire/); assert.equal(vs.store.getItem('twrc.context.v1'), 'y'.repeat(5000)); assert.equal(raw.getItem(SV.VAULT), vault);
   });
+  await test('stockage plein au déverrouillage : le coffre précédent reste intact même si le nouvel essai échoue', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY()); await make(raw).vs.boot(); const before = raw.getItem(SV.VAULT);
+    const B = make(raw).vs; await B.boot(); raw.quota = before.length + 300;
+    await assert.rejects(() => B.unlock(PASS, { 'twrc.context.v1': 'z'.repeat(10000) }), e => e.name === 'QuotaExceededError');
+    assert.equal(raw.getItem(SV.VAULT), before, 'aucun effacement du coffre pour tenter de libérer de la place');
+    raw.quota = Infinity; await B.unlock(PASS); assert.equal(B.store.getItem('twrc.context.v1'), LEGACY()['twrc.context.v1']);
+  });
+  await test('mauvais code dans une session ouverte : sa clé valide reste utilisable pour sauvegarder', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(), A = make(raw, sa).vs; await A.boot();
+    await assert.rejects(() => A.unlock('mauvais-code'), e => e.name === 'OperationError');
+    A.store.setItem('twrc.tripcancel', 'session-preservee'); await A.flush(); assert.equal(A.error, null);
+    const B = make(raw, sa).vs; await B.boot(); assert.equal(B.store.getItem('twrc.tripcancel'), 'session-preservee');
+  });
+  await test('nouveau déverrouillage pendant une sauvegarde locale : les modifications en attente sont conservées', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(), A = make(raw, sa).vs; await A.boot();
+    A.store.setItem('twrc.tripcancel', 'avant-deverrouillage'); await A.unlock(PASS, { 'twrc.plain.v': 'nouvelle-version' }); await A.flush();
+    const B = make(raw, sa).vs; await B.boot(); assert.equal(B.store.getItem('twrc.tripcancel'), 'avant-deverrouillage'); assert.equal(B.store.getItem('twrc.plain.v'), 'nouvelle-version');
+  });
   await test('coffre v1 (ancien « Verrouiller ») : le code le convertit en coffre v2 sans perte, puis le v1 est retiré', async () => {
     const raw = fakeStorage(), L = LEGACY(); delete L['twrc.key']; fill(raw, L); await DS.lock(raw, PASS, crypto);
     assert(raw.getItem(DS.VAULT)); const { vs } = make(raw); assert.equal(await vs.boot(), 'locked');
@@ -246,10 +264,13 @@ if (require.main === module) (async () => {
     { name: 'fusion multi-onglets ignorée', from: "if (e.key !== VAULT || st.mode !== 'vault' || !e.newValue) return null;", to: "return null;" },
     { name: 'écriture tardive acceptée telle quelle', from: "if (!newer(order(data), { n: st.n, t: st.t })) {", to: "if (false) {" },
     { name: 'en-tête d’ordre non authentifié', from: "(vault.n != null && (data.n !== vault.n || data.t !== vault.t)) || ", to: "" },
-    { name: 'caches durables sacrifiés (journal compris)', from: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));", to: "const lean = {};" }
-    ,{ name: 'verrou global ignoré', from: "return locks.request(VAULT, { mode: 'exclusive' }, fn);", to: "return fn();" }
-    ,{ name: 'snapshot local écrase les clés distantes', from: "snap = { ...base };", to: "snap = values();" }
-    ,{ name: 'signal de verrou sur disque ignoré', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) !== st.lockSignal) forget();", to: "if (false) forget();" }
+    { name: 'caches durables sacrifiés (journal compris)', from: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));", to: "const lean = {};" },
+    { name: 'verrou global ignoré', from: "return locks.request(VAULT, { mode: 'exclusive' }, fn);", to: "return fn();" },
+    { name: 'snapshot local écrase les clés distantes', from: "snap = { ...base };", to: "snap = values();" },
+    { name: 'signal de verrou sur disque ignoré', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) !== st.lockSignal) forget();", to: "if (false) forget();" },
+    { name: 'coffre précédent effacé au nouvel essai', from: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));", to: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k))); raw.removeItem(VAULT);" },
+    { name: 'mauvais code remplace la clé active', from: "const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);", to: "const key = st.key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);" },
+    { name: 'déverrouillage ignore les sauvegardes en attente', from: "while (st.mode === 'vault' && st.mem.dirty.size) await savePending();\n      return unlockInside(pass, extra);", to: "return unlockInside(pass, extra);" }
   ];
   for (const m of mutations) {
     assert(original.includes(m.from), 'Mutation introuvable : ' + m.name);

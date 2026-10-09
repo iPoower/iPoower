@@ -77,7 +77,7 @@ async function unseal(pass) {
     const raw = window.TWRC_RAW_STORAGE, had = VS.mode === 'vault' || !!(raw && (raw.getItem(SessionVault.VAULT) || raw.getItem(DeviceStorage.VAULT)));
     try { await VS.unlock(pass, { 'twrc.plain': txt, 'twrc.plain.v': String(window.TWRC_SEALED_V) }); }
     catch (e) {
-      unseal.error = e.name === 'OperationError' ? 'Ce code ouvre la configuration, mais le coffre de cet appareil a été chiffré avec un autre code : saisis le code utilisé lors du chiffrement. Rien n’a été modifié.'
+      unseal.error = e.unsupported ? 'Déverrouillage impossible : ' + e.message : e.name === 'OperationError' ? 'Ce code ouvre la configuration, mais le coffre de cet appareil a été chiffré avec un autre code : saisis le code utilisé lors du chiffrement. Rien n’a été modifié.'
         : 'Déverrouillage impossible : stockage local indisponible ou plein. Tes données restent conservées.';
       return false;
     }

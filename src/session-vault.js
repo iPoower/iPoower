@@ -182,7 +182,7 @@ const SessionVault = (() => {
       try { await writeVerified(vals, salt); return vals; } catch (e) {
         if (!full(e)) throw e;
         const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));
-        try { raw.removeItem(VAULT); } catch (x) { /* rien */ }
+        // setItem remplace atomiquement l'ancien coffre. Le supprimer n'économise rien dans la taille finale et expose à une perte au nouvel échec.
         keysOf(raw).filter(k => isApp(k) && CACHE(k)).forEach(k => { try { raw.removeItem(k); } catch (x) { /* rien */ } });
         await writeVerified(lean, salt); return lean;
       }
@@ -238,19 +238,24 @@ const SessionVault = (() => {
     function sameKeysGone(r, snap) { return Object.keys(snap).every(k => r.getItem(k) == null); }
 
     /* Déverrouillage avec le code : coffre v2, coffre v1 ou données en clair existantes → coffre v2 vérifié → session. */
-    async function unlock(pass, extra) { return exclusive(() => unlockInside(pass, extra)); }
+    async function unlock(pass, extra) { return exclusive(async () => {
+      while (st.mode === 'vault' && st.mem.dirty.size) await savePending();
+      return unlockInside(pass, extra);
+    }); }
     async function unlockInside(pass, extra) {
       const vault = readVault(raw);
       if (vault && vault.invalid) throw new Error('Coffre local illisible : conservé tel quel.');
       let vals, salt, rawKey, drop = [], dropV1 = false;
       if (vault) {
-        salt = dec(vault.s); rawKey = await deriveRaw(pass, salt, crypto); await useKey(rawKey, salt);
-        const data = await open(vault, st.key, crypto);   // code faux → OperationError, rien n'est modifié
+        salt = dec(vault.s); rawKey = await deriveRaw(pass, salt, crypto);
+        const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);   // code faux → OperationError, clé de la session inchangée
+        st.key = key; st.salt = salt;
         const stray = plainSnapshot(raw); vals = { ...stray, ...data.values }; drop = Object.keys(stray); st.n = order(data).n; st.t = order(data).t;
       } else {
-        salt = crypto.getRandomValues(new Uint8Array(16)); rawKey = await deriveRaw(pass, salt, crypto); await useKey(rawKey, salt);
+        salt = crypto.getRandomValues(new Uint8Array(16)); rawKey = await deriveRaw(pass, salt, crypto);
         const stray = plainSnapshot(raw); vals = { ...stray }; drop = Object.keys(stray);
         if (raw.getItem(V1)) { const plan = await DeviceStorage.unlockPlan(raw, pass, crypto); Object.assign(vals, plan.writes); dropV1 = true; }
+        await useKey(rawKey, salt);
       }
       Object.assign(vals, extra || {}, { 'twrc.key': pass });
       Object.keys(vals).forEach(k => { if (!secret(k)) { delete vals[k]; } });
