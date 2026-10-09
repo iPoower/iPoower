@@ -14,6 +14,25 @@ const Backup = (() => {
     lat: +v.lat, lon: +v.lon, provider: text(v.provider, 80) || '', precision: text(v.precision, 80) || ''
   } : null;
 
+  // Exports V2 : les départs par occurrence restent des préférences privées du contexte,
+  // sans trace de route ni GPS continu. Validation stricte à l'import comme à l'export.
+  function agendaOrigins(v) {
+    const out = {};
+    if (!obj(v)) return out;
+    Object.entries(v).slice(-32).forEach(([eventId, row]) => {
+      if (!/^cal-[0-9a-f]{32}$/.test(eventId) || !obj(row)) return;
+      const eventStart = local(row.eventStart);
+      const source = ['saved', 'manual', 'gps'].includes(row.source) ? row.source : null;
+      const originId = text(row.originId, 120), originPoint = point(row.originPoint, 'agenda-origin');
+      const confirmedAt = stamp(row.confirmedAt), updatedAt = stamp(row.updatedAt), expiresAt = stamp(row.expiresAt);
+      if (!eventStart || eventStart.length !== 16 || !source || confirmedAt == null || updatedAt == null
+        || expiresAt == null || expiresAt <= updatedAt
+        || source === 'saved' && !originId || source !== 'saved' && !originPoint) return;
+      out[eventId] = { eventStart, originId: source === 'saved' ? originId : null,
+        originPoint: source === 'saved' ? null : originPoint, source, confirmedAt, updatedAt, expiresAt };
+    });
+    return out;
+  }
   function dayContext(v) {
     v = obj(v) ? v : {};
     const n = obj(v.nextDestination) ? v.nextDestination : null;
@@ -30,6 +49,7 @@ const Backup = (() => {
       lastConfirmedPlace: p && text(p.placeId, 120) && stamp(p.at) != null ? { placeId: text(p.placeId, 120), at: p.at, source: 'manual' } : null,
       departedAt: stamp(v.departedAt), arrivedAt: stamp(v.arrivedAt),
       dayType: d && local(d.date) && ['work', 'off'].includes(d.value) ? { date: d.date, value: d.value } : null,
+      agendaOrigins: agendaOrigins(v.agendaOrigins),
       activeCarId: text(v.activeCarId, 120),
       outfitChoice: o && local(o.date) && ['office', 'outing', 'walk'].includes(o.occasion) ? { date: o.date, occasion: o.occasion } : null
     };
