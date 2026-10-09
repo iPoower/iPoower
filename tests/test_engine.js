@@ -3,6 +3,23 @@ const src=fs.readFileSync(path.join(__dirname,'../src/engine.js'),'utf8')+fs.rea
 const ctx={console,Math,Date,Intl,Map,Set};vm.createContext(ctx);vm.runInContext(src+`
 this.api={makeDemoPayload,makeModel,windowAssess,summarize,seqOf,narrate,seasonAnalysis,computeAlerts,LV,ICE_LV,hourVerdict,estRoad,iceRisk,calendarEventRelevant,calendarEventPlace};`,ctx);
 const A=ctx.api;
+// Comparaison exacte au comportement antérieur : formateur caché, pas d'heure ni de décalage UTC cachés.
+{
+  let instant=Date.parse('2026-01-01T00:00:00Z'),allocations=0;
+  const FixedDate=class extends Date{constructor(...a){super(...(a.length?a:[instant]));}static now(){return instant;}};
+  const clock={console,Math,Date:FixedDate,Intl:{DateTimeFormat:function(...a){allocations++;return new Intl.DateTimeFormat(...a);}},Map,Set};
+  vm.createContext(clock);vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/engine.js'),'utf8')+';this.now=nowIn;this.cacheSize=()=>NOW_FORMATS.size;',clock);
+  const previous=tz=>{try{return new FixedDate().toLocaleString('sv-SE',{timeZone:tz,hour12:false}).replace(' ','T').slice(0,16);}catch(e){const d=new FixedDate(),pad=n=>String(n).padStart(2,'0');return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;}};
+  const instants=['2024-02-29T23:59:59Z','2026-01-01T00:00:00Z','2026-03-29T00:59:59Z','2026-03-29T01:00:00Z','2026-10-25T00:59:59Z','2026-10-25T01:00:00Z','2026-12-31T23:59:59Z'];
+  const zones=['Europe/Paris','Europe/London','UTC','America/New_York','America/Los_Angeles','Asia/Kolkata','Asia/Kathmandu','Pacific/Chatham','Pacific/Kiritimati','Australia/Lord_Howe',undefined,null,'not-a-zone'];
+  for(const at of instants){instant=Date.parse(at);for(const tz of zones)assert.equal(clock.now(tz),previous(tz),`${at} / ${tz}`);}
+  const before=allocations;for(let i=0;i<100;i++){instant+=60000;assert.equal(clock.now('Europe/Paris'),previous('Europe/Paris'));}
+  assert.equal(allocations,before,'un seul formateur par fuseau ; la minute avance réellement');
+  for(let i=-12;i<=12;i++){const tz='Etc/GMT'+(i>=0?'+':'')+i;assert.equal(clock.now(tz),previous(tz));}
+  assert(clock.cacheSize()<=16,'cache borné même avec plusieurs lieux/fuseaux');
+  assert.equal(clock.now('Europe/Paris'),previous('Europe/Paris'),'fuseau évincé recréé correctement');
+  console.log('✅ temps : 91 comparaisons à la référence, minutes fraîches, DST, fuseaux fractionnaires, repli invalide et cache borné');
+}
 let relevantCount=0;
 const relevantTest=(name,fn)=>{fn();relevantCount++;console.log('✅ '+name);};
 const places=[{id:'home',name:'Maison fictive',lat:49,lon:2},{id:'work',name:'Bureau fictif',lat:48,lon:3}];

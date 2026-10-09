@@ -39,7 +39,16 @@ const server=http.createServer((req,res)=>{
   check('41.0 · météo indisponible au premier lancement : déverrouillage toujours proposé',lockUi.form&&lockUi.noWeather,JSON.stringify(lockUi));
   if(await p.locator('#unlockPw').count()){await p.fill('#unlockPw',PW);await Promise.all([p.waitForNavigation({timeout:60000}),p.click('#unlockForm button[type=submit]')]);}
   await p.waitForFunction(()=>typeof allLocs==='function'&&typeof makeDemoPayload==='function');
-  await p.evaluate(()=>{allLocs().filter(l=>!l.gps&&locHasCoords(l)).forEach(l=>localStorage.setItem('twrc.cache.'+l.id,JSON.stringify({t:Date.now()-20*60e3,lat:l.lat,lon:l.lon,p:makeDemoPayload('doux',l,'Europe/Paris')})));});
+  await p.evaluate(async()=>{
+    const locs=allLocs().filter(l=>!l.gps&&locHasCoords(l));
+    if(!locs.length)throw new Error('Aucun lieu fictif à préparer pour le redémarrage hors ligne.');
+    locs.forEach(l=>localStorage.setItem('twrc.cache.'+l.id,JSON.stringify({t:Date.now()-20*60e3,lat:l.lat,lon:l.lon,p:makeDemoPayload('doux',l,'Europe/Paris')})));
+    // localStorage est le magasin mémoire du coffre : fermer le contexte avant flush interrompt WebCrypto.
+    // Attendre la vraie écriture vérifiée, pas un délai arbitraire ; les assertions de reprise restent inchangées.
+    if(!window.TWRC_VAULT)throw new Error('Coffre de session absent avant fermeture.');
+    await TWRC_VAULT.flush();
+    if(TWRC_VAULT.error)throw new Error('Écriture chiffrée de la météo fictive non confirmée.');
+  });
   await c.close();   // fermeture complète : plus aucune page en mémoire
 
   // 2. réouverture de la PWA, réseau coupé avant toute requête
