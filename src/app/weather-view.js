@@ -68,20 +68,22 @@ function renderWx() {
     ${h.stale ? `<p class="wx-stale">⚠ Prévisions reçues il y a ${esc(ageTxt(input.ageMin))} : verdict indicatif, actualise dès que possible.</p>` : ''}</div>`;
   // prochain trajet
   const t = d.trip, pending = APP_CONTEXT.snapshot.dayContext.nextDestination && !APP_CONTEXT.snapshot.dayContext.nextDestination.placeId;
+  // Un nouveau départ ne peut conserver comme actuels les horaires de l'ancienne route.
+  const originPending = !!t && APP_CONTEXT.trips.some(x => x.src === 'cal' && x.key === t.id && x.l && x.l.originPending);
   const tripHtml = pending ? `<div class="wx-blk wx-trip wx-none"><h3>${APP_CONTEXT.snapshot.status === 'travel' ? '🚗 En trajet' : '🧭 Prochain trajet'}</h3><p class="wx-route"><b>${esc(APP_CONTEXT.snapshot.origin && APP_CONTEXT.snapshot.origin.name || 'Origine à confirmer')} → Destination à confirmer</b></p><p class="sub">Destination nécessaire pour calculer l’ETA et la météo route.</p></div>`
     : !t ? `<div class="wx-blk wx-trip wx-none"><h3>🧭 Prochain trajet</h3><p class="sub">Aucun trajet prévu dans les 24 h. Les rendez-vous sans lieu reconnu ne sont pas des trajets.</p></div>`
     : `<div class="wx-blk wx-trip lv${t.lv}"><h3>🧭 Prochain trajet${t.running ? ' · en cours' : ' · ' + esc(dayLbl(t.day))}</h3>
       <p class="wx-route"><b>${esc(t.from || 'Départ')} → ${esc(t.to || 'Arrivée')}</b></p>
-      <p class="wx-when num">${t.dep} → ${t.arr} · ${t.durMin} min${t.km != null ? ' · ' + f0(t.km) + ' km' : ''}</p>
+      ${originPending ? '<p class="wx-when num">Nouvel itinéraire en préparation · horaires et distance à recalculer</p>' : `<p class="wx-when num">${t.dep} → ${t.arr} · ${t.durMin} min${t.km != null ? ' · ' + f0(t.km) + ' km' : ''}</p>`}
       ${t.waiting ? '<p class="sub">⏳ Météo du trajet en cours de chargement…</p>' : `<ul class="wx-pts">${t.points.map(p => `<li class="lv${p.lv}"><span class="k">${esc(p.label)} <i class="num">${esc(p.t)}</i></span><span>${p.T != null ? '<b class="num">' + f0(p.T) + ' °C</b> · ' : ''}${esc(p.text)}${p.place && p.label === 'Mi-parcours' ? ' · ' + esc(p.place) : ''}</span></li>`).join('')}</ul>`}
       ${t.crit ? `<p class="wx-crit lv${t.crit.lv}">${E[t.crit.lv]} ${esc(t.crit.text)}</p>` : t.waiting ? '' : '<p class="wx-crit lv0">🟢 Aucun phénomène critique sur le trajet</p>'}
       ${t.later.length ? `<p class="sub">Ensuite : ${t.later.map(x => `${E[x.lv]} ${x.day !== today ? esc(dayLbl(x.day)) + ' ' : ''}${esc(x.dep)} ${esc(x.label)}`).join(' · ')}</p>` : ''}${calOriginControls(t)}</div>`;
   // chronologie : moments clés, puis bande horaire défilante
   const tday = x => x.ts.slice(0, 10) !== today && x.t !== 'maintenant' ? (dayDiff(today, x.ts) === 1 ? 'dem. ' : fmtDay(x.ts.slice(0, 10)) + ' ') : '';
-  const mom = d.timeline.moments.map(x => `<li class="lv${x.lv}${x.kind !== 'wx' ? ' trip' : ''}" data-ts="${esc(x.ts)}"><time class="num">${esc(tday(x) + x.t)}</time><span aria-hidden="true">${WX_IC[x.kind === 'wx' ? x.id : x.kind] || '•'}</span><span>${esc(x.text)}</span></li>`).join('');
+  const mom = d.timeline.moments.filter(x => !(originPending && x.trip === t.id && ['dep', 'arr'].includes(x.kind))).map(x => `<li class="lv${x.lv}${x.kind !== 'wx' ? ' trip' : ''}" data-ts="${esc(x.ts)}"><time class="num">${esc(tday(x) + x.t)}</time><span aria-hidden="true">${WX_IC[x.kind === 'wx' ? x.id : x.kind] || '•'}</span><span>${esc(x.text)}</span></li>`).join('');
   const skyIc = x => { const dd = m.days.find(z => z.date === x.t.slice(0, 10)) || {}, night = dd.sunrise && dd.sunset && (x.t < dd.sunrise.slice(0, 13) + ':00' || x.t > dd.sunset);
     return x.code == null ? '·' : x.code <= 1 ? (night ? '🌙' : '☀️') : x.code === 2 ? (night ? '☁️' : '⛅') : '☁️'; };
-  const strip = d.timeline.strip.map(x => {
+  const strip = d.timeline.strip.map(x => originPending && x.trip === t.id ? { ...x, trip: null } : x).map(x => {
     const bar = x.P == null ? 0 : Math.min(100, Math.round(x.P / 4 * 100));
     return `<li class="lv${x.lv}${x.trip ? ' trip' : ''}${x.now ? ' now' : ''}"><span class="hh num">${x.now ? 'maint.' : x.t.slice(0, 10) !== today && x.hh === '00:00' ? 'dem.' : esc(x.hh)}</span><span class="ic" aria-hidden="true">${x.ic ? WX_IC[x.ic] : skyIc(x)}</span><b class="num">${x.T == null ? '—' : f0(x.T) + '°'}</b><span class="rb" title="${x.P == null ? '' : f1(x.P) + ' mm/h'}"><i style="height:${bar}%"></i></span><span class="pp num">${x.pp != null && x.pp >= 20 ? f0(x.pp) + '%' : ''}</span>${x.trip ? '<span class="tm" aria-label="trajet">🚗</span>' : ''}</li>`;
   }).join('');
