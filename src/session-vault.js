@@ -190,7 +190,11 @@ const SessionVault = (() => {
     function enter(vals) { st.epoch++; st.mem = memStore(raw, vals, persist); st.saved = { ...vals }; st.lockSignal = raw.getItem(LOCK_SIGNAL); st.mode = 'vault'; st.error = null; }
 
     /* Démarrage : mode et magasin à utiliser par l'application. Ne jette jamais : en cas de doute, rien n'est effacé. */
-    async function boot() { return locks && typeof locks.request === 'function' ? exclusive(bootInside) : bootInside(); }
+    async function boot() {
+      // Aucun coffre ni migration : démarrer dans la microtâche courante, avant pageshow (reprise GPS), sans attendre un verrou inutile.
+      if (!readVault(raw) && !raw.getItem('twrc.key') && !raw.getItem(V1)) { st.mode = 'plain'; return st.mode; }
+      return locks && typeof locks.request === 'function' ? exclusive(bootInside) : bootInside();
+    }
     async function bootInside() {
       const vault = readVault(raw), plainKey = raw.getItem('twrc.key');
       // 1. Ancien format en clair, appareil déverrouillé : migration vérifiée.

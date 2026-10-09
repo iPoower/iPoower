@@ -45,6 +45,11 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
   const fill = (raw, o) => Object.entries(o).forEach(([k, v]) => raw.setItem(k, v));
   const locks = fakeLocks();
   const make = (raw, ses = session(), extra = {}) => ({ vs: SV.create({ raw, session: ses, crypto, target: null, locks, ...extra }), ses });
+  await test('démarrage sans coffre ni migration : ne dépend pas du verrou et ne retarde pas les événements de reprise', async () => {
+    const raw = fakeStorage(); raw.setItem('twrc.view', 'pneus');
+    const A = make(raw, session(), { locks: { request() { throw new Error('Un démarrage sans écriture ne doit pas prendre le verrou.'); } } }).vs;
+    assert.equal(await A.boot(), 'plain'); assert.equal(raw.getItem('twrc.view'), 'pneus'); assert.equal(raw.getItem(SV.VAULT), null);
+  });
 
   await test('migration d’un ancien profil en clair : coffre vérifié, données identiques, plus aucune copie lisible', async () => {
     const raw = fakeStorage(), L = LEGACY(); fill(raw, L); const { vs, ses } = make(raw);
@@ -283,7 +288,8 @@ if (require.main === module) (async () => {
     { name: 'mauvais code remplace la clé active', from: "const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);", to: "const key = st.key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);" },
     { name: 'déverrouillage ignore les sauvegardes en attente', from: "while (st.mode === 'vault' && st.mem.dirty.size) await savePending();\n      return unlockInside(pass, extra);", to: "return unlockInside(pass, extra);" },
     { name: 'clé ancienne réutilisée après un verrouillage manqué', from: " && (ses.l ?? null) === raw.getItem(LOCK_SIGNAL)", to: "" },
-    { name: 'notification de verrou périmée acceptée', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) === st.lockSignal) return null;", to: "" }
+    { name: 'notification de verrou périmée acceptée', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) === st.lockSignal) return null;", to: "" },
+    { name: 'démarrage sans coffre retardé par un verrou', from: "if (!readVault(raw) && !raw.getItem('twrc.key') && !raw.getItem(V1))", to: "if (false)" }
   ];
   for (const m of mutations) {
     assert(original.includes(m.from), 'Mutation introuvable : ' + m.name);

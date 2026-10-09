@@ -1,4 +1,4 @@
-const {chromium}=require('playwright');const fs=require('fs'),vm=require('vm');
+const {chromium}=require('playwright');const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
 const src=fs.readFileSync('engine.js','utf8')+fs.readFileSync('demo.js','utf8');let ctx;
 const mkCtx=T0=>{const RD=Date;const FD=class extends RD{constructor(...a){super(...(a.length?a:[T0]))} static now(){return T0}};ctx={console,Math,Date:FD,Intl,Map,Set,JSON};vm.createContext(ctx);vm.runInContext(src+';this.mk=makeDemoPayload;this.me=makeDemoEnsemble;this.mn=makeDemoNowcast;this.ma=makeDemoAir;',ctx);};
 const PW=fs.readFileSync('.passphrase','utf8').trim(), SP=process.env.SP;
@@ -40,7 +40,11 @@ await p.route('**/*',r=>{const u=r.request().url();const J=o=>r.fulfill({status:
 const U='https://ipoower.github.io/iPoower/race-control/';
 await p.goto(U);await p.clock.runFor(3000);
 await p.fill('#unlockPw',PW);await Promise.all([p.waitForNavigation({timeout:60000}),p.click('#unlockForm button[type=submit]')]);for(let k=0;k<60;k++){if(await p.evaluate(()=>typeof CAL!=='undefined'&&(!!CAL||CALDONE)).catch(()=>false))break;await p.clock.runFor(200);await p.waitForTimeout(300);}await p.clock.runFor(1500);await p.waitForTimeout(800);
-await p.waitForFunction(()=>typeof CALDONE!=='undefined'&&CALDONE,null,{timeout:20000}).catch(()=>console.log('   (agenda non lu en 20 s)'));await p.waitForTimeout(300);for(let k=0;k<40;k++){const busy=await p.$eval('#secBrf',x=>/⏳/.test(x.innerText)).catch(()=>false);if(!busy)break;await p.clock.runFor(500);await p.waitForTimeout(250);}const txt=await p.$eval('#secBrf',x=>x.innerText.replace(/\n+/g,' ⏎ ').replace(/[ \t]+/g,' ').trim()).catch(()=>'(absent)');
+await p.waitForFunction(()=>typeof CALDONE!=='undefined'&&CALDONE,null,{timeout:20000}).catch(()=>console.log('   (agenda non lu en 20 s)'));await p.waitForTimeout(300);for(let k=0;k<40;k++){const busy=await p.$eval('#secBrf',x=>/⏳/.test(x.innerText)).catch(()=>false);if(!busy)break;await p.clock.runFor(500);await p.waitForTimeout(250);}
+if(lbl.startsWith('TT ven. 10')){const preview=await p.locator('#secBrf').innerText();assert.match(preview,/APERÇU GÉNÉRIQUE/);assert.doesNotMatch(preview,/Aucun risque identifié sur les trajets prévus/i);console.log('✅ Monte non renseignée : aucun bilan favorable personnalisé');}
+// Les scénarios de bilan personnel utilisent une vraie monte renseignée ; la contre-épreuve générique reste ci-dessus.
+await p.evaluate(()=>{TCARS().forEach(c=>Object.assign(c.tire,{brand:'Marque timeline fictive',model:'Modèle timeline fictif'}));saveSettings();renderAll();});
+const txt=await p.$eval('#secBrf',x=>x.innerText.replace(/\n+/g,' ⏎ ').replace(/[ \t]+/g,' ').trim()).catch(()=>'(absent)');
 const first=await p.$eval('#secBrf',x=>{const f=x.querySelector('.db, .brf-h');return f?(f.classList.contains('db')?'agenda':'boulot/aucun'):'?'}).catch(()=>'?');
 const pass=must.every(r=>r.test(txt.replace(/^\s+/,'')))&&['Trajet en cours',...(mustNot||[])].every(s=>!txt.toLowerCase().includes(s.toLowerCase()))&&await p.evaluate(()=>APP_CONTEXT.snapshot.activeTrip===null);if(pass)ok++;
 console.log((pass?'✅':'❌')+' '+lbl+'\n   '+txt.slice(0,520)+'\n   1er bloc : '+first);
