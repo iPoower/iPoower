@@ -38,11 +38,6 @@ function installOffline() {
 async function setup(s) {
   const p = s.p, calls = [], weatherCalls = []; let routeRelease = null, routeHeld = null, failRoute = false, networkCut = false;
   await s.c.addInitScript(installOffline); await p.evaluate(installOffline);
-  await p.route('**/*', r => {
-    const u = r.request().url(), staticShell = u.startsWith('https://ipoower.github.io/iPoower/race-control/')
-      && !/(?:calendar\.sealed|obs|version|relay|datex)\.json/.test(u);
-    return networkCut && !staticShell ? r.abort('internetdisconnected') : r.fallback();
-  });
   await s.c.addInitScript(installGeo); await p.evaluate(installGeo);
   await p.route('https://router.project-osrm.org/**', async r => {
     const u = r.request().url(); calls.push(u);
@@ -74,6 +69,13 @@ async function setup(s) {
   const sealed = seal(cal);
   await p.route('**/calendar.sealed.json*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(sealed) }));
   await p.evaluate(async sealed => { CAL.c = sealed.c; lsSet(CAL_CACHE_KEY, JSON.stringify({ t: Date.now(), sealed })); await window.TWRC_VAULT.flush(); }, sealed);
+  // Registered last: this interceptor precedes both the OSRM and calendar
+  // fixture routes, so offline tests cannot read their mock live responses.
+  await p.route('**/*', r => {
+    const u = r.request().url(), staticShell = u.startsWith('https://ipoower.github.io/iPoower/race-control/')
+      && !/(?:calendar\.sealed|obs|version|relay|datex)\.json/.test(u);
+    return networkCut && !staticShell ? r.abort('internetdisconnected') : r.fallback();
+  });
   await s.settle(7);
   return { calls, weatherCalls, offline: v => { networkCut = !!v; }, hold: () => { routeHeld = new Promise(resolve => { routeRelease = resolve; }); }, release: () => { routeRelease?.(); routeHeld = null; }, fail: v => { failRoute = v; } };
 }
@@ -176,7 +178,7 @@ async function apply(s, dev, mode) {
       await check(dev + ' · réponse GPS tardive ne remplace pas le nouveau choix', async () => assert.equal(await p.evaluate(() => CAL_ORIGIN_FORM.hit), null));
       await tap(p, dev, '#wxOriginEditor [data-act=cal-origin-close]');
       ctl.offline(true); await p.evaluate(() => window.__setOriginOffline(true)); await apply(s, dev, 'saved:ami');
-      await check(dev + ' · hors ligne : choix enregistré, même rendez-vous, heure/route/météo en attente', async () => { const x = await state(p); assert(await p.evaluate(() => navigator.onLine) === false); assert(x.pending); assert.match(x.wx, /Lieu enregistré test → Alpha/); assert.match(x.wx, /Hors ligne.*en attente/); assert.equal(x.key, key); });
+      await check(dev + ' · hors ligne : choix enregistré, même rendez-vous, heure/route/météo en attente', async () => { const x = await state(p); assert(await p.evaluate(() => navigator.onLine) === false); assert(await p.evaluate(async () => { try { await fetch('https://router.project-osrm.org/route/v1/driving/0,0;1,1'); return false; } catch (e) { return true; } })); assert(x.pending); assert.match(x.wx, /Lieu enregistré test → Alpha/); assert.match(x.wx, /Hors ligne.*en attente/); assert.equal(x.key, key); });
       await p.reload(); await s.settle(8);
       await check(dev + ' · redémarrage hors ligne retrouve agenda chiffré et origine choisie', async () => { const x = await state(p); assert(await p.evaluate(() => navigator.onLine) === false); assert.equal(x.origins[x.id].go.choice.placeId, 'ami'); assert(x.pending); assert.equal(x.key, key); });
       ctl.offline(false); await p.evaluate(() => window.__setOriginOffline(false)); await s.settle(8); await ready(s);
