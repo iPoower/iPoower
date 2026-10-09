@@ -73,6 +73,16 @@ function appChooseAgendaDestination(key) {
 }
 function appAgendaLeg(e, leg) {
   const effective = DayContext.returnLeg(leg, calendarTripKey(e, leg), appDay(), Date.now(), placeList());
+  // Choix explicite d'une occurrence Agenda : aucune mutation du relais et aucune autre
+  // jambe affectée. La reconstruction OSRM/météo reste pilotée par effLegs.
+  const id = TripCancel.eventId(e), chosen = appDay().agendaOrigins && appDay().agendaOrigins[id];
+  if (effective && effective.k === 'go' && chosen && chosen.eventStart === e.s
+    && !TRIPSTART && LIVE.phase !== 'active' && !liveDoneHas({ key: calendarTripKey(e, leg), src: 'cal', e, l: leg }, APP_CONTEXT.trips)
+    && CAL && TripCancel.identifiable(CAL.events, e)) {
+    const origin = chosen.originPoint || locById(chosen.originId);
+    if (origin && locHasCoords(origin) && effective.to && locHasCoords(effective.to)
+      && (!effective.from || distKm(origin, effective.from) > 0.05)) return DayContext.rebaseAgendaOrigin(effective, origin);
+  }
   // Un lieu confirmé aujourd'hui est prioritaire sur l'origine « Domicile » figée par le relais.
   // Seul le premier ALLER agenda non commencé est adapté, jamais un retour ni un départ futur.
   const c = placeNow(), now = liveNow(), today = placeToday(), chosen = appDay().nextDestination;
