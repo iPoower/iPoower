@@ -75,7 +75,9 @@ function appAgendaLeg(e, leg) {
   const effective = DayContext.returnLeg(leg, calendarTripKey(e, leg), appDay(), Date.now(), placeList());
   // Choix explicite d'une occurrence Agenda : aucune mutation du relais et aucune autre
   // jambe affectée. La reconstruction OSRM/météo reste pilotée par effLegs.
-  const id = TripCancel.eventId(e), originChoice = appDay().agendaOrigins && appDay().agendaOrigins[id];
+  const overrides = appDay().agendaOrigins || {};
+  const occurrenceId = Object.keys(overrides).length && typeof TripCancel !== 'undefined' ? TripCancel.eventId(e) : null;
+  const originChoice = occurrenceId && overrides[occurrenceId];
   if (effective && effective.k === 'go' && originChoice && originChoice.eventStart === e.s
     && !TRIPSTART && LIVE.phase !== 'active' && !liveDoneHas({ key: calendarTripKey(e, leg), src: 'cal', e, l: leg }, APP_CONTEXT.trips)
     && CAL && TripCancel.identifiable(CAL.events, e)) {
