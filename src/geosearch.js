@@ -41,6 +41,37 @@ const GeoSearch = (() => {
         city: r.country_code === 'FR' ? clean(r.name) : '', cityCode: '', postcode: r.country_code === 'FR' && Array.isArray(r.postcodes) ? clean(String(r.postcodes[0] || ''), 5) : '', lat, lon, provider: 'Open-Meteo', precision: 'locality' };
     }).filter(x => x && x.name).slice(0, 6);
   }
+  // Nominatim public : rythme local partagé par les champs départ et destination, 1 requête / 1,1 s.
+  // Cache éphémère : ni recherche personnelle ni coordonnées ne sont enregistrées sur disque.
+  const OSM_GAP_MS = 1100, OSM_CACHE_MS = 10 * 60 * 1000, OSM_CACHE_MAX = 32;
+  const osmCache = new Map(), osmInFlight = new Map();
+  let osmNextAt = 0, osmTail = Promise.resolve();
+  function nominatim(fetchJson, url) {
+    const cached = osmCache.get(url);
+    if (cached) {
+      if (Date.now() - cached.at < OSM_CACHE_MS) {
+        osmCache.delete(url); osmCache.set(url, cached);
+        return Promise.resolve(cached.body);
+      }
+      osmCache.delete(url);
+    }
+    if (osmInFlight.has(url)) return osmInFlight.get(url);
+    const job = osmTail.catch(() => null).then(async () => {
+      const delay = Math.max(0, osmNextAt - Date.now());
+      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+      osmNextAt = Date.now() + OSM_GAP_MS;
+      const body = await call(fetchJson, url);
+      if (body != null) {
+        osmCache.set(url, { at: Date.now(), body });
+        if (osmCache.size > OSM_CACHE_MAX) osmCache.delete(osmCache.keys().next().value);
+      }
+      return body;
+    });
+    osmInFlight.set(url, job);
+    osmTail = job.then(() => null, () => null);
+    job.then(() => osmInFlight.delete(url), () => osmInFlight.delete(url));
+    return job;
+  }
   async function call(fetchJson, url) { try { return await fetchJson(url, 8000); } catch (e) { return null; } }
   async function search(q, fetchJson) {
     q = clean(q, 260); if (q.length < 2) return [];
@@ -50,7 +81,7 @@ const GeoSearch = (() => {
     const omUrl = 'https://geocoding-api.open-meteo.com/v1/search?name=' + enc + '&count=6&language=fr&format=json';
     const order = frenchHint(q) ? [['ban', banUrl], ['osm', osmUrl], ['om', omUrl]] : [['osm', osmUrl], ['ban', banUrl], ['om', omUrl]];
     for (const [kind, url] of order) {
-      const raw = await call(fetchJson, url);
+      const raw = kind === 'osm' ? await nominatim(fetchJson, url) : await call(fetchJson, url);
       const out = kind === 'ban' ? ban(raw) : kind === 'osm' ? osm(raw) : openMeteo(raw);
       if (out.length) return out;
     }
