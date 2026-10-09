@@ -8,6 +8,7 @@ const VIEWS = [
   ['tenue','#secTenue'], ['analyse','#secLab']
 ];
 let count = 0, current = '';
+const findings=[];
 const check = async (name, fn) => { current = name; await fn(); ++count; console.log('✅ '+name); };
 const go = async (p, dev, v) => {
   const control=p.locator('#viewSeg [data-act=view][data-v='+v+']');
@@ -78,10 +79,25 @@ const inspect = p => p.evaluate(() => {
         for(const [v] of VIEWS){
           await go(p,dev,v);await s.settle(1);
           const x=await inspect(p);
-          assert.deepEqual(x.duplicates,[],'ID dupliqués '+v+': '+JSON.stringify(x.duplicates));
+          if(x.duplicates.length){const issue=dev+'/'+v+' · identifiants dupliqués : '+JSON.stringify(x.duplicates);findings.push(issue);console.log('⚠️ '+issue);}
           assert(x.overflow<=1,'débordement horizontal '+v+': '+x.overflow+' px');
           console.log('ℹ️ '+dev+'/'+v+' · accessibilité: '+JSON.stringify({unnamed:x.unnamed,tiny:x.tiny,blocked:x.blocked}));
         }
+      });
+      await check(dev+' · vérifier les associations des libellés de paramètres',async()=>{
+        const details=p.locator('#settings'), toggle=details.locator(':scope > summary');
+        if(await details.getAttribute('open')===null)await toggle.click();
+        for(const id of ['f-work-dep','f-work-durMin']){
+          const label=p.locator('#settings label[for="'+id+'"]');
+          assert(await label.count(),'libellé de réglage introuvable : '+id);
+          await label.click();
+          const focus=await p.evaluate(()=>({id:document.activeElement?.id,settings:!!document.activeElement?.closest('#settings')}));
+          if(focus.id!==id||!focus.settings){
+            const issue=dev+' · le libellé '+id+' des Paramètres cible un champ '+(focus.settings?'dans':'HORS')+' Paramètres ('+JSON.stringify(focus)+')';
+            findings.push(issue);console.log('⚠️ '+issue);
+          }
+        }
+        await toggle.click();
       });
       await check(dev+' · commandes toujours actives après rechargement',async()=>{
         await go(p,dev,'trajet');await s.settle(2);
@@ -94,6 +110,7 @@ const inspect = p => p.evaluate(() => {
     }
     await check('zéro erreur JavaScript inattendue',async()=>assert.deepEqual(errors,[],errors.join(' | ').slice(0,700)));
     if(NETWORK_NOISE.length)console.log('ℹ️ Requêtes simulées coupées sous WebKit: '+NETWORK_NOISE.length);
+    if(findings.length){console.error('❌ '+findings.length+' constats QA à examiner : '+findings.join(' | ').slice(0,1600));process.exitCode=1;}
     console.log(count+'/'+count+' scénarios OK · erreurs JS : aucune');
   }finally{await b.close();}
 })().catch(e=>{console.error('❌ '+current+' · '+String(e&&e.stack||e).slice(0,1600));process.exit(1);});
