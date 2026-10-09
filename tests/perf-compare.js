@@ -91,21 +91,25 @@ async function profile(browser, build, fixture, device) {
     await Promise.all([page.waitForNavigation({ timeout: 60000 }), page.click('#unlockForm button[type=submit]')]); await ready();
     const unlockAndReloadMs = performance.now() - unlockAt; await page.waitForTimeout(800);
     const requestsAtReady = { ...counts }, bytesAtReady = { ...responseBytes };
-    const metrics = await page.evaluate(() => {
+    const metrics = await page.evaluate(async () => {
       const summary = values => { const sorted = [...values].sort((a, b) => a - b); return { median: sorted[Math.floor(sorted.length / 2)], p95: sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * .95) - 1)] }; };
       const measure = (fn, batches, repetitions) => {
         for (let i = 0; i < 3; i++) fn();
         const samples = []; for (let i = 0; i < batches; i++) { const start = performance.now(); for (let k = 0; k < repetitions; k++) fn(); samples.push((performance.now() - start) / repetitions); }
         return summary(samples);
       };
-      const p0 = performance.now(); for (let i = 0; i < 100000; i++) Math.sqrt(i); if (performance.now() <= p0) throw new Error('Horloge de performance immobile');
+      // Une boucle pure peut être éliminée ou finir entre deux ticks WebKit : elle ne prouve pas une horloge gelée.
+      // Sonder un vrai intervalle avant les mesures CPU ; cet intervalle n'entre dans aucun échantillon.
+      const p0 = performance.now(); await new Promise(resolve => setTimeout(resolve, 50));
+      const clockProbeMs = performance.now() - p0;
+      if (!Number.isFinite(clockProbeMs) || clockProbeMs <= 0) throw new Error('Horloge de performance immobile');
       const nav = document.querySelector('#viewSeg'), button = nav.querySelector('[data-v=pneus]'); button.focus();
       const observer = new MutationObserver(() => {}); observer.observe(nav, { childList: true, subtree: true });
       const renderViewMs = measure(renderView, 9, 100), navMutations = observer.takeRecords().filter(x => x.type === 'childList').length; observer.disconnect();
       const navNodePreserved = button === nav.querySelector('[data-v=pneus]'), navFocusPreserved = document.activeElement === button;
       const renderAllMs = measure(renderAll, 9, 3), rebuildMs = measure(rebuild, 9, 3), computeCtxMs = measure(computeCtx, 9, 3);
       const nowInMs = measure(() => nowIn('Europe/Paris'), 9, 100);
-      return { renderViewMs, renderAllMs, rebuildMs, computeCtxMs, nowInMs, navMutations, navNodePreserved, navFocusPreserved,
+      return { renderViewMs, renderAllMs, rebuildMs, computeCtxMs, nowInMs, clockProbeMs, navMutations, navNodePreserved, navFocusPreserved,
         domNodes: document.querySelectorAll('*').length, longTasksMs: window.__perfLong,
         heapBytes: performance.memory ? performance.memory.usedJSHeapSize : null,
         resourceTransferBytes: performance.getEntriesByType('resource').reduce((n, r) => n + (r.transferSize || 0), 0) || null };
