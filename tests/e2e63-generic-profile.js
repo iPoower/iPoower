@@ -53,7 +53,8 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
         await view(s, 'pneus');
         assert.doesNotMatch(await txt(p, '#secCars, #secBrief, #secCmp'), /\bGO\b|\bCAUTION\b|HIGH RISK|\d+\s*\/\s*100|Écart d’indice|indice proche \(\d+/);
       });
-      await p.evaluate(() => { S.cars.forEach(c => Object.assign(c.tire, { brand: 'Marque test', model: 'Modèle test' })); saveSettings(); renderAll(); });
+      // La fixture personnelle laisse la seconde voiture sans pneus : l'équiper aussi pour tester une vraie comparaison.
+      await p.evaluate(() => { S.cars.forEach(c => Object.assign(c.tire, { type: c.tire.type === 'none' ? 'summer' : c.tire.type, brand: 'Marque test', model: 'Modèle test' })); saveSettings(); renderAll(); });
       await view(s, 'pneus');
       await check(dev + ' · monte renseignée : verdict personnel et score rétablis, plus aucun aperçu (contre-épreuve)', async () => {
         const cars = await txt(p, '#secCars article.car');
