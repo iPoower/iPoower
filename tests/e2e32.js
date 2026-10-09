@@ -25,7 +25,8 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
       window.__tenueWrites = [];
       for (const name of ['setItem', 'removeItem']) {
         const original = Storage.prototype[name];
-        Storage.prototype[name] = function(...args) { window.__tenueWrites.push({ method: name, key: String(args[0]), value: args[1] == null ? '' : String(args[1]) }); return original.apply(this, args); };
+        // le coffre chiffré (sécurité V1) n'écrit que du texte chiffré : les écritures réelles sont observées sur localStorage plus bas
+        Storage.prototype[name] = function(...args) { if (String(args[0]) !== 'twrc.vault.v2') window.__tenueWrites.push({ method: name, key: String(args[0]), value: args[1] == null ? '' : String(args[1]) }); return original.apply(this, args); };
       }
     });
     const p = await c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.clock.install({ time: T0 });
@@ -93,6 +94,9 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
     const patch = (from, to, values) => ({ from, to, values, day: DAY });
     await p.goto(U); await settle(); await p.fill('#unlockPw', PW);
     await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); await settle();
+    // données en mémoire derrière localStorage (coffre de session) : observer chaque écriture de l'app à ce niveau
+    await p.evaluate(() => { const ls = window.localStorage; if (ls instanceof Storage) return;
+      for (const name of ['setItem', 'removeItem']) { const o = ls[name]; ls[name] = (...args) => { window.__tenueWrites.push({ method: name, key: String(args[0]), value: args[1] == null ? '' : String(args[1]) }); return o.apply(ls, args); }; } });
     await p.click('[data-act=view][data-v=tenue]'); await settle();
     let networkAt = requests.length;
     const writesAt = await p.evaluate(() => window.__tenueWrites.length);

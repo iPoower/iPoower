@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { session, BR, errors, U } = require('./lib/context-session');
+const { unlockIfLocked } = require('./lib/unlock');
 const { revealPlaceControls } = require('./lib/place-controls');
 let n = 0, scope = {};
 const read = p => p.evaluate(() => {
@@ -129,6 +130,8 @@ async function views(p, expected) {
       await p.reload(); await s.settle();
       await check(dev + '/' + profile + ' · reload conserve le contexte', () => views(p, { place: 'work', destination: 'b', car: 'carB' }));
       await p.close(); p = await s.c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.goto(U);
+      for (let i = 0; i < 6; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); }
+      await unlockIfLocked(p, async () => { for (let i = 0; i < 8; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } });   // réouverture : code demandé (sécurité V1)
       await p.waitForFunction(() => APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.activeCarId === 'carB');
       await check(dev + '/' + profile + ' · réouverture conserve Lieu B', () => views(p, { place: 'work', destination: 'b', car: 'carB' }));
       scope.phase = 'congé puis travail'; await tap(p, '[data-act=day-type][data-v=off]');

@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: gh-pages
       - name: Mesurer l’âge du dernier relais
@@ -34,7 +34,7 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT,'due='+(due?'1':'0')+'\n');
           console.log(Number.isFinite(age)?('Dernier relais : '+age.toFixed(1)+' min'): 'Dernier relais illisible',due?'→ rattrapage':'→ OK');
           NODE
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         if: steps.stale.outputs.due == '1'
         with:
           node-version: 20

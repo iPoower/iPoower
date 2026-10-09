@@ -15,7 +15,7 @@
   class DatexRoadProvider extends RoadProvider {
     constructor(fetchImpl) {
       super({ id: 'datex', label: 'DATEX · Bison Futé / DIR', cacheAllowed: true,
-        load: signal => fetchImpl('road-datex.json', { signal, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' }) });
+        load: signal => fetchImpl(((typeof window !== 'undefined' && window.TWRC_DATA_BASE) || '') + 'road-datex.json', { signal, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' }) });
     }
   }
   class Manager {
