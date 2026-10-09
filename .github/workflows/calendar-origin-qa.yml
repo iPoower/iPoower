@@ -1,0 +1,37 @@
+name: Race Control · QA origine calendrier
+# Diagnostic rapide des vrais clics avec agenda, coffre, GPS et réseau fictifs.
+# Aucune clé privée et aucune publication. La CI complète reste obligatoire.
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'tools/**'
+      - '.github/workflows/calendar-origin-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  origin-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 20
+          cache: npm
+      - name: Dépendances reproductibles
+        run: npm ci --no-audit --no-fund
+      - name: Navigateur ${{ matrix.browser }}
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Scénarios origine par rendez-vous, fictifs uniquement
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: node tests/run-ci.js --lane browser --suite e2e68-calendar-origin.js
