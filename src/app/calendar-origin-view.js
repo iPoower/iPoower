@@ -17,7 +17,7 @@ function calOriginClose() {
 function calOriginOpen(key) {
   const t = calOriginTrip(key);
   if (!t) return;
-  if (CAL_ORIGIN.key === key) { calOriginClose(); renderWx(); return; }
+  if (CAL_ORIGIN.key === key) { calOriginClose(); renderWx(); const button = document.querySelector('#secWx [data-act="cal-origin-open"]'); if (button) button.focus({ preventScroll: true }); return; }
   const row = (appDay().agendaOrigins || {})[TripCancel.eventId(t.e)];
   const existing = row && row.eventStart === t.e.s ? row : null;
   const from = t.l.from, found = from && placeList().find(p => p.id === from.id || distKm(p, from) < 0.05);
@@ -28,6 +28,7 @@ function calOriginOpen(key) {
   CAL_ORIGIN.query = CAL_ORIGIN.hit && (CAL_ORIGIN.hit.address || CAL_ORIGIN.hit.name) || '';
   CAL_ORIGIN.results = []; CAL_ORIGIN.generation++; CAL_ORIGIN.busy = false; CAL_ORIGIN.message = '';
   renderWx();
+  const field = document.getElementById('calOriginMode'); if (field) field.focus({ preventScroll: true });
 }
 function calOriginControls(trip) {
   if (!trip || !trip.id) return '';
