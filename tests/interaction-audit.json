@@ -318,5 +318,29 @@
   "trip-plan-cancel": {
     "suite": "e2e59-trip-tab.js",
     "result": "trajet manuel annulé et planning automatique restauré"
+  },
+  "cal-origin-open": {
+    "suite": "e2e-calendar-origin.js",
+    "result": "éditeur discret de départ ouvert depuis Prochain trajet"
+  },
+  "cal-origin-close": {
+    "suite": "e2e-calendar-origin.js",
+    "result": "édition abandonnée sans modifier le rendez-vous"
+  },
+  "cal-origin-search": {
+    "suite": "e2e-calendar-origin.js",
+    "result": "adresse recherchée avec réponse et erreur visibles"
+  },
+  "cal-origin-pick": {
+    "suite": "e2e-calendar-origin.js",
+    "result": "suggestion explicite retenue dans le brouillon"
+  },
+  "cal-origin-save": {
+    "suite": "e2e-calendar-origin.js",
+    "result": "choix d’origine enregistré dans le coffre et trajet recalculé"
+  },
+  "cal-origin-reset": {
+    "suite": "e2e-calendar-origin.js",
+    "result": "retour au départ agenda automatique sans toucher aux autres rendez-vous"
   }
 }
