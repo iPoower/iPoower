@@ -137,12 +137,14 @@ async function tripSearch(kind, button) {
   const origin = kind === 'origin', genKey = origin ? 'originGen' : 'destGen';
   const pendingKey = origin ? 'originSearching' : 'destSearching';
   const query = () => (origin ? TRIP_FORM.originQuery : TRIP_FORM.destinationQuery).trim();
-  const q = query(), gen = ++TRIP_FORM[genKey];
+  const q = query();
+  // Un double clic n'invalide pas une recherche identique qui est déjà en cours.
+  if (TRIP_FORM[pendingKey] === q) return;
+  const gen = ++TRIP_FORM[genKey];
   const current = () => gen === TRIP_FORM[genKey] && query() === q;
   if (q.length < 2) { TRIP_FORM.message = 'Saisis au moins deux caractères.'; renderTripView(); return; }
   if (offlineNow()) { TRIP_FORM.message = 'Recherche d’adresse indisponible hors connexion. Un trajet déjà programmé reste conservé.'; renderTripView(); return; }
   // La même recherche ne doit jamais être déclenchée en double (bouton, touche Entrée, double-clic).
-  if (TRIP_FORM[pendingKey] === q) return;
   TRIP_FORM[pendingKey] = q;
   if (button) button.textContent = 'Recherche…';
   try {
@@ -195,9 +197,9 @@ function tripCancelPlan() {
 }
 document.addEventListener('input', e => {
   if (e.target && e.target.id === 'tripDestQ') {
-    if (e.target.value !== TRIP_FORM.destinationQuery) { TRIP_FORM.destinationQuery = e.target.value; TRIP_FORM.destGen++; TRIP_FORM.destinationId = null; TRIP_FORM.destinationHit = null; TRIP_FORM.destinationResults = []; }
+    if (e.target.value !== TRIP_FORM.destinationQuery) { TRIP_FORM.destinationQuery = e.target.value; TRIP_FORM.destGen++; TRIP_FORM.destSearching = null; TRIP_FORM.destinationId = null; TRIP_FORM.destinationHit = null; TRIP_FORM.destinationResults = []; }
   } else if (e.target && e.target.id === 'tripOriginQ') {
-    if (e.target.value !== TRIP_FORM.originQuery) { TRIP_FORM.originQuery = e.target.value; TRIP_FORM.originGen++; TRIP_FORM.originHit = null; TRIP_FORM.originResults = []; }
+    if (e.target.value !== TRIP_FORM.originQuery) { TRIP_FORM.originQuery = e.target.value; TRIP_FORM.originGen++; TRIP_FORM.originSearching = null; TRIP_FORM.originHit = null; TRIP_FORM.originResults = []; }
   }
 });
 document.addEventListener('keydown', e => {
