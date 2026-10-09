@@ -40,7 +40,7 @@ const DayContext = (() => {
     const exists = placeId => !places || places.some(p => p.id === placeId);
     Object.entries(source).slice(-32).forEach(([eventId, row]) => {
       if (!/^cal-[0-9a-f]{32}$/.test(eventId) || !row || typeof row !== 'object' || Array.isArray(row)) return;
-      const eventStart = typeof row.eventStart === 'string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(row.eventStart) ? row.eventStart : null;
+      const eventStart = typeof row.eventStart === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(row.eventStart) ? row.eventStart : null;
       const originId = id(row.originId) && exists(row.originId) ? row.originId : null;
       const originPoint = cleanPoint(row.originPoint, 'agenda-origin');
       if (!eventStart || !['saved', 'manual', 'gps'].includes(row.source) || (!originId && !originPoint)
