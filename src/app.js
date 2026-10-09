@@ -3636,7 +3636,7 @@ document.addEventListener('click', async e => {
   if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); } return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act;
-  if (a.startsWith('cal-origin-')) { await calOriginAction(a, t); return; }
+  if (a === 'cal-origin-open' || a === 'cal-origin-close' || a === 'cal-origin-search' || a === 'cal-origin-pick' || a === 'cal-origin-save' || a === 'cal-origin-reset') { await calOriginAction(a, t); return; }
   if (a === 'trip-dest-search') { await tripSearch('destination', t); return; }
   if (a === 'trip-origin-search') { await tripSearch('origin', t); return; }
   if (a === 'trip-dest-pick') { tripPick('destination', t.dataset.i); return; }
