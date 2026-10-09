@@ -32,7 +32,9 @@ const Decision = (() => {
     if (input.online === false) add(1, 'Réseau hors ligne');
     if (input.contextKnown === false) add(1, 'Lieu courant à confirmer');
     if (input.storageDurable === false) add(1, 'Stockage local non validé');
-    if (input.tyresRequired && !input.tyresKnown) add(2, 'Pneus montés à confirmer');
+    // aucune voiture active choisie : le verdict pneus n'est pas personnel (à confirmer), sans prétendre que la monte est inconnue
+    if (input.tyresRequired && input.carChosen === false) add(1, 'Voiture active à choisir');
+    else if (input.tyresRequired && !input.tyresKnown) add(2, 'Pneus montés à confirmer');
     if (input.activeTrip) {
       if (!finite(input.gpsAgeMin) || input.gpsAgeMin > 2) add(2, 'GPS du trajet non frais');
       if (!input.routeReady) add(2, 'Itinéraire vivant non actualisé');

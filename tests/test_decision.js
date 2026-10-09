@@ -7,6 +7,16 @@ check('données fraîches et cohérentes : confiance solide', () => { const c=D.
 check('cache récent : à confirmer', () => { const c=D.confidence({weather:{available:true,ageMin:8,mode:'cache'},online:false,contextKnown:true,storageDurable:true}); assert.equal(c.key,'confirm'); });
 check('météo absente : dégradé', () => assert.equal(D.confidence({weather:{available:false},contextKnown:true}).key,'degraded'));
 check('trajet actif sans GPS frais ni route : dégradé', () => { const c=D.confidence({weather:{available:true,ageMin:2,mode:'live'},contextKnown:true,activeTrip:true,gpsAgeMin:5,routeReady:false}); assert.equal(c.key,'degraded'); assert.match(c.reasons.join(' '),/GPS|Itinéraire/); });
+check('cockpit : voiture active non choisie → « à choisir », jamais « pneus inconnus » ; monte inconnue reste dégradée', () => {
+  const base={weather:{available:true,ageMin:2,mode:'live'},online:true,contextKnown:true,storageDurable:true,tyresRequired:true};
+  const a=D.confidence({...base,carChosen:false,tyresKnown:false}); assert.equal(a.key,'confirm'); assert.equal(a.reason,'Voiture active à choisir');
+  const b=D.confidence({...base,carChosen:true,tyresKnown:false}); assert.equal(b.key,'degraded'); assert.equal(b.reason,'Pneus montés à confirmer');
+  const c=D.confidence({...base,carChosen:true,tyresKnown:true}); assert.equal(c.key,'solid');
+});
+check('cockpit : un danger météo n’est jamais masqué par un score pneus rassurant', () => {
+  const c=D.confidence({weather:{available:true,ageMin:2,mode:'live'},contextKnown:true}); const d=D.decide({confidence:c,alerts:[{sev:3,title:'Risque de verglas 05:00–07:00'}],tyreLevel:0,tyreReason:'Pneus adaptés'});
+  assert.equal(d.riskLevel,3); assert.equal(d.label,'DANGER'); assert.match(d.reason,/verglas/);
+});
 check('risque le plus sévère pilote la synthèse', () => { const c=D.confidence({weather:{available:true,ageMin:2,mode:'live'},contextKnown:true}); const d=D.decide({confidence:c,alerts:[{sev:2,title:'Brouillard'}],tyreLevel:1,tyreReason:'Pneu frais'}); assert.equal(d.label,'PRUDENCE'); assert.equal(d.reason,'Brouillard'); });
 check('données dégradées empêchent une fausse synthèse verte', () => { const c=D.confidence({weather:{available:false},contextKnown:true}); const d=D.decide({confidence:c,alerts:[],tyreLevel:0}); assert.equal(d.label,'DONNÉES DÉGRADÉES'); assert.equal(d.displayLevel,2); });
 check('snapshot ne garde ni coordonnées ni noms libres', () => { const s=D.snapshot({at:10,riskLevel:1,confidenceKey:'solid',destinationId:'work',carId:'car1',tyreSig:'summer|A|B|215',placeId:'home',lat:49.9,lon:2.3,title:'secret'}); assert.equal(s.destinationId,'work'); assert.equal('lat' in s,false); assert.equal('lon' in s,false); assert.equal('title' in s,false); });
