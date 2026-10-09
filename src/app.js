@@ -3854,6 +3854,10 @@ document.addEventListener('change', e => {
     if (b.startsWith('dept.')) fetchVigi();
     if (b.startsWith('work.')) UI.dayOff = b === 'work.dep' || b === 'work.ret' ? null : UI.dayOff;
     softRender();
+    // Plusieurs contrôles du même réglage (rapide / paramètres) : valeur cohérente sans reconstruire le formulaire.
+    if (b.startsWith('work.')) document.querySelectorAll('[data-bind]').forEach(peer => {
+      if (peer !== t && peer.dataset.bind === b) peer.value = v == null ? '' : String(v);
+    });
     if (/\.tire\.type$/.test(b) || /plan\.on$/.test(b) || /\.tire\.tread(Av|Ar)$/.test(b)) renderSettings();
   }
 });

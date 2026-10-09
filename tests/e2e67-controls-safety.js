@@ -102,4 +102,4 @@ const snapshot = p => p.evaluate(() => JSON.stringify({ settings: S, place: PLAC
     if (NETWORK_NOISE.length) console.log('ℹ️ requêtes réseau coupées signalées par WebKit : ' + NETWORK_NOISE.length);
     console.log(n + '/' + n + ' scénarios OK');
   } finally { await b.close(); }
-})().catch(e => { console.error('❌ ' + (step || 'préparation du parcours') + '\n' + e.message); process.exitCode = 1; });
+})().catch(e => { console.error('❌ ' + (step || 'préparation du parcours') + '\n' + e.message.replace(/[\r\n]+/g, ' ')); process.exitCode = 1; });

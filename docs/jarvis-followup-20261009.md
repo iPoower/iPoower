@@ -12,7 +12,7 @@ La procédure exacte est dans [BRANCH-PROTECTION-RUNBOOK.md](security/BRANCH-PRO
 
 ## Champs PC/iPhone (P2)
 
-Le diagnostic #90 est corrigé à la source : les contrôles rapides utilisent `quick-work-dep/ret/durMin/from/to`, les paramètres gardent leurs identifiants `f-*`. Leurs chemins `data-bind` restent les mêmes. La valeur est donc partagée sans ambiguïté pour les libellés ou le focus.
+Le diagnostic #90 est corrigé à la source : les contrôles rapides utilisent `quick-work-dep/ret/durMin/from/to`, les paramètres gardent leurs identifiants `f-*`. Leurs chemins `data-bind` restent les mêmes. Après une saisie, les autres contrôles de ce réglage reçoivent aussi la nouvelle valeur, sans reconstruire le formulaire ouvert. Les libellés, le focus et les valeurs affichées restent cohérents.
 
 La suite `e2e67-controls-safety.js` ouvre les réglages depuis les cinq vues, vérifie l'unicité des identifiants, l'association et le focus des libellés, les deux sens, les saisies rapides/paramètres et leur reprise après rechargement. Les anciens scripts de saisie rapide ont aussi leurs sélecteurs actualisés. Le fichier d'audit de l'autre agent reste intact.
 
