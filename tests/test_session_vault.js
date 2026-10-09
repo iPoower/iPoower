@@ -77,6 +77,17 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     await a.lock(); assert.equal(ses.getItem(SV.SESSION), null); assert(raw.getItem(SV.LOCK_SIGNAL)); assert(raw.getItem(SV.VAULT)); assert.equal(a.locked(), true);
     const b = make(raw, ses).vs; assert.equal(await b.boot(), 'locked'); await b.unlock(PASS); assert.equal(b.store.getItem('twrc.settings.v1'), L['twrc.settings.v1']);
   });
+  await test('onglet en veille sans notification de verrou : sa clé ancienne ne rouvre pas la session au rechargement', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(), A = make(raw, sa).vs; await A.boot(); const before = raw.getItem(SV.VAULT);
+    raw.setItem(SV.LOCK_SIGNAL, 'verrou-pendant-la-veille'); // aucun événement reçu dans l'ancien onglet
+    const B = make(raw, sa).vs; assert.equal(await B.boot(), 'locked'); assert.equal(sa.getItem(SV.SESSION), null); assert.equal(raw.getItem(SV.VAULT), before);
+    await B.unlock(PASS); assert.equal(B.mode, 'vault');
+  });
+  await test('signal de verrou déjà suivi d’un bon code : une notification retardée ne reverrouille pas la nouvelle session', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(), A = make(raw, sa).vs; await A.boot();
+    await A.lock(); const old = raw.getItem(SV.LOCK_SIGNAL); await A.unlock(PASS);
+    assert.equal(await A.onStorage({ key: SV.LOCK_SIGNAL, newValue: old }), null); assert.equal(A.mode, 'vault'); assert(sa.getItem(SV.SESSION));
+  });
   await test('migration interrompue après l’écriture du coffre : reprise, revérification contre les données en clair, puis nettoyage', async () => {
     const raw = fakeStorage(), L = LEGACY(); fill(raw, L);
     // simulation : coffre écrit par une première tentative, puis Safari fermé avant le nettoyage
@@ -160,7 +171,7 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     B.store.setItem('twrc.returnhome.v1', 'B'); await tick(); await B.flush(); await tick(); await A.flush(); await tick();
     assert.equal(B.store.getItem('twrc.tripcancel'), 'A'); assert.equal(A.store.getItem('twrc.returnhome.v1'), 'B'); assert(notes.includes('twrc.tripcancel'));
     const C = make(raw, sa).vs; await C.boot(); assert.equal(C.store.getItem('twrc.tripcancel'), 'A'); assert.equal(C.store.getItem('twrc.returnhome.v1'), 'B');
-    const r = await B.onStorage({ key: SV.LOCK_SIGNAL, newValue: '1' }); assert.equal(r, 'locked'); assert.equal(sb.getItem(SV.SESSION), null);
+    raw.setItem(SV.LOCK_SIGNAL, '1'); const r = await B.onStorage({ key: SV.LOCK_SIGNAL, newValue: '1' }); assert.equal(r, 'locked'); assert.equal(sb.getItem(SV.SESSION), null);
   });
   await test('deux pages indépendantes, notifications retardées : sauvegardes réellement simultanées sans perte', async () => {
     const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(), A = make(raw, sa).vs; await A.boot();
@@ -270,7 +281,9 @@ if (require.main === module) (async () => {
     { name: 'signal de verrou sur disque ignoré', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) !== st.lockSignal) forget();", to: "if (false) forget();" },
     { name: 'coffre précédent effacé au nouvel essai', from: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));", to: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k))); raw.removeItem(VAULT);" },
     { name: 'mauvais code remplace la clé active', from: "const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);", to: "const key = st.key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);" },
-    { name: 'déverrouillage ignore les sauvegardes en attente', from: "while (st.mode === 'vault' && st.mem.dirty.size) await savePending();\n      return unlockInside(pass, extra);", to: "return unlockInside(pass, extra);" }
+    { name: 'déverrouillage ignore les sauvegardes en attente', from: "while (st.mode === 'vault' && st.mem.dirty.size) await savePending();\n      return unlockInside(pass, extra);", to: "return unlockInside(pass, extra);" },
+    { name: 'clé ancienne réutilisée après un verrouillage manqué', from: " && (ses.l ?? null) === raw.getItem(LOCK_SIGNAL)", to: "" },
+    { name: 'notification de verrou périmée acceptée', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) === st.lockSignal) return null;", to: "" }
   ];
   for (const m of mutations) {
     assert(original.includes(m.from), 'Mutation introuvable : ' + m.name);

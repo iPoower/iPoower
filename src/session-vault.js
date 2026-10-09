@@ -159,7 +159,7 @@ const SessionVault = (() => {
     }
     function nextOrder() { const d = order(readVault(raw)); return { n: Math.max(st.n, d.n) + 1, t: Math.max(Date.now(), st.t + 1, d.t + 1) }; }
     async function useKey(rawKey, salt) { st.key = await importKey(rawKey, crypto); st.salt = salt; }
-    function saveSession(rawKey, salt) { try { session.setItem(SESSION, JSON.stringify({ v: 2, s: enc(salt), k: enc(rawKey) })); } catch (e) { /* session non conservée : code redemandé au rechargement */ } }
+    function saveSession(rawKey, salt) { try { session.setItem(SESSION, JSON.stringify({ v: 2, s: enc(salt), k: enc(rawKey), l: raw.getItem(LOCK_SIGNAL) })); } catch (e) { /* session non conservée : code redemandé au rechargement */ } }
     async function writeVerified(vals, salt, guard) {
       requireLocks();
       const key = st.key, signal = raw.getItem(LOCK_SIGNAL), previous = raw.getItem(VAULT);
@@ -217,7 +217,7 @@ const SessionVault = (() => {
       // 2. Coffre v2 + clé de session de cet onglet.
       if (vault && !vault.invalid) {
         let ses = null; try { ses = JSON.parse(session.getItem(SESSION) || 'null'); } catch (e) { ses = null; }
-        if (ses && ses.v === 2 && ses.s === vault.s && typeof ses.k === 'string') {
+        if (ses && ses.v === 2 && ses.s === vault.s && typeof ses.k === 'string' && (ses.l ?? null) === raw.getItem(LOCK_SIGNAL)) {
           try {
             await useKey(dec(ses.k), dec(vault.s)); const data = await open(vault, st.key, crypto); st.n = order(data).n; st.t = order(data).t;
             // copies lisibles égarées (ancienne version ouverte ailleurs, préremplissage) : absorbées si absentes, puis retirées
@@ -228,6 +228,7 @@ const SessionVault = (() => {
             return st.mode;
           } catch (e) { try { session.removeItem(SESSION); } catch (x) { /* rien */ } }
         }
+        try { session.removeItem(SESSION); } catch (e) { /* rien */ }
         st.mem = memStore(raw, {}, () => {}); st.mode = 'locked'; return st.mode;
       }
       if (vault && vault.invalid) { st.mem = memStore(raw, {}, () => {}); st.mode = 'locked'; st.warn = 'Coffre local illisible : conservé tel quel, rien n’a été effacé.'; return st.mode; }
@@ -276,7 +277,11 @@ const SessionVault = (() => {
     }
     // Autre onglet : coffre réécrit → fusion (valeurs distantes + modifications locales non encore écrites) ; verrou → verrouiller ici.
     async function onStorage(e, notify) {
-      if (e.key === LOCK_SIGNAL && e.newValue && (st.mode === 'vault' || st.mode === 'locked')) { forget(); return 'locked'; }
+      if (e.key === LOCK_SIGNAL && e.newValue && (st.mode === 'vault' || st.mode === 'locked')) {
+        // Un bon code a pu être saisi depuis ce signal : ne pas verrouiller la nouvelle session sur une notification périmée.
+        if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) === st.lockSignal) return null;
+        forget(); return 'locked';
+      }
       if (e.key !== VAULT || st.mode !== 'vault' || !e.newValue) return null;
       const epoch = st.epoch, mem = st.mem, guard = () => guardSession(epoch, mem);
       try {
