@@ -102,9 +102,20 @@ function renderWx() {
   const evH = evidenceHtml(), evOn = EV_FLAG() === 'on' && /class="ev-crit/.test(evH) && d.level < 2;
   const html = (evOn ? evH + hero : hero + evH) + tripHtml + tl + matters + ph + road + foot;
   if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
+  // L'éditeur compact ne doit pas perdre son champ actif pendant un tick météo.
+  const active = el.contains(document.activeElement) ? document.activeElement : null;
+  const focusId = active && ['calOriginQuery', 'calOriginMode'].includes(active.id) ? active.id : null;
+  const caret = focusId === 'calOriginQuery' ? active.selectionStart : null;
   const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
   el.className = 'mod wx lv' + d.level; el.innerHTML = html; renderWx.last = html;
   const ns = el.querySelector('.wx-strip'); if (ns && left) ns.scrollLeft = left;
+  if (focusId) {
+    const target = el.querySelector('#' + focusId);
+    if (target) {
+      target.focus({ preventScroll: true });
+      if (caret != null && typeof target.setSelectionRange === 'function') target.setSelectionRange(caret, caret);
+    }
+  }
 }
 /* ---------- moteur de preuves météo v2 (weatherEvidenceV2) : actif par défaut ---------- */
 // Réglage S.flags.weatherEvidenceV2 : 'on' (défaut) ; 'shadow' calcule, journalise et montre la carte « Preuves » marquée expérimentale
