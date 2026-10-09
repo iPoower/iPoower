@@ -70,9 +70,17 @@ function commuteOff(today, time, nowHm, days) {
   for (let k = 0; k < 8; k++, off++) if (isCommuteDay(addMin(today.slice(0, 10) + 'T00:00', off * 1440), days)) return off;
   return null;
 }
+// Réutiliser le formateur, jamais l'heure : changement de minute et transitions DST restent évalués sur chaque nouvelle Date.
+const NOW_FORMATS = new Map();
 function nowIn(tz) {
   try {
-    const s = new Date().toLocaleString('sv-SE', { timeZone: tz, hour12: false });
+    let fmt = NOW_FORMATS.get(tz);
+    if (!fmt) {
+      fmt = new Intl.DateTimeFormat('sv-SE', { timeZone: tz, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      NOW_FORMATS.set(tz, fmt);
+      if (NOW_FORMATS.size > 16) NOW_FORMATS.delete(NOW_FORMATS.keys().next().value);
+    }
+    const s = fmt.format(new Date());
     return s.replace(' ', 'T').slice(0, 16);
   } catch (e) { return dateToTs(new Date()); }
 }
