@@ -84,17 +84,28 @@ const layout = p => p.evaluate(() => {
             UI.loc = forecast.id;
             APP_CONTEXT.snapshot = Object.freeze({ ...before, status: 'travel', currentLocation: { id: 'gps', name: 'Ma position' }, weatherLocationId: forecast.id });
             renderDecisionCore();
-            const label = document.querySelector('#decisionCore .decision-place').innerText;
+            const capture = () => {
+              const node = document.querySelector('#decisionCore .decision-place');
+              return { place: node.querySelector('b')?.textContent?.trim(),
+                forecast: node.querySelector('.decision-forecast')?.textContent?.trim() || '' };
+            };
+            const gps = capture();
             APP_CONTEXT.snapshot = Object.freeze({ ...before, status: 'travel', currentLocation: { id: 'travel', name: 'En déplacement' }, weatherLocationId: forecast.id });
             renderDecisionCore();
-            const noGps = document.querySelector('#decisionCore .decision-place').innerText;
-            return { label, noGps, forecastName: forecast.name };
+            const travel = capture();
+            // Quand le lieu courant est le lieu météo, pas de double ligne.
+            APP_CONTEXT.snapshot = Object.freeze({ ...before, status: 'arrived', currentLocation: forecast, weatherLocationId: forecast.id });
+            renderDecisionCore();
+            const same = capture();
+            return { gps, travel, same, forecastName: forecast.name };
           } finally { APP_CONTEXT.snapshot = before; UI.loc = previous; renderDecisionCore(); }
         });
-        assert.match(r.label, /Lieu · Position GPS · en route/);
-        assert(r.label.includes('météo analysée pour ' + r.forecastName), JSON.stringify(r));
-        assert.match(r.noGps, /Lieu · En déplacement/);
-        assert(r.noGps.includes('météo analysée pour ' + r.forecastName));
+        assert.equal(r.gps.place, 'Position GPS · en route', JSON.stringify(r));
+        assert(r.gps.forecast.includes('météo analysée pour ' + r.forecastName), JSON.stringify(r));
+        assert.equal(r.travel.place, 'En déplacement', JSON.stringify(r));
+        assert(r.travel.forecast.includes('météo analysée pour ' + r.forecastName), JSON.stringify(r));
+        assert.equal(r.same.place, r.forecastName, JSON.stringify(r));
+        assert.equal(r.same.forecast, '', 'aucune répétition de la météo quand le lieu réel correspond');
       });
       await s.c.close();
       // Scénario B — pluie significative sur le trajet ; Scénario C — brouillard important (danger jamais caché, même alerte coupée)
