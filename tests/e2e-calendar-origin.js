@@ -10,6 +10,8 @@ const view = p => p.evaluate(() => {
     pending: !!t.l.originPending }, keys: Object.keys(appDay().agendaOrigins || {}) };
 });
 const putEvents = p => p.evaluate(() => {
+  // Aucun commute de la fixture ne doit masquer le rendez-vous test dans Prochain trajet.
+  S.work.days = []; UI.dayOff = null;
   const home = { ...S.locs[0], label: 'Domicile test', city: 'Domicile test' };
   const target = { lat: 49.58, lon: 2.35, label: 'Lieu d essai A', city: 'Lieu d essai A' };
   const other = { lat: 49.77, lon: 2.5, label: 'Lieu d essai B', city: 'Lieu d essai B' };
