@@ -89,13 +89,60 @@ const SessionVault = (() => {
       ownKeys: () => listOf(),
       getOwnPropertyDescriptor: (t, p) => typeof p === 'string' && !(p in t) && t.getItem(p) != null ? { value: t.getItem(p), writable: true, enumerable: true, configurable: true } : undefined
     });
-    return { store, map: m, dirty };
+    return { store, map: m, dirty, vol };
   }
 
   /* ---------- session (une instance par page) ---------- */
-  function create({ raw, session, crypto, target }) {
-    const st = { mode: 'plain', key: null, salt: null, n: 0, t: 0, mem: null, chain: Promise.resolve(), error: null, warn: null, timer: null };
+  function create({ raw, session, crypto, target, locks = target && target.navigator && target.navigator.locks }) {
+    const st = { mode: 'plain', key: null, salt: null, n: 0, t: 0, saved: {}, mem: null, epoch: 0, lockSignal: raw.getItem(LOCK_SIGNAL), chain: Promise.resolve(), error: null, warn: null, timer: null };
     const values = () => Object.fromEntries(st.mem.map);
+    function requireLocks() {
+      if (!locks || typeof locks.request !== 'function') throw Object.assign(new Error('Ce navigateur ne permet pas une sauvegarde sûre entre plusieurs fenêtres. Mets-le à jour ou exporte une sauvegarde.'), { unsupported: true });
+    }
+    // Une file Promise par page ne suffit pas : le verrou couvre lecture, fusion, chiffrement ET vérification sur toute l'origine.
+    async function exclusive(fn) { requireLocks(); return locks.request(VAULT, { mode: 'exclusive' }, fn); }
+    function forget() {
+      st.epoch++; if (st.mem) { st.mem.map.clear(); st.mem.dirty.clear(); st.mem.vol.clear(); }
+      try { session.removeItem(SESSION); } catch (e) { /* rien */ }
+      st.key = null; st.salt = null; st.saved = {}; st.mode = 'locked'; st.error = null;
+    }
+    function guardSession(epoch, mem) {
+      if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) !== st.lockSignal) forget();
+      if (st.mode !== 'vault' || st.epoch !== epoch || st.mem !== mem) throw Object.assign(new Error('Session verrouillée pendant l’enregistrement.'), { cancelled: true });
+    }
+    function merge(data, notify) {
+      const before = values(), next = { ...data.values };
+      st.mem.dirty.forEach(k => { if (st.mem.map.has(k)) next[k] = st.mem.map.get(k); else delete next[k]; });
+      st.n = order(data).n; st.t = order(data).t; st.saved = { ...data.values };
+      st.mem.map.clear(); Object.entries(next).forEach(([k, v]) => st.mem.map.set(k, v));
+      const changed = [...new Set([...Object.keys(before), ...Object.keys(next)])].filter(k => before[k] !== next[k]);
+      changed.forEach(k => {
+        if (notify) notify(k, before[k] ?? null, next[k] ?? null);
+        else if (target && target.StorageEvent && target.dispatchEvent) {
+          try { target.dispatchEvent(new target.StorageEvent('storage', { key: k, oldValue: before[k] ?? null, newValue: next[k] ?? null })); } catch (e) { /* rendu suivant */ }
+        }
+      });
+    }
+    async function latest(guard) {
+      const sealed = raw.getItem(VAULT), vault = sealed && JSON.parse(sealed);
+      if (!validVault(vault) || vault.s !== enc(st.salt)) throw new Error('Coffre local invalide ou remplacé.');
+      const data = await open(vault, st.key, crypto); guard();
+      if (raw.getItem(VAULT) !== sealed) throw Object.assign(new Error('Coffre modifié pendant la lecture.'), { conflict: true });
+      return data;
+    }
+    async function savePending() {
+      if (st.mode !== 'vault') return;
+      const epoch = st.epoch, mem = st.mem, guard = () => guardSession(epoch, mem); guard();
+      if (!mem.dirty.size) return;
+      // Relire le dernier coffre authentifié sous verrou, puis appliquer seulement les clés modifiées (suppression comprise).
+      const data = await latest(guard), base = newer({ n: st.n, t: st.t }, order(data)) ? st.saved : data.values;
+      const sent = new Map([...mem.dirty].map(k => [k, mem.map.has(k) ? mem.map.get(k) : null])), snap = { ...base };
+      sent.forEach((v, k) => { if (v == null) delete snap[k]; else snap[k] = v; });
+      await writeVerified(snap, st.salt, guard); guard();
+      // Une valeur peut encore changer pendant WebCrypto. Elle reste en attente jusqu'à sa propre écriture vérifiée.
+      sent.forEach((v, k) => { if ((mem.map.has(k) ? mem.map.get(k) : null) === v) mem.dirty.delete(k); });
+      merge({ n: st.n, t: st.t, values: snap }); st.error = null;
+    }
     function persist() {
       if (st.mode !== 'vault' || st.timer) return;
       // microtâche (pas une minuterie) : part dès la fin du code en cours, jamais retardée par une horloge gelée ou un onglet en veille
@@ -103,37 +150,32 @@ const SessionVault = (() => {
     }
     function flush() {
       if (st.mode !== 'vault') return st.chain;
-      st.chain = st.chain.then(async () => {
-        // rien à écrire : ne jamais réécrire un état déjà enregistré (une page qui se ferme écraserait la page suivante)
-        if (!st.mem.dirty.size) return;
-        const snap = values(), sent = new Set(st.mem.dirty); st.mem.dirty.clear();
-        try {
-          const nx = nextOrder(); const out = await seal(snap, st.key, st.salt, crypto, nx.n, nx.t); st.n = nx.n; st.t = nx.t;
-          try { put(raw, VAULT, out.sealed); }
-          catch (e) {   // stockage plein : libérer d'abord les caches recalculables, jamais une donnée durable
-            if (!full(e)) throw e;
-            keysOf(raw).filter(k => isApp(k) && CACHE(k)).forEach(k => { try { raw.removeItem(k); } catch (x) { /* rien */ } });
-            put(raw, VAULT, out.sealed);
-          }
-          const back = await open(JSON.parse(raw.getItem(VAULT)), st.key, crypto);
-          if (!same(back.values, snap)) throw new Error('Coffre relu différent.');
-          st.error = null;
-        } catch (e) {
-          sent.forEach(k => st.mem.dirty.add(k));
-          st.error = 'Enregistrement chiffré impossible (stockage plein ou refusé) : les modifications restent en mémoire ; exporte une sauvegarde.';
-          if (target && target.dispatchEvent) try { target.dispatchEvent(new Event('twrc-vault-error')); } catch (x) { /* rien */ }
-        }
+      st.chain = st.chain.then(() => exclusive(savePending)).catch(e => {
+        if (e.cancelled || st.mode !== 'vault') return;
+        st.error = (e.unsupported ? e.message + ' ' : 'Enregistrement chiffré non confirmé (stockage plein, refusé ou modifié) : ') + 'les modifications restent en mémoire ; exporte une sauvegarde.';
+        if (target && target.dispatchEvent) try { target.dispatchEvent(new Event('twrc-vault-error')); } catch (x) { /* rien */ }
       });
       return st.chain;
     }
     function nextOrder() { const d = order(readVault(raw)); return { n: Math.max(st.n, d.n) + 1, t: Math.max(Date.now(), st.t + 1, d.t + 1) }; }
     async function useKey(rawKey, salt) { st.key = await importKey(rawKey, crypto); st.salt = salt; }
     function saveSession(rawKey, salt) { try { session.setItem(SESSION, JSON.stringify({ v: 2, s: enc(salt), k: enc(rawKey) })); } catch (e) { /* session non conservée : code redemandé au rechargement */ } }
-    async function writeVerified(vals, salt) {
-      const nx = nextOrder(); const out = await seal(vals, st.key, salt, crypto, nx.n, nx.t); st.n = nx.n; st.t = nx.t;
-      put(raw, VAULT, out.sealed);
-      const back = await open(JSON.parse(raw.getItem(VAULT)), st.key, crypto);
-      if (!same(back.values, vals)) throw new Error('Coffre relu différent.');
+    async function writeVerified(vals, salt, guard) {
+      requireLocks();
+      const key = st.key, signal = raw.getItem(LOCK_SIGNAL), previous = raw.getItem(VAULT);
+      const active = guard || (() => { if (st.key !== key || raw.getItem(LOCK_SIGNAL) !== signal) throw Object.assign(new Error('Session modifiée.'), { cancelled: true }); });
+      active(); const nx = nextOrder(), out = await seal(vals, key, salt, crypto, nx.n, nx.t); active();
+      // Les anciennes versions ne prennent pas le verrou : ne pas écraser une écriture qu'elles ont faite pendant WebCrypto.
+      if (raw.getItem(VAULT) !== previous) throw Object.assign(new Error('Coffre modifié pendant le chiffrement.'), { conflict: true });
+      try { put(raw, VAULT, out.sealed); }
+      catch (e) {
+        if (!full(e)) throw e;
+        keysOf(raw).filter(k => isApp(k) && CACHE(k)).forEach(k => { try { raw.removeItem(k); } catch (x) { /* rien */ } });
+        active(); put(raw, VAULT, out.sealed);
+      }
+      const back = await open(JSON.parse(raw.getItem(VAULT)), key, crypto); active();
+      if (!same(back.values, vals) || raw.getItem(VAULT) !== out.sealed) throw new Error('Coffre relu différent.');
+      st.n = nx.n; st.t = nx.t; st.saved = { ...vals };
     }
     // stockage plein pendant la migration : sacrifier les caches recalculables puis réessayer une seule fois
     async function writeWithRoom(vals, salt) {
@@ -145,10 +187,11 @@ const SessionVault = (() => {
         await writeVerified(lean, salt); return lean;
       }
     }
-    function enter(vals) { st.mem = memStore(raw, vals, persist); st.mode = 'vault'; }
+    function enter(vals) { st.epoch++; st.mem = memStore(raw, vals, persist); st.saved = { ...vals }; st.lockSignal = raw.getItem(LOCK_SIGNAL); st.mode = 'vault'; st.error = null; }
 
     /* Démarrage : mode et magasin à utiliser par l'application. Ne jette jamais : en cas de doute, rien n'est effacé. */
-    async function boot(sealedCheck) {
+    async function boot() { return locks && typeof locks.request === 'function' ? exclusive(bootInside) : bootInside(); }
+    async function bootInside() {
       const vault = readVault(raw), plainKey = raw.getItem('twrc.key');
       // 1. Ancien format en clair, appareil déverrouillé : migration vérifiée.
       if (plainKey) {
@@ -168,7 +211,7 @@ const SessionVault = (() => {
           enter(stored); st.migrated = true; return st.mode;
         } catch (e) {
           // Rien n'a été retiré tant que la vérification n'a pas réussi : l'app continue sur l'ancien stockage.
-          st.mode = 'plain'; st.warn = 'Chiffrement local non terminé : tes données restent intactes sur cet appareil (non chiffrées). Libère de l’espace ou exporte une sauvegarde.'; return st.mode;
+          st.mode = 'plain'; st.warn = 'Chiffrement local non terminé : tes données restent intactes sur cet appareil (non chiffrées). ' + (e.unsupported ? e.message : 'Libère de l’espace ou exporte une sauvegarde.'); return st.mode;
         }
       }
       // 2. Coffre v2 + clé de session de cet onglet.
@@ -179,8 +222,9 @@ const SessionVault = (() => {
             await useKey(dec(ses.k), dec(vault.s)); const data = await open(vault, st.key, crypto); st.n = order(data).n; st.t = order(data).t;
             // copies lisibles égarées (ancienne version ouverte ailleurs, préremplissage) : absorbées si absentes, puis retirées
             const stray = plainSnapshot(raw), vals = { ...stray, ...data.values };
-            enter(vals);
-            if (Object.keys(stray).length) { Object.keys(stray).forEach(k => st.mem.dirty.add(k)); await flush(); if (!st.error) dropPlain(raw, Object.keys(stray)); }
+            const kept = Object.keys(stray).length ? await writeWithRoom(vals, st.salt) : vals;
+            enter(kept);
+            if (Object.keys(stray).length) dropPlain(raw, Object.keys(stray));
             return st.mode;
           } catch (e) { try { session.removeItem(SESSION); } catch (x) { /* rien */ } }
         }
@@ -194,7 +238,8 @@ const SessionVault = (() => {
     function sameKeysGone(r, snap) { return Object.keys(snap).every(k => r.getItem(k) == null); }
 
     /* Déverrouillage avec le code : coffre v2, coffre v1 ou données en clair existantes → coffre v2 vérifié → session. */
-    async function unlock(pass, extra) {
+    async function unlock(pass, extra) { return exclusive(() => unlockInside(pass, extra)); }
+    async function unlockInside(pass, extra) {
       const vault = readVault(raw);
       if (vault && vault.invalid) throw new Error('Coffre local illisible : conservé tel quel.');
       let vals, salt, rawKey, drop = [], dropV1 = false;
@@ -216,28 +261,32 @@ const SessionVault = (() => {
     }
     async function lock() {
       if (st.mode === 'vault') { await flush(); if (st.error) throw new Error(st.error); }
-      try { session.removeItem(SESSION); } catch (e) { /* rien */ }
-      try { raw.setItem(LOCK_SIGNAL, String(Date.now())); } catch (e) { /* signal facultatif */ }
-      if (st.mem) st.mem.map.clear(); st.key = null; st.mode = 'locked';
+      const finish = async () => {
+        while (st.mode === 'vault' && st.mem.dirty.size) await savePending();
+        // Un nonce rend le signal distinct, même si deux verrouillages ont lieu à la même milliseconde.
+        try { raw.setItem(LOCK_SIGNAL, Date.now() + ':' + enc(crypto.getRandomValues(new Uint8Array(12)))); } catch (e) { /* signal facultatif */ }
+        forget();
+      };
+      if (locks && typeof locks.request === 'function') await exclusive(finish); else await finish();
     }
     // Autre onglet : coffre réécrit → fusion (valeurs distantes + modifications locales non encore écrites) ; verrou → verrouiller ici.
     async function onStorage(e, notify) {
-      if (e.key === LOCK_SIGNAL && e.newValue && st.mode === 'vault') { try { session.removeItem(SESSION); } catch (x) { /* rien */ } st.mem.map.clear(); st.key = null; st.mode = 'locked'; return 'locked'; }
+      if (e.key === LOCK_SIGNAL && e.newValue && (st.mode === 'vault' || st.mode === 'locked')) { forget(); return 'locked'; }
       if (e.key !== VAULT || st.mode !== 'vault' || !e.newValue) return null;
-      let data; try { const v = JSON.parse(e.newValue); if (!validVault(v) || v.s !== enc(st.salt)) return null; data = await open(v, st.key, crypto); } catch (x) { return null; }
-      // écriture plus ancienne arrivée en retard (page qui se fermait, onglet gelé) : réaffirmer l'état plus récent de cet onglet
-      if (!newer(order(data), { n: st.n, t: st.t })) {
-        const cur = values(); [...new Set([...Object.keys(cur), ...Object.keys(data.values)])].forEach(k => { if (cur[k] !== data.values[k]) st.mem.dirty.add(k); });
-        if (st.mem.dirty.size) flush();
-        return 'stale';
-      }
-      st.n = order(data).n; st.t = order(data).t;
-      const before = values(), next = { ...data.values }; st.mem.dirty.forEach(k => { if (st.mem.map.has(k)) next[k] = st.mem.map.get(k); else delete next[k]; });
-      st.mem.map.clear(); Object.entries(next).forEach(([k, v]) => st.mem.map.set(k, v));
-      const changed = [...new Set([...Object.keys(before), ...Object.keys(next)])].filter(k => before[k] !== next[k]);
-      if (notify) changed.forEach(k => notify(k, before[k] ?? null, next[k] ?? null));
-      if (st.mem.dirty.size) flush();
-      return 'merged';
+      const epoch = st.epoch, mem = st.mem, guard = () => guardSession(epoch, mem);
+      try {
+        return await exclusive(async () => {
+          guard();
+          // L'événement peut être périmé : seule la valeur ACTUELLE relue et authentifiée sur disque fait foi.
+          const data = await latest(guard);
+          if (!newer(order(data), { n: st.n, t: st.t })) {
+            // Restaurer uniquement un véritable recul sur disque, avec le dernier état sauvegardé, jamais les valeurs locales non écrites.
+            if (newer({ n: st.n, t: st.t }, order(data))) await writeVerified(st.saved, st.salt, guard);
+            if (mem.dirty.size) persist(); return 'stale';
+          }
+          merge(data, notify); if (mem.dirty.size) persist(); return 'merged';
+        });
+      } catch (x) { return st.mode === 'locked' ? 'locked' : null; }
     }
     return {
       boot, unlock, lock, flush, onStorage,

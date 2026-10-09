@@ -51,6 +51,31 @@ const submit = async (s, code) => { await s.p.fill('#unlockPw', code); await Pro
         assert.equal(st.locked, true); assert(!st.names.some(x => me.names.includes(x))); assert.notEqual(st.car, me.car); assert.equal(st.preset, false);
         await q.close();
       });
+      await check(dev + ' · deux vraies fenêtres : sauvegardes simultanées, coffre relu après rechargement', async () => {
+        const q = await s.c.newPage(); await q.clock.install({ time: s.T0 }); await q.goto(require('./lib/context-session').U);
+        const settleQ = async () => { for (let i = 0; i < 8; i++) { await q.clock.runFor(500); await q.waitForTimeout(80); } };
+        try {
+          await settleQ(); await q.fill('#unlockPw', PW);
+          await Promise.all([q.waitForNavigation({ timeout: 60000 }), q.click('#unlockForm button[type=submit]')]); await settleQ();
+          assert.equal(await q.evaluate(() => TWRC_VAULT.mode), 'vault');
+          // Retenir le verrou natif pour mettre les deux écritures en file avant de les libérer.
+          await p.evaluate(() => new Promise(ready => {
+            window.__vaultTestLock = navigator.locks.request('twrc.vault.v2', { mode: 'exclusive' }, () => new Promise(release => { window.__vaultTestRelease = release; ready(); }));
+          }));
+          const a = p.evaluate(async () => { localStorage.setItem('twrc.test.concurrent.a', 'fenetre-A'); await TWRC_VAULT.flush(); return TWRC_VAULT.error; });
+          const b = q.evaluate(async () => { localStorage.setItem('twrc.test.concurrent.b', 'fenetre-B'); await TWRC_VAULT.flush(); return TWRC_VAULT.error; });
+          try {
+            await p.waitForFunction(async () => (await navigator.locks.query()).pending.filter(l => l.name === 'twrc.vault.v2').length >= 2);
+          } finally { await p.evaluate(() => { window.__vaultTestRelease(); return window.__vaultTestLock; }); }
+          assert.deepEqual(await Promise.all([a, b]), [null, null]);
+          await q.reload(); await settleQ();
+          assert.deepEqual(await q.evaluate(() => [localStorage.getItem('twrc.test.concurrent.a'), localStorage.getItem('twrc.test.concurrent.b')]), ['fenetre-A', 'fenetre-B']);
+          const raw = await rawOf(s.c); assert.deepEqual(leaks(raw), []); assert(!JSON.stringify(raw).includes('fenetre-A')); assert(!JSON.stringify(raw).includes('fenetre-B'));
+          await Promise.all([p.evaluate(async () => { localStorage.removeItem('twrc.test.concurrent.a'); await TWRC_VAULT.flush(); }), q.evaluate(async () => { localStorage.removeItem('twrc.test.concurrent.b'); await TWRC_VAULT.flush(); })]);
+          await q.reload(); await settleQ();
+          assert.deepEqual(await q.evaluate(() => [localStorage.getItem('twrc.test.concurrent.a'), localStorage.getItem('twrc.test.concurrent.b')]), [null, null]);
+        } finally { await q.close(); }
+      });
       await check(dev + ' · Verrouiller : clé de session effacée, verrouillé, coffre intact, rien en clair', async () => {
         const vault = (await rawOf(s.c))['twrc.vault.v2'];
         await p.evaluate(() => { const d = document.getElementById('settings'); d.open = true; renderSettings(true); });

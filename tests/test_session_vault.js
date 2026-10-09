@@ -18,6 +18,12 @@ function fakeStorage({ quota = Infinity, refuse = () => false } = {}) {
   return s;
 }
 const session = () => { const m = new Map(); return { getItem: k => m.has(k) ? m.get(k) : null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k), dump: () => Object.fromEntries(m) }; };
+// Même contrat que navigator.locks : l'exclusion porte sur TOUS les onglets, pas sur une seule instance du coffre.
+const fakeLocks = () => {
+  let tail = Promise.resolve();
+  return { request(name, options, fn) { assert.equal(name, 'twrc.vault.v2'); assert.equal(options.mode, 'exclusive');
+    const task = tail.then(fn); tail = task.catch(() => {}); return task; } };
+};
 async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = { console, setTimeout, clearTimeout, TextEncoder, TextDecoder, atob, btoa, JSON, Proxy, Reflect, Map, Set, Object, Array, Uint8Array, Promise, Error, Event: class { constructor(t) { this.type = t; } } };
   vm.createContext(ctx);
@@ -37,7 +43,8 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
   const SENSITIVE = ['Maison fictive', '45.1234', PASS, 'Voiture fictive', 'trajet-fictif'];
   const leaks = raw => Object.entries(raw.dump()).filter(([k, v]) => k !== SV.VAULT && SENSITIVE.some(x => v.includes(x) || k.includes(x))).map(([k]) => k);
   const fill = (raw, o) => Object.entries(o).forEach(([k, v]) => raw.setItem(k, v));
-  const make = (raw, ses = session()) => ({ vs: SV.create({ raw, session: ses, crypto, target: null }), ses });
+  const locks = fakeLocks();
+  const make = (raw, ses = session(), extra = {}) => ({ vs: SV.create({ raw, session: ses, crypto, target: null, locks, ...extra }), ses });
 
   await test('migration d’un ancien profil en clair : coffre vérifié, données identiques, plus aucune copie lisible', async () => {
     const raw = fakeStorage(), L = LEGACY(); fill(raw, L); const { vs, ses } = make(raw);
@@ -137,6 +144,72 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     const C = make(raw, sa).vs; await C.boot(); assert.equal(C.store.getItem('twrc.tripcancel'), 'A'); assert.equal(C.store.getItem('twrc.returnhome.v1'), 'B');
     const r = await B.onStorage({ key: SV.LOCK_SIGNAL, newValue: '1' }); assert.equal(r, 'locked'); assert.equal(sb.getItem(SV.SESSION), null);
   });
+  await test('deux pages indépendantes, notifications retardées : sauvegardes réellement simultanées sans perte', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(), A = make(raw, sa).vs; await A.boot();
+    // Un autre contexte JS ne peut pas partager une file Promise privée avec le premier.
+    const other = { ...ctx }; vm.createContext(other); vm.runInContext(source + ';this.SV=SessionVault;', other);
+    const sb = session(); sb.setItem(SV.SESSION, sa.getItem(SV.SESSION));
+    const B = other.SV.create({ raw, session: sb, crypto, target: null, locks }); await B.boot();
+    const delayed = []; raw.peers.add(e => delayed.push(e));
+    A.store.setItem('twrc.tripcancel', 'A-simultane'); B.store.setItem('twrc.returnhome.v1', 'B-simultane');
+    await Promise.all([A.flush(), B.flush()]);
+    const C = make(raw, sa).vs; await C.boot();
+    assert.equal(C.store.getItem('twrc.tripcancel'), 'A-simultane'); assert.equal(C.store.getItem('twrc.returnhome.v1'), 'B-simultane');
+    assert.equal(A.error, null); assert.equal(B.error, null);
+    for (const e of delayed.splice(0).reverse()) { await A.onStorage(e); await B.onStorage(e); }
+    await Promise.all([A.flush(), B.flush()]);
+    const D = make(raw, sa).vs; await D.boot();
+    assert.equal(D.store.getItem('twrc.tripcancel'), 'A-simultane'); assert.equal(D.store.getItem('twrc.returnhome.v1'), 'B-simultane');
+  });
+  await test('suppression dans un onglet et modification ailleurs : aucune résurrection par une ancienne notification', async () => {
+    const raw = fakeStorage(); fill(raw, { ...LEGACY(), 'twrc.tripcancel': 'a-supprimer' }); const sa = session(), A = make(raw, sa).vs; await A.boot();
+    const sb = session(); sb.setItem(SV.SESSION, sa.getItem(SV.SESSION)); const B = make(raw, sb).vs; await B.boot();
+    const old = raw.getItem(SV.VAULT);
+    A.store.removeItem('twrc.tripcancel'); B.store.setItem('twrc.returnhome.v1', 'a-conserver'); await Promise.all([A.flush(), B.flush()]);
+    await A.onStorage({ key: SV.VAULT, newValue: old }); await B.onStorage({ key: SV.VAULT, newValue: old }); await Promise.all([A.flush(), B.flush()]);
+    const C = make(raw, sa).vs; await C.boot(); assert.equal(C.store.getItem('twrc.tripcancel'), null); assert.equal(C.store.getItem('twrc.returnhome.v1'), 'a-conserver');
+  });
+  await test('même clé modifiée pendant le chiffrement : la seconde valeur reste à sauvegarder', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(); let pause = false, begin, release;
+    const started = new Promise(r => { begin = r; }), held = new Promise(r => { release = r; });
+    const slow = { getRandomValues: bytes => crypto.getRandomValues(bytes), subtle: new Proxy(crypto.subtle, { get(t, k) {
+      if (k === 'encrypt') return async (...args) => { if (pause) { pause = false; begin(); await held; } return t.encrypt(...args); };
+      return typeof t[k] === 'function' ? t[k].bind(t) : t[k]; } }) };
+    const A = make(raw, sa, { crypto: slow }).vs; await A.boot(); pause = true;
+    A.store.setItem('twrc.tripcancel', 'premiere'); const writing = A.flush(); await started;
+    A.store.setItem('twrc.tripcancel', 'seconde'); release(); await writing; await A.flush();
+    const B = make(raw, sa).vs; await B.boot(); assert.equal(B.store.getItem('twrc.tripcancel'), 'seconde'); assert.equal(A.error, null);
+  });
+  await test('verrouillage distant pendant le chiffrement : aucune écriture ni session ressuscitée', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(); let pause = false, begin, release;
+    const started = new Promise(r => { begin = r; }), held = new Promise(r => { release = r; });
+    const slow = { getRandomValues: bytes => crypto.getRandomValues(bytes), subtle: new Proxy(crypto.subtle, { get(t, k) {
+      if (k === 'encrypt') return async (...args) => { if (pause) { pause = false; begin(); await held; } return t.encrypt(...args); };
+      return typeof t[k] === 'function' ? t[k].bind(t) : t[k]; } }) };
+    const A = make(raw, sa, { crypto: slow }).vs; await A.boot(); const before = raw.getItem(SV.VAULT); pause = true;
+    A.store.setItem('twrc.tripcancel', 'en-vol'); const writing = A.flush(); await started;
+    raw.setItem(SV.LOCK_SIGNAL, 'verrou-distant'); await A.onStorage({ key: SV.LOCK_SIGNAL, newValue: 'verrou-distant' });
+    release(); await writing; await A.flush();
+    assert.equal(A.mode, 'locked'); assert.equal(sa.getItem(SV.SESSION), null); assert.equal(raw.getItem(SV.VAULT), before); assert.equal(A.store.getItem('twrc.tripcancel'), null);
+  });
+  await test('notification de verrou retardée : une sauvegarde en attente consulte aussi le signal sur disque', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(), A = make(raw, sa).vs; await A.boot(); const before = raw.getItem(SV.VAULT);
+    raw.setItem(SV.LOCK_SIGNAL, 'autre-onglet-verrouille'); A.store.setItem('twrc.tripcancel', 'ne-pas-ecrire'); await A.flush();
+    assert.equal(A.mode, 'locked'); assert.equal(sa.getItem(SV.SESSION), null); assert.equal(raw.getItem(SV.VAULT), before);
+  });
+  await test('absence de verrou inter-onglets : modifications gardées en mémoire, jamais de réussite trompeuse', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(); await make(raw, sa).vs.boot();
+    const A = make(raw, sa, { locks: null }).vs; await A.boot(); const before = raw.getItem(SV.VAULT);
+    A.store.setItem('twrc.tripcancel', 'non-enregistre'); await A.flush(); assert.match(A.error, /restent en mémoire/);
+    assert.equal(A.store.getItem('twrc.tripcancel'), 'non-enregistre'); assert.equal(raw.getItem(SV.VAULT), before);
+  });
+  await test('échec puis nouvel essai : la modification locale fusionne aussi celle enregistrée ailleurs', async () => {
+    let denied = false; const raw = fakeStorage({ refuse: k => denied && k === SV.VAULT }); fill(raw, LEGACY());
+    const sa = session(), A = make(raw, sa).vs; await A.boot(); const sb = session(); sb.setItem(SV.SESSION, sa.getItem(SV.SESSION)); const B = make(raw, sb).vs; await B.boot();
+    denied = true; A.store.setItem('twrc.tripcancel', 'a-reessayer'); await A.flush(); assert.match(A.error, /restent en mémoire/);
+    denied = false; B.store.setItem('twrc.returnhome.v1', 'ecrit-ailleurs'); await B.flush(); await A.flush();
+    const C = make(raw, sa).vs; await C.boot(); assert.equal(C.store.getItem('twrc.tripcancel'), 'a-reessayer'); assert.equal(C.store.getItem('twrc.returnhome.v1'), 'ecrit-ailleurs'); assert.equal(A.error, null);
+  });
   await test('écriture tardive d’une page qui se ferme : reconnue plus ancienne, l’état plus récent est réaffirmé sur le disque', async () => {
     const raw = fakeStorage(); fill(raw, LEGACY()); const ses = session(); const A = make(raw, ses).vs; await A.boot();
     A.store.setItem('twrc.gps', 'ancien-nom-fictif'); await tick(); await A.flush(); const late = raw.getItem(SV.VAULT);   // écriture de l'ancienne page
@@ -174,6 +247,9 @@ if (require.main === module) (async () => {
     { name: 'écriture tardive acceptée telle quelle', from: "if (!newer(order(data), { n: st.n, t: st.t })) {", to: "if (false) {" },
     { name: 'en-tête d’ordre non authentifié', from: "(vault.n != null && (data.n !== vault.n || data.t !== vault.t)) || ", to: "" },
     { name: 'caches durables sacrifiés (journal compris)', from: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));", to: "const lean = {};" }
+    ,{ name: 'verrou global ignoré', from: "return locks.request(VAULT, { mode: 'exclusive' }, fn);", to: "return fn();" }
+    ,{ name: 'snapshot local écrase les clés distantes', from: "snap = { ...base };", to: "snap = values();" }
+    ,{ name: 'signal de verrou sur disque ignoré', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) !== st.lockSignal) forget();", to: "if (false) forget();" }
   ];
   for (const m of mutations) {
     assert(original.includes(m.from), 'Mutation introuvable : ' + m.name);
