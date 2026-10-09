@@ -98,7 +98,12 @@ async function ready(s) {
       routeEntries: CANCELROUTES.size, cache: k && LEGM[k] && { hasModels: !!LEGM[k].models, age: Date.now() - LEGM[k].t },
       vaultError: !!window.TWRC_VAULT.error, storageError: !!window.TWRC_STORAGE_ERROR };
   });
-  assert.fail('route et météo non prêtes : ' + JSON.stringify(detail));
+  // Le runner agrège seulement les 160 premiers caractères des lignes
+  // d'erreur : tracer les invariants séparément pour isoler un échec réel.
+  console.error('❌ ORIGIN-CALL ' + String(new Error().stack.split('\n')[2] || '').trim());
+  console.error('❌ ORIGIN-LEG ' + JSON.stringify({ trip: detail.trip, origin: detail.origin, pending: detail.pending, km: detail.km, dep: detail.dep, routeEntries: detail.routeEntries }));
+  console.error('❌ ORIGIN-CACHE ' + JSON.stringify({ cache: detail.cache, vaultError: detail.vaultError, storageError: detail.storageError, offline: detail.offline }));
+  assert.fail('route et météo non prêtes');
 }
 async function apply(s, dev, mode) {
   await tap(s.p, dev, '#secWx [data-act=cal-origin-open]'); await s.p.selectOption('#wxOriginMode', mode);
