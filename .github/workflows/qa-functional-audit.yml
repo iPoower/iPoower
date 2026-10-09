@@ -1,0 +1,54 @@
+name: Race Control - audit fonctionnel PC iPhone
+# Suite indépendante, aucune autorisation de déploiement, données 100% fictives.
+on:
+  pull_request:
+    paths:
+      - tests/e2e66-functional-audit.js
+      - .github/workflows/qa-functional-audit.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    name: Audit UI / ${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    env:
+      BROWSER: ${{ matrix.browser }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Installer les dépendances figées
+        run: npm ci --no-audit --no-fund
+      - name: Installer le navigateur de test
+        timeout-minutes: 10
+        run: npx playwright install --with-deps "$BROWSER"
+      - name: Construire des données fictives isolées
+        run: node tests/run-ci.js --lane unit --prepare-only
+      - name: Vérifier les boutons et parcours en vrai navigateur simulé
+        timeout-minutes: 8
+        run: |
+          node <<'NODE'
+          const {spawnSync}=require('node:child_process');
+          const path=require('node:path');
+          const {workspace}=require('./tests/ci/workspace');
+          const {w,out}=workspace('qa-'+process.env.BROWSER);
+          const test=path.resolve('tests/e2e66-functional-audit.js');
+          const r=spawnSync(process.execPath,[test],{
+            cwd:w,encoding:'utf8',timeout:7*60*1000,
+            env:{...process.env,SP:out}
+          });
+          process.stdout.write(r.stdout||'');
+          process.stderr.write(r.stderr||'');
+          if(r.error)console.error('Audit échoué:',r.error.code||r.error.message);
+          process.exit(r.status===0?0:1);
+          NODE
