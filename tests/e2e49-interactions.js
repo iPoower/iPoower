@@ -103,6 +103,7 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
       await check(tag + ' · véhicule Analyse propagé au contexte global', async () => { const car = await p.locator('[data-act=labcar]').last().getAttribute('data-car'); await p.locator('[data-act=labcar]').last().click(); const selected = await p.evaluate(() => ({ active: APP_CONTEXT.snapshot.activeCarId, lab: labCar().id })); assert.equal(selected.active, car); assert.equal(selected.lab, car); });
       await open();
       await check(tag + ' · calibration effacée et photo dynamique retirée', async () => {
+        p.once('dialog', dialog => dialog.accept());
         await click('[data-act=calib-reset]'); assert.equal(await p.evaluate(() => S.calib.length), 0);
         await p.evaluate(() => { S.cars[0].photo = 'data:image/png;base64,iVBORw0KGgo='; renderSettings(true); }); await click('[data-act=photo-del][data-i="0"]'); assert.equal(await p.evaluate(() => S.cars[0].photo || null), null);
       });

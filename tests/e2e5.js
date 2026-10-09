@@ -20,7 +20,7 @@ await T('pchk',async()=>{await p.click('[data-act=pchk][data-car=i20]');return p
 await T('dot',async()=>{await p.evaluate(()=>document.querySelector('#settings').open=true);await p.fill('#f-cars-0-tire-dot','1918');await p.dispatchEvent('#f-cars-0-tire-dot','change');return p.$$eval('.car .pill',x=>x.map(y=>y.textContent));});
 await T('glare row',()=>p.$$eval('#secBrief tr',x=>x.map(y=>y.textContent).filter(t=>/Soleil/.test(t))));
 await T('add Chamonix',async()=>{await p.fill('#geoQ','Chamonix');await p.click('[data-act=geo-search]');await p.waitForSelector('#geoHits button');await p.click('#geoHits button');await p.waitForTimeout(1500);return p.evaluate(()=>JSON.stringify(JSON.parse(localStorage.getItem('twrc.settings.v1')).customs));});
-await T('trip long',async()=>{await p.fill('#f-work-durMin','480');await p.dispatchEvent('#f-work-durMin','change');await p.waitForTimeout(2500);return p.$eval('#secBrief .disc',x=>x.textContent.slice(0,200));});
+await T('trip long',async()=>{await p.fill('#quick-work-durMin','480');await p.dispatchEvent('#quick-work-durMin','change');await p.waitForTimeout(2500);return p.$eval('#secBrief .disc',x=>x.textContent.slice(0,200));});
 await T('loi montagne note',()=>p.$eval('#secBrief .note',x=>x.textContent.slice(0,160)));
 await T('mont alert',()=>p.$$eval('#secAlerts .al .t',x=>x.map(y=>y.textContent).filter(t=>/Montagne|montagne/.test(t))));
 await T('overflow',()=>p.evaluate(()=>document.documentElement.scrollWidth));

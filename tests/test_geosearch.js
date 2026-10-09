@@ -1,7 +1,7 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
 const src=fs.readFileSync(path.join(__dirname,'../src/geosearch.js'),'utf8');
-const ctx={console,Number,String,Array,Object,RegExp,encodeURIComponent};vm.createContext(ctx);vm.runInContext(src+';this.G=GeoSearch;',ctx);
+const ctx={console,Number,String,Array,Object,RegExp,encodeURIComponent,setTimeout,Date};vm.createContext(ctx);vm.runInContext(src+';this.G=GeoSearch;',ctx);
 const G=ctx.G;let n=0;const check=async(label,fn)=>{await fn();n++;console.log('✅ '+label);};
 (async()=>{
 await check('adresse française : IGN/BAN prioritaire et aucun second fournisseur si succès',async()=>{
@@ -44,6 +44,18 @@ await check('audit A05 · département séparé : code et nom, quelle que soit l
  const region=G.osm([{lat:'45.9',lon:'6.13',name:'Lieu',display_name:'Lieu, Auvergne-Rhône-Alpes, France',address:{state:'Auvergne-Rhône-Alpes',country_code:'fr'}}])[0];assert.equal(region.dept,'');
  const uk=G.osm([{lat:'51.5',lon:'-0.1',name:'X',display_name:'X, London',address:{county:'Greater London',country_code:'gb'}}])[0];assert.deepEqual([uk.dept,uk.deptCode,uk.city],['','','']);
  const m=G.openMeteo({results:[{name:'Annecy',admin2:'Haute-Savoie',country_code:'FR',postcodes:['74000'],latitude:45.9,longitude:6.13}]})[0];assert.deepEqual([m.dept,m.city,m.postcode],['Haute-Savoie','Annecy','74000']);
+});
+await check('audit A08 · Nominatim : doublons dédupliqués, cache partagé et au moins une seconde entre requêtes',async()=>{
+ const calls=[], fake=async url=>{ calls.push({url,at:Date.now()}); return [{lat:'51.5',lon:'-0.1',name:'Adresse test',display_name:'Adresse test, London',address:{country_code:'gb'}}]; };
+ const a='1 Fictional Lane, London', b='2 Fictional Lane, London';
+ const [first,second]=await Promise.all([G.search(a,fake),G.search(a,fake)]);
+ assert.equal(calls.length,1,'la même demande simultanée n’émet qu’un appel');
+ assert.deepEqual(first,second); await G.search(a,fake);
+ assert.equal(calls.length,1,'un nouveau clic retrouve la réponse en mémoire');
+ await G.search(b,fake);
+ assert.equal(calls.length,2,'deux adresses distinctes déclenchent deux appels');
+ assert(calls[1].at-calls[0].at>=1000,'cadence Nominatim supérieure à 1 requête/seconde');
+ assert(calls.every(c=>/nominatim\.openstreetmap\.org/.test(c.url)),'pas de recours supplémentaire non nécessaire');
 });
 console.log(n+'/'+n+' scénarios OK');
 })().catch(e=>{console.error(e);process.exit(1);});

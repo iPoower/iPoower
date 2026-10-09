@@ -1,9 +1,31 @@
 // Accès aux API Open-Meteo : concurrence bornée, requêtes identiques partagées et pause HTTP 429.
-// Seuls le délai, sa catégorie, le moment du refus et le nombre de refus sont persistés : aucune URL ni coordonnée.
+// Pause et 20 derniers échecs : métadonnées bornées uniquement, aucune URL, coordonnée ni message brut.
 function weatherRequestManager(options) {
   const net = options.fetch, now = options.now || (() => Date.now());
   const later = options.setTimeout || setTimeout, cancel = options.clearTimeout || clearTimeout;
   const read = options.read || (() => null), write = options.write || (() => {});
+  const readIncidents = options.readIncidents || (() => null), writeIncidents = options.writeIncidents || (() => {});
+  const invalidResponse = options.invalidResponse || (() => false);
+  const incidentKinds = ['network', 'timeout', 'http', 'invalid-json', 'invalid-response', 'quota-minute', 'quota-hour', 'quota-day', 'quota-concurrent', 'quota-limited'];
+  // La durée mesure l'appel HTTP (corps compris), pas une indisponibilité globale du fournisseur.
+  const cleanIncident = x => x && incidentKinds.includes(x.kind) && Number.isFinite(x.at) && x.at >= 0 && x.at <= now() + 60000
+    && Number.isFinite(x.durationMs) && x.durationMs >= 0 && x.durationMs <= 3600e3
+    ? { at: Math.floor(x.at), kind: x.kind, durationMs: Math.round(x.durationMs),
+      ...(Number.isInteger(x.status) && x.status >= 100 && x.status <= 599 ? { status: x.status } : {}) } : null;
+  let incidentRows = [];
+  try { const rows = JSON.parse(readIncidents() || 'null'); if (Array.isArray(rows)) incidentRows = rows.slice(-20).map(cleanIncident).filter(Boolean); } catch (e) { /* stockage indisponible */ }
+  function recordIncident(job, error) {
+    // Une requête partagée compte une fois ; attente de quota, annulation et géocodage ne sont pas des échecs météo envoyés.
+    if (!job.observe || job.startedAt == null || error && error.cancelled) return;
+    const kind = job.status === 429 ? 'quota-' + (incidentKinds.includes('quota-' + job.quotaKind) ? job.quotaKind : 'limited')
+      : error ? error.name === 'AbortError' ? 'timeout' : job.status >= 400 ? 'http' : job.phase === 'json' ? 'invalid-json' : 'network'
+      : job.invalid ? 'invalid-response' : null;
+    if (!kind) return;
+    const row = cleanIncident({ at: now(), kind, durationMs: Math.max(0, Math.min(3600e3, now() - job.startedAt)), status: job.status });
+    if (!row) return;
+    incidentRows = [...incidentRows, row].slice(-20);
+    try { writeIncidents(JSON.stringify(incidentRows)); } catch (e) { /* historique conservé en mémoire */ }
+  }
   const queue = [], pending = new Map(), snapshots = new Map(); let active = 0, limit = { until: 0, failures: 0, kind: '' };
   // Cache mémoire borné : les prévisions sont partagées par URL exacte, jamais enregistrées en stockage persistant.
   // Les appels 5 min du cockpit ne doivent pas redemander à chaque fois les modèles horaires/itinéraires inchangés.
@@ -13,9 +35,10 @@ function weatherRequestManager(options) {
     : !!((v.hourly && Array.isArray(v.hourly.time) && v.hourly.time.length)
       || (v.minutely_15 && Array.isArray(v.minutely_15.time) && v.minutely_15.time.length)));
   function remember(url, value) {
-    if (!validSnapshot(value)) return;
+    if (!validSnapshot(value)) return false;
     snapshots.delete(url); snapshots.set(url, { value, at: now() });
     if (snapshots.size > CACHE_LIMIT) snapshots.delete(snapshots.keys().next().value);
+    return true;
   }
   const fetchedAt = url => snapshots.get(url)?.at || null;
   // Quota journalier Open-Meteo (« try again tomorrow ») : reprise à minuit UTC (+2 min), pas 24 h plus tard. Si la porte se
@@ -48,7 +71,8 @@ function weatherRequestManager(options) {
   }
   function abortError(replaced = false) { const e = new Error(replaced ? 'Requête météo remplacée' : 'Délai météo dépassé'); e.name = 'AbortError'; if (replaced) e.cancelled = true; return e; }
   const priority = url => { const u = new URL(url); return u.pathname === '/v1/forecast' && u.searchParams.has('current') ? 0 : u.searchParams.has('minutely_15') ? 1 : 2; };
-  async function refuse(response) {
+  async function refuse(response, job) {
+    job.quotaKind = 'limited';
     const at = now(), previous = state(); let reason = '', header = null;
     try { header = response.headers.get('Retry-After'); } catch (e) { /* non exposé par CORS */ }
     const failures = previous.until > at ? previous.failures : Math.min(8, previous.failures + 1);
@@ -61,6 +85,7 @@ function weatherRequestManager(options) {
     limit = { until: Math.max(previous.until, at + Math.max(1000, delay == null ? backoff : delay)), failures, kind: 'limited', at }; save();
     try { const body = await response.json(); reason = typeof body.reason === 'string' ? body.reason.toLowerCase() : ''; } catch (e) { /* corps absent */ }
     const kind = /daily|per day|tomorrow/.test(reason) ? 'day' : /hourly|next hour/.test(reason) ? 'hour' : /minutely|next minute/.test(reason) ? 'minute' : /concurrent/.test(reason) ? 'concurrent' : 'limited';
+    job.quotaKind = kind;
     const fallback = kind === 'day' ? dayReset(at, previous.kind === 'day' && failures >= 2) - at : kind === 'hour' ? 3600e3 : backoff;
     limit = { until: Math.max(state().until, at + Math.max(1000, delay == null ? fallback : delay)), failures, kind, at }; save();
     throw limitedError();
@@ -68,20 +93,27 @@ function weatherRequestManager(options) {
   function finish(job, error, value) {
     if (job.done) return; job.done = true; cancel(job.timer);
     if (pending.get(job.url) === job) pending.delete(job.url);
+    recordIncident(job, error);
     if (error) job.reject(error); else job.resolve(value);
   }
   async function run(job) {
     try {
       if (state().until > now()) throw limitedError();
+      job.startedAt = now(); job.phase = 'network';
       const r = await net(job.url, { signal: job.ctl.signal, cache: 'no-store' });
       if (job.done || job.ctl.signal.aborted) throw abortError();
-      if (r.status === 429) await refuse(r);
+      job.status = r.status;
+      if (r.status === 429) await refuse(r, job);
       if (!r.ok) throw new Error('HTTP ' + r.status);
+      job.phase = 'json';
       const value = await r.json();
       if (job.done || job.ctl.signal.aborted) throw abortError();
       // Une réponse lancée avant le refus ne doit pas effacer une pause encore active.
       if (state().until <= now() && limit.failures) { limit = { until: 0, failures: 0, kind: '' }; save(); }
-      remember(job.url, value);
+      job.invalid = !remember(job.url, value);
+      // Observateur facultatif : même les prévisions structurées mais refusées par le moteur restent traçables.
+      // Une erreur de l'observateur ne doit jamais modifier la réponse, le cache ou le verdict métier.
+      try { if (job.observe && invalidResponse(value, job.url)) job.invalid = true; } catch (e) { /* diagnostic seulement */ }
       finish(job, null, value);
     } catch (e) { finish(job, e); }
     finally { active--; pump(); }
@@ -106,12 +138,13 @@ function weatherRequestManager(options) {
     if (state().until > now()) return Promise.reject(limitedError());
     const snap = snapshots.get(url), ttl = Math.max(0, Math.min(2 * 3600e3, Number(cacheMs) || 0));
     if (ttl && snap && now() >= snap.at && now() - snap.at < ttl) return Promise.resolve(snap.value);
-    const job = { url, priority: priority(url), ctl: new AbortController(), done: false, groups: new Set([group]) };
+    const job = { url, priority: priority(url), observe: /^\/v1\/(forecast|ensemble|air-quality)$/.test(new URL(url).pathname),
+      ctl: new AbortController(), done: false, groups: new Set([group]) };
     job.promise = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject; });
     pending.set(url, job);
     // Le délai couvre aussi la file d'attente : une panne ne bloque pas busy indéfiniment.
     job.timer = later(() => { job.ctl.abort(); finish(job, abortError()); pump(); }, ms);
     queue.push(job); queue.sort((a, b) => a.priority - b.priority); pump(); return job.promise;
   }
-  return { owns, get, state, cancelGroup, fetchedAt };
+  return { owns, get, state, cancelGroup, fetchedAt, incidents: () => incidentRows.map(x => ({ ...x })) };
 }

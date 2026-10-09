@@ -307,7 +307,13 @@ const DECISION_HISTORY = Decision.history(APP_STORAGE);
 let DECISION_LAST = null;
 
 const WEATHER_REQUESTS = weatherRequestManager({ fetch: (...args) => fetch(...args),
-  read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value) });
+  read: () => lsGet('twrc.weather.limit.v1'), write: value => lsSet('twrc.weather.limit.v1', value),
+  readIncidents: () => lsGet('twrc.weather.incidents.v1'), writeIncidents: value => lsSet('twrc.weather.incidents.v1', value),
+  invalidResponse: (value, url) => {
+    const u = new URL(url);
+    if (u.pathname !== '/v1/forecast' || !(u.searchParams.get('hourly') || '').split(',').includes('temperature_2m')) return false;
+    return Array.isArray(value) ? value.some(p => !!validForecast(p)) : !!validForecast(value);
+  } });
 async function fetchJSON(url, ms, group = 'shared', cacheMs = 0) {
   // hors connexion déclaré par l'appareil : aucune requête vers un service EXTERNE (inutile, coûteuse en batterie ; Safari la
   // signale en erreur). Les fichiers de l'app (agenda chiffré, base pneus, observations, version) restent demandés : le service
@@ -3205,11 +3211,11 @@ function renderBrief() {
     <div class="fld"><span class="l">Voiture</span><div class="seg">${carSeg}</div></div>
     <div class="fld"><span class="l">Sens</span><div class="seg"><button data-act="dir" data-d="go" aria-pressed="${dir === 'go'}">Aller</button><button data-act="dir" data-d="ret" aria-pressed="${dir === 'ret'}">Retour</button></div></div>
     <div class="fld"><span class="l">Jour</span><div class="seg">${dOffs.map(k => `<button data-act="day" data-off="${k}" aria-pressed="${UI.dayOff === k}">${dayLbl(k)}</button>`).join('')}</div></div>
-    <div class="fld"><label for="f-work-${dir === 'go' ? 'dep' : 'ret'}">Heure de départ</label><input type="time" id="f-work-${dir === 'go' ? 'dep' : 'ret'}" data-bind="work.${dir === 'go' ? 'dep' : 'ret'}" value="${esc(time)}"></div>
-    <div class="fld"><label for="f-work-durMin">Durée (min)</label><input type="number" id="f-work-durMin" data-bind="work.durMin" data-num="1" min="5" max="1200" step="5" value="${esc(w.durMin)}" style="width:92px"></div>
+    <div class="fld"><label for="quick-work-${dir === 'go' ? 'dep' : 'ret'}">Heure de départ</label><input type="time" id="quick-work-${dir === 'go' ? 'dep' : 'ret'}" data-bind="work.${dir === 'go' ? 'dep' : 'ret'}" value="${esc(time)}"></div>
+    <div class="fld"><label for="quick-work-durMin">Durée (min)</label><input type="number" id="quick-work-durMin" data-bind="work.durMin" data-num="1" min="5" max="1200" step="5" value="${esc(w.durMin)}" style="width:92px"></div>
     <div class="fld"><span class="l">Départ depuis</span><div class="seg">${allLocs().filter(l => l.id !== (dir === 'go' ? w.to : w.from)).slice(0, 4).map(l => `<button data-act="from" data-id="${esc(l.id)}" aria-pressed="${(dir === 'go' ? w.from : w.to) === l.id}">${esc(l.name.split(' / ')[0])}</button>`).join('')}</div></div>
-    <div class="fld"><label for="f-work-from">De</label><select id="f-work-from" data-bind="work.from">${locOpts(w.from)}</select></div>
-    <div class="fld"><label for="f-work-to">Vers</label><select id="f-work-to" data-bind="work.to">${locOpts(w.to)}</select></div>
+    <div class="fld"><label for="quick-work-from">De</label><select id="quick-work-from" data-bind="work.from">${locOpts(w.from)}</select></div>
+    <div class="fld"><label for="quick-work-to">Vers</label><select id="quick-work-to" data-bind="work.to">${locOpts(w.to)}</select></div>
   </div>`;
   if (td.err) { el.innerHTML = head + `<p class="muted">${esc(td.err)}</p>`; return; }
   const car = appActiveCar() || TCARS().find(c => c.id === UI.bcar) || TCARS()[0];
@@ -3690,7 +3696,10 @@ document.addEventListener('click', async e => {
     if (a === 'rot') { const lo = lastOdo(c); if (!lo) { t.textContent = 'Enregistre d’abord le compteur'; return; } c.tire.lastRot = lo.km; }
     saveSettings(); renderSettings(); softRender(); commandFeedback($(`#settings [data-act="${a}"][data-i="${i}"]`), 'Enregistré');
   }
-  else if (a === 'calib-reset') { S.calib = []; saveSettings(); applyCalib(); rebuild(); renderSettings(); renderAll(); }
+  else if (a === 'calib-reset') {
+    if (!confirm('Effacer tous les retours de calibration et les corrections apprises ? Cette action est définitive.')) return;
+    S.calib = []; saveSettings(); applyCalib(); rebuild(); renderSettings(); renderAll();
+  }
   else if (a === 'pchk') { const c = S.cars.find(x => x.id === t.dataset.car), m = M[UI.loc]; if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; } c.tire.pchk = { date: m ? m.nowStr.slice(0, 10) : new Date().toISOString().slice(0, 10), T: m && m.cur.T != null ? Math.round(m.cur.T * 10) / 10 : null }; saveSettings(); renderSettings(); softRender(); }
   else if (a === 'ntfy-test') {
     try { const r = await fetch('https://ntfy.sh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: window.TWRC_NTFY, title: 'Race Control · test', message: 'Les notifications du matin arrivent bien sur ce téléphone.', tags: ['white_check_mark'], click: location.href.split('#')[0] }) });
@@ -3752,7 +3761,10 @@ document.addEventListener('click', async e => {
   else if (a === 'labcar') { appSetCar(t.dataset.car); }
   else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); }
   else if (a === 'goset') { UI.locsOpen = false; renderLocChips(); const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
-  else if (a === 'reset') { PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; USER_STORE.state.dayContext = {}; APP_CONTEXT.weatherPreview = null; DECISION_HISTORY.reset(); liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll(); }
+  else if (a === 'reset') {
+    if (!confirm('Réinitialiser tous les réglages, les véhicules, les lieux et la calibration à leurs valeurs initiales ? Le trajet en cours sera aussi réinitialisé. Cette action est définitive.')) return;
+    PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; USER_STORE.state.dayContext = {}; APP_CONTEXT.weatherPreview = null; DECISION_HISTORY.reset(); liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll();
+  }
   else if (a === 'geo-search') {
     const input = $('#geoQ'), q = (input.value || '').trim(), box = $('#geoHits'), gen = ++geoSearchGen; window.__hits = [];
     if (q.length < 2) { box.innerHTML = '<span class="sub" role="status">Saisis au moins deux caractères.</span>'; input.focus(); return; }
@@ -3842,6 +3854,10 @@ document.addEventListener('change', e => {
     if (b.startsWith('dept.')) fetchVigi();
     if (b.startsWith('work.')) UI.dayOff = b === 'work.dep' || b === 'work.ret' ? null : UI.dayOff;
     softRender();
+    // Plusieurs contrôles du même réglage (rapide / paramètres) : valeur cohérente sans reconstruire le formulaire.
+    if (b.startsWith('work.')) document.querySelectorAll('[data-bind]').forEach(peer => {
+      if (peer !== t && peer.dataset.bind === b) peer.value = v == null ? '' : String(v);
+    });
     if (/\.tire\.type$/.test(b) || /plan\.on$/.test(b) || /\.tire\.tread(Av|Ar)$/.test(b)) renderSettings();
   }
 });
