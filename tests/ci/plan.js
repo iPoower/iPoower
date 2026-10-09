@@ -1,5 +1,5 @@
 'use strict';
-const { SUITE } = require('./suites'), durations = require('./durations.json');
+const { SUITE, FIRST } = require('./suites'), durations = require('./durations.json');
 const unitSuites = () => SUITE.filter(s => !s[2]);
 function browserSuites(browser) {
   if (!['chromium', 'webkit'].includes(browser)) throw new Error('Navigateur CI inconnu');
@@ -24,6 +24,8 @@ function select({ lane = 'all', browser = 'chromium', index = 1, total = 1, file
   let suites = lane === 'unit' ? unitSuites() : lane === 'browser' ? shards(browser, total)[index - 1].suites : SUITE.filter(s => !s[3] || s[3] === browser);
   if (files.length) { for (const f of files) if (!suites.some(s => s[0] === f)) throw new Error('Suite inconnue dans cette lane : ' + f); suites = suites.filter(s => files.includes(s[0])); }
   if (!suites.length) throw new Error('Sélection CI vide');
+  // La priorité accélère le diagnostic, sans déplacer ni omettre de suite entre les shards.
+  if (lane === 'browser') suites.sort((a, b) => (FIRST.includes(a[0]) ? FIRST.indexOf(a[0]) : FIRST.length) - (FIRST.includes(b[0]) ? FIRST.indexOf(b[0]) : FIRST.length));
   return suites;
 }
 module.exports = { unitSuites, browserSuites, shards, select };

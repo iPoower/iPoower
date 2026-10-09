@@ -44,7 +44,7 @@ SUITE.push(['test_geolocation.js', 'localisation : précision, provenance, géof
   ['e2e49-interactions.js', 'commandes : clics réels PC/iPhone, saisie, clipboard, recherche dynamique et rerender', true],
   ['e2e50-geolocation.js', 'localisation : erreurs, priorité GPS, retour de veille, permissions, IP, drift et override', true]);
 // Retour rapide sur la file réseau : GPS remplacé, lieux et reprise HTTP 429 avant les longs parcours.
-const FIRST = ['test_weather_requests.js', 'test_gps_requests.js', 'e2e33.js', 'e2e30.js', 'e2e44-place.js', 'e2e40-network.js'];
+const FIRST = ['e2e67-controls-safety.js', 'test_weather_requests.js', 'test_gps_requests.js', 'e2e33.js', 'e2e30.js', 'e2e44-place.js', 'e2e40-network.js'];
 SUITE.sort((a, b) => (FIRST.includes(a[0]) ? FIRST.indexOf(a[0]) : FIRST.length) - (FIRST.includes(b[0]) ? FIRST.indexOf(b[0]) : FIRST.length));
 
 SUITE.push(['test_road_intelligence.js', 'route : géométrie, sens, progression, validité, dédoublonnage et alertes', false],
@@ -82,4 +82,4 @@ SUITE.push(['e2e59-trip-tab.js', 'onglet TRAJET : adresse exacte, priorité manu
 SUITE.push(['test_device_storage.js', 'stockage : import vérifié, récupération et verrouillage chiffré sans perte du journal', false]);
 SUITE.push(['test_branch_protection.js', 'protections GitHub : droits admin, lecture réelle, idempotence et publications conservées (API fictive)', false],
   ['e2e67-controls-safety.js', 'PC/iPhone : libellés uniques, historique météo après LIVE/reload, confirmations et annulations sans perte', true]);
-module.exports = { SUITE };
+module.exports = { SUITE, FIRST };
