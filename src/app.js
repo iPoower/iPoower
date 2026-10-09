@@ -1007,7 +1007,8 @@ function renderDecisionCore() {
   el.hidden = false;
   el.innerHTML = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (cm.items.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
     '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b> · ' + esc(fresh) + '</span></div>' +
-    (cm.items.length ? '<ul class="decision-matters" aria-label="Ce qui compte">' + cm.items.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
+    // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
+    (cm.items.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + cm.items.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
       : '') +
     '<div class="decision-meta"><span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + '</span>' +
     '<span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span>' +

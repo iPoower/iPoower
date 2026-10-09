@@ -79,7 +79,8 @@ const layout = p => p.evaluate(() => {
       // Scénario B — pluie significative sur le trajet ; Scénario C — brouillard important (danger jamais caché, même alerte coupée)
       for (const [scn, re, min] of [['pluie', /pluie/i, 1], ['brouillard', /brouillard|visibilit/i, 2]]) {
         const t = await session(b, { at: AT, dev, wx: WX[scn] }); await monte(t.p);
-        await t.p.evaluate(() => { Object.keys(S.alerts).forEach(k => { S.alerts[k] = 0; }); saveSettings(); renderAll(); }); await t.settle(8);
+        await t.p.evaluate(() => { Object.keys(S.alerts).forEach(k => { S.alerts[k] = 0; }); saveSettings(); renderAll(); }); await t.settle(6);
+        await t.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await t.settle(3);   // cockpit (accueil)
         await check(`${dev} · scénario ${scn} : risque en tête de la décision, cohérent avec le moteur Météo, même alertes coupées`, async () => {
           const c = await core(t.p), d = await t.p.evaluate(() => wxDesk(wxInput()).level);
           assert(d >= min, 'moteur météo : niveau ' + d); assert(c.level >= Math.min(d, 3) || c.conf === 'degraded', JSON.stringify(c));
