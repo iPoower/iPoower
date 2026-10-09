@@ -75,6 +75,27 @@ const layout = p => p.evaluate(() => {
       await check(dev + ' · bascule de taille iPhone ↔ PC : cockpit présent, aucun débordement', async () => {
         for (const vp of [{ width: 414, height: 896 }, { width: 1440, height: 900 }, { width: 896, height: 414 }]) { await p.setViewportSize(vp); await s.settle(2); const L = await layout(p); assert(L.sw <= L.W + 1, JSON.stringify(L)); assert(L.core, JSON.stringify(L)); }
       });
+      await check(dev + ' · PRUDENCE : GPS en route distinct de la météo réellement analysée', async () => {
+        const r = await p.evaluate(() => {
+          const before = APP_CONTEXT.snapshot, previous = UI.loc;
+          const forecast = allLocs().find(l => l.id !== 'gps' && l.name);
+          if (!forecast) throw new Error('Lieu météo fictif manquant');
+          try {
+            UI.loc = forecast.id;
+            APP_CONTEXT.snapshot = Object.freeze({ ...before, status: 'travel', currentLocation: { id: 'gps', name: 'Ma position' }, weatherLocationId: forecast.id });
+            renderDecisionCore();
+            const label = document.querySelector('#decisionCore .decision-place').innerText;
+            APP_CONTEXT.snapshot = Object.freeze({ ...before, status: 'travel', currentLocation: { id: 'travel', name: 'En déplacement' }, weatherLocationId: forecast.id });
+            renderDecisionCore();
+            const noGps = document.querySelector('#decisionCore .decision-place').innerText;
+            return { label, noGps, forecastName: forecast.name };
+          } finally { APP_CONTEXT.snapshot = before; UI.loc = previous; renderDecisionCore(); }
+        });
+        assert.match(r.label, /Lieu · Position GPS · en route/);
+        assert(r.label.includes('météo analysée pour ' + r.forecastName), JSON.stringify(r));
+        assert.match(r.noGps, /Lieu · En déplacement/);
+        assert(r.noGps.includes('météo analysée pour ' + r.forecastName));
+      });
       await s.c.close();
       // Scénario B — pluie significative sur le trajet ; Scénario C — brouillard important (danger jamais caché, même alerte coupée)
       for (const [scn, re, min] of [['pluie', /pluie/i, 1], ['brouillard', /brouillard|visibilit/i, 2]]) {

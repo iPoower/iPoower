@@ -1014,7 +1014,18 @@ function renderDecisionCore() {
   const carLabel = car ? (car.short || car.name || car.id) : 'À choisir';
   const wAge = raw ? ageMin(raw.t) : null, fresh = wAge == null ? 'météo —' : 'météo ' + (wAge < 1 ? 'moins de 1 min' : Math.round(wAge) + ' min');
   const whyLeft = confidence.reasons.filter(r => !['Lieu courant à confirmer', 'Voiture active à choisir'].includes(r));
-  const cur = snap.currentLocation, placeOk = !!(cur && snap.status !== 'unknown'), placeLabel = placeOk ? (cur.name || 'confirmé') : 'non confirmé';
+  const cur = snap.currentLocation, placeOk = !!(cur && snap.status !== 'unknown');
+  // La position réelle et le lieu des prévisions ne sont PAS interchangeables :
+  // en déplacement, le GPS peut être anonyme alors que la météo consultée est
+  // celle d'une commune enregistrée. Ne jamais déguiser cette météo en GPS.
+  const placeLabel = snap.status === 'travel' && cur && cur.id === 'gps'
+    ? 'Position GPS · en route' : placeOk ? (cur.name || 'confirmé') : 'non confirmé';
+  const forecastPlace = allLocs().find(l => l.id === snap.weatherLocationId);
+  const forecastLabel = snap.weatherLocationId === 'gps' ? 'Position GPS'
+    : forecastPlace && forecastPlace.name;
+  const forecastDiffers = !!forecastLabel && (snap.status === 'travel' || !placeOk || !cur || cur.id !== snap.weatherLocationId);
+  const forecastHtml = forecastDiffers
+    ? ' <span class="decision-forecast">· météo analysée pour <b>' + esc(forecastLabel) + '</b></span>' : '';
   const changesHtml = changes.length ? '<details class="decision-changes"><summary>Depuis la dernière ouverture · ' + changes.length + ' changement' + (changes.length > 1 ? 's' : '') + '</summary><div>' +
     changes.map(c => '<span class="' + esc(c.kind) + '">' + (c.kind === 'up' ? '↑ ' : c.kind === 'down' ? '↓ ' : '↔ ') + esc(c.text) + '</span>').join('') + '</div></details>' : '';
   el.className = 'decision-core lv' + decision.displayLevel;
@@ -1024,7 +1035,7 @@ function renderDecisionCore() {
     // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
     (cm.items.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + cm.items.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
       : '') +
-    '<div class="decision-meta"><span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + '</span>' +
+    '<div class="decision-meta"><span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + forecastHtml + '</span>' +
     '<span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span>' +
     '<span>Destination · <b>' + esc(destination) + '</b></span></div>' +
     // raisons de confiance déjà dites par les lignes Lieu / Voiture : pas de répétition
