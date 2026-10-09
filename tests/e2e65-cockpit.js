@@ -75,6 +75,38 @@ const layout = p => p.evaluate(() => {
       await check(dev + ' · bascule de taille iPhone ↔ PC : cockpit présent, aucun débordement', async () => {
         for (const vp of [{ width: 414, height: 896 }, { width: 1440, height: 900 }, { width: 896, height: 414 }]) { await p.setViewportSize(vp); await s.settle(2); const L = await layout(p); assert(L.sw <= L.W + 1, JSON.stringify(L)); assert(L.core, JSON.stringify(L)); }
       });
+      await check(dev + ' · PRUDENCE : GPS en route distinct de la météo réellement analysée', async () => {
+        const r = await p.evaluate(() => {
+          const before = APP_CONTEXT.snapshot, previous = UI.loc;
+          const forecast = allLocs().find(l => l.id !== 'gps' && l.name);
+          if (!forecast) throw new Error('Lieu météo fictif manquant');
+          try {
+            UI.loc = forecast.id;
+            APP_CONTEXT.snapshot = Object.freeze({ ...before, status: 'travel', currentLocation: { id: 'gps', name: 'Ma position' }, weatherLocationId: forecast.id });
+            renderDecisionCore();
+            const capture = () => {
+              const node = document.querySelector('#decisionCore .decision-place');
+              return { place: node.querySelector('b')?.textContent?.trim(),
+                forecast: node.querySelector('.decision-forecast')?.textContent?.trim() || '' };
+            };
+            const gps = capture();
+            APP_CONTEXT.snapshot = Object.freeze({ ...before, status: 'travel', currentLocation: { id: 'travel', name: 'En déplacement' }, weatherLocationId: forecast.id });
+            renderDecisionCore();
+            const travel = capture();
+            // Quand le lieu courant est le lieu météo, pas de double ligne.
+            APP_CONTEXT.snapshot = Object.freeze({ ...before, status: 'arrived', currentLocation: forecast, weatherLocationId: forecast.id });
+            renderDecisionCore();
+            const same = capture();
+            return { gps, travel, same, forecastName: forecast.name };
+          } finally { APP_CONTEXT.snapshot = before; UI.loc = previous; renderDecisionCore(); }
+        });
+        assert.equal(r.gps.place, 'Position GPS · en route', JSON.stringify(r));
+        assert(r.gps.forecast.includes('météo analysée pour ' + r.forecastName), JSON.stringify(r));
+        assert.equal(r.travel.place, 'En déplacement', JSON.stringify(r));
+        assert(r.travel.forecast.includes('météo analysée pour ' + r.forecastName), JSON.stringify(r));
+        assert.equal(r.same.place, r.forecastName, JSON.stringify(r));
+        assert.equal(r.same.forecast, '', 'aucune répétition de la météo quand le lieu réel correspond');
+      });
       await s.c.close();
       // Scénario B — pluie significative sur le trajet ; Scénario C — brouillard important (danger jamais caché, même alerte coupée)
       for (const [scn, re, min] of [['pluie', /pluie/i, 1], ['brouillard', /brouillard|visibilit/i, 2]]) {
