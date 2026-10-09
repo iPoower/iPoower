@@ -142,8 +142,10 @@ const Backup = (() => {
   function make({ settings, view, context: state, tyreTherm: therm, tripCancel: cancel, at = new Date().toISOString() } = {}) {
     if (!obj(settings)) throw new Error('réglages absents');
     const epoch = Number.isFinite(Date.parse(at)) ? Date.parse(at) : Date.now();
+    const savedSettings = clone(settings);
+    if ('calOrigins' in savedSettings) savedSettings.calOrigins = CalendarOrigin.clean(savedSettings.calOrigins, epoch);
     return {
-      app: 'twrc', v: VERSION, at, settings: clone(settings), view: text(view, 40) || null,
+      app: 'twrc', v: VERSION, at, settings: savedSettings, view: text(view, 40) || null,
       durable: { context: context(state, epoch), tyreTherm: tyreTherm(therm), tripCancel: tripCancel(cancel) }
     };
   }
@@ -171,7 +173,12 @@ const Backup = (() => {
   // phone : état actuel du téléphone ({ context, tyreTherm, tripCancel }), facultatif
   function restorePlan(data, now = Date.now(), phone = null) {
     if (!obj(data) || data.app !== 'twrc' || !obj(data.settings)) return null;
-    const writes = { 'twrc.settings.v1': JSON.stringify({ ...clone(data.settings), configured: 1 }) };
+    const settings = { ...clone(data.settings), configured: 1 };
+    if ('calOrigins' in settings || obj(phone) && 'calOrigins' in phone) {
+      settings.calOrigins = CalendarOrigin.merge(settings.calOrigins, phone && phone.calOrigins, now);
+      settings.edits = { ...(obj(settings.edits) ? settings.edits : {}), calOrigins: 1 };
+    }
+    const writes = { 'twrc.settings.v1': JSON.stringify(settings) };
     if (text(data.view, 40)) writes['twrc.view'] = data.view;
     const remove = [...CONTEXT_KEYS, ...DURABLE_KEYS, ...DERIVED_KEYS];
     const cur = obj(phone) && obj(phone.context) ? context(phone.context, now) : null;

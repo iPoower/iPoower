@@ -133,8 +133,9 @@ check('Congé reconstruit localement une ancienne origine Agenda Travail sans an
   a.S.work = { days: [2] }; a.USER_STORE.state.dayContext.dayType = { date: '2026-10-06', value: 'off' }; a.commuteDays = x => x;
   const e = { id: 'fixture-agenda', t: 'Lieu B', s: '2026-10-06T18:30', e: '2026-10-06T19:00', ...places[2], legs: [{ k: 'go', from: places[1], to: places[2], dep: '2026-10-06T18:00', arr: '2026-10-06T18:20', min: 20 }] };
   a.CAL = { events: [e] }; a.TRIPCANCEL = {}; a.workCancelled = (day, state) => a.TC.has(state, a.TC.workId(day), now); a.calendarSpatial = () => true; a.calendarPlace = x => x;
+  a.APP_CONTEXT = { rendering: false };
   a.calendarCancelled = () => false; a.homeExact = () => places[0]; a.calDirectSet = () => ({}); a.tripCancelBeforeFirst = () => places[0]; a.tripCancelRouteLeg = (_, l) => l; a.calendarTripKey = (_, l) => 'fixture|' + l.k;
-  vm.runInContext(app.match(/^const cancelAffectedDay =.*;$/m)[0] + '\n' + app.slice(app.indexOf('function effLegs('), app.indexOf('function altHtml(')), a);
+  vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/calendar-origin.js'), 'utf8') + '\n' + app.slice(app.indexOf('function calendarOriginLeg('), app.indexOf('function tripCancelBeforeFirst(')) + '\n' + app.match(/^const cancelAffectedDay =.*;$/m)[0] + '\n' + app.slice(app.indexOf('function effLegs('), app.indexOf('function altHtml(')), a);
   assert.equal(a.effLegs(e)[0].from.id, 'home'); assert.deepEqual(a.TRIPCANCEL, {});
 });
 check('Congé ne transforme pas le lieu confirmé Travail en origine Domicile', () => {

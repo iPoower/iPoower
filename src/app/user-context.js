@@ -9,7 +9,7 @@ const USER_STORE = userContextStore({ read: lsGet, write: (k, v) => {
   const field = ['gps', 'place', 'tripStart', 'tripEnd', 'returnHome'][i];
   Object.defineProperty(window, name, { configurable: false, get: () => USER_STORE.state[field], set: v => { USER_STORE.state[field] = v; } });
 });
-const APP_CONTEXT = { snapshot: null, planned: [], trips: [], live: null, rendering: false, ready: false, weatherPreview: null };
+const APP_CONTEXT = { snapshot: null, planned: [], trips: [], live: null, rendering: false, ready: false, weatherPreview: null, calendarLegs: null };
 function appAction(fn) { return USER_STORE.transaction(fn); }
 function appGpsFloor() { return Math.max(PLACE.conf && PLACE.conf.at || 0, TRIPSTART && TRIPSTART.at || 0, USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at || 0); }
 function appCurrentGps() { return GPS && !GPS.placePending && !PLACE_HOLD && GPS.acc <= PLACE_ACC_GPS && GPS.t >= appGpsFloor() && Date.now() - GPS.t <= 10 * 60e3 ? GPS : null; }

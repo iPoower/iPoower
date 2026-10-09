@@ -103,9 +103,9 @@ function wxDesk(input) {
     const pts = (t.points || []).filter(p => p && p.x && Number.isFinite(mins(p.t || p.x.t))).map(p => ({ ...p, t: p.t || p.x.t, m: mins(p.t || p.x.t), h: haz(p.x) }));
     pts.forEach(p => { p.lv = Math.max(...Object.values(p.h)); p.maybe = maybeRain(p.x, p.h); });
     const glare = t.glare && Number.isFinite(mins(t.glare.ts)) ? { ts: t.glare.ts } : null;
-    return { ...t, pts, glare, depM: mins(t.dep), arrM: mins(t.arr || t.dep) };
+    return { ...t, pts: t.pending ? [] : pts, glare: t.pending ? null : glare, depM: mins(t.dep), arrM: mins(t.arr || t.dep) };
   });
-  const tripsOf = s => tripList.filter(t => t.depM < s.end && t.arrM >= s.start);
+  const tripsOf = s => tripList.filter(t => !t.pending && t.depM < s.end && t.arrM >= s.start);
   const glareTrips = tripList.filter(t => t.glare);
   if (glareTrips.length) spans.push(...glareTrips.map(t => ({ id: 'sun', start: mins(t.glare.ts), end: mins(t.glare.ts) + 30, lv: 1, trip: t })));
   spans.sort((a, b) => a.start - b.start || ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
@@ -134,7 +134,7 @@ function wxDesk(input) {
   };
 
   // Pluie possible sur des heures/points : niveau, moment, et explication sourcée (aucune certitude dans un sens ou l'autre).
-  const tripRows = t => t.pts.length ? t.pts : H.filter(r => r.m + 60 > t.depM && r.m <= t.arrM);
+  const tripRows = t => t.pending ? [] : t.pts.length ? t.pts : H.filter(r => r.m + 60 > t.depM && r.m <= t.arrM);
   function maybeOf(rows) {
     if (rows.some(r => r.h.rain || r.h.snow)) return null;
     const R = rows.filter(r => r.maybe); if (!R.length) return null;
@@ -211,6 +211,7 @@ function wxDesk(input) {
   real.filter(active).forEach(s => moments.push({ m: nowM, kind: 'wx', id: s.id, lv: s.lv, text: s.id === 'ice' ? ICE_TXT[s.lv] : `${NAME[s.id]} en cours`, now: true }));
   changes.forEach(c => moments.push({ m: c.m, kind: 'wx', id: c.id, lv: c.lv, text: c.text }));
   tripList.forEach(t => {
+    if (t.pending) return; // L'ancien départ n'est qu'une ancre de tri, jamais un conseil/timeline.
     const lv = t.pts.reduce((a, p) => Math.max(a, p.lv), 0);
     moments.push({ m: t.depM, kind: 'dep', lv, text: `départ · ${t.label || 'trajet'}`, trip: t.id });
     if (t.arrM > t.depM) moments.push({ m: t.arrM, kind: 'arr', lv, text: `arrivée${t.to ? ' · ' + t.to : ''}`, trip: t.id });
@@ -218,7 +219,7 @@ function wxDesk(input) {
   const tl = moments.filter(x => x.m >= nowM - 1 && x.m <= endM).sort((a, b) => a.m - b.m || (a.kind === 'wx') - (b.kind === 'wx'))
     .slice(0, 12).map(x => ({ t: x.now ? 'maintenant' : hm(atMin(x.m)), ts: atMin(x.m), kind: x.kind, id: x.id || null, lv: x.lv, text: x.text, trip: x.trip || null }));
   const strip = H.map(r => {
-    const x = r.x, trip = tripList.find(t => r.m + 60 > t.depM && r.m <= t.arrM);
+    const x = r.x, trip = tripList.find(t => !t.pending && r.m + 60 > t.depM && r.m <= t.arrM);
     const ic = r.h.ice >= 2 ? 'ice' : r.h.snow ? 'snow' : r.h.fog ? 'fog' : r.h.rain ? 'rain' : r.h.wind ? 'wind' : null;
     return { t: r.t, hh: hm(r.t), T: n(x.T), P: n(x.Pl) ?? n(x.P), pp: n(x.pp), gust: n(x.gust), vis: n(x.vis), lv: r.lv, ic, code: n(x.code), trip: trip ? trip.id : null, now: r === nowRow };
   });
@@ -313,13 +314,14 @@ function wxDesk(input) {
       crit = { lv: worst.lv, id, text: `${cap(id === 'rain' ? (worst.lv >= 2 ? rainTxt(worst.x) : 'pluie probable') : id === 'ice' ? ICE_TXT[worst.lv] : id === 'fog' ? 'brouillard ' + visTxt(n(worst.x.vis)) : id === 'wind' ? 'rafales ' + r0(worst.x.gust) + ' km/h' : NAME[id])}${kmTxt}`, at: hm(P[i].t) };
     }
     if (!crit && tt.glare) crit = { lv: 1, id: 'sun', text: `Soleil rasant vers ${hm(tt.glare.ts)}`, at: hm(tt.glare.ts) };
-    const tmb = !crit && maybeOf(tripRows(tt));
+    const tmb = !tt.pending && !crit && maybeOf(tripRows(tt));
     if (tmb) crit = { lv: tmb.lv, id: 'rain', text: `Pluie possible ${tmb.m <= tt.depM ? 'dès le départ' : 'vers ' + hm(tmb.t)} · ${tmb.text}`, at: hm(tmb.t), possible: true };
-    const later = tripList.filter(t => t !== tt && t.depM > tt.depM).slice(0, 3).map(t => ({ dep: hm(t.dep), label: t.label || 'trajet', lv: t.pts.reduce((a, p) => Math.max(a, p.lv), 0), day: t.dep.slice(0, 10) }));
+    const later = tripList.filter(t => !t.pending && t !== tt && t.depM > tt.depM).slice(0, 3).map(t => ({ dep: hm(t.dep), label: t.label || 'trajet', lv: t.pts.reduce((a, p) => Math.max(a, p.lv), 0), day: t.dep.slice(0, 10) }));
     trip = { id: tt.id || null, label: tt.label || 'trajet', from: tt.from || null, to: tt.to || null, dep: hm(tt.dep), arr: hm(tt.arr || tt.dep), day: tt.dep.slice(0, 10), durMin: Math.max(0, Math.round(tt.arrM - tt.depM)),
       running: typeof tt.running === 'boolean' ? tt.running : tt.depM <= nowM, km: finite(tt.km) ? tt.km : null, waiting: !P.length,
       points: P.length ? [pt(P[0], 'Départ'), mid && mid !== P[0] && mid !== P[P.length - 1] ? pt(mid, 'Mi-parcours') : null, P.length > 1 ? pt(P[P.length - 1], 'Arrivée') : null].filter(Boolean) : [],
-      crit, lv: P.reduce((a, p) => Math.max(a, p.lv), tt.glare ? 1 : 0), later };
+      crit, lv: P.reduce((a, p) => Math.max(a, p.lv), tt.glare ? 1 : 0), later, pending: !!tt.pending };
+    if (tt.pending) Object.assign(trip, { dep: null, arr: null, durMin: null, km: null, waiting: true });
   }
 
   /* ---------- ce qui compte aujourd'hui (3 à 5 lignes, jamais du remplissage) ---------- */

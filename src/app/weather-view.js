@@ -15,7 +15,7 @@ function wxCurrentTemperatureTone(temperature) {
 }
 function wxTrips(clockModel) {
   const offSec = clockModel && clockModel.payload && clockModel.payload.utc_offset_seconds != null ? clockModel.payload.utc_offset_seconds : 7200;
-  return APP_CONTEXT.snapshot.trips.filter(t => !t.originPending && t.dep).map((t, k) => {
+  return APP_CONTEXT.snapshot.trips.filter(t => t.dep && (!t.originPending || (t.planL || t.l || {}).originExplicit)).map((t, k) => {
     const seq = t.seq || [], last = seq.length - 1;
     const points = seq.map((q, j) => {
       const x = q.hs && q.hs[q.i]; if (!x) return null;
@@ -29,7 +29,8 @@ function wxTrips(clockModel) {
       const g = glareCheck(t.l.from, t.l.to, t.dep, t.l.min, offSec, cloudAt).glare; if (g) glare = { ts: g.ts };
     }
     const label = t.src === 'work' ? (t.td && t.td.dir === 'ret' ? 'trajet retour' : 'trajet aller') : t.l && t.l.k === 'ret' ? 'trajet retour' : `trajet vers ${t.to || 'le rendez-vous'}`;
-    return { id: t.key || 'trip' + k, src: t.src || null, label, from: t.from || null, to: t.to || null, dep: t.dep, arr: t.arr || t.dep, running: !!(APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.key === t.key), km: t.l && t.l.km != null ? t.l.km : null, glare, points };
+    return { id: t.key || 'trip' + k, src: t.src || null, label, from: t.from || null, to: t.to || null, dep: t.dep, arr: t.arr || t.dep, pending: !!t.originPending,
+      running: !!(APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.key === t.key), km: t.l && t.l.km != null ? t.l.km : null, glare, points };
   });
 }
 function wxInput() {
@@ -68,14 +69,16 @@ function renderWx() {
     ${h.stale ? `<p class="wx-stale">⚠ Prévisions reçues il y a ${esc(ageTxt(input.ageMin))} : verdict indicatif, actualise dès que possible.</p>` : ''}</div>`;
   // prochain trajet
   const t = d.trip, pending = APP_CONTEXT.snapshot.dayContext.nextDestination && !APP_CONTEXT.snapshot.dayContext.nextDestination.placeId;
+  const target = t && APP_CONTEXT.snapshot.trips.find(trip => trip.key === t.id);
   const tripHtml = pending ? `<div class="wx-blk wx-trip wx-none"><h3>${APP_CONTEXT.snapshot.status === 'travel' ? '🚗 En trajet' : '🧭 Prochain trajet'}</h3><p class="wx-route"><b>${esc(APP_CONTEXT.snapshot.origin && APP_CONTEXT.snapshot.origin.name || 'Origine à confirmer')} → Destination à confirmer</b></p><p class="sub">Destination nécessaire pour calculer l’ETA et la météo route.</p></div>`
     : !t ? `<div class="wx-blk wx-trip wx-none"><h3>🧭 Prochain trajet</h3><p class="sub">Aucun trajet prévu dans les 24 h. Les rendez-vous sans lieu reconnu ne sont pas des trajets.</p></div>`
     : `<div class="wx-blk wx-trip lv${t.lv}"><h3>🧭 Prochain trajet${t.running ? ' · en cours' : ' · ' + esc(dayLbl(t.day))}</h3>
       <p class="wx-route"><b>${esc(t.from || 'Départ')} → ${esc(t.to || 'Arrivée')}</b></p>
-      <p class="wx-when num">${t.dep} → ${t.arr} · ${t.durMin} min${t.km != null ? ' · ' + f0(t.km) + ' km' : ''}</p>
-      ${t.waiting ? '<p class="sub">⏳ Météo du trajet en cours de chargement…</p>' : `<ul class="wx-pts">${t.points.map(p => `<li class="lv${p.lv}"><span class="k">${esc(p.label)} <i class="num">${esc(p.t)}</i></span><span>${p.T != null ? '<b class="num">' + f0(p.T) + ' °C</b> · ' : ''}${esc(p.text)}${p.place && p.label === 'Mi-parcours' ? ' · ' + esc(p.place) : ''}</span></li>`).join('')}</ul>`}
+      ${calendarOriginControls(target)}
+      ${t.pending ? `<p class="sub" role="status">⏳ ${offlineNow() ? 'Hors ligne : itinéraire, horaire conseillé et météo du parcours en attente du réseau.' : 'Nouvel itinéraire, horaire conseillé et météo du parcours en cours de calcul…'}</p>` : `<p class="wx-when num">${t.dep} → ${t.arr} · ${t.durMin} min${t.km != null ? ' · ' + f0(t.km) + ' km' : ''}</p>`}
+      ${t.pending ? '' : t.waiting ? '<p class="sub">⏳ Météo du trajet en cours de chargement…</p>' : `<ul class="wx-pts">${t.points.map(p => `<li class="lv${p.lv}"><span class="k">${esc(p.label)} <i class="num">${esc(p.t)}</i></span><span>${p.T != null ? '<b class="num">' + f0(p.T) + ' °C</b> · ' : ''}${esc(p.text)}${p.place && p.label === 'Mi-parcours' ? ' · ' + esc(p.place) : ''}</span></li>`).join('')}</ul>`}
       ${t.crit ? `<p class="wx-crit lv${t.crit.lv}">${E[t.crit.lv]} ${esc(t.crit.text)}</p>` : t.waiting ? '' : '<p class="wx-crit lv0">🟢 Aucun phénomène critique sur le trajet</p>'}
-      ${t.later.length ? `<p class="sub">Ensuite : ${t.later.map(x => `${E[x.lv]} ${x.day !== today ? esc(dayLbl(x.day)) + ' ' : ''}${esc(x.dep)} ${esc(x.label)}`).join(' · ')}</p>` : ''}</div>`;
+      ${t.later.length ? `<p class="sub">Ensuite : ${t.later.map(x => `${E[x.lv]} ${x.day !== today ? esc(dayLbl(x.day)) + ' ' : ''}${esc(x.dep)} ${esc(x.label)}`).join(' · ')}</p>` : ''}${calendarOriginEditorHtml()}</div>`;
   // chronologie : moments clés, puis bande horaire défilante
   const tday = x => x.ts.slice(0, 10) !== today && x.t !== 'maintenant' ? (dayDiff(today, x.ts) === 1 ? 'dem. ' : fmtDay(x.ts.slice(0, 10)) + ' ') : '';
   const mom = d.timeline.moments.map(x => `<li class="lv${x.lv}${x.kind !== 'wx' ? ' trip' : ''}" data-ts="${esc(x.ts)}"><time class="num">${esc(tday(x) + x.t)}</time><span aria-hidden="true">${WX_IC[x.kind === 'wx' ? x.id : x.kind] || '•'}</span><span>${esc(x.text)}</span></li>`).join('');
@@ -103,7 +106,14 @@ function renderWx() {
   const html = (evOn ? evH + hero : hero + evH) + tripHtml + tl + matters + ph + road + foot;
   if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
   const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
+  const editor = el.querySelector('#wxOriginEditor'), active = document.activeElement;
+  const editorFocused = editor && editor.contains(active), selection = editorFocused && [active.selectionStart, active.selectionEnd];
   el.className = 'mod wx lv' + d.level; el.innerHTML = html; renderWx.last = html;
+  const nextEditor = el.querySelector('#wxOriginEditor');
+  if (editor && nextEditor && editor.dataset.binding === nextEditor.dataset.binding) {
+    nextEditor.replaceWith(editor);
+    if (editorFocused) { active.focus({ preventScroll: true }); if (typeof selection[0] === 'number') try { active.setSelectionRange(...selection); } catch (e) { /* select */ } }
+  }
   const ns = el.querySelector('.wx-strip'); if (ns && left) ns.scrollLeft = left;
 }
 /* ---------- moteur de preuves météo v2 (weatherEvidenceV2) : actif par défaut ---------- */

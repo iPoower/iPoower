@@ -73,6 +73,7 @@ function appChooseAgendaDestination(key) {
 }
 function appAgendaLeg(e, leg) {
   const effective = DayContext.returnLeg(leg, calendarTripKey(e, leg), appDay(), Date.now(), placeList());
+  if (effective && effective.originExplicit) return effective;
   // Un lieu confirmé aujourd'hui est prioritaire sur l'origine « Domicile » figée par le relais.
   // Seul le premier ALLER agenda non commencé est adapté, jamais un retour ni un départ futur.
   const c = placeNow(), now = liveNow(), today = placeToday(), chosen = appDay().nextDestination;

@@ -19,6 +19,7 @@ function validateRecovery(reason) {
 }
 function autoTick() {
   if (document.hidden) return;
+  calendarOriginPurge();
   if (USER_STORE.durability().status === 'degraded') validateRecovery('retry périodique');
   if (navigator.onLine !== false && Date.now() - VER_CHECK_AT >= AUTO_MS) loadVersion(true); else enforceVersionCoherence();
   if (!DEMO.on && expireLive()) { rebuild(); renderAll(); }   // reprise : la donnée vieillie est requalifiée avant toute requête
@@ -31,6 +32,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) setT
 function networkChanged() {
   if (offlineNow()) { markOfflineCache(); rebuild(); renderAll(); loadCalendar(); }
   else {
+    calendarOriginRetryRoutes();
     if (USER_STORE.durability().status === 'degraded') validateRecovery('retour réseau');
     else renderStatus();
     loadVersion(true); refreshAll();
