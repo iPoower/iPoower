@@ -8,6 +8,7 @@ const reply = (status = 200, body = { hourly: { time: ['2026-10-05T12:00'] } }, 
 function setup(shared = { value: null }) {
   let at = Date.parse('2026-10-05T10:00:00Z'), id = 0; const timers = new Map(), calls = [];
   const c = manager({ now: () => at, read: () => shared.value, write: v => { shared.value = v; },
+    readIncidents: () => shared.incidents, writeIncidents: v => { shared.incidents = v; },
     setTimeout: (fn, ms) => { const k = ++id; timers.set(k, { fn, at: at + ms }); return k; }, clearTimeout: k => timers.delete(k),
     fetch: (url, options) => new Promise((resolve, reject) => { calls.push({ url, options, resolve, reject }); options.signal.addEventListener('abort', () => reject(new Error('transport annulé')), { once: true }); }) });
   return { c, calls, shared, now: () => at, advance: async ms => { at += ms; for (const [k, t] of [...timers]) if (t.at <= at) { timers.delete(k); t.fn(); } await turn(); } };
@@ -198,6 +199,61 @@ async function test(name, fn) { await fn(); count++; console.log('✅ ' + name);
     s.calls[1].resolve(reply(429, { reason: 'Daily API request limit exceeded' })); await bad;
     await assert.rejects(s.c.get(u, 12000, 'shared', 30 * 60e3), e => e.status === 429);
     assert.equal(s.calls.length, 2);
+  });
+  await test('historique : un échec partagé, durée HTTP réelle, conservé après succès et rechargement', async () => {
+    const s = setup(), a = s.c.get(U + 'history'), b = s.c.get(U + 'history'), results = Promise.allSettled([a, b]);
+    await s.advance(240); s.calls[0].resolve(reply(503)); await results;
+    let rows = JSON.parse(s.shared.incidents);
+    assert.deepEqual(rows, [{ at: s.now(), kind: 'http', durationMs: 240, status: 503 }]);
+    const good = s.c.get(U + 'recovered'); s.calls[1].resolve(reply()); await good;
+    assert.equal(s.c.incidents().length, 1, 'le retour réseau ne doit pas effacer la cause');
+    const restored = setup(s.shared); assert.equal(restored.c.incidents()[0].status, 503);
+    restored.c.incidents()[0].kind = 'muté'; assert.equal(restored.c.incidents()[0].kind, 'http', 'copie de lecture indépendante');
+  });
+  await test('historique : réseau, JSON et réponse invalide restent distingués, aucun message brut', async () => {
+    const s = setup();
+    let p = s.c.get(U + 'network'), result = Promise.allSettled([p]);
+    s.calls[0].reject(new Error('https://example.test/?latitude=48.8566&longitude=2.3522 adresse privée')); await result;
+    p = s.c.get(U + 'json'); result = Promise.allSettled([p]);
+    s.calls[1].resolve({ ...reply(), json: async () => { throw new SyntaxError('coordonnées 48.8566, 2.3522'); } }); await result;
+    p = s.c.get(U + 'invalid'); s.calls[2].resolve(reply(200, {})); assert.deepEqual(await p, {}, 'la journalisation ne change pas la réponse du transport');
+    assert.deepEqual(JSON.parse(s.shared.incidents).map(x => x.kind), ['network', 'invalid-json', 'invalid-response']);
+    assert.doesNotMatch(s.shared.incidents, /https?:|latitude|longitude|48\.8566|2\.3522|adresse|message|url/);
+  });
+  await test('historique : quota classé sur chaque réponse, aucun incident pour la file bloquée', async () => {
+    const s = setup(), requests = Array.from({ length: 8 }, (_, i) => s.c.get(U + i)), results = Promise.allSettled(requests);
+    s.calls[0].resolve(reply(429, { reason: 'Daily API request limit exceeded' }));
+    s.calls[1].resolve(reply(429, { reason: 'Hourly API request limit exceeded' })); await results;
+    assert.equal(s.calls.length, 2); assert.equal(s.c.incidents().length, 2);
+    assert.deepEqual(JSON.parse(s.shared.incidents).map(x => x.kind).sort(), ['quota-day', 'quota-hour']);
+    await assert.rejects(s.c.get(U + 'paused')); assert.equal(s.c.incidents().length, 2);
+  });
+  await test('historique : délai réseau enregistré une seule fois ; annulations GPS et géocodage exclus', async () => {
+    const s = setup(), timed = s.c.get(U + 'timed', 1000), result = Promise.allSettled([timed]);
+    await s.advance(1000); await result; assert.equal(s.c.incidents().length, 1);
+    assert.equal(s.c.incidents()[0].kind, 'timeout'); assert.equal(s.c.incidents()[0].durationMs, 1000);
+    const old = s.c.get(U + 'old', 1000, 'gps'), cancelled = Promise.allSettled([old]); s.c.cancelGroup('gps'); await cancelled; await turn();
+    const geo = s.c.get('https://geocoding-api.open-meteo.com/v1/search?name=Test'), geoResult = Promise.allSettled([geo]);
+    s.calls[2].resolve(reply(503)); await geoResult; assert.equal(s.c.incidents().length, 1);
+  });
+  await test('historique : 20 métadonnées maximum, données importées filtrées et stockage refusé toléré', async () => {
+    const s = setup();
+    for (let i = 0; i < 25; i++) { const p = s.c.get(U + i), bad = Promise.allSettled([p]); s.calls[i].resolve(reply(503)); await bad; await s.advance(1); }
+    assert.equal(JSON.parse(s.shared.incidents).length, 20);
+    assert.deepEqual(Object.keys(s.c.incidents()[0]).sort(), ['at', 'durationMs', 'kind', 'status']);
+    const raw = { value: null, incidents: JSON.stringify([{ at: 5, kind: 'network', durationMs: 2, url: U, message: 'privé' },
+      { at: 6, kind: U, durationMs: 2 }, { at: 7, kind: 'http', durationMs: -1 }, { at: 8, kind: 'http', durationMs: 5, status: 1000 }]) };
+    const restored = setup(raw).c.incidents(); assert.equal(restored.length, 2);
+    assert.doesNotMatch(JSON.stringify(restored), /url|message|privé|latitude/); assert.equal(restored[1].status, undefined);
+    const c = manager({ readIncidents: () => { throw new Error('storage'); }, writeIncidents: () => { throw new Error('storage'); }, fetch: async () => reply(503) });
+    await assert.rejects(c.get(U)); assert.equal(c.incidents().length, 1);
+  });
+  await test('historique : prévision structurée refusée par le validateur, observateur sans effet sur le transport', async () => {
+    const value = { hourly: { time: ['2026-10-05T12:00'], temperature_2m: [] } }; let seen = 0;
+    const c = manager({ fetch: async () => reply(200, value), invalidResponse: (v, url) => { assert.equal(v, value); assert.equal(url, U); seen++; return true; } });
+    assert.equal(await c.get(U), value); assert.equal(seen, 1); assert.equal(c.incidents()[0].kind, 'invalid-response');
+    const safe = manager({ fetch: async () => reply(200, value), invalidResponse: () => { throw new Error('observateur défaillant'); } });
+    assert.equal(await safe.get(U), value); assert.equal(safe.incidents().length, 0);
   });
   console.log(`${count}/${count} scénarios OK`);
 })().catch(e => { console.error(e); process.exitCode = 1; });

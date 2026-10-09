@@ -25,11 +25,11 @@ const ctx={console,Math,Date,Intl,Map,Set,JSON};vm.createContext(ctx);vm.runInCo
  await T('chart select',async()=>{const bb=await p.$eval('#chartbox svg',e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height}});await p.mouse.move(bb.x+bb.w*0.5,bb.y+bb.h*0.4);await p.mouse.down();await p.mouse.up();return p.$eval('#readout .hh',e=>e.textContent);});
  await T('chart keyboard',async()=>{await p.focus('#chartbox');await p.keyboard.press('ArrowRight');return p.$eval('#readout .hh',e=>e.textContent);});
  await T('dir retour',async()=>{await p.click('[data-act=dir][data-d=ret]');return p.$eval('#secBrief .sub:nth-of-type(1)',e=>e.textContent).catch(()=>p.$eval('#secBrief',e=>e.textContent.slice(300,520)));});
- await T('duration 120',async()=>{await p.fill('#f-work-durMin','120');await p.dispatchEvent('#f-work-durMin','change');return p.$eval('#secBrief .disc',e=>e.textContent.slice(0,60));});
+ await T('duration 120',async()=>{await p.fill('#quick-work-durMin','120');await p.dispatchEvent('#quick-work-durMin','change');return p.$eval('#secBrief .disc',e=>e.textContent.slice(0,60));});
  await T('alert toggle off t7',async()=>{await p.click('[data-alert=t7]',{force:true});return p.evaluate(()=>JSON.parse(localStorage.getItem('twrc.settings.v1')).alerts.t7);});
  await T('geocode add',async()=>{await p.evaluate(()=>{document.querySelector('#settings').open=true});await p.fill('#geoQ','Nice');await p.click('[data-act=geo-search]');await p.waitForSelector('#geoHits button');await p.click('#geoHits button');await p.waitForTimeout(800);return p.$$eval('#locChips .chip',es=>es.map(e=>e.textContent));});
  await T('custom loc chip load',async()=>{await p.click('#locChips .chip:nth-child(3)');await p.waitForTimeout(300);return p.$eval('#secCur h2',e=>e.textContent);});
- await T('trip to Nice',async()=>{const v=await p.$eval('#f-work-to',e=>[...e.options].map(o=>o.textContent));return v;});
+ await T('trip to Nice',async()=>{const v=await p.$eval('#quick-work-to',e=>[...e.options].map(o=>o.textContent));return v;});
  await T('reload keeps settings',async()=>{await p.reload();await p.waitForTimeout(900);return p.$$eval('#locChips .chip',es=>es.length);});
  await p.screenshot({path:'shot-after.png'});
  // offline => cache

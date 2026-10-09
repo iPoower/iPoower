@@ -4,6 +4,14 @@ const freshState = ageMin => ageMin == null || !Number.isFinite(ageMin) ? 'UNAVA
 const ageOf = t => { const v = typeof t === 'number' ? t : Date.parse(t || ''); return Number.isFinite(v) ? Math.max(0, (Date.now() - v) / 60000) : null; };
 const ageTxt = m => m == null ? '—' : m < 1 ? '< 1 min' : m < 90 ? Math.round(m) + ' min' : (m / 60).toFixed(1).replace('.', ',') + ' h';
 const noUrl = t => String(t || '').replace(/https?:\S+/g, 'url').slice(0, 120);
+const weatherIncidentText = () => {
+  const rows = WEATHER_REQUESTS.incidents(), names = { network: 'panne réseau', timeout: 'délai dépassé', http: 'erreur HTTP',
+    'invalid-json': 'JSON illisible', 'invalid-response': 'réponse invalide', 'quota-minute': 'quota par minute', 'quota-hour': 'quota horaire',
+    'quota-day': 'quota journalier', 'quota-concurrent': 'trop de requêtes simultanées', 'quota-limited': 'quota fournisseur' };
+  return rows.length ? `${rows.length}/20 échecs conservés · ${rows.slice(-5).reverse().map(x =>
+    `${new Date(x.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Paris' })} · ${names[x.kind]}${x.status ? ' (HTTP ' + x.status + ')' : ''} · appel ${x.durationMs < 1000 ? x.durationMs + ' ms' : Math.ceil(x.durationMs / 1000) + ' s'}`).join(' ; ')}`
+    : 'aucun échec enregistré · historique local des appels, sans URL ni coordonnées';
+};
 let SWV = null, VER_CHECK_AT = 0, VERSION_COHERENCE = 'unknown';
 async function loadSwVersion() {
   try {
@@ -28,6 +36,7 @@ function diagRows(forCopy) {
     ['Météo du lieu affiché', r ? `${freshState(wAge)} · ${r.mode === 'live' ? 'LIVE' : r.mode === 'cache' ? 'cache' : r.mode} · ${ageTxt(wAge)}${ERR[UI.loc] ? ' · erreur : ' + noUrl(ERR[UI.loc]) : ''}` : 'UNAVAILABLE' + (ERR[UI.loc] ? ' · ' + noUrl(ERR[UI.loc]) : '')],
     ['Lieux avec météo', `${withData}/${allLocs().length}`],
     ['API météo', (() => { const p = WEATHER_REQUESTS.state(); return p.until > Date.now() ? `HTTP 429 · pause jusqu’à ${hmLocal(p.until)} · ${p.kind}` : `disponible · ${p.active}/2 requêtes actives · ${p.queued} en attente`; })()],
+    ['Derniers incidents météo', weatherIncidentText()],
     ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
     ['Agenda', CAL ? `${freshState(calAge)} · relais il y a ${ageTxt(calAge)} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}` : CALDONE ? 'indisponible' : 'chargement…'],
     ['Stockage local', (() => { const d = USER_STORE.durability(), valid = d.validatedAt ? ` · validé il y a ${ageTxt(ageOf(d.validatedAt))}` : ' · validation de reprise en attente'; return `${d.status === 'durable' ? 'DURABLE' : 'DEGRADED'}${valid} · ${n} clés · ${Math.round(bytes / 1024)} Ko${d.error ? ' · ' + noUrl(d.error) : ''}`; })()],

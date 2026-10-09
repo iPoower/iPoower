@@ -80,4 +80,6 @@ SUITE.push(['test_decision.js', 'synthèse : décision, confiance qualitative et
 SUITE.push(['test_geosearch.js', 'géocodage : adresse France IGN/BAN, monde OSM et replis réseau', false]);
 SUITE.push(['e2e59-trip-tab.js', 'onglet TRAJET : adresse exacte, priorité manuelle, véhicule, horaire, reload, offline, annulation et mobile', true]);
 SUITE.push(['test_device_storage.js', 'stockage : import vérifié, récupération et verrouillage chiffré sans perte du journal', false]);
+SUITE.push(['test_branch_protection.js', 'protections GitHub : droits admin, lecture réelle, idempotence et publications conservées (API fictive)', false],
+  ['e2e67-controls-safety.js', 'PC/iPhone : libellés uniques, historique météo après LIVE/reload, confirmations et annulations sans perte', true]);
 module.exports = { SUITE };
