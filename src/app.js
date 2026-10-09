@@ -2703,6 +2703,9 @@ async function calModel(ev) {
   if (!calendarSpatial(ev) || !locHasCoords(ev)) return null;
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2);
   if (CALM[id] && Date.now() - CALM[id].t < PT_TTL) return CALM[id].m;
+  // Hors ligne : ne pas transformer un défaut de réseau attendu en échec
+  // mis en cache pendant dix minutes. L'agenda reste consultable via son cache.
+  if (offlineNow()) return null;
   if (CALBUSY.has(id)) return null; CALBUSY.add(id);
   try { const p = await fetchJSON(`${API}?latitude=${ev.lat}&longitude=${ev.lon}&hourly=${Q_HR}&daily=${Q_DY}&timezone=auto&past_days=1&forecast_days=10`, 12000); const bad = validForecast(p); if (bad) throw new Error(bad); CALM[id] = { t: Date.now(), m: makeModel(p, 'live', { id, lat: ev.lat, lon: ev.lon, name: ev.label || ev.loc }) }; }
   catch (e) { CALM[id] = { t: Date.now() - PT_TTL + 10 * 60e3, m: null }; }
@@ -2726,6 +2729,9 @@ function calTrip(ev) {
 const LEGM = {}, LEGBUSY = new Set();
 const legKey = leg => legPoints(leg).map(p => (+p.lat).toFixed(2) + ',' + (+p.lon).toFixed(2)).join(';');
 async function fetchLeg(leg) {
+  // Hors connexion, conserver les modèles déjà présents ; une requête vouée
+  // à échouer empoisonnerait LEGM avec un repli négatif de dix minutes.
+  if (offlineNow()) return;
   const k = legKey(leg); if (LEGBUSY.has(k)) return; LEGBUSY.add(k);
   const pts = legPoints(leg);
   try {

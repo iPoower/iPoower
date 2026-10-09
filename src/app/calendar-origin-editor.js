@@ -91,6 +91,12 @@ function calendarOriginInvalidate(id, k) {
   if (target(TRIPPREVIEW.base)) tripPreviewReset();
 }
 function calendarOriginRetryRoutes() {
+  // Les caches météo négatifs de l'agenda sont partagés par l'origine choisie
+  // et le trajet automatique. Au retour du réseau, leur délai d'échec ne
+  // doit pas bloquer un changement d'origine ou « Départ automatique ».
+  // Garder les modèles valides : aucune météo ni route recalculée en double.
+  for (const key of Object.keys(LEGM)) if (LEGM[key] && !LEGM[key].models) delete LEGM[key];
+  for (const key of Object.keys(CALM)) if (CALM[key] && !CALM[key].m) delete CALM[key];
   for (const [key, entry] of CANCELROUTES) {
     if (!entry.originExplicit) continue;
     if (entry.phase === 'error') CANCELROUTES.delete(key);
