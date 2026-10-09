@@ -21,8 +21,16 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
       await check(dev + ' · Pneus : « Aperçu générique » sur chaque voiture, ni GO ni score /100', async () => {
         const cars = await txt(p, '#secCars article.car');
         assert.match(cars, /APERÇU GÉNÉRIQUE — configure tes lieux et ta monte/); assert.match(cars, /appareil verrouillé/);
-        assert.doesNotMatch(cars, /GO — CONDITIONS ADAPTÉES|\d+\/100|\d+\s*\/100/); assert.equal(await p.locator('#secCars .strip').count(), 0);
+        assert.doesNotMatch(cars, /\bGO\b|\bCAUTION\b|HIGH RISK|\d+\s*\/\s*100/); assert.equal(await p.locator('#secCars .strip').count(), 0);
         const notes = await p.locator('#secCars [data-k=generic]').count(); assert(notes >= 1, String(notes));
+      });
+      await check(dev + ' · briefing départ et comparaison : aucun verdict personnel caché dans les paragraphes', async () => {
+        const brief = await txt(p, '#secBrief'), compare = await txt(p, '#secCmp');
+        assert.match(brief, /APERÇU GÉNÉRIQUE/); assert.match(brief, /Prévision de référence/);
+        assert.doesNotMatch(brief, /\bGO\b|\bCAUTION\b|HIGH RISK|\d+\s*\/\s*100|Score du trajet/);
+        assert.match(compare, /Comparaison personnalisée en attente/);
+        assert.doesNotMatch(compare, /\d+\s*\/\s*100|Écart d’indice|indice proche \(\d+/);
+        assert.doesNotMatch(await txt(p, '#secBrf'), /🟢 Aucun risque identifié/);
       });
       await check(dev + ' · briefing : aucune conclusion favorable ni échéance de chauffe sur un planning impossible', async () => {
         const brf = await txt(p, '#secBrf');
@@ -42,13 +50,18 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
       await check(dev + ' · profil réel sans modèle de pneu : seule la monte reste à renseigner', async () => {
         const r = await p.evaluate(() => ({ generic: PROFILE().generic, ok: PROFILE().commuteOk, car: carProfile(S.cars[0]).gaps.map(g => g.id) }));
         assert.equal(r.generic, false); assert.equal(r.ok, true); assert.deepEqual(r.car, ['monte']);
+        await view(s, 'pneus');
+        assert.doesNotMatch(await txt(p, '#secCars, #secBrief, #secCmp'), /\bGO\b|\bCAUTION\b|HIGH RISK|\d+\s*\/\s*100|Écart d’indice|indice proche \(\d+/);
       });
-      await p.evaluate(() => { S.cars.forEach(c => Object.assign(c.tire, { brand: 'Marque test', model: 'Modèle test' })); saveSettings(); renderAll(); });
+      // La fixture personnelle laisse la seconde voiture sans pneus : l'équiper aussi pour tester une vraie comparaison.
+      await p.evaluate(() => { S.cars.forEach(c => Object.assign(c.tire, { type: c.tire.type === 'none' ? 'summer' : c.tire.type, brand: 'Marque test', model: 'Modèle test' })); saveSettings(); renderAll(); });
       await view(s, 'pneus');
       await check(dev + ' · monte renseignée : verdict personnel et score rétablis, plus aucun aperçu (contre-épreuve)', async () => {
         const cars = await txt(p, '#secCars article.car');
         assert.doesNotMatch(cars, /APERÇU GÉNÉRIQUE/); assert.match(cars, /\d+\s*\/100/); assert.match(cars, /GO —|CAUTION —|HIGH RISK —|NO GO/);
         assert.equal(await p.locator('#secCars [data-k=generic]').count(), 0);
+        assert.match(await txt(p, '#secBrief'), /Score du trajet :\s*\d+\/100/);
+        assert.match(await txt(p, '#secCmp'), /Écart d’indice|indice proche \(\d+/);
       });
       await s.c.close();
     }
