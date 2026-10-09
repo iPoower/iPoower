@@ -82,4 +82,5 @@ SUITE.push(['e2e59-trip-tab.js', 'onglet TRAJET : adresse exacte, priorité manu
 SUITE.push(['test_device_storage.js', 'stockage : import vérifié, récupération et verrouillage chiffré sans perte du journal', false]);
 SUITE.push(['test_branch_protection.js', 'protections GitHub : droits admin, lecture réelle, idempotence et publications conservées (API fictive)', false],
   ['e2e67-controls-safety.js', 'PC/iPhone : libellés uniques, historique météo après LIVE/reload, confirmations et annulations sans perte', true]);
+SUITE.push(['e2e-calendar-origin.js', 'Météo : origine d’une occurrence Agenda et sauvegarde chiffrée, PC/iPhone', true]);
 module.exports = { SUITE, FIRST };
