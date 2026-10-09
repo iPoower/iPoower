@@ -61,6 +61,11 @@ async function staleSearch(p,dev,kind,settle){
    });
    await tap(p,dev,'#secTrip [data-act='+action+']');
    await p.waitForFunction(sel=>document.querySelectorAll(sel).length>0,'#secTrip [data-act='+result+']');
+   await p.fill(query,qb+' bis');
+   await check(dev+' · A07 '+kind+' : les suggestions précédentes disparaissent dès la saisie sans perdre le focus',async()=>{
+     assert.equal(await p.locator('#secTrip [data-act='+result+']').count(),0);
+     assert.equal(await p.locator(query).evaluate(el=>el===document.activeElement),true);
+   });
  }finally{
    release();await p.unroute('https://data.geopf.fr/**',handler);
    if(origin){await p.selectOption('#tripOriginSel',oldMode);await settle(2);}
