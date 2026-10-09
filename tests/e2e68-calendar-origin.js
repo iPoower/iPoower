@@ -205,8 +205,16 @@ async function apply(s, dev, mode) {
       await apply(s, dev, 'auto'); const automatic = await ready(s);
       await check(dev + ' · Départ automatique rétablit exactement l’UX et l’origine #maison', async () => { assert.equal(automatic.from, original.from); assert.equal(automatic.dep, original.dep); assert.equal(automatic.km, original.km); assert.equal(automatic.key, key); assert.equal(automatic.origins[automatic.id].go.choice, null); });
       await apply(s, dev, 'saved:work'); await ready(s);
+      // La vraie commande demande une confirmation destructive ; Playwright
+      // rejette les dialog par défaut en l'absence d'écouteur.
+      let cancelDialog = null;
+      p.once('dialog', d => { cancelDialog = d.message(); d.accept(); });
       await p.evaluate(k => tripCancelStart(k), key); await s.settle(2);
-      await check(dev + ' · annulation reste prioritaire, la préférence n’est pas effacée', async () => { assert(await p.evaluate(() => !APP_CONTEXT.trips.some(t => t.e?.id === 'fixture-alpha' && t.e.s.slice(0, 10) === '2026-10-09'))); assert.equal((await state(p)).origins[original.id].go.choice.placeId, 'work'); });
+      await check(dev + ' · annulation reste prioritaire, la préférence n’est pas effacée', async () => {
+        assert.match(cancelDialog || '', /Annuler les trajets aller et retour/);
+        assert(await p.evaluate(() => !APP_CONTEXT.trips.some(t => t.e?.id === 'fixture-alpha' && t.e.s.slice(0, 10) === '2026-10-09')));
+        assert.equal((await state(p)).origins[original.id].go.choice.placeId, 'work');
+      });
       await p.evaluate(id => tripCancelUndo(id), original.id); await s.settle(4); await ready(s);
       await check(dev + ' · retour sur annulation récupère le même départ choisi', async () => assert.equal((await state(p)).from, 'Travail test'));
       const exportData = await p.evaluate(() => Backup.make({ settings: S, view: UI.view, context: USER_STORE.state, tripCancel: TRIPCANCEL, at: new Date().toISOString() }));
