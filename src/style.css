@@ -89,13 +89,20 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; }
 .decision-main h2 { font-family: var(--f-disp); font-size: clamp(22px, 6vw, 29px); line-height: 1; letter-spacing: .06em; text-transform: uppercase; color: var(--lv-t); }
 .decision-main p { margin-top: 4px; font-size: 13px; color: var(--fg2); overflow-wrap: anywhere; }
 .decision-confidence { --lv: var(--line2); --lv-soft: var(--panel2); --lv-t: var(--fg2); border: 1px solid var(--lv); background: var(--lv-soft); color: var(--lv-t); border-radius: 999px; padding: 4px 9px; font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .04em; white-space: nowrap; }
-.decision-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--fg2); }
+.decision-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 0 12px; align-items: center; font-size: 11.5px; color: var(--fg2); }
+.decision-meta > span { display: flex; align-items: center; flex-wrap: wrap; gap: 0 3px; min-height: 30px; min-width: 0; overflow-wrap: anywhere; }
 .decision-meta b { color: var(--fg); font-weight: 500; }
 .decision-car { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px; }
 .decision-change { appearance: none; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 600; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; border-radius: 3px; cursor: pointer; }
 .decision-change:hover, .decision-change:focus-visible { background: color-mix(in srgb, var(--accent) 12%, transparent); outline: none; }
 .decision-change:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
 .decision-why { display: flex; flex-wrap: wrap; gap: 5px; }
+/* Cockpit : « Ce qui compte » (3 au plus, classés par les moteurs) et état du lieu, dans la carte de décision */
+.decision-matters { list-style: none; margin: 8px 0 2px; padding: 0; display: grid; gap: 4px; }
+.decision-matters li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px; align-items: start; font-size: 13px; line-height: 1.35; color: var(--fg); padding: 5px 8px; border-radius: 5px; background: color-mix(in srgb, var(--lv-soft) 60%, transparent); border-left: 3px solid var(--lv); overflow-wrap: anywhere; }
+.decision-calm { margin: 6px 0 2px; font-size: 12px; color: var(--fg2); }
+.decision-place { grid-column: 1 / -1; }
+.decision-place a.decision-change { margin-left: 4px; }
 .decision-why span { font-size: 10.5px; color: var(--fg2); border: 1px dashed var(--line2); border-radius: 3px; padding: 2px 6px; }
 .decision-changes { padding-top: 6px; }
 .decision-changes summary { min-height: 24px; font-family: var(--f-mono); font-size: 10.5px; color: var(--fg2); }
@@ -295,6 +302,12 @@ input[type=time], input[type=number] { font-family: var(--f-mono); }
 .hits button { text-align: left; border: 1px solid var(--line2); background: var(--panel2); border-radius: 4px; padding: 8px 10px; }
 .foot { font-size: 12px; color: var(--fg3); line-height: 1.55; display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
 .foot h4 { font-family: var(--f-disp); font-size: 16px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg2); }
+/* Cockpit mobile : en-tête compact (identité conservée), la décision prend la place utile au-dessus de la ligne de flottaison */
+@media (max-width: 759px) {
+  .top > .title small { margin-bottom: 2px; }
+  .top > #decisionCore { margin-top: 8px; }
+  .day-context { margin: 6px 0; }
+}
 @media (max-width: 420px) {
   .dayrow { grid-template-columns: 52px 26px minmax(0, 1fr) 50px 40px; gap: 6px; }
   .rng-ax { display: none; }

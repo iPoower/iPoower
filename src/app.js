@@ -300,7 +300,8 @@ function markOfflineCache() {
 applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
   // dernier onglet ouvert restauré, TRAJET compris (reprise hors connexion)
-  view: ['meteo', 'trajet', 'tenue', 'analyse'].includes(lsGet('twrc.view')) ? lsGet('twrc.view') : 'pneus', outfitDay: 0, labCar: null,
+  // Cockpit : chaque ouverture de l'app commence sur Pneus ; un simple rechargement garde l'onglet choisi (mémoire de l'onglet).
+  view: (() => { let v = null; try { v = sessionStorage.getItem('rc.tab'); } catch (e) { /* session indisponible */ } return ['meteo', 'trajet', 'tenue', 'analyse'].includes(v) ? v : 'pneus'; })(), outfitDay: 0, labCar: null,
   outfitOccasion: 'outing', placeExpanded: null };
 const DECISION_HISTORY = Decision.history(APP_STORAGE);
 let DECISION_LAST = null;
@@ -940,6 +941,15 @@ function decisionOpenCarChooser() {
   return true;
 }
 
+// « Ce qui compte » (3 au plus) : classement des moteurs existants — phénomènes du poste Météo sur les trajets, puis
+// alertes — jamais une règle visuelle. Seuls les signaux réels (niveau ≥ 1) y figurent.
+function cockpitMatters(alerts) {
+  let desk = null; try { desk = CX && CX.m ? wxDesk(wxInput()) : null; } catch (e) { desk = null; }
+  const out = [], seen = new Set(), push = (lv, text) => { const k = String(text || '').toLowerCase().replace(/[^a-z0-9à-ÿ]+/g, ' ').trim().slice(0, 32); if (!k || seen.has(k)) return; seen.add(k); out.push({ lv: Math.max(0, Math.min(3, lv)), text: String(text) }); };
+  ((desk && desk.matters) || []).filter(m => m.lv >= 1).forEach(m => push(m.lv, m.text));
+  (alerts || []).filter(a => a.sev >= 1 && a.id !== 'wxdesk').sort((a, b) => b.sev - a.sev).forEach(a => push(a.sev, a.title));
+  return { desk, items: out.sort((a, b) => b.lv - a.lv).slice(0, 3) };
+}
 function renderDecisionCore() {
   const el = $('#decisionCore');
   if (!el) return;
@@ -958,12 +968,16 @@ function renderDecisionCore() {
     weather: { available: !!raw && !!CX.m, ageMin: raw ? ageMin(raw.t) : null, mode: raw && raw.mode },
     online: !offlineNow(), contextKnown: snap.status !== 'unknown',
     storageDurable: USER_STORE.durability().status === 'durable',
-    tyresRequired: true, tyresKnown: !!(car && hasTires(car) && carEval && carEval.w),
+    tyresRequired: true, carChosen: !!car, tyresKnown: !!(car && hasTires(car) && carEval && carEval.w && !carProfile(car).generic),
     activeTrip: active, gpsAgeMin: gpsAge,
     routeReady: !active || !!(LIVE.route && !LIVE.routeErr && Number.isFinite(LIVE.lastOk) && now - LIVE.lastOk <= 5 * 60e3),
     agendaRequired, agendaAvailable: !!CAL, agendaAgeMin: calAge
   });
   const alerts = Object.values(CX.alerts || {}).filter(a => S.alerts[a.id] && Number.isFinite(a.sev) && (!car || !TIRE_ALERTS.includes(a.id)));
+  // Cockpit : le phénomène dominant du moteur Météo entre toujours dans la décision (un danger n'est jamais caché derrière
+  // un score pneus rassurant, même si sa notification est désactivée dans les réglages).
+  const cm = cockpitMatters(alerts);
+  if (cm.desk && cm.desk.level >= 1 && cm.desk.hero) alerts.push({ id: 'wxdesk', sev: cm.desk.level, title: cap1(String(cm.desk.hero.title).toLowerCase()) + (cm.desk.hero.lines[1] ? ' · ' + cm.desk.hero.lines[1] : '') });
   const decision = Decision.decide({ alerts, tyreLevel: carEval && carEval.w ? carEval.w.level : null,
     tyreReason: carEval && carEval.nar ? carEval.nar.head : '', confidence });
   const hour = CX.m && CX.m.hs[CX.m.nowI] || {}, tyre = car && car.tire || {};
@@ -985,14 +999,21 @@ function renderDecisionCore() {
   const destination = snap.destination && snap.destination.name || (snap.destination ? 'Destination' : 'Aucune destination immédiate');
   const carLabel = car ? (car.short || car.name || car.id) : 'À choisir';
   const wAge = raw ? ageMin(raw.t) : null, fresh = wAge == null ? 'météo —' : 'météo ' + (wAge < 1 ? 'moins de 1 min' : Math.round(wAge) + ' min');
+  const whyLeft = confidence.reasons.filter(r => !['Lieu courant à confirmer', 'Voiture active à choisir'].includes(r));
+  const cur = snap.currentLocation, placeOk = !!(cur && snap.status !== 'unknown'), placeLabel = placeOk ? (cur.name || 'confirmé') : 'non confirmé';
   const changesHtml = changes.length ? '<details class="decision-changes"><summary>Depuis la dernière ouverture · ' + changes.length + ' changement' + (changes.length > 1 ? 's' : '') + '</summary><div>' +
     changes.map(c => '<span class="' + esc(c.kind) + '">' + (c.kind === 'up' ? '↑ ' : c.kind === 'down' ? '↓ ' : '↔ ') + esc(c.text) + '</span>').join('') + '</div></details>' : '';
   el.className = 'decision-core lv' + decision.displayLevel;
   el.hidden = false;
-  el.innerHTML = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + '</p></div>' +
-    '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b></span></div>' +
-    '<div class="decision-meta"><span>Destination · <b>' + esc(destination) + '</b></span><span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span><span>' + esc(fresh) + '</span></div>' +
-    (confidence.level > 0 && confidence.reasons.length ? '<div class="decision-why">' + confidence.reasons.map(r => '<span>' + esc(r) + '</span>').join('') + '</div>' : '') + changesHtml;
+  el.innerHTML = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (cm.items.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
+    '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b> · ' + esc(fresh) + '</span></div>' +
+    (cm.items.length ? '<ul class="decision-matters" aria-label="Ce qui compte">' + cm.items.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
+      : '') +
+    '<div class="decision-meta"><span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + '</span>' +
+    '<span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span>' +
+    '<span>Destination · <b>' + esc(destination) + '</b></span></div>' +
+    // raisons de confiance déjà dites par les lignes Lieu / Voiture : pas de répétition
+    (confidence.level > 0 && whyLeft.length ? '<div class="decision-why">' + whyLeft.map(r => '<span>' + esc(r) + '</span>').join('') + '</div>' : '') + changesHtml;
 }
 
 /* ---------- probabilités et pluie 15 min ---------- */
@@ -1066,7 +1087,8 @@ const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
 const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 function chooseView(view) {
   UI.view = ['pneus', 'meteo', 'trajet', 'tenue', 'analyse'].includes(view) ? view : 'pneus';
-  lsSet('twrc.view', UI.view); renderAll(); window.scrollTo({ top: 0, behavior: scrollBehavior() });
+  lsSet('twrc.view', UI.view); try { sessionStorage.setItem('rc.tab', UI.view); } catch (e) { /* session indisponible */ }
+  renderAll(); window.scrollTo({ top: 0, behavior: scrollBehavior() });
 }
 /* ---------- bureau (≥ 1200 px, souris) : colonne principale + colonne de compléments, côte à côte ----------
    Même contenu et mêmes sections que sur mobile, seulement réparties : rien n'est masqué ni dupliqué. Le mobile (et le tactile)
@@ -2524,6 +2546,8 @@ function briefCard(t, dayLbl) {
     ${tripOriginHtml(t)}<div class="cal-v">${tripCancelButton(t)}${returnHomeButtonForTrip(t)}${liveStartBtn(t)}${placeArriveBtn(t) || liveArrBtn(t)}</div>${liveProbable(t) ? `<div class="frost lv1"><b>🟡 Arrivée probable</b><span>Tu es à ~${liveProbable(t) < 1 ? Math.round(liveProbable(t) * 1000) + ' m' : f1(liveProbable(t)) + ' km'} de la destination (lieu de l’agenda peut-être approximatif). <button class="btn sm" data-act="trip-arrived">✓ Je suis arrivé</button></span></div>` : ''}${t.gpsTxt ? `<div class="brf-why">${esc(t.gpsTxt)}</div>` : t.liveLost ? '<div class="brf-why">📍 Suivi GPS indisponible · trajet planifié affiché</div>' : ''}`;
   if (!t.res) return head + `<p class="muted">${appActiveCar() && !hasTires(appActiveCar()) ? 'Pneus de la voiture active à renseigner.' : t.wait ? '⏳ Analyse météo de la route en cours…' : 'Météo de la route indisponible pour l’instant.'}</p>${wazeBtn(tripTo(t)) ? `<div class="cal-v">${wazeBtn(tripTo(t))}</div>` : ''}`;
   const sum = t.sum, top = t.res[0], lv = top.w.level, xs = t.seq.map(q => q.hs[q.i]), genP = carProfile(top.c), genTop = genP.generic ? genP : null;
+  // cockpit : données jugées dégradées par la synthèse → verdict pneus indicatif, jamais un feu vert affiché comme acquis
+  const confD = DECISION_LAST && DECISION_LAST.confidence, indic = !genTop && !!confD && confD.level >= 2;
   const ppMax = Math.max(...xs.map(x => x.pp || 0)), Pmax = Math.max(...xs.map(x => x.P || 0));
   const parts = ((top.w.worst && top.w.worst.parts) || []).slice().sort((a, b) => b.v - a.v).slice(0, 2).map(p => p.label);
   const fb = frostBand(sum.TrMin), ob = t.obs;
@@ -2535,10 +2559,10 @@ function briefCard(t, dayLbl) {
   const mOpen = lsGet('twrc.tripmap') === '1';
   return head + `
     ${genTop ? genericNote(genTop.gaps) : ''}
-    <div class="brf-m hasmap">${genTop ? gaugeSvg(null, 'x') : gaugeSvg(top.w.score, lv)}
-      <div class="brf-v"><span class="brf-lv">${genTop ? '🧪 APERÇU' : LV[lv].emoji + ' ' + LV[lv].name}</span>
+    <div class="brf-m hasmap">${genTop ? gaugeSvg(null, 'x') : gaugeSvg(top.w.score, indic ? 'x' : lv)}
+      <div class="brf-v"><span class="brf-lv">${genTop ? '🧪 APERÇU' : indic ? '◌ INDICATIF · ' + LV[lv].name : LV[lv].emoji + ' ' + LV[lv].name}</span>
         <span class="brf-car">${esc(top.c.short)} · ${esc(TYPE_LABEL[effType(top.c)] || '')}</span>
-        <span class="brf-why">${parts.length ? 'Points d’attention : ' + parts.map(esc).join(' · ') : genTop ? 'Aucune pénalité dans cet exemple de calcul' : '✓ Pneus actuels adaptés au trajet'}</span>
+        <span class="brf-why">${indic ? `Données ${esc(confD.label.toLowerCase())} : ${esc(confD.reason)} · ` : ''}${parts.length ? 'Points d’attention : ' + parts.map(esc).join(' · ') : genTop ? 'Aucune pénalité dans cet exemple de calcul' : indic ? 'aucune pénalité calculée' : '✓ Pneus actuels adaptés au trajet'}</span>
         ${t.res.slice(1).map(r => carProfile(r.c).generic ? `<span class="brf-why">🧪 ${esc(r.c.short)} : aperçu</span>` : `<span class="brf-why">${LV[r.w.level].emoji} ${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}/100</span>`).join('')}</div>
       <div class="brf-map" id="tmapW"></div></div>
     <div class="kpis">

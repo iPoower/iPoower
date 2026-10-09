@@ -71,6 +71,7 @@ SUITE.push(['test_profile_check.js', 'profil générique : lieux d’exemple, mo
 SUITE.push(['test_no_plain_secrets.js', 'sécurité : garde-fou contre toute réintroduction de twrc.key / twrc.plain en clair', false]);
 SUITE.push(['test_session_vault.js', 'sécurité : coffre de session chiffré, migration sans perte, reprise, stockage plein/refusé, multi-onglets, contre-tests', false]);
 SUITE.push(['e2e64-security.js', 'sécurité : migration d’un ancien profil en clair, rien de sensible au repos, codes, réouverture, verrouillage, CSP, iPhone/PC', true]);
+SUITE.push(['e2e65-cockpit.js', 'cockpit Pneus : décision d’abord, trajet visible, cohérence décision/confiance/alerte, scénarios pluie/brouillard/données insuffisantes, onglet et voiture conservés, iPhone/tablette/PC', true]);
 SUITE.push(['e2e63-generic-profile.js', 'profil générique : aperçu au lieu de GO/100, planning impossible sans chauffe, verdict rétabli avec un vrai profil, iPhone/PC (audit A06)', true]);
 SUITE.push(['test_montagne.js', 'Loi Montagne : département reconnu quelle que soit la source, période, source datée et contre-tests (audit A05)', false],
   ['e2e62-montagne.js', 'Loi Montagne : destination BAN conservée jusqu’au briefing après rechargement, même vigilance depuis Réglages, iPhone/PC (audit A05)', true]);
