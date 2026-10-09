@@ -52,7 +52,8 @@ const submit = async (s, code) => { await s.p.fill('#unlockPw', code); await Pro
         await q.close();
       });
       await check(dev + ' · deux vraies fenêtres : sauvegardes simultanées, coffre relu après rechargement', async () => {
-        const q = await s.c.newPage(); await q.clock.install({ time: s.T0 }); await q.goto(require('./lib/context-session').U);
+        // L'horloge de la session contrôle déjà toutes les pages du contexte ; conserver aussi les minuteries de la première.
+        const q = await s.c.newPage(); await q.goto(require('./lib/context-session').U);
         const settleQ = async () => { for (let i = 0; i < 8; i++) { await q.clock.runFor(500); await q.waitForTimeout(80); } };
         try {
           await settleQ(); await q.fill('#unlockPw', PW);
