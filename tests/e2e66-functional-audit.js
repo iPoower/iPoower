@@ -75,7 +75,7 @@ const inspect = p => p.evaluate(() => {
         if(dev==='iphone')await refresh.tap();else await refresh.click();
         await s.settle(10);assert(s.S.calls>n,'rafraîchissement sans requête météo ('+n+' → '+s.S.calls+')');
       });
-      await check(dev+' · aucune duplication des ID ni débordement sur les cinq vues',async()=>{
+      await check(dev+' · inventorier les ID et vérifier les débordements sur les cinq vues',async()=>{
         for(const [v] of VIEWS){
           await go(p,dev,v);await s.settle(1);
           const x=await inspect(p);
@@ -91,9 +91,14 @@ const inspect = p => p.evaluate(() => {
           const label=p.locator('#settings label[for="'+id+'"]');
           assert(await label.count(),'libellé de réglage introuvable : '+id);
           await label.click();
-          const focus=await p.evaluate(()=>({id:document.activeElement?.id,settings:!!document.activeElement?.closest('#settings')}));
-          if(focus.id!==id||!focus.settings){
-            const issue=dev+' · le libellé '+id+' des Paramètres cible un champ '+(focus.settings?'dans':'HORS')+' Paramètres ('+JSON.stringify(focus)+')';
+          const association=await p.evaluate(id=>{
+            const label=document.querySelector('#settings label[for="'+id+'"]');
+            const control=label&&label.control;
+            return {controlId:control?.id||null,inSettings:!!control?.closest('#settings'),copies:document.querySelectorAll('[id="'+id+'"]').length,
+              focusedId:document.activeElement?.id||null,focusInSettings:!!document.activeElement?.closest('#settings')};
+          },id);
+          if(association.controlId!==id||!association.inSettings||!association.focusInSettings){
+            const issue=dev+' · libellé Paramètres '+id+' mal associé : '+JSON.stringify(association);
             findings.push(issue);console.log('⚠️ '+issue);
           }
         }
