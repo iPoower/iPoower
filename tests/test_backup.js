@@ -121,4 +121,31 @@ check('intégration build et interface utilise le module V2', () => {
   const build = fs.readFileSync(path.resolve(__dirname, '../tools/build.js'), 'utf8'), app = fs.readFileSync(path.resolve(__dirname, '../src/app.js'), 'utf8');
   assert(build.includes("r('src/backup.js')")); assert(app.includes('Backup.make({')); assert(app.includes('Backup.restorePlan(data')); assert(app.includes('Sauvegarde V2 prête'));
 });
+
+// Les annotations d'origine sont des choix explicites exportables, sans GPS vivant.
+check('V2 conserve le départ individuel Agenda après export/import, sans changer le format', () => {
+  const key = 'cal-0123456789abcdef0123456789abcdef';
+  const record = { eventStart: '2026-10-08T09:30', originId: null, source: 'manual',
+    originPoint: { id: 'agenda-origin', name: 'Site factice', lat: 49, lon: 2.5 },
+    confirmedAt: at - 1000, updatedAt: at - 1000, expiresAt: at + 86400000 };
+  const data = B.make({ settings: { cars: [{ id: 'car1' }] },
+    context: { dayContext: { agendaOrigins: { [key]: record } } },
+    at: new Date(at).toISOString() });
+  assert.equal(data.v, 2);
+  assert.equal(data.durable.context.dayContext.agendaOrigins[key].originPoint.name, 'Site factice');
+  const plan = B.restorePlan(data, at);
+  const restored = JSON.parse(plan.writes['twrc.context.v1']);
+  assert.equal(restored.dayContext.agendaOrigins[key].originPoint.lon, 2.5);
+  assert.equal(restored.dayContext.agendaOrigins[key].source, 'manual');
+});
+check('V2 écarte les origines de rendez-vous mal formées', () => {
+  const k = 'cal-0123456789abcdef0123456789abcdef';
+  const data = B.make({ settings: {}, context: { dayContext: { agendaOrigins: {
+    [k]: { eventStart: '2026-10-08T09:30', source: 'gps', originPoint: { lat: 300, lon: 2 },
+      confirmedAt: at, updatedAt: at, expiresAt: at + 86400000 },
+    bad: { eventStart: '2026-10-08T09:30', source: 'saved', originId: 'home', confirmedAt: at, updatedAt: at, expiresAt: at + 86400000 }
+  } } }, at: new Date(at).toISOString() });
+  assert.deepEqual(Object.keys(data.durable.context.dayContext.agendaOrigins), []);
+});
+
 console.log(`${n}/${n} scénarios OK`);
