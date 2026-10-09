@@ -23,6 +23,9 @@ function tripDraftInit(force = false) {
   const d = appDay(), n = d.nextDestination, manual = n && n.source === 'manual' ? n : null;
   const token = manual ? manual.tripKey + '|' + manual.updatedAt : 'new';
   if (!force && TRIP_FORM.bound === token) return;
+  // Un ancien résultat réseau ne doit pas réapparaître après rechargement du formulaire.
+  TRIP_FORM.destGen++; TRIP_FORM.originGen++;
+  TRIP_FORM.destSearching = TRIP_FORM.originSearching = null;
   const now = localTs(Date.now()).slice(0, 16), dep = manual && manual.dep || now, rec = tripRecommendedOrigin();
   TRIP_FORM.bound = token;
   TRIP_FORM.destinationId = manual && manual.placeId && !manual.destinationPoint ? manual.placeId : null;
@@ -131,31 +134,43 @@ function renderTripSummary() {
 }
 async function tripSearch(kind, button) {
   tripCaptureForm();
-  const q = (kind === 'origin' ? TRIP_FORM.originQuery : TRIP_FORM.destinationQuery).trim();
+  const origin = kind === 'origin', genKey = origin ? 'originGen' : 'destGen';
+  const pendingKey = origin ? 'originSearching' : 'destSearching';
+  const query = () => (origin ? TRIP_FORM.originQuery : TRIP_FORM.destinationQuery).trim();
+  const q = query(), gen = ++TRIP_FORM[genKey];
+  const current = () => gen === TRIP_FORM[genKey] && query() === q;
   if (q.length < 2) { TRIP_FORM.message = 'Saisis au moins deux caractères.'; renderTripView(); return; }
   if (offlineNow()) { TRIP_FORM.message = 'Recherche d’adresse indisponible hors connexion. Un trajet déjà programmé reste conservé.'; renderTripView(); return; }
-  const genKey = kind === 'origin' ? 'originGen' : 'destGen', gen = ++TRIP_FORM[genKey];
+  // La même recherche ne doit jamais être déclenchée en double (bouton, touche Entrée, double-clic).
+  if (TRIP_FORM[pendingKey] === q) return;
+  TRIP_FORM[pendingKey] = q;
   if (button) button.textContent = 'Recherche…';
   try {
-    const out = await geocode(q); if (gen !== TRIP_FORM[genKey]) return;
-    if (kind === 'origin') TRIP_FORM.originResults = out; else TRIP_FORM.destinationResults = out;
+    const out = await geocode(q);
+    if (!current()) return;
+    if (origin) TRIP_FORM.originResults = out; else TRIP_FORM.destinationResults = out;
     TRIP_FORM.message = out.length ? '' : 'Aucun résultat : vérifie numéro, rue, ville et code postal.';
-  } catch (e) { if (gen === TRIP_FORM[genKey]) TRIP_FORM.message = 'Recherche impossible pour le moment.'; }
-  renderTripView();
+  } catch (e) {
+    if (!current()) return;
+    TRIP_FORM.message = 'Recherche impossible pour le moment.';
+  } finally {
+    if (TRIP_FORM[pendingKey] === q) TRIP_FORM[pendingKey] = null;
+    if (current()) renderTripView();
+  }
 }
 function tripPick(kind, index) {
   const list = kind === 'origin' ? TRIP_FORM.originResults : TRIP_FORM.destinationResults, h = list[+index]; if (!h) return;
-  if (kind === 'origin') { TRIP_FORM.originHit = h; TRIP_FORM.originQuery = h.address || h.name; TRIP_FORM.originResults = []; }
-  else { TRIP_FORM.destinationHit = h; TRIP_FORM.destinationId = null; TRIP_FORM.destinationQuery = h.address || h.name; TRIP_FORM.destinationResults = []; }
+  if (kind === 'origin') { TRIP_FORM.originGen++; TRIP_FORM.originHit = h; TRIP_FORM.originQuery = h.address || h.name; TRIP_FORM.originResults = []; }
+  else { TRIP_FORM.destGen++; TRIP_FORM.destinationHit = h; TRIP_FORM.destinationId = null; TRIP_FORM.destinationQuery = h.address || h.name; TRIP_FORM.destinationResults = []; }
   TRIP_FORM.message = ''; renderTripView();
 }
 function tripPickKnown(id) {
   const p = locById(id); if (!p) return;
-  TRIP_FORM.destinationId = id; TRIP_FORM.destinationHit = null; TRIP_FORM.destinationQuery = p.name; TRIP_FORM.destinationResults = []; TRIP_FORM.message = ''; renderTripView();
+  TRIP_FORM.destGen++; TRIP_FORM.destinationId = id; TRIP_FORM.destinationHit = null; TRIP_FORM.destinationQuery = p.name; TRIP_FORM.destinationResults = []; TRIP_FORM.message = ''; renderTripView();
 }
 function tripFieldChanged(target) {
   tripCaptureForm();
-  if (target.dataset.tripField === 'origin' && TRIP_FORM.originMode !== '__manual') { TRIP_FORM.originHit = null; TRIP_FORM.originResults = []; TRIP_FORM.originQuery = ''; }
+  if (target.dataset.tripField === 'origin' && TRIP_FORM.originMode !== '__manual') { TRIP_FORM.originGen++; TRIP_FORM.originHit = null; TRIP_FORM.originResults = []; TRIP_FORM.originQuery = ''; }
   TRIP_FORM.message = ''; renderTripView();
 }
 function tripProgram(button) {
@@ -180,9 +195,9 @@ function tripCancelPlan() {
 }
 document.addEventListener('input', e => {
   if (e.target && e.target.id === 'tripDestQ') {
-    if (e.target.value !== TRIP_FORM.destinationQuery) { TRIP_FORM.destinationQuery = e.target.value; TRIP_FORM.destinationId = null; TRIP_FORM.destinationHit = null; TRIP_FORM.destinationResults = []; }
+    if (e.target.value !== TRIP_FORM.destinationQuery) { TRIP_FORM.destinationQuery = e.target.value; TRIP_FORM.destGen++; TRIP_FORM.destinationId = null; TRIP_FORM.destinationHit = null; TRIP_FORM.destinationResults = []; }
   } else if (e.target && e.target.id === 'tripOriginQ') {
-    if (e.target.value !== TRIP_FORM.originQuery) { TRIP_FORM.originQuery = e.target.value; TRIP_FORM.originHit = null; TRIP_FORM.originResults = []; }
+    if (e.target.value !== TRIP_FORM.originQuery) { TRIP_FORM.originQuery = e.target.value; TRIP_FORM.originGen++; TRIP_FORM.originHit = null; TRIP_FORM.originResults = []; }
   }
 });
 document.addEventListener('keydown', e => {
