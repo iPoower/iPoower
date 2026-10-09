@@ -36,6 +36,36 @@ async function setup(s,dev){
  await tap(p,dev,'#viewSeg [data-act=view][data-v=trajet]'); await s.settle(3);
  return {setGeoFail:v=>geoFail=v,setOsrmDown:v=>osrmDown=v,osrmCalls};
 }
+
+async function staleSearch(p,dev,kind,settle){
+ const origin=kind==='origin', query='#trip'+(origin?'Origin':'Dest')+'Q', action=origin?'trip-origin-search':'trip-dest-search', result=origin?'trip-origin-pick':'trip-dest-pick';
+ const oldMode=origin?await p.locator('#tripOriginSel').inputValue():null;
+ if(origin){await p.selectOption('#tripOriginSel','__manual');await settle(2);}
+ const qa='12 Rue Attente '+(origin?'Origine':'Destination')+', Amiens',qb='14 Rue Nouvelle '+(origin?'Origine':'Destination')+', Amiens';
+ let started,release;const startedP=new Promise(resolve=>{started=resolve;});const gate=new Promise(resolve=>{release=resolve;});
+ const handler=async route=>{
+   if(new URL(route.request().url()).searchParams.get('q')!==qa)return route.fallback();
+   started();await gate;
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({features:[{properties:{label:'ANCIENNE ADRESSE À NE PAS AFFICHER'},geometry:{coordinates:[2.3,49.9]}}]})});
+ };
+ await p.route('https://data.geopf.fr/**',handler);
+ try{
+   await p.fill(query,qa);await tap(p,dev,'#secTrip [data-act='+action+']');await startedP;
+   await p.fill(query,qb);
+   const finished=p.waitForResponse(r=>new URL(r.url()).searchParams.get('q')===qa,{timeout:10000});
+   release();await finished;await settle(2);
+   await check(dev+' · A07 '+kind+' : ancienne réponse refusée après modification du champ',async()=>{
+     assert.equal(await p.locator(query).inputValue(),qb);
+     assert.equal(await p.locator('#secTrip [data-act='+result+']').count(),0);
+     assert.doesNotMatch(await p.locator('#secTrip').innerText(),/ANCIENNE ADRESSE À NE PAS AFFICHER/);
+   });
+   await tap(p,dev,'#secTrip [data-act='+action+']');
+   await p.waitForFunction(sel=>document.querySelectorAll(sel).length>0,'#secTrip [data-act='+result+']');
+ }finally{
+   release();await p.unroute('https://data.geopf.fr/**',handler);
+   if(origin){await p.selectOption('#tripOriginSel',oldMode);await settle(2);}
+ }
+}
 async function search(p,dev,q){await p.fill('#tripDestQ',q);await tap(p,dev,'#secTrip [data-act=trip-dest-search]');await p.waitForFunction(()=>document.querySelectorAll('#secTrip [data-act=trip-dest-pick]').length>0,{timeout:10000});await tap(p,dev,'#secTrip [data-act=trip-dest-pick]');}
 async function later(p,dev,time,car){await p.locator('#secTrip input[name=tripWhen][value=later]').check();await p.fill('#tripTime',time);await p.selectOption('#tripCar',car);await tap(p,dev,'#secTrip [data-act=trip-plan]');await p.waitForFunction(()=>USER_STORE.state.dayContext.nextDestination?.source==='manual');}
 async function layout(p){return p.evaluate(()=>{const W=document.documentElement.clientWidth,sec=document.getElementById('secTrip'),nav=document.getElementById('viewSeg'),small=[],wide=[];[...sec.querySelectorAll('button,input,select'),...nav.querySelectorAll('button')].filter(x=>x.getClientRects().length).forEach(x=>{const b=(x.closest('label')||x).getBoundingClientRect();/* cible tactile réelle : le label qui enveloppe un bouton radio */if(b.height<43.5||b.width<43.5)small.push((x.dataset.act||x.id||x.tagName)+':'+Math.round(b.width)+'x'+Math.round(b.height));});[...sec.querySelectorAll('*'),...nav.querySelectorAll('*')].filter(x=>x.getClientRects().length).forEach(x=>{const b=x.getBoundingClientRect();if(b.right>W+1)wide.push(x.className||x.tagName);});return{W,sw:document.documentElement.scrollWidth,small,wide:[...new Set(wide)].slice(0,8),tabs:[...nav.querySelectorAll('[data-act=view]')].map(x=>x.dataset.v)}});}
@@ -45,6 +75,8 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
   const s=await session(b,{at:'2026-10-07T15:00:00+02:00',dev}),p=s.p,ctl=await setup(s,dev);
   await check(dev+' · TRAJET visible en un geste, navigation à cinq onglets',async()=>{const L=await layout(p);assert.deepEqual(L.tabs,['meteo','pneus','trajet','tenue','analyse']);assert.equal((await state(p)).view,'trajet');assert(await p.locator('#secTrip').isVisible());});
   await check(dev+' · départ proposé depuis le lieu Travail confirmé',async()=>assert.match(await p.locator('#secTrip').innerText(),/Travail test/));
+  await staleSearch(p,dev,'destination',s.settle);
+  await staleSearch(p,dev,'origin',s.settle);
   await search(p,dev,'29 Rue Jean Jaurès, 80610 Saint-Ouen');
   await check(dev+' · cas réel : adresse exacte fournie par IGN/BAN',async()=>{const t=await p.locator('#secTrip').innerText();assert.match(t,/29 Rue Jean Jaurès 80610 Saint-Ouen/);assert.match(t,/IGN\/BAN/);});
   const [carA,carB]=await p.evaluate(()=>S.cars.map(c=>c.id)); await later(p,dev,'17:15',carA);
