@@ -1131,12 +1131,15 @@ function renderView() {
   document.body.classList.toggle('vtr', vtr);
   document.body.classList.toggle('vt', vt);
   document.body.classList.toggle('va', va);
-  $('#viewSeg').innerHTML = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-pressed="${vm}"><span class="tab-ic" aria-hidden="true">🌦️</span> Météo</button><button data-act="view" data-v="pneus" aria-pressed="${vp}"><span class="tab-ic" aria-hidden="true">🛞</span> Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-pressed="${vtr}"><span class="tab-ic" aria-hidden="true">🧭</span> TRAJET</button><button data-act="view" data-v="tenue" aria-pressed="${vt}"><span class="tab-ic" aria-hidden="true">👔</span> Tenue</button><button data-act="view" data-v="analyse" aria-pressed="${va}"><span class="tab-ic" aria-hidden="true">🔬</span> Analyse</button></div>`;
+  const nav = $('#viewSeg'), navHtml = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-pressed="${vm}"><span class="tab-ic" aria-hidden="true">🌦️</span> Météo</button><button data-act="view" data-v="pneus" aria-pressed="${vp}"><span class="tab-ic" aria-hidden="true">🛞</span> Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-pressed="${vtr}"><span class="tab-ic" aria-hidden="true">🧭</span> TRAJET</button><button data-act="view" data-v="tenue" aria-pressed="${vt}"><span class="tab-ic" aria-hidden="true">👔</span> Tenue</button><button data-act="view" data-v="analyse" aria-pressed="${va}"><span class="tab-ic" aria-hidden="true">🔬</span> Analyse</button></div>`;
+  // Un rendu identique conserve les boutons, leur focus et les liens ; les changements restent calculés à chaque appel.
+  if (nav.innerHTML !== navHtml) nav.innerHTML = navHtml;
   const links = vtr ? [['secTrip', 'Planifier'], ['settings', 'Réglages']] : va ? [['secLab', 'Analyse'], ['secSeason', 'Saison pneus'], ['secJournal', 'Journal de saison'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
     ? [['secWx', 'Synthèse'], ['secRadar', 'Radar'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secCur', 'Détails'], ['secAir', 'Air · UV'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
     : [['secBrf', 'Départ'], ['secCars', 'Voitures'], ['secBrief', 'Préparer'], ['secWeatherLink', 'Météo'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
   if (!vtr && USER_STORE.state.debrief.entries.length && !DEMO.on) links.splice(1, 0, ['secDebrief', 'Journal des trajets']);
-  $('#jump').innerHTML = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
+  const jump = $('#jump'), jumpHtml = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
+  if (jump.innerHTML !== jumpHtml) jump.innerHTML = jumpHtml;
   const order = vtr
     ? ['secTrip', 'secTripSummary', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue']
     : va

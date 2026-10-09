@@ -104,7 +104,8 @@ async function profile(browser, build, fixture, device) {
       const renderViewMs = measure(renderView, 9, 100), navMutations = observer.takeRecords().filter(x => x.type === 'childList').length; observer.disconnect();
       const navNodePreserved = button === nav.querySelector('[data-v=pneus]'), navFocusPreserved = document.activeElement === button;
       const renderAllMs = measure(renderAll, 9, 3), rebuildMs = measure(rebuild, 9, 3), computeCtxMs = measure(computeCtx, 9, 3);
-      return { renderViewMs, renderAllMs, rebuildMs, computeCtxMs, navMutations, navNodePreserved, navFocusPreserved,
+      const nowInMs = measure(() => nowIn('Europe/Paris'), 9, 100);
+      return { renderViewMs, renderAllMs, rebuildMs, computeCtxMs, nowInMs, navMutations, navNodePreserved, navFocusPreserved,
         domNodes: document.querySelectorAll('*').length, longTasksMs: window.__perfLong,
         heapBytes: performance.memory ? performance.memory.usedJSHeapSize : null,
         resourceTransferBytes: performance.getEntriesByType('resource').reduce((n, r) => n + (r.transferSize || 0), 0) || null };
@@ -136,6 +137,9 @@ async function main() {
     device: before.device, renderViewBeforeMs: +before.renderViewMs.median.toFixed(3), renderViewAfterMs: +after.renderViewMs.median.toFixed(3),
     navMutationsBefore: before.navMutations, navMutationsAfter: after.navMutations, focusBefore: before.navFocusPreserved, focusAfter: after.navFocusPreserved,
     renderAllBeforeMs: +before.renderAllMs.median.toFixed(2), renderAllAfterMs: +after.renderAllMs.median.toFixed(2),
+    nowInBeforeMs: +before.nowInMs.median.toFixed(3), nowInAfterMs: +after.nowInMs.median.toFixed(3),
+    rebuildBeforeMs: +before.rebuildMs.median.toFixed(2), rebuildAfterMs: +after.rebuildMs.median.toFixed(2),
+    requestsBefore: before.requestsAtReady, requestsAfter: after.requestsAtReady,
     startupBeforeMs: Math.round(before.initialGenericMs), startupAfterMs: Math.round(after.initialGenericMs)
   }; });
   console.log(JSON.stringify({ browser: NAME, baseline: baseline.sha, candidate: candidate.sha, sizes: { baseline: baseline.sizes, candidate: candidate.sizes }, rows }, null, 2));

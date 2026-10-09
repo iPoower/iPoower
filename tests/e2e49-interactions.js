@@ -18,6 +18,26 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
       await check(tag + ' · tous les onglets et aria-pressed après deux passages', async () => {
         for (let n = 0; n < 2; n++) for (const v of ['pneus', 'meteo', 'tenue', 'analyse']) { await click(`[data-act=view][data-v=${v}]`); assert.equal(await p.evaluate(() => UI.view), v); assert.equal(await p.locator(`[data-act=view][data-v=${v}]`).getAttribute('aria-pressed'), 'true'); }
       });
+      await check(tag + ' · rendus identiques : navigation et raccourcis non reconstruits, focus clavier conservé', async () => {
+        await click('[data-act=view][data-v=pneus]');
+        const result = await p.evaluate(() => {
+          const nav = document.querySelector('#viewSeg'), jump = document.querySelector('#jump');
+          const button = nav.querySelector('[data-v=pneus]'), link = jump.querySelector('a'); button.focus();
+          const observer = new MutationObserver(() => {});
+          [nav, jump].forEach(el => observer.observe(el, { childList: true, subtree: true }));
+          for (let i = 0; i < 5; i++) renderView();
+          const writes = observer.takeRecords().length; observer.disconnect();
+          renderAll();
+          return { writes, button: button === nav.querySelector('[data-v=pneus]'), link: link === jump.querySelector('a'), focused: document.activeElement === button };
+        });
+        assert.deepEqual(result, { writes: 0, button: true, link: true, focused: true });
+        await click('[data-act=view][data-v=meteo]');
+        assert.equal(await p.locator('[data-v=meteo]').getAttribute('aria-pressed'), 'true');
+        assert.equal(await p.locator('[data-v=pneus]').getAttribute('aria-pressed'), 'false');
+        assert(await p.locator('#jump a[href="#secWx"]').count());
+        await click('[data-act=view][data-v=pneus]');
+        assert(await p.locator('#jump a[href="#secBrf"]').count());
+      });
       await check(tag + ' · préférence Réduire les animations respectée par les scrolls programmatiques', async () => {
         await p.emulateMedia({ reducedMotion: 'reduce' }); assert.equal(await p.evaluate(() => scrollBehavior()), 'auto');
         await p.emulateMedia({ reducedMotion: 'no-preference' }); assert.equal(await p.evaluate(() => scrollBehavior()), 'smooth');
