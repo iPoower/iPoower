@@ -197,9 +197,15 @@ function tripCancelPlan() {
 }
 document.addEventListener('input', e => {
   if (e.target && e.target.id === 'tripDestQ') {
-    if (e.target.value !== TRIP_FORM.destinationQuery) { TRIP_FORM.destinationQuery = e.target.value; TRIP_FORM.destGen++; TRIP_FORM.destSearching = null; TRIP_FORM.destinationId = null; TRIP_FORM.destinationHit = null; TRIP_FORM.destinationResults = []; }
+    if (e.target.value !== TRIP_FORM.destinationQuery) { TRIP_FORM.destinationQuery = e.target.value; TRIP_FORM.destGen++; TRIP_FORM.destSearching = null; TRIP_FORM.destinationId = null; TRIP_FORM.destinationHit = null; TRIP_FORM.destinationResults = [];
+      // Effacer aussi le DOM immédiatement, sans rerendre le formulaire (focus et curseur conservés).
+      e.target.closest('.trip-field')?.querySelector('.trip-suggestions')?.replaceChildren();
+      e.target.closest('.trip-field')?.querySelector('.trip-selected')?.remove();
+      const b = e.target.closest('.trip-field')?.querySelector('[data-act=trip-dest-search]'); if (b) b.textContent = 'Rechercher'; }
   } else if (e.target && e.target.id === 'tripOriginQ') {
-    if (e.target.value !== TRIP_FORM.originQuery) { TRIP_FORM.originQuery = e.target.value; TRIP_FORM.originGen++; TRIP_FORM.originSearching = null; TRIP_FORM.originHit = null; TRIP_FORM.originResults = []; }
+    if (e.target.value !== TRIP_FORM.originQuery) { TRIP_FORM.originQuery = e.target.value; TRIP_FORM.originGen++; TRIP_FORM.originSearching = null; TRIP_FORM.originHit = null; TRIP_FORM.originResults = [];
+      e.target.closest('.trip-field')?.querySelector('.trip-suggestions')?.replaceChildren();
+      const b = e.target.closest('.trip-field')?.querySelector('[data-act=trip-origin-search]'); if (b) b.textContent = 'Rechercher'; }
   }
 });
 document.addEventListener('keydown', e => {
