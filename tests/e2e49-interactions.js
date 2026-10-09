@@ -32,8 +32,8 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         });
         assert.deepEqual(result, { writes: 0, button: true, link: true, focused: true });
         await click('[data-act=view][data-v=meteo]');
-        assert.equal(await p.locator('[data-v=meteo]').getAttribute('aria-pressed'), 'true');
-        assert.equal(await p.locator('[data-v=pneus]').getAttribute('aria-pressed'), 'false');
+        assert.equal(await p.locator('#viewSeg [data-act=view][data-v=meteo]').getAttribute('aria-pressed'), 'true');
+        assert.equal(await p.locator('#viewSeg [data-act=view][data-v=pneus]').getAttribute('aria-pressed'), 'false');
         assert(await p.locator('#jump a[href="#secWx"]').count());
         await click('[data-act=view][data-v=pneus]');
         assert(await p.locator('#jump a[href="#secBrf"]').count());
