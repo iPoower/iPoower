@@ -5,6 +5,9 @@ const fs = require('node:fs'), path = require('node:path'), vm = require('node:v
 const sourcePath = path.join(__dirname, '../src/profile-check.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = { Math, Number, Array, JSON }; vm.createContext(ctx); vm.runInContext(source + ';this.P=ProfileCheck;', ctx);
+  const app = options.appSource || fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
+  ctx.LOCKED = () => false;
+  vm.runInContext(app.match(/^const calendarPlaces = .*$/m)[0] + '\n' + app.match(/^const PROFILE = .*$/m)[0] + '\nthis.appProfile=PROFILE;', ctx);
   const P = ctx.P, plain = v => JSON.parse(JSON.stringify(v)); let count = 0;
   const test = (name, fn) => { try { fn(); } catch (error) { error.scenario = name; throw error; } count++; if (!options.quiet) console.log('✅ ' + name); };
   const EX = [{ id: 'home', lat: 48.8566, lon: 2.3522 }, { id: 'work', lat: 50.6292, lon: 3.0573 }];
@@ -51,17 +54,112 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(r.generic, false); assert.equal(r.commuteOk, false); assert.equal(r.car(car()).generic, false);
     assert(!r.car(car()).gaps.some(g => g.id === 'commute'), 'la voiture n’est pas déclarée générique pour un planning');
   });
+  test('lieu absent ou coordonnées invalides : aperçu et planning suspendu', () => {
+    for (const locs of [[], [REAL[0]], [{ ...REAL[0], lat: null }, REAL[1]],
+      [{ ...REAL[0], lon: NaN }, REAL[1]], [REAL[0], { ...REAL[1], lat: 91 }], [REAL[0], { ...REAL[1], lon: 181 }]]) {
+      const r = P.check({ locs, work: work(30) });
+      assert.equal(r.generic, true); assert.equal(r.car(car()).generic, true); assert.equal(r.commuteOk, false);
+      assert(r.gaps.some(g => g.id === 'places'));
+    }
+  });
+  test('choix explicite introuvable : jamais remplacé par un autre lieu valide', () => {
+    for (const w of [{ ...work(), from: 'deleted' }, { ...work(), to: 'deleted' }]) {
+      const r = P.check({ locs: REAL, work: w }); assert.equal(r.generic, true); assert.equal(r.commuteOk, false);
+    }
+  });
+  test('lieu enregistré choisi : profil évalué sur ce lieu, pas sur le deuxième lieu d’exemple', () => {
+    const custom = { id: 'custom-test', lat: REAL[1].lat, lon: REAL[1].lon };
+    const r = P.check({ locs: [REAL[0], EX[1], custom], work: { ...work(), to: custom.id } });
+    assert.equal(r.generic, false); assert.equal(r.car(car()).generic, false); assert.equal(r.commuteOk, true);
+    assert.deepEqual(plain(r.gaps), []);
+  });
+  test('profil de l’application : les destinations enregistrées font partie des lieux configurés', () => {
+    ctx.S = { locs: [REAL[0], EX[1]], customs: [{ ...REAL[1], id: 'custom-test' }], work: { ...work(), to: 'custom-test' } };
+    const r = ctx.appProfile(); assert.equal(r.generic, false); assert.equal(r.car(car()).generic, false); assert.equal(r.commuteOk, true);
+  });
+  ctx.CalendarOrigin = { clean: x => x || {} };
+  vm.runInContext(app.slice(app.indexOf('const clone ='), app.indexOf('// Migration étroite')), ctx);
+  const base = { locs: REAL, cars: [car()], customs: [], work: work() };
+  test('relecture des réglages : coordonnées explicitement effacées conservées, profil incomplet', () => {
+    for (const key of ['lat', 'lon']) {
+      const saved = { ...base, locs: [{ ...REAL[0], [key]: null }, REAL[1]] }, before = JSON.stringify(saved);
+      const normalized = ctx.normalize(saved, base);
+      assert.equal(normalized.locs[0][key], null); assert.equal(JSON.stringify(saved), before);
+      ctx.S = normalized; const p = ctx.appProfile(); assert.equal(p.generic, true); assert.equal(p.commuteOk, false);
+    }
+  });
+  test('anciens réglages : coordonnées absentes et champs facultatifs gardent leur repli historique', () => {
+    const saved = { locs: [{ id: null }, REAL[1]], cars: [{ ...car(), tire: { ...car().tire, brand: null } }], work: work() };
+    const normalized = ctx.normalize(saved, base);
+    assert.deepEqual(plain(normalized.locs[0]), REAL[0]); assert.equal(normalized.cars[0].tire.brand, 'Marque test');
+    assert.equal(normalized.work.to, 'work');
+  });
+  // Exécuter les vrais rendus avec un verdict favorable : l'aperçu doit l'emporter sur ce verdict.
+  const els = Object.fromEntries(['#secSeason', '#secDays'].map(id => [id, { innerHTML: '', querySelector: () => null }]));
+  Object.assign(ctx, { $: id => els[id], document: { activeElement: null }, MOUNT_FORM: null,
+    UI: { view: 'analyse' }, esc: String, f0: String, f1: String, fmtDay: String, pad: String,
+    DAYN: ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'], TYPE_LABEL: { summer: 'été' },
+    LV: [{ name: 'GO', emoji: '🟢' }], hasTires: () => true, icon: () => '', wx: () => '', dayDiff: () => 0,
+    dayInfosOne: () => 0, carProfile: c => ctx.appProfile().car(c) });
+  vm.runInContext(app.match(/^const genericNote = .*$/m)[0] + '\n'
+    + app.slice(app.indexOf('function renderDays()'), app.indexOf('function dayInfosOne('))
+    + app.slice(app.indexOf('function renderSeason()'), app.indexOf('/* ---------- journal de saison ---------- */')), ctx);
+  const renderForecasts = locked => {
+    ctx.LOCKED = () => locked;
+    const c = car(), day = { date: '2026-10-10', tmin: 13, tmax: 18, level: 0 };
+    ctx.S = { locs: REAL, customs: [], work: work(), cars: [c] };
+    ctx.CX = { m: { nowStr: '2026-10-10T08:00', days: [day] }, cars: [{ car: c,
+      season: { level: 0, title: 'Pneus été encore adaptés', text: 'Aucune période froide', days: [day] } }] };
+    ctx.renderSeason(); ctx.renderDays();
+    return { season: els['#secSeason'].innerHTML, days: els['#secDays'].innerHTML };
+  };
+  test('saison et prévisions verrouillées : températures conservées, aucun GO ni couleur favorable', () => {
+    const r = renderForecasts(true);
+    assert.match(r.season, /APERÇU GÉNÉRIQUE/); assert.match(r.season, /13°/);
+    assert.doesNotMatch(r.season, /\bGO\b|Pneus été encore adaptés|class="(?:cell|season) lv0/);
+    assert.match(r.days, /Citadine : aperçu générique/); assert.doesNotMatch(r.days, /\bGO\b|class="pip lv0/);
+  });
+  test('saison et prévisions configurées : conseils, GO et couleurs rétablis', () => {
+    const r = renderForecasts(false);
+    assert.match(r.season, /Pneus été encore adaptés/); assert.match(r.season, /class="cell lv0/);
+    assert.match(r.season, /maximum 18 degrés · GO/); assert.doesNotMatch(r.season, /APERÇU GÉNÉRIQUE/);
+    assert.match(r.days, /class="pip lv0/); assert.match(r.days, /Citadine : GO/);
+  });
+  const leg = { k: 'go', dep: '2026-10-10T09:00', arr: '2026-10-10T09:30', km: 25, min: 30, fromKind: 'home' };
+  Object.assign(ctx, { calendarTripKey: () => 'test', liveNow: () => '2026-10-10T08:00', tripCancelButton: () => '',
+    returnHomeButtonForTrip: () => '', legNavTo: () => null, wazeBtn: () => 'Waze', cdSpan: () => '', visTxt: String,
+    frostBand: () => null, trendHtml: () => '', trendOf: () => null, snapOf: () => null,
+    effLegs: () => [leg] });
+  vm.runInContext(app.slice(app.indexOf('function legHtml('), app.indexOf('const calendarHasDeclaredPlace')), ctx);
+  const renderAgenda = locked => {
+    renderForecasts(locked);
+    const c = ctx.S.cars[0]; ctx.legEval = () => ({ worst: 0, res: [{ c, w: { level: 0, score: 100 } }],
+      sum: { TrMin: 12, Tmin: 13, Pmax: 0, visMin: 10000 }, seq: [] });
+    return ctx.legHtml(leg);
+  };
+  test('Agenda verrouillé : planning et météo conservés, aucun GO personnel', () => {
+    const r = renderAgenda(true);
+    assert.match(r, /aperçu générique/i); assert.match(r, /25 km · 30 min/); assert.match(r, /12 °C/);
+    assert.doesNotMatch(r, /\bGO\b|\b100\b|class="leg lv0/);
+  });
+  test('Agenda configuré : conclusions favorables rétablies', () => {
+    const r = renderAgenda(false);
+    assert.match(r, /🟢 GO 100/);
+  });
   return count;
 }
 module.exports = { runTests, sourcePath };
 if (require.main === module) {
   const original = fs.readFileSync(sourcePath, 'utf8'), count = runTests(original);
   const mutations = [
-    { name: 'lieux d’exemple ignorés', from: 'const generic = !!o.locked || ex.length > 0;', to: 'const generic = !!o.locked;' },
+    { name: 'lieux d’exemple ignorés', from: 'const generic = !!o.locked || ex.length > 0 || missing;', to: 'const generic = !!o.locked || missing;' },
     { name: 'monte facultative', from: 'return { generic: generic || !monteKnown(x), gaps: g };', to: 'return { generic, gaps: g };' },
     { name: 'vitesse impossible tolérée', from: 'ok = kmh <= MAX_KMH', to: 'ok = true' },
     { name: 'verrouillage ignoré', from: 'const generic = !!o.locked ||', to: 'const generic = false ||' },
-    { name: 'champ facultatif exigé (dimension)', from: "!!(car && car.tire && txt(car.tire.brand) && txt(car.tire.model))", to: "!!(car && car.tire && txt(car.tire.brand) && txt(car.tire.model) && txt(car.tire.size))" }
+    { name: 'champ facultatif exigé (dimension)', from: "!!(car && car.tire && txt(car.tire.brand) && txt(car.tire.model))", to: "!!(car && car.tire && txt(car.tire.brand) && txt(car.tire.model) && txt(car.tire.size))" },
+    { name: 'lieux incomplets autorisant un conseil', from: '|| ex.length > 0 || missing;', to: '|| ex.length > 0;' },
+    { name: 'origine explicite introuvable remplacée', from: 'w.from ? byId(w.from) : locs[0] || null', to: 'byId(w.from) || locs[0] || null' },
+    { name: 'coordonnées hors limites acceptées', from: '&& Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180', to: '' }
   ];
   for (const m of mutations) {
     assert(original.includes(m.from), 'Mutation introuvable : ' + m.name);
@@ -69,5 +167,17 @@ if (require.main === module) {
     assert(rejection && rejection.scenario, 'La mutation doit être rejetée : ' + m.name);
     console.log('✅ Contre-test rejeté : ' + m.name + ' → ' + rejection.scenario);
   }
-  console.log(`${count}/${count} scénarios OK · ${mutations.length}/${mutations.length} régressions rejetées`);
+  const app = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8'), viewMutations = [
+    { name: 'saison ignorant le profil', from: 'gen = pf.generic;\n    const di = s.days', to: 'gen = false;\n    const di = s.days' },
+    { name: 'prévisions ignorant le profil', from: 'gen = carProfile(c.car).generic, di =', to: 'gen = false, di =' },
+    { name: 'Agenda ignorant le profil', from: 'gen = (r.res || []).some(x => carProfile(x.c).generic)', to: 'gen = false' },
+    { name: 'coordonnées effacées rétablies au chargement', from: "if (p && p[k] === null) l[k] = null;", to: '' }
+  ];
+  for (const m of viewMutations) {
+    assert(app.includes(m.from), 'Mutation de vue introuvable : ' + m.name);
+    let rejection; try { runTests(original, { quiet: true, appSource: app.replace(m.from, m.to) }); } catch (e) { rejection = e; }
+    assert(rejection && rejection.scenario, 'La mutation de vue doit être rejetée : ' + m.name);
+    console.log('✅ Contre-test rejeté : ' + m.name + ' → ' + rejection.scenario);
+  }
+  console.log(`${count}/${count} scénarios OK · ${mutations.length + viewMutations.length}/${mutations.length + viewMutations.length} régressions rejetées`);
 }

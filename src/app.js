@@ -45,7 +45,12 @@ function deepMerge(d, s) {
 }
 function normalize(saved, base) {
   const S = deepMerge(base, saved ? { ...saved, locs: undefined, cars: undefined, customs: undefined } : null);
-  if (saved && Array.isArray(saved.locs)) S.locs = base.locs.map((d, i) => deepMerge(d, saved.locs[i]));
+  if (saved && Array.isArray(saved.locs)) S.locs = base.locs.map((d, i) => {
+    const p = saved.locs[i], l = deepMerge(d, p);
+    // Une coordonnée effacée est un choix ; seuls les champs absents reprennent le préréglage.
+    for (const k of ['lat', 'lon']) if (p && p[k] === null) l[k] = null;
+    return l;
+  });
   if (saved && Array.isArray(saved.cars)) S.cars = base.cars.map((d, i) => deepMerge(d, saved.cars[i]));
   S.customs = saved && Array.isArray(saved.customs) ? saved.customs : clone(base.customs);
   S.calOrigins = CalendarOrigin.clean(saved && saved.calOrigins);
@@ -779,7 +784,7 @@ function icon(code) {
 const verdictHtml = (l, sm) => `<div class="verdict lv${l}${sm ? ' sm' : ''}"><span class="em">${LV[l].emoji}</span><span>${LV[l].label}</span></div>`;
 // Profil générique (audit A06) : tant que les lieux et la monte ne sont pas renseignés (ou appareil verrouillé), les conclusions
 // sont un APERÇU : jamais GO ni un score /100 présenté comme un conseil personnel. Seuls les paramètres nécessaires comptent.
-const PROFILE = () => ProfileCheck.check({ locked: LOCKED(), locs: S.locs, work: S.work });
+const PROFILE = () => ProfileCheck.check({ locked: LOCKED(), locs: calendarPlaces(), work: S.work });
 const carProfile = car => PROFILE().car(car);
 // variante compacte, dans le bloc de verdict lui-même (le verdict reste visible sans défilement sur iPhone)
 const genericLine = gaps => `<p class="wx-hl generic-note" data-k="generic">🧪 <b>Aperçu générique — configure tes lieux et ta monte</b> · ${gaps.map(g => esc(g.text)).join(' · ')} <button class="btn sm" data-act="goset-cfg">Configurer</button></p>`;
@@ -2877,7 +2882,7 @@ function legHtml(leg, ev) {
   const homeAction = trip ? returnHomeButtonForTrip(trip) : '';
   const cancel = action || homeAction ? `<div class="cal-v">${action}${homeAction}</div>` : '';
   if (leg.originPending) return `<div class="leg lvx"><div class="leg-h"><b>${leg.k === 'go' ? 'ALLER' : 'RETOUR'}</b></div><p class="sub" role="status">${leg.originRecalc ? '📍 Départ confirmé : ' + esc(leg.originName) + ' · nouvel itinéraire et météo en cours de calcul' : 'Origine à confirmer après annulation du trajet précédent'}</p>${cancel}</div>`;
-  const r = legEval(leg), go = leg.k === 'go';
+  const r = legEval(leg), go = leg.k === 'go', gen = (r.res || []).some(x => carProfile(x.c).generic);
   const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${leg.dep.slice(11, 16)}</b> → ${leg.arr.slice(11, 16)} · ${f0(leg.km)} km · ${leg.min} min${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''} · ${cdSpan(leg.dep)}</div>
     <div class="leg-src">${leg.routed ? '<i class="tag prev">🛣 route · OSRM</i>' : '<i class="tag est">≈ route estimée</i>'}</div>
     <div class="leg-o">${go ? (leg.fromKind === 'prev' ? '↪ depuis ' + esc(leg.from.label || 'le rendez-vous précédent') + (leg.chosen ? ' (enchaînement choisi)' : ' (rendez-vous précédent)') : leg.fromKind === 'home' ? '🏠 depuis le domicile' : '📍 depuis ' + esc(leg.from.city || leg.from.label || 'le lieu connu')) : '🏠 vers le domicile'}</div>`;
@@ -2896,19 +2901,19 @@ function legHtml(leg, ev) {
     const fb = frostBand(r.sum.TrMin), c = r.crit;
     let crit = '';
     if (c && c.q.f > 0 && c.q.f < 1 && (c.lv >= 1 || c.fog || c.ice >= 1 || (c.x.Tr != null && c.x.Tr < 2) || (c.x.P || 0) >= 1)) {
-      const why = c.fog ? 'visibilité ' + visTxt(c.x.vis) : c.ice >= 1 ? 'verglas ' + ICE_LV[c.ice].toLowerCase() : (c.x.P || 0) >= 1 ? 'pluie ' + f1(c.x.P) + ' mm/h' : c.lv >= 1 ? LV[c.lv].name : 'chaussée ' + f1(c.x.Tr) + ' °C';
+      const why = c.fog ? 'visibilité ' + visTxt(c.x.vis) : c.ice >= 1 ? 'verglas ' + ICE_LV[c.ice].toLowerCase() : (c.x.P || 0) >= 1 ? 'pluie ' + f1(c.x.P) + ' mm/h' : c.lv >= 1 ? (gen ? 'conditions à surveiller' : LV[c.lv].name) : 'chaussée ' + f1(c.x.Tr) + ' °C';
       const k = r.seq.indexOf(c.q), a = r.seq[Math.max(0, k - 1)], b = r.seq[Math.min(r.seq.length - 1, k + 1)];
       const nm = q => q && q.name ? q.name : q ? 'km ' + Math.round(q.km != null ? q.km : q.f * leg.km) : '';
       const seg = c.q.name && a.name && b.name && a.name !== b.name ? `${esc(a.name)} → ${esc(b.name)}` : `vers ${esc(nm(c.q))}`;
       crit = `<div class="leg-c lv${Math.max(1, c.lv)}">⚠️ Tronçon critique : <b>${seg}</b> · ${a.t.slice(11, 16)}–${b.t.slice(11, 16)} · ${esc(why)}${c.q.km != null ? ` <span class="muted">(km ${f0(c.q.km)})</span>` : ''}</div>`;
     }
-    body = `<div class="cal-v"><span class="pill lv${r.worst}">${LV[r.worst].emoji} ${LV[r.worst].name}${r.res[0] ? ' ' + r.res[0].w.score : ''}</span>${nav}</div>
+    body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : r.worst}">${gen ? '🧪 Aperçu générique' : LV[r.worst].emoji + ' ' + LV[r.worst].name + (r.res[0] ? ' ' + r.res[0].w.score : '')}</span>${nav}</div>
       <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
-      ${ev ? trendHtml(trendOf(calendarTripKey(ev, leg), leg.dep, snapOf(r.res, r.sum, r.seq))) : ''}
+      ${ev && !gen ? trendHtml(trendOf(calendarTripKey(ev, leg), leg.dep, snapOf(r.res, r.sum, r.seq))) : ''}
       ${crit}${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
-      ${r.res.length > 1 ? `<span class="sub">${r.res.map(x => `${esc(x.c.short)} : ${LV[x.w.level].name} ${x.w.score}`).join(' · ')}</span>` : ''}`;
+      ${r.res.length > 1 ? `<span class="sub">${r.res.map(x => `${esc(x.c.short)} : ${carProfile(x.c).generic ? 'aperçu générique' : LV[x.w.level].name + ' ' + x.w.score}`).join(' · ')}</span>` : ''}`;
   }
-  return `<div class="leg lv${r.worst != null ? r.worst : 'x'}">${head}${body}${cancel}</div>`;
+  return `<div class="leg lv${!gen && r.worst != null ? r.worst : 'x'}">${head}${body}${cancel}</div>`;
 }
 // résumé de la journée : nombre de déplacements, kilomètres, trajet à surveiller
 function daySummary(evs, now) {
@@ -2976,12 +2981,12 @@ function renderCal() {
         ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}`;
     }
     else {
-      const fb = frostBand(tr.sum.TrMin), lvw = tr.worst;
-      body = `<div class="cal-v"><span class="pill lv${lvw}">${LV[lvw].emoji} ${LV[lvw].name}${tr.res[0] ? ' ' + tr.res[0].w.score : ''}</span>
+      const fb = frostBand(tr.sum.TrMin), lvw = tr.worst, gen = tr.res.some(r => carProfile(r.c).generic);
+      body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : lvw}">${gen ? '🧪 Aperçu générique' : LV[lvw].emoji + ' ' + LV[lvw].name + (tr.res[0] ? ' ' + tr.res[0].w.score : '')}</span>
         <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span>${wazeBtn(e)}</div>
         <div class="cal-k"><span>Route <b>${f1(tr.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(tr.sum.Tmin)} °C</b></span><span>Pluie <b>${(tr.sum.Pmax || 0) >= 0.1 ? f1(tr.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(tr.sum.visMin)}</b></span></div>
         ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
-        ${tr.res.length > 1 ? `<span class="sub">${tr.res.map(r => `${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}`).join(' · ')}</span>` : ''}`;
+        ${tr.res.length > 1 ? `<span class="sub">${tr.res.map(r => `${esc(r.c.short)} : ${carProfile(r.c).generic ? 'aperçu générique' : LV[r.w.level].name + ' ' + r.w.score}`).join(' · ')}</span>` : ''}`;
     }
     return `<div class="cal-e" data-event-id="${esc(e.id || '')}"><div class="cal-h"><span class="cal-d">${dateLabel(e)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(calendarEventPlace(e, calendarPlaces())?.name || e.label || e.loc || 'Lieu inconnu')}</span></div>${body}</div>`;
   }).join('');
@@ -3434,7 +3439,7 @@ function renderDays() {
   const ds = m.days.filter(d => dayDiff(today, d.date) >= 0).slice(0, 7);
   const gmin = Math.min(...ds.map(d => d.tmin ?? 99), 0) - 1, gmax = Math.max(...ds.map(d => d.tmax ?? -99), 7) + 1, X = v => ((v - gmin) / (gmax - gmin) * 100).toFixed(1);
   const rows = ds.map(d => {
-    const dt = new Date(d.date + 'T12:00:00Z'), pips = CX.cars.filter(c => hasTires(c.car)).map(c => { const di = dayInfosOne(m, c.car, d.date); return `<i class="pip lv${di == null ? 'x' : di}" title="${esc(c.car.short)} : ${di == null ? '—' : LV[di].name}"></i>`; }).join('');
+    const dt = new Date(d.date + 'T12:00:00Z'), pips = CX.cars.filter(c => hasTires(c.car)).map(c => { const gen = carProfile(c.car).generic, di = dayInfosOne(m, c.car, d.date); return `<i class="pip lv${gen || di == null ? 'x' : di}" title="${esc(c.car.short)} : ${gen ? 'aperçu générique' : di == null ? '—' : LV[di].name}"></i>`; }).join('');
     return `<div class="dayrow"><div class="dn">${dayDiff(today, d.date) === 0 ? 'auj.' : DAYN[dt.getUTCDay()]}<b>${pad(dt.getUTCDate())}/${pad(dt.getUTCMonth() + 1)}</b></div>${icon(d.code)}
       <div class="rng" title="${esc(wx(d.code))}"><div class="track"></div><div class="m0" style="left:${X(0)}%"></div><div class="m7" style="left:${X(7)}%"></div>
         <div class="fill" style="left:${X(d.tmin ?? 0)}%;width:${Math.max(2, X(d.tmax ?? 0) - X(d.tmin ?? 0))}%"></div></div>
@@ -3461,10 +3466,10 @@ function renderSeason() {
   // Une actualisation météo ne doit pas interrompre la saisie de la confirmation.
   if (MOUNT_FORM && document.activeElement && document.activeElement.matches('#secSeason input[data-mount-field]')) return;
   const el = $('#secSeason'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
-  const cards = CX.cars.filter(c => c.season).map(({ car, season: s }) => { const ci = S.cars.indexOf(car);
+  const cards = CX.cars.filter(c => c.season).map(({ car, season: s }) => { const ci = S.cars.indexOf(car), pf = carProfile(car), gen = pf.generic;
     const di = s.days.slice(0, 14);
-    const cells = days => days.map(d => { const dt = new Date(d.date + 'T12:00:00Z'), label = d.level == null ? 'Données insuffisantes' : LV[d.level].name;
-      return `<div class="cell lv${d.level == null ? 'x' : d.level}" role="img" aria-label="${fmtDay(d.date)} · minimum ${f0(d.tmin)} degrés, maximum ${f0(d.tmax)} degrés · ${label}" title="${fmtDay(d.date)} · ${label}"><b>${DAYN[dt.getUTCDay()]}${pad(dt.getUTCDate())}</b><span class="lo">${f0(d.tmin)}°</span>/<span class="hi">${f0(d.tmax)}°</span></div>`; }).join('');
+    const cells = days => days.map(d => { const dt = new Date(d.date + 'T12:00:00Z'), label = gen ? 'Aperçu générique' : d.level == null ? 'Données insuffisantes' : LV[d.level].name;
+      return `<div class="cell lv${gen || d.level == null ? 'x' : d.level}" role="img" aria-label="${fmtDay(d.date)} · minimum ${f0(d.tmin)} degrés, maximum ${f0(d.tmax)} degrés · ${label}" title="${fmtDay(d.date)} · ${label}"><b>${DAYN[dt.getUTCDay()]}${pad(dt.getUTCDate())}</b><span class="lo">${f0(d.tmin)}°</span>/<span class="hi">${f0(d.tmax)}°</span></div>`; }).join('');
     const cal = `<div class="season-week"><div class="sub">Jours 1 à 7 · prévisions min / max</div><div class="cal">${cells(di.slice(0, 7))}</div></div>${di.length > 7 ? `<div class="season-week trend"><div class="sub">Jours 8 à 14 · tendance plus incertaine</div><div class="cal">${cells(di.slice(7))}</div></div>` : ''}`;
     let cd = '';
     if (car.plan && car.plan.on && car.tire.type !== 'winter') {
@@ -3506,10 +3511,10 @@ function renderSeason() {
         <div class="chips"><button class="btn" data-act="mount-open" data-car="${esc(car.id)}"${DEMO.on ? ' disabled' : ''}>Montage effectué</button></div>${mountDraft(car)}</div>`;
       if (s.coldBefore) cd += `<div class="note lv3"><b>ALERTE</b><span>Période froide ${s.coldBefore.severe ? 'avec conditions hivernales' : '(≥ 2 nuits à 2 °C ou moins)'} prévue dès le ${fmtDay(s.coldBefore.first.date)}, avant ${s.countdown.kind === 'confirmed' ? 'le rendez-vous confirmé' : 'le montage estimé'} du ${fmtDay(s.countdown.date)}.${s.coldBefore.partial ? ' La météo disponible ne couvre pas toute la période restante.' : ''}</span></div>`;
     }
-    return `<div class="season lv${s.level}"><h3>${esc(car.name)} · pneus ${TYPE_LABEL[car.tire.type]}</h3>
-      <div class="stat"><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div>${cd}
+    return `<div class="season lv${gen ? 'x' : s.level}"><h3>${esc(car.name)} · pneus ${TYPE_LABEL[car.tire.type]}</h3>
+      ${gen ? genericNote(pf.gaps) : `<div class="stat"><b>${esc(s.title)}</b><span>${esc(s.text)}</span></div>`}${cd}
       ${car.tire.type === 'winter' && car.tire.mounted ? `<p class="sub" role="status">Montage enregistré : ${esc(fmtDay(car.tire.mounted))}${Number.isFinite(car.tire.mountKm) ? ' · compteur ' + car.tire.mountKm.toLocaleString('fr-FR') + ' km' : ''}</p>` : ''}
-      ${cal}<div class="season-legend" aria-label="Légende des verdicts pneus">${[['lv0', 'Adapté'], ['lv1', 'Vigilance'], ['lv2', 'Risque élevé'], ['lv3', 'Déconseillé'], ['lvx', 'Données insuffisantes']].map(([lv, text]) => `<span class="${lv}"><i aria-hidden="true"></i>${text}</span>`).join('')}</div></div>`;
+      ${cal}<div class="season-legend" aria-label="Légende des verdicts pneus">${(gen ? [['lvx', 'Aperçu générique']] : [['lv0', 'Adapté'], ['lv1', 'Vigilance'], ['lv2', 'Risque élevé'], ['lv3', 'Déconseillé'], ['lvx', 'Données insuffisantes']]).map(([lv, text]) => `<span class="${lv}"><i aria-hidden="true"></i>${text}</span>`).join('')}</div></div>`;
   }).join('');
   const form = el.querySelector('.mount-form');
   el.innerHTML = `<div class="mod-h"><h2>🍂 Saison pneus</h2><span class="src">prévisions + suivi du montage</span></div><div class="grid2">${cards}</div>

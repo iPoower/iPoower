@@ -13,11 +13,11 @@
 
 | PR | État actuel et décision d'audit |
 | --- | --- |
-| #86 | Brouillon. Préparation des protections reprise et renforcée par #91. Aucun besoin de rejouer ses modifications. |
-| #87 | Brouillon. Ses quatre fichiers corrigés sont identiques à `main`, après reprise par #91. Obsolète. |
+| #86 | Fermée sans fusion après audit. Préparation des protections reprise et renforcée par #91. Aucun besoin de rejouer ses modifications. |
+| #87 | Fermée sans fusion après audit. Ses quatre fichiers corrigés sont identiques à `main`, après reprise par #91. Obsolète. |
 | #88 | Fusionnée : coffre et profil générique. Ne pas réintroduire la branche. |
 | #89 | Fusionnée : optimisations et profilage. Ne pas réintroduire la branche. |
-| #90 | Brouillon de diagnostic. Doublons de champs corrigés par #91, vérifiés plus strictement par `e2e67`; navigation/layout couverts aussi par `e2e49`, `e2e39` et `e2e65`. |
+| #90 | Brouillon de diagnostic fermé sans fusion après audit. Doublons de champs corrigés par #91, vérifiés plus strictement par `e2e67`; navigation/layout couverts aussi par `e2e49`, `e2e39` et `e2e65`. |
 | #91 | Fusionnée : contrôles, adresses, incidents météo, confirmations et préparation des protections. |
 | #92 | Fusionnée : origine par occurrence Agenda, routes, reconnectivité, sauvegardes. |
 | #93 | Fermée sans fusion : doublon explicite de #92. Ne pas combiner ses modèles de persistance. |
