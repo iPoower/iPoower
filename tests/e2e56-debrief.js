@@ -114,7 +114,7 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
         assert(v.journal.quietUntil);
       });
     } finally { await manual.c.close(); }
-    const duplicate = await setup(b, 'iphone');
+    const duplicate = await setup(b, 'iphone', '2026-10-03T14:00:00+02:00');
     try {
       await tap(duplicate, '#secBrf [data-act=trip-start]');
       // Le briefing met à disposition « Bien arrivé » après progression réelle du temps simulé.
