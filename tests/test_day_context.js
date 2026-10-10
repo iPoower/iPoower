@@ -25,6 +25,11 @@ check('E1 avant arrivée la destination reste confirmée', () => assert.equal(D.
 check('E2 arrivée plus récente termine la destination', () => assert.equal(D.clean({ nextDestination: choice('b'), arrivedAt: now + 1000 }, now + 1000, places, cars).nextDestination, null));
 check('E3 expiration exacte à 04 h Paris', () => { assert(D.clean({ nextDestination: choice('b') }, t('2026-10-07T03:59:59'), places, cars).nextDestination); assert.equal(D.clean({ nextDestination: choice('b') }, t('2026-10-07T04:00:00'), places, cars).nextDestination, null); });
 check('expiry Paris prend en compte changement heure', () => assert.equal(D.expiry(Date.parse('2026-10-24T17:30:00+02:00')), Date.parse('2026-10-25T04:00:00+01:00')));
+check('pause de débrief : vrai minuit Paris même au changement d’heure', () => {
+  assert.equal(D.endOfDay(Date.parse('2026-10-10T18:00:00+02:00')), Date.parse('2026-10-11T00:00:00+02:00'));
+  assert.equal(D.endOfDay(Date.parse('2026-10-24T18:00:00+02:00')), Date.parse('2026-10-25T00:00:00+02:00'));
+  assert.equal(D.endOfDay(Date.parse('2026-10-25T18:00:00+01:00')), Date.parse('2026-10-26T00:00:00+01:00'));
+});
 check('destination expirée retourne au planning PRÉVU', () => { const x = D.destination({ nextDestination: choice('b') }, places[0], t('2026-10-07T04:00:00'), places); assert.equal(x.place.id, 'home'); assert.equal(x.source, 'planned'); });
 check('destination Autre conserve À CONFIRMER sans fallback Maison', () => { const x = D.destination({ nextDestination: choice(null) }, places[0], now, places); assert.equal(x.place, null); assert.equal(x.source, 'pending'); });
 check('lieu supprimé ne laisse aucune destination fantôme', () => assert.equal(D.clean({ nextDestination: choice('gone') }, now, places, cars).nextDestination, null));

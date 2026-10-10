@@ -51,7 +51,9 @@ const Debrief = (() => {
     rows.slice(0, LIMIT * 2).map(x => entry(x, now)).filter(Boolean).sort((a, b) => b.at - a.at).forEach(e => {
       if (!seen.has(e.key) && entries.length < LIMIT) { seen.add(e.key); entries.push(e); }
     });
-    return { active: start(v && v.active, now), entries };
+    // Silence facultatif, uniquement jusqu'à la fin d'une journée locale ; aucune suppression d'historique.
+    const quietUntil = obj(v) && Number.isFinite(v.quietUntil) && v.quietUntil > now && v.quietUntil <= now + 48 * 3600e3 ? v.quietUntil : null;
+    return { active: start(v && v.active, now), entries, quietUntil };
   }
   function begin(v, value, now = Date.now()) {
     const state = clean(v, now), s = start(value, now);
@@ -80,6 +82,22 @@ const Debrief = (() => {
     if (e && !e.feedback) e.deferred = true;
     return state;
   }
+  function snooze(v, until, now = Date.now()) {
+    const state = clean(v, now);
+    if (Number.isFinite(until) && until > now && until <= now + 48 * 3600e3) state.quietUntil = until;
+    return state;
+  }
+  // Diagnostic seulement : des clés différentes ne justifient jamais d'effacer un trajet réel.
+  function possibleDuplicates(v, now = Date.now()) {
+    const rows = clean(v, now).entries, suspect = new Set();
+    for (let i = 0; i < rows.length; i++) for (let j = i + 1; j < rows.length; j++) {
+      const a = rows[i], b = rows[j];
+      if (Math.abs(a.at - b.at) > 20 * 60e3 || !a.name || !a.from || !a.to ||
+        a.name !== b.name || a.from !== b.from || a.to !== b.to) continue;
+      suspect.add(a.key); suspect.add(b.key);
+    }
+    return [...suspect];
+  }
   function undo(v, tripKey, now = Date.now()) {
     const state = clean(v, now); state.entries = state.entries.filter(e => e.key !== tripKey);
     if (state.active && state.active.key === tripKey) state.active = null;
@@ -102,5 +120,5 @@ const Debrief = (() => {
     return { total: entries.length, answered: entries.filter(e => e.feedback).length,
       comparable: counts.match + counts.missed + counts.unused + counts.mixed, counts };
   }
-  return { LIMIT, RETENTION, CONDITIONS, LABELS, thermal, clean, begin, close, reply, defer, undo, compare, stats };
+  return { LIMIT, RETENTION, CONDITIONS, LABELS, thermal, clean, begin, close, reply, defer, snooze, possibleDuplicates, undo, compare, stats };
 })();

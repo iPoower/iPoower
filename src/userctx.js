@@ -16,6 +16,7 @@ const DayContext = (() => {
     return instant;
   }
   function expiry(at) { return parisAt(nextDate(date(at))); }
+  function endOfDay(at) { return parisAt(nextDate(date(at)), '00:00'); }
   function tripExpiry(dep, at) {
     const day = local(dep) ? dep.slice(0, 10) : date(at), exp = parisAt(nextDate(day));
     return Math.min(exp, at + 370 * 86400000);
@@ -98,7 +99,7 @@ const DayContext = (() => {
     // ne pilotent aucune vue. Les trajets ultérieurs restent des prévisions.
     return [chosen, ...trips.filter(t => t.key !== chosen.key && (!chosen.arr || !t.dep || t.dep >= chosen.arr))];
   }
-  return { date, expiry, tripExpiry, cleanPoint, clean, morningOrigin, destination, returnLeg, rebaseAgendaOrigin, workOn, occasion, prioritize };
+  return { date, expiry, endOfDay, tripExpiry, cleanPoint, clean, morningOrigin, destination, returnLeg, rebaseAgendaOrigin, workOn, occasion, prioritize };
 })();
 function userContextStore({ read, write, now = () => Date.now() }) {
   const key = 'twrc.context.v1', listeners = new Set();

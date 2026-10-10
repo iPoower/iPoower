@@ -6,7 +6,10 @@ let n = 0, stage = '';
 async function check(label, fn) { stage = label; await fn(); n++; console.log('✅ ' + label); }
 const state = p => p.evaluate(() => ({ phase: LIVE.phase, key: LIVE.key, start: USER_STORE.state.tripStart,
   journal: USER_STORE.state.debrief, stored: JSON.parse(localStorage.getItem(USER_STORE.key)), end: TRIPEND }));
-const tap = async (s, selector) => { stage = s.dev + ' · clic ' + selector; const button = s.p.locator(selector).first(); if (s.dev === 'iphone') await button.tap(); else await button.click(); await s.settle(2); };
+const tap = async (s, selector) => { stage = s.dev + ' · clic ' + selector; const button = s.p.locator(selector).first();
+  try { if (s.dev === 'iphone') await button.tap({ timeout: 12000 }); else await button.click({ timeout: 12000 }); await s.settle(2); }
+  catch (e) { throw new Error(stage + ' : ' + e.message); }
+};
 const tab = (s, view) => tap(s, '#viewSeg [data-act=view][data-v=' + view + ']');
 async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
   const s = await session(b, { dev, at }); s.dev = dev;
@@ -55,6 +58,7 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
         await s.p.reload(); await s.settle(12);
         await check(dev + ' · reload après débrief : observation et prévision d’origine conservées', async () => {
           const v = await state(s.p); assert.deepEqual(v.journal.entries[0].start, frozen); assert.deepEqual(v.journal.entries[0].feedback.conditions, ['fog']);
+          assert.equal(await s.p.locator('#secDebrief .debrief-form').count(), 0, 'aucun questionnaire rouvert au chargement');
         });
         await check(dev + ' · callback d’arrivée répété : aucune nouvelle entrée ni observation perdue', async () => {
           await s.p.evaluate(key => closeTrip({ key, name: 'callback tardif' }, 'auto'), key);
@@ -72,6 +76,10 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
         await check(dev + ' · arrivée après coup et Plus tard : aucune durée ni prévision inventées', async () => {
           const v = await state(s.p); assert.equal(v.journal.entries.length, 1); assert.equal(v.journal.entries[0].start, null); assert.equal(v.journal.entries[0].feedback, null);
           assert.equal(v.journal.entries[0].deferred, true); assert.equal(await s.p.locator('#secDebrief [data-act=debrief-save]').count(), 0);
+          await s.p.reload(); await s.settle(6);
+          assert.equal(await s.p.locator('#secDebrief .debrief-form').count(), 0, 'Plus tard ne rouvre pas un ancien débrief');
+          const j = s.p.locator('#secDebrief .debrief-journal');
+          if (await j.getAttribute('open') == null) await tap(s, '#secDebrief .debrief-journal > summary');
         });
         s.p.once('dialog', d => d.accept()); await tap(s, '#secDebrief [data-act=debrief-clear]');
         await check(dev + ' · effacement explicite : journal supprimé après reload', async () => { await s.p.reload(); await s.settle(8); assert.equal((await state(s.p)).journal.entries.length, 0); });
@@ -89,7 +97,44 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
       await tap(manual, '#secBrf [data-act=trip-start]'); await manual.p.clock.fastForward(12 * 60e3); await manual.settle(4);
       await tap(manual, '#secBrf [data-act=trip-arrived]');
       await check('Bien arrivé · même clôture et même demande de débrief', async () => { const v = await state(manual.p); assert.equal(v.journal.entries.length, 1); assert.equal(v.journal.entries[0].how, 'confirmé'); assert(v.journal.entries[0].start); });
+      await tap(manual, '#secDebrief [data-act=debrief-snooze]');
+      await check('iPhone · ne plus demander aujourd’hui masque le formulaire sans perdre le journal', async () => {
+        const v = await state(manual.p);
+        assert(v.journal.quietUntil > Date.now() || v.journal.quietUntil > v.journal.entries[0].at);
+        assert.equal(v.journal.entries.length, 1); assert.equal(v.journal.entries[0].feedback, null);
+        assert.equal(await manual.p.locator('#secDebrief .debrief-form').count(), 0);
+      });
+      await manual.p.reload(); await manual.settle(10);
+      await check('iPhone · après rechargement et nouveau trajet, silence quotidien conservé', async () => {
+        assert.equal(await manual.p.locator('#secDebrief .debrief-form').count(), 0);
+        await manual.p.evaluate(() => closeTrip({ key: 'trajet-deux', name: 'Autre trajet', from: 'A', to: 'B' }, 'confirmé'));
+        const v = await state(manual.p);
+        assert.equal(v.journal.entries.length, 2);
+        assert.equal(await manual.p.locator('#secDebrief .debrief-form').count(), 0);
+        assert(v.journal.quietUntil);
+      });
     } finally { await manual.c.close(); }
+    const duplicate = await setup(b, 'iphone', '2026-10-03T14:00:00+02:00');
+    try {
+      await tap(duplicate, '#secBrf [data-act=trip-start]');
+      // Le briefing met à disposition « Bien arrivé » après progression réelle du temps simulé.
+      await duplicate.p.clock.fastForward(12 * 60e3); await duplicate.settle(4);
+      await tap(duplicate, '#secBrf [data-act=trip-arrived]');
+      await tap(duplicate, '#secDebrief [data-act=debrief-condition][data-v=normal]');
+      await tap(duplicate, '#secDebrief [data-act=debrief-save]');
+      await duplicate.p.evaluate(() => {
+        const old = USER_STORE.state.debrief.entries[0];
+        closeTrip({ key: old.key + '|autre-id', name: old.name, from: old.from, to: old.to }, 'confirmé');
+      });
+      await duplicate.settle(4);
+      await check('iPhone · second ID probable doublon : entrée conservée mais aucun second questionnaire', async () => {
+        const v = await state(duplicate.p);
+        assert.equal(v.journal.entries.length, 2);
+        assert.equal(v.journal.entries.filter(e => !!e.feedback).length, 1);
+        assert.equal(await duplicate.p.locator('#secDebrief .debrief-form').count(), 0);
+        assert((await duplicate.p.locator('#secDebrief').innerText()).includes('Doublon possible'));
+      });
+    } finally { await duplicate.c.close(); }
     const cancel = await setup(b, 'iphone');
     try {
       await tap(cancel, '#secBrf [data-act=trip-start]'); cancel.p.once('dialog', d => d.accept()); await tap(cancel, '#secBrf [data-act=trip-cancel]');
