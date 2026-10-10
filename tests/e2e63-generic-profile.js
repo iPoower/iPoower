@@ -197,6 +197,14 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
             const text = document.querySelector('#diagBox') && document.querySelector('#diagBox').textContent;
             return text && text.includes('build ca9e1845f7cf') && text.includes('prod-81') && text.includes('À JOUR');
           }, null, { timeout: 45000 });
+          // Une liste vide ne prouve pas l'accessibilité des prévisions : attendre les données réelles.
+          await publicPage.waitForFunction(() => {
+            const dt = [...document.querySelectorAll('#diagBox dt')].find(el => el.textContent === 'Météo du lieu affiché');
+            const status = dt && dt.nextElementSibling.textContent;
+            const places = [...document.querySelectorAll('#diagBox dt')].find(el => el.textContent === 'Lieux avec météo');
+            return status && status.includes('FRESH') && status.includes('LIVE') && places && places.nextElementSibling.textContent === '2/2'
+              && document.querySelectorAll('#secSeason .cell').length > 0;
+          }, null, { timeout: 45000 });
           const state = await publicPage.evaluate(() => {
             const rows = {};
             document.querySelectorAll('#diagBox dt').forEach(el => { rows[el.textContent] = el.nextElementSibling.textContent; });
@@ -214,7 +222,10 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
           assert.match(state.rows['Erreurs runtime'], /^0 depuis le démarrage/);
           assert.equal(state.unlockEmpty, true); assert.equal(state.generic, true);
           assert.deepEqual(state.duplicateIds, []); assert(state.width <= state.viewport, JSON.stringify({ width: state.width, viewport: state.viewport }));
+          assert(state.seasonLabels.length > 0, 'Des prévisions réelles doivent être présentes pour contrôler leurs libellés');
           assert(state.seasonLabels.every(text => /Aperçu générique/.test(text)));
+          assert.match(state.rows['Météo du lieu affiché'], /^FRESH.*LIVE/);
+          assert.equal(state.rows['Lieux avec météo'], '2/2');
           assert.deepEqual(publicErrors, []);
           await publicPage.getByRole('heading', { name: '🩺 Diagnostic', exact: true }).scrollIntoViewIfNeeded();
           const filename = 'place-public-prod81-' + publicBrowser + '-' + publicDevice;
