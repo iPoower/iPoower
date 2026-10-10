@@ -35,7 +35,15 @@ function prepare() {
   fs.writeFileSync(path.join(CI, 'fake/.passphrase'), APP_KEY_TEST); fs.writeFileSync(path.join(CI, 'fake/.rc_key'), RC_KEY_TEST);
   const buildStart = Date.now(), build = spawnSync(process.execPath, [path.join(ROOT, 'tools/build.js')], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, RC_PRIVATE: '.ci/fake', RC_OUT: '.ci/dist', RC_ENCRYPTED: '.ci/enc' } });
   const buildMs = Date.now() - buildStart;
-  if (build.status !== 0) throw new Error('Build fictif en échec (aucune sortie privée affichée)');
+  if (build.status !== 0) {
+    // Diagnostic temporaire PR : ici, clés et données entièrement FICTIVES.
+    // Ne jamais publier les contenus : uniquement l'identifiant de l'erreur de Node et le chemin source.
+    const stderr = String(build.stderr || ''), stdout = String(build.stdout || '');
+    const kind = /(ENOENT|EACCES|SyntaxError|ReferenceError|TypeError|RangeError|ERR_[A-Z_]+|code applicatif|Bloc applicatif|configuration)/.exec(stderr);
+    const file = /(?:src|tools)\/[a-z/.-]+\.js/.exec(stderr);
+    console.error('Diagnostic build fictif :', kind ? kind[0] : 'autre', file ? file[0] : 'sans chemin', 'scanner=' + /problème\(s\)|❌/.test(stdout));
+    throw new Error('Build fictif en échec (aucune sortie privée affichée)');
+  }
   for (const f of fs.readdirSync(path.join(CI, 'dist'))) copy('.ci/dist/' + f, 'prepared/w/site/' + f);
   for (const f of ['engine.js', 'demo.js', 'relay.js']) copy('src/' + f, 'prepared/w/' + f);
   copy('tests/fixtures/preset.fake.json', 'prepared/w/preset.json');
