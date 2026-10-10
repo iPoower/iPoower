@@ -95,8 +95,20 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
   await check(dev+' · refresh conserve adresse, heure, véhicule et source manuelle',async()=>{const x=await state(p);assert.equal(x.n.tripKey,key);assert.equal(x.n.dep,'2026-10-07T17:30');assert.equal(x.car,carB);assert.equal(x.n.destinationPoint.address,'29 Rue Jean Jaurès 80610 Saint-Ouen');assert.equal(x.context.dayContext.nextDestination.source,'manual');});
   await s.c.setOffline(true);await p.evaluate(()=>{CANCELROUTEGEN++;CANCELROUTES.clear();rebuild();renderAll();});await s.settle(2);
   await check(dev+' · offline : contexte et dernière route connue restent disponibles',async()=>{const x=await state(p);assert.equal(x.n.tripKey,key);assert(x.route&&x.route.cached);assert(x.route.km>0);assert.match(await p.locator('#secTrip').innerText(),/Hors connexion · dernière route connue/);});
-  await s.c.setOffline(false);await tap(p,dev,'#secTrip [data-act=trip-plan-cancel]');
-  await check(dev+' · annulation rend la priorité au planning sans perdre le lieu Travail',async()=>{const x=await state(p);assert.equal(x.n,null);assert.equal(x.status,'work');assert(!(await p.evaluate(k=>APP_CONTEXT.trips.some(t=>t.key===k),key)));});
+  await s.c.setOffline(false);
+  if(dev==='pc'){
+   await s.settle(2);
+   await check('pc · annulation pendant une actualisation et une coupure réseau',async()=>{
+    const button=p.locator('#secTrip [data-act=trip-plan-cancel]'),before=await button.boundingBox();
+    await p.mouse.move(before.x+before.width/2,before.y+before.height/2);await p.mouse.down();
+    await s.c.setOffline(true);await p.evaluate(()=>renderTripView());
+    const after=await button.boundingBox();
+    await p.mouse.move(after.x+after.width/2,after.y+after.height/2);await p.mouse.up();
+    const x=await state(p);assert.equal(x.n,null,'annulation perdue après actualisation : source='+x.n?.source+' · état='+x.status);
+   });
+   await s.c.setOffline(false);
+  }else await tap(p,dev,'#secTrip [data-act=trip-plan-cancel]');
+  await check(dev+' · annulation rend la priorité au planning sans perdre le lieu Travail',async()=>{const x=await state(p);assert.equal(x.n,null,'annulation non appliquée : source='+x.n?.source);assert.equal(x.status,'work','lieu après annulation : '+x.status);assert(!(await p.evaluate(k=>APP_CONTEXT.trips.some(t=>t.key===k),key)));});
   ctl.setGeoFail(true);await p.fill('#tripDestQ','Adresse impossible ZXCV');await tap(p,dev,'#secTrip [data-act=trip-dest-search]');await s.settle(2);
   // trois fournisseurs interrogés l'un après l'autre ; le dernier (Open-Meteo) passe par la file météo, rythmée par des timers :
   // l'horloge simulée doit avancer pendant l'attente (sinon la réponse n'arrive jamais : échec intermittent sur PC)
