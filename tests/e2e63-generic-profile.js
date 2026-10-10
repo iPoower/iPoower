@@ -147,6 +147,80 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
       });
       await s.c.close();
     }
+
+    // QA post-publication uniquement : contextes vierges, profil générique public, aucun code saisi.
+    // Cette branche de vérification n'est pas une correction destinée à main.
+    const pubFs = require('node:fs'), pubPath = require('node:path'), pubHttps = require('node:https'), pubCrypto = require('node:crypto');
+    const publicBase = 'https://ipoower.github.io/iPoower/race-control/';
+    const expectedPublic = { run: 81, sha: 'eaeab94c200d66d3ed487df5abdd29d1d417651c', build: 'ca9e1845f7cf',
+      htmlSha256: '8540327e6288e355c7df2025aa6f11171fb4b93931b86ba572193001f630ac34' };
+    const publicGet = url => new Promise((resolve, reject) => {
+      const request = pubHttps.get(url, { headers: { 'Cache-Control': 'no-cache' } }, response => {
+        if (response.statusCode !== 200) { response.resume(); reject(new Error('Public HTTP ' + response.statusCode)); return; }
+        const chunks = []; response.on('data', x => chunks.push(x)); response.on('error', reject);
+        response.on('end', () => { clearTimeout(deadline); resolve(Buffer.concat(chunks)); });
+      });
+      const deadline = setTimeout(() => request.destroy(new Error('Public HTTP timeout')), 25000);
+      request.on('error', error => { clearTimeout(deadline); reject(error); });
+    });
+    let publicVersion, publicHash;
+    await check('prod-81 publique : métadonnées exactes et HTML identique au build publié', async () => {
+      const [versionBody, htmlBody] = await Promise.all([
+        publicGet(publicBase + 'version.json?qa=' + Date.now()),
+        publicGet(publicBase + 'index.html?qa=' + Date.now())
+      ]);
+      publicVersion = JSON.parse(versionBody.toString('utf8'));
+      publicHash = pubCrypto.createHash('sha256').update(htmlBody).digest('hex');
+      assert.equal(publicVersion.run, expectedPublic.run); assert.equal(publicVersion.sha, expectedPublic.sha);
+      assert.equal(publicVersion.build, expectedPublic.build); assert.equal(publicHash, expectedPublic.htmlSha256);
+      assert.match(htmlBody.toString('utf8'), /window\.TWRC_BUILD\s*=\s*["']ca9e1845f7cf["']/);
+    });
+    const publicBrowser = process.env.BROWSER || 'chromium';
+    const publicOut = pubPath.resolve(__dirname, '..', '.ci', 'work', 'public-prod81-' + publicBrowser, 'out');
+    pubFs.mkdirSync(publicOut, { recursive: true });
+    for (const publicDevice of ['iphone', 'pc']) {
+      await check('prod-81 publique · ' + publicDevice + ' : diagnostic, navigation, générique et capture anonyme', async () => {
+        const publicContext = await b.newContext({ viewport: publicDevice === 'iphone' ? { width: 414, height: 896 } : { width: 1366, height: 900 },
+          isMobile: publicDevice === 'iphone', hasTouch: publicDevice === 'iphone', locale: 'fr-FR', timezoneId: 'Europe/Paris' });
+        const publicPage = await publicContext.newPage(), publicErrors = [];
+        publicPage.on('pageerror', error => publicErrors.push(error.name));
+        try {
+          await publicPage.goto(publicBase, { waitUntil: 'domcontentloaded', timeout: 60000 });
+          await publicPage.getByRole('button', { name: 'Analyse', exact: true }).click();
+          await publicPage.getByRole('link', { name: 'Réglages', exact: true }).click();
+          await publicPage.locator('#diagBox').waitFor({ state: 'visible', timeout: 45000 });
+          await publicPage.waitForFunction(() => {
+            const text = document.querySelector('#diagBox') && document.querySelector('#diagBox').textContent;
+            return text && text.includes('build ca9e1845f7cf') && text.includes('prod-81') && text.includes('À JOUR');
+          }, null, { timeout: 45000 });
+          const state = await publicPage.evaluate(() => {
+            const rows = {};
+            document.querySelectorAll('#diagBox dt').forEach(el => { rows[el.textContent] = el.nextElementSibling.textContent; });
+            const ids = [...document.querySelectorAll('[id]')].map(el => el.id);
+            return { rows, duplicateIds: ids.filter((id, index) => ids.indexOf(id) !== index),
+              viewport: innerWidth, width: document.documentElement.scrollWidth,
+              unlockEmpty: document.querySelector('#unlockPw').value === '',
+              generic: document.body.textContent.includes('appareil verrouillé'),
+              seasonLabels: [...document.querySelectorAll('#secSeason .cell')].map(el => el.getAttribute('aria-label')) };
+          });
+          assert.match(state.rows['Application chargée'], /build ca9e1845f7cf/);
+          assert.match(state.rows['Version publiée'], /prod-81.*eaeab94/);
+          assert.match(state.rows['Cohérence production'], /À JOUR/);
+          assert.match(state.rows['Agenda'], /verrouillé.*déverrouille/i);
+          assert.match(state.rows['Erreurs runtime'], /^0 depuis le démarrage/);
+          assert.equal(state.unlockEmpty, true); assert.equal(state.generic, true);
+          assert.deepEqual(state.duplicateIds, []); assert(state.width <= state.viewport, JSON.stringify({ width: state.width, viewport: state.viewport }));
+          assert(state.seasonLabels.every(text => /Aperçu générique/.test(text)));
+          assert.deepEqual(publicErrors, []);
+          await publicPage.getByRole('heading', { name: '🩺 Diagnostic', exact: true }).scrollIntoViewIfNeeded();
+          const filename = 'place-public-prod81-' + publicBrowser + '-' + publicDevice;
+          await publicPage.screenshot({ path: pubPath.join(publicOut, filename + '.png'), fullPage: false });
+          pubFs.writeFileSync(pubPath.join(publicOut, filename + '.json'), JSON.stringify({ expectedPublic, publicVersion, publicHash,
+            browser: publicBrowser, device: publicDevice, state, errors: publicErrors }, null, 2));
+        } finally { await publicContext.close(); }
+      });
+    }
+
     await check('aucune erreur JavaScript', async () => assert.deepEqual(errors, [], errors.join(' | ')));
     console.log(n + '/' + n + ' scénarios OK');
   } finally { await b.close(); }
