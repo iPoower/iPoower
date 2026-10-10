@@ -99,7 +99,7 @@ function renderTripView() {
     : `<div class="trip-route-state old"><b>${route.offline ? 'Hors connexion' : 'Calcul en cours'}</b><span>${route.offline ? 'Départ, destination, véhicule et horaire sont conservés. La route sera recalculée au retour du réseau.' : 'OSRM et la météo de route se préparent.'}</span></div>` : '';
   const selectedDest = dest ? `<div class="trip-selected"><b>✓ ${esc(dest.name)}</b><span>${esc(dest.address || dest.sub || '')}</span>${dest.provider ? `<small>${esc(dest.provider)}${dest.precision ? ' · ' + esc(dest.precision) : ''}</small>` : ''}</div>` : '';
   const dep = tripDepartureValue(), immediate = TRIP_FORM.when === 'now';
-  el.innerHTML = `<div class="mod-h"><h2>🧭 TRAJET</h2><span class="src obs">contexte partagé Race Control</span></div>
+  const html = `<div class="mod-h"><h2>🧭 TRAJET</h2><span class="src obs">contexte partagé Race Control</span></div>
     <div class="trip-form">
       <div class="trip-field"><span class="trip-label">Départ</span><div class="trip-origin-head"><b>${origin ? esc(origin.name) : 'Origine à choisir'}</b><span>${TRIP_FORM.originMode === rec.mode ? 'proposé par le contexte' : 'choisi'}</span></div>
         <label class="sr-only" for="tripOriginSel">Modifier le départ</label><select id="tripOriginSel" data-trip-field="origin">${opts.map(([v,t]) => `<option value="${esc(v)}" ${TRIP_FORM.originMode === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
@@ -118,6 +118,15 @@ function renderTripView() {
       <div class="trip-actions"><button class="btn pri trip-main" data-act="trip-plan">${immediate ? 'DÉMARRER LE TRAJET' : existing ? 'METTRE À JOUR LE TRAJET' : 'PROGRAMMER LE TRAJET'}</button>
       ${existing ? '<button class="btn" data-act="trip-plan-cancel">Annuler le trajet</button>' : ''}</div>
     </div>`;
+  // Les mises à jour de la route ne doivent pas détacher les commandes pendant un appui,
+  // ni remplacer les champs lorsqu'aucune valeur du formulaire n'a changé.
+  const controlsHTML = html.replace(routeLine, '');
+  if (el._tripControlsHTML === controlsHTML && el.querySelector('.trip-form')) {
+    const previous = el.querySelector('.trip-route-state');
+    if (previous) { if (previous.outerHTML !== routeLine) previous.outerHTML = routeLine; }
+    else if (routeLine) el.querySelector('.trip-actions').insertAdjacentHTML('beforebegin', routeLine);
+  } else el.innerHTML = html;
+  el._tripControlsHTML = controlsHTML;
 }
 function renderTripSummary() {
   const el = $('#secTripSummary'); if (!el) return;
