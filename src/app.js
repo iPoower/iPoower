@@ -3772,6 +3772,7 @@ document.addEventListener('click', async e => {
   else if (a === 'debrief-grip') debriefPick('grip', t.dataset.v);
   else if (a === 'debrief-save') debriefSave();
   else if (a === 'debrief-later') debriefLater();
+  else if (a === 'debrief-snooze') debriefSnooze();
   else if (a === 'debrief-open') debriefOpen(t.dataset.key);
   else if (a === 'debrief-clear') debriefClear();
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
