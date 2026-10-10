@@ -66,7 +66,7 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.ref }}
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 20
       - name: Aucune donnée personnelle dans le dépôt
@@ -93,7 +93,7 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.ref }}
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 20
           cache: npm
@@ -106,7 +106,7 @@ jobs:
       - name: Unitaires, contre-tests et préparation fictive unique
         run: node tests/run-ci.js --lane unit
       - name: Build et agenda fictifs partagés (aucune clé dans cet artifact)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-fixtures
           path: .ci/prepared/
@@ -116,7 +116,7 @@ jobs:
           retention-days: 1
       - name: Rapport unitaire et durées (aucune sortie brute)
         if: always() && !cancelled()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-results-unit
           path: .ci/results/report-unit.json
@@ -142,7 +142,7 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.ref }}
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 20
           cache: npm
@@ -171,7 +171,7 @@ jobs:
         run: node tests/run-ci.js --lane browser --shard ${{ matrix.shard }}/3 --reuse
       - name: Rapport du shard et durées (aucune sortie brute)
         if: always() && !cancelled()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-results-${{ matrix.browser }}-${{ matrix.shard }}
           path: .ci/results/report-*.json
@@ -180,7 +180,7 @@ jobs:
           retention-days: 14
       - name: Captures du lieu compact (fixtures fictives uniquement)
         if: always() && !cancelled()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: place-qa-${{ matrix.browser }}-${{ matrix.shard }}
           path: |
@@ -208,7 +208,7 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.ref }}
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 20
           cache: npm
@@ -238,7 +238,7 @@ jobs:
         with:
           ref: ${{ needs.version.outputs.ref }}
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 20
       - name: Relais de bout en bout (données fictives, sans aucun secret)
@@ -263,7 +263,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 20
       - name: Tous les contrôles requis doivent être verts
@@ -297,7 +297,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.version.outputs.ref }}
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 20
       - name: Build de production (réglages déjà chiffrés, aucun secret)

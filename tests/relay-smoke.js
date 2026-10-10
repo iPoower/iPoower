@@ -37,6 +37,12 @@ fs.appendFileSync(path.join(H, 'mock_tt.js'), `
 const fetchForGeoCheck = global.fetch, geoRequests = [];
 global.fetch = (u, o) => {
   const url = String(u);
+  if (url.includes('api.open-meteo.com/v1/forecast')) {
+    if (process.env.SCN === 'http-failure') return Promise.resolve({ ok: false, status: 503 });
+    if (process.env.SCN === 'network-failure') return Promise.reject(new Error('PRIVATE_NETWORK_DETAIL ' + url));
+    if (process.env.SCN === 'json-failure') return Promise.resolve({ ok: true, status: 200,
+      json: async () => { throw new SyntaxError('PRIVATE_JSON_DETAIL ' + url); } });
+  }
   if (process.env.DENSE_CALENDAR === '1' && url.includes('calendar.google')) return Promise.resolve({ ok: true, status: 200,
     text: async () => fs.readFileSync(path.join(__dirname, 'dense-calendar.ics'), 'utf8') });
   if (url.includes('geocodage/search') || url.includes('geocoding-api')) geoRequests.push(url);
@@ -67,6 +73,24 @@ check('alerte du matin envoyée (jour de trajet, brouillard)', morningPushes(a.o
   check('mode fantôme v2 : verdict brouillard enregistré (niveaux seuls, aucun lieu), notification inchangée', !!v2 && v2.fog >= 2 && keys === 'at,contra,fog,trust,v1fog' && a.obs.morning.v2max >= 2 && morningPushes(a.out) === 1 && /Fantôme v2 : brouillard/.test(a.out), JSON.stringify(v2)); }
 const inv = run('2026-10-05T05:50:00+02:00', 'invalide');
 check('prévision invalide : erreur visible dans obs.json, jamais « sans alerte » silencieux', inv.code === 0 && !!inv.obs && /prévision invalide/.test(inv.obs.relay.err || '') && morningPushes(inv.out) === 0 && !/Conditions sans alerte/.test(inv.out), inv.obs && inv.obs.relay.err);
+// Les logs GitHub et obs.json sont publics : une panne ne doit révéler ni URL de trajet ni extrait du fournisseur.
+for (const scenario of ['http-failure', 'network-failure', 'json-failure']) {
+  fs.rmSync(path.join(H, 'obs.json'), { force: true });
+  const failure = run('2026-10-05T05:50:00+02:00', scenario);
+  const publicOutput = failure.out + JSON.stringify(failure.obs);
+  check(scenario + ' : erreur visible, aucune notification ni faux verdict sans alerte', failure.code === 0 &&
+    !!failure.obs?.relay?.err && morningPushes(failure.out) === 0 && !/Conditions sans alerte/.test(failure.out));
+  check(scenario + ' : aucun paramètre privé ni erreur brute dans les logs et observations',
+    !/latitude=|longitude=|PRIVATE_NETWORK_DETAIL|PRIVATE_JSON_DETAIL/.test(publicOutput) &&
+    !publicOutput.includes(APP_KEY_TEST) && !publicOutput.includes(RC_KEY_TEST));
+  check(scenario + ' : fournisseur et type de panne restent diagnostiquables',
+    /api\.open-meteo\.com/.test(failure.obs?.relay?.err || '') &&
+    (scenario === 'http-failure' ? /503/.test(failure.obs.relay.err) : scenario === 'json-failure' ? /JSON/.test(failure.obs.relay.err) : /réseau|délai/i.test(failure.obs.relay.err)));
+}
+fs.rmSync(path.join(H, 'obs.json'), { force: true });
+const recovery = run('2026-10-05T05:35:00+02:00', 'fog');
+check('retour du fournisseur après panne : alerte normale rétablie une seule fois', recovery.code === 0 &&
+  morningPushes(recovery.out) === 1 && recovery.obs?.morning?.sent === 1 && !recovery.obs?.relay?.err);
 const calS = readJ(path.join(H, 'calendar.sealed.json')), cal = tryUnseal(calS, APP_KEY_TEST);
 const legs = cal ? cal.events.flatMap(e => e.legs || []) : [];
 check('agenda chiffré lisible avec APP_KEY, tracés présents', legs.length > 0 && legs.every(l => Array.isArray(l.g) && l.g.length > 1), `${legs.length} trajets`);
