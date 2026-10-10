@@ -7,7 +7,7 @@ const ProfileCheck = (() => {
   // lieux d'exemple du réglage neutre (BASE) : Paris et Lille, jamais un domicile réel présumé
   const EXAMPLE = [[48.8566, 2.3522], [50.6292, 3.0573]];
   const ROAD = 1.25, MAX_KMH = 130;   // détour routier moyen sur la distance à vol d'oiseau ; moyenne au-delà = planning impossible
-  const has = l => !!l && Number.isFinite(l.lat) && Number.isFinite(l.lon);
+  const has = l => !!l && Number.isFinite(l.lat) && Number.isFinite(l.lon) && Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180;
   const isExample = l => has(l) && EXAMPLE.some(([a, o]) => Math.abs(l.lat - a) < 1e-3 && Math.abs(l.lon - o) < 1e-3);
   const txt = v => typeof v === 'string' ? v.trim() : '';
   function km(a, b) {
@@ -27,20 +27,22 @@ const ProfileCheck = (() => {
   function check(input) {
     const o = input || {}, locs = Array.isArray(o.locs) ? o.locs : [], w = o.work || {};
     const byId = id => locs.find(l => l && l.id === id) || null;
-    const from = byId(w.from) || locs[0] || null, to = byId(w.to) || locs[1] || null;
+    const from = w.from ? byId(w.from) : locs[0] || null, to = w.to ? byId(w.to) : locs[1] || null;
     const gaps = [];
     if (o.locked) gaps.push({ id: 'locked', text: 'appareil verrouillé : réglages personnels non chargés' });
     const ex = [from, to].filter(isExample);
     if (ex.length) gaps.push({ id: 'places', text: ex.length > 1 ? 'domicile et travail sont les lieux d’exemple' : `${ex[0] === from ? 'domicile' : 'travail'} : lieu d’exemple` });
+    const missing = !has(from) || !has(to);
+    if (missing) gaps.push({ id: 'places', text: 'lieux du trajet incomplets : coordonnées du départ et de l’arrivée à renseigner' });
     const c = commute(from, to, w.durMin, o.roadKm);
     if (c && !c.ok) gaps.push({ id: 'commute', text: c.why });
-    const generic = !!o.locked || ex.length > 0;
+    const generic = !!o.locked || ex.length > 0 || missing;
     const car = x => {
       const g = gaps.filter(z => z.id !== 'commute');
       if (!monteKnown(x)) g.push({ id: 'monte', text: `${txt(x && (x.short || x.name)) || 'voiture'} : marque et modèle des pneus montés à renseigner` });
       return { generic: generic || !monteKnown(x), gaps: g };
     };
-    return { generic, gaps, commute: c, commuteOk: !c || c.ok, car };
+    return { generic, gaps, commute: c, commuteOk: !!c && c.ok, car };
   }
   return { check, commute, monteKnown, isExample, EXAMPLE, MAX_KMH };
 })();

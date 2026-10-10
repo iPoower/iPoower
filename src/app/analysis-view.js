@@ -78,7 +78,10 @@ function tripLab(t, car) {
 }
 // ligne du briefing : état de la gomme au départ → à l'arrivée (ou maintenant, en roulage), plage °C, fenêtre atteinte ou non
 function briefThermalHtml(t, car) {
-  if (workCommuteBad(t)) return `<div class="frost lv1 brf-gum" data-k="gum"><b>🌡️ Gomme · estimation suspendue</b><span>${esc(cap1(PROFILE().commute.why))} : corrige la durée dans Réglages → Trajet avant toute estimation de chauffe.</span></div>`;
+  if (workCommuteBad(t)) {
+    const p = PROFILE(), why = p.commute ? p.commute.why : 'lieux du trajet incomplets';
+    return `<div class="frost lv1 brf-gum" data-k="gum"><b>🌡️ Gomme · estimation suspendue</b><span>${esc(cap1(why))} : ${p.commute ? 'corrige la durée dans Réglages → Trajet' : 'renseigne les coordonnées dans Réglages → Lieux'} avant toute estimation de chauffe.</span></div>`;
+  }
   const r = tripLab(t, car), rows = r && r.trip && r.trip.rows;
   if (!rows || !rows.length) return '';
   const rg = x => `${String(x[0]).replace('-', '−')}–${String(x[1]).replace('-', '−')} °C`, low = x => esc(TL_LEVEL_TXT[x.s] || String(x.state || '').toLowerCase());
