@@ -8,10 +8,11 @@ async function reveal(p, selector) {
   const parents = p.locator(selector).locator('xpath=ancestor::details[not(@open)]');
   while (await parents.count()) await parents.first().locator(':scope > summary').click();
 }
-async function reading(p, s, km, mm) {
+async function reading(p, s, km, mm, { axle = 'both', estimated = false } = {}) {
   await reveal(p, '#odo-0'); await p.fill('#odo-0', String(km));
   await p.locator('#settings [data-act=odo][data-i="0"]').click(); await s.settle(1);
   await reveal(p, '#trd-0'); await p.fill('#trd-0', String(mm));
+  await p.selectOption('#trdax-0', axle); await p.selectOption('#trdest-0', estimated ? '1' : '0');
   await p.locator('#settings [data-act=tread-add][data-i="0"]').click(); await s.settle(1);
 }
 const values = p => p.evaluate(() => ({ rate: tyreStateOf(S.cars[0]).tread.rate, card: wearInfo(S.cars[0]), text: wearLine(S.cars[0]) }));
@@ -46,6 +47,46 @@ const values = p => p.evaluate(() => ({ rate: tyreStateOf(S.cars[0]).tread.rate,
         assert(await p.locator('#secLab').isVisible());
       });
       await s.c.close();
+      const q = await session(b, { at: '2026-10-10T15:00:00+02:00', dev }), pp = q.p;
+      await pp.evaluate(() => {
+        const c = S.cars[0]; c.odo = [{ d: '2026-09-01', km: 20000 }];
+        Object.assign(c.tire, { brand: 'Marque test', model: 'Modèle test', tread: 6.4, treadAv: null, treadAr: null, treadEst: 0, treads: [] });
+        saveSettings(); rebuild(); renderAll();
+      });
+      await check(dev + ' · estimation avant puis mesure arrière : origine, jauge et confiance conservées', async () => {
+        await reading(pp, q, 21000, 2.3, { axle: 'av', estimated: true });
+        await reading(pp, q, 22000, 6.5, { axle: 'ar' });
+        const st = await pp.evaluate(() => tyreStateOf(S.cars[0]));
+        assert.equal(st.tread.est, true); assert.equal(st.tread.src, 'USER_ESTIMATED'); assert.equal(st.tread.worstAxle, 'av');
+        assert(st.maint.some(x => /jauge/.test(x.text)));
+        assert.equal(await pp.locator('#f-cars-0-tire-treadEst').inputValue(), '1');
+        await pp.locator('#viewSeg [data-act=view][data-v=pneus]').click();
+        assert.match(await pp.locator('#secCars .tirebox').first().innerText(), /estimée/);
+        await pp.locator('#viewSeg [data-act=view][data-v=analyse]').click();
+        const statePanel = pp.locator('#secLab details[data-k=state]');
+        if (!await statePanel.evaluate(el => el.open)) await statePanel.locator(':scope > summary').click();
+        assert(await statePanel.locator('.lab-sp').isVisible());
+        assert.match(await statePanel.locator('.lab-sp').innerText(), /estimée par vous \(pas mesurée à la jauge\)/);
+        const confidencePanel = pp.locator('#secLab details[data-k=conf]');
+        if (!await confidencePanel.evaluate(el => el.open)) await confidencePanel.locator(':scope > summary').click();
+        assert.match(await confidencePanel.innerText(), /Profondeur estimée par vous, pas mesurée à la jauge/);
+      });
+      await check(dev + ' · rechargement et hors ligne : l’estimation du bon essieu reste déclarée', async () => {
+        await pp.evaluate(() => window.TWRC_VAULT.flush()); await pp.reload(); await q.settle(8);
+        assert.equal(await pp.evaluate(() => tyreStateOf(S.cars[0]).tread.est), true);
+        await q.c.setOffline(true); await pp.evaluate(() => window.dispatchEvent(new Event('offline'))); await q.settle(2);
+        assert.equal(await pp.evaluate(() => tyreStateOf(S.cars[0]).tread.est), true);
+      });
+      await check(dev + ' · mesure des deux essieux : provenance mesurée rétablie, choix manuel conservé', async () => {
+        await reading(pp, q, 22000, 6.5);
+        assert.equal(await pp.evaluate(() => tyreStateOf(S.cars[0]).tread.est), false, 'une mesure AV + AR rétablit la provenance mesurée');
+        await pp.selectOption('#f-cars-0-tire-treadEst', '1'); await q.settle(1);
+        await reading(pp, q, 22000, 7, { axle: 'ar' });
+        assert.equal(await pp.evaluate(() => tyreStateOf(S.cars[0]).tread.est), true, 'le choix manuel Estimées des deux essieux doit survivre au relevé arrière');
+        await pp.selectOption('#f-cars-0-tire-treadEst', '0'); await q.settle(1);
+        assert.equal(await pp.evaluate(() => tyreStateOf(S.cars[0]).tread.est), false, 'le choix manuel Mesurées reste disponible');
+      });
+      await q.c.close();
     }
     await check('aucune exception JavaScript', async () => assert.deepEqual(errors, []));
     console.log(n + '/' + n + ' scénarios OK');

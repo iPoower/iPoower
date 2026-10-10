@@ -23,11 +23,19 @@ function treadAxles(t) {
   return { av, ar, worst, ax: av != null && ar != null && av !== ar ? (av < ar ? 'av' : 'ar') : av != null && ar == null ? 'av' : av == null ? 'ar' : null, split: true };
 }
 // saisie d'un essieu : l'autre garde l'ancienne profondeur commune s'il n'a jamais été saisi ; tread = essieu le plus usé
-function setTreadAxle(t, ax, mm) {
-  const legacy = treadAxles(t).split ? null : t.tread;
+function setTreadAxle(t, ax, mm, est) {
+  const before = treadAxles(t), legacy = before.split ? null : t.tread, priorEst = !!t.treadEst;
   if (ax === 'both') { t.treadAv = mm; t.treadAr = mm; }
   else { const k = ax === 'av' ? 'treadAv' : 'treadAr', o = ax === 'av' ? 'treadAr' : 'treadAv'; t[k] = mm; if (t[o] == null && legacy != null) t[o] = legacy; }
   const x = treadAxles(t); t.tread = x.split ? x.worst : (t.treadAv == null && t.treadAr == null ? null : t.tread);
+  if (typeof est === 'boolean') {
+    let keptEst = priorEst;
+    // L'autre essieu peut devenir le plus usé : reprendre sa provenance connue, sans changer ses relevés.
+    if (x.ax && x.ax !== ax && before.ax && before.ax !== x.ax) {
+      const last = treadHistory(t).last; if (last && last.mm === x.worst) keptEst = !!last.est;
+    }
+    t.treadEst = (ax === 'both' || x.ax === ax ? est : x.ax ? keptEst : est || keptEst) ? 1 : 0;
+  }
   return t;
 }
 // « AV 2,3 / AR 5,0 mm » quand les essieux diffèrent, sinon « 2,3 mm »
