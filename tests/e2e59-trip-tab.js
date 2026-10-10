@@ -82,6 +82,13 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
   await check(dev+' · départ proposé depuis le lieu Travail confirmé',async()=>assert.match(await p.locator('#secTrip').innerText(),/Travail test/));
   await staleSearch(p,dev,'destination',s.settle);
   await staleSearch(p,dev,'origin',s.settle);
+  await check(dev+' · adresse en cours de saisie : focus et sélection conservés après actualisation',async()=>{
+   const q='29 Rue Jean Jaurès, 80610 Saint-Ouen',input=p.locator('#tripDestQ');await input.fill(q);await input.press('Shift+ArrowLeft');
+   const before=await input.evaluate(el=>({start:el.selectionStart,end:el.selectionEnd,direction:el.selectionDirection}));
+   await p.evaluate(()=>renderTripView());
+   const after=await input.evaluate(el=>({start:el.selectionStart,end:el.selectionEnd,direction:el.selectionDirection,focused:el===document.activeElement,value:el.value}));
+   assert.equal(after.focused,true);assert.equal(after.value,q);assert.deepEqual({start:after.start,end:after.end,direction:after.direction},before);
+  });
   await search(p,dev,'29 Rue Jean Jaurès, 80610 Saint-Ouen');
   await check(dev+' · cas réel : adresse exacte fournie par IGN/BAN',async()=>{const t=await p.locator('#secTrip').innerText();assert.match(t,/29 Rue Jean Jaurès 80610 Saint-Ouen/);assert.match(t,/IGN\/BAN/);});
   const [carA,carB]=await p.evaluate(()=>S.cars.map(c=>c.id)); await later(p,dev,'17:15',carA);

@@ -125,7 +125,16 @@ function renderTripView() {
     const previous = el.querySelector('.trip-route-state');
     if (previous) { if (previous.outerHTML !== routeLine) previous.outerHTML = routeLine; }
     else if (routeLine) el.querySelector('.trip-actions').insertAdjacentHTML('beforebegin', routeLine);
-  } else el.innerHTML = html;
+  } else {
+    const active = document.activeElement;
+    const focus = active && el.contains(active) && active.id ? { id: active.id, start: active.selectionStart, end: active.selectionEnd, direction: active.selectionDirection } : null;
+    el.innerHTML = html;
+    const next = focus && document.getElementById(focus.id);
+    if (next && el.contains(next)) {
+      next.focus({ preventScroll: true });
+      if (Number.isInteger(focus.start) && typeof next.setSelectionRange === 'function') next.setSelectionRange(focus.start, focus.end, focus.direction || 'none');
+    }
+  }
   el._tripControlsHTML = controlsHTML;
 }
 function renderTripSummary() {

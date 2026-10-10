@@ -26,6 +26,8 @@ sur le planning, le lieu Travail, les trajets, la persistance et le mobile.
 Comparer le HTML dérivé des commandes du formulaire. Lorsqu'il est identique,
 conserver ces éléments et actualiser seulement le bloc d'état de l'itinéraire.
 Quand les valeurs du formulaire changent, conserver le rendu complet existant.
+Lorsqu'un champ est en cours de saisie, restaurer son focus et sa sélection après
+ce rendu complet. Le scénario E2E vérifie cette reprise sur PC et iPhone simulé.
 L'annulation retire toujours sa commande après changement du contexte.
 
 Le cache de rendu est une propriété éphémère de l'élément DOM. Il ne crée pas
@@ -37,6 +39,8 @@ Les libellés, la structure affichée et les mécanismes de calcul restent ident
 La reproduction DOM passe avec correction : mêmes boutons connectés,
 clic reçu, focus conservé et indication réseau actualisée ; aucun bouton
 d'annulation restant lorsque le trajet manuel a disparu.
+Une seconde reproduction vérifie le focus et une sélection arrière pendant
+la modification d'une adresse ; elle échoue sans la restauration du champ.
 Les 42 suites unitaires passent localement. Les matrices navigateur,
 la QA agenda, le profilage et la confidentialité doivent être verts sur
 le HEAD exact avant toute fusion.
