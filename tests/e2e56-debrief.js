@@ -55,6 +55,7 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
         await s.p.reload(); await s.settle(12);
         await check(dev + ' · reload après débrief : observation et prévision d’origine conservées', async () => {
           const v = await state(s.p); assert.deepEqual(v.journal.entries[0].start, frozen); assert.deepEqual(v.journal.entries[0].feedback.conditions, ['fog']);
+          assert.equal(await s.p.locator('#secDebrief .debrief-form').count(), 0, 'aucun questionnaire rouvert au chargement');
         });
         await check(dev + ' · callback d’arrivée répété : aucune nouvelle entrée ni observation perdue', async () => {
           await s.p.evaluate(key => closeTrip({ key, name: 'callback tardif' }, 'auto'), key);
@@ -72,6 +73,8 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
         await check(dev + ' · arrivée après coup et Plus tard : aucune durée ni prévision inventées', async () => {
           const v = await state(s.p); assert.equal(v.journal.entries.length, 1); assert.equal(v.journal.entries[0].start, null); assert.equal(v.journal.entries[0].feedback, null);
           assert.equal(v.journal.entries[0].deferred, true); assert.equal(await s.p.locator('#secDebrief [data-act=debrief-save]').count(), 0);
+          await s.p.reload(); await s.settle(6);
+          assert.equal(await s.p.locator('#secDebrief .debrief-form').count(), 0, 'Plus tard ne rouvre pas un ancien débrief');
         });
         s.p.once('dialog', d => d.accept()); await tap(s, '#secDebrief [data-act=debrief-clear]');
         await check(dev + ' · effacement explicite : journal supprimé après reload', async () => { await s.p.reload(); await s.settle(8); assert.equal((await state(s.p)).journal.entries.length, 0); });
@@ -89,6 +92,22 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
       await tap(manual, '#secBrf [data-act=trip-start]'); await manual.p.clock.fastForward(12 * 60e3); await manual.settle(4);
       await tap(manual, '#secBrf [data-act=trip-arrived]');
       await check('Bien arrivé · même clôture et même demande de débrief', async () => { const v = await state(manual.p); assert.equal(v.journal.entries.length, 1); assert.equal(v.journal.entries[0].how, 'confirmé'); assert(v.journal.entries[0].start); });
+      await tap(manual, '#secDebrief [data-act=debrief-snooze]');
+      await check('iPhone · ne plus demander aujourd’hui masque le formulaire sans perdre le journal', async () => {
+        const v = await state(manual.p);
+        assert(v.journal.quietUntil > Date.now() || v.journal.quietUntil > v.journal.entries[0].at);
+        assert.equal(v.journal.entries.length, 1); assert.equal(v.journal.entries[0].feedback, null);
+        assert.equal(await manual.p.locator('#secDebrief .debrief-form').count(), 0);
+      });
+      await manual.p.reload(); await manual.settle(10);
+      await check('iPhone · après rechargement et nouveau trajet, silence quotidien conservé', async () => {
+        assert.equal(await manual.p.locator('#secDebrief .debrief-form').count(), 0);
+        await manual.p.evaluate(() => closeTrip({ key: 'trajet-deux', name: 'Autre trajet', from: 'A', to: 'B' }, 'confirmé'));
+        const v = await state(manual.p);
+        assert.equal(v.journal.entries.length, 2);
+        assert.equal(await manual.p.locator('#secDebrief .debrief-form').count(), 0);
+        assert(v.journal.quietUntil);
+      });
     } finally { await manual.c.close(); }
     const cancel = await setup(b, 'iphone');
     try {
