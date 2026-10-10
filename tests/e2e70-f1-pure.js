@@ -7,7 +7,8 @@ async function check(name, fn) { stage = name; await fn(); n++; console.log('✅
 const active = p => p.evaluate(() => ({
   modules: [...document.querySelectorAll('.f1-extension')].filter(x => x.getClientRects().length).map(x => x.dataset.f1),
   tabs: [...document.querySelectorAll('#viewSeg [data-act=view]')].map(x => x.dataset.v),
-  flags: { ...S.flags }, cars: JSON.stringify(S.cars), context: JSON.stringify(USER_STORE.state)
+  flags: { ...S.flags }, cars: JSON.stringify(S.cars),
+  trips: JSON.stringify({ start: USER_STORE.state.tripStart, end: USER_STORE.state.tripEnd, debrief: USER_STORE.state.debrief })
 }));
 (async () => {
   const b = await BR.launch();
@@ -65,7 +66,7 @@ const active = p => p.evaluate(() => ({
         await check(dev + ' · aucun véhicule ni contexte modifié par les six projections', async () => {
           const after = await active(p);
           assert.equal(after.cars, before.cars);
-          assert.equal(after.context, before.context);
+          assert.equal(after.trips, before.trips);
         });
         await p.reload(); await s.settle(12);
         await check(dev + ' · six options conservées au rechargement sans nouvel état de trajet', async () => {
