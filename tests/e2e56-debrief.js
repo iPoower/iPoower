@@ -6,7 +6,10 @@ let n = 0, stage = '';
 async function check(label, fn) { stage = label; await fn(); n++; console.log('✅ ' + label); }
 const state = p => p.evaluate(() => ({ phase: LIVE.phase, key: LIVE.key, start: USER_STORE.state.tripStart,
   journal: USER_STORE.state.debrief, stored: JSON.parse(localStorage.getItem(USER_STORE.key)), end: TRIPEND }));
-const tap = async (s, selector) => { stage = s.dev + ' · clic ' + selector; const button = s.p.locator(selector).first(); if (s.dev === 'iphone') await button.tap(); else await button.click(); await s.settle(2); };
+const tap = async (s, selector) => { stage = s.dev + ' · clic ' + selector; const button = s.p.locator(selector).first();
+  try { if (s.dev === 'iphone') await button.tap({ timeout: 12000 }); else await button.click({ timeout: 12000 }); await s.settle(2); }
+  catch (e) { throw new Error(stage + ' : ' + e.message); }
+};
 const tab = (s, view) => tap(s, '#viewSeg [data-act=view][data-v=' + view + ']');
 async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
   const s = await session(b, { dev, at }); s.dev = dev;
