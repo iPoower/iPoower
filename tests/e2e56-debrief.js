@@ -78,6 +78,8 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
           assert.equal(v.journal.entries[0].deferred, true); assert.equal(await s.p.locator('#secDebrief [data-act=debrief-save]').count(), 0);
           await s.p.reload(); await s.settle(6);
           assert.equal(await s.p.locator('#secDebrief .debrief-form').count(), 0, 'Plus tard ne rouvre pas un ancien débrief');
+          const j = s.p.locator('#secDebrief .debrief-journal');
+          if (await j.getAttribute('open') == null) await tap(s, '#secDebrief .debrief-journal > summary');
         });
         s.p.once('dialog', d => d.accept()); await tap(s, '#secDebrief [data-act=debrief-clear]');
         await check(dev + ' · effacement explicite : journal supprimé après reload', async () => { await s.p.reload(); await s.settle(8); assert.equal((await state(s.p)).journal.entries.length, 0); });
