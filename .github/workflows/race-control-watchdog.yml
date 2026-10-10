@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.stale.outputs.due == '1'
         with:
-          node-version: 20
+          node-version: 24
       - name: Rattraper le relais
         if: steps.stale.outputs.due == '1'
         env:
