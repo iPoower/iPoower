@@ -178,9 +178,13 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
     const publicBrowser = process.env.BROWSER || 'chromium';
     const publicOut = pubPath.resolve(__dirname, '..', '.ci', 'work', 'public-prod81-' + publicBrowser, 'out');
     pubFs.mkdirSync(publicOut, { recursive: true });
+    // Le navigateur des fixtures est isolé par un proxy mort et un routeur d'abandon.
+    // Le contrôle public utilise un navigateur distinct ; l'isolation de toutes les fixtures reste intacte.
+    const publicLiveBrowser = await require('playwright')[publicBrowser].launch();
+    try {
     for (const publicDevice of ['iphone', 'pc']) {
       await check('prod-81 publique · ' + publicDevice + ' : diagnostic, navigation, générique et capture anonyme', async () => {
-        const publicContext = await b.newContext({ viewport: publicDevice === 'iphone' ? { width: 414, height: 896 } : { width: 1366, height: 900 },
+        const publicContext = await publicLiveBrowser.newContext({ viewport: publicDevice === 'iphone' ? { width: 414, height: 896 } : { width: 1366, height: 900 },
           isMobile: publicDevice === 'iphone', hasTouch: publicDevice === 'iphone', locale: 'fr-FR', timezoneId: 'Europe/Paris' });
         const publicPage = await publicContext.newPage(), publicErrors = [];
         publicPage.on('pageerror', error => publicErrors.push(error.name));
@@ -220,6 +224,8 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
         } finally { await publicContext.close(); }
       });
     }
+
+    } finally { await publicLiveBrowser.close(); }
 
     await check('aucune erreur JavaScript', async () => assert.deepEqual(errors, [], errors.join(' | ')));
     console.log(n + '/' + n + ' scénarios OK');
