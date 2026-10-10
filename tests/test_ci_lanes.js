@@ -34,5 +34,66 @@ try {
   check('lien dans un artifact refusé', () => { fs.symlinkSync(path.join(prep, 'w/engine.js'), path.join(prep, 'w/linked.js')); assert.throws(() => validatePrepared(prep), /non régulière/); fs.unlinkSync(path.join(prep, 'w/linked.js')); });
   check('fixture d’une autre version refusée', () => { const meta = JSON.parse(fs.readFileSync(path.join(prep, 'meta.json'))); meta.sourceHash = '0'.repeat(64); fs.writeFileSync(path.join(prep, 'meta.json'), JSON.stringify(meta)); assert.throws(() => validatePrepared(prep), /autre version/); });
 } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+// Exécuter la vraie fin de l'étape de publication avec un Git fictif : aucun dépôt ni réseau.
+const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/ci.yml'), 'utf8');
+const publishBlock = workflow.split('      - name: Publier sur gh-pages\n')[1].split('      - name: Étiquette de version')[0];
+const publishScript = publishBlock.split('        run: |\n')[1].split('\n').map(line => line.slice(10)).join('\n');
+const publishTail = publishScript.slice(publishScript.indexOf('git config user.name'));
+assert(publishScript.includes('git config user.name'), 'étape de publication introuvable');
+const deployTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-deploy-push-'));
+let caseNo = 0;
+try {
+  const bin = path.join(deployTemp, 'bin'); fs.mkdirSync(bin);
+  const fakeGit = [
+    "'use strict';",
+    "const fs = require('node:fs');",
+    "const stateFile = process.env.RC_DEPLOY_TEST_STATE, state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));",
+    "const args = process.argv.slice(2); state.calls.push(args);",
+    "const cmd = args[0]; if (cmd === 'push') state.pushes++;",
+    "fs.writeFileSync(stateFile, JSON.stringify(state));",
+    "process.exit(cmd === 'diff' ? (state.noChanges ? 0 : 1) : cmd === 'push' ? (state.pushes <= state.failPushes ? 1 : 0) : cmd === 'pull' && state.rebaseFail || cmd === 'commit' && state.commitFail ? 1 : 0);"
+  ].join('\n');
+  fs.writeFileSync(path.join(bin, 'git'), '#!' + process.execPath + '\n' + fakeGit + '\n', { mode: 0o700 });
+  fs.writeFileSync(path.join(bin, 'sleep'), '#!/bin/sh\nexit 0\n', { mode: 0o700 });
+  const runPublish = (options = {}) => {
+    const dir = path.join(deployTemp, String(++caseNo)); fs.mkdirSync(dir);
+    const stateFile = path.join(dir, 'state.json'), output = path.join(dir, 'output');
+    fs.writeFileSync(stateFile, JSON.stringify({ calls: [], pushes: 0, failPushes: 0, ...options }));
+    const run = spawnSync('bash', ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', publishTail], {
+      cwd: dir, encoding: 'utf8', timeout: 10000,
+      env: { ...process.env, PATH: bin + path.delimiter + process.env.PATH, MSG: 'publication fictive', GITHUB_OUTPUT: output, RC_DEPLOY_TEST_STATE: stateFile }
+    });
+    assert(!run.error, String(run.error));
+    return { ...JSON.parse(fs.readFileSync(stateFile, 'utf8')), status: run.status, stdout: run.stdout, output: fs.existsSync(output) ? fs.readFileSync(output, 'utf8') : '' };
+  };
+  check('publication : succès réel du premier push autorise done=1', () => {
+    const r = runPublish(); assert.equal(r.status, 0); assert.equal(r.pushes, 1); assert.equal(r.output, 'done=1\n');
+  });
+  check('publication : deux collisions puis succès, sans réécriture forcée', () => {
+    const r = runPublish({ failPushes: 2 }); assert.equal(r.status, 0); assert.equal(r.pushes, 3);
+    assert.equal(r.calls.filter(a => a[0] === 'pull').length, 2); assert.equal(r.output, 'done=1\n');
+    assert(r.calls.filter(a => a[0] === 'pull').every(a => a.includes('--rebase')));
+    assert(!r.calls.some(a => a.includes('--force') || a.includes('-f') || a[0] === 'reset'));
+  });
+  check('publication : le cinquième push peut encore réussir', () => {
+    const r = runPublish({ failPushes: 4 }); assert.equal(r.status, 0); assert.equal(r.pushes, 5); assert.equal(r.output, 'done=1\n');
+  });
+  check('publication : cinq pushes refusés bloquent tout faux succès', () => {
+    const r = runPublish({ failPushes: 5 }); assert.notEqual(r.status, 0); assert.equal(r.pushes, 5);
+    assert(!r.output.includes('done=1'));
+  });
+  check('publication : échec du rebase conservé comme erreur', () => {
+    const r = runPublish({ failPushes: 1, rebaseFail: true }); assert.notEqual(r.status, 0);
+    assert.equal(r.pushes, 1); assert(!r.output.includes('done=1'));
+  });
+  check('publication : commit refusé, aucune tentative de push', () => {
+    const r = runPublish({ commitFail: true }); assert.notEqual(r.status, 0); assert.equal(r.pushes, 0); assert(!r.output.includes('done=1'));
+  });
+  check('publication : contenu identique, aucun commit ni push', () => {
+    const r = runPublish({ noChanges: true }); assert.equal(r.status, 0); assert.equal(r.pushes, 0); assert.equal(r.output, 'done=0\n');
+    assert(!r.calls.some(a => a[0] === 'commit'));
+  });
+} finally { fs.rmSync(deployTemp, { recursive: true, force: true }); }
+
 console.log(`${n}/${n} scénarios OK`);
 
