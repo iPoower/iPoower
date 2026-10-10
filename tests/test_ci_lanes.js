@@ -1,6 +1,7 @@
 // Contre-tests du runner : une omission, un doublon, une erreur ou des fixtures périmées ne peuvent produire du vert.
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const { SUITE } = require('./ci/suites'), { select, shards } = require('./ci/plan'), { verdict } = require('./ci/verdict'), { verifyReports, verifyGates } = require('./ci/reports');
 const { sourceHash, payload, validatePrepared, workspace } = require('./ci/workspace');
 let n = 0; const check = (label, fn) => { fn(); n++; console.log('✅ ' + label); };
