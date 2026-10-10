@@ -255,6 +255,10 @@
     "suite": "e2e56-debrief.js",
     "result": "débrief différé sans retour inventé"
   },
+  "debrief-snooze": {
+    "suite": "e2e56-debrief.js",
+    "result": "questionnaires silencieux jusqu’à minuit Paris sans supprimer les trajets"
+  },
   "debrief-open": {
     "suite": "e2e56-debrief.js",
     "result": "débrief repris ou modifié dans le journal"
