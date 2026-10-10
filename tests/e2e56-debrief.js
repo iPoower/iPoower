@@ -109,6 +109,25 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
         assert(v.journal.quietUntil);
       });
     } finally { await manual.c.close(); }
+    const duplicate = await setup(b, 'iphone');
+    try {
+      await tap(duplicate, '#secBrf [data-act=trip-start]');
+      await tap(duplicate, '#secBrf [data-act=trip-arrived]');
+      await tap(duplicate, '#secDebrief [data-act=debrief-condition][data-v=normal]');
+      await tap(duplicate, '#secDebrief [data-act=debrief-save]');
+      await duplicate.p.evaluate(() => {
+        const old = USER_STORE.state.debrief.entries[0];
+        closeTrip({ key: old.key + '|autre-id', name: old.name, from: old.from, to: old.to }, 'confirmé');
+      });
+      await duplicate.settle(4);
+      await check('iPhone · second ID probable doublon : entrée conservée mais aucun second questionnaire', async () => {
+        const v = await state(duplicate.p);
+        assert.equal(v.journal.entries.length, 2);
+        assert.equal(v.journal.entries.filter(e => !!e.feedback).length, 1);
+        assert.equal(await duplicate.p.locator('#secDebrief .debrief-form').count(), 0);
+        assert((await duplicate.p.locator('#secDebrief').innerText()).includes('Doublon possible'));
+      });
+    } finally { await duplicate.c.close(); }
     const cancel = await setup(b, 'iphone');
     try {
       await tap(cancel, '#secBrf [data-act=trip-start]'); cancel.p.once('dialog', d => d.accept()); await tap(cancel, '#secBrf [data-act=trip-cancel]');
