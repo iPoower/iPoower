@@ -60,7 +60,8 @@ function closeTrip(t, how = 'confirmé') {
     const saved = USER_STORE.state.debrief.entries.find(e => e.key === t.key);
     // Sollicitation unique à l'arrivée, jamais reconstituée au rendu ou au rechargement.
     // Une deuxième arrivée pendant un formulaire n'en ouvre pas un autre en cascade.
-    if (!prior && saved && !USER_STORE.state.debrief.quietUntil && !DEBRIEF_FORM)
+    if (!prior && saved && !USER_STORE.state.debrief.quietUntil && !DEBRIEF_FORM &&
+      !Debrief.possibleDuplicates(USER_STORE.state.debrief, at).includes(t.key))
       DEBRIEF_FORM = { key: t.key, conditions: null, grip: 'unknown' };
     return saved;
   });
