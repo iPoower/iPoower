@@ -84,4 +84,6 @@ SUITE.push(['test_branch_protection.js', 'protections GitHub : droits admin, lec
   ['e2e67-controls-safety.js', 'PC/iPhone : libellés uniques, historique météo après LIVE/reload, confirmations et annulations sans perte', true]);
 SUITE.push(['test_calendar_origin.js', 'origines agenda : portée, nettoyage, règles et fusion des sauvegardes', false],
   ['e2e68-calendar-origin.js', 'Météo : départ par rendez-vous, route/météo, chiffrement, offline, GPS, PC et iPhone', true]);
+SUITE.push(['test_wear_consistency.js', 'usure : seuil unique, essieu, fraîcheur et projections numériques cohérents', false],
+  ['e2e69-wear.js', 'usure : saisies réelles PC/iPhone, taux partagé, rechargement et hors ligne', true]);
 module.exports = { SUITE, FIRST };

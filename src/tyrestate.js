@@ -35,6 +35,19 @@ function treadTxt(x, mm) {
   const f = v => v == null ? '?' : String(Math.round(v * 10) / 10).replace('.', ',');
   return x && x.split && x.av !== x.ar ? `AV ${f(x.av)} / AR ${f(x.ar)} mm` : `${f(mm)} mm`;
 }
+// Historique et tendance communs au domaine et aux cartes. Aucune mutation ni donnée persistée.
+function treadHistory(t) {
+  const tx = treadAxles(t);
+  const num = v => { const x = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v; return typeof x === 'number' && Number.isFinite(x) ? x : null; };
+  const hist = ((t && t.treads) || []).filter(x => x && num(x.mm) != null && (!x.ax || !tx.ax || x.ax === tx.ax))
+    .map(x => ({ ...x, mm: num(x.mm), km: num(x.km) }));
+  const last = hist[hist.length - 1] || null;
+  const withKm = hist.filter(x => x.km != null && !x.est).sort((a, b) => a.km - b.km);
+  // Quand aucun essieu n'est le plus usé, deux essieux distincts ne prouvent pas une pente.
+  const mixedAxles = !tx.ax && new Set(withKm.map(x => x.ax).filter(Boolean)).size > 1;
+  let rate = null; if (withKm.length >= 2) { const a = withKm[0], b = withKm[withKm.length - 1]; if (!mixedAxles && b.km - a.km >= 1000 && a.mm > b.mm) rate = (a.mm - b.mm) / (b.km - a.km) * 1000; }
+  return { last, rate, measuredLast: withKm[withKm.length - 1] || null };
+}
 function tyreState(car, opt = {}) {
   if (!car || !car.tire) return null;
   const t = car.tire, type = t.type, today = opt.today || null;
@@ -61,10 +74,8 @@ function tyreState(car, opt = {}) {
   // par essieu (treadAv / treadAr) : la valeur effective est l'essieu le plus usé ; estimation ≠ mesure (treadEst)
   const tx = treadAxles(t), est = !!t.treadEst;
   const hist = (t.treads || []).filter(x => x && num(x.mm) != null);
-  const last = hist[hist.length - 1] || null, mm = tx.split ? tx.worst : num(t.tread) ?? (last ? num(last.mm) : null);
-  // tendance : mesures réelles seulement (jamais une estimation), du même essieu que la valeur effective
-  const withKm = hist.filter(x => num(x.km) != null && !x.est && (!x.ax || !tx.ax || x.ax === tx.ax)).sort((a, b) => a.km - b.km);
-  let rate = null; if (withKm.length >= 2) { const a = withKm[0], b = withKm[withKm.length - 1]; if (b.km - a.km >= 1000 && a.mm > b.mm) rate = (a.mm - b.mm) / (b.km - a.km) * 1000; }
+  const history = treadHistory(t), last = history.last, mm = tx.split ? tx.worst : num(t.tread) ?? (last ? num(last.mm) : null);
+  const rate = history.rate;
   const treadAge = last ? days(last.d) : null;
   const tread = { mm, av: tx.av, ar: tx.ar, worstAxle: tx.ax, split: tx.split, est: mm != null && est,
     src: mm != null ? (est ? 'USER_ESTIMATED' : 'USER_MEASURED') : null, date: last ? last.d : null, ageD: treadAge, fresh: mm == null ? 'unknown' : fresh(treadAge, TS_TREAD), n: hist.length, rate };

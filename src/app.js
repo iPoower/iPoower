@@ -3059,15 +3059,12 @@ function kmPerDay(car) {
   const days = dayDiff(o[0].d, o[o.length - 1].d); return days >= 7 ? (o[o.length - 1].km - o[0].km) / days : null;
 }
 function wearInfo(car) {
-  const t = car.tire, wx = treadAxles(t).ax, tr = (t.treads || []).filter(x => x.km != null && x.mm != null && !x.est && (!x.ax || !wx || x.ax === wx)).sort((x, y) => x.km - y.km);
-  const thr = t.type === 'winter' ? 4 : 3, last = (t.treads || []).slice(-1)[0] || null, out = { last, thr };
-  if (tr.length >= 2) {
-    const a = tr[0], b = tr[tr.length - 1], rate = (a.mm - b.mm) / Math.max(1, b.km - a.km) * 1000;
-    if (rate > 0.005) {
-      out.rate = rate; out.kmThr = b.km + (b.mm - thr) / rate * 1000; out.kmLegal = b.km + (b.mm - 1.6) / rate * 1000;
-      const kpd = kmPerDay(car), lo = lastOdo(car);
-      if (kpd && lo) out.dateThr = addMin(lo.d + 'T00:00', Math.max(0, (out.kmThr - lo.km) / kpd) * 1440).slice(0, 10);
-    }
+  const t = car.tire, history = treadHistory(t), thr = t.type === 'winter' ? 4 : 3, out = { last: history.last, thr };
+  if (history.rate != null) {
+    const b = history.measuredLast, rate = history.rate;
+    out.rate = rate; out.kmThr = b.km + (b.mm - thr) / rate * 1000; out.kmLegal = b.km + (b.mm - 1.6) / rate * 1000;
+    const kpd = kmPerDay(car), lo = lastOdo(car);
+    if (kpd && lo) out.dateThr = addMin(lo.d + 'T00:00', Math.max(0, (out.kmThr - lo.km) / kpd) * 1440).slice(0, 10);
   }
   const lo = lastOdo(car), base = t.lastRot != null ? t.lastRot : t.mountKm;
   if (lo && base != null) { out.sinceRot = lo.km - base; out.nextRot = base + 10000; }
@@ -3078,7 +3075,7 @@ function wearLine(car) {
   const parts = [];
   if (w.last) parts.push(`Profondeur <b>${f1(w.last.mm)} mm</b> (${fmtDay(w.last.d)})`);
   if (w.rate) parts.push(`${w.rate.toFixed(2).replace('.', ',')} mm / 1 000 km`, `${w.thr} mm vers ${(Math.round(w.kmThr / 100) * 100).toLocaleString('fr-FR')} km${w.dateThr ? ' (≈ ' + new Date(w.dateThr + 'T12:00:00Z').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) + ')' : ''}`);
-  else if (w.last) parts.push('<span class="muted">une 2e mesure (avec le compteur) permettra de projeter l’usure</span>');
+  else if (w.last) parts.push('<span class="muted">projection après deux mesures comparables, espacées d’au moins 1 000 km, avec une usure mesurée</span>');
   if (w.sinceRot != null) parts.push(w.sinceRot >= 10000 ? `<b style="color:var(--risk-t)">permutation AV/AR conseillée</b> (${Math.round(w.sinceRot)} km depuis)` : `permutation vers ${(Math.round(w.nextRot / 100) * 100).toLocaleString('fr-FR')} km`);
   const lo = lastOdo(car); if (lo) parts.push(`compteur ${lo.km.toLocaleString('fr-FR')} km`);
   return `<div class="tirebox wear"><span>Usure · ${parts.join(' · ')}</span></div>`;
