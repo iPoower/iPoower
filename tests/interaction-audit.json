@@ -255,6 +255,8 @@
     "suite": "e2e56-debrief.js",
     "result": "débrief différé sans retour inventé"
   },
+  "race-toggle": { "suite": "e2e70-f1-pure.js", "result": "six modules F1 activés individuellement dans les écrans existants, sans changer les trajets" },
+  "race-speak": { "suite": "e2e70-f1-pure.js", "result": "lecture vocale du briefing uniquement après un geste explicite et si navigateur compatible" },
   "debrief-snooze": {
     "suite": "e2e56-debrief.js",
     "result": "questionnaires silencieux jusqu’à minuit Paris sans supprimer les trajets"

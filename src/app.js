@@ -23,7 +23,8 @@ const BASE = {
   ],
   customs: [],
   work: { from: 'home', to: 'work', durMin: 40, dep: '07:30', ret: '17:30', days: [1, 2, 3, 4, 5] },
-  horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on' }, road: { on: 1 },
+  horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on', f1RaceEngineer: 0, f1TrackConditions: 0, f1TyreManagement: 0,
+    f1StrategyAB: 0, f1TheGarage: 0, f1TelemetryReplay: 0 }, road: { on: 1 },
   alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
   cars: [
     { id: 'car1', name: 'Voiture 1', short: 'Voiture 1', spec: '', sporty: 0,
@@ -1112,6 +1113,7 @@ function renderCurrent() {
 // @include app/weather-view.js
 // @include app/analysis-view.js
 // @include app/debrief-view.js
+// @include app/race-views.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 const TIRE_ALERTS = ['press', 'age', 'mont'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
@@ -3624,6 +3626,10 @@ function renderSettings(force) {
       <p class="sub">1. Installe l’app gratuite <b>Scriptable</b> (App Store). 2. Dans Scriptable, <b>+</b> → colle le script (bouton ci-dessous) → nomme-le « Race Control ». 3. Écran d’accueil : appui long → <b>+</b> → Scriptable → taille <b>moyenne</b> → touche le widget → Script : « Race Control ». Le widget se met à jour seul (iOS décide du rythme, en général toutes les 15 à 30 min).</p>
       <div class="chips"><button class="btn" data-act="copy-widget">Copier le script du widget</button><a class="btn" href="widget.js" target="_blank" rel="noopener">Voir le script</a></div></div>
     <div class="set-sec"><h3>🧪 Moteur météo v2 (preuves)</h3><p class="sub">Observation : calculé et journalisé à côté du moteur actuel, sans changer les verdicts. Actif : le phénomène critique prouvé passe en tête de l’onglet Météo.</p><div class="seg" role="group" aria-label="Moteur v2">${[['off', 'Désactivé'], ['shadow', 'Observation'], ['on', 'Actif']].map(([v, t]) => `<button data-act="ev-flag" data-v="${v}" aria-pressed="${EV_FLAG() === v}">${t}</button>`).join('')}</div></div>
+    <div class="set-sec"><h3>🏎️ F1 Pure Experience</h3>
+      <p class="sub">Extensions de lecture dans les écrans actuels, indépendantes et désactivées par défaut. Aucun nouvel onglet, aucune décision de sécurité remplacée, aucun capteur inventé.</p>
+      <div class="f1-settings">${F1Pure.FEATURES.map(f => `<div class="fld"><span class="l">${esc(f.title)} · ${esc(f.description)}</span>
+        <button class="btn sm" data-act="race-toggle" data-f1="${esc(f.id)}" aria-pressed="${f1Enabled(f.id)}">${f1Enabled(f.id) ? 'Activé · désactiver' : 'Désactivé · activer'}</button></div>`).join('')}</div></div>
     <div class="set-sec"><h3>⚠️ Vigilance Météo-France</h3><div class="frow">${bindIn('dept.code', S.dept.code, { label: 'Département (numéro)', ph: 'ex. 33' })}${bindIn('dept.name', S.dept.name, { label: 'Nom du département', ph: 'ex. Gironde' })}</div></div>
     <div class="set-sec"><h3>⏰ Ouverture automatique le matin</h3>
       <p class="sub">Sur iPhone : app <b>Raccourcis</b> → <b>Automatisation</b> → <b>+</b> → <b>Heure de la journée</b> (ex. 06:45, jours de semaine) → <b>Exécuter immédiatement</b> → action <b>Ouvrir les URL</b> avec l’adresse ci-dessous. La page s’ouvre seule chaque matin avec les verdicts à jour.</p>
@@ -3655,7 +3661,7 @@ function renderAll() {
   try {
     appRefreshContext(); recordJournal();
     renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
-    renderWx(); renderLab(); renderDebrief(); labThermTick(false); roadSync();
+    renderWx(); renderLab(); renderDebrief(); labThermTick(false); roadSync(); renderF1Pure();
   } finally { APP_CONTEXT.rendering = false; }
 }
 function softRender() { renderAll(); } // paramètres inchangés ; mêmes sélecteurs de contexte
@@ -3718,6 +3724,8 @@ document.addEventListener('click', async e => {
   else if (a === 'outfit-occasion') { appAction(() => { appDay().outfitChoice = { date: addMin(placeToday() + 'T00:00', UI.outfitDay * 1440).slice(0, 10), occasion: ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing' }; }); }
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
+  else if (a === 'race-toggle') f1Toggle(t.dataset.f1);
+  else if (a === 'race-speak') f1Speak(t);
   else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; GEO.raw = null; GEO.error = null; GEO.reason = ''; GEO.status = 'suivi désactivé'; PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; alertLoc('Suivi de position désactivé.'); WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
   else if (a === 'loc') { APP_CONTEXT.weatherPreview = t.dataset.id; UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false;
     // Après un choix météo depuis le GPS, retrouver le cockpit sans les raccourcis dépliés.

@@ -5,7 +5,7 @@ const { appSource } = require('../tools/app-source');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-app-source-'));
 const put = (file, text) => { const p = path.join(root, 'src', file); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); };
 let n = 0;
-const check = (label, fn) => { fn(); n++; console.log('✅ ' + label); };
+const check = (label, fn) => { try { fn(); n++; console.log('✅ ' + label); } catch (error) { console.error('❌ Assemblage : ' + label + ' (' + (error && error.name || 'erreur') + ')'); throw error; } };
 try {
   put('app.js', 'const start = 3;\n// @include app/first.js\nresult = answer();\n');
   put('app/first.js', 'const offset = 4;\n// @include app/second.js\n');
