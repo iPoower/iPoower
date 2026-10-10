@@ -159,7 +159,7 @@ if (require.main === module) {
     { name: 'profondeur inventée quand absente', from: "num(t.tread) ?? (last ? num(last.mm) : null);", to: "num(t.tread) ?? (last ? num(last.mm) : 7);" },
     { name: 'moyenne des essieux au lieu du plus usé', from: 'Math.min(av, ar)', to: '(av + ar) / 2' },
     { name: 'estimation présentée comme une mesure', from: "(est ? 'USER_ESTIMATED' : 'USER_MEASURED')", to: "'USER_MEASURED'" },
-    { name: 'tendance calculée sur des estimations', from: 'num(x.km) != null && !x.est &&', to: 'num(x.km) != null &&' },
+    { name: 'tendance calculée sur des estimations', from: 'x.km != null && !x.est', to: 'x.km != null' },
     { name: 'essieu jamais saisi inventé', from: 'if (t[o] == null && legacy != null) t[o] = legacy;', to: 'if (t[o] == null) t[o] = legacy ?? 8;' },
     { name: 'jeu stocké pris pour la monte active', from: "k !== type && v &&", to: "v &&" },
     { name: 'tendance d’usure extrapolée depuis une seule mesure', from: 'if (withKm.length >= 2) {', to: 'if (withKm.length === 1) rate = 0.5; if (withKm.length >= 2) {' }
