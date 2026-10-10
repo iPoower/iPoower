@@ -31,7 +31,7 @@ function setTreadAxle(t, ax, mm, est) {
   if (typeof est === 'boolean') {
     let keptEst = priorEst;
     // L'autre essieu peut devenir le plus usé : reprendre sa provenance connue, sans changer ses relevés.
-    if (x.ax && x.ax !== ax && before.ax !== x.ax) {
+    if (x.ax && x.ax !== ax && before.ax && before.ax !== x.ax) {
       const last = treadHistory(t).last; if (last && last.mm === x.worst) keptEst = !!last.est;
     }
     t.treadEst = (ax === 'both' || x.ax === ax ? est : x.ax ? keptEst : est || keptEst) ? 1 : 0;

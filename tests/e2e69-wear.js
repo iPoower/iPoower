@@ -79,12 +79,12 @@ const values = p => p.evaluate(() => ({ rate: tyreStateOf(S.cars[0]).tread.rate,
       });
       await check(dev + ' · mesure des deux essieux : provenance mesurée rétablie, choix manuel conservé', async () => {
         await reading(pp, q, 22000, 6.5);
-        assert.equal(await pp.evaluate(() => tyreStateOf(S.cars[0]).tread.est), false);
+        assert.equal(await pp.evaluate(() => tyreStateOf(S.cars[0]).tread.est), false, 'une mesure AV + AR rétablit la provenance mesurée');
         await pp.selectOption('#f-cars-0-tire-treadEst', '1'); await q.settle(1);
         await reading(pp, q, 22000, 7, { axle: 'ar' });
-        assert.equal(await pp.evaluate(() => tyreStateOf(S.cars[0]).tread.est), true);
+        assert.equal(await pp.evaluate(() => tyreStateOf(S.cars[0]).tread.est), true, 'le choix manuel Estimées des deux essieux doit survivre au relevé arrière');
         await pp.selectOption('#f-cars-0-tire-treadEst', '0'); await q.settle(1);
-        assert.equal(await pp.evaluate(() => tyreStateOf(S.cars[0]).tread.est), false);
+        assert.equal(await pp.evaluate(() => tyreStateOf(S.cars[0]).tread.est), false, 'le choix manuel Mesurées reste disponible');
       });
       await q.c.close();
     }

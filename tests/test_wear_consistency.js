@@ -98,6 +98,12 @@ function run(source = domain, quiet = false) {
     const before = JSON.stringify(c.tire.treads); c.tire.treadEst = 1; ctx.setAx(c.tire, 'av', 2.4);
     assert.equal(c.tire.treadEst, 1); assert.equal(JSON.stringify(c.tire.treads), before);
   });
+  test('essieux égaux : un choix manuel global reste prioritaire sur l’ancien relevé', () => {
+    for (const estimated of [false, true]) {
+      const c = fresh(); ctx.readDepth(c, 6.5, 'both', !estimated); c.tire.treadEst = estimated ? 1 : 0;
+      assert.equal(ctx.readDepth(c, 7, 'ar', false).tread.est, estimated);
+    }
+  });
   return n;
 }
 const count = run();
@@ -106,7 +112,8 @@ const mutations = [
   ['mesure arrière rajeunissant l’avant', 'last = history.last, mm =', 'last = hist[hist.length - 1] || null, mm ='],
   ['pente calculée entre deux essieux', '!mixedAxles && b.km', 'b.km'],
   ['chaînes non normalisées', 'mm: num(x.mm), km: num(x.km)', 'mm: x.mm, km: x.km'],
-  ['origine remplacée par celle de l’autre essieu', 'x.ax ? keptEst : est || keptEst', 'x.ax ? est : est']
+  ['origine remplacée par celle de l’autre essieu', 'x.ax ? keptEst : est || keptEst', 'x.ax ? est : est'],
+  ['choix manuel écrasé après égalité des essieux', 'before.ax && before.ax !== x.ax', 'before.ax !== x.ax']
 ];
 for (const [label, from, to] of mutations) {
   assert(domain.includes(from), 'Mutation introuvable : ' + label);
