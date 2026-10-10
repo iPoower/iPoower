@@ -3739,7 +3739,7 @@ document.addEventListener('click', async e => {
     if (a === 'tread-add') { const input = $('#trd-' + i), v = parseFloat(String((input || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) { commandFeedback(t, 'Saisis une profondeur de 0 à 12 mm', input); return; } const lo = lastOdo(c);
       const mm = Math.round(v * 10) / 10, ax = ($('#trdax-' + i) || {}).value || 'both', est = ($('#trdest-' + i) || {}).value === '1';
       c.tire.treads = (c.tire.treads || []).concat([{ d: today, mm, km: lo ? lo.km : null, ...(ax !== 'both' ? { ax } : {}), ...(est ? { est: 1 } : {}) }]).slice(-30);
-      setTreadAxle(c.tire, ax === 'av' || ax === 'ar' ? ax : 'both', mm); c.tire.treadEst = est ? 1 : 0; }
+      setTreadAxle(c.tire, ax === 'av' || ax === 'ar' ? ax : 'both', mm, est); }
     if (a === 'rot') { const lo = lastOdo(c); if (!lo) { t.textContent = 'Enregistre d’abord le compteur'; return; } c.tire.lastRot = lo.km; }
     saveSettings(); renderSettings(); softRender(); commandFeedback($(`#settings [data-act="${a}"][data-i="${i}"]`), 'Enregistré');
   }
