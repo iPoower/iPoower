@@ -1113,7 +1113,7 @@ function renderCurrent() {
 // @include app/weather-view.js
 // @include app/analysis-view.js
 // @include app/debrief-view.js
-// @include app/f1-views.js
+// @include app/race-views.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 const TIRE_ALERTS = ['press', 'age', 'mont'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
