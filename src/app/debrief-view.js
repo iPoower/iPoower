@@ -57,8 +57,12 @@ function closeTrip(t, how = 'confirmé') {
     returnHomeClear(t.key); appArrival(t, how, at);
     if (active) liveReset('arrivé'); else LIVE.done[t.key] = 'arrivé';
     if (TRIPPREVIEW.key === t.key) tripPreviewReset();
-    DEBRIEF_FORM = null;
-    return USER_STORE.state.debrief.entries.find(e => e.key === t.key);
+    const saved = USER_STORE.state.debrief.entries.find(e => e.key === t.key);
+    // Sollicitation unique à l'arrivée, jamais reconstituée au rendu ou au rechargement.
+    // Une deuxième arrivée pendant un formulaire n'en ouvre pas un autre en cascade.
+    if (!prior && saved && !USER_STORE.state.debrief.quietUntil && !DEBRIEF_FORM)
+      DEBRIEF_FORM = { key: t.key, conditions: null, grip: 'unknown' };
+    return saved;
   });
 }
 let DEBRIEF_FORM = null;
@@ -108,6 +112,10 @@ function debriefLater() {
   appAction(() => { USER_STORE.state.debrief = Debrief.defer(USER_STORE.state.debrief, key); });
   renderDebrief();
 }
+function debriefSnooze() {
+  DEBRIEF_FORM = null;
+  appAction(() => { USER_STORE.state.debrief = Debrief.snooze(USER_STORE.state.debrief, DayContext.expiry(Date.now())); });
+}
 function debriefClear() {
   if (!window.confirm('Effacer les débriefs enregistrés sur cet appareil ?')) return;
   DEBRIEF_FORM = null;
@@ -121,18 +129,17 @@ function renderDebrief() {
   if (DEMO.on || !state.entries.length) { el.hidden = true; el.innerHTML = ''; renderDebrief.last = ''; DEBRIEF_FORM = null; return; }
   el.hidden = false;
   if (DEBRIEF_FORM && !state.entries.some(e => e.key === DEBRIEF_FORM.key)) DEBRIEF_FORM = null;
-  const pending = state.entries.find(e => !e.feedback && !e.deferred);
-  if (!DEBRIEF_FORM && pending) DEBRIEF_FORM = { key: pending.key, conditions: null, grip: 'unknown' };
   const e = DEBRIEF_FORM && state.entries.find(e => e.key === DEBRIEF_FORM.key), st = Debrief.stats(state);
   const choice = (act, value, label, on) => `<button class="btn sm" ${act === 'debrief-condition' ? 'data-act="debrief-condition"' : 'data-act="debrief-grip"'} data-v="${value}" aria-pressed="${on}">${label}</button>`;
   const form = e ? `<div class="debrief-form"><div class="mod-h"><h2>🏁 Débrief du trajet</h2><span class="src">${esc(e.name || 'Trajet terminé')}</span></div>${debriefSummary(e)}
     <fieldset><legend>Ce que tu as rencontré</legend><p class="sub">Plusieurs réponses possibles. Renseigne ce que tu as effectivement observé.</p><div class="debrief-choices">${choice('debrief-condition', 'normal', 'Aucun de ces phénomènes', Array.isArray(DEBRIEF_FORM.conditions) && !DEBRIEF_FORM.conditions.length)}${Debrief.CONDITIONS.map(k => choice('debrief-condition', k, Debrief.LABELS[k], (DEBRIEF_FORM.conditions || []).includes(k))).join('')}</div></fieldset>
     <fieldset><legend>Adhérence ressentie · facultatif</legend><div class="debrief-choices">${[['unknown', 'Non évaluée'], ['normal', 'Habituelle'], ['reduced', 'Moins bonne'], ['slip', 'Glissement ressenti']].map(([v, label]) => choice('debrief-grip', v, label, DEBRIEF_FORM.grip === v)).join('')}</div></fieldset>
-    <div class="debrief-actions"><button class="btn" data-act="debrief-save"${DEBRIEF_FORM.conditions == null ? ' disabled' : ''}>Enregistrer le débrief</button><button class="btn sm" data-act="debrief-later">Plus tard</button></div><details class="debrief-snapshot" data-dk="snapshot"${open.has('snapshot') ? ' open' : ''}><summary>Prévision au départ et bilan estimé</summary>${debriefDetails(e)}</details></div>` : '';
+    <div class="debrief-actions"><button class="btn" data-act="debrief-save"${DEBRIEF_FORM.conditions == null ? ' disabled' : ''}>Enregistrer le débrief</button><button class="btn sm" data-act="debrief-later">Plus tard</button><button class="btn sm" data-act="debrief-snooze">Ne plus demander aujourd’hui</button></div><details class="debrief-snapshot" data-dk="snapshot"${open.has('snapshot') ? ' open' : ''}><summary>Prévision au départ et bilan estimé</summary>${debriefDetails(e)}</details></div>` : '';
   const counts = st.comparable ? `${st.comparable} retour${st.comparable > 1 ? 's' : ''} comparable${st.comparable > 1 ? 's' : ''} : ${st.counts.match} concordant${st.counts.match > 1 ? 's' : ''} · ${st.counts.missed} phénomène${st.counts.missed > 1 ? 's' : ''} non annoncé${st.counts.missed > 1 ? 's' : ''} · ${st.counts.unused} alerte${st.counts.unused > 1 ? 's' : ''} non rencontrée${st.counts.unused > 1 ? 's' : ''} · ${st.counts.mixed} écart${st.counts.mixed > 1 ? 's' : ''} mixte${st.counts.mixed > 1 ? 's' : ''}.` : 'Aucun retour comparable pour le moment.';
+  const duplicates = new Set(Debrief.possibleDuplicates(state));
   const html = `${form}<details class="debrief-journal" data-dk="journal"${open.has('journal') || !e && hadForm ? ' open' : ''}><summary>Journal des trajets · ${st.total} trajet${st.total > 1 ? 's' : ''} · ${st.answered} débrief${st.answered > 1 ? 's' : ''}</summary><p>${counts}</p>
     <p class="sub">Comparaison des phénomènes annoncés avec tes observations, sur cet appareil. Les températures restent estimées. Une prévision absente ou ancienne n’entre pas dans les retours comparables.</p>
-    ${state.entries.map(row => `<details class="debrief-entry" data-dk="entry-${esc(row.key)}"${open.has('entry-' + row.key) ? ' open' : ''}><summary>${esc(row.name || 'Trajet')} · ${new Date(row.at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' })} · ${DEBRIEF_COMPARE[Debrief.compare(row).kind]}</summary>${debriefDetails(row)}<button class="btn sm" data-act="debrief-open" data-key="${esc(row.key)}">${row.feedback ? 'Modifier le débrief' : 'Renseigner le débrief'}</button></details>`).join('')}
+    ${state.entries.map(row => `<details class="debrief-entry" data-dk="entry-${esc(row.key)}"${open.has('entry-' + row.key) ? ' open' : ''}><summary>${esc(row.name || 'Trajet')} · ${new Date(row.at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' })} · ${DEBRIEF_COMPARE[Debrief.compare(row).kind]}${duplicates.has(row.key) ? ' · Doublon possible' : ''}</summary>${debriefDetails(row)}<button class="btn sm" data-act="debrief-open" data-key="${esc(row.key)}">${row.feedback ? 'Modifier le débrief' : 'Renseigner le débrief'}</button></details>`).join('')}
     <p class="sub">60 trajets maximum · conservés 90 jours · données locales.</p><button class="btn sm" data-act="debrief-clear">Effacer le journal</button></details>`;
   if (renderDebrief.last !== html) { el.innerHTML = html; renderDebrief.last = html; }
 }
