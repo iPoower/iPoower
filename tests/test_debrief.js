@@ -104,6 +104,37 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), { quiet = false 
     assert.equal(D.reply(null, 'absent', { conditions: [] }, at).entries.length, 0);
     const wrong = json(arrived([])); wrong.entries[0].start.key = 'autre'; assert.equal(D.clean(wrong, at).entries[0].start, null);
   });
+  check('silence des questionnaires pendant la journée sans supprimer les anciens retours', () => {
+    const initial = arrived(['fog']), until = at + 16 * 3600e3;
+    const quiet = D.snooze(initial, until, at + 2000);
+    assert.equal(quiet.quietUntil, until);
+    assert.equal(quiet.entries.length, 1);
+    assert.deepEqual(json(quiet.entries[0].feedback), json(initial.entries[0].feedback));
+    const again = D.close(quiet, { key: 'second', how: 'confirmé', name: 'Autre trajet' }, at + 3000);
+    assert.equal(again.quietUntil, until);
+    assert.equal(again.entries.length, 2);
+    assert.equal(D.clean(json(again), at + 4000).quietUntil, until);
+    assert.equal(D.clean(json(again), until + 1000).quietUntil, null);
+  });
+  check('silence invalide ou excessif refusé et retour manuel toujours possible', () => {
+    for (const until of [NaN, -1, at - 1000, at + 3 * 86400000]) {
+      assert.equal(D.snooze(arrived([]), until, at).quietUntil, null);
+    }
+    const quiet = D.snooze(D.close(null, { key: 'pending', how: 'auto' }, at), at + 3600e3, at);
+    const answered = D.reply(quiet, 'pending', { conditions: ['rain'] }, at + 1000);
+    assert.deepEqual(json(answered.entries[0].feedback.conditions), ['rain']);
+    assert.equal(answered.quietUntil, at + 3600e3);
+  });
+  check('doubles trajets suspects repérés sans aucune suppression automatique', () => {
+    let state = D.close(null, { key: 'cal|one', name: 'Aller · Piano', from: 'Maison', to: 'École', how: 'confirmé' }, at);
+    state = D.close(state, { key: 'cal|two', name: 'Aller · Piano', from: 'Maison', to: 'École', how: 'confirmé' }, at + 5 * 60e3);
+    state = D.close(state, { key: 'cal|different', name: 'Retour · Piano', from: 'École', to: 'Maison', how: 'confirmé' }, at + 6 * 60e3);
+    assert.deepEqual(json(D.possibleDuplicates(state, at + 6 * 60e3)).sort(), ['cal|one', 'cal|two']);
+    assert.equal(state.entries.length, 3);
+    assert.equal(D.clean(state, at + 7 * 60e3).entries.length, 3);
+    const far = D.close(state, { key: 'cal|later', name: 'Aller · Piano', from: 'Maison', to: 'École', how: 'confirmé' }, at + 30 * 60e3);
+    assert(!D.possibleDuplicates(far, at + 30 * 60e3).includes('cal|later'));
+  });
   return n;
 }
 if (require.main === module) { const n = runTests(); console.log(`${n}/${n} scénarios OK`); }
