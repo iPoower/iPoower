@@ -45,7 +45,12 @@ function deepMerge(d, s) {
 }
 function normalize(saved, base) {
   const S = deepMerge(base, saved ? { ...saved, locs: undefined, cars: undefined, customs: undefined } : null);
-  if (saved && Array.isArray(saved.locs)) S.locs = base.locs.map((d, i) => deepMerge(d, saved.locs[i]));
+  if (saved && Array.isArray(saved.locs)) S.locs = base.locs.map((d, i) => {
+    const p = saved.locs[i], l = deepMerge(d, p);
+    // Une coordonnée effacée est un choix ; seuls les champs absents reprennent le préréglage.
+    for (const k of ['lat', 'lon']) if (p && p[k] === null) l[k] = null;
+    return l;
+  });
   if (saved && Array.isArray(saved.cars)) S.cars = base.cars.map((d, i) => deepMerge(d, saved.cars[i]));
   S.customs = saved && Array.isArray(saved.customs) ? saved.customs : clone(base.customs);
   S.calOrigins = CalendarOrigin.clean(saved && saved.calOrigins);

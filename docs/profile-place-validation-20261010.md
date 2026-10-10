@@ -7,6 +7,7 @@
 3. Une destination enregistrée choisie dans le raccourci « Vers » : `PROFILE` ne recevait que `S.locs`, sans `S.customs`. Le validateur pouvait utiliser le deuxième lieu d'exemple au lieu de la destination choisie, imposer un aperçu et déclarer le planning incohérent.
 4. Sur le site public verrouillé, la vue Analyse affichait correctement l'aperçu mais « Saison pneus » déclarait les pneus adaptés avec des jours GO (y compris dans ses libellés accessibles). Les carrés des prévisions 7 jours utilisaient aussi des verdicts personnels sans lire le profil.
 5. Le rendu des étapes Agenda donnait un GO/100 pour un profil verrouillé. Reproduction par exécution du vrai rendu sur une météo favorable fictive.
+6. Une latitude ou longitude effacée dans Réglages était enregistrée à `null`, puis remplacée par celle du préréglage au rechargement. Le profil pouvait retrouver un conseil personnel malgré le choix conservé par l'utilisateur. Le nouveau test de rechargement a reproduit cette anomalie en CI ; le test unitaire échouait aussi avec `49.2 !== null`.
 
 Ces résultats ont été reproduits avec des coordonnées fictives par exécution du moteur actuel, puis verrouillés par des tests.
 
@@ -18,11 +19,14 @@ Ces résultats ont été reproduits avec des coordonnées fictives par exécutio
 - Le briefing explique de renseigner les lieux lorsqu'ils manquent, et conserve sa consigne sur la durée lorsqu'un planning connu est incohérent. Il ne déréférence plus un planning absent.
 - Saison pneus et carrés des prévisions appliquent le profil existant : aperçu neutre visible et accessible avec températures conservées, puis conseils et couleurs rétablis après configuration. Le calendrier de montage reste disponible.
 - Les étapes et trajets Agenda signalent l'aperçu lorsque le profil nécessaire manque ; itinéraires, horaires, navigation et alertes météo restent disponibles.
+- La lecture des lieux conserve les coordonnées explicitement effacées. Les coordonnées absentes dans d'anciens réglages gardent leur repli historique, comme les autres champs facultatifs ; la fusion générale des données reste identique.
 
-Aucun changement de stockage, de chiffrement, de sauvegarde, de Google Agenda, de position GPS, de Service Worker ou de workflow. Les champs facultatifs (DOT, dimension, pression, profondeur) ne deviennent pas obligatoires pour un conseil personnel.
+Aucun changement de format, d'écriture du stockage, de chiffrement, de sauvegarde, de Google Agenda, de position GPS, de Service Worker ou de workflow. Les champs facultatifs (DOT, dimension, pression, profondeur) ne deviennent pas obligatoires pour un conseil personnel.
 
 ## Validation
 
-`test_profile_check.js` : 16 scénarios, onze mutations rejetées, y compris la source des lieux de l'application et l'exécution des vrais rendus Saison/7 jours/Agenda. Les assertions de rendu échouent avant la correction. `e2e63-generic-profile.js` conserve les assertions historiques et ajoute, sur PC/iPhone simulé, les couleurs et libellés de saison, les rendez-vous avec et sans étapes, le choix réel d'une destination enregistrée, l'effacement d'une coordonnée via Réglages, l'absence de GO personnel, la suspension de chauffe, le rechargement, le hors ligne et la restauration du conseil après correction.
+`test_profile_check.js` : 18 scénarios, douze mutations rejetées, y compris la source des lieux de l'application, la relecture sans mutation des coordonnées effacées, les anciens réglages et l'exécution des vrais rendus Saison/7 jours/Agenda. Les assertions de rendu échouent avant la correction. `e2e63-generic-profile.js` conserve les assertions historiques et ajoute, sur PC/iPhone simulé, les couleurs et libellés de saison, les rendez-vous avec et sans étapes, le choix réel d'une destination enregistrée, l'effacement d'une coordonnée via Réglages, l'absence de GO personnel, la suspension de chauffe, le rechargement, le hors ligne et la restauration du conseil après correction. Le scénario de légende personnelle de `e2e43` renseigne une monte fictive complète ; il conserve son exigence des cinq verdicts tandis que `e2e63` contrôle l'aperçu neutre.
 
 Les 42 suites unitaires passent localement. Les 136 exécutions applicables de la CI complète, la QA d'origine calendrier, le scan de confidentialité et les deux profilages restent obligatoires avant fusion sur le HEAD final. La validation matériel iPhone et la publication sont des contrôles distincts.
+
+La CI post-fusion de #96 a aussi détecté une expiration du sélecteur de monte dans `e2e49`. Son helper « ouvrir » basculait le volet sans lire son état et pouvait refermer des paramètres déjà ouverts. Le helper ouvre désormais seulement un volet fermé, vérifie son état ouvert et le champ natif visible, et est appelé deux fois pour couvrir le cas déjà ouvert. Les sélections et toutes les assertions historiques sont conservées, sans clic forcé ni relâchement de délai.

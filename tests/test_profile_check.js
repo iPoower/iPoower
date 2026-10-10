@@ -77,6 +77,23 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     ctx.S = { locs: [REAL[0], EX[1]], customs: [{ ...REAL[1], id: 'custom-test' }], work: { ...work(), to: 'custom-test' } };
     const r = ctx.appProfile(); assert.equal(r.generic, false); assert.equal(r.car(car()).generic, false); assert.equal(r.commuteOk, true);
   });
+  ctx.CalendarOrigin = { clean: x => x || {} };
+  vm.runInContext(app.slice(app.indexOf('const clone ='), app.indexOf('// Migration étroite')), ctx);
+  const base = { locs: REAL, cars: [car()], customs: [], work: work() };
+  test('relecture des réglages : coordonnées explicitement effacées conservées, profil incomplet', () => {
+    for (const key of ['lat', 'lon']) {
+      const saved = { ...base, locs: [{ ...REAL[0], [key]: null }, REAL[1]] }, before = JSON.stringify(saved);
+      const normalized = ctx.normalize(saved, base);
+      assert.equal(normalized.locs[0][key], null); assert.equal(JSON.stringify(saved), before);
+      ctx.S = normalized; const p = ctx.appProfile(); assert.equal(p.generic, true); assert.equal(p.commuteOk, false);
+    }
+  });
+  test('anciens réglages : coordonnées absentes et champs facultatifs gardent leur repli historique', () => {
+    const saved = { locs: [{ id: null }, REAL[1]], cars: [{ ...car(), tire: { ...car().tire, brand: null } }], work: work() };
+    const normalized = ctx.normalize(saved, base);
+    assert.deepEqual(plain(normalized.locs[0]), REAL[0]); assert.equal(normalized.cars[0].tire.brand, 'Marque test');
+    assert.equal(normalized.work.to, 'work');
+  });
   // Exécuter les vrais rendus avec un verdict favorable : l'aperçu doit l'emporter sur ce verdict.
   const els = Object.fromEntries(['#secSeason', '#secDays'].map(id => [id, { innerHTML: '', querySelector: () => null }]));
   Object.assign(ctx, { $: id => els[id], document: { activeElement: null }, MOUNT_FORM: null,
@@ -153,7 +170,8 @@ if (require.main === module) {
   const app = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8'), viewMutations = [
     { name: 'saison ignorant le profil', from: 'gen = pf.generic;\n    const di = s.days', to: 'gen = false;\n    const di = s.days' },
     { name: 'prévisions ignorant le profil', from: 'gen = carProfile(c.car).generic, di =', to: 'gen = false, di =' },
-    { name: 'Agenda ignorant le profil', from: 'gen = (r.res || []).some(x => carProfile(x.c).generic)', to: 'gen = false' }
+    { name: 'Agenda ignorant le profil', from: 'gen = (r.res || []).some(x => carProfile(x.c).generic)', to: 'gen = false' },
+    { name: 'coordonnées effacées rétablies au chargement', from: "if (p && p[k] === null) l[k] = null;", to: '' }
   ];
   for (const m of viewMutations) {
     assert(app.includes(m.from), 'Mutation de vue introuvable : ' + m.name);

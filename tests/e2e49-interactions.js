@@ -14,7 +14,11 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         while (await parents.count()) { await parents.first().locator(':scope > summary').click(); await s.settle(1); }
         await button.click(); await s.settle(1);
       };
-      const open = async () => { await p.locator('#settings > summary').click(); await s.settle(1); };
+      const open = async () => {
+        const settings = p.locator('#settings');
+        if (!await settings.evaluate(el => el.open)) { await p.locator('#settings > summary').click(); await s.settle(1); }
+        assert.equal(await settings.getAttribute('open'), '', 'les paramètres doivent rester ouverts');
+      };
       await check(tag + ' · tous les onglets et aria-pressed après deux passages', async () => {
         for (let n = 0; n < 2; n++) for (const v of ['pneus', 'meteo', 'tenue', 'analyse']) { await click(`[data-act=view][data-v=${v}]`); assert.equal(await p.evaluate(() => UI.view), v); assert.equal(await p.locator(`[data-act=view][data-v=${v}]`).getAttribute('aria-pressed'), 'true'); }
       });
@@ -61,7 +65,9 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         await click('[data-act=dir][data-d=go]');
       });
       await check(tag + ' · monte et contrôle pression dans les cartes pneus', async () => {
-        await open(); await p.selectOption('[data-bind="cars.0.tire.type"]', 'winter'); await s.settle(1); assert.equal(await p.evaluate(() => S.cars[0].tire.type), 'winter');
+        await open(); await open();   // déjà ouvert : ne jamais refermer le volet avant la saisie
+        assert(await p.locator('#f-cars-0-tire-type').isVisible(), 'le choix natif de monte doit être visible');
+        await p.selectOption('[data-bind="cars.0.tire.type"]', 'winter'); await s.settle(1); assert.equal(await p.evaluate(() => S.cars[0].tire.type), 'winter');
         await p.selectOption('[data-bind="cars.0.tire.type"]', 'summer'); await s.settle(1); await p.locator('#settings > summary').click();
         await click('[data-act=pchk][data-car=carA]'); assert(await p.evaluate(() => !!S.cars[0].tire.pchk.date));
       });

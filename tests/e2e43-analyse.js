@@ -184,7 +184,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
       s = await session(b, { at: '2026-10-05T12:00:00+02:00', dev });
       await s.p.evaluate(() => {
         const car = S.cars[0]; car.plan = { on: 1, brand: 'Goodyear', model: 'UltraGrip Performance 3', size: '215/40 R18 89V', date: '2026-11-26' };
-        car.odo = [{ d: '2026-10-01', km: 23000 }]; car.tire.type = 'summer'; car.tire.tread = 6.4;
+        car.odo = [{ d: '2026-10-01', km: 23000 }]; Object.assign(car.tire, { type: 'summer', brand: 'Marque test', model: 'Modèle test', tread: 6.4 });
         car.tire.pchk = { date: '2026-10-01', T: 15 };
         car.sets = { winter: { brand: 'Goodyear', model: 'UltraGrip Performance 3', size: '215/40 R18 89V', tread: 7.2, dot: '1825', pchk: { date: '2026-03-01', T: 8 } } };
         TT = { [car.id]: { at: nowIn('Europe/Paris'), T: 40, sig: tyreStateOf(car).sig }, other: { at: nowIn('Europe/Paris'), T: 18, sig: 'other' } };
