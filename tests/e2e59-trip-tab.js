@@ -99,10 +99,10 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
   if(dev==='pc'){
    await s.settle(2);
    await check('pc · annulation pendant une actualisation et une coupure réseau',async()=>{
-    const button=p.locator('#secTrip [data-act=trip-plan-cancel]'),before=await button.boundingBox();
+    const button=p.locator('#secTrip [data-act=trip-plan-cancel]');await button.scrollIntoViewIfNeeded();const before=await button.boundingBox();
     await p.mouse.move(before.x+before.width/2,before.y+before.height/2);await p.mouse.down();
     await s.c.setOffline(true);await p.evaluate(()=>renderTripView());
-    const after=await button.boundingBox();
+    await button.scrollIntoViewIfNeeded();const after=await button.boundingBox();
     await p.mouse.move(after.x+after.width/2,after.y+after.height/2);await p.mouse.up();
     const x=await state(p);assert.equal(x.n,null,'annulation perdue après actualisation : source='+x.n?.source+' · état='+x.status);
    });
