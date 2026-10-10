@@ -22,10 +22,16 @@ async function loadSwVersion() {
   } catch (e) { SWV = 'indisponible'; }
   renderDiag();
 }
+function calendarDiagText() {
+  if (CAL) return `${freshState(ageOf(CAL.updated))} · relais il y a ${ageTxt(ageOf(CAL.updated))} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}`;
+  if (!lsGet('twrc.key')) return 'verrouillé · déverrouille la configuration pour lire l’agenda';
+  if (location.protocol !== 'https:' || !crypto.subtle) return 'indisponible · contexte sécurisé nécessaire';
+  return CALDONE ? 'indisponible' : 'chargement…';
+}
 function diagRows(forCopy) {
   const r = RAW[UI.loc], wAge = r ? ageOf(r.t) : null, withData = allLocs().filter(l => RAW[l.id]).length;
   let n = 0, bytes = 0; try { for (let i = 0; i < APP_STORAGE.length; i++) { const k = APP_STORAGE.key(i); if (/^twrc\./.test(k)) { n++; bytes += k.length + (APP_STORAGE.getItem(k) || '').length; } } } catch (e) { /* stockage bloqué */ }
-  const calAge = CAL ? ageOf(CAL.updated) : null, relayAge = ageOf(RELAY_AT);
+  const relayAge = ageOf(RELAY_AT);
   return [
     ['Application chargée', window.TWRC_BUILD ? `build ${window.TWRC_BUILD} · shell HTML/JS/CSS autonome` : 'version locale'],
     ['Version publiée', VER ? `prod-${VER.run} · ${String(VER.sha).slice(0, 7)} · métadonnées du serveur` : 'indisponible'],
@@ -38,7 +44,7 @@ function diagRows(forCopy) {
     ['API météo', (() => { const p = WEATHER_REQUESTS.state(); return p.until > Date.now() ? `HTTP 429 · pause jusqu’à ${hmLocal(p.until)} · ${p.kind}` : `disponible · ${p.active}/2 requêtes actives · ${p.queued} en attente`; })()],
     ['Derniers incidents météo', weatherIncidentText()],
     ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
-    ['Agenda', CAL ? `${freshState(calAge)} · relais il y a ${ageTxt(calAge)} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}` : CALDONE ? 'indisponible' : 'chargement…'],
+    ['Agenda', calendarDiagText()],
     ['Stockage local', (() => { const d = USER_STORE.durability(), valid = d.validatedAt ? ` · validé il y a ${ageTxt(ageOf(d.validatedAt))}` : ' · validation de reprise en attente'; return `${d.status === 'durable' ? 'DURABLE' : 'DEGRADED'}${valid} · ${n} clés · ${Math.round(bytes / 1024)} Ko${d.error ? ' · ' + noUrl(d.error) : ''}`; })()],
     ['Cohérence production', VERSION_COHERENCE === 'current' ? 'À JOUR · build chargé = build publié' : VERSION_COHERENCE === 'offline' ? 'ANCIEN SHELL · mise à jour au retour réseau' : VERSION_COHERENCE === 'deferred' ? 'MISE À JOUR DIFFÉRÉE · trajet en cours' : VERSION_COHERENCE === 'reload' ? 'MISE À JOUR · rechargement demandé' : VERSION_COHERENCE === 'stale' ? 'ANCIEN SHELL · rechargement déjà tenté' : 'inconnue'],
     ['Synthèse Race Control', DECISION_LAST ? `${DECISION_LAST.decision.label} · confiance ${DECISION_LAST.confidence.label} · ${DECISION_LAST.confidence.reason}` : 'indisponible'],

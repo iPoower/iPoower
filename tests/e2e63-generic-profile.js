@@ -18,6 +18,15 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
         assert.deepEqual(r.ids, ['locked', 'places', 'commute']); assert(r.kmh > 300, String(r.kmh));
       });
       await view(s, 'pneus');
+      await check(dev + ' · diagnostic agenda verrouillé : pas de faux chargement, même dans la copie', async () => {
+        await p.getByRole('link', { name: 'Réglages', exact: true }).click();
+        assert(await p.locator('#diagBox').isVisible());
+        const status = await p.locator('#diagBox dt').filter({ hasText: /^Agenda$/ }).evaluate(el => el.nextElementSibling.textContent);
+        assert.match(status, /verrouillé.*déverrouille/i); assert.doesNotMatch(status, /chargement|événements/i);
+        assert.match(await p.evaluate(() => diagText()), /Agenda : verrouillé.*déverrouille/i);
+        assert.equal(await p.evaluate(() => CAL), null);
+        await p.locator('#settings > summary').click();
+      });
       await check(dev + ' · Pneus : « Aperçu générique » sur chaque voiture, ni GO ni score /100', async () => {
         const cars = await txt(p, '#secCars article.car');
         assert.match(cars, /APERÇU GÉNÉRIQUE — configure tes lieux et ta monte/); assert.match(cars, /appareil verrouillé/);
