@@ -326,7 +326,9 @@ jobs:
           git add race-control
           if git diff --cached --quiet; then echo "Production déjà à jour"; echo "done=0" >> "$GITHUB_OUTPUT"; exit 0; fi
           git commit -q -m "$MSG"
-          for i in 1 2 3 4 5; do git push -q && break; sleep 3; git pull -q --rebase; done
+          PUSHED=0
+          for i in 1 2 3 4 5; do if git push -q; then PUSHED=1; break; fi; sleep 3; git pull -q --rebase; done
+          if [ "$PUSHED" != 1 ]; then echo "::error::Publication refusée : cinq pushes gh-pages ont échoué"; exit 1; fi
           echo "done=1" >> "$GITHUB_OUTPUT"
       - name: Étiquette de version (point de retour arrière)
         if: steps.pub.outputs.done == '1' && github.event.inputs.version == ''
