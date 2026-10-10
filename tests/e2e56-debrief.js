@@ -117,6 +117,8 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
     const duplicate = await setup(b, 'iphone');
     try {
       await tap(duplicate, '#secBrf [data-act=trip-start]');
+      // Le briefing met à disposition « Bien arrivé » après progression réelle du temps simulé.
+      await duplicate.p.clock.fastForward(12 * 60e3); await duplicate.settle(4);
       await tap(duplicate, '#secBrf [data-act=trip-arrived]');
       await tap(duplicate, '#secDebrief [data-act=debrief-condition][data-v=normal]');
       await tap(duplicate, '#secDebrief [data-act=debrief-save]');
