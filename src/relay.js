@@ -46,7 +46,17 @@ function parseMetar(raw) {
   o.wx = wx.join(' ');
   return o;
 }
-async function getJSON(u) { const r = await fetch(u, { headers: { 'User-Agent': 'race-control-relay (github.com/iPoower)' }, signal: AbortSignal.timeout(20000) }); if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); }
+async function getJSON(u) {
+  // Les erreurs rejoignent les logs GitHub et obs.json publics : conserver le fournisseur et le type,
+  // jamais l'URL (coordonnées/adresse), un extrait de réponse ou le message brut de fetch.
+  const source = new URL(u).hostname;
+  let r;
+  try { r = await fetch(u, { headers: { 'User-Agent': 'race-control-relay (github.com/iPoower)' }, signal: AbortSignal.timeout(20000) }); }
+  catch (e) { throw new Error((e.name === 'AbortError' || e.name === 'TimeoutError' ? 'Délai réseau dépassé' : 'Réseau indisponible') + ' · ' + source); }
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' · ' + source);
+  try { return await r.json(); }
+  catch (e) { throw new Error('Réponse JSON invalide · ' + source); }
+}
 
 
 /* ===== agenda Google (adresse iCal secrète, secret GitHub GCAL_ICS) -> calendar.sealed.json chiffré avec le code de l'app ===== */
