@@ -3629,7 +3629,7 @@ function renderSettings(force) {
     <div class="set-sec"><h3>🏎️ F1 Pure Experience</h3>
       <p class="sub">Extensions de lecture dans les écrans actuels, indépendantes et désactivées par défaut. Aucun nouvel onglet, aucune décision de sécurité remplacée, aucun capteur inventé.</p>
       <div class="f1-settings">${F1Pure.FEATURES.map(f => `<div class="fld"><span class="l">${esc(f.title)} · ${esc(f.description)}</span>
-        <button class="btn sm" data-act="f1-toggle" data-f1="${esc(f.id)}" aria-pressed="${f1Enabled(f.id)}">${f1Enabled(f.id) ? 'Activé · désactiver' : 'Désactivé · activer'}</button></div>`).join('')}</div></div>
+        <button class="btn sm" data-act="race-toggle" data-f1="${esc(f.id)}" aria-pressed="${f1Enabled(f.id)}">${f1Enabled(f.id) ? 'Activé · désactiver' : 'Désactivé · activer'}</button></div>`).join('')}</div></div>
     <div class="set-sec"><h3>⚠️ Vigilance Météo-France</h3><div class="frow">${bindIn('dept.code', S.dept.code, { label: 'Département (numéro)', ph: 'ex. 33' })}${bindIn('dept.name', S.dept.name, { label: 'Nom du département', ph: 'ex. Gironde' })}</div></div>
     <div class="set-sec"><h3>⏰ Ouverture automatique le matin</h3>
       <p class="sub">Sur iPhone : app <b>Raccourcis</b> → <b>Automatisation</b> → <b>+</b> → <b>Heure de la journée</b> (ex. 06:45, jours de semaine) → <b>Exécuter immédiatement</b> → action <b>Ouvrir les URL</b> avec l’adresse ci-dessous. La page s’ouvre seule chaque matin avec les verdicts à jour.</p>
@@ -3724,8 +3724,8 @@ document.addEventListener('click', async e => {
   else if (a === 'outfit-occasion') { appAction(() => { appDay().outfitChoice = { date: addMin(placeToday() + 'T00:00', UI.outfitDay * 1440).slice(0, 10), occasion: ['office', 'walk'].includes(t.dataset.v) ? t.dataset.v : 'outing' }; }); }
   else if (a === 'rplay') radarPlay(!RADAR.play);
   else if (a === 'rcenter') radarCenter(true);
-  else if (a === 'f1-toggle') f1Toggle(t.dataset.f1);
-  else if (a === 'f1-speak') f1Speak(t);
+  else if (a === 'race-toggle') f1Toggle(t.dataset.f1);
+  else if (a === 'race-speak') f1Speak(t);
   else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; GEO.raw = null; GEO.error = null; GEO.reason = ''; GEO.status = 'suivi désactivé'; PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; alertLoc('Suivi de position désactivé.'); WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
   else if (a === 'loc') { APP_CONTEXT.weatherPreview = t.dataset.id; UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false;
     // Après un choix météo depuis le GPS, retrouver le cockpit sans les raccourcis dépliés.
