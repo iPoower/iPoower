@@ -29,10 +29,10 @@ const active = p => p.evaluate(() => ({
         });
         await p.evaluate(() => { document.getElementById('settings').open = true; renderSettings(true); });
         const ids = ['raceEngineer','trackConditions','tyreManagement','strategyAB','theGarage','telemetryReplay'];
-        for (const id of ids) await tap('#settings [data-act=f1-toggle][data-f1=' + id + ']');
+        for (const id of ids) await tap('#settings [data-act=race-toggle][data-f1=' + id + ']');
         await check(dev + ' · six interrupteurs activables séparément', async () => {
           assert.equal(await p.evaluate(() => F1Pure.FEATURES.filter(f => f1Enabled(f.id)).length), 6);
-          assert.equal(await p.locator('#settings [data-act=f1-toggle][aria-pressed=true]').count(), 6);
+          assert.equal(await p.locator('#settings [data-act=race-toggle][aria-pressed=true]').count(), 6);
         });
         await view('pneus');
         await check(dev + ' · Race Engineer + Tyre Management + Garage sans ajouter de section ni modifier les cinq onglets', async () => {
@@ -75,7 +75,7 @@ const active = p => p.evaluate(() => ({
           assert.equal(await p.locator('#secLab [data-f1=telemetryReplay]').count(), 1);
         });
         await p.evaluate(() => { document.getElementById('settings').open = true; renderSettings(true); });
-        for (const id of ids) await tap('#settings [data-act=f1-toggle][data-f1=' + id + ']');
+        for (const id of ids) await tap('#settings [data-act=race-toggle][data-f1=' + id + ']');
         await check(dev + ' · les six options sont réversibles sans effacer de donnée', async () => {
           assert.equal(await p.evaluate(() => F1Pure.FEATURES.every(f => !f1Enabled(f.id))), true);
           assert.equal((await active(p)).modules.length, 0);
