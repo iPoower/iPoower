@@ -114,7 +114,7 @@ function debriefLater() {
 }
 function debriefSnooze() {
   DEBRIEF_FORM = null;
-  appAction(() => { USER_STORE.state.debrief = Debrief.snooze(USER_STORE.state.debrief, DayContext.expiry(Date.now())); });
+  appAction(() => { USER_STORE.state.debrief = Debrief.snooze(USER_STORE.state.debrief, DayContext.endOfDay(Date.now())); });
 }
 function debriefClear() {
   if (!window.confirm('Effacer les débriefs enregistrés sur cet appareil ?')) return;
