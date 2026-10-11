@@ -70,7 +70,7 @@ function repairVehicleIdentity(settings) {
 }
 // réglages chiffrés (site public) : déchiffrés une fois avec le code, puis gardés sur l'appareil
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-async function unseal(pass) {
+async function unseal(pass, keepWeek = true) {
   const S0 = window.TWRC_SEALED; if (!S0 || !crypto || !crypto.subtle) return false;
   let txt;
   try {
@@ -82,7 +82,7 @@ async function unseal(pass) {
   if (VS) {
     // Sécurité V1 : le préréglage déchiffré et le code ne sont conservés que dans le coffre chiffré (jamais en clair).
     const raw = window.TWRC_RAW_STORAGE, had = VS.mode === 'vault' || !!(raw && (raw.getItem(SessionVault.VAULT) || raw.getItem(DeviceStorage.VAULT)));
-    try { await VS.unlock(pass, { 'twrc.plain': txt, 'twrc.plain.v': String(window.TWRC_SEALED_V) }); }
+    try { await VS.unlock(pass, { 'twrc.plain': txt, 'twrc.plain.v': String(window.TWRC_SEALED_V) }, keepWeek); }
     catch (e) {
       unseal.error = e.unsupported ? 'Déverrouillage impossible : ' + e.message : e.name === 'OperationError' ? 'Ce code ouvre la configuration, mais le coffre de cet appareil a été chiffré avec un autre code : saisis le code utilisé lors du chiffrement. Rien n’a été modifié.'
         : 'Déverrouillage impossible : stockage local indisponible ou plein. Tes données restent conservées.';
@@ -917,8 +917,8 @@ function renderNotice() {
   $('#demoBar').innerHTML = DEMO.on ? `<div class="demo-bar"><b>MODE DÉMO · DONNÉES SIMULÉES, PAS DE MÉTÉO RÉELLE</b><span>${esc(DEMO_SCN[DEMO.scn].name)}</span>
     <select id="demoScn" data-act-change="demoScn" aria-label="Scénario de démo">${Object.keys(DEMO_SCN).map(k => `<option value="${k}" ${k === DEMO.scn ? 'selected' : ''}>${esc(DEMO_SCN[k].name)}</option>`).join('')}</select>
     <button class="btn sm" data-act="demo-off">Quitter la démo</button></div>` : '';
-  const lock = LOCKED() && !lsGet('twrc.nocode') ? `<div class="note lvx unlock"><b>🔒 CONFIGURATION</b><span>${storeLocked() ? 'Tes réglages et ton journal sont conservés dans une copie chiffrée. Déverrouille cet appareil avec ton code.' : 'Réglages personnels chiffrés. Entre ton code : il est demandé à chaque réouverture de l’app, pas à chaque rechargement.'}
-      <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" aria-label="Code de configuration" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button></form><span class="sub">Accepte « Enregistrer le mot de passe » : l’iPhone le remplira ensuite avec Face ID.</span><span class="sub">${storeLocked() ? '' : 'Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button>'}</span><span class="sub" id="unlockMsg"></span></span></div>` : '';
+  const lock = LOCKED() && !lsGet('twrc.nocode') ? `<div class="note lvx unlock"><b>🔒 CONFIGURATION</b><span>${storeLocked() ? 'Tes réglages et ton journal sont conservés dans une copie chiffrée. Déverrouille cet appareil avec ton code.' : 'Réglages personnels chiffrés. Entre ton code pour déverrouiller cet appareil.'}
+      <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" aria-label="Code de configuration" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button><label style="width:100%;display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="rememberWeek" checked> Rester connecté 7 jours sur cet appareil personnel</label></form><span class="sub">Après 7 jours, le code sera redemandé. « Verrouiller cet appareil » ferme immédiatement la session. En cas de refus du stockage local, le code reste nécessaire à chaque ouverture.</span><span class="sub">${storeLocked() ? '' : 'Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button>'}</span><span class="sub" id="unlockMsg"></span></span></div>` : '';
   const setup = lock || (CFG_IMPORTED ? `<div class="note lv0"><b>CONFIGURÉ</b><span>Tes lieux et tes voitures sont enregistrés sur cet appareil. Ajoute la page à l’écran d’accueil depuis ce lien.</span></div>`
     : !S.configured ? `<div class="note lvx"><b>À CONFIGURER</b><span>Renseigne tes lieux et tes voitures dans les paramètres. Ils restent sur cet appareil. <button class="btn sm" data-act="goset-cfg">Ouvrir les paramètres</button></span></div>` : '');
   // Une réponse météo peut arriver entre la saisie et la validation du code.
@@ -926,7 +926,7 @@ function renderNotice() {
   // Sécurité V1 : état du coffre de session (erreur d'écriture, migration non terminée, migration réussie)
   const VS = window.TWRC_VAULT, vaultNote = !VS ? '' : VS.error ? `<div class="note lv2" role="alert" data-k="vault"><b>ENREGISTREMENT CHIFFRÉ</b><span>${esc(VS.error)}</span></div>`
     : VS.warn ? `<div class="note lv1" role="status" data-k="vault"><b>STOCKAGE LOCAL</b><span>${esc(VS.warn)}</span></div>`
-    : VS.migrated ? `<div class="note lv0" role="status" data-k="vault"><b>🔐 DONNÉES CHIFFRÉES SUR CET APPAREIL</b><span>Réglages, lieux, journal et code sont désormais chiffrés au repos. Le code sera demandé à chaque réouverture de l’app (le trousseau de l’iPhone peut le remplir) ; un simple rechargement ne le redemande pas.</span></div>` : '';
+    : VS.migrated ? `<div class="note lv0" role="status" data-k="vault"><b>🔐 DONNÉES CHIFFRÉES SUR CET APPAREIL</b><span>Réglages, lieux, journal et code sont désormais chiffrés au repos. Tu peux autoriser cet appareil à rester connecté pendant 7 jours lors du prochain déverrouillage.</span></div>` : '';
   const setContent = extra0 => {
     const extra = vaultNote + extra0;
     const form = el.querySelector('.unlock');
@@ -3767,7 +3767,7 @@ document.addEventListener('click', async e => {
   if (a === 'refresh') refreshAll();
   else if (a === 'unlock') {
     const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
-    const ok = await unseal(pw.trim()); if (ok) { if (!unseal.restored) { try { APP_STORAGE.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } } location.reload(); } else if (msg) msg.textContent = unseal.error || 'Code incorrect.';
+    const ok = await unseal(pw.trim(), !!($('#rememberWeek') || {}).checked); if (ok) { if (!unseal.restored) { try { APP_STORAGE.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } } location.reload(); } else if (msg) msg.textContent = unseal.error || 'Code incorrect.';
   }
   else if (a === 'lock') { await lockDevice(t); }
   else if (a === 'locate') locate(true);
@@ -3930,7 +3930,7 @@ document.addEventListener('submit', async e => {
   if (!e.target || e.target.id !== 'unlockForm') return;
   e.preventDefault();
   const pw = ($('#unlockPw') || {}).value || '', msg = $('#unlockMsg'); if (msg) msg.textContent = 'Déchiffrement…';
-  const ok = await unseal(pw.trim()); if (ok) { if (!unseal.restored) { try { APP_STORAGE.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } } location.reload(); } else if (msg) msg.textContent = unseal.error || 'Code incorrect.';
+  const ok = await unseal(pw.trim(), !!($('#rememberWeek') || {}).checked); if (ok) { if (!unseal.restored) { try { APP_STORAGE.removeItem('twrc.presetv'); } catch (err) { /* stockage */ } } location.reload(); } else if (msg) msg.textContent = unseal.error || 'Code incorrect.';
 });
 document.addEventListener('change', e => {
   const t = e.target;
