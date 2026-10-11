@@ -945,6 +945,7 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .f1-dock-title small { font-size: 10px; color: var(--fg2); }
 .f1-dock-links { flex: 1; display: flex; gap: 5px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .f1-dock-links::-webkit-scrollbar { display: none; }
+.f1-dock-wait { color: var(--fg2); font: 500 11px var(--f-mono); align-self: center; }
 .f1-dock-links a {
   flex: 0 0 auto; border: 1px solid var(--line2); border-radius: 3px;
   background: var(--panel2); color: var(--fg); padding: 7px 9px;
