@@ -107,7 +107,7 @@ function renderF1Pure() {
     trackConditions: ['#secWx', f1TrackHtml, 'meteo'],
     tyreManagement: ['#secBrief', f1TyreHtml, 'pneus'],
     strategyAB: ['#secTrip', f1StrategyHtml, 'trajet'],
-    theGarage: ['#secBrief', f1GarageHtml, 'pneus'],
+    theGarage: ['#secGarage', f1GarageHtml, 'garage'],
     telemetryReplay: ['#secLab', f1ReplayHtml, 'analyse']
   };
   F1_FLAGS.forEach(id => {
