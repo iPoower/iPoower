@@ -98,6 +98,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     check('1 · fenêtre de fonctionnement avec repère et explication « Pourquoi ? »', a.marker && /Pourquoi « /.test(a.all) && /FROID EN CHAUFFE FAVORABLE CHAUD/.test(a.all), a.all.slice(0, 300));
     check('1 · freinage, adhérence en 5 barres, aquaplaning, comparaison en 5 lignes', /🛑 FREINAGE/i.test(a.all) && a.bars === 5 && /AQUAPLANING/i.test(a.all) && a.cmp === 5, JSON.stringify({ bars: a.bars, cmp: a.cmp }));
     check('1 · trajet de l’agenda suivi point par point', /Analyse du trajet ·/i.test(a.trip) && a.tripRows >= 2, a.trip.slice(0, 200));
+    check('1 · projection : distances approximatives et sources météo distinguées des positions GPS', /Progression estimée, sans mesure GPS\. Les lieux indiquent les sources météo\./.test(a.trip) && /≈ km \d+/.test(a.trip), a.trip.slice(0, 350));
     check('1 · pression : cible saisie et estimation, jamais « réelle »', /Cible saisie : 2,3 bar/.test(a.all) && /estimation/.test(a.all) && !/pression réelle/i.test(a.all));
     check('1 · fiche : DONNÉE CONSTRUCTEUR séparée, rubriques « non disponible » sans modèle', /DONNÉE CONSTRUCTEUR/.test(a.all) && /DÉCODAGE DE LA MONTE SAISIE/.test(a.all) && /Étiquette UE : non disponible/.test(a.all) && !a.links.length);
     check('1 · aucune fausse précision : pas de « exactement », mention estimation et absence de capteur', !/exactement/i.test(a.all) && /aucune mesure de capteur/.test(a.all) && /aucun capteur direct/.test(a.all));
@@ -161,6 +162,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     if (process.env.LAB_SHOT) await s.p.locator('#secLab').screenshot({ path: process.env.LAB_SHOT + '-pc.png' });
     check('6 · PC : mêmes blocs que l’iPhone, sans débordement', a.shown && a.bars === 5 && a.cmp === 5 && Lp.sw <= Lp.W && !Lp.wide.length, JSON.stringify(Lp));
     check('6 · pluie : aquaplaning et freinage pluie évalués', /AQUAPLANING/i.test(a.all) && /Pluie : \S+/.test(a.hero), a.hero);
+    check('6 · PC : progression estimée et source météo explicites aussi sur grand écran', /Progression estimée, sans mesure GPS/.test(a.trip) && /sources météo/.test(a.trip) && /≈ km \d+/.test(a.trip), a.trip.slice(0, 350));
     await s.close();
 
     // 7. météo absente au premier lancement : pneu identifié, aucune estimation inventée
