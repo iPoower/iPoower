@@ -4,6 +4,8 @@
  */
 const F1_FLAGS = Object.freeze(F1Pure.FEATURES.map(x => x.id));
 const F1_OPEN = Object.create(null);
+// Modules de tête lisibles dès l'activation ; la fermeture reste mémorisée pour la session.
+const F1_PRIMARY = new Set(['raceEngineer', 'trackConditions', 'strategyAB', 'telemetryReplay']);
 const f1Enabled = id => F1_FLAGS.includes(id) && !!(S.flags && S.flags['f1' + id[0].toUpperCase() + id.slice(1)]);
 function f1Toggle(id) {
   if (!F1_FLAGS.includes(id)) return;
@@ -15,14 +17,16 @@ function f1Toggle(id) {
 }
 const f1Line = line => '<li>' + esc(line) + '</li>';
 function f1Panel(id, title, desc, body) {
-  return '<details class="f1-extension wx-pc lab-d" data-f1="' + esc(id) + '"' + (F1_OPEN[id] ? ' open' : '') +
+  return '<details id="f1-panel-' + esc(id) + '" class="f1-extension wx-pc lab-d" data-f1="' + esc(id) + '"' +
+    ((Object.hasOwn(F1_OPEN, id) ? F1_OPEN[id] : F1_PRIMARY.has(id)) ? ' open' : '') +
     '><summary><span class="ic" aria-hidden="true">🏎️</span><span class="tt">' + esc(title) + '</span><span class="ln">' + esc(desc) +
     '</span></summary><div class="lab-sp">' + body + '</div></details>';
 }
 function f1BriefingHtml() {
   const snap = APP_CONTEXT.snapshot;
+  const confidence = DECISION_LAST && DECISION_LAST.confidence;
   const x = F1Pure.raceEngineer({ decision: DECISION_LAST && DECISION_LAST.decision,
-    confidence: DECISION_LAST && DECISION_LAST.confidence, trip: snap && (snap.activeTrip || snap.nextTrip),
+    confidence: confidence && { ...confidence, reason: (confidence.reasons || []).join(' · ') }, trip: snap && (snap.activeTrip || snap.nextTrip),
     car: appActiveCar() });
   const speak = x.state !== 'indisponible' ? '<button class="btn sm" data-act="race-speak">🔊 Écouter le briefing</button>' : '';
   return f1Panel('raceEngineer', 'RACE ENGINEER', x.title, '<ul class="lab-why">' + x.lines.map(f1Line).join('') +
@@ -30,7 +34,7 @@ function f1BriefingHtml() {
 }
 function f1TrackHtml() {
   const t = APP_CONTEXT.snapshot && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
-  const raw = RAW[UI.loc], age = raw && Number.isFinite(raw.t) ? Math.max(0, (Date.now() - raw.t) / 60000) : null;
+  const raw = RAW[UI.loc], age = raw && Number.isFinite(raw.t) && raw.mode !== 'cache' ? Math.max(0, (Date.now() - raw.t) / 60000) : Infinity;
   const x = F1Pure.trackConditions(t && t.seq, { ageMin: age });
   const rows = x.available ? '<ol class="lab-why">' + x.sectors.map(s => '<li><b>Secteur ' + s.index +
     ' · ' + esc(s.label) + '</b> · ' + s.points + ' point(s) météo · ' +
@@ -48,7 +52,16 @@ function f1TyreHtml() {
 }
 function f1StrategyHtml() {
   const t = APP_CONTEXT.snapshot && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
-  const car = appActiveCar(), x = F1Pure.strategyAB(t, car && car.id);
+  const car = appActiveCar(), raw = RAW[UI.loc];
+  // Les évaluations doivent provenir du même trajet et du moteur déjà utilisé
+  // par « Quelle voiture prendre ? ». Le contexte seul ne possède PAS de t.res.
+  const recent = raw && raw.mode !== 'cache' && Number.isFinite(raw.t) &&
+    Date.now() - raw.t <= 90 * 60000 && raw.t <= Date.now() + 15 * 60000;
+  const cars = t && !t.originPending && Array.isArray(t.seq) && t.seq.length && recent && CX
+    ? TCARS().filter(c => hasTires(c) && !carProfile(c).generic).map(c => ({
+      c, w: windowAssess(c, t.seq, 'trip')
+    })).filter(r => r.w) : [];
+  const x = F1Pure.strategyAB(cars.length >= 2 ? { res: cars } : null, car && car.id);
   const content = x.available ? '<ul class="lab-why">' + x.choices.map(c => '<li><b>STRATÉGIE ' +
     esc(c.scenario) + '</b> · ' + esc(c.car) + ' : ' + esc(c.risk) + '</li>').join('') + '</ul>'
     : '<p class="sub">' + esc(x.reason) + '</p>';
@@ -69,6 +82,25 @@ function f1ReplayHtml() {
     '<ul class="lab-why">' + (x.available ? x.lines : [x.reason]).map(f1Line).join('') +
     '</ul><p class="sub">' + esc(x.note || 'Aucun capteur embarqué ou suivi GPS enregistré dans le replay.') + '</p>');
 }
+function renderF1Dock() {
+  const nav = $('#viewSeg'), current = $('#f1Dock');
+  const on = !LOCKED() && !DEMO.on &&
+    F1Pure.FEATURES.filter(f => f1Enabled(f.id) && f.view === UI.view);
+  if (!nav || !on.length) { if (current) current.remove(); return; }
+  const available = on.filter(f => $('#f1-panel-' + f.id));
+  const html = '<div id="f1Dock" class="f1-dock" role="region" aria-label="Accès aux modules F1">' +
+    '<span class="f1-dock-title"><span aria-hidden="true">🏎️</span> F1 ACTIVE <small>' +
+    F1Pure.FEATURES.filter(f => f1Enabled(f.id)).length + '/6</small></span>' +
+    '<nav class="f1-dock-links" aria-label="Modules F1 de cet onglet">' +
+    (available.length ? available.map(f => '<a href="#f1-panel-' + esc(f.id) + '">' +
+      esc(f.title) + ' ↗</a>').join('') :
+      '<span class="f1-dock-wait">Modules activés · données en attente</span>') +
+    '</nav></div>';
+  if (current) {
+    // Pas de recréation intempestive : conserve les puces et l'éventuel geste tactile.
+    if (current.outerHTML !== html) current.outerHTML = html;
+  } else nav.insertAdjacentHTML('afterend', html);
+}
 function renderF1Pure() {
   const host = {
     raceEngineer: ['#decisionCore', f1BriefingHtml, 'pneus'],
@@ -83,11 +115,23 @@ function renderF1Pure() {
     const current = root.querySelector('.f1-extension[data-f1="' + id + '"]');
     const valid = f1Enabled(id) && UI.view === view && !DEMO.on && !LOCKED() && !root.hidden;
     if (!valid) { if (current) current.remove(); return; }
-    const html = build(), existing = current && current.outerHTML;
-    if (current && existing === html) return;
-    if (current) current.outerHTML = html;
-    else root.insertAdjacentHTML('beforeend', html);
+    const html = build();
+    if (current) { if (current.outerHTML !== html) current.outerHTML = html; return; }
+    // Une section peut être longue (Météo, Analyse, briefing). Ne jamais
+    // cacher les nouveautés APRÈS la totalité de son contenu sur mobile.
+    // Les modules de même section suivent l'ordre de FEATURES.
+    // Préserver les verdicts de sécurité : le poste Météo garde son héros
+    // d'alerte en premier et l'Analyse garde son diagnostic principal visible.
+    const first = id === 'trackConditions' ? root.querySelector(':scope > .wx-hero') :
+      id === 'telemetryReplay' ? root.querySelector(':scope > .lab-hero') :
+      root.querySelector(':scope > .mod-h, :scope > .decision-top');
+    let anchor = first;
+    while (anchor && anchor.nextElementSibling &&
+      anchor.nextElementSibling.matches('.f1-extension')) anchor = anchor.nextElementSibling;
+    if (anchor) anchor.insertAdjacentHTML('afterend', html);
+    else root.insertAdjacentHTML('afterbegin', html);
   });
+  renderF1Dock();
 }
 function f1Speak(button) {
   if (!f1Enabled('raceEngineer') || LOCKED() || DEMO.on) return;
