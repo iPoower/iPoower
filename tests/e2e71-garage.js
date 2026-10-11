@@ -4,9 +4,46 @@ const assert=require('node:assert/strict');
 const {BR,session,errors}=require('./lib/context-session');
 let n=0,stage='';
 const check=async(t,fn)=>{stage=t;await fn();n++;console.log('✅ '+t)};
+// Référence reproductible : réseau et profil entièrement fictifs, aucun secret de production.
+async function precisionReference(browser,dev){
+ const s=await session(browser,{at:'2026-10-07T06:00:00+02:00',dev}),p=s.p;
+ try{
+  await p.evaluate(()=>{
+   USER_STORE.state.dayContext.activeCarId=S.cars[0].id;
+   F1Pure.FEATURES.forEach(f=>{S.flags['f1'+f.id[0].toUpperCase()+f.id.slice(1)]=1;});
+   S.cars[0].plan={on:1,model:'Hiver test',etaFrom:'2026-12-01'};
+   document.querySelector('#placeBar [data-act=place-confirm][data-place=home]').click();
+  });
+  await s.settle(4);
+  const views=[];
+  for(const view of ['meteo','pneus','trajet','garage','analyse']){
+   const button=p.locator('#viewSeg [data-v='+view+']');
+   if(dev==='iphone')await button.tap();else await button.click();
+   await s.settle(2);
+   views.push(await p.evaluate(()=>{
+    const rect=id=>{const e=document.getElementById(id),r=e&&e.getBoundingClientRect();return r&&r.height?{top:Math.round(r.top+scrollY),bottom:Math.round(r.bottom+scrollY)}:null;};
+    return {view:UI.view,modules:[...document.querySelectorAll('.f1-extension')].filter(e=>e.getBoundingClientRect().height).map(e=>e.dataset.f1),
+     width:innerWidth,viewport:innerHeight,scrollWidth:document.documentElement.scrollWidth,decision:rect('decisionCore'),trip:rect('secBrf'),dock:rect('f1Dock'),
+     engineerOpen:document.querySelector('#f1-panel-raceEngineer')?.open??null};
+   }));
+  }
+  await p.locator('#viewSeg [data-v=garage]').click();await s.settle(2);
+  await p.locator('#secGarage .garage-plan > summary').first().click();
+  const rendering=await p.evaluate(()=>{
+   const root=document.getElementById('secGarage'),button=root.querySelector('button.garage-edit'),plan=root.querySelector('.garage-plan');button.focus();
+   const observer=new MutationObserver(()=>{});observer.observe(root,{childList:true,subtree:true});
+   const t=performance.now();for(let k=0;k<20;k++)renderGarage();const elapsed=performance.now()-t;
+   const mutations=observer.takeRecords().filter(r=>r.type==='childList').length;observer.disconnect();
+   return {renders:20,elapsedMs:Math.round(elapsed*100)/100,childMutations:mutations,
+    buttonPreserved:button===root.querySelector('button.garage-edit'),focusPreserved:document.activeElement===button,planOpen:!!root.querySelector('.garage-plan')?.open};
+  });
+  console.log('PRECISION_REFERENCE '+JSON.stringify({browser:BR.NAME,device:dev,views,garageRendering:rendering,physicalDevice:false}));
+ }finally{await s.c.close();}
+}
 (async()=>{
  const browser=await BR.launch();
  try{
+  for(const dev of ['iphone','pc'])await precisionReference(browser,dev);
   for(const dev of ['iphone','pc']){
    const s=await session(browser,{at:'2026-10-10T12:00:00+02:00',dev}),p=s.p;
    const tap=async selector=>{
@@ -47,6 +84,30 @@ const check=async(t,fn)=>{stage=t;await fn();n++;console.log('✅ '+t)};
       assert.match(await car.innerText(),/Entretien mécanique : aucun carnet/);
       await tap('#secGarage .garage-car:first-child .garage-plan > summary');
       assert.match(await car.innerText(),/01\/12\/2026/);
+    });
+    await check(dev+' · actualisation identique : plan ouvert, boutons et focus conservés',async()=>{
+      const result=await p.evaluate(()=>{
+       const root=document.getElementById('secGarage'),button=root.querySelector('button.garage-edit');button.focus();
+       const observer=new MutationObserver(()=>{});observer.observe(root,{childList:true,subtree:true});
+       renderAll();renderAll();
+       const mutations=observer.takeRecords().filter(r=>r.type==='childList').length;observer.disconnect();
+       return {open:root.querySelector('.garage-plan').open,sameButton:button===root.querySelector('button.garage-edit'),focus:document.activeElement===button,mutations};
+      });
+      assert.deepEqual(result,{open:true,sameButton:true,focus:true,mutations:0},JSON.stringify(result));
+    });
+    await check(dev+' · donnée actualisée : compteur visible et plan hiver toujours ouvert',async()=>{
+      await p.evaluate(()=>{S.cars[0].odo[0].km=121001;renderAll();});
+      assert.match(await p.locator('#secGarage .garage-car').first().innerText(),/121\s?001 km|121.001 km/);
+      assert.equal(await p.locator('#secGarage .garage-plan').first().evaluate(e=>e.open),true);
+      await p.evaluate(()=>{S.cars[0].odo[0].km=121000;renderAll();});
+    });
+    await check(dev+' · clic en cours conservé pendant une actualisation',async()=>{
+      const button=p.locator('#secGarage .garage-car:nth-child(2) [data-act=day-car]'),target=await button.getAttribute('data-id');
+      await button.scrollIntoViewIfNeeded();const box=await button.boundingBox();
+      await p.mouse.move(box.x+box.width/2,box.y+box.height/2);await p.mouse.down();
+      await p.evaluate(()=>renderAll());await p.mouse.up();await s.settle(3);
+      assert.equal(await p.evaluate(()=>APP_CONTEXT.snapshot.activeCarId),target);
+      await p.evaluate(()=>appSetCar(S.cars[0].id));await s.settle(2);
     });
     await check(dev+' · visualisation pure : les deux fiches sources restent identiques',async()=>{
       assert.equal(await p.evaluate(()=>JSON.stringify(S.cars)),synthetic);
