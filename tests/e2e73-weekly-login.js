@@ -18,7 +18,7 @@ async function openAt(context, date) {
   const browser = await BR.launch();
   try {
     for (const dev of ['iphone', 'pc']) {
-      const s = await session(browser, { at: '2026-10-10T08:00:00+02:00', dev }), p = s.p;
+      const s = await session(browser, { at: '2026-10-10T08:00:00+02:00', dev, remember: true }), p = s.p;
       const initial = await p.evaluate(() => ({ name: S.cars[0].name, locked: LOCKED(), vault: window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) }));
       assert.equal(initial.locked, false); assert(initial.vault);
       await check(dev + ' · case de maintien : clé AES-GCM non extractible dans IndexedDB, aucune donnée en clair', async () => {
@@ -62,8 +62,7 @@ async function openAt(context, date) {
         finally { await q.close(); }
       });
       await check(dev + ' · case désactivée : ouverture suivante avec mot de passe', async () => {
-        assert(await p.locator('#rememberWeek').isChecked());
-        await p.locator('#rememberWeek').uncheck();
+        assert.equal(await p.locator('#rememberWeek').isChecked(), false, 'la conservation reste volontaire');
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
         await p.fill('#unlockPw', PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
@@ -71,6 +70,46 @@ async function openAt(context, date) {
         const q = await openAt(s.c, s.T0 + DAY);
         try { assert.equal(await q.evaluate(() => LOCKED()), true); assert.equal(await q.locator('#unlockPw').count(), 1); }
         finally { await q.close(); }
+      });
+      await check(dev + ' · session locale corrompue : écran de code au lieu d’un crash', async () => {
+        await p.evaluate(() => {
+          const key = 'twrc.session.v2', ses = JSON.parse(sessionStorage.getItem(key));
+          ses.k = '!!base64-invalide!!';
+          sessionStorage.setItem(key, JSON.stringify(ses));
+        });
+        await p.reload(); await s.settle(4);
+        assert.equal(await p.evaluate(() => LOCKED()), true);
+        assert.equal(await p.locator('#unlockPw').count(), 1);
+      });
+      await check(dev + ' · expiration sur la même page : coffre illisible et écran bloquant', async () => {
+        const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
+        await p.fill('#unlockPw', PW);
+        await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
+        assert.equal(await p.evaluate(() => LOCKED()), false);
+        await p.clock.setFixedTime(s.T0 + 8 * DAY);
+        const result = await p.evaluate(() => {
+          checkSessionExpiry();
+          const v = window.TWRC_VAULT;
+          const oldValue = localStorage.getItem('twrc.settings.v1');
+          let refused = false;
+          try { localStorage.setItem('twrc.settings.v1', 'new-secret-after-expiration'); }
+          catch (e) { refused = e.expired === true; }
+          return {
+            mode: v.mode, locked: LOCKED(), refused, oldValue,
+            hidden: document.body.classList.contains('twrc-session-expired'),
+            overlay: !!document.getElementById('twrcExpiryOverlay'),
+            persisted: window.TWRC_RAW_STORAGE.getItem('twrc.settings.v1')
+          };
+        });
+        assert.equal(result.mode, 'expired');
+        assert.equal(result.locked, true);
+        assert.equal(result.refused, true);
+        assert.equal(result.oldValue, null);
+        assert.equal(result.hidden, true);
+        assert.equal(result.overlay, true);
+        assert.equal(result.persisted, null);
+        assert(await p.locator('#twrcExpiryPassword').isVisible());
+        assert.equal(await p.locator('#twrcExpiryRemember').isChecked(), false);
       });
       await s.c.close();
     }
