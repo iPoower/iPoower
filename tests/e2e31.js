@@ -32,8 +32,8 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
     const visible = id => p.locator('#' + id).isVisible();
     await p.goto(U); await settle(); await p.fill('#unlockPw', PW);
     await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); await settle();
-    check('même titre, onglets Météo / Pneus / TRAJET / Tenue / Analyse dans cet ordre', await p.locator('.title').innerText().then(t => /TYRE WEATHER RACE CONTROL/i.test(t)) &&
-      await p.locator('#viewSeg button').evaluateAll(a => a.map(x => x.dataset.v).join(',') === 'meteo,pneus,trajet,tenue,analyse'));
+    check('même titre, cinq onglets dont Garage à la place de Tenue', await p.locator('.title').innerText().then(t => /TYRE WEATHER RACE CONTROL/i.test(t)) &&
+      await p.locator('#viewSeg button').evaluateAll(a => a.map(x => x.dataset.v).join(',') === 'meteo,pneus,trajet,garage,analyse'));
     check('la tenue est masquée dans le cockpit Pneus', !(await visible('secTenue')) && await visible('secCars'));
     const n = forecasts;
     await p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); await settle(); // moteur de compatibilité sans onglet public
@@ -81,7 +81,11 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
     // Capture locale, seulement si demandée par l'atelier (jamais publiée dans la CI).
     if (process.env.RC_OUTFIT_SHOT) await p.locator('body').screenshot({ path: process.env.RC_OUTFIT_SHOT, fullPage: true });
     await p.reload(); await settle();
-    check('onglet Tenue conservé ; Promenade du lendemain ne remplace pas aujourd’hui', await visible('secTenue') && await p.locator('[data-act=outfit-occasion][data-v=walk]').getAttribute('aria-pressed') === 'false');
+    check('après rechargement, Tenue n’est pas un onglet public et Garage existe', !await visible('secTenue') &&
+      await p.locator('#viewSeg [data-v=tenue]').count() === 0 && await p.locator('#viewSeg [data-v=garage]').count() === 1);
+    await p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); await settle(); // uniquement test interne de non-régression
+    check('ancien moteur Tenue intact après rechargement : aujourd’hui sans Promenade',
+      await visible('secTenue') && await p.locator('[data-act=outfit-occasion][data-v=walk]').getAttribute('aria-pressed') === 'false');
     await p.click('[data-act=outfit-day][data-v="1"]');
     check('usage Promenade conservé pour le lendemain choisi après rechargement', await p.locator('[data-act=outfit-occasion][data-v=walk]').getAttribute('aria-pressed') === 'true');
     await p.click('[data-act=view][data-v=meteo]');
