@@ -56,6 +56,7 @@ const probe = p => p.evaluate(() => {
   return { txt: el ? el.innerText.replace(/\s+/g, ' ') : null, has: !!main,
     first: tr ? { lvl: TL_LEVEL_TXT[tr[0].s], range: tr[0].range, s: tr[0].s } : null, last: tr ? { lvl: TL_LEVEL_TXT[tr[tr.length - 1].s], range: tr[tr.length - 1].range } : null,
     reached: tr ? tr.some(x => x.s === 2) : null, hot: tr ? tr.some(x => x.s >= 3) : null, n: tr ? tr.length : 0,
+    ordered: !!tr && tr[0].t === main.dep.slice(11, 16) && tr.at(-1).t === main.arr.slice(11, 16) && tr.every((x, i) => !i || (x.t >= tr[i - 1].t && (x.km == null || tr[i - 1].km == null || x.km >= tr[i - 1].km))),
     overflow: document.documentElement.scrollWidth > window.innerWidth + 1 };
 });
 const rg = x => `${String(x[0]).replace('-', '−')}–${String(x[1]).replace('-', '−')} °C`;
@@ -67,6 +68,7 @@ const rg = x => `${String(x[0]).replace('-', '−')}–${String(x[1]).replace('-
       const s = await session(b, { at: '2026-10-07T06:00:00+02:00', scn, dev }), p = s.p, tag = `${dev} · ${scn}`;
       await s.settle(6); const g = await probe(p);
       check(tag + ' · un trajet analysé et sa ligne Gomme dans le briefing', g.has && g.n >= 2 && !!g.txt && /Gomme · estimation/.test(g.txt), JSON.stringify(g));
+      check(tag + ' · passages entre le départ et l’arrivée, kilomètres qui ne reculent jamais', g.ordered, JSON.stringify(g));
       if (g.txt && g.first) {
         check(tag + ' · départ et arrivée identiques au calcul tyreLab du trajet (état + plage °C)',
           g.txt.includes(`Départ : ${g.first.lvl} (${rg(g.first.range)})`) && g.txt.includes(`Arrivée : ${g.last.lvl} (${rg(g.last.range)})`), JSON.stringify(g));

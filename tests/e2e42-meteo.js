@@ -155,6 +155,21 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     check('6 · « ce qui compte » commence par le plus grave', /^🔴|^🟠/.test(w.matters[0] || ''), w.matters.join(' | '));
     await s.c.close();
 
+    // Réponse météo locale valide, mais un trajet courant et un suivant sans
+    // prévisions : le DOM ne doit jamais transformer l’absence en voyant vert.
+    for (const dev of ['iphone', 'pc']) {
+      s = await session(b, { at: '2026-10-03T05:40:00+02:00', scn: 'doux', dev });
+      const neutral = await s.p.evaluate(() => {
+        const input = wxInput();
+        const make = (id, dep, arr) => ({ id, label: 'trajet fictif', dep, arr, from: 'Ville A', to: 'Ville B', points: [] });
+        input.trips = [make('empty-first', '2026-10-03T07:00', '2026-10-03T07:40'), make('empty-later', '2026-10-03T12:00', '2026-10-03T12:40')];
+        const original = wxInput; wxInput = () => input; renderWx.last = ''; renderWx(); wxInput = original;
+        const box = document.querySelector('#secWx .wx-trip');
+        return { cls: box.className, text: box.innerText, green: !!box.querySelector('.lv0'), matters: document.querySelector('#secWx .wx-mat').innerText };
+      });
+      check(`${dev} · météo route inconnue : carte neutre et suivant indisponible, aucune rassurance inventée`, /lvx/.test(neutral.cls) && !neutral.green && !/🟢/.test(neutral.text) && /Ensuite : ⏳.*météo indisponible/.test(neutral.text) && !/Pas de pluie attendue sur les trajets/.test(neutral.matters), JSON.stringify(neutral));
+      await s.c.close();
+    }
     await require('./lib/temperature-card')(b, check);
     const extra = [...hosts].filter(h => !KNOWN.test(h));
     check('7 · aucun fournisseur externe supplémentaire', !extra.length, extra.join(', '));

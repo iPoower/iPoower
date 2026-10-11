@@ -119,6 +119,25 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const long = lab({ now: ts('08:00'), car: car(), hours: hs, trip: { km: 90, points: P([['08:10', 0], ['08:40', 40], ['09:05', 90]]) } });
     assert(short.trip.rows.at(-1).s <= 1, short.trip.rows.at(-1).state); assert.equal(long.trip.rows.at(-1).state, 'Fenêtre favorable');
   });
+  test('progression inversée ou sans durée : projection suspendue, estimation actuelle conservée', () => {
+    const cases = [
+      [['06:30', 14], ['06:45', 0], ['07:10', 41]],
+      [['06:30', 0], ['06:30', 41]],
+      [['invalide', 0], ['07:10', 41]]
+    ];
+    for (const list of cases) {
+      const r = lab({ now: ts('06:00'), car: car(), hours: H({ T: 8, Tr: 8 }),
+        trip: { km: 41, points: list.map(([h, km]) => ({ t: ts(h), km })) } });
+      assert.equal(r.trip, null); assert.match(r.tripIssue, /incohérentes/);
+      assert(r.confidence.reasons.includes(r.tripIssue)); assert(Number.isFinite(r.thermal.T));
+    }
+  });
+  test('points valides livrés hors ordre : comparaison et projection suivent les mêmes extrémités', () => {
+    const hs = H({ T: 8, Tr: 8 }), points = [['07:10', 41], ['06:30', 0], ['06:50', 20]].map(([h, km]) => ({ t: ts(h), km }));
+    const r = lab({ now: ts('06:00'), car: car(), hours: hs, trip: { km: 41, points } });
+    assert.deepEqual(r.trip.rows.map(p => p.km), [0, 20, 41]); assert.equal(r.tripIssue, null);
+    assert.equal(r.compare.a, 'Départ 06:30'); assert.equal(r.compare.b, 'Arrivée 07:10');
+  });
   test('aucun trajet : hypothèse de route affichée, comparaison « maintenant / après ~15 km »', () => {
     const r = lab({ now: ts('07:00'), car: car(), hours: H({ T: 8, Tr: 7 }) });
     assert.equal(r.trip, null); assert.match(r.warm.hyp, /hypothèse : route/); assert.equal(r.compare.a, 'Maintenant'); assert.equal(r.compare.b, 'Après ~15 km');
