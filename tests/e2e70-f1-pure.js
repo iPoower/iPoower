@@ -24,6 +24,7 @@ const active = p => p.evaluate(() => ({
         const before = await active(p);
         await check(dev + ' · aucun panneau F1 par défaut, navigation à 5 vues', async () => {
           assert.equal(before.modules.length, 0);
+          assert.equal(await p.locator('#f1Dock').count(), 0, 'aucun bandeau F1 quand tout est désactivé');
           assert.deepEqual(before.tabs, ['meteo', 'pneus', 'trajet', 'tenue', 'analyse']);
           assert.equal(await p.evaluate(() => F1Pure.FEATURES.every(f => !f1Enabled(f.id))), true);
         });
@@ -43,10 +44,27 @@ const active = p => p.evaluate(() => ({
           assert(x.modules.includes('theGarage'), JSON.stringify(x.modules));
           assert(await p.locator('#decisionCore [data-f1=raceEngineer] summary').isVisible());
           assert(await p.locator('#secBrief [data-f1=tyreManagement] summary').isVisible());
+          const dock = p.locator('#f1Dock');
+          assert(await dock.isVisible(), 'bandeau F1 visible sur iPhone/PC');
+          assert.equal(await dock.locator('a').count(), 3);
+          const bounds = await dock.boundingBox();
+          assert(bounds && bounds.y < 900 && bounds.y + bounds.height > 0,
+            'bandeau F1 doit se trouver dans le premier écran');
+          assert.equal(await p.locator('#f1-panel-raceEngineer').evaluate(x => x.open), true,
+            'Race Engineer est ouvert par défaut, puis repliable');
+          assert.equal(await p.locator('#secBrief > .mod-h + .f1-extension').count(), 1,
+            'modules pneus immédiatement sous le titre, pas au bas du briefing');
+        });
+        await tap('#f1Dock a[href="#f1-panel-raceEngineer"]');
+        await check(dev + ' · accès direct Race Engineer depuis le bandeau', async () => {
+          assert.equal(await p.evaluate(() => location.hash), '#f1-panel-raceEngineer');
         });
         await view('meteo');
         await check(dev + ' · Track Conditions reste dans Météo et distingue prévision et mesure', async () => {
-          await tap('#secWx [data-f1=trackConditions] > summary');
+          const panel = p.locator('#secWx [data-f1=trackConditions]');
+          if (!await panel.evaluate(x => x.open)) await tap('#secWx [data-f1=trackConditions] > summary');
+          assert(await p.locator('#f1Dock a[href="#f1-panel-trackConditions"]').isVisible());
+          assert.equal(await p.locator('#secWx > .mod-h + .f1-extension').count(), 1);
           const text = await p.locator('#secWx [data-f1=trackConditions]').innerText();
           assert(/TRACK CONDITIONS/.test(text)); assert(/Aucun découpage GPS précis/.test(text));
           assert.equal(await p.locator('#decisionCore [data-f1=raceEngineer]').count(), 0);
@@ -61,7 +79,7 @@ const active = p => p.evaluate(() => ({
         await check(dev + ' · Telemetry Replay dans Analyse, jamais de GPS simulé en donnée mesurée', async () => {
           const q = p.locator('#secLab [data-f1=telemetryReplay]');
           assert.equal(await q.count(), 1);
-          await tap('#secLab [data-f1=telemetryReplay] > summary');
+          if (!await q.evaluate(x => x.open)) await tap('#secLab [data-f1=telemetryReplay] > summary');
           assert.match(await q.innerText(), /Aucun trajet|Retour|journal|capteur/i);
         });
         await check(dev + ' · aucun véhicule ni contexte modifié par les six projections', async () => {
@@ -73,12 +91,14 @@ const active = p => p.evaluate(() => ({
         await check(dev + ' · six options conservées au rechargement sans nouvel état de trajet', async () => {
           assert.equal(await p.evaluate(() => F1Pure.FEATURES.filter(f => f1Enabled(f.id)).length), 6);
           assert.equal(await p.locator('#secLab [data-f1=telemetryReplay]').count(), 1);
+          assert.equal(await p.locator('#f1Dock a').count(), 1, 'accès rapide conservé après rechargement');
         });
         await p.evaluate(() => { document.getElementById('settings').open = true; renderSettings(true); });
         for (const id of ids) await tap('#settings [data-act=race-toggle][data-f1=' + id + ']');
         await check(dev + ' · les six options sont réversibles sans effacer de donnée', async () => {
           assert.equal(await p.evaluate(() => F1Pure.FEATURES.every(f => !f1Enabled(f.id))), true);
           assert.equal((await active(p)).modules.length, 0);
+          assert.equal(await p.locator('#f1Dock').count(), 0, 'bandeau disparaît immédiatement à la désactivation');
         });
         await view('tenue');
         await check(dev + ' · onglet Tenue totalement inchangé', async () => {
