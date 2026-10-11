@@ -85,14 +85,16 @@ function f1ReplayHtml() {
 function renderF1Dock() {
   const nav = $('#viewSeg'), current = $('#f1Dock');
   const on = !LOCKED() && !DEMO.on &&
-    F1Pure.FEATURES.filter(f => f1Enabled(f.id) && f.view === UI.view &&
-      $('#f1-panel-' + f.id));
+    F1Pure.FEATURES.filter(f => f1Enabled(f.id) && f.view === UI.view);
   if (!nav || !on.length) { if (current) current.remove(); return; }
+  const available = on.filter(f => $('#f1-panel-' + f.id));
   const html = '<div id="f1Dock" class="f1-dock" role="region" aria-label="Accès aux modules F1">' +
     '<span class="f1-dock-title"><span aria-hidden="true">🏎️</span> F1 ACTIVE <small>' +
     F1Pure.FEATURES.filter(f => f1Enabled(f.id)).length + '/6</small></span>' +
     '<nav class="f1-dock-links" aria-label="Modules F1 de cet onglet">' +
-    on.map(f => '<a href="#f1-panel-' + esc(f.id) + '">' + esc(f.title) + ' ↗</a>').join('') +
+    (available.length ? available.map(f => '<a href="#f1-panel-' + esc(f.id) + '">' +
+      esc(f.title) + ' ↗</a>').join('') :
+      '<span class="f1-dock-wait">Modules activés · données en attente</span>') +
     '</nav></div>';
   if (current) {
     // Pas de recréation intempestive : conserve les puces et l'éventuel geste tactile.
