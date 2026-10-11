@@ -47,9 +47,14 @@ const active = p => p.evaluate(() => ({
           const dock = p.locator('#f1Dock');
           assert(await dock.isVisible(), 'bandeau F1 visible sur iPhone/PC');
           assert.equal(await dock.locator('a').count(), 3);
-          const bounds = await dock.boundingBox();
-          assert(bounds && bounds.y < 900 && bounds.y + bounds.height > 0,
-            'bandeau F1 doit se trouver dans le premier écran');
+          // getBoundingClientRect() dépend du scroll courant (encore animé sur iPhone).
+          // Tester la POSITION réelle dans le document, pas le viewport transitoire.
+          const placement = await dock.evaluate(el => {
+            const rect = el.getBoundingClientRect();
+            return { top: rect.top + window.scrollY, height: rect.height, viewport: window.innerHeight };
+          });
+          assert(placement.top >= 0 && placement.top + placement.height < placement.viewport,
+            'bandeau F1 doit se trouver dans le premier écran du document');
           assert.equal(await p.locator('#f1-panel-raceEngineer').evaluate(x => x.open), true,
             'Race Engineer est ouvert par défaut, puis repliable');
           assert.equal(await p.locator('#secBrief > .mod-h + .f1-extension').count(), 1,
