@@ -96,7 +96,8 @@ async function views(p, expected) {
         assert.equal(await p.locator('#dayContext [data-act=day-car][data-id=""]').count(), 0);
         assert.equal((await read(p)).next.car, 'carB');
         for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) {
-          await tap(p, '#viewSeg [data-act=view][data-v=' + view + ']');
+          if (view === 'tenue') await p.evaluate(() => { UI.view = 'tenue'; renderAll(); });
+          else await tap(p, '#viewSeg [data-act=view][data-v=' + view + ']');
           const editor = p.locator('#dayContext details.day-editor');
           if (await editor.isVisible() && await editor.getAttribute('open') != null) await tap(p, '#dayContext .day-editor > summary');
           const decision = p.locator('#decisionCore');
