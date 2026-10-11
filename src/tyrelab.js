@@ -256,12 +256,18 @@ function tyreLab(input) {
   }
   const gNow = gripAt(eNow, st, kind);
   /* ---------- 8. trajet : état le long du parcours ---------- */
-  let trip = null;
+  let trip = null, tripIssue = null, tripStartM = null, tripEndM = null;
   const tp = inp.trip && Array.isArray(inp.trip.points) && inp.trip.points.length ? inp.trip : null;
-  if (tp) {
-    const pts = tp.points.map(p => ({ ...p, m: mins(p.t) })).filter(p => Number.isFinite(p.m)).sort((a, b) => a.m - b.m);
-    const totKm = n(tp.km);
-    const kmOf = p => n(p.km) ?? (totKm != null && n(p.f) != null ? p.f * totKm : null);
+  const pts = tp ? tp.points.map(p => ({ ...p, m: mins(p && p.t) })).filter(p => Number.isFinite(p.m)).sort((a, b) => a.m - b.m) : [];
+  const totKm = tp ? n(tp.km) : null;
+  const kmOf = p => n(p.km) ?? (totKm != null && n(p.f) != null ? p.f * totKm : null);
+  // Une distance qui recule rend la vitesse et la chauffe impossibles. Suspendre
+  // cette projection plutôt que produire une température ou corriger les données.
+  if (tp && (!pts.length || pts.length !== tp.points.length || pts.some((p, i) => {
+    const km = kmOf(p), prev = i ? kmOf(pts[i - 1]) : null;
+    return km != null && (km < 0 || (prev != null && (km < prev || (p.m === pts[i - 1].m && km > prev))));
+  }))) tripIssue = 'Projection du trajet indisponible : heures ou progression kilométrique incohérentes.';
+  if (tp && !tripIssue) {
     let Tt = T, mPrev = nowM, prevWet = null; const rows = [];
     const startM = pts[0].m;
     if (startM > nowM) Tt = evolve(T, nowM, startM, phase === 'driving' ? { kind, v: TL_KIND[kind].v } : null).T;   // attente jusqu'au départ
@@ -284,6 +290,7 @@ function tyreLab(input) {
       rows.push({ t: hm(p.m), name: p.name || null, km: kmOf(p) != null ? Math.round(kmOf(p)) : null, state: TL_STATES[s], s, lv: stLv(s), brakeLv: g.lv, range: [Math.floor(Tt - uu), Math.ceil(Tt + uu)], brake: g.word, events, kind: p.kind || null });
     });
     trip = { label: tp.label || 'trajet', dep: hm(pts[0].m), arr: hm(pts[pts.length - 1].m), rows, startS: rows[0].s, endS: rows[rows.length - 1].s };
+    tripStartM = pts[0].m; tripEndM = pts[pts.length - 1].m;
   }
   /* ---------- 9. comparaison départ / maintenant ---------- */
   const cmpRow = (lbl, a, b) => ({ label: lbl, a, b });
@@ -292,7 +299,7 @@ function tyreLab(input) {
   {
     let aLbl, bLbl, sA, sB, eA, eB, kA = kind, kB = kind;
     if (drv) { aLbl = 'Départ'; bLbl = 'Maintenant'; const since = mins(drv.since), Ts = hist && mins(hist.at) <= since ? evolve(hist.T, mins(hist.at), since, null).T : env(since).Tenv; eA = env(since); sA = stateOf(Ts, u); sB = st; eB = eNow; }
-    else if (trip) { aLbl = `Départ ${trip.dep}`; bLbl = `Arrivée ${trip.arr}`; sA = trip.startS; sB = trip.endS; eA = env(mins(inp.trip.points[0].t)); eB = env(mins(inp.trip.points[inp.trip.points.length - 1].t)); }
+    else if (trip) { aLbl = `Départ ${trip.dep}`; bLbl = `Arrivée ${trip.arr}`; sA = trip.startS; sB = trip.endS; eA = env(tripStartM); eB = env(tripEndM); }
     else { aLbl = 'Maintenant'; bLbl = 'Après ~15 km'; sA = st; eA = eB = eNow; const r = evolve(T, nowM, nowM + 15 / TL_KIND[kind].v * 60, { kind, v: TL_KIND[kind].v }); sB = stateOf(r.T, u); }
     const wetE = e => ({ ...e, surf: e.surf === 'dry' || e.surf === 'damp' ? 'rain' : e.surf, Pl: Math.max(e.Pl, 1) }), dryE = e => ({ ...e, surf: 'dry' });
     const A = { d: gripAt(dryE(eA), sA, kA), w: gripAt(wetE(eA), sA, kA), n: gripAt(eA, sA, kA) }, B = { d: gripAt(dryE(eB), sB, kB), w: gripAt(wetE(eB), sB, kB), n: gripAt(eB, sB, kB) };
@@ -320,6 +327,7 @@ function tyreLab(input) {
   }
   /* ---------- 11. confiance ---------- */
   const reasons = ['Température du pneu estimée : aucun capteur direct n’est disponible'];
+  if (tripIssue) reasons.push(tripIssue);
   if (hist && hist.source === 'manual') reasons.push('Historique déclaré par vous : heure, durée et type de route ; départ supposé froid');
   let score = 3;
   if (phase === 'unknown') { score -= 1; reasons.push('Historique de roulage inconnu (pneu supposé froid)'); }
@@ -348,7 +356,7 @@ function tyreLab(input) {
     warm: warm.reached ? (warm.sinceMin != null ? `Zone favorable atteinte depuis ~${warm.sinceMin} min` : null) : warm.marginal ? 'limite' : warm.never ? 'Zone favorable non atteinte dans ces conditions' : warm.min[1] == null ? `≥ ${warm.min[0]} min · ≥ ${warm.km[0]} km (peut ne pas être atteinte)` : `≈ ${warm.min[0]}–${warm.min[1]} min · ≈ ${warm.km[0]}–${warm.km[1]} km`,
     brake: gNow.word, corner: gNow.bars[2].word, rain: gNow.aqua.lv ? ['Faible', 'Vigilance', 'Risque élevé', 'Critique'][gNow.aqua.lv] : gripAt({ ...eNow, surf: 'rain', Pl: 1 }, st, kind).word, limiting, confidence: confidence.level };
   return { known: true, tyre, spec: specOut, now: inp.now, phase, parkedMin, drivenKm, drivenMin, kind, env: { Ta: eNow.Ta, Tr: eNow.Tr, Tenv: eNow.Tenv, surf: eNow.surf, surfTxt: SURF_TXT[eNow.surf], Pl: eNow.Pl },
-    thermal: { T, range, state: stateTxt, level: TL_STATES[st], trend, trendTxt: TL_TREND_TXT[trend], eq: Math.round(eq * 10) / 10, s: st, lv: stLv(st), win, pos, marks, why, uhp }, warm, cool, grip: gNow, trip, compare, press, confidence, hero, state: inp.state || null };
+    thermal: { T, range, state: stateTxt, level: TL_STATES[st], trend, trendTxt: TL_TREND_TXT[trend], eq: Math.round(eq * 10) / 10, s: st, lv: stLv(st), win, pos, marks, why, uhp }, warm, cool, grip: gNow, trip, tripIssue, compare, press, confidence, hero, state: inp.state || null };
 }
 
 // Convertit un roulage déclaré en point de départ thermique, avec le même modèle que le suivi automatique.

@@ -72,8 +72,7 @@ function tripLab(t, car) {
   if (!car || !CX || !seq.length || !seq.every(q => q && q.hs && q.hs[q.i]) || workCommuteBad(t)) return null;
   const li = labInput(car);
   li.trip = { label: t.name, km: t.l && t.l.km != null ? t.l.km : t.td && t.td.dist != null ? t.td.dist * 1.3 : null,
-    points: seq.map((q, i) => ({ t: q.t || (i === 0 ? t.dep : i === seq.length - 1 ? t.arr : q.hs[q.i].t),
-      f: q.f != null ? q.f : seq.length > 1 ? i / (seq.length - 1) : 0, km: q.km, x: q.hs[q.i] })) };
+    points: tripPassagePoints(t) };
   try { return tyreLab(li); } catch (e) { return null; }
 }
 // ligne du briefing : état de la gomme au départ → à l'arrivée (ou maintenant, en roulage), plage °C, fenêtre atteinte ou non
@@ -183,7 +182,7 @@ function renderLab() {
       const aqua = `<div class="wx-blk lab-aq ${lvc(g.aqua.lv)}"><h3>🌊 Aquaplaning</h3><p class="lab-big">${E[g.aqua.lv]} ${esc(g.aqua.word.toUpperCase())}</p><ul class="lab-why">${g.aqua.why.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
       const c = r.compare, cmp = `<div class="wx-blk lab-cmp"><h3>⚖️ Comparaison</h3><table class="lab-t"><thead><tr><th></th><th>${esc(c.a)}</th><th>${esc(c.b)}</th></tr></thead><tbody>${c.rows.map(x => `<tr><th>${esc(x.label)}</th><td>${E[x.a.lv]} ${esc(x.label.startsWith('Freinage') ? labBrakeText(x.a.word) : x.a.word)}</td><td>${E[x.b.lv]} ${esc(x.label.startsWith('Freinage') ? labBrakeText(x.b.word) : x.b.word)}</td></tr>`).join('')}</tbody></table></div>`;
       const tr = r.trip ? `<div class="wx-blk lab-trip"><h3>🧭 Analyse du trajet · ${esc(r.trip.label)} ${esc(r.trip.dep)} → ${esc(r.trip.arr)}</h3><ol class="lab-tl">${r.trip.rows.map(x => `${x.events.map(ev => `<li class="ev lv2"><time class="num">${esc(x.t)}</time><span>${ev.ic} ${esc(ev.text)}<br><span class="sub">Impact : ${esc(ev.impact.join(' · '))}</span></span></li>`).join('')}<li class="${lvc(x.lv)}"><time class="num">${esc(x.t)}</time><span><b>${esc(x.name || (x.km != null ? 'km ' + x.km : 'point de passage'))}</b>${x.km != null && x.name ? ` <span class="sub">km ${x.km}</span>` : ''}<br>${E[x.lv]} ${esc(x.state)} · ≈ ${rg(x.range)} · freinage ${esc(labBrakeText(x.brake).toLowerCase())}</span></li>`).join('')}</ol></div>`
-        : `<div class="wx-blk lab-trip"><h3>🧭 Analyse du trajet</h3><p class="sub">Aucun trajet prévu : l’analyse suppose un départ sur route (≈ 70 km/h).</p></div>`;
+        : `<div class="wx-blk lab-trip"><h3>🧭 Analyse du trajet</h3><p class="sub">${r.tripIssue ? esc(r.tripIssue) : 'Aucun trajet prévu : l’analyse suppose un départ sur route (≈ 70 km/h).'}</p></div>`;
       const p = r.press, press = `<div class="wx-blk lab-pr ${p.known && p.low ? 'lv2' : ''}"><h3>🎈 Pression</h3>${p.known ? `<ul class="lab-why">${p.notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="sub">Source : ${esc(p.src)}.</p>` : `<p class="sub">${esc(p.text)}</p>`}</div>`;
       const conf = `<details class="wx-pc lab-d" data-k="conf"><summary><span class="ic" aria-hidden="true">🎯</span><span class="tt">Niveau de confiance</span><span class="ln">${esc(cf.level[0].toUpperCase() + cf.level.slice(1))}</span></summary><ul>${(cf.axes || []).map(([k, v]) => `<li><b>${esc(k)}</b> : ${esc(v)}</li>`).join('')}${cf.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
       html = cars + hero + labLastDriveHtml(car, li) + labTripState(r, li) + win + brake + grip + aqua + cmp + tr + press + stHtml + fiche + conf;

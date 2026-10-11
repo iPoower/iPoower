@@ -316,11 +316,11 @@ function wxDesk(input) {
     if (!crit && tt.glare) crit = { lv: 1, id: 'sun', text: `Soleil rasant vers ${hm(tt.glare.ts)}`, at: hm(tt.glare.ts) };
     const tmb = !tt.pending && !crit && maybeOf(tripRows(tt));
     if (tmb) crit = { lv: tmb.lv, id: 'rain', text: `Pluie possible ${tmb.m <= tt.depM ? 'dès le départ' : 'vers ' + hm(tmb.t)} · ${tmb.text}`, at: hm(tmb.t), possible: true };
-    const later = tripList.filter(t => !t.pending && t !== tt && t.depM > tt.depM).slice(0, 3).map(t => ({ dep: hm(t.dep), label: t.label || 'trajet', lv: t.pts.reduce((a, p) => Math.max(a, p.lv), 0), day: t.dep.slice(0, 10) }));
+    const later = tripList.filter(t => !t.pending && t !== tt && t.depM > tt.depM).slice(0, 3).map(t => ({ dep: hm(t.dep), label: t.label || 'trajet', lv: t.pts.length ? t.pts.reduce((a, p) => Math.max(a, p.lv), t.glare ? 1 : 0) : null, day: t.dep.slice(0, 10) }));
     trip = { id: tt.id || null, label: tt.label || 'trajet', from: tt.from || null, to: tt.to || null, dep: hm(tt.dep), arr: hm(tt.arr || tt.dep), day: tt.dep.slice(0, 10), durMin: Math.max(0, Math.round(tt.arrM - tt.depM)),
       running: typeof tt.running === 'boolean' ? tt.running : tt.depM <= nowM, km: finite(tt.km) ? tt.km : null, waiting: !P.length,
       points: P.length ? [pt(P[0], 'Départ'), mid && mid !== P[0] && mid !== P[P.length - 1] ? pt(mid, 'Mi-parcours') : null, P.length > 1 ? pt(P[P.length - 1], 'Arrivée') : null].filter(Boolean) : [],
-      crit, lv: P.reduce((a, p) => Math.max(a, p.lv), tt.glare ? 1 : 0), later, pending: !!tt.pending };
+      crit, lv: P.length ? P.reduce((a, p) => Math.max(a, p.lv), tt.glare ? 1 : 0) : null, later, pending: !!tt.pending };
     if (tt.pending) Object.assign(trip, { dep: null, arr: null, durMin: null, km: null, waiting: true });
   }
 
@@ -354,7 +354,7 @@ function wxDesk(input) {
   // rassurances utiles seulement quand la question se pose réellement
   const tmin = minOf('T');
   if (matters.length < 5 && !first('ice') && tmin != null && tmin <= 5) matters.push({ lv: 0, text: `Pas de risque de gel estimé (air jusqu’à ${r0(tmin)} °C)` });
-  if (matters.length < 5 && !first('rain') && !first('snow') && !tripMaybe.length && tripList.length) matters.push({ lv: 0, text: `Pas de pluie attendue sur les trajets d’ici ${hm(endTs)}` });
+  if (matters.length < 5 && !first('rain') && !first('snow') && !tripMaybe.length && tripList.length && tripList.every(t => !t.pending && t.pts.length)) matters.push({ lv: 0, text: `Pas de pluie attendue sur les trajets d’ici ${hm(endTs)}` });
   // conseil pratique seulement si la pluie touche un trajet ou tombe dans les 12 h
   if (matters.length < 5 && real.some(s => (s.id === 'rain' || s.id === 'snow') && (s.start - nowM <= 12 * 60 || tripsOf(s).length))) matters.push({ lv: 0, text: 'Prévoir une couche imperméable' });
   if (!matters.length) matters.push({ lv: 0, text: `Rien de notable d’ici ${hm(endTs)} : conditions stables` });

@@ -132,7 +132,17 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   });
   test('trajet sans météo encore chargée : affiché en attente, sans conditions inventées', () => {
     const r = desk({ now: '2026-10-06T07:00', hours: H(), trips: [{ ...trip('07:45', '08:25'), points: [] }] });
-    assert.equal(r.trip.waiting, true); assert.deepEqual(r.trip.points, []); assert.equal(r.trip.crit, null); assert.match(r.road.window.label, /^maintenant →/);
+    assert.equal(r.trip.waiting, true); assert.deepEqual(r.trip.points, []); assert.equal(r.trip.crit, null); assert.equal(r.trip.lv, null); assert.match(r.road.window.label, /^maintenant →/);
+    assert(!r.matters.some(m => /Pas de pluie attendue sur les trajets/.test(m.text)));
+  });
+  test('trajets suivants : inconnu reste neutre, sec connu reste vert, soleil rasant connu reste jaune', () => {
+    const hs = H(), first = { ...trip('07:45', '08:25'), points: pts(hs, '07:45', [['07:45', 0, 0], ['08:25', 1, 41]]) };
+    const unknown = { ...trip('12:00', '12:40'), id: 'unknown', points: [] };
+    const dry = { ...trip('14:00', '14:40'), id: 'dry', points: pts(hs, '14:00', [['14:00', 0, 0], ['14:40', 1, 41]]) };
+    const sun = { ...trip('17:00', '17:40'), id: 'sun', glare: { ts: '2026-10-06T17:10' }, points: pts(hs, '17:00', [['17:00', 0, 0], ['17:40', 1, 41]]) };
+    const r = desk({ now: '2026-10-06T07:00', hours: hs, trips: [first, unknown, dry, sun] });
+    assert.deepEqual(r.trip.later.map(t => t.lv), [null, 0, 1]);
+    assert(!r.matters.some(m => /Pas de pluie attendue sur les trajets/.test(m.text)));
   });
   test('origine à recalculer : aucun risque ni passage horaire inventé depuis les anciennes heures', () => {
     const hs = set(H(), '08', { pp: 90, Pb: .3, Pl: 0, P: 0, code: 61 });

@@ -29,6 +29,7 @@ SUITE.push(['e2e37.js', 'agenda : rappels exclus des trajets et de Tenue, cache 
 SUITE.push(['test_wxdesk.js', 'onglet Météo : verdict, chronologie, phénomènes, score route et contre-tests', false],
   ['e2e42-meteo.js', 'onglet Météo : iPhone, PC, hors ligne, panne, données anciennes, 0 ou plusieurs trajets', true]);
 SUITE.push(['test_tyrelab.js', 'onglet Analyse : thermique, chauffe, refroidissement, adhérence, freinage, pression, confiance et contre-tests', false],
+  ['test_trip_projection.js', 'passages : heures météo distinctes, kilomètres monotones, même projection dans briefing et Analyse', false],
   ['e2e43-analyse.js', 'onglet Analyse : monte réelle, mémoire thermique, roulage, hors ligne, iPhone et PC', true]);
 SUITE.push(['test_placectx.js', 'lieu courant : hiérarchie de confiance, garde de précision, fin de confirmation et contre-tests', false],
   ['e2e44-place.js', 'lieu courant : PC au travail + relevé navigateur approximatif, hors ligne, rechargement, départ, retour, GPS légitime', true]);
