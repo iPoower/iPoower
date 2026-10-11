@@ -42,7 +42,8 @@ async function click(p, selector) {
     throw e;
   }
 }
-async function tab(p, value) { stage = 'onglet ' + value; await click(p, '#viewSeg [data-act=view][data-v=' + value + ']'); }
+async function tab(p, value) { stage = 'onglet ' + value; if (value === 'tenue') await p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); /* moteur ancien conservé pour tests de cohérence */
+  else await click(p, '#viewSeg [data-act=view][data-v=' + value + ']'); }
 async function action(p, selector, label) { stage = scope.phase = label; await click(p, selector); }
 const workday = p => p.evaluate(() => { S.work.days = [1, 2, 3, 4, 5]; saveSettings(); rebuild(); renderAll(); });
 async function allViews(s, stage, expected, home, work) {
