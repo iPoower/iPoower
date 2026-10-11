@@ -70,7 +70,7 @@ const lab = p => p.evaluate(() => {
   const first = [...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details, #deskMain > section, #deskMain > .grid2')].filter(vis)[0];
   return { shown: vis(el), first: first ? first.id : null, hero: t('.lab-hero')[0] || '', all: el ? el.innerText.replace(/\s+/g, ' ') : '',
     bars: q('.lab-bar').length, cmp: q('.lab-t tbody tr').length, trip: t('.lab-trip')[0] || '', tripRows: q('.lab-tl li:not(.ev)').length, links: q('.lab-sp a').map(a => a.href),
-    marker: !!el && !!el.querySelector('.lab-mk'), others: ['secCars', 'secWx', 'secTenue', 'secCur'].filter(id => vis(document.getElementById(id))), tabs: [...document.querySelectorAll('#viewSeg button')].map(b => b.dataset.v).join(',') };
+    marker: !!el && !!el.querySelector('.lab-mk'), others: ['secCars', 'secWx', 'secGarage', 'secCur'].filter(id => vis(document.getElementById(id))), tabs: [...document.querySelectorAll('#viewSeg button')].map(b => b.dataset.v).join(',') };
 });
 const layout = (p, mobile) => p.evaluate(mobile => {
   const W = document.documentElement.clientWidth, el = document.getElementById('secLab'), small = [], wide = [];
@@ -91,7 +91,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     let s = await session(b, { at: '2026-10-03T05:40:00+02:00', scn: 'froid' });
     await toLab(s); let a = await lab(s.p);
     if (process.env.LAB_DUMP) console.log(JSON.stringify(a, null, 1));
-    check('1 · cinq onglets (Météo · Pneus · TRAJET · Tenue · Analyse), Analyse en dernier', a.tabs === 'meteo,pneus,trajet,tenue,analyse', a.tabs);
+    check('1 · cinq onglets (Météo · Pneus · TRAJET · Garage · Analyse), Analyse en dernier', a.tabs === 'meteo,pneus,trajet,garage,analyse', a.tabs);
     check('1 · Analyse : seule section visible avec les réglages, en tête', a.shown && a.first === 'secLab' && !a.others.length, JSON.stringify({ first: a.first, others: a.others }));
     check('1 · verdict : pneu réellement monté (modèle non renseigné → analyse générique été), dimension, état, plage estimée', /Modèle non renseigné · pneu été/.test(a.hero) && /215\/40 ZR18 89Y XL/.test(a.hero) && STATES.test(a.hero) && /Gomme estimée ≈ −?\d+ à −?\d+ °C/.test(a.hero), a.hero);
     check('1 · verdict : freinage, virage, pluie, facteur limitant, confiance', /Freinage : \S+/.test(a.hero) && /Virage : \S+/.test(a.hero) && /(Si pluie|Pluie) : \S+/.test(a.hero) && /Facteur limitant : /.test(a.hero) && /Confiance : (faible|moyenne|élevée)/.test(a.hero), a.hero);
@@ -142,8 +142,8 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     check('5 · Pneus intact (voitures visibles), Analyse masquée', pneusView.view === 'pneus' && pneusView.cars && pneusView.shown && pneusView.labHidden, JSON.stringify(pneusView));
     await s.p.click('[data-act=view][data-v=meteo]'); await s.settle(2);
     check('5 · Météo intacte (poste météo visible), Analyse masquée', await s.p.evaluate(() => !document.getElementById('secWx').hidden && document.getElementById('secLab').hidden));
-    await s.p.click('[data-act=view][data-v=tenue]'); await s.settle(2);
-    check('5 · Tenue intacte, Analyse masquée', await s.p.evaluate(() => !document.getElementById('secTenue').hidden && getComputedStyle(document.getElementById('secLab')).display === 'none' || document.getElementById('secLab').hidden));
+    await s.p.click('[data-act=view][data-v=garage]'); await s.settle(2);
+    check('5 · Garage visible, Analyse masquée', await s.p.evaluate(() => !document.getElementById('secGarage').hidden && getComputedStyle(document.getElementById('secLab')).display === 'none' || document.getElementById('secLab').hidden));
     await s.close();
 
     // 6. PC 1280 : même contenu, sans débordement
@@ -213,8 +213,8 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
           const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
           return getComputedStyle(nav).position === 'fixed' && r.top >= 0 && r.bottom <= innerHeight + 1 && !!hit.closest('#viewSeg');
         }));
-        await s.p.locator('#viewSeg [data-act=view][data-v=tenue]').tap(); await s.settle(1);
-        check('10 · iPhone · onglet fixe activable au toucher', await s.p.locator('#secTenue').isVisible()); await toLab(s);
+        await s.p.locator('#viewSeg [data-act=view][data-v=garage]').tap(); await s.settle(1);
+        check('10 · iPhone · onglet Garage fixe activable au toucher', await s.p.locator('#secGarage').isVisible()); await toLab(s);
       }
       await s.p.locator('[data-act=mount-open][data-car=carA]').click();
       await s.p.fill('#mountKm', '24567'); await s.p.evaluate(() => renderAll());
