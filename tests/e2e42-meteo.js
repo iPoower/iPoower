@@ -104,7 +104,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     // lien vers Pneus
     await s.p.locator('#secWx [data-act=view][data-v=pneus]').click(); await s.settle(2);
     check('1 · « Voir analyse Pneus » ouvre l’onglet Pneus ; le poste météo y est masqué', await s.p.evaluate(() => UI.view === 'pneus' && document.getElementById('secWx').hidden && !!document.querySelector('#secCars .car')));
-    await s.p.click('[data-act=view][data-v=tenue]'); await s.settle(2);
+    await s.p.click('[data-act=view][data-v=garage]'); await s.settle(2);
     check('1 · Tenue : poste météo masqué', await s.p.evaluate(() => document.getElementById('secWx').hidden));
     await s.p.click('[data-act=view][data-v=meteo]'); await s.settle(2);
     check('1 · retour à Météo : poste météo et mesures détaillées présents', (await wx(s.p)).shown && await s.p.locator('#secCur').isVisible());
