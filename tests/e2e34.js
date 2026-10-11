@@ -483,7 +483,7 @@ const privacy = async s => {
     }
     await p.locator('[data-act="view"][data-v="meteo"]').click(); await s.settle(2);
     check('12 · Météo reste utilisable', await p.locator('#secCur').isVisible());
-    await p.locator('[data-act="view"][data-v="tenue"]').click(); await s.settle(2);
+    await p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); await s.settle(2); // test historique interne de Tenue, bouton supprimé
     check('12 · Tenue reste utilisable', await p.locator('#secTenue').isVisible() && await p.locator('.outfit-piece').count() === 4);
     await p.locator('[data-act="view"][data-v="pneus"]').click(); await s.settle(2);
     check('12 · Pneus reste utilisable avec ses voitures et le briefing', await p.locator('#secCars').isVisible() && await p.locator('#secBrf').isVisible());
