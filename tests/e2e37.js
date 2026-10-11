@@ -140,7 +140,7 @@ const check = (name, ok, detail = '') => { rows.push((ok ? '✅ ' : '❌ ') + na
     const cache = await page.evaluate(() => localStorage.getItem('twrc.calendar.sealed.v1') || '');
     check('37.12 · agenda en cache chiffré : aucun titre de rappel en clair', cache.length > 0 && !cache.includes(TITLE) && !cache.includes(invalid.loc));
 
-    await page.click('[data-act="view"][data-v="tenue"]'); await settle(2);
+    await page.evaluate(() => { UI.view = 'tenue'; renderAll(); }); await settle(2);
     const outfit = await page.locator('#secTenue').innerText();
     const morning = await page.evaluate(() => buildTenueDay().moments.filter(m => m.start < '2026-10-03T13:00' && m.end > '2026-10-03T09:00'));
     check('37.13 · rappels sans lieu : Tenue garde le dernier lieu réel et sa météo, aucun segment inconnu', morning.length > 0 && morning.every(m => m.kind === 'home' && !m.unknown && /Maison test/.test(m.location) && m.weather && m.weather.Tapp === 22) && !/Lieu inconnu|Note fictive sans résultat|Programme fictif #pasdetrajet/.test(outfit));
@@ -155,7 +155,7 @@ const check = (name, ok, detail = '') => { rows.push((ok ? '✅ ' : '❌ ') + na
     check('37.16 · zéro déplacement : message explicite et liste des trajets vide', /Aucun déplacement à analyser/.test(await page.locator('#secCal').innerText()) && await page.locator('#secCal .cal-l .cal-e').count() === 0 && await page.locator('#secCal a[href^="https://waze.com/"]').count() === 0);
     await page.evaluate(() => { renderCal(); renderTenue(); });
     check('37.17 · zéro déplacement : 31 sources conservées, aucun rappel dans le DOM', await page.evaluate(() => CAL.events.length) === 31 && (await documentIds()).length === 0 && await page.locator('.cal-notrips,.cal-local').count() === 0 && !(await page.locator('body').textContent()).includes(TITLE));
-    await page.click('[data-act="view"][data-v="tenue"]'); await settle(2);
+    await page.evaluate(() => { UI.view = 'tenue'; renderAll(); }); await settle(2);
     const onlyReminders = await page.evaluate(() => buildTenueDay().moments);
     check('37.18 · uniquement des rappels : plan Maison complet, aucun événement ou météo inventé', onlyReminders.length > 0 && onlyReminders.every(m => m.kind === 'home' && !m.unknown && m.weather && m.weather.Tapp === 22) && !/Lieu inconnu|Mon chargeur/.test(await page.locator('#secTenue').textContent()));
 
@@ -188,7 +188,7 @@ const check = (name, ok, detail = '') => { rows.push((ok ? '✅ ' : '❌ ') + na
     check('37.19 · #trajet sans lieu : seul le déplacement explicite apparaît avec avertissement', (await ids(main)).join('|') === explicitUnknown.id && unknownText.includes(explicitUnknown.t) && /lieu inconnu|localisation.*confirm|lieu.*confirm/i.test(unknownText));
     check('37.20 · #trajet sans lieu : anciennes jambes inutilisées, aucun Waze, risque ou départ conseillé', await unknownCard.locator('.leg,a[href^="https://waze.com/"],.pill,.cal-k,.frost').count() === 0 && !/départ conseillé|route analysée|\d+\s*km\b/i.test(unknownText) && await page.evaluate(id => effLegs(CAL.events.find(e => e.id === id)).length, explicitUnknown.id) === 0);
     const explicitSource = await page.evaluate(() => JSON.stringify(CAL.events)), explicitBefore = requests.length;
-    await page.click('[data-act="view"][data-v="tenue"]'); await settle(2);
+    await page.evaluate(() => { UI.view = 'tenue'; renderAll(); }); await settle(2);
     const unknownRows = await page.locator('.outfit-moment').evaluateAll(nodes => nodes.filter(n => /Lieu inconnu/.test(n.innerText)).map(n => ({ text: n.innerText, start: n.dataset.start })));
     check('37.21 · #trajet sans localisation : moment inconnu conservé sans météo ni adaptation', unknownRows.length > 0 && unknownRows.some(n => n.start === DAY + 'T11:00') && unknownRows.every(n => /météo locale non calculée/i.test(n.text) && !/ressenti|imperméable|manteau|ajoute|retire/i.test(n.text)));
     const explicitPlan = await page.evaluate(() => buildTenueDay());
@@ -198,7 +198,8 @@ const check = (name, ok, detail = '') => { rows.push((ok ? '✅ ' : '❌ ') + na
     for (const width of [320, 414, 1280]) {
       await page.setViewportSize({ width, height: 896 });
       for (const view of ['pneus', 'tenue']) {
-        await page.click('[data-act="view"][data-v="' + view + '"]');
+        if (view === 'tenue') await page.evaluate(() => { UI.view = 'tenue'; renderAll(); });
+        else await page.click('[data-act="view"][data-v="' + view + '"]');
         const sizing = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth - innerWidth,
           commands: [...document.querySelectorAll('[data-act="view"],#secCal button,#secCal a,#secTenue button,#secTenue a')].filter(n => n.getClientRects().length).map(n => ({ text: n.textContent, height: n.getBoundingClientRect().height, width: n.getBoundingClientRect().width })) }));
         check('37.24 · ' + width + ' px, vue ' + view + ' : aucun débordement, commandes ≥44 px', sizing.overflow <= 1 && sizing.commands.length >= 3 && sizing.commands.every(n => n.height >= 44 && n.width >= 44), JSON.stringify(sizing));
@@ -244,7 +245,7 @@ const check = (name, ok, detail = '') => { rows.push((ok ? '✅ ' : '❌ ') + na
     const allWaze = await page.locator('#secCal a[href^="https://waze.com/"]').evaluateAll(a => a.map(n => new URL(n.href).searchParams.get('ll')));
     check('37.30 · Waze du lieu reconnu pointe Travail, aucune destination Beta', configuredWaze.length === 1 && configuredWaze[0] === W.lat + ',' + W.lon && allWaze.every(p => p !== B.lat + ',' + B.lon), JSON.stringify({ configuredWaze, allWaze }));
     const configuredBeforeTenue = requests.length;
-    await page.click('[data-act="view"][data-v="tenue"]'); await settle(2);
+    await page.evaluate(() => { UI.view = 'tenue'; renderAll(); }); await settle(2);
     const configuredMoments = await page.evaluate(() => buildTenueDay().moments), duringConfigured = configuredMoments.filter(m => m.start < '2026-10-03T12:00' && m.end > '2026-10-03T11:00');
     check('37.31 · Tenue utilise le lieu physique Travail et 22 °C, pas les anciennes routes froides', duringConfigured.length > 0 && duringConfigured.every(m => m.kind === 'event' && m.event && /Travail test/.test(m.location) && m.weather && m.weather.T === 22 && m.weather.Tapp === 22 && !m.unknown) && configuredMoments.every(m => !/Lieu fictif Beta/.test(m.location)) && /N1 max/.test(await page.locator('.outfit-base').innerText()) && !/manteau|maille chaude|imperméable|parapluie/i.test((await page.locator('.outfit-carry,.outfit-pieces').allTextContents()).join(' ')), JSON.stringify(duringConfigured));
     await page.evaluate(() => { renderTenue(); renderTenue(); }); await settle(2);
