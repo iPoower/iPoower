@@ -263,11 +263,12 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     // 9. dernier roulage déclaré : interface réelle, mémoire par voiture, reprise et garde sur les dates.
     for (const dev of ['iphone', 'pc']) {
       s = await session(b, { at: '2026-10-05T09:30:00+02:00', dev }); await toLab(s);
+      await s.p.locator('#secLab [data-ux=lab-grip] > summary').click();
       await s.p.locator('[data-k=last-drive] > summary').click();
       await s.p.fill('#labDriveAt', '2026-10-05T09:00'); await s.p.fill('#labDriveMinutes', '40'); await s.p.selectOption('#labDriveKind', 'route');
       await s.p.locator('#labDriveMinutes').focus();
       await s.p.evaluate(() => { RAW[UI.loc].t -= 3600e3; renderAll(); });
-      check(`9 · ${dev} : saisie et focus conservés pendant une actualisation`, await s.p.inputValue('#labDriveAt') === '2026-10-05T09:00' && await s.p.inputValue('#labDriveMinutes') === '40' && await s.p.evaluate(() => document.activeElement.id === 'labDriveMinutes'));
+      check(`9 · ${dev} : saisie, focus et détails conservés pendant une actualisation`, await s.p.inputValue('#labDriveAt') === '2026-10-05T09:00' && await s.p.inputValue('#labDriveMinutes') === '40' && await s.p.evaluate(() => document.activeElement.id === 'labDriveMinutes' && document.querySelector('#secLab [data-ux=lab-grip]').open));
       const formLayout = await layout(s.p, dev === 'iphone');
       check(`9 · ${dev} : formulaire ouvert sans débordement, cibles ≥ 44 pt`, formLayout.sw <= formLayout.W && !formLayout.wide.length && !formLayout.small.length, JSON.stringify(formLayout));
       await s.p.locator('#labLastDriveForm button[type=submit]').click(); await s.settle(2); a = await lab(s.p);

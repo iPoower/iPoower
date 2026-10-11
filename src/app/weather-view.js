@@ -121,13 +121,13 @@ function renderWx() {
   const foldFocus = uxFocusKey(el);
   const editorFocused = editor && editor.contains(active), selection = editorFocused && [active.selectionStart, active.selectionEnd];
   el.className = 'mod wx lv' + d.level; el.innerHTML = html; renderWx.last = html;
+  uxRestoreFocus(el, foldFocus);
   const nextEditor = el.querySelector('#wxOriginEditor');
   if (editor && nextEditor && editor.dataset.binding === nextEditor.dataset.binding) {
     nextEditor.replaceWith(editor);
     if (editorFocused) { active.focus({ preventScroll: true }); if (typeof selection[0] === 'number') try { active.setSelectionRange(...selection); } catch (e) { /* select */ } }
   }
   const ns = el.querySelector('.wx-strip'); if (ns && left) ns.scrollLeft = left;
-  if (!editorFocused) uxRestoreFocus(el, foldFocus);
 }
 /* ---------- moteur de preuves météo v2 (weatherEvidenceV2) : actif par défaut ---------- */
 // Réglage S.flags.weatherEvidenceV2 : 'on' (défaut) ; 'shadow' calcule, journalise et montre la carte « Preuves » marquée expérimentale

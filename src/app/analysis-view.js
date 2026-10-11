@@ -204,7 +204,7 @@ function renderLab() {
   el.innerHTML = html; renderLab.last = html;
   el.querySelectorAll('details[data-k]').forEach(x => { if (open.has(x.dataset.k)) x.open = true; });
   if (draft) draft.forEach(([name, value]) => { const x = el.querySelector(`#labLastDriveForm [name="${name}"]`); if (x) x.value = value; });
+  uxRestoreFocus(el, foldFocus);
   if (focused) { const field = el.querySelector(`#labLastDriveForm [name="${focused}"]`); if (field) field.focus({ preventScroll: true }); }
   else if (focusedSummary) { const summary = el.querySelector(`details[data-k="${focusedSummary}"] > summary`); if (summary) summary.focus({ preventScroll: true }); }
-  else uxRestoreFocus(el, foldFocus);
 }
