@@ -68,17 +68,17 @@ const SessionVault = (() => {
 
   /* ---------- magasin en mémoire, présenté comme localStorage ---------- */
   const PENDING = 'twrc.restore.pending.v1';
-  function memStore(raw, initial, persist) {
+  function memStore(raw, initial, persist, access = () => true) {
     // vol : journal d'import (anciennes valeurs) gardé en mémoire uniquement, jamais en clair sur le disque
     const m = new Map(Object.entries(initial || {})), dirty = new Set(), vol = new Map();
-    const listOf = () => [...keysOf(raw).filter(k => !secret(k) && !META.has(k)), ...m.keys(), ...vol.keys()];
+    const listOf = () => access(false) ? [...keysOf(raw).filter(k => !secret(k) && !META.has(k)), ...m.keys(), ...vol.keys()] : [];
     const api = {
       get length() { return listOf().length; },
       key: i => { const l = listOf(); return i >= 0 && i < l.length ? l[i] : null; },
-      getItem: k => { k = String(k); if (k === PENDING) return vol.has(k) ? vol.get(k) : null; return secret(k) ? (m.has(k) ? m.get(k) : null) : META.has(k) ? null : raw.getItem(k); },
-      setItem: (k, v) => { k = String(k); v = String(v); if (k === PENDING) { vol.set(k, v); return; } if (META.has(k)) return; if (!secret(k)) { raw.setItem(k, v); return; } m.set(k, v); dirty.add(k); persist(); },
-      removeItem: k => { k = String(k); if (k === PENDING) { vol.delete(k); return; } if (META.has(k)) return; if (!secret(k)) { raw.removeItem(k); return; } if (m.delete(k)) { dirty.add(k); persist(); } },
-      clear: () => { [...m.keys()].forEach(k => dirty.add(k)); m.clear(); vol.clear(); persist(); }
+      getItem: k => { if (!access(false)) return null; k = String(k); if (k === PENDING) return vol.has(k) ? vol.get(k) : null; return secret(k) ? (m.has(k) ? m.get(k) : null) : META.has(k) ? null : raw.getItem(k); },
+      setItem: (k, v) => { access(true); k = String(k); v = String(v); if (k === PENDING) { vol.set(k, v); return; } if (META.has(k)) return; if (!secret(k)) { raw.setItem(k, v); return; } m.set(k, v); dirty.add(k); persist(); },
+      removeItem: k => { access(true); k = String(k); if (k === PENDING) { vol.delete(k); return; } if (META.has(k)) return; if (!secret(k)) { raw.removeItem(k); return; } if (m.delete(k)) { dirty.add(k); persist(); } },
+      clear: () => { access(true); [...m.keys()].forEach(k => dirty.add(k)); m.clear(); vol.clear(); persist(); }
     };
     // Présenté comme un vrai Storage : Object.keys(localStorage), localStorage[k], « k in localStorage » fonctionnent.
     const store = new Proxy(api, {
@@ -96,6 +96,27 @@ const SessionVault = (() => {
   function create({ raw, session, crypto, target, remembered = null, locks = target && target.navigator && target.navigator.locks }) {
     const st = { mode: 'plain', key: null, salt: null, n: 0, t: 0, saved: {}, mem: null, epoch: 0, lockSignal: raw.getItem(LOCK_SIGNAL), chain: Promise.resolve(), error: null, warn: null, timer: null, expiresAt: 0 };
     const values = () => Object.fromEntries(st.mem.map);
+    // Barrière synchrone : aucun accès au magasin ne repose exclusivement sur le timer iOS.
+    // Les écritures non confirmées restent en mémoire, même si la sauvegarde ou le verrouillage échoue.
+    function expire() {
+      if (st.mode === 'expired') return true;
+      if (st.mode !== 'vault' || !st.expiresAt || Date.now() < st.expiresAt) return false;
+      st.epoch++;
+      st.mode = 'expired';
+      st.key = null; st.salt = null;
+      try { session.removeItem(SESSION); } catch (e) { /* mémoire conservée */ }
+      if (target && typeof target.dispatchEvent === 'function') {
+        try { target.dispatchEvent(new Event('twrc-session-expired')); } catch (e) { /* le getter reste verrouillé */ }
+      }
+      return true;
+    }
+    function allowStore(write) {
+      if (expire() || st.mode !== 'vault') {
+        if (write) throw Object.assign(new Error('Session expirée : ressaisis le code pour récupérer les modifications en attente.'), { expired: true });
+        return false;
+      }
+      return true;
+    }
     function requireLocks() {
       if (!locks || typeof locks.request !== 'function') throw Object.assign(new Error('Ce navigateur ne permet pas une sauvegarde sûre entre plusieurs fenêtres. Mets-le à jour ou exporte une sauvegarde.'), { unsupported: true });
     }
@@ -107,6 +128,7 @@ const SessionVault = (() => {
       st.key = null; st.salt = null; st.saved = {}; st.expiresAt = 0; st.mode = 'locked'; st.error = null;
     }
     function guardSession(epoch, mem) {
+      expire();
       if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) !== st.lockSignal) forget();
       if (st.mode !== 'vault' || st.epoch !== epoch || st.mem !== mem) throw Object.assign(new Error('Session verrouillée pendant l’enregistrement.'), { cancelled: true });
     }
@@ -191,7 +213,7 @@ const SessionVault = (() => {
         await writeVerified(lean, salt); return lean;
       }
     }
-    function enter(vals) { st.epoch++; st.mem = memStore(raw, vals, persist); st.saved = { ...vals }; st.lockSignal = raw.getItem(LOCK_SIGNAL); st.mode = 'vault'; st.error = null; }
+    function enter(vals) { st.epoch++; st.mem = memStore(raw, vals, persist, allowStore); st.saved = { ...vals }; st.lockSignal = raw.getItem(LOCK_SIGNAL); st.mode = 'vault'; st.error = null; }
 
     /* Démarrage : mode et magasin à utiliser par l'application. Ne jette jamais : en cas de doute, rien n'est effacé. */
     async function boot() {
@@ -229,7 +251,13 @@ const SessionVault = (() => {
         const valid = ses && ses.v === 3 && ses.s === vault.s && typeof ses.k === 'string' &&
           (ses.l ?? null) === signal && Number.isSafeInteger(ses.a) && Number.isSafeInteger(ses.e) &&
           ses.e - ses.a === WEEK_MS && now >= ses.a && now < ses.e;
-        let active = valid ? { rawKey: dec(ses.k), expiresAt: ses.e } : null;
+        let active = null;
+        if (valid) {
+          try {
+            const rawKey = dec(ses.k);
+            if (rawKey.length === 32) active = { rawKey, expiresAt: ses.e };
+          } catch (e) { /* sessionStorage corrompu : code requis, jamais de crash au démarrage */ }
+        }
         if (!active && remembered) {
           try { active = await remembered.resume(vault.s, signal, crypto); } catch (e) { /* exiger le code */ }
         }
@@ -265,6 +293,7 @@ const SessionVault = (() => {
 
     /* Déverrouillage avec le code : coffre v2, coffre v1 ou données en clair existantes → coffre v2 vérifié → session. */
     async function unlock(pass, extra, keepWeek = false) { return exclusive(async () => {
+      expire();
       while (st.mode === 'vault' && st.mem.dirty.size) await savePending();
       return unlockInside(pass, extra, keepWeek);
     }); }
@@ -277,6 +306,11 @@ const SessionVault = (() => {
         const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);   // code faux → OperationError, clé de la session inchangée
         st.key = key; st.salt = salt;
         const stray = plainSnapshot(raw); vals = { ...stray, ...data.values }; drop = Object.keys(stray); st.n = order(data).n; st.t = order(data).t;
+        // Suite à une expiration, seules les modifications non confirmées sont reprises.
+        // Aucune perte sur mauvais code / quota plein : l'ancien MemStore reste intact jusqu'au coffre vérifié.
+        if (st.mode === 'expired' && st.mem) st.mem.dirty.forEach(k => {
+          if (st.mem.map.has(k)) vals[k] = st.mem.map.get(k); else delete vals[k];
+        });
       } else {
         salt = crypto.getRandomValues(new Uint8Array(16)); rawKey = await deriveRaw(pass, salt, crypto);
         const stray = plainSnapshot(raw); vals = { ...stray }; drop = Object.keys(stray);
@@ -299,6 +333,10 @@ const SessionVault = (() => {
       return true;
     }
     async function lock() {
+      expire();
+      if (st.mode === 'expired' && st.mem && st.mem.dirty.size) {
+        throw Object.assign(new Error('Modifications non enregistrées : ressaisis le code avant de quitter cette page.'), { recovery: true });
+      }
       if (st.mode === 'vault') { await flush(); if (st.error) throw new Error(st.error); }
       const finish = async () => {
         while (st.mode === 'vault' && st.mem.dirty.size) await savePending();
@@ -311,7 +349,8 @@ const SessionVault = (() => {
     }
     // Autre onglet : coffre réécrit → fusion (valeurs distantes + modifications locales non encore écrites) ; verrou → verrouiller ici.
     async function onStorage(e, notify) {
-      if (e.key === LOCK_SIGNAL && e.newValue && (st.mode === 'vault' || st.mode === 'locked')) {
+      expire();
+      if (e.key === LOCK_SIGNAL && e.newValue && (st.mode === 'vault' || st.mode === 'locked' || st.mode === 'expired')) {
         // Un bon code a pu être saisi depuis ce signal : ne pas verrouiller la nouvelle session sur une notification périmée.
         if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) === st.lockSignal) return null;
         forget(); return 'locked';
@@ -334,9 +373,11 @@ const SessionVault = (() => {
     }
     return {
       boot, unlock, lock, flush, onStorage,
-      expired: () => st.mode === 'vault' && st.expiresAt > 0 && Date.now() >= st.expiresAt,
+      expired: () => expire(),
+      get expiresAt() { return st.expiresAt; },
+      get pendingRecovery() { return st.mode === 'expired' && !!st.mem && st.mem.dirty.size > 0; },
       get mode() { return st.mode; }, get error() { return st.error; }, get warn() { return st.warn; }, get migrated() { return !!st.migrated; },
-      get store() { return st.mem ? st.mem.store : null; }, locked: () => st.mode === 'locked'
+      get store() { return st.mem ? st.mem.store : null; }, locked: () => expire() || st.mode === 'locked'
     };
   }
   return { create, VAULT, SESSION, LOCK_SIGNAL, PUBLIC, secret, validVault, IT };
