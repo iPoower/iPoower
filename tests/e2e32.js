@@ -97,7 +97,7 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
     // données en mémoire derrière localStorage (coffre de session) : observer chaque écriture de l'app à ce niveau
     await p.evaluate(() => { const ls = window.localStorage; if (ls instanceof Storage) return;
       for (const name of ['setItem', 'removeItem']) { const o = ls[name]; ls[name] = (...args) => { window.__tenueWrites.push({ method: name, key: String(args[0]), value: args[1] == null ? '' : String(args[1]) }); return o.apply(ls, args); }; } });
-    await p.click('[data-act=view][data-v=tenue]'); await settle();
+    await p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); await settle(); // test du moteur historique, non navigable
     let networkAt = requests.length;
     const writesAt = await p.evaluate(() => window.__tenueWrites.length);
 
@@ -186,7 +186,7 @@ const event = (start, end, extra = {}) => ({ t: PRIVATE, s: DAY + 'T' + start, e
     for (const width of [320, 414, 1280]) {
       await p.setViewportSize({ width, height: 896 });
       check('plan de tenue sans débordement à ' + width + ' px', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
-      const undersized = await p.locator('[data-act=view][data-v=tenue], #secTenue button, #secTenue a, #secTenue summary, #secTenue input, #secTenue select').evaluateAll(a => a.filter(x => x.getClientRects().length).map(x => ({ label: x.innerText, action: x.dataset.act, height: x.getBoundingClientRect().height, width: x.getBoundingClientRect().width })).filter(x => x.height < 44 || x.width < 44));
+      const undersized = await p.locator('#secTenue button, #secTenue a, #secTenue summary, #secTenue input, #secTenue select').evaluateAll(a => a.filter(x => x.getClientRects().length).map(x => ({ label: x.innerText, action: x.dataset.act, height: x.getBoundingClientRect().height, width: x.getBoundingClientRect().width })).filter(x => x.height < 44 || x.width < 44));
       check('toutes les commandes Tenue atteignent 44 px à ' + width + ' px', undersized.length === 0);
       if (undersized.length) console.log('Commandes sous 44 px à ' + width + ' px : ' + JSON.stringify(undersized));
     }

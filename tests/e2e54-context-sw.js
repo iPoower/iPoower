@@ -28,7 +28,8 @@ async function destination(p, id) {
 }
 async function views(p, expected) {
   for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) {
-    await p.locator('#viewSeg [data-act=view][data-v=' + view + ']').click(); const s = await read(p);
+    if (view === 'tenue') await p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); // moteur historique sans bouton public
+    else await p.locator('#viewSeg [data-act=view][data-v=' + view + ']').click(); const s = await read(p);
     for (const [k, v] of Object.entries(expected)) assert.equal(s[k], v, view + ' · ' + JSON.stringify(s));
     if (view === 'tenue' && expected.state !== 'travel') {
       const first = await p.locator('#secTenue .outfit-moment:first-child .outfit-moment-heading').innerText();
@@ -100,7 +101,7 @@ async function views(p, expected) {
     await check('débrief puis fermeture PWA hors ligne : observation et snapshot conservés une seule fois', async () => {
       const rows = (await read(p)).stored.debrief.entries; assert.equal(rows.length, 1); assert.equal(rows[0].key, startKey);
       assert.deepEqual(rows[0].feedback.conditions, ['fog']); assert(rows[0].start);
-      for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) { await p.locator('#viewSeg [data-act=view][data-v=' + view + ']').click(); assert(await p.locator('#secDebrief').isVisible()); }
+      for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) { if (view === 'tenue') await p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); else await p.locator('#viewSeg [data-act=view][data-v=' + view + ']').click(); assert(await p.locator('#secDebrief').isVisible()); }
     });
     await check('ancienne page réécrivant v1 : le journal reste récupérable hors ligne', async () => {
       await p.evaluate(() => { const old = JSON.parse(localStorage.getItem('twrc.context.v1')); delete old.debrief; localStorage.setItem('twrc.context.v1', JSON.stringify(old)); });

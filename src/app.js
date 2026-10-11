@@ -315,7 +315,7 @@ applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
   // dernier onglet ouvert restauré, TRAJET compris (reprise hors connexion)
   // Cockpit : chaque ouverture de l'app commence sur Pneus ; un simple rechargement garde l'onglet choisi (mémoire de l'onglet).
-  view: (() => { let v = null; try { v = sessionStorage.getItem('rc.tab'); } catch (e) { /* session indisponible */ } return ['meteo', 'trajet', 'tenue', 'analyse'].includes(v) ? v : 'pneus'; })(), outfitDay: 0, labCar: null,
+  view: (() => { let v = null; try { v = sessionStorage.getItem('rc.tab'); } catch (e) { /* session indisponible */ } return v === 'tenue' ? 'garage' : ['meteo', 'trajet', 'garage', 'analyse'].includes(v) ? v : 'pneus'; })(), outfitDay: 0, labCar: null,
   outfitOccasion: 'outing', placeExpanded: null };
 const DECISION_HISTORY = Decision.history(APP_STORAGE);
 let DECISION_LAST = null;
@@ -1114,12 +1114,13 @@ function renderCurrent() {
 // @include app/analysis-view.js
 // @include app/debrief-view.js
 // @include app/race-views.js
+// @include app/garage-view.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 const TIRE_ALERTS = ['press', 'age', 'mont'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
 const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 function chooseView(view) {
-  UI.view = ['pneus', 'meteo', 'trajet', 'tenue', 'analyse'].includes(view) ? view : 'pneus';
+  UI.view = ['pneus', 'meteo', 'trajet', 'garage', 'analyse'].includes(view) ? view : 'pneus';
   lsSet('twrc.view', UI.view); try { sessionStorage.setItem('rc.tab', UI.view); } catch (e) { /* session indisponible */ }
   renderAll(); window.scrollTo({ top: 0, behavior: scrollBehavior() });
 }
@@ -1132,7 +1133,7 @@ const DESK_RAIL = {
   pneus: ['secWeatherLink', 'secCmp', 'secDebrief', 'secIce', 'secCal', 'secTip', 'secAlerts'],
   meteo: ['secRadar', 'secAir', 'secIce', 'secDebrief', 'secAlerts', 'secTip', 'secCal'],
   analyse: ['secSeason', 'secJournal', 'secDebrief'],
-  tenue: [], trajet: []
+  tenue: [], garage: [], trajet: []
 };
 function deskLayout(order) {
   let cols = document.getElementById('deskCols');
@@ -1145,7 +1146,7 @@ function deskLayout(order) {
     cols = document.createElement('div'); cols.id = 'deskCols'; cols.className = 'desk-cols';
     cols.innerHTML = '<div class="desk-main" id="deskMain"></div><aside class="desk-rail" id="deskRail" aria-label="Compléments"></aside>';
   }
-  const view = ['meteo', 'trajet', 'tenue', 'analyse'].includes(UI.view) ? UI.view : 'pneus', rail = new Set(DESK_RAIL[view]);
+  const view = ['meteo', 'trajet', 'tenue', 'garage', 'analyse'].includes(UI.view) ? UI.view : 'pneus', rail = new Set(DESK_RAIL[view]);
   const main = cols.querySelector('#deskMain'), side = cols.querySelector('#deskRail'), notice = document.getElementById('notice');
   if (notice.nextElementSibling !== cols) notice.after(cols);
   order.forEach(id => {
@@ -1158,27 +1159,31 @@ const deskSync = () => { if (!!DESK.matches !== document.body.classList.contains
 if (DESK.addEventListener) DESK.addEventListener('change', deskSync);
 window.addEventListener('resize', deskSync);   // filet : certains navigateurs signalent le changement de média plus tard
 function renderView() {
-  const vm = UI.view === 'meteo', vtr = UI.view === 'trajet', vt = UI.view === 'tenue', va = UI.view === 'analyse', vp = !vm && !vtr && !vt && !va;
+  const vm = UI.view === 'meteo', vtr = UI.view === 'trajet', vg = UI.view === 'garage', vt = UI.view === 'tenue', va = UI.view === 'analyse', vp = !vm && !vtr && !vg && !vt && !va;
   document.body.classList.toggle('vm', vm);
   document.body.classList.toggle('vtr', vtr);
   document.body.classList.toggle('vt', vt);
+  document.body.classList.toggle('vg', vg);
   document.body.classList.toggle('va', va);
-  const nav = $('#viewSeg'), navHtml = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-pressed="${vm}"><span class="tab-ic" aria-hidden="true">🌦️</span> Météo</button><button data-act="view" data-v="pneus" aria-pressed="${vp}"><span class="tab-ic" aria-hidden="true">🛞</span> Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-pressed="${vtr}"><span class="tab-ic" aria-hidden="true">🧭</span> TRAJET</button><button data-act="view" data-v="tenue" aria-pressed="${vt}"><span class="tab-ic" aria-hidden="true">👔</span> Tenue</button><button data-act="view" data-v="analyse" aria-pressed="${va}"><span class="tab-ic" aria-hidden="true">🔬</span> Analyse</button></div>`;
+  const nav = $('#viewSeg'), navHtml = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-pressed="${vm}"><span class="tab-ic" aria-hidden="true">🌦️</span> Météo</button><button data-act="view" data-v="pneus" aria-pressed="${vp}"><span class="tab-ic" aria-hidden="true">🛞</span> Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-pressed="${vtr}"><span class="tab-ic" aria-hidden="true">🧭</span> TRAJET</button><button data-act="view" data-v="garage" aria-pressed="${vg}"><span class="tab-ic" aria-hidden="true">🛠️</span> Garage</button><button data-act="view" data-v="analyse" aria-pressed="${va}"><span class="tab-ic" aria-hidden="true">🔬</span> Analyse</button></div>`;
   // Un rendu identique conserve les boutons, leur focus et les liens ; les changements restent calculés à chaque appel.
   if (nav.innerHTML !== navHtml) nav.innerHTML = navHtml;
-  const links = vtr ? [['secTrip', 'Planifier'], ['settings', 'Réglages']] : va ? [['secLab', 'Analyse'], ['secSeason', 'Saison pneus'], ['secJournal', 'Journal de saison'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
+  const links = vtr ? [['secTrip', 'Planifier'], ['settings', 'Réglages']] : va ? [['secLab', 'Analyse'], ['secSeason', 'Saison pneus'], ['secJournal', 'Journal de saison'], ['settings', 'Réglages']] : vg ? [['secGarage', 'Mes véhicules'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
     ? [['secWx', 'Synthèse'], ['secRadar', 'Radar'], ['secChart', '24 h'], ['secDays', '7 jours'], ['secCur', 'Détails'], ['secAir', 'Air · UV'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']]
     : [['secBrf', 'Départ'], ['secCars', 'Voitures'], ['secBrief', 'Préparer'], ['secWeatherLink', 'Météo'], ['secIce', 'Verglas'], ['secAlerts', 'Alertes'], ['settings', 'Réglages']];
-  if (!vtr && USER_STORE.state.debrief.entries.length && !DEMO.on) links.splice(1, 0, ['secDebrief', 'Journal des trajets']);
+  if (!vtr && !vg && USER_STORE.state.debrief.entries.length && !DEMO.on) links.splice(1, 0, ['secDebrief', 'Journal des trajets']);
   const jump = $('#jump'), jumpHtml = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
   if (jump.innerHTML !== jumpHtml) jump.innerHTML = jumpHtml;
   const order = vtr
     ? ['secTrip', 'secTripSummary', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue']
     : va
     ? ['jump', 'secLab', 'secSeason', 'secJournal', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secAlerts', 'secWx'] : vt
-    ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vm
+    ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vg
+    ? ['secGarage', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vm
     ? ['secWx', 'banners', 'hdrMore', 'secRadar', 'secChart', 'secDays', 'secCur', 'secAir', 'secIce', 'secAlerts', 'secTip', 'secCal', 'secBrf', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal', 'secLab']
     : ['secTripSummary', 'secBrf', 'banners', 'hdrMore', 'secCars', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue'];
+  if (!order.includes('secGarage')) order.push('secGarage');
+  if (!order.includes('secTenue')) order.push('secTenue');
   if (renderView.last === UI.view) return; renderView.last = UI.view;
   let prev = $('#notice');
   if (!va && !vtr) order.splice(order.indexOf('hdrMore') + 1, 0, 'jump');
@@ -3662,7 +3667,7 @@ function renderAll() {
   try {
     appRefreshContext(); recordJournal();
     renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
-    renderWx(); renderLab(); renderDebrief(); labThermTick(false); roadSync(); renderF1Pure();
+    renderWx(); renderLab(); renderDebrief(); renderGarage(); labThermTick(false); roadSync(); renderF1Pure();
   } finally { APP_CONTEXT.rendering = false; }
 }
 function softRender() { renderAll(); } // paramètres inchangés ; mêmes sélecteurs de contexte

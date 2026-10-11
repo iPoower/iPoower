@@ -177,7 +177,8 @@ async function program(s, options = {}) {
 }
 const outfit = s => s.p.locator('#secTenue').innerText();
 const timeline = s => s.p.locator('.outfit-moment').evaluateAll(xs => xs.map(x => ({ start: x.dataset.start, end: (x.querySelector('time').innerText.split('–')[1] || '').trim(), location: x.querySelector('.outfit-moment-heading b').innerText, kind: x.dataset.kind, text: x.innerText })));
-const view = async (s, name) => { await s.p.locator('[data-act="view"][data-v="' + name + '"]').click(); await s.settle(2); };
+const view = async (s, name) => { if (name === 'tenue') await s.p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); /* moteur interne historique, bouton supprimé */
+  else await s.p.locator('[data-act="view"][data-v="' + name + '"]').click(); await s.settle(2); };
 const outfitSnapshot = async s => ({ text: await outfit(s), base: await s.p.locator('.outfit-base').innerText(), carry: await s.p.locator('.outfit-carry').innerText(), timeline: await timeline(s), pieces: await s.p.locator('.outfit-pieces').innerText() });
 const same = (a, b) => a && b && Math.abs(a.lat - b.lat) < .011 && Math.abs(a.lon - b.lon) < .011;
 

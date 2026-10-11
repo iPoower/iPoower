@@ -116,7 +116,10 @@ async function profile(browser, build, fixture, device) {
     });
     const taps = [];
     await page.evaluate(() => { window.__tapPerf = null; document.addEventListener('click', e => { if (!e.target.closest('[data-act=view]')) return; const start = performance.now(); requestAnimationFrame(() => { window.__tapPerf = performance.now() - start; }); }, true); });
-    for (const view of ['meteo', 'pneus', 'tenue', 'analyse', 'pneus']) {
+    // Chaque build doit mesurer son vrai quatrième onglet : Tenue avant, Garage après.
+    // Conserver cinq interactions comparables sans chercher un bouton supprimé.
+    const fourthTab = await page.evaluate(() => document.querySelector('#viewSeg [data-v=garage]') ? 'garage' : 'tenue');
+    for (const view of ['meteo', 'pneus', fourthTab, 'analyse', 'pneus']) {
       await page.evaluate(() => { window.__tapPerf = null; }); await page.locator('#viewSeg [data-v=' + view + ']').click();
       await page.waitForFunction(() => window.__tapPerf !== null); taps.push(await page.evaluate(() => window.__tapPerf));
     }

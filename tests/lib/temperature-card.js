@@ -27,12 +27,12 @@ async function run(browser, check) {
   for (const iphone of [false, true]) {
     const device = iphone ? 'iphone-11-pro-max' : 'desktop', s = await session(browser, { iphone });
     try {
-      // Comparaison des surfaces des quatre onglets, sans modifier leur code ni leurs données.
+      // Comparaison des surfaces des quatre onglets métier, incluant désormais Garage.\n      // Les tests autonomes e2e31/32 et test_wardrobe conservent l'examen du moteur Tenue historique.
       const surfaces = {};
-      for (const view of ['pneus', 'tenue', 'analyse', 'meteo']) {
+      for (const view of ['pneus', 'garage', 'analyse', 'meteo']) {
         await s.p.locator(`#viewSeg [data-act=view][data-v=${view}]`).click(); await s.settle(1);
         surfaces[view] = await s.p.evaluate(() => {
-          const rows = [...document.querySelectorAll('.mod, .readout, .outfit-base, .outfit-moment, .lab-hero, .wx-blk')].filter(e => e.getBoundingClientRect().height > 0);
+          const rows = [...document.querySelectorAll('.mod, .readout, .garage-car, .garage-meter, .lab-hero, .wx-blk')].filter(e => e.getBoundingClientRect().height > 0);
           return rows.map(e => { const c = getComputedStyle(e); return { cls: e.className, bg: c.background, border: c.border, radius: c.borderRadius, color: c.color, shadow: c.boxShadow, font: c.fontFamily }; });
         });
         if (shots) { await s.p.evaluate(() => window.scrollTo(0, 0)); await s.p.screenshot({ path: path.join(shots, `${device}-${view}-overview.png`) }); }

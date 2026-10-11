@@ -20,7 +20,7 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         assert.equal(await settings.getAttribute('open'), '', 'les paramètres doivent rester ouverts');
       };
       await check(tag + ' · tous les onglets et aria-pressed après deux passages', async () => {
-        for (let n = 0; n < 2; n++) for (const v of ['pneus', 'meteo', 'tenue', 'analyse']) { await click(`[data-act=view][data-v=${v}]`); assert.equal(await p.evaluate(() => UI.view), v); assert.equal(await p.locator(`[data-act=view][data-v=${v}]`).getAttribute('aria-pressed'), 'true'); }
+        for (let n = 0; n < 2; n++) for (const v of ['pneus', 'meteo', 'garage', 'analyse']) { await click(`[data-act=view][data-v=${v}]`); assert.equal(await p.evaluate(() => UI.view), v); assert.equal(await p.locator(`[data-act=view][data-v=${v}]`).getAttribute('aria-pressed'), 'true'); }
       });
       await check(tag + ' · rendus identiques : navigation et raccourcis non reconstruits, focus clavier conservé', async () => {
         await click('[data-act=view][data-v=pneus]');
@@ -103,7 +103,7 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
       await check(tag + ' · choix de lieu météo après dépliage', async () => {
         await click('[data-act=locs-toggle]'); assert.equal(await p.evaluate(() => UI.locsOpen), true); await click('[data-act=loc][data-id=work]'); assert.equal(await p.evaluate(() => UI.loc), 'work');
       });
-      await click('[data-act=view][data-v=tenue]');
+      await p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); // ancien moteur de tenue encore couvert, sans onglet public
       await check(tag + ' · jour et occasion Tenue', async () => { await click('[data-act=outfit-day][data-v="1"]'); assert.equal(await p.evaluate(() => UI.outfitDay), 1); await click('[data-act=outfit-occasion][data-v=walk]'); assert.equal(await p.evaluate(() => UI.outfitOccasion), 'walk'); });
       await click('[data-act=view][data-v=analyse]');
       await check(tag + ' · véhicule Analyse propagé au contexte global', async () => { const car = await p.locator('[data-act=labcar]').last().getAttribute('data-car'); await p.locator('[data-act=labcar]').last().click(); const selected = await p.evaluate(() => ({ active: APP_CONTEXT.snapshot.activeCarId, lab: labCar().id })); assert.equal(selected.active, car); assert.equal(selected.lab, car); });
@@ -167,7 +167,7 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         await click('[data-act=bk-export]'); assert.match(await p.locator('#bkMsg').innerText(), /8 caractères/);
         await p.locator('#bkFile').setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{}') }); await s.settle(2); assert((await p.locator('#bkMsg').innerText()).length > 10);
       });
-      await check(tag + ' · listeners conservés après rechargement', async () => { await p.reload(); await s.settle(12); await click('[data-act=view][data-v=tenue]'); assert.equal(await p.evaluate(() => UI.view), 'tenue'); assert.deepEqual(await p.evaluate(() => [S.cars[0].tire.tread, S.cars[0].tire.treadAv, S.cars[0].tire.treadAr, S.cars[0].tire.treadEst]), [2.3, 2.3, 6.5, 1]); });
+      await check(tag + ' · listeners conservés après rechargement', async () => { await p.reload(); await s.settle(12); await click('[data-act=view][data-v=garage]'); assert.equal(await p.evaluate(() => UI.view), 'garage'); assert.deepEqual(await p.evaluate(() => [S.cars[0].tire.tread, S.cars[0].tire.treadAv, S.cars[0].tire.treadAr, S.cars[0].tire.treadEst]), [2.3, 2.3, 6.5, 1]); });
       await check(tag + ' · offline et online : commandes et onglets actifs', async () => { await s.c.setOffline(true); await p.evaluate(() => window.dispatchEvent(new Event('offline'))); await click('[data-act=view][data-v=analyse]'); assert.equal(await p.evaluate(() => UI.view), 'analyse'); await s.c.setOffline(false); await p.evaluate(() => window.dispatchEvent(new Event('online'))); await s.settle(8); assert.match(await p.locator('#statusbar').innerText(), /LIVE/); });
       await p.locator('#settings > summary').click(); await s.settle(1);
       await check(tag + ' · démo, changement de scénario, sortie et reset', async () => {

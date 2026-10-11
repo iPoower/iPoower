@@ -10,7 +10,7 @@ const check = (label, fn) => { fn(); console.log('✅ ' + label); n++; };
 check('six extensions déclarées sans onglet supplémentaire et identifiants uniques', () => {
   assert.equal(F.FEATURES.length, 6);
   assert.equal(new Set(F.FEATURES.map(x => x.id)).size, 6);
-  assert(F.FEATURES.every(x => ['pneus','meteo','trajet','analyse'].includes(x.view)));
+  assert(F.FEATURES.every(x => ['pneus','meteo','trajet','garage','analyse'].includes(x.view)));
 });
 check('Race Engineer sans source -> ne propose pas de départ rassurant', () => {
   const x = F.raceEngineer(); assert.equal(x.state, 'indisponible'); assert(!/conduire sans risque/i.test(x.lines.join(' ')));

@@ -971,3 +971,42 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
   .f1-dock-links { flex-basis: 100%; }
   .f1-dock-title { font-size: 10px; }
 }
+
+/* GARAGE : cinquième surface métier, même palette / densité mobile Race Control. */
+.vg .wrap .mod:not(#secGarage):not(#settings), .vg #secCars,
+.vg #banners, .vg #jump, .vg #hdrMore, .vg #placeBar,
+.vg #locChips, .vg #dayContext, .vg #decisionCore, .vg .foot { display: none !important; }
+.garage { gap: 12px; border-color: var(--line2); }
+.garage-lead, .garage-note { color: var(--fg2); font-size: 12.5px; line-height: 1.5; }
+.garage-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; min-width: 0; }
+.garage-car { display: flex; flex-direction: column; gap: 10px; background: var(--panel2); border: 1px solid var(--line2); border-left: 3px solid var(--accent); border-radius: 6px; padding: 13px; min-width: 0; }
+.garage-car-head { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.garage-car-head > div:first-child { min-width: 0; flex: 1 1 135px; }
+.garage-index { color: var(--accent); font: 600 10px var(--f-mono); letter-spacing: .09em; }
+.garage-car h3 { font-family: var(--f-disp); font-size: clamp(21px, 6vw, 27px); text-transform: uppercase; line-height: 1.15; overflow-wrap: anywhere; }
+.garage-car-head p { color: var(--fg2); font-size: 11px; margin-top: 4px; overflow-wrap: anywhere; }
+.garage-choose { display: flex; align-items: center; }
+.garage-active { display: inline-flex; color: var(--go-t); border: 1px solid var(--go); background: var(--go-soft); border-radius: 3px; padding: 7px 8px; font: 600 10px var(--f-mono); }
+.garage-select, .garage-edit { min-height: 44px !important; }
+.garage-meter { display: grid; grid-template-columns: minmax(0,1fr); gap: 1px; padding: 9px 10px; border: 1px solid var(--line2); border-radius: 4px; background: var(--panel); }
+.garage-meter > span { color: var(--fg2); font: 500 10px var(--f-mono); letter-spacing: .05em; }
+.garage-meter > strong { font-family: var(--f-disp); font-size: 25px; font-weight: 700; }
+.garage-meter > small { color: var(--fg3); font-size: 11px; }
+.garage-data { display: grid; grid-template-columns: minmax(0,1fr); gap: 8px; }
+.garage-data > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 9px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.garage-data > div span { font: 500 10px var(--f-mono); color: var(--fg2); text-transform: uppercase; }
+.garage-data > div b { font-size: 15px; font-weight: 600; color: var(--fg); overflow-wrap: anywhere; }
+.garage-data > div small { font-size: 11px; color: var(--fg2); overflow-wrap: anywhere; }
+.garage-dot, .garage-sets, .garage-empty { color: var(--fg2); font-size: 12px; overflow-wrap: anywhere; }
+.garage-checks h4 { color: var(--fg2); font-size: 12px; font-weight: 600; }
+.garage-checks ul { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 5px; }
+.garage-checks li { border-left: 2px solid var(--lv); background: var(--panel); padding: 7px 9px; color: var(--fg2); font-size: 12px; }
+.garage-plan { border: 1px solid var(--line2); border-radius: 4px; padding: 0 9px; }
+.garage-plan > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.garage-plan > div { display: grid; gap: 4px; padding-bottom: 10px; }
+.garage-plan p { color: var(--fg2); font-size: 12px; }
+.garage-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 10px; }
+.garage-footer span { color: var(--fg3); font-size: 11px; flex: 1 1 170px; }
+.garage-note { border-top: 1px solid var(--line); padding-top: 10px; }
+@media (min-width: 610px) { .garage-grid, .garage-data { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 560px) { .garage-car { padding: 11px; } .garage-footer .garage-edit { width: 100%; } }

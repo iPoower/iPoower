@@ -8,6 +8,8 @@ const U = 'https://ipoower.github.io/iPoower/race-control/', BR = require('./lib
 const PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const KNOWN = /open-meteo\.com|opendatasoft\.com|ipoower\.github\.io|rainviewer|arcgisonline|tile\.openstreetmap|unpkg\.com|cdn\.jsdelivr|router\.project-osrm|fonts\.g/;
 let fail = 0; const rows = [], errors = [], hosts = new Set();
+let stage = 'initialisation';
+const tapNav = async (page, selector, label) => { stage = label; await page.locator(selector).click({ timeout: 12000 }); };
 const check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ? '' : ' · ' + String(d).slice(0, 400))); if (!ok) fail++; };
 const VP = { iphone: { viewport: { width: 414, height: 896 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 }, pc: { viewport: { width: 1280, height: 800 } }, wide: { viewport: { width: 1920, height: 1080 } } };
 
@@ -102,11 +104,11 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     const strip = await s.p.evaluate(() => { const e = document.querySelector('#secWx .wx-strip'); return { sw: e.scrollWidth, cw: e.clientWidth, n: e.children.length }; });
     check('1 · bande horaire défilante (au moins 12 h) sans élargir la page', strip.n >= 12 && strip.sw > strip.cw, JSON.stringify(strip));
     // lien vers Pneus
-    await s.p.locator('#secWx [data-act=view][data-v=pneus]').click(); await s.settle(2);
+    await tapNav(s.p, '#secWx [data-act=view][data-v=pneus]', 'Météo → Pneus depuis le résumé météo'); await s.settle(2);
     check('1 · « Voir analyse Pneus » ouvre l’onglet Pneus ; le poste météo y est masqué', await s.p.evaluate(() => UI.view === 'pneus' && document.getElementById('secWx').hidden && !!document.querySelector('#secCars .car')));
-    await s.p.click('[data-act=view][data-v=tenue]'); await s.settle(2);
-    check('1 · Tenue : poste météo masqué', await s.p.evaluate(() => document.getElementById('secWx').hidden));
-    await s.p.click('[data-act=view][data-v=meteo]'); await s.settle(2);
+    await tapNav(s.p, '#viewSeg [data-act=view][data-v=garage]', 'Pneus → Garage dans les onglets'); await s.settle(2);
+    check('1 · Garage : poste météo masqué', await s.p.evaluate(() => document.getElementById('secWx').hidden));
+    await tapNav(s.p, '#viewSeg [data-act=view][data-v=meteo]', 'Garage → Météo dans les onglets'); await s.settle(2);
     check('1 · retour à Météo : poste météo et mesures détaillées présents', (await wx(s.p)).shown && await s.p.locator('#secCur').isVisible());
     // 2. données anciennes (cache de plus de 3 h) puis hors connexion : dernière analyse conservée, signalée
     await s.p.evaluate(() => { RAW[UI.loc].t = Date.now() - 4 * 3600e3; M[UI.loc].mode = 'cache'; renderAll(); }); await s.settle(1);
@@ -160,4 +162,4 @@ const layout = (p, mobile) => p.evaluate(mobile => {
   } finally { await b.close(); }
   console.log(rows.join('\n')); console.log('erreurs JS : ' + (errors.length ? errors.slice(0, 3).join(' | ') : 'aucune'));
   console.log(`${rows.length - fail}/${rows.length} scénarios OK`); process.exitCode = fail ? 1 : 0;
-})().catch(e => { console.error(e); process.exitCode = 1; });
+})().catch(e => { console.error('❌ Météo : étape ' + stage + ' · ' + String(e.name || 'Erreur') + ' · ' + String(e.message || e).split('\n')[0].slice(0, 170)); process.exitCode = 1; });

@@ -59,7 +59,7 @@ let n = 0; const check = (label, ok) => { assert(ok, label); n++; console.log('�
       check(prefix + ' · handler d’arrivée termine le trajet suivi et les alertes', await p.evaluate(key => LIVE.done[key] === 'arrivé' && ROAD.manager.context === null && ROAD.alert === null, arrivedKey));
       await p.evaluate(() => { liveReset(); S.work.days = []; CAL.events = []; renderAll(); });
       check(prefix + ' · arrivée/annulation/sans trajet : aucun contexte ou événement résiduel', await p.locator('#secRoad').isHidden() && await p.evaluate(() => ROAD.manager.context === null && ROAD.alert === null));
-      for (const view of ['meteo', 'tenue', 'analyse', 'pneus']) { const tab = p.locator(`[data-act=view][data-v=${view}][aria-pressed]`); await tab.click(); check(prefix + ' · commande ' + view + ' toujours active', await tab.getAttribute('aria-pressed') === 'true'); }
+      for (const view of ['meteo', 'garage', 'analyse', 'pneus']) { const tab = p.locator(`[data-act=view][data-v=${view}][aria-pressed]`); await tab.click(); check(prefix + ' · commande ' + view + ' toujours active', await tab.getAttribute('aria-pressed') === 'true'); }
       check(prefix + ' · pas de débordement, JavaScript ou secret dans le cache trafic', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && !/trip-fictif|"fix"|"route"|"distanceAhead"/.test(localStorage.getItem('twrc.road.datex') || '')) && s.errors.length === 0);
       await c.close();
 

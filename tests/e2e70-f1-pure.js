@@ -25,7 +25,7 @@ const active = p => p.evaluate(() => ({
         await check(dev + ' · aucun panneau F1 par défaut, navigation à 5 vues', async () => {
           assert.equal(before.modules.length, 0);
           assert.equal(await p.locator('#f1Dock').count(), 0, 'aucun bandeau F1 quand tout est désactivé');
-          assert.deepEqual(before.tabs, ['meteo', 'pneus', 'trajet', 'tenue', 'analyse']);
+          assert.deepEqual(before.tabs, ['meteo', 'pneus', 'trajet', 'garage', 'analyse']);
           assert.equal(await p.evaluate(() => F1Pure.FEATURES.every(f => !f1Enabled(f.id))), true);
         });
         await p.evaluate(() => { document.getElementById('settings').open = true; renderSettings(true); });
@@ -41,12 +41,11 @@ const active = p => p.evaluate(() => ({
           assert.deepEqual(x.tabs, before.tabs);
           assert(x.modules.includes('raceEngineer'), JSON.stringify(x.modules));
           assert(x.modules.includes('tyreManagement'), JSON.stringify(x.modules));
-          assert(x.modules.includes('theGarage'), JSON.stringify(x.modules));
           assert(await p.locator('#decisionCore [data-f1=raceEngineer] summary').isVisible());
           assert(await p.locator('#secBrief [data-f1=tyreManagement] summary').isVisible());
           const dock = p.locator('#f1Dock');
           assert(await dock.isVisible(), 'bandeau F1 visible sur iPhone/PC');
-          assert.equal(await dock.locator('a').count(), 3);
+          assert.equal(await dock.locator('a').count(), 2);
           // getBoundingClientRect() dépend du scroll courant (encore animé sur iPhone).
           // Tester la POSITION réelle dans le document, pas le viewport transitoire.
           const placement = await dock.evaluate(el => {
@@ -63,6 +62,13 @@ const active = p => p.evaluate(() => ({
         await tap('#f1Dock a[href="#f1-panel-raceEngineer"]');
         await check(dev + ' · accès direct Race Engineer depuis le bandeau', async () => {
           assert.equal(await p.evaluate(() => location.hash), '#f1-panel-raceEngineer');
+        });
+        await view('garage');
+        await check(dev + ' · The Garage F1 accompagne les fiches du nouvel onglet', async () => {
+          assert(await p.locator('#secGarage').isVisible());
+          assert.equal(await p.locator('#secGarage .garage-car').count(), 2);
+          assert.equal(await p.locator('#secGarage [data-f1=theGarage]').count(), 1);
+          assert.equal(await p.locator('#f1Dock a[href="#f1-panel-theGarage"]').count(), 1);
         });
         await view('meteo');
         await check(dev + ' · Track Conditions reste dans Météo et distingue prévision et mesure', async () => {
@@ -105,8 +111,8 @@ const active = p => p.evaluate(() => ({
           assert.equal((await active(p)).modules.length, 0);
           assert.equal(await p.locator('#f1Dock').count(), 0, 'bandeau disparaît immédiatement à la désactivation');
         });
-        await view('tenue');
-        await check(dev + ' · onglet Tenue totalement inchangé', async () => {
+        await view('garage');
+        await check(dev + ' · onglet Garage utilisable sans extension F1', async () => {
           assert.equal((await active(p)).modules.length, 0);
           assert.equal(await p.locator('#viewSeg [data-act=view]').count(), 5);
         });
