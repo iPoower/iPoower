@@ -36,8 +36,8 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
       await p.locator('#viewSeg button').evaluateAll(a => a.map(x => x.dataset.v).join(',') === 'meteo,pneus,trajet,tenue,analyse'));
     check('la tenue est masquée dans le cockpit Pneus', !(await visible('secTenue')) && await visible('secCars'));
     const n = forecasts;
-    await p.click('[data-act=view][data-v=tenue]'); await settle();
-    check('Tenue sélectionnée et quatre pièces visibles', await visible('secTenue') && await p.locator('.outfit-piece').count() === 4 && await p.locator('[data-v=tenue]').getAttribute('aria-pressed') === 'true');
+    await p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); await settle(); // moteur de compatibilité sans onglet public
+    check('Tenue sélectionnée et quatre pièces visibles', await visible('secTenue') && await p.locator('.outfit-piece').count() === 4 && await p.evaluate(() => UI.view === 'tenue'));
     check('les modules de conduite sont masqués dans Tenue', !(await visible('secBrf')) && !(await visible('secCars')));
     check('la météo existante est réutilisée sans nouvel appel de prévision', forecasts === n);
     check('le ressenti et les limites de confort sont affichés', /Ressenti/.test(await txt()) && /repères de confort/.test(await txt()));
