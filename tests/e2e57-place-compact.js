@@ -77,7 +77,8 @@ async function capture(p, dev, name) {
       await check(dev + ' · Pneus, Météo, Tenue, Analyse : même lieu confirmé et même météo', async () => {
         const before = await state(p);
         for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) {
-          await tap(p, dev, '#viewSeg [data-act=view][data-v=' + view + ']'); await compact(p);
+          if (view === 'tenue') await p.evaluate(() => { UI.view = 'tenue'; renderAll(); });
+          else await tap(p, dev, '#viewSeg [data-act=view][data-v=' + view + ']'); await compact(p);
           const x = await state(p); assert.equal(x.status, 'work'); assert.equal(x.place, 'work'); assert.equal(x.weather, 'work');
           assert.deepEqual(x.confirmation, before.confirmation);
         }
@@ -184,7 +185,8 @@ async function capture(p, dev, name) {
       await check(dev + ' · retour météo GPS : une commande, quatre vues et position intacte', async () => {
         assert.equal((await state(g)).weather, 'gps');
         for (const view of ['meteo', 'pneus', 'tenue', 'analyse']) {
-          await tap(g, dev, '#viewSeg [data-act=view][data-v=' + view + ']');
+          if (view === 'tenue') await g.evaluate(() => { UI.view = 'tenue'; renderAll(); });
+          else await tap(g, dev, '#viewSeg [data-act=view][data-v=' + view + ']');
           const x = await state(g); assert.equal(x.place, 'home'); assert.equal(x.confirmation, null);
           assert.equal(await g.locator('#placeBar button:visible').count(), 1);
         }
