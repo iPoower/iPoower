@@ -106,7 +106,8 @@ async function views(p, expected) {
             continue;
           }
           assert(await decision.isVisible(), view + ' : synthèse visible');
-          if (view === 'analyse') await tap(p, '#decisionCore [data-ux=analysis-context] > summary');
+          if (view === 'analyse' && !await p.locator('#decisionCore [data-ux=analysis-context]').evaluate(x => x.open))
+            await tap(p, '#decisionCore [data-ux=analysis-context] > summary');
           assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
           await tap(p, '#decisionCore [data-act=decision-car-change]');
           assert.notEqual(await p.locator('#dayContext details.day-editor').getAttribute('open'), null);
