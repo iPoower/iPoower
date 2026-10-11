@@ -103,7 +103,7 @@ function renderF1Dock() {
 }
 function renderF1Pure() {
   const host = {
-    raceEngineer: ['#decisionCore', f1BriefingHtml, 'pneus'],
+    raceEngineer: ['#secBrief', f1BriefingHtml, 'pneus'],
     trackConditions: ['#secWx', f1TrackHtml, 'meteo'],
     tyreManagement: ['#secBrief', f1TyreHtml, 'pneus'],
     strategyAB: ['#secTrip', f1StrategyHtml, 'trajet'],
@@ -115,8 +115,18 @@ function renderF1Pure() {
     const current = root.querySelector('.f1-extension[data-f1="' + id + '"]');
     const valid = f1Enabled(id) && UI.view === view && !DEMO.on && !LOCKED() && !root.hidden;
     if (!valid) { if (current) current.remove(); return; }
+    if (current) F1_OPEN[id] = current.open;
     const html = build();
-    if (current) { if (current.outerHTML !== html) current.outerHTML = html; return; }
+    // Le choix ouvert/fermé appartient à l'utilisateur, pas au contenu projeté.
+    // outerHTML sérialise « open » en open="" et recréait un panneau inchangé.
+    const content = html.replace(' data-f1="' + id + '" open>', ' data-f1="' + id + '">');
+    if (current) {
+      if (current._f1HTML !== content) {
+        current.outerHTML = html;
+        root.querySelector('#f1-panel-' + id)._f1HTML = content;
+      }
+      return;
+    }
     // Une section peut être longue (Météo, Analyse, briefing). Ne jamais
     // cacher les nouveautés APRÈS la totalité de son contenu sur mobile.
     // Les modules de même section suivent l'ordre de FEATURES.
@@ -130,6 +140,7 @@ function renderF1Pure() {
       anchor.nextElementSibling.matches('.f1-extension')) anchor = anchor.nextElementSibling;
     if (anchor) anchor.insertAdjacentHTML('afterend', html);
     else root.insertAdjacentHTML('afterbegin', html);
+    root.querySelector('#f1-panel-' + id)._f1HTML = content;
   });
   renderF1Dock();
 }

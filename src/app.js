@@ -974,7 +974,7 @@ function renderDecisionCore() {
   const el = $('#decisionCore');
   if (!el) return;
   if (!CX || !APP_CONTEXT.snapshot || DEMO.on || LOCKED()) {
-    el.hidden = true; el.innerHTML = ''; DECISION_LAST = null; return;
+    el.hidden = true; el.innerHTML = ''; renderDecisionCore.last = null; DECISION_LAST = null; return;
   }
   const snap = APP_CONTEXT.snapshot, now = Date.now(), raw = RAW[UI.loc];
   const ageMin = value => {
@@ -1017,6 +1017,18 @@ function renderDecisionCore() {
   const icon = ['✓', '◌', '⚠', '⛔'][decision.displayLevel] || '•';
   const confClass = 'lv' + Math.min(2, confidence.level);
   const destination = snap.destination && snap.destination.name || (snap.destination ? 'Destination' : 'Aucune destination immédiate');
+  const trip = snap.activeTrip || snap.nextTrip;
+  const tripLeg = trip && (trip.l || trip.planL);
+  const pendingOrigin = !!(trip && (trip.originPending || tripLeg && tripLeg.originPending));
+  const tripFrom = trip && !pendingOrigin ? trip.from || (appTripPlace(trip, 'from') || {}).name : null;
+  const tripToName = trip && (trip.to || (appTripPlace(trip, 'to') || {}).name);
+  const departure = trip && !pendingOrigin && (snap.departureTime || trip.dep);
+  const departureText = departure && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(departure)
+    ? (snap.activeTrip ? 'parti' : 'départ prévu') + ' ' + (departure.slice(0, 10) === snap.date ? 'aujourd’hui' : fmtDay(departure.slice(0, 10))) + ' à ' + departure.slice(11, 16)
+    : 'horaire à confirmer';
+  const destinationHtml = UI.view === 'pneus' && trip
+    ? '<span class="decision-trip"><span>' + (snap.activeTrip ? 'Trajet en cours' : 'Prochain trajet') + ' · <b>' + esc(tripFrom || 'Origine à confirmer') + ' → ' + esc(tripToName || 'Destination à confirmer') + '</b></span><span class="decision-departure">' + esc(departureText) + ' <a class="decision-change" href="#secBrf">Départ ↗</a></span></span>'
+    : '<span>Destination · <b>' + esc(destination) + '</b></span>';
   const carLabel = car ? (car.short || car.name || car.id) : 'À choisir';
   const wAge = raw ? ageMin(raw.t) : null, fresh = wAge == null ? 'météo —' : 'météo ' + (wAge < 1 ? 'moins de 1 min' : Math.round(wAge) + ' min');
   const whyLeft = confidence.reasons.filter(r => !['Lieu courant à confirmer', 'Voiture active à choisir'].includes(r));
@@ -1036,16 +1048,21 @@ function renderDecisionCore() {
     changes.map(c => '<span class="' + esc(c.kind) + '">' + (c.kind === 'up' ? '↑ ' : c.kind === 'down' ? '↓ ' : '↔ ') + esc(c.text) + '</span>').join('') + '</div></details>' : '';
   el.className = 'decision-core lv' + decision.displayLevel;
   el.hidden = false;
-  el.innerHTML = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (cm.items.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
+  const html = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (cm.items.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
     '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b> · ' + esc(fresh) + '</span></div>' +
     // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
     (cm.items.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + cm.items.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
       : '') +
     '<div class="decision-meta"><span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + forecastHtml + '</span>' +
     '<span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span>' +
-    '<span>Destination · <b>' + esc(destination) + '</b></span></div>' +
+    destinationHtml + '</div>' +
     // raisons de confiance déjà dites par les lignes Lieu / Voiture : pas de répétition
     (confidence.level > 0 && whyLeft.length ? '<div class="decision-why">' + whyLeft.map(r => '<span>' + esc(r) + '</span>').join('') + '</div>' : '') + changesHtml;
+  if (html === renderDecisionCore.last) return;
+  const changesOpen = !!el.querySelector('.decision-changes[open]');
+  el.innerHTML = html; renderDecisionCore.last = html;
+  const disclosure = el.querySelector('.decision-changes');
+  if (disclosure && changesOpen) disclosure.open = true;
 }
 
 /* ---------- probabilités et pluie 15 min ---------- */
@@ -3239,7 +3256,21 @@ function feedbackBlock() {
     <div class="disc">Chaussée : ${state}${c.dry ? ` · ${c.dry} « Sec, RAS » noté${c.dry > 1 ? 's' : ''}, sans effet sur la température (ne renseigne pas le gel)` : ''}${last ? ` · dernier : ${fmtDay(last.t.slice(0, 10))} ${last.t.slice(11, 16)}` : ''}.</div></div>`;
 }
 function renderBrief() {
-  const el = $('#secBrief'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
+  const el = $('#secBrief'); if (!CX) { el.innerHTML = ''; el.hidden = true; renderBrief.last = null; return; } el.hidden = false;
+  const paint = html => {
+    if (html === renderBrief.last) return;
+    el.querySelectorAll('.f1-extension').forEach(node => { F1_OPEN[node.dataset.f1] = node.open; });
+    // Une prévision actualisée ne doit pas interrompre un départ en cours de saisie.
+    const active = document.activeElement;
+    const draft = active && el.contains(active) && active.id.startsWith('quick-work-')
+      ? { id: active.id, bind: active.dataset.bind, value: active.value, start: active.selectionStart, end: active.selectionEnd } : null;
+    el.innerHTML = html; renderBrief.last = html;
+    const input = draft && document.getElementById(draft.id);
+    if (input && input.dataset.bind === draft.bind) {
+      input.value = draft.value; input.focus({ preventScroll: true });
+      if (draft.start != null && typeof input.setSelectionRange === 'function') input.setSelectionRange(draft.start, draft.end);
+    }
+  };
   const td = tripData(), w = S.work, dir = UI.dir; if (appActiveCar()) UI.bcar = appActiveCar().id;
   const time = dir === 'go' ? w.dep : w.ret;
   const locOpts = (sel, key) => allLocs().map(l => `<option value="${esc(l.id)}" ${l.id === sel ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
@@ -3260,12 +3291,12 @@ function renderBrief() {
     <div class="fld"><label for="quick-work-from">De</label><select id="quick-work-from" data-bind="work.from">${locOpts(w.from)}</select></div>
     <div class="fld"><label for="quick-work-to">Vers</label><select id="quick-work-to" data-bind="work.to">${locOpts(w.to)}</select></div>
   </div>`;
-  if (td.err) { el.innerHTML = head + `<p class="muted">${esc(td.err)}</p>`; return; }
+  if (td.err) { paint(head + `<p class="muted">${esc(td.err)}</p>`); return; }
   const car = appActiveCar() || TCARS().find(c => c.id === UI.bcar) || TCARS()[0];
-  if (!car) { el.innerHTML = head + '<p class="muted">Aucune voiture équipée de pneus.</p>'; return; }
-  if (!hasTires(car)) { el.innerHTML = head + '<p class="muted">Pneus de la voiture active à renseigner.</p>'; return; }
+  if (!car) { paint(head + '<p class="muted">Aucune voiture équipée de pneus.</p>'); return; }
+  if (!hasTires(car)) { paint(head + '<p class="muted">Pneus de la voiture active à renseigner.</p>'); return; }
   const wa = windowAssess(car, td.seq, 'trip'), sm = summarize(td.seq);
-  if (!wa) { el.innerHTML = head + '<p class="muted">Données insuffisantes.</p>'; return; }
+  if (!wa) { paint(head + '<p class="muted">Données insuffisantes.</p>'); return; }
   const nar = narrate(car, wa, sm, 'au départ'), pf = carProfile(car), gen = pf.generic;
   const xD = td.A.hs[td.iDep], xA = td.B.hs[td.iArr];
   const cD = xD ? colStats([{ hs: td.A.hs, i: td.iDep }]) : null, cA = xA ? colStats([{ hs: td.B.hs, i: td.iArr }]) : null, cT = colStats(td.seq);
@@ -3286,7 +3317,7 @@ function renderBrief() {
   const mc = td.mont, effT = effType(car);
   const montTxt = mc.concerned ? montNoteHtml([{ name: td.toName, mc }], td.dep, car) : '';
   const routeTxt = `Cap ${capTxt(td.cap)} (${f0(td.cap)}°) · ${f0(td.dist)} km à vol d’oiseau${td.mids.length ? ` · ${td.midsLoaded}/${td.mids.length} points intermédiaires analysés (≈ tous les 50 km)` : ''}`;
-  el.innerHTML = head + `<div class="sub">${esc(td.fromName)} → ${esc(td.toName)} · départ <b class="mono">${td.dep.slice(11, 16)}</b> le ${fmtDay(td.dep.slice(0, 10))} · arrivée <b class="mono">${td.arr.slice(11, 16)}</b>${td.past ? ' · <b style="color:var(--risk-t)">horaire déjà passé</b>' : ''}</div>
+  paint(head + `<div class="sub">${esc(td.fromName)} → ${esc(td.toName)} · départ <b class="mono">${td.dep.slice(11, 16)}</b> le ${fmtDay(td.dep.slice(0, 10))} · arrivée <b class="mono">${td.arr.slice(11, 16)}</b>${td.past ? ' · <b style="color:var(--risk-t)">horaire déjà passé</b>' : ''}</div>
   ${gen ? genericNote(pf.gaps) : verdictHtml(wa.level)}
   <p class="expl">${gen ? '<b>Prévision de référence.</b> Renseigne tes lieux et ta monte pour évaluer ton départ.' : `<b>${esc(nar.head)}</b> ${esc(nar.body)}`}</p>
   ${gen ? '' : '<div class="sub">Réponse à « puis-je partir avec cette voiture et ces pneus ? » : un indice, pas une autorisation. La décision te revient.</div>'}
@@ -3296,7 +3327,7 @@ function renderBrief() {
      if (!ws.length) return ''; const w = ws.reduce((x, y) => ({ n: Math.max(x.n, y.n), pRoad0: Math.max(x.pRoad0, y.pRoad0), pAir0: Math.max(x.pAir0, y.pAir0), pIce: Math.max(x.pIce, y.pIce), pT5: Math.max(x.pT5, y.pT5), pRain: Math.max(x.pRain, y.pRain) }));
      return probBars(w, `PROBABILITÉS PENDANT LE TRAJET · ${esc(ENS_LABEL[td.A.ensModel] || '')}`); })()}
   ${feedbackBlock()}
-  <div class="disc">${routeTxt}. ${td.mids.length ? 'Chaque heure est évaluée au point de la route le plus proche de ta position estimée (vitesse constante, ligne droite).' : (td.dur > 90 ? 'Première moitié évaluée au départ, seconde à l’arrivée.' : 'Trajet court : chaque heure est évaluée aux deux extrémités, le cas le plus défavorable est retenu.')}${gen ? '' : ` Score du trajet : <b class="mono">${wa.score}/100</b>.`}</div>`;
+  <div class="disc">${routeTxt}. ${td.mids.length ? 'Chaque heure est évaluée au point de la route le plus proche de ta position estimée (vitesse constante, ligne droite).' : (td.dur > 90 ? 'Première moitié évaluée au départ, seconde à l’arrivée.' : 'Trajet court : chaque heure est évaluée aux deux extrémités, le cas le plus défavorable est retenu.')}${gen ? '' : ` Score du trajet : <b class="mono">${wa.score}/100</b>.`}</div>`);
   el._td = td;
 }
 

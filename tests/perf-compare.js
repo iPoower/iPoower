@@ -133,7 +133,25 @@ async function profile(browser, build, fixture, device) {
       UI.view = 'pneus'; renderAll();
       const rect = id => { const e = document.getElementById(id), r = e && e.getBoundingClientRect(); return r && r.height ? { top: Math.round(r.top + scrollY), bottom: Math.round(r.bottom + scrollY) } : null; };
       const cockpit = { viewport: innerHeight, width: innerWidth, decision: rect('decisionCore'), trip: rect('secBrf'), navigation: rect('viewSeg'),
-        engineerOpen: !!document.getElementById('f1-panel-raceEngineer')?.open };
+        immediateTrip: (() => { const r = document.querySelector('#decisionCore .decision-trip')?.getBoundingClientRect(); return r ? { top: Math.round(r.top + scrollY), bottom: Math.round(r.bottom + scrollY) } : null; })(),
+        engineerOpen: !!document.getElementById('f1-panel-raceEngineer')?.open,
+        dockTargetHeight: Math.round(document.querySelector('#f1Dock a').getBoundingClientRect().height) };
+      renderAll(); renderAll();
+      const core = document.getElementById('decisionCore'), brief = document.getElementById('secBrief');
+      const change = core.querySelector('[data-act=decision-car-change]'), speech = document.querySelector('[data-act=race-speak]');
+      change.focus();
+      for (let k = 0; k < 20; k++) renderAll();
+      cockpit.refresh = { renders: 20, carButtonPreserved: change === core.querySelector('[data-act=decision-car-change]'),
+        focusPreserved: document.activeElement === change, speechButtonPreserved: speech === document.querySelector('[data-act=race-speak]') };
+      const f1Observer = new MutationObserver(() => {});
+      f1Observer.observe(core, { childList: true, subtree: true }); f1Observer.observe(brief, { childList: true, subtree: true });
+      for (let k = 0; k < 20; k++) renderF1Pure();
+      cockpit.f1ChildMutations = f1Observer.takeRecords().filter(r => r.type === 'childList').length; f1Observer.disconnect();
+      const departure = brief.querySelector('input[type=time]'); departure.focus(); departure.value = '07:35';
+      const duration = S.work.durMin; S.work.durMin += 5; renderBrief(); renderF1Pure();
+      const updatedDeparture = document.getElementById(departure.id);
+      cockpit.departureDraft = { valuePreserved: updatedDeparture.value === '07:35', focusPreserved: document.activeElement === updatedDeparture };
+      S.work.durMin = duration;
       UI.view = 'garage'; renderAll();
       const root = document.getElementById('secGarage'), button = root.querySelector('.garage-edit'), plan = root.querySelector('.garage-plan');
       if (plan) plan.open = true; button.focus();

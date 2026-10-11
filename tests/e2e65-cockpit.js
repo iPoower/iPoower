@@ -35,7 +35,7 @@ const layout = p => p.evaluate(() => {
       await check(dev + ' · décision : verdict, confiance, âge des données, lieu, voiture et destination dans une seule carte', async () => {
         const c = await core(p); assert(c, 'carte de décision affichée');
         assert.match(c.text, /CONDITIONS STABLES|SURVEILLANCE|PRUDENCE|DANGER|DONNÉES DÉGRADÉES/); assert.match(c.text, /Confiance · (SOLIDE|À CONFIRMER|DÉGRADÉ) · météo/);
-        assert.match(c.text, /Lieu ·\s/); assert.match(c.text, /Voiture ·\s/); assert.match(c.text, /Destination ·\s/);
+        assert.match(c.text, /Lieu ·\s/); assert.match(c.text, /Voiture ·\s/); assert.match(c.text, /Destination ·\s|Prochain trajet ·\s|Trajet en cours ·\s/);
         if (!c.items.length) assert.match(c.text, /pas une garantie de sécurité/);
         assert(!/Lieu courant à confirmer/.test(c.text.replace(/Lieu · [^\n]*/, '')), 'pas de répétition du lieu');
       });
@@ -44,6 +44,21 @@ const layout = p => p.evaluate(() => {
         if (!r.car) { assert(r.reasons.includes('Voiture active à choisir') || r.conf === 0, JSON.stringify(r)); assert(!r.reasons.includes('Pneus montés à confirmer'), JSON.stringify(r)); }
         const brf = await p.locator('#secBrf').innerText();
         if (r.conf >= 2) assert.doesNotMatch(brf, /🟢 GO/);
+      });
+      await check(dev + ' · résumé trajet : origine en attente, date future et absence de trajet restent explicites', async () => {
+        const x = await p.evaluate(() => {
+          const before = APP_CONTEXT.snapshot, trip = before.nextTrip; if (!trip) throw new Error('Trajet fictif attendu');
+          const text = () => document.querySelector('#decisionCore .decision-trip')?.innerText || '';
+          try {
+            APP_CONTEXT.snapshot = { ...before, activeTrip: null, nextTrip: { ...trip, originPending: true } }; renderDecisionCore(); const pending = text();
+            APP_CONTEXT.snapshot = { ...before, activeTrip: null, nextTrip: { ...trip, originPending: false }, departureTime: '2026-10-09T08:45' }; renderDecisionCore(); const future = text();
+            APP_CONTEXT.snapshot = { ...before, nextTrip: null, activeTrip: null, destination: null }; renderDecisionCore(); const missing = text();
+            return { pending, future, missing };
+          } finally { APP_CONTEXT.snapshot = before; renderDecisionCore(); }
+        });
+        assert.match(x.pending, /Origine à confirmer/); assert.match(x.pending, /horaire à confirmer/);
+        assert.match(x.future, /08:45/); assert.doesNotMatch(x.future, /aujourd’hui/);
+        assert.equal(x.missing, '');
       });
       if (dev === 'iphone') await check('iPhone 11 Pro Max (414×896) · décision entière et début du trajet visibles sans défilement, aucun débordement', async () => {
         await p.evaluate(() => { document.querySelector('#placeBar [data-act=place-confirm][data-place=home]')?.click(); window.scrollTo(0, 0); }); await s.settle(4);
@@ -56,6 +71,26 @@ const layout = p => p.evaluate(() => {
         await p.setViewportSize({ width: w, height: h }); await s.settle(3); await p.evaluate(() => window.scrollTo(0, 0));
         const L = await layout(p); assert(L.sw <= L.W + 1, JSON.stringify(L)); assert(L.core && L.core.bottom <= h, JSON.stringify(L)); assert(L.brf && L.brf.top < (w >= 1200 ? h - 80 : h - 20), JSON.stringify(L));   // bureau : trajet lisible ; tablette (empilée) : trajet entamé
         if (process.env.COCKPIT_SHOT) await p.screenshot({ path: `${process.env.COCKPIT_SHOT}-pc-${w}.png` });
+      });
+      await check(dev + ' · six modules F1 actifs : décision et résumé du prochain trajet lisibles dans le premier écran', async () => {
+        if (dev === 'pc') await p.setViewportSize({ width: 1440, height: 900 });
+        const flags = await p.evaluate(() => {
+          const previous = { ...S.flags };
+          F1Pure.FEATURES.forEach(f => { S.flags['f1' + f.id[0].toUpperCase() + f.id.slice(1)] = 1; });
+          document.querySelector('#placeBar [data-act=place-confirm][data-place=home]')?.click();
+          renderAll(); window.scrollTo(0, 0); return previous;
+        });
+        try {
+          await s.settle(3); const L = await layout(p), bottom = Math.min(L.H, L.navTop > L.H / 2 ? L.navTop : L.H);
+          assert(L.sw <= L.W + 1, JSON.stringify(L));
+          assert(L.core && L.core.bottom <= bottom, 'décision F1 coupée : ' + JSON.stringify(L));
+          const trip = await p.locator('#decisionCore .decision-trip').evaluate(x => ({ bottom: x.getBoundingClientRect().bottom, text: x.innerText }));
+          assert(trip.bottom <= bottom, 'résumé trajet F1 coupé : ' + JSON.stringify(trip));
+          assert.match(trip.text, /→/); assert.match(trip.text, /départ prévu.*\d{2}:\d{2}/);
+          assert.equal(await p.locator('#secBrief [data-f1=raceEngineer]').count(), 1);
+          assert.equal(await p.locator('#f1Dock a[href="#f1-panel-raceEngineer"]').count(), 1);
+          await p.screenshot({ path: process.env.SP + '/place-precision-cockpit-' + dev + '.png' });
+        } finally { await p.evaluate(previous => { S.flags = previous; renderAll(); }, flags); }
       });
       await check(dev + ' · onglet choisi conservé au rechargement ; réouverture → retour sur Pneus', async () => {
         await p.locator('#viewSeg [data-act=view][data-v=meteo]').click(); await s.settle(2);
