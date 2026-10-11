@@ -120,7 +120,11 @@ function renderF1Pure() {
     // Une section peut être longue (Météo, Analyse, briefing). Ne jamais
     // cacher les nouveautés APRÈS la totalité de son contenu sur mobile.
     // Les modules de même section suivent l'ordre de FEATURES.
-    const first = root.querySelector(':scope > .mod-h, :scope > .decision-top');
+    // Préserver les verdicts de sécurité : le poste Météo garde son héros
+    // d'alerte en premier et l'Analyse garde son diagnostic principal visible.
+    const first = id === 'trackConditions' ? root.querySelector(':scope > .wx-hero') :
+      id === 'telemetryReplay' ? root.querySelector(':scope > .lab-hero') :
+      root.querySelector(':scope > .mod-h, :scope > .decision-top');
     let anchor = first;
     while (anchor && anchor.nextElementSibling &&
       anchor.nextElementSibling.matches('.f1-extension')) anchor = anchor.nextElementSibling;
