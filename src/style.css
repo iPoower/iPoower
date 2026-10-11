@@ -929,3 +929,45 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
   .outfit-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
   .outfit-side .outfit-pieces { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* F1 Pure : modules immédiatement repérables sur téléphone, sans nouveau
+   menu ni cache/animation invasive. Palette Race Control existante. */
+.f1-dock {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  padding: 6px 8px; background: var(--panel); border: 1px solid var(--line2);
+  border-left: 3px solid var(--accent); border-radius: 5px;
+}
+.f1-dock-title {
+  color: var(--accent); font: 600 11px var(--f-mono);
+  letter-spacing: .08em; white-space: nowrap; display: inline-flex;
+  align-items: center; gap: 5px;
+}
+.f1-dock-title small { font-size: 10px; color: var(--fg2); }
+.f1-dock-links { flex: 1; display: flex; gap: 5px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.f1-dock-links::-webkit-scrollbar { display: none; }
+.f1-dock-wait { color: var(--fg2); font: 500 11px var(--f-mono); align-self: center; }
+.f1-dock-links a {
+  flex: 0 0 auto; border: 1px solid var(--line2); border-radius: 3px;
+  background: var(--panel2); color: var(--fg); padding: 7px 9px;
+  text-decoration: none; font: 500 11px var(--f-mono);
+  min-height: 40px; display: inline-flex; align-items: center;
+}
+.f1-dock-links a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.f1-extension {
+  --lv: var(--accent); border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 20%, var(--panel));
+  margin: 7px 0; scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 70px);
+}
+.f1-extension > summary .tt { color: var(--accent); font-weight: 700; }
+.f1-extension[open] > summary { border-bottom: 1px solid var(--line); }
+.f1-extension .lab-sp { padding: 7px 10px 10px; }
+.f1-extension .lab-sp ul { padding: 0; margin: 0 0 7px; list-style: none; display: grid; gap: 5px; }
+.f1-extension .lab-sp li { font-size: 12.5px; color: var(--fg2); }
+.f1-extension .lab-sp li b { color: var(--fg); }
+.f1-extension .lab-sp p { font-size: 11px; color: var(--fg3); line-height: 1.45; }
+.f1-extension .lab-sp .btn { margin-top: 8px; }
+@media (max-width: 560px) {
+  .f1-dock { flex-wrap: wrap; gap: 3px 6px; }
+  .f1-dock-links { flex-basis: 100%; }
+  .f1-dock-title { font-size: 10px; }
+}
