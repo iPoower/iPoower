@@ -10,7 +10,8 @@ async function openAt(context, date) {
   const p = await context.newPage();
   await p.clock.install({ time: date });
   await p.goto(U);
-  await p.waitForFunction(() => !!window.TWRC_VAULT && (window.TWRC_VAULT.mode === 'locked' || window.TWRC_VAULT.mode === 'vault'));
+  await p.waitForFunction(() => !!window.TWRC_VAULT && typeof LOCKED === 'function' && typeof S === 'object' &&
+    (window.TWRC_VAULT.mode === 'locked' || window.TWRC_VAULT.mode === 'vault'));
   return p;
 }
 (async () => {
