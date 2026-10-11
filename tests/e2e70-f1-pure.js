@@ -64,7 +64,7 @@ const active = p => p.evaluate(() => ({
           const panel = p.locator('#secWx [data-f1=trackConditions]');
           if (!await panel.evaluate(x => x.open)) await tap('#secWx [data-f1=trackConditions] > summary');
           assert(await p.locator('#f1Dock a[href="#f1-panel-trackConditions"]').isVisible());
-          assert.equal(await p.locator('#secWx > .f1-extension:first-child').count(), 1, 'module météo au début du poste');
+          assert.equal(await p.locator('#secWx > .wx-hero + .f1-extension').count(), 1, 'module visible juste après le verdict météo et non devant les alertes');
           const text = await p.locator('#secWx [data-f1=trackConditions]').innerText();
           assert(/TRACK CONDITIONS/.test(text)); assert(/Aucun découpage GPS précis/.test(text));
           assert.equal(await p.locator('#decisionCore [data-f1=raceEngineer]').count(), 0);
