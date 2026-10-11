@@ -93,14 +93,14 @@ const SessionVault = (() => {
   }
 
   /* ---------- session (une instance par page) ---------- */
-  function create({ raw, session, crypto, target, remembered = null, locks = target && target.navigator && target.navigator.locks }) {
+  function create({ raw, session, crypto, target, remembered = null, now = () => Date.now(), locks = target && target.navigator && target.navigator.locks }) {
     const st = { mode: 'plain', key: null, salt: null, n: 0, t: 0, saved: {}, mem: null, epoch: 0, lockSignal: raw.getItem(LOCK_SIGNAL), chain: Promise.resolve(), error: null, warn: null, timer: null, expiresAt: 0 };
     const values = () => Object.fromEntries(st.mem.map);
     // Barrière synchrone : aucun accès au magasin ne repose exclusivement sur le timer iOS.
     // Les écritures non confirmées restent en mémoire, même si la sauvegarde ou le verrouillage échoue.
     function expire() {
       if (st.mode === 'expired') return true;
-      if (st.mode !== 'vault' || !st.expiresAt || Date.now() < st.expiresAt) return false;
+      if (st.mode !== 'vault' || !st.expiresAt || now() < st.expiresAt) return false;
       st.epoch++;
       st.mode = 'expired';
       st.key = null; st.salt = null;
@@ -181,7 +181,7 @@ const SessionVault = (() => {
     }
     function nextOrder() { const d = order(readVault(raw)); return { n: Math.max(st.n, d.n) + 1, t: Math.max(Date.now(), st.t + 1, d.t + 1) }; }
     async function useKey(rawKey, salt) { st.key = await importKey(rawKey, crypto); st.salt = salt; }
-    function saveSession(rawKey, salt, expiresAt = Date.now() + WEEK_MS) {
+    function saveSession(rawKey, salt, expiresAt = now() + WEEK_MS) {
       st.expiresAt = expiresAt;
       try { session.setItem(SESSION, JSON.stringify({ v: 3, s: enc(salt), k: enc(rawKey), l: raw.getItem(LOCK_SIGNAL), a: expiresAt - WEEK_MS, e: expiresAt })); }
       catch (e) { /* session non conservée : code redemandé au rechargement */ }
@@ -247,10 +247,10 @@ const SessionVault = (() => {
       // 2. Coffre v2 : session d'onglet valide OU autorisation locale de 7 jours.
       if (vault && !vault.invalid) {
         let ses = null; try { ses = JSON.parse(session.getItem(SESSION) || 'null'); } catch (e) { ses = null; }
-        const now = Date.now(), signal = raw.getItem(LOCK_SIGNAL);
+        const currentTime = now(), signal = raw.getItem(LOCK_SIGNAL);
         const valid = ses && ses.v === 3 && ses.s === vault.s && typeof ses.k === 'string' &&
           (ses.l ?? null) === signal && Number.isSafeInteger(ses.a) && Number.isSafeInteger(ses.e) &&
-          ses.e - ses.a === WEEK_MS && now >= ses.a && now < ses.e;
+          ses.e - ses.a === WEEK_MS && currentTime >= ses.a && currentTime < ses.e;
         let active = null;
         if (valid) {
           try {
@@ -263,7 +263,7 @@ const SessionVault = (() => {
         }
         if (active) {
           try {
-            if (raw.getItem(LOCK_SIGNAL) !== signal || Date.now() >= active.expiresAt) throw new Error('Autorisation expirée');
+            if (raw.getItem(LOCK_SIGNAL) !== signal || now() >= active.expiresAt) throw new Error('Autorisation expirée');
             await useKey(active.rawKey, dec(vault.s));
             const data = await open(vault, st.key, crypto);
             if (raw.getItem(LOCK_SIGNAL) !== signal || Date.now() >= active.expiresAt) throw new Error('Autorisation révoquée');
