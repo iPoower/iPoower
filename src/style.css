@@ -898,8 +898,8 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .trip-summary-route { display: grid; gap: 3px; }
 .trip-summary-route b { font-size: 16px; }
 .trip-summary-route span, .trip-summary-meta { color: var(--fg2); font-size: 12px; }
-.vtr #placeBar, .vtr #locChips, .vtr #dayContext, .vtr #decisionCore, .vtr #hdrMore, .vtr #jump, .vtr #banners, .vtr #secTripSummary, .vtr .foot { display: none !important; }
-.vtr .wrap .mod:not(#secTrip):not(#settings), .vtr #secCars { display: none !important; }
+.vtr #placeBar, .vtr #locChips, .vtr #dayContext, .vtr #decisionCore, .vtr #hdrMore, .vtr #jump, .vtr #banners, .vtr .foot { display: none !important; }
+.vtr .wrap .mod:not(#secTrip):not(#secTripSummary):not(#settings), .vtr #secCars { display: none !important; }
 @media (max-width: 560px) {
   #viewSeg .seg.view button { padding-inline: 2px; font-size: 11px; }
   #viewSeg .seg.view .trip-tab { font-size: 11.5px; }
@@ -1026,3 +1026,56 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .garage-note { border-top: 1px solid var(--line); padding-top: 10px; }
 @media (min-width: 610px) { .garage-grid, .garage-data { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 @media (max-width: 560px) { .garage-car { padding: 11px; } .garage-footer .garage-edit { width: 100%; } }
+
+/* MOBILE UX PRECISION : mêmes surfaces, trois niveaux de lecture. */
+.ux-fold { min-width: 0; border: 1px solid var(--line2); border-radius: 6px; background: var(--panel); }
+.ux-fold > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 10px 12px; list-style: none; cursor: pointer; color: var(--fg); }
+.ux-fold > summary::-webkit-details-marker { display: none; }
+.ux-fold > summary > span { min-width: 0; display: grid; gap: 3px; overflow-wrap: anywhere; }
+.ux-fold > summary b { font-size: 14px; font-weight: 600; }
+.ux-fold > summary small { color: var(--fg2); font-size: 12px; line-height: 1.4; }
+.ux-fold > summary::after { content: '+'; flex: 0 0 20px; text-align: center; color: var(--accent); font: 500 20px var(--f-mono); }
+.ux-fold[open] > summary::after { content: '−'; }
+.ux-fold[open] > summary { border-bottom: 1px solid var(--line); }
+.ux-fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.ux-fold-body { padding: 12px; display: grid; gap: 12px; min-width: 0; }
+.ux-fold-body > .wx-blk { margin: 0; }
+.wx > .ux-fold, .lab > .ux-fold { grid-column: 1 / -1; }
+.decision-core > .ux-fold > summary { min-height: 44px; padding-block: 6px; }
+.garage-mounted { display: grid; gap: 3px; min-width: 0; }
+.garage-mounted > span { color: var(--fg2); font: 500 11px var(--f-mono); }
+.garage-mounted > b { color: var(--fg); font-size: 15px; overflow-wrap: anywhere; }
+.garage-car:has(.garage-active), .car-active { order: -1; }
+.trip-summary .btn { align-self: flex-start; }
+.decision-meta > .decision-mount { grid-column: 1 / -1; font-size: 12px; line-height: 1.4; }
+@media (max-width: 759px) {
+  .wrap { gap: 12px; }
+  .top { gap: 8px; padding-top: 10px; }
+  .top > .title { font-size: 28px; line-height: 1.05; }
+  .top > .title small { font-size: 10px; letter-spacing: .08em; line-height: 1.4; }
+  .top > #decisionCore { margin-top: 0; }
+  .decision-top { gap: 6px; }
+  .decision-main { flex-basis: 100%; }
+  .decision-main h2 { font-size: 24px; line-height: 1.12; }
+  .decision-main p { line-height: 1.4; }
+  .decision-meta { gap: 0 8px; }
+  .mod { padding: 12px; }
+  .wx-hero, .lab-hero { padding: 12px; }
+  .wx-hl { line-height: 1.45; }
+  .btn, .btn.sm, .chip, .jump a, #settings > summary { min-height: 44px; }
+  #viewSeg .seg.view button { font-size: 12px; }
+  input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea { font-size: 16px; min-height: 44px; min-width: 0; max-width: 100%; }
+  .garage-data { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .garage-data > div small { font-size: 12px; line-height: 1.4; }
+  .garage-meter > strong { font-size: 32px; line-height: 1.15; }
+  .garage-car-head p, .garage-footer span, .garage-meter > small { font-size: 12px; line-height: 1.4; }
+  .car-h { gap: 8px; }
+  .car-h > .ux-fold { margin-top: 6px; }
+  .trip-summary-route, .trip-summary-meta, .trip-origin-head { overflow-wrap: anywhere; min-width: 0; }
+  .trip-summary .btn { width: 100%; }
+}
+@media (max-width: 360px) {
+  .top > .title { font-size: 26px; }
+  #viewSeg .seg.view button { font-size: 11px; }
+  .garage-data { grid-template-columns: minmax(0, 1fr); }
+}

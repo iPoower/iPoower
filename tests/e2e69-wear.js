@@ -35,6 +35,7 @@ const values = p => p.evaluate(() => ({ rate: tyreStateOf(S.cars[0]).tread.rate,
         assert.equal(v.card.rate, v.rate); assert(Math.abs(v.rate - 0.2) < 1e-9);
         assert.match(v.text, /0,20 mm \/ 1 000 km/); assert.match(v.text, /3 mm vers/);
         await p.locator('#viewSeg [data-act=view][data-v=pneus]').click();
+        await p.locator('#secCars details[data-ux] > summary').first().click();
         assert.match(await p.locator('#secCars .wear').first().innerText(), /0,20 mm \/ 1 000 km/);
       });
       await check(dev + ' · rechargement puis hors ligne : mesures et projection conservées', async () => {

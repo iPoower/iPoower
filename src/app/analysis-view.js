@@ -185,7 +185,11 @@ function renderLab() {
         : `<div class="wx-blk lab-trip"><h3>🧭 Analyse du trajet</h3><p class="sub">${r.tripIssue ? esc(r.tripIssue) : 'Aucun trajet prévu : l’analyse suppose un départ sur route (≈ 70 km/h).'}</p></div>`;
       const p = r.press, press = `<div class="wx-blk lab-pr ${p.known && p.low ? 'lv2' : ''}"><h3>🎈 Pression</h3>${p.known ? `<ul class="lab-why">${p.notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="sub">Source : ${esc(p.src)}.</p>` : `<p class="sub">${esc(p.text)}</p>`}</div>`;
       const conf = `<details class="wx-pc lab-d" data-k="conf"><summary><span class="ic" aria-hidden="true">🎯</span><span class="tt">Niveau de confiance</span><span class="ln">${esc(cf.level[0].toUpperCase() + cf.level.slice(1))}</span></summary><ul>${(cf.axes || []).map(([k, v]) => `<li><b>${esc(k)}</b> : ${esc(v)}</li>`).join('')}${cf.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
-      html = cars + hero + labLastDriveHtml(car, li) + labTripState(r, li) + win + brake + grip + aqua + cmp + tr + press + stHtml + fiche + conf;
+      html = cars + hero + labLastDriveHtml(car, li) + labTripState(r, li) +
+        (p.known && p.low ? press : '') +
+        uxFold('lab-grip', 'Adhérence et freinage', win + brake + grip + aqua + (p.known && p.low ? '' : press), 'Calculs · chauffe · pression') +
+        uxFold('lab-route', 'Projection du trajet', tr, r.trip ? r.trip.label + ' · ' + r.trip.dep + ' → ' + r.trip.arr : 'Données du parcours') +
+        cmp + stHtml + fiche + conf;
     }
   }
   html += `<p class="sub lab-foot">Estimations Race Control (plages, tendances, indicateurs) : aucune mesure de capteur, aucune distance de freinage garantie. État, références et montage : <button class="btn sm" data-act="view" data-v="pneus">onglet Pneus</button></p>`;
@@ -195,10 +199,12 @@ function renderLab() {
   const focused = draft && form.contains(document.activeElement) ? document.activeElement.name : null;
   const focusedSummary = document.activeElement && document.activeElement.tagName === 'SUMMARY' && el.contains(document.activeElement)
     ? document.activeElement.parentElement.dataset.k : null;
+  const foldFocus = uxFocusKey(el);
   renderLab.clearDriveDraft = false;
   el.innerHTML = html; renderLab.last = html;
   el.querySelectorAll('details[data-k]').forEach(x => { if (open.has(x.dataset.k)) x.open = true; });
   if (draft) draft.forEach(([name, value]) => { const x = el.querySelector(`#labLastDriveForm [name="${name}"]`); if (x) x.value = value; });
   if (focused) { const field = el.querySelector(`#labLastDriveForm [name="${focused}"]`); if (field) field.focus({ preventScroll: true }); }
   else if (focusedSummary) { const summary = el.querySelector(`details[data-k="${focusedSummary}"] > summary`); if (summary) summary.focus({ preventScroll: true }); }
+  else uxRestoreFocus(el, foldFocus);
 }

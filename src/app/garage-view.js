@@ -11,6 +11,7 @@ function garageVehicleHtml(c) {
     '<button type="button" class="btn sm garage-select" data-act="day-car" data-id="' + esc(c.id) + '">Choisir pour mes trajets</button>';
   const current = c.odo ? garageKm(c.odo.km) : '—';
   const currentNote = c.odo ? 'Déclaré le ' + garageDate(c.odo.date) : 'Aucun relevé enregistré';
+  const mounted = t ? '<p class="garage-mounted"><span>MONTE ACTUELLE · ' + esc(t.type) + '</span><b>' + esc(t.model || 'Modèle non renseigné') + '</b></p>' : '';
   const tyres = t ? '<div class="garage-data">' +
       '<div><span>Monte actuelle</span><b>' + esc(t.type) + '</b><small>' + esc(t.model || 'Modèle non renseigné') + (t.size ? ' · ' + esc(t.size) : '') + '</small></div>' +
       '<div><span>Profondeur</span><b>' + (t.tread ? esc(String(t.tread.mm).replace('.', ',')) + ' mm' : '—') + '</b><small>' + (t.tread ? (t.tread.estimated ? 'Estimée, non mesurée' : 'Mesure déclarée') + (t.tread.date ? ' · ' + garageDate(t.tread.date) : '') : 'Pas de mesure disponible') + '</small></div>' +
@@ -33,9 +34,9 @@ function garageVehicleHtml(c) {
     '<div class="garage-car-head"><div><span class="garage-index">VÉHICULE · ' + esc(c.short) + '</span><h3>' + esc(c.name) +
     '</h3>' + (c.spec ? '<p>' + esc(c.spec) + '</p>' : '') + '</div><div class="garage-choose">' + active + '</div></div>' +
     '<div class="garage-meter"><span>COMPTEUR ENREGISTRÉ</span><strong class="num">' + esc(current) + '</strong><small>' + currentNote + '</small></div>' +
-    tyres + notices + winter +
+    mounted + notices + uxFold('garage-records-' + c.id, 'Mesures et fiche pneus', tyres, 'Monte · pression · montage') + winter +
     '<div class="garage-footer"><span>Entretien mécanique : aucun carnet général enregistré dans Race Control.</span>' +
-    '<button type="button" class="btn garage-edit" data-act="goset-cfg">Modifier dans Paramètres</button></div>' +
+    '<button type="button" class="btn pri garage-edit" data-act="goset-cfg">Modifier la fiche</button></div>' +
     '</article>';
 }
 function renderGarage() {
@@ -46,7 +47,6 @@ function renderGarage() {
   if (LOCKED()) { el.innerHTML = '<p class="sub">Déverrouille Race Control pour retrouver les fiches chiffrées.</p>'; renderGarage.last = null; return; }
   const active = appActiveCar(), cars = Garage.overview(S.cars, active && active.id, tyreStateOf);
   const html = '<div class="mod-h"><h2>🛠️ THE GARAGE</h2><span class="src obs">véhicules · données enregistrées</span></div>' +
-    '<p class="garage-lead">Centre technique personnel. Même configuration que les onglets Pneus et Analyse, sans synchronisation supplémentaire.</p>' +
     (cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>'
       : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>') +
     '<p class="garage-note">Les profondeurs et contrôles sont saisis par toi. La pression affichée est une cible, pas une mesure en temps réel. Aucun capteur moteur, diagnostic OBD ou historique de réparations n’est disponible.</p>';
@@ -55,8 +55,10 @@ function renderGarage() {
   if (html === renderGarage.last) return;
   const expanded = new Set([...el.querySelectorAll('.garage-plan[open]')]
     .map(plan => plan.closest('[data-garage-car]').dataset.garageCar));
+  const foldFocus = uxFocusKey(el);
   el.innerHTML = html; renderGarage.last = html;
   el.querySelectorAll('.garage-plan').forEach(plan => {
     if (expanded.has(plan.closest('[data-garage-car]').dataset.garageCar)) plan.open = true;
   });
+  uxRestoreFocus(el, foldFocus);
 }
