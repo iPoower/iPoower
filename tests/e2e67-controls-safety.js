@@ -30,7 +30,7 @@ const snapshot = p => p.evaluate(() => JSON.stringify({ settings: S, place: PLAC
         S.cars[0].name = 'Véhicule personnalisé test'; saveSettings(); UI.dir = 'go'; renderAll();
       });
       await check(dev + ' · cinq onglets : identifiants HTML uniques avec Réglages ouverts', async () => {
-        for (const view of ['meteo', 'pneus', 'trajet', 'tenue', 'analyse']) {
+        for (const view of ['meteo', 'pneus', 'trajet', 'garage', 'analyse']) {
           await p.locator('#viewSeg [data-act=view][data-v=' + view + ']').click();
           await reveal(p, '#f-work-dep');
           const duplicates = await p.evaluate(() => {
