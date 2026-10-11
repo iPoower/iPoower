@@ -152,13 +152,20 @@ async function profile(browser, build, fixture, device) {
       const updatedDeparture = document.getElementById(departure.id);
       cockpit.departureDraft = { valuePreserved: updatedDeparture.value === '07:35', focusPreserved: document.activeElement === updatedDeparture };
       S.work.durMin = duration;
+      UI.view = 'meteo'; renderAll(); window.scrollTo(0, 0);
+      const meteo = { immediateTrip: (() => { const r = document.querySelector('#decisionCore .decision-trip')?.getBoundingClientRect(); return r ? { top: Math.round(r.top), bottom: Math.round(r.bottom) } : null; })(),
+        decision: rect('decisionCore'), heroHeight: Math.round(document.querySelector('#secWx .wx-hero').getBoundingClientRect().height) };
+      UI.view = 'analyse'; renderAll(); window.scrollTo(0, 0);
+      const comparison = document.querySelector('#secLab .lab-cmp');
+      const analysis = { height: Math.round(document.getElementById('secLab').getBoundingClientRect().height), comparisonHeight: Math.round(comparison.getBoundingClientRect().height), comparisonCollapsed: comparison.tagName === 'DETAILS' && !comparison.open,
+        comparisonRows: comparison.querySelectorAll('tbody tr').length };
       UI.view = 'garage'; renderAll();
       const root = document.getElementById('secGarage'), button = root.querySelector('.garage-edit'), plan = root.querySelector('.garage-plan');
       if (plan) plan.open = true; button.focus();
       const observer = new MutationObserver(() => {}); observer.observe(root, { childList: true, subtree: true });
       const start = performance.now(); for (let k = 0; k < 20; k++) renderGarage();
       const elapsedMs = performance.now() - start, childMutations = observer.takeRecords().filter(r => r.type === 'childList').length; observer.disconnect();
-      return { cockpit, garage: { renders: 20, elapsedMs, childMutations, buttonPreserved: button === root.querySelector('.garage-edit'),
+      return { cockpit, meteo, analysis, garage: { renders: 20, elapsedMs, childMutations, buttonPreserved: button === root.querySelector('.garage-edit'),
         focusPreserved: document.activeElement === button, planOpen: !!root.querySelector('.garage-plan')?.open } };
     });
     if (errors.length) throw new Error('Exception applicative pendant le profilage : ' + errors.join(', '));

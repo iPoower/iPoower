@@ -41,7 +41,7 @@ function diagRows(forCopy) {
     ['Dernière actualisation', lastOk ? `${hmLocal(lastOk)} (il y a ${ageTxt(ageOf(lastOk))})` : 'aucune réussie' + (lastTry ? ` · tentative ${hmLocal(lastTry)}` : '')],
     ['Météo du lieu affiché', r ? `${freshState(wAge)} · ${r.mode === 'live' ? 'LIVE' : r.mode === 'cache' ? 'cache' : r.mode} · ${ageTxt(wAge)}${ERR[UI.loc] ? ' · erreur : ' + noUrl(ERR[UI.loc]) : ''}` : 'UNAVAILABLE' + (ERR[UI.loc] ? ' · ' + noUrl(ERR[UI.loc]) : '')],
     ['Lieux avec météo', `${withData}/${allLocs().length}`],
-    ['API météo', (() => { const p = WEATHER_REQUESTS.state(); return p.until > Date.now() ? `HTTP 429 · pause jusqu’à ${hmLocal(p.until)} · ${p.kind}` : `disponible · ${p.active}/2 requêtes actives · ${p.queued} en attente`; })()],
+    ['API météo', (() => { const p = WEATHER_REQUESTS.state(); return p.until > Date.now() ? `HTTP 429 · pause jusqu’à ${hmLocal(p.until)} · ${p.kind}` : `file réseau · ${p.active}/2 requêtes actives · ${p.queued} en attente · état du fournisseur non vérifié`; })()],
     ['Derniers incidents météo', weatherIncidentText()],
     ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
     ['Agenda', calendarDiagText()],

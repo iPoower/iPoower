@@ -716,10 +716,17 @@ function rebuild() {
 // Vigilance Météo-France (relais Opendatasoft). Lecture tolérante : le format exact n'est pas garanti.
 const VIGI_DS = 'weatherref-france-vigilance-meteo-departement';
 const vigiLink = () => `https://vigilance.meteofrance.fr/fr/${normTxt(S.dept.name) ? String(S.dept.name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z]+/g, '-') : ''}`;
-function parseVigi(js, code, name) {
+function parseVigi(js, code, name, now = Date.now()) {
   const recs = (js.records || js.results || []).map(r => r.fields || r || {});
   const nn = normTxt(name);
-  const mine = recs.filter(f => Object.values(f).some(v => String(v).trim() === code || String(v).trim() === code.padStart(2, '0') || (nn && normTxt(v) === nn)));
+  const mine = recs.filter(f => {
+    // Schéma actuel : domain_id est le code, le nom n'est pas fourni.
+    // Un identifiant de phénomène égal au département n'est pas un département.
+    const same = f.domain_id != null ? String(f.domain_id).trim().toUpperCase().padStart(2, '0') === code.toUpperCase().padStart(2, '0')
+      : Object.values(f).some(v => String(v).trim() === code || String(v).trim() === code.padStart(2, '0') || (nn && normTxt(v) === nn));
+    const end = Date.parse(f.end_time || '');
+    return same && (!Number.isFinite(end) || end > now);
+  });
   const COL = { vert: 1, jaune: 2, orange: 3, rouge: 4, green: 1, yellow: 2, red: 4 }, PH = /vent|pluie|orage|neige|verglas|canicule|froid|avalanche|vague|submersion|crue|inondation/i;
   const out = [];
   mine.forEach(f => {
@@ -732,16 +739,21 @@ function parseVigi(js, code, name) {
     });
     if (lvl) out.push({ lvl, ph: ph || 'phénomène non précisé' });
   });
-  return { items: out, matched: mine.length };
+  const issued = mine.map(f => Date.parse(f.product_datetime || '')).filter(Number.isFinite);
+  return { items: out, matched: mine.length, issuedAt: issued.length ? Math.max(...issued) : null, periods: [...new Set(mine.map(f => f.echeance).filter(p => p === 'J' || p === 'J1'))] };
 }
 async function fetchVigi() {
   const code = String(S.dept.code || '').trim(); if (!code || DEMO.on) { VIGI = { state: 'none', items: [], t: null }; return; }
   try {
-    const js = await fetchJSON(`https://public.opendatasoft.com/api/records/1.0/search/?dataset=${VIGI_DS}&q=${encodeURIComponent(S.dept.name || code)}&rows=60`, 10000);
+    const js = await fetchJSON(`https://public.opendatasoft.com/api/records/1.0/search/?dataset=${VIGI_DS}&refine.domain_id=${encodeURIComponent(code.toUpperCase().padStart(2, '0'))}&rows=60`, 10000);
     const r = parseVigi(js, code, S.dept.name);
-    VIGI = { state: r.matched ? 'ok' : 'unread', items: r.items, t: Date.now() };
+    VIGI = { state: r.items.length ? 'ok' : 'unread', items: r.items, issuedAt: r.issuedAt, periods: r.periods, t: Date.now() };
   } catch (e) { VIGI = { state: 'err', items: [], t: Date.now() }; }
-  if (CX) { CX.alerts = Object.assign(CX.alerts, extraAlerts(CX.m, CX.sum24)); renderAlerts(); renderBanners(); }
+  if (CX) {
+    const extra = extraAlerts(CX.m, CX.sum24);
+    if (!extra.vigi) delete CX.alerts.vigi; // état dérivé : un ancien bulletin n'est pas une donnée actuelle
+    Object.assign(CX.alerts, extra); renderAlerts(); renderBanners();
+  }
 }
 function vigiBlock() {
   if (!S.dept.code) return '';
@@ -749,8 +761,8 @@ function vigiBlock() {
   let body;
   if (VIGI.state === 'ok') {
     const top = VIGI.items.length ? VIGI.items.reduce((a, b) => b.lvl > a.lvl ? b : a) : null;
-    body = top ? `<span class="pill lv${Math.max(0, top.lvl - 1)}">${['', 'VERTE', 'JAUNE', 'ORANGE', 'ROUGE'][top.lvl]}</span> ${esc(top.ph)}` : 'Aucune vigilance particulière lue.';
-  } else if (VIGI.state === 'unread') body = 'Données reçues mais illisibles pour ce département.';
+    body = top ? `<span class="pill lv${Math.max(0, top.lvl - 1)}">${['', 'VERTE', 'JAUNE', 'ORANGE', 'ROUGE'][top.lvl]}</span> ${esc(top.ph)}${VIGI.periods && VIGI.periods.length ? ' · ' + VIGI.periods.map(p => p === 'J' ? 'aujourd’hui' : 'demain').join(' et ') : ''}${VIGI.issuedAt ? ' · bulletin du ' + esc(new Date(VIGI.issuedAt).toLocaleDateString('fr-FR')) + ' à ' + hmLocal(VIGI.issuedAt) : ''}` : 'Vigilance non disponible.';
+  } else if (VIGI.state === 'unread') body = 'Aucune donnée de vigilance valide pour ce département.';
   else if (VIGI.state === 'err') body = 'Relais indisponible.';
   else body = 'Chargement…';
   return `<div class="note lvx"><b>VIGILANCE ${esc((S.dept.name || S.dept.code).toUpperCase())}</b><span>${body} Référence officielle : ${link}</span></div>`;
@@ -1026,12 +1038,14 @@ function renderDecisionCore() {
   const departureText = departure && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(departure)
     ? (snap.activeTrip ? 'parti' : 'départ prévu') + ' ' + (departure.slice(0, 10) === snap.date ? 'aujourd’hui' : fmtDay(departure.slice(0, 10))) + ' à ' + departure.slice(11, 16)
     : 'horaire à confirmer';
-  const destinationHtml = UI.view === 'pneus' && trip
-    ? '<span class="decision-trip"><span>' + (snap.activeTrip ? 'Trajet en cours' : 'Prochain trajet') + ' · <b>' + esc(tripFrom || 'Origine à confirmer') + ' → ' + esc(tripToName || 'Destination à confirmer') + '</b></span><span class="decision-departure">' + esc(departureText) + ' <a class="decision-change" href="#secBrf">Départ ↗</a></span></span>'
+  const destinationHtml = ['pneus', 'meteo'].includes(UI.view) && trip
+    ? '<span class="decision-trip"><span>' + (snap.activeTrip ? 'Trajet en cours' : 'Prochain trajet') + ' · <b>' + esc(tripFrom || 'Origine à confirmer') + ' → ' + esc(tripToName || 'Destination à confirmer') + '</b></span><span class="decision-departure">' + esc(departureText) + ' <a class="decision-change" href="' + (UI.view === 'meteo' ? '#wxNextTrip' : '#secBrf') + '">Départ ↗</a></span></span>'
     : '<span>Destination · <b>' + esc(destination) + '</b></span>';
   const carLabel = car ? (car.short || car.name || car.id) : 'À choisir';
   const wAge = raw ? ageMin(raw.t) : null, fresh = wAge == null ? 'météo —' : 'météo ' + (wAge < 1 ? 'moins de 1 min' : Math.round(wAge) + ' min');
-  const whyLeft = confidence.reasons.filter(r => !['Lieu courant à confirmer', 'Voiture active à choisir'].includes(r));
+  const sameText = (a, b) => String(a).toLowerCase().replace(/\s+/g, ' ').trim() === String(b).toLowerCase().replace(/\s+/g, ' ').trim();
+  const whyLeft = confidence.reasons.filter(r => !['Lieu courant à confirmer', 'Voiture active à choisir'].includes(r) && !sameText(r, decision.reason));
+  const matters = cm.items.filter(x => !sameText(x.text, decision.reason));
   const cur = snap.currentLocation, placeOk = !!(cur && snap.status !== 'unknown');
   // La position réelle et le lieu des prévisions ne sont PAS interchangeables :
   // en déplacement, le GPS peut être anonyme alors que la météo consultée est
@@ -1048,10 +1062,10 @@ function renderDecisionCore() {
     changes.map(c => '<span class="' + esc(c.kind) + '">' + (c.kind === 'up' ? '↑ ' : c.kind === 'down' ? '↓ ' : '↔ ') + esc(c.text) + '</span>').join('') + '</div></details>' : '';
   el.className = 'decision-core lv' + decision.displayLevel;
   el.hidden = false;
-  const html = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (cm.items.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
+  const html = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL · MÉTÉO ET PNEUS</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
     '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b> · ' + esc(fresh) + '</span></div>' +
     // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
-    (cm.items.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + cm.items.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
+    (matters.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + matters.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
       : '') +
     '<div class="decision-meta"><span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + forecastHtml + '</span>' +
     '<span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span>' +
@@ -3603,8 +3617,8 @@ function renderAlerts() {
   const act = items.filter(i => i.on && i.a).length;
   el.innerHTML = `<div class="mod-h"><h2>🔔 Alertes</h2><span class="src">${act} active${act > 1 ? 's' : ''} · 24 h</span></div>
    ${vigiBlock()}<div>${items.map(({ d, a, on }) => `<div class="al${on ? '' : ' off'}"><div><label class="sw"><input type="checkbox" data-alert="${d.id}" ${on ? 'checked' : ''} aria-label="${esc(d.label)}"><i></i></label></div>
-     <div style="display:flex;justify-content:space-between;gap:10px;align-items:start;min-width:0"><div style="min-width:0"><div class="t">${esc(a && on ? a.title : d.label)}</div><div class="d">${on ? (a ? esc(a.detail) : (d.id === 'pre' && S.cars.some(c => c.plan.on && c.tire.type !== 'winter' && !(c.plan.date || (c.plan.appointmentConfirmed && c.plan.appointmentDate))) ? 'Renseigne un montage estimé ou un rendez-vous confirmé (Saison pneus) pour activer cette alerte.' : 'Non déclenchée')) : 'Désactivée'}</div></div>
-     ${on && a ? `<span class="sev lv${a.sev}">${a.sev >= 3 ? 'DANGER' : a.sev === 2 ? 'ATTENTION' : 'INFO'}</span>` : `<span class="sev none">${on ? 'RAS' : 'OFF'}</span>`}</div></div>`).join('')}</div>
+     <div style="display:flex;justify-content:space-between;gap:10px;align-items:start;min-width:0"><div style="min-width:0"><div class="t">${esc(a && on ? a.title : d.label)}</div><div class="d">${on ? (a ? esc(a.detail) : d.id === 'vigi' && VIGI.state !== 'ok' ? 'Vigilance indisponible : consulter la référence officielle.' : (d.id === 'pre' && S.cars.some(c => c.plan.on && c.tire.type !== 'winter' && !(c.plan.date || (c.plan.appointmentConfirmed && c.plan.appointmentDate))) ? 'Renseigne un montage estimé ou un rendez-vous confirmé (Saison pneus) pour activer cette alerte.' : 'Non déclenchée')) : 'Désactivée'}</div></div>
+     ${on && a ? `<span class="sev lv${a.sev}">${a.sev >= 3 ? 'DANGER' : a.sev === 2 ? 'ATTENTION' : 'INFO'}</span>` : `<span class="sev none">${on ? d.id === 'vigi' && VIGI.state !== 'ok' ? 'INCONNU' : 'RAS' : 'OFF'}</span>`}</div></div>`).join('')}</div>
    <p class="disc">Les alertes sont recalculées à chaque actualisation et visibles à l’ouverture de la page. Aucune notification n’est envoyée quand la page est fermée.</p>`;
 }
 

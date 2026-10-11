@@ -70,17 +70,18 @@ function renderWx() {
         <span class="wx-now-src">${nowWx.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours'}</span></div>
     </div>` : '';
   const hero = `<div class="wx-hero lv${h.level}" role="status" aria-live="polite">
-    <div class="wx-hk"><span>${esc(l ? l.name : '')}</span><span class="wx-age">${mode}${age}</span></div>
+    <div class="wx-hk"><span>${esc(l ? l.name : '')} · MÉTÉO</span><span class="wx-age">${mode}${age}</span></div>
     ${currentCard}
     <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.title)}</h2>
+    <p class="wx-scope sub">Phénomènes météo jusqu’à ${esc(d.window.to)}</p>
     ${heroLines.map((x, i) => `<p class="${i ? 'wx-hl' : 'wx-hl wx-h1'}">${esc(x)}</p>`).join('')}
     ${h.stale ? `<p class="wx-stale">⚠ Prévisions reçues il y a ${esc(ageTxt(input.ageMin))} : verdict indicatif, actualise dès que possible.</p>` : ''}</div>`;
   // prochain trajet
   const t = d.trip, pending = APP_CONTEXT.snapshot.dayContext.nextDestination && !APP_CONTEXT.snapshot.dayContext.nextDestination.placeId;
   const target = t && APP_CONTEXT.snapshot.trips.find(trip => trip.key === t.id);
-  const tripHtml = pending ? `<div class="wx-blk wx-trip wx-none"><h3>${APP_CONTEXT.snapshot.status === 'travel' ? '🚗 En trajet' : '🧭 Prochain trajet'}</h3><p class="wx-route"><b>${esc(APP_CONTEXT.snapshot.origin && APP_CONTEXT.snapshot.origin.name || 'Origine à confirmer')} → Destination à confirmer</b></p><p class="sub">Destination nécessaire pour calculer l’ETA et la météo route.</p></div>`
-    : !t ? `<div class="wx-blk wx-trip wx-none"><h3>🧭 Prochain trajet</h3><p class="sub">Aucun trajet prévu dans les 24 h. Les rendez-vous sans lieu reconnu ne sont pas des trajets.</p></div>`
-    : `<div class="wx-blk wx-trip ${t.lv == null ? 'lvx' : 'lv' + t.lv}"><h3>🧭 Prochain trajet${t.running ? ' · en cours' : ' · ' + esc(dayLbl(t.day))}</h3>
+  const tripHtml = pending ? `<div id="wxNextTrip" class="wx-blk wx-trip wx-none"><h3>${APP_CONTEXT.snapshot.status === 'travel' ? '🚗 En trajet' : '🧭 Prochain trajet'}</h3><p class="wx-route"><b>${esc(APP_CONTEXT.snapshot.origin && APP_CONTEXT.snapshot.origin.name || 'Origine à confirmer')} → Destination à confirmer</b></p><p class="sub">Destination nécessaire pour calculer l’ETA et la météo route.</p></div>`
+    : !t ? `<div id="wxNextTrip" class="wx-blk wx-trip wx-none"><h3>🧭 Prochain trajet</h3><p class="sub">Aucun trajet prévu dans les 24 h. Les rendez-vous sans lieu reconnu ne sont pas des trajets.</p></div>`
+    : `<div id="wxNextTrip" class="wx-blk wx-trip ${t.lv == null ? 'lvx' : 'lv' + t.lv}"><h3>🧭 Prochain trajet${t.running ? ' · en cours' : ' · ' + esc(dayLbl(t.day))}</h3>
       <p class="wx-route"><b>${esc(t.from || 'Départ')} → ${esc(t.to || 'Arrivée')}</b></p>
       ${calendarOriginControls(target)}
       ${t.pending ? `<p class="sub" role="status">⏳ ${offlineNow() ? 'Hors ligne : itinéraire, horaire conseillé et météo du parcours en attente du réseau.' : 'Nouvel itinéraire, horaire conseillé et météo du parcours en cours de calcul…'}</p>` : `<p class="wx-when num">${t.dep} → ${t.arr} · ${t.durMin} min${t.km != null ? ' · ' + f0(t.km) + ' km' : ''}</p>`}

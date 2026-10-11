@@ -99,6 +99,20 @@ const layout = p => p.evaluate(() => {
         await unlockIfLocked(q, async () => { for (let i = 0; i < 8; i++) { await q.clock.runFor(500); await q.waitForTimeout(80); } });
         assert.equal(await q.evaluate(() => UI.view), 'pneus'); await q.close();
       });
+      await check(dev + ' · Météo : prochain trajet et départ dès la synthèse, lien vers les détails du trajet', async () => {
+        if (dev === 'pc') await p.setViewportSize({ width: 1440, height: 900 });
+        await p.locator('#viewSeg [data-v=meteo]').click(); await s.settle(3); await p.evaluate(() => window.scrollTo(0, 0));
+        const L = await layout(p), box = p.locator('#decisionCore .decision-trip');
+        const r = await box.evaluate(e => ({ text: e.innerText, bottom: e.getBoundingClientRect().bottom, href: e.querySelector('a').getAttribute('href') }));
+        const bottom = Math.min(L.H, L.navTop > L.H / 2 ? L.navTop : L.H);
+        assert(r.bottom <= bottom, JSON.stringify({ L, r })); assert.match(r.text, /→.*départ prévu/s); assert.equal(r.href, '#wxNextTrip');
+        assert.equal(await p.locator('#wxNextTrip').count(), 1);
+        assert.match(await p.locator('#decisionCore .decision-k').innerText(), /MÉTÉO ET PNEUS/);
+        assert.match(await p.locator('#secWx .wx-scope').innerText(), /Phénomènes météo jusqu’à/);
+        await p.screenshot({ path: process.env.SP + '/place-precision-meteo-' + dev + '.png' });
+        await box.locator('a').click(); assert(await p.locator('#wxNextTrip').isVisible());
+        await p.locator('#viewSeg [data-v=pneus]').click(); await s.settle(2); await p.evaluate(() => window.scrollTo(0, 0));
+      });
       await check(dev + ' · voiture choisie manuellement conservée (rechargement compris)', async () => {
         await p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await s.settle(2);
         const id = await p.evaluate(() => S.cars[1].id);
