@@ -3628,6 +3628,7 @@ function renderSettings(force) {
     <div class="set-sec"><h3>🧪 Moteur météo v2 (preuves)</h3><p class="sub">Observation : calculé et journalisé à côté du moteur actuel, sans changer les verdicts. Actif : le phénomène critique prouvé passe en tête de l’onglet Météo.</p><div class="seg" role="group" aria-label="Moteur v2">${[['off', 'Désactivé'], ['shadow', 'Observation'], ['on', 'Actif']].map(([v, t]) => `<button data-act="ev-flag" data-v="${v}" aria-pressed="${EV_FLAG() === v}">${t}</button>`).join('')}</div></div>
     <div class="set-sec"><h3>🏎️ F1 Pure Experience</h3>
       <p class="sub">Extensions de lecture dans les écrans actuels, indépendantes et désactivées par défaut. Aucun nouvel onglet, aucune décision de sécurité remplacée, aucun capteur inventé.</p>
+      <p class="sub">Après activation, remonte en haut : le bandeau <b>F1 ACTIVE</b> apparaît sous les onglets. Touche le nom du module pour accéder directement à son panneau.</p>
       <div class="f1-settings">${F1Pure.FEATURES.map(f => `<div class="fld"><span class="l">${esc(f.title)} · ${esc(f.description)}</span>
         <button class="btn sm" data-act="race-toggle" data-f1="${esc(f.id)}" aria-pressed="${f1Enabled(f.id)}">${f1Enabled(f.id) ? 'Activé · désactiver' : 'Désactivé · activer'}</button></div>`).join('')}</div></div>
     <div class="set-sec"><h3>⚠️ Vigilance Météo-France</h3><div class="frow">${bindIn('dept.code', S.dept.code, { label: 'Département (numéro)', ph: 'ex. 33' })}${bindIn('dept.name', S.dept.name, { label: 'Nom du département', ph: 'ex. Gironde' })}</div></div>
