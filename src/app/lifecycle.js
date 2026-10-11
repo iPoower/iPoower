@@ -78,7 +78,7 @@ function checkSessionExpiry() {
   showSessionExpiry();
   return true;
 }
-document.addEventListener('twrc-session-expired', showSessionExpiry);
+window.addEventListener('twrc-session-expired', showSessionExpiry);
 // Intercepter les interactions avant tout handler applicatif ; aucun tap ne peut utiliser un état expiré.
 for (const name of ['pointerdown', 'click', 'keydown', 'input', 'change', 'submit', 'touchstart']) {
   document.addEventListener(name, event => {
