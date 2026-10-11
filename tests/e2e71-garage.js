@@ -39,7 +39,7 @@ async function precisionReference(browser,dev){
     buttonPreserved:button===root.querySelector('button.garage-edit'),focusPreserved:document.activeElement===button,planOpen:!!root.querySelector('.garage-plan')?.open};
   });
   const choose=p.locator('#secGarage .garage-car:nth-child(2) [data-act=day-car]'),target=await choose.getAttribute('data-id');
-  await choose.scrollIntoViewIfNeeded();const box=await choose.boundingBox();
+  await choose.hover();const box=await choose.boundingBox();
   await p.mouse.move(box.x+box.width/2,box.y+box.height/2);await p.mouse.down();
   await p.evaluate(()=>renderAll());await p.mouse.up();await s.settle(2);
   const interruptedClickWorks=await p.evaluate(id=>APP_CONTEXT.snapshot.activeCarId===id,target);
@@ -111,7 +111,8 @@ async function precisionReference(browser,dev){
     });
     await check(dev+' · clic en cours conservé pendant une actualisation',async()=>{
       const button=p.locator('#secGarage .garage-car:nth-child(2) [data-act=day-car]'),target=await button.getAttribute('data-id');
-      await button.scrollIntoViewIfNeeded();const box=await button.boundingBox();
+      // hover attend une cible stable et réellement accessible (y compris sous les barres fixes).
+      await button.hover();const box=await button.boundingBox();
       await p.mouse.move(box.x+box.width/2,box.y+box.height/2);await p.mouse.down();
       await p.evaluate(()=>renderAll());await p.mouse.up();await s.settle(3);
       assert.equal(await p.evaluate(()=>APP_CONTEXT.snapshot.activeCarId),target);
