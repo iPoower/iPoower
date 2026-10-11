@@ -88,4 +88,6 @@ SUITE.push(['test_wear_consistency.js', 'usure : seuil unique, essieu, fraîcheu
   ['e2e69-wear.js', 'usure : saisies réelles PC/iPhone, taux partagé, rechargement et hors ligne', true]);
 SUITE.push(['test_f1_pure.js', 'F1 Pure : six moteurs prudents, sans invention ni mutation', false],
   ['e2e70-f1-pure.js', 'F1 Pure : modules OFF par défaut, activation et rechargement PC/iPhone', true]);
+SUITE.push(['test_garage.js', 'Garage : fiches techniques canoniques, relevés, plans hiver, sources et invariants', false],
+  ['e2e71-garage.js', 'Garage : navigation 5 onglets, données véhicules et état, réglages, reload et offline PC/iPhone', true]);
 module.exports = { SUITE, FIRST };
