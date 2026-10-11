@@ -1,6 +1,7 @@
 // Garage à la place de Tenue : vrai clic PC/iPhone, données existantes et aucune suppression.
 'use strict';
 const assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path');
 const {BR,session,errors}=require('./lib/context-session');
 let n=0,stage='';
 const check=async(t,fn)=>{stage=t;await fn();n++;console.log('✅ '+t)};
@@ -37,7 +38,14 @@ async function precisionReference(browser,dev){
    return {renders:20,elapsedMs:Math.round(elapsed*100)/100,childMutations:mutations,
     buttonPreserved:button===root.querySelector('button.garage-edit'),focusPreserved:document.activeElement===button,planOpen:!!root.querySelector('.garage-plan')?.open};
   });
-  console.log('PRECISION_REFERENCE '+JSON.stringify({browser:BR.NAME,device:dev,views,garageRendering:rendering,physicalDevice:false}));
+  const choose=p.locator('#secGarage .garage-car:nth-child(2) [data-act=day-car]'),target=await choose.getAttribute('data-id');
+  await choose.scrollIntoViewIfNeeded();const box=await choose.boundingBox();
+  await p.mouse.move(box.x+box.width/2,box.y+box.height/2);await p.mouse.down();
+  await p.evaluate(()=>renderAll());await p.mouse.up();await s.settle(2);
+  const interruptedClickWorks=await p.evaluate(id=>APP_CONTEXT.snapshot.activeCarId===id,target);
+  const reference={browser:BR.NAME,device:dev,views,garageRendering:rendering,interruptedClickWorks,physicalDevice:false};
+  fs.writeFileSync(path.join(process.env.SP,'place-precision-'+dev+'.json'),JSON.stringify(reference,null,2));
+  console.log('PRECISION_REFERENCE '+JSON.stringify(reference));
  }finally{await s.c.close();}
 }
 (async()=>{
