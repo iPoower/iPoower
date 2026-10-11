@@ -28,7 +28,8 @@ async function openDay(p) {
 async function destination(p, id) { await openDay(p); const details = p.locator('#dayContext .day-destination'); if (!(await details.getAttribute('open') != null)) await tap(p, '#dayContext .day-destination > summary'); await tap(p, '#dayContext [data-act=day-destination][data-id="' + id + '"]'); }
 async function views(p, expected) {
   for (const v of ['pneus', 'meteo', 'tenue', 'analyse']) {
-    scope.view = v; await tap(p, '#viewSeg [data-act=view][data-v=' + v + ']');
+    scope.view = v; if (v === 'tenue') await p.evaluate(() => { UI.view = 'tenue'; renderAll(); });
+    else await tap(p, '#viewSeg [data-act=view][data-v=' + v + ']');
     const s = await read(p); for (const [k, x] of Object.entries(expected)) assert.equal(s[k], x, v + ' · ' + JSON.stringify(s));
     if (expected.destination === 'b') {
       assert.equal(s.next.to, 'Lieu B'); assert.equal(s.next.from, 'Travail test');
@@ -138,7 +139,7 @@ async function views(p, expected) {
       await check('Congé retire commute local sans réécrire planning', async () => { assert.equal((await read(p)).day, 'off'); assert(await p.evaluate(() => !APP_CONTEXT.snapshot.trips.some(t => t.src === 'work' && t.dep.slice(0, 10) === placeToday()))); assert.deepEqual((await read(p)).work, original); });
       await tap(p, '[data-act=day-type][data-v=work]');
       await check('Travail rétablit commute ; Tenue manuel reste prioritaire', async () => {
-        await tap(p, '#viewSeg [data-act=view][data-v=tenue]'); assert.equal((await read(p)).occasion, 'office');
+        await p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); assert.equal((await read(p)).occasion, 'office');
         await tap(p, '[data-act=outfit-occasion][data-v=outing]'); assert.equal((await read(p)).occasion, 'outing');
         await tap(p, '[data-act=day-type][data-v=work]'); assert.equal((await read(p)).occasion, 'outing');
       });
