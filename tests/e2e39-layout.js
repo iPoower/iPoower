@@ -29,7 +29,7 @@ for(const [name,vp,mobile,inset] of VPS){
   if(inset&&BR.NAME==='chromium'){const s=await c.newCDPSession(p);await s.send('Emulation.setSafeAreaInsetsOverride',{insets:inset});emulated=true;}
   await p.goto(U);await p.clock.runFor(2500);await p.fill('#unlockPw',PW);await Promise.all([p.waitForNavigation({timeout:60000}),p.click('#unlockForm button[type=submit]')]);
   for(let i=0;i<14;i++){await p.clock.runFor(500);await p.waitForTimeout(100);}
-  for(const view of ['pneus','meteo','tenue']){
+  for(const view of ['pneus','meteo','garage']){
     await p.evaluate(v=>{UI.view=v;renderAll();const s=document.getElementById('settings');s.open=true;renderSettings(true);},view);await p.clock.runFor(800);await p.waitForTimeout(150);
     const r=await p.evaluate(mobile=>{const W=document.documentElement.clientWidth,small=[];
       const vis=e=>{const s=getComputedStyle(e);if(s.display==='none'||s.visibility==='hidden'||e.closest('[hidden]'))return false;const b=e.getBoundingClientRect();return b.width>0&&b.height>0;};
@@ -50,7 +50,7 @@ for(const [name,vp,mobile,inset] of VPS){
       if(inset.left)check(`39 · ${name} : contenu hors de l’encoche (${inset.left} px)`,r.left>=inset.left&&r.right>=inset.right,`gauche ${r.left}, droite ${r.right}`);
     }
     (sections[view]=sections[view]||[]).push([name,r.ids.join(',')]);
-    if(!mobile&&view!=='tenue')check(`39 · ${name} · ${view} : bureau en deux colonnes côte à côte (compléments à droite, même hauteur de départ)`,r.desk&&r.cols.gap>=12&&r.cols.top<=2,JSON.stringify({desk:r.desk,cols:r.cols}));
+    if(!mobile&&view!=='garage')check(`39 · ${name} · ${view} : bureau en deux colonnes côte à côte (compléments à droite, même hauteur de départ)`,r.desk&&r.cols.gap>=12&&r.cols.top<=2,JSON.stringify({desk:r.desk,cols:r.cols}));
     if(mobile)check(`39 · ${name} · ${view} : colonne unique sur mobile`,!r.desk,JSON.stringify({desk:r.desk}));
     if(view==='meteo'&&name==='iPhone portrait'){
       // carte radar défilée sous le bandeau : le bandeau (et le voile de l'horloge) restent au-dessus de Leaflet
