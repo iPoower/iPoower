@@ -267,6 +267,29 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     await vs.unlock(PASS, { 'twrc.plain': '{"locs":[]}', 'twrc.plain.v': 'v1' }); vs.store.setItem('twrc.settings.v1', JSON.stringify({ name: 'Maison fictive' })); await tick(); await vs.flush();
     assert.deepEqual(leaks(raw), []); assert.equal(vs.store.getItem('twrc.key'), PASS, 'code disponible en mémoire pour l’agenda et les sauvegardes');
   });
+  await test('session 7 jours : réouverture d’un autre onglet, expiration ferme et révocation immédiate', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY());
+    const remembered = {
+      item: null,
+      async save(rawKey, salt, signal) { this.item = { rawKey, salt: Buffer.from(salt).toString('base64'), signal, expiresAt: Date.now() + 7 * 864e5 }; },
+      async resume(salt, signal) { return this.item && this.item.salt === salt && this.item.signal === signal ? this.item : null; },
+      async clear() { this.item = null; }
+    };
+    const A = make(raw, session(), { remembered }).vs; await A.boot(); await A.lock();
+    await A.unlock(PASS, {}, true);
+    assert(remembered.item, 'autorisation persistante choisie explicitement');
+    const B = make(raw, session(), { remembered }).vs;
+    assert.equal(await B.boot(), 'vault', 'nouvel onglet sans sessionStorage');
+    assert.equal(B.store.getItem('twrc.settings.v1'), LEGACY()['twrc.settings.v1']);
+    remembered.item.expiresAt = Date.now() - 1;
+    const expired = make(raw, session(), { remembered }).vs;
+    assert.equal(await expired.boot(), 'locked', 'date dépassée : code redemandé');
+    await B.lock();
+    assert.equal(remembered.item, null, 'bouton Verrouiller révoque le souvenir');
+    assert.equal(await make(raw, session(), { remembered }).vs.boot(), 'locked');
+    await expired.unlock(PASS, {}, false);
+    assert.equal(remembered.item, null, 'case non cochée : aucune persistance');
+  });
   return count;
 }
 module.exports = { runTests, sourcePath };
@@ -287,7 +310,7 @@ if (require.main === module) (async () => {
     { name: 'coffre précédent effacé au nouvel essai', from: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));", to: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k))); raw.removeItem(VAULT);" },
     { name: 'mauvais code remplace la clé active', from: "const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);", to: "const key = st.key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);" },
     { name: 'déverrouillage ignore les sauvegardes en attente', from: "while (st.mode === 'vault' && st.mem.dirty.size) await savePending();\n      return unlockInside(pass, extra);", to: "return unlockInside(pass, extra);" },
-    { name: 'clé ancienne réutilisée après un verrouillage manqué', from: " && (ses.l ?? null) === raw.getItem(LOCK_SIGNAL)", to: "" },
+    { name: 'clé ancienne réutilisée après un verrouillage manqué', from: "(ses.l ?? null) === signal", to: "" },
     { name: 'notification de verrou périmée acceptée', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) === st.lockSignal) return null;", to: "" },
     { name: 'démarrage sans coffre retardé par un verrou', from: "if (!readVault(raw) && !raw.getItem('twrc.key') && !raw.getItem(V1))", to: "if (false)" }
   ];
