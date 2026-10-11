@@ -23,6 +23,21 @@ async function run(browser, width, dev) {
       assert.deepEqual(await p.locator('#viewSeg [data-v]').evaluateAll(xs => xs.map(x => x.dataset.v)), views);
     });
     const metrics = [];
+    await check(label + ' · détails de confiance au toucher, commande stable après ouverture', async () => {
+      await press('#viewSeg [data-v=pneus]'); await s.settle(1);
+      const fold = p.locator('#decisionCore [data-ux=decision-confidence]');
+      if (await fold.count()) {
+        await press('#decisionCore [data-ux=decision-confidence] > summary'); await s.settle(1);
+        assert(await fold.evaluate(x => x.open));
+        const stable = await p.evaluate(() => {
+          const button = document.querySelector('#decisionCore [data-act=decision-car-change]'); button.focus();
+          renderAll(); renderAll();
+          return button === document.querySelector('#decisionCore [data-act=decision-car-change]') && document.activeElement === button;
+        });
+        assert(stable);
+        await press('#decisionCore [data-ux=decision-confidence] > summary'); await s.settle(1);
+      }
+    });
     for (const view of views) {
       await press('#viewSeg [data-v=' + view + ']'); await s.settle(2);
       await p.evaluate(() => window.scrollTo(0, 0));
@@ -39,12 +54,23 @@ async function run(browser, width, dev) {
           assert(await p.locator('#secGarage .garage-mounted').first().isVisible());
           assert(await p.locator('#secGarage .garage-meter').first().isVisible());
         }
-        if (view === 'analyse') assert.match(await p.locator('#secLab .lab-hero').innerText(), /Confiance/i);
+        if (view === 'analyse') {
+          assert.match(await p.locator('#secLab .lab-hero').innerText(), /Confiance/i);
+          assert.equal(await p.locator('#decisionCore [data-ux=analysis-context]').evaluate(x => x.open), false);
+        }
         if (view === 'trajet') {
           assert(await p.locator('#secTripSummary').isVisible());
           const pos = await p.evaluate(() => ({ summary: document.getElementById('secTripSummary').getBoundingClientRect().top, form: document.getElementById('secTrip').getBoundingClientRect().top }));
           assert(pos.summary < pos.form, JSON.stringify(pos));
           assert.equal(await p.locator('#secTripSummary a').innerText(), 'Modifier le trajet');
+        }
+        if (width === 414) {
+          const key = { pneus: '#decisionCore .decision-mount', meteo: '#decisionCore .decision-trip', garage: '#secGarage .garage-edit', analyse: '#secLab .lab-hero', trajet: '#secTripSummary a' }[view];
+          const screen = await p.evaluate(selector => {
+            const box = document.querySelector(selector).getBoundingClientRect(), nav = document.getElementById('viewSeg').getBoundingClientRect();
+            return { top: box.top, bottom: box.bottom, nav: nav.top };
+          }, key);
+          assert(screen.top >= 0 && (view === 'analyse' ? screen.top < screen.nav - 120 : screen.bottom <= screen.nav), JSON.stringify({ view, ...screen }));
         }
         const size = await p.evaluate(id => {
           const r = document.querySelector(id).getBoundingClientRect();

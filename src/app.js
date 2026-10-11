@@ -1061,19 +1061,24 @@ function renderDecisionCore() {
     ? ' <span class="decision-forecast">· météo analysée pour <b>' + esc(forecastLabel) + '</b></span>' : '';
   const changesHtml = changes.length ? '<details class="decision-changes"><summary>Depuis la dernière ouverture · ' + changes.length + ' changement' + (changes.length > 1 ? 's' : '') + '</summary><div>' +
     changes.map(c => '<span class="' + esc(c.kind) + '">' + (c.kind === 'up' ? '↑ ' : c.kind === 'down' ? '↓ ' : '↔ ') + esc(c.text) + '</span>').join('') + '</div></details>' : '';
-  el.className = 'decision-core lv' + decision.displayLevel;
+  const confidenceLabel = 'Confiance · <b>' + esc(confidence.label) + '</b> · ' + esc(fresh);
+  const confidenceHtml = confidence.level > 0 && whyLeft.length
+    ? '<details class="decision-confidence ' + confClass + '" data-ux="decision-confidence"><summary>' + confidenceLabel + '<span aria-hidden="true"> ⌄</span></summary><div class="decision-why">' + whyLeft.map(r => '<span>' + esc(r) + '</span>').join('') + '</div></details>'
+    : '<span class="decision-confidence ' + confClass + '">' + confidenceLabel + '</span>';
+  el.className = UI.view === 'analyse' ? 'decision-context' : 'decision-core lv' + decision.displayLevel;
   el.hidden = false;
-  const html = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL · MÉTÉO ET PNEUS</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
-    '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b> · ' + esc(fresh) + '</span></div>' +
+  const coreHtml = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL · MÉTÉO ET PNEUS</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
+    confidenceHtml + '</div>' +
     // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
     (matters.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + matters.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
       : '') +
     '<div class="decision-meta"><span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + forecastHtml + '</span>' +
     '<span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span>' +
-    (UI.view === 'pneus' && car ? '<span class="decision-mount">Monte · <b>' + esc(TYPE_LABEL[tyre.type] || 'à confirmer') + '</b> · ' + tireTxt(car) + '</span>' : '') +
+    (UI.view === 'pneus' && car ? '<span class="decision-mount">Monte · <b>' + esc(TYPE_LABEL[tyre.type] || 'à confirmer') + '</b> · ' + esc([tyre.brand, tyre.model].filter(Boolean).join(' ') || 'modèle non renseigné') + '</span>' : '') +
     destinationHtml + '</div>' +
-    // raisons de confiance déjà dites par les lignes Lieu / Voiture : pas de répétition
-    (confidence.level > 0 && whyLeft.length ? uxFold('decision-confidence', 'Détails de la confiance', '<div class="decision-why">' + whyLeft.map(r => '<span>' + esc(r) + '</span>').join('') + '</div>') : '') + changesHtml;
+    changesHtml;
+  const html = UI.view === 'analyse'
+    ? uxFold('analysis-context', 'Contexte météo et voiture', '<div class="decision-core lv' + decision.displayLevel + '">' + coreHtml + '</div>') : coreHtml;
   if (html === renderDecisionCore.last) return;
   const changesOpen = !!el.querySelector('.decision-changes[open]');
   const foldFocus = uxFocusKey(el);
@@ -1216,7 +1221,7 @@ function renderView() {
     ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vg
     ? ['secGarage', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vm
     ? ['secWx', 'banners', 'hdrMore', 'secRadar', 'secChart', 'secDays', 'secCur', 'secAir', 'secIce', 'secAlerts', 'secTip', 'secCal', 'secBrf', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal', 'secLab']
-    : ['secTripSummary', 'secBrf', 'banners', 'hdrMore', 'secCars', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue'];
+    : ['secTripSummary', 'secCars', 'secBrf', 'banners', 'hdrMore', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue'];
   if (!order.includes('secGarage')) order.push('secGarage');
   if (!order.includes('secTenue')) order.push('secTenue');
   if (renderView.last === UI.view) return; renderView.last = UI.view;

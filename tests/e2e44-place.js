@@ -155,7 +155,7 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     await s.p.locator('#locChips [data-act=locs-toggle]').click();
     const labels = await s.p.locator('#locChips [data-act=loc]').evaluateAll(els => els.map(e => e.getAttribute('aria-label') || '').join(' | '));
     check('11 ter · lieux météo : domicile, travail et destination identifiés', /Météo : Travail test · 🏢 Travail/.test(labels) && /Météo : Destination ancienne test · 📌 Destination/.test(labels), labels);
-    await s.p.evaluate(() => { S.work.to = 'c-legacy'; markEdit('work.to'); saveSettings(); });
+    await s.p.evaluate(async () => { S.work.to = 'c-legacy'; markEdit('work.to'); saveSettings(); await window.TWRC_VAULT.flush(); });
     await s.p.reload(); await s.settle(10);
     check('11 ter · choix explicite d’un travail personnalisé conservé après rechargement', await s.p.evaluate(() => S.work.to === 'c-legacy'));
     await s.c.close();

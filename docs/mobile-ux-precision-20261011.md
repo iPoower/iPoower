@@ -15,6 +15,8 @@ Référence contrôlée avant intervention : production **prod-92**, SHA `c06596
 
 Les blocs natifs `details/summary` reprennent la palette actuelle. Leurs états de déploiement restent uniquement en mémoire pendant la session. Aucune nouvelle préférence persistante, aucune migration ni modification d'algorithme. La répétition d'un rendu identique conserve les cartes Pneus et leurs commandes ; le focus des nouvelles sections est restauré lors d'une vraie actualisation.
 
+L'examen des premières captures a conduit à une seconde passe : le titre retrouve une seule ligne sur 414 points, les raisons s'ouvrent depuis l'indicateur de confiance, les fiches Pneus précèdent le briefing détaillé, et le contexte météo général devient dépliable sur Analyse. Dans Garage, la commande de fiche précède les détails techniques. Le HTML comparé par les gardes de rendu n'inclut plus l'état ouvert/fermé : ouvrir une section ne recrée pas les commandes lors du prochain rafraîchissement.
+
 ## Périmètre conservé
 
 Les cinq onglets et leurs commandes historiques, les six modules F1 optionnels, les deux fiches véhicule, les mesures et historiques, les règles météo/agenda/GPS/route, le coffre, les sauvegardes, le Service Worker et le relais restent présents. Aucun kilométrage, contrôle ou rendez-vous n'est inventé. Les heures et distances du résumé viennent du contexte et des trajets existants.
@@ -24,6 +26,8 @@ Les cinq onglets et leurs commandes historiques, les six modules F1 optionnels, 
 Les 46 suites unitaires ont réussi pendant le développement. La matrice complète, le build, le relais, la confidentialité, le profilage et la QA Agenda doivent réussir sur le SHA final avant fusion. Le nouveau scénario `e2e72-mobile-ux.js` contrôle les cinq onglets à 414, 375 et 320 points et sur PC : déploiements au toucher, focus, débordements fermés et ouverts, cibles tactiles, source véhicule inchangée, rechargement et consultation hors ligne.
 
 Les régressions métier Météo, Analyse, usure, pression et Garage continuent à contrôler les mêmes données après déploiement des nouvelles sections. Aucun test n'est désactivé. Les captures du nouveau scénario sont publiées par l'artifact `place-qa` existant. Le profilage compare également les cinq premiers écrans avant/après sur des fixtures identiques ; les PNG sont encodés dans `visuals[].pngBase64` de son artifact JSON existant, pour éviter tout changement de workflow ou de permissions.
+
+Le scénario de lieu personnalisé attend explicitement la fin de l'écriture du coffre avant sa navigation de rechargement ; le code du coffre et les tests de sauvegarde/hors ligne restent inchangés. La nouvelle suite vérifie aussi la présence de l'information ou de l'action essentielle au-dessus de la navigation sur 414 points, pas seulement la visibilité dans le DOM.
 
 Les navigateurs ne peuvent pas être lancés dans l'environnement local utilisé pour cette intervention (restriction système sur les sockets). Les résultats de rendu et captures seront donc ceux des runners GitHub ; aucun résultat local de navigateur n'est revendiqué.
 

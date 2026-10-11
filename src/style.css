@@ -1048,10 +1048,22 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .garage-car:has(.garage-active), .car-active { order: -1; }
 .trip-summary .btn { align-self: flex-start; }
 .decision-meta > .decision-mount { grid-column: 1 / -1; font-size: 12px; line-height: 1.4; }
+details.decision-confidence { padding: 0; border-radius: 6px; }
+details.decision-confidence > summary { min-height: 44px; padding: 8px 9px; cursor: pointer; list-style: none; }
+details.decision-confidence > summary::-webkit-details-marker { display: none; }
+details.decision-confidence > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+details.decision-confidence > .decision-why { padding: 0 9px 9px; }
+.decision-context { min-width: 0; }
+.decision-context .ux-fold-body { padding: 0; }
+@media (min-width: 760px) {
+  .decision-meta:has(.decision-mount) { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+  .decision-meta:has(.decision-mount) > .decision-place,
+  .decision-meta:has(.decision-mount) > .decision-mount { grid-column: auto; }
+}
 @media (max-width: 759px) {
   .wrap { gap: 12px; }
   .top { gap: 8px; padding-top: 10px; }
-  .top > .title { font-size: 28px; line-height: 1.05; }
+  .top > .title { font-size: clamp(20px, 5.3vw, 28px); line-height: 1.05; }
   .top > .title small { font-size: 10px; letter-spacing: .08em; line-height: 1.4; }
   .top > #decisionCore { margin-top: 0; }
   .decision-top { gap: 6px; }
@@ -1059,6 +1071,7 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
   .decision-main h2 { font-size: 24px; line-height: 1.12; }
   .decision-main p { line-height: 1.4; }
   .decision-meta { gap: 0 8px; }
+  .decision-meta > .decision-car { grid-column: 1 / -1; }
   .mod { padding: 12px; }
   .wx-hero, .lab-hero { padding: 12px; }
   .wx-hl { line-height: 1.45; }
@@ -1068,6 +1081,8 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
   .garage-data { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .garage-data > div small { font-size: 12px; line-height: 1.4; }
   .garage-meter > strong { font-size: 32px; line-height: 1.15; }
+  .garage-car-head > div:first-child { flex-basis: 100%; }
+  .garage-car-head { gap: 6px; }
   .garage-car-head p, .garage-footer span, .garage-meter > small { font-size: 12px; line-height: 1.4; }
   .car-h { gap: 8px; }
   .car-h > .ux-fold { margin-top: 6px; }
@@ -1075,7 +1090,6 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
   .trip-summary .btn { width: 100%; }
 }
 @media (max-width: 360px) {
-  .top > .title { font-size: 26px; }
   #viewSeg .seg.view button { font-size: 11px; }
   .garage-data { grid-template-columns: minmax(0, 1fr); }
 }

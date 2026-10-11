@@ -218,6 +218,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
           document.querySelectorAll('#secSeason .season-week').length >= 2 && /tendance plus incertaine/.test(document.getElementById('secSeason').textContent) &&
           document.querySelectorAll('#secSeason .season-legend span').length >= 5 && document.querySelector('#secSeason .cell').getAttribute('aria-label').includes('minimum');
       }));
+      await s.p.locator('#secLab [data-ux=lab-grip] > summary').click();
       check('10 · ' + dev + ' · freinage présenté comme potentiel estimé, avec confiance', /estimé/i.test(await s.p.locator('.lab-brk').innerText()) && /confiance/i.test(await s.p.locator('.lab-brk').innerText()) && !/OPTIMAL/.test(await s.p.locator('.lab-brk').innerText()));
       if (dev === 'iphone') {
         await s.p.locator('#secJournal').scrollIntoViewIfNeeded();
