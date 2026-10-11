@@ -140,15 +140,16 @@ function renderTripView() {
 function renderTripSummary() {
   const el = $('#secTripSummary'); if (!el) return;
   const n = appDay().nextDestination;
-  if (UI.view !== 'pneus' || !n || n.source === 'pending') { el.hidden = true; el.innerHTML = ''; return; }
-  const t = APP_CONTEXT.trips.find(x => x.key === n.tripKey), from = n.originPoint || locById(n.originId) || t && appTripPlace(t, 'from'), to = n.destinationPoint || locById(n.placeId) || t && appTripPlace(t, 'to');
+  const t = n ? APP_CONTEXT.trips.find(x => x.key === n.tripKey) : UI.view === 'trajet' && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
+  if (!['pneus', 'trajet'].includes(UI.view) || (!n && !t) || n && n.source === 'pending') { el.hidden = true; el.innerHTML = ''; return; }
+  const from = n && (n.originPoint || locById(n.originId)) || t && !t.originPending && appTripPlace(t, 'from'), to = n && (n.destinationPoint || locById(n.placeId)) || t && appTripPlace(t, 'to');
   const car = appActiveCar(), l = t && (t.l || t.planL), route = l && !l.originPending && Number.isFinite(l.km) ? `${f1(l.km)} km · ~${Math.round(l.min)} min` : offlineNow() ? 'route à recalculer au retour du réseau' : 'route en préparation';
   const address = to && (to.address || to.sub) || '';
   el.hidden = false;
-  el.innerHTML = `<div class="trip-summary-head"><span class="trip-label">🧭 PROCHAIN TRAJET</span><b class="mono">${esc((n.dep || '').slice(11,16) || '—')}</b></div>
+  el.innerHTML = `<div class="trip-summary-head"><span class="trip-label">🧭 ${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc((n && n.dep || t && t.dep || '').slice(11,16) || '—')}</b></div>
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}</div>
-    <div class="trip-summary-meta"><span>🚗 ${esc(car && (car.short || car.name) || 'véhicule à choisir')}</span><span>${esc(route)}</span><span>${n.source === 'manual' ? 'manuel' : n.source}</span></div>
-    <div class="chips"><button class="btn sm" data-act="view" data-v="trajet">Voir le trajet</button><button class="btn sm" data-act="view" data-v="trajet">Modifier</button></div>`;
+    <div class="trip-summary-meta"><span>🚗 ${esc(car && (car.short || car.name) || 'véhicule à choisir')}</span><span>${esc(route)}</span></div>
+    ${UI.view === 'trajet' ? '<a class="btn pri" href="#secTrip">Modifier le trajet</a>' : '<div class="chips"><button class="btn sm" data-act="view" data-v="trajet">Voir / modifier le trajet</button></div>'}`;
 }
 async function tripSearch(kind, button) {
   tripCaptureForm();

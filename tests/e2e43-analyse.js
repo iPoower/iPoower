@@ -64,6 +64,7 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
   return { p, c, S, settle, weatherIdle, T0, close };
 }
 const lab = p => p.evaluate(() => {
+  document.querySelectorAll('#secLab details[data-ux]').forEach(d => { d.open = true; });
   document.querySelectorAll('#secLab details[data-k=spec], #secLab details[data-k=conf]').forEach(d => { d.open = true; });
   const el = document.getElementById('secLab'), vis = e => !!e && !e.hidden && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0;
   const q = s => el ? [...el.querySelectorAll(s)] : [], t = s => q(s).map(x => x.innerText.replace(/\s+/g, ' ').trim());
@@ -217,6 +218,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
           document.querySelectorAll('#secSeason .season-week').length >= 2 && /tendance plus incertaine/.test(document.getElementById('secSeason').textContent) &&
           document.querySelectorAll('#secSeason .season-legend span').length >= 5 && document.querySelector('#secSeason .cell').getAttribute('aria-label').includes('minimum');
       }));
+      await s.p.locator('#secLab [data-ux=lab-grip] > summary').click();
       check('10 · ' + dev + ' · freinage présenté comme potentiel estimé, avec confiance', /estimé/i.test(await s.p.locator('.lab-brk').innerText()) && /confiance/i.test(await s.p.locator('.lab-brk').innerText()) && !/OPTIMAL/.test(await s.p.locator('.lab-brk').innerText()));
       if (dev === 'iphone') {
         await s.p.locator('#secJournal').scrollIntoViewIfNeeded();
@@ -261,11 +263,12 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     // 9. dernier roulage déclaré : interface réelle, mémoire par voiture, reprise et garde sur les dates.
     for (const dev of ['iphone', 'pc']) {
       s = await session(b, { at: '2026-10-05T09:30:00+02:00', dev }); await toLab(s);
+      await s.p.locator('#secLab [data-ux=lab-grip] > summary').click();
       await s.p.locator('[data-k=last-drive] > summary').click();
       await s.p.fill('#labDriveAt', '2026-10-05T09:00'); await s.p.fill('#labDriveMinutes', '40'); await s.p.selectOption('#labDriveKind', 'route');
       await s.p.locator('#labDriveMinutes').focus();
       await s.p.evaluate(() => { RAW[UI.loc].t -= 3600e3; renderAll(); });
-      check(`9 · ${dev} : saisie et focus conservés pendant une actualisation`, await s.p.inputValue('#labDriveAt') === '2026-10-05T09:00' && await s.p.inputValue('#labDriveMinutes') === '40' && await s.p.evaluate(() => document.activeElement.id === 'labDriveMinutes'));
+      check(`9 · ${dev} : saisie, focus et détails conservés pendant une actualisation`, await s.p.inputValue('#labDriveAt') === '2026-10-05T09:00' && await s.p.inputValue('#labDriveMinutes') === '40' && await s.p.evaluate(() => document.activeElement.id === 'labDriveMinutes' && document.querySelector('#secLab [data-ux=lab-grip]').open));
       const formLayout = await layout(s.p, dev === 'iphone');
       check(`9 · ${dev} : formulaire ouvert sans débordement, cibles ≥ 44 pt`, formLayout.sw <= formLayout.W && !formLayout.wide.length && !formLayout.small.length, JSON.stringify(formLayout));
       await s.p.locator('#labLastDriveForm button[type=submit]').click(); await s.settle(2); a = await lab(s.p);

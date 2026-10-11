@@ -226,6 +226,14 @@ async function apply(s, dev, mode) {
       await s.settle(8); await ready(s);
       await check(dev + ' · vrai import chiffré V1 et reload conservent l’origine locale', async () => assert.equal((await state(p)).origins[original.id].go.choice.placeId, 'work'));
       await tap(p, dev, '#secWx [data-act=cal-origin-open]');
+      await tap(p, dev, '#secWx [data-ux=wx-forecast] > summary');
+      const originDraft = await p.inputValue('#wxOriginMode');
+      await p.locator('#wxOriginMode').focus();
+      await p.evaluate(() => { RAW[UI.loc].t -= 60000; renderAll(); });
+      await check(dev + ' · actualisation pendant la saisie : brouillon, focus et détails conservés', async () => {
+        assert.equal(await p.inputValue('#wxOriginMode'), originDraft);
+        assert(await p.evaluate(() => document.activeElement.id === 'wxOriginMode' && document.querySelector('#secWx [data-ux=wx-forecast]').open));
+      });
       await check(dev + ' · PC/iPhone : champs lisibles, cibles 44 pt et aucun débordement', async () => {
         const layout = await p.evaluate(() => { const W = document.documentElement.clientWidth; return { W, sw: document.documentElement.scrollWidth,
           small: [...document.querySelectorAll('#wxOriginEditor button,#wxOriginEditor select,#secWx [data-act=cal-origin-open]')].filter(e => e.getClientRects().length).filter(e => { const r = e.getBoundingClientRect(); return r.height < 43.5 || r.width < 43.5; }).map(e => e.id || e.dataset.act) }; });

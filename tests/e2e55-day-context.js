@@ -21,6 +21,12 @@ async function tap(p, selector) {
     console.error('DIAGNOSTIC ' + JSON.stringify({ ...scope, present: await el.count(), visible: await el.isVisible().catch(() => false), enabled: await el.isEnabled().catch(() => false), state: await read(p), overlay: await p.evaluate(() => [...document.querySelectorAll('[role=dialog],dialog[open]')].map(x => x.id)) })); throw e;
   }
 }
+async function decisionText(p) {
+  const context = p.locator('#decisionCore [data-ux=analysis-context]');
+  if (await context.isVisible() && !await context.evaluate(x => x.open))
+    await tap(p, '#decisionCore [data-ux=analysis-context] > summary');
+  return p.locator('#decisionCore').innerText();
+}
 async function openDay(p) {
   if (await p.evaluate(() => UI.view === 'analyse')) await tap(p, '#viewSeg [data-act=view][data-v=pneus]');
   if (!(await p.locator('#dayContext .day-editor').getAttribute('open') != null)) await tap(p, '#dayContext .day-editor > summary');
@@ -106,7 +112,7 @@ async function views(p, expected) {
             continue;
           }
           assert(await decision.isVisible(), view + ' : synthèse visible');
-          assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
+          assert.match(await decisionText(p), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
           await tap(p, '#decisionCore [data-act=decision-car-change]');
           assert.notEqual(await p.locator('#dayContext details.day-editor').getAttribute('open'), null);
           assert(await p.locator('#dayContext [role=group][aria-label="Voiture active"]').isVisible(), view + ' : sélecteur visible');
@@ -117,7 +123,7 @@ async function views(p, expected) {
       await check('changement manuel de voiture : propagation globale immédiate', async () => {
         assert.equal((await read(p)).car, 'carA'); assert.equal((await read(p)).next.car, 'carA');
         assert.equal(await p.evaluate(() => appTripCars().length), 1);
-        const decision = p.locator('#decisionCore'); if (await decision.isVisible()) assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture A\s*·\s*choix manuel/i);
+        const decision = p.locator('#decisionCore'); if (await decision.isVisible()) assert.match(await decisionText(p), /Voiture\s*·\s*Voiture A\s*·\s*choix manuel/i);
       });
       await tap(p, '[data-act=day-car][data-id=carB]');
       if (profile === 'configured') await p.locator('#dayContext').screenshot({ path: path.join(process.env.SP, 'day-context-' + dev + '.png') });
@@ -163,7 +169,7 @@ async function views(p, expected) {
         await views(p, { origin: 'b', destination: 'work', car: 'carB', day: 'work' });
         const x = await read(p); assert.equal(x.next.from, 'Lieu B'); assert.equal(x.next.to, 'Travail test');
         assert.equal(x.dayContext.nextDestination, null); assert.equal(x.dayContext.dayType, null); assert.equal(x.dayContext.outfitChoice, null); assert.equal(x.occasion, 'office');
-        assert.equal(x.dayContext.activeCarId, 'carB'); const decision = p.locator('#decisionCore'); if (await decision.isVisible()) assert.match(await decision.innerText(), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
+        assert.equal(x.dayContext.activeCarId, 'carB'); const decision = p.locator('#decisionCore'); if (await decision.isVisible()) assert.match(await decisionText(p), /Voiture\s*·\s*Voiture B\s*·\s*choix manuel/i);
         assert.deepEqual(x.work, original);
       });
       scope.phase = 'travail exceptionnel';

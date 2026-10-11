@@ -982,6 +982,7 @@ function cockpitMatters(alerts) {
   (alerts || []).filter(a => a.sev >= 1 && a.id !== 'wxdesk').sort((a, b) => b.sev - a.sev).forEach(a => push(a.sev, a.title));
   return { desk, items: out.sort((a, b) => b.lv - a.lv).slice(0, 3) };
 }
+// @include app/ux-layout.js
 function renderDecisionCore() {
   const el = $('#decisionCore');
   if (!el) return;
@@ -1060,23 +1061,31 @@ function renderDecisionCore() {
     ? ' <span class="decision-forecast">· météo analysée pour <b>' + esc(forecastLabel) + '</b></span>' : '';
   const changesHtml = changes.length ? '<details class="decision-changes"><summary>Depuis la dernière ouverture · ' + changes.length + ' changement' + (changes.length > 1 ? 's' : '') + '</summary><div>' +
     changes.map(c => '<span class="' + esc(c.kind) + '">' + (c.kind === 'up' ? '↑ ' : c.kind === 'down' ? '↓ ' : '↔ ') + esc(c.text) + '</span>').join('') + '</div></details>' : '';
-  el.className = 'decision-core lv' + decision.displayLevel;
+  const confidenceLabel = 'Confiance · <b>' + esc(confidence.label) + '</b> · ' + esc(fresh);
+  const confidenceHtml = confidence.level > 0 && whyLeft.length
+    ? '<details class="decision-confidence ' + confClass + '" data-ux="decision-confidence"><summary>' + confidenceLabel + '<span aria-hidden="true"> ⌄</span></summary><div class="decision-why">' + whyLeft.map(r => '<span>' + esc(r) + '</span>').join('') + '</div></details>'
+    : '<span class="decision-confidence ' + confClass + '">' + confidenceLabel + '</span>';
+  el.className = UI.view === 'analyse' ? 'decision-context' : 'decision-core lv' + decision.displayLevel;
   el.hidden = false;
-  const html = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL · MÉTÉO ET PNEUS</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
-    '<span class="decision-confidence ' + confClass + '">Confiance · <b>' + esc(confidence.label) + '</b> · ' + esc(fresh) + '</span></div>' +
+  const coreHtml = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL · MÉTÉO ET PNEUS</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
+    confidenceHtml + '</div>' +
     // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
     (matters.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + matters.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
       : '') +
     '<div class="decision-meta"><span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + forecastHtml + '</span>' +
     '<span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span>' +
+    (UI.view === 'pneus' && car ? '<span class="decision-mount">Monte · <b>' + esc(TYPE_LABEL[tyre.type] || 'à confirmer') + '</b> · ' + esc([tyre.brand, tyre.model].filter(Boolean).join(' ') || 'modèle non renseigné') + '</span>' : '') +
     destinationHtml + '</div>' +
-    // raisons de confiance déjà dites par les lignes Lieu / Voiture : pas de répétition
-    (confidence.level > 0 && whyLeft.length ? '<div class="decision-why">' + whyLeft.map(r => '<span>' + esc(r) + '</span>').join('') + '</div>' : '') + changesHtml;
+    changesHtml;
+  const html = UI.view === 'analyse'
+    ? uxFold('analysis-context', 'Contexte météo et voiture', '<div class="decision-core lv' + decision.displayLevel + '">' + coreHtml + '</div>') : coreHtml;
   if (html === renderDecisionCore.last) return;
   const changesOpen = !!el.querySelector('.decision-changes[open]');
+  const foldFocus = uxFocusKey(el);
   el.innerHTML = html; renderDecisionCore.last = html;
   const disclosure = el.querySelector('.decision-changes');
   if (disclosure && changesOpen) disclosure.open = true;
+  uxRestoreFocus(el, foldFocus);
 }
 
 /* ---------- probabilités et pluie 15 min ---------- */
@@ -1206,7 +1215,7 @@ function renderView() {
   const jump = $('#jump'), jumpHtml = links.map(([id, t]) => `<a href="#${id}">${t}</a>`).join('');
   if (jump.innerHTML !== jumpHtml) jump.innerHTML = jumpHtml;
   const order = vtr
-    ? ['secTrip', 'secTripSummary', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue']
+    ? ['secTripSummary', 'secTrip', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue']
     : va
     ? ['jump', 'secLab', 'secSeason', 'secJournal', 'hdrMore', 'banners', 'secTenue', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secAlerts', 'secWx'] : vt
     ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vg
@@ -3158,17 +3167,18 @@ function waitCard(car) {
 function renderCars() {
   const el = $('#secCars'); if (!CX) { el.innerHTML = ''; return; }
   const { m } = CX;
-  el.innerHTML = CX.cars.map(({ car, w, nar }) => {
+  const html = CX.cars.map(({ car, w, nar }) => {
     if (!hasTires(car)) return waitCard(car);
     if (!w) return `<article class="car"><div class="car-h"><h3>${esc(car.name)}</h3></div><div class="car-b"><p class="muted">Données insuffisantes pour évaluer cette voiture.</p></div></article>`;
     const c = m.cur, i = m.nowI;
     const strip = []; for (let k = 0; k <= 24; k++) { const v = hourVerdict(car, m.hs, i + k); strip.push(v ? `<i class="lv${v.level}" title="${m.hs[i + k].t.slice(11, 16)} · ${LV[v.level].name} · ${v.score}/100"></i>` : ''); }
     const labels = [0, 6, 12, 18, 24].map(k => `<span>${m.hs[i + k] ? m.hs[i + k].t.slice(11, 16) : ''}</span>`).join('');
     const wi = w.worst, pf = carProfile(car), gen = pf.generic;
-    return `<article class="car ${gen ? 'lvx generic' : 'lv' + w.level}">
+    return `<article class="car ${gen ? 'lvx generic' : 'lv' + w.level}${appActiveCar() && car.id === appActiveCar().id ? ' car-active' : ''}">
       <div class="car-h"><div class="car-top"><div><h3>${esc(car.name)}</h3><span class="spec">${esc(car.spec)}</span></div>${carThumb(car)}</div>
+        ${appActiveCar() && car.id === appActiveCar().id ? '<span class="garage-active">VOITURE ACTIVE</span>' : ''}
         <div class="tirebox"><span><b>Pneus montés : ${TYPE_LABEL[car.tire.type]}</b></span><span>${tireTxt(car)}</span></div>
-        ${tireExtra(car, m)}</div>
+        ${uxFold('tyre-records-' + car.id, 'Mesures et historique', tireExtra(car, m), 'Pression · DOT · usure')}</div>
       ${gen ? genericNote(pf.gaps) : verdictHtml(w.level)}
       <div class="car-b">
         <div class="scoreRow"><div><div class="lab">TYRE WEATHER SCORE</div><div class="score num">${gen ? '—' : w.score}<small>${gen ? 'aperçu' : '/100'}</small></div></div>
@@ -3182,6 +3192,10 @@ function renderCars() {
         <p class="disc">Indice d’aide à la décision — les conditions réelles de la route et l’état du véhicule restent déterminants.</p>
       </div></article>`;
   }).join('');
+  if (html === renderCars.last && el.innerHTML) return;
+  const foldFocus = uxFocusKey(el);
+  el.innerHTML = html; renderCars.last = html;
+  uxRestoreFocus(el, foldFocus);
 }
 
 /* ---------- trajet ---------- */

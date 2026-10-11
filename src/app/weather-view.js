@@ -112,12 +112,16 @@ function renderWx() {
     ${tl2 != null ? `<div class="wx-tire"><span>Impact pneus : <b>${['faible', 'modéré', 'élevé', 'critique'][tl2]}</b> ${E[tl2]}</span><button class="btn sm" data-act="view" data-v="pneus">Voir analyse Pneus →</button></div>` : ''}</div>`;
   const foot = `<p class="sub wx-foot">Détails techniques plus bas : <a href="#secCur">mesures</a> · <a href="#secChart">graphique 24 h</a> · <a href="#hdrMore">sources et fraîcheur</a>.</p>`;
   const evH = evidenceHtml(), evOn = EV_FLAG() === 'on' && /class="ev-crit/.test(evH) && d.level < 2;
-  const html = (evOn ? evH + hero : hero + evH) + tripHtml + tl + matters + ph + road + foot;
+  const html = (evOn ? evH + hero : hero + evH) + tripHtml +
+    uxFold('wx-forecast', 'Prévisions détaillées', tl + matters + ph, 'Chronologie · phénomènes') +
+    uxFold('wx-road', 'Conditions route', road, r.score + '/100 · ' + ['faible', 'modéré', 'élevé', 'critique'][r.level]) + foot;
   if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
   const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
   const editor = el.querySelector('#wxOriginEditor'), active = document.activeElement;
+  const foldFocus = uxFocusKey(el);
   const editorFocused = editor && editor.contains(active), selection = editorFocused && [active.selectionStart, active.selectionEnd];
   el.className = 'mod wx lv' + d.level; el.innerHTML = html; renderWx.last = html;
+  uxRestoreFocus(el, foldFocus);
   const nextEditor = el.querySelector('#wxOriginEditor');
   if (editor && nextEditor && editor.dataset.binding === nextEditor.dataset.binding) {
     nextEditor.replaceWith(editor);

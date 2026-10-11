@@ -52,6 +52,8 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
   return { p, c, S, settle, T0 };
 }
 const wx = p => p.evaluate(() => {
+  // La lecture experte déploie les mêmes sections que l'utilisateur.
+  document.querySelectorAll('#secWx details[data-ux]').forEach(d => { d.open = true; });
   const el = document.getElementById('secWx'), vis = e => !!e && !e.hidden && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0;
   const q = s => el ? [...el.querySelectorAll(s)] : [], t = s => q(s).map(x => x.innerText.replace(/\s+/g, ' ').trim());
   const first = [...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details, #deskMain > section, #deskMain > .grid2')].filter(vis)[0];

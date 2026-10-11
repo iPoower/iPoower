@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Deux builds fictifs, même runner/moteur. Date métier fixe ; performance.now reste réelle.
-// Aucun appel externe, secret de production, capture ou URL personnelle dans les rapports.
+// Aucun appel externe, secret, capture de profil personnel ou URL personnelle dans les rapports.
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), zlib = require('node:zlib');
 const { execFileSync } = require('node:child_process'), { performance } = require('node:perf_hooks');
@@ -168,9 +168,22 @@ async function profile(browser, build, fixture, device) {
       return { cockpit, meteo, analysis, garage: { renders: 20, elapsedMs, childMutations, buttonPreserved: button === root.querySelector('.garage-edit'),
         focusPreserved: document.activeElement === button, planOpen: !!root.querySelector('.garage-plan')?.open } };
     });
+    // Avant/après du même profil fictif. Images encodées dans l'artifact JSON
+    // existant : aucun changement de workflow, de permission ni de publication.
+    const visuals = [];
+    await page.evaluate(() => {
+      F1Pure.FEATURES.forEach(f => { S.flags['f1' + f.id[0].toUpperCase() + f.id.slice(1)] = 0; });
+      document.querySelectorAll('details[open]').forEach(d => { d.open = false; });
+    });
+    for (const view of ['meteo', 'pneus', 'garage', 'analyse', 'trajet']) {
+      await page.locator('#viewSeg [data-v=' + view + ']').click();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const layout = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, documentHeight: document.documentElement.scrollHeight }));
+      visuals.push({ view, ...layout, pngBase64: (await page.screenshot()).toString('base64') });
+    }
     if (errors.length) throw new Error('Exception applicative pendant le profilage : ' + errors.join(', '));
     return { device, viewport: mobile ? '414x896' : '1440x900', cpuThrottle: 1, physicalDevice: false, initialGenericMs, unlockAndReloadMs,
-      ...metrics, precision, tapToAnimationFrameMs: { median: median(taps), samples: taps }, requestsAtReady, fixtureResponseBytesAtReady: bytesAtReady, rejectedExternal, pageErrors: errors.length };
+      ...metrics, precision, visuals, tapToAnimationFrameMs: { median: median(taps), samples: taps }, requestsAtReady, fixtureResponseBytesAtReady: bytesAtReady, rejectedExternal, pageErrors: errors.length };
   } finally { await context.close(); }
 }
 async function main() {

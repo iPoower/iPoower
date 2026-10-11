@@ -69,6 +69,7 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         assert(await p.locator('#f-cars-0-tire-type').isVisible(), 'le choix natif de monte doit être visible');
         await p.selectOption('[data-bind="cars.0.tire.type"]', 'winter'); await s.settle(1); assert.equal(await p.evaluate(() => S.cars[0].tire.type), 'winter');
         await p.selectOption('[data-bind="cars.0.tire.type"]', 'summer'); await s.settle(1); await p.locator('#settings > summary').click();
+        await click('#secCars details[data-ux="tyre-records-carA"] > summary');
         await click('[data-act=pchk][data-car=carA]'); assert(await p.evaluate(() => !!S.cars[0].tire.pchk.date));
       });
       await check(tag + ' · retour terrain et switch alerte', async () => {

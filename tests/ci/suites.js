@@ -92,4 +92,5 @@ SUITE.push(['test_f1_pure.js', 'F1 Pure : six moteurs prudents, sans invention n
   ['e2e70-f1-pure.js', 'F1 Pure : modules OFF par défaut, activation et rechargement PC/iPhone', true]);
 SUITE.push(['test_garage.js', 'Garage : fiches techniques canoniques, relevés, plans hiver, sources et invariants', false],
   ['e2e71-garage.js', 'Garage : navigation 5 onglets, données véhicules et état, réglages, reload et offline PC/iPhone', true]);
+SUITE.push(['e2e72-mobile-ux.js', 'UX mobile : cinq onglets, détails accessibles, focus, petits écrans, rechargement, données et hors ligne', true]);
 module.exports = { SUITE, FIRST };

@@ -52,7 +52,7 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
 const field = async (p, bind, value) => { await p.evaluate(() => { const d = document.getElementById('settings'); d.open = true; renderSettings(true); });
   const sel = `[data-bind="${bind}"]`; const tag = await p.$eval(sel, e => e.tagName);
   if (tag === 'SELECT') await p.selectOption(sel, value); else { await p.fill(sel, String(value)); await p.$eval(sel, e => e.dispatchEvent(new Event('change', { bubbles: true }))); } };
-const labTxt = p => p.evaluate(() => { UI.view = 'analyse'; renderAll(); document.querySelectorAll('#secLab details[data-k]').forEach(d => { d.open = true; }); return (document.getElementById('secLab').innerText || '').replace(/\s+/g, ' '); });
+const labTxt = p => p.evaluate(() => { UI.view = 'analyse'; renderAll(); document.querySelectorAll('#secLab details[data-k], #secLab details[data-ux]').forEach(d => { d.open = true; }); return (document.getElementById('secLab').innerText || '').replace(/\s+/g, ' '); });
 const diag = p => p.evaluate(() => { document.getElementById('settings').open = true; renderSettings(true); renderDiag(); return [...document.querySelectorAll('#diagBox dt')].reduce((o, dt) => (o[dt.textContent] = dt.nextElementSibling.textContent, o), {}); });
 
 (async () => {
