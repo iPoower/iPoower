@@ -20,7 +20,7 @@ const fonts='<link rel="preconnect" href="https://fonts.googleapis.com"><link re
 const js=[r('src/reliability.js'),r('src/decision.js'),r('src/f1-pure.js'),r('src/garage.js'),r('src/profile-check.js'),r('src/geosearch.js'),r('src/engine.js'),r('src/demo.js'),r('src/wardrobe.js'),r('src/dayplan.js'),r('src/wxdesk.js'),r('src/tirespecs.js'),r('src/tyrestate.js'),r('src/tyrelab.js'),r('src/placectx.js'),r('src/evidence.js'),r('src/calendar-origin.js'),r('src/trip-cancel.js'),r('src/weather-requests.js'),r('src/road-intelligence.js'),r('src/road-providers.js'),r('src/debrief.js'),r('src/userctx.js'),r('src/backup.js'),require('./app-source').appSource(ROOT)].join('\n');
 const title='<title>TYRE WEATHER RACE CONTROL</title>';
 const style=`<style>\n${r('src/style.css')}\n</style>`;
-const device=r('src/device-storage.js')+'\n'+r('src/session-vault.js');
+const device=r('src/device-storage.js')+'\n'+r('src/remember-device.js')+'\n'+r('src/session-vault.js');
 if(/<\/script/i.test(js))throw new Error('Le code applicatif ne doit pas contenir « </script> » (bloc différé).');
 // Sécurité V1 : le code applicatif est différé (bloc text/plain) et démarré seulement après l'ouverture du coffre de session :
 // les réglages et le préréglage déchiffrés n'existent qu'en mémoire, jamais en clair dans localStorage.
@@ -30,7 +30,7 @@ function run(){if(done)return;done=true;var c=document.getElementById('twrc-app'
 function preset(st){try{var v=st.getItem('twrc.plain.v'),p=st.getItem('twrc.plain');if(p&&v===window.TWRC_SEALED_V){var o=JSON.parse(p);window.TWRC_PRESET=o;window.TWRC_PRESET_V=v;window.TWRC_NTFY=o.ntfy||'';}}catch(e){}}
 var ses=null;try{ses=window.sessionStorage;ses.getItem('twrc.session.v2');}catch(e){ses={getItem:function(){return null;},setItem:function(){},removeItem:function(){}};}
 if(!RAW||window.TWRC_STORAGE_ERROR||!window.crypto||!crypto.subtle){if(RAW)preset(RAW);run();return;}
-var VS=window.TWRC_VAULT=SessionVault.create({raw:RAW,session:ses,crypto:crypto,target:window});window.TWRC_RAW_STORAGE=RAW;
+var VS=window.TWRC_VAULT=SessionVault.create({raw:RAW,session:ses,crypto:crypto,target:window,remembered:RememberDevice});window.TWRC_RAW_STORAGE=RAW;
 window.addEventListener('storage',function(e){if(e.storageArea&&e.storageArea!==RAW)return;VS.onStorage(e,function(k,o,n){try{window.dispatchEvent(new StorageEvent('storage',{key:k,oldValue:o,newValue:n,url:location.href}));}catch(x){}}).then(function(r){if(r==='locked')location.reload();});});
 VS.boot().then(function(){if(VS.store){try{Object.defineProperty(window,'localStorage',{configurable:true,get:function(){return VS.store;}});}catch(e){window.TWRC_STORAGE_ERROR=true;}}preset(VS.store||RAW);},function(){}).then(run,run);
 })();\n</script>\n`;
