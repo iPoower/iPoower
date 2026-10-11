@@ -41,11 +41,14 @@ const active = p => p.evaluate(() => ({
           assert.deepEqual(x.tabs, before.tabs);
           assert(x.modules.includes('raceEngineer'), JSON.stringify(x.modules));
           assert(x.modules.includes('tyreManagement'), JSON.stringify(x.modules));
-          assert(await p.locator('#decisionCore [data-f1=raceEngineer] summary').isVisible());
+          assert(await p.locator('#secBrief [data-f1=raceEngineer] summary').isVisible());
+          assert.equal(await p.locator('#decisionCore .f1-extension').count(), 0, 'la décision immédiate reste distincte du briefing détaillé');
           assert(await p.locator('#secBrief [data-f1=tyreManagement] summary').isVisible());
           const dock = p.locator('#f1Dock');
           assert(await dock.isVisible(), 'bandeau F1 visible sur iPhone/PC');
           assert.equal(await dock.locator('a').count(), 2);
+          for (const link of await dock.locator('a').all()) assert(await link.evaluate(x => x.getBoundingClientRect().height) >= 44,
+            'accès F1 tactile de 44 px au minimum');
           // getBoundingClientRect() dépend du scroll courant (encore animé sur iPhone).
           // Tester la POSITION réelle dans le document, pas le viewport transitoire.
           const placement = await dock.evaluate(el => {
@@ -62,6 +65,40 @@ const active = p => p.evaluate(() => ({
         await tap('#f1Dock a[href="#f1-panel-raceEngineer"]');
         await check(dev + ' · accès direct Race Engineer depuis le bandeau', async () => {
           assert.equal(await p.evaluate(() => location.hash), '#f1-panel-raceEngineer');
+        });
+        await check(dev + ' · actualisation identique : commande voiture, focus et briefing conservés', async () => {
+          const x = await p.evaluate(() => {
+            renderAll(); renderAll();
+            const button = document.querySelector('[data-act=decision-car-change]'), speech = document.querySelector('[data-act=race-speak]');
+            button.focus(); renderAll(); renderAll();
+            return { button: button === document.querySelector('[data-act=decision-car-change]'),
+              speech: speech === document.querySelector('[data-act=race-speak]'), focus: document.activeElement === button };
+          });
+          assert.deepEqual(x, { button: true, speech: true, focus: true });
+        });
+        await check(dev + ' · panneau F1 inchangé et fermeture explicite conservés', async () => {
+          const x = await p.evaluate(() => {
+            const panel = document.getElementById('f1-panel-raceEngineer'), summary = panel.querySelector('summary');
+            panel.open = false; summary.focus();
+            const observer = new MutationObserver(() => {}); observer.observe(panel.parentElement, { childList: true, subtree: true });
+            renderF1Pure(); renderF1Pure();
+            const result = { same: panel === document.getElementById(panel.id), open: document.getElementById(panel.id).open,
+              focus: document.activeElement === summary, mutations: observer.takeRecords().length }; observer.disconnect();
+            return result;
+          });
+          assert.deepEqual(x, { same: true, open: false, focus: true, mutations: 0 });
+        });
+        await check(dev + ' · brouillon de départ conservé pendant un vrai changement du briefing', async () => {
+          const x = await p.evaluate(() => {
+            const input = document.querySelector('#secBrief input[type=time]'), initial = input.value, duration = S.work.durMin;
+            input.focus(); input.value = '07:35'; S.work.durMin += 5; renderBrief(); renderF1Pure();
+            const next = document.getElementById(input.id);
+            const result = { draft: next.value, focus: document.activeElement === next,
+              durationUpdated: document.getElementById('quick-work-durMin').value === String(S.work.durMin),
+              closed: !document.getElementById('f1-panel-raceEngineer').open };
+            S.work.durMin = duration; next.value = initial; renderBrief(); renderF1Pure(); return result;
+          });
+          assert.deepEqual(x, { draft: '07:35', focus: true, durationUpdated: true, closed: true });
         });
         await view('garage');
         await check(dev + ' · The Garage F1 accompagne les fiches du nouvel onglet', async () => {

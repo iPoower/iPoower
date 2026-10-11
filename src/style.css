@@ -92,6 +92,12 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; }
 .decision-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 0 12px; align-items: center; font-size: 11.5px; color: var(--fg2); }
 .decision-meta > span { display: flex; align-items: center; flex-wrap: wrap; gap: 0 3px; min-height: 30px; min-width: 0; overflow-wrap: anywhere; }
 .decision-meta b { color: var(--fg); font-weight: 500; }
+.decision-meta > .decision-trip { grid-column: 1 / -1; display: grid; gap: 2px; }
+.decision-departure { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+@media (min-width: 760px) {
+  .decision-meta:has(.decision-trip) { grid-template-columns: minmax(150px, 1fr) minmax(0, 3fr); }
+  .decision-meta > .decision-trip { grid-column: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; }
+}
 .decision-car { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px; }
 .decision-change { appearance: none; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 600; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; border-radius: 3px; cursor: pointer; }
 .decision-change:hover, .decision-change:focus-visible { background: color-mix(in srgb, var(--accent) 12%, transparent); outline: none; }
@@ -950,7 +956,7 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
   flex: 0 0 auto; border: 1px solid var(--line2); border-radius: 3px;
   background: var(--panel2); color: var(--fg); padding: 7px 9px;
   text-decoration: none; font: 500 11px var(--f-mono);
-  min-height: 40px; display: inline-flex; align-items: center;
+  min-height: 44px; display: inline-flex; align-items: center;
 }
 .f1-dock-links a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .f1-extension {
