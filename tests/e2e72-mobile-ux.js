@@ -40,7 +40,9 @@ async function run(browser, width, dev) {
     });
     for (const view of views) {
       await press('#viewSeg [data-v=' + view + ']'); await s.settle(2);
-      await p.evaluate(() => window.scrollTo(0, 0));
+      // Le défilement doux CSS est asynchrone sur WebKit : mesurer le haut de page au repos.
+      await p.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+      await p.waitForFunction(() => Math.abs(window.scrollY) <= 1);
       await check(label + ' · ' + view + ' essentiel visible, détails repliés et aucun débordement', async () => {
         assert(await p.locator(root[view]).isVisible()); await overflow(p);
         const folds = p.locator(root[view] + ' details[data-ux]');
