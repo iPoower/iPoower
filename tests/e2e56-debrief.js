@@ -10,7 +10,8 @@ const tap = async (s, selector) => { stage = s.dev + ' · clic ' + selector; con
   try { if (s.dev === 'iphone') await button.tap({ timeout: 12000 }); else await button.click({ timeout: 12000 }); await s.settle(2); }
   catch (e) { throw new Error(stage + ' : ' + e.message); }
 };
-const tab = (s, view) => tap(s, '#viewSeg [data-act=view][data-v=' + view + ']');
+const tab = async (s, view) => { if (view === 'tenue') { await s.p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); await s.settle(2); } // contre-test du moteur historique
+  else await tap(s, '#viewSeg [data-act=view][data-v=' + view + ']'); };
 async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
   const s = await session(b, { dev, at }); s.dev = dev;
   await s.p.evaluate(() => { S.work.days = [1, 2, 3, 4, 5]; saveSettings(); renderAll(); }); await s.settle(4); await tab(s, 'pneus'); return s;
