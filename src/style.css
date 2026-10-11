@@ -103,6 +103,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; }
 .decision-change:hover, .decision-change:focus-visible { background: color-mix(in srgb, var(--accent) 12%, transparent); outline: none; }
 .decision-change:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
 .decision-why { display: flex; flex-wrap: wrap; gap: 5px; }
+.decision-k, .wx-scope { overflow-wrap: anywhere; }
 /* Cockpit : « Ce qui compte » (3 au plus, classés par les moteurs) et état du lieu, dans la carte de décision */
 .decision-matters { list-style: none; margin: 8px 0 2px; padding: 0; display: grid; gap: 4px; }
 .decision-matters li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px; align-items: start; font-size: 13px; line-height: 1.35; color: var(--fg); padding: 5px 8px; border-radius: 5px; background: color-mix(in srgb, var(--lv-soft) 60%, transparent); border-left: 3px solid var(--lv); overflow-wrap: anywhere; }
@@ -312,6 +313,8 @@ input[type=time], input[type=number] { font-family: var(--f-mono); }
 @media (max-width: 759px) {
   .top > .title small { margin-bottom: 2px; }
   .top > #decisionCore { margin-top: 8px; }
+  .decision-core { gap: 6px; padding: 10px 12px; }
+  .decision-matters { margin-top: 4px; }
   .day-context { margin: 6px 0; }
 }
 @media (max-width: 420px) {
@@ -661,6 +664,11 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .wx-now-k { font-size: 10.5px; line-height: 1.2; letter-spacing: .09em; text-transform: uppercase; color: var(--fg2); font-weight: 700; }
 .wx-now-feel { font-family: var(--f-mono); font-size: 14px; color: var(--fg); font-weight: 600; }
 .wx-now-src { font-size: 10.5px; line-height: 1.25; color: var(--fg2); }
+@media (max-width: 759px) {
+  .wx-hero { padding: 10px 12px; gap: 2px; }
+  .wx-now { margin: 3px 0 4px; padding: 8px 10px; gap: 10px; }
+  .wx-now-v { font-size: 52px; }
+}
 @media (max-width: 360px) {
   .wx-now { gap: 9px; padding: 10px 11px; }
   .wx-now-v { font-size: 48px; }
@@ -763,6 +771,8 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .lab-sp ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
 .lab-sp a { color: var(--accent); }
 .lab-foot { margin-top: 2px; }
+.lab-cmp > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-family: var(--f-disp); font-size: 15px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg2); }
+.lab-cmp[open] > summary { margin-bottom: 8px; }
 .lab-drive-fields { border: 0; margin: 0; padding: 0; display: grid; gap: 12px; min-width: 0; }
 .lab-drive-fields label { display: grid; gap: 5px; color: var(--fg2); }
 .lab-drive-fields input, .lab-drive-fields select { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; min-height: 44px; }

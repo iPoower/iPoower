@@ -107,6 +107,16 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     await s.p.locator('#secLab details[data-k=why] summary').click(); await s.p.locator('#secLab details[data-k=b-brake] summary').click(); await s.settle(1);
     await s.p.evaluate(() => renderAll()); await s.settle(2);
     check('1 · explications ouvertes au toucher et conservées après actualisation', await s.p.evaluate(() => document.querySelector('#secLab details[data-k=why]').open && document.querySelector('#secLab details[data-k=b-brake]').open));
+    const comparison = s.p.locator('#secLab details[data-k=comparison]');
+    check('1 · comparaison avancée repliée, cinq lignes conservées', await comparison.evaluate(e => !e.open && e.querySelectorAll('tbody tr').length === 5 && e.getBoundingClientRect().height <= 90));
+    await comparison.locator('summary').click();
+    const retained = await s.p.evaluate(() => {
+      const e = document.querySelector('#secLab details[data-k=comparison]'); e.querySelector('summary').focus();
+      const x = CX.m.hs[CX.m.nowI], T = x.T; x.T += 3; renderLab(); x.T = T;
+      const next = document.querySelector('#secLab details[data-k=comparison]');
+      return next.open && document.activeElement === next.querySelector('summary') && next.querySelector('table').getBoundingClientRect().height > 0;
+    });
+    check('1 · comparaison ouverte et focus conservés pendant une actualisation météo', retained);
     // voiture B : aucune monte active
     await s.p.click('[data-act=labcar][data-car=carB]'); await s.settle(1); a = await lab(s.p);
     check('1 · voiture sans monte active : « Monte active inconnue — sélectionner les pneus montés. », aucune analyse', /Monte active inconnue — sélectionner les pneus montés\./i.test(a.hero) && a.bars === 0, a.hero);

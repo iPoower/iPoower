@@ -148,6 +148,32 @@ const layout = (p, mobile) => p.evaluate(mobile => {
       await s.c.close();
     }
 
+    // Vigilance : requête sur le code du département, bulletin réel du format
+    // public simulé ; une panne ou un bulletin vide ne deviennent jamais « RAS ».
+    for (const dev of ['iphone', 'pc']) {
+      s = await session(b, { at: '2026-10-11T14:00:00+02:00', scn: 'doux', dev });
+      let feed = 'ok', requested = null;
+      await s.p.route('https://public.opendatasoft.com/**', r => {
+        requested = new URL(r.request().url()).searchParams.get('refine.domain_id');
+        if (feed === 'abort') return r.abort();
+        const fields = { domain_id: '80', color_id: 2, color: 'jaune', phenomenon: 'vent', echeance: 'J', product_datetime: '2026-10-11T04:00Z', end_time: '2026-10-11T22:00Z' };
+        return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ records: feed === 'empty' ? [] : [{ fields }] }) });
+      });
+      const state = () => s.p.evaluate(async () => {
+        S.dept = { code: '80', name: 'Somme' }; S.alerts.vigi = 1;
+        await fetchVigi(); renderAlerts();
+        const row = document.querySelector('#secAlerts input[data-alert=vigi]').closest('.al');
+        return { state: VIGI.state, row: row.innerText, block: vigiBlock(), diagnostic: diagRows().find(r => r[0] === 'API météo')[1] };
+      });
+      let result = await state();
+      check(`${dev} · vigilance Somme : code 80, bulletin jaune daté et alerte cohérente`, requested === '80' && result.state === 'ok' && /JAUNE.*bulletin du/.test(result.block) && /Vigilance jaune/.test(result.row), JSON.stringify(result));
+      for (feed of ['empty', 'abort']) {
+        result = await state();
+        check(`${dev} · vigilance ${feed} : inconnue, sans RAS ni faux feu vert`, result.state !== 'ok' && /INCONNU/.test(result.row) && /indisponible/.test(result.row) && !/RAS|VERTE/.test(result.row), JSON.stringify(result));
+      }
+      check(`${dev} · diagnostic : la file réseau ne prétend pas vérifier le fournisseur`, /file réseau.*non vérifié/.test(result.diagnostic) && !/disponible/.test(result.diagnostic), result.diagnostic);
+      await s.c.close();
+    }
     // 6. phénomène marqué : brouillard givrant au petit matin (scénario « froid », lendemain matin) → verdict orange ou rouge
     s = await session(b, { at: '2026-10-03T23:30:00+02:00', scn: 'froid' });
     w = await wx(s.p);
