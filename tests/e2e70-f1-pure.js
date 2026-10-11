@@ -110,4 +110,4 @@ const active = p => p.evaluate(() => ({
     await check('F1 Pure · aucune erreur JS', async () => assert.deepEqual(errors, []));
   } finally { await b.close(); }
   console.log(n + '/' + n + ' scénarios F1 Pure PC/iPhone réussis');
-})().catch(e => { console.error('Étape : ' + stage); console.error(e); process.exit(1); });
+})().catch(e => { const kind = String(e && e.name || 'Erreur'); const detail = String(e && e.message || 'échec').split('\n')[0].slice(0, 220); console.error('❌ F1 iPhone/PC · ' + stage + ' · ' + kind + ' · ' + detail); process.exit(1); });
