@@ -10,6 +10,18 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { sto
 // actualisation automatique : toutes les 5 min tant que l'app est à l'écran, et dès le retour dans l'app
 // (vérification toutes les 30 s : résiste à la mise en veille des minuteurs par iOS)
 const AUTO_MS = 5 * 60e3;
+// La limite de 7 jours est ferme : même un onglet iOS laissé ouvert doit se reverrouiller.
+let SESSION_EXPIRING = false;
+async function checkSessionExpiry() {
+  const vs = window.TWRC_VAULT;
+  if (!vs || !vs.expired() || SESSION_EXPIRING) return false;
+  SESSION_EXPIRING = true;
+  try { await vs.lock(); location.reload(); }
+  catch (e) { SESSION_EXPIRING = false; alert('Session de 7 jours expirée. Une écriture locale reste à vérifier : sauvegarde tes données puis verrouille cet appareil.'); }
+  return true;
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkSessionExpiry(); });
+['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, checkSessionExpiry));
 function validateRecovery(reason) {
   const before = USER_STORE.durability(), ok = USER_STORE.retry(), after = USER_STORE.durability();
   if (before.status === 'degraded' && ok && after.status === 'durable' && RUNTIME_RECORDER)
@@ -19,6 +31,7 @@ function validateRecovery(reason) {
 }
 function autoTick() {
   if (document.hidden) return;
+  if (window.TWRC_VAULT && window.TWRC_VAULT.expired()) { checkSessionExpiry(); return; }
   calendarOriginPurge();
   if (USER_STORE.durability().status === 'degraded') validateRecovery('retry périodique');
   if (navigator.onLine !== false && Date.now() - VER_CHECK_AT >= AUTO_MS) loadVersion(true); else enforceVersionCoherence();
@@ -51,7 +64,7 @@ function registerSW() {
 }
 document.addEventListener('toggle', e => { if (e.target && e.target.id === 'settings' && e.target.open) renderSettings(true); }, true);
 (function init() {
-  if (LOCKED() && lsGet('twrc.key')) unseal(lsGet('twrc.key')).then(ok => { if (ok) location.reload(); });
+  if (LOCKED() && lsGet('twrc.key')) unseal(lsGet('twrc.key'), false).then(ok => { if (ok) location.reload(); });
   registerSW(); readGeoPermission(); refreshTireDB(); tripCancelSchedulePurge();
   if (GPS && !(locHasCoords(GPS) && Number.isFinite(GPS.t) && GPS.t <= Date.now() + 60e3 && Number.isFinite(GPS.acc) && GPS.acc >= 0 && GPS.acc <= PLACE_ACC_APPROX)) { GPS = null; try { APP_STORAGE.removeItem('twrc.gps'); } catch (e) { /* stockage */ } }   // ancienne position imprécise ou invalide : jamais un lieu fiable
   if (S.gpsAuto && GPS) UI.loc = 'gps';
