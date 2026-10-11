@@ -120,7 +120,7 @@ async function apply(s, dev, mode) {
       const original = await ready(s), key = original.key;
       await check(dev + ' · commande discrète dans Prochain trajet, cinq onglets conservés', async () => {
         assert.match(original.wx, /Domicile → Alpha/); assert.equal(await p.locator('#secWx [data-act=cal-origin-open]').count(), 1);
-        assert.deepEqual(await p.locator('#viewSeg [data-act=view]').evaluateAll(es => es.map(e => e.dataset.v)), ['meteo', 'pneus', 'trajet', 'tenue', 'analyse']);
+        assert.deepEqual(await p.locator('#viewSeg [data-act=view]').evaluateAll(es => es.map(e => e.dataset.v)), ['meteo', 'pneus', 'trajet', 'garage', 'analyse']);
       });
       await tap(p, dev, '#secWx [data-act=cal-origin-open]');
       await check(dev + ' · choix domicile, lieux, adresse, GPS et retour automatique', async () => {
