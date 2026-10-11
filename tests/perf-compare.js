@@ -123,9 +123,29 @@ async function profile(browser, build, fixture, device) {
       await page.evaluate(() => { window.__tapPerf = null; }); await page.locator('#viewSeg [data-v=' + view + ']').click();
       await page.waitForFunction(() => window.__tapPerf !== null); taps.push(await page.evaluate(() => window.__tapPerf));
     }
+    // PRECISION : premier écran avec les SIX options existantes actives, puis rendus Garage identiques.
+    // Simulation exclusivement fictive. Les coordonnées / titres / réglages ne sont jamais consignés.
+    const precision = await page.evaluate(() => {
+      USER_STORE.state.dayContext.activeCarId = S.cars[0].id;
+      F1Pure.FEATURES.forEach(f => { S.flags['f1' + f.id[0].toUpperCase() + f.id.slice(1)] = 1; });
+      S.cars[0].plan = { on: 1, model: 'Hiver test', etaFrom: '2026-12-01' };
+      document.querySelector('#placeBar [data-act=place-confirm][data-place=home]')?.click();
+      UI.view = 'pneus'; renderAll();
+      const rect = id => { const e = document.getElementById(id), r = e && e.getBoundingClientRect(); return r && r.height ? { top: Math.round(r.top + scrollY), bottom: Math.round(r.bottom + scrollY) } : null; };
+      const cockpit = { viewport: innerHeight, width: innerWidth, decision: rect('decisionCore'), trip: rect('secBrf'), navigation: rect('viewSeg'),
+        engineerOpen: !!document.getElementById('f1-panel-raceEngineer')?.open };
+      UI.view = 'garage'; renderAll();
+      const root = document.getElementById('secGarage'), button = root.querySelector('.garage-edit'), plan = root.querySelector('.garage-plan');
+      if (plan) plan.open = true; button.focus();
+      const observer = new MutationObserver(() => {}); observer.observe(root, { childList: true, subtree: true });
+      const start = performance.now(); for (let k = 0; k < 20; k++) renderGarage();
+      const elapsedMs = performance.now() - start, childMutations = observer.takeRecords().filter(r => r.type === 'childList').length; observer.disconnect();
+      return { cockpit, garage: { renders: 20, elapsedMs, childMutations, buttonPreserved: button === root.querySelector('.garage-edit'),
+        focusPreserved: document.activeElement === button, planOpen: !!root.querySelector('.garage-plan')?.open } };
+    });
     if (errors.length) throw new Error('Exception applicative pendant le profilage : ' + errors.join(', '));
     return { device, viewport: mobile ? '414x896' : '1440x900', cpuThrottle: 1, physicalDevice: false, initialGenericMs, unlockAndReloadMs,
-      ...metrics, tapToAnimationFrameMs: { median: median(taps), samples: taps }, requestsAtReady, fixtureResponseBytesAtReady: bytesAtReady, rejectedExternal, pageErrors: errors.length };
+      ...metrics, precision, tapToAnimationFrameMs: { median: median(taps), samples: taps }, requestsAtReady, fixtureResponseBytesAtReady: bytesAtReady, rejectedExternal, pageErrors: errors.length };
   } finally { await context.close(); }
 }
 async function main() {
@@ -147,7 +167,8 @@ async function main() {
     nowInBeforeMs: +before.nowInMs.median.toFixed(3), nowInAfterMs: +after.nowInMs.median.toFixed(3),
     rebuildBeforeMs: +before.rebuildMs.median.toFixed(2), rebuildAfterMs: +after.rebuildMs.median.toFixed(2),
     requestsBefore: before.requestsAtReady, requestsAfter: after.requestsAtReady,
-    startupBeforeMs: Math.round(before.initialGenericMs), startupAfterMs: Math.round(after.initialGenericMs)
+    startupBeforeMs: Math.round(before.initialGenericMs), startupAfterMs: Math.round(after.initialGenericMs),
+    precisionBefore: before.precision, precisionAfter: after.precision
   }; });
   console.log(JSON.stringify({ browser: NAME, baseline: baseline.sha, candidate: candidate.sha, sizes: { baseline: baseline.sizes, candidate: candidate.sizes }, rows }, null, 2));
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, '# Profilage ' + NAME + ' — simulation, pas iPhone physique\n\n' +

@@ -42,12 +42,21 @@ function renderGarage() {
   const el = $('#secGarage');
   if (!el) return;
   el.hidden = UI.view !== 'garage';
-  if (el.hidden) { if (el.innerHTML) el.innerHTML = ''; return; }
-  if (LOCKED()) { el.innerHTML = '<p class="sub">Déverrouille Race Control pour retrouver les fiches chiffrées.</p>'; return; }
+  if (el.hidden) { if (el.innerHTML) el.innerHTML = ''; renderGarage.last = null; return; }
+  if (LOCKED()) { el.innerHTML = '<p class="sub">Déverrouille Race Control pour retrouver les fiches chiffrées.</p>'; renderGarage.last = null; return; }
   const active = appActiveCar(), cars = Garage.overview(S.cars, active && active.id, tyreStateOf);
-  el.innerHTML = '<div class="mod-h"><h2>🛠️ THE GARAGE</h2><span class="src obs">véhicules · données enregistrées</span></div>' +
+  const html = '<div class="mod-h"><h2>🛠️ THE GARAGE</h2><span class="src obs">véhicules · données enregistrées</span></div>' +
     '<p class="garage-lead">Centre technique personnel. Même configuration que les onglets Pneus et Analyse, sans synchronisation supplémentaire.</p>' +
     (cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>'
       : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>') +
     '<p class="garage-note">Les profondeurs et contrôles sont saisis par toi. La pression affichée est une cible, pas une mesure en temps réel. Aucun capteur moteur, diagnostic OBD ou historique de réparations n’est disponible.</p>';
+  // Une projection identique conserve le geste en cours, le focus et les extensions F1.
+  // Une vraie modification reste visible, en gardant les plans hiver ouverts par véhicule.
+  if (html === renderGarage.last) return;
+  const expanded = new Set([...el.querySelectorAll('.garage-plan[open]')]
+    .map(plan => plan.closest('[data-garage-car]').dataset.garageCar));
+  el.innerHTML = html; renderGarage.last = html;
+  el.querySelectorAll('.garage-plan').forEach(plan => {
+    if (expanded.has(plan.closest('[data-garage-car]').dataset.garageCar)) plan.open = true;
+  });
 }
