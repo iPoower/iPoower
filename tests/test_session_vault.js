@@ -25,9 +25,10 @@ const fakeLocks = () => {
     const task = tail.then(fn); tail = task.catch(() => {}); return task; } };
 };
 async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
-  const ctx = { console, setTimeout, clearTimeout, TextEncoder, TextDecoder, atob, btoa, JSON, Proxy, Reflect, Map, Set, Object, Array, Uint8Array, Promise, Error, Event: class { constructor(t) { this.type = t; } } };
+  const indexedDB = require('./lib/indexeddb.fake')();
+  const ctx = { console, indexedDB, setTimeout, clearTimeout, TextEncoder, TextDecoder, atob, btoa, JSON, Proxy, Reflect, Map, Set, Object, Array, Uint8Array, Promise, Error, Event: class { constructor(t) { this.type = t; } } };
   vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/device-storage.js'), 'utf8') + '\n' + source + ';this.SV=SessionVault;this.DS=DeviceStorage;', ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/device-storage.js'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, '../src/remember-device.js'), 'utf8') + '\n' + source + ';this.SV=SessionVault;this.DS=DeviceStorage;this.RD=RememberDevice;', ctx);
   const { SV, DS } = ctx, crypto = webcrypto, PASS = 'code-fictif-de-test-1234';
   let count = 0;
   const test = async (name, fn) => { try { await fn(); } catch (error) { error.scenario = name; throw error; } count++; if (!options.quiet) console.log('✅ ' + name); };
@@ -44,7 +45,7 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
   const leaks = raw => Object.entries(raw.dump()).filter(([k, v]) => k !== SV.VAULT && SENSITIVE.some(x => v.includes(x) || k.includes(x))).map(([k]) => k);
   const fill = (raw, o) => Object.entries(o).forEach(([k, v]) => raw.setItem(k, v));
   const locks = fakeLocks();
-  const make = (raw, ses = session(), extra = {}) => ({ vs: SV.create({ raw, session: ses, crypto, target: null, locks, ...extra }), ses });
+  const make = (raw, ses = session(), extra = {}) => ({ vs: SV.create({ raw, session: ses, crypto, target: null, sessionKeys: ctx.RD.sessions, locks, ...extra }), ses });
   await test('démarrage sans coffre ni migration : ne dépend pas du verrou et ne retarde pas les événements de reprise', async () => {
     const raw = fakeStorage(); raw.setItem('twrc.view', 'pneus');
     const A = make(raw, session(), { locks: { request() { throw new Error('Un démarrage sans écriture ne doit pas prendre le verrou.'); } } }).vs;
@@ -196,7 +197,7 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     // Un autre contexte JS ne peut pas partager une file Promise privée avec le premier.
     const other = { ...ctx }; vm.createContext(other); vm.runInContext(source + ';this.SV=SessionVault;', other);
     const sb = session(); sb.setItem(SV.SESSION, sa.getItem(SV.SESSION));
-    const B = other.SV.create({ raw, session: sb, crypto, target: null, locks }); await B.boot();
+    const B = other.SV.create({ raw, session: sb, crypto, target: null, sessionKeys: ctx.RD.sessions, locks }); await B.boot();
     const delayed = []; raw.peers.add(e => delayed.push(e));
     A.store.setItem('twrc.tripcancel', 'A-simultane'); B.store.setItem('twrc.returnhome.v1', 'B-simultane');
     await Promise.all([A.flush(), B.flush()]);
@@ -272,7 +273,9 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
   });
   await test('notification de verrou retardée : une sauvegarde en attente consulte aussi le signal sur disque', async () => {
     const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(), A = make(raw, sa).vs; await A.boot(); const before = raw.getItem(SV.VAULT);
-    raw.setItem(SV.LOCK_SIGNAL, 'autre-onglet-verrouille'); A.store.setItem('twrc.tripcancel', 'ne-pas-ecrire'); await A.flush();
+    raw.setItem(SV.LOCK_SIGNAL, 'autre-onglet-verrouille');
+    assert.throws(() => A.store.setItem('twrc.tripcancel', 'ne-pas-ecrire'), e => e.expired === true, 'refus dès l’accès, même sans événement storage');
+    await A.flush();
     assert.equal(A.mode, 'locked'); assert.equal(sa.getItem(SV.SESSION), null); assert.equal(raw.getItem(SV.VAULT), before);
   });
   await test('absence de verrou inter-onglets : modifications gardées en mémoire, jamais de réussite trompeuse', async () => {
@@ -315,8 +318,8 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     const raw = fakeStorage(); fill(raw, LEGACY());
     const remembered = {
       item: null,
-      async save(rawKey, salt, signal) { this.item = { rawKey, salt: Buffer.from(salt).toString('base64'), signal, expiresAt: Date.now() + 7 * 864e5 }; },
-      async resume(salt, signal) { return this.item && this.item.salt === salt && this.item.signal === signal ? this.item : null; },
+      async save(rawKey, salt, signal) { this.item = { rawKey: new Uint8Array(rawKey), salt: Buffer.from(salt).toString('base64'), signal, expiresAt: Date.now() + 7 * 864e5 }; },
+      async resume(salt, signal) { return this.item && this.item.salt === salt && this.item.signal === signal ? { ...this.item, rawKey: new Uint8Array(this.item.rawKey) } : null; },
       async clear() { this.item = null; }
     };
     const A = make(raw, session(), { remembered }).vs; await A.boot(); await A.lock();
@@ -394,7 +397,7 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     const raw = fakeStorage(), ses = session(); fill(raw, LEGACY());
     await make(raw, ses).vs.boot();
     const before = raw.getItem(SV.VAULT), entry = JSON.parse(ses.getItem(SV.SESSION));
-    entry.k = '%%%%not-base64%%%%'; ses.setItem(SV.SESSION, JSON.stringify(entry));
+    entry.c = '%%%%not-base64%%%%'; ses.setItem(SV.SESSION, JSON.stringify(entry));
     let resumeCalls = 0, clearCalls = 0;
     const remembered = { async resume() { resumeCalls++; return { rawKey: new Uint8Array(32), expiresAt: Date.now() + 1000 }; },
       async clear() { clearCalls++; } };
@@ -408,6 +411,63 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     assert.equal(raw.getItem(SV.VAULT), before);
     await B.unlock(PASS);
     assert.equal(B.store.getItem('twrc.settings.v1'), LEGACY()['twrc.settings.v1']);
+  });
+  await test('sessionStorage : aucune clé brute, clé IndexedDB réellement non extractible, rechargement intact', async () => {
+    const raw = fakeStorage(), ses = session(); fill(raw, LEGACY()); await make(raw, ses).vs.boot();
+    const descriptor = JSON.parse(ses.getItem(SV.SESSION));
+    assert.equal(descriptor.v, 4); assert.equal(descriptor.k, undefined); assert.equal(Buffer.from(descriptor.c, 'base64').length, 48);
+    const item = indexedDB.records.get('tab:' + descriptor.id);
+    assert(item && item.key); assert.equal(item.key.extractable, false); assert.equal(item.key.algorithm.length, 256);
+    await assert.rejects(() => crypto.subtle.exportKey('raw', item.key), e => e.name === 'InvalidAccessException' || e.name === 'InvalidAccessError');
+    const reopened = make(raw, ses).vs; assert.equal(await reopened.boot(), 'vault'); assert.equal(reopened.store.getItem('twrc.settings.v1'), LEGACY()['twrc.settings.v1']);
+  });
+  await test('ancienne session v3 : reprise authentifiée en v4 sans changer le coffre ni prolonger le délai', async () => {
+    const raw = fakeStorage(), ses = session(); fill(raw, LEGACY()); await make(raw, ses).vs.boot();
+    const before = raw.getItem(SV.VAULT), descriptor = JSON.parse(ses.getItem(SV.SESSION)), salt = Buffer.from(descriptor.s, 'base64');
+    const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(PASS), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 600000 }, material, 256);
+    ses.setItem(SV.SESSION, JSON.stringify({ v: 3, s: descriptor.s, k: Buffer.from(bits).toString('base64'), l: descriptor.l, a: descriptor.a, e: descriptor.e }));
+    const resumed = make(raw, ses).vs; assert.equal(await resumed.boot(), 'vault');
+    const converted = JSON.parse(ses.getItem(SV.SESSION)); assert.equal(converted.v, 4); assert.equal(converted.k, undefined); assert.equal(converted.e, descriptor.e);
+    assert.equal(raw.getItem(SV.VAULT), before); assert.equal(resumed.store.getItem('twrc.settings.v1'), LEGACY()['twrc.settings.v1']);
+  });
+  await test('métadonnées/session chiffrée altérées : refus, aucun repli sur le souvenir, coffre conservé', async () => {
+    for (const field of ['id', 's', 'l', 'a', 'e', 'i', 'c']) {
+      const raw = fakeStorage(), ses = session(); fill(raw, LEGACY()); await make(raw, ses).vs.boot(); const before = raw.getItem(SV.VAULT);
+      const d = JSON.parse(ses.getItem(SV.SESSION));
+      if (field === 'a') { d.a++; d.e++; } else if (field === 'e') { d.a--; d.e--; }
+      else if (field === 'l') d.l = 'signal-hostile'; else if (field === 'id') d.id = '0'.repeat(32);
+      else d[field] = Buffer.alloc(field === 's' ? 16 : field === 'i' ? 12 : 48, 1).toString('base64');
+      ses.setItem(SV.SESSION, JSON.stringify(d)); let fallback = 0;
+      const vs = make(raw, ses, { remembered: { async resume() { fallback++; }, async clear() {} } }).vs;
+      assert.equal(await vs.boot(), 'locked', field); assert.equal(fallback, 0); assert.equal(raw.getItem(SV.VAULT), before);
+    }
+  });
+  await test('IndexedDB indisponible/saturé : page utilisable, aucun repli en clé brute, code au prochain chargement', async () => {
+    const raw = fakeStorage(), ses = session(); fill(raw, LEGACY());
+    const denied = { async save() { throw Object.assign(new Error('quota'), { name: 'QuotaExceededError' }); }, async resume() { return null; }, async clear() {} };
+    const A = make(raw, ses, { sessionKeys: denied }).vs; assert.equal(await A.boot(), 'vault'); assert.equal(ses.getItem(SV.SESSION), null); assert.match(A.warn, /code sera redemandé/);
+    A.store.setItem('twrc.tripcancel', 'modification-conservée'); await A.flush(); assert.equal(A.error, null);
+    const B = make(raw, ses).vs; assert.equal(await B.boot(), 'locked'); await B.unlock(PASS); assert.equal(B.store.getItem('twrc.tripcancel'), 'modification-conservée');
+  });
+  await test('révocation après veille : accès bloqué même sans événement storage ni timer', async () => {
+    const raw = fakeStorage(), ses = session(); fill(raw, LEGACY()); const A = make(raw, ses).vs; await A.boot(); const before = raw.getItem(SV.VAULT);
+    raw.setItem(SV.LOCK_SIGNAL, 'signal-nouveau-pendant-la-veille');
+    assert.equal(A.store.getItem('twrc.settings.v1'), null); assert.equal(A.locked(), true); assert.equal(ses.getItem(SV.SESSION), null); assert.equal(raw.getItem(SV.VAULT), before);
+  });
+  await test('verrouillage manuel : toutes les clés de sessions persistées sont révoquées', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY()); const A = make(raw).vs; await A.boot(); const B = make(raw).vs; await B.boot(); await B.unlock(PASS);
+    assert([...indexedDB.records.keys()].some(k => k.startsWith('tab:')));
+    await A.lock(); assert.equal([...indexedDB.records.keys()].filter(k => k.startsWith('tab:')).length, 0);
+  });
+  await test('preuve de transfert fictif du coffre : toutes les valeurs durables, pneus et historique identiques', async () => {
+    const origin = fakeStorage(), L = LEGACY();
+    const settings = JSON.parse(L['twrc.settings.v1']); settings.cars[0].plan = { type: 'winter', model: 'Pneu fictif', size: '215/40 R18', on: 0 };
+    L['twrc.settings.v1'] = JSON.stringify(settings); fill(origin, L); await make(origin).vs.boot();
+    const destination = fakeStorage(); destination.setItem(SV.VAULT, origin.getItem(SV.VAULT));
+    const restored = make(destination).vs; assert.equal(await restored.boot(), 'locked'); await restored.unlock(PASS);
+    for (const [key, value] of Object.entries(L)) if (SV.secret(key)) assert.equal(restored.store.getItem(key), value, key);
+    assert.deepEqual(leaks(destination), []); assert(origin.getItem(SV.VAULT), 'origine conservée pour retour arrière');
   });
   return count;
 }
@@ -425,7 +485,7 @@ if (require.main === module) (async () => {
     { name: 'caches durables sacrifiés (journal compris)', from: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));", to: "const lean = {};" },
     { name: 'verrou global ignoré', from: "return locks.request(VAULT, { mode: 'exclusive' }, fn);", to: "return fn();" },
     { name: 'snapshot local écrase les clés distantes', from: "snap = { ...base };", to: "snap = values();" },
-    { name: 'signal de verrou sur disque ignoré', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) !== st.lockSignal) forget();", to: "if (false) forget();" },
+    { name: 'signal de verrou sur disque ignoré', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) !== st.lockSignal) forget();", to: "if (false) forget();", alsoFrom: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) !== st.lockSignal) { forget(); return true; }", alsoTo: "if (false) { forget(); return true; }" },
     { name: 'coffre précédent effacé au nouvel essai', from: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));", to: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k))); raw.removeItem(VAULT);" },
     { name: 'mauvais code remplace la clé active', from: "const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);", to: "const key = st.key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);" },
     { name: 'déverrouillage ignore les sauvegardes en attente', from: "while (st.mode === 'vault' && st.mem.dirty.size) await savePending();\n      return unlockInside(pass, extra, keepWeek);", to: "return unlockInside(pass, extra, keepWeek);" },
@@ -435,7 +495,9 @@ if (require.main === module) (async () => {
   ];
   for (const m of mutations) {
     assert(original.includes(m.from), 'Mutation introuvable : ' + m.name);
-    let rejection; try { await runTests(original.replace(m.from, m.to), { quiet: true }); } catch (e) { rejection = e; }
+    if (m.alsoFrom) assert(original.includes(m.alsoFrom), 'Deuxième garde introuvable : ' + m.name);
+    const mutated = original.replace(m.from, m.to);
+    let rejection; try { await runTests(m.alsoFrom ? mutated.replace(m.alsoFrom, m.alsoTo) : mutated, { quiet: true }); } catch (e) { rejection = e; }
     assert(rejection && rejection.scenario, 'La mutation doit être rejetée : ' + m.name + (rejection ? ' · ' + rejection.message : ''));
     console.log('✅ Contre-test rejeté : ' + m.name + ' → ' + rejection.scenario);
   }

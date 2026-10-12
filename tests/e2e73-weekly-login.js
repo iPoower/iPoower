@@ -18,7 +18,10 @@ const unlocked = async p => {
   do {
     state = await p.evaluate(() => ({
       mode: window.TWRC_VAULT && window.TWRC_VAULT.mode,
-      locked: typeof LOCKED === 'function' ? LOCKED() : null
+      locked: typeof LOCKED === 'function' ? LOCKED() : null,
+      clock: Date.now(),
+      session: (() => { try { const d = JSON.parse(sessionStorage.getItem('twrc.session.v2') || 'null'); return d ? { v: d.v, a: d.a, e: d.e, signalMatches: (d.l ?? null) === localStorage.getItem('twrc.lock.signal') } : null; } catch (e) { return 'invalid'; } })(),
+      message: (document.querySelector('#unlockMsg') || {}).textContent || ''
     }));
     if (state.mode === 'vault' && state.locked === false) return;
     await wait(100);
@@ -49,14 +52,18 @@ async function openAt(context, date) {
             const t = db.transaction('records', 'readonly'), r = t.objectStore('records').get('device');
             r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
           });
+          const descriptor = JSON.parse(sessionStorage.getItem('twrc.session.v2'));
+          const tab = await new Promise((resolve, reject) => { const r = db.transaction('records', 'readonly').objectStore('records').get('tab:' + descriptor.id); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+          let exported = false; try { await crypto.subtle.exportKey('raw', tab.key); exported = true; } catch (e) { /* non extractible */ }
           db.close();
-          return { present: !!item, extractable: item && item.wrappingKey.extractable, ttl: item && item.exp - item.at, raw: JSON.stringify({ cipher: item.cipher, iv: item.iv }), session: sessionStorage.getItem('twrc.session.v2') };
+          return { present: !!item, extractable: item && item.wrappingKey.extractable, ttl: item && item.exp - item.at, raw: JSON.stringify({ cipher: item.cipher, iv: item.iv }), session: sessionStorage.getItem('twrc.session.v2'), sessionVersion: descriptor.v, rawKeyField: Object.hasOwn(descriptor, 'k'), tabPresent: !!tab, tabExtractable: tab && tab.key.extractable, tabExported: exported };
         });
         assert(state.present, 'autorisation sauvegardée');
         assert.equal(state.extractable, false);
         assert.equal(state.ttl, 7 * DAY);
         assert(!state.raw.includes('code-fictif') && !state.raw.includes('twrc.key'));
         assert(state.session && !state.session.includes('code-fictif'));
+        assert.equal(state.sessionVersion, 4); assert.equal(state.rawKeyField, false); assert.equal(state.tabPresent, true); assert.equal(state.tabExtractable, false); assert.equal(state.tabExported, false);
         assert.equal(await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem('twrc.key')), null);
       });
       await check(dev + ' · nouvel onglet 24 h après : pas de code et données intactes', async () => {
@@ -99,6 +106,9 @@ async function openAt(context, date) {
           null, { timeout: 15000 });
         await p.locator('#unlockPw').waitFor({ state: 'visible', timeout: 15000 });
         assert.equal(await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), sealedBefore);
+        const reauthTime = await p.evaluate(() => Date.now());
+        assert(reauthTime >= s.T0 + 8 * DAY, 'la réauthentification reste après l’expiration');
+        await p.clock.setFixedTime(reauthTime);
         await p.locator('#unlockPw').fill(PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('#unlockForm button[type=submit]').click()]);
         await unlocked(p); await s.settle(4);
@@ -118,6 +128,11 @@ async function openAt(context, date) {
       await check(dev + ' · case désactivée : ouverture suivante avec mot de passe', async () => {
         assert.equal(await p.locator('#rememberWeek').isChecked(), false, 'la conservation reste volontaire');
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
+        // Après une page temporaire qui a déplacé l'horloge du contexte,
+        // fixer l'instant courant pour que le reload ne réintroduise pas un ancien mode d'horloge.
+        const authTime = await p.evaluate(() => Date.now());
+        assert(Number.isSafeInteger(authTime) && authTime >= s.T0);
+        await p.clock.setFixedTime(authTime);
         await p.fill('#unlockPw', PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
         // A WebKit navigation can resolve before the async vault unseal has completed.
@@ -140,6 +155,11 @@ async function openAt(context, date) {
       });
       await check(dev + ' · expiration sur la même page : coffre illisible et écran bloquant', async () => {
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
+        // Après une page temporaire qui a déplacé l'horloge du contexte,
+        // fixer l'instant courant pour que le reload ne réintroduise pas un ancien mode d'horloge.
+        const authTime = await p.evaluate(() => Date.now());
+        assert(Number.isSafeInteger(authTime) && authTime >= s.T0);
+        await p.clock.setFixedTime(authTime);
         await p.fill('#unlockPw', PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
         await unlocked(p);

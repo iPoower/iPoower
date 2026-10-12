@@ -95,6 +95,18 @@ async function check(name, test) { await test(); n++; console.log('✅ ' + name)
     s.setItem = function(k, v) { return original.call(this, k, k === D.VAULT ? 'broken' : v); };
     await assert.rejects(D.lock(s, CODE, crypto)); assert.deepEqual(Object.fromEntries(s.map), old);
   });
+  await check('enveloppes publiques/importées : paramètres KDF hostiles et Base64 corrompu refusés avant dérivation', async () => {
+    const envelope = require('../tools/keys').seal({ fixture: true }, CODE);
+    assert.equal(D.validEnvelope(envelope), true);
+    assert.equal(D.validEnvelope({ ...envelope, app: 'twrc-backup', v: 2 }, true), true);
+    const legacy = { ...envelope, app: 'twrc-backup' }; delete legacy.it; delete legacy.kdf; delete legacy.v;
+    assert.equal(D.validEnvelope(legacy, true), true, 'sauvegarde historique aux paramètres par défaut');
+    for (const change of [{ it: 2147483647 }, { it: 1 }, { it: '600000' }, { kdf: 'unknown' }, { s: 'not-base64' }, { i: 'AAAA' }, { c: '%%%%' }]) assert.equal(D.validEnvelope({ ...envelope, ...change }), false);
+    const nodeCrypto = require('node:crypto'), original = nodeCrypto.pbkdf2Sync; let calls = 0;
+    nodeCrypto.pbkdf2Sync = () => { calls++; throw new Error('dérivation hostile interdite'); };
+    try { assert.equal(require('../tools/keys').tryUnseal({ ...envelope, it: 2147483647 }, CODE), null); assert.equal(calls, 0); }
+    finally { nodeCrypto.pbkdf2Sync = original; }
+  });
   console.log(`${n}/${n} scénarios OK`);
 })().catch(e => { console.error(e); process.exitCode = 1; });
 function oldWithoutOther() { return Object.fromEntries(Object.entries(old).filter(([k]) => k.startsWith('twrc.'))); }

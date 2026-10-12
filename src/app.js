@@ -74,6 +74,7 @@ async function unseal(pass, keepWeek = true) {
   const S0 = window.TWRC_SEALED; if (!S0 || !crypto || !crypto.subtle) return false;
   let txt;
   try {
+    if (!DeviceStorage.validEnvelope(S0)) throw new Error('Enveloppe de préréglage invalide');
     const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
     const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(S0.s), iterations: S0.it, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
     txt = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(S0.i) }, key, b64(S0.c))); JSON.parse(txt);
@@ -1753,8 +1754,10 @@ async function backupApplyPlan(plan) {
 }
 async function backupImport(f) {
   bkMsg('Lecture du fichier…');
+  if (f && Number.isFinite(f.size) && f.size > 68 * 1024 * 1024) { bkMsg('Sauvegarde trop volumineuse : fichier conservé, aucun réglage modifié.'); return; }
   let o; try { o = JSON.parse(await f.text()); } catch (e) { bkMsg('Fichier illisible.'); return; }
   if (!o || o.app !== 'twrc-backup' || !o.c) { bkMsg('Ce fichier n’est pas une sauvegarde Race Control.'); return; }
+  if (!DeviceStorage.validEnvelope(o, true)) { bkMsg('Sauvegarde chiffrée invalide : aucun réglage modifié.'); return; }
   const pass = bkPass(); if (!pass) { bkMsg('Entre le code utilisé pour la sauvegarde, puis réessaie.'); return; }
   bkMsg('Déchiffrement…');
   let data;
@@ -2768,6 +2771,7 @@ function calendarSealedCache() {
   catch (e) { return null; }
 }
 async function openSealed(S0, pass) {
+  if (!DeviceStorage.validEnvelope(S0)) throw new Error('Enveloppe agenda invalide');
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(S0.s), iterations: S0.it, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
   return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(S0.i) }, key, b64(S0.c))));
