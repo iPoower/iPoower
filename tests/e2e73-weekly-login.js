@@ -105,7 +105,12 @@ async function openAt(context, date) {
         await p.fill('#unlockPw', PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
         assert.equal(await p.evaluate(() => LOCKED()), false);
-        await p.clock.setFixedTime(s.T0 + 8 * DAY);
+        // L'expiration est calculée depuis la DERNIÈRE saisie du code.
+        // Après les scénarios de verrouillage et de reconnexion, l'échéance
+        // n'est plus nécessairement T0 + 7 jours : utiliser celle du coffre.
+        const expiresAt = await p.evaluate(() => window.TWRC_VAULT.expiresAt);
+        assert(expiresAt > 0, 'une échéance de session doit exister');
+        await p.clock.setFixedTime(expiresAt + 1000);
         const result = await p.evaluate(() => {
           checkSessionExpiry();
           const v = window.TWRC_VAULT;
