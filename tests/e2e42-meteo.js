@@ -91,7 +91,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     check('1 · température actuelle : carte dédiée et immédiatement lisible', /Température actuelle/i.test(w.current) && /°C/.test(w.current) && /Ressenti/.test(w.current), w.current);
     check('1 · températures futures visibles sans ouvrir de section : 11 h incluse, 12 h de prévisions et valeurs du modèle',
       w.hourlyAfterHero && w.hourly.length >= 12 && w.hourly.some(x => x.hour === '2026-10-03T11:00' && /°/.test(x.text)) &&
-      w.hourly.every(x => /^2026-10-03T\\d{2}:00|^2026-10-04T\\d{2}:00/.test(x.hour)), JSON.stringify(w.hourly));
+      w.hourly.every(x => ['2026-10-03T', '2026-10-04T'].some(day => x.hour.startsWith(day)) && x.hour.endsWith(':00')), JSON.stringify(w.hourly));
     check('1 · heure par heure : provenance modèle, rafraîchissement 5 min et pas de nouvelle API', /Prévisions du modèle/.test(w.hourlyNote) && /toutes les 5 min/.test(w.hourlyNote), w.hourlyNote);
     check('1 · prochain trajet de l’agenda : origine → destination, horaires, départ et arrivée', /Prochain trajet/i.test(w.trip) && /→/.test(w.trip) && /Départ/.test(w.trip) && /Arrivée/.test(w.trip), w.trip);
     check('1 · plusieurs trajets : la chronologie montre plusieurs départs, triés', w.moments.filter(x => /départ/.test(x)).length >= 2, w.moments.join(' | '));
