@@ -705,7 +705,7 @@ async function refreshAll(force = true) {
   if (ok) lastOk = Math.max(lastOk || 0, ...locs.map(l => (RAW[l.id] && RAW[l.id].mode === 'live' ? RAW[l.id].t : 0)));
   const scrollY = window.scrollY;
   busy = false; rebuild(); renderAll();
-  if (Number.isFinite(scrollY) && typeof window.scrollTo === 'function') window.scrollTo(0, scrollY);
+  if (Number.isFinite(scrollY) && typeof window.scrollTo === 'function') window.scrollTo({ top: scrollY, behavior: 'instant' });
   fetchVigi(); refreshEns(); radarRefresh(); loadCalendar();
 }
 function startDemo(scn) {
@@ -3756,7 +3756,7 @@ function renderAll() {
     APP_CONTEXT.rendering = false; renderAll.view = UI.view;
     // La navigation garde son comportement ; une projection du même écran
     // conserve la position même quand ses blocs changent de hauteur.
-    if (sameView && Number.isFinite(scrollY)) window.scrollTo(0, scrollY);
+    if (sameView && Number.isFinite(scrollY)) window.scrollTo({ top: scrollY, behavior: 'instant' });
   }
 }
 function softRender() { renderAll(); } // paramètres inchangés ; mêmes sélecteurs de contexte

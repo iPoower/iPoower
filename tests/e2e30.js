@@ -106,8 +106,8 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
   {
     const s = await session(b, '2026-10-03T16:30:00+02:00'); const { p } = s; all.push(s);
     await s.enableGps(G.amiens, { acc: 10 }); await s.to('2026-10-03T16:30:20+02:00'); await s.fix(G.amiens, { acc: 10, max: null }); await s.settle(5);
-    const undo = await p.$('[data-act="trip-undo"]');
-    check('13 · arrivée affichée avec « Annuler l\'arrivée »', !!undo); if (undo) await undo.click(); await s.settle(4);
+    const undo = p.locator('[data-act="trip-undo"]'), undoShown = await undo.count();
+    check('13 · arrivée affichée avec « Annuler l\'arrivée »', undoShown === 1); if (undoShown) await undo.click(); await s.settle(4);
     await s.to('2026-10-03T16:31:00+02:00'); await s.fix(G.amiens, { acc: 10 }); await s.settle(3); await s.to('2026-10-03T16:31:20+02:00'); await s.fix(G.amiens, { acc: 10 }); await s.settle(5);
     const t = await s.txt(), ls = await p.evaluate(() => localStorage.getItem('twrc.tripdone') || '');
     check('13 · « Annuler l\'arrivée » : trajet de retour à l\'écran, pas de nouvelle arrivée automatique, confirmation proposée', /Assurance/.test(main(t)) && /Arrivée probable/.test(t) && !/15:35\|go/.test(ls), t.slice(0, 200));
@@ -142,7 +142,7 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
     await s.enableGps(near, { acc: 10 }); await s.to('2026-10-03T16:30:20+02:00'); await s.fix(near, { acc: 10 }); await s.settle(5);
     let t = await s.txt();
     check('5 · à ~1 km : pas d\'arrivée automatique, « Arrivée probable » proposée', /Assurance/.test(main(t)) && /Arrivée probable/.test(t) && /✓ Je suis arrivé/.test(t), t.slice(0, 220));
-    { const bt = await p.$('[data-act="trip-arrived"]'); if (bt) await bt.click(); } await s.settle(4); t = await s.txt();
+    { const bt = p.locator('[data-act="trip-arrived"]'); if (await bt.count()) await bt.click(); } await s.settle(4); t = await s.txt();
     check('5 · « ✓ Je suis arrivé » : trajet terminé', /✓ Arrivé · Aller · Assurance/.test(t) && !/Assurance/.test(main(t)));
   }
   // ===== 6. relevés précis mais périmés (cache iOS) à destination : aucune transition =====

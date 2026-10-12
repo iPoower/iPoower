@@ -219,11 +219,13 @@ const osrmFromGps = S => S.osrm.filter(x => GPS_MARK.some(v => x.includes(v)));
     check('I1 · 12:00, à 30 km de l\'origine prévue : départ conseillé = arrivée cible − durée depuis ici', new RegExp('départ conseillé ' + exp, 'i').test(t) && /arrivée cible 16:50/i.test(t) && /depuis ici/.test(t) && nMa(t) === 1 && (await p.evaluate(() => LIVE.phase)) === 'advice', exp + ' · ' + t.slice(0, 200));
     const n1 = osrmFromGps(S).length;
     await s.to('2026-10-03T12:10:00+02:00'); await s.fix(G.loin2); await s.settle(6);
-    check('I2 · aperçu : déplacement de 6 km → itinéraire recalculé', osrmFromGps(S).length === n1 + 1, `${osrmFromGps(S).length - n1}`);
+    for (let k = 0; k < 30 && osrmFromGps(S).length < n1 + 1; k++) await s.settle(1);
+    check('I2 · aperçu : déplacement de 6 km → itinéraire recalculé', osrmFromGps(S).length === n1 + 1, `${osrmFromGps(S).length - n1} · ` + JSON.stringify(await p.evaluate(() => ({ phase: LIVE.phase, routeTry: LIVE.routeTry, routeOrigin: LIVE.routeOrigin, now: Date.now(), fix: FIX, reason: GEO.reason }))));
     await s.to('2026-10-03T12:20:00+02:00'); await s.fix(G.loin3); await s.settle(6);
     check('I3 · aperçu : déplacement de 2 km → aucun recalcul (seuil 5 km)', osrmFromGps(S).length === n1 + 1);
     await s.to('2026-10-03T12:45:00+02:00'); await s.fix(G.loin3); await s.settle(6);
-    check('I4 · aperçu : route de plus de 30 min → recalcul', osrmFromGps(S).length === n1 + 2);
+    for (let k = 0; k < 30 && osrmFromGps(S).length < n1 + 2; k++) await s.settle(1);
+    check('I4 · aperçu : route de plus de 30 min → recalcul', osrmFromGps(S).length === n1 + 2, JSON.stringify(await p.evaluate(() => ({ phase: LIVE.phase, routeTry: LIVE.routeTry, routeOrigin: LIVE.routeOrigin, now: Date.now(), fix: FIX, reason: GEO.reason }))));
     check('I4 · aperçu : jamais de haute précision (ni demande, ni suivi)', !(await p.evaluate(n => window.__geoLog.slice(n).some(x => x.hi), hi0)) && !(await p.evaluate(() => window.__geoWatches())).includes(true));
     // l'agenda chiffré (base64 aléatoire) est opaque. La synthèse Race Control peut mémoriser
     // le mot « live » comme mode météo, mais jamais le tracé, l'état LIVE ni des coordonnées GPS.

@@ -113,7 +113,7 @@ function tickLocalClock() {
   if (!DEMO.on && APP_CONTEXT.ready) {
     const y = typeof window !== 'undefined' ? window.scrollY : null;
     rebuild(); renderAll();
-    if (Number.isFinite(y) && typeof window.scrollTo === 'function') window.scrollTo(0, y);
+    if (Number.isFinite(y) && typeof window.scrollTo === 'function') window.scrollTo({ top: y, behavior: 'instant' });
   }
 }
 function autoTick() {

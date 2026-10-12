@@ -63,7 +63,7 @@ const state = p => p.evaluate(() => {
       hang = false; await Promise.allSettled(pending.splice(0).map(([r, u]) => meteoReply(r, u))); await settle(); s = await state(p);
       check(dev + ' · coupure pendant actualisation : cache valide conservé, jamais LIVE', s.mode === 'cache' && !/LIVE/.test(s.bar) && s.cache && s.receipt >= before.receipt && !s.busy);
       const receipt = s.receipt, count = calls;
-      await p.evaluate(() => { document.querySelector('.wx-hours-track').scrollLeft = 140; window.scrollTo(0, Math.min(80, Math.max(0, document.documentElement.scrollHeight - innerHeight) / 2)); }); const scroll = await state(p);
+      await p.evaluate(() => { document.querySelector('.wx-hours-track').scrollLeft = 140; window.scrollTo({ top: Math.min(80, Math.max(0, document.documentElement.scrollHeight - innerHeight) / 2), behavior: 'instant' }); }); const scroll = await state(p);
       for (const at of ['2026-10-04T00:00:00+02:00', '2026-10-04T02:30:00+02:00', '2026-10-04T06:15:00+02:00']) {
         serverNow = Date.parse(at); await p.clock.setSystemTime(serverNow); await p.clock.runFor(31000); await settle(2); s = await state(p);
         const expect = at.slice(0, 16);
