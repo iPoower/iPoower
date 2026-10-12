@@ -18,7 +18,10 @@ const unlocked = async p => {
   do {
     state = await p.evaluate(() => ({
       mode: window.TWRC_VAULT && window.TWRC_VAULT.mode,
-      locked: typeof LOCKED === 'function' ? LOCKED() : null
+      locked: typeof LOCKED === 'function' ? LOCKED() : null,
+      clock: Date.now(),
+      session: (() => { try { const d = JSON.parse(sessionStorage.getItem('twrc.session.v2') || 'null'); return d ? { v: d.v, a: d.a, e: d.e, signalMatches: (d.l ?? null) === localStorage.getItem('twrc.lock.signal') } : null; } catch (e) { return 'invalid'; } })(),
+      message: (document.querySelector('#unlockMsg') || {}).textContent || ''
     }));
     if (state.mode === 'vault' && state.locked === false) return;
     await wait(100);
@@ -99,6 +102,9 @@ async function openAt(context, date) {
           null, { timeout: 15000 });
         await p.locator('#unlockPw').waitFor({ state: 'visible', timeout: 15000 });
         assert.equal(await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), sealedBefore);
+        const reauthTime = await p.evaluate(() => Date.now());
+        assert(reauthTime >= s.T0 + 8 * DAY, 'la réauthentification reste après l’expiration');
+        await p.clock.setFixedTime(reauthTime);
         await p.locator('#unlockPw').fill(PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('#unlockForm button[type=submit]').click()]);
         await unlocked(p); await s.settle(4);
@@ -118,6 +124,11 @@ async function openAt(context, date) {
       await check(dev + ' · case désactivée : ouverture suivante avec mot de passe', async () => {
         assert.equal(await p.locator('#rememberWeek').isChecked(), false, 'la conservation reste volontaire');
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
+        // Après une page temporaire qui a déplacé l'horloge du contexte,
+        // fixer l'instant courant pour que le reload ne réintroduise pas un ancien mode d'horloge.
+        const authTime = await p.evaluate(() => Date.now());
+        assert(Number.isSafeInteger(authTime) && authTime >= s.T0);
+        await p.clock.setFixedTime(authTime);
         await p.fill('#unlockPw', PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
         // A WebKit navigation can resolve before the async vault unseal has completed.
@@ -140,6 +151,11 @@ async function openAt(context, date) {
       });
       await check(dev + ' · expiration sur la même page : coffre illisible et écran bloquant', async () => {
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
+        // Après une page temporaire qui a déplacé l'horloge du contexte,
+        // fixer l'instant courant pour que le reload ne réintroduise pas un ancien mode d'horloge.
+        const authTime = await p.evaluate(() => Date.now());
+        assert(Number.isSafeInteger(authTime) && authTime >= s.T0);
+        await p.clock.setFixedTime(authTime);
         await p.fill('#unlockPw', PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
         await unlocked(p);

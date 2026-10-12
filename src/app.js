@@ -1601,8 +1601,8 @@ function loadLeaflet() {
   if (loadLeaflet.p) return loadLeaflet.p;
   loadLeaflet.p = new Promise((res, rej) => {
     // empreintes SRI (identiques à celles publiées sur leafletjs.com) : le navigateur refuse tout fichier modifié
-    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; css.integrity = 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H'; css.crossOrigin = 'anonymous'; css.referrerPolicy = 'no-referrer'; document.head.appendChild(css);
-    const js = document.createElement('script'); js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; js.integrity = 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH'; js.crossOrigin = 'anonymous'; js.referrerPolicy = 'no-referrer';
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'vendor/leaflet/leaflet.css'; css.integrity = 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H'; css.crossOrigin = 'anonymous'; css.referrerPolicy = 'no-referrer'; document.head.appendChild(css);
+    const js = document.createElement('script'); js.src = 'vendor/leaflet/leaflet.js'; js.integrity = 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH'; js.crossOrigin = 'anonymous'; js.referrerPolicy = 'no-referrer';
     js.onload = () => res(); js.onerror = () => { loadLeaflet.p = null; rej(new Error('carte indisponible')); }; document.head.appendChild(js);
   });
   return loadLeaflet.p;

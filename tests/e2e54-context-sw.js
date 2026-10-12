@@ -1,4 +1,4 @@
-// Vrai Service Worker : migration v10 → v11, ancien profil, cache, fermeture et
+// Vrai Service Worker : migration v10 → v12, ancien profil, cache, fermeture et
 // réouverture hors ligne. App complète ; données et lieux exclusivement fictifs.
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), vm = require('node:vm'), assert = require('node:assert/strict'), pw = require('playwright');
@@ -11,7 +11,7 @@ const server = http.createServer((req, res) => {
   if (!file.startsWith(SITE + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404); return res.end('fixture absente'); }
   const mime = file.endsWith('.js') ? 'text/javascript' : file.endsWith('.png') ? 'image/png' : /\.(json|webmanifest)$/.test(file) ? 'application/json' : 'text/html';
   res.writeHead(200, { 'content-type': mime, 'cache-control': 'no-store' });
-  if (rel === 'sw.js') return res.end(fs.readFileSync(file, 'utf8').replace('twrc-static-v11', 'twrc-static-v' + version));
+  if (rel === 'sw.js') return res.end(fs.readFileSync(file, 'utf8').replace('twrc-static-v12', 'twrc-static-v' + version));
   fs.createReadStream(file).pipe(res);
 });
 async function check(label, fn) { await fn(); n++; console.log('✅ ' + label); }
@@ -71,8 +71,8 @@ async function views(p, expected) {
     await check('ancien profil v10 : confirmation au travail migrée dans les quatre vues', () => views(p, { state: 'work', place: 'work', next: 'ret' }));
     const before = (await read(p)).stored;
     version = 11; await p.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
-    await p.waitForFunction(async () => { const keys = await caches.keys(); return keys.includes('twrc-static-v11') && !keys.includes('twrc-static-v10'); });
-    await check('migration v11 : contexte conservé et cache v10 supprimé, aucune donnée externe dans Cache Storage', async () => {
+    await p.waitForFunction(async () => { const keys = await caches.keys(); return keys.includes('twrc-static-v12') && !keys.includes('twrc-static-v10'); });
+    await check('migration v12 : contexte conservé et cache v10 supprimé, aucune donnée externe dans Cache Storage', async () => {
       assert.deepEqual((await read(p)).stored, before);
       const urls = await p.evaluate(async () => (await Promise.all((await caches.keys()).map(async k => (await (await caches.open(k)).keys()).map(r => r.url)))).flat());
       assert(urls.every(u => u.startsWith(base))); assert(!urls.some(u => /latitude=|longitude=/.test(u)));
