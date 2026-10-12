@@ -4,6 +4,9 @@
 //    puis nouvelle notification seulement en cas d'aggravation (3 par matin maximum)
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const dir = __dirname, crypto = require('crypto');
+// Le code et les moteurs restent dans la révision approuvée de main. Les seuls
+// fichiers issus de gh-pages sont des JSON copiés dans un dossier de données.
+const dataDir = process.env.RC_RELAY_DATA ? path.resolve(process.env.RC_RELAY_DATA) : dir;
 // Deux clés indépendantes, sans repli de l'une sur l'autre :
 //  - RC_KEY  (secret GitHub) : ouvre uniquement la configuration du relais (relay-config.sealed.json) ;
 //  - APP_KEY (secret GitHub, = code de déverrouillage de l'app) : chiffre uniquement l'agenda (calendar.sealed.json), que l'app ouvre avec le même code.
@@ -14,9 +17,21 @@ function unsealWith(S, pass) {
   return JSON.parse(Buffer.concat([d.update(buf.subarray(0, buf.length - 16)), d.final()]).toString('utf8'));
 }
 function openCfg() {
+  if (process.env.RC_RELAY_CONFIG_FILE) {
+    const wrapper = JSON.parse(fs.readFileSync(process.env.RC_RELAY_CONFIG_FILE, 'utf8'));
+    return openSealedCfg(wrapper.sealed);
+  }
   const plainFile = path.join(dir, 'relay-config.json');
   if (fs.existsSync(plainFile)) return JSON.parse(fs.readFileSync(plainFile, 'utf8'));
-  const S = JSON.parse(fs.readFileSync(path.join(dir, 'relay-config.sealed.json'), 'utf8')), app = normKey(process.env.APP_KEY);
+  return openSealedCfg(JSON.parse(fs.readFileSync(path.join(dir, 'relay-config.sealed.json'), 'utf8')));
+}
+function openSealedCfg(S) {
+  // Borne le travail avant PBKDF2 ; aucun paramètre KDF fourni par la production.
+  if (!S || S.v !== 1 || S.kdf !== 'PBKDF2-SHA256' || S.it !== 600000 ||
+      typeof S.s !== 'string' || Buffer.from(S.s, 'base64').length !== 16 ||
+      typeof S.i !== 'string' || Buffer.from(S.i, 'base64').length !== 12 ||
+      typeof S.c !== 'string' || S.c.length > 2000000 || Buffer.from(S.c, 'base64').length < 16) throw new Error('Enveloppe de configuration invalide');
+  const app = normKey(process.env.APP_KEY);
   // clé du relais uniquement (RC_KEY), jamais APP_KEY : une clé du relais égale au code de l'app est refusée, même par valeur.
   const keys = [['RC_KEY', normKey(process.env.RC_KEY)]].filter(([, k]) => k);
   if (!keys.length) { console.log('Secret RC_KEY absent : observations seules, pas de notification'); return null; }
@@ -33,7 +48,7 @@ vm.runInContext(fs.readFileSync(path.join(dir, 'engine.js'), 'utf8') + ';this.E=
 const E = ctx.E;
 // moteur de preuves v2 (mode fantôme) : chargé s'il est publié avec le relais ; son absence ne change rien au relais
 let EV = null; try { const f = path.join(dir, 'evidence.js'); if (fs.existsSync(f)) { vm.runInContext(fs.readFileSync(f, 'utf8') + ';this.EV={evidenceEngine};', ctx); EV = ctx.EV; } } catch (e) { console.log('Moteur v2 indisponible', e.message); }
-const obsFile = path.join(dir, 'obs.json');
+const obsFile = path.join(dataDir, 'obs.json');
 const prev = fs.existsSync(obsFile) ? JSON.parse(fs.readFileSync(obsFile, 'utf8')) : { stations: {}, notified: null };
 
 function parseMetar(raw) {
@@ -291,7 +306,7 @@ async function calendarSync(out) {
     out.relay.calN = events.length; out.relay.calGeo = events.filter(x => x.lat != null).length;
     if (cfg) { try { await planLegs(events, (cfg.origins && cfg.origins[0]) || cfg.home); out.relay.calLegs = events.reduce((n, e) => n + (e.legs || []).length, 0); out.relay.calRouted = events.reduce((n, e) => n + (e.legs || []).filter(l => l.routed).length, 0); } catch (e) { out.relay.calLegErr = String(e.message || e).slice(0, 80); } }
     delete out.relay.calUrlDiag;
-    fs.writeFileSync(path.join(dir, 'calendar.sealed.json'), JSON.stringify(sealWith(pass, { v: 2, updated: new Date().toISOString(), events })));
+    fs.writeFileSync(path.join(dataDir, 'calendar.sealed.json'), JSON.stringify(sealWith(pass, { v: 2, updated: new Date().toISOString(), events })));
     return events;
   } catch (e) { out.relay.calErr = String(e.message || e).replace(/https?:\S+/g, 'url').slice(0, 120); out.relay.calUrl = out.relay.calUrlDiag; delete out.relay.calUrlDiag; return null; }
 }
