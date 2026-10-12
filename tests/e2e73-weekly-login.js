@@ -7,7 +7,7 @@ const DAY = 86400000;
 let n = 0, stage = '';
 const check = async (label, fn) => { stage = label; await fn(); n++; console.log('✅ ' + label); };
 const ready = p => p.waitForFunction(() => typeof LOCKED === 'function' && !!window.TWRC_VAULT && typeof S === 'object',
-  { polling: 100, timeout: 15000 });
+  null, { polling: 100, timeout: 15000 });
 async function openAt(context, date) {
   const p = await context.newPage();
   await p.clock.install({ time: date });
