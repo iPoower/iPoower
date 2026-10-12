@@ -804,7 +804,7 @@ const sizeKey = s => { const d = decodeSize(s); return d ? `${d.w}/${d.ar} R${d.
 function loadTireDB(js, source) {
   if (!js || !Array.isArray(js.tires) || js.tires.length < 5) return false;
   const list = js.tires.filter(x => x && x.b && x.m && ['summer', 'winter', 'allseason'].includes(x.t))
-    .map(x => ({ brand: x.b, model: x.m, type: x.t, pmsf: x.p == null ? null : !!x.p, cat: x.c || '', sizes: x.s || {}, tier: x.tier || '', added: x.a || null, year: x.y || null }));
+    .map(x => ({ brand: x.b, model: x.m, type: x.t, pmsf: x.p == null ? null : !!x.p, cat: x.c || '', sizes: x.s || {}, variants: x.v && typeof x.v === 'object' && !Array.isArray(x.v) ? x.v : {}, tier: x.tier || '', added: x.a || null, year: x.y || null }));
   if (list.length < 5) return false;
   TIRE_DB.length = 0; list.forEach(x => TIRE_DB.push(x));
   TIRE_DB_META = { version: js.version || 0, updated: js.updated || null, sizes: js.sizes || {}, count: list.length, source: source || 'fichier', note: js.note || '' };
@@ -818,6 +818,13 @@ function findTire(brand, model) {
   if (exact) return exact;
   // sinon le préfixe le plus long (évite de confondre « Pilot Sport 4 » et « Pilot Sport 4S »)
   return pool.filter(t => m.startsWith(normTxt(t.model.replace(/\(.*?\)/g, '')))).sort((x, y) => y.model.length - x.model.length)[0] || null;
+}
+// Fiche SAP de la dimension exacte ; distincte du DOT, des mesures et du pneu actuellement monté.
+function tirePlanVariant(car, plan) {
+  if (!plan || !plan.brand || !plan.model) return null;
+  const db = findTire(plan.brand, plan.model);
+  const k = sizeKey(plan.size || (car && car.tire && car.tire.size) || '');
+  return db && db.type === 'winter' && k && db.variants ? db.variants[k] || null : null;
 }
 const SRC_TXT = { 'vérifié': 'dimension vérifiée', catalogue: 'vu au catalogue pour ce véhicule', gamme: 'gamme du fabricant, à confirmer à l’achat' };
 function compatible(car) {
