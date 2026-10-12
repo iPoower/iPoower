@@ -1,7 +1,7 @@
 'use strict';
 // Attaques exclusivement fictives. Le test d'origine prouve la limite actuelle,
 // pas une migration effective. Aucun site réel n'est interrogé.
-const assert = require('node:assert/strict'), { setTimeout: wait } = require('node:timers/promises');
+const assert = require('node:assert/strict'), fs = require('node:fs'), { setTimeout: wait } = require('node:timers/promises');
 const { session, BR, errors, U } = require('./lib/context-session');
 let n = 0, stage = ''; const check = async (label, fn) => { stage = label; await fn(); n++; console.log('✅ ' + label); };
 (async () => {
@@ -35,6 +35,43 @@ let n = 0, stage = ''; const check = async (label, fn) => { stage = label; await
             } finally { if (TMAP.map) { TMAP.map.remove(); TMAP.map = null; } box.remove(); }
           }, payload);
           assert.equal(escaped.tips.length, 2); assert(escaped.tips.every(x => x.includes('&lt;img'))); assert.equal(escaped.injected, false); assert.equal(escaped.executed, false);
+        });
+        await check(dev + ' · vrai bouton de copie widget : libellés littéraux et modèle invalidé refusé', async () => {
+          const template = fs.readFileSync('site/widget.js', 'utf8');
+          const original = await p.evaluate(() => ({ home: S.locs[0].name, car: S.cars[0].short }));
+          try {
+            await p.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+              async writeText(text) { window.__copiedWidget = text; }
+            } }));
+            for (const label of ["$&", "$'", "$`", '" }; globalThis.__widgetInjected = true; //']) {
+              await p.evaluate(({ template, label }) => {
+                window.__wjs = template; window.__copiedWidget = null;
+                S.locs[0].name = label; S.cars[0].short = label;
+                document.querySelector('#settings').open = true; renderSettings(true);
+              }, { template, label });
+              await p.locator('#settings [data-act="copy-widget"]').click();
+              await p.waitForFunction(() => typeof window.__copiedWidget === 'string');
+              const copied = await p.evaluate(() => window.__copiedWidget);
+              const marker = copied.match(/^const CFG = ([^\n]+);$/m);
+              assert(marker, 'configuration unique et sérialisée sur une ligne');
+              assert.equal((copied.match(/^const CFG = /gm) || []).length, 1);
+              const cfg = JSON.parse(marker[1]);
+              assert.equal(cfg.home.name, label); assert.equal(cfg.cars[0].short, label);
+              assert.equal(await p.evaluate(() => !!window.__widgetInjected), false);
+              assert.equal(await p.locator('#settings [data-act="copy-widget"]').textContent(), 'Script copié (avec tes voitures)');
+            }
+            await p.evaluate(() => {
+              window.__wjs = 'modèle fictif sans configuration'; window.__copiedWidget = null; renderSettings(true);
+            });
+            await p.locator('#settings [data-act="copy-widget"]').click();
+            await p.waitForFunction(() => document.querySelector('#settings [data-act="copy-widget"]').textContent.startsWith('Copie impossible'));
+            assert.equal(await p.evaluate(() => window.__copiedWidget), null);
+          } finally {
+            await p.evaluate(original => {
+              S.locs[0].name = original.home; S.cars[0].short = original.car;
+              delete window.__wjs; delete window.__copiedWidget; renderSettings(true);
+            }, original);
+          }
         });
         await check(dev + ' · scripts non approuvés inline, CDN et same-origin bloqués par le navigateur', async () => {
           await s.c.route('**/hostile-fortress.js', r => r.fulfill({ contentType: 'text/javascript', body: 'window.__unsigned=true' }));

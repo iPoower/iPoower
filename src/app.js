@@ -3825,6 +3825,12 @@ function softRender() { renderAll(); } // paramètres inchangés ; mêmes sélec
 
 /* ---------- événements ---------- */
 let geoSearchGen = 0;
+function widgetWithConfig(script, config) {
+  const marker = /const CFG = null;[^\n]*/g;
+  if ((script.match(marker) || []).length !== 1) throw new Error('Modèle du widget invalide');
+  // Callback : les séquences $&, $` et $\u0027 des libellés restent des données JSON.
+  return script.replace(marker, () => 'const CFG = ' + JSON.stringify(config) + ';');
+}
 function commandFeedback(button, message, input) {
   if (button) { button.textContent = message; button.setAttribute('aria-live', 'polite'); }
   if (input) input.focus();
@@ -3938,7 +3944,7 @@ document.addEventListener('click', async e => {
       const home = S.locs[0], work = S.locs[1];
       const cfg = { home: { id: home.id, name: home.name, lat: home.lat, lon: home.lon }, work: { id: work.id, name: work.name, lat: work.lat, lon: work.lon }, dep: S.work.dep, durMin: S.work.durMin, days: commuteDays(S.work.days),
         cars: S.cars.map(c => ({ short: c.short, sporty: c.sporty, tire: { type: c.tire.type, size: c.tire.size, tread: c.tire.tread ?? null, dot: c.tire.dot || '' }, plan: { on: 0 } })) };
-      await navigator.clipboard.writeText(window.__wjs.replace(/const CFG = null;[^\n]*/, 'const CFG = ' + JSON.stringify(cfg) + ';'));
+      await navigator.clipboard.writeText(widgetWithConfig(window.__wjs, cfg));
       t.textContent = 'Script copié (avec tes voitures)';
     }
     catch (err) { t.textContent = 'Copie impossible : ouvre « Voir le script »'; }

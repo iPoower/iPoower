@@ -82,7 +82,7 @@ webAssets.copy(ROOT,OUT);
 ['sw.js','engine.js','tiredb.json','relay.js','evidence.js'].forEach(f=>w(OUT+'/'+f,r('src/'+f)));
 ['apple-touch-icon.png','icon-192.png','icon-512.png'].forEach(f=>fs.copyFileSync(path.join(ROOT,'src/static',f),path.join(ROOT,OUT,f)));
 // widget public sans configuration (le bouton « Copier » de l'app l'ajoute)
-w(OUT+'/widget.js',r('src/widget.js').replace(/const CFG = [\s\S]*?;\n\nconst Q_CUR/,'const CFG = null; // configuration ajoutée par l’app au moment de la copie\n\nconst Q_CUR'));
+w(OUT+'/widget.js',require('./widget-source').widgetSource(ROOT).replace(/const CFG = [\s\S]*?;\n\nconst Q_CUR/,'const CFG = null; // configuration ajoutée par l’app au moment de la copie\n\nconst Q_CUR'));
 // relais : configuration chiffrée avec RC_KEY uniquement (secret GitHub RC_KEY), jamais avec le code de l'app
 const relayPriv=PRIV?{site:rcfg.site,ntfy:rcfg.ntfy,home:rcfg.home,work:rcfg.work,origins:rcfg.origins,dep:rcfg.dep,durMin:rcfg.durMin,days:rcfg.days,cars:rcfg.cars}:null;
 let prevR=null;try{prevR=JSON.parse(r(ENC+'/relay-config.sealed.json'));}catch(e){}
