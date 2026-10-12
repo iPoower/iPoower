@@ -7,53 +7,100 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+# Ne pas fusionner ce changement sans la revue explicite du propriétaire.
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: race-control-relay
   cancel-in-progress: false
 jobs:
-  watchdog:
-    environment:
-      name: production
-      deployment: false
+  approved:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: gh-pages
-      - name: Mesurer l’âge du dernier relais
-        id: stale
-        run: |
-          node - <<'NODE'
-          const fs=require('fs'),p='race-control/obs.json';
-          let age=Infinity;try{const j=JSON.parse(fs.readFileSync(p,'utf8'));const t=Date.parse(j.updated);if(Number.isFinite(t))age=(Date.now()-t)/60000;}catch(e){}
-          const due=!Number.isFinite(age)||age>=10;
-          fs.appendFileSync(process.env.GITHUB_OUTPUT,'due='+(due?'1':'0')+'\n');
-          console.log(Number.isFinite(age)?('Dernier relais : '+age.toFixed(1)+' min'): 'Dernier relais illisible',due?'→ rattrapage':'→ OK');
-          NODE
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: steps.stale.outputs.due == '1'
         with:
           node-version: 24
-      - name: Rattraper le relais
-        if: steps.stale.outputs.due == '1'
+      - name: Révision exacte de main avec CI complète réussie (aucun secret)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tools/relay-trust.js
+  watchdog:
+    needs: approved
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      deployment: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - name: Code de confiance (main exact, jamais gh-pages)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - name: Production comme données uniquement
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: gh-pages
+          path: pages
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Préparer uniquement les observations et l'agenda chiffré
+        run: |
+          mkdir relay-data
+          node trusted/tools/relay-data.js prepare pages/race-control relay-data
+      - name: Vérifier la fraîcheur sans exécuter la production
+        id: fresh
+        env:
+          MANUAL: 'false'
+          FORCE_PUSH: '0'
+        run: node trusted/tools/relay-data.js due relay-data 10
+      - name: Relais de confiance, secrets limités à cette étape
+        if: steps.fresh.outputs.due == '1'
         env:
           FORCE_PUSH: '0'
           RC_KEY: ${{ secrets.RC_KEY }}
           GCAL_ICS: ${{ secrets.GCAL_ICS }}
           APP_KEY: ${{ secrets.APP_KEY }}
-        run: node race-control/relay.js
-      - name: Publier le rattrapage
-        if: steps.stale.outputs.due == '1'
+          RC_RELAY_DATA: ${{ github.workspace }}/relay-data
+          RC_RELAY_CONFIG_FILE: ${{ github.workspace }}/trusted/encrypted/relay-config.sealed.json
+        run: node trusted/src/relay.js
+      - name: Publier seulement les sorties JSON (aucun secret applicatif)
+        if: steps.fresh.outputs.due == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          node trusted/tools/relay-data.js publish relay-data pages/race-control
+          cd pages
           git config user.name "race-control-watchdog"
           git config user.email "race-control-watchdog@users.noreply.github.com"
-          git add race-control/obs.json; [ -f race-control/calendar.sealed.json ] && git add race-control/calendar.sealed.json
+          git add -- race-control/obs.json
+          if [ -f race-control/calendar.sealed.json ]; then git add -- race-control/calendar.sealed.json; fi
           git diff --cached --quiet && exit 0
+          git diff --cached --name-only | while IFS= read -r file; do
+            case "$file" in race-control/obs.json|race-control/calendar.sealed.json) ;; *) exit 1 ;; esac
+          done
           git commit -m "Relais watchdog $(date -u +%H:%M)"
-          # DATEX publie dans sa propre file : plusieurs écrivains peuvent pousser gh-pages en même temps
-          for i in 1 2 3 4 5; do git push && exit 0; sleep "$i"; git pull -q --rebase || exit 1; done
+          # Token injecté par environnement uniquement pour le push, jamais enregistré dans un checkout.
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          for i in 1 2 3 4 5; do
+            git push -q && exit 0
+            git -c core.hooksPath=/dev/null pull -q --rebase || exit 1
+          done
           exit 1

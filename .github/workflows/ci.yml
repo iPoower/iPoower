@@ -39,15 +39,21 @@ jobs:
     outputs:
       ref: ${{ steps.v.outputs.ref }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
       - id: v
         env:
           WANT: ${{ github.event.inputs.version }}
           REPO: ${{ github.repository }}
         run: |
           if [ -z "$WANT" ]; then echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"; exit 0; fi
-          case "$WANT" in prod-[0-9]*) ;; *) echo "::error::Version invalide : $WANT (attendu prod-N)"; exit 1;; esac
-          sha=$(git ls-remote "https://github.com/$REPO.git" "refs/tags/$WANT" | cut -f1)
-          if [ -z "$sha" ]; then echo "::error::L'étiquette $WANT n'existe pas"; exit 1; fi
+          if [[ ! "$WANT" =~ ^prod-[0-9]+$ ]]; then echo '::error::Version invalide (attendu prod-N)'; exit 1; fi
+          git fetch --no-tags origin "refs/tags/$WANT"
+          sha=$(git rev-parse 'FETCH_HEAD^{commit}')
+          if ! git merge-base --is-ancestor "$sha" origin/main; then echo '::error::Retour arrière refusé : révision hors de main'; exit 1; fi
           echo "Retour arrière vers $WANT ($sha)"; echo "ref=$sha" >> "$GITHUB_OUTPUT"
   confidentialite:
     needs: version
@@ -64,22 +70,29 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ needs.version.outputs.ref }}
+          ref: ${{ github.sha }}
+          path: trusted
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+      - name: Révision à contrôler comme des données, jamais du code privilégié
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.version.outputs.ref }}
+          path: target
+          persist-credentials: false
       - name: Aucune donnée personnelle dans le dépôt
         env:
           APP_KEY: ${{ secrets.APP_KEY }}
           RC_KEY: ${{ secrets.RC_KEY }}
           GCAL_ICS: ${{ secrets.GCAL_ICS }}
-        run: node tools/check-secrets.js
+        run: node trusted/tools/check-secrets.js --root trusted --scan target
       - name: Séparation des clés (APP_KEY ≠ RC_KEY, chacune n'ouvre que ses fichiers)
         env:
           APP_KEY: ${{ secrets.APP_KEY }}
           RC_KEY: ${{ secrets.RC_KEY }}
-        run: node tools/check-keys.js
+        run: node trusted/tools/check-keys.js --enc target/encrypted
   unit:
     needs: version
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.version == ''
@@ -243,6 +256,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+      - name: Frontière du relais et attaques simulées (clés fictives uniquement)
+        run: node tests/relay-trust.js
       - name: Relais de bout en bout (données fictives, sans aucun secret)
         run: node tests/relay-smoke.js
       - name: "Outils de clés : contrôle de séparation (clés fictives, sans aucun secret)"
@@ -287,7 +302,7 @@ jobs:
   deploy:
     needs: [version, confidentialite, validation, relay-smoke]
     # Le verdict gère les skips attendus de rollback ; aucune dépendance échouée ne permet de publier.
-    if: ${{ !cancelled() && needs.version.result == 'success' && needs.confidentialite.result == 'success' && needs.validation.result == 'success' && needs.relay-smoke.result == 'success' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '')) }}
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.confidentialite.result == 'success' && needs.validation.result == 'success' && needs.relay-smoke.result == 'success' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.inputs.version != '')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
