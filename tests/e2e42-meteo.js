@@ -61,6 +61,7 @@ const wx = p => p.evaluate(() => {
     current: t('.wx-now')[0] || '',
     hourly: q('.wx-hours-card').map(x => ({ hour: x.dataset.hour, text: x.innerText.replace(/\s+/g, ' ').trim() })),
     hourlyNote: t('.wx-hours-note')[0] || '', hourlyState: t('.wx-hours-state')[0] || '',
+    hourlyAfterHero: !!q('.wx-hero')[0] && q('.wx-hero')[0].nextElementSibling === q('.wx-hours')[0],
     trip: t('.wx-trip')[0] || '', moments: t('.wx-tl li'), ts: q('.wx-tl li[data-ts]').map(x => x.dataset.ts), strip: q('.wx-strip li').length, matters: t('.wx-mat li'), phen: q('.wx-pc:not(.ev)').map(x => x.dataset.k),
     road: t('.wx-road')[0] || '', score: (q('.wx-rs b')[0] || {}).textContent || '', factors: t('.wx-rf li'), tireBtn: q('.wx-tire [data-act=view][data-v=pneus]').length,
     gauges: q('.gauge').length, notice: (document.getElementById('notice').innerText || '').replace(/\s+/g, ' '),
@@ -89,7 +90,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     check('1 · verdict lisible : niveau 🟢🟡🟠🔴, titre, température et ressenti', /lv[0-3]/.test(w.heroLv) && w.title.length > 4 && /Température actuelle/i.test(w.hero) && /Ressenti .* °C/.test(w.hero), w.hero);
     check('1 · température actuelle : carte dédiée et immédiatement lisible', /Température actuelle/i.test(w.current) && /°C/.test(w.current) && /Ressenti/.test(w.current), w.current);
     check('1 · températures futures visibles sans ouvrir de section : 11 h incluse, 12 h de prévisions et valeurs du modèle',
-      w.hourly.length >= 12 && w.hourly.some(x => x.hour === '2026-10-03T11:00' && /°/.test(x.text)) &&
+      w.hourlyAfterHero && w.hourly.length >= 12 && w.hourly.some(x => x.hour === '2026-10-03T11:00' && /°/.test(x.text)) &&
       w.hourly.every(x => /^2026-10-03T\\d{2}:00|^2026-10-04T\\d{2}:00/.test(x.hour)), JSON.stringify(w.hourly));
     check('1 · heure par heure : provenance modèle, rafraîchissement 5 min et pas de nouvelle API', /Prévisions du modèle/.test(w.hourlyNote) && /toutes les 5 min/.test(w.hourlyNote), w.hourlyNote);
     check('1 · prochain trajet de l’agenda : origine → destination, horaires, départ et arrivée', /Prochain trajet/i.test(w.trip) && /→/.test(w.trip) && /Départ/.test(w.trip) && /Arrivée/.test(w.trip), w.trip);
