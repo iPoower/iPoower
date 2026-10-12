@@ -10,7 +10,9 @@ const ready = p => p.waitForFunction(() => typeof LOCKED === 'function' && !!win
   null, { polling: 100, timeout: 15000 });
 async function openAt(context, date) {
   const p = await context.newPage();
-  await p.clock.install({ time: date });
+  // Playwright partage l'horloge entre toutes les pages du contexte. Installer
+  // plusieurs horloges enregistrait des dates contradictoires au rechargement.
+  await p.clock.setSystemTime(date);
   await p.goto(U);
   await p.waitForFunction(() => !!window.TWRC_VAULT && typeof LOCKED === 'function' && typeof S === 'object' &&
     (window.TWRC_VAULT.mode === 'locked' || window.TWRC_VAULT.mode === 'vault'));
@@ -79,7 +81,7 @@ async function openAt(context, date) {
         await p.locator('[data-act=lock]').waitFor({ state: 'visible', timeout: 5000 });
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('[data-act=lock]').click()]);
         await ready(p);
-        const q = await openAt(s.c, s.T0 + DAY);
+        const q = await openAt(s.c, await p.evaluate(() => Date.now()));
         try { assert.equal(await q.evaluate(() => LOCKED()), true); assert.equal(await q.locator('#unlockPw').count(), 1); }
         finally { await q.close(); }
       });
@@ -90,7 +92,7 @@ async function openAt(context, date) {
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
         await ready(p);
         assert.equal(await p.evaluate(() => LOCKED()), false);
-        const q = await openAt(s.c, s.T0 + DAY);
+        const q = await openAt(s.c, await p.evaluate(() => Date.now()) + DAY);
         try { assert.equal(await q.evaluate(() => LOCKED()), true); assert.equal(await q.locator('#unlockPw').count(), 1); }
         finally { await q.close(); }
       });

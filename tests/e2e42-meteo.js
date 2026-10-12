@@ -59,6 +59,9 @@ const wx = p => p.evaluate(() => {
   const first = [...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details, #deskMain > section, #deskMain > .grid2')].filter(vis)[0];
   return { shown: vis(el), first: first ? first.id : null, hero: t('.wx-hero')[0] || '', title: t('.wx-ht')[0] || '', heroLv: (q('.wx-hero')[0] || { className: '' }).className,
     current: t('.wx-now')[0] || '',
+    hourly: q('.wx-hours-card').map(x => ({ hour: x.dataset.hour, text: x.innerText.replace(/\s+/g, ' ').trim() })),
+    hourlyNote: t('.wx-hours-note')[0] || '', hourlyState: t('.wx-hours-state')[0] || '',
+    hourlyAfterHero: !!q('.wx-hero')[0] && q('.wx-hero')[0].nextElementSibling === q('.wx-hours')[0],
     trip: t('.wx-trip')[0] || '', moments: t('.wx-tl li'), ts: q('.wx-tl li[data-ts]').map(x => x.dataset.ts), strip: q('.wx-strip li').length, matters: t('.wx-mat li'), phen: q('.wx-pc:not(.ev)').map(x => x.dataset.k),
     road: t('.wx-road')[0] || '', score: (q('.wx-rs b')[0] || {}).textContent || '', factors: t('.wx-rf li'), tireBtn: q('.wx-tire [data-act=view][data-v=pneus]').length,
     gauges: q('.gauge').length, notice: (document.getElementById('notice').innerText || '').replace(/\s+/g, ' '),
@@ -67,7 +70,7 @@ const wx = p => p.evaluate(() => {
 const layout = (p, mobile) => p.evaluate(mobile => {
   const W = document.documentElement.clientWidth, el = document.getElementById('secWx'), small = [], wide = [];
   el.querySelectorAll('button, summary, a.btn').forEach(e => { const b = e.getBoundingClientRect(); if (b.height > 0 && mobile && b.height < 43.5) small.push((e.dataset.act || e.tagName) + ' ' + Math.round(b.height)); });
-  el.querySelectorAll('*').forEach(e => { if (e.closest('.wx-strip')) return; const b = e.getBoundingClientRect(); if (b.width > 0 && b.right > W + 1) wide.push(e.className || e.tagName); });
+  el.querySelectorAll('*').forEach(e => { if (e.closest('.wx-strip, .wx-hours-track')) return; const b = e.getBoundingClientRect(); if (b.width > 0 && b.right > W + 1) wide.push(e.className || e.tagName); });
   const hero = el.querySelector('.wx-hero').getBoundingClientRect(), decision = document.getElementById('decisionCore').getBoundingClientRect();
   return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6),
     heroBottom: Math.round(hero.bottom), heroTop: Math.round(hero.top), decisionBottom: Math.round(decision.bottom) };
@@ -86,6 +89,10 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     // innerText restitue les majuscules de text-transform : le libellé reste le même.
     check('1 · verdict lisible : niveau 🟢🟡🟠🔴, titre, température et ressenti', /lv[0-3]/.test(w.heroLv) && w.title.length > 4 && /Température actuelle/i.test(w.hero) && /Ressenti .* °C/.test(w.hero), w.hero);
     check('1 · température actuelle : carte dédiée et immédiatement lisible', /Température actuelle/i.test(w.current) && /°C/.test(w.current) && /Ressenti/.test(w.current), w.current);
+    check('1 · températures futures visibles sans ouvrir de section : 11 h incluse, 12 h de prévisions et valeurs du modèle',
+      w.hourlyAfterHero && w.hourly.length >= 12 && w.hourly.some(x => x.hour === '2026-10-03T11:00' && /°/.test(x.text)) &&
+      w.hourly.every(x => ['2026-10-03T', '2026-10-04T'].some(day => x.hour.startsWith(day)) && x.hour.endsWith(':00')), JSON.stringify(w.hourly));
+    check('1 · heure par heure : provenance modèle, rafraîchissement 5 min et pas de nouvelle API', /Prévisions du modèle/.test(w.hourlyNote) && /toutes les 5 min/.test(w.hourlyNote), w.hourlyNote);
     check('1 · prochain trajet de l’agenda : origine → destination, horaires, départ et arrivée', /Prochain trajet/i.test(w.trip) && /→/.test(w.trip) && /Départ/.test(w.trip) && /Arrivée/.test(w.trip), w.trip);
     check('1 · plusieurs trajets : la chronologie montre plusieurs départs, triés', w.moments.filter(x => /départ/.test(x)).length >= 2, w.moments.join(' | '));
     check('1 · chronologie dans l’ordre des heures, lendemain signalé', w.ts.length > 2 && w.ts.every((x, i) => !i || w.ts[i - 1] <= x) && w.moments.filter((x, i) => w.ts[i].slice(0, 10) > '2026-10-03').every(x => /^dem\. /.test(x)), w.moments.join(' | '));
@@ -105,6 +112,36 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     // la bande horaire défile seule, la page non
     const strip = await s.p.evaluate(() => { const e = document.querySelector('#secWx .wx-strip'); return { sw: e.scrollWidth, cw: e.clientWidth, n: e.children.length }; });
     check('1 · bande horaire défilante (au moins 12 h) sans élargir la page', strip.n >= 12 && strip.sw > strip.cw, JSON.stringify(strip));
+    const visibleHours = await s.p.evaluate(() => {
+      const e = document.querySelector('#secWx .wx-hours-track');
+      if (!e) return null;
+      const total = e.scrollWidth, width = e.clientWidth;
+      e.scrollLeft = total;
+      const moved = e.scrollLeft;
+      e.scrollLeft = 0;
+      return { total, width, moved };
+    });
+    check('1 · bande de température : défile au doigt sans agrandir la page',
+      !!visibleHours && visibleHours.total > visibleHours.width && visibleHours.moved > 0, JSON.stringify(visibleHours));
+    const heldHours = await s.p.evaluate(() => {
+      const e = document.querySelector('#secWx .wx-hours-track');
+      e.scrollLeft = 140;
+      const before = e.scrollLeft;
+      RAW[UI.loc].t -= 60e3; // Simulation d'un horodatage changé lors d'une nouvelle météo.
+      renderAll();
+      return { before, after: document.querySelector('#secWx .wx-hours-track').scrollLeft };
+    });
+    check('1 · mise à jour : conserve la position horizontale après rendu sans saut',
+      heldHours.before > 0 && Math.abs(heldHours.after - heldHours.before) <= 2, JSON.stringify(heldHours));
+    const f1Order = await s.p.evaluate(() => {
+      S.flags.f1TrackConditions = 1; renderAll();
+      const hero = document.querySelector('#secWx .wx-hero'), hours = document.querySelector('#secWx .wx-hours');
+      const f1 = document.querySelector('#f1-panel-trackConditions');
+      const ordered = hero.nextElementSibling === hours && hours.nextElementSibling === f1;
+      S.flags.f1TrackConditions = 0; renderAll();
+      return ordered;
+    });
+    check('1 · module F1 actif : températures horaires toujours immédiatement après le verdict', f1Order);
     // lien vers Pneus
     await tapNav(s.p, '#secWx [data-act=view][data-v=pneus]', 'Météo → Pneus depuis le résumé météo'); await s.settle(2);
     check('1 · « Voir analyse Pneus » ouvre l’onglet Pneus ; le poste météo y est masqué', await s.p.evaluate(() => UI.view === 'pneus' && document.getElementById('secWx').hidden && !!document.querySelector('#secCars .car')));
@@ -119,6 +156,10 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     await s.c.setOffline(true); await s.p.evaluate(() => window.dispatchEvent(new Event('offline'))); await s.settle(2);
     w = await wx(s.p);
     check('2 · hors connexion : poste météo affiché depuis le cache, mention HORS LIGNE', w.shown && /HORS LIGNE/i.test(w.hero), w.hero);
+    check('2 · hors ligne : températures horaires conservées, jamais présentées comme relevés LIVE',
+      w.hourly.length >= 12 && w.hourly.some(x => x.hour === '2026-10-03T11:00') &&
+      /HORS LIGNE/.test(w.hourlyState) && /dernières données conservées/.test(w.hourlyNote) &&
+      /reçues il y a/.test(w.hourlyNote), JSON.stringify({ hourly: w.hourly, state: w.hourlyState, note: w.hourlyNote }));
     await s.c.setOffline(false); await s.c.close();
 
     // 3. sans trajet : aucun trajet inventé

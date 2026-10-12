@@ -46,15 +46,23 @@ function wxInput() {
   const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Math.max(0, (Date.now() - raw.t) / 60e3);
   const day = m.days.find(d => d.date === now.slice(0, 10)) || {};
   // valeurs « actuelles » d'une réponse ancienne : on préfère l'heure prévue pour maintenant
-  const cur = ageMin != null && ageMin > 90 ? {} : { T: m.cur.T, Tapp: m.cur.Tapp };
+  const cur = m.cur.source === 'current' ? { T: m.cur.T, Tapp: m.cur.Tapp } : {};
   return { now, hours: m.hs.slice(Math.max(0, m.nowI - 4)), cur, trips: wxTrips(m), nowcast: ageMin != null && ageMin > 30 ? null : m.nc || null,
     sun: { sunrise: day.sunrise || null, sunset: day.sunset || null }, ageMin };
 }
 function renderWx() {
   const el = $('#secWx'); if (!el) return;
+  if (UI.view === 'meteo' && !CX && M[UI.loc] && M[UI.loc].nowI < 0) {
+    el.hidden = false; el.innerHTML = '<div class="wx-blk wx-none" role="status"><h3>INDISPONIBLE · météo actuelle</h3><p class="sub">Les prévisions conservées ne couvrent pas l’heure actuelle. Actualise dès que la connexion le permet ; aucune météo n’est extrapolée.</p></div>';
+    renderWx.last = ''; return;
+  }
   if (UI.view !== 'meteo' || !CX) { if (!el.hidden || el.innerHTML) { el.hidden = true; el.innerHTML = ''; renderWx.last = ''; } return; }
   const input = wxInput(), d = wxDesk(input);
-  if (!d) { el.hidden = true; el.innerHTML = ''; renderWx.last = ''; return; }
+  if (!d) {
+    el.hidden = false;
+    el.innerHTML = '<div class="wx-blk wx-none" role="status"><h3>INDISPONIBLE · météo actuelle</h3><p class="sub">Les prévisions conservées ne couvrent pas l’heure actuelle. Actualise dès que la connexion le permet ; aucune météo n’est extrapolée.</p></div>';
+    renderWx.last = ''; return;
+  }
   el.hidden = false;
   const m = CX.m, l = curLoc(), today = input.now.slice(0, 10), E = WXD_EMO;
   const dayLbl = day => { const n = dayDiff(today, day); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(day); };
@@ -67,8 +75,11 @@ function renderWx() {
       <div class="wx-now-main"><span class="wx-now-v num">${f1(nowWx.T)}</span><span class="wx-now-u">°C</span></div>
       <div class="wx-now-side"><span class="wx-now-k">Température actuelle</span>
         <b class="wx-now-feel">Ressenti ${Number.isFinite(nowWx.Tapp) ? f1(nowWx.Tapp) + ' °C' : '—'}</b>
-        <span class="wx-now-src">${nowWx.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours'}</span></div>
+        <span class="wx-now-src">PRÉVU · ${nowWx.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours'}${m.mode === 'cache' || offlineNow() ? ' · CACHE' : ''}</span></div>
     </div>` : '';
+  // Une même icône météo pour la lecture rapide et la chronologie détaillée.
+  const skyIc = x => { const dd = m.days.find(z => z.date === x.t.slice(0, 10)) || {}, night = dd.sunrise && dd.sunset && (x.t < dd.sunrise.slice(0, 13) + ':00' || x.t > dd.sunset);
+    return x.code == null ? '·' : x.code <= 1 ? (night ? '🌙' : '☀️') : x.code === 2 ? (night ? '☁️' : '⛅') : '☁️'; };
   const hero = `<div class="wx-hero lv${h.level}" role="status" aria-live="polite">
     <div class="wx-hk"><span>${esc(l ? l.name : '')} · MÉTÉO</span><span class="wx-age">${mode}${age}</span></div>
     ${currentCard}
@@ -76,6 +87,25 @@ function renderWx() {
     <p class="wx-scope sub">Phénomènes météo jusqu’à ${esc(d.window.to)}</p>
     ${heroLines.map((x, i) => `<p class="${i ? 'wx-hl' : 'wx-hl wx-h1'}">${esc(x)}</p>`).join('')}
     ${h.stale ? `<p class="wx-stale">⚠ Prévisions reçues il y a ${esc(ageTxt(input.ageMin))} : verdict indicatif, actualise dès que possible.</p>` : ''}</div>`;
+  // Prévisions visibles sans ouvrir « Prévisions détaillées ». Réutilise exactement
+  // le modèle de la chronologie : aucune requête supplémentaire, aucune seconde source
+  // de vérité ni donnée persistante ajoutée. En mode cache, âge réel affiché.
+  const hourlyRows = d.timeline.strip.slice(0, 13);
+  const hourlyHtml = hourlyRows.length ? `<section class="wx-blk wx-hours" aria-label="Prévisions de température heure par heure">
+    <div class="wx-hours-head"><h3>🌡️ Heure par heure</h3><span class="wx-hours-state">${esc(mode)}</span></div>
+    <ol class="wx-hours-track" aria-label="Températures prévues pour les 12 prochaines heures">${hourlyRows.map(x => {
+      const tomorrow = x.t.slice(0, 10) !== today;
+      const hh = x.hh || x.t.slice(11, 16), icon = x.ic ? (WX_IC[x.ic] || '·') : skyIc(x);
+      const rain = x.pp == null ? '' : `<small class="wx-hours-rain">${f0(x.pp)} % pluie</small>`;
+      return `<li class="wx-hours-card lv${x.lv}${x.now ? ' now' : ''}" data-hour="${esc(x.t)}">
+        <time datetime="${esc(x.t)}">${tomorrow ? 'dem. ' : ''}${esc(hh)}</time>
+        <span class="wx-hours-icon" aria-hidden="true">${icon}</span>
+        <b class="num">${Number.isFinite(x.T) ? f1(x.T) + '°' : '—'}</b>
+        ${rain || '<small class="wx-hours-rain">—</small>'}
+      </li>`;
+    }).join('')}</ol>
+    <p class="wx-hours-note">Prévisions du modèle, pas mesures en direct · ${offlineNow() ? 'hors ligne, dernières données conservées' : DEMO.on ? 'simulation' : 'mise à jour automatique toutes les 5 min en ligne'}${input.ageMin != null ? ' · reçues il y a ' + esc(ageTxt(input.ageMin)) : ''}. Glisser pour la suite →</p>
+  </section>` : '';
   // prochain trajet
   const t = d.trip, pending = APP_CONTEXT.snapshot.dayContext.nextDestination && !APP_CONTEXT.snapshot.dayContext.nextDestination.placeId;
   const target = t && APP_CONTEXT.snapshot.trips.find(trip => trip.key === t.id);
@@ -91,8 +121,7 @@ function renderWx() {
   // chronologie : moments clés, puis bande horaire défilante
   const tday = x => x.ts.slice(0, 10) !== today && x.t !== 'maintenant' ? (dayDiff(today, x.ts) === 1 ? 'dem. ' : fmtDay(x.ts.slice(0, 10)) + ' ') : '';
   const mom = d.timeline.moments.map(x => `<li class="lv${x.lv}${x.kind !== 'wx' ? ' trip' : ''}" data-ts="${esc(x.ts)}"><time class="num">${esc(tday(x) + x.t)}</time><span aria-hidden="true">${WX_IC[x.kind === 'wx' ? x.id : x.kind] || '•'}</span><span>${esc(x.text)}</span></li>`).join('');
-  const skyIc = x => { const dd = m.days.find(z => z.date === x.t.slice(0, 10)) || {}, night = dd.sunrise && dd.sunset && (x.t < dd.sunrise.slice(0, 13) + ':00' || x.t > dd.sunset);
-    return x.code == null ? '·' : x.code <= 1 ? (night ? '🌙' : '☀️') : x.code === 2 ? (night ? '☁️' : '⛅') : '☁️'; };
+
   const strip = d.timeline.strip.map(x => {
     const bar = x.P == null ? 0 : Math.min(100, Math.round(x.P / 4 * 100));
     return `<li class="lv${x.lv}${x.trip ? ' trip' : ''}${x.now ? ' now' : ''}"><span class="hh num">${x.now ? 'maint.' : x.t.slice(0, 10) !== today && x.hh === '00:00' ? 'dem.' : esc(x.hh)}</span><span class="ic" aria-hidden="true">${x.ic ? WX_IC[x.ic] : skyIc(x)}</span><b class="num">${x.T == null ? '—' : f0(x.T) + '°'}</b><span class="rb" title="${x.P == null ? '' : f1(x.P) + ' mm/h'}"><i style="height:${bar}%"></i></span><span class="pp num">${x.pp != null && x.pp >= 20 ? f0(x.pp) + '%' : ''}</span>${x.trip ? '<span class="tm" aria-label="trajet">🚗</span>' : ''}</li>`;
@@ -105,18 +134,19 @@ function renderWx() {
   const ph = `<div class="wx-blk"><h3>⚡ Phénomènes</h3><div class="wx-ph">${d.phen.map(p => `<details class="wx-pc lv${p.lv}" data-k="${p.id}"${open.has(p.id) ? ' open' : ''}><summary><span class="ic" aria-hidden="true">${p.icon}</span><span class="tt">${esc(p.title)}</span><span class="ln">${p.lv ? E[p.lv] + ' ' : ''}${esc(p.line)}</span></summary><ul>${p.detail.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`).join('')}</div></div>`;
   // conditions route + lien court vers Pneus (aucune analyse pneumatique ici)
   const r = d.road, tires = (CX.cars || []).filter(c => hasTires(c.car) && c.w), tl2 = tires.length ? tires.reduce((a, c) => Math.max(a, c.w.level), 0) : null;
-  const road = `<div class="wx-blk wx-road lv${r.level}"><h3>🛣️ Conditions route</h3>
-    <div class="wx-rs"><b class="num">${r.score}</b><span>/ 100 ${E[r.level]}</span><span class="sub">${esc(r.window.label)}</span></div>
+  const road = `<div class="wx-blk wx-road lv${r.score == null ? 'x' : r.level}"><h3>🛣️ Conditions route · ESTIMÉ</h3>
+    <div class="wx-rs"><b class="num">${r.score == null ? '—' : r.score}</b><span>${r.score == null ? 'INDISPONIBLE · données insuffisantes' : '/ 100 ' + E[r.level]}</span><span class="sub">${esc(r.window.label)}</span></div>
     <ul class="wx-rf">${r.factors.map(f => `<li class="lv${f.lv}"><span aria-hidden="true">${E[f.lv]}</span><b>${esc(f.label)}</b><span class="sub">${esc(f.why)}</span><span class="num">${f.pen ? '−' + f.pen : '0'}</span></li>`).join('')}</ul>
     <details class="wx-how" data-k="how"${open.has('how') ? ' open' : ''}><summary>Comment ce score est calculé</summary><p class="sub">100 moins les points listés : gel jusqu’à −45 (verglas élevé ou pluie verglaçante), neige −35, visibilité −15 à −35 (sous 1 000, 500 et 200 m), pluie −5 à −30 (probabilité ≥ 60 %, 0,2, 2 et 7,6 mm/h), rafales −10 à −30 (55, 70 et 90 km/h), froid ou chaleur −5, air saturé −5, soleil rasant −5. La couleur n’est jamais plus douce que le pire facteur. Environnement seulement : l’adhérence des pneus est dans l’onglet Pneus.</p></details>
     ${tl2 != null ? `<div class="wx-tire"><span>Impact pneus : <b>${['faible', 'modéré', 'élevé', 'critique'][tl2]}</b> ${E[tl2]}</span><button class="btn sm" data-act="view" data-v="pneus">Voir analyse Pneus →</button></div>` : ''}</div>`;
   const foot = `<p class="sub wx-foot">Détails techniques plus bas : <a href="#secCur">mesures</a> · <a href="#secChart">graphique 24 h</a> · <a href="#hdrMore">sources et fraîcheur</a>.</p>`;
   const evH = evidenceHtml(), evOn = EV_FLAG() === 'on' && /class="ev-crit/.test(evH) && d.level < 2;
-  const html = (evOn ? evH + hero : hero + evH) + tripHtml +
+  const html = (evOn ? evH + hero : hero) + hourlyHtml + (evOn ? '' : evH) + tripHtml +
     uxFold('wx-forecast', 'Prévisions détaillées', tl + matters + ph, 'Chronologie · phénomènes') +
-    uxFold('wx-road', 'Conditions route', road, r.score + '/100 · ' + ['faible', 'modéré', 'élevé', 'critique'][r.level]) + foot;
+    uxFold('wx-road', 'Conditions route', road, r.score == null ? 'INDISPONIBLE · données insuffisantes' : r.score + '/100 · ' + ['faible', 'modéré', 'élevé', 'critique'][r.level]) + foot;
   if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
   const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
+  const hourlyTrack = el.querySelector('.wx-hours-track'), hourlyLeft = hourlyTrack ? hourlyTrack.scrollLeft : 0;
   const editor = el.querySelector('#wxOriginEditor'), active = document.activeElement;
   const foldFocus = uxFocusKey(el);
   const editorFocused = editor && editor.contains(active), selection = editorFocused && [active.selectionStart, active.selectionEnd];
@@ -128,6 +158,7 @@ function renderWx() {
     if (editorFocused) { active.focus({ preventScroll: true }); if (typeof selection[0] === 'number') try { active.setSelectionRange(...selection); } catch (e) { /* select */ } }
   }
   const ns = el.querySelector('.wx-strip'); if (ns && left) ns.scrollLeft = left;
+  const nextHours = el.querySelector('.wx-hours-track'); if (nextHours && hourlyLeft) nextHours.scrollLeft = hourlyLeft;
 }
 /* ---------- moteur de preuves météo v2 (weatherEvidenceV2) : actif par défaut ---------- */
 // Réglage S.flags.weatherEvidenceV2 : 'on' (défaut) ; 'shadow' calcule, journalise et montre la carte « Preuves » marquée expérimentale
