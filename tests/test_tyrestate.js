@@ -3,7 +3,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm'), assert = r
 const sourcePath = path.join(__dirname, '../src/tyrestate.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = {}; vm.createContext(ctx);
-  vm.runInContext(['engine.js', 'tirespecs.js'].map(f => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8')).join('\n') + source + fs.readFileSync(path.join(__dirname, '../src/tyrelab.js'), 'utf8') + '\nthis.ts = tyreState; this.valid = tyreMemoryValid; this.lab = tyreLab; this.mount = confirmWinterMount; this.switchTire = switchTire; this.setAx = setTreadAxle; this.axles = treadAxles;', ctx);
+  vm.runInContext(['engine.js', 'tirespecs.js'].map(f => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8')).join('\n') + source + fs.readFileSync(path.join(__dirname, '../src/tyrelab.js'), 'utf8') + '\nthis.ts = tyreState; this.valid = tyreMemoryValid; this.lab = tyreLab; this.mount = confirmWinterMount; this.switchTire = switchTire; this.setAx = setTreadAxle; this.axles = treadAxles; this.loadCatalog = loadTireDB; this.catalogTire = findTire; this.catalogVariant = tirePlanVariant;', ctx);
   const plain = v => JSON.parse(JSON.stringify(v)), TS = (c, o) => plain(ctx.ts(plain(c), o)), today = '2026-10-06';
   const H = (b = {}) => Array.from({ length: 40 }, (_, k) => ({ t: new Date(Date.parse('2026-10-05T18:00:00Z') + k * 36e5).toISOString().slice(0, 16), T: 12, Tr: 12, RH: 70, P: 0, Pl: 0, gust: 15, rad: 0, ice: { level: 0 }, ...b }));
   const car = (tire = {}, extra = {}) => ({ id: 'carA', name: 'Voiture test', odo: [{ d: '2026-10-01', km: 23400 }], ...extra,
@@ -21,6 +21,20 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   test('B · pression cible modifiée → estimation à froid et alerte de sous-gonflage recalculées', () => {
     const a = analyse(car({ press: '2,3', pchk: { date: '2026-10-01', T: 14 } }), { T: 2, Tr: 2 }), b = analyse(car({ press: '2,6', pchk: { date: '2026-10-01', T: 30 } }), { T: 2, Tr: 2 });
     assert.notEqual(a.press.cold, b.press.cold); assert.equal(b.press.low, true);
+  });
+  test('SAP 580667 · variant exact, plan hiver seulement, données d’usure non inventées', () => {
+    const db = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/tiredb.json'), 'utf8'));
+    assert.equal(ctx.loadCatalog(db, 'test'), true);
+    const carH = car({}, { plan: { on: 1, brand: 'Goodyear', model: 'UltraGrip Performance 3', size: '215/40 R18 89V XL FP' } });
+    const sap = plain(ctx.catalogVariant(carH, carH.plan));
+    assert.deepEqual([sap.partNumber, sap.fullSize, sap.newTreadMm, sap.xl, sap.rimProtection, sap.tubeless],
+      ['580667', '215/40 R18 89V XL FP', 8.1, true, true, true]);
+    assert.equal(ctx.catalogVariant(carH, { ...carH.plan, size: '225/45 R17 94W' }), null);
+    assert.equal(TS(carH, { today }).active.type, 'summer');
+    assert.equal(TS(carH, { today }).tread.mm, 6.4);
+    const unknownTread = car({ tread: null, treadAv: null, treadAr: null, treads: [] }, { plan: carH.plan });
+    assert.equal(TS(unknownTread, { today }).tread.mm, null, '8,1 mm ne deviennent jamais une mesure');
+    assert.equal(ctx.catalogVariant(carH, { ...carH.plan, model: 'UltraGrip 9+' }), null);
   });
   test('C · jeu été → jeu hiver : autre modèle thermique (fenêtres de la saison)', () => {
     const s = analyse(car(), { T: 3, Tr: 3 }), w = analyse(car({ type: 'winter', brand: 'Marque test', model: 'Hiver test', size: '215/40 R18 89V' }), { T: 3, Tr: 3 });
