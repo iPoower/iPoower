@@ -58,32 +58,45 @@ async function openAt(context, date) {
           assert.equal(await q.evaluate(() => !!window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), true);
         } finally { await q.close(); }
       });
-      await check(dev + ' · verrouiller manuellement interdit toute réouverture sans code', async () => {
-        // Le scénario « huitième jour » ci-dessus ouvre un autre onglet avec une date future.
-        // L'onglet initial reçoit le signal d'expiration au retour : il ne doit PAS exposer
-        // le bouton de verrouillage de l'interface derrière l'écran bloquant.
-        // Reconnecter dans l'écran de récupération avant de tester le verrouillage manuel.
+      await check(dev + ' · huitième jour : réauthentification vérifiée puis verrouillage manuel', async () => {
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
-        // Après le saut temporel, le coffre peut être expiré sans que le modal ait
-        // encore été affiché. Forcer le contrôle, puis réauthentifier si nécessaire.
-        await p.evaluate(() => { if (typeof checkSessionExpiry === 'function') checkSessionExpiry(); });
-        if (await p.locator('#twrcExpiryOverlay').count()) {
-          await p.locator('#twrcExpiryPassword').fill(PW);
-          await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('#twrcExpiryForm button[type=submit]').click()]);
-          await s.settle(4);
-        } else if (await p.evaluate(() => LOCKED())) {
-          await p.fill('#unlockPw', PW);
-          await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('#unlockForm button[type=submit]').click()]);
-          await s.settle(4);
-        }
-        assert.equal(await p.evaluate(() => LOCKED()), false, 'le coffre doit être ouvert avant verrouillage manuel');
+        const sealedBefore = await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT));
+        // Les pages du contexte peuvent reprendre leurs propres horloges après
+        // les scénarios multi-onglets. Fixer explicitement l'instant de l'onglet
+        // courant : ne jamais supposer que le saut effectué dans q l'a expiré.
+        await p.clock.setFixedTime(s.T0 + 8 * DAY);
+        const expired = await p.evaluate(() => {
+          checkSessionExpiry();
+          return { locked: LOCKED(), mode: TWRC_VAULT.mode, pending: TWRC_VAULT.pendingRecovery };
+        });
+        assert.equal(expired.mode, 'expired', 'la session initiale expire réellement au huitième jour');
+        assert.equal(expired.locked, true);
+        assert.equal(expired.pending, false, 'aucune modification non confirmée avant le rechargement');
+        await p.locator('#twrcExpiryOverlay').waitFor({ state: 'visible', timeout: 15000 });
+        // Un redémarrage explicite normalise l'état d'une session expirée :
+        // code obligatoire à l'ouverture, coffre inchangé, aucune réutilisation
+        // d'un jeton hebdomadaire expiré. La reprise SANS reload reste couverte
+        // plus bas par le scénario dédié à l'écran expiré.
+        await p.reload();
+        await p.waitForFunction(() => !!window.TWRC_VAULT && window.TWRC_VAULT.mode === 'locked',
+          null, { timeout: 15000 });
+        await p.locator('#unlockPw').waitFor({ state: 'visible', timeout: 15000 });
+        assert.equal(await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), sealedBefore);
+        await p.locator('#unlockPw').fill(PW);
+        await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('#unlockForm button[type=submit]').click()]);
+        await ready(p); await s.settle(4);
+        assert.equal(await p.evaluate(() => LOCKED()), false, 'le code a réellement rouvert le coffre après expiration');
+        assert.equal(await p.evaluate(() => TWRC_VAULT.mode), 'vault');
+        assert.equal(await p.evaluate(() => S.cars[0].name), initial.name, 'voiture récupérée sans perte');
         await p.evaluate(() => { const d = document.getElementById('settings'); d.open = true; renderSettings(true); });
         await p.locator('[data-act=lock]').waitFor({ state: 'visible', timeout: 5000 });
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('[data-act=lock]').click()]);
         await ready(p);
         const q = await openAt(s.c, await p.evaluate(() => Date.now()));
-        try { assert.equal(await q.evaluate(() => LOCKED()), true); assert.equal(await q.locator('#unlockPw').count(), 1); }
-        finally { await q.close(); }
+        try {
+          assert.equal(await q.evaluate(() => LOCKED()), true);
+          assert.equal(await q.locator('#unlockPw').count(), 1);
+        } finally { await q.close(); }
       });
       await check(dev + ' · case désactivée : ouverture suivante avec mot de passe', async () => {
         assert.equal(await p.locator('#rememberWeek').isChecked(), false, 'la conservation reste volontaire');
