@@ -263,6 +263,7 @@ const SessionVault = (() => {
           try {
             const rawKey = dec(ses.k);
             if (rawKey.length === 32) active = { rawKey, expiresAt: ses.e };
+            else corruptSession = true;
           } catch (e) { corruptSession = true; /* Base64 corrompu : exiger le code */ }
         }
         if (corruptSession) {
@@ -277,7 +278,7 @@ const SessionVault = (() => {
             if (raw.getItem(LOCK_SIGNAL) !== signal || now() >= active.expiresAt) throw new Error('Autorisation expirée');
             await useKey(active.rawKey, dec(vault.s));
             const data = await open(vault, st.key, crypto);
-            if (raw.getItem(LOCK_SIGNAL) !== signal || Date.now() >= active.expiresAt) throw new Error('Autorisation révoquée');
+            if (raw.getItem(LOCK_SIGNAL) !== signal || now() >= active.expiresAt) throw new Error('Autorisation révoquée');
             st.n = order(data).n; st.t = order(data).t;
             const stray = plainSnapshot(raw), vals = { ...stray, ...data.values };
             const kept = Object.keys(stray).length ? await writeWithRoom(vals, st.salt) : vals;
