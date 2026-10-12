@@ -63,13 +63,13 @@ const state = p => p.evaluate(() => {
       hang = false; await Promise.allSettled(pending.splice(0).map(([r, u]) => meteoReply(r, u))); await settle(); s = await state(p);
       check(dev + ' · coupure pendant actualisation : cache valide conservé, jamais LIVE', s.mode === 'cache' && !/LIVE/.test(s.bar) && s.cache && s.receipt >= before.receipt && !s.busy);
       const receipt = s.receipt, count = calls;
-      await p.evaluate(() => { document.querySelector('.wx-hours-track').scrollLeft = 140; window.scrollTo(0, 280); }); const scroll = await state(p);
+      await p.evaluate(() => { document.querySelector('.wx-hours-track').scrollLeft = 140; window.scrollTo(0, Math.min(80, Math.max(0, document.documentElement.scrollHeight - innerHeight) / 2)); }); const scroll = await state(p);
       for (const at of ['2026-10-04T00:00:00+02:00', '2026-10-04T02:30:00+02:00', '2026-10-04T06:15:00+02:00']) {
         serverNow = Date.parse(at); await p.clock.setSystemTime(serverNow); await p.clock.runFor(31000); await settle(2); s = await state(p);
         const expect = at.slice(0, 16);
         check(dev + ' · offline ' + expect + ' : horloge et température horaire progressent, réception inchangée', s.now === expect && s.T === s.hourlyT && s.receipt === receipt && s.mode === 'cache' && calls === count && !/LIVE/.test(s.bar), JSON.stringify({ now: s.now, receipt: s.receipt, calls, count }));
         if (expect.endsWith('00:00')) check(dev + ' · minuit : date et première carte du jour exactes, aucun rechargement', s.card === '2026-10-04T00:00' && s.activeCar === before.activeCar);
-        check(dev + ' · actualisation locale : position verticale préservée', Math.abs(s.y - scroll.y) <= 2);
+        check(dev + ' · actualisation locale : position verticale préservée', Math.abs(s.y - scroll.y) <= 2, JSON.stringify({ before: scroll.y, after: s.y }));
       }
       s = await state(p); check(dev + ' · actualisations locales : défilement horizontal préservé', Math.abs((s.left || 0) - (scroll.left || 0)) <= 2);
       // La température courante et la mémoire thermique lisent le modèle reconstruit.
@@ -89,17 +89,17 @@ const state = p => p.evaluate(() => {
       faults = '429'; await p.evaluate(() => refreshAll()); await settle(); const paused = calls;
       await p.evaluate(() => { refreshAll(); autoTick(); window.dispatchEvent(new Event('focus')); }); await settle(3); s = await state(p);
       check(dev + ' · HTTP 429 : appels suspendus pendant Retry-After, cache conservé', calls === paused && /429|limité/.test(s.bar) && !/LIVE/.test(s.bar));
-      faults = ''; serverNow = await p.evaluate(() => WEATHER_REQUESTS.state().until + 1000); await p.clock.setSystemTime(serverNow);
+      faults = ''; serverNow = await p.evaluate(() => Math.max(WEATHER_REQUESTS.state().until, lastTry + 5 * 60e3) + 1000); await p.clock.setSystemTime(serverNow);
       await p.evaluate(() => { lastOk = 0; lastTry = 0; autoTick(); }); await settle(); s = await state(p);
-      check(dev + ' · HTTP 429 terminé : reprise validée automatique', calls > paused && s.mode === 'live' && !s.busy);
+      check(dev + ' · HTTP 429 terminé : reprise validée automatique', calls > paused && s.mode === 'live' && !s.busy, JSON.stringify({ calls, paused, mode: s.mode, busy: s.busy, now: s.now }));
       // Un horizon entièrement dépassé reste consultable comme cache, mais aucune valeur « maintenant » n'est extrapolée.
       await p.evaluate(() => { window.__OFFLINE = true; window.dispatchEvent(new Event('offline')); });
       await p.evaluate(() => { // Horizon fictif dépassé, session réelle de 7 jours toujours intacte.
         for (const raw of Object.values(RAW)) for (const key of Object.keys(raw.p.hourly))
           if (Array.isArray(raw.p.hourly[key])) raw.p.hourly[key] = raw.p.hourly[key].slice(0, 24);
       });
-      await p.clock.runFor(31000); await settle(2); s = await state(p);
-      check(dev + ' · horizon expiré : météo actuelle indisponible, aucune extrapolation', s.T === null && !s.thermal && /INDISPONIBLE/.test(s.weather) && !/LIVE/.test(s.bar));
+      await p.clock.setSystemTime(await p.evaluate(() => Date.now() + 60e3)); await p.clock.runFor(31000); await settle(2); s = await state(p);
+      check(dev + ' · horizon expiré : météo actuelle indisponible, aucune extrapolation', s.T === null && !s.thermal && /INDISPONIBLE/.test(s.weather) && !/LIVE/.test(s.bar), JSON.stringify({ T: s.T, thermal: s.thermal, now: s.now, weather: s.weather.slice(0, 180) }));
       await c.close();
     }
     check('aucune erreur JavaScript dans la matrice', errors.length === 0, errors.slice(0, 4).join(' | '));

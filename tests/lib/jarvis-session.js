@@ -7,7 +7,8 @@ const VERSION = JSON.parse(/window\.TWRC_SEALED_V=("[^"]+")/.exec(HTML)[1]);
 const HOME = { lat: 48.8502, lon: 2.3501, acc: 18 }, WORK = { lat: 48.9005, lon: 2.2502, acc: 25 };
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 async function session(browser, { iphone = false, permissionAPI = true, locked = false, nativeGeo = false, webkitNativeGeoClock = false } = {}) {
-  const time = Date.parse('2026-10-05T12:00:00+02:00'), fake = { console, Math, Date: class extends Date { constructor(...a) { super(...(a.length ? a : [time])); } static now() { return time; } }, Intl, Map, Set, JSON };
+  const time = Date.parse('2026-10-05T12:00:00+02:00'); let weatherTime = time;
+  const fake = { console, Math, Date: class extends Date { constructor(...a) { super(...(a.length ? a : [weatherTime])); } static now() { return weatherTime; } }, Intl, Map, Set, JSON };
   vm.createContext(fake); vm.runInContext(fs.readFileSync('engine.js', 'utf8') + fs.readFileSync('demo.js', 'utf8') + ';this.mk=makeDemoPayload;this.me=makeDemoEnsemble;this.mn=makeDemoNowcast;', fake);
   const c = await browser.newContext({ viewport: iphone ? { width: 414, height: 896 } : { width: 1280, height: 900 }, ...(iphone ? { isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : {}), timezoneId: 'Europe/Paris', locale: 'fr-FR' });
   if (nativeGeo) { await c.grantPermissions(['geolocation']); await c.setGeolocation({ latitude: HOME.lat, longitude: HOME.lon, accuracy: HOME.acc }); }
@@ -58,6 +59,7 @@ async function session(browser, { iphone = false, permissionAPI = true, locked =
     if (u.includes('geocoding-api.open-meteo.com')) { const q = new URL(u).searchParams.get('name'); state.searches.push(q); if (state.holdSearch && q === state.holdSearch.query) await state.holdSearch.promise; return J({ results: [{ name: q + ' test', admin1: 'Région test', latitude: 48.7, longitude: 2.4 }] }); }
     if (u.includes('open-meteo.com')) {
       if (state.weather === 'abort') return r.abort();
+      weatherTime = await p.evaluate(() => Date.now()).catch(() => weatherTime); // nouvelle heure simulée ; ancien document éventuellement déjà fermé
       const q = new URL(u).searchParams, la = String(q.get('latitude')).split(','), lo = String(q.get('longitude')).split(','), payload = i => fake.mk('doux', { lat: +la[i], lon: +lo[i] }, 'Europe/Paris', 0);
       if (la.length > 1) return J(la.map((_, i) => payload(i)));
       const one = payload(0); return J(u.includes('ensemble') ? fake.me(one) : q.get('minutely_15') ? fake.mn(one) : u.includes('air-quality') ? {} : one);

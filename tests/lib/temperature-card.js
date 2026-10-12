@@ -55,7 +55,7 @@ async function run(browser, check) {
           RAW[UI.loc].t = Date.now(); m.mode = 'live';
           const d = wxDesk(wxInput()); renderWx();
           return { title: d.hero.title, level: d.hero.level, lines: d.hero.lines.filter(x => !/°C · ressenti .* °C/.test(x)),
-            source: d.current.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours' };
+            source: 'PRÉVU · ' + (d.current.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours') };
         }, { context, temperature });
         const observed = await s.p.evaluate(tokens => {
           const root = getComputedStyle(document.documentElement), card = document.querySelector('.wx-now'), hero = card.closest('.wx-hero');

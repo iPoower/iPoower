@@ -3745,13 +3745,19 @@ function renderSettings(force) {
 /* ---------- orchestration du rendu ---------- */
 function renderAll() {
   if (APP_CONTEXT.rendering) return;
+  const scrollY = window.scrollY, sameView = renderAll.view === UI.view;
   APP_CONTEXT.rendering = true;
   APP_CONTEXT.calendarLegs = null;
   try {
     appRefreshContext(); recordJournal();
     renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
     renderWx(); renderLab(); renderDebrief(); renderGarage(); labThermTick(false); roadSync(); renderF1Pure();
-  } finally { APP_CONTEXT.rendering = false; }
+  } finally {
+    APP_CONTEXT.rendering = false; renderAll.view = UI.view;
+    // La navigation garde son comportement ; une projection du même écran
+    // conserve la position même quand ses blocs changent de hauteur.
+    if (sameView && Number.isFinite(scrollY)) window.scrollTo(0, scrollY);
+  }
 }
 function softRender() { renderAll(); } // paramètres inchangés ; mêmes sélecteurs de contexte
 
