@@ -87,6 +87,20 @@ const DeviceStorage = (() => {
     try { return v && v.v === 1 && v.it === 600000 && typeof v.s === 'string' && typeof v.i === 'string' && typeof v.c === 'string' &&
       decode(v.s).length === 16 && decode(v.i).length === 12 && decode(v.c).length >= 16; } catch (e) { return false; }
   }
+  // Paramètres publics/importés : valider AVANT PBKDF2 pour éviter qu'une
+  // métadonnée hostile impose des milliards d'itérations ou un gros décodage.
+  // Les sauvegardes historiques peuvent omettre it/kdf/v : leurs valeurs
+  // d'origine sont 600000/PBKDF2-SHA256, jamais un coût arbitraire.
+  function validEnvelope(v, backup = false) {
+    try {
+      const it = backup && v && v.it == null ? 600000 : v && v.it;
+      if (!v || it !== 600000 || (backup ? v.app !== 'twrc-backup' || (v.v != null && ![1, 2].includes(v.v)) || (v.kdf != null && v.kdf !== 'PBKDF2-SHA256') : v.v !== 1 || v.kdf !== 'PBKDF2-SHA256')) return false;
+      const base64 = x => typeof x === 'string' && x.length > 0 && x.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(x);
+      return base64(v.s) && v.s.length === 24 && decode(v.s).length === 16 &&
+        base64(v.i) && v.i.length === 16 && decode(v.i).length === 12 &&
+        base64(v.c) && v.c.length <= 64 * 1024 * 1024 && decode(v.c).length >= 16;
+    } catch (e) { return false; }
+  }
   async function lock(storage, pass, crypto) {
     recover(storage);
     const names = keys(storage).filter(k => appKey(k) && k !== VAULT && k !== 'twrc.key' && !k.startsWith('twrc.cache.'));
@@ -112,6 +126,6 @@ const DeviceStorage = (() => {
     if (!data || data.v !== 1 || !validValues(data.values) || Object.hasOwn(data.values, VAULT) || Object.hasOwn(data.values, 'twrc.key')) throw new Error('Coffre local invalide.');
     return { writes: Object.fromEntries(Object.entries(data.values).filter(([, v]) => v != null)), remove: [VAULT], removePrefixes: [] };
   }
-  return { VAULT, PENDING, apply, recover, bootstrap, guard, isLocked, finishLock, lock, unlockPlan,
+  return { VAULT, PENDING, apply, recover, bootstrap, guard, isLocked, finishLock, lock, unlockPlan, validEnvelope,
     isFrozen: () => frozen, freeze: value => { frozen = !!value; } };
 })();

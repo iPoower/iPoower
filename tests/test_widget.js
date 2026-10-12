@@ -1,6 +1,6 @@
 // Scriptable simulé : moteur embarqué, données fictives, aucun accès réseau réel.
 'use strict';
-const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
+const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
 const now = Date.parse('2026-10-10T08:00:00+02:00');
 class Clock extends Date { constructor(...args) { super(...(args.length ? args : [now])); } static now() { return now; } }
 const demo = { console, Math, Date: Clock, Intl, Map, Set, JSON }; vm.createContext(demo);
@@ -27,8 +27,8 @@ async function run(code, { failArome = false } = {}) {
   // L'ancien new Function ne peut pas réussir ici. L'évaluation VM est seulement
   // le harnais d'exécution d'un fichier de confiance, jamais d'une réponse réseau.
   vm.createContext(ctx, { codeGeneration: { strings: false, wasm: false } });
-  await vm.runInContext('(async()=>{' + code + '})()', ctx, { timeout: 5000 });
-  return { out, requested, widget, completed };
+  const cfg = await vm.runInContext('(async()=>{' + code + ';return CFG;})()', ctx, { timeout: 5000 });
+  return { out, requested, widget, completed, cfg: JSON.parse(JSON.stringify(cfg)), injected: !!ctx.__widgetInjected };
 }
 function healthy(result) {
   assert(result.completed && result.widget, 'widget réellement remis à Scriptable');
@@ -46,6 +46,25 @@ function healthy(result) {
   assert(!code.includes('new Function') && !code.includes('getText('));
   healthy(await run(code)); console.log('✅ widget iPhone simulé : météo, pneus et rafraîchissement avec moteur embarqué, sans code réseau');
   healthy(await run(code, { failArome: true })); console.log('✅ panne AROME : météo de base et verdict conservés');
+  const appSource = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
+  const helper = appSource.match(/function widgetWithConfig\(script, config\) \{[\s\S]*?\n\}/);
+  assert(helper, 'le vrai générateur utilisé par le bouton de copie est testé');
+  const configured = vm.runInNewContext(helper[0] + ';widgetWithConfig;', { JSON });
+  const base = (await run(code)).cfg;
+  for (const label of ["$&", "$'", "$`", '" }; globalThis.__widgetInjected = true; //']) {
+    const cfg = JSON.parse(JSON.stringify(base)); cfg.home.name = label; cfg.cars[0].short = label;
+    const result = await run(configured(publicCode, cfg));
+    assert.deepEqual(result.cfg, cfg); assert(result.out.includes(label + ' · été'));
+    assert(result.completed && result.widget); assert.equal(result.injected, false);
+  }
+  assert.throws(() => configured('modèle sans configuration', base));
+  assert.throws(() => configured(publicCode + '\nconst CFG = null;', base));
+  const unsafe = vm.runInNewContext(helper[0].replace('() => ', '') + ';widgetWithConfig;', { JSON });
+  const hostileLabel = JSON.parse(JSON.stringify(base)); hostileLabel.cars[0].short = "$'";
+  // SyntaxError vient du contexte VM : même erreur, prototype distinct du contexte Node.
+  await assert.rejects(() => run(unsafe(publicCode, hostileLabel)), error =>
+    error.name === 'SyntaxError' && /Invalid or unexpected token/.test(error.message));
+  console.log('✅ vraie copie widget : libellés spéciaux conservés, modèles invalides et régression détectés');
   const hostile = code.replace("if (!E) throw new Error", "await new Request(SITE + 'engine.js').loadString(); if (!E) throw new Error");
   assert.notEqual(hostile, code); await assert.rejects(async () => healthy(await run(hostile)));
   console.log('✅ contre-test : réintroduire un téléchargement de code fait échouer la validation');

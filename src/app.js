@@ -74,6 +74,7 @@ async function unseal(pass, keepWeek = true) {
   const S0 = window.TWRC_SEALED; if (!S0 || !crypto || !crypto.subtle) return false;
   let txt;
   try {
+    if (!DeviceStorage.validEnvelope(S0)) throw new Error('Enveloppe de préréglage invalide');
     const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
     const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(S0.s), iterations: S0.it, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
     txt = new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(S0.i) }, key, b64(S0.c))); JSON.parse(txt);
@@ -1601,8 +1602,8 @@ function loadLeaflet() {
   if (loadLeaflet.p) return loadLeaflet.p;
   loadLeaflet.p = new Promise((res, rej) => {
     // empreintes SRI (identiques à celles publiées sur leafletjs.com) : le navigateur refuse tout fichier modifié
-    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'; css.integrity = 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H'; css.crossOrigin = 'anonymous'; css.referrerPolicy = 'no-referrer'; document.head.appendChild(css);
-    const js = document.createElement('script'); js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'; js.integrity = 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH'; js.crossOrigin = 'anonymous'; js.referrerPolicy = 'no-referrer';
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'vendor/leaflet/leaflet.css'; css.integrity = 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H'; css.crossOrigin = 'anonymous'; css.referrerPolicy = 'no-referrer'; document.head.appendChild(css);
+    const js = document.createElement('script'); js.src = 'vendor/leaflet/leaflet.js'; js.integrity = 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH'; js.crossOrigin = 'anonymous'; js.referrerPolicy = 'no-referrer';
     js.onload = () => res(); js.onerror = () => { loadLeaflet.p = null; rej(new Error('carte indisponible')); }; document.head.appendChild(js);
   });
   return loadLeaflet.p;
@@ -1753,8 +1754,10 @@ async function backupApplyPlan(plan) {
 }
 async function backupImport(f) {
   bkMsg('Lecture du fichier…');
+  if (f && Number.isFinite(f.size) && f.size > 68 * 1024 * 1024) { bkMsg('Sauvegarde trop volumineuse : fichier conservé, aucun réglage modifié.'); return; }
   let o; try { o = JSON.parse(await f.text()); } catch (e) { bkMsg('Fichier illisible.'); return; }
   if (!o || o.app !== 'twrc-backup' || !o.c) { bkMsg('Ce fichier n’est pas une sauvegarde Race Control.'); return; }
+  if (!DeviceStorage.validEnvelope(o, true)) { bkMsg('Sauvegarde chiffrée invalide : aucun réglage modifié.'); return; }
   const pass = bkPass(); if (!pass) { bkMsg('Entre le code utilisé pour la sauvegarde, puis réessaie.'); return; }
   bkMsg('Déchiffrement…');
   let data;
@@ -2748,11 +2751,11 @@ function drawTripMap(node, t, geo) {
   const cs = getComputedStyle($('#secBrf')), col = (cs.getPropertyValue('--lv-t') || cs.getPropertyValue('--accent') || '#2ecc71').trim();
   const line = L.polyline(geo.pts, { color: col, weight: 4, opacity: .95, dashArray: geo.est ? '6 7' : null }).addTo(map);
   const a = geo.pts[0], b = geo.pts[geo.pts.length - 1];
-  L.circleMarker(a, { radius: 5, color: '#fff', weight: 2, fillColor: '#0b0f14', fillOpacity: 1 }).addTo(map).bindTooltip('Départ · ' + t.from);
-  L.circleMarker(b, { radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: .9 }).addTo(map).bindTooltip('Arrivée · ' + t.to);
+  L.circleMarker(a, { radius: 5, color: '#fff', weight: 2, fillColor: '#0b0f14', fillOpacity: 1 }).addTo(map).bindTooltip('Départ · ' + esc(t.from));
+  L.circleMarker(b, { radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: .9 }).addTo(map).bindTooltip('Arrivée · ' + esc(t.to));
   if (geo.crit) {
     const cc = (cs.getPropertyValue(geo.crit.lv >= 3 ? '--nogo-t' : '--risk-t') || (geo.crit.lv >= 3 ? '#e74c3c' : '#f39c12')).trim();
-    L.circleMarker(geo.crit.at, { radius: 8, color: cc, weight: 3, fillColor: cc, fillOpacity: .35 }).addTo(map).bindTooltip('Point le plus délicat vers ' + geo.crit.t.slice(11, 16));
+    L.circleMarker(geo.crit.at, { radius: 8, color: cc, weight: 3, fillColor: cc, fillOpacity: .35 }).addTo(map).bindTooltip('Point le plus délicat vers ' + esc(geo.crit.t.slice(11, 16)));
   }
   map.fitBounds(line.getBounds(), { padding: [16, 16] });
   node.insertAdjacentHTML('beforeend', `<div class="tmap-b">${t.worst != null ? LV[t.worst].emoji : '·'}${geo.est ? ' tracé estimé' : ''}</div>`);
@@ -2768,6 +2771,7 @@ function calendarSealedCache() {
   catch (e) { return null; }
 }
 async function openSealed(S0, pass) {
+  if (!DeviceStorage.validEnvelope(S0)) throw new Error('Enveloppe agenda invalide');
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(S0.s), iterations: S0.it, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
   return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(S0.i) }, key, b64(S0.c))));
@@ -3821,6 +3825,12 @@ function softRender() { renderAll(); } // paramètres inchangés ; mêmes sélec
 
 /* ---------- événements ---------- */
 let geoSearchGen = 0;
+function widgetWithConfig(script, config) {
+  const marker = /const CFG = null;[^\n]*/g;
+  if ((script.match(marker) || []).length !== 1) throw new Error('Modèle du widget invalide');
+  // Callback : les séquences $&, $` et $\u0027 des libellés restent des données JSON.
+  return script.replace(marker, () => 'const CFG = ' + JSON.stringify(config) + ';');
+}
 function commandFeedback(button, message, input) {
   if (button) { button.textContent = message; button.setAttribute('aria-live', 'polite'); }
   if (input) input.focus();
@@ -3934,7 +3944,7 @@ document.addEventListener('click', async e => {
       const home = S.locs[0], work = S.locs[1];
       const cfg = { home: { id: home.id, name: home.name, lat: home.lat, lon: home.lon }, work: { id: work.id, name: work.name, lat: work.lat, lon: work.lon }, dep: S.work.dep, durMin: S.work.durMin, days: commuteDays(S.work.days),
         cars: S.cars.map(c => ({ short: c.short, sporty: c.sporty, tire: { type: c.tire.type, size: c.tire.size, tread: c.tire.tread ?? null, dot: c.tire.dot || '' }, plan: { on: 0 } })) };
-      await navigator.clipboard.writeText(window.__wjs.replace(/const CFG = null;[^\n]*/, 'const CFG = ' + JSON.stringify(cfg) + ';'));
+      await navigator.clipboard.writeText(widgetWithConfig(window.__wjs, cfg));
       t.textContent = 'Script copié (avec tes voitures)';
     }
     catch (err) { t.textContent = 'Copie impossible : ouvre « Voir le script »'; }

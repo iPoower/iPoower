@@ -14,8 +14,8 @@ await p.route('**/*',r=>{const u=r.request().url();const J=o=>r.fulfill({status:
  if(u.includes('tilecache.rainviewer.com')){reqs.tile++;return r.fulfill({status:200,contentType:'image/png',headers:{'access-control-allow-origin':'*'},body:PX});}
  if(u.includes('arcgisonline.com')){reqs.esri=(reqs.esri||0)+1;if(process.env.ESRI_DOWN)return r.abort();return r.fulfill({status:200,contentType:'image/png',body:PX});}
  if(u.includes('tile.openstreetmap.org')){reqs.osm=(reqs.osm||0)+1;return r.fulfill({status:200,contentType:'image/png',body:PX});}
- if(u.includes('unpkg.com/leaflet@1.9.4/dist/leaflet.js'))return r.fulfill({status:200,contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:process.env.TAMPER?Buffer.concat([fs.readFileSync('node_modules/leaflet/dist/leaflet.js'),Buffer.from(';window.PWNED=1;')]):fs.readFileSync('node_modules/leaflet/dist/leaflet.js')});
- if(u.includes('unpkg.com/leaflet@1.9.4/dist/leaflet.css'))return r.fulfill({status:200,contentType:'text/css',headers:{'access-control-allow-origin':'*'},body:fs.readFileSync('node_modules/leaflet/dist/leaflet.css')});
+ if(u.includes('/vendor/leaflet/leaflet.js'))return r.fulfill({status:200,contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:process.env.TAMPER?Buffer.concat([fs.readFileSync('node_modules/leaflet/dist/leaflet.js'),Buffer.from(';window.PWNED=1;')]):fs.readFileSync('node_modules/leaflet/dist/leaflet.js')});
+ if(u.includes('/vendor/leaflet/leaflet.css'))return r.fulfill({status:200,contentType:'text/css',headers:{'access-control-allow-origin':'*'},body:fs.readFileSync('node_modules/leaflet/dist/leaflet.css')});
  if(u.includes('/race-control/obs.json'))return J({stations:{}});
  if(u.includes('/race-control/tiredb.json'))return r.fulfill({status:200,contentType:'application/json',body:fs.readFileSync('site/tiredb.json','utf8')});
  if(u.includes('/race-control/sw.js'))return r.fulfill({status:200,contentType:'text/javascript',body:'//'});

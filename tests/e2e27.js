@@ -24,8 +24,8 @@ await p.route('**/*',r=>{const u=r.request().url();const J=o=>r.fulfill({status:
  if(u.includes('tile.openstreetmap.org')){reqs.osm=(reqs.osm||0)+1;return r.fulfill({status:200,contentType:'image/png',body:PX});}
  if(u.includes('cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js'))return r.fulfill({status:200,contentType:'text/javascript',body:fs.readFileSync('node_modules/leaflet/dist/leaflet.js')});
  if(u.includes('cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css'))return r.fulfill({status:200,contentType:'text/css',body:fs.readFileSync('node_modules/leaflet/dist/leaflet.css')});
- if(u.includes('unpkg.com/leaflet@1.9.4/dist/leaflet.js')){reqs.lf=(reqs.lf||0)+1;return r.fulfill({status:200,contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:fs.readFileSync('node_modules/leaflet/dist/leaflet.js')});}
- if(u.includes('unpkg.com/leaflet@1.9.4/dist/leaflet.css'))return r.fulfill({status:200,contentType:'text/css',headers:{'access-control-allow-origin':'*'},body:fs.readFileSync('node_modules/leaflet/dist/leaflet.css')});
+ if(u.includes('/vendor/leaflet/leaflet.js')){reqs.lf=(reqs.lf||0)+1;return r.fulfill({status:200,contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:fs.readFileSync('node_modules/leaflet/dist/leaflet.js')});}
+ if(u.includes('/vendor/leaflet/leaflet.css'))return r.fulfill({status:200,contentType:'text/css',headers:{'access-control-allow-origin':'*'},body:fs.readFileSync('node_modules/leaflet/dist/leaflet.css')});
  if(u.includes('router.project-osrm.org')){reqs.osrm=(reqs.osrm||[]);reqs.osrm.push(u.split('/driving/')[1].split('?')[0]);const m=/driving\/([-\d.]+),([-\d.]+);([-\d.]+),([-\d.]+)/.exec(u);const a=[+m[1],+m[2]],q=[+m[3],+m[4]];return J({routes:[{geometry:{coordinates:[...Array(30)].map((_,k)=>[a[0]+(q[0]-a[0])*k/29+Math.sin(k/4)*0.02,a[1]+(q[1]-a[1])*k/29])}}]});}
  if(u.includes('/race-control/calendar.sealed.json'))return r.fulfill({status:200,contentType:'application/json',body:fs.readFileSync(SP+'/cal.fake.json','utf8')});
  if(u.includes('/race-control/obs.json'))return J({stations:{}});

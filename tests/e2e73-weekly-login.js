@@ -52,14 +52,18 @@ async function openAt(context, date) {
             const t = db.transaction('records', 'readonly'), r = t.objectStore('records').get('device');
             r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
           });
+          const descriptor = JSON.parse(sessionStorage.getItem('twrc.session.v2'));
+          const tab = await new Promise((resolve, reject) => { const r = db.transaction('records', 'readonly').objectStore('records').get('tab:' + descriptor.id); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+          let exported = false; try { await crypto.subtle.exportKey('raw', tab.key); exported = true; } catch (e) { /* non extractible */ }
           db.close();
-          return { present: !!item, extractable: item && item.wrappingKey.extractable, ttl: item && item.exp - item.at, raw: JSON.stringify({ cipher: item.cipher, iv: item.iv }), session: sessionStorage.getItem('twrc.session.v2') };
+          return { present: !!item, extractable: item && item.wrappingKey.extractable, ttl: item && item.exp - item.at, raw: JSON.stringify({ cipher: item.cipher, iv: item.iv }), session: sessionStorage.getItem('twrc.session.v2'), sessionVersion: descriptor.v, rawKeyField: Object.hasOwn(descriptor, 'k'), tabPresent: !!tab, tabExtractable: tab && tab.key.extractable, tabExported: exported };
         });
         assert(state.present, 'autorisation sauvegardée');
         assert.equal(state.extractable, false);
         assert.equal(state.ttl, 7 * DAY);
         assert(!state.raw.includes('code-fictif') && !state.raw.includes('twrc.key'));
         assert(state.session && !state.session.includes('code-fictif'));
+        assert.equal(state.sessionVersion, 4); assert.equal(state.rawKeyField, false); assert.equal(state.tabPresent, true); assert.equal(state.tabExtractable, false); assert.equal(state.tabExported, false);
         assert.equal(await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem('twrc.key')), null);
       });
       await check(dev + ' · nouvel onglet 24 h après : pas de code et données intactes', async () => {
