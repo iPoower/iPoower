@@ -59,7 +59,8 @@ const RememberDevice = (() => {
       await clear().catch(() => {}); return null;
     }
     try {
-      if (!data.wrappingKey || data.wrappingKey.extractable || data.wrappingKey.algorithm.name !== 'AES-GCM') throw new Error('Clé non conforme');
+      if (!data.wrappingKey || data.wrappingKey.extractable || data.wrappingKey.algorithm.name !== 'AES-GCM' || data.wrappingKey.algorithm.length !== 256 ||
+          typeof data.iv !== 'string' || data.iv.length !== 16 || typeof data.cipher !== 'string' || data.cipher.length !== 64) throw new Error('Clé non conforme');
       const rawKey = new Uint8Array(await crypto.subtle.decrypt(
         { name: 'AES-GCM', iv: decode(data.iv), additionalData: extra(data) }, data.wrappingKey, decode(data.cipher)
       ));
@@ -67,5 +68,62 @@ const RememberDevice = (() => {
       return { rawKey, expiresAt: data.exp };
     } catch (e) { await clear().catch(() => {}); return null; }
   }
-  return { WEEK_MS, save, resume, clear };
+  // Session d'un seul onglet : sessionStorage ne garde qu'un identifiant, des
+  // métadonnées authentifiées et la clé du coffre CHIFFRÉE. La clé d'enveloppe
+  // est un CryptoKey non extractible dans IndexedDB. Une panne IDB impose le
+  // code au prochain chargement, sans toucher au coffre ni bloquer la page.
+  const sessionExtra = d => encoder.encode(JSON.stringify({ v: 4, id: d.id, s: d.s, l: d.l, a: d.a, e: d.e }));
+  const validSession = d => !!d && d.v === 4 && /^[0-9a-f]{32}$/.test(d.id || '') &&
+    typeof d.s === 'string' && (d.l === null || typeof d.l === 'string') &&
+    Number.isSafeInteger(d.a) && Number.isSafeInteger(d.e) && d.e - d.a === WEEK_MS;
+  const sessionSlot = id => 'tab:' + id;
+  const sessions = {
+    async save(rawKey, meta, crypto) {
+      if (!(rawKey instanceof Uint8Array) || rawKey.length !== 32) throw new Error('Clé de session invalide');
+      const id = [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, '0')).join('');
+      const descriptor = { ...meta, v: 4, id };
+      if (!validSession(descriptor) || decode(descriptor.s).length !== 16) throw new Error('Métadonnées de session invalides');
+      const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: sessionExtra(descriptor) }, key, rawKey));
+      await record('readwrite', s => {
+        // Collecter uniquement les sessions terminées ; ne jamais évincer un onglet actif.
+        const cursor = s.openCursor(), now = Date.now();
+        cursor.onsuccess = () => { const row = cursor.result; if (!row) return;
+          if (String(row.key).startsWith('tab:') && Number.isSafeInteger(row.value.e) && row.value.e <= now) row.delete();
+          row.continue();
+        };
+        return s.put({ v: 4, key, e: descriptor.e }, sessionSlot(id));
+      });
+      return { ...descriptor, i: encode(iv), c: encode(cipher) };
+    },
+    async resume(descriptor, crypto, now = Date.now()) {
+      if (!validSession(descriptor) || now < descriptor.a || now >= descriptor.e ||
+          typeof descriptor.i !== 'string' || typeof descriptor.c !== 'string') return null;
+      let rawKey;
+      try {
+        const item = await record('readonly', s => s.get(sessionSlot(descriptor.id)));
+        if (!item || item.v !== 4 || item.e !== descriptor.e || !item.key || item.key.extractable ||
+            item.key.algorithm.name !== 'AES-GCM' || item.key.algorithm.length !== 256) return null;
+        const iv = decode(descriptor.i), cipher = decode(descriptor.c);
+        if (iv.length !== 12 || cipher.length !== 48) return null;
+        rawKey = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: sessionExtra(descriptor) }, item.key, cipher));
+        if (rawKey.length !== 32) { rawKey.fill(0); return null; }
+        return { rawKey, expiresAt: descriptor.e };
+      } catch (e) { if (rawKey) rawKey.fill(0); return null; }
+    },
+    async clear(descriptor) {
+      if (descriptor && /^[0-9a-f]{32}$/.test(descriptor.id || '')) await record('readwrite', s => s.delete(sessionSlot(descriptor.id)));
+    },
+    async revokeAll() {
+      await record('readwrite', s => {
+        const request = s.openCursor();
+        request.onsuccess = () => { const row = request.result; if (!row) return;
+          if (String(row.key).startsWith('tab:')) row.delete();
+          row.continue();
+        };
+      });
+    }
+  };
+  return { WEEK_MS, save, resume, clear, sessions };
 })();

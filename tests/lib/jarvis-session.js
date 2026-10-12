@@ -69,7 +69,7 @@ async function session(browser, { iphone = false, permissionAPI = true, locked =
     if (u.includes('ntfy.sh')) return r.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
     if (u.includes('rainviewer.com') && !u.includes('tilecache.')) { if (state.radar === 'abort') return r.abort(); return J({ host: 'https://tilecache.rainviewer.com', radar: { past: [{ time: Math.floor(time / 1000), path: '/test' }] } }); }
     if (/tilecache\.rainviewer|arcgisonline|tile\.openstreetmap/.test(u)) return r.fulfill({ status: 200, contentType: 'image/png', body: PNG });
-    if (/leaflet@1\.9\.4\/dist\/leaflet\.(js|css)/.test(u)) return r.fulfill({ status: 200, contentType: u.endsWith('.js') ? 'text/javascript' : 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/' + (u.endsWith('.js') ? 'leaflet.js' : 'leaflet.css')) });
+    if (/\/vendor\/leaflet\/leaflet\.(js|css)/.test(u)) return r.fulfill({ status: 200, contentType: u.endsWith('.js') ? 'text/javascript' : 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/' + (u.endsWith('.js') ? 'leaflet.js' : 'leaflet.css')) });
     if (u.startsWith(APP_URL)) {
       const name = new URL(u).pathname.split('/').pop();
       if (!name || name === 'index.html') return r.fulfill({ status: 200, contentType: 'text/html', body: HTML });
