@@ -97,3 +97,4 @@ SUITE.push(['e2e73-weekly-login.js', 'sécurité iPhone/PC : session 7 jours en 
 module.exports = { SUITE, FIRST };
 SUITE.push(['test_live_engine.js', 'live : horloge, provenance, données partielles, horizon et réponses tardives', false]);
 SUITE.push(['e2e74-live-offline.js', 'Live/Offline : minuit, heures offline, données anciennes/partielles, reconnexion et 429 iPhone/PC', true]);
+SUITE.push(['test_offline_weather.js', 'prévisions secondaires : cache, 503, offline prolongé, dates et reprise sans doublons', false]);
