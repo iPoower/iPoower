@@ -254,6 +254,7 @@ const urlArome = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&current=${Q_C
 
 let M = {};            // modèles par lieu
 const RAW = {};        // charges utiles + mode
+const WEATHER_LOAD_GEN = new Map(); // générations en mémoire, aucune clé persistante supplémentaire
 const ERR = {};
 let DEMO = { on: false, scn: 'froid' };
 let MIDM = {};                       // modèles des points intermédiaires
@@ -275,6 +276,10 @@ async function fetchEns(l) {
   return null;
 }
 const gpsSourceCurrent = (l, gen) => !l.gps || (GPS && gen === gpsWeatherGen && distKm(l, GPS) <= 3);
+function weatherLoadCurrent(l, gen) {
+  const current = allLocs().find(p => p.id === l.id);
+  return WEATHER_LOAD_GEN.get(l.id) === gen && !!current && (l.gps ? distKm(l, current) <= 3 : current.lat === l.lat && current.lon === l.lon);
+}
 let ensBusy = false, ensAgain = false, ensForce = false;
 async function refreshEns(force) {
   if (DEMO.on) return;
@@ -353,7 +358,7 @@ function loadCache() {
     if (!locHasCoords(l)) return;
     try {
       const c = JSON.parse(lsGet('twrc.cache.' + l.id) || 'null');
-      if (c && c.p && !validForecast(c.p) && Number.isFinite(c.t) && (l.gps ? distKm(c, l) <= 3 : Math.abs(c.lat - l.lat) < 1e-6 && Math.abs(c.lon - l.lon) < 1e-6) && Date.now() - c.t < 36 * 3600e3) {
+      if (c && c.p && !validForecast(c.p) && Number.isFinite(c.t) && c.t <= Date.now() + 60e3 && (l.gps ? distKm(c, l) <= 3 : Math.abs(c.lat - l.lat) < 1e-6 && Math.abs(c.lon - l.lon) < 1e-6) && Date.now() - c.t < 36 * 3600e3) {
         RAW[l.id] = { p: c.p, mode: 'cache', t: c.t, lat: c.lat, lon: c.lon };
         if (l.gps) gpsWeatherOrigin = { lat: c.lat, lon: c.lon };
       }
@@ -362,31 +367,40 @@ function loadCache() {
 }
 async function loadLoc(l, force = false) {
   if (!locHasCoords(l)) throw new Error('Coordonnées du lieu à renseigner.');
+  l = { ...l }; // conserver les coordonnées exactes de cette requête, même si les réglages changent
   const origin = { lat: l.lat, lon: l.lon }, gen = l.gps ? ++gpsWeatherGen : null;
+  const loadGen = (WEATHER_LOAD_GEN.get(l.id) || 0) + 1;
+  WEATHER_LOAD_GEN.set(l.id, loadGen);
   if (l.gps) { WEATHER_REQUESTS.cancelGroup('gps'); gpsWeatherOrigin = origin; }
   const group = l.gps ? 'gps' : 'shared';
   // Modèle du lieu affiché : 5 min ; autres lieux : 20 min ; AROME : 35 min ; nowcast : 15 min.
   // Un rafraîchissement manuel (force) interroge toujours le fournisseur. Un trajet/lieu nouveau a une URL neuve.
-  const baseUrl = urlFor(l);
+  const baseUrl = urlFor(l), arUrl = urlArome(l), ncUrl = urlNow(l);
   const [b, ar, nc] = await Promise.allSettled([
     fetchJSON(baseUrl, 12000, group, force ? 0 : l.id === UI.loc ? 4 * 60e3 : 18 * 60e3),
-    fetchJSON(urlArome(l), 12000, group, force ? 0 : 35 * 60e3),
-    fetchJSON(urlNow(l), 12000, group, force ? 0 : 14 * 60e3)
+    fetchJSON(arUrl, 12000, group, force ? 0 : 35 * 60e3),
+    fetchJSON(ncUrl, 12000, group, force ? 0 : 14 * 60e3)
   ]);
+  if (!weatherLoadCurrent(l, loadGen) || l.gps && (gen !== gpsWeatherGen || !GPS || distKm(origin, GPS) > 3)) return null;
   // Validation AVANT toute écriture : une réponse 200 vide, tronquée ou d'un portail ne remplace jamais la dernière météo valide.
   const invalid = b.status === 'fulfilled' ? validForecast(b.value) : null;
   if (b.status !== 'fulfilled' || invalid) { if (l.gps && gen === gpsWeatherGen) gpsWeatherOrigin = null; throw b.status !== 'fulfilled' ? b.reason : new Error('réponse météo invalide : ' + invalid); }
+  const clockHour = nowIn(b.value.timezone || 'Europe/Paris').slice(0, 13) + ':00';
+  if (!b.value.hourly.time.includes(clockHour)) throw new Error('prévisions sans l’heure actuelle');
+  const prior = RAW[l.id], incoming = b.value.current && b.value.current.time, previous = prior && prior.p.current && prior.p.current.time;
+  if (incoming && previous && incoming < previous && prior.lat === origin.lat && prior.lon === origin.lon) throw new Error('réponse météo plus ancienne que les données conservées');
   // Ne jamais laisser un ancien AROME en cache écraser une prévision de base reçue plus récemment :
   // en cas de décalage de fraîcheur, le modèle de base fait foi jusqu'au prochain vrai relevé AROME.
   const arFresh = ar.status === 'fulfilled' && !!ar.value
-    && (WEATHER_REQUESTS.fetchedAt(urlArome(l)) || 0) >= (WEATHER_REQUESTS.fetchedAt(baseUrl) || 0) - 60e3;
+    && !validForecast(ar.value) && (WEATHER_REQUESTS.fetchedAt(arUrl) || 0) >= (WEATHER_REQUESTS.fetchedAt(baseUrl) || 0) - 60e3;
   const p = mergeArome(b.value, arFresh ? ar.value : null);
   // Un ancien lieu GPS ne remplace jamais la météo d'une position plus récente, ni un GPS oublié.
   if (l.gps && (gen !== gpsWeatherGen || !GPS || distKm(origin, GPS) > 3)) return p;
   if (nc.status === 'fulfilled' && nc.value && nc.value.minutely_15) NOWRAW[l.id] = nc.value; else delete NOWRAW[l.id];
   // Conserver la vraie heure du téléchargement, pas celle de la relecture du cache mémoire.
   const retrievedAt = WEATHER_REQUESTS.fetchedAt(baseUrl) || Date.now();
-  RAW[l.id] = { p, mode: 'live', t: retrievedAt, ...origin }; delete ERR[l.id];
+  const mode = offlineNow() || makeModel(p, 'live', l).mode === 'cache' ? 'cache' : 'live';
+  RAW[l.id] = { p, mode, t: retrievedAt, ...origin }; delete ERR[l.id];
   try { lsSet('twrc.cache.' + l.id, JSON.stringify({ t: retrievedAt, ...origin, p })); } catch (e) { /* quota */ }
   return p;
 }
@@ -665,7 +679,7 @@ async function refreshAll(force = true) {
   if (busy) return;
   if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
   busy = true; DEMO.on = false; lastTry = Date.now(); renderStatus();
-  const locs = allLocs(), gpsStart = gpsWeatherGen, generations = new Map();
+  const locs = allLocs().map(l => ({ ...l })), gpsStart = gpsWeatherGen, generations = new Map();
   try {
     if (location.protocol === 'https:') {
       const o = await fetchJSON(dataUrl('obs.json') + '?t=' + Math.floor(Date.now() / 300e3), 8000);
@@ -678,17 +692,20 @@ async function refreshAll(force = true) {
   const res = await Promise.allSettled(locs.map(l => {
     // Une position remplacée pendant la lecture des observations ne relance pas une ancienne météo.
     if (l.gps && !gpsSourceCurrent(l, gpsStart)) return Promise.resolve(null);
-    const request = loadLoc(l, force); if (l.gps) generations.set(l.id, gpsWeatherGen); return request;
+    const request = loadLoc(l, force); generations.set(l.id, { gps: gpsWeatherGen, load: WEATHER_LOAD_GEN.get(l.id) }); return request;
   }));
   let ok = 0;
   res.forEach((r, k) => {
     const l = locs[k];
-    if (l.gps && (!generations.has(l.id) || !gpsSourceCurrent(l, generations.get(l.id)))) return;
+    const generation = generations.get(l.id);
+    if (!generation || !weatherLoadCurrent(l, generation.load) || !gpsSourceCurrent(l, generation.gps)) return;
     if (r.status === 'fulfilled' && r.value && r.value.hourly && r.value.hourly.time) ok++;
     else { ERR[l.id] = (r.reason && r.reason.message) || 'réponse invalide'; if (RAW[l.id]) RAW[l.id].mode = 'cache'; }
   });
   if (ok) lastOk = Math.max(lastOk || 0, ...locs.map(l => (RAW[l.id] && RAW[l.id].mode === 'live' ? RAW[l.id].t : 0)));
+  const scrollY = window.scrollY;
   busy = false; rebuild(); renderAll();
+  if (Number.isFinite(scrollY) && typeof window.scrollTo === 'function') window.scrollTo({ top: scrollY, behavior: 'instant' });
   fetchVigi(); refreshEns(); radarRefresh(); loadCalendar();
 }
 function startDemo(scn) {
@@ -712,7 +729,7 @@ function rebuild() {
     const cb = calibFor(l.id);
     try {
       setRoadBias(cb.bias);
-      const m = makeModel(r.p, r.mode, l);
+      const m = makeModel(r.p, r.mode, l); r.mode = m.mode;
       const en = ENSRAW[l.id]; if (en) { m.ens = ensembleStats(en.p, m); m.ensModel = en.model; }
       if (NOWRAW[l.id] && r.mode === 'live') m.nc = nowcast(NOWRAW[l.id], m.nowStr);
       if (OBS && r.mode === 'live') m.obs = applyObs(m, OBS.stations, 35);
@@ -880,7 +897,7 @@ function renderStatus() {
   const b = mode === 'demo' ? '<span class="badge demo"><i></i>DÉMO</span>' : off ? '<span class="badge"><i></i>HORS LIGNE</span>' : mode === 'live' ? '<span class="badge live"><i></i>LIVE</span>' : mode === 'cache' ? '<span class="badge cache"><i></i>CACHE</span>' : '<span class="badge"><i></i>HORS LIGNE</span>';
   let u;
   if (mode === 'demo') u = 'Simulation : aucune donnée réelle';
-  else if (off && RAW[UI.loc]) u = 'Données en cache du ' + hmLocal(RAW[UI.loc].t) + ' · figées jusqu’au retour du réseau';
+  else if (off && RAW[UI.loc]) u = 'Données en cache du ' + hmLocal(RAW[UI.loc].t) + ' · prévisions locales, sans actualisation réseau';
   else if (off) u = 'Aucune donnée météo en cache · reconnexion automatique';
   else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(dataAt()) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
   else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
@@ -1005,7 +1022,7 @@ function renderDecisionCore() {
   const active = !!snap.activeTrip, gpsAge = FIX && Number.isFinite(FIX.ts) ? ageMin(FIX.ts) : null;
   const agendaRequired = !!snap.agendaEvent, calAge = CAL ? ageMin(CAL.updated) : null;
   const confidence = Decision.confidence({
-    weather: { available: !!raw && !!CX.m, ageMin: raw ? ageMin(raw.t) : null, mode: raw && raw.mode },
+    weather: { available: !!raw && !!CX.m && CX.m.nowI >= 0 && ['T', 'Tr', 'P', 'RH', 'vis', 'gust'].every(k => Number.isFinite(CX.m.hs[CX.m.nowI][k])), ageMin: raw ? ageMin(raw.t) : null, mode: CX.m.mode },
     online: !offlineNow(), contextKnown: snap.status !== 'unknown',
     storageDurable: USER_STORE.durability().status === 'durable',
     tyresRequired: true, carChosen: !!car, tyresKnown: !!(car && hasTires(car) && carEval && carEval.w && !carProfile(car).generic),
@@ -1023,7 +1040,7 @@ function renderDecisionCore() {
   const hour = CX.m && CX.m.hs[CX.m.nowI] || {}, tyre = car && car.tire || {};
   const state = Decision.snapshot({
     at: raw && raw.t || now, riskLevel: decision.riskLevel, confidenceKey: confidence.key,
-    weatherMode: raw && raw.mode, weatherAt: raw && raw.t,
+    weatherMode: CX.m.mode, weatherAt: raw && raw.t,
     temperature: CX.m && CX.m.cur && CX.m.cur.T, roadTemp: hour.Tr, visibility: hour.vis,
     destinationKey: snap.nextTrip && snap.nextTrip.key || snap.dayContext && snap.dayContext.nextDestination && snap.dayContext.nextDestination.tripKey,
     destinationId: snap.destination && snap.destination.id,
@@ -1127,7 +1144,7 @@ function renderCurrent() {
   const cls = rainClass(c.P);
   const ev = [3, 6, 12].map(k => { const x = hs[n + k]; if (!x) return ''; return `<div><span>Dans ${k} h · ${x.t.slice(11, 16)}</span><b>${f1(x.T)} °C</b><span>${(x.Pl || 0) >= 0.1 ? f1(x.Pl) + ' mm/h' : 'sec'} · vis. ${visTxt(x.vis)}</span></div>`; }).join('');
   const l = allLocs().find(x => x.id === UI.loc);
-  el.innerHTML = `<div class="mod-h"><h2>🌡️ Météo actuelle · ${esc(l ? l.name : '')}</h2><span class="src obs">mesuré/prévision météo</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>🌡️ Météo actuelle · ${esc(l ? l.name : '')}</h2><span class="src obs">PRÉVU · modèle météo${m.mode === 'cache' || offlineNow() ? ' · CACHE' : ''}</span></div>
   <div class="cur"><div class="bigT num">${c.T == null ? '—' : f1(c.T)}<sup>°C</sup></div>
     <div class="cond"><span class="lbl">${icon(c.code)}${esc(wx(c.code))}</span><span class="sub">Ressentie ${f1(c.Tapp)} °C · min ${f1(day.tmin)} / max ${f1(day.tmax)} °C aujourd’hui</span></div></div>
   <div class="metrics">
@@ -1889,7 +1906,7 @@ setInterval(() => { if (!document.hidden && renderTip.slot !== tipSlot()) render
 function frostBand(Tr) {
   if (Tr == null) return null;
   const lo = Tr - 2, hi = Tr + 2, rng = `plage plausible ${f1(lo)} → ${f1(hi)} °C`;
-  if (hi < 0) return { lv: 3, t: 'SURFACE SOUS 0 °C — QUASI CERTAIN', d: `Chaussée estimée ${f1(Tr)} °C ± 2 · ${rng}. Toute humidité présente au sol peut geler (risque de glace : voir Verglas).` };
+  if (hi < 0) return { lv: 3, t: 'SURFACE SOUS 0 °C — ESTIMATION', d: `Chaussée estimée ${f1(Tr)} °C ± 2 · ${rng}. Toute humidité présente au sol peut geler (risque de glace : voir Verglas).` };
   if (lo < 0) return { lv: 2, t: 'INCERTITUDE GEL', d: `Chaussée estimée ${f1(Tr)} °C ± 2 · ${rng}. Le gel est possible : ponts, ombres et creux d’abord.` };
   if (lo < 2) return { lv: 1, t: 'MARGE DE GEL FAIBLE', d: `Chaussée estimée ${f1(Tr)} °C ± 2 · ${rng}. Ponts et zones ombragées peuvent être plus froids.` };
   return null;
@@ -3728,13 +3745,19 @@ function renderSettings(force) {
 /* ---------- orchestration du rendu ---------- */
 function renderAll() {
   if (APP_CONTEXT.rendering) return;
+  const scrollY = window.scrollY, sameView = renderAll.view === UI.view;
   APP_CONTEXT.rendering = true;
   APP_CONTEXT.calendarLegs = null;
   try {
     appRefreshContext(); recordJournal();
     renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
     renderWx(); renderLab(); renderDebrief(); renderGarage(); labThermTick(false); roadSync(); renderF1Pure();
-  } finally { APP_CONTEXT.rendering = false; }
+  } finally {
+    APP_CONTEXT.rendering = false; renderAll.view = UI.view;
+    // La navigation garde son comportement ; une projection du même écran
+    // conserve la position même quand ses blocs changent de hauteur.
+    if (sameView && Number.isFinite(scrollY)) window.scrollTo({ top: scrollY, behavior: 'instant' });
+  }
 }
 function softRender() { renderAll(); } // paramètres inchangés ; mêmes sélecteurs de contexte
 

@@ -35,7 +35,8 @@ function f1BriefingHtml() {
 function f1TrackHtml() {
   const t = APP_CONTEXT.snapshot && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
   const raw = RAW[UI.loc], age = raw && Number.isFinite(raw.t) && raw.mode !== 'cache' ? Math.max(0, (Date.now() - raw.t) / 60000) : Infinity;
-  const x = F1Pure.trackConditions(t && t.seq, { ageMin: age });
+  const complete = t && t.seq && t.seq.every(q => q && q.hs && q.hs[q.i] && ['T', 'Tr', 'P', 'vis'].every(k => Number.isFinite(q.hs[q.i][k])));
+  const x = F1Pure.trackConditions(complete ? t.seq : null, { ageMin: age });
   const rows = x.available ? '<ol class="lab-why">' + x.sectors.map(s => '<li><b>Secteur ' + s.index +
     ' · ' + esc(s.label) + '</b> · ' + s.points + ' point(s) météo · ' +
     esc(s.notes.length ? s.notes.join(' / ') : 'aucun signal notable sur ces prévisions') + '</li>').join('') + '</ol>'

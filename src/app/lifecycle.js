@@ -104,9 +104,22 @@ function validateRecovery(reason) {
   if (APP_CONTEXT.ready) { renderStatus(); renderDiag(); }
   return ok;
 }
+let LOCAL_CLOCK_MINUTE = null;
+function tickLocalClock() {
+  const minute = Math.floor(Date.now() / 60000);
+  if (minute === LOCAL_CLOCK_MINUTE) return;
+  LOCAL_CLOCK_MINUTE = minute;
+  if (offlineNow()) markOfflineCache();
+  if (!DEMO.on && APP_CONTEXT.ready) {
+    const y = typeof window !== 'undefined' ? window.scrollY : null;
+    rebuild(); renderAll();
+    if (Number.isFinite(y) && typeof window.scrollTo === 'function') window.scrollTo({ top: y, behavior: 'instant' });
+  }
+}
 function autoTick() {
   if (document.hidden) return;
   if (window.TWRC_VAULT && window.TWRC_VAULT.expired()) { checkSessionExpiry(); return; }
+  tickLocalClock(); // horloge et prévisions locales progressent même hors ligne, pendant une requête ou un 429
   calendarOriginPurge();
   if (USER_STORE.durability().status === 'degraded') validateRecovery('retry périodique');
   if (navigator.onLine !== false && Date.now() - VER_CHECK_AT >= AUTO_MS) loadVersion(true); else enforceVersionCoherence();

@@ -22,6 +22,7 @@ await p.route('**/*',r=>{const u=r.request().url();const J=o=>r.fulfill({status:
  if(u.startsWith('https://ipoower.github.io/iPoower/race-control/'))return r.fulfill({status:200,contentType:'text/html',body:html});
  return r.abort();});
 const U='https://ipoower.github.io/iPoower/race-control/';
+await p.clock.install({time:Date.now()}); // même horloge que le fournisseur fictif, sans repli vers une date hors horizon
 await p.goto(U);await p.clock.runFor(3000);
 await p.fill('#unlockPw',PW);await Promise.all([p.waitForNavigation({timeout:60000}),p.click('#unlockForm button[type=submit]')]);await p.clock.runFor(6000);
 const sec=async()=>({cur:await p.$eval('#secCur',x=>x.innerText.replace(/\s+/g,' ').slice(0,110)).catch(()=>'(absent)'),pressed:await p.$$eval('[data-act=loc][aria-pressed=true]',x=>x.map(y=>y.textContent.trim()))});

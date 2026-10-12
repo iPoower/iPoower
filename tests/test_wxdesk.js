@@ -195,9 +195,10 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const warm = desk({ now: '2026-10-06T10:00', hours: H() });
     assert(!warm.matters.some(m => /gel/.test(m.text)));
   });
-  test('données anciennes signalées (plus de 3 h), pas avant', () => {
+  test('données anciennes signalées dès une heure, pas avant', () => {
     assert.equal(desk({ now: '2026-10-06T10:00', hours: H(), ageMin: 200 }).hero.stale, true);
-    assert.equal(desk({ now: '2026-10-06T10:00', hours: H(), ageMin: 120 }).hero.stale, false);
+    assert.equal(desk({ now: '2026-10-06T10:00', hours: H(), ageMin: 120 }).hero.stale, true);
+    assert.equal(desk({ now: '2026-10-06T10:00', hours: H(), ageMin: 60 }).hero.stale, false);
   });
   test('déterminisme : mêmes entrées, même résultat, entrées intactes', () => {
     const hs = set(H(), '07', { P: 1, Pl: 1 }, 2), input = { now: '2026-10-06T06:18', hours: hs, trips: [{ ...trip('06:45', '07:28'), points: pts(hs, '06:45', [['06:45', 0, 0], ['07:28', 1, 44]]) }] };

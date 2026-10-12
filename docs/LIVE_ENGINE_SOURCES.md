@@ -1,0 +1,59 @@
+# Race Control — sources, calculs et limites
+
+Audit du 12 octobre 2026. Ce document décrit des contrats de calcul ; les résultats de validation et la version publiée sont consignés séparément dans le rapport de mission.
+
+## Nature d'une valeur
+
+| Mention | Sens | Exemples |
+|---|---|---|
+| MESURÉ | Relevé identifié avec un instant et un instrument ou une station. | Observation METAR d'une station nommée ; position fournie par le navigateur avec sa précision. Une observation éloignée n'est pas une mesure du domicile. |
+| PRÉVU | Sortie d'un modèle météorologique, y compris les conditions dites « actuelles ». | Open-Meteo, modèle de base et Météo-France AROME. |
+| ESTIMÉ | Formule locale et hypothèses explicites. | Température de chaussée/gomme, risque, adhérence relative, progression GPS ou temporelle. |
+| DÉCLARÉ | Valeur saisie par le propriétaire. | Compteur, pression cible, contrôle daté, DOT, profondeur, monte, historique de roulage. |
+| CACHE | Mode de disponibilité, indépendant de la nature de la valeur. | PRÉVU + CACHE ou ESTIMÉ à partir de prévisions en cache. Ce mode ne transforme jamais une prévision en mesure. |
+| INDISPONIBLE | Données essentielles absentes, invalides, hors horizon ou incompatibles. | Route non obtenue, pression cible inconnue, température horaire manquante. |
+
+Les conditions `current` d'Open-Meteo viennent de modèles à pas de quinze minutes, pas d'un capteur automobile : https://open-meteo.com/en/docs.
+
+## Sources et dépendances
+
+| Valeurs et vues | Source / horodatage | Moteur et paramètres | Recalcul / comportement dégradé |
+|---|---|---|---|
+| Air, ressenti, humidité, vent, rafales, nuages, précipitations, neige, visibilité, pression atmosphérique, UV et rayonnement | Réponse Open-Meteo, heure `hourly.time` ou `current.time` ; téléchargement `RAW[id].t`. AROME fusionné seulement s'il est valide et assez récent par rapport à la base. | `validForecast`, `mergeArome`, `buildHours`, `makeModel` ; coordonnées du lieu, fuseau du fournisseur, mêmes unités que les requêtes. | Nouvelle réponse, lieu ou minute courante. Hors ligne : heure prévue exacte disponible, sans réutilisation d'un vieux `current`. Hors horizon/trou horaire : aucune valeur actuelle. |
+| Prévisions visibles heure par heure | Même modèle `M[id]`, même heure et même téléchargement. | `wxInput` → `wxDesk().timeline.strip` ; 13 cartes (heure courante et 12 suivantes, selon disponibilité). | Aucun appel API propre au bandeau ; progression locale et conservation du défilement. |
+| Observations météo de station | `obs.json`, station identifiée, date du relevé ; relais et station vérifiés séparément. | `applyObs`, station proche dans la limite existante de 35 km ; correction plafonnée et recomputation locale. | Enrichissement en ligne seulement. Offline : pas d'observation annoncée actuelle ; preuves datées conservées par le moteur de preuves existant. |
+| Point de rosée et température humide | Modèle, ou température/humidité du modèle lorsque le champ est absent. | Magnus (`dewMagnus`) et Stull (`wetBulb`) ; résultat calculé, jamais relevé fictif. | Entrées nécessaires absentes : résultat null. |
+| Chaussée | Températures horaires, vent, couverture nuageuse, humidité, pluie, rayonnement ; calibration propre au lieu. | `estRoad` : inertie pondérée sur six heures (0,40/0,25/0,15/0,10/0,06/0,04), gains solaires, refroidissement nocturne, évaporation ; borne air −4/+9 °C ; marge affichée ±2 °C, sans garantie métrologique. Rayonnement absent : approximation solaire explicite dans la formule. | Sans air/vent/nuages/humidité/pluie : estimation indisponible ; aucune valeur par défaut présentée comme donnée météo. |
+| Verglas et gel | Chaussée estimée, air, rosée, humidité, pluie/neige récentes, codes météo, visibilité. | `iceRisk`, `frostBand` ; indice 0–100 et niveaux de risque, pas probabilité mesurée ; transitions de température et humidité prises en compte. | Recalcul commun avec la chaussée ; données anciennes signalées ; danger possible conservé avec une formulation d'estimation. |
+| Score de conditions route | Points météo datés du prochain trajet, ou fenêtre locale de six heures. | `wxDesk.roadScore` : 100 moins pénalités explicites (gel, neige, pluie, vent, visibilité, température, humidité, soleil bas). | Score indisponible si T/Tr/P/RH/visibilité/rafales manquent sur la séquence. Les phénomènes connus restent visibles. |
+| Score pneus / recommandation | Météo horaire et monte réellement enregistrée, sportivité, dimensions, sculpture disponible. | `tireAssess`, `windowAssess`, `hourVerdict`, `seasonAnalysis` ; pire heure et drapeaux de danger restent prioritaires. | Changement de voiture/monte/profondeur ou météo ; aucune note calculée en omettant silencieusement une heure critique incomplète. |
+| Gomme, chauffe, refroidissement, fenêtre favorable | Météo horaire, chaussée, type de pneu et de parcours, roulage déclaré/GPS, mémoire thermique compatible avec la monte. | `tyreLab` : environnement air/route, équilibre thermique et constantes de distance/temps génériques ; plage d'incertitude ; aucun thermomètre embarqué. | Date, pluie, voiture, monte ou historique changés. Données météo essentielles insuffisantes : estimation suspendue ; confiance au plus moyenne, jamais un relevé de gomme. |
+| Pression | Cible déclarée et température du contrôle déclarée. | `pressLoss` / loi des gaz ; température ambiante estimée. Pression à chaud : ordre de grandeur explicite, pas résultat d'un capteur. | Cible/température du contrôle absente : aucune variation calculée ; pression actuelle réelle inconnue sans mesure. |
+| Adhérence, aquaplaning, distance de freinage | Surface estimée, gomme estimée, saison, sculpture déclarée, pression estimée. | `tyreLab.gripAt` ; coefficients et pénalités génériques ; freinage à 80 km/h via v²/(2 μ g), μ sec 0,7–0,9 et mouillé 0,4–0,55, réaction 1 s. | Plages et indice relatif uniquement ; pas de distance sur neige/verglas ; météo essentielle absente : aucune estimation. |
+| Usure et profondeur | Relevés déclarés, dates, essieux, kilométrages. | `tyreState`, projections existantes ; minimum entre essieux et taux cohérent avec les relevés. | Saisie et nouveau compteur ; aucune usure réelle détectée sans relevé. |
+| Compteur / km depuis montage / Garage | Relevés saisis et datés, compteur de montage, autres jeux et plans enregistrés. | `Garage.overview`, `tyreState` : différences entre relevés compatibles. | Modifications enregistrées ; aucun kilomètre ajouté automatiquement à un compteur déclaré. Fiche sauvegardée consultable offline. |
+| Départs, destinations, voiture, agenda | Document canonique `USER_STORE`, choix de l'utilisateur, agenda chiffré validé et daté. | `appRefreshContext`, `DayContext`, `TripCancel`, `CalendarOrigin`, puis les adaptateurs de vues. | Un même contexte pilote les cinq onglets. Origine/destination inconnue : pas de trajet inventé. |
+| Distance/ETA/itinéraire | Réponse OSRM, coordonnées et génération de la demande ; trajet connu de l'agenda ou de la session. | Moteurs de trajet existants ; heure de départ + durée ; vérifications d'origine et génération. | Pas de nouveau calcul routier OSRM offline. Une route conservée reste datée ; sans route obtenue, résultat indisponible. Une approximation géométrique explicitement affichée n'est pas un itinéraire routier. |
+| Progression d'un trajet | Fix navigateur daté, route initiale/restante, ou temps écoulé si le GPS manque. | `labInput` : progression sur OSRM ; sinon vol d'oiseau ×1,2 ; sinon progression temporelle de la distance prévue, toujours signalée estimée. | GPS fiable, minute ou route validée ; ne modifie pas le compteur déclaré. |
+| Soleil bas | Coordonnées, horaire, éphémérides et nuages du modèle. | `glareCheck` ; géométrie du trajet. | Trajet ou météo modifié ; coordonnées/durée manquantes : pas de conclusion géométrique. |
+| Vigilance, trafic, qualité de l'air, radar | Météo-France via flux existant, DATEX/OSRM selon module, Open-Meteo air quality, RainViewer. | Adaptateurs existants ; dates de publication et téléchargement distinctes. | Absence/périmption : inconnu/cache selon le service ; jamais RAS supposé. Une image radar ancienne ne constitue pas une observation actuelle. |
+| Race Engineer / Track Conditions / Strategy A/B | Décision et confiance communes ; points météo du même trajet ; évaluations pneus des mêmes voitures. | `F1Pure` et `race-views` ; maximum trois secteurs de lecture, aucune télémétrie distante. | Des entrées incomplètes/anciennes suspendent les conclusions. Track Conditions reste après le bandeau horaire. |
+| Tyre Management / The Garage / Telemetry Replay | État pneus, fiches et débrief local canonique avec dates de déclaration. | `F1Pure`, `Garage`, `Debrief` ; lectures des données existantes. | Aucun capteur mécanique, aucune mesure de pression/gomme ou enregistrement GPS ajouté par ces modules. |
+
+## Horloge, réseau et confiance
+
+Le téléchargement et l'instant météorologique restent distincts. `nowStr` suit l'horloge du téléphone ; un changement de minute reconstruit la projection locale même hors ligne, pendant une requête ou un 429. Un horodatage fournisseur n'avance ni ne rembobine la consultation. Un instant `current` doit être compatible avec l'heure de consultation (−5 à +20 minutes d'âge) ; sinon l'heure prévue exacte est utilisée et la réponse est requalifiée cache.
+
+Le cycle automatique conserve cinq minutes, au premier plan et en ligne ; requêtes identiques partagées, concurrence bornée à deux, TTL spécifiques préservés. Les signaux réseau/reprise passent par les verrous existants. Chaque requête de lieu possède une génération en mémoire et des coordonnées capturées ; une ancienne génération ou un ancien instant fournisseur ne remplace pas un nouveau résultat.
+
+La fraîcheur LIVE expire après quinze minutes sans nouveau téléchargement ; confiance météo à confirmer après quinze minutes, dégradée après soixante minutes ou sans entrées critiques. Un avertissement de prévisions anciennes apparaît dès soixante minutes. Ces seuils décrivent la confiance dans les données, pas la précision physique du modèle.
+
+Les limites et garanties du fournisseur sont externes : https://open-meteo.com/en/terms et https://open-meteo.com/en/pricing. Le respect de Retry-After et des pauses 429 existantes reste prioritaire sur toute tentative manuelle ou automatique.
+
+## Limites matérielles et conservation
+
+La marge de chaussée et les plages thermiques sont des paramètres génériques, pas des intervalles validés pour chaque route/pneu. Sans capteurs, Race Control ne connaît ni température réelle de gomme/bitume, pression actuelle, eau présente sur chaque mètre, usure réelle, trafic exhaustif ni compteur automatique. L'heure de l'appareil doit rester correcte ; une horloge aberrante signale une incompatibilité, au lieu de faire passer une prévision future pour une météo actuelle.
+
+L'absence de réseau conserve les informations déjà obtenues ; elle ne permet pas de produire une nouvelle route, adresse, météo ou information de trafic. Le premier démarrage sans visite en ligne préalable ne peut pas disposer d'un shell/cache jamais téléchargé. Le navigateur peut évincer ses données : aucun site ne peut promettre une conservation absolue sans sauvegarde externe.
+
+Aucune nouvelle clé persistante, migration destructive, suppression utilisateur, modification de chiffrement, de récupération, de session 7 jours ni du Service Worker n'est nécessaire à ces corrections du moteur.
