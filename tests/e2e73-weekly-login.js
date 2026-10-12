@@ -2,6 +2,7 @@
 // Démontrer IDB non extractible, fermeture d'onglet, expiration, verrouillage explicite et refus.
 'use strict';
 const assert = require('node:assert/strict');
+const { setTimeout: wait } = require('node:timers/promises');
 const { BR, session, errors, U } = require('./lib/context-session');
 const DAY = 86400000;
 let n = 0, stage = '';
@@ -10,8 +11,20 @@ const ready = p => p.waitForFunction(() => typeof LOCKED === 'function' && !!win
   null, { polling: 100, timeout: 15000 });
 // Après la navigation, la présence des globaux ne garantit pas la fin du déchiffrement asynchrone.
 // Attendre le vrai état authentifié, sans jamais le forcer ou contourner l'écran de code.
-const unlocked = p => p.waitForFunction(() => typeof LOCKED === 'function' && !!window.TWRC_VAULT &&
-  window.TWRC_VAULT.mode === 'vault' && !LOCKED(), null, { polling: 100, timeout: 30000 });
+const unlocked = async p => {
+  // Le délai de contrôle appartient à Node : les sauts/rechargements de l'horloge
+  // Playwright ne doivent pas suspendre le polling du déchiffrement asynchrone.
+  const deadline = Date.now() + 30000; let state;
+  do {
+    state = await p.evaluate(() => ({
+      mode: window.TWRC_VAULT && window.TWRC_VAULT.mode,
+      locked: typeof LOCKED === 'function' ? LOCKED() : null
+    }));
+    if (state.mode === 'vault' && state.locked === false) return;
+    await wait(100);
+  } while (Date.now() < deadline);
+  assert.fail('Coffre réellement authentifié attendu sous 30 s : ' + JSON.stringify(state));
+};
 async function openAt(context, date) {
   const p = await context.newPage();
   // Playwright partage l'horloge entre toutes les pages du contexte. Installer
