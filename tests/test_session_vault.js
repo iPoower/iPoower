@@ -51,6 +51,19 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     assert.equal(await A.boot(), 'plain'); assert.equal(raw.getItem('twrc.view'), 'pneus'); assert.equal(raw.getItem(SV.VAULT), null);
   });
 
+  await test('toute sauvegarde durable passe réellement par Web Locks, sans faux succès', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY());
+    let requests = 0;
+    const counted = { request(name, opts, fn) { requests++; return locks.request(name, opts, fn); } };
+    const A = make(raw, session(), { locks: counted }).vs;
+    await A.boot(); const afterBoot = requests;
+    A.store.setItem('twrc.tripcancel', 'sauvegarde-protegee');
+    await A.flush();
+    assert.equal(A.error, null);
+    assert(requests > afterBoot, 'aucune sauvegarde durable ne doit contourner le verrou global');
+    const B = make(raw).vs; await B.boot(); await B.unlock(PASS);
+    assert.equal(B.store.getItem('twrc.tripcancel'), 'sauvegarde-protegee');
+  });
   await test('migration d’un ancien profil en clair : coffre vérifié, données identiques, plus aucune copie lisible', async () => {
     const raw = fakeStorage(), L = LEGACY(); fill(raw, L); const { vs, ses } = make(raw);
     assert.equal(await vs.boot(), 'vault'); assert.equal(vs.migrated, true);
