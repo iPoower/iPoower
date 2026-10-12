@@ -10,7 +10,7 @@ hours[24].t = '2026-10-13T00:00';
 const input = { now: '2026-10-12T08:00', hours, cur: { T: 12, Tapp: 10 }, trips: [], ageMin: 0 }, desk = c.desk(input);
 const model = { id: 'test', cur: { time: input.now }, payload: {}, obs: null };
 const build = extra => c.W.snapshot({ input, desk, model, raw: { t: NOW, mode: 'live' }, place: { id: 'test', name: 'Lieu fictif', lat: 48.85, lon: 2.35 }, nowMs: NOW, ...extra });
-const base = () => ({ ...copy(build()), current: { T: 12, Tapp: 10, source: 'current' }, vis: 5000, gust: 25, ice: 0, road: { level: 0 }, fresh: true, mode: 'LIVE' });
+const base = () => ({ ...copy(build()), current: { T: 12, Tapp: 10, source: 'current' }, vis: 5000, gust: 25, ice: 0, road: { score: 100, level: 0 }, fresh: true, mode: 'LIVE' });
 let n = 0;
 const check = (label, fn) => { fn(); n++; console.log('✅ ' + label); };
 check('même température et même risque que le moteur Météo, sans mutation', () => {
@@ -56,7 +56,7 @@ check('permission indépendante : alertes OFF, cache et reconnexion ne notifient
 });
 check('gel, rafales, pluie imminente et risque routier proviennent des données existantes', () => {
   const m = c.W.monitor(), s = base(); m.ingest(s, { enabled: true });
-  const t = { ...s, nowMs: NOW + 60000, ice: 1, gust: 60, road: { level: 2 }, timeline: s.timeline.map((x, i) => i === 1 ? { ...x, pp: 65 } : x) };
+  const t = { ...s, nowMs: NOW + 60000, ice: 1, gust: 60, road: { score: 50, level: 2 }, timeline: s.timeline.map((x, i) => i === 1 ? { ...x, pp: 65 } : x) };
   const ids = m.ingest(t, { enabled: true }).emitted.map(x => x.id).sort(); assert.deepEqual(Array.from(ids), ['gust', 'ice', 'rain', 'road']);
 });
 check('l’écoulement du temps ou un téléchargement identique ne crée pas d’observation ni de révision', () => {
@@ -89,5 +89,9 @@ check('historique, alertes et nombre de lieux restent bornés pendant une longue
 check('champ manquant : aucun zéro ou franchissement fictif', () => {
   const m = c.W.monitor(), s = base(); m.ingest(s, { enabled: true });
   assert.equal(m.ingest({ ...s, current: { T: null }, vis: null, gust: null, ice: null }, { enabled: true }).emitted.length, 0);
+});
+check('moteur LIVE avec données partielles : aucun risque routier présenté comme calculé ou notifié', () => {
+  const m = c.W.monitor(), s = base(); m.ingest(s, { enabled: true });
+  assert.equal(m.ingest({ ...s, road: { level: 3, score: null, missing: ['vis'] } }, { enabled: true }).emitted.length, 0);
 });
 console.log(`${n}/${n} scénarios OK`);

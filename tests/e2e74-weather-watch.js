@@ -149,15 +149,17 @@ const wx = (o, kind) => {
     });
     await check('PC · réponse d’un autre onglet : cache plus récent du lieu accepté, réponse ancienne ou mauvaise position rejetée', async () => {
       const r = await p.evaluate(() => {
-        const l = curLoc(), old = RAW[UI.loc].t, same = { ...RAW[UI.loc], t: Date.now() };
-        window.dispatchEvent(new StorageEvent('storage', { key: 'twrc.cache.' + UI.loc, newValue: JSON.stringify({ ...same, lat: l.lat + 1 }) }));
+        const l = curLoc(), old = RAW[UI.loc].t, key = 'twrc.cache.' + UI.loc, same = { ...RAW[UI.loc], t: Math.max(old + 1, Date.now()) };
+        window.dispatchEvent(new StorageEvent('storage', { key, newValue: JSON.stringify(same) }));
+        const rejectedUntrusted = RAW[UI.loc].t === old;
+        const publish = value => { const text = JSON.stringify(value); lsSet(key, text); window.dispatchEvent(new StorageEvent('storage', { key, newValue: text })); };
+        publish({ ...same, lat: l.lat + 1 });
         const rejectedCoords = RAW[UI.loc].t === old;
-        window.dispatchEvent(new StorageEvent('storage', { key: 'twrc.cache.' + UI.loc, newValue: JSON.stringify({ ...same, t: old - 60000 }) }));
+        publish({ ...same, t: old - 60000 });
         const rejectedOld = RAW[UI.loc].t === old;
-        same.t = Math.max(old + 1, Date.now());
-        window.dispatchEvent(new StorageEvent('storage', { key: 'twrc.cache.' + UI.loc, newValue: JSON.stringify(same) }));
-        return { rejectedCoords, rejectedOld, accepted: RAW[UI.loc].t === same.t };
-      }); assert(r.rejectedCoords && r.rejectedOld && r.accepted);
+        publish(same);
+        return { rejectedUntrusted, rejectedCoords, rejectedOld, accepted: RAW[UI.loc].t === same.t };
+      }); assert(r.rejectedUntrusted && r.rejectedCoords && r.rejectedOld && r.accepted);
     });
     await check('PC · sélection d’un autre lieu : même contexte que Météo, aucun faux franchissement entre villes', async () => {
       const r = await p.evaluate(() => { APP_CONTEXT.weatherPreview = S.locs[1].id; UI.loc = S.locs[1].id; renderAll(); return { name: WX_STATION.snapshot.name, expected: curLoc().name, T: WX_STATION.snapshot.current.T, main: wxDesk(wxInput()).current.T }; });
@@ -181,12 +183,15 @@ const wx = (o, kind) => {
       const a = await session(browser, { at: '2026-10-12T08:00:00+02:00', dev: 'pc', wx, remember: true });
       try {
         const q = await a.c.newPage(); await q.clock.install({ time: supplierAt }); await q.goto(U);
-        await q.waitForFunction(() => typeof WX_STATION !== 'undefined' && !LOCKED() && !!CX);
-        for (let i = 0; i < 10; i++) { await q.clock.runFor(500); await q.waitForTimeout(80); }
+        stage = 'Deux stations · démarrage de la seconde page et horloge du harnais';
+        await q.clock.runFor(2500);
+        for (let i = 0; i < 20; i++) { await q.clock.runFor(500); await q.waitForTimeout(80); }
+        await q.waitForFunction(() => typeof WX_STATION !== 'undefined' && !LOCKED() && !!CX && !busy);
         await q.evaluate(() => { UI.view = 'meteo'; renderAll(); });
         await click(a.p, 'station-open'); await click(q, 'station-open');
         supplierAt += 6 * 60000; await a.p.clock.setSystemTime(supplierAt); await q.clock.setSystemTime(supplierAt);
         const pending = []; await a.c.route(/\/race-control\/obs\.json/, r => { pending.push(r); });
+        stage = 'Deux stations · prise du verrou de la première page';
         await a.p.evaluate(() => { window.__sharedRun = weatherStationAutoRefresh(); });
         await a.p.waitForFunction(() => busy);
         await q.evaluate(() => weatherStationAutoRefresh()); assert.equal(await q.evaluate(() => WX_STATION.sharedSkips), 1);
@@ -213,6 +218,6 @@ const wx = (o, kind) => {
     await check('aucune exception JavaScript et politique de sécurité conservée', async () => assert.deepEqual(errors, []));
     report.scenarios = n; fs.writeFileSync(path.join(process.env.SP, 'weather-watch-report-' + BR.NAME + '.json'), JSON.stringify(report, null, 2));
     console.log(`${n}/${n} scénarios OK · erreurs JS : aucune`);
-  } catch (error) { console.error('❌ Weather Watch : ' + stage + ' · ' + error.message); process.exitCode = 1; }
+  } catch (error) { console.error('❌ Weather Watch : ' + stage + ' · ' + error.message + '\n' + String(error.stack || '').split('\n').slice(0, 3).join('\n')); process.exitCode = 1; }
   finally { await browser.close(); }
 })();

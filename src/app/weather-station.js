@@ -82,6 +82,9 @@ async function weatherStationAutoRefresh() {
 // Reprendre seulement une réponse validée, plus récente, et correspondant exactement au lieu.
 window.addEventListener('storage', event => {
   if (!WX_STATION.active || LOCKED() || !event.key || !event.key.startsWith('twrc.cache.') || !event.newValue) return;
+  // Un événement brut d'une autre application sur la même origine ne fait pas foi.
+  // La valeur doit déjà appartenir au magasin autorisé, mis à jour par le coffre existant.
+  if (lsGet(event.key) !== event.newValue) return;
   const id = event.key.slice('twrc.cache.'.length), loc = locById(id); if (!locHasCoords(loc)) return;
   try {
     const r = JSON.parse(event.newValue), prev = RAW[id];
@@ -139,7 +142,7 @@ function renderWeatherStation() {
       tile('👁 Visibilité · brouillard', stationValue(s.vis, 'm'), 'Open-Meteo · modèle de base · ' + esc(s.fog)) +
       tile('🛣 Chaussée estimée', stationValue(s.roadT, '°C', 1), 'Moteur Race Control · estimation, pas un capteur routier') +
       tile('❄ Gel · verglas', s.ice == null ? '—' : ['Faible', 'Modéré', 'Élevé', 'Critique'][Math.min(3, s.ice)], 'Moteur Race Control · risque estimé, ponts et ombre peuvent différer') +
-      tile('🚦 Risque routier', s.road ? ['Faible', 'Modéré', 'Élevé', 'Critique'][s.road.level] : '—', s.road ? esc(s.road.window.label) + ' · même période et mêmes facteurs que Météo' : 'Moteur indisponible'));
+      tile('🚦 Risque routier', s.road && Number.isFinite(s.road.score) ? ['Faible', 'Modéré', 'Élevé', 'Critique'][s.road.level] : 'Données insuffisantes', s.road ? esc(s.road.window.label) + ' · même période et mêmes facteurs que Météo' : 'Moteur indisponible'));
     stationSet(pane.querySelector('#stationNext'), `<b>Prochain changement prévu</b><span>${s.nextChange ? esc(s.nextChange.t + ' · ' + s.nextChange.text) : 'Aucun changement significatif identifié dans les prévisions disponibles'}</span>${s.fresh ? '' : '<small>Prévision en cache ou indisponible ; aucune nouvelle alerte système.</small>'}`);
     stationSet(pane.querySelector('#stationSources'), `<h3>Sources et fraîcheur</h3><p>${esc(s.modelSource)} · températures, vent et quantités selon les champs réellement disponibles.</p><p>Visibilité et probabilité de pluie : modèle de base Open-Meteo.</p><p>Chaussée et verglas : résultats du moteur Race Control.</p>${s.observation ? `<p>Mesure observée : station ${esc(s.observation.name || s.observation.id)} · ${esc(s.observation.t)} · âge ${esc(ageTxt(s.observation.ageMin))} · ${stationValue(s.observation.T, '°C', 1)}.</p>` : '<p>Aucune mesure de station disponible ; les modèles ne sont pas des observations.</p>'}<p>${s.expired ? 'Données expirées ou couverture horaire indisponible.' : 'Prévisions consultables pour les échéances présentes.'}</p><p>Mini-cockpit : ${'documentPictureInPicture' in window ? 'disponible sur demande' : 'non pris en charge ; utiliser cette station ou une fenêtre de navigateur existante'}.</p>`);
     stationSet(pane.querySelector('#stationJournal'), h.events.slice().reverse().map(x => `<li><time class="num">${esc(hmLocal(x.at))}</time><span class="station-kind">${({ observation: 'Mesure observée', prévision: 'Révision de prévision', estimation: 'Estimation recalculée', statut: 'Statut des données' })[x.kind]}</span><span>${esc(x.text)}</span></li>`).join(''));

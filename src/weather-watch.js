@@ -102,7 +102,8 @@ const WeatherWatch = (() => {
         if (!baseline) {
           if (s.ice != null && prev.ice != null && s.ice > prev.ice && s.ice >= 1) alert('ice', 'Risque de gel / verglas en hausse · estimation', Math.min(3, s.ice + 1));
           if (finite(s.gust) && finite(prev.gust) && s.gust >= 55 && s.gust - prev.gust >= 15) alert('gust', 'Rafales en hausse d’au moins 15 km/h, à 55 km/h ou plus', s.gust >= 70 ? 2 : 1);
-          if (s.road && prev.road && s.road.level > prev.road.level) alert('road', 'Risque routier en hausse · période du moteur Météo', s.road.level);
+          if (s.road && prev.road && finite(s.road.score) && finite(prev.road.score) && s.road.level > prev.road.level)
+            alert('road', 'Risque routier en hausse · période du moteur Météo', s.road.level);
         }
         // Pluie imminente : prochaine heure (ou nowcast fourni au moteur), quantité ≥ 0,2 mm/h OU probabilité ≥ 60 %.
         const imminent = s.timeline.find(x => minute(x.t) <= minute(s.now) + 60 && ((finite(x.P) && x.P >= .2) || (finite(x.pp) && x.pp >= 60)));
