@@ -57,6 +57,10 @@ const state = p => p.evaluate(() => {
     for (const mobile of [true, false]) {
       const dev = mobile ? 'iPhone' : 'PC', { p, c, settle } = await session(b, mobile);
       let s = await state(p); check(dev + ' · en ligne : météo reçue et estimations disponibles', s.mode === 'live' && s.thermal && /LIVE/.test(s.bar));
+      const midAt = await p.evaluate(async () => {
+        await ensureMids([{ id: 'mid-regression', name: 'Point fictif', lat: 48.87, lon: 2.3 }]);
+        return MIDP['mid-regression'].t;
+      });
       // Une actualisation est interrompue par la perte de réseau ; les réponses déjà en vol peuvent finir, jamais en LIVE.
       hang = true; await p.evaluate(() => refreshAll()); await settle(2); const before = await state(p);
       await p.evaluate(() => { window.__OFFLINE = true; window.dispatchEvent(new Event('offline')); });
@@ -70,6 +74,8 @@ const state = p => p.evaluate(() => {
         check(dev + ' · offline ' + expect + ' : horloge et température horaire progressent, réception inchangée', s.now === expect && s.T === s.hourlyT && s.receipt === receipt && s.mode === 'cache' && calls === count && !/LIVE/.test(s.bar), JSON.stringify({ now: s.now, receipt: s.receipt, calls, count }));
         if (expect.endsWith('00:00')) check(dev + ' · minuit : date et première carte du jour exactes, aucun rechargement', s.card === '2026-10-04T00:00' && s.activeCar === before.activeCar);
         check(dev + ' · actualisation locale : position verticale préservée', Math.abs(s.y - scroll.y) <= 2, JSON.stringify({ before: scroll.y, after: s.y }));
+        const mid = await p.evaluate(() => { const r = MIDP['mid-regression'], m = MIDM['mid-regression']; return { receipt: r && r.t, now: m && m.nowStr, mode: m && m.mode }; });
+        check(dev + ' · point de route offline conservé et recalculé après plusieurs heures', mid.receipt === midAt && mid.now === expect && mid.mode === 'cache', JSON.stringify(mid));
       }
       s = await state(p); check(dev + ' · actualisations locales : défilement horizontal préservé', Math.abs((s.left || 0) - (scroll.left || 0)) <= 2);
       // La température courante et la mémoire thermique lisent le modèle reconstruit.

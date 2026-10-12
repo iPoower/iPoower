@@ -32,9 +32,19 @@ function f1BriefingHtml() {
   return f1Panel('raceEngineer', 'RACE ENGINEER', x.title, '<ul class="lab-why">' + x.lines.map(f1Line).join('') +
     '</ul><p class="sub">Conseil fondé sur la décision et la confiance existantes, pas sur une IA distante.</p>' + speak);
 }
+function f1WeatherSources(seq) {
+  const frames = new Map(), add = (m, at) => { if (m && m.hs) frames.set(m.hs, { at, mode: m.mode }); };
+  for (const [id, m] of Object.entries(M)) add(m, RAW[id] && RAW[id].t);
+  for (const [id, m] of Object.entries(MIDM)) add(m, MIDP[id] && MIDP[id].t);
+  for (const c of Object.values(CALM)) if (c) add(c.m, c.t);
+  for (const c of Object.values(LEGM)) if (c && c.models) for (const m of c.models) add(m, c.t);
+  const sources = (seq || []).map(q => q && frames.get(q.hs)), now = Date.now();
+  if (!sources.length || sources.some(s => !s || !Number.isFinite(s.at) || s.at > now + 60e3)) return { known: false, cache: true, ageMin: Infinity };
+  return { known: true, cache: offlineNow() || sources.some(s => s.mode === 'cache'), ageMin: Math.max(...sources.map(s => Math.max(0, (now - s.at) / 60000))) };
+}
 function f1TrackHtml() {
   const t = APP_CONTEXT.snapshot && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
-  const raw = RAW[UI.loc], age = raw && Number.isFinite(raw.t) && raw.mode !== 'cache' ? Math.max(0, (Date.now() - raw.t) / 60000) : Infinity;
+  const sources = f1WeatherSources(t && t.seq), age = sources.ageMin;
   const complete = t && t.seq && t.seq.every(q => q && q.hs && q.hs[q.i] && ['T', 'Tr', 'P', 'vis'].every(k => Number.isFinite(q.hs[q.i][k])));
   const x = F1Pure.trackConditions(complete ? t.seq : null, { ageMin: age });
   const rows = x.available ? '<ol class="lab-why">' + x.sectors.map(s => '<li><b>Secteur ' + s.index +
@@ -42,6 +52,7 @@ function f1TrackHtml() {
     esc(s.notes.length ? s.notes.join(' / ') : 'aucun signal notable sur ces prévisions') + '</li>').join('') + '</ol>'
     : '<p class="sub">' + esc(x.reason) + '</p>';
   return f1Panel('trackConditions', 'TRACK CONDITIONS', t ? t.name || 'Prochain trajet' : 'Aucun trajet', rows +
+    (sources.known ? '<p class="sub">PRÉVU' + (sources.cache ? ' · CACHE' : '') + ' · point le plus ancien reçu il y a ' + esc(ageTxt(age)) + '.</p>' : '') +
     '<p class="sub">Lecture ordonnée des points météo du trajet (maximum 3 secteurs). Aucun découpage GPS précis ni capteur de piste.</p>');
 }
 function f1TyreHtml() {
@@ -54,10 +65,11 @@ function f1TyreHtml() {
 function f1StrategyHtml() {
   const t = APP_CONTEXT.snapshot && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
   const car = appActiveCar(), raw = RAW[UI.loc];
+  const sources = f1WeatherSources(t && t.seq);
   // Les évaluations doivent provenir du même trajet et du moteur déjà utilisé
   // par « Quelle voiture prendre ? ». Le contexte seul ne possède PAS de t.res.
   const recent = raw && raw.mode !== 'cache' && Number.isFinite(raw.t) &&
-    Date.now() - raw.t <= 90 * 60000 && raw.t <= Date.now() + 15 * 60000;
+    Date.now() - raw.t <= 90 * 60000 && raw.t <= Date.now() + 15 * 60000 && sources.known && !sources.cache && sources.ageMin <= 90;
   const cars = t && !t.originPending && Array.isArray(t.seq) && t.seq.length && recent && CX
     ? TCARS().filter(c => hasTires(c) && !carProfile(c).generic).map(c => ({
       c, w: windowAssess(c, t.seq, 'trip')
