@@ -182,14 +182,18 @@ const wx = (o, kind) => {
     await check('Deux stations · Web Locks déduplique les actualisations simultanées sans nouveau stockage', async () => {
       const a = await session(browser, { at: '2026-10-12T08:00:00+02:00', dev: 'pc', wx, remember: true });
       try {
-        const q = await a.c.newPage(); await q.clock.install({ time: supplierAt }); await q.goto(U);
+        // L'autorisation a été créée après le démarrage de la première page.
+        // Revenir à T0 simulerait un recul d'horloge : RememberDevice doit alors refuser la session.
+        const secondAt = await a.p.evaluate(() => Date.now());
+        const q = await a.c.newPage(); await q.clock.install({ time: secondAt + 1000 }); await q.goto(U);
         stage = 'Deux stations · démarrage de la seconde page et horloge du harnais';
         await q.clock.runFor(2500);
         for (let i = 0; i < 20; i++) { await q.clock.runFor(500); await q.waitForTimeout(80); }
         await q.waitForFunction(() => typeof WX_STATION !== 'undefined' && !LOCKED() && !!CX && !busy);
         await q.evaluate(() => { UI.view = 'meteo'; renderAll(); });
         await click(a.p, 'station-open'); await click(q, 'station-open');
-        supplierAt += 6 * 60000; await a.p.clock.setSystemTime(supplierAt); await q.clock.setSystemTime(supplierAt);
+        supplierAt = await a.p.evaluate(() => Date.now() + 6 * 60000);
+        await a.p.clock.setSystemTime(supplierAt); await q.clock.setSystemTime(supplierAt);
         const pending = []; await a.c.route(/\/race-control\/obs\.json/, r => { pending.push(r); });
         stage = 'Deux stations · prise du verrou de la première page';
         await a.p.evaluate(() => { window.__sharedRun = weatherStationAutoRefresh(); });
