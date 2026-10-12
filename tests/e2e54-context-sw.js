@@ -70,7 +70,7 @@ async function views(p, expected) {
     await p.reload(); await p.waitForFunction(() => navigator.serviceWorker.controller);
     await check('ancien profil v10 : confirmation au travail migrée dans les quatre vues', () => views(p, { state: 'work', place: 'work', next: 'ret' }));
     const before = (await read(p)).stored;
-    version = 11; await p.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
+    version = 12; await p.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
     await p.waitForFunction(async () => { const keys = await caches.keys(); return keys.includes('twrc-static-v12') && !keys.includes('twrc-static-v10'); });
     await check('migration v12 : contexte conservé et cache v10 supprimé, aucune donnée externe dans Cache Storage', async () => {
       assert.deepEqual((await read(p)).stored, before);
