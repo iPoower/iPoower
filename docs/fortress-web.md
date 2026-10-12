@@ -8,6 +8,8 @@ Leaflet 1.9.4 est désormais un asset local figé, avec sa licence et ses images
 
 Le Service Worker v12 précharge la bibliothèque et ses images pour le mode hors ligne et ne traite plus les requêtes d'un autre dossier de la même origine. Il conserve le cache de données v3 et les restrictions sur les données externes. Cette limite de portée n'isole pas localStorage/IndexedDB/Cache Storage entre applications : seul un changement d'origine peut le faire.
 
+Les noms de départ/arrivée entraient aussi directement dans les tooltips Leaflet, qui interprètent une string comme du HTML. Ces libellés sont désormais échappés avant insertion ; le nouveau E2E crée une vraie carte avec des libellés hostiles et exige leur affichage comme texte, sans élément injecté. Ce défaut de markup ne constitue pas, à lui seul, une preuve d'exécution de script sous la CSP précédente.
+
 deploy-copy transporte une liste précise d'assets et refuse les liens de source/destination ainsi qu'un build contenant les données du relais **avant** de modifier le shell. Les observations, agenda chiffré et DATEX restent propriété du relais. Les builds historiques sans assets locaux restent compatibles avec l'outil.
 
 ## En-têtes et limite de l'hébergement

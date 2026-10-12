@@ -24,6 +24,17 @@ let n = 0, stage = ''; const check = async (label, fn) => { stage = label; await
           await p.evaluate(() => renderAll());
           assert.equal(await p.locator('#rc-xss').count(), 0); assert.equal(await p.evaluate(() => !!window.__userXss), false);
           assert.equal(await p.evaluate(() => S.cars[0].name), payload, 'aucune suppression silencieuse de la saisie');
+          // Leaflet traite les tooltips string comme du HTML. Tester le vrai
+          // chemin de rendu, où les libellés de lieux deviennent from/to.
+          const escaped = await p.evaluate(payload => {
+            const box = document.createElement('div'); box.style.width = '400px'; box.style.height = '220px'; document.body.appendChild(box);
+            try {
+              drawTripMap(box, { from: payload, to: payload, worst: 0 }, { pts: [[48.85, 2.35], [48.9, 2.25]], est: true, crit: null });
+              const tips = []; TMAP.map.eachLayer(layer => { if (layer.getTooltip && layer.getTooltip()) { tips.push(layer.getTooltip().getContent()); layer.openTooltip(); } });
+              return { tips, injected: !!document.querySelector('#rc-xss'), executed: !!window.__userXss };
+            } finally { if (TMAP.map) { TMAP.map.remove(); TMAP.map = null; } box.remove(); }
+          }, payload);
+          assert.equal(escaped.tips.length, 2); assert(escaped.tips.every(x => x.includes('&lt;img'))); assert.equal(escaped.injected, false); assert.equal(escaped.executed, false);
         });
         await check(dev + ' · scripts non approuvés inline, CDN et same-origin bloqués par le navigateur', async () => {
           await s.c.route('**/hostile-fortress.js', r => r.fulfill({ contentType: 'text/javascript', body: 'window.__unsigned=true' }));

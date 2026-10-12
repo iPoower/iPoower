@@ -2748,11 +2748,11 @@ function drawTripMap(node, t, geo) {
   const cs = getComputedStyle($('#secBrf')), col = (cs.getPropertyValue('--lv-t') || cs.getPropertyValue('--accent') || '#2ecc71').trim();
   const line = L.polyline(geo.pts, { color: col, weight: 4, opacity: .95, dashArray: geo.est ? '6 7' : null }).addTo(map);
   const a = geo.pts[0], b = geo.pts[geo.pts.length - 1];
-  L.circleMarker(a, { radius: 5, color: '#fff', weight: 2, fillColor: '#0b0f14', fillOpacity: 1 }).addTo(map).bindTooltip('Départ · ' + t.from);
-  L.circleMarker(b, { radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: .9 }).addTo(map).bindTooltip('Arrivée · ' + t.to);
+  L.circleMarker(a, { radius: 5, color: '#fff', weight: 2, fillColor: '#0b0f14', fillOpacity: 1 }).addTo(map).bindTooltip('Départ · ' + esc(t.from));
+  L.circleMarker(b, { radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: .9 }).addTo(map).bindTooltip('Arrivée · ' + esc(t.to));
   if (geo.crit) {
     const cc = (cs.getPropertyValue(geo.crit.lv >= 3 ? '--nogo-t' : '--risk-t') || (geo.crit.lv >= 3 ? '#e74c3c' : '#f39c12')).trim();
-    L.circleMarker(geo.crit.at, { radius: 8, color: cc, weight: 3, fillColor: cc, fillOpacity: .35 }).addTo(map).bindTooltip('Point le plus délicat vers ' + geo.crit.t.slice(11, 16));
+    L.circleMarker(geo.crit.at, { radius: 8, color: cc, weight: 3, fillColor: cc, fillOpacity: .35 }).addTo(map).bindTooltip('Point le plus délicat vers ' + esc(geo.crit.t.slice(11, 16)));
   }
   map.fitBounds(line.getBounds(), { padding: [16, 16] });
   node.insertAdjacentHTML('beforeend', `<div class="tmap-b">${t.worst != null ? LV[t.worst].emoji : '·'}${geo.est ? ' tracé estimé' : ''}</div>`);
