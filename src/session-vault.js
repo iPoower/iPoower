@@ -257,6 +257,7 @@ const SessionVault = (() => {
         const valid = ses && ses.v === 3 && ses.s === vault.s && typeof ses.k === 'string' &&
           (ses.l ?? null) === signal && Number.isSafeInteger(ses.a) && Number.isSafeInteger(ses.e) &&
           ses.e - ses.a === WEEK_MS && currentTime >= ses.a && currentTime < ses.e;
+        if (storedSession && !valid) corruptSession = true; // paramètres falsifiés, expirés ou périmés : refuser le repli
         let active = null;
         if (valid) {
           try {
