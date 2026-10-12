@@ -19,6 +19,13 @@ check('même température et même risque que le moteur Météo, sans mutation',
   assert.equal(s.timeline.length, 13); assert.equal(s.timeline[12].t, '2026-10-12T20:00');
   assert.equal(s.pp, hours[8].pp); assert.equal(s.rain, 0); assert.equal(JSON.stringify({ input, desk, model }), before);
 });
+check('neige prévue : donnée du modèle, absente lorsque non fournie, aucune mesure fabriquée', () => {
+  assert.equal(build().snow, null);
+  hours[8].snow = .4;
+  assert.equal(build().snow, .4);
+  delete hours[8].snow;
+  assert.equal(build().snow, null);
+});
 check('sources exactes et aucun pourcentage ou score inventé', () => {
   const s = build({ model: { ...model, payload: { __arome: { hours: 2 } } } });
   assert(s.modelSource.includes('AROME')); assert(s.rainSource.includes('base')); assert.equal(s.vis, 10000);
