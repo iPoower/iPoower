@@ -112,6 +112,17 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     // la bande horaire défile seule, la page non
     const strip = await s.p.evaluate(() => { const e = document.querySelector('#secWx .wx-strip'); return { sw: e.scrollWidth, cw: e.clientWidth, n: e.children.length }; });
     check('1 · bande horaire défilante (au moins 12 h) sans élargir la page', strip.n >= 12 && strip.sw > strip.cw, JSON.stringify(strip));
+    const visibleHours = await s.p.evaluate(() => {
+      const e = document.querySelector('#secWx .wx-hours-track');
+      if (!e) return null;
+      const total = e.scrollWidth, width = e.clientWidth;
+      e.scrollLeft = total;
+      const moved = e.scrollLeft;
+      e.scrollLeft = 0;
+      return { total, width, moved };
+    });
+    check('1 · bande de température : défile au doigt sans agrandir la page',
+      !!visibleHours && visibleHours.total > visibleHours.width && visibleHours.moved > 0, JSON.stringify(visibleHours));
     // lien vers Pneus
     await tapNav(s.p, '#secWx [data-act=view][data-v=pneus]', 'Météo → Pneus depuis le résumé météo'); await s.settle(2);
     check('1 · « Voir analyse Pneus » ouvre l’onglet Pneus ; le poste météo y est masqué', await s.p.evaluate(() => UI.view === 'pneus' && document.getElementById('secWx').hidden && !!document.querySelector('#secCars .car')));
