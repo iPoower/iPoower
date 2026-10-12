@@ -132,7 +132,7 @@ function renderF1Pure() {
     // Les modules de même section suivent l'ordre de FEATURES.
     // Préserver les verdicts de sécurité : le poste Météo garde son héros
     // d'alerte en premier et l'Analyse garde son diagnostic principal visible.
-    const first = id === 'trackConditions' ? root.querySelector(':scope > .wx-hero') :
+    const first = id === 'trackConditions' ? root.querySelector(':scope > .wx-hours') || root.querySelector(':scope > .wx-hero') :
       id === 'telemetryReplay' ? root.querySelector(':scope > .lab-hero') :
       root.querySelector(':scope > .mod-h, :scope > .decision-top');
     let anchor = first;

@@ -133,6 +133,15 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     });
     check('1 · mise à jour : conserve la position horizontale après rendu sans saut',
       heldHours.before > 0 && Math.abs(heldHours.after - heldHours.before) <= 2, JSON.stringify(heldHours));
+    const f1Order = await s.p.evaluate(() => {
+      S.flags.f1TrackConditions = 1; renderAll();
+      const hero = document.querySelector('#secWx .wx-hero'), hours = document.querySelector('#secWx .wx-hours');
+      const f1 = document.querySelector('#f1-panel-trackConditions');
+      const ordered = hero.nextElementSibling === hours && hours.nextElementSibling === f1;
+      S.flags.f1TrackConditions = 0; renderAll();
+      return ordered;
+    });
+    check('1 · module F1 actif : températures horaires toujours immédiatement après le verdict', f1Order);
     // lien vers Pneus
     await tapNav(s.p, '#secWx [data-act=view][data-v=pneus]', 'Météo → Pneus depuis le résumé météo'); await s.settle(2);
     check('1 · « Voir analyse Pneus » ouvre l’onglet Pneus ; le poste météo y est masqué', await s.p.evaluate(() => UI.view === 'pneus' && document.getElementById('secWx').hidden && !!document.querySelector('#secCars .car')));
