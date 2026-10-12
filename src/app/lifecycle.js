@@ -117,7 +117,7 @@ function tickLocalClock() {
   }
 }
 function autoTick() {
-  if (document.hidden) return;
+  if (document.hidden && !weatherStationRunning()) return;
   if (window.TWRC_VAULT && window.TWRC_VAULT.expired()) { checkSessionExpiry(); return; }
   tickLocalClock(); // horloge et prévisions locales progressent même hors ligne, pendant une requête ou un 429
   calendarOriginPurge();
@@ -126,7 +126,7 @@ function autoTick() {
   if (!DEMO.on && expireLive()) { rebuild(); renderAll(); }   // reprise : la donnée vieillie est requalifiée avant toute requête
   if (DEMO.on || busy || (navigator.onLine === false)) return;
   const ref = Math.max(lastOk || 0, lastTry || 0);
-  if (Date.now() - ref >= AUTO_MS) refreshAll(false);
+  if (Date.now() - ref >= AUTO_MS) weatherStationAutoRefresh().catch(() => { /* prochaine échéance du moteur */ });
 }
 setInterval(autoTick, 30e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });

@@ -107,6 +107,8 @@ async function openAt(context, date) {
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
         await p.fill('#unlockPw', PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
+        // A WebKit navigation can resolve before the async vault unseal has completed.
+        // Do not treat "loaded but still locked" as successful authorization.
         await unlocked(p);
         assert.equal(await p.evaluate(() => LOCKED()), false);
         const q = await openAt(s.c, await p.evaluate(() => Date.now()) + DAY);

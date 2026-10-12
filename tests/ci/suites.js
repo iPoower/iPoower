@@ -97,3 +97,5 @@ SUITE.push(['e2e73-weekly-login.js', 'sécurité iPhone/PC : session 7 jours en 
 module.exports = { SUITE, FIRST };
 SUITE.push(['test_live_engine.js', 'live : horloge, provenance, données partielles, horizon et réponses tardives', false]);
 SUITE.push(['e2e74-live-offline.js', 'Live/Offline : minuit, heures offline, données anciennes/partielles, reconnexion et 429 iPhone/PC', true]);
+SUITE.push(['test_weather_watch.js', 'Weather Watch : provenance, seuils, hystérésis, journal, cache et rétention en mémoire', false],
+  ['e2e74-weather-watch.js', 'Weather Watch PC : station facultative, reprise, alertes, mini-cockpit, Web Locks et iPhone préservé', true]);

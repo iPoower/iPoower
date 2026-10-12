@@ -255,8 +255,14 @@
     "suite": "e2e56-debrief.js",
     "result": "débrief différé sans retour inventé"
   },
-  "race-toggle": { "suite": "e2e70-f1-pure.js", "result": "six modules F1 activés individuellement dans les écrans existants, sans changer les trajets" },
-  "race-speak": { "suite": "e2e70-f1-pure.js", "result": "lecture vocale du briefing uniquement après un geste explicite et si navigateur compatible" },
+  "race-toggle": {
+    "suite": "e2e70-f1-pure.js",
+    "result": "six modules F1 activés individuellement dans les écrans existants, sans changer les trajets"
+  },
+  "race-speak": {
+    "suite": "e2e70-f1-pure.js",
+    "result": "lecture vocale du briefing uniquement après un geste explicite et si navigateur compatible"
+  },
   "debrief-snooze": {
     "suite": "e2e56-debrief.js",
     "result": "questionnaires silencieux jusqu’à minuit Paris sans supprimer les trajets"
@@ -348,5 +354,33 @@
   "cal-origin-apply": {
     "suite": "e2e68-calendar-origin.js",
     "result": "origine conservée dans le coffre, recalcul via effLegs"
+  },
+  "station-open": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "station PC ouverte à la demande ; UX et données intactes"
+  },
+  "station-close": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "station fermée avec restauration de la vue, du focus et du défilement"
+  },
+  "station-alerts": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "surveillance activée volontairement et franchissements dédupliqués"
+  },
+  "station-silent": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "alertes visuelles conservées sans notification système"
+  },
+  "station-mini": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "mini-fenêtre native sur demande, refus et absence gérés"
+  },
+  "station-return": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "retour à Race Control depuis la mini-fenêtre"
+  },
+  "station-notifications": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "permission Windows demandée après clic seulement ; refus et absence gérés"
   }
 }
