@@ -679,6 +679,23 @@ button.btn.sm[data-act="trip-preview"], button.btn.sm[data-act="trip-cancel"], b
 .wx-h1 { font-family: var(--f-mono); font-size: 15px; }
 .wx-stale { margin-top: 4px; font-size: 12.5px; color: var(--cau-t); }
 .wx-blk { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; background: color-mix(in srgb, var(--panel2) 55%, transparent); }
+
+/* Prévision horaire visible immédiatement, une seule bande scrollable sur iPhone.
+   Le conteneur absorbe le débordement : le cockpit et la barre d'onglets ne bougent pas. */
+.wx-hours { gap: 7px; overflow: hidden; border-left: 3px solid var(--accent); }
+.wx-hours-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 5px 10px; min-width: 0; }
+.wx-hours-state { font-family: var(--f-mono); font-size: 10px; letter-spacing: .04em; color: var(--fg2); }
+.wx-hours-track { list-style: none; display: flex; gap: 7px; margin: 0; padding: 3px 1px 7px; min-width: 0; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scroll-snap-type: x proximity; }
+.wx-hours-card { scroll-snap-align: start; flex: 0 0 67px; min-width: 0; display: grid; justify-items: center; align-content: center; gap: 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); padding: 8px 4px; text-align: center; border-top: 3px solid transparent; }
+.wx-hours-card.lv1, .wx-hours-card.lv2, .wx-hours-card.lv3 { border-top-color: var(--lv); }
+.wx-hours-card.now { background: var(--accent-soft); outline: 1px solid var(--accent); }
+.wx-hours-card time { font: 11px var(--f-mono); color: var(--fg2); white-space: nowrap; }
+.wx-hours-icon { font-size: 19px; line-height: 1.25; }
+.wx-hours-card b { color: var(--fg); font-size: 18px; font-weight: 650; letter-spacing: -.02em; white-space: nowrap; }
+.wx-hours-rain { font: 10px var(--f-mono); color: var(--fg2); white-space: nowrap; }
+.wx-hours-note { font-size: 11px; color: var(--fg2); line-height: 1.45; }
+@media (max-width: 380px) { .wx-hours-card { flex-basis: 62px; } }
+
 .wx-blk.lv1, .wx-blk.lv2, .wx-blk.lv3 { border-left: 3px solid var(--lv); }
 .wx-route { font-size: 16px; overflow-wrap: anywhere; }
 .wx-when { font-size: 13px; color: var(--fg2); }
