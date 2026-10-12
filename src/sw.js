@@ -1,8 +1,8 @@
 // Tyre Weather Race Control : shell PWA hors ligne + dernières données publiques chiffrées
 // Les requêtes vers OSRM, Open-Meteo, BigDataCloud, RainViewer et les tuiles externes ne sont JAMAIS mises en Cache Storage.
-const STATIC = 'twrc-static-v11', DATA = 'twrc-data-v3';
+const STATIC = 'twrc-static-v12', DATA = 'twrc-data-v3';
 const NAV_WAIT_MS = 3000;   // réseau qui ne répond pas (parking, tunnel) : shell en cache au-delà, mise à jour poursuivie en arrière-plan
-const SHELL = ['./', './index.html', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './manifest.webmanifest', './tiredb.json'];
+const SHELL = ['./', './index.html', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './manifest.webmanifest', './tiredb.json', './vendor/leaflet/leaflet.js', './vendor/leaflet/leaflet.css', './vendor/leaflet/images/layers.png', './vendor/leaflet/images/layers-2x.png', './vendor/leaflet/images/marker-icon.png', './vendor/leaflet/images/marker-icon-2x.png', './vendor/leaflet/images/marker-shadow.png'];
 const DATA_PATHS = /\/(calendar\.sealed\.json|obs\.json|tiredb\.json|version\.json|road-datex\.json)$/;
 
 const canonical = u => new Request(u.origin + u.pathname, { method: 'GET' });
@@ -79,7 +79,7 @@ self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
 
   // Confidentialité : aucun fournisseur externe (et donc aucune coordonnée GPS envoyée dans ses URL) n'est persisté par le SW.
-  if (u.origin !== self.location.origin) return;
+  if (u.origin !== self.location.origin || !u.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
 
   if (/\/road-datex\.json$/.test(u.pathname)) { e.respondWith(publicRoad(e.request, canonical(u))); return; }
   // Les futurs bridges commerciaux devront être explicitement autorisés : aucun cache implicite du shell.
