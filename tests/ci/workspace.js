@@ -23,7 +23,7 @@ function validatePrepared(root = PREPARED) {
   const meta = JSON.parse(fs.readFileSync(path.join(root, 'meta.json'), 'utf8'));
   if (meta.schema !== 1 || meta.sourceHash !== sourceHash()) throw new Error('Fixtures d’une autre version de source');
   const actual = payload(root);
-  for (const f of ['w/site/index.html', 'w/site/sw.js', 'w/engine.js', 'w/demo.js', 'w/relay.js', 'w/widget.js', 'w/preset.json', 'out/cal.fake.json']) if (!actual[f]) throw new Error('Fixture obligatoire absente : ' + f);
+  for (const f of ['w/site/index.html', 'w/site/sw.js', 'w/site/vendor/leaflet/leaflet.js', 'w/site/vendor/leaflet/leaflet.css', 'w/engine.js', 'w/demo.js', 'w/relay.js', 'w/widget.js', 'w/preset.json', 'out/cal.fake.json']) if (!actual[f]) throw new Error('Fixture obligatoire absente : ' + f);
   if (JSON.stringify(actual) !== JSON.stringify(meta.files)) throw new Error('Fixtures modifiées ou incomplètes');
   return meta;
 }
@@ -36,10 +36,10 @@ function prepare() {
   const buildStart = Date.now(), build = spawnSync(process.execPath, [path.join(ROOT, 'tools/build.js')], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, RC_PRIVATE: '.ci/fake', RC_OUT: '.ci/dist', RC_ENCRYPTED: '.ci/enc' } });
   const buildMs = Date.now() - buildStart;
   if (build.status !== 0) throw new Error('Build fictif en échec (aucune sortie privée affichée)');
-  for (const f of fs.readdirSync(path.join(CI, 'dist'))) copy('.ci/dist/' + f, 'prepared/w/site/' + f);
+  fs.cpSync(path.join(CI, 'dist'), path.join(PREPARED, 'w/site'), { recursive: true });
   for (const f of ['engine.js', 'demo.js', 'relay.js']) copy('src/' + f, 'prepared/w/' + f);
   copy('tests/fixtures/preset.fake.json', 'prepared/w/preset.json');
-  const widget = fs.readFileSync(path.join(ROOT, 'src/widget.js'), 'utf8').replace(/const CFG = null;[^\n]*/, 'const CFG = ' + JSON.stringify({ home: { id: 'home', name: 'Maison test', lat: 48.85, lon: 2.35 }, work: { id: 'work', name: 'Travail test', lat: 48.9, lon: 2.25 }, dep: '06:30', durMin: 40, days: [1, 2, 3], cars: [{ short: 'Test A', sporty: 1, tire: { type: 'summer', size: '215/40 R18', tread: null, dot: '1023' }, plan: { on: 0 } }] }) + ';');
+  const widget = require('../../tools/widget-source').widgetSource(ROOT).replace(/const CFG = null;[^\n]*/, 'const CFG = ' + JSON.stringify({ home: { id: 'home', name: 'Maison test', lat: 48.85, lon: 2.35 }, work: { id: 'work', name: 'Travail test', lat: 48.9, lon: 2.25 }, dep: '06:30', durMin: 40, days: [1, 2, 3], cars: [{ short: 'Test A', sporty: 1, tire: { type: 'summer', size: '215/40 R18', tread: null, dot: '1023' }, plan: { on: 0 } }] }) + ';');
   fs.writeFileSync(path.join(PREPARED, 'w/widget.js'), widget);
   for (const f of ['relay.js', 'engine.js', 'demo.js', 'evidence.js']) copy('src/' + f, 'h/' + f);
   for (const f of fs.readdirSync(path.join(ROOT, 'tests/relay-harness'))) copy('tests/relay-harness/' + f, 'h/' + f);

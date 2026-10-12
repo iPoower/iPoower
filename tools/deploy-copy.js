@@ -7,11 +7,29 @@
 const fs = require('fs'), path = require('path');
 const [src, dst] = process.argv.slice(2);
 if (!src || !dst || !fs.existsSync(path.join(src, 'index.html')) || !fs.existsSync(dst)) { console.error('usage : deploy-copy.js <dist> <gh-pages/race-control>'); process.exit(2); }
-const SITE = ['index.html', 'engine.js', 'evidence.js', 'relay.js', 'sw.js', 'widget.js', 'manifest.webmanifest', 'relay-config.sealed.json', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png'];
+const htmlSource = fs.readFileSync(path.join(src, 'index.html'), 'utf8');
+const VENDOR = htmlSource.includes('vendor/leaflet/leaflet.js') ? require('./web-assets').ASSETS.map(f => 'vendor/leaflet/' + f) : [];
+const SITE = ['index.html', 'engine.js', 'evidence.js', 'relay.js', 'sw.js', 'widget.js', 'manifest.webmanifest', 'relay-config.sealed.json', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', ...VENDOR];
 const RELAY_OWNED = ['obs.json', 'calendar.sealed.json', 'road-datex.json'];
 const same = (a, b) => fs.existsSync(b) && fs.readFileSync(a).equals(fs.readFileSync(b));
 const changed = [];
-for (const f of SITE) { const a = path.join(src, f), b = path.join(dst, f); if (!fs.existsSync(a)) { console.error('manquant dans le build : ' + f); process.exit(1); } if (!same(a, b)) { fs.copyFileSync(a, b); changed.push(f); } }
+function safePath(file, optional = false) {
+  const absolute = path.resolve(file), parts = absolute.slice(path.parse(absolute).root.length).split(path.sep);
+  let current = path.parse(absolute).root;
+  for (let i = 0; i < parts.length; i++) {
+    current = path.join(current, parts[i]); let stat;
+    try { stat = fs.lstatSync(current); } catch (e) { if (optional && e.code === 'ENOENT') return; throw e; }
+    if (i < parts.length - 1 ? !stat.isDirectory() : !stat.isFile()) throw new Error('Chemin non régulier, publication refusée');
+  }
+}
+// Préflight complet avant toute copie : ne jamais suivre un lien de production
+// ni écraser partiellement le shell avant de découvrir un build non conforme.
+try {
+  for (const f of RELAY_OWNED) if (fs.existsSync(path.join(src, f))) throw new Error('Le build contient une donnée appartenant au relais');
+  for (const f of [...SITE, 'tiredb.json']) { safePath(path.join(src, f)); safePath(path.join(dst, f), true); }
+  safePath(path.join(dst, 'version.json'), true);
+} catch (e) { console.error('Publication refusée : build incomplet ou chemin non régulier'); process.exit(1); }
+for (const f of SITE) { const a = path.join(src, f), b = path.join(dst, f); if (!same(a, b)) { fs.mkdirSync(path.dirname(b), { recursive: true }); fs.copyFileSync(a, b); changed.push(f); } }
 const ver = f => { try { return +JSON.parse(fs.readFileSync(f, 'utf8')).version || 0; } catch (e) { return -1; } };
 const ta = path.join(src, 'tiredb.json'), tb = path.join(dst, 'tiredb.json');
 if (ver(ta) > ver(tb) || (ver(ta) === ver(tb) && !same(ta, tb) && ver(tb) < 0)) { fs.copyFileSync(ta, tb); changed.push('tiredb.json'); }

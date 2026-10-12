@@ -7,6 +7,7 @@
 //    (elle est alors rechiffrée uniquement dans GitHub Actions, par le workflow de rotation : la clé du relais ne quitte jamais GitHub).
 const fs=require('fs'),crypto=require('crypto'),path=require('path');const ROOT=path.resolve(__dirname,'..');
 const {norm,tryUnseal,seal:sealWith}=require('./keys');
+const webAssets=require('./web-assets');
 const r=f=>fs.readFileSync(path.join(ROOT,f),'utf8'),has=f=>fs.existsSync(path.join(ROOT,f)),w=(f,d)=>{fs.mkdirSync(path.dirname(path.join(ROOT,f)),{recursive:true});fs.writeFileSync(path.join(ROOT,f),d);};
 // dossiers (modifiables pour la CI : RC_PRIVATE=réglages fictifs, RC_OUT=sortie, RC_ENCRYPTED=chiffrés de test)
 const PD=process.env.RC_PRIVATE||'private',OUT=process.env.RC_OUT||'dist',ENC=process.env.RC_ENCRYPTED||'encrypted';
@@ -57,7 +58,7 @@ const DATA_BASE=process.env.RC_DATA_BASE||'';
 if(DATA_BASE&&!/^https:\/\/[a-z0-9.-]+\/[A-Za-z0-9._\/-]*\/$/.test(DATA_BASE))throw new Error('RC_DATA_BASE doit être une URL https terminée par « / »');
 const boot=`<script>window.TWRC_BUILD=${JSON.stringify(buildId)};window.TWRC_DATA_BASE=${JSON.stringify(DATA_BASE)};window.TWRC_TIREDB=${tdb};window.TWRC_SEALED=${JSON.stringify(sealed)};window.TWRC_SEALED_V=${JSON.stringify(sealedV)};
 </script>\n`;
-const head='<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Race Control"><meta name="theme-color" content="#080c11"><meta name="robots" content="noindex,nofollow"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" type="image/png" href="icon-192.png">';
+const head='<meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Race Control"><meta name="theme-color" content="#080c11"><meta name="robots" content="noindex,nofollow"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" type="image/png" href="icon-192.png">';
 const reset='<style>html{color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}[hidden]{display:none!important}</style>';
 w(OUT+'/manifest.webmanifest',JSON.stringify({name:'Tyre Weather Race Control',short_name:'Race Control',description:'Météo en temps réel et verdict pneus du trajet',lang:'fr',start_url:'./',scope:'./',display:'standalone',orientation:'portrait',background_color:'#080c11',theme_color:'#080c11',icons:[{src:'icon-192.png',sizes:'192x192',type:'image/png',purpose:'any'},{src:'icon-512.png',sizes:'512x512',type:'image/png',purpose:'any'},{src:'icon-512.png',sizes:'512x512',type:'image/png',purpose:'maskable'}]},null,1));
 const page=`<!doctype html>\n<html lang="fr" data-theme="dark"><head>${head}<link rel="manifest" href="manifest.webmanifest">\n${title}\n${fonts}\n${reset}\n${style}\n</head><body>\n${body(boot)}</body></html>\n`;
@@ -71,16 +72,17 @@ if(deferred==null)throw new Error('Bloc applicatif différé introuvable');
 const CONNECT=["'self'",'https://api.open-meteo.com','https://ensemble-api.open-meteo.com','https://air-quality-api.open-meteo.com','https://geocoding-api.open-meteo.com',
   'https://public.opendatasoft.com','https://api.bigdatacloud.net','https://router.project-osrm.org','https://nominatim.openstreetmap.org','https://data.geopf.fr',
   'https://api.rainviewer.com','https://ntfy.sh',...(DATA_BASE?[new URL(DATA_BASE).origin]:[])];
-const CSP=[`default-src 'self'`,`script-src ${[...inline,deferred].map(sha).join(' ')} https://unpkg.com`,`style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com`,
-  `font-src https://fonts.gstatic.com`,`img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://server.arcgisonline.com https://tilecache.rainviewer.com https://unpkg.com`,
+const CSP=[`default-src 'self'`,`script-src ${[...inline,deferred].map(sha).join(' ')} '${webAssets.LEAFLET.js}'`,`script-src-attr 'none'`,`style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
+  `font-src https://fonts.gstatic.com`,`img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://server.arcgisonline.com https://tilecache.rainviewer.com`,
   `connect-src ${CONNECT.join(' ')}`,`worker-src 'self'`,`manifest-src 'self'`,`object-src 'none'`,`base-uri 'none'`,`form-action 'self'`,`frame-src 'none'`].join('; ');
 w(OUT+'/index.html',page.replace('<head>','<head><meta http-equiv="Content-Security-Policy" content="'+CSP+'">'));
 // en-têtes prêts pour une origine dédiée (Cloudflare Pages) : la même politique, plus frame-ancestors et les en-têtes impossibles en <meta>
-w(OUT+'/_headers',`/*\n  Content-Security-Policy: ${CSP}; frame-ancestors 'none'\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=()\n  Strict-Transport-Security: max-age=31536000; includeSubDomains\n  Cross-Origin-Opener-Policy: same-origin\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n`);
+w(OUT+'/_headers',`/*\n  Content-Security-Policy: ${CSP}; frame-ancestors 'none'\n  X-Frame-Options: DENY\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=()\n  Strict-Transport-Security: max-age=31536000; includeSubDomains\n  Cross-Origin-Opener-Policy: same-origin\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n`);
+webAssets.copy(ROOT,OUT);
 ['sw.js','engine.js','tiredb.json','relay.js','evidence.js'].forEach(f=>w(OUT+'/'+f,r('src/'+f)));
 ['apple-touch-icon.png','icon-192.png','icon-512.png'].forEach(f=>fs.copyFileSync(path.join(ROOT,'src/static',f),path.join(ROOT,OUT,f)));
 // widget public sans configuration (le bouton « Copier » de l'app l'ajoute)
-w(OUT+'/widget.js',r('src/widget.js').replace(/const CFG = [\s\S]*?;\n\nconst Q_CUR/,'const CFG = null; // configuration ajoutée par l’app au moment de la copie\n\nconst Q_CUR'));
+w(OUT+'/widget.js',require('./widget-source').widgetSource(ROOT).replace(/const CFG = [\s\S]*?;\n\nconst Q_CUR/,'const CFG = null; // configuration ajoutée par l’app au moment de la copie\n\nconst Q_CUR'));
 // relais : configuration chiffrée avec RC_KEY uniquement (secret GitHub RC_KEY), jamais avec le code de l'app
 const relayPriv=PRIV?{site:rcfg.site,ntfy:rcfg.ntfy,home:rcfg.home,work:rcfg.work,origins:rcfg.origins,dep:rcfg.dep,durMin:rcfg.durMin,days:rcfg.days,cars:rcfg.cars}:null;
 let prevR=null;try{prevR=JSON.parse(r(ENC+'/relay-config.sealed.json'));}catch(e){}
@@ -90,5 +92,5 @@ if(PRIV&&!RCK&&(!prevR||prevR.v!==rv))throw new Error('Configuration du relais m
 const rs=(prevR&&prevR.v===rv&&(!RCK||tryUnseal(prevR.sealed,RCK)))?prevR.sealed:seal(relayPriv,RCK);w(ENC+'/relay-config.sealed.json',JSON.stringify({v:rv,sealed:rs}));
 w(OUT+'/relay-config.sealed.json',JSON.stringify(rs));
 // garde-fou : la sortie publique ne doit contenir aucune donnée personnelle
-require('child_process').execFileSync(process.execPath,[path.join(ROOT,'tools/check-secrets.js'),...fs.readdirSync(path.join(ROOT,OUT)).filter(f=>!/\.png$/.test(f)).map(f=>OUT+'/'+f)],{cwd:ROOT,stdio:'inherit'});
+require('child_process').execFileSync(process.execPath,[path.join(ROOT,'tools/check-secrets.js'),...fs.readdirSync(path.join(ROOT,OUT)).filter(f=>fs.statSync(path.join(ROOT,OUT,f)).isFile()&&!/\.png$/.test(f)).map(f=>OUT+'/'+f),OUT+'/vendor/leaflet/leaflet.js',OUT+'/vendor/leaflet/leaflet.css'],{cwd:ROOT,stdio:'inherit'});
 console.log('ok',fs.statSync(path.join(ROOT,OUT,'index.html')).size,'sealedV',sealedV,PRIV?'(réglages privés présents)':'(fichiers chiffrés seuls)');

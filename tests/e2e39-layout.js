@@ -19,8 +19,8 @@ for(const [name,vp,mobile,inset] of VPS){
     if(u.includes('/race-control/calendar.sealed.json'))return r.fulfill({status:200,contentType:'application/json',body:fs.readFileSync(SP+'/cal.fake.json','utf8')});
     if(u.includes('api.rainviewer.com')){const n=Math.floor(T0/600000)*600;return J({version:'2.0',host:'https://tilecache.rainviewer.com',radar:{past:Array.from({length:3},(_,k)=>({time:n-(2-k)*600,path:'/v2/radar/'+(n-(2-k)*600)}))}});}
     if(/tilecache\.rainviewer|arcgisonline|tile\.openstreetmap/.test(u))return r.fulfill({status:200,contentType:'image/png',body:PX});
-    if(u.includes('leaflet@1.9.4/dist/leaflet.js'))return r.fulfill({status:200,contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:fs.readFileSync('node_modules/leaflet/dist/leaflet.js')});
-    if(u.includes('leaflet@1.9.4/dist/leaflet.css'))return r.fulfill({status:200,contentType:'text/css',headers:{'access-control-allow-origin':'*'},body:fs.readFileSync('node_modules/leaflet/dist/leaflet.css')});
+    if(u.includes('/vendor/leaflet/leaflet.js'))return r.fulfill({status:200,contentType:'text/javascript',headers:{'access-control-allow-origin':'*'},body:fs.readFileSync('node_modules/leaflet/dist/leaflet.js')});
+    if(u.includes('/vendor/leaflet/leaflet.css'))return r.fulfill({status:200,contentType:'text/css',headers:{'access-control-allow-origin':'*'},body:fs.readFileSync('node_modules/leaflet/dist/leaflet.css')});
     if(u.includes('/race-control/obs.json'))return J({stations:{}});
     if(u.includes('/race-control/tiredb.json'))return r.fulfill({status:200,contentType:'application/json',body:fs.readFileSync('site/tiredb.json','utf8')});
     if(u.startsWith(U)&&!/\.(js|json)$/.test(new URL(u).pathname))return r.fulfill({status:200,contentType:'text/html',body:html});
