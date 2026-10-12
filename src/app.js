@@ -1187,6 +1187,7 @@ function renderCurrent() {
 }
 
 // @include app/weather-view.js
+// @include app/weather-station.js
 // @include app/analysis-view.js
 // @include app/debrief-view.js
 // @include app/race-views.js
@@ -3795,7 +3796,7 @@ function renderAll() {
   try {
     appRefreshContext(); recordJournal();
     renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
-    renderWx(); renderLab(); renderDebrief(); renderGarage(); labThermTick(false); roadSync(); renderF1Pure();
+    renderWx(); renderLab(); renderDebrief(); renderGarage(); labThermTick(false); roadSync(); renderF1Pure(); renderWeatherStationButton(); renderWeatherStation();
   } finally {
     APP_CONTEXT.rendering = false; renderAll.view = UI.view;
     // La navigation garde son comportement ; une projection du même écran
@@ -3817,6 +3818,7 @@ document.addEventListener('click', async e => {
   if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); } return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act;
+  if (a.startsWith('station-') && await weatherStationAction(a, t)) return;
   if (a === 'cal-origin-open') { calendarOriginOpen(t.dataset.key); return; }
   if (a === 'cal-origin-close') { calendarOriginClose(); return; }
   if (a === 'cal-origin-search') { await calendarOriginSearch(); return; }
