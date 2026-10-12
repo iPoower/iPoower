@@ -105,15 +105,16 @@ function validateRecovery(reason) {
   return ok;
 }
 function autoTick() {
-  if (document.hidden) return;
+  if (document.hidden && !weatherStationRunning()) return;
   if (window.TWRC_VAULT && window.TWRC_VAULT.expired()) { checkSessionExpiry(); return; }
   calendarOriginPurge();
   if (USER_STORE.durability().status === 'degraded') validateRecovery('retry périodique');
   if (navigator.onLine !== false && Date.now() - VER_CHECK_AT >= AUTO_MS) loadVersion(true); else enforceVersionCoherence();
   if (!DEMO.on && expireLive()) { rebuild(); renderAll(); }   // reprise : la donnée vieillie est requalifiée avant toute requête
+  weatherStationTick();   // même minuteur : horloge/cache hors ligne et station PC en arrière-plan
   if (DEMO.on || busy || (navigator.onLine === false)) return;
   const ref = Math.max(lastOk || 0, lastTry || 0);
-  if (Date.now() - ref >= AUTO_MS) refreshAll(false);
+  if (Date.now() - ref >= AUTO_MS) weatherStationAutoRefresh().catch(() => { /* prochaine échéance du moteur */ });
 }
 setInterval(autoTick, 30e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });
