@@ -3610,6 +3610,11 @@ function renderSeason() {
     if (car.plan && car.plan.on && car.tire.type !== 'winter') {
       const plan = car.plan, n = s.countdown && s.countdown.n;
       const planTxt = [plan.brand, plan.model].filter(Boolean).join(' ') || 'pneus hiver';
+      const sap = tirePlanVariant(car, plan);
+      const sapInfo = sap && sap.partNumber === '580667'
+        ? `<span class="sub" data-winter-sap="580667"><b>Référence Goodyear SAP</b> · ${esc(sap.partNumber)} · ${esc(sap.fullSize)} · tubeless (TL)</span>
+           <span class="sub"><b>Profondeur neuve nominale</b> · ${esc(String(sap.newTreadMm).replace('.', ','))} mm (fiche SAP, non mesurée : aucune incidence sur les calculs d'usure).</span>`
+        : '';
       const etaDate = plan.etaTo || plan.etaFrom, etaTxt = plan.etaFrom && plan.etaTo && plan.etaFrom !== plan.etaTo
         ? `${fmtDay(plan.etaFrom)} → ${fmtDay(plan.etaTo)}`
         : etaDate ? fmtDay(etaDate) : 'non renseignée';
@@ -3624,6 +3629,7 @@ function renderSeason() {
       const etaRangeInvalid = !!(plan.etaFrom && plan.etaTo && plan.etaFrom > plan.etaTo);
       const apptIncomplete = !!plan.appointmentConfirmed && !plan.appointmentDate;
       cd = `<div class="stat lvx"><span class="sub">Prochaine monte : ${esc(planTxt)}${plan.size ? ' · ' + esc(plan.size) : ''}</span>
+        ${sapInfo}
         ${n == null ? '<span class="sub">Date de montage estimée non renseignée.</span>' : `<span class="cd num">${n > 0 ? 'J-' + pad(n) : n === 0 ? 'Jour J' : 'J+' + pad(-n)}</span><span class="sub">${n > 0 ? esc(mountLabel) : 'date de montage atteinte ou dépassée'} · ${fmtDay(s.countdown.date)}</span>`}
         <span class="sub"><b>Commande</b> · ${plan.ordered ? fmtDay(plan.ordered) : 'date non renseignée'}</span>
         <span class="sub"><b>Approvisionnement</b> · ${esc(supplyStatus)} · ETA ${esc(etaTxt)}${plan.etaChecked ? ' · vérifié ' + fmtDay(plan.etaChecked) : ''}</span>
@@ -3737,7 +3743,13 @@ function renderSettings(force) {
       <div class="fld"><span class="l">Permutation AV/AR</span><button class="btn sm" data-act="rot" data-i="${i}">Permutation faite aujourd’hui</button></div>
       ${bindIn(`cars.${i}.tire.pchk.date`, (c.tire.pchk || {}).date, { label: 'Dernier contrôle pression', type: 'date' })}${bindIn(`cars.${i}.tire.pchk.T`, (c.tire.pchk || {}).T, { label: 'Température au contrôle (°C)', type: 'number', num: 1, attrs: 'step="0.5"' })}</div>
     <div class="frow"><div class="fld wide"><label for="f-cars-${i}-plan-on">Pneus hiver prévus</label><select id="f-cars-${i}-plan-on" data-bind="cars.${i}.plan.on" data-num="1"><option value="1" ${c.plan.on ? 'selected' : ''}>Oui, suivre le montage</option><option value="0" ${c.plan.on ? '' : 'selected'}>Non</option></select></div>
-      ${bindIn(`cars.${i}.plan.brand`, c.plan.brand, { label: 'Marque' })}${bindIn(`cars.${i}.plan.model`, c.plan.model, { label: 'Modèle' })}${bindIn(`cars.${i}.plan.size`, c.plan.size, { label: 'Dimensions / indices' })}</div>
+      ${bindIn(`cars.${i}.plan.brand`, c.plan.brand, { label: 'Marque' })}${bindIn(`cars.${i}.plan.model`, c.plan.model, { label: 'Modèle' })}${bindIn(`cars.${i}.plan.size`, c.plan.size, { label: 'Dimensions / indices' })}
+      ${(() => { const size = sizeKey(c.tire.size || (c.sets && c.sets.summer && c.sets.summer.size) || '');
+        const other = c.plan.on && ((c.plan.brand && c.plan.brand !== 'Goodyear') || (c.plan.model && c.plan.model !== 'UltraGrip Performance 3'));
+        return size === '215/40 R18' && c.tire.type !== 'winter' && !other
+          ? `<div class="fld wide"><span class="sub">Fiche vérifiée Goodyear · 580667 · 215/40 R18 89V XL FP · neuf nominal 8,1 mm</span>
+             <button type="button" class="btn sm" data-act="winter-sap-apply" data-i="${i}">Renseigner mon plan hiver · SAP 580667</button>
+             <span class="sub">Ne modifie pas les pneus montés, le DOT, l'usure ni les dates déjà saisies.</span></div>` : ''; })()}</div>
     <div class="frow">
       ${bindIn(`cars.${i}.plan.ordered`, c.plan.ordered, { label: 'Commande passée', type: 'date' })}${bindIn(`cars.${i}.plan.etaFrom`, c.plan.etaFrom, { label: 'ETA fournisseur · début', type: 'date' })}${bindIn(`cars.${i}.plan.etaTo`, c.plan.etaTo, { label: 'ETA fournisseur · fin', type: 'date' })}${bindIn(`cars.${i}.plan.etaChecked`, c.plan.etaChecked, { label: 'ETA vérifiée le', type: 'date' })}</div>
     <div class="frow">
@@ -3873,6 +3885,21 @@ document.addEventListener('click', async e => {
     if (placeNow().source === 'gps') UI.placeExpanded = null;
     renderAll(); }
   else if (a === 'locs-toggle') { UI.locsOpen = !UI.locsOpen; renderLocChips(); }
+  else if (a === 'winter-sap-apply') {
+    const i = Number(t.dataset.i), c = S.cars[i];
+    if (DEMO.on || !c || c.tire.type === 'winter' || sizeKey(c.tire.size || (c.sets && c.sets.summer && c.sets.summer.size) || '') !== '215/40 R18') {
+      commandFeedback(t, 'Fiche réservée au train hiver 215/40 R18 non monté'); return;
+    }
+    const db = findTire('Goodyear', 'UltraGrip Performance 3'), v = db && db.variants && db.variants['215/40 R18'];
+    if (!v || v.partNumber !== '580667') { commandFeedback(t, 'Fiche SAP momentanément indisponible'); return; }
+    if (c.plan.on && ((c.plan.brand && c.plan.brand !== db.brand) || (c.plan.model && c.plan.model !== db.model))) {
+      commandFeedback(t, 'Un autre train hiver est prévu : aucune donnée remplacée'); return;
+    }
+    c.plan = { ...c.plan, on: 1, brand: db.brand, model: db.model, size: v.fullSize };
+    markEdit(`cars.${i}.plan`); saveSettings(); renderSettings(true); softRender();
+    const b = document.querySelector(`#settings [data-act="winter-sap-apply"][data-i="${i}"]`);
+    if (b) commandFeedback(b, 'Fiche SAP appliquée au plan hiver');
+  }
   else if (a === 'tire') { const c = S.cars.find(x => x.id === t.dataset.car); switchTire(c, t.dataset.type); const ci = S.cars.indexOf(c); markEdit(`cars.${ci}.tire`); markEdit(`cars.${ci}.sets`); saveSettings(); renderSettings(); softRender(); }
   else if (a === 'fb') {
     const m = M[UI.loc]; if (!m || m.nowI < 0) { commandFeedback(t, 'Météo indisponible pour ce relevé'); return; }
