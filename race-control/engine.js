@@ -112,7 +112,7 @@ let ROAD_BIAS = 0;   // correction apprise à partir des retours terrain
 const setRoadBias = b => { ROAD_BIAS = b || 0; };
 function estRoad(hs, i) {
   const x = hs[i];
-  if (!x || x.T == null) return null;
+  if (!x || !['T', 'wind', 'cloud', 'RH', 'P'].every(k => Number.isFinite(x[k]))) return null;
   const w = [0.40, 0.25, 0.15, 0.10, 0.06, 0.04];
   let s = 0, ws = 0;
   for (let k = 0; k < w.length; k++) {
@@ -120,9 +120,7 @@ function estRoad(hs, i) {
     if (y && y.T != null) { s += w[k] * y.T; ws += w[k]; }
   }
   const Tb = s / ws;                       // inertie thermique: moyenne pondérée des heures précédentes
-  const wind = x.wind != null ? x.wind : 10;
-  const cloud = x.cloud != null ? x.cloud : 60;
-  const rh = x.RH != null ? x.RH : 80;
+  const wind = x.wind, cloud = x.cloud, rh = x.RH;
   let rad = x.rad;
   if (rad == null) rad = Math.max(0, Math.sin(Math.PI * (x.hh - 6.5) / 11)) * 600 * (1 - 0.75 * cloud / 100);
   const wet = recentPrecip(hs, i, 2) >= 0.2;
@@ -201,16 +199,13 @@ function makeModel(payload, mode, loc) {
   const hs = buildHours(payload);
   const tz = payload.timezone || 'Europe/Paris';
   const curT = payload.current && payload.current.time;
-  // « Maintenant » : l'horloge de l'appareil fait foi dès qu'elle tombe dans les données ; l'heure du fournisseur n'est retenue
-  // que si elle concorde (± 1 h) ou si l'horloge est hors des données (horloge aberrante). Une réponse obsolète (cache CDN,
-  // relais en retard) ne décale donc jamais « maintenant » dans le passé, et une horloge fausse ne vide jamais l'analyse.
-  const clockNow = nowIn(tz), curS = curT ? String(curT).slice(0, 16) : null, clockH = clockNow.slice(0, 13) + ':00';
-  const clockInData = hs.length > 0 && clockH >= hs[0].t && clockH <= hs[hs.length - 1].t;
-  const nowStr = mode === 'live' && curS && (Math.abs(Date.parse(curS + 'Z') - Date.parse(clockNow + 'Z')) <= 3600e3 || !clockInData) ? curS : clockNow;
+  // L'heure de consultation avance avec l'appareil. L'instant du modèle reste
+  // une provenance distincte : il ne peut ni rembobiner l'horloge ni prolonger
+  // artificiellement une prévision expirée ou combler un trou horaire.
+  const nowStr = nowIn(tz), curS = curT ? String(curT).slice(0, 16) : null;
   const nowHour = nowStr.slice(0, 13) + ':00';
-  let nowI = -1;
-  for (let i = 0; i < hs.length; i++) { if (hs[i].t <= nowHour) nowI = i; else break; }
   const byTime = new Map(hs.map((x, i) => [x.t, i]));
+  const nowI = byTime.has(nowHour) ? byTime.get(nowHour) : -1;
   const D = payload.daily || {}, dt = D.time || [];
   const dg = (k, i) => (D[k] ? num(D[k][i]) : null);
   const days = dt.map((d, i) => ({
@@ -221,10 +216,12 @@ function makeModel(payload, mode, loc) {
   }));
   // min/max journaliers recalculés sur les heures fusionnées (cohérence avec AROME et le graphique)
   days.forEach(d => { const ts = hs.filter(x => x.date === d.date && x.T != null).map(x => x.T); if (ts.length === 24) { d.tmin = Math.min(...ts); d.tmax = Math.max(...ts); } });
-  const c = payload.current || {};
+  const currentAgeMin = curS ? (Date.parse(nowStr + 'Z') - Date.parse(curS + 'Z')) / 60000 : null;
+  const useCurrent = nowI >= 0 && mode !== 'cache' && currentAgeMin != null && currentAgeMin >= -5 && currentAgeMin <= 20;
+  const c = useCurrent ? payload.current || {} : {};
   const h0 = hs[nowI] || {};
   const cur = {
-    time: curT || null,
+    time: useCurrent ? curT : h0.t || null, source: useCurrent && num(c.temperature_2m) != null ? 'current' : 'hourly',
     T: num(c.temperature_2m) ?? h0.T ?? null, Tapp: num(c.apparent_temperature) ?? h0.Tapp ?? null,
     RH: num(c.relative_humidity_2m) ?? h0.RH ?? null, P: num(c.precipitation) ?? h0.P ?? null,
     snow: num(c.snowfall) ?? h0.snow ?? null, code: num(c.weather_code) ?? h0.code ?? null,
@@ -233,10 +230,12 @@ function makeModel(payload, mode, loc) {
     dir: num(c.wind_direction_10m), isDay: c.is_day,
     Td: h0.Td ?? null, vis: h0.vis ?? null, pp: h0.pp ?? null, Tr: h0.Tr ?? null, ice: h0.ice || null
   };
-  return { id: loc && loc.id, loc, hs, nowI, nowStr, tz, byTime, days, cur, mode, payload };
+  const effectiveMode = mode === 'live' && (nowI < 0 || curS && !useCurrent) ? 'cache' : mode;
+  return { id: loc && loc.id, loc, hs, nowI, nowStr, tz, byTime, days, cur, mode: effectiveMode, payload };
 }
 const seqOf = (m, i0, n) => {
   const out = [];
+  if (i0 < 0) return out;
   for (let k = 0; k <= n; k++) { const i = i0 + k; if (i >= 0 && i < m.hs.length) out.push({ hs: m.hs, i }); }
   return out;
 };
@@ -251,7 +250,7 @@ function perfFactor(car) {
 }
 function tireAssess(car, hs, i) {
   const x = hs[i];
-  if (!x || x.T == null) return null;
+  if (!x || !['T', 'Tr', 'P', 'RH', 'vis', 'gust'].every(k => Number.isFinite(x[k]))) return null;
   const tire = car.tire, type = effType(car), perf = perfFactor(car);
   const parts = []; let pen = 0;
   const add = (label, v, kind) => { if (v >= 0.5) { parts.push({ label, v: Math.round(v), kind }); pen += v; } };
@@ -323,7 +322,7 @@ function windowAssess(car, seq, mode) {
     lvl = Math.max(lvl, flagLevel(car, a, k));
   });
   const valid = items.filter(Boolean);
-  if (!valid.length) return null;
+  if (!valid.length || valid.length !== seq.length) return null; // une heure manquante ne disparaît pas d'un trajet évalué
   const first = valid[0], pNow = first.pen;
   const P = mode === 'trip' ? pMax : (pNow + pMax) / 2;
   let score = Math.round(clamp(100 - P, 0, 100));
@@ -640,9 +639,20 @@ function validForecast(p) {
   if (!H || typeof H !== 'object') return 'prévision horaire absente';
   const t = H.time, T = H.temperature_2m;
   if (!Array.isArray(t) || t.length < 24) return 'moins de 24 heures de prévision';
-  for (let i = 0; i < t.length; i++) if (typeof t[i] !== 'string' || !TS_RE.test(t[i]) || (i && t[i] <= t[i - 1])) return 'horodatages invalides';
+  for (let i = 0; i < t.length; i++) if (typeof t[i] !== 'string' || !TS_RE.test(t[i]) || !Number.isFinite(Date.parse(t[i] + 'Z')) || new Date(t[i] + 'Z').toISOString().slice(0, 16) !== t[i] || (i && t[i] <= t[i - 1])) return 'horodatages invalides';
   if (!Array.isArray(T) || T.length !== t.length) return 'températures absentes ou incomplètes';
   if (T.filter(v => typeof v === 'number' && isFinite(v)).length < t.length / 2) return 'températures majoritairement manquantes';
+  const bounds = { temperature_2m: [-100, 70], apparent_temperature: [-150, 100], dew_point_2m: [-120, 70],
+    relative_humidity_2m: [0, 100], precipitation_probability: [0, 100], cloud_cover: [0, 100],
+    precipitation: [0, 1000], rain: [0, 1000], showers: [0, 1000], snowfall: [0, 1000],
+    wind_speed_10m: [0, 500], wind_gusts_10m: [0, 500], visibility: [0, 1e6], pressure_msl: [300, 1200], shortwave_radiation: [0, 2000], uv_index: [0, 100] };
+  for (const [key, range] of Object.entries(bounds)) {
+    const a = H[key];
+    if (a != null && (!Array.isArray(a) || a.length !== t.length || a.some(v => v != null && (!Number.isFinite(v) || v < range[0] || v > range[1])))) return key + ' invalide';
+    const v = p.current && p.current[key];
+    if (v != null && (!Number.isFinite(v) || v < range[0] || v > range[1])) return key + ' actuel invalide';
+  }
+  if (p.current && p.current.time != null && (typeof p.current.time !== 'string' || !TS_RE.test(p.current.time.slice(0, 16)))) return 'instant actuel invalide';
   return null;
 }
 function mergeArome(src, ar) {
