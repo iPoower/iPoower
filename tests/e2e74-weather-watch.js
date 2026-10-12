@@ -5,6 +5,45 @@ const { BR, session, errors, U } = require('./lib/context-session');
 let n = 0, stage = '', supplierAt = Date.parse('2026-10-12T08:00:00+02:00'), temp = 12;
 const check = async (label, fn) => { stage = label; await fn(); n++; console.log('✅ ' + label); };
 const click = (p, action) => p.locator('[data-act="' + action + '"]').click();
+// A Playwright route callback reaches Node asynchronously after browser-side busy
+// becomes true. Count actual intercepted requests, not an event-loop race.
+async function expectPendingRoutes(pending, count, context) {
+  const deadline = Date.now() + 8000;
+  while (pending.length < count && Date.now() < deadline)
+    await new Promise(resolve => setTimeout(resolve, 40));
+  assert.equal(pending.length, count, context + ' : requêtes réellement interceptées');
+}
+async function expectLauncherFocus(p) {
+  // The fixture installs Playwright's simulated clock. Poll from Node so WebKit's
+  // in-page timers/animation frames cannot stall the focus assertion.
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const state = await p.evaluate(() => {
+      const launcher = document.querySelector('#secWx [data-act="station-open"]');
+      const active = document.activeElement;
+      return {
+        focused: !!launcher && launcher === active,
+        launcherConnected: !!launcher?.isConnected,
+        activeTag: active?.tagName || null,
+        activeAction: active?.getAttribute('data-act') || null,
+        stationOpen: !!document.getElementById('wxStation'),
+        locked: typeof LOCKED === 'function' && LOCKED(),
+        hidden: document.hidden
+      };
+    });
+    if (state.focused) return;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  const diagnostic = await p.evaluate(() => ({
+    activeElement: document.activeElement?.outerHTML?.slice(0, 300),
+    launcher: document.querySelector('#secWx [data-act="station-open"]')?.outerHTML,
+    stationOpen: !!document.getElementById('wxStation'),
+    locked: typeof LOCKED === 'function' && LOCKED(),
+    hidden: document.hidden
+  }));
+  assert.fail('Focus du bouton Mode Station non restauré : ' + JSON.stringify(diagnostic));
+}
+
 const sample = p => p.evaluate(() => ({ active: WX_STATION.active, mode: WX_STATION.snapshot && WX_STATION.snapshot.mode,
   fresh: WX_STATION.snapshot && WX_STATION.snapshot.fresh, T: WX_STATION.snapshot && WX_STATION.snapshot.current.T,
   expected: CX && wxDesk(wxInput()).current.T, hours: [...document.querySelectorAll('#stationHours [data-hour]')].map(x => x.dataset.hour),
@@ -65,7 +104,7 @@ const wx = (o, kind) => {
       assert.equal(after.settings, before.settings); assert.equal(after.view, before.view); assert.equal(after.content, before.content);
       // WebKit finishes the native dialog focus restoration in a subsequent task.
       // Require actual focus on the original launcher rather than testing a race.
-      await p.waitForFunction(() => document.activeElement?.dataset.act === 'station-open', null, { timeout: 2500 });
+      await expectLauncherFocus(p);
       assert.deepEqual(after.rawKeys, before.rawKeys);
     });
     await check('PC · Échap répété conserve le focus et le DOM sans minuterie fictive', async () => {
@@ -74,7 +113,7 @@ const wx = (o, kind) => {
         assert.equal(await p.locator('#wxStation').count(), 1);
         await p.keyboard.press('Escape');
         await p.locator('#wxStation').waitFor({ state: 'detached', timeout: 5000 });
-        await p.waitForFunction(() => document.activeElement?.dataset.act === 'station-open', null, { timeout: 2500 });
+        await expectLauncherFocus(p);
         assert.equal(await p.evaluate(() => JSON.stringify(S)), before.settings);
       }
     });
@@ -223,7 +262,7 @@ const wx = (o, kind) => {
         await a.p.evaluate(() => { window.__sharedRun = weatherStationAutoRefresh(); });
         await a.p.waitForFunction(() => busy);
         await q.evaluate(() => weatherStationAutoRefresh()); assert.equal(await q.evaluate(() => WX_STATION.sharedSkips), 1);
-        assert.equal(pending.length, 1);
+        await expectPendingRoutes(pending, 1, 'même lieu : un seul leader réseau');
         await pending[0].fulfill({ status: 200, contentType: 'application/json', body: '{"stations":{}}' });
         await a.p.evaluate(() => __sharedRun); await a.settle(5);
         for (let i = 0; i < 5; i++) { await q.clock.runFor(500); await q.waitForTimeout(80); }
@@ -238,7 +277,10 @@ const wx = (o, kind) => {
         await a.p.waitForFunction(() => busy);
         await q.evaluate(() => { window.__sharedRun = weatherStationAutoRefresh(); });
         await q.waitForFunction(() => busy);
-        assert.equal(pending.length, 2); assert.equal(await q.evaluate(() => WX_STATION.sharedSkips), 1);
+        // Two different station contexts must each really enter the relay fetch.
+        // Wait on Node's event loop: page busy becomes true before route handlers fire.
+        await expectPendingRoutes(pending, 2, 'deux lieux actifs : deux requêtes indépendantes');
+        assert.equal(await q.evaluate(() => WX_STATION.sharedSkips), 1);
         for (const route of pending) await route.fulfill({ status: 200, contentType: 'application/json', body: '{"stations":{}}' });
         await Promise.all([a.p.evaluate(() => __sharedRun), q.evaluate(() => __sharedRun)]);
       } finally { await a.c.close(); }

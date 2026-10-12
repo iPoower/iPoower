@@ -58,12 +58,29 @@ function weatherStationClose() {
   document.body.style.overflow = st.overflow;
   // Un verrouillage conserve sa propre couche de sécurité ; le mode Station ne la supprime jamais.
   if (document.getElementById('twrcExpiryOverlay')) document.body.style.overflow = 'hidden';
-  const trigger = st.trigger && st.trigger.isConnected ? st.trigger : document.querySelector('#secWx [data-act="station-open"]');
-  // For Escape the native close event fires after the browser has dismissed the
-  // modal; programmatic close also uses this path, without an artificial timer.
-  if (!document.hidden && !LOCKED() && !document.getElementById('twrcExpiryOverlay') && trigger && trigger.isConnected)
-    trigger.focus({ preventScroll: true });
+  const previousTrigger = st.trigger;
+  st.trigger = null;
   window.scrollTo({ top: st.scroll, behavior: 'instant' });
+  // The native dialog may restore focus again after its 'close' event in WebKit,
+  // while renderAll can replace the launcher DOM node during the same task.
+  // Re-resolve the current launcher rather than focusing a detached old button.
+  // Never steal focus from another live control or from a security overlay.
+  const restoreLauncher = () => {
+    if (st.active || LOCKED() || window.TWRC_VAULT && window.TWRC_VAULT.expired()
+        || document.getElementById('twrcExpiryOverlay')) return;
+    const target = document.querySelector('#secWx [data-act="station-open"]');
+    if (!target || !target.isConnected || target.disabled) return;
+    const focused = document.activeElement;
+    if (focused === target) return;
+    if (focused && focused.isConnected && focused !== previousTrigger
+        && focused !== document.body && focused !== document.documentElement) return;
+    target.focus({ preventScroll: true });
+  };
+  restoreLauncher();
+  // Microtasks are not suspended by simulated browser clocks (unlike timers).
+  queueMicrotask(restoreLauncher);
+  setTimeout(restoreLauncher, 0);
+  setTimeout(restoreLauncher, 150);
 }
 function weatherStationSafety() {
   const vs = window.TWRC_VAULT;
