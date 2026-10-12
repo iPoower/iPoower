@@ -14,7 +14,7 @@ try {
   const green = { id: 10, head_sha: sha, head_branch: 'main', event: 'push', path: '.github/workflows/ci.yml', head_repository: { full_name: repo }, status: 'completed', conclusion: 'success' };
   test('CI exacte main : succès obligatoire, aucune PR/fork/autre workflow accepté', () => {
     assert.equal(approvedRun([green], sha, repo), green);
-    for (const change of [{ head_sha: 'b'.repeat(40) }, { head_branch: 'hostile' }, { event: 'pull_request' }, { path: '.github/workflows/fake.yml' }, { head_repository: { full_name: 'attacker/fork' } }, { status: 'in_progress' }, { conclusion: 'failure' }]) {
+    for (const change of [{ head_sha: 'b'.repeat(40) }, { head_branch: 'hostile' }, { event: 'pull_request' }, { event: 'workflow_dispatch' }, { path: '.github/workflows/fake.yml' }, { head_repository: { full_name: 'attacker/fork' } }, { status: 'in_progress' }, { conclusion: 'failure' }]) {
       assert.equal(approvedRun([{ ...green, ...change }], sha, repo), null);
     }
     assert.equal(approvedRun([green, { ...green, id: 11, conclusion: 'failure' }], sha, repo), null, 'un ancien vert ne masque pas le dernier run rouge');
@@ -99,6 +99,20 @@ try {
     const ci = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8').split('  confidentialite:')[1].split('  unit:')[0];
     assert.match(ci, /run: node trusted\/tools\/check-secrets.js --root trusted --scan target/);
     assert.match(ci, /run: node trusted\/tools\/check-keys.js --enc target\/encrypted/);
+  });
+  function fullMainCoverage(workflow) {
+    const push = workflow.split('\non:\n')[1]?.split('  push:\n')[1]?.split('  pull_request:')[0];
+    assert(push, 'déclencheur push présent');
+    assert.match(push, /branches: \[main\]/, 'main reste la seule branche de push');
+    assert(!/^\s*(paths|paths-ignore|branches-ignore):/m.test(push), 'chaque SHA main doit déclencher la CI, même documentation seule');
+  }
+  test('disponibilité : tout commit main déclenche sa CI exacte, sans élargir l’approbation', () => {
+    const ci = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8'); fullMainCoverage(ci);
+    for (const filter of ["paths: ['src/**']", "paths-ignore: ['**/*.md']"]) {
+      assert.throws(() => fullMainCoverage(ci.replace('branches: [main]', 'branches: [main]\n    ' + filter)));
+    }
+    assert.throws(() => fullMainCoverage(ci.replace('branches: [main]', 'branches: [untrusted]')));
+    assert.equal(approvedRun([{ ...green, event: 'workflow_dispatch' }], sha, repo), null, 'ne pas contourner la CI push requise');
   });
   console.log(`✅ ${n} scénarios de frontière du relais au vert`);
 } finally { fs.rmSync(temp, { recursive: true, force: true }); }

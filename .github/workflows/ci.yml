@@ -22,7 +22,8 @@ name: Race Control · tests
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'tools/**', 'tests/**', 'encrypted/**', 'package.json', 'package-lock.json', '.github/workflows/ci.yml', '.github/workflows/race-control.yml', '.github/workflows/race-control-watchdog.yml', '.github/workflows/road-datex.yml']
+    # Le relais exige une CI réussie sur CHAQUE SHA exact de main : aucun filtre de chemins.
+    # Un commit README/AGENTS seul doit aussi être validé, sinon le relais resterait bloqué.
   pull_request:
   workflow_dispatch:
     inputs:
