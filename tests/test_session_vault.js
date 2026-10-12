@@ -351,10 +351,15 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     await make(raw, ses).vs.boot();
     const before = raw.getItem(SV.VAULT), entry = JSON.parse(ses.getItem(SV.SESSION));
     entry.k = '%%%%not-base64%%%%'; ses.setItem(SV.SESSION, JSON.stringify(entry));
-    const B = make(raw, ses).vs;
+    let resumeCalls = 0, clearCalls = 0;
+    const remembered = { async resume() { resumeCalls++; return { rawKey: new Uint8Array(32), expiresAt: Date.now() + 1000 }; },
+      async clear() { clearCalls++; } };
+    const B = make(raw, ses, { remembered }).vs;
     assert.equal(await B.boot(), 'locked');
     assert.equal(B.locked(), true);
     assert.equal(ses.getItem(SV.SESSION), null);
+    assert.equal(resumeCalls, 0, 'le jeton persistant ne doit pas contourner une session corrompue');
+    assert.equal(clearCalls, 1, 'autorisation persistante révoquée');
     assert.equal(B.store.getItem('twrc.settings.v1'), null);
     assert.equal(raw.getItem(SV.VAULT), before);
     await B.unlock(PASS);
