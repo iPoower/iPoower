@@ -80,10 +80,13 @@ async function session(b, iso, opt = {}) {
   check('Déverrouillage · rafraîchissement pendant la saisie : code et focus conservés · ' + iso, inputKept);
   await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
   for (let k = 0; k < 60; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(200); await p.waitForTimeout(250); }
+  // Après le démarrage, seule la simulation fait avancer le temps : un relevé automatique
+  // à l'ancienne position ne peut pas s'intercaler entre coherentTime() et l'injection du déplacement.
+  await p.clock.pauseAt(new Date(await p.evaluate(() => Date.now()) + 1000));
   const settle = async (n = 12) => { for (let k = 0; k < n; k++) { await p.clock.runFor(700); await p.waitForTimeout(150); } };
   const txt = () => p.$eval('#secBrf', x => x.innerText.replace(/\n+/g, ' ⏎ ').replace(/[ \t]+/g, ' ').trim()).catch(() => '(absent)');
   const waitFor = async (re, n = 40) => { let t = ''; for (let k = 0; k < n; k++) { t = await txt(); if (re.test(t) && !/⏳/.test(t)) return t; await p.clock.runFor(700); await p.waitForTimeout(200); } return t; };
-  const to = async iso2 => { const t = new Date(iso2).getTime(); if (t > S.now) await p.clock.fastForward(t - S.now); S.now = t; };
+  const to = async iso2 => { const t = new Date(iso2).getTime(), now = await p.evaluate(() => Date.now()); if (t > now) await p.clock.fastForward(t - now); S.now = t; };
   const fix = async (g, o = {}) => { await require('./lib/geo-fixture-time').coherentTime(p, g, o); await p.evaluate(x => { window.__geoSet(x); window.__geoPush(); }, { lat: g.lat, lon: g.lon, acc: 25, age: 0, speed: null, ...o }); };
   const enableGps = async (g, o = {}) => { await p.evaluate(x => window.__geoSet(x), { lat: g.lat, lon: g.lon, acc: 25, age: 0, ...o }); await p.evaluate(() => locate(true)); await settle(6); };
   return { c, p, S, txt, waitFor, to, fix, enableGps, settle };
