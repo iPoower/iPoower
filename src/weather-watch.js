@@ -36,7 +36,7 @@ const WeatherWatch = (() => {
       fetchedAt: raw && value(raw.t), currentTime: current.source === 'current' ? model.cur.time || h.t || null : h.t || null,
       current, hourTime: hour && hour.t, forecastNow: value(h.T), roadT: value(h.Tr),
       ice: h.ice && finite(h.ice.level) ? h.ice.level : null,
-      wind: value(h.wind), gust: value(h.gust), vis: value(h.vis), pp: value(h.pp), rain: value(h.Pl) ?? value(h.P),
+      wind: value(h.wind), gust: value(h.gust), vis: value(h.vis), pp: value(h.pp), rain: value(h.Pl) ?? value(h.P), snow: value(h.snow),
       fog: (desk.phen.find(x => x.id === 'fog') || {}).line || 'Donnée indisponible',
       timeline, nextChange: desk.nextChange, road: desk.road, hero: desk.hero, modelSource,
       rainSource: h.ar ? 'Météo-France AROME via Open-Meteo' : 'Open-Meteo · modèle de base',
