@@ -111,6 +111,15 @@ async function openAt(context, date) {
         assert(await p.locator('#twrcExpiryPassword').isVisible());
         assert.equal(await p.locator('#twrcExpiryRemember').isChecked(), false);
       });
+      await check(dev + ' · déverrouillage depuis l’écran expiré : coffre et voiture récupérés', async () => {
+        const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
+        await p.locator('#twrcExpiryPassword').fill(PW);
+        await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('#twrcExpiryForm button[type=submit]').click()]);
+        await s.settle(6);
+        assert.equal(await p.evaluate(() => LOCKED()), false);
+        assert.equal(await p.evaluate(() => S.cars[0].name), initial.name);
+        assert.equal(await p.locator('#twrcExpiryOverlay').count(), 0);
+      });
       await s.c.close();
     }
     await check('aucune erreur JavaScript', async () => assert.deepEqual(errors, [], errors.join(' | ')));
