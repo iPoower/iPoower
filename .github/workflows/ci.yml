@@ -178,7 +178,7 @@ jobs:
           if-no-files-found: error
           overwrite: true
           retention-days: 14
-      - name: Captures du lieu compact (fixtures fictives uniquement)
+      - name: Captures UX (fixtures fictives uniquement)
         if: always() && !cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -186,6 +186,8 @@ jobs:
           path: |
             .ci/work/*/out/place-*.png
             .ci/work/*/out/place-*.json
+            .ci/work/*/out/weather-watch-*.png
+            .ci/work/*/out/weather-watch-*.json
           if-no-files-found: ignore
           overwrite: true
           retention-days: 14
