@@ -7,8 +7,9 @@
  * La clé de session est enveloppée par une clé non extractible IndexedDB : aucune clé brute dans sessionStorage.
  * Une session authentifiée expire après 7 jours. Option « appareil personnel » : clé non extractible IndexedDB,
  * jamais le code en clair. « Verrouiller » révoque immédiatement cette autorisation et prévient les autres onglets.
- * Limite assumée : ce chiffrement protège les données AU REPOS (copie du disque, autre application lisant le stockage,
- * appareil verrouillé). Il ne protège pas d'un JavaScript malveillant exécuté dans une session déjà déverrouillée.
+ * Limite : le coffre protège la lecture passive de son blob chiffré seul. Il ne protège pas d'un JavaScript malveillant
+ * de même origine, d'une session ouverte ou d'une copie complète du profil navigateur permettant de réutiliser ses clés.
+ * Non extractible est une restriction WebCrypto, pas une attestation de stockage matériel sécurisé.
  *
  * Migration (ancien format en clair, `twrc.key` présent) : instantané → chiffrement → relecture et déchiffrement →
  * comparaison valeur par valeur → seulement alors suppression des copies lisibles. Toute erreur avant la vérification
