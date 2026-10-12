@@ -46,15 +46,23 @@ function wxInput() {
   const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Math.max(0, (Date.now() - raw.t) / 60e3);
   const day = m.days.find(d => d.date === now.slice(0, 10)) || {};
   // valeurs « actuelles » d'une réponse ancienne : on préfère l'heure prévue pour maintenant
-  const cur = ageMin != null && ageMin > 90 ? {} : { T: m.cur.T, Tapp: m.cur.Tapp };
+  const cur = m.cur.source === 'current' ? { T: m.cur.T, Tapp: m.cur.Tapp } : {};
   return { now, hours: m.hs.slice(Math.max(0, m.nowI - 4)), cur, trips: wxTrips(m), nowcast: ageMin != null && ageMin > 30 ? null : m.nc || null,
     sun: { sunrise: day.sunrise || null, sunset: day.sunset || null }, ageMin };
 }
 function renderWx() {
   const el = $('#secWx'); if (!el) return;
+  if (UI.view === 'meteo' && !CX && M[UI.loc] && M[UI.loc].nowI < 0) {
+    el.hidden = false; el.innerHTML = '<div class="wx-blk wx-none" role="status"><h3>INDISPONIBLE · météo actuelle</h3><p class="sub">Les prévisions conservées ne couvrent pas l’heure actuelle. Actualise dès que la connexion le permet ; aucune météo n’est extrapolée.</p></div>';
+    renderWx.last = ''; return;
+  }
   if (UI.view !== 'meteo' || !CX) { if (!el.hidden || el.innerHTML) { el.hidden = true; el.innerHTML = ''; renderWx.last = ''; } return; }
   const input = wxInput(), d = wxDesk(input);
-  if (!d) { el.hidden = true; el.innerHTML = ''; renderWx.last = ''; return; }
+  if (!d) {
+    el.hidden = false;
+    el.innerHTML = '<div class="wx-blk wx-none" role="status"><h3>INDISPONIBLE · météo actuelle</h3><p class="sub">Les prévisions conservées ne couvrent pas l’heure actuelle. Actualise dès que la connexion le permet ; aucune météo n’est extrapolée.</p></div>';
+    renderWx.last = ''; return;
+  }
   el.hidden = false;
   const m = CX.m, l = curLoc(), today = input.now.slice(0, 10), E = WXD_EMO;
   const dayLbl = day => { const n = dayDiff(today, day); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(day); };
@@ -67,7 +75,7 @@ function renderWx() {
       <div class="wx-now-main"><span class="wx-now-v num">${f1(nowWx.T)}</span><span class="wx-now-u">°C</span></div>
       <div class="wx-now-side"><span class="wx-now-k">Température actuelle</span>
         <b class="wx-now-feel">Ressenti ${Number.isFinite(nowWx.Tapp) ? f1(nowWx.Tapp) + ' °C' : '—'}</b>
-        <span class="wx-now-src">${nowWx.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours'}</span></div>
+        <span class="wx-now-src">PRÉVU · ${nowWx.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours'}${m.mode === 'cache' || offlineNow() ? ' · CACHE' : ''}</span></div>
     </div>` : '';
   // Une même icône météo pour la lecture rapide et la chronologie détaillée.
   const skyIc = x => { const dd = m.days.find(z => z.date === x.t.slice(0, 10)) || {}, night = dd.sunrise && dd.sunset && (x.t < dd.sunrise.slice(0, 13) + ':00' || x.t > dd.sunset);
@@ -126,8 +134,8 @@ function renderWx() {
   const ph = `<div class="wx-blk"><h3>⚡ Phénomènes</h3><div class="wx-ph">${d.phen.map(p => `<details class="wx-pc lv${p.lv}" data-k="${p.id}"${open.has(p.id) ? ' open' : ''}><summary><span class="ic" aria-hidden="true">${p.icon}</span><span class="tt">${esc(p.title)}</span><span class="ln">${p.lv ? E[p.lv] + ' ' : ''}${esc(p.line)}</span></summary><ul>${p.detail.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`).join('')}</div></div>`;
   // conditions route + lien court vers Pneus (aucune analyse pneumatique ici)
   const r = d.road, tires = (CX.cars || []).filter(c => hasTires(c.car) && c.w), tl2 = tires.length ? tires.reduce((a, c) => Math.max(a, c.w.level), 0) : null;
-  const road = `<div class="wx-blk wx-road lv${r.level}"><h3>🛣️ Conditions route</h3>
-    <div class="wx-rs"><b class="num">${r.score}</b><span>/ 100 ${E[r.level]}</span><span class="sub">${esc(r.window.label)}</span></div>
+  const road = `<div class="wx-blk wx-road lv${r.score == null ? 'x' : r.level}"><h3>🛣️ Conditions route · ESTIMÉ</h3>
+    <div class="wx-rs"><b class="num">${r.score == null ? '—' : r.score}</b><span>${r.score == null ? 'INDISPONIBLE · données insuffisantes' : '/ 100 ' + E[r.level]}</span><span class="sub">${esc(r.window.label)}</span></div>
     <ul class="wx-rf">${r.factors.map(f => `<li class="lv${f.lv}"><span aria-hidden="true">${E[f.lv]}</span><b>${esc(f.label)}</b><span class="sub">${esc(f.why)}</span><span class="num">${f.pen ? '−' + f.pen : '0'}</span></li>`).join('')}</ul>
     <details class="wx-how" data-k="how"${open.has('how') ? ' open' : ''}><summary>Comment ce score est calculé</summary><p class="sub">100 moins les points listés : gel jusqu’à −45 (verglas élevé ou pluie verglaçante), neige −35, visibilité −15 à −35 (sous 1 000, 500 et 200 m), pluie −5 à −30 (probabilité ≥ 60 %, 0,2, 2 et 7,6 mm/h), rafales −10 à −30 (55, 70 et 90 km/h), froid ou chaleur −5, air saturé −5, soleil rasant −5. La couleur n’est jamais plus douce que le pire facteur. Environnement seulement : l’adhérence des pneus est dans l’onglet Pneus.</p></details>
     ${tl2 != null ? `<div class="wx-tire"><span>Impact pneus : <b>${['faible', 'modéré', 'élevé', 'critique'][tl2]}</b> ${E[tl2]}</span><button class="btn sm" data-act="view" data-v="pneus">Voir analyse Pneus →</button></div>` : ''}</div>`;
@@ -135,7 +143,7 @@ function renderWx() {
   const evH = evidenceHtml(), evOn = EV_FLAG() === 'on' && /class="ev-crit/.test(evH) && d.level < 2;
   const html = (evOn ? evH + hero : hero) + hourlyHtml + (evOn ? '' : evH) + tripHtml +
     uxFold('wx-forecast', 'Prévisions détaillées', tl + matters + ph, 'Chronologie · phénomènes') +
-    uxFold('wx-road', 'Conditions route', road, r.score + '/100 · ' + ['faible', 'modéré', 'élevé', 'critique'][r.level]) + foot;
+    uxFold('wx-road', 'Conditions route', road, r.score == null ? 'INDISPONIBLE · données insuffisantes' : r.score + '/100 · ' + ['faible', 'modéré', 'élevé', 'critique'][r.level]) + foot;
   if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
   const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
   const hourlyTrack = el.querySelector('.wx-hours-track'), hourlyLeft = hourlyTrack ? hourlyTrack.scrollLeft : 0;

@@ -82,7 +82,8 @@ function tyreLab(input) {
 
   /* ---------- 2. environnement heure par heure ---------- */
   const H = ((inp.hours || []).filter(x => x && Number.isFinite(mins(x.t)) && n(x.T) != null)).slice().sort((a, b) => mins(a.t) - mins(b.t));
-  const noWeather = !H.length || mins(H[0].t) > nowM || mins(H[H.length - 1].t) + 60 < nowM;
+  const currentHour = H.find(x => mins(x.t) === Math.floor(nowM / 60) * 60);
+  const noWeather = !currentHour || !['T', 'Tr', 'P', 'RH', 'gust'].every(k => n(currentHour[k]) != null);
   if (noWeather) return { known: true, tyre, spec: specOut, noWeather: true, state: inp.state || null, confidence: { level: 'faible', reasons: ['Aucune météo pour l’heure en cours : aucune estimation thermique possible.'] } };
   const rowAt = m => { let b = H[0]; for (const x of H) { if (mins(x.t) <= m) b = x; else break; } return b; };
   const recentRain = m => H.filter(x => { const t = mins(x.t); return t <= m && t > m - 180; }).reduce((a, x) => a + (n(x.Pl) ?? n(x.P) ?? 0), 0);

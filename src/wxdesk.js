@@ -32,7 +32,7 @@ function wxDesk(input) {
   if (!Number.isFinite(nowM) || !all.length) return null;
   const hour0 = Math.floor(nowM / 60) * 60;
   const known = all.filter(x => mins(x.t) >= hour0);
-  if (!known.length || mins(known[0].t) > hour0 + 60) return null;   // pas de prévision pour l'heure en cours : rien d'inventé
+  if (!known.length || mins(known[0].t) !== hour0) return null;   // un trou horaire ne devient pas une prévision « actuelle »
   const tripsIn = ((input && input.trips) || []).filter(t => t && Number.isFinite(mins(t.dep)) && mins(t.arr || t.dep) >= nowM - 1 && mins(t.dep) <= nowM + 24 * 60)
     .slice().sort((a, b) => mins(a.dep) - mins(b.dep));
   // fenêtre : 12 h, prolongée jusqu'à l'arrivée du dernier trajet des 24 h à venir
@@ -125,7 +125,7 @@ function wxDesk(input) {
     if (top === 'rain') return rainTxt(x);
     if (top === 'wind') return `rafales ${r0(x.gust)} km/h`;
     if (maybeRain(x, h)) return `pluie possible${n(x.pp) != null && x.pp >= 50 ? ' · ' + r0(x.pp) + ' %' : ''}`;
-    return sky(n(x.code)) || 'sec';
+    return sky(n(x.code)) || (n(x.P) == null ? 'conditions indisponibles' : 'sec');
   }
   const where = s => {
     const ts = tripsOf(s); if (!ts.length) return '';
@@ -203,7 +203,7 @@ function wxDesk(input) {
     if (w) lines.splice(1, 0, `${w[0].toUpperCase() + w.slice(1)} potentiellement concerné${tripsOf(s).length > 1 ? 's' : ''}`);
   }
   if (nextChange && !(dominant && nextChange.m === dominant.start && nextChange.id === dominant.id)) lines.push(`Prochain changement : ${hm(atMin(nextChange.m))} · ${nextChange.text}`);
-  const ageMin = input && finite(input.ageMin) ? input.ageMin : null, stale = ageMin != null && ageMin > 180;
+  const ageMin = input && finite(input.ageMin) ? input.ageMin : null, stale = ageMin != null && ageMin > 60;
   const hero = { level, emoji: EMO[level], title, lines: lines.slice(0, 4), dominant: dominant ? dominant.id : null, stale };
 
   /* ---------- timeline : moments clés (météo + trajets) et bande horaire ---------- */
@@ -287,17 +287,18 @@ function wxDesk(input) {
     add('temp', 'Température', Tm != null && (Tm <= 3 || (TM != null && TM >= 35)) ? 1 : 0, Tm != null && (Tm <= 3 || (TM != null && TM >= 35)) ? ROAD_PEN.temp : 0,
       Tm == null ? 'non fournie' : Tm <= 3 ? `air jusqu’à ${r1(Tm)} °C : chaussée froide` : TM >= 35 ? `air jusqu’à ${r0(TM)} °C` : `air ${r0(Tm)} → ${r0(TM)} °C`);
     add('wind', 'Vent', mx('wind'), gm == null ? 0 : gm >= 90 ? ROAD_PEN.wind[0] : gm >= 70 ? ROAD_PEN.wind[1] : gm >= 55 ? ROAD_PEN.wind[2] : 0, gm == null ? 'non fourni' : `rafales ${r0(gm)} km/h`);
-    add('humid', 'Humidité', humid ? 1 : 0, humid ? ROAD_PEN.humid : 0, humid ? 'air saturé : chaussée humide possible' : 'pas d’humidité notable sans pluie');
+    add('humid', 'Humidité', humid ? 1 : 0, humid ? ROAD_PEN.humid : 0, xs.some(x => n(x.RH) == null) ? 'non fournie' : humid ? 'air saturé : chaussée humide possible' : 'pas d’humidité notable sans pluie');
     const rp = mx('snow') ? 0 : Pm >= 7.6 ? ROAD_PEN.rain[0] : Pm >= 2 ? ROAD_PEN.rain[1] : Pm >= 0.2 ? ROAD_PEN.rain[2] : ppm != null && ppm >= 60 ? ROAD_PEN.rain[3] : 0;
     const mb = Pm >= 0.2 ? null : maybeOf(rows);   // la pénalité « probabilité seule » reste : seule l'explication change
-    add('rain', 'Pluie', mx('rain') || (rp ? 1 : 0), rp, Pm >= 0.2 ? `jusqu’à ${r1(Pm)} mm/h` : mb ? `pluie possible : ${mb.text}` : ppm != null && ppm >= 60 ? `probabilité ${r0(ppm)} %` : 'sec');
+    add('rain', 'Pluie', mx('rain') || (rp ? 1 : 0), rp, xs.some(x => n(x.P) == null) ? 'quantité non fournie' : Pm >= 0.2 ? `jusqu’à ${r1(Pm)} mm/h` : mb ? `pluie possible : ${mb.text}` : ppm != null && ppm >= 60 ? `probabilité ${r0(ppm)} %` : 'sec');
     if (mx('snow')) add('snow', 'Neige', 2, ROAD_PEN.snow, 'chute de neige prévue');
     const gp = fz ? ROAD_PEN.ice[0] : iceMod ? ROAD_PEN.ice[1] : iceLv >= 2 ? ROAD_PEN.ice[2] : iceLv === 1 ? ROAD_PEN.ice[3] : 0;
     add('ice', 'Gel', iceLv, gp, iceLv ? `chaussée estimée jusqu’à ${r1(Trm)} °C ± 2${fz ? ', verglas élevé' : iceMod ? ', verglas modéré' : ''}` : Trm != null ? `chaussée ≥ ${r0(Trm)} °C` : 'non estimé');
     add('fog', 'Visibilité', mx('fog'), vm == null ? 0 : vm < 200 ? ROAD_PEN.fog[0] : vm < 500 ? ROAD_PEN.fog[1] : vm < 1000 ? ROAD_PEN.fog[2] : 0, vm == null ? 'non fournie' : `minimum ${visTxt(vm)}`);
     if (glare) add('sun', 'Soleil rasant', 1, ROAD_PEN.sun, 'soleil bas dans l’axe de la route');
     const score = Math.max(0, 100 - F.reduce((a, f) => a + f.pen, 0)), sl = score >= 80 ? 0 : score >= 60 ? 1 : score >= 40 ? 2 : 3;
-    return { score, level: Math.max(sl, ...F.map(f => f.lv)), factors: F };
+    const missing = ['T', 'Tr', 'P', 'RH', 'vis', 'gust'].filter(k => !xs.length || xs.some(x => n(x[k]) == null));
+    return { score: missing.length ? null : score, level: Math.max(sl, ...F.map(f => f.lv)), factors: F, missing };
   }
 
   /* ---------- prochain trajet ---------- */
