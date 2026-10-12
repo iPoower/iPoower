@@ -14,7 +14,7 @@ const COARSE = { lat: 48.75, lon: 0.95, acc: 20000 }, COARSE2 = { lat: 49.4, lon
 
 // wx (facultatif) : (réponse, type) => réponse modifiée, type = 'base' | 'multi' (points de trajet) | 'arome' | 'now' (quart d'heure).
 // seed (facultatif) : clés écrites UNE fois dans le stockage brut avant le premier chargement (ancien profil à migrer).
-async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock = true, geo = null, storedGps = null, wx = null, seed = null }) {
+async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock = true, remember = false, geo = null, storedGps = null, wx = null, seed = null }) {
   const T0 = new Date(at).getTime();
   const ctx = { console, Math, Date: class extends Date { constructor(...a) { super(...(a.length ? a : [T0])); } static now() { return T0; } }, Intl, Map, Set, JSON };
   vm.createContext(ctx); vm.runInContext(src + ';this.mk=makeDemoPayload;this.me=makeDemoEnsemble;this.mn=makeDemoNowcast;', ctx);
@@ -69,7 +69,7 @@ async function session(b, { at, scn = 'doux', dev = 'pc', meteo = 'ok', unlock =
     return r.abort();
   });
   await p.goto(U); await p.clock.runFor(2500);
-  if (unlock) { await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); }
+  if (unlock) { if (remember) await p.locator('#rememberWeek').check(); await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); }
   const settle = async (n = 14) => { for (let i = 0; i < n; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } };
   await settle();
   await p.evaluate(() => { UI.view = 'meteo'; renderAll(); window.scrollTo(0, 0); }); await settle(6);

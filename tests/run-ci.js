@@ -41,7 +41,8 @@ try {
       fail++;
       const labels = output.split('\n').map((l, i, a) => /^\s*❌/.test(l) ? l.trim().slice(0, 160) + ' ⏎ ' + (a[i + 1] || '').trim().slice(0, 260) : null).filter(Boolean).slice(0, 6).join(' / ');
       if (process.env.GITHUB_ACTIONS) console.log(`::error title=${file} (${options.browser})::${(why + (labels ? ' | ' + labels : '')).replace(/[\r\n%]/g, ' ')}`);
-      else console.log(output.split('\n').slice(-25).join('\n'));
+      // Conserver le diagnostic du test en échec dans les logs Actions (fixtures uniquement, pas de profil réel).
+      console.log(output.split('\n').slice(-35).join('\n'));
     }
   }
   report.completedAt = new Date().toISOString(); report.durationMs = Date.now() - started;

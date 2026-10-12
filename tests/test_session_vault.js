@@ -267,6 +267,104 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     await vs.unlock(PASS, { 'twrc.plain': '{"locs":[]}', 'twrc.plain.v': 'v1' }); vs.store.setItem('twrc.settings.v1', JSON.stringify({ name: 'Maison fictive' })); await tick(); await vs.flush();
     assert.deepEqual(leaks(raw), []); assert.equal(vs.store.getItem('twrc.key'), PASS, 'code disponible en mémoire pour l’agenda et les sauvegardes');
   });
+  await test('session 7 jours : réouverture d’un autre onglet, expiration ferme et révocation immédiate', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY());
+    const remembered = {
+      item: null,
+      async save(rawKey, salt, signal) { this.item = { rawKey, salt: Buffer.from(salt).toString('base64'), signal, expiresAt: Date.now() + 7 * 864e5 }; },
+      async resume(salt, signal) { return this.item && this.item.salt === salt && this.item.signal === signal ? this.item : null; },
+      async clear() { this.item = null; }
+    };
+    const A = make(raw, session(), { remembered }).vs; await A.boot(); await A.lock();
+    await A.unlock(PASS, {}, true);
+    assert(remembered.item, 'autorisation persistante choisie explicitement');
+    const B = make(raw, session(), { remembered }).vs;
+    assert.equal(await B.boot(), 'vault', 'nouvel onglet sans sessionStorage');
+    assert.equal(B.store.getItem('twrc.settings.v1'), LEGACY()['twrc.settings.v1']);
+    remembered.item.expiresAt = Date.now() - 1;
+    const expired = make(raw, session(), { remembered }).vs;
+    assert.equal(await expired.boot(), 'locked', 'date dépassée : code redemandé');
+    await B.lock();
+    assert.equal(remembered.item, null, 'bouton Verrouiller révoque le souvenir');
+    assert.equal(await make(raw, session(), { remembered }).vs.boot(), 'locked');
+    await expired.unlock(PASS, {}, false);
+    assert.equal(remembered.item, null, 'case non cochée : aucune persistance');
+  });
+  await test('expiration dans un onglet ouvert : plus aucune lecture/écriture ; relogin récupère le coffre', async () => {
+    let current = Date.now();
+    const raw = fakeStorage(), ses = session(); fill(raw, LEGACY());
+    const { vs: A } = make(raw, ses, { now: () => current }); await A.boot();
+    const safe = raw.getItem(SV.VAULT);
+    const deadline = A.expiresAt;
+    current += 6 * 864e5;
+    assert.equal(A.expired(), false, 'sixième jour : session encore valide');
+    const { vs: B } = make(raw, ses, { now: () => current });
+    assert.equal(await B.boot(), 'vault'); assert.equal(B.expiresAt, deadline, 'rechargement sans prolongation');
+    current = deadline + 1;
+    assert.equal(B.expired(), true); assert.equal(B.mode, 'expired'); assert.equal(B.locked(), true);
+    assert.equal(B.store.getItem('twrc.settings.v1'), null);
+    assert.deepEqual(Object.keys(B.store), []);
+    assert.throws(() => B.store.setItem('twrc.settings.v1', 'donnée interdite'), /Session expirée/);
+    assert.throws(() => B.store.removeItem('twrc.settings.v1'), /Session expirée/);
+    assert.throws(() => B.store.clear(), /Session expirée/);
+    assert.equal(ses.getItem(SV.SESSION), null, 'clé session détruite au délai');
+    assert.equal(raw.getItem(SV.VAULT), safe, 'coffre au repos intact');
+    await B.unlock(PASS, {}, false);
+    assert.equal(B.store.getItem('twrc.settings.v1'), LEGACY()['twrc.settings.v1']);
+  });
+  await test('échec de sauvegarde exactement à expiration : accès refusé, mémoire préservée et restauration après code', async () => {
+    let refuseWrite = false, current = Date.now();
+    const raw = fakeStorage({ refuse: k => refuseWrite && k === SV.VAULT }), ses = session();
+    fill(raw, LEGACY());
+    const { vs } = make(raw, ses, { now: () => current });
+    await vs.boot();
+    const sealedBefore = raw.getItem(SV.VAULT);
+    const draft = JSON.stringify({ entries: ['nouvelle-note-durable-test'] });
+    refuseWrite = true;
+    vs.store.setItem('twrc.context.v1', draft);
+    await tick(); await vs.flush();
+    assert(vs.error, 'stockage indisponible signalé');
+    assert.equal(raw.getItem(SV.VAULT), sealedBefore, 'copie chiffrée précédente intacte');
+    current = vs.expiresAt + 1;
+    assert.equal(vs.expired(), true);
+    assert.equal(vs.pendingRecovery, true);
+    assert.equal(vs.store.getItem('twrc.context.v1'), null, 'les données en mémoire ne restent pas accessibles');
+    assert.throws(() => vs.store.setItem('twrc.context.v1', 'interdit'), /Session expirée/);
+    await assert.rejects(() => vs.lock(), /Modifications non enregistrées/, 'ne jamais jeter les données non sauvegardées');
+    await assert.rejects(() => vs.unlock('mauvais-code'), e => e.name === 'OperationError');
+    assert.equal(vs.pendingRecovery, true, 'mauvais code : brouillon intact');
+    await assert.rejects(() => vs.unlock(PASS), /refus|enregistrement|quota/i);
+    assert.equal(vs.pendingRecovery, true, 'quota : brouillon intact');
+    refuseWrite = false;
+    await vs.unlock(PASS, {}, false);
+    assert.equal(vs.mode, 'vault');
+    assert.equal(vs.pendingRecovery, false);
+    assert.equal(vs.store.getItem('twrc.context.v1'), draft);
+    const another = make(raw).vs;
+    assert.equal(await another.boot(), 'locked');
+    await another.unlock(PASS);
+    assert.equal(another.store.getItem('twrc.context.v1'), draft, 'brouillon réellement scellé et relu');
+    assert(!raw.getItem(SV.VAULT).includes('nouvelle-note-durable-test'), 'aucune copie lisible');
+  });
+  await test('sessionStorage Base64 corrompu : verrouillage propre et coffre inchangé', async () => {
+    const raw = fakeStorage(), ses = session(); fill(raw, LEGACY());
+    await make(raw, ses).vs.boot();
+    const before = raw.getItem(SV.VAULT), entry = JSON.parse(ses.getItem(SV.SESSION));
+    entry.k = '%%%%not-base64%%%%'; ses.setItem(SV.SESSION, JSON.stringify(entry));
+    let resumeCalls = 0, clearCalls = 0;
+    const remembered = { async resume() { resumeCalls++; return { rawKey: new Uint8Array(32), expiresAt: Date.now() + 1000 }; },
+      async clear() { clearCalls++; } };
+    const B = make(raw, ses, { remembered }).vs;
+    assert.equal(await B.boot(), 'locked');
+    assert.equal(B.locked(), true);
+    assert.equal(ses.getItem(SV.SESSION), null);
+    assert.equal(resumeCalls, 0, 'le jeton persistant ne doit pas contourner une session corrompue');
+    assert.equal(clearCalls, 1, 'autorisation persistante révoquée');
+    assert.equal(B.store.getItem('twrc.settings.v1'), null);
+    assert.equal(raw.getItem(SV.VAULT), before);
+    await B.unlock(PASS);
+    assert.equal(B.store.getItem('twrc.settings.v1'), LEGACY()['twrc.settings.v1']);
+  });
   return count;
 }
 module.exports = { runTests, sourcePath };
@@ -286,8 +384,8 @@ if (require.main === module) (async () => {
     { name: 'signal de verrou sur disque ignoré', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) !== st.lockSignal) forget();", to: "if (false) forget();" },
     { name: 'coffre précédent effacé au nouvel essai', from: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));", to: "const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k))); raw.removeItem(VAULT);" },
     { name: 'mauvais code remplace la clé active', from: "const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);", to: "const key = st.key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);" },
-    { name: 'déverrouillage ignore les sauvegardes en attente', from: "while (st.mode === 'vault' && st.mem.dirty.size) await savePending();\n      return unlockInside(pass, extra);", to: "return unlockInside(pass, extra);" },
-    { name: 'clé ancienne réutilisée après un verrouillage manqué', from: " && (ses.l ?? null) === raw.getItem(LOCK_SIGNAL)", to: "" },
+    { name: 'déverrouillage ignore les sauvegardes en attente', from: "while (st.mode === 'vault' && st.mem.dirty.size) await savePending();\n      return unlockInside(pass, extra, keepWeek);", to: "return unlockInside(pass, extra, keepWeek);" },
+    { name: 'clé ancienne réutilisée après un verrouillage manqué', from: "(ses.l ?? null) === signal", to: "true" },
     { name: 'notification de verrou périmée acceptée', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) === st.lockSignal) return null;", to: "" },
     { name: 'démarrage sans coffre retardé par un verrou', from: "if (!readVault(raw) && !raw.getItem('twrc.key') && !raw.getItem(V1))", to: "if (false)" }
   ];

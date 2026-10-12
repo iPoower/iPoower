@@ -1093,3 +1093,32 @@ details.decision-confidence > .decision-why { padding: 0 9px 9px; }
   #viewSeg .seg.view button { font-size: 11px; }
   .garage-data { grid-template-columns: minmax(0, 1fr); }
 }
+
+
+/* Contrôle de session 7 jours : écran bloquant, contenu précédent totalement masqué. */
+body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !important; pointer-events: none !important; }
+#twrcExpiryOverlay {
+  position: fixed; inset: 0; z-index: 2147483647; display: flex;
+  align-items: center; justify-content: center; overflow-y: auto;
+  background: #080c11; color: #f5f7fa; padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+  box-sizing: border-box; font: 400 15px/1.5 "IBM Plex Sans", system-ui, sans-serif;
+}
+#twrcExpiryOverlay .twrc-expiry-card {
+  background: #101c29; border: 1px solid #415366; border-radius: 16px;
+  width: 100%; max-width: 440px; box-sizing: border-box; padding: 24px;
+  box-shadow: 0 18px 70px rgba(0, 0, 0, .4);
+}
+#twrcExpiryOverlay h2 { margin: 0 0 12px; font-size: 22px; color: #fff; }
+#twrcExpiryOverlay form { display: grid; gap: 10px; margin: 16px 0; }
+#twrcExpiryOverlay input[type=password] {
+  box-sizing: border-box; width: 100%; min-height: 48px; border-radius: 8px;
+  border: 1px solid #667789; background: #08111b; color: #fff; font-size: 17px; padding: 10px 12px;
+}
+#twrcExpiryOverlay .twrc-expiry-remember { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+#twrcExpiryOverlay .twrc-expiry-remember input { width: 21px; height: 21px; flex-shrink: 0; }
+#twrcExpiryOverlay .btn { min-height: 44px; }
+#twrcExpiryOverlay .twrc-expiry-warning {
+  border-left: 3px solid #ecae5a; padding: 10px 12px; color: #fce3bd; background: #2d251c;
+}
+#twrcExpiryOverlay #twrcExpiryMessage { overflow-wrap: anywhere; color: #f3bf7d; margin: 0; }
+@media (max-width: 380px) { #twrcExpiryOverlay .twrc-expiry-card { padding: 18px; } }

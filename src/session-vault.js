@@ -4,8 +4,8 @@
  * personnelle (PUBLIC). Pendant une session déverrouillée : les valeurs vivent en mémoire (MemStore) ; chaque écriture est
  * rechiffrée dans le coffre (AES-256-GCM, IV aléatoire neuf à chaque écriture, clé PBKDF2-SHA256 600 000 itérations dérivée
  * du code, sel aléatoire de 16 octets, format versionné, intégrité GCM vérifiée par relecture).
- * La clé dérivée de l'onglet est gardée dans sessionStorage (`twrc.session.v2`) : un rechargement ne redemande pas le code ;
- * la fermeture de l'onglet / de l'app l'efface → code demandé à la réouverture. « Verrouiller » l'efface aussitôt.
+ * Une session authentifiée expire après 7 jours. Option « appareil personnel » : clé non extractible IndexedDB,
+ * jamais le code en clair. « Verrouiller » révoque immédiatement cette autorisation et prévient les autres onglets.
  * Limite assumée : ce chiffrement protège les données AU REPOS (copie du disque, autre application lisant le stockage,
  * appareil verrouillé). Il ne protège pas d'un JavaScript malveillant exécuté dans une session déjà déverrouillée.
  *
@@ -15,7 +15,7 @@
  * tant que les données en clair existent, elles font foi et le coffre est revérifié contre elles avant nettoyage.
  */
 const SessionVault = (() => {
-  const VAULT = 'twrc.vault.v2', SESSION = 'twrc.session.v2', LOCK_SIGNAL = 'twrc.lock.signal', V1 = 'twrc.device.vault.v1', IT = 600000;
+  const VAULT = 'twrc.vault.v2', SESSION = 'twrc.session.v2', LOCK_SIGNAL = 'twrc.lock.signal', V1 = 'twrc.device.vault.v1', IT = 600000, WEEK_MS = 7 * 24 * 60 * 60 * 1000;
   // Préférences sans donnée personnelle (onglet, mode sans code, carte repliée, pause de quota, occasion de tenue, anti-boucle).
   const PUBLIC = new Set(['twrc.view', 'twrc.nocode', 'twrc.tripmap', 'twrc.weather.limit.v1', 'twrc.outfit.occasion', 'twrc.presetv', LOCK_SIGNAL]);
   const isPublic = k => PUBLIC.has(k) || k.startsWith('twrc.reload.');
@@ -68,17 +68,17 @@ const SessionVault = (() => {
 
   /* ---------- magasin en mémoire, présenté comme localStorage ---------- */
   const PENDING = 'twrc.restore.pending.v1';
-  function memStore(raw, initial, persist) {
+  function memStore(raw, initial, persist, access = () => true) {
     // vol : journal d'import (anciennes valeurs) gardé en mémoire uniquement, jamais en clair sur le disque
     const m = new Map(Object.entries(initial || {})), dirty = new Set(), vol = new Map();
-    const listOf = () => [...keysOf(raw).filter(k => !secret(k) && !META.has(k)), ...m.keys(), ...vol.keys()];
+    const listOf = () => access(false) ? [...keysOf(raw).filter(k => !secret(k) && !META.has(k)), ...m.keys(), ...vol.keys()] : [];
     const api = {
       get length() { return listOf().length; },
       key: i => { const l = listOf(); return i >= 0 && i < l.length ? l[i] : null; },
-      getItem: k => { k = String(k); if (k === PENDING) return vol.has(k) ? vol.get(k) : null; return secret(k) ? (m.has(k) ? m.get(k) : null) : META.has(k) ? null : raw.getItem(k); },
-      setItem: (k, v) => { k = String(k); v = String(v); if (k === PENDING) { vol.set(k, v); return; } if (META.has(k)) return; if (!secret(k)) { raw.setItem(k, v); return; } m.set(k, v); dirty.add(k); persist(); },
-      removeItem: k => { k = String(k); if (k === PENDING) { vol.delete(k); return; } if (META.has(k)) return; if (!secret(k)) { raw.removeItem(k); return; } if (m.delete(k)) { dirty.add(k); persist(); } },
-      clear: () => { [...m.keys()].forEach(k => dirty.add(k)); m.clear(); vol.clear(); persist(); }
+      getItem: k => { if (!access(false)) return null; k = String(k); if (k === PENDING) return vol.has(k) ? vol.get(k) : null; return secret(k) ? (m.has(k) ? m.get(k) : null) : META.has(k) ? null : raw.getItem(k); },
+      setItem: (k, v) => { access(true); k = String(k); v = String(v); if (k === PENDING) { vol.set(k, v); return; } if (META.has(k)) return; if (!secret(k)) { raw.setItem(k, v); return; } m.set(k, v); dirty.add(k); persist(); },
+      removeItem: k => { access(true); k = String(k); if (k === PENDING) { vol.delete(k); return; } if (META.has(k)) return; if (!secret(k)) { raw.removeItem(k); return; } if (m.delete(k)) { dirty.add(k); persist(); } },
+      clear: () => { access(true); [...m.keys()].forEach(k => dirty.add(k)); m.clear(); vol.clear(); persist(); }
     };
     // Présenté comme un vrai Storage : Object.keys(localStorage), localStorage[k], « k in localStorage » fonctionnent.
     const store = new Proxy(api, {
@@ -93,9 +93,30 @@ const SessionVault = (() => {
   }
 
   /* ---------- session (une instance par page) ---------- */
-  function create({ raw, session, crypto, target, locks = target && target.navigator && target.navigator.locks }) {
-    const st = { mode: 'plain', key: null, salt: null, n: 0, t: 0, saved: {}, mem: null, epoch: 0, lockSignal: raw.getItem(LOCK_SIGNAL), chain: Promise.resolve(), error: null, warn: null, timer: null };
+  function create({ raw, session, crypto, target, remembered = null, now = () => Date.now(), locks = target && target.navigator && target.navigator.locks }) {
+    const st = { mode: 'plain', key: null, salt: null, n: 0, t: 0, saved: {}, mem: null, epoch: 0, lockSignal: raw.getItem(LOCK_SIGNAL), chain: Promise.resolve(), error: null, warn: null, timer: null, expiresAt: 0 };
     const values = () => Object.fromEntries(st.mem.map);
+    // Barrière synchrone : aucun accès au magasin ne repose exclusivement sur le timer iOS.
+    // Les écritures non confirmées restent en mémoire, même si la sauvegarde ou le verrouillage échoue.
+    function expire() {
+      if (st.mode === 'expired') return true;
+      if (st.mode !== 'vault' || !st.expiresAt || now() < st.expiresAt) return false;
+      st.epoch++;
+      st.mode = 'expired';
+      st.key = null; st.salt = null;
+      try { session.removeItem(SESSION); } catch (e) { /* mémoire conservée */ }
+      if (target && typeof target.dispatchEvent === 'function') {
+        try { target.dispatchEvent(new Event('twrc-session-expired')); } catch (e) { /* le getter reste verrouillé */ }
+      }
+      return true;
+    }
+    function allowStore(write) {
+      if (expire() || st.mode !== 'vault') {
+        if (write) throw Object.assign(new Error('Session expirée : ressaisis le code pour récupérer les modifications en attente.'), { expired: true });
+        return false;
+      }
+      return true;
+    }
     function requireLocks() {
       if (!locks || typeof locks.request !== 'function') throw Object.assign(new Error('Ce navigateur ne permet pas une sauvegarde sûre entre plusieurs fenêtres. Mets-le à jour ou exporte une sauvegarde.'), { unsupported: true });
     }
@@ -104,9 +125,10 @@ const SessionVault = (() => {
     function forget() {
       st.epoch++; if (st.mem) { st.mem.map.clear(); st.mem.dirty.clear(); st.mem.vol.clear(); }
       try { session.removeItem(SESSION); } catch (e) { /* rien */ }
-      st.key = null; st.salt = null; st.saved = {}; st.mode = 'locked'; st.error = null;
+      st.key = null; st.salt = null; st.saved = {}; st.expiresAt = 0; st.mode = 'locked'; st.error = null;
     }
     function guardSession(epoch, mem) {
+      expire();
       if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) !== st.lockSignal) forget();
       if (st.mode !== 'vault' || st.epoch !== epoch || st.mem !== mem) throw Object.assign(new Error('Session verrouillée pendant l’enregistrement.'), { cancelled: true });
     }
@@ -159,7 +181,11 @@ const SessionVault = (() => {
     }
     function nextOrder() { const d = order(readVault(raw)); return { n: Math.max(st.n, d.n) + 1, t: Math.max(Date.now(), st.t + 1, d.t + 1) }; }
     async function useKey(rawKey, salt) { st.key = await importKey(rawKey, crypto); st.salt = salt; }
-    function saveSession(rawKey, salt) { try { session.setItem(SESSION, JSON.stringify({ v: 2, s: enc(salt), k: enc(rawKey), l: raw.getItem(LOCK_SIGNAL) })); } catch (e) { /* session non conservée : code redemandé au rechargement */ } }
+    function saveSession(rawKey, salt, expiresAt = now() + WEEK_MS) {
+      st.expiresAt = expiresAt;
+      try { session.setItem(SESSION, JSON.stringify({ v: 3, s: enc(salt), k: enc(rawKey), l: raw.getItem(LOCK_SIGNAL), a: expiresAt - WEEK_MS, e: expiresAt })); }
+      catch (e) { /* session non conservée : code redemandé au rechargement */ }
+    }
     async function writeVerified(vals, salt, guard) {
       requireLocks();
       const key = st.key, signal = raw.getItem(LOCK_SIGNAL), previous = raw.getItem(VAULT);
@@ -187,7 +213,7 @@ const SessionVault = (() => {
         await writeVerified(lean, salt); return lean;
       }
     }
-    function enter(vals) { st.epoch++; st.mem = memStore(raw, vals, persist); st.saved = { ...vals }; st.lockSignal = raw.getItem(LOCK_SIGNAL); st.mode = 'vault'; st.error = null; }
+    function enter(vals) { st.epoch++; st.mem = memStore(raw, vals, persist, allowStore); st.saved = { ...vals }; st.lockSignal = raw.getItem(LOCK_SIGNAL); st.mode = 'vault'; st.error = null; }
 
     /* Démarrage : mode et magasin à utiliser par l'application. Ne jette jamais : en cas de doute, rien n'est effacé. */
     async function boot() {
@@ -218,19 +244,54 @@ const SessionVault = (() => {
           st.mode = 'plain'; st.warn = 'Chiffrement local non terminé : tes données restent intactes sur cet appareil (non chiffrées). ' + (e.unsupported ? e.message : 'Libère de l’espace ou exporte une sauvegarde.'); return st.mode;
         }
       }
-      // 2. Coffre v2 + clé de session de cet onglet.
+      // 2. Coffre v2 : session d'onglet valide OU autorisation locale de 7 jours.
       if (vault && !vault.invalid) {
-        let ses = null; try { ses = JSON.parse(session.getItem(SESSION) || 'null'); } catch (e) { ses = null; }
-        if (ses && ses.v === 2 && ses.s === vault.s && typeof ses.k === 'string' && (ses.l ?? null) === raw.getItem(LOCK_SIGNAL)) {
+        let ses = null, corruptSession = false, storedSession = null;
+        try {
+          storedSession = session.getItem(SESSION);
+          if (storedSession) ses = JSON.parse(storedSession);
+        } catch (e) { corruptSession = true; }
+        // Une session présente mais illisible n'autorise pas le repli silencieux sur l'appareil mémorisé.
+        if (storedSession && (!ses || typeof ses !== 'object' || ses.v !== 3)) corruptSession = true;
+        const currentTime = now(), signal = raw.getItem(LOCK_SIGNAL);
+        const valid = ses && ses.v === 3 && ses.s === vault.s && typeof ses.k === 'string' &&
+          (ses.l ?? null) === signal && Number.isSafeInteger(ses.a) && Number.isSafeInteger(ses.e) &&
+          ses.e - ses.a === WEEK_MS && currentTime >= ses.a && currentTime < ses.e;
+        if (storedSession && !valid) corruptSession = true; // paramètres falsifiés, expirés ou périmés : refuser le repli
+        let active = null;
+        if (valid) {
           try {
-            await useKey(dec(ses.k), dec(vault.s)); const data = await open(vault, st.key, crypto); st.n = order(data).n; st.t = order(data).t;
-            // copies lisibles égarées (ancienne version ouverte ailleurs, préremplissage) : absorbées si absentes, puis retirées
+            const rawKey = dec(ses.k);
+            if (rawKey.length === 32) active = { rawKey, expiresAt: ses.e };
+            else corruptSession = true;
+          } catch (e) { corruptSession = true; /* Base64 corrompu : exiger le code */ }
+        }
+        if (corruptSession) {
+          try { session.removeItem(SESSION); } catch (e) { /* rien */ }
+          if (remembered) try { await remembered.clear(); } catch (e) { /* session déjà invalidée */ }
+        }
+        if (!active && !corruptSession && remembered) {
+          try { active = await remembered.resume(vault.s, signal, crypto); } catch (e) { /* exiger le code */ }
+        }
+        if (active) {
+          try {
+            if (raw.getItem(LOCK_SIGNAL) !== signal || now() >= active.expiresAt) throw new Error('Autorisation expirée');
+            await useKey(active.rawKey, dec(vault.s));
+            const data = await open(vault, st.key, crypto);
+            if (raw.getItem(LOCK_SIGNAL) !== signal || now() >= active.expiresAt) throw new Error('Autorisation révoquée');
+            st.n = order(data).n; st.t = order(data).t;
             const stray = plainSnapshot(raw), vals = { ...stray, ...data.values };
             const kept = Object.keys(stray).length ? await writeWithRoom(vals, st.salt) : vals;
+            saveSession(active.rawKey, st.salt, active.expiresAt);
             enter(kept);
             if (Object.keys(stray).length) dropPlain(raw, Object.keys(stray));
             return st.mode;
-          } catch (e) { try { session.removeItem(SESSION); } catch (x) { /* rien */ } }
+          } catch (e) {
+            try { session.removeItem(SESSION); } catch (x) { /* rien */ }
+            // Coffre remplacé ou autorisation non valide : renouveler par code.
+            if (remembered) try { await remembered.clear(); } catch (x) { /* rien */ }
+            st.key = null; st.salt = null; st.expiresAt = 0;
+          }
         }
         try { session.removeItem(SESSION); } catch (e) { /* rien */ }
         st.mem = memStore(raw, {}, () => {}); st.mode = 'locked'; return st.mode;
@@ -243,11 +304,12 @@ const SessionVault = (() => {
     function sameKeysGone(r, snap) { return Object.keys(snap).every(k => r.getItem(k) == null); }
 
     /* Déverrouillage avec le code : coffre v2, coffre v1 ou données en clair existantes → coffre v2 vérifié → session. */
-    async function unlock(pass, extra) { return exclusive(async () => {
+    async function unlock(pass, extra, keepWeek = false) { return exclusive(async () => {
+      expire();
       while (st.mode === 'vault' && st.mem.dirty.size) await savePending();
-      return unlockInside(pass, extra);
+      return unlockInside(pass, extra, keepWeek);
     }); }
-    async function unlockInside(pass, extra) {
+    async function unlockInside(pass, extra, keepWeek) {
       const vault = readVault(raw);
       if (vault && vault.invalid) throw new Error('Coffre local illisible : conservé tel quel.');
       let vals, salt, rawKey, drop = [], dropV1 = false;
@@ -256,6 +318,11 @@ const SessionVault = (() => {
         const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);   // code faux → OperationError, clé de la session inchangée
         st.key = key; st.salt = salt;
         const stray = plainSnapshot(raw); vals = { ...stray, ...data.values }; drop = Object.keys(stray); st.n = order(data).n; st.t = order(data).t;
+        // Suite à une expiration, seules les modifications non confirmées sont reprises.
+        // Aucune perte sur mauvais code / quota plein : l'ancien MemStore reste intact jusqu'au coffre vérifié.
+        if (st.mode === 'expired' && st.mem) st.mem.dirty.forEach(k => {
+          if (st.mem.map.has(k)) vals[k] = st.mem.map.get(k); else delete vals[k];
+        });
       } else {
         salt = crypto.getRandomValues(new Uint8Array(16)); rawKey = await deriveRaw(pass, salt, crypto);
         const stray = plainSnapshot(raw); vals = { ...stray }; drop = Object.keys(stray);
@@ -267,21 +334,35 @@ const SessionVault = (() => {
       const kept = await writeWithRoom(vals, salt);
       saveSession(rawKey, salt);
       dropPlain(raw, drop); if (dropV1) put(raw, V1, null);
-      enter(kept); return true;
+      enter(kept);
+      // Autorisation persistante facultative, non exportée dans les sauvegardes.
+      if (remembered) {
+        try {
+          if (keepWeek) await remembered.save(rawKey, salt, raw.getItem(LOCK_SIGNAL), crypto);
+          else await remembered.clear();
+        } catch (e) { st.warn = 'Ouverture automatique indisponible sur cet appareil : le code sera redemandé à la prochaine ouverture.'; }
+      }
+      return true;
     }
     async function lock() {
+      expire();
+      if (st.mode === 'expired' && st.mem && st.mem.dirty.size) {
+        throw Object.assign(new Error('Modifications non enregistrées : ressaisis le code avant de quitter cette page.'), { recovery: true });
+      }
       if (st.mode === 'vault') { await flush(); if (st.error) throw new Error(st.error); }
       const finish = async () => {
         while (st.mode === 'vault' && st.mem.dirty.size) await savePending();
         // Un nonce rend le signal distinct, même si deux verrouillages ont lieu à la même milliseconde.
-        try { raw.setItem(LOCK_SIGNAL, Date.now() + ':' + enc(crypto.getRandomValues(new Uint8Array(12)))); } catch (e) { /* signal facultatif */ }
+        put(raw, LOCK_SIGNAL, Date.now() + ':' + enc(crypto.getRandomValues(new Uint8Array(12))));
+        if (remembered) try { await remembered.clear(); } catch (e) { /* signal durable révoque aussi la clé conservée */ }
         forget();
       };
       if (locks && typeof locks.request === 'function') await exclusive(finish); else await finish();
     }
     // Autre onglet : coffre réécrit → fusion (valeurs distantes + modifications locales non encore écrites) ; verrou → verrouiller ici.
     async function onStorage(e, notify) {
-      if (e.key === LOCK_SIGNAL && e.newValue && (st.mode === 'vault' || st.mode === 'locked')) {
+      expire();
+      if (e.key === LOCK_SIGNAL && e.newValue && (st.mode === 'vault' || st.mode === 'locked' || st.mode === 'expired')) {
         // Un bon code a pu être saisi depuis ce signal : ne pas verrouiller la nouvelle session sur une notification périmée.
         if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) === st.lockSignal) return null;
         forget(); return 'locked';
@@ -304,8 +385,11 @@ const SessionVault = (() => {
     }
     return {
       boot, unlock, lock, flush, onStorage,
+      expired: () => expire(),
+      get expiresAt() { return st.expiresAt; },
+      get pendingRecovery() { return st.mode === 'expired' && !!st.mem && st.mem.dirty.size > 0; },
       get mode() { return st.mode; }, get error() { return st.error; }, get warn() { return st.warn; }, get migrated() { return !!st.migrated; },
-      get store() { return st.mem ? st.mem.store : null; }, locked: () => st.mode === 'locked'
+      get store() { return st.mem ? st.mem.store : null; }, locked: () => expire() || st.mode === 'locked'
     };
   }
   return { create, VAULT, SESSION, LOCK_SIGNAL, PUBLIC, secret, validVault, IT };
