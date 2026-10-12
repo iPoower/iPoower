@@ -200,7 +200,12 @@ const main = t => t.replace(/✓ Arrivé[^⏎]*/, '');
     await s.to('2026-10-03T14:10:00+02:00'); t = await s.waitFor(/✓ Arrivé · Aller · Assurance/, 30);
     check('15 · entrée dans la fenêtre vivante, toujours sur place : arrivée automatique', /✓ Arrivé · Aller · Assurance/.test(t) && !/Assurance/.test(main(t)), t.slice(0, 160));
     // ===== 16. twrc.tripdone réellement purgé au chargement =====
-    const reload = async () => { s.S.reloading = true; await p.reload(); for (let k = 0; k < 40; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(300); await p.waitForTimeout(200); } s.S.reloading = false; await s.settle(3); };
+    const reload = async () => {
+      // La fixture vient d'écrire dans le coffre mémoire : vérifier la vraie
+      // écriture chiffrée avant de simuler un redémarrage, sans délai arbitraire.
+      await p.evaluate(async () => { await TWRC_VAULT.flush(); if (TWRC_VAULT.error) throw new Error('Sauvegarde de fixture non confirmée'); });
+      s.S.reloading = true; await p.reload(); for (let k = 0; k < 40; k++) { if (await p.evaluate(() => typeof CALDONE !== 'undefined' && CALDONE).catch(() => false)) break; await p.clock.runFor(300); await p.waitForTimeout(200); } s.S.reloading = false; await s.settle(3);
+    };
     await p.evaluate(() => { const o = JSON.parse(localStorage.getItem('twrc.tripdone') || '{}'); o['leg|2026-09-30T08:00|go|vieux'] = { how: 'auto', at: Date.now() - 25 * 3600e3, exp: Date.now() - 3600e3 }; localStorage.setItem('twrc.tripdone', JSON.stringify(o)); });
     await reload(); const ls1 = await p.evaluate(() => localStorage.getItem('twrc.tripdone') || '');
     check('16 · entrée expirée effacée du stockage au chargement, entrée valide conservée', !/vieux/.test(ls1) && /15:35\|go/.test(ls1), ls1);
