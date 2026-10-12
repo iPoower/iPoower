@@ -8,6 +8,8 @@ let n = 0, stage = '';
 const check = async (label, fn) => { stage = label; await fn(); n++; console.log('✅ ' + label); };
 const ready = p => p.waitForFunction(() => typeof LOCKED === 'function' && !!window.TWRC_VAULT && typeof S === 'object',
   null, { polling: 100, timeout: 15000 });
+const unlocked = p => p.waitForFunction(() => typeof LOCKED === 'function' && !!window.TWRC_VAULT &&
+  window.TWRC_VAULT.mode === 'vault' && !LOCKED(), null, { polling: 100, timeout: 15000 });
 async function openAt(context, date) {
   const p = await context.newPage();
   // Playwright partage l'horloge entre toutes les pages du contexte. Installer
@@ -90,7 +92,9 @@ async function openAt(context, date) {
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
         await p.fill('#unlockPw', PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
-        await ready(p);
+        // A WebKit navigation can resolve before the async vault unseal has completed.
+        // Do not treat "loaded but still locked" as successful authorization.
+        await unlocked(p);
         assert.equal(await p.evaluate(() => LOCKED()), false);
         const q = await openAt(s.c, await p.evaluate(() => Date.now()) + DAY);
         try { assert.equal(await q.evaluate(() => LOCKED()), true); assert.equal(await q.locator('#unlockPw').count(), 1); }
