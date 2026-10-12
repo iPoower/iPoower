@@ -1,6 +1,6 @@
 # Weather Watch PC
 
-Le bouton facultatif **🖥️ Mode Station** de Météo ouvre un cockpit dans une fenêtre modale. Fermer la station ou appuyer sur Échap restitue la vue, le focus et le défilement. Les cinq onglets gardent leur ordre et leurs interactions. Le bouton est masqué sur les appareils tactiles sans pointeur précis, dont le profil iPhone 11 Pro Max.
+Le bouton facultatif **🖥️ Mode Station** de Météo ouvre un cockpit dans une fenêtre modale. Fermer la station ou appuyer sur Échap restitue la vue, le focus et le défilement ; la restitution du focus attend le traitement natif de fermeture WebKit si nécessaire. Les cinq onglets gardent leur ordre et leurs interactions. Le bouton est masqué sur les appareils tactiles sans pointeur précis, dont le profil iPhone 11 Pro Max.
 
 ## Données et sources
 
@@ -8,7 +8,7 @@ Le bouton facultatif **🖥️ Mode Station** de Météo ouvre un cockpit dans u
 | --- | --- |
 | Température principale, ressenti | `wxDesk(wxInput()).current`, exactement comme Météo |
 | Courbe et 12 heures à venir | `wxDesk().timeline.strip`, échéances réellement disponibles |
-| Pluie, vent, rafales | Heure du modèle canonique ; AROME lorsque intégré, sinon modèle de base |
+| Pluie, neige, vent, rafales | Heure du modèle canonique ; AROME lorsque intégré, sinon modèle de base. Neige en cm/h uniquement si le champ horaire est fourni. |
 | Probabilité de pluie, visibilité | Modèle de base Open-Meteo |
 | Chaussée, gel, verglas | `Tr` et `ice` déjà calculés par le moteur Race Control |
 | Risque routier, prochain changement | Résultats du moteur Météo, avec sa période explicite |
@@ -53,6 +53,6 @@ Document Picture-in-Picture est ouvert exclusivement sur demande lorsque l'API e
 
 `test_weather_watch.js` couvre les seuils, la provenance, les données manquantes, l'hystérésis, la rétention et le journal. `e2e74-weather-watch.js` ajoute les scénarios PC, petits écrans, iPhone simulé, permissions, mini-fenêtre, cache, HTTP 429, reprise, coordination et expiration. Les suites rejoignent le registre obligatoire et sa couverture exacte. Les captures CI contiennent exclusivement le préréglage fictif du harnais existant.
 
-Cette mission doit rester dans sa PR dédiée, sans fusion ni déploiement avant accord explicite du propriétaire et contrôles verts. Base examinée : prod-94, `a71fd211`. La PR #120 reste indépendante : seuls l'ajout du bouton Météo et ses règles CSS demandent une vérification d'intégration ; ses fichiers et sa branche ne sont pas modifiés.
+Cette mission reste dans sa PR dédiée, sans fusion ni déploiement avant accord explicite du propriétaire et contrôles verts. Base initiale : prod-94 (`a71fd211`). Branche synchronisée avec **prod-95** (`1dbb6985`, PR #120 déjà fusionnée) par un commit d'intégration conservant la bande horaire, les styles et les tests Météo. La PR #121 LIVE/OFFLINE n'a pas été modifiée et devra être intégrée séquentiellement après validation.
 
 Une simulation WebKit ne constitue pas un test sur iPhone physique. La veille et les notifications sont simulées dans les tests, pas testées sur un PC Windows réel.
