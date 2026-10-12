@@ -123,6 +123,16 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     });
     check('1 · bande de température : défile au doigt sans agrandir la page',
       !!visibleHours && visibleHours.total > visibleHours.width && visibleHours.moved > 0, JSON.stringify(visibleHours));
+    const heldHours = await s.p.evaluate(() => {
+      const e = document.querySelector('#secWx .wx-hours-track');
+      e.scrollLeft = 140;
+      const before = e.scrollLeft;
+      RAW[UI.loc].t -= 60e3; // Simulation d'un horodatage changé lors d'une nouvelle météo.
+      renderAll();
+      return { before, after: document.querySelector('#secWx .wx-hours-track').scrollLeft };
+    });
+    check('1 · mise à jour : conserve la position horizontale après rendu sans saut',
+      heldHours.before > 0 && Math.abs(heldHours.after - heldHours.before) <= 2, JSON.stringify(heldHours));
     // lien vers Pneus
     await tapNav(s.p, '#secWx [data-act=view][data-v=pneus]', 'Météo → Pneus depuis le résumé météo'); await s.settle(2);
     check('1 · « Voir analyse Pneus » ouvre l’onglet Pneus ; le poste météo y est masqué', await s.p.evaluate(() => UI.view === 'pneus' && document.getElementById('secWx').hidden && !!document.querySelector('#secCars .car')));
