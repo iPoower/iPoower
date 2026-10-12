@@ -57,7 +57,15 @@ function weatherStationClose() {
   // Un verrouillage conserve sa propre couche de sécurité ; le mode Station ne la supprime jamais.
   if (document.getElementById('twrcExpiryOverlay')) document.body.style.overflow = 'hidden';
   const trigger = st.trigger && st.trigger.isConnected ? st.trigger : document.querySelector('#secWx [data-act="station-open"]');
-  if (trigger) trigger.focus({ preventScroll: true });
+  // WebKit may restore the dialog's former focus *after* close() returns.
+  // Restore it again after the native close task, without defeating a session lock.
+  const restore = () => {
+    if (!st.active && !document.hidden && !LOCKED() && !document.getElementById('twrcExpiryOverlay') && trigger && trigger.isConnected)
+      trigger.focus({ preventScroll: true });
+  };
+  restore();
+  setTimeout(restore, 0);
+  if (!document.hidden) requestAnimationFrame(restore);
   window.scrollTo({ top: st.scroll, behavior: 'instant' });
 }
 function weatherStationSafety() {
@@ -150,6 +158,7 @@ function renderWeatherStation() {
     const tile = (title, number, source) => `<section class="station-tile"><h3>${esc(title)}</h3><b class="num">${number}</b><p class="sub">${source}</p></section>`;
     stationSet(pane.querySelector('#stationConditions'),
       tile('🌧 Pluie prévue', stationValue(s.rain, 'mm/h', 1), stationValue(s.pp, '%') + ' probabilité · quantité : ' + esc(s.rainSource) + ' · probabilité : modèle de base') +
+      (s.snow != null ? tile('❄ Neige prévue', stationValue(s.snow, 'cm/h', 1), 'Prévision horaire · ' + esc(s.modelSource) + ' · pas une observation') : '') +
       tile('💨 Vent · rafales', stationValue(s.wind, 'km/h') + ' · ' + stationValue(s.gust, 'km/h'), esc(s.modelSource) + ' · prévision horaire') +
       tile('👁 Visibilité · brouillard', stationValue(s.vis, 'm'), 'Open-Meteo · modèle de base · ' + esc(s.fog)) +
       tile('🛣 Chaussée estimée', stationValue(s.roadT, '°C', 1), 'Moteur Race Control · estimation, pas un capteur routier') +
