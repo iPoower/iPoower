@@ -57,7 +57,9 @@ const wx = (o, kind) => {
       await p.setViewportSize({ width: 1280, height: 800 });
     });
     await check('PC · fermeture par Échap : vue, contenu et réglages identiques ; focus rendu au bouton', async () => {
-      await p.keyboard.press('Escape'); assert.equal(await p.locator('#wxStation').count(), 0);
+      await p.keyboard.press('Escape');
+      // The native dialog close event is asynchronous under WebKit; wait for real cleanup.
+      await p.locator('#wxStation').waitFor({ state: 'detached', timeout: 5000 });
       const after = await p.evaluate(() => ({ settings: JSON.stringify(S), view: UI.view, content: document.getElementById('secWx').innerHTML,
         focus: document.activeElement.dataset.act, rawKeys: Object.keys(window.TWRC_RAW_STORAGE).sort() }));
       assert.equal(after.settings, before.settings); assert.equal(after.view, before.view); assert.equal(after.content, before.content);
@@ -65,6 +67,16 @@ const wx = (o, kind) => {
       // Require actual focus on the original launcher rather than testing a race.
       await p.waitForFunction(() => document.activeElement?.dataset.act === 'station-open', null, { timeout: 2500 });
       assert.deepEqual(after.rawKeys, before.rawKeys);
+    });
+    await check('PC · Échap répété conserve le focus et le DOM sans minuterie fictive', async () => {
+      for (let i = 0; i < 3; i++) {
+        await click(p, 'station-open');
+        assert.equal(await p.locator('#wxStation').count(), 1);
+        await p.keyboard.press('Escape');
+        await p.locator('#wxStation').waitFor({ state: 'detached', timeout: 5000 });
+        await p.waitForFunction(() => document.activeElement?.dataset.act === 'station-open', null, { timeout: 2500 });
+        assert.equal(await p.evaluate(() => JSON.stringify(S)), before.settings);
+      }
     });
     await click(p, 'station-open');
     await check('PC · aucun prompt de permission à l’ouverture ; alertes et Windows OFF par défaut', async () => {
