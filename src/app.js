@@ -100,8 +100,15 @@ const vaultLocked = () => !!(window.TWRC_VAULT && window.TWRC_VAULT.locked());
 const storeLocked = () => vaultLocked() || DeviceStorage.isLocked(window.TWRC_RAW_STORAGE || localStorage);
 // tout rechargement attend la fin de l'écriture chiffrée en cours (aucune modification perdue)
 async function reloadSafe(delay = 0) {
-  try { if (window.TWRC_VAULT) await window.TWRC_VAULT.flush(); } catch (e) { /* le rechargement reste possible */ }
-  setTimeout(() => location.reload(), delay);
+  const vs = window.TWRC_VAULT;
+  if (vs && (vs.expired() || vs.pendingRecovery)) { checkSessionExpiry(); return false; }
+  try { if (vs) await vs.flush(); } catch (e) { /* la sauvegarde est vérifiée ci-dessous */ }
+  if (vs && (vs.expired() || vs.pendingRecovery || vs.error)) { checkSessionExpiry(); return false; }
+  setTimeout(() => {
+    if (vs && (vs.expired() || vs.pendingRecovery || vs.error)) { checkSessionExpiry(); return; }
+    location.reload();
+  }, delay);
+  return true;
 }
 const LOCKED = () => DeviceStorage.isFrozen() || !!window.TWRC_STORAGE_ERROR || storeLocked() || !!window.TWRC_SEALED && !window.TWRC_PRESET;
 async function lockDevice(button) {
@@ -3982,7 +3989,7 @@ document.addEventListener('change', e => {
     if (/\.tire\.type$/.test(b) || /plan\.on$/.test(b) || /\.tire\.tread(Av|Ar)$/.test(b)) renderSettings();
   }
 });
-window.addEventListener('hashchange', () => { if (location.hash.startsWith('#cfg=')) location.reload(); });
+window.addEventListener('hashchange', () => { if (location.hash.startsWith('#cfg=')) { const vs = window.TWRC_VAULT; if (vs && (vs.expired() || vs.pendingRecovery)) { checkSessionExpiry(); return; } location.reload(); } });
 // @include app/lifecycle.js
 // Sécurité V1 : écriture chiffrée immédiate quand l'app passe en arrière-plan ; erreur d'écriture affichée sans attendre.
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && window.TWRC_VAULT) window.TWRC_VAULT.flush(); });
