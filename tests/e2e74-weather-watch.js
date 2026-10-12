@@ -38,6 +38,15 @@ const wx = (o, kind) => {
       assert(await p.locator('#stationConditions').innerText().then(t => /Chaussée estimée/.test(t) && /Visibilité/.test(t)));
       assert(await p.locator('#stationSources').innerText().then(t => /Open-Meteo/.test(t) && /pas des observations/.test(t)));
     });
+    await check('PC · quantité de neige du modèle affichée seulement lorsqu’elle existe', async () => {
+      const modelBefore = await p.evaluate(() => {
+        const m = M[UI.loc], x = m && m.hs[m.nowI]; if (!x) return null;
+        const prior = x.snow; x.snow = .4; renderWeatherStation();
+        return { prior, label: document.querySelector('#stationConditions').innerText };
+      });
+      assert(modelBefore && /Neige prévue/.test(modelBefore.label) && /0,4 cm\/h/.test(modelBefore.label));
+      await p.evaluate(prior => { M[UI.loc].hs[M[UI.loc].nowI].snow = prior; renderWeatherStation(); }, modelBefore.prior);
+    });
     await check('PC · 2560×1440, 1920×1080, 1280×800, 900×700 et petite fenêtre : aucun débordement', async () => {
       for (const [width, height] of [[2560, 1440], [1920, 1080], [1280, 800], [900, 700], [640, 650]]) {
         await p.setViewportSize({ width, height });
@@ -52,7 +61,10 @@ const wx = (o, kind) => {
       const after = await p.evaluate(() => ({ settings: JSON.stringify(S), view: UI.view, content: document.getElementById('secWx').innerHTML,
         focus: document.activeElement.dataset.act, rawKeys: Object.keys(window.TWRC_RAW_STORAGE).sort() }));
       assert.equal(after.settings, before.settings); assert.equal(after.view, before.view); assert.equal(after.content, before.content);
-      assert.equal(after.focus, 'station-open'); assert.deepEqual(after.rawKeys, before.rawKeys);
+      // WebKit finishes the native dialog focus restoration in a subsequent task.
+      // Require actual focus on the original launcher rather than testing a race.
+      await p.waitForFunction(() => document.activeElement?.dataset.act === 'station-open', null, { timeout: 2500 });
+      assert.deepEqual(after.rawKeys, before.rawKeys);
     });
     await click(p, 'station-open');
     await check('PC · aucun prompt de permission à l’ouverture ; alertes et Windows OFF par défaut', async () => {
