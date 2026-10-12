@@ -127,7 +127,7 @@ const wx = (o, kind) => {
       await p.clock.fastForward(70 * 60000); await s.settle(3); const after = await sample(p);
       assert.equal(after.mode, 'HORS LIGNE'); assert.equal(after.fresh, false); assert.notEqual(after.hours[0], old.hours[0]); assert(after.hours.length >= 12);
       assert.equal(s.S.calls, calls); assert.equal(await p.evaluate(() => WX_STATION.history.events.filter(x => x.kind === 'observation' || x.kind === 'prévision').length), observed);
-      assert(await p.locator('#stationCurrent').innerText().then(t => /Dernière valeur/.test(t)));
+      assert(await p.locator('#stationCurrent').innerText().then(t => /Dernière valeur|Prévision de l’heure en cours.*cache/.test(t)));
     });
     await check('PC · cache de 37 heures : date et expiration visibles, nouvelles alertes désactivées', async () => {
       await p.evaluate(() => { RAW[UI.loc].t = Date.now() - 37 * 3600e3; rebuild(); renderAll(); });
@@ -205,6 +205,18 @@ const wx = (o, kind) => {
         for (let i = 0; i < 5; i++) { await q.clock.runFor(500); await q.waitForTimeout(80); }
         const at = await a.p.evaluate(() => RAW[UI.loc].t), other = await q.evaluate(() => RAW[S.locs[0].id].t);
         assert.equal(other, at); assert((await sample(q)).active);
+        // Deux lieux actifs différents ne doivent pas être mis en concurrence :
+        // le leader garde un TTL plus long pour ses lieux secondaires.
+        stage = 'Deux stations · deux lieux actifs distincts actualisent chacun leur météo';
+        await q.evaluate(() => { APP_CONTEXT.weatherPreview = S.locs[1].id; UI.loc = S.locs[1].id; renderAll(); });
+        pending.length = 0;
+        await a.p.evaluate(() => { window.__sharedRun = weatherStationAutoRefresh(); });
+        await a.p.waitForFunction(() => busy);
+        await q.evaluate(() => { window.__sharedRun = weatherStationAutoRefresh(); });
+        await q.waitForFunction(() => busy);
+        assert.equal(pending.length, 2); assert.equal(await q.evaluate(() => WX_STATION.sharedSkips), 1);
+        for (const route of pending) await route.fulfill({ status: 200, contentType: 'application/json', body: '{"stations":{}}' });
+        await Promise.all([a.p.evaluate(() => __sharedRun), q.evaluate(() => __sharedRun)]);
       } finally { await a.c.close(); }
     });
     supplierAt = Date.parse('2026-10-12T08:00:00+02:00'); temp = 12;

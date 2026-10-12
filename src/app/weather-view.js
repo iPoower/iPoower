@@ -114,8 +114,7 @@ function renderWx() {
   const evH = evidenceHtml(), evOn = EV_FLAG() === 'on' && /class="ev-crit/.test(evH) && d.level < 2;
   const html = (evOn ? evH + hero : hero + evH) + tripHtml +
     uxFold('wx-forecast', 'Prévisions détaillées', tl + matters + ph, 'Chronologie · phénomènes') +
-    uxFold('wx-road', 'Conditions route', road, r.score + '/100 · ' + ['faible', 'modéré', 'élevé', 'critique'][r.level]) +
-    '<div class="wx-station-launch"><button class="btn sm" data-act="station-open">🖥️ Mode Station</button></div>' + foot;
+    uxFold('wx-road', 'Conditions route', road, r.score + '/100 · ' + ['faible', 'modéré', 'élevé', 'critique'][r.level]) + foot;
   if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
   const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
   const editor = el.querySelector('#wxOriginEditor'), active = document.activeElement;

@@ -5,6 +5,15 @@ const WX_STATION = { active: false, element: null, trigger: null, scroll: 0, ove
 function weatherStationDesktop() { return window.matchMedia('(hover: hover) and (pointer: fine)').matches; }
 function weatherStationRunning() { return WX_STATION.active; }
 function stationSet(el, html) { if (el && el.innerHTML !== html) el.innerHTML = html; }
+function renderWeatherStationButton() {
+  const root = document.getElementById('secWx'); if (!root) return;
+  const existing = root.querySelector('.wx-station-launch');
+  if (!weatherStationDesktop() || root.hidden || UI.view !== 'meteo') { if (existing) existing.remove(); return; }
+  if (existing || !root.querySelector('.wx-hero')) return;
+  const launcher = document.createElement('div'); launcher.className = 'wx-station-launch';
+  launcher.innerHTML = '<button class="btn sm" data-act="station-open" aria-haspopup="dialog">🖥️ Mode Station</button>';
+  const foot = root.querySelector('.wx-foot'); if (foot) foot.before(launcher); else root.appendChild(launcher);
+}
 function weatherStationOpen(button) {
   if (!weatherStationDesktop() || LOCKED() || checkSessionExpiry()) return;
   if (WX_STATION.active) return;
@@ -69,7 +78,8 @@ function weatherStationTick() {
 // Web Locks contient uniquement un hash. Aucune diffusion de coordonnées, aucun nouveau stockage.
 async function weatherStationAutoRefresh() {
   if (!WX_STATION.active || !navigator.locks || typeof navigator.locks.request !== 'function') return refreshAll(false);
-  const urls = allLocs().filter(locHasCoords).map(urlFor).sort().join('\n');
+  const primary = curLoc();
+  const urls = (locHasCoords(primary) ? urlFor(primary) : 'unavailable') + '\n' + allLocs().filter(locHasCoords).map(urlFor).sort().join('\n');
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(urls));
   const key = Array.from(new Uint8Array(bytes)).map(x => x.toString(16).padStart(2, '0')).join('');
   return navigator.locks.request('twrc.weather.station.' + key, { ifAvailable: true }, async lock => {
@@ -131,7 +141,9 @@ function renderWeatherStation() {
         notice.onclick = () => { try { window.focus(); } catch (e) { /* navigateur décide */ } notice.close(); };
       } catch (e) { st.message = 'Notification système indisponible ; alerte visuelle conservée'; }
     }
-    const title = s.fresh ? 'Température actuelle du modèle' : DEMO.on ? 'Température simulée' : 'Dernière valeur du modèle · ' + age;
+    const title = DEMO.on ? 'Température simulée' : !s.coverage ? 'Température indisponible'
+      : s.current.source === 'hourly' ? 'Prévision de l’heure en cours' + (s.fresh ? '' : ' · cache · ' + age)
+      : s.fresh ? 'Température actuelle du modèle' : 'Dernière valeur du modèle · ' + age;
     stationSet(pane.querySelector('#stationCurrent'), `<span class="station-kicker">${esc(title)}</span><div class="station-temp num">${stationValue(s.current.T, '', 1)}<small> °C</small></div><p>Ressenti <b class="num">${stationValue(s.current.Tapp, '°C', 1)}</b></p><p class="sub">${esc(s.modelSource)} · ${s.currentTime ? esc(s.currentTime.slice(11, 16)) : 'heure inconnue'}</p><p class="sub">Prévision pour ${esc(s.now.slice(11, 16))} : <b>${stationValue(s.forecastNow, '°C', 1)}</b></p><p class="station-verdict lv${s.hero.level}">${esc(s.hero.emoji + ' ' + s.hero.title)}</p>`);
     stationSet(pane.querySelector('#stationChart'), stationChart(s));
     stationSet(pane.querySelector('#stationHours'), s.timeline.map(x => `<li class="lv${x.lv}" data-hour="${esc(x.t)}"><time datetime="${esc(x.t)}">${x.t.slice(0, 10) !== s.now.slice(0, 10) ? 'dem. ' : ''}${esc(x.hh)}</time><b class="num">${stationValue(x.T, '°', 1)}</b><span>${stationValue(x.pp, '%')} pluie</span><small>${stationValue(x.P, 'mm/h', 1)}</small></li>`).join('') || '<li>Aucune échéance disponible</li>');

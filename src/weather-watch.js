@@ -19,7 +19,7 @@ const WeatherWatch = (() => {
     const ageMin = raw && finite(raw.t) && raw.t <= nowMs + 60000 ? Math.max(0, (nowMs - raw.t) / 60000) : null;
     const expired = !coverage || ageMin == null || ageMin > 36 * 60;
     const currentAge = desk.current.source === 'current' ? minute(now) - minute(model.cur.time) : 0;
-    const fresh = !demo && !offline && !expired && raw.mode === 'live' && ageMin <= 15
+    const fresh = !demo && !offline && !expired && raw.mode === 'live' && model.mode === 'live' && ageMin <= 15
       && finite(currentAge) && currentAge >= -1 && currentAge <= 30;
     const mode = demo ? 'DÉMO · simulé' : expired ? 'EXPIRÉ / INDISPONIBLE' : offline ? 'HORS LIGNE' : fresh ? 'LIVE' : 'CACHE';
     // La valeur principale est EXACTEMENT celle de Météo. Une valeur en cache est nommée comme telle.
@@ -33,7 +33,7 @@ const WeatherWatch = (() => {
       ? { id: obs.id, name: obs.name, t: obs.t, T: value(obs.T), vis: value(obs.vis), ageMin: Math.max(0, (nowMs - Date.parse(obs.t)) / 60000) } : null;
     return { now, nowMs, key: place ? [place.id, place.lat, place.lon].join('|') : model.id,
       name: place && place.name || 'Lieu sélectionné', mode, fresh, expired, coverage, ageMin,
-      fetchedAt: raw && value(raw.t), currentTime: model.cur.time || h.t || null,
+      fetchedAt: raw && value(raw.t), currentTime: current.source === 'current' ? model.cur.time || h.t || null : h.t || null,
       current, hourTime: hour && hour.t, forecastNow: value(h.T), roadT: value(h.Tr),
       ice: h.ice && finite(h.ice.level) ? h.ice.level : null,
       wind: value(h.wind), gust: value(h.gust), vis: value(h.vis), pp: value(h.pp), rain: value(h.Pl) ?? value(h.P),
