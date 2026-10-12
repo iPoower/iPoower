@@ -55,6 +55,16 @@ async function openAt(context, date) {
         } finally { await q.close(); }
       });
       await check(dev + ' · verrouiller manuellement interdit toute réouverture sans code', async () => {
+        // Le scénario « huitième jour » ci-dessus ouvre un autre onglet avec une date future.
+        // L'onglet initial reçoit le signal d'expiration au retour : il ne doit PAS exposer
+        // le bouton de verrouillage de l'interface derrière l'écran bloquant.
+        // Reconnecter dans l'écran de récupération avant de tester le verrouillage manuel.
+        if (await p.locator('#twrcExpiryOverlay').count()) {
+          const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
+          await p.locator('#twrcExpiryPassword').fill(PW);
+          await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('#twrcExpiryForm button[type=submit]').click()]);
+          await s.settle(4);
+        }
         await p.evaluate(() => { const d = document.getElementById('settings'); d.open = true; renderSettings(true); });
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('[data-act=lock]').click()]);
         const q = await openAt(s.c, s.T0 + DAY);
