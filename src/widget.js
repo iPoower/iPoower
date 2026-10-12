@@ -11,8 +11,9 @@ const API = 'https://api.open-meteo.com/v1/forecast';
 const urlBase = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&current=${Q_CUR}&hourly=${Q_HR}&timezone=auto&past_days=1&forecast_days=5`;
 const urlArome = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&current=${Q_CUR}&hourly=${Q_AR}&models=meteofrance_seamless&timezone=auto&past_days=1&forecast_days=3`;
 
-async function getText(u) { const r = new Request(u); r.timeoutInterval = 20; return await r.loadString(); }
 async function getJSON(u) { const r = new Request(u); r.timeoutInterval = 20; return await r.loadJSON(); }
+// Le build embarque le moteur du même checkout approuvé. Aucune mise à jour de code réseau.
+const E = null; // moteur approuvé embarqué au build
 async function model(E, loc) {
   const base = await getJSON(urlBase(loc));
   let ar = null; try { ar = await getJSON(urlArome(loc)); } catch (e) { ar = null; }
@@ -25,8 +26,7 @@ async function build() {
   const w = new ListWidget(); w.backgroundColor = COL.bg; w.url = SITE; w.setPadding(12, 14, 12, 14);
   w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000);
   try {
-    const src = await getText(SITE + 'engine.js');
-    const E = new Function(src + '; return { makeModel, mergeArome, seqOf, summarize, windowAssess, LV, ICE_LV, TYPE_LABEL, f1, f0, addMin, toMin, commuteOff, fmtDay };')();
+    if (!E) throw new Error('Moteur absent : recopiez le script du widget depuis l’application.');
     const [mA, mB] = await Promise.all([model(E, CFG.home), model(E, CFG.work)]);
     const now = mA.nowStr, x = mA.hs[mA.nowI];
     // départ : prochain matin de trajet domicile-travail (télétravail et repos sautés)
