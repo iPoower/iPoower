@@ -219,6 +219,10 @@
     "suite": "e2e49-interactions.js",
     "result": "onglet affiché et état aria-pressed"
   },
+  "winter-sap-apply": {
+    "suite": "e2e49-interactions.js",
+    "result": "fiche 580667 appliquée au plan hiver sans modifier la monte active"
+  },
   "wday": {
     "suite": "e2e49-interactions.js",
     "result": "jours enregistrés, dernier jour protégé"

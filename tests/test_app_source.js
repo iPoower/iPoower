@@ -24,6 +24,13 @@ try {
     for (const token of ['Commande passée', 'ETA fournisseur · début', 'ETA fournisseur · fin', 'Montage estimé', 'Date du rendez-vous', 'Rendez-vous confirmé', 'COUVERTURE MÉTÉO'])
       assert(source.includes(token), 'Champ hiver absent : ' + token);
   });
+  check('SAP 580667 : profil public, activation explicite, train été conservé', () => {
+    const source = appSource();
+    assert(source.includes('data-winter-sap="580667"'));
+    assert(source.includes('data-act="winter-sap-apply"'));
+    assert(source.includes("c.plan = { ...c.plan, on: 1, brand: db.brand, model: db.model, size: v.fullSize }"));
+    assert(source.includes('Profondeur neuve nominale'));
+  });
   check('reprise stockage et réseau revalide automatiquement le contexte', () => {
     const source = appSource();
     for (const token of ['function validateRecovery(', "validateRecovery('retour réseau')", "validateRecovery('retry périodique')", 'validation de reprise en attente'])
