@@ -140,7 +140,7 @@ async function views(p, expected) {
       await p.close(); p = await s.c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.goto(U);
       for (let i = 0; i < 6; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); }
       await unlockIfLocked(p, async () => { for (let i = 0; i < 8; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } });   // réouverture : code demandé (sécurité V1)
-      await p.waitForFunction(() => APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.activeCarId === 'carB');
+      await p.waitForFunction(() => typeof APP_CONTEXT !== 'undefined' && APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.activeCarId === 'carB');
       await check(dev + '/' + profile + ' · réouverture conserve Lieu B', () => views(p, { place: 'work', destination: 'b', car: 'carB' }));
       scope.phase = 'congé puis travail'; await tap(p, '[data-act=day-type][data-v=off]');
       await check('Congé retire commute local sans réécrire planning', async () => { assert.equal((await read(p)).day, 'off'); assert(await p.evaluate(() => !APP_CONTEXT.snapshot.trips.some(t => t.src === 'work' && t.dep.slice(0, 10) === placeToday()))); assert.deepEqual((await read(p)).work, original); });
@@ -161,7 +161,7 @@ async function views(p, expected) {
       await destination(p, 'home'); await check('WORK → HOME explicite', async () => assert.equal((await read(p)).destination, 'home'));
       await destination(p, ''); await tap(p, '#placeBar [data-act=place-leave]');
       await check('WORK → UNKNOWN ne devient jamais Maison', () => views(p, { status: 'travel', destination: null, car: 'carB' }));
-      await p.reload(); await p.waitForFunction(() => APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.status === 'travel');
+      await p.reload(); await p.waitForFunction(() => typeof APP_CONTEXT !== 'undefined' && APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.status === 'travel');
       await check('UNKNOWN persiste après reload', async () => assert.equal((await read(p)).destination, null));
       scope.phase = 'origine du lendemain'; await tap(p, '#placeBar [data-act=place-confirm][data-place=b]');
       await p.clock.setSystemTime(new Date('2026-10-07T06:00:00+02:00'));

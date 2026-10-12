@@ -33,12 +33,15 @@ const submit = async (s, code) => { await s.p.fill('#unlockPw', code); await Pro
         const raw = await rawOf(s.c); assert.deepEqual(leaks(raw), []); assert(raw['twrc.vault.v2']);
         assert.match(await p.locator('#notice').innerText(), /DONNÉES CHIFFRÉES SUR CET APPAREIL/);
       });
-      await check(dev + ' · session déverrouillée : rien de sensible au repos, sessionStorage limité à la clé de session', async () => {
+      await check(dev + ' · session déverrouillée : rien de sensible au repos, sessionStorage limité à une clé enveloppée', async () => {
         await p.evaluate(() => { S.cars[0].name = S.cars[0].name + ''; saveSettings(); }); await s.settle(4);
         assert.deepEqual(leaks(await rawOf(s.c)), []);
         const ses = await p.evaluate(() => Object.keys(sessionStorage).filter(k => k.startsWith('twrc.')));
         assert.deepEqual(ses, ['twrc.session.v2']); const key = await p.evaluate(() => sessionStorage.getItem('twrc.session.v2'));
-        assert(!SENS.some(x => key.includes(x)), 'clé de session : aucun code ni donnée personnelle'); assert.match(JSON.parse(key).k, /^[A-Za-z0-9+/=]{44}$/);
+        assert(!SENS.some(x => key.includes(x)), 'session : aucun code ni donnée personnelle');
+        const descriptor = JSON.parse(key);
+        assert.equal(descriptor.v, 4); assert.equal(Object.hasOwn(descriptor, 'k'), false, 'aucune clé brute de session');
+        assert.match(descriptor.id, /^[0-9a-f]{32}$/); assert.match(descriptor.i, /^[A-Za-z0-9+/]{16}$/); assert.match(descriptor.c, /^[A-Za-z0-9+/]{64}$/);
       });
       await check(dev + ' · rechargement : pas de code redemandé, données identiques', async () => {
         await p.reload(); await s.settle(8);

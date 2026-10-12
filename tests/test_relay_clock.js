@@ -191,7 +191,17 @@ const TOKEN = 'jeton-de-test-uniquement';
   });
   await test('workflow : même seuil (8 min), source=horloge soumise au contrôle de fraîcheur, source visible dans le nom du run', async () => {
     const wf = fs.readFileSync(path.join(__dirname, '../.github/workflows/race-control.yml'), 'utf8');
-    assert.match(wf, /age>=8/); assert.equal(W.DUE_MIN, 8);
+    assert.match(wf, /relay-data\.js due relay-data 8/); assert.equal(W.DUE_MIN, 8);
+    // La fraîcheur a quitté le script inline : contrôler le vrai lecteur de
+    // données, aux deux côtés du seuil, sans retirer le contrôle de l'horloge.
+    const { due } = require('../tools/relay-data');
+    const d = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'rc-relay-age-'));
+    try {
+      fs.writeFileSync(path.join(d, 'obs.json'), JSON.stringify({ updated: new Date(T0 - 7.99 * 60000).toISOString() }));
+      assert.equal(due(d, W.DUE_MIN, false, T0), false);
+      fs.writeFileSync(path.join(d, 'obs.json'), JSON.stringify({ updated: new Date(T0 - 8 * 60000).toISOString() }));
+      assert.equal(due(d, W.DUE_MIN, false, T0), true);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
     assert.match(wf, /github\.event\.inputs\.source != 'horloge'/);
     assert.match(wf, /^run-name: .*inputs\.source/m); assert.match(wf, /concurrency:\s*\n\s*group: race-control-relay/);
   });

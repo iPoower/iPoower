@@ -9,7 +9,9 @@ const tap = (p, dev, selector) => dev === 'iphone' ? p.locator(selector).first()
 function seal(data) {
   const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12), it = 600000, key = crypto.pbkdf2Sync(PW.toLowerCase(), salt, it, 32, 'sha256');
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv), bytes = Buffer.concat([cipher.update(JSON.stringify(data)), cipher.final(), cipher.getAuthTag()]);
-  return { s: salt.toString('base64'), i: iv.toString('base64'), it, c: bytes.toString('base64') };
+  // Même enveloppe que le relais réel : les marqueurs de version/KDF font
+  // partie du format publié, sans modifier les données ni la cryptographie.
+  return { v: 1, kdf: 'PBKDF2-SHA256', s: salt.toString('base64'), i: iv.toString('base64'), it, c: bytes.toString('base64') };
 }
 function installGeo() {
   window.__originGeo = { lat: 49.08, lon: 2.91, acc: 25, deny: false, delay: 20, age: 0 };
