@@ -246,7 +246,13 @@ const SessionVault = (() => {
       }
       // 2. Coffre v2 : session d'onglet valide OU autorisation locale de 7 jours.
       if (vault && !vault.invalid) {
-        let ses = null; try { ses = JSON.parse(session.getItem(SESSION) || 'null'); } catch (e) { ses = null; }
+        let ses = null, corruptSession = false, storedSession = null;
+        try {
+          storedSession = session.getItem(SESSION);
+          if (storedSession) ses = JSON.parse(storedSession);
+        } catch (e) { corruptSession = true; }
+        // Une session présente mais illisible n'autorise pas le repli silencieux sur l'appareil mémorisé.
+        if (storedSession && (!ses || typeof ses !== 'object' || ses.v !== 3)) corruptSession = true;
         const currentTime = now(), signal = raw.getItem(LOCK_SIGNAL);
         const valid = ses && ses.v === 3 && ses.s === vault.s && typeof ses.k === 'string' &&
           (ses.l ?? null) === signal && Number.isSafeInteger(ses.a) && Number.isSafeInteger(ses.e) &&
@@ -256,9 +262,13 @@ const SessionVault = (() => {
           try {
             const rawKey = dec(ses.k);
             if (rawKey.length === 32) active = { rawKey, expiresAt: ses.e };
-          } catch (e) { /* sessionStorage corrompu : code requis, jamais de crash au démarrage */ }
+          } catch (e) { corruptSession = true; /* Base64 corrompu : exiger le code */ }
         }
-        if (!active && remembered) {
+        if (corruptSession) {
+          try { session.removeItem(SESSION); } catch (e) { /* rien */ }
+          if (remembered) try { await remembered.clear(); } catch (e) { /* session déjà invalidée */ }
+        }
+        if (!active && !corruptSession && remembered) {
           try { active = await remembered.resume(vault.s, signal, crypto); } catch (e) { /* exiger le code */ }
         }
         if (active) {
