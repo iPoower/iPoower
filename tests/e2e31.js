@@ -17,8 +17,8 @@ const check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok)
       const u = r.request().url(), J = v => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(v) });
       if (u.includes('air-quality-api')) return J(ctx.ma(ctx.mk('doux', { lat: 48.85, lon: 2.35 }, 'Europe/Paris', 0)));
       if (u.includes('open-meteo.com')) {
-        const q = new URL(u).searchParams, base = ctx.mk('doux', { lat: +q.get('latitude'), lon: +q.get('longitude') }, 'Europe/Paris', 0);
-        if (u.includes('ensemble')) return J(ctx.me(base)); if (q.get('minutely_15')) return J(ctx.mn(base)); forecasts++; return J(base);
+        const q = new URL(u).searchParams, lat = (q.get('latitude') || '').split(',').map(Number), lon = (q.get('longitude') || '').split(',').map(Number), base = ctx.mk('doux', { lat: lat[0], lon: lon[0] }, 'Europe/Paris', 0);
+        if (u.includes('ensemble')) return J(ctx.me(base)); if (q.get('minutely_15')) return J(ctx.mn(base)); forecasts++; return J(lat.length > 1 ? lat.map((v, i) => ctx.mk('doux', { lat: v, lon: lon[i] }, 'Europe/Paris', 0)) : base);
       }
       if (u.includes('/obs.json')) return J({ stations: {} });
       if (u.includes('/tiredb.json')) return J(JSON.parse(fs.readFileSync('site/tiredb.json', 'utf8')));
