@@ -94,4 +94,6 @@ SUITE.push(['test_garage.js', 'Garage : fiches techniques canoniques, relevés, 
   ['e2e71-garage.js', 'Garage : navigation 5 onglets, données véhicules et état, réglages, reload et offline PC/iPhone', true]);
 SUITE.push(['e2e72-mobile-ux.js', 'UX mobile : cinq onglets, détails accessibles, focus, petits écrans, rechargement, données et hors ligne', true]);
 SUITE.push(['e2e73-weekly-login.js', 'sécurité iPhone/PC : session 7 jours en IndexedDB, révocation, expiration et refus', true]);
+SUITE.push(['test_weather_watch.js', 'Weather Watch : provenance, seuils, hystérésis, journal, cache et rétention en mémoire', false],
+  ['e2e74-weather-watch.js', 'Weather Watch PC : station facultative, reprise, alertes, mini-cockpit, Web Locks et iPhone préservé', true]);
 module.exports = { SUITE, FIRST };
