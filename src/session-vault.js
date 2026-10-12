@@ -170,9 +170,21 @@ const SessionVault = (() => {
       // microtâche (pas une minuterie) : part dès la fin du code en cours, jamais retardée par une horloge gelée ou un onglet en veille
       st.timer = true; Promise.resolve().then(() => { st.timer = null; flush(); });
     }
+    async function saveWithConflictRetry() {
+      // Un ancien onglet peut encore écrire sans le verrou pendant WebCrypto.
+      // Reprendre depuis le coffre authentifié, jamais depuis un instantané périmé.
+      // Seuls les conflits vérifiés sont retentés ; quota, refus, corruption,
+      // verrouillage et expiration conservent leur traitement strict.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try { return await exclusive(savePending); }
+        catch (e) {
+          if (!e.conflict || attempt === 2) throw e;
+        }
+      }
+    }
     function flush() {
       if (st.mode !== 'vault') return st.chain;
-      st.chain = st.chain.then(() => exclusive(savePending)).catch(e => {
+      st.chain = st.chain.then(saveWithConflictRetry).catch(e => {
         if (e.cancelled || st.mode !== 'vault') return;
         st.error = (e.unsupported ? e.message + ' ' : 'Enregistrement chiffré non confirmé (stockage plein, refusé ou modifié) : ') + 'les modifications restent en mémoire ; exporte une sauvegarde.';
         if (target && target.dispatchEvent) try { target.dispatchEvent(new Event('twrc-vault-error')); } catch (x) { /* rien */ }

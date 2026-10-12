@@ -51,6 +51,19 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     assert.equal(await A.boot(), 'plain'); assert.equal(raw.getItem('twrc.view'), 'pneus'); assert.equal(raw.getItem(SV.VAULT), null);
   });
 
+  await test('toute sauvegarde durable passe réellement par Web Locks, sans faux succès', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY());
+    let requests = 0;
+    const counted = { request(name, opts, fn) { requests++; return locks.request(name, opts, fn); } };
+    const A = make(raw, session(), { locks: counted }).vs;
+    await A.boot(); const afterBoot = requests;
+    A.store.setItem('twrc.tripcancel', 'sauvegarde-protegee');
+    await A.flush();
+    assert.equal(A.error, null);
+    assert(requests > afterBoot, 'aucune sauvegarde durable ne doit contourner le verrou global');
+    const B = make(raw).vs; await B.boot(); await B.unlock(PASS);
+    assert.equal(B.store.getItem('twrc.tripcancel'), 'sauvegarde-protegee');
+  });
   await test('migration d’un ancien profil en clair : coffre vérifié, données identiques, plus aucune copie lisible', async () => {
     const raw = fakeStorage(), L = LEGACY(); fill(raw, L); const { vs, ses } = make(raw);
     assert.equal(await vs.boot(), 'vault'); assert.equal(vs.migrated, true);
@@ -213,6 +226,37 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     A.store.setItem('twrc.tripcancel', 'premiere'); const writing = A.flush(); await started;
     A.store.setItem('twrc.tripcancel', 'seconde'); release(); await writing; await A.flush();
     const B = make(raw, sa).vs; await B.boot(); assert.equal(B.store.getItem('twrc.tripcancel'), 'seconde'); assert.equal(A.error, null);
+  });
+  await test('WebKit/conflit externe pendant le chiffrement : relire sous verrou puis fusionner sans perte', async () => {
+    const raw = fakeStorage(); fill(raw, LEGACY());
+    const sa = session(), A0 = make(raw, sa).vs; await A0.boot();
+    const first = raw.getItem(SV.VAULT);
+    const sb = session(); sb.setItem(SV.SESSION, sa.getItem(SV.SESSION));
+    const B = make(raw, sb).vs; await B.boot();
+    B.store.setItem('twrc.returnhome.v1', 'autre-fenetre');
+    await B.flush(); assert.equal(B.error, null);
+    const concurrent = raw.getItem(SV.VAULT); assert.notEqual(concurrent, first);
+    raw.setItem(SV.VAULT, first); // écriture externe authentifiée, retardée jusqu'à l'instant de chiffrement de A
+    let pause = true, begin, release;
+    const started = new Promise(resolve => { begin = resolve; });
+    const held = new Promise(resolve => { release = resolve; });
+    const slow = { getRandomValues: bytes => webcrypto.getRandomValues(bytes), subtle: new Proxy(webcrypto.subtle, { get(t, k) {
+      if (k === 'encrypt') return async (...args) => {
+        if (pause) { pause = false; begin(); await held; }
+        return t.encrypt(...args);
+      };
+      return typeof t[k] === 'function' ? t[k].bind(t) : t[k];
+    } }) };
+    const A = make(raw, sa, { crypto: slow }).vs; await A.boot();
+    A.store.setItem('twrc.tripcancel', 'fenetre-principale'); const writing = A.flush();
+    await started;
+    raw.setItem(SV.VAULT, concurrent); // un ancien écrivain ne respecte pas Web Locks
+    release(); await writing;
+    assert.equal(A.error, null, 'un conflit transitoire authentifié se résout automatiquement');
+    const C = make(raw, sa).vs; await C.boot();
+    assert.equal(C.store.getItem('twrc.tripcancel'), 'fenetre-principale');
+    assert.equal(C.store.getItem('twrc.returnhome.v1'), 'autre-fenetre');
+    assert.deepEqual(leaks(raw), [], 'aucune copie lisible persistante');
   });
   await test('verrouillage distant pendant le chiffrement : aucune écriture ni session ressuscitée', async () => {
     const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(); let pause = false, begin, release;
