@@ -6,6 +6,8 @@ const { BR, session, errors, U } = require('./lib/context-session');
 const DAY = 86400000;
 let n = 0, stage = '';
 const check = async (label, fn) => { stage = label; await fn(); n++; console.log('✅ ' + label); };
+const ready = p => p.waitForFunction(() => typeof LOCKED === 'function' && !!window.TWRC_VAULT && typeof S === 'object',
+  { polling: 100, timeout: 15000 });
 async function openAt(context, date) {
   const p = await context.newPage();
   await p.clock.install({ time: date });
@@ -76,6 +78,7 @@ async function openAt(context, date) {
         await p.evaluate(() => { const d = document.getElementById('settings'); d.open = true; renderSettings(true); });
         await p.locator('[data-act=lock]').waitFor({ state: 'visible', timeout: 5000 });
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('[data-act=lock]').click()]);
+        await ready(p);
         const q = await openAt(s.c, s.T0 + DAY);
         try { assert.equal(await q.evaluate(() => LOCKED()), true); assert.equal(await q.locator('#unlockPw').count(), 1); }
         finally { await q.close(); }
@@ -85,6 +88,7 @@ async function openAt(context, date) {
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
         await p.fill('#unlockPw', PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
+        await ready(p);
         assert.equal(await p.evaluate(() => LOCKED()), false);
         const q = await openAt(s.c, s.T0 + DAY);
         try { assert.equal(await q.evaluate(() => LOCKED()), true); assert.equal(await q.locator('#unlockPw').count(), 1); }
@@ -96,7 +100,7 @@ async function openAt(context, date) {
           ses.k = '!!base64-invalide!!';
           sessionStorage.setItem(key, JSON.stringify(ses));
         });
-        await p.reload(); await s.settle(4);
+        await p.reload(); await ready(p); await s.settle(4);
         assert.equal(await p.evaluate(() => LOCKED()), true);
         assert.equal(await p.locator('#unlockPw').count(), 1);
       });
@@ -104,6 +108,7 @@ async function openAt(context, date) {
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
         await p.fill('#unlockPw', PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
+        await ready(p);
         assert.equal(await p.evaluate(() => LOCKED()), false);
         // L'expiration est calculée depuis la DERNIÈRE saisie du code.
         // Après les scénarios de verrouillage et de reconnexion, l'échéance
@@ -139,7 +144,7 @@ async function openAt(context, date) {
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
         await p.locator('#twrcExpiryPassword').fill(PW);
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('#twrcExpiryForm button[type=submit]').click()]);
-        await s.settle(6);
+        await ready(p); await s.settle(6);
         assert.equal(await p.evaluate(() => LOCKED()), false);
         assert.equal(await p.evaluate(() => S.cars[0].name), initial.name);
         assert.equal(await p.locator('#twrcExpiryOverlay').count(), 0);
