@@ -59,13 +59,22 @@ async function openAt(context, date) {
         // L'onglet initial reçoit le signal d'expiration au retour : il ne doit PAS exposer
         // le bouton de verrouillage de l'interface derrière l'écran bloquant.
         // Reconnecter dans l'écran de récupération avant de tester le verrouillage manuel.
+        const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
+        // Après le saut temporel, le coffre peut être expiré sans que le modal ait
+        // encore été affiché. Forcer le contrôle, puis réauthentifier si nécessaire.
+        await p.evaluate(() => { if (typeof checkSessionExpiry === 'function') checkSessionExpiry(); });
         if (await p.locator('#twrcExpiryOverlay').count()) {
-          const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
           await p.locator('#twrcExpiryPassword').fill(PW);
           await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('#twrcExpiryForm button[type=submit]').click()]);
           await s.settle(4);
+        } else if (await p.evaluate(() => LOCKED())) {
+          await p.fill('#unlockPw', PW);
+          await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('#unlockForm button[type=submit]').click()]);
+          await s.settle(4);
         }
+        assert.equal(await p.evaluate(() => LOCKED()), false, 'le coffre doit être ouvert avant verrouillage manuel');
         await p.evaluate(() => { const d = document.getElementById('settings'); d.open = true; renderSettings(true); });
+        await p.locator('[data-act=lock]').waitFor({ state: 'visible', timeout: 5000 });
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('[data-act=lock]').click()]);
         const q = await openAt(s.c, s.T0 + DAY);
         try { assert.equal(await q.evaluate(() => LOCKED()), true); assert.equal(await q.locator('#unlockPw').count(), 1); }
