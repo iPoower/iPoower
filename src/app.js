@@ -260,6 +260,7 @@ let DEMO = { on: false, scn: 'froid' };
 let MIDM = {};                       // modèles des points intermédiaires
 let MIDP = {};                       // données brutes des points intermédiaires
 const MIDPENDING = new Set(), MID_TTL = 25 * 60e3, MID_FAILURE_RETRY = 10 * 60e3;
+const MID_RETRY = new Map(), MID_MAX_MS = 36 * 3600e3;
 let VIGI = { state: 'none', items: [], t: null };
 const ENSRAW = {}, NOWRAW = {};
 let OBS = null;   // observations réelles publiées par le relais (obs.json)
@@ -320,7 +321,7 @@ function expireLive(now = Date.now()) {
   return n > 0;
 }
 function markOfflineCache() {
-  Object.values(RAW).forEach(r => { if (r && r.mode === 'live') r.mode = 'cache'; });
+  [...Object.values(RAW), ...Object.values(MIDP)].forEach(r => { if (r && r.mode === 'live') r.mode = 'cache'; });
   OBS = null;   // une observation de station ne doit jamais rester présentée comme « actuelle » hors connexion
 }
 applyCalib();
@@ -677,7 +678,7 @@ function alertLoc(msg) { const el = $('#locMsg'); if (el) { el.textContent = msg
 async function refreshAll(force = true) {
   if (DeviceStorage.isFrozen() || storeLocked() || window.TWRC_STORAGE_ERROR) { renderStatus(); renderNotice(); return; }
   if (busy) return;
-  if (offlineNow()) { DEMO.on = false; MIDP = {}; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
+  if (offlineNow()) { DEMO.on = false; markOfflineCache(); rebuild(); renderAll(); loadCalendar(); return; }
   busy = true; DEMO.on = false; lastTry = Date.now(); renderStatus();
   const locs = allLocs().map(l => ({ ...l })), gpsStart = gpsWeatherGen, generations = new Map();
   try {
@@ -709,14 +710,25 @@ async function refreshAll(force = true) {
   fetchVigi(); refreshEns(); radarRefresh(); loadCalendar();
 }
 function startDemo(scn) {
-  DEMO = { on: true, scn }; busy = false; MIDP = {};
+  DEMO = { on: true, scn }; busy = false; MIDP = {}; MID_RETRY.clear();
   rebuild(); renderAll();
 }
 function rebuild() {
   M = {}; MIDM = {}; expireLive();
+  // Les prévisions secondaires ont la même horloge et la même règle de
+  // fraîcheur que les lieux du cockpit. Aucune écriture persistante ici.
+  for (const c of Object.values(CALM)) if (c && c.m && c.m.payload) {
+    c.m = makeModel(c.m.payload, c.m.mode === 'demo' ? 'demo' : offlineNow() || Date.now() - c.t > LIVE_MAX_MS ? 'cache' : c.m.mode, c.m.loc);
+    c.m.retrievedAt = c.t;
+  }
+  for (const c of Object.values(LEGM)) if (c && Array.isArray(c.models)) c.models = c.models.map(m => {
+    if (!m || !m.payload) return null;
+    const next = makeModel(m.payload, m.mode === 'demo' ? 'demo' : offlineNow() || Date.now() - c.t > LIVE_MAX_MS ? 'cache' : m.mode, m.loc);
+    next.retrievedAt = c.t; return next;
+  });
   Object.keys(MIDP).forEach(id => {
-    const r = MIDP[id], ttl = r && r.p ? MID_TTL : MID_FAILURE_RETRY;
-    if (!r || !Number.isFinite(r.t) || Date.now() - r.t >= ttl || Date.now() < r.t) { delete MIDP[id]; return; }
+    const r = MIDP[id], ttl = r && r.p ? MID_MAX_MS : MID_FAILURE_RETRY;
+    if (!r || !Number.isFinite(r.t) || Date.now() - r.t >= ttl || Date.now() < r.t) { delete MIDP[id]; MID_RETRY.delete(id); return; }
     try { MIDM[id] = r.p ? makeModel(r.p, r.mode, r.pt) : null; } catch (e) { MIDM[id] = null; }
   });
   allLocs().forEach((l, k) => {
@@ -1144,7 +1156,7 @@ function renderCurrent() {
   const cls = rainClass(c.P);
   const ev = [3, 6, 12].map(k => { const x = hs[n + k]; if (!x) return ''; return `<div><span>Dans ${k} h · ${x.t.slice(11, 16)}</span><b>${f1(x.T)} °C</b><span>${(x.Pl || 0) >= 0.1 ? f1(x.Pl) + ' mm/h' : 'sec'} · vis. ${visTxt(x.vis)}</span></div>`; }).join('');
   const l = allLocs().find(x => x.id === UI.loc);
-  el.innerHTML = `<div class="mod-h"><h2>🌡️ Météo actuelle · ${esc(l ? l.name : '')}</h2><span class="src obs">PRÉVU · modèle météo${m.mode === 'cache' || offlineNow() ? ' · CACHE' : ''}</span></div>
+  el.innerHTML = `<div class="mod-h"><h2>🌡️ Météo actuelle · ${esc(l ? l.name : '')}</h2><span class="src obs">${m.obs ? 'ESTIMÉ · modèle ajusté par station' : 'PRÉVU · modèle météo'}${m.mode === 'cache' || offlineNow() ? ' · CACHE' : ''}</span></div>
   <div class="cur"><div class="bigT num">${c.T == null ? '—' : f1(c.T)}<sup>°C</sup></div>
     <div class="cond"><span class="lbl">${icon(c.code)}${esc(wx(c.code))}</span><span class="sub">Ressentie ${f1(c.Tapp)} °C · min ${f1(day.tmin)} / max ${f1(day.tmax)} °C aujourd’hui</span></div></div>
   <div class="metrics">
@@ -1812,7 +1824,7 @@ const TIPS = [
   { k: 'tyre', t: 'Un pneu sous-gonflé chauffe plus, s’use plus vite sur les épaules et augmente la consommation. Il allonge aussi le freinage sur le mouillé.', src: 'Recommandation des manufacturiers' },
   { k: 'tyre', t: 'Permuter les pneus avant et arrière égalise l’usure, surtout sur une traction où l’avant s’use plus vite. Respecte le sens de roulement si le pneu en a un.', src: 'Recommandation des manufacturiers' }
 ];
-const TIP_CAT = { live: ['⚡', 'En direct'], law: ['⚖️', 'Code de la route'], tyre: ['🛞', 'Pneus'], meteo: ['🌦️', 'Météo'], drive: ['🚗', 'Conduite'], car: ['🔧', 'Voiture'] };
+const TIP_CAT = { live: ['⚡', 'Contexte'], law: ['⚖️', 'Code de la route'], tyre: ['🛞', 'Pneus'], meteo: ['🌦️', 'Météo'], drive: ['🚗', 'Conduite'], car: ['🔧', 'Voiture'] };
 let TIP_OFF = 0;
 function tipCtx() {
   const c = {}; if (!CX) return c;
@@ -1834,7 +1846,7 @@ function liveTips() {
   if (!CX) return [];
   const { m, sum24 } = CX, n = m.nowI, hs = m.hs, out = [], l = curLoc(), ln = l ? l.name.split(' /')[0] : 'ici';
   const nx = hs.slice(n, n + 24).filter(Boolean), at = x => x.t.slice(11, 16);
-  const add = (t, src, lv) => out.push({ k: 'live', t, src: 'Données en direct · ' + src, lv: lv || 0 });
+  const add = (t, src, lv) => out.push({ k: 'live', t, src: (m.mode === 'cache' || offlineNow() ? 'CACHE · ' : '') + src, lv: lv || 0 });
   const today = m.nowStr.slice(0, 10), day = m.days.find(d => d.date === today) || {};
   // pluie imminente (prévision au quart d'heure)
   if (m.nc && m.nc.startIn != null && m.nc.startIn <= 90) add(`${m.nc.snow ? 'Neige' : 'Pluie'} attendue dans ${m.nc.startIn} min à ${ln}. Pense aux feux de croisement et allonge les distances dès les premières gouttes : la route est la plus glissante au début de la pluie.`, 'prévision au quart d’heure', 1);
@@ -2790,13 +2802,23 @@ const PT_TTL = 25 * 60e3;
 async function calModel(ev) {
   if (!calendarSpatial(ev) || !locHasCoords(ev)) return null;
   const id = 'cal' + ev.lat.toFixed(2) + '_' + ev.lon.toFixed(2);
-  if (CALM[id] && Date.now() - CALM[id].t < PT_TTL) return CALM[id].m;
+  const prior = CALM[id];
+  if (prior && (Date.now() - prior.t < PT_TTL || prior.retryAt > Date.now())) return prior.m;
   // Hors ligne : ne pas transformer un défaut de réseau attendu en échec
   // mis en cache pendant dix minutes. L'agenda reste consultable via son cache.
-  if (offlineNow()) return null;
+  if (offlineNow()) return prior && prior.m || null;
   if (CALBUSY.has(id)) return null; CALBUSY.add(id);
-  try { const p = await fetchJSON(`${API}?latitude=${ev.lat}&longitude=${ev.lon}&hourly=${Q_HR}&daily=${Q_DY}&timezone=auto&past_days=1&forecast_days=10`, 12000); const bad = validForecast(p); if (bad) throw new Error(bad); CALM[id] = { t: Date.now(), m: makeModel(p, 'live', { id, lat: ev.lat, lon: ev.lon, name: ev.label || ev.loc }) }; }
-  catch (e) { CALM[id] = { t: Date.now() - PT_TTL + 10 * 60e3, m: null }; }
+  const url = `${API}?latitude=${ev.lat}&longitude=${ev.lon}&hourly=${Q_HR}&daily=${Q_DY}&timezone=auto&past_days=1&forecast_days=10`;
+  try {
+    const p = await fetchJSON(url, 12000), bad = validForecast(p);
+    if (bad || !p.hourly.time.includes(nowIn(p.timezone || 'Europe/Paris').slice(0, 13) + ':00')) throw new Error(bad || 'heure actuelle absente');
+    const oldTime = prior && prior.m && prior.m.payload.current && prior.m.payload.current.time;
+    if (oldTime && p.current && p.current.time < oldTime) throw new Error('prévision agenda ancienne');
+    CALM[id] = { t: WEATHER_REQUESTS.fetchedAt(url) || Date.now(), m: makeModel(p, offlineNow() ? 'cache' : 'live', { id, lat: ev.lat, lon: ev.lon, name: ev.label || ev.loc }) };
+  } catch (e) {
+    CALM[id] = prior && prior.m ? { ...prior, retryAt: Date.now() + 10 * 60e3, m: makeModel(prior.m.payload, 'cache', prior.m.loc) }
+      : { t: Date.now() - PT_TTL + 10 * 60e3, m: null };
+  }
   CALBUSY.delete(id); renderCal(); renderTenue(); return CALM[id].m;
 }
 function calTrip(ev) {
@@ -2820,13 +2842,23 @@ async function fetchLeg(leg) {
   // Hors connexion, conserver les modèles déjà présents ; une requête vouée
   // à échouer empoisonnerait LEGM avec un repli négatif de dix minutes.
   if (offlineNow()) return;
-  const k = legKey(leg); if (LEGBUSY.has(k)) return; LEGBUSY.add(k);
+  const k = legKey(leg), prior = LEGM[k]; if (LEGBUSY.has(k) || prior && prior.retryAt > Date.now()) return; LEGBUSY.add(k);
   const pts = legPoints(leg);
+  const url = `${API}?latitude=${pts.map(p => p.lat).join(',')}&longitude=${pts.map(p => p.lon).join(',')}&hourly=${Q_HR}&timezone=Europe%2FParis&past_days=1&forecast_days=10`;
   try {
-    let js = await fetchJSON(`${API}?latitude=${pts.map(p => p.lat).join(',')}&longitude=${pts.map(p => p.lon).join(',')}&hourly=${Q_HR}&timezone=Europe%2FParis&past_days=1&forecast_days=10`, 15000);
+    let js = await fetchJSON(url, 15000);
     if (!Array.isArray(js)) js = [js];
-    LEGM[k] = { t: Date.now(), models: js.map((p, i) => { try { return validForecast(p) ? null : makeModel(p, 'live', pts[i]); } catch (e) { return null; } }) };
-  } catch (e) { LEGM[k] = { t: Date.now() - PT_TTL + 10 * 60e3, models: null }; }
+    if (js.length !== pts.length || js.some(p => validForecast(p) || !p.hourly.time.includes(nowIn(p.timezone || 'Europe/Paris').slice(0, 13) + ':00'))) throw new Error('prévisions de parcours incomplètes');
+    if (prior && prior.models && js.some((p, i) => {
+      const old = prior.models[i], oldTime = old && old.payload.current && old.payload.current.time;
+      return oldTime && p.current && p.current.time < oldTime;
+    })) throw new Error('prévision de parcours ancienne');
+    LEGM[k] = { t: WEATHER_REQUESTS.fetchedAt(url) || Date.now(), models: js.map((p, i) => makeModel(p, offlineNow() ? 'cache' : 'live', pts[i])) };
+  } catch (e) {
+    LEGM[k] = prior && prior.models ? { ...prior, retryAt: Date.now() + 10 * 60e3,
+      models: prior.models.map(m => m ? makeModel(m.payload, 'cache', m.loc) : null) }
+      : { t: Date.now() - PT_TTL + 10 * 60e3, models: null };
+  }
   LEGBUSY.delete(k); clearTimeout(fetchLeg.t); fetchLeg.t = setTimeout(() => { renderCal(); renderBrf(); renderTenue(); }, 150);
 }
 function legEval(leg) {
@@ -3238,14 +3270,27 @@ function midPoints(LA, LB) {
   return out;
 }
 async function ensureMids(pts) {
-  const todo = pts.filter(p => !MIDM[p.id] && !MIDPENDING.has(p.id)); if (!todo.length) return;
-  todo.forEach(p => MIDPENDING.add(p.id));
+  if (!DEMO.on && offlineNow()) return;
+  const todo = pts.filter(p => !MIDPENDING.has(p.id) &&
+    (!MIDM[p.id] || !MIDP[p.id] || Date.now() - MIDP[p.id].t >= MID_TTL) &&
+    (!MID_RETRY.has(p.id) || Date.now() - MID_RETRY.get(p.id) >= MID_FAILURE_RETRY)); if (!todo.length) return;
+  todo.forEach(p => { MIDPENDING.add(p.id); MID_RETRY.set(p.id, Date.now()); });
   await Promise.allSettled(todo.map(async p => {
     try {
       const pl = DEMO.on ? makeDemoPayload(DEMO.scn, p, 'Europe/Paris', 0.3) : await fetchJSON(urlFor(p));
       const bad = validForecast(pl); if (bad) throw new Error(bad);
-      MIDP[p.id] = { p: pl, mode: DEMO.on ? 'demo' : 'live', pt: p, t: Date.now() }; MIDM[p.id] = makeModel(pl, MIDP[p.id].mode, p); MIDM[p.id].retrievedAt = MIDP[p.id].t;
-    } catch (e) { MIDP[p.id] = { p: null, mode: 'cache', pt: p, t: Date.now() }; MIDM[p.id] = null; }
+      const clockHour = nowIn(pl.timezone || 'Europe/Paris').slice(0, 13) + ':00';
+      if (!pl.hourly.time.includes(clockHour)) throw new Error('heure actuelle absente');
+      const old = MIDP[p.id], oldTime = old && old.p && old.p.current && old.p.current.time, newTime = pl.current && pl.current.time;
+      if (oldTime && newTime && newTime < oldTime) throw new Error('prévision intermédiaire ancienne');
+      const m = makeModel(pl, DEMO.on ? 'demo' : offlineNow() ? 'cache' : 'live', p);
+      const t = DEMO.on ? Date.now() : WEATHER_REQUESTS.fetchedAt(urlFor(p)) || Date.now();
+      MIDP[p.id] = { p: pl, mode: m.mode, pt: p, t }; MIDM[p.id] = m; MIDM[p.id].retrievedAt = t;
+    } catch (e) {
+      const old = MIDP[p.id];
+      if (old && old.p) { old.mode = 'cache'; MIDM[p.id] = makeModel(old.p, 'cache', old.pt); MIDM[p.id].retrievedAt = old.t; }
+      else { MIDP[p.id] = { p: null, mode: 'cache', pt: p, t: Date.now() }; MIDM[p.id] = null; }
+    }
     finally { MIDPENDING.delete(p.id); }
   }));
   softRender();
@@ -3271,8 +3316,7 @@ function tripData(dir = UI.dir, off = null, departure = null) {
   if (!A || !B || A.nowI < 0 || B.nowI < 0 || !locHasCoords(LA) || !locHasCoords(LB)) return { err: `Données ou coordonnées manquantes pour ${!A || !locHasCoords(LA) ? nm(fromId) : nm(toId)}.` };
   const hDep = dep.slice(0, 13) + ':00', hArr = arr.slice(0, 13) + ':00', seq = [];
   const dist = distKm(LA, LB), mids = midPoints(LA, LB);
-  const missing = mids.filter(p => MIDM[p.id] === undefined);
-  if (missing.length) ensureMids(missing);
+  if (mids.length) ensureMids(mids); // garder les modèles anciens tout en renouvelant les points arrivés au TTL
   const chain = [{ m: A, f: 0, name: nm(fromId) }, ...mids.filter(p => MIDM[p.id]).map(p => ({ m: MIDM[p.id], f: p.f, name: p.name })), { m: B, f: 1, name: nm(toId) }];
   for (let t = hDep; t <= hArr; t = addMin(t, 60)) {
     const frac = clamp((tsToDate(t) - tsToDate(dep)) / ((tsToDate(arr) - tsToDate(dep)) || 1), 0, 1);
