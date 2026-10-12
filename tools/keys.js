@@ -5,6 +5,10 @@ const crypto = require('crypto');
 // normalisation identique au relais et à l'app : espaces, guillemets et casse ignorés
 const norm = s => String(s || '').trim().replace(/^["'«\s]+|["'»\s]+$/g, '').toLowerCase();
 function unseal(S, pass) {
+  if (!S || S.v !== 1 || S.kdf !== 'PBKDF2-SHA256' || S.it !== 600000 ||
+      typeof S.s !== 'string' || S.s.length !== 24 || Buffer.from(S.s, 'base64').length !== 16 ||
+      typeof S.i !== 'string' || S.i.length !== 16 || Buffer.from(S.i, 'base64').length !== 12 ||
+      typeof S.c !== 'string' || S.c.length > 64 * 1024 * 1024 || Buffer.from(S.c, 'base64').length < 16) throw new Error('Enveloppe chiffrée invalide');
   const key = crypto.pbkdf2Sync(pass, Buffer.from(S.s, 'base64'), S.it, 32, 'sha256'), b = Buffer.from(S.c, 'base64');
   const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(S.i, 'base64')); d.setAuthTag(b.subarray(b.length - 16));
   return JSON.parse(Buffer.concat([d.update(b.subarray(0, b.length - 16)), d.final()]).toString('utf8'));
