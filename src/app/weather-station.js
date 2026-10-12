@@ -42,7 +42,9 @@ function weatherStationOpen(button) {
   WX_STATION.element = pane; WX_STATION.trigger = button; WX_STATION.scroll = window.scrollY;
   WX_STATION.overflow = document.body.style.overflow; WX_STATION.active = true;
   WX_STATION.rebaseline = true;
-  pane.addEventListener('cancel', event => { event.preventDefault(); weatherStationClose(); });
+  // Let the browser complete Escape's native modal dismissal and focus restoration.
+  // Closing/removing the dialog *inside* cancel can race with WebKit's focus algorithm.
+  // The native close event then performs our UI/scroll cleanup.
   pane.addEventListener('close', () => { if (WX_STATION.active) weatherStationClose(); });
   pane.querySelector('#stationCooldown').addEventListener('change', event => { WX_STATION.cooldownMin = Number(event.target.value); renderWeatherStation(); });
   pane.showModal(); document.body.style.overflow = 'hidden'; renderWeatherStation();
@@ -57,15 +59,10 @@ function weatherStationClose() {
   // Un verrouillage conserve sa propre couche de sécurité ; le mode Station ne la supprime jamais.
   if (document.getElementById('twrcExpiryOverlay')) document.body.style.overflow = 'hidden';
   const trigger = st.trigger && st.trigger.isConnected ? st.trigger : document.querySelector('#secWx [data-act="station-open"]');
-  // WebKit may restore the dialog's former focus *after* close() returns.
-  // Restore it again after the native close task, without defeating a session lock.
-  const restore = () => {
-    if (!st.active && !document.hidden && !LOCKED() && !document.getElementById('twrcExpiryOverlay') && trigger && trigger.isConnected)
-      trigger.focus({ preventScroll: true });
-  };
-  restore();
-  setTimeout(restore, 0);
-  if (!document.hidden) requestAnimationFrame(restore);
+  // For Escape the native close event fires after the browser has dismissed the
+  // modal; programmatic close also uses this path, without an artificial timer.
+  if (!document.hidden && !LOCKED() && !document.getElementById('twrcExpiryOverlay') && trigger && trigger.isConnected)
+    trigger.focus({ preventScroll: true });
   window.scrollTo({ top: st.scroll, behavior: 'instant' });
 }
 function weatherStationSafety() {
