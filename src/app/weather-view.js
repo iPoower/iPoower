@@ -138,6 +138,7 @@ function renderWx() {
     uxFold('wx-road', 'Conditions route', road, r.score + '/100 · ' + ['faible', 'modéré', 'élevé', 'critique'][r.level]) + foot;
   if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
   const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
+  const hourlyTrack = el.querySelector('.wx-hours-track'), hourlyLeft = hourlyTrack ? hourlyTrack.scrollLeft : 0;
   const editor = el.querySelector('#wxOriginEditor'), active = document.activeElement;
   const foldFocus = uxFocusKey(el);
   const editorFocused = editor && editor.contains(active), selection = editorFocused && [active.selectionStart, active.selectionEnd];
@@ -149,6 +150,7 @@ function renderWx() {
     if (editorFocused) { active.focus({ preventScroll: true }); if (typeof selection[0] === 'number') try { active.setSelectionRange(...selection); } catch (e) { /* select */ } }
   }
   const ns = el.querySelector('.wx-strip'); if (ns && left) ns.scrollLeft = left;
+  const nextHours = el.querySelector('.wx-hours-track'); if (nextHours && hourlyLeft) nextHours.scrollLeft = hourlyLeft;
 }
 /* ---------- moteur de preuves météo v2 (weatherEvidenceV2) : actif par défaut ---------- */
 // Réglage S.flags.weatherEvidenceV2 : 'on' (défaut) ; 'shadow' calcule, journalise et montre la carte « Preuves » marquée expérimentale
