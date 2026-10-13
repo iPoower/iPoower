@@ -36,7 +36,9 @@ function appChooseDestination(placeId, source = 'user') {
     const places = placeList(); if (placeId != null && !places.some(p => p.id === placeId)) return;
     const at = Date.now(), active = APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.activeTrip;
     const current = placeNow().place || locById(USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.placeId);
-    const candidate = active || APP_CONTEXT.trips.find(t => t.dep.slice(0, 10) === placeToday() && !liveDoneHas(t, APP_CONTEXT.trips)
+    // Un choix explicite peut rétablir une prévision écartée par le conflit Agenda.
+    const candidates = (APP_CONTEXT.planned && APP_CONTEXT.planned.length ? APP_CONTEXT.planned : APP_CONTEXT.trips).slice().sort((a, b) => a.dep.localeCompare(b.dep));
+    const candidate = active || candidates.find(t => t.dep.slice(0, 10) === placeToday() && !liveDoneHas(t, candidates)
       && (!current || (appTripPlace(t, 'from') || {}).id === current.id));
     const prior = TRIPSTART, dep = candidate && (candidate.planDep || candidate.dep) || localTs(at);
     if (LIVE.key) liveReset(); tripPreviewReset(); CANCELROUTEGEN++; CANCELROUTES.clear();

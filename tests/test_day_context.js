@@ -162,6 +162,11 @@ check('domicile explicitement choisi gagne sur le rendez-vous', () => {
   const { a, work, cal } = agendaFixture(); a.USER_STORE.state.dayContext.nextDestination = choice('home');
   assert.equal(a.appAgendaPriority([work, cal], '2026-10-06T17:30').length, 2); assert.equal(a.APP_CONTEXT.agendaConflict, null);
 });
+check('choisir domicile après priorité Agenda restaure la vraie clé du retour dans le planning complet', () => {
+  const { a, work, cal } = agendaFixture(); a.APP_CONTEXT.trips = [cal];
+  a.appChooseDestination('home');
+  assert.equal(a.appDay().nextDestination.tripKey, work.key); assert.equal(a.appDay().nextDestination.dep, work.dep);
+});
 check('trajet déjà commencé : ne jamais le remplacer par une prévision Agenda', () => {
   const { a, work, cal } = agendaFixture(); a.TRIPSTART = { key: work.key }; a.LIVE.phase = 'active';
   assert.equal(a.appChooseAgendaDestination(cal.key), false);
