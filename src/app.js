@@ -2488,9 +2488,13 @@ function appBuildTrips() {
     const r = appWorkTripData(TRIPSTART.trip.dir, dayDiff(today, TRIPSTART.trip.dep.slice(0, 10)));
     if (r && !r.err) workT(r, false);
   }
+  T = appSyncAgendaSelection(T);
   T = appLocalTrips(T, now);
   APP_CONTEXT.planned = T.slice();   // cibles des actions explicites, uniquement en mémoire
   T = returnHomeApply(T, now);   // action explicite : le retour choisi devient le prochain départ, sans déclarer la voiture partie
+  T = appAgendaPriority(T, now);
+  T = DayContext.prioritize(T, appDay(), Date.now());
+  if (LIVE.key && LIVE.phase !== 'active' && !T.some(t => t.key === LIVE.key)) liveReset();
   T = liveApply(T, now);   // trajet vivant (position GPS réelle) : un seul, en mémoire uniquement
   T = tripPreviewApply(T, now);
   T.sort((a, b) => a.dep < b.dep ? -1 : a.dep > b.dep ? 1 : a.src === 'work' ? -1 : 1);
@@ -2532,11 +2536,11 @@ function renderBrfCore() {
   if (!main) {   // plus aucun trajet aujourd'hui : seulement des lignes discrètes vers la suite
     el.className = 'mod brf lv0';
     const msg = !CAL && !CALDONE && lsGet('twrc.key') ? '⏳ Lecture de l’agenda…' : `💤 ${appWorkOn(today) && wk && wk.dep.slice(0, 10) > today ? 'Plus de trajet prévu aujourd’hui' : 'Aucun trajet prévu aujourd’hui'}`;
-    el.innerHTML = `${liveUndoHtml()}${tripCancelUndoHtml()}<div class="brf-h"><span class="brf-k">${msg}</span></div>${tail}`;
+    el.innerHTML = `${liveUndoHtml()}${tripCancelUndoHtml()}<div class="brf-h"><span class="brf-k">${APP_CONTEXT.agendaSelectionUnavailable ? '⏳ Prochain départ en attente de vérification' : msg}</span></div>${appAgendaConflictHtml()}${tail}`;
     return;
   }
   el.className = 'mod brf lv' + (main.res ? main.res[0].w.level : 0);
-  el.innerHTML = liveUndoHtml() + tripCancelUndoHtml() + briefCard(main, dayLbl) + tail;
+  el.innerHTML = liveUndoHtml() + tripCancelUndoHtml() + appAgendaConflictHtml() + briefCard(main, dayLbl) + tail;
   if (main.res && !(LOCKED() && !lsGet('twrc.nocode'))) tripMapMount(main);   // pas de carte (ni d'appel externe) avant le déverrouillage
 }
 // « arrivée probable » : relevé frais et précis à ≤ 1,5 km de la destination, sans arrivée automatique (au-delà de 300 m, ou arrivée annulée)

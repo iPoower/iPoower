@@ -106,6 +106,126 @@ function commuteFixture(place, clock) {
   a.placeNow = () => ({ source: 'manual', confirmed: { at }, place });
   return a;
 }
+function agendaFixture() {
+  const a = commuteFixture(places[1], '2026-10-06T17:30');
+  a.S.locs = places.slice(0, 2); a.S.customs = [places[2]];
+  a.APP_CONTEXT = { planned: [], trips: [], snapshot: null };
+  a.USER_STORE.state.done = {}; a.USER_STORE.state.lastDeparture = null;
+  a.PLACE = { conf: { placeId: 'work' }, extra: null }; a.RETURNHOME = null;
+  a.CANCELROUTEGEN = 0; a.CANCELROUTES = new Map();
+  a.liveReset = () => { a.LIVE.key = null; }; a.tripPreviewReset = () => {};
+  a.locHasCoords = p => !!p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
+  a.distKm = (p, q) => Math.hypot(p.lat - q.lat, p.lon - q.lon) * 100;
+  a.appTripPlace = (t, end) => t.src === 'work' ? t.td[end === 'from' ? 'LA' : 'LB'] : t.l[end];
+  a.liveDoneHas = t => !!a.USER_STORE.state.done[t.key];
+  a.TripCancel = { eventId: e => 'cal-' + e.id, identifiable: (es, e) => es.filter(x => x.id === e.id).length === 1 };
+  a.addMin = (s, m) => new Date(Date.parse(s + ':00Z') + m * 60000).toISOString().slice(0, 16);
+  a.tripCancelRouteLeg = (_, l) => l; a.legEval = () => ({});
+  const e = { id: 'a'.repeat(32), s: '2026-10-06T19:00', e: '2026-10-06T20:00', t: 'Rendez-vous fictif' };
+  const l = { k: 'go', from: places[1], to: places[2], dep: '2026-10-06T18:35', arr: '2026-10-06T18:55' };
+  const cal = { src: 'cal', key: 'appointment-real-key', e, l, planL: l, dep: l.dep, arr: l.arr, from: 'Travail test', to: 'Lieu B' };
+  const work = { src: 'work', key: 'automatic-return', dep: '2026-10-06T18:00', arr: '2026-10-06T18:40', td: { dir: 'ret', LA: places[1], LB: places[0] } };
+  a.CAL = { events: [e] }; a.calendarCancelled = () => false;
+  a.APP_CONTEXT.planned = a.APP_CONTEXT.trips = [work, cal];
+  return { a, work, cal };
+}
+check('rendez-vous sélectionné : vraie clé et heure, jamais celles du commute', () => {
+  const { a, cal } = agendaFixture();
+  assert(a.appChooseAgendaDestination(cal.key));
+  const n = a.appDay().nextDestination;
+  assert.equal(n.tripKey, cal.key); assert.equal(n.dep, cal.dep);
+  assert.equal(n.calendarEventId, a.TripCancel.eventId(cal.e));
+  assert.equal(n.destinationPoint.lat, cal.l.to.lat);
+});
+check('agenda retiré : aucun trajet local fabriqué avec son ancienne clé', () => {
+  const { a, cal } = agendaFixture(); a.appChooseAgendaDestination(cal.key);
+  assert.equal(a.appLocalTrips([], '2026-10-06T17:30').length, 0);
+});
+check('adresse exacte : le point de navigation gagne sur les coordonnées routières arrondies', () => {
+  const { a, cal } = agendaFixture();
+  cal.l.to = { ...places[2], lat: 48.812, lon: 2.456 };
+  cal.l.navTo = { ...places[2], lat: 48.81234, lon: 2.45678 };
+  a.appChooseAgendaDestination(cal.key); const p = a.appDay().nextDestination.destinationPoint;
+  assert.equal(p.lat, 48.81234); assert.equal(p.lon, 2.45678);
+});
+check('deux destinations Agenda dynamiques gardent des IDs distincts et ne remplacent pas le lieu confirmé', () => {
+  const { a, cal } = agendaFixture(); cal.l.to = { lat: 48.71234, lon: 2.55678, name: 'Adresse fictive' };
+  a.PLACE.extra = { id: 'agenda-next', lat: 48.7, lon: 2.5, name: 'Ancien lieu confirmé', at: now };
+  const before = JSON.stringify(a.PLACE.extra), first = a.appAgendaTarget(cal), second = a.appAgendaTarget({ ...cal, e: { ...cal.e, id: 'b'.repeat(32) } });
+  assert.match(first.id, /^agenda-cal-[0-9a-f]{32}$/); assert.notEqual(first.id, second.id);
+  a.appChooseAgendaDestination(cal.key); assert.equal(JSON.stringify(a.PLACE.extra), before);
+});
+check('choisir une destination dynamique comme trajet explicite conserve son point sans lieu fantôme', () => {
+  const { a, cal } = agendaFixture(); cal.l.to = { lat: 48.71234, lon: 2.55678, name: 'Adresse fictive' };
+  const list = a.placeList; a.placeList = () => [...list(), ...[a.USER_STORE.state.dayContext.nextDestination?.destinationPoint].filter(Boolean)];
+  a.appChooseAgendaDestination(cal.key); const point = a.appDay().nextDestination.destinationPoint;
+  a.appChooseDestination(point.id); assert.equal(a.appDay().nextDestination.destinationPoint.lat, point.lat);
+  assert.equal(a.appDay().nextDestination.placeId, point.id);
+});
+check('après le travail : rendez-vous depuis Travail prioritaire, conflit détecté sans écrire une annulation', () => {
+  const { a, work, cal } = agendaFixture(); a.appDay(); const before = JSON.stringify(a.USER_STORE.state);
+  const T = a.appAgendaPriority([work, cal], '2026-10-06T17:30');
+  assert.deepEqual(Array.from(T, t => t.key), [cal.key]);
+  assert.equal(a.APP_CONTEXT.agendaConflict.workKey, work.key);
+  assert.equal(JSON.stringify(a.USER_STORE.state), before);
+});
+check('rendez-vous avant la fin du travail : retour automatique incompatible pendant le rendez-vous retiré', () => {
+  const { a, work, cal } = agendaFixture(); cal.dep = '2026-10-06T17:45'; cal.arr = '2026-10-06T17:55';
+  assert.deepEqual(Array.from(a.appAgendaPriority([work, cal], '2026-10-06T17:30'), t => t.key), [cal.key]);
+});
+check('domicile explicitement choisi gagne sur le rendez-vous', () => {
+  const { a, work, cal } = agendaFixture(); a.USER_STORE.state.dayContext.nextDestination = choice('home');
+  assert.equal(a.appAgendaPriority([work, cal], '2026-10-06T17:30').length, 2); assert.equal(a.APP_CONTEXT.agendaConflict, null);
+});
+check('choisir domicile après priorité Agenda restaure la vraie clé du retour dans le planning complet', () => {
+  const { a, work, cal } = agendaFixture(); a.APP_CONTEXT.trips = [cal];
+  a.appChooseDestination('home');
+  assert.equal(a.appDay().nextDestination.tripKey, work.key); assert.equal(a.appDay().nextDestination.dep, work.dep);
+});
+check('changer la destination d’un trajet manuel conserve sa clé et son heure explicitement choisies', () => {
+  const { a, work, cal } = agendaFixture(), manual = { src: 'local', key: 'manual-chosen', dep: '2026-10-06T20:30', l: { from: places[1], to: places[2] } };
+  a.USER_STORE.state.dayContext.nextDestination = { ...choice('b'), source: 'manual', tripKey: manual.key, dep: manual.dep };
+  a.APP_CONTEXT.planned = [work, cal, manual]; a.APP_CONTEXT.trips = [manual];
+  a.appChooseDestination('home'); assert.equal(a.appDay().nextDestination.tripKey, manual.key); assert.equal(a.appDay().nextDestination.dep, manual.dep);
+});
+check('trajet déjà commencé : ne jamais le remplacer par une prévision Agenda', () => {
+  const { a, work, cal } = agendaFixture(); a.TRIPSTART = { key: work.key }; a.LIVE.phase = 'active';
+  assert.equal(a.appChooseAgendaDestination(cal.key), false);
+  assert.equal(a.appAgendaPriority([work, cal], '2026-10-06T17:30').length, 2);
+});
+check('autre origine, jour futur ou rendez-vous terminé : pas de suppression du retour travail', () => {
+  for (const change of [t => { t.l.from = places[0]; }, t => { t.dep = '2026-10-07T18:35'; }, t => { t.arr = '2026-10-06T17:00'; }]) {
+    const { a, work, cal } = agendaFixture(); change(cal);
+    assert.equal(a.appAgendaPriority([work, cal], '2026-10-06T17:30').length, 2);
+  }
+});
+check('annulation/absence connue : sélection abandonnée, commute disponible, jamais de fantôme', () => {
+  const { a, work, cal } = agendaFixture(); a.appChooseAgendaDestination(cal.key); a.CAL.events = [];
+  assert.equal(a.appSyncAgendaSelection([work])[0], work); assert.equal(a.appDay().nextDestination, null);
+  assert.equal(a.appLocalTrips([work], '2026-10-06T17:30').length, 1);
+});
+check('indisponibilité temporaire du calendrier : choix conservé et aucun autre départ autorisé', () => {
+  const { a, work, cal } = agendaFixture(); a.appChooseAgendaDestination(cal.key); a.CAL = null;
+  assert.equal(a.appSyncAgendaSelection([work]).length, 0); assert.equal(a.appDay().nextDestination.tripKey, cal.key);
+});
+check('nouvelle destination et nouvelle route : même occurrence, clé/heure/point actualisés', () => {
+  const { a, work, cal } = agendaFixture(); a.appChooseAgendaDestination(cal.key);
+  const original = JSON.stringify(cal.e), changed = { ...cal, key: 'new-route-key', dep: '2026-10-06T18:25',
+    planL: { ...cal.l, to: { ...places[2], lat: 48.7, lon: 2.6 } } };
+  a.appSyncAgendaSelection([work, changed]); const n = a.appDay().nextDestination;
+  assert.equal(n.tripKey, changed.key); assert.equal(n.dep, changed.dep); assert.equal(n.destinationPoint.lat, 48.7);
+  assert.equal(JSON.stringify(cal.e), original);
+  assert.equal(D.returnLeg(changed.planL, changed.key, a.USER_STORE.state.dayContext, now, places), changed.planL);
+});
+check('deux rendez-vous au même lieu : sélection de l’occurrence exacte, pas de correspondance par proximité', () => {
+  const { a, work, cal } = agendaFixture(), second = { ...cal, key: 'second-key', e: { ...cal.e, id: 'b'.repeat(32) }, dep: '2026-10-06T20:30' };
+  a.CAL.events.push(second.e); a.APP_CONTEXT.planned = [work, cal, second]; a.appChooseAgendaDestination(second.key);
+  a.appSyncAgendaSelection([work, cal, second]); assert.equal(a.appDay().nextDestination.tripKey, second.key);
+});
+check('occurrences ambiguës : refus sûr sans remplacer le choix utilisateur', () => {
+  const { a, cal } = agendaFixture(); a.CAL.events.push({ ...cal.e });
+  assert.equal(a.appChooseAgendaDestination(cal.key), false); assert.equal(a.appDay().nextDestination, null);
+});
 check('domicile confirmé avant l’aller : le retour futur part toujours du travail', () => {
   const a = commuteFixture(places[0], '2026-10-06T06:30');
   assert.equal(a.appCommuteEndpoints('go', '2026-10-06', 'aller').from.id, 'home');

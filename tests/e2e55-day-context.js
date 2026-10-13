@@ -2,6 +2,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs'), crypto = require('node:crypto');
 const { session, BR, errors, U } = require('./lib/context-session');
 const { unlockIfLocked } = require('./lib/unlock');
 const { revealPlaceControls } = require('./lib/place-controls');
@@ -50,12 +51,153 @@ async function views(p, expected) {
     }
   }
 }
+function sealCalendar(data) {
+  const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12), it = 600000;
+  const key = crypto.pbkdf2Sync(fs.readFileSync('.passphrase', 'utf8').trim().toLowerCase(), salt, it, 32, 'sha256');
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const bytes = Buffer.concat([cipher.update(JSON.stringify(data)), cipher.final(), cipher.getAuthTag()]);
+  return { v: 1, kdf: 'PBKDF2-SHA256', s: salt.toString('base64'), i: iv.toString('base64'), it, c: bytes.toString('base64') };
+}
+async function agendaRegression(browser, dev) {
+  scope = { device: dev, phase: 'conflit Agenda après travail' };
+  const s = await session(browser, { at: '2026-10-13T15:57:00+02:00', dev }), p = s.p;
+  let sealed, revision = s.T0;
+  await p.route('**/calendar.sealed.json*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(sealed) }));
+  await p.route('https://router.project-osrm.org/**', r => {
+    const m = /driving\/([^;]+);([^?]+)/.exec(r.request().url()), a = m[1].split(',').map(Number), b = m[2].split(',').map(Number);
+    const coords = Array.from({ length: 12 }, (_, i) => [a[0] + (b[0] - a[0]) * i / 11, a[1] + (b[1] - a[1]) * i / 11]);
+    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ routes: [{ distance: 12000, duration: 1080,
+      geometry: { coordinates: coords }, legs: [{ annotation: { duration: coords.slice(1).map(() => 1080 / 11) } }] }] }) });
+  });
+  const payload = await p.evaluate(() => {
+    liveReset(); tripPreviewReset(); S.gpsAuto = 0; GPS = null; FIX = FIXPREV = null; TRIPSTART = null;
+    S.work = { from: 'home', to: 'work', dep: '06:30', ret: '16:00', days: [1, 2, 3, 4, 5], durMin: 40 };
+    S.customs = []; USER_STORE.state.dayContext.nextDestination = null; USER_STORE.state.lastDeparture = null;
+    const home = { ...S.locs[0], city: 'Domicile test', label: 'Domicile test' }, work = { ...S.locs[1], city: 'Travail test', label: 'Travail test' };
+    const target = { lat: 48.96, lon: 2.4, city: 'Alpha fictif', label: 'Alpha fictif' };
+    const leg = (k, from, to, dep, arr, min) => ({ k, from, to, dep: '2026-10-13T' + dep, arr: '2026-10-13T' + arr,
+      km: 12, min, routed: true, pts: [{ f: .5, lat: (from.lat + to.lat) / 2, lon: (from.lon + to.lon) / 2 }], g: [[from.lat, from.lon], [to.lat, to.lon]] });
+    saveSettings(); CAL = { events: [] }; CALDONE = true; renderAll();
+    return { events: [{ id: 'appointment-alpha-fixture', t: 'Rendez-vous Alpha fictif', s: '2026-10-13T17:15', e: '2026-10-13T17:45',
+      ...target, loc: 'Adresse Alpha fictive', legs: [leg('go', work, target, '16:47', '17:05', 18), leg('ret', target, home, '17:55', '18:13', 18)] }] };
+  });
+  const publish = async events => {
+    sealed = sealCalendar({ events, updated: new Date(++revision).toISOString() });
+    await p.evaluate(async () => { await loadCalendar(); renderAll(); }); await s.settle(10);
+  };
+  await publish(payload.events); await tap(p, '#placeBar [data-act=place-confirm][data-place=work]'); await s.settle(8);
+  const originalSettings = await p.evaluate(() => JSON.stringify(S)), originalEvent = JSON.stringify(payload.events[0]);
+  const plannedKey = await p.evaluate(() => APP_CONTEXT.planned.find(t => t.e?.id === 'appointment-alpha-fixture' && t.l.k === 'go').key);
+  await check(dev + ' · 16:00 retour automatique / 16:47 Agenda depuis travail : vraie occurrence prioritaire', async () => {
+    const x = await read(p); assert.equal(x.next.src, 'cal'); assert.equal(x.next.key, plannedKey);
+    assert.equal(await p.evaluate(() => APP_CONTEXT.snapshot.departureTime), '2026-10-13T16:47');
+    assert(await p.evaluate(() => !!APP_CONTEXT.agendaConflict && !APP_CONTEXT.trips.some(t => t.src === 'work' && t.dep.slice(0, 10) === placeToday() && t.td.dir === 'ret')));
+    assert.match(await p.locator('#secWx #wxNextTrip').innerText(), /retour automatique de 16:00.*incompatible/);
+    assert.equal(x.dayContext.nextDestination, null); // priorité dérivée, pas un choix utilisateur inventé
+  });
+  await check(dev + ' · retour explicite au domicile respecte le choix utilisateur', async () => {
+    await destination(p, 'home'); assert.equal((await read(p)).next.src, 'work');
+    assert.equal(await p.evaluate(() => APP_CONTEXT.agendaConflict), null);
+  });
+  await tap(p, '#dayContext [data-act=day-destination][data-agenda-key]'); await s.settle(8);
+  const shared = async key => {
+    for (const view of ['meteo', 'pneus', 'trajet', 'analyse']) {
+      await tap(p, '#viewSeg [data-act=view][data-v=' + view + ']');
+      const x = await p.evaluate(() => ({ key: APP_CONTEXT.snapshot.nextTrip?.key, wx: wxTrips(CX.m)[0]?.id,
+        label: labInput(labCar()).trip?.label, firstLabel: wxTrips(CX.m)[0]?.label,
+        cal: APP_CONTEXT.snapshot.agendaEvent?.id, summary: document.querySelector('#secTripSummary')?.innerText }));
+      assert.equal(x.key, key, view); assert.equal(x.wx, key, view); assert.equal(x.cal, 'appointment-alpha-fixture', view);
+      assert.equal(x.label, x.firstLabel, view); assert(x.label, 'Analyse utilise bien la météo du rendez-vous');
+      if (view === 'trajet') assert.match(x.summary, /Alpha fictif|Beta fictif/);
+    }
+  };
+  await check(dev + ' · sélection exacte propagée dans Météo, Pneus, Trajet et Analyse', () => shared(plannedKey));
+  await check(dev + ' · sélection n’altère ni réglages, ni agenda, ni lieu actuel', async () => {
+    const x = await read(p); assert.equal(x.place, 'work'); assert.equal(x.dayContext.nextDestination.tripKey, plannedKey);
+    assert.equal(x.dayContext.nextDestination.dep, '2026-10-13T16:47');
+    assert.equal(await p.evaluate(() => JSON.stringify(S)), originalSettings);
+    assert.equal(await p.evaluate(() => JSON.stringify(CAL.events[0])), originalEvent);
+  });
+  await p.evaluate(async () => { await window.TWRC_VAULT.flush(); }); await p.reload(); await s.settle(12);
+  await check(dev + ' · reload conserve occurrence/heure dans le coffre, rien en clair', async () => {
+    const x = await read(p); assert.equal(x.next.key, plannedKey); assert.equal(x.dayContext.nextDestination.dep, '2026-10-13T16:47');
+    assert.deepEqual(await p.evaluate(() => [...Array(window.TWRC_RAW_STORAGE.length)].map((_, i) => window.TWRC_RAW_STORAGE.key(i))
+      .filter(k => /Alpha fictif|Adresse Alpha|appointment-alpha-fixture/.test(window.TWRC_RAW_STORAGE.getItem(k)))), []);
+  });
+  await p.evaluate(() => { window.__savedAgenda = CAL; CAL = null; renderAll(); });
+  await check(dev + ' · calendrier indisponible : aucune substitution par commute', async () => {
+    assert.equal((await read(p)).next, null); assert.equal((await read(p)).dayContext.nextDestination.tripKey, plannedKey);
+    await tap(p, '#viewSeg [data-act=view][data-v=meteo]'); assert.match(await p.locator('#wxNextTrip').innerText(), /Agenda indisponible.*attente de vérification/);
+  });
+  await p.evaluate(() => { CAL = window.__savedAgenda; renderAll(); }); await s.settle(5);
+  const changed = structuredClone(payload.events[0]);
+  Object.assign(changed, { lat: 48.98, lon: 2.46, city: 'Beta fictif', label: 'Beta fictif', loc: 'Adresse Beta fictive' });
+  const target = { lat: changed.lat, lon: changed.lon, city: changed.city, label: changed.label };
+  changed.legs[0].to = target; changed.legs[0].dep = '2026-10-13T16:42'; changed.legs[0].min = 23;
+  changed.legs[1].from = target; changed.legs.forEach(l => { l.g = [[l.from.lat, l.from.lon], [l.to.lat, l.to.lon]]; l.pts = [{ f: .5, lat: (l.from.lat + l.to.lat) / 2, lon: (l.from.lon + l.to.lon) / 2 }]; });
+  await publish([changed]);
+  const changedKey = (await read(p)).next.key;
+  await check(dev + ' · adresse/horaire changés : vraie nouvelle route, même occurrence sélectionnée', async () => {
+    const x = await read(p); assert.equal(x.dayContext.nextDestination.destinationPoint.lat, changed.lat);
+    assert.equal(x.dayContext.nextDestination.dep, '2026-10-13T16:42'); assert.notEqual(changedKey, plannedKey);
+    assert.equal(await p.evaluate(() => JSON.stringify(CAL.events[0])), JSON.stringify(changed)); await shared(changedKey);
+  });
+  await tap(p, '#viewSeg [data-act=view][data-v=pneus]');
+  p.once('dialog', d => d.accept()); await p.evaluate(key => tripCancelStart(key), changedKey); await s.settle(5);
+  await check(dev + ' · annulation locale enlève la sélection et le trajet, sans toucher Google Agenda', async () => {
+    const x = await read(p); assert.equal(x.dayContext.nextDestination, null); assert.equal(x.next.src, 'work');
+    assert(await p.evaluate(k => !APP_CONTEXT.trips.some(t => t.key === k), changedKey));
+    assert.equal(await p.evaluate(() => JSON.stringify(CAL.events[0])), JSON.stringify(changed));
+  });
+  await p.evaluate(() => tripCancelUndo(TripCancel.eventId(CAL.events[0]))); await s.settle(6);
+  await openDay(p); if (!(await p.locator('#dayContext .day-destination').getAttribute('open') != null)) await tap(p, '#dayContext .day-destination > summary');
+  await tap(p, '#dayContext [data-act=day-destination][data-agenda-key]');
+  await publish([]);
+  await check(dev + ' · événement supprimé au rafraîchissement : aucun trajet local fantôme', async () => {
+    assert.equal((await read(p)).dayContext.nextDestination, null);
+    assert(await p.evaluate(() => !APP_CONTEXT.trips.some(t => t.src === 'local' || t.src === 'cal')));
+  });
+  // Précondition : un ancien rendez-vous est le lieu réellement confirmé, avec l'ancien ID dynamique.
+  await p.evaluate(() => {
+    const at = Date.now(); PLACE.extra = { id: 'agenda-next', name: 'Ancien lieu confirmé fictif', lat: 48.75, lon: 2.3, at };
+    PLACE.conf = { placeId: PLACE.extra.id, at, how: 'manual', day: placeToday() };
+    USER_STORE.state.dayContext.lastConfirmedPlace = { placeId: PLACE.extra.id, at, source: 'manual' }; renderAll();
+  });
+  await publish(payload.events); await openDay(p);
+  if (!(await p.locator('#dayContext .day-destination').getAttribute('open') != null)) await tap(p, '#dayContext .day-destination > summary');
+  await tap(p, '#dayContext [data-agenda-key]'); await s.settle(6);
+  await check(dev + ' · nouveau rendez-vous ne remplace jamais le lieu réellement confirmé', async () => {
+    const x = await read(p); assert.equal(x.place, 'agenda-next'); assert.equal(x.origin, 'agenda-next');
+    assert.notEqual(x.destination, x.place); assert.equal(await p.evaluate(() => placeNow().place.lat), 48.75);
+    assert.equal(await p.evaluate(() => PLACE.extra.name), 'Ancien lieu confirmé fictif');
+  });
+  await p.clock.setSystemTime(new Date('2026-10-14T06:00:00+02:00'));
+  const early = structuredClone(payload.events[0]); early.id = 'early-fixture'; early.s = '2026-10-14T06:25'; early.e = '2026-10-14T06:28'; early.mode = 'maison';
+  const home = payload.events[0].legs[1].to; early.legs = [{ ...early.legs[0], from: home, dep: '2026-10-14T06:02', arr: '2026-10-14T06:20' }];
+  early.legs[0].g = [[home.lat, home.lon], [early.lat, early.lon]];
+  early.legs[0].pts = [{ f: .5, lat: (home.lat + early.lat) / 2, lon: (home.lon + early.lon) / 2 }];
+  await publish([early]); await tap(p, '#placeBar [data-act=place-confirm][data-place=home]');
+  await openDay(p); if (!(await p.locator('#dayContext .day-destination').getAttribute('open') != null)) await tap(p, '#dayContext .day-destination > summary');
+  const earlyKey = await p.locator('#dayContext [data-agenda-key]').getAttribute('data-agenda-key');
+  await tap(p, '#dayContext [data-agenda-key]'); await s.settle(5);
+  await check(dev + ' · rendez-vous avant travail : vraie clé, 06:02 et domicile conservés', async () => {
+    const x = await read(p); assert.equal(x.next.key, earlyKey); assert.equal(x.dayContext.nextDestination.dep, '2026-10-14T06:02');
+    assert.equal(x.next.from, 'Domicile test'); assert.equal(await p.evaluate(() => APP_CONTEXT.agendaConflict), null);
+  });
+  await s.c.close();
+}
 (async () => {
   const b = await BR.launch();
   try {
     for (const dev of ['iphone', 'pc']) for (const profile of ['configured', 'clean']) {
       scope = { device: dev, profile, phase: 'préconditions' };
       const s = await session(b, { at: '2026-10-06T17:00:00+02:00', dev, unlock: profile === 'configured' }); let p = s.p;
+      await p.route('https://router.project-osrm.org/**', r => {
+        const m = /driving\/([^;]+);([^?]+)/.exec(r.request().url()), a = m[1].split(',').map(Number), b = m[2].split(',').map(Number);
+        const coords = Array.from({ length: 12 }, (_, i) => [a[0] + (b[0] - a[0]) * i / 11, a[1] + (b[1] - a[1]) * i / 11]);
+        return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ routes: [{ distance: 18000, duration: 2160,
+          geometry: { coordinates: coords }, legs: [{ annotation: { duration: coords.slice(1).map(() => 2160 / 11) } }] }] }) });
+      });
       if (profile === 'clean') await tap(p, '[data-act=nocode]');
       // Préconditions techniques uniquement : aucune action utilisateur simulée par evaluate.
       await p.evaluate(() => {
@@ -83,11 +225,14 @@ async function views(p, expected) {
       await check(dev + '/' + profile + ' · rendez-vous agenda proposé dans Destination suivante', async () => {
         assert.equal(await agendaButton.count(), 1); assert.match(await agendaButton.innerText(), /17:40.*Piano test.*Albert test/);
       });
+      const chosenKey = await agendaButton.getAttribute('data-agenda-key');
       await tap(p, '#dayContext [data-act=day-destination][data-agenda-key]');
       await s.settle();
       await check(dev + '/' + profile + ' · Travail → Piano direct remplace le retour Maison', async () => {
-        const x = await read(p); assert.equal(x.destination, 'agenda-next'); assert.equal(x.dayContext.nextDestination.originId, 'work');
-        assert.equal(x.next.from, 'Travail test'); assert.match(x.next.to, /Piano test.*Albert test/); assert.doesNotMatch(x.next.to, /Domicile|Maison/);
+        const x = await read(p); assert.match(x.destination, /^agenda-cal-[0-9a-f]{32}$/); assert.equal(x.dayContext.nextDestination.originId, 'work');
+        assert.equal(x.next.key, chosenKey); assert.equal(x.next.src, 'cal');
+        assert.equal(x.dayContext.nextDestination.dep, '2026-10-06T17:40');
+        assert.equal(x.next.from, 'Travail test'); assert.equal(x.next.to, 'Albert test'); assert.doesNotMatch(x.next.to, /Domicile|Maison/);
         assert.match(await p.locator('#dayContext .day-destination > summary').innerText(), /Piano test.*Albert test.*CONFIRMÉ/);
       });
       await p.evaluate(() => { CAL = { events: [], updated: new Date(Date.now()).toISOString(), c: CAL && CAL.c }; CALDONE = true; renderAll(); });
@@ -186,6 +331,7 @@ async function views(p, expected) {
       await check('Suppression voiture active : ID nettoyé et fallback conservé', async () => { assert.equal((await read(p)).car, null); assert.equal(await p.evaluate(() => appTripCars()[0].id), 'carA'); });
       await s.c.close();
     }
+    for (const dev of ['iphone', 'pc']) await agendaRegression(b, dev);
     await check('aucune erreur JavaScript', async () => assert.deepEqual(errors, []));
   } finally { await b.close(); }
   console.log(`${n}/${n} scénarios OK · erreurs JS : aucune`);

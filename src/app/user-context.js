@@ -20,11 +20,13 @@ function appReopenReturn(placeId, at) {
 }
 function appTripPlace(t, end, origin = null) {
   if (!t) return null;
+  const n = USER_STORE.state.dayContext && USER_STORE.state.dayContext.nextDestination;
+  if (end === 'to' && t.src === 'cal' && n && n.source === 'calendar' && n.tripKey === t.key && n.destinationPoint) return n.destinationPoint;
   const start = end === 'from' && (origin || TRIPSTART && TRIPSTART.key === t.key && TRIPSTART.o || t.l && t.l.from);
   const p = start || (t.src === 'work' ? t.td && t.td[end === 'to' ? 'LB' : 'LA'] : (t.l || t.planL) && (t.l || t.planL)[end]);
   if (!p || !locHasCoords(p)) return null;
   const places = placeList().filter(locHasCoords);
-  const known = places.find(l => p.id && l.id === p.id) || places.filter(l => distKm(l, p) <= 1.5).sort((a, b) => distKm(a, p) - distKm(b, p))[0];
+  const known = places.find(l => p.id && l.id === p.id) || places.filter(l => distKm(l, p) <= (t.src === 'cal' && end === 'to' ? 0.001 : 1.5)).sort((a, b) => distKm(a, p) - distKm(b, p))[0];
   return known || { id: end === 'from' ? 'gps' : 'arrival', name: end === 'from' && start ? 'Ma position au départ' : t[end] || p.name || p.city || p.label || 'Destination', lat: p.lat, lon: p.lon };
 }
 function appArrival(t, how, at = Date.now()) {
