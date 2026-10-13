@@ -1,0 +1,101 @@
+name: Forteresse II · audit consolidé (PR uniquement)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/fortress-ii-*.md'
+      - 'tests/fortress-*.js'
+      - '.github/workflows/fortress-ii-consolidated.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source-and-offline:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7 SHA
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0 SHA
+        with:
+          node-version: 24
+      - name: Check syntax for all eight synthetic test scripts
+        run: |
+          for file in \
+            tests/fortress-origin-fixture.js \
+            tests/fortress-origin-inventory.js \
+            tests/fortress-ii-readiness.js \
+            tests/fortress-ii-offline-rehearsal.js \
+            tests/fortress-ii-browser-isolation.js \
+            tests/fortress-ii-browser-recovery.js \
+            tests/fortress-ii-app-copy.js \
+            tests/fortress-ii-exhaustive-copy.js
+          do
+            node --check "$file"
+          done
+      - name: Read-only static origin/key inventory
+        run: node tests/fortress-origin-inventory.js
+      - name: Isolated cryptographic and service worker origin fixtures
+        run: node tests/fortress-origin-fixture.js
+      - name: Transfer decisions, human data consent and rollback fixture
+        run: node tests/fortress-ii-readiness.js
+      - name: Offline/service worker cache simulation
+        run: node tests/fortress-ii-offline-rehearsal.js
+
+  browser-labs:
+    if: github.event_name == 'pull_request'
+    needs: source-and-offline
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7 SHA
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0 SHA
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install pinned test dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install isolated Chromium/WebKit binary and Linux dependencies
+        timeout-minutes: 16
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          for i in 1 2; do
+            timeout 420 npx playwright install --with-deps "$BROWSER" && exit 0
+            echo "::warning::Browser setup retry $i/2"
+            sleep 5
+          done
+          echo "::error::Browser unavailable"; exit 1
+      - name: Actual application build from CI-only synthetic preset
+        timeout-minutes: 8
+        run: node -e "require('./tests/ci/workspace').prepare()"
+      - name: Real-browser origin isolation and IndexedDB transactions
+        timeout-minutes: 6
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: node tests/fortress-ii-browser-isolation.js
+      - name: Multi-store interrupted recovery in isolated browser origins
+        timeout-minutes: 6
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: node tests/fortress-ii-browser-recovery.js
+      - name: Two real compiled Race Control copies with fake Backup V2
+        timeout-minutes: 8
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: node tests/fortress-ii-app-copy.js
+      - name: Exhaustive synthetic encrypted lab without real user exports
+        timeout-minutes: 8
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: node tests/fortress-ii-exhaustive-copy.js
