@@ -126,6 +126,27 @@ function commuteFixture(place, clock) {
   a.placeNow = () => ({ source: 'manual', confirmed: { at }, place });
   return a;
 }
+check('R3 : changer de rendez-vous vers un lieu libre au travail ne recycle pas la clé agenda', () => {
+  const a = commuteFixture(places[1], '2026-10-06T17:30');
+  a.APP_CONTEXT = { trips: [{ src: 'cal', key: 'leg|piano', dep: '2026-10-06T17:40',
+    from: 'Travail test', l: { from: places[1], to: places[2] } }], snapshot: { activeTrip: null }, weatherPreview: null };
+  a.USER_STORE.state.dayContext.nextDestination = { ...choice('b'), source: 'calendar',
+    tripKey: 'leg|piano', dep: '2026-10-06T17:40' };
+  a.appWorkOn = () => true;
+  a.appWorkTripData = () => ({ dir: 'ret', dep: '2026-10-06T18:00', LA: places[1], LB: places[0] });
+  a.localTs = () => '2026-10-06T17:30'; a.tripPreviewReset = () => {};
+  a.CANCELROUTEGEN = 0; a.CANCELROUTES = { clear() {} };
+  a.liveDoneHas = () => false; a.appTripPlace = t => t && t.l && t.l.from;
+  const old = a.APP_CONTEXT.trips[0].key;
+  a.appChooseDestination('b');
+  const n = a.appDay().nextDestination;
+  assert.equal(n.placeId, 'b'); assert.equal(n.originId, 'work');
+  assert.equal(n.source, 'user'); assert.equal(n.tripKey, 'commute|2026-10-06T18:00|ret');
+  assert.equal(n.dep, '2026-10-06T18:00'); assert.equal(a.APP_CONTEXT.trips[0].key, old, 'agenda inchangé');
+  const explicit = { ...a.APP_CONTEXT.trips[0], key: 'leg|piano' };
+  a.appChooseDestination('b', 'calendar', explicit);
+  assert.equal(a.appDay().nextDestination.tripKey, 'leg|piano', 'rendez-vous sélectionné garde sa clé');
+});
 check('domicile confirmé avant l’aller : le retour futur part toujours du travail', () => {
   const a = commuteFixture(places[0], '2026-10-06T06:30');
   assert.equal(a.appCommuteEndpoints('go', '2026-10-06', 'aller').from.id, 'home');

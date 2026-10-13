@@ -36,7 +36,17 @@ function appChooseDestination(placeId, source = 'user', preferredTrip = null, de
     const places = placeList(); if (placeId != null && !places.some(p => p.id === placeId)) return;
     const at = Date.now(), active = APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.activeTrip;
     const current = placeNow().place || locById(USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.placeId);
-    const candidate = preferredTrip || active || APP_CONTEXT.trips.find(t => t.dep.slice(0, 10) === placeToday() && !liveDoneHas(t, APP_CONTEXT.trips)
+    // Un choix libre remplace l'intention Agenda précédente : ne jamais
+    // recycler la clé d'un rendez-vous différent (son trajet deviendrait
+    // "origine à confirmer"). À partir du travail, la route de retour prévue
+    // fournit une clé stable dont la destination est adaptée au lieu choisi.
+    // Cette route n'est ni un passage maison ni un changement Google Agenda.
+    const today = placeToday(), futureReturn = today + 'T' + S.work.ret;
+    const ret = source === 'user' && !preferredTrip && !active && current && current.id === S.work.to
+      && appWorkOn(today) && futureReturn > localTs(at) ? appWorkTripData('ret', 0) : null;
+    const userRoute = ret && !ret.err && !ret.cancelled
+      ? { src: 'work', key: 'commute|' + ret.dep + '|ret', dep: ret.dep, planDep: ret.dep } : null;
+    const candidate = preferredTrip || active || userRoute || APP_CONTEXT.trips.find(t => t.dep.slice(0, 10) === today && !liveDoneHas(t, APP_CONTEXT.trips)
       && (!current || (appTripPlace(t, 'from') || {}).id === current.id));
     const prior = TRIPSTART, dep = candidate && (candidate.planDep || candidate.dep) || localTs(at);
     if (LIVE.key) liveReset(); tripPreviewReset(); CANCELROUTEGEN++; CANCELROUTES.clear();
