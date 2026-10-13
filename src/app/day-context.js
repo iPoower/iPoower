@@ -55,7 +55,7 @@ function appAgendaDestinationTrips(now = liveNow()) {
   }).slice(0, 4);
 }
 function appAgendaTarget(t) {
-  const l = t && (t.planL || t.l), p = l && l.to;
+  const l = t && (t.planL || t.l), p = l && (l.navTo || l.to);
   if (!locHasCoords(p)) return null;
   // Une adresse de rendez-vous n'est pas remplacée par un lieu situé à proximité.
   const known = placeList().find(x => x.id !== 'agenda-next' && x.lat === p.lat && x.lon === p.lon);

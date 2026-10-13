@@ -140,6 +140,13 @@ check('agenda retiré : aucun trajet local fabriqué avec son ancienne clé', ()
   const { a, cal } = agendaFixture(); a.appChooseAgendaDestination(cal.key);
   assert.equal(a.appLocalTrips([], '2026-10-06T17:30').length, 0);
 });
+check('adresse exacte : le point de navigation gagne sur les coordonnées routières arrondies', () => {
+  const { a, cal } = agendaFixture();
+  cal.l.to = { ...places[2], lat: 48.812, lon: 2.456 };
+  cal.l.navTo = { ...places[2], lat: 48.81234, lon: 2.45678 };
+  a.appChooseAgendaDestination(cal.key); const p = a.appDay().nextDestination.destinationPoint;
+  assert.equal(p.lat, 48.81234); assert.equal(p.lon, 2.45678);
+});
 check('après le travail : rendez-vous depuis Travail prioritaire, conflit détecté sans écrire une annulation', () => {
   const { a, work, cal } = agendaFixture(); a.appDay(); const before = JSON.stringify(a.USER_STORE.state);
   const T = a.appAgendaPriority([work, cal], '2026-10-06T17:30');
