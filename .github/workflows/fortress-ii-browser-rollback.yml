@@ -1,0 +1,50 @@
+name: Forteresse II · origines et rollback navigateur (PR uniquement)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/fortress-ii-browser-rollback.md'
+      - 'tests/fortress-ii-browser-isolation.js'
+      - '.github/workflows/fortress-ii-browser-rollback.yml'
+permissions:
+  contents: read
+jobs:
+  browser-fixture:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    concurrency:
+      group: f2-fixtures-${{ github.event.pull_request.number }}-${{ matrix.browser }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7 pinned
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0 pinned
+        with:
+          node-version: 24
+          cache: npm
+      - name: Dependencies locked; no application build
+        run: npm ci --no-audit --no-fund
+      - name: Install test browser only
+        timeout-minutes: 16
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          for i in 1 2; do
+            timeout 420 npx playwright install --with-deps "$BROWSER" && exit 0
+            echo "::warning::Browser setup retry $i/2"
+            sleep 5
+          done
+          echo "::error::Browser unavailable"; exit 1
+      - name: Syntax check — fixtures only
+        run: node --check tests/fortress-ii-browser-isolation.js
+      - name: Two isolated loopback origins with real IndexedDB
+        timeout-minutes: 5
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: node tests/fortress-ii-browser-isolation.js
