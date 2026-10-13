@@ -1,6 +1,6 @@
 # Forteresse II — dossier préparatoire d'isolation d'origine (13/10/2026)
 
-> **NON ACTIF / NO GO MIGRATION.** Complément à [fortress-origin-plan.md](fortress-origin-plan.md), [fortress-vault.md](fortress-vault.md), [fortress-web.md](fortress-web.md), [fortress-relay.md](fortress-relay.md) et [fortress-ci-coverage.md](fortress-ci-coverage.md). Les documents précédents restent normatifs. Cette branche ne contient aucun changement du build, de la PWA, du coffre, des workflows, des DNS, du relais, des secrets ou de la production.
+> **NON ACTIF / NO GO MIGRATION.** Complément à [fortress-origin-plan.md](fortress-origin-plan.md), [fortress-vault.md](fortress-vault.md), [fortress-web.md](fortress-web.md), [fortress-relay.md](fortress-relay.md) et [fortress-ci-coverage.md](fortress-ci-coverage.md). Les documents précédents restent normatifs. Cette branche ne contient aucun changement du build, de la PWA, du coffre, des workflows existants, des DNS, du relais, des secrets ou de la production.
 
 ## A. Base d'audit et classification des preuves
 
@@ -74,7 +74,7 @@ Le transfert complet ne peut **pas** être obtenu en se limitant à `Backup.make
 6. Relecture/déchiffrement du résultat + validation forte; autorisation explicite avant activation de l'état sur la future origine. Réenrôlement session, GPS, permissions, notification/Scriptable ensuite. Ancienne PWA, fichier de sauvegarde et stockage conservés.
 7. **Rollback bidirectionnel** : avant tout retour vers l'ancien site, exporter les modifications durables post-migration dans un nouveau paquet chiffré; comparer avec l'ancienne copie, arbitrer les conflits (ne jamais écraser silencieusement), tester le retour inverse; aucune redirection ni suppression automatisée.
 
-## E. Matrice d'acceptation
+Le harnais fictif est isolé dans \`tests/fortress-origin-fixture.js\` avec une vérification PR non privilégiée, \`.github/workflows/fortress-origin-prep.yml\`, sans Environment ni secret. Il modélise l'enveloppe et une écriture simulée atomique **mais n'est pas intégré à l'import réel**, ne prouve pas le comportement de Safari ni un transactionnel multi-stores navigateur.\n\n## E. Matrice d'acceptation
 
 | Volet | Contrôles | Blocage si |
 |---|---|---|
