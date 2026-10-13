@@ -2488,7 +2488,7 @@ function appBuildTrips() {
       l = { ...l, dep, arr: addMin(dep, dur) };
     }
     const r = legEval(l);
-    T.push({ src: 'cal', carId: appDay().activeCarId, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: false, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.originRecalc && l.originName ? l.originName : l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
+    T.push({ src: 'cal', carId: appDay().activeCarId, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: false, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.originRecalc && l.originName ? l.originName : l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label || l.to.name || 'Destination à confirmer' : 'Destination à confirmer', l, e, originPending: !!l.originPending,
       res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading, key });
   }));
   // Un départ déclaré reste restorable après l'heure d'arrivée prévue.
