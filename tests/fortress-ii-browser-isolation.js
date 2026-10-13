@@ -61,7 +61,7 @@ async function run(browserName){
  try {
   const allowed=new Set([left.origin,right.origin]);
   await context.route('**/*',route=>{
-   const url=new URL(route.request().url);
+   const url=new URL(route.request().url());
    if(!allowed.has(url.origin))return route.abort('blockedbyclient');
    return route.continue();
   });
