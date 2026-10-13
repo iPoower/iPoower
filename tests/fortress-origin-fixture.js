@@ -70,7 +70,7 @@ function open(pack, password, expectedSource = SOURCE, expectedTarget = TARGET) 
   finally { key.fill(0); }
   if (!data || data.v !== 1 || !data.values || !Array.isArray(data.keys)) throw Error('schéma');
   validate(data.values);
-  if (!assert.deepEqual(data.keys, Object.keys(data.values).sort()) && data.digest !== digest(data.values)) throw Error('manifeste');
+  assert.deepEqual(data.keys, Object.keys(data.values).sort(), 'manifeste de clés non conforme');
   if (data.digest !== digest(data.values)) throw Error('digest');
   return clone(data.values);
 }
