@@ -34,6 +34,26 @@ check('destination expirée retourne au planning PRÉVU', () => { const x = D.de
 check('destination Autre conserve À CONFIRMER sans fallback Maison', () => { const x = D.destination({ nextDestination: choice(null) }, places[0], now, places); assert.equal(x.place, null); assert.equal(x.source, 'pending'); });
 check('lieu supprimé ne laisse aucune destination fantôme', () => assert.equal(D.clean({ nextDestination: choice('gone') }, now, places, cars).nextDestination, null));
 check('E13 retour agenda courant remplacé sans vieille géométrie', () => { const l = { k: 'ret', from: places[1], to: places[0], g: [[1, 2]], pts: [places[0]], min: 30 }; const r = D.returnLeg(l, 'current', { nextDestination: choice('b') }, now, places); assert.equal(r.to.id, 'b'); assert.equal(r.navTo.id, 'b'); assert.equal(r.g.length, 0); assert(r.originPending); assert.equal(l.to.id, 'home'); });
+check('R3 · rendez-vous identifié autrement mais au même point conserve origine et géométrie', () => {
+  const orig = { k: 'go', from: places[1], to: { lat: places[2].lat, lon: places[2].lon },
+    dep: '2026-10-06T17:40', arr: '2026-10-06T18:20', km: 48, min: 40, pts: [{ f: 0.5 }], g: [[1, 2]], routed: true };
+  const renamed = { ...places[2], id: 'agenda-next', name: 'Clinique test' };
+  const selected = { ...choice('b'), placeId: renamed.id, source: 'calendar', destinationPoint: renamed };
+  const retained = D.returnLeg(orig, 'current', { nextDestination: selected }, now, places);
+  assert.equal(retained.from.id, 'work');
+  assert.equal(retained.to.id, 'agenda-next');
+  assert.equal(retained.to.name, 'Clinique test');
+  assert.equal(retained.km, 48);
+  assert.equal(retained.min, 40);
+  assert.equal(retained.originPending, undefined);
+  assert.equal(retained.g.length, 1);
+  assert.equal(orig.to.id, undefined, 'ne modifie pas la jambe agenda');
+  const moved = { ...selected, destinationPoint: { ...renamed, lat: renamed.lat + 0.2 } };
+  const recalculated = D.returnLeg(orig, 'current', { nextDestination: moved }, now, places);
+  assert.equal(recalculated.originPending, true);
+  assert.equal(recalculated.km, null);
+  assert.equal(recalculated.pts.length, 0);
+});
 check('E14 autres retours et après arrivée inchangés', () => { const l = { k: 'ret', to: places[0] }; assert.equal(D.returnLeg(l, 'future', { nextDestination: choice('b') }, now, places), l); assert.equal(D.returnLeg(l, 'current', { nextDestination: choice('b'), arrivedAt: now + 1 }, now + 1, places), l); });
 check('A6 reload + migration document v1 conserve intention valide', () => { const mem = new Map(); const make = () => ctx.store({ read: k => mem.get(k), write: (k, v) => mem.set(k, v), now: () => now }); const s = make(); s.transaction(x => { x.dayContext = { nextDestination: choice('b') }; }); assert.equal(make().state.dayContext.nextDestination.placeId, 'b'); });
 if (process.env.LOT === 'A') { check('TRAJET futur : expiration suit le jour de départ, pas seulement le lendemain de la saisie', () => {

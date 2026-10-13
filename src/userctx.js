@@ -68,7 +68,11 @@ const DayContext = (() => {
   function returnLeg(leg, key, v, now, places) {
     const n = clean(v, now, places).nextDestination; if (!n || n.tripKey !== key) return leg;
     const to = n.destinationPoint || places.find(p => p.id === n.placeId) || null;
-    if (to && leg.to && to.id === leg.to.id && to.lat === leg.to.lat && to.lon === leg.to.lon) return { ...leg, navTo: to, destinationOverride: true };
+    // Un point agenda doté d'un nouvel ID peut désigner le même lieu exact.
+    // Préserver alors le départ du travail et la route déjà calculée ; seul
+    // un changement réel de coordonnées impose l'invalidation de la route.
+    if (to && leg.to && to.lat === leg.to.lat && to.lon === leg.to.lon)
+      return { ...leg, to, navTo: to, destinationOverride: true };
     return { ...leg, to, navTo: to, destinationOverride: true, g: [], pts: [], km: null, min: null, routed: false,
       originPending: true, originUncertain: !to || !leg.from, targetArr: null };
   }
