@@ -55,7 +55,10 @@ L'inventaire suivant résulte des constantes lues dans `src/session-vault.js`, `
 | `twrc.context.v1` | **Mixte** : projeter les sous-champs durables (jour, voiture active, débriefs clos, arrivées, contextes et confirmations manuels). GPS courant, départ actif, observation runtime, estimation éphémère exclus. Comparer projection durable, pas le JSON brut |
 | `twrc.tyretherm.v1`, `twrc.tripcancel` | Durable métier après revue des règles d'expiration et du consentement; comparer exactement |
 | `twrc.view`, `twrc.outfit.occasion` | Préférences d'interface non sensibles, transfert optionnel explicite |
-| `twrc.weather.incidents.v1`, `twrc.trend` | À arbitrer **avant migration** : incident météo / comparaison temporelle, aujourd'hui sauvegarde V2 ne les transporte pas tels quels. Inspecter pérennité réelle et valeurs, n'écarter aucune observation humaine durable |
+| `twrc.weather.incidents.v1`, `twrc.trend` | À arbitrer **avant migration** : incidents de requêtes ou premières prévisions par trajet, historique temporaire. Backup V2 ne les transporte pas tels quels |
+| `twrc.reports.v1`, `twrc.shadow.v1` | **Observation humaine / journal météo à examiner impérativement** : `reports` contient les signalements terrain (conservés 6 h au maximum), `shadow` contient jusqu'à 200 comparaisons dont des observations utilisateur. Aujourd'hui absents de Backup V2. Ne jamais les effacer silencieusement : décision explicite sur historique, conservation, consentement et coordonnées arrondies |
+| `twrc.runtime.v1` | Diagnostic et journal d'exécution : classer comme état runtime, vérifier l'absence d'annotation humaine pérenne avant exclusion |
+| `twrc.reload.*`, `twrc.road.*`, Web Lock `twrc.weather.station.*` | Méta transitoire / cache réseau / nom de verrou : exclure du transfert; le verrou Web Locks n'est pas une clé localStorage |
 | `twrc.gps`, `twrc.place.v1`, `twrc.tripstart.v1`, `twrc.tripend.v1`, `twrc.returnhome.v1`, `twrc.tripdone`, `twrc.debrief.v1` | Clés historiques/legacy : vérifier si une information durable n'a pas déjà été absorbée dans le contexte; ne pas transporter GPS/session actif |
 | `twrc.cache.*`, `twrc.croute*`, `twrc.calendar.sealed.v1`, `twrc.weather.limit.v1`, `twrc.decision.latest.v1`, `twrc.tripmap`, `twrc.presetv`, `twrc.cfghash`, `twrc.lastbackup` | Dérivés / versionnage / temporaires : classer, régénérer ou recalculer sans perdre un historique humain |
 | `twrc.vault.v2`, `twrc.session.v2`, `twrc.device.vault.v1`, `twrc.restore.pending.v1`, `twrc.lock.signal` | Structures cryptographiques / journal / révocation : ne jamais traiter comme simples réglages |
@@ -74,7 +77,7 @@ Le transfert complet ne peut **pas** être obtenu en se limitant à `Backup.make
 6. Relecture/déchiffrement du résultat + validation forte; autorisation explicite avant activation de l'état sur la future origine. Réenrôlement session, GPS, permissions, notification/Scriptable ensuite. Ancienne PWA, fichier de sauvegarde et stockage conservés.
 7. **Rollback bidirectionnel** : avant tout retour vers l'ancien site, exporter les modifications durables post-migration dans un nouveau paquet chiffré; comparer avec l'ancienne copie, arbitrer les conflits (ne jamais écraser silencieusement), tester le retour inverse; aucune redirection ni suppression automatisée.
 
-Le harnais fictif est isolé dans \`tests/fortress-origin-fixture.js\` avec une vérification PR non privilégiée, \`.github/workflows/fortress-origin-prep.yml\`, sans Environment ni secret. Il modélise l'enveloppe et une écriture simulée atomique **mais n'est pas intégré à l'import réel**, ne prouve pas le comportement de Safari ni un transactionnel multi-stores navigateur.\n\n## E. Matrice d'acceptation
+Une revue statique complémentaire des modules `src/app/weather-view.js`, `src/reliability.js` et `src/app/weather-station.js` a identifié les clés `reports`, `shadow` et `runtime` et la convention de verrou `weather.station`. Ce relevé n'est pas une inspection du stockage réel de l'iPhone; aucune donnée utilisateur n'a été lue. Le futur manifeste d'import doit utiliser une **allowlist explicite**, signaler le nombre de clés inconnues, produire une erreur bloquante dès qu'une clé non classifiée est présente et garantir la comparaison des observations humaines retenues. Aucun import générique `twrc.*` en bloc.\n\nLe harnais fictif est isolé dans \`tests/fortress-origin-fixture.js\` avec une preuve VM du Service Worker v12 : un JSON distant est laissé hors interception, tandis qu'un JSON de même origine sous le scope est mis en cache; et avec une vérification PR non privilégiée, \`.github/workflows/fortress-origin-prep.yml\`, sans Environment ni secret. Il modélise l'enveloppe et une écriture simulée atomique **mais n'est pas intégré à l'import réel**, ne prouve pas le comportement de Safari ni un transactionnel multi-stores navigateur.\n\n## E. Matrice d'acceptation
 
 | Volet | Contrôles | Blocage si |
 |---|---|---|
@@ -91,8 +94,8 @@ Les tests simulés Chromium/WebKit **ne prouvent jamais** une session Safari phy
 | Risque | S/P | Maîtrise proposée | Résiduel visé |
 |---|---|---|---|
 | Même origine et script voisin | 5/3 | origine dédiée exclusive + CSP/headers | 2/2 (script de l'origine elle-même) |
-| Perte de données / clés inconnues | 5/3 | inventaire runtime fail-closed + restore éprouvé + ancienne source intacte | 5/1 |
-| JSON distants sans offline | 4/4 | miroir same-origin ou SW CORS explicite + test froid | 3/1 |
+| Perte de données / clés inconnues, notamment observations `reports/shadow` | 5/3 | inventaire runtime fail-closed + restore éprouvé + ancienne source intacte | 5/1 |
+| JSON distants sans offline | 4/4 | miroir same-origin ou SW CORS explicite + test froid (limite SW confirmée par VM) | 3/1 |
 | CORS absent / blocage météo-agenda | 4/3 | test réel avant bascule, chemin de repli explicite | 2/1 |
 | En-tête CSP trop long / non appliqué | 5/3 | mesure _headers et GET réel (Pages 2 000 caractères/ligne) | 3/1 |
 | JSON `gh-pages` modifié sans signature | 4/3 | contrôle d'intégrité/fraîcheur, signature future, pas d'exécution | 3/2 |
