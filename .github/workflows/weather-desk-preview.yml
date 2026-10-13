@@ -1,0 +1,52 @@
+name: Weather Desk Secure V1 · preview only (never deploy)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'weather-desk-preview/**'
+      - 'tests/weather-desk-preview.js'
+      - '.github/workflows/weather-desk-preview.yml'
+      - 'docs/weather-desk-secure-v1.md'
+permissions:
+  contents: read
+jobs:
+  public-guest-isolation:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # pinned
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # pinned
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install exact dependencies (no secrets)
+        run: npm ci --no-audit --no-fund
+      - name: JS syntax and repository privacy guards
+        run: |
+          node --check weather-desk-preview/app.js
+          node --check weather-desk-preview/generate.js
+          node --check tests/weather-desk-preview.js
+          node tools/check-secrets.js
+      - name: Install isolated test browser
+        timeout-minutes: 16
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          for i in 1 2; do
+            timeout 420 npx playwright install --with-deps "$BROWSER" && exit 0
+            echo "::warning::Browser install retry $i/2"
+            sleep 5
+          done
+          exit 1
+      - name: Public-only fixtures, guest privacy and origin boundary test
+        timeout-minutes: 5
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: node tests/weather-desk-preview.js
