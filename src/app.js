@@ -2497,6 +2497,10 @@ function appBuildTrips() {
     if (r && !r.err) workT(r, false);
   }
   T = appLocalTrips(T, now);
+  // Supprimer uniquement les retours automatiques contradictoires avec un
+  // rendez-vous proche partant du travail ; ni agenda ni stockage ne changent.
+  T = DayContext.avoidContradictoryCommutes(T, appDay().nextDestination,
+    [TRIPSTART && TRIPSTART.key, LIVE.key].filter(Boolean));
   APP_CONTEXT.planned = T.slice();   // cibles des actions explicites, uniquement en mémoire
   T = returnHomeApply(T, now);   // action explicite : le retour choisi devient le prochain départ, sans déclarer la voiture partie
   T = liveApply(T, now);   // trajet vivant (position GPS réelle) : un seul, en mémoire uniquement

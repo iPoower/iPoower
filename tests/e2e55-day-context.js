@@ -90,6 +90,31 @@ async function views(p, expected) {
         assert.equal(x.next.from, 'Travail test'); assert.match(x.next.to, /Piano test.*Albert test/); assert.doesNotMatch(x.next.to, /Domicile|Maison/);
         assert.match(await p.locator('#dayContext .day-destination > summary').innerText(), /Piano test.*Albert test.*CONFIRMÉ/);
       });
+      await check(dev + '/' + profile + ' · vraie clé et horaire agenda dans Pneus / Météo / Analyse / Trajet', async () => {
+        const n = await p.evaluate(() => appDay().nextDestination);
+        assert.match(n.tripKey, /^leg\|/); assert.equal(n.dep, '2026-10-06T17:40');
+        for (const view of ['pneus', 'meteo', 'analyse', 'trajet']) {
+          await p.evaluate(v => { UI.view = v; renderAll(); }, view);
+          const s = await p.evaluate(() => ({ key: APP_CONTEXT.snapshot.nextTrip && APP_CONTEXT.snapshot.nextTrip.key,
+            to: APP_CONTEXT.snapshot.destination && APP_CONTEXT.snapshot.destination.name }));
+          assert.equal(s.key, n.tripKey, view); assert.match(s.to, /Piano test/, view);
+        }
+        await p.evaluate(() => { UI.view = 'pneus'; renderAll(); });
+      });
+      await check(dev + '/' + profile + ' · retour auto contradictoire / rendez-vous avant-après / annulation', async () => {
+        const out = await p.evaluate(() => {
+          const w = { src: 'work', key: 'retour', dep: '2026-10-06T16:00', arr: '2026-10-06T16:40',
+            td: { dir: 'ret', LA: S.locs[1], LB: S.locs[0] } };
+          const a = { src: 'cal', key: 'rdv', dep: '2026-10-06T16:47', arr: '2026-10-06T17:05',
+            l: { k: 'go', from: S.locs[1], to: S.customs[0] }, e: { e: '2026-10-06T17:45' } };
+          const f = (list, intent, keys) => DayContext.avoidContradictoryCommutes(list, intent, keys).map(x => x.key);
+          return { after: f([w, a]), before: f([w, { ...a, dep: '2026-10-06T15:35', e: { e: '2026-10-06T16:30' } }]),
+            cancelled: f([w]), chosenHome: f([w, a], { tripKey: w.key, source: 'user' }), started: f([w, a], null, [w.key]) };
+        });
+        assert.deepEqual(out.after, ['rdv']); assert.deepEqual(out.before, ['rdv']);
+        assert.deepEqual(out.cancelled, ['retour']); assert.deepEqual(out.chosenHome, ['retour', 'rdv']);
+        assert.deepEqual(out.started, ['retour', 'rdv']);
+      });
       await p.evaluate(() => { CAL = { events: [], updated: new Date(Date.now()).toISOString(), c: CAL && CAL.c }; CALDONE = true; renderAll(); });
       scope.phase = 'WORK → CUSTOM'; await destination(p, 'b'); await p.evaluate(() => { if (PLACE.extra && PLACE.extra.id === 'agenda-next') { PLACE.extra = null; USER_STORE.flush(); renderAll(); } }); await tap(p, '[data-act=day-car][data-id=carB]');
       await s.settle();

@@ -237,4 +237,25 @@ check('audit A05 · point manuel : département, commune et code postal conserv�
   assert.deepEqual([bad.deptCode, bad.dept, bad.cityCode, bad.postcode], ['', '', '', '']);
   assert.equal(D.cleanPoint({ id: 'c', lat: 41.9, lon: 8.7, deptCode: '2a' }, 'x').deptCode, '2A');
 });
+check('R3 · retour travail 16:00 remplacé par rendez-vous au travail 16:47 ; règles protectrices', () => {
+  const work = { src: 'work', key: 'commute-ret', dep: '2026-10-06T16:00', arr: '2026-10-06T16:40',
+    td: { dir: 'ret', LA: places[1], LB: places[0] } };
+  const go = { src: 'cal', key: 'leg-clinique', dep: '2026-10-06T16:47', arr: '2026-10-06T17:05',
+    l: { k: 'go', from: places[1], to: places[2] }, e: { e: '2026-10-06T17:45' } };
+  const ret = { src: 'cal', key: 'leg-retour-clinique', dep: '2026-10-06T17:55', arr: '2026-10-06T18:35',
+    l: { k: 'ret', from: places[2], to: places[0] } };
+  const all = [work, go, ret], ids = (list, intent, keys) => Array.from(D.avoidContradictoryCommutes(list, intent, keys), x => x.key);
+  assert.deepEqual(ids(all), [go.key, ret.key]);
+  assert.equal(all.length, 3, 'aucune mutation de la source');
+  assert.deepEqual(ids(all, { source: 'user', tripKey: work.key }), [work.key, go.key, ret.key]);
+  assert.deepEqual(ids(all, null, [work.key]), [work.key, go.key, ret.key]);
+  assert.equal(ids([work, { ...go, originPending: true }]).length, 2);
+  assert.equal(ids([work, { ...go, l: { ...go.l, from: places[0] } }]).length, 2);
+  assert.equal(ids([work, { ...go, dep: '2026-10-06T21:00' }]).length, 2);
+  assert.equal(ids([work, { ...go, dep: '2026-10-07T16:47' }]).length, 2);
+  assert.equal(ids([work, { ...go, l: { ...go.l, to: places[0] } }]).length, 2);
+  assert.deepEqual(ids([work, { ...go, dep: '2026-10-06T15:35', e: { e: '2026-10-06T16:30' } }]), [go.key]);
+  assert.equal(ids([work, { ...go, dep: '2026-10-06T15:35', e: { e: '2026-10-06T15:55' } }]).length, 2);
+  assert.deepEqual(ids([work]), [work.key], 'agenda annulé ou absent');
+});
 console.log(`${n}/${n + fail} scénarios OK`); process.exit(fail ? 1 : 0);

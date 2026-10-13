@@ -92,6 +92,34 @@ const DayContext = (() => {
     const manual = v && v.outfitChoice;
     return manual && manual.date === day ? manual.occasion : working || destinationId && destinationId === workId ? 'office' : 'outing';
   }
+  // Projection pure : ne pas proposer de rentrer à la maison juste avant
+  // un rendez-vous qui suppose un départ du même lieu de travail.
+  function avoidContradictoryCommutes(trips, intent = null, protectedKeys = []) {
+    const valid = p => p && Number.isFinite(p.lat) && Number.isFinite(p.lon);
+    const near = (a, b) => valid(a) && valid(b)
+      && Math.hypot((a.lat - b.lat) * 111.2,
+        (a.lon - b.lon) * 111.2 * Math.cos((a.lat + b.lat) * Math.PI / 360)) <= 1.5;
+    const mins = dep => /^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(dep || '') ? +dep.slice(11, 13) * 60 + +dep.slice(14, 16) : null;
+    return trips.filter(work => {
+      if (work.src !== 'work' || !work.td || work.td.dir !== 'ret' || !work.dep || !work.arr
+        || protectedKeys.includes(work.key) || intent && intent.tripKey === work.key) return true;
+      const start = mins(work.dep), end = mins(work.arr);
+      if (start == null || end == null || !valid(work.td.LA) || !valid(work.td.LB)) return true;
+      return !trips.some(appointment => {
+        const leg = appointment.l || appointment.planL;
+        if (appointment.src !== 'cal' || !leg || leg.k !== 'go' || appointment.originPending
+          || leg.originPending || !appointment.dep || appointment.dep.slice(0, 10) !== work.dep.slice(0, 10)
+          || !near(leg.from, work.td.LA) || near(leg.to, work.td.LB)) return false;
+        const dep = mins(appointment.dep);
+        if (dep == null) return false;
+        if (dep >= start) return dep <= end + 90;
+        const eventEnd = appointment.e && mins(appointment.e.e);
+        return start - dep <= 90 && appointment.e && appointment.e.e
+          && appointment.e.e.slice(0, 10) === work.dep.slice(0, 10)
+          && eventEnd != null && eventEnd > start;
+      });
+    });
+  }
   function prioritize(trips, v, now) {
     const n = clean(v, now).nextDestination, chosen = n && trips.find(t => t.key === n.tripKey);
     if (!chosen) return trips;
@@ -99,7 +127,7 @@ const DayContext = (() => {
     // ne pilotent aucune vue. Les trajets ultérieurs restent des prévisions.
     return [chosen, ...trips.filter(t => t.key !== chosen.key && (!chosen.arr || !t.dep || t.dep >= chosen.arr))];
   }
-  return { date, expiry, endOfDay, tripExpiry, cleanPoint, clean, morningOrigin, destination, returnLeg, rebaseAgendaOrigin, workOn, occasion, prioritize };
+  return { date, expiry, endOfDay, tripExpiry, cleanPoint, clean, morningOrigin, destination, returnLeg, rebaseAgendaOrigin, workOn, occasion, avoidContradictoryCommutes, prioritize };
 })();
 function userContextStore({ read, write, now = () => Date.now() }) {
   const key = 'twrc.context.v1', listeners = new Set();

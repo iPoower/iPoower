@@ -31,17 +31,17 @@ function appCommuteLabel(td) {
   const home = S.locs[0].id, from = td.dir === 'go' ? home : S.work.to, to = td.dir === 'go' ? S.work.to : home;
   return td.LA.id === from && td.LB.id === to ? `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail` : `Trajet · ${td.fromName} → ${td.toName}`;
 }
-function appChooseDestination(placeId, source = 'user') {
+function appChooseDestination(placeId, source = 'user', preferredTrip = null, destinationPoint = null) {
   return appAction(() => {
     const places = placeList(); if (placeId != null && !places.some(p => p.id === placeId)) return;
     const at = Date.now(), active = APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.activeTrip;
     const current = placeNow().place || locById(USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.placeId);
-    const candidate = active || APP_CONTEXT.trips.find(t => t.dep.slice(0, 10) === placeToday() && !liveDoneHas(t, APP_CONTEXT.trips)
+    const candidate = preferredTrip || active || APP_CONTEXT.trips.find(t => t.dep.slice(0, 10) === placeToday() && !liveDoneHas(t, APP_CONTEXT.trips)
       && (!current || (appTripPlace(t, 'from') || {}).id === current.id));
     const prior = TRIPSTART, dep = candidate && (candidate.planDep || candidate.dep) || localTs(at);
     if (LIVE.key) liveReset(); tripPreviewReset(); CANCELROUTEGEN++; CANCELROUTES.clear();
     if (active && prior) TRIPSTART = prior;
-    appDay().nextDestination = { placeId: placeId || null, source, confirmedAt: at, expiresAt: DayContext.tripExpiry(dep, at),
+    appDay().nextDestination = { placeId: placeId || null, destinationPoint, source, confirmedAt: at, expiresAt: DayContext.tripExpiry(dep, at),
       originId: current && current.id || prior && prior.trip && prior.trip.fromId || null,
       tripKey: candidate && candidate.key || 'local|' + at, dep, createdAt: at, updatedAt: at };
     APP_CONTEXT.weatherPreview = null;
@@ -57,18 +57,18 @@ function appAgendaDestinationTrips(now = liveNow()) {
 function appChooseAgendaDestination(key) {
   const t = (APP_CONTEXT.planned || []).find(x => x && x.key === key && x.src === 'cal');
   const l = t && (t.planL || t.l), p = l && l.to;
-  if (!t || !p || !locHasCoords(p)) return false;
+  if (!t || !p || !locHasCoords(p) || l.k !== 'go' || t.dep < liveNow()) return false;
   const known = placeList().find(x => x.id !== (PLACE.extra && PLACE.extra.id) && distKm(x, p) <= 1.5);
-  if (known) { appChooseDestination(known.id, 'calendar'); return true; }
+  if (known) { appChooseDestination(known.id, 'calendar', t); return true; }
   const current = placeNow().place;
   // PLACE.extra est l'unique lieu dynamique du contexte. Ne jamais l'écraser s'il représente le lieu courant confirmé.
   if (PLACE.extra && current && current.id === PLACE.extra.id && PLACE.conf && PLACE.conf.placeId === PLACE.extra.id) return false;
   const where = t.to || p.city || p.label || 'Rendez-vous';
   const title = t.e && t.e.t && t.e.t !== where ? t.e.t + ' · ' + where : (t.e && t.e.t) || where;
   PLACE.extra = { id: 'agenda-next', name: title, address: where, lat: p.lat, lon: p.lon, provider: 'calendar', precision: 'event', at: Date.now() };
-  appChooseDestination(PLACE.extra.id, 'calendar');
-  const n = appDay().nextDestination;
-  if (n) n.destinationPoint = { id: PLACE.extra.id, name: PLACE.extra.name, address: PLACE.extra.address, lat: PLACE.extra.lat, lon: PLACE.extra.lon, provider: 'calendar', precision: 'event' };
+  // L'identité et l'horaire du rendez-vous sélectionné sont conservés.
+  appChooseDestination(PLACE.extra.id, 'calendar', t,
+    { id: PLACE.extra.id, name: PLACE.extra.name, address: PLACE.extra.address, lat: PLACE.extra.lat, lon: PLACE.extra.lon, provider: 'calendar', precision: 'event' });
   return true;
 }
 function appAgendaLeg(e, leg) {
