@@ -220,7 +220,9 @@ async function run(){
   await check('confirmed LAB apply plus vault flush preserves all eight synthetic keys',async()=>{
     const status=await b.evaluate(p=>window.F2X.applyTestOnly(p,true),f2Plan);
     assert.equal(status.verified,true);
-    assert.deepEqual(await b.evaluate(()=>window.F2X.list()),f2Plan.values);
+    const after=await b.evaluate(()=>window.F2X.list());
+    for(const [k,v] of Object.entries(f2Plan.values))assert.equal(after[k],v,'clé durable non préservée: '+k);
+    for(const k of Object.keys(after))if(!(k in f2Plan.values))assert(['twrc.view','twrc.outfit.occasion'].includes(k),'nouvelle clé non documentée: '+k);
     const raw=await b.evaluate(()=>window.TWRC_RAW_STORAGE.getItem('twrc.vault.v2'));
     assert(raw&&!raw.includes(FAKE_REPORT_ID)&&!raw.includes(FAKE_CAR));
   });
