@@ -21,19 +21,20 @@ const fonts='<link rel="preconnect" href="https://fonts.googleapis.com"><link re
 const js=[r('src/reliability.js'),r('src/decision.js'),r('src/f1-pure.js'),r('src/garage.js'),r('src/profile-check.js'),r('src/geosearch.js'),r('src/engine.js'),r('src/demo.js'),r('src/wardrobe.js'),r('src/dayplan.js'),r('src/wxdesk.js'),r('src/weather-watch.js'),r('src/tirespecs.js'),r('src/tyrestate.js'),r('src/tyrelab.js'),r('src/placectx.js'),r('src/evidence.js'),r('src/calendar-origin.js'),r('src/trip-cancel.js'),r('src/weather-requests.js'),r('src/road-intelligence.js'),r('src/road-providers.js'),r('src/debrief.js'),r('src/userctx.js'),r('src/backup.js'),require('./app-source').appSource(ROOT)].join('\n');
 const title='<title>TYRE WEATHER RACE CONTROL</title>';
 const style=`<style>\n${r('src/style.css')}\n</style>`;
-const device=r('src/device-storage.js')+'\n'+r('src/remember-device.js')+'\n'+r('src/session-vault.js');
+const device=r('src/device-storage.js')+'\n'+r('src/remember-device.js')+'\n'+r('src/session-vault.js')+'\n'+r('src/config-import.js');
 if(/<\/script/i.test(js))throw new Error('Le code applicatif ne doit pas contenir « </script> » (bloc différé).');
 // Sécurité V1 : le code applicatif est différé (bloc text/plain) et démarré seulement après l'ouverture du coffre de session :
 // les réglages et le préréglage déchiffrés n'existent qu'en mémoire, jamais en clair dans localStorage.
 const start=`<script>\n(function(){var f=document.querySelector('link[data-font]');if(f){var on=function(){f.media='all';};if(f.sheet)on();else f.addEventListener('load',on);}})();
 (function(){var RAW;try{RAW=window.localStorage;}catch(e){RAW=null;}var done=false;
+var CF=window.TWRC_CONFIG_IMPORT=ConfigImport.create(window);CF.capture();
 function run(){if(done)return;done=true;var c=document.getElementById('twrc-app');if(!c)return;var s=document.createElement('script');s.textContent=c.textContent;c.parentNode.removeChild(c);document.body.appendChild(s);}
 function preset(st){try{var v=st.getItem('twrc.plain.v'),p=st.getItem('twrc.plain');if(p&&v===window.TWRC_SEALED_V){var o=JSON.parse(p);window.TWRC_PRESET=o;window.TWRC_PRESET_V=v;window.TWRC_NTFY=o.ntfy||'';}}catch(e){}}
 var ses=null;try{ses=window.sessionStorage;ses.getItem('twrc.session.v2');}catch(e){ses={getItem:function(){return null;},setItem:function(){},removeItem:function(){}};}
-if(!RAW||window.TWRC_STORAGE_ERROR||!window.crypto||!crypto.subtle){if(RAW)preset(RAW);run();return;}
+if(!RAW||window.TWRC_STORAGE_ERROR||!window.crypto||!crypto.subtle){if(RAW){CF.cleanup(RAW);preset(RAW);}run();return;}
 var VS=window.TWRC_VAULT=SessionVault.create({raw:RAW,session:ses,crypto:crypto,target:window,remembered:RememberDevice});window.TWRC_RAW_STORAGE=RAW;
 window.addEventListener('storage',function(e){if(e.storageArea&&e.storageArea!==RAW)return;VS.onStorage(e,function(k,o,n){try{window.dispatchEvent(new StorageEvent('storage',{key:k,oldValue:o,newValue:n,url:location.href}));}catch(x){}}).then(function(r){if(r==='locked')location.reload();});});
-VS.boot().then(function(){if(VS.store){try{Object.defineProperty(window,'localStorage',{configurable:true,get:function(){return VS.store;}});}catch(e){window.TWRC_STORAGE_ERROR=true;}}preset(VS.store||RAW);},function(){}).then(run,run);
+VS.boot().then(function(){CF.cleanup(RAW);if(VS.store){try{Object.defineProperty(window,'localStorage',{configurable:true,get:function(){return VS.store;}});}catch(e){window.TWRC_STORAGE_ERROR=true;}}return window.TWRC_STORAGE_ERROR?null:CF.process(VS);},function(){}).then(function(){preset(VS.store||RAW);run();},run);
 })();\n</script>\n`;
 const body=pre=>`${r('src/shell.html')}\n<script>\n${device}\ntry{DeviceStorage.bootstrap(window,localStorage);}catch(e){window.TWRC_STORAGE_ERROR=true;}\n</script>\n${pre||''}<script type="text/plain" id="twrc-app">\n${js}\n</script>\n${start}`;
 const rcfg=PRIV?JSON.parse(r(PD+'/relay-config.json')):null;

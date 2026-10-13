@@ -227,7 +227,7 @@ const SessionVault = (() => {
       // avec opener. La supprimer ici révoquerait cet onglet sans demande.
       // Elle est collectée à l'expiration ou par le verrouillage explicite.
     }
-    async function writeVerified(vals, salt, guard) {
+    async function writeVerified(vals, salt, guard, evictCaches = true) {
       requireLocks();
       const key = st.key, signal = raw.getItem(LOCK_SIGNAL), previous = raw.getItem(VAULT);
       const active = guard || (() => { if (st.key !== key || raw.getItem(LOCK_SIGNAL) !== signal) throw Object.assign(new Error('Session modifiée.'), { cancelled: true }); });
@@ -236,7 +236,7 @@ const SessionVault = (() => {
       if (raw.getItem(VAULT) !== previous) throw Object.assign(new Error('Coffre modifié pendant le chiffrement.'), { conflict: true });
       try { put(raw, VAULT, out.sealed); }
       catch (e) {
-        if (!full(e)) throw e;
+        if (!full(e) || !evictCaches) throw e;
         keysOf(raw).filter(k => isApp(k) && CACHE(k)).forEach(k => { try { raw.removeItem(k); } catch (x) { /* rien */ } });
         active(); put(raw, VAULT, out.sealed);
       }
@@ -430,8 +430,46 @@ const SessionVault = (() => {
         });
       } catch (x) { return st.mode === 'locked' ? 'locked' : null; }
     }
+    // Import d'un lien historique : vérifier sous le MÊME verrou que toutes
+    // les écritures, puis publier une unique enveloppe chiffrée et relue.
+    // Ni configuration existante ni autre donnée durable ne sont remplacées.
+    async function importConfig(cfg, current = () => true, baseline = null) { return exclusive(async () => {
+      expire();
+      if (st.mode !== 'vault') return { state: 'locked' };
+      const epoch = st.epoch, mem = st.mem, guard = () => {
+        guardSession(epoch, mem);
+        if (!current()) throw Object.assign(new Error('Import remplacé.'), { cancelled: true });
+      };
+      guard();
+      while (mem.dirty.size) { await savePending(); guard(); }
+      const data = await latest(guard), next = { ...data.values };
+      const key = ConfigImport.IDENTIFIER, settingsKey = ConfigImport.SETTINGS;
+      const legacy = next[key];
+      if (legacy != null && !ConfigImport.ID.test(legacy)) {
+        const id = await ConfigImport.legacyIdentifier(legacy, crypto); guard();
+        if (id) next[key] = id; else delete next[key];
+      }
+      let state = 'none';
+      if (cfg !== null) {
+        if (!ConfigImport.validate(cfg)) return { state: 'invalid' };
+        const id = await ConfigImport.identifier(cfg, crypto); guard();
+        if (next[settingsKey] != null && next[key] === id) state = 'duplicate';
+        else {
+          const settings = ConfigImport.initialSettings(cfg, next[settingsKey] ?? null, baseline);
+          if (!settings) state = 'configured';
+          else { next[settingsKey] = JSON.stringify(settings); next[key] = id; state = 'applied'; }
+        }
+      }
+      if (!same(next, data.values)) {
+        guard(); await writeVerified(next, st.salt, guard, false); guard();
+        // Commit mémoire seulement après la vérification durable. Pas
+        // d'événement de contenu avant l'initialisation/rechargement de l'app.
+        merge({ n: st.n, t: st.t, values: next }, () => {});
+      } else merge(data, () => {}); // lecture concurrente authentifiée : ne pas rendre une ancienne copie
+      return { state };
+    }); }
     return {
-      boot, unlock, lock, flush, onStorage,
+      boot, unlock, lock, flush, onStorage, importConfig,
       expired: () => expire(),
       get expiresAt() { return st.expiresAt; },
       get pendingRecovery() { return st.mode === 'expired' && !!st.mem && st.mem.dirty.size > 0; },
