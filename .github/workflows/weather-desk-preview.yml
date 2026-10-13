@@ -5,6 +5,8 @@ on:
     paths:
       - 'weather-desk-preview/**'
       - 'tests/weather-desk-preview.js'
+      - 'tests/weather-desk-hosting.js'
+      - 'tools/weather-desk-hosting.js'
       - '.github/workflows/weather-desk-preview.yml'
       - 'docs/weather-desk-secure-v1.md'
 permissions:
@@ -33,6 +35,8 @@ jobs:
           node --check weather-desk-preview/app.js
           node --check weather-desk-preview/generate.js
           node --check tests/weather-desk-preview.js
+          node --check tools/weather-desk-hosting.js
+          node --check tests/weather-desk-hosting.js
           node tools/check-secrets.js
       - name: Install isolated test browser
         timeout-minutes: 16
@@ -49,4 +53,6 @@ jobs:
         timeout-minutes: 5
         env:
           BROWSER: ${{ matrix.browser }}
-        run: node tests/weather-desk-preview.js
+        run: |
+          node tests/weather-desk-preview.js
+          node tests/weather-desk-hosting.js
