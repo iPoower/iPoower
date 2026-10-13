@@ -173,7 +173,7 @@ async function check(name, fn) { await fn(); console.log('✅ ' + name); passed+
     const events = {}, cacheWrites = [];
     const selfFake = {
       location: { origin: TARGET },
-      registration: { scope: TARGET + '/' },
+      registration: { scope: TARGET + '/race-control/' },
       clients: { claim: async () => undefined },
       skipWaiting() {},
       addEventListener(event, callback) { events[event] = callback; }
@@ -205,10 +205,10 @@ async function check(name, fn) { await fn(); console.log('✅ ' + name); passed+
     assert.equal(await run(TARGET + '/Reconversion-Control/fixture.html'), false,
       'autre sous-dossier exclu du scope');
     assert.equal(cacheWrites.length, 0);
-    assert.equal(await run(TARGET + '/calendar.sealed.json'), true,
+    assert.equal(await run(TARGET + '/race-control/calendar.sealed.json'), true,
       'le JSON de la même origine est intercepté par le SW actuel');
     assert.equal(cacheWrites.length, 1);
-    assert.equal(cacheWrites[0].key, TARGET + '/calendar.sealed.json');
+    assert.equal(cacheWrites[0].key, TARGET + '/race-control/calendar.sealed.json');
     // Un test réseau fictif ne prouve PAS la réponse CORS de GitHub Pages.
   });
   console.log(`${passed}/${passed} scénarios fictifs OK · aucune connexion réseau ni donnée réelle`);
