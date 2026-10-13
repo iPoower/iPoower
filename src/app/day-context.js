@@ -37,7 +37,9 @@ function appChooseDestination(placeId, source = 'user') {
     const at = Date.now(), active = APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.activeTrip;
     const current = placeNow().place || locById(USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.placeId);
     // Un choix explicite peut rétablir une prévision écartée par le conflit Agenda.
-    const candidates = (APP_CONTEXT.planned && APP_CONTEXT.planned.length ? APP_CONTEXT.planned : APP_CONTEXT.trips).slice().sort((a, b) => a.dep.localeCompare(b.dep));
+    // Un trajet manuel déjà programmé conserve toutefois sa clé et son heure choisies.
+    const manual = appDay().nextDestination && appDay().nextDestination.source === 'manual';
+    const candidates = (!manual && APP_CONTEXT.planned && APP_CONTEXT.planned.length ? APP_CONTEXT.planned : APP_CONTEXT.trips).slice().sort((a, b) => a.dep.localeCompare(b.dep));
     const candidate = active || candidates.find(t => t.dep.slice(0, 10) === placeToday() && !liveDoneHas(t, candidates)
       && (!current || (appTripPlace(t, 'from') || {}).id === current.id));
     const prior = TRIPSTART, dep = candidate && (candidate.planDep || candidate.dep) || localTs(at);

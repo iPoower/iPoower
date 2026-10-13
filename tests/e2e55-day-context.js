@@ -160,6 +160,8 @@ async function agendaRegression(browser, dev) {
   await p.clock.setSystemTime(new Date('2026-10-14T06:00:00+02:00'));
   const early = structuredClone(payload.events[0]); early.id = 'early-fixture'; early.s = '2026-10-14T06:25'; early.e = '2026-10-14T06:28'; early.mode = 'maison';
   const home = payload.events[0].legs[1].to; early.legs = [{ ...early.legs[0], from: home, dep: '2026-10-14T06:02', arr: '2026-10-14T06:20' }];
+  early.legs[0].g = [[home.lat, home.lon], [early.lat, early.lon]];
+  early.legs[0].pts = [{ f: .5, lat: (home.lat + early.lat) / 2, lon: (home.lon + early.lon) / 2 }];
   await publish([early]); await tap(p, '#placeBar [data-act=place-confirm][data-place=home]');
   await openDay(p); if (!(await p.locator('#dayContext .day-destination').getAttribute('open') != null)) await tap(p, '#dayContext .day-destination > summary');
   const earlyKey = await p.locator('#dayContext [data-agenda-key]').getAttribute('data-agenda-key');

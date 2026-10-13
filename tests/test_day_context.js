@@ -167,6 +167,12 @@ check('choisir domicile après priorité Agenda restaure la vraie clé du retour
   a.appChooseDestination('home');
   assert.equal(a.appDay().nextDestination.tripKey, work.key); assert.equal(a.appDay().nextDestination.dep, work.dep);
 });
+check('changer la destination d’un trajet manuel conserve sa clé et son heure explicitement choisies', () => {
+  const { a, work, cal } = agendaFixture(), manual = { src: 'local', key: 'manual-chosen', dep: '2026-10-06T20:30', l: { from: places[1], to: places[2] } };
+  a.USER_STORE.state.dayContext.nextDestination = { ...choice('b'), source: 'manual', tripKey: manual.key, dep: manual.dep };
+  a.APP_CONTEXT.planned = [work, cal, manual]; a.APP_CONTEXT.trips = [manual];
+  a.appChooseDestination('home'); assert.equal(a.appDay().nextDestination.tripKey, manual.key); assert.equal(a.appDay().nextDestination.dep, manual.dep);
+});
 check('trajet déjà commencé : ne jamais le remplacer par une prévision Agenda', () => {
   const { a, work, cal } = agendaFixture(); a.TRIPSTART = { key: work.key }; a.LIVE.phase = 'active';
   assert.equal(a.appChooseAgendaDestination(cal.key), false);
