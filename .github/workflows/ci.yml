@@ -259,6 +259,8 @@ jobs:
           node-version: 24
       - name: Frontière du relais et attaques simulées (clés fictives uniquement)
         run: node tests/relay-trust.js
+      - name: Coordination CI et watchdog (API et données fictives, aucun réseau)
+        run: node --test tests/watchdog-stability.js
       - name: Relais de bout en bout (données fictives, sans aucun secret)
         run: node tests/relay-smoke.js
       - name: "Outils de clés : contrôle de séparation (clés fictives, sans aucun secret)"

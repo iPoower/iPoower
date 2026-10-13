@@ -81,7 +81,8 @@ try {
   function workflowCheck(s) {
     assert.match(s, /approved:[\s\S]*actions: read[\s\S]*run: node tools\/relay-trust\.js/);
     assert.match(s, /needs: approved/);
-    assert.match(s, /ref: \$\{\{ github.sha \}\}\n\s+path: trusted\n\s+persist-credentials: false/);
+    assert.match(s, /needs\.approved\.outputs\.state == 'approved'/);
+    assert.match(s, /ref: \$\{\{ needs.approved.outputs.sha \}\}\n\s+path: trusted\n\s+persist-credentials: false/);
     assert.match(s, /run: node trusted\/src\/relay\.js/);
     assert(!/run:.*(?:node|python|npm).*pages\//.test(s));
     assert.match(s, /RC_RELAY_CONFIG_FILE:.*trusted\/encrypted\/relay-config.sealed.json/);
