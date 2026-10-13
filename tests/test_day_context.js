@@ -108,6 +108,7 @@ function commuteFixture(place, clock) {
 }
 function agendaFixture() {
   const a = commuteFixture(places[1], '2026-10-06T17:30');
+  a.S.locs = places.slice(0, 2); a.S.customs = [places[2]];
   a.APP_CONTEXT = { planned: [], trips: [], snapshot: null };
   a.USER_STORE.state.done = {}; a.USER_STORE.state.lastDeparture = null;
   a.PLACE = { conf: { placeId: 'work' }, extra: null }; a.RETURNHOME = null;
@@ -146,6 +147,20 @@ check('adresse exacte : le point de navigation gagne sur les coordonnées routi�
   cal.l.navTo = { ...places[2], lat: 48.81234, lon: 2.45678 };
   a.appChooseAgendaDestination(cal.key); const p = a.appDay().nextDestination.destinationPoint;
   assert.equal(p.lat, 48.81234); assert.equal(p.lon, 2.45678);
+});
+check('deux destinations Agenda dynamiques gardent des IDs distincts et ne remplacent pas le lieu confirmé', () => {
+  const { a, cal } = agendaFixture(); cal.l.to = { lat: 48.71234, lon: 2.55678, name: 'Adresse fictive' };
+  a.PLACE.extra = { id: 'agenda-next', lat: 48.7, lon: 2.5, name: 'Ancien lieu confirmé', at: now };
+  const before = JSON.stringify(a.PLACE.extra), first = a.appAgendaTarget(cal), second = a.appAgendaTarget({ ...cal, e: { ...cal.e, id: 'b'.repeat(32) } });
+  assert.match(first.id, /^agenda-cal-[0-9a-f]{32}$/); assert.notEqual(first.id, second.id);
+  a.appChooseAgendaDestination(cal.key); assert.equal(JSON.stringify(a.PLACE.extra), before);
+});
+check('choisir une destination dynamique comme trajet explicite conserve son point sans lieu fantôme', () => {
+  const { a, cal } = agendaFixture(); cal.l.to = { lat: 48.71234, lon: 2.55678, name: 'Adresse fictive' };
+  const list = a.placeList; a.placeList = () => [...list(), ...[a.USER_STORE.state.dayContext.nextDestination?.destinationPoint].filter(Boolean)];
+  a.appChooseAgendaDestination(cal.key); const point = a.appDay().nextDestination.destinationPoint;
+  a.appChooseDestination(point.id); assert.equal(a.appDay().nextDestination.destinationPoint.lat, point.lat);
+  assert.equal(a.appDay().nextDestination.placeId, point.id);
 });
 check('après le travail : rendez-vous depuis Travail prioritaire, conflit détecté sans écrire une annulation', () => {
   const { a, work, cal } = agendaFixture(); a.appDay(); const before = JSON.stringify(a.USER_STORE.state);

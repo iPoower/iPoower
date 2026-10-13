@@ -157,6 +157,20 @@ async function agendaRegression(browser, dev) {
     assert.equal((await read(p)).dayContext.nextDestination, null);
     assert(await p.evaluate(() => !APP_CONTEXT.trips.some(t => t.src === 'local' || t.src === 'cal')));
   });
+  // Précondition : un ancien rendez-vous est le lieu réellement confirmé, avec l'ancien ID dynamique.
+  await p.evaluate(() => {
+    const at = Date.now(); PLACE.extra = { id: 'agenda-next', name: 'Ancien lieu confirmé fictif', lat: 48.75, lon: 2.3, at };
+    PLACE.conf = { placeId: PLACE.extra.id, at, how: 'manual', day: placeToday() };
+    USER_STORE.state.dayContext.lastConfirmedPlace = { placeId: PLACE.extra.id, at, source: 'manual' }; renderAll();
+  });
+  await publish(payload.events); await openDay(p);
+  if (!(await p.locator('#dayContext .day-destination').getAttribute('open') != null)) await tap(p, '#dayContext .day-destination > summary');
+  await tap(p, '#dayContext [data-agenda-key]'); await s.settle(6);
+  await check(dev + ' · nouveau rendez-vous ne remplace jamais le lieu réellement confirmé', async () => {
+    const x = await read(p); assert.equal(x.place, 'agenda-next'); assert.equal(x.origin, 'agenda-next');
+    assert.notEqual(x.destination, x.place); assert.equal(await p.evaluate(() => placeNow().place.lat), 48.75);
+    assert.equal(await p.evaluate(() => PLACE.extra.name), 'Ancien lieu confirmé fictif');
+  });
   await p.clock.setSystemTime(new Date('2026-10-14T06:00:00+02:00'));
   const early = structuredClone(payload.events[0]); early.id = 'early-fixture'; early.s = '2026-10-14T06:25'; early.e = '2026-10-14T06:28'; early.mode = 'maison';
   const home = payload.events[0].legs[1].to; early.legs = [{ ...early.legs[0], from: home, dep: '2026-10-14T06:02', arr: '2026-10-14T06:20' }];
@@ -215,7 +229,7 @@ async function agendaRegression(browser, dev) {
       await tap(p, '#dayContext [data-act=day-destination][data-agenda-key]');
       await s.settle();
       await check(dev + '/' + profile + ' · Travail → Piano direct remplace le retour Maison', async () => {
-        const x = await read(p); assert.equal(x.destination, 'agenda-next'); assert.equal(x.dayContext.nextDestination.originId, 'work');
+        const x = await read(p); assert.match(x.destination, /^agenda-cal-[0-9a-f]{32}$/); assert.equal(x.dayContext.nextDestination.originId, 'work');
         assert.equal(x.next.key, chosenKey); assert.equal(x.next.src, 'cal');
         assert.equal(x.dayContext.nextDestination.dep, '2026-10-06T17:40');
         assert.equal(x.next.from, 'Travail test'); assert.equal(x.next.to, 'Albert test'); assert.doesNotMatch(x.next.to, /Domicile|Maison/);

@@ -43,9 +43,11 @@ function appChooseDestination(placeId, source = 'user') {
     const candidate = active || candidates.find(t => t.dep.slice(0, 10) === placeToday() && !liveDoneHas(t, candidates)
       && (!current || (appTripPlace(t, 'from') || {}).id === current.id));
     const prior = TRIPSTART, dep = candidate && (candidate.planDep || candidate.dep) || localTs(at);
+    const previous = appDay().nextDestination, point = previous && previous.destinationPoint;
+    const dynamicPoint = point && point.id === placeId && ![...(S.locs || []), ...(S.customs || [])].some(p => p.id === placeId) ? point : null;
     if (LIVE.key) liveReset(); tripPreviewReset(); CANCELROUTEGEN++; CANCELROUTES.clear();
     if (active && prior) TRIPSTART = prior;
-    appDay().nextDestination = { placeId: placeId || null, source, confirmedAt: at, expiresAt: DayContext.tripExpiry(dep, at),
+    appDay().nextDestination = { placeId: placeId || null, destinationPoint: dynamicPoint, source, confirmedAt: at, expiresAt: DayContext.tripExpiry(dep, at),
       originId: current && current.id || prior && prior.trip && prior.trip.fromId || null,
       tripKey: candidate && candidate.key || 'local|' + at, dep, createdAt: at, updatedAt: at };
     APP_CONTEXT.weatherPreview = null;
@@ -62,10 +64,10 @@ function appAgendaTarget(t) {
   const l = t && (t.planL || t.l), p = l && (l.navTo || l.to);
   if (!locHasCoords(p)) return null;
   // Une adresse de rendez-vous n'est pas remplacée par un lieu situé à proximité.
-  const known = placeList().find(x => x.id !== 'agenda-next' && x.lat === p.lat && x.lon === p.lon);
+  const known = [...(S.locs || []), ...(S.customs || [])].find(x => x.lat === p.lat && x.lon === p.lon);
   const where = t.to || p.city || p.label || 'Rendez-vous';
   const title = t.e && t.e.t && t.e.t !== where ? t.e.t + ' · ' + where : (t.e && t.e.t) || where;
-  return DayContext.cleanPoint({ ...p, id: known && known.id || 'agenda-next', name: title,
+  return DayContext.cleanPoint({ ...p, id: known && known.id || 'agenda-' + TripCancel.eventId(t.e), name: title,
     address: p.address || t.e && t.e.loc || where, provider: 'calendar', precision: 'event' }, 'agenda-next');
 }
 function appChooseAgendaDestination(key) {
