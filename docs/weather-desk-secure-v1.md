@@ -47,7 +47,9 @@ Les tests automatisés (fixtures 100 % fictives ; Chromium/WebKit) contrôlent l
 
 ## 5. Livraison et rollback
 
-**Fichiers nouveaux uniquement :** weather-desk-preview/{index.html,style.css,app.js,generate.js,_headers}, tests/weather-desk-preview.js, .github/workflows/weather-desk-preview.yml, docs/weather-desk-secure-v1.md.
+**Fichiers nouveaux uniquement (11 au total) :** weather-desk-preview/{index.html,style.css,app.js,generate.js,_headers}, tests/{weather-desk-preview.js,weather-desk-hosting.js}, tools/weather-desk-hosting.js, .github/workflows/weather-desk-preview.yml, docs/{weather-desk-secure-v1.md,weather-desk-hosting-isolation.md}.
+
+**Hébergement indépendant, préparé sans publication :** voir [weather-desk-hosting-isolation.md](weather-desk-hosting-isolation.md). Le packaging fixe se limite à quatre fichiers publics sous `.ci/weather-desk-site/`, sans JSON météo ni coffre. Simulations Chromium/WebKit de l'origine séparée et de la politique CSP proposées dans `tests/weather-desk-hosting.js`. Aucun compte Cloudflare, nom de domaine, jeton, projet Pages ou déploiement n'est créé.
 
 **Inchangés :** src/app/weather-station.js, src/app/weather-view.js, src/app/lifecycle.js, src/session-vault.js, src/remember-device.js, src/sw.js, src/shell.html, tools/build.js, encrypted/, main, gh-pages, DNS, production.
 
