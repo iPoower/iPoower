@@ -11,7 +11,7 @@ permissions:
   contents: read
 jobs:
   tentative-environment:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     continue-on-error: true   # l'échec est le résultat attendu
     environment:
@@ -24,7 +24,7 @@ jobs:
       - id: e
         run: echo "entered=oui" >> "$GITHUB_OUTPUT"
   secrets-hors-environment:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     outputs:
       present: ${{ steps.s.outputs.present }}
@@ -38,7 +38,7 @@ jobs:
   verdict:
     needs: [tentative-environment, secrets-hors-environment]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - env:

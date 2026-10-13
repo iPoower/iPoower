@@ -25,7 +25,7 @@ concurrency:
 jobs:
   approved:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     outputs:
       state: ${{ steps.trust.outputs.state }}
@@ -52,7 +52,7 @@ jobs:
     environment:
       name: production
       deployment: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     permissions:
       contents: write
