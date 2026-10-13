@@ -9,6 +9,7 @@ on:
       - 'tools/weather-desk-hosting.js'
       - '.github/workflows/weather-desk-preview.yml'
       - 'docs/weather-desk-secure-v1.md'
+      - 'docs/weather-desk-hosting-isolation.md'
 permissions:
   contents: read
 jobs:
