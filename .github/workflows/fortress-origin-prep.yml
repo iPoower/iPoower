@@ -5,6 +5,7 @@ on:
     paths:
       - 'docs/fortress-ii-origin-preparation.md'
       - 'tests/fortress-origin-fixture.js'
+      - 'tests/fortress-origin-inventory.js'
       - '.github/workflows/fortress-origin-prep.yml'
 permissions:
   contents: read
@@ -22,5 +23,7 @@ jobs:
           node-version: 24
       - name: Vérifier la syntaxe de l'outil fictif
         run: node --check tests/fortress-origin-fixture.js
+      - name: Inventaire statique des clés — aucune donnée personnelle
+        run: node tests/fortress-origin-inventory.js
       - name: Éprouver uniquement les fixtures locales
         run: node tests/fortress-origin-fixture.js
