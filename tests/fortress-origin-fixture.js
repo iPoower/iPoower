@@ -4,6 +4,7 @@
 // Ce script n'est PAS un outil d'export/import pour l'utilisateur.
 'use strict';
 const assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { randomBytes, pbkdf2Sync, createCipheriv, createDecipheriv, createHash } = require('node:crypto');
 
 const SOURCE = 'https://ipoower.github.io';
@@ -164,6 +165,51 @@ async function check(name, fn) { await fn(); console.log('✅ ' + name); passed+
   });
   await check('coffre chiffré distinct de valeurs de test en clair', () => {
     assert(!JSON.stringify(file).includes('Auto factice')); assert(!JSON.stringify(file).includes('pneu-test'));
+  });
+
+  await check('SW v12 réel : autre origine et autre sous-dossier non interceptés', async () => {
+    // Le JS du SW de main est exécuté dans un contexte factice : ni navigateur,
+    // ni disque local, ni service worker déployé, ni réseau.
+    const events = {}, cacheWrites = [];
+    const selfFake = {
+      location: { origin: TARGET },
+      registration: { scope: TARGET + '/' },
+      clients: { claim: async () => undefined },
+      skipWaiting() {},
+      addEventListener(event, callback) { events[event] = callback; }
+    };
+    const webCache = {
+      match: async () => undefined,
+      put: async (key, response) => { cacheWrites.push({ key: key.url || String(key), ok: response.ok }); },
+      delete: async () => true
+    };
+    const sandbox = {
+      self: selfFake, URL, Request, Response, Headers, Date, Promise, setTimeout,
+      caches: { open: async () => webCache, keys: async () => [] },
+      fetch: async () => new Response('{"fixture":true}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    };
+    vm.runInNewContext(
+      fs.readFileSync(path.join(__dirname, '../src/sw.js'), 'utf8'),
+      sandbox, { filename: 'src/sw.js', timeout: 1000 }
+    );
+    const run = async url => {
+      let promise;
+      events.fetch({ request: new Request(url), respondWith: p => { promise = p; }, waitUntil() {} });
+      if (!promise) return false;
+      const response = await promise;
+      assert.equal(response.ok, true);
+      return true;
+    };
+    assert.equal(await run(SOURCE + '/iPoower/race-control/calendar.sealed.json'), false,
+      'une ressource relais cross-origin n’est actuellement pas cachée par le SW');
+    assert.equal(await run(TARGET + '/Reconversion-Control/fixture.html'), false,
+      'autre sous-dossier exclu du scope');
+    assert.equal(cacheWrites.length, 0);
+    assert.equal(await run(TARGET + '/calendar.sealed.json'), true,
+      'le JSON de la même origine est intercepté par le SW actuel');
+    assert.equal(cacheWrites.length, 1);
+    assert.equal(cacheWrites[0].key, TARGET + '/calendar.sealed.json');
+    // Un test réseau fictif ne prouve PAS la réponse CORS de GitHub Pages.
   });
   console.log(`${passed}/${passed} scénarios fictifs OK · aucune connexion réseau ni donnée réelle`);
 })().catch(error => { console.error('❌ Forteresse II fixture :', error.message); process.exitCode = 1; });
