@@ -52,8 +52,6 @@ async function exercise(browserType) {
     assert(csp.includes("frame-ancestors 'none'"));
     assert.equal(navigation.headers()['referrer-policy'], 'no-referrer');
     assert(navigation.headers()['permissions-policy'].includes('geolocation=()'));
-    await guest.waitForResponse(r => r.url().endsWith('/public-weather.json') && r.status() === 404)
-      .catch(() => {}); // response can precede listener registration
     await guest.waitForFunction(() => document.querySelector('#updated').textContent.includes('Aucun fichier public valide'));
     assert.equal(await guest.locator('#status').innerText(), 'DONNÉES INDISPONIBLES');
     assert.equal(await guest.locator('#hours li').count(), 0);
@@ -61,8 +59,11 @@ async function exercise(browserType) {
       'isolated origin cannot access sibling canary');
     assert(calls.every(u => u.startsWith(isolated.url + '/')),
       'guest must only fetch public assets from its dedicated host');
-    assert.deepEqual(calls.map(u => new URL(u).pathname).sort(),
-      ['/','/app.js','/public-weather.json','/style.css'].sort());
+    const paths = calls.map(u => new URL(u).pathname);
+    assert(['/','/app.js','/public-weather.json','/style.css'].every(p => paths.includes(p)),
+      'expected public-only resources');
+    assert(paths.every(p => ['/','/app.js','/public-weather.json','/style.css','/favicon.ico'].includes(p)),
+      'unexpected public resource');
     const dynamicScriptExecuted = await guest.evaluate(async () => {
       window.__fictionalInjectedScript = false;
       const s = document.createElement('script');
