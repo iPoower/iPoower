@@ -85,7 +85,7 @@ const ConfigImport = (() => {
       if (!optional(v, 'customs', x => boundedArray(x, 4, place)) ||
         !fields(v.work, ['from', 'to', 'durMin', 'dep', 'ret', 'days']) || !stringFields(v.work, ['from', 'to']) ||
         !optional(v.work, 'durMin', x => number(x, 1, 1440)) || !optional(v.work, 'dep', time) || !optional(v.work, 'ret', time) ||
-        !optional(v.work, 'days', x => boundedArray(x, 7, d => Number.isInteger(d) && d >= 0 && d <= 6) && new Set(x).size === x.length)) return false;
+        !optional(v.work, 'days', x => boundedArray(x, 7, d => Number.isInteger(d) && d >= 1 && d <= 7) && new Set(x).size === x.length)) return false;
       const locs = [...v.locs, ...(v.customs || [])], ids = new Set(locs.map(l => l.id));
       if (ids.size !== locs.length || ['from', 'to'].some(k => own(v.work, k) && !ids.has(v.work[k]))) return false;
       return optional(v, 'v', x => x === 1) && optional(v, 'configured', flag) && optional(v, 'gpsAuto', flag) &&

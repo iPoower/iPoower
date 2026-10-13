@@ -33,8 +33,18 @@ const submit = async (s, code = PW) => {
   try {
     for (const dev of ['iphone', 'pc']) {
       const s = await session(b, { at: '2026-10-13T08:00:00+02:00', dev, unlock: false, meteo: 'abort' }), p = s.p, cfg = imported();
+      cfg.work.days = dev === 'iphone' ? [7] : [1, 2, 3, 4, 5, 6, 7];
       p.on('dialog', d => d.accept());
       try {
+        await check(dev + ' · jours ISO invalides : URL nettoyée, aucun import ni changement de stockage', async () => {
+          const before = await read(p), disk = await raw(s.c);
+          for (const days of [[0], [1, 0, 7], [8], [7, 7]]) {
+            const next = imported(); next.work.days = days; await setLink(s, next);
+            const after = await read(p); assert.equal(after.status, 'invalid');
+            assert.deepEqual(after.settings, before.settings); assert.equal(after.id, before.id);
+            assert.deepEqual(after.protected, before.protected); assert.deepEqual(await raw(s.c), disk);
+          }
+        });
         await check(dev + ' · nouvelle installation verrouillée : URL propre, import seulement en mémoire, aucun réglage écrit', async () => {
           await p.evaluate(() => history.replaceState({ keep: 1 }, '', location.pathname + '?keep=1'));
           await setLink(s, cfg, '&section=secSeason');
@@ -47,6 +57,9 @@ const submit = async (s, code = PW) => {
           // Autorisation d'appareil fictif pour tester ensuite une réouverture.
           await p.locator('#rememberWeek').check(); await submit(s);
           const state = await read(p); assert.equal(await p.evaluate(() => LOCKED()), false); assert.match(state.id, /^sha256:[0-9a-f]{64}$/);
+          assert.deepEqual(state.settings.work.days, cfg.work.days);
+          assert(await p.evaluate(() => isCommuteDay('2026-10-18', S.work.days)), 'dimanche conservé dans le vrai moteur');
+          assert.equal(await p.evaluate(() => isCommuteDay('2026-10-13', S.work.days)), dev === 'pc');
           assert.equal(state.settings.cars[0].name, cfg.cars[0].name); assert.deepEqual(state.settings.cars[0].plan, cfg.cars[0].plan);
           assert.equal(state.settings.cars[0].tire.treadAv, 3.2); assert.deepEqual(state.settings.cars[0].sets, cfg.cars[0].sets);
           assert.deepEqual(state.settings.cars[0].odo, cfg.cars[0].odo); assert.deepEqual(state.settings.journal, cfg.journal);

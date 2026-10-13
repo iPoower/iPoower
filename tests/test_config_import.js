@@ -107,6 +107,22 @@ const test = async (name, fn) => { stage = name; await fn(); n++; console.log('�
     }
     assert.equal(new Set(ids).size, 1);
   });
+  await test('jours ISO : dimanche et semaine complète importés, jours invalides refusés sans écriture', async () => {
+    for (const days of [[7], [1, 2, 3, 4, 5, 6, 7]]) {
+      const cfg = fixture(); cfg.work.days = days;
+      const a = await make(), { t, cf } = prepared(cfg);
+      assert.equal((await cf.process(a.vs)).state, 'applied'); assert.equal(t.location.hash, '');
+      assert.deepEqual(JSON.parse(a.vs.store.getItem(CI.SETTINGS)).work.days, days);
+      const b = await make({ raw: a.raw, shared: a.shared, extra: {} });
+      assert.deepEqual(JSON.parse(b.vs.store.getItem(CI.SETTINGS)).work.days, days);
+    }
+    const a = await make(), before = stored(a.vs), disk = copy(a.raw.dump());
+    for (const days of [[0], [1, 0, 7], [-1], [8], [7, 7], [1.5], ['7']]) {
+      const cfg = fixture(); cfg.work.days = days; const { t, cf } = prepared(cfg);
+      assert.equal((await cf.process(a.vs)).state, 'invalid'); assert.equal(t.location.hash, '');
+      assert.deepEqual(stored(a.vs), before); assert.deepEqual(a.raw.dump(), disk);
+    }
+  });
   await test('paramètres de recherche, état history et fragments légitimes conservés sans navigation', async () => {
     const { t } = prepared(fixture(), '&section=secSeason&view=analyse');
     assert.equal(t.location.hash, '#section=secSeason&view=analyse'); assert.equal(t.location.pathname, '/app/');
