@@ -89,7 +89,13 @@ async function unseal(pass, keepWeek = true) {
         : 'Déverrouillage impossible : stockage local indisponible ou plein. Tes données restent conservées.';
       return false;
     }
-    window.TWRC_STORAGE_ERROR = false; unseal.restored = had; return true;
+    window.TWRC_STORAGE_ERROR = false;
+    const cf = window.TWRC_CONFIG_IMPORT, pending = cf && cf.pending;
+    if (cf) {
+      const result = await cf.process(VS, BASE);
+      if (pending && !['applied', 'duplicate', 'none'].includes(result.state)) alert(ConfigImport.message(result));
+    }
+    unseal.restored = had; return true;
   }
   // Sans coffre de session (stockage en récupération, chiffrement indisponible au démarrage) : aucun déverrouillage plutôt
   // qu'une copie en clair du code ou des réglages (sécurité V1). Les données restent conservées ; un redémarrage relance le coffre.
@@ -142,18 +148,9 @@ async function lockDevice(button) {
 // Préréglage éventuel injecté à la construction (version privée uniquement)
 const DEFAULTS = (typeof window !== 'undefined' && window.TWRC_PRESET && !LOCKED()) ? normalize({ ...window.TWRC_PRESET, configured: 1 }, BASE) : clone(BASE);
 repairVehicleIdentity(DEFAULTS);
-// Configuration privée transmise dans le fragment d'URL (#cfg=...) : jamais envoyée au serveur
-let CFG_IMPORTED = false;
-function hashCfg() {
-  try {
-    const h = location.hash || '';
-    if (!h.startsWith('#cfg=')) return null;
-    const raw = h.slice(5), b = raw.replace(/-/g, '+').replace(/_/g, '/');
-    const bin = atob(b + '==='.slice((b.length + 3) % 4));
-    const json = new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)));
-    return { raw, cfg: JSON.parse(json) };
-  } catch (e) { return null; }
-}
+// Le lien privé est capturé/nettoyé au boot, traité dans le coffre authentifié
+// et vérifié AVANT que l'application lise ses réglages.
+let CFG_IMPORTED = !!(window.TWRC_CONFIG_IMPORT && window.TWRC_CONFIG_IMPORT.status.state === 'applied');
 // Réparer le reste de l'ancien « + Destination » : seule la dernière destination ajoutée sans choix explicite du travail.
 // Un travail sélectionné volontairement (edits work.to / work) ou un préréglage personnalisé reste intact.
 function repairStoredWork(saved) {
@@ -192,12 +189,6 @@ function loadSettings() {
       const oldCalib = keep.calib;
       saved = { ...fresh, configured: 1, calib: oldCalib || [], journal: keep.journal || {} }; reapplyEdits(saved, old); lsSet('twrc.settings.v1', JSON.stringify(saved));
     }
-  }
-  const hc = hashCfg();
-  // on importe le lien s'il est nouveau, ou si cet appareil n'a encore aucun réglage
-  if (hc && (!saved || lsGet('twrc.cfghash') !== hc.raw)) {
-    saved = { ...hc.cfg, configured: 1 }; CFG_IMPORTED = true;
-    lsSet('twrc.cfghash', hc.raw); lsSet('twrc.settings.v1', JSON.stringify(saved));
   }
   if (repairVehicleIdentity(saved)) lsSet('twrc.settings.v1', JSON.stringify(saved));
   return normalize(saved, DEFAULTS);
@@ -965,7 +956,8 @@ function renderNotice() {
     : VS.warn ? `<div class="note lv1" role="status" data-k="vault"><b>STOCKAGE LOCAL</b><span>${esc(VS.warn)}</span></div>`
     : VS.migrated ? `<div class="note lv0" role="status" data-k="vault"><b>🔐 DONNÉES CHIFFRÉES SUR CET APPAREIL</b><span>Réglages, lieux, journal et code sont désormais chiffrés au repos. Tu peux autoriser cet appareil à rester connecté pendant 7 jours lors du prochain déverrouillage.</span></div>` : '';
   const setContent = extra0 => {
-    const extra = vaultNote + extra0;
+    const importMessage = window.TWRC_CONFIG_IMPORT && ConfigImport.message(window.TWRC_CONFIG_IMPORT.status);
+    const extra = vaultNote + (importMessage ? `<div class="note lv1" role="status" data-k="config-import"><b>IMPORT DE CONFIGURATION</b><span>${esc(importMessage)}</span></div>` : '') + extra0;
     const form = el.querySelector('.unlock');
     if (lock && form) {
       Array.from(el.childNodes).forEach(node => { if (node !== form) node.remove(); });
@@ -4095,7 +4087,13 @@ document.addEventListener('change', e => {
     if (/\.tire\.type$/.test(b) || /plan\.on$/.test(b) || /\.tire\.tread(Av|Ar)$/.test(b)) renderSettings();
   }
 });
-window.addEventListener('hashchange', () => { if (location.hash.startsWith('#cfg=')) { const vs = window.TWRC_VAULT; if (vs && (vs.expired() || vs.pendingRecovery)) { checkSessionExpiry(); return; } location.reload(); } });
+window.addEventListener('hashchange', async () => {
+  const cf = window.TWRC_CONFIG_IMPORT;
+  if (!cf || !cf.capture()) return;
+  const result = await cf.process(window.TWRC_VAULT);
+  if (result.state === 'applied') await reloadSafe();
+  else { renderNotice(); checkSessionExpiry(); }
+});
 // @include app/lifecycle.js
 // Sécurité V1 : écriture chiffrée immédiate quand l'app passe en arrière-plan ; erreur d'écriture affichée sans attendre.
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && window.TWRC_VAULT) window.TWRC_VAULT.flush(); });

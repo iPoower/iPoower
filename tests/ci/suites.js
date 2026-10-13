@@ -102,3 +102,5 @@ SUITE.push(['test_weather_watch.js', 'Weather Watch : provenance, seuils, hysté
   ['e2e74-weather-watch.js', 'Weather Watch PC : station facultative, reprise, alertes, mini-cockpit, Web Locks et iPhone préservé', true]);
 SUITE.push(['test_web_security.js', 'Forteresse : CSP, assets signés, chemins sûrs et périmètre SW', false],
   ['e2e75-fortress-web.js', 'Forteresse iPhone/PC : XSS, scripts refusés, SRI et frontière d’origine', true]);
+SUITE.push(['test_config_import.js', 'Forteresse III : liens privés, validation, coffre atomique, refus et données conservées', false],
+  ['e2e76-config-import.js', 'Forteresse III PC/iPhone : vrais imports fictifs, verrouillage, URL et réouverture', true]);
