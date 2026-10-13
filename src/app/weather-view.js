@@ -29,7 +29,7 @@ function tripPassagePoints(t) {
 }
 function wxTrips(clockModel) {
   const offSec = clockModel && clockModel.payload && clockModel.payload.utc_offset_seconds != null ? clockModel.payload.utc_offset_seconds : 7200;
-  return APP_CONTEXT.snapshot.trips.filter(t => t.dep && (!t.originPending || (t.planL || t.l || {}).originExplicit)).map((t, k) => {
+  return APP_CONTEXT.snapshot.trips.filter(t => t.dep).map((t, k) => {
     const points = tripPassagePoints(t);
     let glare = t.td && t.td.glare ? { ts: t.td.glare.ts } : null;
     if (!glare && t.l && locHasCoords(t.l.from) && locHasCoords(t.l.to) && t.l.min) {
@@ -110,10 +110,10 @@ function renderWx() {
   const t = d.trip, pending = APP_CONTEXT.snapshot.dayContext.nextDestination && !APP_CONTEXT.snapshot.dayContext.nextDestination.placeId;
   const target = t && APP_CONTEXT.snapshot.trips.find(trip => trip.key === t.id);
   const tripHtml = pending ? `<div id="wxNextTrip" class="wx-blk wx-trip wx-none"><h3>${APP_CONTEXT.snapshot.status === 'travel' ? '🚗 En trajet' : '🧭 Prochain trajet'}</h3><p class="wx-route"><b>${esc(APP_CONTEXT.snapshot.origin && APP_CONTEXT.snapshot.origin.name || 'Origine à confirmer')} → Destination à confirmer</b></p><p class="sub">Destination nécessaire pour calculer l’ETA et la météo route.</p></div>`
-    : !t ? `<div id="wxNextTrip" class="wx-blk wx-trip wx-none"><h3>🧭 Prochain trajet</h3><p class="sub">Aucun trajet prévu dans les 24 h. Les rendez-vous sans lieu reconnu ne sont pas des trajets.</p></div>`
+    : !t ? `<div id="wxNextTrip" class="wx-blk wx-trip wx-none"><h3>🧭 Prochain trajet</h3>${APP_CONTEXT.agendaSelectionUnavailable ? appAgendaConflictHtml() : '<p class="sub">Aucun trajet prévu dans les 24 h. Les rendez-vous sans lieu reconnu ne sont pas des trajets.</p>'}</div>`
     : `<div id="wxNextTrip" class="wx-blk wx-trip ${t.lv == null ? 'lvx' : 'lv' + t.lv}"><h3>🧭 Prochain trajet${t.running ? ' · en cours' : ' · ' + esc(dayLbl(t.day))}</h3>
       <p class="wx-route"><b>${esc(t.from || 'Départ')} → ${esc(t.to || 'Arrivée')}</b></p>
-      ${calendarOriginControls(target)}
+      ${appAgendaConflictHtml()}${calendarOriginControls(target)}
       ${t.pending ? `<p class="sub" role="status">⏳ ${offlineNow() ? 'Hors ligne : itinéraire, horaire conseillé et météo du parcours en attente du réseau.' : 'Nouvel itinéraire, horaire conseillé et météo du parcours en cours de calcul…'}</p>` : `<p class="wx-when num">${t.dep} → ${t.arr} · ${t.durMin} min${t.km != null ? ' · ' + f0(t.km) + ' km' : ''}</p>`}
       ${t.pending ? '' : t.waiting ? `<p class="sub">⏳ Météo du trajet indisponible${offlineNow() ? ' hors ligne' : ' pour le moment'}.</p>` : `<ul class="wx-pts">${t.points.map(p => `<li class="lv${p.lv}"><span class="k">${esc(p.label)} <i class="num">${esc(p.t)}</i></span><span>${p.T != null ? '<b class="num">' + f0(p.T) + ' °C</b> · ' : ''}${esc(p.text)}${p.place && p.label === 'Mi-parcours' ? ' · ' + esc(p.place) : ''}</span></li>`).join('')}</ul>`}
       ${t.crit ? `<p class="wx-crit lv${t.crit.lv}">${E[t.crit.lv]} ${esc(t.crit.text)}</p>` : t.waiting ? '' : '<p class="wx-crit lv0">🟢 Aucun phénomène critique sur le trajet</p>'}

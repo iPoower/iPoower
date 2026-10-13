@@ -51,7 +51,8 @@ function labInput(car) {
     drive = { active: true, since: localTs(startTs, tz), startTs, km, total, kmSrc: onRoute ? 'route' : lf ? 'estimate' : km != null ? 'time' : null, speedKmh: dmin >= 2 && km != null ? km / dmin * 60 : null };
   }
   // prochain trajet réellement prévu (briefing) : points datés, kilomètres de l'agenda ou distance domicile-travail ×1,3
-  const trips = wxTrips(m).filter(t => t.arr > now && t.points.length && !workCommuteBad(t)), t0 = trips[0] || null;   // planning impossible : jamais simulé
+  const next = wxTrips(m).find(t => t.arr > now && !workCommuteBad(t));
+  const t0 = next && !next.pending && next.points.length ? next : null;   // ne pas analyser un autre trajet pendant le calcul du premier
   let trip = null;
   if (t0) {
     const b = BRF_SHOWN.find(x => x.key === t0.id), km = t0.km != null ? t0.km : b && b.td && b.td.dist ? b.td.dist * 1.3 : null;

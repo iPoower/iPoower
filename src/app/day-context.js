@@ -54,22 +54,82 @@ function appAgendaDestinationTrips(now = liveNow()) {
     return !!(t && t.src === 'cal' && t.e && l && l.k === 'go' && t.dep && t.dep.slice(0, 10) === today && t.dep >= at && locHasCoords(l.to));
   }).slice(0, 4);
 }
-function appChooseAgendaDestination(key) {
-  const t = (APP_CONTEXT.planned || []).find(x => x && x.key === key && x.src === 'cal');
+function appAgendaTarget(t) {
   const l = t && (t.planL || t.l), p = l && l.to;
-  if (!t || !p || !locHasCoords(p)) return false;
-  const known = placeList().find(x => x.id !== (PLACE.extra && PLACE.extra.id) && distKm(x, p) <= 1.5);
-  if (known) { appChooseDestination(known.id, 'calendar'); return true; }
-  const current = placeNow().place;
-  // PLACE.extra est l'unique lieu dynamique du contexte. Ne jamais l'écraser s'il représente le lieu courant confirmé.
-  if (PLACE.extra && current && current.id === PLACE.extra.id && PLACE.conf && PLACE.conf.placeId === PLACE.extra.id) return false;
+  if (!locHasCoords(p)) return null;
+  // Une adresse de rendez-vous n'est pas remplacée par un lieu situé à proximité.
+  const known = placeList().find(x => x.id !== 'agenda-next' && x.lat === p.lat && x.lon === p.lon);
   const where = t.to || p.city || p.label || 'Rendez-vous';
   const title = t.e && t.e.t && t.e.t !== where ? t.e.t + ' · ' + where : (t.e && t.e.t) || where;
-  PLACE.extra = { id: 'agenda-next', name: title, address: where, lat: p.lat, lon: p.lon, provider: 'calendar', precision: 'event', at: Date.now() };
-  appChooseDestination(PLACE.extra.id, 'calendar');
-  const n = appDay().nextDestination;
-  if (n) n.destinationPoint = { id: PLACE.extra.id, name: PLACE.extra.name, address: PLACE.extra.address, lat: PLACE.extra.lat, lon: PLACE.extra.lon, provider: 'calendar', precision: 'event' };
+  return DayContext.cleanPoint({ ...p, id: known && known.id || 'agenda-next', name: title,
+    address: p.address || t.e && t.e.loc || where, provider: 'calendar', precision: 'event' }, 'agenda-next');
+}
+function appChooseAgendaDestination(key) {
+  const t = (APP_CONTEXT.planned || []).find(x => x && x.key === key && x.src === 'cal');
+  const l = t && (t.planL || t.l), target = appAgendaTarget(t);
+  if (!t || !t.e || !l || l.k !== 'go' || !target || calendarCancelled(t.e)
+    || !TripCancel.identifiable(CAL && CAL.events, t.e) || liveDoneHas(t, APP_CONTEXT.planned)
+    || TRIPSTART || LIVE.phase === 'active') return false;
+  appAction(() => {
+    const at = Date.now(), origin = appTripPlace(t, 'from');
+    if (LIVE.key) liveReset(); tripPreviewReset(); CANCELROUTEGEN++; CANCELROUTES.clear();
+    appDay().nextDestination = { placeId: target.id, destinationPoint: target, source: 'calendar',
+      calendarEventId: TripCancel.eventId(t.e), tripKey: t.key, dep: t.dep,
+      originId: origin && origin.id || null, confirmedAt: at, expiresAt: DayContext.tripExpiry(t.dep, at), createdAt: at, updatedAt: at };
+    APP_CONTEXT.weatherPreview = null;
+  });
   return true;
+}
+function appSyncAgendaSelection(T) {
+  APP_CONTEXT.agendaSelectionUnavailable = false;
+  const d = appDay(), n = d.nextDestination;
+  if (!n || n.source !== 'calendar') return T;
+  // Absence temporaire du calendrier : garder le choix, sans autoriser un autre départ à sa place.
+  if (!CAL || !Array.isArray(CAL.events)) { APP_CONTEXT.agendaSelectionUnavailable = true; return []; }
+  const t = T.find(t => t.src === 'cal' && t.e && (t.planL || t.l).k === 'go'
+    && (n.calendarEventId ? TripCancel.eventId(t.e) === n.calendarEventId : t.key === n.tripKey)
+    && TripCancel.identifiable(CAL.events, t.e) && !liveDoneHas(t, T));
+  const target = appAgendaTarget(t);
+  if (!t || !target) {
+    d.nextDestination = null;
+    if (LIVE.key === n.tripKey && LIVE.phase !== 'active') liveReset();
+    return T;
+  }
+  const origin = appTripPlace(t, 'from');
+  if (LIVE.key === n.tripKey && LIVE.phase !== 'active' && (n.dep !== t.dep
+    || !n.destinationPoint || n.destinationPoint.lat !== target.lat || n.destinationPoint.lon !== target.lon)) liveReset();
+  Object.assign(n, { calendarEventId: TripCancel.eventId(t.e), tripKey: t.key, dep: t.dep,
+    placeId: target.id, destinationPoint: target, originId: origin && origin.id || null });
+  return T;
+}
+function appAgendaPriority(T, now) {
+  APP_CONTEXT.agendaConflict = null;
+  const n = appDay().nextDestination, current = placeNow(), work = locById(S.work.to), home = locById(S.work.from);
+  if (TRIPSTART || LIVE.phase === 'active' || USER_STORE.state.lastDeparture || RETURNHOME
+    || n && n.source !== 'calendar' || !current.place || current.place.id !== S.work.to
+    || !['manual', 'gps'].includes(current.source) || !work || !home) return T;
+  const fromWork = t => {
+    const l = t.planL || t.l, p = l && l.from;
+    return p && locHasCoords(p) && distKm(p, work) <= 1
+      || l && l.originRecalc && l.originName === work.name;
+  };
+  const agenda = T.filter(t => t.src === 'cal' && t.e && (t.planL || t.l).k === 'go'
+    && t.dep.slice(0, 10) === now.slice(0, 10) && (t.arr || t.dep) > now && fromWork(t)
+    && (!n || t.key === n.tripKey) && !liveDoneHas(t, T)).sort((a, b) => a.dep.localeCompare(b.dep))[0];
+  if (!agenda) return T;
+  const conflicts = T.filter(t => t.src === 'work' && t.td && t.td.dir === 'ret'
+    && t.dep.slice(0, 10) === now.slice(0, 10) && t.td.LA.id === work.id && t.td.LB.id === home.id
+    && (t.planDep || t.dep) < (agenda.e.e || agenda.arr || agenda.dep) && !liveDoneHas(t, T));
+  if (!conflicts.length) return T;
+  APP_CONTEXT.agendaConflict = { agendaKey: agenda.key, workKey: conflicts[0].key, workDep: conflicts[0].planDep || conflicts[0].dep };
+  if (conflicts.some(t => t.key === LIVE.key) && LIVE.phase !== 'active') liveReset();
+  // Projection seulement : ni annulation persistée ni déplacement supposé par le domicile.
+  return T.filter(t => !conflicts.includes(t));
+}
+function appAgendaConflictHtml() {
+  if (APP_CONTEXT.agendaSelectionUnavailable) return '<p class="sub" role="status">⏳ Agenda indisponible : rendez-vous sélectionné conservé, prochain départ en attente de vérification.</p>';
+  const c = APP_CONTEXT.agendaConflict;
+  return c ? `<p class="sub" role="status">📅 Rendez-vous depuis le travail prioritaire : le retour automatique de ${esc(c.workDep.slice(11, 16))} est incompatible et écarté de ce planning. Si tu rentres d’abord, choisis explicitement le domicile dans Destination suivante.</p>` : '';
 }
 function appAgendaLeg(e, leg) {
   const effective = DayContext.returnLeg(leg, calendarTripKey(e, leg), appDay(), Date.now(), placeList());
@@ -86,6 +146,7 @@ function appAgendaLeg(e, leg) {
     || chosen && chosen.source === 'manual' || !locHasCoords(effective.from) || !locHasCoords(effective.to)
     || !c.place || !locHasCoords(c.place) || distKm(c.place, effective.from) <= 1) return effective;
   const next = CAL && (CAL.events || []).filter(event => calendarSpatial(event) && !calendarCancelled(event)
+    && (!chosen || chosen.source !== 'calendar' || TripCancel.eventId(event) === chosen.calendarEventId)
     && event.s && event.s.slice(0, 10) === today && event.s > now
     && (event.legs || []).some(route => route.k === 'go' && !(USER_STORE.state.done || {})[calendarTripKey(event, route)]))
     .sort((a, b) => a.s.localeCompare(b.s))[0];
@@ -127,7 +188,7 @@ function appOutfitOccasion(offset = UI.outfitDay) {
 }
 function appLocalTrips(T, now) {
   const n = appDay().nextDestination;
-  if (!n || T.some(t => t.key === n.tripKey)) return T;
+  if (!n || n.source === 'calendar' || T.some(t => t.key === n.tripKey)) return T;
   const from = n.originPoint || locById(n.originId), to = n.destinationPoint || locById(n.placeId), started = TRIPSTART && TRIPSTART.key === n.tripKey;
   const dep = started ? localTs(TRIPSTART.at) : n.dep || now;
   const l = { k: 'local', from, to, navTo: to, dep, arr: to ? addMin(dep, +S.work.durMin || 30) : null, min: to ? +S.work.durMin || 30 : null, pts: [], manual: n.source === 'manual' };
@@ -169,12 +230,11 @@ function appCancelManualTrip() {
 function renderDayContext() {
   const el = $('#dayContext'); if (!el) return;
   const d = appDay(), c = APP_CONTEXT.snapshot, n = d.nextDestination;
-  const destination = n ? n.placeId ? locById(n.placeId) : null : c.destination;
+  const destination = n ? n.destinationPoint || (n.placeId ? locById(n.placeId) : null) : c.destination;
   const label = n ? n.source === 'manual' ? 'MANUEL' : n.placeId ? 'CONFIRMÉ' : 'À CONFIRMER' : destination ? 'PRÉVU' : 'À CONFIRMER';
   const choices = placeList().map(p => `<button class="chip" data-act="day-destination" data-id="${esc(p.id)}" aria-pressed="${!!n && n.placeId === p.id}">${esc(p.name)}</button>`).join('');
-  const chosen = n && n.placeId ? locById(n.placeId) : null;
   const agendaTrips = appAgendaDestinationTrips(), agendaChoices = agendaTrips.map(t => {
-    const l = t.planL || t.l, target = l && l.to, selected = !!(chosen && target && locHasCoords(chosen) && locHasCoords(target) && distKm(chosen, target) <= 1.5);
+    const selected = !!(n && n.source === 'calendar' && n.tripKey === t.key);
     const title = t.e && t.e.t || 'Rendez-vous', where = t.to && t.to !== title ? ' · ' + t.to : '';
     return `<button class="chip" data-act="day-destination" data-agenda-key="${esc(t.key)}" aria-pressed="${selected}">📅 ${esc(t.dep.slice(11, 16))} · ${esc(title + where)}</button>`;
   }).join('');

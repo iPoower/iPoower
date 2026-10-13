@@ -47,7 +47,9 @@ const DayContext = (() => {
       && (!arrivedAt || arrivedAt < n.confirmedAt) && targetOk;
     return { nextDestination: valid ? { placeId: id(n.placeId) ? n.placeId : destinationPoint && destinationPoint.id || null, source, confirmedAt: n.confirmedAt, expiresAt: n.expiresAt,
       originId: id(n.originId) ? n.originId : originPoint && originPoint.id || null, originPoint, destinationPoint,
-      tripKey: id(n.tripKey) ? n.tripKey : null, dep, createdAt: timestamp(n.createdAt, now) ? n.createdAt : n.confirmedAt,
+      tripKey: id(n.tripKey) ? n.tripKey : null, dep,
+      ...(source === 'calendar' && /^cal-[0-9a-f]{32}$/.test(n.calendarEventId || '') ? { calendarEventId: n.calendarEventId } : {}),
+      createdAt: timestamp(n.createdAt, now) ? n.createdAt : n.confirmedAt,
       updatedAt: timestamp(n.updatedAt, now) ? n.updatedAt : n.confirmedAt } : null,
       lastConfirmedPlace: c && id(c.placeId) && exists(c.placeId) && timestamp(c.at, now) && c.source === 'manual' ? { placeId: c.placeId, at: c.at, source: 'manual' } : null,
       departedAt: timestamp(v.departedAt, now) ? v.departedAt : null, arrivedAt,
@@ -67,6 +69,8 @@ const DayContext = (() => {
   }
   function returnLeg(leg, key, v, now, places) {
     const n = clean(v, now, places).nextDestination; if (!n || n.tripKey !== key) return leg;
+    // Une sélection Agenda choisit une occurrence ; sa destination reste celle de l'agenda actualisé.
+    if (n.source === 'calendar') return leg;
     const to = n.destinationPoint || places.find(p => p.id === n.placeId) || null;
     if (to && leg.to && to.id === leg.to.id && to.lat === leg.to.lat && to.lon === leg.to.lon) return { ...leg, navTo: to, destinationOverride: true };
     return { ...leg, to, navTo: to, destinationOverride: true, g: [], pts: [], km: null, min: null, routed: false,
