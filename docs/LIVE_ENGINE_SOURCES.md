@@ -40,6 +40,12 @@ Les conditions `current` d'Open-Meteo viennent de modèles à pas de quinze minu
 | Race Engineer / Track Conditions / Strategy A/B | Décision et confiance communes ; points météo du même trajet ; évaluations pneus des mêmes voitures. | `F1Pure` et `race-views` ; maximum trois secteurs de lecture, aucune télémétrie distante. | Des entrées incomplètes/anciennes suspendent les conclusions. La fraîcheur provient de tous les points météo effectivement lus ; le point le plus ancien du trajet est affiché, même si la météo du lieu courant est récente. Track Conditions reste après le bandeau horaire. |
 | Tyre Management / The Garage / Telemetry Replay | État pneus, fiches et débrief local canonique avec dates de déclaration. | `F1Pure`, `Garage`, `Debrief` ; lectures des données existantes. | Aucun capteur mécanique, aucune mesure de pression/gomme ou enregistrement GPS ajouté par ces modules. |
 
+## Rayonnement solaire : tolérance numérique du 14 octobre 2026
+
+Une réponse HTTP 200 réelle a contenu une unique valeur `shortwave_radiation = -1 W/m²` sur une heure future. La validation stricte à zéro refusait alors les 360 heures de prévision, y compris les données actuelles valides. Le rayonnement solaire incident est normalement non négatif ; des valeurs négatives ont déjà été signalées au fournisseur : https://github.com/open-meteo/open-meteo/issues/932.
+
+Race Control accepte désormais uniquement le petit intervalle numérique `[-1, 0[` et le projette à zéro dans les heures du modèle, avec `radClamped = true`. La réponse fournisseur conservée reste intacte. Cette tolérance de 1 W/m² est un choix borné fondé sur l'anomalie observée, pas une garantie de précision du fournisseur. Les valeurs inférieures à -1, supérieures à 2000, non numériques, infinies ou les colonnes tronquées restent refusées. Une valeur absente reste inconnue. Les contrôles des autres champs et les formules de chaussée et de gomme sont conservés.
+
 ## Horloge, réseau et confiance
 
 Le téléchargement et l'instant météorologique restent distincts. `nowStr` suit l'horloge du téléphone ; un changement de minute reconstruit la projection locale même hors ligne, pendant une requête ou un 429. Un horodatage fournisseur n'avance ni ne rembobine la consultation. Un instant `current` doit être compatible avec l'heure de consultation (−5 à +20 minutes d'âge) ; sinon l'heure prévue exacte est utilisée et la réponse est requalifiée cache.

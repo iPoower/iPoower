@@ -18,7 +18,7 @@ await p.route('**/*',r=>{const u=r.request().url(),H={'access-control-allow-orig
    if(fault==='503')return r.fulfill({status:503,contentType:'text/plain',headers:H,body:'Service Unavailable'});
    if(fault==='429')return r.fulfill({status:429,contentType:'application/json',headers:{...H,'retry-after':'120','access-control-expose-headers':'Retry-After'},body:JSON.stringify({error:true,reason:'Too many concurrent requests'})});
    return r.fulfill({status:200,contentType:fault.startsWith('<')?'text/html':'application/json',headers:H,body:fault});}
- if(u.includes('open-meteo.com')){const q=new URL(u).searchParams,lats=String(q.get('latitude')).split(','),lons=String(q.get('longitude')).split(','),one=i=>ctx.mk('doux',{lat:+lats[i],lon:+lons[i]},'Europe/Paris',0);if(lats.length>1)return J(lats.map((_,i)=>one(i)));const base=one(0);return J(u.includes('ensemble')?ctx.me(base):q.get('minutely_15')?ctx.mn(base):base);}
+ if(/(^|\.)open-meteo\.com$/.test(new URL(u).hostname)){const q=new URL(u).searchParams,lats=String(q.get('latitude')).split(','),lons=String(q.get('longitude')).split(','),one=i=>{const payload=ctx.mk('doux',{lat:+lats[i],lon:+lons[i]},'Europe/Paris',0);const at=payload.hourly.time.findIndex(t=>t>'2026-10-03T14:00'&&t.endsWith('T00:00'));payload.hourly.shortwave_radiation[at]=-1;return payload;};if(lats.length>1)return J(lats.map((_,i)=>one(i)));const base=one(0);return J(u.includes('ensemble')?ctx.me(base):q.get('minutely_15')?ctx.mn(base):base);}
  if(u.includes('/race-control/calendar.sealed.json'))return r.fulfill({status:200,contentType:'application/json',body:calBody});
  if(u.includes('/race-control/obs.json'))return J({stations:{}});
  if(u.includes('/race-control/tiredb.json'))return r.fulfill({status:200,contentType:'application/json',body:fs.readFileSync('site/tiredb.json','utf8')});
@@ -29,8 +29,13 @@ const st=()=>p.evaluate(()=>{const c=JSON.parse(localStorage.getItem('twrc.cache
   return {hours:M[UI.loc]?M[UI.loc].hs.length:0,cache:c&&c.p&&c.p.hourly&&Array.isArray(c.p.hourly.time)?c.p.hourly.time.length:0,bar:document.querySelector('#statusbar').innerText.replace(/\s+/g,' '),busy,verdict:!!document.querySelector('#secCars .gauge, #secBrf .gauge')};});
 await p.goto(U);await p.clock.runFor(2500);await p.fill('#unlockPw',PW);await Promise.all([p.waitForNavigation({timeout:60000}),p.click('#unlockForm button[type=submit]')]);await settle(14);
 const ref=await st();check('40.0 · en ligne : prévision complète, LIVE, en cache',ref.hours>=24&&ref.cache===ref.hours&&/LIVE/.test(ref.bar),JSON.stringify(ref));
+check('40.0b · bruit solaire futur : météo LIVE, valeur bornée à zéro, origine brute conservée',await p.evaluate(()=>{
+  const raw=RAW[UI.loc],m=M[UI.loc],i=raw&&raw.p.hourly.shortwave_radiation.indexOf(-1);
+  return i>=0&&m&&m.mode==='live'&&m.hs[i].rad===0&&m.hs[i].radClamped===true;
+}));
+const badSolar=ctx.mk('doux',{lat:48.85,lon:2.35},'Europe/Paris',0);badSolar.hourly.shortwave_radiation[0]=-100;
 const FAULTS=[['réponse 200 vide {}','{}'],['réponse 200 sans heures','{"hourly":{"time":[]}}'],['réponse 200 tronquée','{"hourly":{"time":["2026-10-03T14:00"],"temperature_2m":[12]}}'],
-  ['portail captif (HTML)','<html><body>Wi-Fi</body></html>'],['HTTP 503','503'],['délai dépassé (aucune réponse)','timeout']];
+  ['rayonnement solaire hors tolérance',JSON.stringify(badSolar)],['portail captif (HTML)','<html><body>Wi-Fi</body></html>'],['HTTP 503','503'],['délai dépassé (aucune réponse)','timeout']];
 for(const [name,f] of FAULTS){
   fault=f;await p.evaluate(()=>{lastOk=0;lastTry=0;refreshAll();});
   await settle(f==='timeout'?30:6);const s=await st();
