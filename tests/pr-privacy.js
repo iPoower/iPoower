@@ -2,7 +2,7 @@
 // Contrôle de confidentialité des pull requests : test 100 % fictif (aucun secret, aucune donnée réelle).
 // Reproduit la disposition du workflow pr-privacy.yml : trusted/ (scanner + chiffrés de confiance) et target/ (la PR, simples fichiers).
 // Vérifie : donnée privée fictive -> rouge ; PR propre -> vert ; aucun JavaScript de target/ exécuté (pièges) ; aucune valeur affichée ;
-// liens symboliques refusés sans être suivis ; noms de fichiers piégés neutralisés.
+// liens symboliques refusés sans être suivis ; noms de fichiers piégés neutralisés ; titre et description de la PR contrôlés sans injection.
 'use strict';
 const fs = require('fs'), path = require('path'), os = require('os'), { spawnSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..'), W = path.join(ROOT, '.ci-privacy'), MARK = path.join(W, 'EXECUTE');
@@ -26,7 +26,7 @@ const pr = (name, extra) => { const T = path.join(W, name, 'target');
   mk(path.join(T, 'node_modules/x/index.js'), trap);
   if (extra) extra(T); return path.join(W, name); };
 const KEYS = { APP_KEY: APP_KEY_TEST, RC_KEY: RC_KEY_TEST, GCAL_ICS: ['https://calendar.google.com/calendar/ical/test/', 'private-', '0123456789abcdef0123/basic.ics'].join('') };   // assemblée à l'exécution : le motif générique ne doit pas viser ce fichier de test
-const scan = dir => { const r = spawnSync(process.execPath, ['trusted/tools/check-secrets.js', '--root', 'trusted', '--scan', 'target'], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH, ...KEYS } });
+const scan = (dir, what = 'target') => { const r = spawnSync(process.execPath, ['trusted/tools/check-secrets.js', '--root', 'trusted', '--scan', what], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH, ...KEYS } });
   return { code: r.status, out: (r.stdout || '') + (r.stderr || '') }; };
 // le dossier trusted/ est partagé : chaque PR est placée à côté (même disposition que dans le workflow)
 const place = d => fs.symlinkSync(TR, path.join(d, 'trusted'), 'dir');
@@ -54,6 +54,25 @@ check('nom de fichier piégé neutralisé (aucune commande de workflow injectée
 check('aucun JavaScript de la PR exécuté (pièges intacts)', !fs.existsSync(MARK));
 const all = Object.values(res).map(r => r.out).join('\n');
 check('aucune valeur sensible affichée', ![APP_KEY_TEST, RC_KEY_TEST, 'Maison test', 'ci-test-topic-not-real', '0123456789abcdef0123', '48.850'].some(v => all.includes(v)));
+// titre et description : même scanner, sur pr-meta/ écrit tel quel par le workflow (aucune interpolation dans un script)
+const meta = (name, text) => { const d = path.join(W, name); mk(path.join(d, 'pr-meta/titre-et-description.md'), text); place(d); return scan(d, 'pr-meta'); };
+const descOk = meta('desc-propre', 'fix(trips): rendez-vous prioritaire\n\nLe cockpit proposait Lieu A → Lieu B à 16:47.\n');
+const descLieu = meta('desc-lieu', 'fix(trips): rendez-vous prioritaire\n\nLe cockpit proposait Maison test → Lieu B à 16:47.\n');
+const descCoord = meta('desc-coord', 'Point de départ : 48.850, 2.350\n');
+check('description propre : vert', descOk.code === 0, descOk.out.trim().split('\n').pop());
+check('lieu personnel ou coordonnée dans la description : rouge', descLieu.code === 1 && descCoord.code === 1 && /titre-et-description\.md : lieu personnel/.test(descLieu.out));
+check('description : aucune valeur sensible affichée', !['Maison test', '48.850'].some(v => (descLieu.out + descCoord.out).includes(v)));
+// workflow : titre/description passés UNIQUEMENT par env, jamais via ${{ }} dans un run (injection de commande)
+const wf = fs.readFileSync(path.join(ROOT, '.github/workflows/pr-privacy.yml'), 'utf8');
+const steps = wf.split(/\n(?=      - )/), runOf = st => (st.split(/\n        run: ?\|?/)[1] || '');
+const metaStep = steps.find(st => /PR_BODY: \$\{\{ github\.event\.pull_request\.body \}\}/.test(st));
+const metaScan = steps.find(st => /--scan pr-meta\b/.test(st));
+check('workflow : description rescannée à chaque modification (edited)', /types: \[[^\]]*\bedited\b[^\]]*\]/.test(wf));
+check('workflow : titre et description jamais interpolés dans un script', !!metaStep && /PR_TITLE: \$\{\{ github\.event\.pull_request\.title \}\}/.test(metaStep) &&
+  !steps.some(st => /github\.event\.pull_request\.(title|body)/.test(runOf(st))) && /"\$PR_TITLE" "\$PR_BODY"/.test(runOf(metaStep)));
+check('workflow : aucun secret à l\'étape qui écrit la description', !!metaStep && !/secrets\./.test(metaStep));
+check('workflow : description contrôlée par le scanner de main, même si les fichiers sont rouges', !!metaScan && /node trusted\/tools\/check-secrets\.js --root trusted --scan pr-meta/.test(metaScan) &&
+  /if: \$\{\{ !cancelled\(\) \}\}/.test(metaScan) && /if: \$\{\{ !cancelled\(\) \}\}/.test(metaStep));
 fs.rmSync(W, { recursive: true, force: true });
 console.log(rows.join('\n') + `\n\n${fail ? `❌ ${fail} contrôle(s) en échec` : `✅ ${rows.length} contrôles de confidentialité des PR au vert`}`);
 if (fail && process.env.GITHUB_ACTIONS) console.log(`::error title=pr-privacy::${rows.filter(r => r.startsWith('❌')).join(' / ')}`);
