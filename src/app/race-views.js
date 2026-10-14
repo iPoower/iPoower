@@ -68,8 +68,8 @@ function f1StrategyHtml() {
   const sources = f1WeatherSources(t && t.seq);
   // Les évaluations doivent provenir du même trajet et du moteur déjà utilisé
   // par « Quelle voiture prendre ? ». Le contexte seul ne possède PAS de t.res.
-  const recent = raw && raw.mode !== 'cache' && Number.isFinite(raw.t) &&
-    Date.now() - raw.t <= 90 * 60000 && raw.t <= Date.now() + 15 * 60000 && sources.known && !sources.cache && sources.ageMin <= 90;
+  const rawAge = raw ? Reliability.ageMin(raw.t) : null, limit = Reliability.FRESHNESS.agingMaxMin;   // même seuil de péremption que les autres vues
+  const recent = raw && raw.mode !== 'cache' && rawAge !== null && rawAge <= limit && sources.known && !sources.cache && sources.ageMin <= limit;
   const cars = t && !t.originPending && Array.isArray(t.seq) && t.seq.length && recent && CX
     ? TCARS().filter(c => hasTires(c) && !carProfile(c).generic).map(c => ({
       c, w: windowAssess(c, t.seq, 'trip')

@@ -45,6 +45,7 @@ const TL_WIN = { summer: [10, 20, 50, 65], allseason: [5, 15, 45, 60], winter: [
 const TL_STATES = ['Pneu froid', 'Sous la plage favorable', 'Fenêtre favorable', 'Chaud', 'Très chaud'];   // NIVEAUX ; « en chauffe » est une tendance
 const TL_LEVEL_TXT = ['froid', 'sous la plage favorable', 'favorable', 'chaud', 'très chaud'];
 const TL_TREND_TXT = { heating: 'En chauffe', stable: 'Stabilisé', cooling: 'En refroidissement', rest: 'Au repos' };
+const TL_STALE_AFTER_MIN = 60;   // météo reçue il y a plus de 60 min = périmée (même politique que les autres vues : Reliability.FRESHNESS)
 const TL_SETTLE = 0.05, TL_BASE_U = 3;   // convergence (part de la montée) ; incertitude de base (°C)
 const TL_KIND = { ville: { dT: 14, tauKm: 7, v: 30, label: 'ville' }, route: { dT: 20, tauKm: 10, v: 70, label: 'route' }, autoroute: { dT: 26, tauKm: 10, v: 115, label: 'autoroute' } };
 const TL_MU = { dry: [0.7, 0.9], wet: [0.4, 0.55] };
@@ -161,7 +162,7 @@ function tyreLab(input) {
   why.unshift(`Air : ${r1(eNow.Ta)} °C`, `Chaussée estimée : ${r1(eNow.Tr)} °C`);
   why.push(`Pneu ${TYPES[type]}${uhp ? ' haute performance (indice ' + (d.si || 'ZR') + ')' : ''}`, `Chaussée : ${SURF_TXT[eNow.surf]}${eNow.reported ? ' (signalée par vous)' : ''}`);
   /* ---------- 5. incertitude, état, fenêtre ---------- */
-  const stale = finite(inp.ageMin) && inp.ageMin > 90;
+  const stale = finite(inp.ageMin) && inp.ageMin > TL_STALE_AFTER_MIN;
   // l'incertitude sur l'état de départ inconnu s'estompe avec la distance roulée (même constante que l'échauffement)
   const unk = km => phase === 'unknown' || (phase === 'driving' && !hist) ? 3 * Math.exp(-(km || 0) / 10) : hist && hist.source === 'manual' ? 3 : 0;
   const u = 3 + 0.25 * Math.abs(T - eNow.Tenv) + unk(drivenKm) + (stale ? 3 : 0);

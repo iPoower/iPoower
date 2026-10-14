@@ -1,6 +1,8 @@
 // Weather Watch : adaptation et suivi en mémoire du moteur existant, jamais de nouveau calcul météo.
 // Aucun accès réseau/stockage/DOM ; les alertes utilisent uniquement les valeurs fournies et des seuils explicites.
 const WeatherWatch = (() => {
+  // Politique de fraîcheur (valeurs de Reliability.FRESHNESS, vérifiées par tests/test_reliability.js) : ≤ 15 min frais · ≤ 60 min à confirmer · au-delà périmé.
+  const FRESH_MAX_MIN = 15;
   const finite = x => typeof x === 'number' && Number.isFinite(x);
   const value = x => finite(x) ? x : null;
   const minute = ts => typeof ts === 'string' ? Date.parse(ts.slice(0, 16) + ':00Z') / 60000 : NaN;
@@ -19,7 +21,7 @@ const WeatherWatch = (() => {
     const ageMin = raw && finite(raw.t) && raw.t <= nowMs + 60000 ? Math.max(0, (nowMs - raw.t) / 60000) : null;
     const expired = !coverage || ageMin == null || ageMin > 36 * 60;
     const currentAge = desk.current.source === 'current' ? minute(now) - minute(model.cur.time) : 0;
-    const fresh = !demo && !offline && !expired && raw.mode === 'live' && model.mode === 'live' && ageMin <= 15
+    const fresh = !demo && !offline && !expired && raw.mode === 'live' && model.mode === 'live' && ageMin <= FRESH_MAX_MIN
       && finite(currentAge) && currentAge >= -1 && currentAge <= 30;
     const mode = demo ? 'DÉMO · simulé' : expired ? 'EXPIRÉ / INDISPONIBLE' : offline ? 'HORS LIGNE' : fresh ? 'LIVE' : 'CACHE';
     // La valeur principale est EXACTEMENT celle de Météo. Une valeur en cache est nommée comme telle.

@@ -28,6 +28,12 @@ check('Track Conditions : aucun faux secteur si prévisions absentes ou périmé
   assert.equal(F.trackConditions([]).available, false);
   assert.equal(F.trackConditions([{ hs: [{ Tr: 1 }], i: 0 }], { ageMin: 91 }).available, false);
 });
+check('Track Conditions : même seuil que les autres vues (60 min), pas 90', () => {
+  const seq = [{ hs: [{ Tr: 1 }], i: 0 }];
+  assert.equal(F.trackConditions(seq, { ageMin: 60 }).available, true, '60 min : encore disponible');
+  assert.equal(F.trackConditions(seq, { ageMin: 60.5 }).available, false, 'au-delà de 60 min : indisponible');
+  assert.equal(F.trackConditions(seq, { ageMin: 75 }).available, false);
+});
 check('Track Conditions : maximum 3 secteurs, ordre et pire danger cohérents', () => {
   const samples = [{ P: 0, Tr: 7 }, { P: 0.6, Tr: 2 }, { vis: 80 }, { ice: { level: 2 } }, { snow: 0.2 }, { Tr: 8 }];
   const seq = samples.map(x => ({ hs: [x], i: 0 })), before = JSON.stringify(seq);

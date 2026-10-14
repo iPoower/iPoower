@@ -4,6 +4,8 @@
  */
 'use strict';
 const F1Pure = (() => {
+  // Politique de fraîcheur (valeurs de Reliability.FRESHNESS, vérifiées par tests/test_reliability.js) : ≤ 15 min frais · ≤ 60 min à confirmer · au-delà périmé.
+  const STALE_AFTER_MIN = 60;
   const FEATURES = Object.freeze([
     { id: 'raceEngineer', title: 'Race Engineer', view: 'pneus', description: 'Briefing décisionnel, vocal sur demande' },
     { id: 'trackConditions', title: 'Track Conditions', view: 'meteo', description: 'Lecture météo du trajet par secteurs' },
@@ -37,7 +39,7 @@ const F1Pure = (() => {
   // précises : uniquement les points météo réellement disponibles du trajet.
   function trackConditions(seq, { ageMin = null } = {}) {
     const rows = Array.isArray(seq) ? seq.map(q => q && q.hs && q.hs[q.i]).filter(Boolean) : [];
-    if (!rows.length || ageMin != null && (!finite(ageMin) || ageMin > 90))
+    if (!rows.length || ageMin != null && (!finite(ageMin) || ageMin > STALE_AFTER_MIN))
       return { available: false, reason: rows.length ? 'Prévisions de parcours trop anciennes.' : 'Aucun point météo de parcours disponible.', sectors: [] };
     const count = Math.min(3, rows.length), sectors = [];
     for (let n = 0; n < count; n++) {

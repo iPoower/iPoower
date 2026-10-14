@@ -85,6 +85,48 @@ check('contre-tests : un retour aux calculs nus est détecté', () => {
   ];
   for (const m of mutations) assert(freshnessContract(m).length > 0, 'mutation non détectée');
 });
+// Politique de fraîcheur unique : FRESH ≤ 15 min (LIVE, décision possible) · AGING ≤ 60 min (à confirmer) · STALE au-delà · UNAVAILABLE sans âge connu.
+check('politique : seuils centraux immuables et états aux limites exactes', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(R.FRESHNESS)), { freshMaxMin: 15, agingMaxMin: 60 });
+  assert(Object.isFrozen(R.FRESHNESS), 'la politique ne se modifie pas à l’exécution');
+  const cases = [[0, 'FRESH'], [15, 'FRESH'], [15.01, 'AGING'], [60, 'AGING'], [60.01, 'STALE'], [240, 'STALE'],
+    [null, 'UNAVAILABLE'], [undefined, 'UNAVAILABLE'], [NaN, 'UNAVAILABLE'], [Infinity, 'UNAVAILABLE'], [-1, 'UNAVAILABLE'], ['15', 'UNAVAILABLE']];
+  for (const [age, state] of cases) assert.equal(R.freshState(age), state, String(age));
+});
+const POLICY_VALUES = [['src/decision.js', 'FRESH_MAX_MIN', 'freshMaxMin'], ['src/decision.js', 'STALE_AFTER_MIN', 'agingMaxMin'],
+  ['src/wxdesk.js', 'WXD_STALE_AFTER_MIN', 'agingMaxMin'], ['src/tyrelab.js', 'TL_STALE_AFTER_MIN', 'agingMaxMin'],
+  ['src/f1-pure.js', 'STALE_AFTER_MIN', 'agingMaxMin'], ['src/weather-watch.js', 'FRESH_MAX_MIN', 'freshMaxMin']];
+const POLICY_USES = [['src/app.js', 'LIVE_MAX_MS = Reliability.FRESHNESS.freshMaxMin * 60e3'], ['src/app/diagnostics.js', 'Reliability.freshState('],
+  ['src/app/race-views.js', 'Reliability.FRESHNESS.agingMaxMin']];
+const LITERAL_AGE = /ageMin\s*(?:<=|>=|<|>)\s*\d+\b(?!\s*\*)/;
+function policyContract(read) {
+  const bad = [];
+  for (const [file, name, key] of POLICY_VALUES) {
+    const m = new RegExp('\\b' + name + '\\s*=\\s*(\\d+)\\b').exec(read(file));
+    if (!m) bad.push(`${file} : constante ${name} absente`);
+    else if (+m[1] !== R.FRESHNESS[key]) bad.push(`${file} : ${name} = ${m[1]} au lieu de ${R.FRESHNESS[key]}`);
+    if (LITERAL_AGE.test(read(file))) bad.push(`${file} : seuil d’âge en littéral (utiliser la constante de politique)`);
+  }
+  for (const [file, text] of POLICY_USES) if (!read(file).includes(text)) bad.push(`${file} : « ${text} » attendu`);
+  const race = read('src/app/race-views.js');
+  if (/\b90\s*\*\s*60000\b|ageMin\s*<=\s*90\b/.test(race)) bad.push('src/app/race-views.js : seuil de 90 min conservé');
+  return bad;
+}
+check('contrat : tous les modules partagent les mêmes seuils de fraîcheur (aucune dérive 60/90)', () => assert.deepEqual(policyContract(rd), []));
+check('contre-tests : une dérive de seuil ou un littéral est détecté', () => {
+  const mutate = (file, from, to) => f => { const t = rd(f); if (f !== file) return t; assert(t.includes(from), from); return t.replace(from, to); };
+  const mutations = [
+    mutate('src/tyrelab.js', 'TL_STALE_AFTER_MIN = 60', 'TL_STALE_AFTER_MIN = 90'),
+    mutate('src/f1-pure.js', 'STALE_AFTER_MIN = 60', 'STALE_AFTER_MIN = 90'),
+    mutate('src/decision.js', 'FRESH_MAX_MIN = 15', 'FRESH_MAX_MIN = 20'),
+    mutate('src/wxdesk.js', 'ageMin > WXD_STALE_AFTER_MIN', 'ageMin > 60'),
+    mutate('src/weather-watch.js', 'ageMin <= FRESH_MAX_MIN', 'ageMin <= 15'),
+    mutate('src/app/diagnostics.js', 'Reliability.freshState(', 'freshStateLocal('),
+    mutate('src/app.js', 'LIVE_MAX_MS = Reliability.FRESHNESS.freshMaxMin * 60e3', 'LIVE_MAX_MS = 15 * 60e3'),
+    mutate('src/app/race-views.js', 'Reliability.FRESHNESS.agingMaxMin', '90')
+  ];
+  for (const m of mutations) assert(policyContract(m).length > 0, 'mutation non détectée');
+});
 check('texte runtime borné', () => assert(R.clip('x'.repeat(500)).length <= 180));
 const diagnosticSource = fs.readFileSync(path.join(__dirname, '../src/app/diagnostics.js'), 'utf8');
 function agendaDiagnostic(options = {}, input = diagnosticSource) {

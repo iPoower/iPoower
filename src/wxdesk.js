@@ -16,6 +16,8 @@
      soleil     : soleil bas dans l'axe d'un trajet (calcul géométrique fourni par l'app) 🟡
    Conditions route : 100 − pénalités listées une à une (voir ROAD_PEN) ; le niveau affiché n'est jamais plus doux
    que le pire facteur. Aucune note opaque : chaque point retiré est expliqué. */
+// Politique de fraîcheur (valeurs de Reliability.FRESHNESS, vérifiées par tests/test_reliability.js) : ≤ 15 min frais · ≤ 60 min à confirmer · au-delà périmé.
+const WXD_STALE_AFTER_MIN = 60;
 function wxDesk(input) {
   const finite = v => typeof v === 'number' && Number.isFinite(v);
   const n = v => finite(v) ? v : null;
@@ -203,7 +205,7 @@ function wxDesk(input) {
     if (w) lines.splice(1, 0, `${w[0].toUpperCase() + w.slice(1)} potentiellement concerné${tripsOf(s).length > 1 ? 's' : ''}`);
   }
   if (nextChange && !(dominant && nextChange.m === dominant.start && nextChange.id === dominant.id)) lines.push(`Prochain changement : ${hm(atMin(nextChange.m))} · ${nextChange.text}`);
-  const ageMin = input && finite(input.ageMin) ? input.ageMin : null, stale = ageMin != null && ageMin > 60;
+  const ageMin = input && finite(input.ageMin) ? input.ageMin : null, stale = ageMin != null && ageMin > WXD_STALE_AFTER_MIN;
   const hero = { level, emoji: EMO[level], title, lines: lines.slice(0, 4), dominant: dominant ? dominant.id : null, stale };
 
   /* ---------- timeline : moments clés (météo + trajets) et bande horaire ---------- */

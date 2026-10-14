@@ -63,6 +63,14 @@ const Reliability = (() => {
   const liveExpired = (t, now = Date.now(), maxMs = 15 * 60000) => { const a = ageMin(t, now); return a === null || a * 60000 > maxMs; };
   // Échéance d'une actualisation : un dernier essai inconnu ou « dans le futur » (horloge reculée) ne repousse jamais la suivante.
   const isDue = (last, everyMs, now = Date.now()) => { const a = ageMin(last, now); return a === null || a * 60000 >= everyMs; };
-  return { clip, runtimeRecorder, versionDecision, ageMin, liveExpired, isDue };
+  // Politique unique de fraîcheur d'une donnée REÇUE (prévision, relais) : FRESH ≤ 15 min (LIVE, décision possible) ·
+  // AGING ≤ 60 min (à confirmer) · STALE au-delà · UNAVAILABLE sans âge connu. Les modules purs (decision, wxdesk, tyrelab, f1-pure,
+  // weather-watch) en gardent une copie nommée, vérifiée par tests/test_reliability.js. Seuils volontairement distincts (autres notions) :
+  // relais 20/35 min (santé du relais), station METAR ≤ 100 min, nowcast ≤ 30 min, bloc `current` du fournisseur −5/+20 min (moteur),
+  // conservation du cache 36 h.
+  const FRESHNESS = Object.freeze({ freshMaxMin: 15, agingMaxMin: 60 });
+  const freshState = age => typeof age !== 'number' || !Number.isFinite(age) || age < 0 ? 'UNAVAILABLE'
+    : age <= FRESHNESS.freshMaxMin ? 'FRESH' : age <= FRESHNESS.agingMaxMin ? 'AGING' : 'STALE';
+  return { clip, runtimeRecorder, versionDecision, ageMin, liveExpired, isDue, FRESHNESS, freshState };
 })();
 const RUNTIME_RECORDER = typeof window !== 'undefined' ? Reliability.runtimeRecorder() : null;
