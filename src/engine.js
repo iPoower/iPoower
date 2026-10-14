@@ -177,6 +177,9 @@ function iceRisk(hs, i) {
 }
 
 /* ---------- construction du modèle d'un lieu ---------- */
+// Bruit numérique observé dans Open-Meteo : -1 W/m² sur une heure future.
+// Tolérance bornée, puis projection à zéro dans le modèle ; la réponse brute reste intacte.
+const SHORTWAVE_MIN = -1;
 function buildHours(p) {
   const H = p.hourly || {}, t = H.time || [];
   const g = (k, i) => (H[k] ? num(H[k][i]) : null);
@@ -187,7 +190,10 @@ function buildHours(p) {
     code: g('weather_code', i), Pb: g('precipitation_base', i), ar: g('precipitation_arome', i) === 1, pres: g('pressure_msl', i), cloud: g('cloud_cover', i), vis: g('visibility', i),
     wind: g('wind_speed_10m', i), gust: g('wind_gusts_10m', i), rad: g('shortwave_radiation', i), uv: g('uv_index', i)
   }));
-  hs.forEach(x => { x.Pl = (x.snow || 0) > 0.05 ? 0 : x.P; });
+  hs.forEach(x => {
+    if (x.rad != null && x.rad < 0 && x.rad >= SHORTWAVE_MIN) { x.rad = 0; x.radClamped = true; }
+    x.Pl = (x.snow || 0) > 0.05 ? 0 : x.P;
+  });
   hs.forEach(x => {
     if (x.Td == null && x.T != null && x.RH != null) { const d = dewMagnus(x.T, x.RH); if (d != null) { x.Td = Math.round(d * 10) / 10; x.TdEst = true; } }
   });
@@ -647,7 +653,7 @@ function validForecast(p) {
   const bounds = { temperature_2m: [-100, 70], apparent_temperature: [-150, 100], dew_point_2m: [-120, 70],
     relative_humidity_2m: [0, 100], precipitation_probability: [0, 100], cloud_cover: [0, 100],
     precipitation: [0, 1000], rain: [0, 1000], showers: [0, 1000], snowfall: [0, 1000],
-    wind_speed_10m: [0, 500], wind_gusts_10m: [0, 500], visibility: [0, 1e6], pressure_msl: [300, 1200], shortwave_radiation: [0, 2000], uv_index: [0, 100] };
+    wind_speed_10m: [0, 500], wind_gusts_10m: [0, 500], visibility: [0, 1e6], pressure_msl: [300, 1200], shortwave_radiation: [SHORTWAVE_MIN, 2000], uv_index: [0, 100] };
   for (const [key, range] of Object.entries(bounds)) {
     const a = H[key];
     if (a != null && (!Array.isArray(a) || a.length !== t.length || a.some(v => v != null && (!Number.isFinite(v) || v < range[0] || v > range[1])))) return key + ' invalide';

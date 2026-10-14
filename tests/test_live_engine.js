@@ -53,6 +53,39 @@ test('API : températures aberrantes, colonnes tronquées, humidité impossible 
     q => q.hourly.relative_humidity_2m[0] = 150, q => q.current.temperature_2m = Infinity,
     q => q.hourly.time[0] = '2026-02-31T00:00']) { const q = p(); mutate(q); assert.notEqual(E.validForecast(q), null); }
 });
+test('API : petit bruit solaire futur accepté, borné à zéro dans le modèle, réponse brute intacte', () => {
+  for (const value of [-1, -0.1, -0.000001]) {
+    const q = p(), index = q.hourly.time.indexOf('2026-10-13T00:00');
+    q.hourly.shortwave_radiation[index] = value;
+    const before = JSON.stringify(q), m = E.makeModel(q, 'live', loc);
+    assert.equal(E.validForecast(q), null);
+    assert.equal(m.mode, 'live'); assert.equal(m.cur.T, 18);
+    assert.equal(m.hs[index].rad, 0); assert.equal(m.hs[index].radClamped, true);
+    assert.equal(JSON.stringify(q), before);
+    const zero = copy(q); zero.hourly.shortwave_radiation[index] = 0;
+    assert.equal(m.hs[index].Tr, E.makeModel(zero, 'live', loc).hs[index].Tr);
+  }
+});
+test('API : rayonnement aberrant, non numérique, infini ou tronqué toujours refusé', () => {
+  for (const value of [-1.01, -100, 2000.01, NaN, Infinity, '-1', false]) {
+    const q = p(); q.hourly.shortwave_radiation[0] = value;
+    assert.match(E.validForecast(q), /shortwave_radiation invalide/);
+    const current = p(); current.current.shortwave_radiation = value;
+    assert.match(E.validForecast(current), /shortwave_radiation actuel invalide/);
+  }
+  const cut = p(); cut.hourly.shortwave_radiation.pop();
+  assert.match(E.validForecast(cut), /shortwave_radiation invalide/);
+});
+test('API : rayonnement nul, absent, inconnu et positif conservé sans correction fictive', () => {
+  for (const value of [null, 0, 100, 2000]) {
+    const q = p(); q.hourly.shortwave_radiation[0] = value;
+    assert.equal(E.validForecast(q), null);
+    const x = E.makeModel(q, 'live', loc).hs[0];
+    assert.equal(x.rad, value); assert.equal(x.radClamped, undefined);
+  }
+  const q = p(); delete q.hourly.shortwave_radiation;
+  assert.equal(E.validForecast(q), null); assert.equal(E.makeModel(q, 'live', loc).hs[0].rad, null);
+});
 const app = read('src/app.js'), slice = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
 Object.assign(c, { WEATHER_LOAD_GEN: new Map(), RAW: {}, NOWRAW: {}, ERR: {}, GPS: null, gpsWeatherGen: 0, gpsWeatherOrigin: null,
   UI: { loc: 'home' }, offlineNow: () => false, locHasCoords: l => Number.isFinite(l.lat) && Number.isFinite(l.lon),
