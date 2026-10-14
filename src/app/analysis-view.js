@@ -37,7 +37,7 @@ function labInput(car) {
   const m = CX && CX.m, tz = (m && m.tz) || 'Europe/Paris';
   if (!m) return { now: nowIn(tz), car, hours: [], state: tyreStateOf(car) };
   const now = DEMO.on ? m.nowStr.slice(0, 16) : nowIn(tz);
-  const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Math.max(0, (Date.now() - raw.t) / 60e3);
+  const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Reliability.ageMin(raw.t);
   let drive = null;
   if (!DEMO.on && LIVE.phase === 'active' && LIVE.startFix) {
     const sf = LIVE.startFix, geo = Number.isFinite(sf.lat), cand = [FIX, LIVE.lastFix].find(f => f && f.ts > sf.ts), lf = geo && cand ? cand : null;

@@ -123,7 +123,7 @@ window.addEventListener('storage', event => {
     if (!r || !r.p || validForecast(r.p) || !Number.isFinite(r.t) || r.t > Date.now() + 60000
         || Date.now() - r.t > 36 * 3600e3 || Math.abs(r.lat - loc.lat) > 1e-6 || Math.abs(r.lon - loc.lon) > 1e-6
         || !Number.isFinite(r.lat) || !Number.isFinite(r.lon) || prev && r.t <= prev.t) return;
-    RAW[id] = { ...r, mode: offlineNow() || Date.now() - r.t > LIVE_MAX_MS ? 'cache' : 'live' };
+    RAW[id] = { ...r, mode: offlineNow() || Reliability.liveExpired(r.t) ? 'cache' : 'live' };
     delete ERR[id]; if (RAW[id].mode === 'live') lastOk = Math.max(lastOk || 0, r.t);
     rebuild(); renderAll();
   } catch (e) { /* réponse illisible conservée hors du modèle */ }

@@ -122,11 +122,11 @@ function autoTick() {
   tickLocalClock(); // horloge et prévisions locales progressent même hors ligne, pendant une requête ou un 429
   calendarOriginPurge();
   if (USER_STORE.durability().status === 'degraded') validateRecovery('retry périodique');
-  if (navigator.onLine !== false && Date.now() - VER_CHECK_AT >= AUTO_MS) loadVersion(true); else enforceVersionCoherence();
+  if (navigator.onLine !== false && Reliability.isDue(VER_CHECK_AT, AUTO_MS)) loadVersion(true); else enforceVersionCoherence();
   if (!DEMO.on && expireLive()) { rebuild(); renderAll(); }   // reprise : la donnée vieillie est requalifiée avant toute requête
   if (DEMO.on || busy || (navigator.onLine === false)) return;
   const ref = Math.max(lastOk || 0, lastTry || 0);
-  if (Date.now() - ref >= AUTO_MS) weatherStationAutoRefresh().catch(() => { /* prochaine échéance du moteur */ });
+  if (Reliability.isDue(ref, AUTO_MS)) weatherStationAutoRefresh().catch(() => { /* prochaine échéance du moteur */ });
 }
 setInterval(autoTick, 30e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });

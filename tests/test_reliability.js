@@ -22,13 +22,76 @@ check('journal limité et persistant, sans URL ni coordonnées précises', () =>
   const restored = R.runtimeRecorder({ target:null, storage, now:()=>200, limit:3 });
   assert.equal(restored.count(), 3);
 });
+// Fraîcheur honnête : un horodatage dans le futur (horloge reculée, relais falsifié) est un âge INCONNU, jamais « 0 minute ».
+const NOW = Date.parse('2026-10-14T12:00:00Z'), MIN = 60000;
+check('âge : passé, présent et dérive d’horloge tolérée (≤ 60 s) donnent un âge fini', () => {
+  assert.equal(R.ageMin(NOW - 5 * MIN, NOW), 5); assert.equal(R.ageMin(NOW, NOW), 0);
+  assert.equal(R.ageMin(NOW + 59000, NOW), 0, 'petite dérive d’horloge : âge nul');
+  assert.equal(R.ageMin(new Date(NOW - 20 * MIN).toISOString(), NOW), 20, 'chaîne ISO acceptée');
+});
+check('âge : futur, illisible ou absent donne null (inconnu), jamais 0', () => {
+  for (const bad of [NOW + 61000, NOW + 3 * 3600e3, '2099-01-01T00:00:00Z', new Date(NOW + 3 * 3600e3).toISOString(), NaN, Infinity, undefined, null, '', 'pas une date', {}, []])
+    assert.equal(R.ageMin(bad, NOW), null, String(bad));
+});
+check('LIVE expiré : plus de 15 min, futur ou inconnu → expiré ; 15 min pile reste LIVE', () => {
+  const max = 15 * MIN;
+  assert.equal(R.liveExpired(NOW - 14 * MIN, NOW, max), false); assert.equal(R.liveExpired(NOW - 15 * MIN, NOW, max), false);
+  assert.equal(R.liveExpired(NOW - 15 * MIN - 1000, NOW, max), true);
+  for (const bad of [NOW + 3 * 3600e3, NOW + 61000, NaN, undefined, null]) assert.equal(R.liveExpired(bad, NOW, max), true, String(bad));
+});
+check('échéance : une horloge reculée ne repousse jamais une actualisation', () => {
+  assert.equal(R.isDue(NOW - 6 * MIN, 5 * MIN, NOW), true); assert.equal(R.isDue(NOW - 4 * MIN, 5 * MIN, NOW), false);
+  assert.equal(R.isDue(NOW, 5 * MIN, NOW), false);
+  assert.equal(R.isDue(NOW + 3 * 3600e3, 5 * MIN, NOW), true, 'dernier essai « dans le futur » : échéance atteinte');
+  assert.equal(R.isDue(0, 5 * MIN, NOW), true); assert.equal(R.isDue(null, 5 * MIN, NOW), true); assert.equal(R.isDue(NaN, 5 * MIN, NOW), true);
+});
+// Contrat de source : chaque calcul d'âge ou d'échéance de l'application passe par les mêmes fonctions (aucun `Date.now() - t` nu).
+const rd = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+const FRESH_FILES = ['src/app.js', 'src/app/lifecycle.js', 'src/app/weather-station.js', 'src/app/diagnostics.js', 'src/app/weather-view.js', 'src/app/analysis-view.js'];
+const FRESH_RULES = [
+  ['src/app.js', 'const relayAgeMin = ts => {', 'Reliability.ageMin(ts)', "l'âge du relais (obs.json, agenda) borne le futur"],
+  ['src/app.js', 'function expireLive(', 'Reliability.liveExpired(r.t, now)', 'expireLive utilise l’âge connu'],
+  ['src/app.js', 'for (const c of Object.values(CALM))', 'Reliability.liveExpired(c.t)', 'prévisions secondaires (CALM) requalifiées'],
+  ['src/app.js', 'for (const c of Object.values(LEGM))', 'Reliability.liveExpired(c.t)', 'prévisions de parcours (LEGM) requalifiées'],
+  ['src/app.js', 'const ageMin = value => {', 'Reliability.ageMin(value, now)', 'décision : âges bornés'],
+  ['src/app/weather-station.js', "RAW[id] = { ...r, mode:", 'Reliability.liveExpired(r.t)', 'reprise inter-onglets'],
+  ['src/app/lifecycle.js', 'const ref = Math.max(lastOk || 0, lastTry || 0);', 'Reliability.isDue(ref, AUTO_MS)', 'actualisation automatique due malgré une horloge reculée'],
+  ['src/app/lifecycle.js', 'if (navigator.onLine !== false', 'Reliability.isDue(VER_CHECK_AT, AUTO_MS)', 'contrôle de version dû malgré une horloge reculée'],
+  ['src/app/diagnostics.js', 'const ageOf = t =>', 'Reliability.ageMin(t)', 'diagnostic : âge inconnu si futur'],
+  ['src/app/weather-view.js', 'const raw = RAW[UI.loc], ageMin =', 'Reliability.ageMin(raw.t)', 'vue Météo'],
+  ['src/app/analysis-view.js', 'const raw = RAW[UI.loc], ageMin =', 'Reliability.ageMin(raw.t)', 'vue Analyse']
+];
+const BARE = [/Date\.now\(\) - [cr]\.t > LIVE_MAX_MS/, /!\(now - r\.t <= LIVE_MAX_MS\)/, /Date\.now\(\) - ref >= AUTO_MS/, /Date\.now\(\) - VER_CHECK_AT >= AUTO_MS/];
+function freshnessContract(read) {
+  const bad = [];
+  for (const [file, anchor, needle, why] of FRESH_RULES) {
+    const text = read(file), i = text.indexOf(anchor);
+    if (i < 0) { bad.push(`${file} : ancre « ${anchor} » absente`); continue; }
+    if (!text.slice(i, i + 700).includes(needle)) bad.push(`${file} : ${why} (« ${needle} » attendu)`);
+  }
+  for (const f of FRESH_FILES) for (const re of BARE) if (re.test(read(f))) bad.push(`${f} : calcul d’âge sans borne (${re})`);
+  return bad;
+}
+check('contrat : tous les âges et échéances de fraîcheur passent par Reliability', () => assert.deepEqual(freshnessContract(rd), []));
+check('contre-tests : un retour aux calculs nus est détecté', () => {
+  const real = rd, mutate = (file, from, to) => f => { const t = real(f); if (f !== file) return t; assert(t.includes(from), from); return t.replace(from, to); };
+  const mutations = [
+    mutate('src/app.js', 'Reliability.ageMin(ts)', 'Math.max(0, (Date.now() - Date.parse(ts || "")) / 60000)'),
+    mutate('src/app.js', 'Reliability.liveExpired(r.t, now)', '!(now - r.t <= LIVE_MAX_MS)'),
+    mutate('src/app.js', 'Reliability.liveExpired(c.t)', 'Date.now() - c.t > LIVE_MAX_MS'),
+    mutate('src/app/lifecycle.js', 'Reliability.isDue(ref, AUTO_MS)', 'Date.now() - ref >= AUTO_MS'),
+    mutate('src/app/diagnostics.js', 'Reliability.ageMin(t)', 'Math.max(0, (Date.now() - t) / 60000)'),
+    mutate('src/app/weather-station.js', 'Reliability.liveExpired(r.t)', 'Date.now() - r.t > LIVE_MAX_MS')
+  ];
+  for (const m of mutations) assert(freshnessContract(m).length > 0, 'mutation non détectée');
+});
 check('texte runtime borné', () => assert(R.clip('x'.repeat(500)).length <= 180));
 const diagnosticSource = fs.readFileSync(path.join(__dirname, '../src/app/diagnostics.js'), 'utf8');
 function agendaDiagnostic(options = {}, input = diagnosticSource) {
   const row = input.split('\n').find(line => line.includes("['Agenda',"));
   assert(row, 'la vraie ligne Agenda du diagnostic doit être testée');
   const expression = row.trim().replace(/^\['Agenda', /, '').replace(/\],$/, '');
-  const state = { console, Date, JSON, String, CAL: null, CALDONE: false,
+  const state = { console, Date, JSON, String, Reliability: R, CAL: null, CALDONE: false,
     location: { protocol: 'https:' }, crypto: { subtle: {} },
     lsGet: () => 'fixture-passphrase', hmLocal: () => '07:00', ...options };
   vm.createContext(state);

@@ -1,7 +1,7 @@
 /* ---------- diagnostic (observabilité) ---------- */
 // FRESH ≤ 15 min (décision possible) · AGING ≤ 60 min (à confirmer) · STALE au-delà · UNAVAILABLE sans donnée
 const freshState = ageMin => ageMin == null || !Number.isFinite(ageMin) ? 'UNAVAILABLE' : ageMin <= 15 ? 'FRESH' : ageMin <= 60 ? 'AGING' : 'STALE';
-const ageOf = t => { const v = typeof t === 'number' ? t : Date.parse(t || ''); return Number.isFinite(v) ? Math.max(0, (Date.now() - v) / 60000) : null; };
+const ageOf = t => Reliability.ageMin(t);   // futur ou illisible = âge inconnu (UNAVAILABLE), jamais FRESH
 const ageTxt = m => m == null ? '—' : m < 1 ? '< 1 min' : m < 90 ? Math.round(m) + ' min' : (m / 60).toFixed(1).replace('.', ',') + ' h';
 const noUrl = t => String(t || '').replace(/https?:\S+/g, 'url').slice(0, 120);
 const weatherIncidentText = () => {
