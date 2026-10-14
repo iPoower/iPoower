@@ -9,7 +9,7 @@ const weatherIncidentText = () => {
     'invalid-json': 'JSON illisible', 'invalid-response': 'réponse invalide', 'quota-minute': 'quota par minute', 'quota-hour': 'quota horaire',
     'quota-day': 'quota journalier', 'quota-concurrent': 'trop de requêtes simultanées', 'quota-limited': 'quota fournisseur' };
   return rows.length ? `${rows.length}/20 échecs conservés · ${rows.slice(-5).reverse().map(x =>
-    `${new Date(x.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Paris' })} · ${names[x.kind]}${x.status ? ' (HTTP ' + x.status + ')' : ''} · appel ${x.durationMs < 1000 ? x.durationMs + ' ms' : Math.ceil(x.durationMs / 1000) + ' s'}`).join(' ; ')}`
+    `${new Date(x.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Europe/Paris' })} · ${names[x.kind]}${x.status ? ' (HTTP ' + x.status + ')' : ''} · ${weatherIncidentTiming(x)}`).join(' ; ')}`
     : 'aucun échec enregistré · historique local des appels, sans URL ni coordonnées';
 };
 let SWV = null, VER_CHECK_AT = 0, VERSION_COHERENCE = 'unknown';
