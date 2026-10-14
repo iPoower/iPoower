@@ -6,10 +6,13 @@ name: Race Control · confidentialité des pull requests
 #  - les secrets ne sont donnés qu'à l'étape du scanner de main ; sortie : nom de fichier + type de donnée, jamais la valeur.
 #  - uniquement pour les PR de CE dépôt : une PR venant d'un fork ne reçoit jamais ce contrôle, sinon le résultat rouge/vert
 #    servirait d'oracle pour deviner une valeur privée (ex. coordonnées du domicile) en soumettant des candidats.
-# Limite assumée : une branche poussée est déjà publique ; ce contrôle détecte avant fusion, la prévention reste le hook local (tools/pre-commit).
+#  - le titre et la description de la PR sont contrôlés eux aussi (événement edited inclus) : ils arrivent par variables
+#    d'environnement, sont écrits tels quels dans pr-meta/ puis lus comme données par le même scanner, jamais interpolés dans un script.
+# Limite assumée : une branche poussée ou une description enregistrée est déjà publique ; ce contrôle détecte et bloque la fusion,
+# la prévention reste le hook local (tools/pre-commit) et la relecture avant publication.
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
 permissions:
   contents: read
 concurrency:
@@ -47,3 +50,19 @@ jobs:
           RC_KEY: ${{ secrets.RC_KEY }}
           GCAL_ICS: ${{ secrets.GCAL_ICS }}
         run: node trusted/tools/check-secrets.js --root trusted --scan target
+      - name: Titre et description de la PR (données seulement, jamais interpolées dans le script)
+        # contrôlés même si le scan des fichiers est rouge : chaque fuite doit être signalée
+        if: ${{ !cancelled() }}
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          mkdir -p pr-meta
+          printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > pr-meta/titre-et-description.md
+      - name: Aucune donnée personnelle dans le titre ni la description (scanner de main, vraies valeurs)
+        if: ${{ !cancelled() }}
+        env:
+          APP_KEY: ${{ secrets.APP_KEY }}
+          RC_KEY: ${{ secrets.RC_KEY }}
+          GCAL_ICS: ${{ secrets.GCAL_ICS }}
+        run: node trusted/tools/check-secrets.js --root trusted --scan pr-meta
