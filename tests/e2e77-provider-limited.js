@@ -41,11 +41,13 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅' : '
     check(dev + ' · carte : « Fournisseur météo limité », quota journalier, connexion fonctionnelle, aucune valeur inventée',
       /Fournisseur météo limité/i.test(s.body) && /quota journalier/.test(s.body) && /Ta connexion fonctionne/.test(s.body) && /Aucune valeur n’est inventée/.test(s.body), (s.body.match(/(Fournisseur météo limité|Météo indisponible).{0,260}/i) || [s.body.slice(0, 300)])[0]);
     check(dev + ' · Actualiser et Réessayer désactivés pendant la pause, avec l’heure de reprise', s.btn.length >= 2 && s.btn.every(x => x.off) && s.btn.some(x => /Reprise auto \d\d\/\d\d \d\d:\d\d/.test(x.t)), JSON.stringify(s.btn));
-    // Ancien lien de configuration ouvert pendant une session (favori, icône) : contenu fictif hors schéma, refusé, retiré, message explicite.
+    // Ancien favori sur appareil configuré : refus et retrait conservés, sans bandeau récurrent.
     const legacy = Buffer.from(JSON.stringify({ v: 1, ancienChamp: true })).toString('base64').replace(/=+$/, '');
+    const settingsBefore = await p.evaluate(() => JSON.stringify(S));
     await p.evaluate(h => { location.hash = h; }, '#cfg=' + legacy); await settle(8); const imp = await view();
-    check(dev + ' · ancien lien de configuration : message explicite, lien retiré de l’adresse, aucun contenu affiché',
-      !/cfg/.test(imp.hash) && /Lien de configuration ignoré.*format ancien.*remplace le favori/.test(imp.body) && !imp.body.includes(legacy) && !imp.body.includes('ancienChamp'), (imp.hash || '(adresse propre)') + ' · ' + ((imp.body.match(/Lien de configuration[^.]*\./) || ['(message absent)'])[0]));
+    check(dev + ' · ancien favori : lien retiré, import refusé, bandeau absent, réglages identiques',
+      !/cfg/.test(imp.hash) && !/Lien de configuration ignoré/.test(imp.body) && !imp.body.includes(legacy) && !imp.body.includes('ancienChamp') &&
+      await p.evaluate(before => window.TWRC_CONFIG_IMPORT.status.state === 'invalid' && JSON.stringify(S) === before && !document.querySelector('[data-k="config-import"]'), settingsBefore), imp.hash || '(adresse propre)');
     const before = meteo;
     await p.evaluate(() => document.querySelectorAll('[data-act="refresh"]').forEach(x => { x.disabled = false; x.click(); })); await settle(6);
     await p.evaluate(() => window.dispatchEvent(new Event('online'))); await settle(6);
