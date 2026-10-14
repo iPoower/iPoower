@@ -309,7 +309,7 @@ const offlineNow = () => typeof navigator !== 'undefined' && navigator.onLine ==
 const LIVE_MAX_MS = 15 * 60e3;
 function expireLive(now = Date.now()) {
   let n = 0;
-  [...Object.values(RAW), ...Object.values(MIDP)].forEach(r => { if (r && r.mode === 'live' && !(now - r.t <= LIVE_MAX_MS)) { r.mode = 'cache'; n++; } });
+  [...Object.values(RAW), ...Object.values(MIDP)].forEach(r => { if (r && r.mode === 'live' && Reliability.liveExpired(r.t, now)) { r.mode = 'cache'; n++; } });
   return n > 0;
 }
 function markOfflineCache() {
@@ -710,12 +710,12 @@ function rebuild() {
   // Les prévisions secondaires ont la même horloge et la même règle de
   // fraîcheur que les lieux du cockpit. Aucune écriture persistante ici.
   for (const c of Object.values(CALM)) if (c && c.m && c.m.payload) {
-    c.m = makeModel(c.m.payload, c.m.mode === 'demo' ? 'demo' : offlineNow() || Date.now() - c.t > LIVE_MAX_MS ? 'cache' : c.m.mode, c.m.loc);
+    c.m = makeModel(c.m.payload, c.m.mode === 'demo' ? 'demo' : offlineNow() || Reliability.liveExpired(c.t) ? 'cache' : c.m.mode, c.m.loc);
     c.m.retrievedAt = c.t;
   }
   for (const c of Object.values(LEGM)) if (c && Array.isArray(c.models)) c.models = c.models.map(m => {
     if (!m || !m.payload) return null;
-    const next = makeModel(m.payload, m.mode === 'demo' ? 'demo' : offlineNow() || Date.now() - c.t > LIVE_MAX_MS ? 'cache' : m.mode, m.loc);
+    const next = makeModel(m.payload, m.mode === 'demo' ? 'demo' : offlineNow() || Reliability.liveExpired(c.t) ? 'cache' : m.mode, m.loc);
     next.retrievedAt = c.t; return next;
   });
   Object.keys(MIDP).forEach(id => {
@@ -802,7 +802,8 @@ async function geocode(q) { return (await GeoSearch.search(q, fetchJSON)).map(h 
 const hmLocal = ms => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 const RELAY_WARN_MIN = 20, RELAY_OBS_MAX_MIN = 35;
 let RELAY_AT = null, RELAY_ERR = null, RELAY_SEEN = false;   // dernier obs.json lu (même trop vieux pour enrichir la météo) : diagnostic uniquement
-const relayAgeMin = ts => { const t = Date.parse(ts || ''); return Number.isFinite(t) ? Math.max(0, (Date.now() - t) / 60000) : Infinity; };
+// Âge inconnu (date absente, illisible ou dans le futur) = Infinity : jamais « 0 minute », donc jamais « tout frais ».
+const relayAgeMin = ts => { const a = Reliability.ageMin(ts); return a === null ? Infinity : a; };
 const relayAgeTxt = m => !Number.isFinite(m) ? 'inconnue' : m < 60 ? Math.max(1, Math.round(m)) + ' min' : Math.floor(m / 60) + ' h ' + Math.round(m % 60) + ' min';
 const CARD = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
 const card = d => d == null ? '' : CARD[Math.round(d / 45) % 8];
@@ -1030,8 +1031,7 @@ function renderDecisionCore() {
   }
   const snap = APP_CONTEXT.snapshot, now = Date.now(), raw = RAW[UI.loc];
   const ageMin = value => {
-    const t = typeof value === 'number' ? value : Date.parse(value || '');
-    return Number.isFinite(t) ? Math.max(0, (now - t) / 60000) : null;
+    return Reliability.ageMin(value, now);
   };
   const car = appActiveCar(), carEval = car && CX.cars.find(x => x.car.id === car.id);
   const active = !!snap.activeTrip, gpsAge = FIX && Number.isFinite(FIX.ts) ? ageMin(FIX.ts) : null;
@@ -1858,7 +1858,7 @@ function liveTips() {
   else if (m.nc && m.nc.nowWet) add(`${m.nc.snow ? 'Il neige' : 'Il pleut'} en ce moment à ${ln}${m.nc.stopAt ? ', fin probable vers ' + m.nc.stopAt : ''}. Vitesses abaissées sur autoroute (110) et voie express (100).`, 'prévision au quart d’heure', 1);
   // mesure réelle de la station
   if (m.obs && m.obs.T != null) {
-    const ago = Math.round((Date.now() - Date.parse(m.obs.t)) / 60000);
+    const ago = Math.max(0, Math.round((Date.now() - Date.parse(m.obs.t)) / 60000));
     add(`Mesuré il y a ${ago} min à la station ${m.obs.name} : ${f1(m.obs.T)} °C${m.obs.vis != null && m.obs.vis < 5000 ? ', visibilité ' + m.obs.vis + ' m' : ''}${m.obs.wx ? ' (' + wxFr(m.obs.wx) + ')' : ''}. Les prévisions de l’appli sont recalées sur cette mesure.`, 'station ' + m.obs.id);
   }
   // chaussée sous 0 °C

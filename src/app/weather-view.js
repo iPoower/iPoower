@@ -43,7 +43,7 @@ function wxTrips(clockModel) {
 }
 function wxInput() {
   const m = CX.m, now = DEMO.on ? m.nowStr.slice(0, 16) : nowIn(m.tz || 'Europe/Paris');
-  const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Math.max(0, (Date.now() - raw.t) / 60e3);
+  const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Reliability.ageMin(raw.t);
   const day = m.days.find(d => d.date === now.slice(0, 10)) || {};
   // valeurs « actuelles » d'une réponse ancienne : on préfère l'heure prévue pour maintenant
   const cur = m.cur.source === 'current' ? { T: m.cur.T, Tapp: m.cur.Tapp } : {};

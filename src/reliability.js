@@ -51,6 +51,18 @@ const Reliability = (() => {
     if (travelling) return 'deferred';
     return attempted ? 'stale' : 'reload';
   }
-  return { clip, runtimeRecorder, versionDecision };
+  // Fraîcheur honnête. L'âge d'une donnée = horloge de l'appareil − horodatage de réception. Un horodatage dans le futur (au-delà de
+  // 60 s de dérive tolérée) signifie une horloge reculée ou une date falsifiée : l'âge est alors INCONNU (null), jamais « 0 minute ».
+  const SKEW_MS = 60000;
+  function ageMin(t, now = Date.now()) {
+    const ms = typeof t === 'number' ? t : typeof t === 'string' && t ? Date.parse(t) : NaN;
+    if (!Number.isFinite(ms) || !Number.isFinite(now) || ms > now + SKEW_MS) return null;
+    return Math.max(0, (now - ms) / 60000);
+  }
+  // LIVE n'existe que pour une donnée d'âge connu et ≤ maxMs ; âge inconnu = expiré.
+  const liveExpired = (t, now = Date.now(), maxMs = 15 * 60000) => { const a = ageMin(t, now); return a === null || a * 60000 > maxMs; };
+  // Échéance d'une actualisation : un dernier essai inconnu ou « dans le futur » (horloge reculée) ne repousse jamais la suivante.
+  const isDue = (last, everyMs, now = Date.now()) => { const a = ageMin(last, now); return a === null || a * 60000 >= everyMs; };
+  return { clip, runtimeRecorder, versionDecision, ageMin, liveExpired, isDue };
 })();
 const RUNTIME_RECORDER = typeof window !== 'undefined' ? Reliability.runtimeRecorder() : null;
