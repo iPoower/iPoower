@@ -98,6 +98,15 @@ for(const k of ['froid','pluie','neige','doux']){
   const al=A.computeAlerts(m,cars,{rainThr:5},{i20:s1,'308':s2}); console.log(' alerts',Object.values(al).map(a=>a.id+':'+a.sev).join(' '));
 }
 
+{
+  const p=A.makeDemoPayload('froid',loc),m=A.makeModel(p,'demo',loc),seq=A.seqOf(m,m.nowI,24),sm=A.summarize(seq);
+  const al=A.computeAlerts(m,cars,{rainThr:5},{});
+  assert(sm.Tmin<=1.5&&al.t0,'scénario froid : alerte proche de 0 °C attendue');
+  assert.match(al.t0.title,/^Proche de 0 °C : minimum prévu -?\d+(,\d)? °C vers \d\d:\d\d$/,'le titre nomme le minimum et son heure');
+  assert(!/\(-?\d/.test(al.t0.title),'plus de valeur entre parenthèses ambiguë');
+  assert.match(al.t0.detail,/Chaussée estimée jusqu’à/);
+  console.log('✅ alerte proche de 0 °C : minimum prévu et heure explicites');
+}
 const plusDays=(date,n)=>{const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 {
   const p=A.makeDemoPayload('froid',loc),m=A.makeModel(p,'demo',loc),today=m.nowStr.slice(0,10);
