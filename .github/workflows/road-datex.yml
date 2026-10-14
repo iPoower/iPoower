@@ -40,18 +40,29 @@ jobs:
         with:
           ref: gh-pages
           path: pages
+          # aucun jeton d'écriture sur le disque pendant la lecture du flux DATEX venu d'Internet
+          persist-credentials: false
       - name: Normaliser le flux public (aucun secret, aucune donnée utilisateur)
         run: python3 tools/road-datex/sync.py --output pages/race-control/road-datex.json
       - name: Publier uniquement les événements publics
         working-directory: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "race-control-datex"
           git config user.email "race-control-datex@users.noreply.github.com"
-          git add race-control/road-datex.json
+          git add -- race-control/road-datex.json
           git diff --cached --quiet && exit 0
+          git diff --cached --name-only | while IFS= read -r file; do
+            case "$file" in race-control/road-datex.json) ;; *) exit 1 ;; esac
+          done
           git commit -q -m "DATEX : événements DIR actualisés"
+          # Token injecté par environnement uniquement pour le push, jamais enregistré dans un checkout.
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
           for i in 1 2 3 4 5; do
-            if git push -q; then exit 0; fi
-            git pull -q --rebase || exit 1
+            git push -q && exit 0
+            git -c core.hooksPath=/dev/null pull -q --rebase || exit 1
           done
           exit 1
