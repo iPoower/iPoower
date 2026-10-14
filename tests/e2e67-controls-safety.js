@@ -71,7 +71,7 @@ const snapshot = p => p.evaluate(() => JSON.stringify({ settings: S, place: PLAC
         assert.equal(await p.evaluate(() => S.work.durMin), 65); assert.equal(await p.evaluate(() => S.work.ret), '19:05');
         assert.equal(await p.evaluate(() => WEATHER_REQUESTS.incidents().some(x => x.status === 503)), true);
         const fields = await p.evaluate(() => WEATHER_REQUESTS.incidents().flatMap(x => Object.keys(x)));
-        assert(fields.every(x => ['at', 'kind', 'durationMs', 'status'].includes(x)));
+        assert(fields.every(x => ['at', 'kind', 'durationMs', 'waitMs', 'status'].includes(x)), 'métadonnées bornées : aucune URL, coordonnée ni message');
       });
       await check(dev + ' · annuler Effacer calibration ne modifie aucune donnée', async () => {
         await reveal(p, '#settings [data-act=calib-reset]'); const before = await snapshot(p);
