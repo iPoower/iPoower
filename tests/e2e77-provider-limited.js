@@ -19,7 +19,7 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅' : '
     let meteo = 0, LIMIT = true;
     const J = (r, o, s = 200) => r.fulfill({ status: s, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
     await p.route('**/*', r => { const u = r.request().url();
-      if (u.includes('open-meteo.com')) { meteo++;
+      if (/(^|\.)open-meteo\.com$/.test(new URL(u).hostname)) { meteo++;   // hôte exact (pas une sous-chaîne d'URL)
         if (LIMIT) return J(r, { error: true, reason: 'Daily API request limit exceeded. Please try again tomorrow.' }, 429);
         const q = new URL(u).searchParams, lats = String(q.get('latitude')).split(','), lons = String(q.get('longitude')).split(','), one = i => ctx.mk('doux', { lat: +lats[i], lon: +lons[i] }, 'Europe/Paris', 0);
         if (lats.length > 1) return J(r, lats.map((_, i) => one(i))); const base = one(0);
