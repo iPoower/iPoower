@@ -137,7 +137,8 @@ function networkChanged() {
     calendarOriginRetryRoutes();
     if (USER_STORE.durability().status === 'degraded') validateRecovery('retour réseau');
     else renderStatus();
-    loadVersion(true); refreshAll();
+    // Retour réseau : rafraîchir ce qui est périmé, sans contourner les caches (iOS émet « online » à chaque bascule Wi-Fi/4G).
+    loadVersion(true); refreshAll(false);
   }
 }
 window.addEventListener('offline', networkChanged);

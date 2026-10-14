@@ -898,7 +898,10 @@ const dataAt = () => (RAW[UI.loc] && RAW[UI.loc].t) || lastOk;
 function mainMode() { const m = M[UI.loc]; return locHasCoords(allLocs().find(l => l.id === UI.loc)) && m ? m.mode : null; }
 function renderStatus() {
   const mode = DEMO.on ? 'demo' : mainMode(), off = !DEMO.on && offlineNow();
-  const b = mode === 'demo' ? '<span class="badge demo"><i></i>DÉMO</span>' : off ? '<span class="badge"><i></i>HORS LIGNE</span>' : mode === 'live' ? '<span class="badge live"><i></i>LIVE</span>' : mode === 'cache' ? '<span class="badge cache"><i></i>CACHE</span>' : '<span class="badge"><i></i>HORS LIGNE</span>';
+  const pause = WEATHER_REQUESTS.state(), limited = !DEMO.on && pause.until > Date.now();
+  // « HORS LIGNE » seulement quand l'appareil se déclare hors connexion ; en ligne sans donnée : fournisseur limité (429) ou indisponible.
+  const none = off ? 'HORS LIGNE' : limited ? 'LIMITÉ' : 'INDISPONIBLE';
+  const b = mode === 'demo' ? '<span class="badge demo"><i></i>DÉMO</span>' : off ? '<span class="badge"><i></i>HORS LIGNE</span>' : mode === 'live' ? '<span class="badge live"><i></i>LIVE</span>' : mode === 'cache' ? '<span class="badge cache"><i></i>CACHE</span>' : `<span class="badge"><i></i>${none}</span>`;
   let u;
   if (mode === 'demo') u = 'Simulation : aucune donnée réelle';
   else if (off && RAW[UI.loc]) u = 'Données en cache du ' + hmLocal(RAW[UI.loc].t) + ' · prévisions locales, sans actualisation réseau';
@@ -906,7 +909,6 @@ function renderStatus() {
   else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(dataAt()) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
   else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
   else u = 'Aucune donnée météo';
-  const pause = WEATHER_REQUESTS.state(), limited = !DEMO.on && pause.until > Date.now();
   const blocked = busy || limited && !off;
   document.querySelectorAll('[data-act="refresh"]').forEach(button => { button.disabled = blocked; button.title = busy ? 'Actualisation en cours' : limited && !off ? 'Reprise automatique après la pause du fournisseur météo' : ''; });
   if (limited && !off) u += ' · fournisseur météo limité · reprise automatique après ' + new Date(pause.until).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
@@ -965,12 +967,16 @@ function renderNotice() {
     } else el.innerHTML = setup + extra;
   };
   if (m && CX) { setContent(''); return; }
-  const err = ERR[UI.loc];
+  const err = ERR[UI.loc], pause = WEATHER_REQUESTS.state(), limited = !offlineNow() && pause.until > Date.now();
+  const resume = limited ? new Date(pause.until).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }) : '';
+  // Fournisseur limité (HTTP 429) : ce n'est pas une panne de connexion. Le bouton reste désactivé jusqu'à la reprise automatique.
+  const why = limited ? `Open-Meteo limite les requêtes de ton adresse réseau (HTTP 429${pause.kind === 'day' ? ', quota journalier' : pause.kind === 'hour' ? ', quota horaire' : ''}). Reprise automatique après ${resume}. Ta connexion fonctionne : sur un réseau partagé (Relais privé iCloud, VPN, Wi-Fi public), la limite peut venir d’autres utilisateurs de la même adresse. Aucune valeur n’est inventée.`
+    : `Open-Meteo n’a pas répondu${err ? ' (' + esc(err) + ')' : ''}. Aucune valeur n’est inventée : l’analyse reste vide tant que les données réelles manquent. Cela arrive hors ligne ou quand le réseau bloque l’accès aux services externes.`;
   // le déverrouillage reste possible quand la météo manque (premier lancement hors ligne, fournisseur en panne)
-  setContent(`<div class="notice"><h3>${busy ? 'Chargement de la météo…' : 'Météo indisponible'}</h3>
-    <p class="muted">${busy ? 'Interrogation d’Open-Meteo.' : `Open-Meteo n’a pas répondu${err ? ' (' + esc(err) + ')' : ''}. Aucune valeur n’est inventée : l’analyse reste vide tant que les données réelles manquent. Cela arrive hors ligne ou quand le réseau bloque l’accès aux services externes.`}</p>
+  setContent(`<div class="notice"><h3>${busy ? 'Chargement de la météo…' : limited ? 'Fournisseur météo limité' : 'Météo indisponible'}</h3>
+    <p class="muted">${busy ? 'Interrogation d’Open-Meteo.' : why}</p>
     ${window.TWRC_LIVE_URL ? `<p><a href="${esc(window.TWRC_LIVE_URL)}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">Ouvrir la version en temps réel ↗</a></p>` : ''}
-    <div class="chips"><button class="btn pri" data-act="refresh">Réessayer</button><button class="btn" data-act="demo" data-scn="froid">Voir la démo (données simulées)</button></div></div>`);
+    <div class="chips"><button class="btn pri" data-act="refresh"${limited ? ` disabled title="Reprise automatique après la pause du fournisseur météo">Reprise auto ${esc(resume)}` : '>Réessayer'}</button><button class="btn" data-act="demo" data-scn="froid">Voir la démo (données simulées)</button></div></div>`);
 }
 function renderBanners() {
   const el = $('#banners'); if (!CX) { el.innerHTML = ''; return; }

@@ -151,7 +151,7 @@ const ConfigImport = (() => {
     applied: 'Configuration importée et enregistrement chiffré vérifié sur cet appareil.',
     duplicate: 'Ce lien a déjà été traité. Tes modifications et ton historique restent conservés.',
     configured: 'Import refusé : cet appareil possède déjà des réglages. Tes données restent conservées ; utilise les paramètres pour les modifier.',
-    invalid: 'Import refusé : lien invalide ou trop volumineux. Tes données restent conservées.',
+    invalid: 'Lien de configuration ignoré : format ancien, invalide ou trop volumineux. Tes données restent conservées et le lien a été retiré de l’adresse. Si ce message revient à chaque ouverture, remplace le favori ou l’icône d’écran d’accueil par l’adresse simple de Race Control.',
     locked: 'Lien retiré de l’URL. L’import attend le déverrouillage de cet appareil et reste uniquement dans cet onglet.',
     unavailable: 'Import non appliqué : vérification ou sauvegarde indisponible. Tes données restent conservées.',
     url: 'Import refusé : le lien privé n’a pas pu être retiré de l’URL. Ne partage pas cette adresse.'
