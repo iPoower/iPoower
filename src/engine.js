@@ -499,7 +499,9 @@ function computeAlerts(model, cars, S, seasonByCar) {
   if (sm.Tmin != null && sm.Tmin < 7) set('t7', 1, `Minimum prévu ${f1(sm.Tmin)} °C`, `Vers ${hhmm(sm.iTmin)}. Le seuil de 7 °C est une règle pratique : les performances relatives hiver/été évoluent, ce n’est pas une bascule instantanée.`);
   const summerCars = cars.filter(c => effType(c) === 'summer');
   if (sm.Tmin != null && sm.Tmin < 5 && summerCars.length) set('t5s', 2, `${f1(sm.Tmin)} °C avec pneus été (${summerCars.map(c => c.short + (c.tire.type === 'unknown' ? ' : type inconnu' : '')).join(', ')})`, `Vers ${hhmm(sm.iTmin)}. Adhérence réduite, surtout sur chaussée humide.`);
-  if (sm.Tmin != null && sm.Tmin <= 1.5) set('t0', 3, `Température proche de 0 °C (${f1(sm.Tmin)} °C)`, `Vers ${hhmm(sm.iTmin)}. Chaussée estimée jusqu’à ${f1(sm.TrMin)} °C.`);
+  // Le titre dit qu'il s'agit du MINIMUM prévu et quand : la température actuelle affichée à côté peut être bien plus haute.
+  if (sm.Tmin != null && sm.Tmin <= 1.5) { const at = hhmm(sm.iTmin);
+    set('t0', 3, `Proche de 0 °C : minimum prévu ${f1(sm.Tmin)} °C${at ? ' vers ' + at : ''}`, `Minimum de l’air sur les prochaines heures. Chaussée estimée jusqu’à ${f1(sm.TrMin)} °C.`); }
   if (sm.iceLevel >= 1) set('ice', sm.iceLevel >= 2 ? 3 : 2, `Risque de verglas ${ICE_LV[sm.iceLevel]} (estimé)`, `Pic vers ${hhmm(sm.iceI)}. Risque calculé, non observé sur la route.`);
   if (sm.snowSum > 0 || sm.snowCode) set('snow', summerCars.length ? 3 : 2, `Neige prévue${sm.snowSum > 0 ? ` (${f1(sm.snowSum)} cm)` : ''}`, `À partir de ${hhmm(sm.iSnow)}.`);
   const thr = S.rainThr || 5;
