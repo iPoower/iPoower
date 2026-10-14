@@ -226,6 +226,13 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const u = lab({ now: ts('07:00'), car: car({ press: '' }), hours: H() });
     assert.equal(u.press.known, false); assert.match(u.press.text, /non renseignée/);
   });
+  test('météo de 60 min encore valable, de 61 min « ancienne » : même seuil que les autres vues', () => {
+    const base = { now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), drive: drive('10:00', 'route') };
+    const fresh = lab({ ...base, ageMin: 10 }), edge = lab({ ...base, ageMin: 60 }), old = lab({ ...base, ageMin: 61 });
+    assert.deepEqual(edge, fresh, '60 min : aucune pénalité de fraîcheur');
+    assert.notDeepEqual(old, fresh, '61 min : incertitude et confiance dégradées');
+    assert(/Météo ancienne/.test(JSON.stringify(old)), 'le motif est affiché'); assert(!/Météo ancienne/.test(JSON.stringify(edge)));
+  });
   test('données manquantes ou anciennes : confiance plus faible ; GPS et données complètes : moyenne au plus (aucun capteur), axes séparés', () => {
     const full = lab({ now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), drive: drive('10:00', 'route'), ageMin: 10 });
     const poor = lab({ now: ts('10:20'), car: car({ brand: '', model: '', press: '', tread: null }), hours: H(), ageMin: 240 });
@@ -387,6 +394,7 @@ if (require.main === module) {
     { name: 'distance chiffrée sous le minimum légal', from: "if (tread != null && tread < 1.6) distNote =", to: "if (false) distNote =" },
     { name: 'distance chiffrée sans profondeur connue', from: "else if (tread == null) distNote =", to: "else if (false) distNote =" },
     { name: 'un seul essieu renseigné pris pour les deux', from: "else if (axleMissing) distNote =", to: "else if (false) distNote =" },
+    { name: 'seuil de météo ancienne rétabli à 90 min (dérive entre vues)', from: 'const TL_STALE_AFTER_MIN = 60;', to: 'const TL_STALE_AFTER_MIN = 90;' },
     { name: 'confiance indépendante des données manquantes', from: "  if (phase === 'unknown') { score -= 1;", to: "  if (false) { score -= 1;" }
   ];
   for (const m of mutations) {

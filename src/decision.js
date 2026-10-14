@@ -2,6 +2,8 @@
 // Aucun score probabiliste inventé, aucune coordonnée ni titre d'agenda persisté.
 'use strict';
 const Decision = (() => {
+  // Politique de fraîcheur (valeurs de Reliability.FRESHNESS, vérifiées par tests/test_reliability.js) : ≤ 15 min frais · ≤ 60 min à confirmer · au-delà périmé.
+  const FRESH_MAX_MIN = 15, STALE_AFTER_MIN = 60;
   const KEY = 'twrc.decision.latest.v1';
   const CONF = [
     { key: 'solid', label: 'SOLIDE' },
@@ -25,8 +27,8 @@ const Decision = (() => {
     const w = input.weather || {};
     if (!w.available || !finite(w.ageMin)) add(2, 'Météo indisponible');
     else {
-      if (w.ageMin > 60) add(2, 'Météo trop ancienne');
-      else if (w.ageMin > 15) add(1, 'Météo à confirmer');
+      if (w.ageMin > STALE_AFTER_MIN) add(2, 'Météo trop ancienne');
+      else if (w.ageMin > FRESH_MAX_MIN) add(1, 'Météo à confirmer');
       if (w.mode !== 'live') add(1, 'Météo en cache');
     }
     if (input.online === false) add(1, 'Réseau hors ligne');

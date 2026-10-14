@@ -306,7 +306,7 @@ let lastOk = null, lastTry = null, busy = false, CX = null;
 const offlineNow = () => typeof navigator !== 'undefined' && navigator.onLine === false;
 // Fraîcheur dérivée de l'âge réel, jamais d'une étiquette posée au téléchargement : après une suspension iOS ou un
 // réseau qui ne répond plus, une météo « live » trop ancienne redevient un cache daté (badge CACHE, « maintenant » = horloge).
-const LIVE_MAX_MS = 15 * 60e3;
+const LIVE_MAX_MS = Reliability.FRESHNESS.freshMaxMin * 60e3;   // LIVE = frais (politique unique de fraîcheur)
 function expireLive(now = Date.now()) {
   let n = 0;
   [...Object.values(RAW), ...Object.values(MIDP)].forEach(r => { if (r && r.mode === 'live' && Reliability.liveExpired(r.t, now)) { r.mode = 'cache'; n++; } });
