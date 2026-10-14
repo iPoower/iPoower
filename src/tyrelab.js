@@ -48,6 +48,21 @@ const TL_TREND_TXT = { heating: 'En chauffe', stable: 'Stabilisé', cooling: 'En
 const TL_SETTLE = 0.05, TL_BASE_U = 3;   // convergence (part de la montée) ; incertitude de base (°C)
 const TL_KIND = { ville: { dT: 14, tauKm: 7, v: 30, label: 'ville' }, route: { dT: 20, tauKm: 10, v: 70, label: 'route' }, autoroute: { dT: 26, tauKm: 10, v: 115, label: 'autoroute' } };
 const TL_MU = { dry: [0.7, 0.9], wet: [0.4, 0.55] };
+// Usure sur sol mouillé — HYPOTHÈSES PROVISOIRES, non calibrées sur ce véhicule.
+// On ajoute tels quels les ÉCARTS DE FREINAGE MESURÉS à ≈ 80 km/h (50 mph) sur mouillé entre un pneu neuf (8 mm) et un pneu usé,
+// sans les convertir en coefficient (un ratio appliqué à une autre référence fabriquerait des écarts jamais mesurés) :
+//   1,6 mm : +6,9 m (TyreSafe, borne optimiste) et +13 m (MIRA, borne prudente) ;
+//   3 mm : MIRA ≈ 8 m de mieux qu'à 1,6 mm → +5 m (prudente) ; optimiste au même prorata 6,9 × 5/13 ≈ +2,65 m.
+// Interpolation linéaire entre ces seuls points. Sous 1,6 mm : hors des essais, valeur de 1,6 mm conservée comme minimum.
+// Domaine : sol humide, pluie, pluie forte. Ni neige, ni verglas, ni eau stagnante (aquaplaning traité à part).
+const TL_TREAD_WET_DM = { opt: [[1.6, 6.9], [3, 2.65], [8, 0]], pru: [[1.6, 13], [3, 5], [8, 0]] };
+const TL_WEAR_SURF = ['damp', 'rain', 'heavy'];
+function tlCurve(x, pts) { if (x <= pts[0][0]) return pts[0][1]; for (let i = 1; i < pts.length; i++) if (x <= pts[i][0]) { const [a, fa] = pts[i - 1], [b, fb] = pts[i]; return fa + (fb - fa) * (x - a) / (b - a); } return pts[pts.length - 1][1]; }
+function tlTreadWet(mm) { return mm == null || !Number.isFinite(mm) ? null : { opt: tlCurve(mm, TL_TREAD_WET_DM.opt), pru: tlCurve(mm, TL_TREAD_WET_DM.pru), belowLegal: mm < 1.6 }; }
+// Pneu été sous 7 °C et gomme sous sa plage : deux effets en partie corrélés. Trois formulations comparables ;
+// 'product' = comportement historique, conservé tant que le propriétaire n'a pas choisi (voir la PR « cohérence freinage »).
+const TL_COLD_MODE = 'product';
+function tlColdCombine(tf, c7, mode) { if (c7 >= 1) return tf; return mode === 'max' ? Math.min(tf, c7) : mode === 'overlap' ? tf * (1 - 0.5 * (1 - c7)) : tf * c7; }
 const TL_TAU_PARK = 50;
 function tyreLab(input) {
   const finite = v => typeof v === 'number' && Number.isFinite(v), n = v => finite(v) ? v : null;
@@ -209,6 +224,8 @@ function tyreLab(input) {
   }
   /* ---------- 7. adhérence, freinage, aquaplaning ---------- */
   const tread = typeof treadAxles === 'function' ? treadAxles(tire).worst : n(tire.tread);   // essieu le plus usé
+  // saisie par essieu avec un essieu inconnu : l'essieu renseigné ne représente pas l'autre (garde-fou des distances)
+  const axl = typeof treadAxles === 'function' ? treadAxles(tire) : null, axleMissing = !!(axl && axl.split && (axl.av == null || axl.ar == null));
   function aquaOf(e, k) {
     if (e.Pl < 0.2 && e.acc < 1) return { lv: 0, word: 'Faible', why: ['Pas de pluie ni d’eau accumulée'] };
     let R = e.Pl >= 7.6 ? 4 : e.Pl >= 4 ? 3 : e.Pl >= 2 ? 2 : e.Pl >= 0.2 ? 1 : 0; const w = [`Pluie ${r1(e.Pl)} mm/h`];
@@ -222,23 +239,43 @@ function tyreLab(input) {
   }
   function gripAt(e, s, k) {
     const f = [];
-    const S = { dry: 1, damp: 0.85, rain: 0.7, heavy: 0.6, pool: 0.5, snow: type === 'summer' ? 0.2 : type === 'winter' ? 0.5 : pmsf ? 0.45 : 0.4, ice: type === 'winter' ? 0.2 : 0.15 }[e.surf];
+    const SURF = { dry: 1, damp: 0.85, rain: 0.7, heavy: 0.6, pool: 0.5, snow: type === 'summer' ? 0.2 : type === 'winter' ? 0.5 : pmsf ? 0.45 : 0.4, ice: type === 'winter' ? 0.2 : 0.15 }, S = SURF[e.surf];
     f.push({ k: 'Chaussée ' + SURF_TXT[e.surf], v: S });
     const tf = s === 0 ? { summer: 0.85, allseason: 0.92, winter: 0.97 }[type] : s === 1 ? { summer: 0.93, allseason: 0.96, winter: 0.99 }[type] : s === 3 ? 0.97 : s === 4 ? 0.9 : 1;
-    f.push({ k: 'Gomme ' + ['froide', 'sous la plage favorable', 'dans sa fenêtre favorable', 'chaude', 'très chaude'][s], v: tf });
-    if (type === 'summer' && e.Tenv < 7) f.push({ k: `Pneu été sous 7 °C (${r1(e.Tenv)} °C air/chaussée)`, v: 0.9 });
+    // froid : la combinaison des deux facteurs suit TL_COLD_MODE ; chaque facteur affiché garde sa raison
+    const c7 = type === 'summer' && e.Tenv < 7 ? 0.9 : 1; let vT = tf, v7 = c7;
+    if (c7 < 1 && TL_COLD_MODE === 'max') { if (c7 < tf) vT = 1; else v7 = 1; }
+    else if (c7 < 1 && TL_COLD_MODE === 'overlap') v7 = tlColdCombine(tf, c7, 'overlap') / tf;
+    f.push({ k: 'Gomme ' + ['froide', 'sous la plage favorable', 'dans sa fenêtre favorable', 'chaude', 'très chaude'][s], v: vT });
+    if (c7 < 1) f.push({ k: `Pneu été sous 7 °C (${r1(e.Tenv)} °C air/chaussée)`, v: v7 });
     if (type === 'winter' && e.Ta > 20) f.push({ k: `Pneu hiver au-dessus de 20 °C`, v: 0.92 });
-    const wet = !['dry'].includes(e.surf);
-    if (wet && tread != null && tread < 3) f.push({ k: `Profondeur ${r1(tread)} mm sur sol mouillé`, v: tread < 1.6 ? 0.7 : 0.85 });
+    // usure : écarts mesurés ajoutés aux distances ; pour l'indicateur relatif, facteur équivalent sur la référence mouillé moyenne
+    const g0 = 9.81, v0 = 80 / 3.6, ddx = mu0 => v0 * v0 / (2 * mu0 * g0);
+    const tw = TL_WEAR_SURF.includes(e.surf) ? tlTreadWet(tread) : null, worn = !!(tw && tw.pru > 0.05);
+    if (worn) { const dRef = (ddx(TL_MU.wet[0]) + ddx(TL_MU.wet[1])) / 2, est = !!(inp.state && inp.state.tread && inp.state.tread.est);
+      f.push({ k: `Profondeur ${r1(tread)} mm${est ? ' (estimée, non mesurée)' : ''} sur sol mouillé : +${r0(tw.opt)} à +${r0(tw.pru)} m de freinage à 80 km/h (écarts d’essais publiés, hypothèse non calibrée)${tw.belowLegal ? ' — sous le minimum légal, au-delà des essais' : ''}`,
+        v: dRef / (dRef + (tw.opt + tw.pru) / 2), tw }); }
     const p = coldAt(e.Tenv); if (p != null && p < target - 0.3) f.push({ k: `Pression estimée ≈ ${r1(p)} bar (cible ${r1(target)})`, v: 0.95 });
     const mu = f.reduce((a, x) => a * x.v, 1), lv = mu >= 0.9 ? 0 : mu >= 0.72 ? 1 : mu >= 0.5 ? 2 : 3;
     const dom = f.filter(x => x.v < 1).sort((a, b) => a.v - b.v)[0] || null;
     // distances : seulement sur sec/humide/pluie, jamais sur neige ou verglas. μ = plage « sec » × adhérence relative.
-    let dist = null;
-    if (!['snow', 'ice'].includes(e.surf)) {
-      // références : pneu en température, chaussée sèche puis mouillée ; « maintenant » : référence sèche × adhérence relative
+    let dist = null, distNote = null;
+    // Donnée critique absente ou hors du domaine des essais : Race Control dit qu'il ne peut pas chiffrer, plutôt que d'inventer.
+    if (tread != null && tread < 1.6) distNote = `Profondeur ${r1(tread)} mm : sous le minimum légal de 1,6 mm, pneu non conforme et hors du domaine des essais. Aucune distance affichée : remplacer les pneus avant de rouler.`;
+    else if (['snow', 'ice'].includes(e.surf)) distNote = 'Neige ou verglas : aucune distance affichée, l’incertitude est trop grande. Indice relatif seulement.';
+    else if (e.surf === 'pool') distNote = 'Eau stagnante probable : l’aquaplaning peut faire perdre le contact de façon brutale et irrégulière. Aucune distance affichée : ralentir nettement.';
+    else if (tread == null) distNote = 'Profondeur de sculpture inconnue : aucune distance chiffrée (l’usure peut l’allonger fortement sur mouillé). Mesure-la à la jauge et renseigne-la dans Pneus ; les autres alertes restent actives.';
+    else if (axleMissing) distNote = `Profondeur saisie par essieu : ${axl.av == null ? 'avant inconnue' : 'avant ' + r1(axl.av) + ' mm'}, ${axl.ar == null ? 'arrière inconnue' : 'arrière ' + r1(axl.ar) + ' mm'}. Aucune distance chiffrée : renseigne les deux essieux dans Pneus (l’essieu non mesuré peut être plus usé) ; les autres alertes restent actives.`;
+    else {
+      // Méthode unique : base sèche sur sol sec, base MOUILLÉE sur sol humide/pluie, puis les autres facteurs.
+      // L'écart entre surfaces mouillées reprend les rapports relatifs déjà utilisés (S[surf] / S.rain) : aucun nouveau coefficient.
+      // Pneu idéal sous la pluie = exactement la référence mouillé ; humide = entre sec et mouillé.
       const g = 9.81, v = 80 / 3.6, dd = mu0 => Math.round(v * v / (2 * mu0 * g));
-      dist = { v: 80, now: [dd(TL_MU.dry[1] * mu), dd(TL_MU.dry[0] * mu)], dry: [dd(TL_MU.dry[1]), dd(TL_MU.dry[0])], wet: [dd(TL_MU.wet[1]), dd(TL_MU.wet[0])], react: Math.round(v) };
+      const base = e.surf === 'dry' ? TL_MU.dry : TL_MU.wet.map(x => x * S / SURF.rain);
+      const rest = f.filter(x => !x.k.startsWith('Chaussée ') && !x.tw).reduce((a, x) => a * x.v, 1);
+      const hi = Math.min(TL_MU.dry[1], base[1] * rest), lo = Math.min(TL_MU.dry[0], base[0] * rest);
+      const addLo = worn ? tw.opt : 0, addHi = worn ? tw.pru : 0;   // borne favorable + écart optimiste ; borne défavorable + écart prudent
+      dist = { v: 80, now: [Math.round(v * v / (2 * hi * g) + addLo), Math.round(v * v / (2 * lo * g) + addHi)], dry: [dd(TL_MU.dry[1]), dd(TL_MU.dry[0])], wet: [dd(TL_MU.wet[1]), dd(TL_MU.wet[0])], react: Math.round(v), provisional: worn };
     }
     const aqua = aquaOf(e, k);
     // barres de 0 à 10, chacune avec sa raison
@@ -253,7 +290,7 @@ function tyreLab(input) {
       { id: 'stab', label: 'Stabilité', b: bar(gust * aq), why: [e.gust != null ? `Rafales ${r0(e.gust)} km/h` : 'Rafales non fournies', `Aquaplaning ${aqua.word.toLowerCase()}`] },
       { id: 'aqua', label: 'Aquaplaning', b: bar(aq), why: aqua.why }
     ].map(x => ({ ...x, word: x.id === 'aqua' ? ['Bonne', 'Vigilance', 'Risque élevé', 'Critique'][aqua.lv] : word(x.b), lv: x.id === 'aqua' ? aqua.lv : x.b >= 9 ? 0 : x.b >= 7 ? 1 : x.b >= 5 ? 2 : 3 }));
-    return { mu, lv, word: ['Optimal', 'Bon', 'Dégradé', 'Très dégradé'][lv], f, dom, dist, aqua, bars };
+    return { mu, lv, word: ['Optimal', 'Bon', 'Dégradé', 'Très dégradé'][lv], f, dom, dist, distNote, aqua, bars };
   }
   const gNow = gripAt(eNow, st, kind);
   /* ---------- 8. trajet : état le long du parcours ---------- */

@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm'), assert = r
 const sourcePath = path.join(__dirname, '../src/tyrelab.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = {}; vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tirespecs.js'), 'utf8') + source + '\nthis.lab = tyreLab; this.lastDrive = tyreLabLastDrive;', ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tirespecs.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tyrestate.js'), 'utf8') + source + '\nthis.lab = tyreLab; this.lastDrive = tyreLabLastDrive; this.coldCombine = tlColdCombine; this.treadWet = tlTreadWet;', ctx);
   const plain = v => JSON.parse(JSON.stringify(v));
   const lab = input => plain(ctx.lab(plain(input)));
   const ts = (h, day = '2026-10-06') => `${day}T${h}`;
@@ -87,7 +87,10 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const light = lab({ now: ts('10:00'), car: car(), hours: H({ P: 1, Pl: 1 }), history: { at: ts('09:58'), T: 35 } });
     const heavy = lab({ now: ts('10:00'), car: car({ tread: 2.5 }), hours: H({ P: 8, Pl: 8 }), drive: drive('09:30', 'autoroute') });
     assert(light.grip.lv >= 1 && heavy.grip.lv >= 2); assert(heavy.grip.aqua.lv > light.grip.aqua.lv); assert.equal(heavy.grip.aqua.word, 'Critique');
-    assert(heavy.grip.dist.now[0] > light.grip.dist.now[0]);
+    // pluie forte persistante = eau stagnante probable : aucune distance (aquaplaning imprévisible), message explicite
+    assert.equal(heavy.env.surf, 'pool'); assert.equal(heavy.grip.dist, null); assert.match(heavy.grip.distNote, /Eau stagnante.*Aucune distance/);
+    const burst = lab({ now: ts('10:00'), car: car({ tread: 2.5 }), hours: H().map(x => x.t === '2026-10-06T10:00' ? { ...x, P: 3, Pl: 3 } : x), history: { at: ts('09:58'), T: 35 } });
+    assert.equal(burst.env.surf, 'heavy'); assert(burst.grip.dist.now[0] > light.grip.dist.now[0], 'pluie forte sans eau accumulée : distance plus longue que la pluie faible');
   });
   test('freinage : optimal sur sec avec un pneu en température, facteur dominant expliqué quand froid', () => {
     const ok = lab({ now: ts('15:00'), car: car(), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route') });
@@ -99,6 +102,74 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const r = lab({ now: ts('15:00'), car: car(), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route') }), d = r.grip.dist;
     assert.equal(d.v, 80); assert.equal(d.react, 22); assert(d.dry[0] < d.dry[1] && d.wet[0] < d.wet[1] && d.now[0] < d.now[1]); assert(d.wet[0] > d.dry[1]);
     assert.deepEqual(d.dry, [28, 36]);   // v²/(2µg) à 80 km/h, µ 0,9 et 0,7
+  });
+  test('cohérence mouillé : pneu idéal sous la pluie = référence mouillé ; sec = référence sec ; humide entre les deux', () => {
+    const warm = (b, tread = 8) => lab({ now: ts('15:00'), car: car({ tread }), hours: H({ T: 20, Tr: 24, ...b }), drive: drive('14:00', 'route') }).grip.dist;
+    const dry = warm({}), rain = warm({ P: 1, Pl: 1 }), damp = warm({ RH: 96 });
+    assert.deepEqual(dry.now, dry.dry, 'sec : maintenant = référence sec');
+    assert.deepEqual(rain.now, rain.wet, 'pluie, pneu idéal : maintenant = référence mouillé (plus de contradiction)');
+    assert(damp.now[0] > dry.now[0] && damp.now[1] < rain.now[1], 'humide : entre sec et mouillé ' + JSON.stringify({ d: dry.now, h: damp.now, p: rain.now }));
+    assert(rain.now[0] >= rain.wet[0], 'sous la pluie, maintenant n’est jamais meilleur que la référence mouillé');
+  });
+  test('usure sur mouillé : courbe progressive, fourchette prudente/optimiste, provisoire, rien au-delà de 8 mm', () => {
+    const at = tread => lab({ now: ts('15:00'), car: car({ tread }), hours: H({ T: 20, Tr: 24, P: 1, Pl: 1 }), drive: drive('14:00', 'route') }).grip;
+    const depths = [8, 6, 5, 4, 3, 2.3, 1.6], d = depths.map(x => at(x).dist);
+    for (let i = 1; i < d.length; i++) { assert(d[i].now[0] >= d[i - 1].now[0] && d[i].now[1] >= d[i - 1].now[1], 'distance non décroissante quand la gomme s’use : ' + depths[i]); }
+    assert(d[d.length - 1].now[1] > d[0].now[1] + 10, 'écart neuf → minimum légal sensible');
+    const g8 = at(8), g23 = at(2.3), g16 = at(1.6);
+    assert(!g8.f.some(x => /Profondeur/.test(x.k)) && g8.dist.provisional === false, '8 mm : aucun facteur d’usure');
+    assert(g23.dist.provisional === true && /hypothèse non calibrée/.test(g23.f.find(x => /Profondeur/.test(x.k)).k));
+    assert(g23.dist.now[1] - g23.dist.now[0] > g8.dist.now[1] - g8.dist.now[0], 'la fourchette s’élargit (écarts optimiste et prudent distincts)');
+    // écarts mesurés AJOUTÉS à la référence mouillé, pas convertis en ratio : +6,9 / +13 m à 1,6 mm, quelle que soit la référence
+    const tw = ctx.treadWet(1.6); assert.deepEqual([tw.opt, tw.pru], [6.9, 13]);
+    const t3 = ctx.treadWet(3); assert(Math.abs(t3.opt - 2.65) < 1e-9 && t3.pru === 5); assert.equal(ctx.treadWet(9).pru, 0); assert.equal(ctx.treadWet(null), null);
+    const t12 = ctx.treadWet(1.2); assert.deepEqual([t12.opt, t12.pru, t12.belowLegal], [6.9, 13, true], 'sous 1,6 mm : aucune extrapolation inventée');
+    assert(Math.abs(g16.dist.now[0] - g16.dist.wet[0] - 6.9) <= 1 && Math.abs(g16.dist.now[1] - g16.dist.wet[1] - 13) <= 1, 'écarts publiés retrouvés tels quels : ' + JSON.stringify(g16.dist));
+    assert(/minimum légal/.test(g16.f.find(x => /Profondeur/.test(x.k)).k) === false && /minimum légal/.test(at(1.2).f.find(x => /Profondeur/.test(x.k)).k));
+    assert.notEqual(g16.dist, null, '1,6 mm exactement : encore dans le domaine des essais');
+    const est = lab({ now: ts('15:00'), car: car({ tread: 2.3 }), state: { tread: { est: true } }, hours: H({ T: 20, Tr: 24, P: 1, Pl: 1 }), drive: drive('14:00', 'route') }).grip;
+    assert.match(est.f.find(x => /Profondeur/.test(x.k)).k, /estimée, non mesurée/);
+    const dryWorn = lab({ now: ts('15:00'), car: car({ tread: 2.3 }), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route') }).grip;
+    assert(!dryWorn.f.some(x => /Profondeur/.test(x.k)), 'sur sec, aucune pénalité d’usure');
+  });
+  test('domaine de la courbe d’usure : humide/pluie seulement, jamais neige, verglas ni eau stagnante', () => {
+    const on = b => lab({ now: ts('07:00'), car: car({ tread: 2.3 }), hours: H(b) }).grip;
+    const snow = on({ T: -1, Tr: -1, snow: 0.5, code: 73 }), ice = on({ T: 0.5, Tr: -0.5, RH: 97, P: 0.2, Pl: 0.2 }), pool = on({ P: 8, Pl: 8 }), damp = on({ RH: 96 });
+    assert.equal(snow.dist, null); assert.equal(ice.dist, null);
+    for (const g of [snow, ice, pool]) assert(!g.f.some(x => /Profondeur/.test(x.k)), 'aucune courbe mouillé hors de son domaine');
+    assert(damp.f.some(x => /Profondeur/.test(x.k)) && damp.dist.provisional === true, 'sol humide : courbe appliquée');
+  });
+  test('garde-fous : sous 1,6 mm ou profondeur inconnue, aucune distance chiffrée, alertes conservées ; estimée = fourchette provisoire', () => {
+    const at = (tread, b = { T: 20, Tr: 24, P: 1, Pl: 1 }, extra = {}) => lab({ now: ts('15:00'), car: car({ tread }), hours: H(b), drive: drive('14:00', 'route'), ...extra }).grip;
+    for (const b of [{ T: 20, Tr: 24, P: 1, Pl: 1 }, { T: 20, Tr: 24 }]) {
+      const worn = at(1.2, b), unknown = at(null, b);
+      assert.equal(worn.dist, null); assert.match(worn.distNote, /sous le minimum légal.*non conforme.*Aucune distance.*remplacer/);
+      assert.equal(unknown.dist, null); assert.match(unknown.distNote, /Profondeur de sculpture inconnue.*aucune distance.*autres alertes restent actives/);
+      assert(Number.isFinite(worn.mu) && worn.bars.length === 5 && Number.isFinite(unknown.mu) && unknown.bars.length === 5, 'indicateur relatif, barres et aquaplaning conservés');
+    }
+    assert.match(at(1.2, { T: 1, Tr: -1, snow: 0.5, code: 73 }).distNote, /minimum légal/, 'non-conformité prioritaire, même sur neige');
+    const est = at(2.3, undefined, { state: { tread: { est: true } } });
+    assert(est.dist && est.dist.provisional === true && /estimée, non mesurée/.test(est.f.find(x => /Profondeur/.test(x.k)).k), 'profondeur estimée : fourchette provisoire identifiée');
+  });
+  test('garde-fou par essieu : un essieu inconnu suspend la distance ; deux essieux ou profondeur commune restent chiffrés', () => {
+    const at = tire => lab({ now: ts('15:00'), car: car({ tread: null, ...tire }), hours: H({ T: 20, Tr: 24, P: 1, Pl: 1 }), drive: drive('14:00', 'route') }).grip;
+    const avOnly = at({ treadAv: 5 }), arOnly = at({ treadAr: 5 });
+    assert.equal(avOnly.dist, null); assert.match(avOnly.distNote, /avant 5,0 mm, arrière inconnue.*renseigne les deux essieux/);
+    assert.equal(arOnly.dist, null); assert.match(arOnly.distNote, /avant inconnue, arrière 5,0 mm/);
+    assert(Number.isFinite(avOnly.mu) && avOnly.bars.length === 5, 'indicateur relatif et barres conservés');
+    assert.match(at({ treadAv: 1.2 }).distNote, /sous le minimum légal/, 'profondeur connue sous 1,6 mm : alerte prioritaire');
+    const both = at({ treadAv: 5, treadAr: 4 }), legacy = at({ tread: 4 });
+    assert(both.dist && legacy.dist, 'deux essieux renseignés ou profondeur commune historique : distance chiffrée');
+    assert.deepEqual(both.dist.now, legacy.dist.now, 'deux essieux : l’essieu le plus usé (4 mm) fait foi, comme la profondeur commune');
+  });
+  test('froid pneu été : trois formulations comparables, comportement historique conservé par défaut', () => {
+    const P = ctx.coldCombine(0.85, 0.9, 'product'), O = ctx.coldCombine(0.85, 0.9, 'overlap'), M = ctx.coldCombine(0.85, 0.9, 'max');
+    assert(Math.abs(P - 0.765) < 1e-9 && Math.abs(O - 0.8075) < 1e-9 && M === 0.85 && P < O && O < M);
+    assert.equal(ctx.coldCombine(0.93, 1, 'product'), 0.93, 'au-dessus de 7 °C : seul l’état de la gomme compte');
+    const cold = lab({ now: ts('07:00'), car: car({ tread: 8 }), hours: H({ T: 4, Tr: 3 }) }).grip;
+    const gum = cold.f.find(x => x.k.startsWith('Gomme')).v, c7 = cold.f.find(x => /sous 7 °C/.test(x.k)).v;
+    assert.equal(c7, 0.9, 'mode par défaut = produit (historique) tant que le propriétaire n’a pas choisi');
+    assert(Math.abs(cold.mu - gum * c7) < 1e-9);
   });
   test('aucune fausse précision : température toujours en plage d’au moins 6 °C, jamais une valeur seule', () => {
     for (const r of [lab({ now: ts('07:00'), car: car(), hours: H() }), lab({ now: ts('10:20'), car: car(), hours: H(), drive: drive('10:00', 'autoroute') })]) {
@@ -305,7 +376,17 @@ if (require.main === module) {
     { name: 'incertitude réduite de moitié pour faire apparaître « favorable »', from: "const u = 3 + 0.25 * Math.abs(T - eNow.Tenv)", to: "const u = 1.5 + 0.125 * Math.abs(T - eNow.Tenv)" },
     { name: 'prudence supprimée (état pris sur l’estimation centrale)', from: 'const stateOf = (t, uu) => { const a = cls(t - uu); if (a <= 1) return a;', to: 'const stateOf = (t, uu) => { const a = cls(t); if (a <= 1) return a;' },
     { name: 'règle des 7 °C non expliquée', from: "if (type === 'summer' && eNow.Tenv < 7) why.push(", to: "if (false) why.push(" },
-    { name: 'distance affichée sur verglas', from: "if (!['snow', 'ice'].includes(e.surf)) {", to: 'if (true) {' },
+    { name: 'distance affichée sur verglas', from: "if (['snow', 'ice'].includes(e.surf)) distNote =", to: "if (false) distNote =" },
+    { name: 'pluie à nouveau calculée depuis la base sèche (deux méthodes)', from: "const base = e.surf === 'dry' ? TL_MU.dry : TL_MU.wet.map(x => x * S / SURF.rain);", to: "const base = TL_MU.dry.map(x => x * S);" },
+    { name: 'usure ignorée sur mouillé', from: "const tw = TL_WEAR_SURF.includes(e.surf) ? tlTreadWet(tread) : null", to: "const tw = null" },
+    { name: 'usure redevenue un palier (rien entre 3 et 8 mm)', from: "pru: [[1.6, 13], [3, 5], [8, 0]]", to: "pru: [[1.6, 13], [2.99, 13], [3, 0], [8, 0]]" },
+    { name: 'fourchette d’usure écrasée en une valeur unique', from: "addHi = worn ? tw.pru : 0", to: "addHi = worn ? tw.opt : 0" },
+    { name: 'écarts d’usure reconvertis en ratio sur la référence', from: "Math.round(v * v / (2 * lo * g) + addHi)", to: "Math.round(v * v / (2 * lo * g) * (1 + addHi / 35))" },
+    { name: 'courbe mouillé appliquée à la neige et au verglas', from: "const TL_WEAR_SURF = ['damp', 'rain', 'heavy'];", to: "const TL_WEAR_SURF = ['damp', 'rain', 'heavy', 'pool', 'snow', 'ice'];" },
+    { name: 'distance affichée sur eau stagnante', from: "else if (e.surf === 'pool') distNote =", to: "else if (false) distNote =" },
+    { name: 'distance chiffrée sous le minimum légal', from: "if (tread != null && tread < 1.6) distNote =", to: "if (false) distNote =" },
+    { name: 'distance chiffrée sans profondeur connue', from: "else if (tread == null) distNote =", to: "else if (false) distNote =" },
+    { name: 'un seul essieu renseigné pris pour les deux', from: "else if (axleMissing) distNote =", to: "else if (false) distNote =" },
     { name: 'confiance indépendante des données manquantes', from: "  if (phase === 'unknown') { score -= 1;", to: "  if (false) { score -= 1;" }
   ];
   for (const m of mutations) {
