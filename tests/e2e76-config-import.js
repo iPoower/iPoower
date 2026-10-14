@@ -43,6 +43,7 @@ const submit = async (s, code = PW) => {
             const after = await read(p); assert.equal(after.status, 'invalid');
             assert.deepEqual(after.settings, before.settings); assert.equal(after.id, before.id);
             assert.deepEqual(after.protected, before.protected); assert.deepEqual(await raw(s.c), disk);
+            assert.equal(await p.locator('[data-k="config-import"]').count(), 1, 'installation verrouillée : refus toujours expliqué');
           }
         });
         await check(dev + ' · nouvelle installation verrouillée : URL propre, import seulement en mémoire, aucun réglage écrit', async () => {
@@ -93,16 +94,22 @@ const submit = async (s, code = PW) => {
           for (const hash of ['#' + 'cfg=%broken', '#' + 'cfg=' + 'A'.repeat(180000), link(hostile)]) {
             await p.evaluate(h => { location.hash = h; }, hash); await p.waitForFunction(() => window.TWRC_CONFIG_IMPORT.status.state === 'invalid'); await s.settle(2);
             const after = await read(p); assert.deepEqual(after.settings, before.settings); assert.deepEqual(after.protected, before.protected); assert.equal(new URL(p.url()).hash, '');
+            assert.equal(await p.locator('[data-k="config-import"]').count(), 0, 'appareil configuré : ancien lien ignoré sans bandeau');
           }
           assert(!await p.evaluate(() => document.body.innerText.includes('cfg=')));
         });
-        await check(dev + ' · fermer puis rouvrir la page : état chiffré repris, historique identique, aucun fragment privé', async () => {
+        await check(dev + ' · ancien favori rouvert deux fois : aucun bandeau, réglages et historique repris, URL propre', async () => {
           await p.evaluate(() => window.TWRC_VAULT.flush()); const before = await read(p); await p.close();
-          const reopened = await s.c.newPage(); reopened.on('dialog', d => d.accept()); await reopened.goto(U + '?keep=1');
-          await reopened.waitForFunction(() => typeof S !== 'undefined' && !LOCKED());
-          const after = await read(reopened); assert.deepEqual(after.settings, before.settings); assert.deepEqual(after.protected, before.protected); assert.equal(after.id, before.id);
-          assert.equal(new URL(reopened.url()).hash, '');
-          await reopened.close();
+          for (let i = 0; i < 2; i++) {
+            const reopened = await s.c.newPage(); reopened.on('dialog', d => d.accept());
+            await reopened.goto(U + '?keep=1' + link({ v: 1, ancienChamp: true }));
+            await reopened.waitForFunction(() => typeof S !== 'undefined' && !LOCKED() && document.querySelector('#statusbar .badge'));
+            const after = await read(reopened); assert.deepEqual(after.settings, before.settings); assert.deepEqual(after.protected, before.protected); assert.equal(after.id, before.id);
+            assert.equal(after.status, 'invalid'); assert.equal(new URL(reopened.url()).hash, '');
+            assert.equal(new URL(reopened.url()).search, '?keep=1');
+            assert.equal(await reopened.locator('[data-k="config-import"]').count(), 0);
+            await reopened.close();
+          }
         });
       } finally { await s.c.close(); }
       const locked = await session(b, { at: '2026-10-13T08:00:00+02:00', dev, meteo: 'abort' }); locked.p.on('dialog', d => d.accept());

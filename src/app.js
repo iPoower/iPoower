@@ -958,7 +958,11 @@ function renderNotice() {
     : VS.warn ? `<div class="note lv1" role="status" data-k="vault"><b>STOCKAGE LOCAL</b><span>${esc(VS.warn)}</span></div>`
     : VS.migrated ? `<div class="note lv0" role="status" data-k="vault"><b>🔐 DONNÉES CHIFFRÉES SUR CET APPAREIL</b><span>Réglages, lieux, journal et code sont désormais chiffrés au repos. Tu peux autoriser cet appareil à rester connecté pendant 7 jours lors du prochain déverrouillage.</span></div>` : '';
   const setContent = extra0 => {
-    const importMessage = window.TWRC_CONFIG_IMPORT && ConfigImport.message(window.TWRC_CONFIG_IMPORT.status);
+    const importStatus = window.TWRC_CONFIG_IMPORT && window.TWRC_CONFIG_IMPORT.status;
+    // Un ancien favori invalide ne demande aucune action sur un appareil déjà configuré.
+    // La capture/validation reste active ; les erreurs de coffre ou de nettoyage restent visibles.
+    const staleLink = importStatus && importStatus.state === 'invalid' && !LOCKED() && (S.configured === 1 || S.configured === true);
+    const importMessage = importStatus && !staleLink ? ConfigImport.message(importStatus) : '';
     const extra = vaultNote + (importMessage ? `<div class="note lv1" role="status" data-k="config-import"><b>IMPORT DE CONFIGURATION</b><span>${esc(importMessage)}</span></div>` : '') + extra0;
     const form = el.querySelector('.unlock');
     if (lock && form) {
