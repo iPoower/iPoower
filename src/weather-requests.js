@@ -8,9 +8,11 @@ function weatherRequestManager(options) {
   const invalidResponse = options.invalidResponse || (() => false);
   const incidentKinds = ['network', 'timeout', 'http', 'invalid-json', 'invalid-response', 'quota-minute', 'quota-hour', 'quota-day', 'quota-concurrent', 'quota-limited'];
   // La durée mesure l'appel HTTP (corps compris), pas une indisponibilité globale du fournisseur.
+  // waitMs (facultatif) : attente dans la file avant l'appel ; le délai maximal couvre file + appel.
   const cleanIncident = x => x && incidentKinds.includes(x.kind) && Number.isFinite(x.at) && x.at >= 0 && x.at <= now() + 60000
     && Number.isFinite(x.durationMs) && x.durationMs >= 0 && x.durationMs <= 3600e3
     ? { at: Math.floor(x.at), kind: x.kind, durationMs: Math.round(x.durationMs),
+      ...(Number.isFinite(x.waitMs) && x.waitMs >= 1 && x.waitMs <= 3600e3 ? { waitMs: Math.round(x.waitMs) } : {}),
       ...(Number.isInteger(x.status) && x.status >= 100 && x.status <= 599 ? { status: x.status } : {}) } : null;
   let incidentRows = [];
   try { const rows = JSON.parse(readIncidents() || 'null'); if (Array.isArray(rows)) incidentRows = rows.slice(-20).map(cleanIncident).filter(Boolean); } catch (e) { /* stockage indisponible */ }
@@ -21,7 +23,8 @@ function weatherRequestManager(options) {
       : error ? error.name === 'AbortError' ? 'timeout' : job.status >= 400 ? 'http' : job.phase === 'json' ? 'invalid-json' : 'network'
       : job.invalid ? 'invalid-response' : null;
     if (!kind) return;
-    const row = cleanIncident({ at: now(), kind, durationMs: Math.max(0, Math.min(3600e3, now() - job.startedAt)), status: job.status });
+    const waitMs = Number.isFinite(job.queuedAt) ? Math.max(0, Math.min(3600e3, job.startedAt - job.queuedAt)) : 0;
+    const row = cleanIncident({ at: now(), kind, durationMs: Math.max(0, Math.min(3600e3, now() - job.startedAt)), waitMs, status: job.status });
     if (!row) return;
     incidentRows = [...incidentRows, row].slice(-20);
     try { writeIncidents(JSON.stringify(incidentRows)); } catch (e) { /* historique conservé en mémoire */ }
@@ -139,7 +142,7 @@ function weatherRequestManager(options) {
     const snap = snapshots.get(url), ttl = Math.max(0, Math.min(2 * 3600e3, Number(cacheMs) || 0));
     if (ttl && snap && now() >= snap.at && now() - snap.at < ttl) return Promise.resolve(snap.value);
     const job = { url, priority: priority(url), observe: /^\/v1\/(forecast|ensemble|air-quality)$/.test(new URL(url).pathname),
-      ctl: new AbortController(), done: false, groups: new Set([group]) };
+      ctl: new AbortController(), done: false, groups: new Set([group]), queuedAt: now() };
     job.promise = new Promise((resolve, reject) => { job.resolve = resolve; job.reject = reject; });
     pending.set(url, job);
     // Le délai couvre aussi la file d'attente : une panne ne bloque pas busy indéfiniment.
@@ -147,4 +150,12 @@ function weatherRequestManager(options) {
     queue.push(job); queue.sort((a, b) => a.priority - b.priority); pump(); return job.promise;
   }
   return { owns, get, state, cancelGroup, fetchedAt, incidents: () => incidentRows.map(x => ({ ...x })) };
+}
+// Libellé de diagnostic : sépare l'attente dans la file de l'appel réseau lui-même.
+// Un délai dépassé après une longue attente et un appel très court signale une file saturée, pas un appel lent.
+function weatherIncidentTiming(x) {
+  const fmt = ms => ms < 1000 ? Math.round(ms) + ' ms' : Math.ceil(ms / 1000) + ' s';
+  const wait = Number.isFinite(x && x.waitMs) && x.waitMs >= 1000 ? x.waitMs : 0, call = Number.isFinite(x && x.durationMs) ? x.durationMs : 0;
+  const queued = x && x.kind === 'timeout' && wait > call;
+  return (wait ? 'attente ' + fmt(wait) + ' · ' : '') + 'appel ' + fmt(call) + (queued ? ' · file saturée' : '');
 }
