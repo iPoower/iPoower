@@ -224,6 +224,8 @@ function tyreLab(input) {
   }
   /* ---------- 7. adhérence, freinage, aquaplaning ---------- */
   const tread = typeof treadAxles === 'function' ? treadAxles(tire).worst : n(tire.tread);   // essieu le plus usé
+  // saisie par essieu avec un essieu inconnu : l'essieu renseigné ne représente pas l'autre (garde-fou des distances)
+  const axl = typeof treadAxles === 'function' ? treadAxles(tire) : null, axleMissing = !!(axl && axl.split && (axl.av == null || axl.ar == null));
   function aquaOf(e, k) {
     if (e.Pl < 0.2 && e.acc < 1) return { lv: 0, word: 'Faible', why: ['Pas de pluie ni d’eau accumulée'] };
     let R = e.Pl >= 7.6 ? 4 : e.Pl >= 4 ? 3 : e.Pl >= 2 ? 2 : e.Pl >= 0.2 ? 1 : 0; const w = [`Pluie ${r1(e.Pl)} mm/h`];
@@ -263,6 +265,7 @@ function tyreLab(input) {
     else if (['snow', 'ice'].includes(e.surf)) distNote = 'Neige ou verglas : aucune distance affichée, l’incertitude est trop grande. Indice relatif seulement.';
     else if (e.surf === 'pool') distNote = 'Eau stagnante probable : l’aquaplaning peut faire perdre le contact de façon brutale et irrégulière. Aucune distance affichée : ralentir nettement.';
     else if (tread == null) distNote = 'Profondeur de sculpture inconnue : aucune distance chiffrée (l’usure peut l’allonger fortement sur mouillé). Mesure-la à la jauge et renseigne-la dans Pneus ; les autres alertes restent actives.';
+    else if (axleMissing) distNote = `Profondeur saisie par essieu : ${axl.av == null ? 'avant inconnue' : 'avant ' + r1(axl.av) + ' mm'}, ${axl.ar == null ? 'arrière inconnue' : 'arrière ' + r1(axl.ar) + ' mm'}. Aucune distance chiffrée : renseigne les deux essieux dans Pneus (l’essieu non mesuré peut être plus usé) ; les autres alertes restent actives.`;
     else {
       // Méthode unique : base sèche sur sol sec, base MOUILLÉE sur sol humide/pluie, puis les autres facteurs.
       // L'écart entre surfaces mouillées reprend les rapports relatifs déjà utilisés (S[surf] / S.rain) : aucun nouveau coefficient.

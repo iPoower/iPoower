@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm'), assert = r
 const sourcePath = path.join(__dirname, '../src/tyrelab.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = {}; vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tirespecs.js'), 'utf8') + source + '\nthis.lab = tyreLab; this.lastDrive = tyreLabLastDrive; this.coldCombine = tlColdCombine; this.treadWet = tlTreadWet;', ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tirespecs.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tyrestate.js'), 'utf8') + source + '\nthis.lab = tyreLab; this.lastDrive = tyreLabLastDrive; this.coldCombine = tlColdCombine; this.treadWet = tlTreadWet;', ctx);
   const plain = v => JSON.parse(JSON.stringify(v));
   const lab = input => plain(ctx.lab(plain(input)));
   const ts = (h, day = '2026-10-06') => `${day}T${h}`;
@@ -150,6 +150,17 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.match(at(1.2, { T: 1, Tr: -1, snow: 0.5, code: 73 }).distNote, /minimum légal/, 'non-conformité prioritaire, même sur neige');
     const est = at(2.3, undefined, { state: { tread: { est: true } } });
     assert(est.dist && est.dist.provisional === true && /estimée, non mesurée/.test(est.f.find(x => /Profondeur/.test(x.k)).k), 'profondeur estimée : fourchette provisoire identifiée');
+  });
+  test('garde-fou par essieu : un essieu inconnu suspend la distance ; deux essieux ou profondeur commune restent chiffrés', () => {
+    const at = tire => lab({ now: ts('15:00'), car: car({ tread: null, ...tire }), hours: H({ T: 20, Tr: 24, P: 1, Pl: 1 }), drive: drive('14:00', 'route') }).grip;
+    const avOnly = at({ treadAv: 5 }), arOnly = at({ treadAr: 5 });
+    assert.equal(avOnly.dist, null); assert.match(avOnly.distNote, /avant 5,0 mm, arrière inconnue.*renseigne les deux essieux/);
+    assert.equal(arOnly.dist, null); assert.match(arOnly.distNote, /avant inconnue, arrière 5,0 mm/);
+    assert(Number.isFinite(avOnly.mu) && avOnly.bars.length === 5, 'indicateur relatif et barres conservés');
+    assert.match(at({ treadAv: 1.2 }).distNote, /sous le minimum légal/, 'profondeur connue sous 1,6 mm : alerte prioritaire');
+    const both = at({ treadAv: 5, treadAr: 4 }), legacy = at({ tread: 4 });
+    assert(both.dist && legacy.dist, 'deux essieux renseignés ou profondeur commune historique : distance chiffrée');
+    assert.deepEqual(both.dist.now, legacy.dist.now, 'deux essieux : l’essieu le plus usé (4 mm) fait foi, comme la profondeur commune');
   });
   test('froid pneu été : trois formulations comparables, comportement historique conservé par défaut', () => {
     const P = ctx.coldCombine(0.85, 0.9, 'product'), O = ctx.coldCombine(0.85, 0.9, 'overlap'), M = ctx.coldCombine(0.85, 0.9, 'max');
@@ -375,6 +386,7 @@ if (require.main === module) {
     { name: 'distance affichée sur eau stagnante', from: "else if (e.surf === 'pool') distNote =", to: "else if (false) distNote =" },
     { name: 'distance chiffrée sous le minimum légal', from: "if (tread != null && tread < 1.6) distNote =", to: "if (false) distNote =" },
     { name: 'distance chiffrée sans profondeur connue', from: "else if (tread == null) distNote =", to: "else if (false) distNote =" },
+    { name: 'un seul essieu renseigné pris pour les deux', from: "else if (axleMissing) distNote =", to: "else if (false) distNote =" },
     { name: 'confiance indépendante des données manquantes', from: "  if (phase === 'unknown') { score -= 1;", to: "  if (false) { score -= 1;" }
   ];
   for (const m of mutations) {
