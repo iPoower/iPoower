@@ -101,6 +101,25 @@ try {
     assert.match(ci, /run: node trusted\/tools\/check-secrets.js --root trusted --scan target/);
     assert.match(ci, /run: node trusted\/tools\/check-keys.js --enc target\/encrypted/);
   });
+  function datexCheck(s) {
+    const steps = s.split(/\n(?=      - )/);
+    const pages = steps.find(st => /ref: gh-pages/.test(st));
+    assert(pages && /persist-credentials: false/.test(pages), 'checkout gh-pages sans jeton persistant');
+    assert(!steps.some(st => /uses: actions\/checkout/.test(st) && !/persist-credentials: false/.test(st)), 'aucun checkout ne garde le jeton');
+    const sync = steps.find(st => /tools\/road-datex\/sync\.py/.test(st)), pub = steps.find(st => /git push/.test(st));
+    assert(sync && !/GH_TOKEN|github\.token|secrets\./.test(sync), 'lecture DATEX sans jeton ni secret');
+    assert(pub && /GH_TOKEN: \$\{\{ github\.token \}\}/.test(pub) && /GIT_CONFIG_KEY_0=http\.https:\/\/github\.com\/\.extraheader/.test(pub), 'jeton injecté seulement au push');
+    assert(steps.indexOf(sync) < steps.indexOf(pub), 'lecture avant publication');
+    assert.match(pub, /case "\$file" in race-control\/road-datex\.json\) ;; \*\) exit 1 ;; esac/, 'seul road-datex.json est publiable');
+    assert(!s.includes('contents: write\nconcurrency:'), 'pas de permission write globale');
+  }
+  test('DATEX : flux Internet lu sans jeton d’écriture, publication bornée ; mutations rejetées', () => {
+    const s = fs.readFileSync(path.join(root, '.github/workflows/road-datex.yml'), 'utf8'); datexCheck(s);
+    assert.throws(() => datexCheck(s.replace("          # aucun jeton d'écriture sur le disque pendant la lecture du flux DATEX venu d'Internet\n          persist-credentials: false\n", '')));
+    assert.throws(() => datexCheck(s.replace('run: python3 tools/road-datex/sync.py', 'env:\n          GH_TOKEN: ${{ github.token }}\n        run: python3 tools/road-datex/sync.py')));
+    assert.throws(() => datexCheck(s.replace('race-control/road-datex.json) ;;', 'race-control/*) ;;')));
+    assert.throws(() => datexCheck(s.replace(/\n          export GIT_CONFIG_KEY_0=[^\n]*/, '')));
+  });
   function fullMainCoverage(workflow) {
     const push = workflow.split('\non:\n')[1]?.split('  push:\n')[1]?.split('  pull_request:')[0];
     assert(push, 'déclencheur push présent');
