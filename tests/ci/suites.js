@@ -104,3 +104,4 @@ SUITE.push(['test_web_security.js', 'Forteresse : CSP, assets signés, chemins s
   ['e2e75-fortress-web.js', 'Forteresse iPhone/PC : XSS, scripts refusés, SRI et frontière d’origine', true]);
 SUITE.push(['test_config_import.js', 'Forteresse III : liens privés, validation, coffre atomique, refus et données conservées', false],
   ['e2e76-config-import.js', 'Forteresse III PC/iPhone : vrais imports fictifs, verrouillage, URL et réouverture', true]);
+SUITE.push(['e2e77-provider-limited.js', 'Incident 429 du 14/10 iPhone/PC : LIMITÉ ≠ HORS LIGNE, boutons en pause, zéro requête, ancien lien de configuration', true]);
