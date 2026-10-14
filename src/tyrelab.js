@@ -258,8 +258,11 @@ function tyreLab(input) {
     const dom = f.filter(x => x.v < 1).sort((a, b) => a.v - b.v)[0] || null;
     // distances : seulement sur sec/humide/pluie, jamais sur neige ou verglas. μ = plage « sec » × adhérence relative.
     let dist = null, distNote = null;
-    if (['snow', 'ice'].includes(e.surf)) distNote = 'Neige ou verglas : aucune distance affichée, l’incertitude est trop grande. Indice relatif seulement.';
+    // Donnée critique absente ou hors du domaine des essais : Race Control dit qu'il ne peut pas chiffrer, plutôt que d'inventer.
+    if (tread != null && tread < 1.6) distNote = `Profondeur ${r1(tread)} mm : sous le minimum légal de 1,6 mm, pneu non conforme et hors du domaine des essais. Aucune distance affichée : remplacer les pneus avant de rouler.`;
+    else if (['snow', 'ice'].includes(e.surf)) distNote = 'Neige ou verglas : aucune distance affichée, l’incertitude est trop grande. Indice relatif seulement.';
     else if (e.surf === 'pool') distNote = 'Eau stagnante probable : l’aquaplaning peut faire perdre le contact de façon brutale et irrégulière. Aucune distance affichée : ralentir nettement.';
+    else if (tread == null) distNote = 'Profondeur de sculpture inconnue : aucune distance chiffrée (l’usure peut l’allonger fortement sur mouillé). Mesure-la à la jauge et renseigne-la dans Pneus ; les autres alertes restent actives.';
     else {
       // Méthode unique : base sèche sur sol sec, base MOUILLÉE sur sol humide/pluie, puis les autres facteurs.
       // L'écart entre surfaces mouillées reprend les rapports relatifs déjà utilisés (S[surf] / S.rain) : aucun nouveau coefficient.

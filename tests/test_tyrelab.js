@@ -113,9 +113,9 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   });
   test('usure sur mouillé : courbe progressive, fourchette prudente/optimiste, provisoire, rien au-delà de 8 mm', () => {
     const at = tread => lab({ now: ts('15:00'), car: car({ tread }), hours: H({ T: 20, Tr: 24, P: 1, Pl: 1 }), drive: drive('14:00', 'route') }).grip;
-    const depths = [8, 6, 5, 4, 3, 2.3, 1.6, 1.2], d = depths.map(x => at(x).dist);
+    const depths = [8, 6, 5, 4, 3, 2.3, 1.6], d = depths.map(x => at(x).dist);
     for (let i = 1; i < d.length; i++) { assert(d[i].now[0] >= d[i - 1].now[0] && d[i].now[1] >= d[i - 1].now[1], 'distance non décroissante quand la gomme s’use : ' + depths[i]); }
-    assert(d[d.length - 1].now[1] > d[0].now[1] + 10, 'écart neuf → sous le minimum légal sensible');
+    assert(d[d.length - 1].now[1] > d[0].now[1] + 10, 'écart neuf → minimum légal sensible');
     const g8 = at(8), g23 = at(2.3), g16 = at(1.6);
     assert(!g8.f.some(x => /Profondeur/.test(x.k)) && g8.dist.provisional === false, '8 mm : aucun facteur d’usure');
     assert(g23.dist.provisional === true && /hypothèse non calibrée/.test(g23.f.find(x => /Profondeur/.test(x.k)).k));
@@ -126,6 +126,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const t12 = ctx.treadWet(1.2); assert.deepEqual([t12.opt, t12.pru, t12.belowLegal], [6.9, 13, true], 'sous 1,6 mm : aucune extrapolation inventée');
     assert(Math.abs(g16.dist.now[0] - g16.dist.wet[0] - 6.9) <= 1 && Math.abs(g16.dist.now[1] - g16.dist.wet[1] - 13) <= 1, 'écarts publiés retrouvés tels quels : ' + JSON.stringify(g16.dist));
     assert(/minimum légal/.test(g16.f.find(x => /Profondeur/.test(x.k)).k) === false && /minimum légal/.test(at(1.2).f.find(x => /Profondeur/.test(x.k)).k));
+    assert.notEqual(g16.dist, null, '1,6 mm exactement : encore dans le domaine des essais');
     const est = lab({ now: ts('15:00'), car: car({ tread: 2.3 }), state: { tread: { est: true } }, hours: H({ T: 20, Tr: 24, P: 1, Pl: 1 }), drive: drive('14:00', 'route') }).grip;
     assert.match(est.f.find(x => /Profondeur/.test(x.k)).k, /estimée, non mesurée/);
     const dryWorn = lab({ now: ts('15:00'), car: car({ tread: 2.3 }), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route') }).grip;
@@ -137,6 +138,18 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(snow.dist, null); assert.equal(ice.dist, null);
     for (const g of [snow, ice, pool]) assert(!g.f.some(x => /Profondeur/.test(x.k)), 'aucune courbe mouillé hors de son domaine');
     assert(damp.f.some(x => /Profondeur/.test(x.k)) && damp.dist.provisional === true, 'sol humide : courbe appliquée');
+  });
+  test('garde-fous : sous 1,6 mm ou profondeur inconnue, aucune distance chiffrée, alertes conservées ; estimée = fourchette provisoire', () => {
+    const at = (tread, b = { T: 20, Tr: 24, P: 1, Pl: 1 }, extra = {}) => lab({ now: ts('15:00'), car: car({ tread }), hours: H(b), drive: drive('14:00', 'route'), ...extra }).grip;
+    for (const b of [{ T: 20, Tr: 24, P: 1, Pl: 1 }, { T: 20, Tr: 24 }]) {
+      const worn = at(1.2, b), unknown = at(null, b);
+      assert.equal(worn.dist, null); assert.match(worn.distNote, /sous le minimum légal.*non conforme.*Aucune distance.*remplacer/);
+      assert.equal(unknown.dist, null); assert.match(unknown.distNote, /Profondeur de sculpture inconnue.*aucune distance.*autres alertes restent actives/);
+      assert(Number.isFinite(worn.mu) && worn.bars.length === 5 && Number.isFinite(unknown.mu) && unknown.bars.length === 5, 'indicateur relatif, barres et aquaplaning conservés');
+    }
+    assert.match(at(1.2, { T: 1, Tr: -1, snow: 0.5, code: 73 }).distNote, /minimum légal/, 'non-conformité prioritaire, même sur neige');
+    const est = at(2.3, undefined, { state: { tread: { est: true } } });
+    assert(est.dist && est.dist.provisional === true && /estimée, non mesurée/.test(est.f.find(x => /Profondeur/.test(x.k)).k), 'profondeur estimée : fourchette provisoire identifiée');
   });
   test('froid pneu été : trois formulations comparables, comportement historique conservé par défaut', () => {
     const P = ctx.coldCombine(0.85, 0.9, 'product'), O = ctx.coldCombine(0.85, 0.9, 'overlap'), M = ctx.coldCombine(0.85, 0.9, 'max');
@@ -360,6 +373,8 @@ if (require.main === module) {
     { name: 'écarts d’usure reconvertis en ratio sur la référence', from: "Math.round(v * v / (2 * lo * g) + addHi)", to: "Math.round(v * v / (2 * lo * g) * (1 + addHi / 35))" },
     { name: 'courbe mouillé appliquée à la neige et au verglas', from: "const TL_WEAR_SURF = ['damp', 'rain', 'heavy'];", to: "const TL_WEAR_SURF = ['damp', 'rain', 'heavy', 'pool', 'snow', 'ice'];" },
     { name: 'distance affichée sur eau stagnante', from: "else if (e.surf === 'pool') distNote =", to: "else if (false) distNote =" },
+    { name: 'distance chiffrée sous le minimum légal', from: "if (tread != null && tread < 1.6) distNote =", to: "if (false) distNote =" },
+    { name: 'distance chiffrée sans profondeur connue', from: "else if (tread == null) distNote =", to: "else if (false) distNote =" },
     { name: 'confiance indépendante des données manquantes', from: "  if (phase === 'unknown') { score -= 1;", to: "  if (false) { score -= 1;" }
   ];
   for (const m of mutations) {
