@@ -25,7 +25,7 @@ function tripPassagePoints(t) {
     const at = q.t || (Number.isFinite(duration) && duration >= 0 ? addMin(t.dep, duration * f) : null);
     if (!at) return null;
     const located = Number.isFinite(q.lat) && Number.isFinite(q.lon) && Math.abs(q.lat) <= 90 && Math.abs(q.lon) <= 180;
-    return { t: at, f, km: q.km != null ? q.km : null, name: q.name || q.loc || null, x,
+    return { t: at, f, km: q.km != null ? q.km : null, name: q.name || q.loc || null, x, hs: q.hs,
       lat: located ? q.lat : null, lon: located ? q.lon : null };
   }).filter(Boolean);
 }
@@ -171,15 +171,17 @@ const EV_FLAG = () => { const f = S.flags && S.flags.weatherEvidenceV2; return [
 const REPORT_KEY = 'twrc.reports.v1', SHADOW_KEY = 'twrc.shadow.v1';
 const REPORT_KINDS = { fog: '🌫 Brouillard', lowvis: '👁 Visibilité très réduite', rain: '🌧 Pluie', wet: '💧 Route humide', snow: '❄️ Neige', ice: '🧊 Verglas', slippery: '⚠️ Route glissante' };
 let REPORTS = []; try { REPORTS = JSON.parse(lsGet(REPORT_KEY) || '[]') || []; } catch (e) { REPORTS = []; }
-const reportsLive = () => { const n = Date.now(); REPORTS = REPORTS.filter(r => r && n - r.at < 6 * 3600e3); return REPORTS; };
+const reportsLive = () => { const n = Date.now(); REPORTS = REPORTS.filter(r => r && Number.isFinite(r.at) && r.at <= n + 60000 && n - r.at < 6 * 3600e3); return REPORTS; };
 function reportAdd(kind) {
   if (!REPORT_KINDS[kind]) return;
   const c = placeNow(), l = c.place || (GPS && placeFixClass({ acc: GPS.acc }) !== 'network' ? GPS : null) || curLoc();
   if (!l || !locHasCoords(l)) return;
+  // Figer la prévision AVANT l'assimilation : le signalement ne valide pas son propre effet.
+  const before = kind === 'fog' || kind === 'lowvis' ? evNow() : null;
   REPORTS = reportsLive().concat([{ kind, at: Date.now(), lat: Math.round(l.lat * 100) / 100, lon: Math.round(l.lon * 100) / 100, place: c.place ? c.place.id : null }]).slice(-30);
   lsSet(REPORT_KEY, JSON.stringify(REPORTS));
   // journal prévision / observation : ce que les deux moteurs disaient juste avant le signalement
-  if (kind === 'fog' || kind === 'lowvis') { const v = evNow(); if (v) shadowPush({ obs: 1, src: 'utilisateur', v1: v.v1, v2: v.prevLv }); }
+  if (before) shadowPush({ obs: 1, src: 'utilisateur', independent: true, v1: before.v1, v2: before.prevLv });
   UI.evOpen = true; renderAll();
 }
 function shadowLoad() { try { return JSON.parse(lsGet(SHADOW_KEY) || '[]') || []; } catch (e) { return []; } }
@@ -206,7 +208,7 @@ function evInput() {
   const raw = RAW[UI.loc];
   const located = points.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
   return { now, points: located, coverage: { expected: points.length, located: located.length }, stations: evStations(), reports: reportsLive(), community: { available: false },
-    location: { trust: evLocTrust() }, fresh: { modelAgeMin: raw && raw.t ? (Date.now() - raw.t) / 60e3 : null, offline: offlineNow() }, onTrip: !!trip, tripKey: trip && trip.id };
+    location: { trust: evLocTrust() }, fresh: { modelAgeMin: DEMO.on ? 0 : raw && raw.t ? Reliability.ageMin(raw.t) : null, offline: offlineNow() }, onTrip: !!trip, tripKey: trip && trip.id };
 }
 function evNow() {
   const i = evInput(); if (!i || !i.points.length) return null;

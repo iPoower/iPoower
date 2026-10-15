@@ -81,7 +81,13 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const at = m => E(base({ fresh: { modelAgeMin: m } })), trust = r => r.phen.find(p => p.id === 'wind').trust;
     assert.match(at(60).axes.data, /bonne/); assert.match(at(61).axes.data, /dégradée/); assert.match(at(89).axes.data, /dégradée/);
     assert.equal(trust(at(60)) - trust(at(61)), 1, 'la confiance baisse d’un cran dès 61 min');
-    assert.match(at(120).axes.data, /dégradée/); assert.match(at(null).axes.data, /bonne/, 'âge inconnu : pas de péremption inventée');
+    assert.match(at(120).axes.data, /dégradée/);
+    for (const age of [null, undefined, -120, NaN, Infinity]) {
+      const unknown = at(age);
+      assert.match(unknown.axes.data, /dégradée.*âge inconnu/);
+      assert.equal(unknown.axes.freshness, 'inconnue');
+      assert(trust(unknown) < trust(at(5)), 'sans âge connu, la confiance ne reste pas fraîche');
+    }
   });
   test('N · observation datée du FUTUR : ne confirme pas la température et ne compte pas parmi les stations récentes', () => {
     const mk = (t, T = 9.4) => ({ id: 'S', name: 'S', lat: 48.81, lon: 2.30, obs: [metar('m', t, T, 5, 20000, 5, null)] });   // modèle 9 °C ; NOW = 04:30Z
@@ -96,6 +102,13 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.match(run('2026-10-05T04:30:30Z').axes.observations, /1 station/, '+30 s : petite dérive d’horloge tolérée');
     assert.match(run('2026-10-05T03:00:00Z').axes.observations, /1 station/, '90 min : encore récente');
     assert.match(run('2026-10-05T02:59:00Z').axes.observations, /aucune/, '91 min : plus récente');
+  });
+  test('signalement utilisateur daté du futur : absent des preuves, dérive d’une minute tolérée', () => {
+    const at = offset => E(base({ reports: [{ kind: 'fog', at: NOW + offset, ...HOME }] })).worst;
+    assert.equal(at(30 * 60000).userLv, null);
+    assert.equal(at(61000).userLv, null);
+    assert.equal(at(30000).userLv, 2);
+    assert.equal(at(-60000).userLv, 2);
   });
   test('H · l’utilisateur confirme du brouillard → verdict recalculé (observation non officielle)', () => {
     const r = E(base({ reports: [{ kind: 'fog', at: NOW - 5 * 60e3, ...HOME }] }));
@@ -191,4 +204,23 @@ if (require.main === module) {
     console.log('✅ Contre-test rejeté : ' + m.name + ' → ' + rej.scenario);
   }
   console.log(`${count}/${count} scénarios OK · ${mutations.length}/${mutations.length} régressions rejetées`);
+}
+
+if (require.main === module) {
+  const app = fs.readFileSync(path.join(__dirname, '../src/app/weather-view.js'), 'utf8');
+  const reportSource = app.slice(app.indexOf('function reportAdd('), app.indexOf('function shadowLoad('));
+  const values = [], point = { id: 'test', lat: 48.7, lon: 2.2 };
+  const c = { Date, Math, REPORT_KINDS: { fog: 'Brouillard' }, REPORTS: [], UI: {},
+    placeNow: () => ({ place: point }), curLoc: () => point, locHasCoords: () => true,
+    reportsLive: () => c.REPORTS, lsSet: () => {}, REPORT_KEY: 'reports',
+    evNow: () => ({ v1: 0, prevLv: c.REPORTS.length ? 2 : 0 }), shadowPush: e => values.push(e), renderAll: () => {} };
+  vm.createContext(c); vm.runInContext(reportSource + ';this.add=reportAdd;', c);
+  c.add('fog');
+  assert.equal(c.evNow().prevLv, 2, 'le signalement actualise toujours les conditions courantes');
+  assert.equal(values[0].v2, 0, 'le journal conserve la prévision avant assimilation');
+  assert.equal(values[0].obs, 1);
+  assert.equal(values[0].independent, true, 'les anciens journaux ne sont pas requalifiés implicitement');
+  const diagnostics = fs.readFileSync(path.join(__dirname, '../src/app/diagnostics.js'), 'utf8');
+  assert(diagnostics.includes('e.independent === true'), 'les observations déjà assimilées sont exclues des métriques');
+  console.log('✅ Signalement : prévision avant assimilation, décision courante actualisée, provenance indépendante explicite');
 }
