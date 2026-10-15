@@ -72,6 +72,12 @@ const Reliability = (() => {
   const FRESHNESS = Object.freeze({ freshMaxMin: 15, agingMaxMin: 60 });
   const freshState = age => typeof age !== 'number' || !Number.isFinite(age) || age < 0 ? 'UNAVAILABLE'
     : age <= FRESHNESS.freshMaxMin ? 'FRESH' : age <= FRESHNESS.agingMaxMin ? 'AGING' : 'STALE';
-  return { clip, runtimeRecorder, versionDecision, ageMin, liveExpired, isDue, FRESHNESS, freshState };
+  // Santé du relais (obs.json, âge = heure de PUBLICATION du relais) : ok ≤ 35 min (observations de stations encore utilisées) ·
+  // late jusqu'à 90 min (ignorées, prévision du modèle seule) · down au-delà (panne possible, notifications du matin comprises) ·
+  // unknown si l'âge est illisible ou dans le futur. warnMin (20) : avertissement de l'agenda chiffré, sans lien avec obs.json.
+  const RELAY = Object.freeze({ warnMin: 20, obsMaxMin: 35, outageMin: 90 });
+  const relayState = age => typeof age !== 'number' || !Number.isFinite(age) || age < 0 ? 'unknown'
+    : age <= RELAY.obsMaxMin ? 'ok' : age <= RELAY.outageMin ? 'late' : 'down';
+  return { clip, runtimeRecorder, versionDecision, ageMin, liveExpired, isDue, FRESHNESS, freshState, RELAY, relayState };
 })();
 const RUNTIME_RECORDER = typeof window !== 'undefined' ? Reliability.runtimeRecorder() : null;
