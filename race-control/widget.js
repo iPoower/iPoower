@@ -985,7 +985,7 @@ function legSeq(models, pts, dep, min) {
   pts.forEach((p, k) => {
     const m = models[k]; if (!m) return;
     const t = addMin(dep, Math.round(p.f * (min || 0))), i = m.byTime.get(t.slice(0, 13) + ':00');
-    if (i != null) seq.push({ hs: m.hs, i, f: p.f, t, k, km: p.km, name: p.name });
+    if (i != null) seq.push({ hs: m.hs, i, f: p.f, t, k, km: p.km, name: p.name, lat: p.lat, lon: p.lon });
   });
   return seq;
 }
