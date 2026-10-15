@@ -46,6 +46,11 @@ const TL_STATES = ['Pneu froid', 'Sous la plage favorable', 'Fenêtre favorable'
 const TL_LEVEL_TXT = ['froid', 'sous la plage favorable', 'favorable', 'chaud', 'très chaud'];
 const TL_TREND_TXT = { heating: 'En chauffe', stable: 'Stabilisé', cooling: 'En refroidissement', rest: 'Au repos' };
 const TL_STALE_AFTER_MIN = 60;   // météo reçue il y a plus de 60 min = périmée (même politique que les autres vues : Reliability.FRESHNESS)
+// 0 km/h est une MESURE (voiture arrêtée), pas une vitesse inconnue (null) : sous ce seuil la gomme ne chauffe pas, elle évolue comme à l'arrêt.
+// La vitesse suivie est une moyenne depuis le départ : un arrêt court au milieu d'un roulage ne passe pas sous ce seuil.
+const TL_STOP_KMH = 3;
+// Minimum légal de sculpture (France) : en dessous, le pneu est un état critique qui prime sur tout indice calculé.
+const TL_LEGAL_MM = 1.6;
 const TL_SETTLE = 0.05, TL_BASE_U = 3;   // convergence (part de la montée) ; incertitude de base (°C)
 const TL_KIND = { ville: { dT: 14, tauKm: 7, v: 30, label: 'ville' }, route: { dT: 20, tauKm: 10, v: 70, label: 'route' }, autoroute: { dT: 26, tauKm: 10, v: 115, label: 'autoroute' } };
 const TL_MU = { dry: [0.7, 0.9], wet: [0.4, 0.55] };
@@ -133,7 +138,7 @@ function tyreLab(input) {
     let m = m0, km = 0;
     while (m < m1 - 1e-6) {
       const dt = Math.min(2, m1 - m), e = env(m);
-      if (drive) { const q = eqDrive(e, drive.kind, T), v = drive.v || q.v, dk = v * dt / 60; T = q.Teq + (T - q.Teq) * Math.exp(-dk / q.tauKm); km += dk; }
+      if (drive && !(drive.v != null && drive.v < TL_STOP_KMH)) { const q = eqDrive(e, drive.kind, T), v = drive.v == null ? q.v : drive.v, dk = v * dt / 60; T = q.Teq + (T - q.Teq) * Math.exp(-dk / q.tauKm); km += dk; }
       else { const q = eqPark(e); T = q.Teq + (T - q.Teq) * Math.exp(-dt / q.tau); }
       m += dt;
     }
@@ -142,17 +147,19 @@ function tyreLab(input) {
   // état de départ : mémoire thermique (dernier état connu) sinon pneu froid à l'environnement (hypothèse prudente)
   const hist = inp.history && finite(inp.history.T) && Number.isFinite(mins(inp.history.at)) && mins(inp.history.at) <= nowM ? inp.history : null;
   const drv = inp.drive && inp.drive.active && Number.isFinite(mins(inp.drive.since)) ? inp.drive : null;
+  const v = drv ? n(drv.speedKmh) : null, stopped = !!drv && v != null && v < TL_STOP_KMH;
   const why = [];
   const eNow = env(nowM);
   let T, phase, parkedMin = null, drivenKm = null, drivenMin = null, driveKind = null;
   if (drv) {
-    const since = mins(drv.since), v = n(drv.speedKmh), kind = drv.kind && TL_KIND[drv.kind] ? drv.kind : kindOf(v) || 'route';
+    const since = mins(drv.since), kind = drv.kind && TL_KIND[drv.kind] ? drv.kind : kindOf(v) || 'route';
     // avant le départ : depuis la mémoire si elle existe, sinon froid
     let T0 = env(since).Tenv, t0 = since; if (hist && mins(hist.at) <= since) T0 = evolve(hist.T, mins(hist.at), since, null).T;
     else if (hist && mins(hist.at) <= nowM) { T0 = hist.T; t0 = mins(hist.at); }   // mémoire enregistrée pendant ce roulage : on repart d'elle (départ à chaud conservé)
-    const r = evolve(T0, t0, nowM, { kind, v: v || TL_KIND[kind].v });
+    const r = evolve(T0, t0, nowM, { kind, v: stopped ? v : v == null ? TL_KIND[kind].v : v });
     T = r.T; phase = 'driving'; drivenMin = nowM - since; drivenKm = n(drv.km) ?? r.km; driveKind = kind;
-    why.push(`En roulage depuis ${Math.round(drivenMin)} min (≈ ${r1(drivenKm)} km, ${TL_KIND[kind].label}${v ? ' ≈ ' + r0(v) + ' km/h' : ', vitesse supposée'})`);
+    why.push(stopped ? `Roulage suivi mais voiture à l’arrêt (≈ ${r0(v)} km/h depuis ${Math.round(drivenMin)} min) : pas de chauffe, la gomme évolue comme à l’arrêt`
+      : `En roulage depuis ${Math.round(drivenMin)} min (≈ ${r1(drivenKm)} km, ${TL_KIND[kind].label}${v != null ? ' ≈ ' + r0(v) + ' km/h' : ', vitesse supposée'})`);
   } else if (hist) {
     const at = mins(hist.at); parkedMin = nowM - at;
     T = evolve(hist.T, at, nowM, null).T; phase = 'parked';
@@ -178,7 +185,7 @@ function tyreLab(input) {
   const marks = [win[0], win[1], win[2], win[3]].map(t => clamp((t - (win[0] - 10)) / ((win[3] + 10) - (win[0] - 10)), 0, 1));
   /* ---------- 5 bis. tendance (ce que fait la température), distincte de l'état (où elle se situe) ---------- */
   let trend, eq, ambient = false;
-  if (phase === 'driving') {
+  if (phase === 'driving' && !stopped) {
     const q = eqDrive(eNow, driveKind, T), gap = q.Teq - T, rise = q.Teq - eNow.Tenv; eq = q.Teq;
     trend = Math.abs(gap) <= Math.max(TL_SETTLE * Math.abs(rise), 1) ? 'stable' : gap > 0 ? 'heating' : 'cooling';
   } else {
@@ -189,7 +196,7 @@ function tyreLab(input) {
   const lvlSuffix = st === 0 || st >= 3 ? ' · ' + TL_LEVEL_TXT[st] : '';
   // sans historique ni roulage suivi, « au repos » serait plus certain que les données : la température est seulement SUPPOSÉE ambiante
   const stateTxt = trend === 'rest' && ambient ? (phase === 'unknown' ? 'Supposé ambiant' : 'Au repos · ambiant') + lvlSuffix : `${TL_TREND_TXT[trend]} · ${TL_LEVEL_TXT[st]}`;
-  why.push(phase === 'driving'
+  why.push(phase === 'driving' && !stopped
     ? trend === 'stable' ? `Tendance : stabilisée — l’équilibre de ce roulage est atteint à ${r0(TL_SETTLE * 100)} % près`
       : `Tendance : ${trend === 'heating' ? 'en chauffe' : 'en refroidissement'} — équilibre de ce roulage ≈ ${r0(eq)} °C, encore ${r0(Math.abs(eq - T))} °C d’écart`
     : trend === 'cooling' ? `Tendance : en refroidissement vers l’ambiante (≈ ${r0(eq)} °C)` : `Tendance : au repos${ambient ? (phase === 'unknown' ? ' ; température supposée ambiante (aucun historique d’arrêt connu)' : ', gomme à la température ambiante (± 3 °C)') : ''}`);
@@ -214,7 +221,7 @@ function tyreLab(input) {
   warm.hyp = driveKind ? null : tripKind ? `type de route du prochain trajet : ${TL_KIND[tripKind].label}` : 'hypothèse : route (≈ 70 km/h), aucun trajet connu';
   if (st >= 2 && drv) {   // déjà dans la fenêtre : depuis quand (approximatif)
     const since = mins(drv.since); let Tt = hist && mins(hist.at) <= since ? evolve(hist.T, mins(hist.at), since, null).T : env(since).Tenv, m = since;
-    while (m < nowM && Tt - u < win[1]) { Tt = evolve(Tt, m, m + 1, { kind, v: n(drv.speedKmh) || TL_KIND[kind].v }).T; m += 1; }
+    while (m < nowM && Tt - u < win[1]) { Tt = evolve(Tt, m, m + 1, { kind, v: stopped ? v : v == null ? TL_KIND[kind].v : v }).T; m += 1; }
     warm.sinceMin = Math.max(0, Math.round(nowM - m));
   }
   // refroidissement (à l'arrêt) : part de l'échauffement conservée
@@ -225,6 +232,7 @@ function tyreLab(input) {
   }
   /* ---------- 7. adhérence, freinage, aquaplaning ---------- */
   const tread = typeof treadAxles === 'function' ? treadAxles(tire).worst : n(tire.tread);   // essieu le plus usé
+  const criticalTread = tread != null && tread < TL_LEGAL_MM;
   // saisie par essieu avec un essieu inconnu : l'essieu renseigné ne représente pas l'autre (garde-fou des distances)
   const axl = typeof treadAxles === 'function' ? treadAxles(tire) : null, axleMissing = !!(axl && axl.split && (axl.av == null || axl.ar == null));
   function aquaOf(e, k) {
@@ -257,8 +265,10 @@ function tyreLab(input) {
       f.push({ k: `Profondeur ${r1(tread)} mm${est ? ' (estimée, non mesurée)' : ''} sur sol mouillé : +${r0(tw.opt)} à +${r0(tw.pru)} m de freinage à 80 km/h (écarts d’essais publiés, hypothèse non calibrée)${tw.belowLegal ? ' — sous le minimum légal, au-delà des essais' : ''}`,
         v: dRef / (dRef + (tw.opt + tw.pru) / 2), tw }); }
     const p = coldAt(e.Tenv); if (p != null && p < target - 0.3) f.push({ k: `Pression estimée ≈ ${r1(p)} bar (cible ${r1(target)})`, v: 0.95 });
-    const mu = f.reduce((a, x) => a * x.v, 1), lv = mu >= 0.9 ? 0 : mu >= 0.72 ? 1 : mu >= 0.5 ? 2 : 3;
-    const dom = f.filter(x => x.v < 1).sort((a, b) => a.v - b.v)[0] || null;
+    const mu = f.reduce((a, x) => a * x.v, 1);
+    // pneu hors minimum légal : état critique, jamais adouci par un indice de freinage calculé sur sol sec
+    const lv = criticalTread ? 3 : mu >= 0.9 ? 0 : mu >= 0.72 ? 1 : mu >= 0.5 ? 2 : 3;
+    const dom = criticalTread ? { k: `Profondeur ${r1(tread)} mm : sous le minimum légal (${String(TL_LEGAL_MM).replace('.', ',')} mm), pneu non conforme`, v: 0 } : f.filter(x => x.v < 1).sort((a, b) => a.v - b.v)[0] || null;
     // distances : seulement sur sec/humide/pluie, jamais sur neige ou verglas. μ = plage « sec » × adhérence relative.
     let dist = null, distNote = null;
     // Donnée critique absente ou hors du domaine des essais : Race Control dit qu'il ne peut pas chiffrer, plutôt que d'inventer.
@@ -315,7 +325,7 @@ function tyreLab(input) {
       if (i > 0) {
         const a = pts[i - 1], dk = kmOf(p) != null && kmOf(a) != null ? kmOf(p) - kmOf(a) : null, dmin = p.m - a.m;
         const v = dk != null && dmin > 0 ? dk / dmin * 60 : null, k = kindOf(v) || tripKind || 'route';
-        if (p.m > mPrev) Tt = evolve(Tt, mPrev, p.m, { kind: k, v: v || TL_KIND[k].v }).T;
+        if (p.m > mPrev) Tt = evolve(Tt, mPrev, p.m, { kind: k, v: v == null ? TL_KIND[k].v : v }).T;
         p.kind = k;
       }
       mPrev = Math.max(mPrev, p.m);
@@ -391,10 +401,11 @@ function tyreLab(input) {
   /* ---------- 12. verdict principal ---------- */
   const limiting = gNow.dom ? (gNow.dom.k.startsWith('Gomme') ? ['gomme froide', 'gomme sous sa plage favorable', 'gomme dans sa fenêtre', 'gomme chaude', 'gomme très chaude'][st] : gNow.dom.k.toLowerCase()) : 'aucun';
   const lvl = Math.max(stLv(st), gNow.lv);
-  const hero = { title: tyre.title, size: tyre.size, state: stateTxt, s: st, lvl, emoji: EMO[stLv(st)], range,
+  const hero = { title: tyre.title, size: tyre.size, state: stateTxt, s: st, lvl, emoji: EMO[lvl], range,
     warm: warm.reached ? (warm.sinceMin != null ? `Zone favorable atteinte depuis ~${warm.sinceMin} min` : null) : warm.marginal ? 'limite' : warm.never ? 'Zone favorable non atteinte dans ces conditions' : warm.min[1] == null ? `≥ ${warm.min[0]} min · ≥ ${warm.km[0]} km (peut ne pas être atteinte)` : `≈ ${warm.min[0]}–${warm.min[1]} min · ≈ ${warm.km[0]}–${warm.km[1]} km`,
-    brake: gNow.word, corner: gNow.bars[2].word, rain: gNow.aqua.lv ? ['Faible', 'Vigilance', 'Risque élevé', 'Critique'][gNow.aqua.lv] : gripAt({ ...eNow, surf: 'rain', Pl: 1 }, st, kind).word, limiting, confidence: confidence.level };
-  return { known: true, tyre, spec: specOut, now: inp.now, phase, parkedMin, drivenKm, drivenMin, kind, env: { Ta: eNow.Ta, Tr: eNow.Tr, Tenv: eNow.Tenv, surf: eNow.surf, surfTxt: SURF_TXT[eNow.surf], Pl: eNow.Pl },
+    brake: gNow.word, corner: gNow.bars[2].word, rain: gNow.aqua.lv ? ['Faible', 'Vigilance', 'Risque élevé', 'Critique'][gNow.aqua.lv] : gripAt({ ...eNow, surf: 'rain', Pl: 1 }, st, kind).word, limiting, confidence: confidence.level,
+    critical: criticalTread ? `Profondeur ${r1(tread)} mm : sous le minimum légal de ${String(TL_LEGAL_MM).replace('.', ',')} mm. Pneu non conforme : remplacer avant de rouler, aucune estimation ne le rend acceptable.` : null };
+  return { known: true, tyre, spec: specOut, now: inp.now, phase, stopped, parkedMin, drivenKm, drivenMin, kind, env: { Ta: eNow.Ta, Tr: eNow.Tr, Tenv: eNow.Tenv, surf: eNow.surf, surfTxt: SURF_TXT[eNow.surf], Pl: eNow.Pl },
     thermal: { T, range, state: stateTxt, level: TL_STATES[st], trend, trendTxt: TL_TREND_TXT[trend], eq: Math.round(eq * 10) / 10, s: st, lv: stLv(st), win, pos, marks, why, uhp }, warm, cool, grip: gNow, trip, tripIssue, compare, press, confidence, hero, state: inp.state || null };
 }
 

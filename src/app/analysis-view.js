@@ -159,8 +159,9 @@ function renderLab() {
       <p class="wx-hl">Météo indisponible : aucune estimation thermique ni d’adhérence (rien n’est inventé).</p></div>${stHtml}${fiche}`;
     else {
       const h = r.hero, th = r.thermal, g = r.grip, cf = r.confidence, pf = carProfile(car);
-      const hero = `<div class="lab-hero ${pf.generic ? 'lvx' : lvc(h.lvl)}" role="status"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car.short || car.name)}</span><span class="wx-age">${r.phase === 'driving' ? 'EN ROULAGE' : r.phase === 'parked' ? 'À L’ARRÊT' : 'HISTORIQUE INCONNU'}</span></div>
+      const hero = `<div class="lab-hero ${pf.generic && !h.critical ? 'lvx' : lvc(h.lvl)}" role="status"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car.short || car.name)}</span><span class="wx-age">${r.phase === 'driving' ? (r.stopped ? 'ROULAGE SUIVI · ARRÊT' : 'EN ROULAGE') : r.phase === 'parked' ? 'À L’ARRÊT' : 'HISTORIQUE INCONNU'}</span></div>
         <p class="lab-tyre"><b>${esc(t.title)}</b>${t.size ? ' · ' + esc(t.size) : ''}</p>
+        ${h.critical ? `<p class="wx-hl wx-h1" role="alert"><b>⛔ ${esc(h.critical)}</b></p>` : ''}
         <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.state.toUpperCase())}</h2>
         <p class="wx-hl wx-h1">Gomme estimée ≈ ${rg(th.range)}${h.warm ? ' · ' + esc(h.warm) : ''}</p>
         <p class="wx-hl">Freinage : <b>${esc(labBrakeText(h.brake))}</b> · Virage : <b>${esc(h.corner === 'Excellente' ? 'Favorable' : h.corner)}</b> · ${['rain', 'heavy', 'pool'].includes(r.env.surf) ? 'Pluie' : 'Si pluie'} : <b>${esc(h.rain)}</b></p>

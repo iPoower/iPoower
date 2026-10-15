@@ -198,6 +198,22 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     if (process.env.LAB_SHOT) await s.p.screenshot({ path: process.env.LAB_SHOT + '-iphone-cooling.png' });
     await s.close();
 
+    // 8b. pneu sous le minimum légal : état critique visible en tête, avant tout indice calculé, sans débordement iPhone
+    s = await session(b, { at: '2026-10-06T06:15:00+02:00' }); await toLab(s);
+    await s.p.locator('#placeBar [data-act=place-confirm][data-place=home]').tap();
+    await s.p.waitForFunction(() => APP_CONTEXT.snapshot.confirmation?.placeId === 'home');
+    await s.p.evaluate(() => {
+      const car = labCar(), now = Date.now();
+      Object.assign(car.tire, { type: 'summer', brand: '', model: '', size: '215/40 ZR18 89Y XL', press: '2,4', tread: 1.2, pchk: { date: '2026-09-20', T: 15 } });
+      CX.m.hs = CX.m.hs.map(h => ({ ...h, T: 18, Tr: 20, RH: 60, P: 0, Pl: 0, snow: 0, code: 1, gust: 10, rad: 200, ice: { ...h.ice, level: 0, score: 0 } }));
+      RAW[UI.loc].t = now; renderLab();
+    });
+    a = await lab(s.p); const Lk = await layout(s.p, true);
+    const crit = await s.p.evaluate(() => { const h = document.querySelector('#secLab .lab-hero'); return { cls: h.className, alert: !!h.querySelector('[role=alert]'), txt: h.textContent }; });
+    check('8b · profondeur 1,2 mm : ⛔ pneu non conforme en tête du verdict, niveau critique (rouge)', /lv3/.test(crit.cls) && crit.alert && /⛔/.test(crit.txt) && /sous le minimum légal/.test(crit.txt) && /Facteur limitant : .*minimum légal/.test(crit.txt), JSON.stringify(crit));
+    check('8b · iPhone : l’alerte critique ne provoque ni débordement ni cible masquée', Lk.sw <= Lk.W && !Lk.wide.length && !Lk.small.length, JSON.stringify(Lk));
+    await s.close();
+
     // 10. Ergonomie et montage confirmé : parcours réels PC/iPhone, brouillon, erreur, archive et offline.
     for (const dev of ['pc', 'iphone']) {
       s = await session(b, { at: '2026-10-05T12:00:00+02:00', dev });

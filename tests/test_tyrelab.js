@@ -53,6 +53,36 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const short = lab({ now: ts('10:05'), car: car(), hours: H(), history: { at: ts('10:00'), T: 40 } }), long = lab({ now: ts('13:00'), car: car(), hours: H(), history: { at: ts('10:00'), T: 40 } });
     assert(short.thermal.T > 36 && long.thermal.T < 15, `${short.thermal.T} / ${long.thermal.T}`);
   });
+  // 0 km/h est une vitesse mesurée (voiture arrêtée), pas une vitesse inconnue : la gomme ne chauffe pas à l'arrêt.
+  test('roulage suivi à 0 km/h : aucune chauffe, la gomme refroidit comme à l’arrêt', () => {
+    const base = { now: ts('10:00'), car: car(), hours: H({ T: 10, Tr: 10 }), history: { at: ts('09:00'), T: 45 } };
+    const unknown = lab({ ...base, drive: drive('09:30', 'route', { speedKmh: null }) });
+    for (const v of [0, 1, 2.9]) {
+      const stopped = lab({ ...base, drive: drive('09:30', 'route', { speedKmh: v }) }), parked = lab({ ...base, drive: undefined });
+      assert(stopped.thermal.T < unknown.thermal.T - 3, `${v} km/h : ${stopped.thermal.T} contre inconnue ${unknown.thermal.T}`);
+      assert(stopped.thermal.T <= parked.thermal.T + 0.5, `${v} km/h chauffe au-delà de l’arrêt : ${stopped.thermal.T} / ${parked.thermal.T}`);
+      assert.notEqual(stopped.thermal.trend, 'heating'); assert(stopped.thermal.why.some(x => /À l’arrêt|0 km\/h|arrêt/.test(x)), JSON.stringify(stopped.thermal.why));
+    }
+  });
+  test('départ à froid à 0 km/h : reste à la température ambiante, jamais « en chauffe »', () => {
+    const r = lab({ now: ts('10:00'), car: car(), hours: H({ T: 8, Tr: 8 }), drive: drive('09:40', 'route', { speedKmh: 0 }) });
+    assert(Math.abs(r.thermal.T - 8) < 1.5 && r.thermal.trend !== 'heating', JSON.stringify([r.thermal.T, r.thermal.trend]));
+    const moving = lab({ now: ts('10:00'), car: car(), hours: H({ T: 8, Tr: 8 }), drive: drive('09:40', 'route', { speedKmh: 70 }) });
+    assert(moving.thermal.T > r.thermal.T + 3, 'le roulage normal doit rester inchangé');
+  });
+  test('profondeur sous 1,6 mm : état critique prioritaire sur l’indice de freinage, par temps sec', () => {
+    const r = lab({ now: ts('15:00'), car: car({ tread: 1.2 }), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route') });
+    assert.equal(r.hero.lvl, 3); assert.equal(r.grip.lv, 3); assert.match(r.hero.limiting, /minimum légal/); assert.notEqual(r.hero.brake, 'Optimal');
+    assert.equal(r.compare.rows.find(x => x.label === 'Freinage sec').b.lv, 3); assert.match(r.hero.critical, /1,2 mm.*minimum légal.*remplacer/); assert.equal(r.hero.emoji, '🔴');
+    const legal = lab({ now: ts('15:00'), car: car({ tread: 1.6 }), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route') });
+    assert(legal.hero.lvl < 3 || !/minimum légal/.test(legal.hero.limiting)); assert.equal(legal.hero.critical, null);
+  });
+  test('minimum légal de sculpture : une seule valeur (1,6 mm) dans le moteur, l’Analyse et l’entretien', () => {
+    const src = f => fs.readFileSync(path.join(__dirname, '../src/' + f), 'utf8');
+    assert.equal(/const TREAD_LEGAL_MM = (\d+(?:\.\d+)?);/.exec(src('engine.js'))[1], '1.6');
+    assert.equal(/const TL_LEGAL_MM = (\d+(?:\.\d+)?);/.exec(src('tyrelab.js'))[1], '1.6');
+    assert(/mm < 1\.6 \? 3 : 1/.test(src('tyrestate.js')), 'entretien : seuil 1,6 mm');
+  });
   test('2 °C chauffe moins vite que 20 °C (même pneu, même route)', () => {
     const cold = lab({ now: ts('10:00'), car: car(), hours: H({ T: 2, Tr: 2 }), drive: drive('09:50', 'route') }), warm = lab({ now: ts('10:00'), car: car(), hours: H({ T: 20, Tr: 20 }), drive: drive('09:50', 'route') });
     assert(cold.thermal.T - 2 > 0 && warm.thermal.s > cold.thermal.s);
@@ -395,6 +425,11 @@ if (require.main === module) {
     { name: 'distance chiffrée sans profondeur connue', from: "else if (tread == null) distNote =", to: "else if (false) distNote =" },
     { name: 'un seul essieu renseigné pris pour les deux', from: "else if (axleMissing) distNote =", to: "else if (false) distNote =" },
     { name: 'seuil de météo ancienne rétabli à 90 min (dérive entre vues)', from: 'const TL_STALE_AFTER_MIN = 60;', to: 'const TL_STALE_AFTER_MIN = 90;' },
+    { name: '0 km/h pris pour une vitesse inconnue (chauffe à l’arrêt)', from: "if (drive && !(drive.v != null && drive.v < TL_STOP_KMH)) {", to: "if (drive) {" },
+    { name: 'seuil d’arrêt supprimé', from: 'const TL_STOP_KMH = 3;', to: 'const TL_STOP_KMH = 0;' },
+    { name: 'tendance « en chauffe » à l’arrêt', from: "if (phase === 'driving' && !stopped) {", to: "if (phase === 'driving') {" },
+    { name: 'pneu sous le minimum légal adouci par l’indice de freinage', from: 'const lv = criticalTread ? 3 :', to: 'const lv = false ? 3 :' },
+    { name: 'minimum légal abaissé à 1,0 mm', from: 'const TL_LEGAL_MM = 1.6;', to: 'const TL_LEGAL_MM = 1.0;' },
     { name: 'confiance indépendante des données manquantes', from: "  if (phase === 'unknown') { score -= 1;", to: "  if (false) { score -= 1;" }
   ];
   for (const m of mutations) {
