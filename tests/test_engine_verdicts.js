@@ -92,6 +92,19 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   test('profondeur sous 1,6 mm : jamais GO', () => {
     for (const type of TYPES) assert(level(type, () => ({}), { tire: { tread: 1.4 } }) >= CAUTION, type);
   });
+  // Un pneu hors minimum légal est un état critique : il prime sur le score, même par temps sec et doux.
+  test('profondeur sous 1,6 mm : NO GO prioritaire sur le score, sec ou mouillé, heure par heure comme sur trajet', () => {
+    const rain = () => ({ T: 12, RH: 90, P: 5, code: 63, cloud: 100 });
+    for (const type of TYPES) for (const at of [() => ({}), rain]) {
+      const w = verdict(type, at, { tire: { tread: 1.4 } }), hv = E.hourVerdict(car(type, { tread: 1.4 }), hours(at), 24);
+      assert(w.first.parts.some(x => /minimum légal/.test(x.label)), `${type} : la raison du NO GO doit être expliquée`);
+      assert.equal(w.level, NOGO, type); assert(w.score <= 39, `${type} : score ${w.score} incohérent avec NO GO`);
+      assert.equal(hv.level, NOGO, type); assert(hv.score <= 39, `${type} : score horaire ${hv.score}`);
+    }
+  });
+  test('profondeur 1,6 mm exactement : minimum légal respecté, pas de NO GO par la seule usure', () => {
+    for (const type of ['summer', 'allseason']) assert(level(type, () => ({}), { tire: { tread: 1.6 } }) < NOGO, type);
+  });
   test('profondeur < 3 mm sous la pluie : verdict jamais meilleur qu’avec une gomme neuve', () => {
     const rain = () => ({ T: 12, RH: 90, P: 5, code: 63, cloud: 100 });
     for (const type of TYPES) assert(verdict(type, rain, { tire: { tread: 2.5 } }).score <= verdict(type, rain, { tire: { tread: 7 } }).score, type);
