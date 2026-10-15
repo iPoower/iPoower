@@ -83,6 +83,18 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(/const TL_LEGAL_MM = (\d+(?:\.\d+)?);/.exec(src('tyrelab.js'))[1], '1.6');
     assert(/mm < 1\.6 \? 3 : 1/.test(src('tyrestate.js')), 'entretien : seuil 1,6 mm');
   });
+  test('limites affichées : ce qui est estimé, supposé ou hors domaine est dit en clair', () => {
+    const L = r => r.confidence.limits.join(' | ');
+    const moving = lab({ now: ts('15:00'), car: car(), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route', { speedKmh: 60 }) });
+    assert.match(L(moving), /Aucun capteur/); assert.match(L(moving), /moyenne depuis le départ/); assert.match(L(moving), /Chaussée estimée par la météo/); assert.match(L(moving), /jamais une garantie d’arrêt/);
+    const stopped = lab({ now: ts('15:00'), car: car(), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route', { speedKmh: 0 }) });
+    assert.match(L(stopped), /Arrêt déduit d’une vitesse moyenne sous 3 km\/h/);
+    const unknown = lab({ now: ts('15:00'), car: car(), hours: H({ T: 20, Tr: 24 }) }); assert.match(L(unknown), /Historique d’arrêt inconnu/);
+    const ice = lab({ now: ts('15:00'), car: car(), hours: H({ T: -2, Tr: -3, P: 1, Pl: 1 }), drive: drive('14:00', 'route') }); assert.match(L(ice), /Aucune distance de freinage chiffrée/);
+    const worn = lab({ now: ts('15:00'), car: car({ tread: 1.2 }), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route') }); assert.match(L(worn), /sous le minimum légal/);
+    const old = lab({ now: ts('15:00'), car: car(), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route'), ageMin: 240 }); assert.match(L(old), /Météo ancienne \(4 h\)/);
+    const reported = lab({ now: ts('15:00'), car: car(), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route'), reports: [{ kind: 'wet', at: ts('14:50') }] }); assert.match(L(reported), /signalée par vous/);
+  });
   test('2 °C chauffe moins vite que 20 °C (même pneu, même route)', () => {
     const cold = lab({ now: ts('10:00'), car: car(), hours: H({ T: 2, Tr: 2 }), drive: drive('09:50', 'route') }), warm = lab({ now: ts('10:00'), car: car(), hours: H({ T: 20, Tr: 20 }), drive: drive('09:50', 'route') });
     assert(cold.thermal.T - 2 > 0 && warm.thermal.s > cold.thermal.s);
@@ -427,6 +439,7 @@ if (require.main === module) {
     { name: 'seuil de météo ancienne rétabli à 90 min (dérive entre vues)', from: 'const TL_STALE_AFTER_MIN = 60;', to: 'const TL_STALE_AFTER_MIN = 90;' },
     { name: '0 km/h pris pour une vitesse inconnue (chauffe à l’arrêt)', from: "if (drive && !(drive.v != null && drive.v < TL_STOP_KMH)) {", to: "if (drive) {" },
     { name: 'seuil d’arrêt supprimé', from: 'const TL_STOP_KMH = 3;', to: 'const TL_STOP_KMH = 0;' },
+    { name: 'limites : mention de l’absence de capteur retirée', from: "'Aucun capteur : la température de la gomme et la pression sont des estimations, jamais des mesures.'", to: "''" },
     { name: 'tendance « en chauffe » à l’arrêt', from: "if (phase === 'driving' && !stopped) {", to: "if (phase === 'driving') {" },
     { name: 'pneu sous le minimum légal adouci par l’indice de freinage', from: 'const lv = criticalTread ? 3 :', to: 'const lv = false ? 3 :' },
     { name: 'minimum légal abaissé à 1,0 mm', from: 'const TL_LEGAL_MM = 1.6;', to: 'const TL_LEGAL_MM = 1.0;' },
