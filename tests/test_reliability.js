@@ -95,7 +95,8 @@ check('politique : seuils centraux immuables et états aux limites exactes', () 
 });
 const POLICY_VALUES = [['src/decision.js', 'FRESH_MAX_MIN', 'freshMaxMin'], ['src/decision.js', 'STALE_AFTER_MIN', 'agingMaxMin'],
   ['src/wxdesk.js', 'WXD_STALE_AFTER_MIN', 'agingMaxMin'], ['src/tyrelab.js', 'TL_STALE_AFTER_MIN', 'agingMaxMin'],
-  ['src/f1-pure.js', 'STALE_AFTER_MIN', 'agingMaxMin'], ['src/weather-watch.js', 'FRESH_MAX_MIN', 'freshMaxMin']];
+  ['src/f1-pure.js', 'STALE_AFTER_MIN', 'agingMaxMin'], ['src/weather-watch.js', 'FRESH_MAX_MIN', 'freshMaxMin'],
+  ['src/evidence.js', 'EV_STALE_AFTER_MIN', 'agingMaxMin']];
 const POLICY_USES = [['src/app.js', 'LIVE_MAX_MS = Reliability.FRESHNESS.freshMaxMin * 60e3'], ['src/app/diagnostics.js', 'Reliability.freshState('],
   ['src/app/race-views.js', 'Reliability.FRESHNESS.agingMaxMin']];
 const LITERAL_AGE = /ageMin\s*(?:<=|>=|<|>)\s*\d+\b(?!\s*\*)/;
@@ -118,6 +119,7 @@ check('contre-tests : une dérive de seuil ou un littéral est détecté', () =>
   const mutations = [
     mutate('src/tyrelab.js', 'TL_STALE_AFTER_MIN = 60', 'TL_STALE_AFTER_MIN = 90'),
     mutate('src/f1-pure.js', 'STALE_AFTER_MIN = 60', 'STALE_AFTER_MIN = 90'),
+    mutate('src/evidence.js', 'EV_STALE_AFTER_MIN = 60', 'EV_STALE_AFTER_MIN = 90'),
     mutate('src/decision.js', 'FRESH_MAX_MIN = 15', 'FRESH_MAX_MIN = 20'),
     mutate('src/wxdesk.js', 'ageMin > WXD_STALE_AFTER_MIN', 'ageMin > 60'),
     mutate('src/weather-watch.js', 'ageMin <= FRESH_MAX_MIN', 'ageMin <= 15'),

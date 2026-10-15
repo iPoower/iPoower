@@ -75,6 +75,28 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const future = E(base({ stations: [mk('2026-10-05T07:30:00Z')] })).worst;
     assert.equal(future.lv, none.lv, 'une observation du futur ne change pas le verdict'); assert.deepEqual(future.ev, none.ev);
   });
+  // Une seule politique de fraîcheur avec le poste Météo (Reliability.FRESHNESS : périmé au-delà de 60 min) ; l'âge d'une OBSERVATION de
+  // station (90 min) est une autre grandeur, et une observation du futur n'alimente aucun axe de preuve, pas seulement le brouillard.
+  test('M · prévision reçue il y a 60 puis 61 min : même verdict de fraîcheur que le poste Météo (périmé au-delà de 60 min)', () => {
+    const at = m => E(base({ fresh: { modelAgeMin: m } })), trust = r => r.phen.find(p => p.id === 'wind').trust;
+    assert.match(at(60).axes.data, /bonne/); assert.match(at(61).axes.data, /dégradée/); assert.match(at(89).axes.data, /dégradée/);
+    assert.equal(trust(at(60)) - trust(at(61)), 1, 'la confiance baisse d’un cran dès 61 min');
+    assert.match(at(120).axes.data, /dégradée/); assert.match(at(null).axes.data, /bonne/, 'âge inconnu : pas de péremption inventée');
+  });
+  test('N · observation datée du FUTUR : ne confirme pas la température et ne compte pas parmi les stations récentes', () => {
+    const mk = (t, T = 9.4) => ({ id: 'S', name: 'S', lat: 48.81, lon: 2.30, obs: [metar('m', t, T, 5, 20000, 5, null)] });   // modèle 9 °C ; NOW = 04:30Z
+    const run = t => E(base({ stations: [mk(t)] })), temp = r => r.phen.find(p => p.id === 'temp');
+    const none = E(base()), ok = run('2026-10-05T04:20:00Z');
+    assert.equal(temp(ok).trust, 2); assert.match(temp(ok).why, /observation/); assert.match(ok.axes.observations, /1 station/);
+    for (const t of ['2026-10-05T07:30:00Z', '2026-10-05T04:35:00Z', '2099-01-01T00:00:00Z']) {
+      const f = run(t);
+      assert.equal(temp(f).trust, temp(none).trust, t + ' : confiance inchangée'); assert.equal(temp(f).why, temp(none).why, t + ' : « modèle seul »');
+      assert.equal(f.axes.observations, none.axes.observations, t + ' : aucune station récente');
+    }
+    assert.match(run('2026-10-05T04:30:30Z').axes.observations, /1 station/, '+30 s : petite dérive d’horloge tolérée');
+    assert.match(run('2026-10-05T03:00:00Z').axes.observations, /1 station/, '90 min : encore récente');
+    assert.match(run('2026-10-05T02:59:00Z').axes.observations, /aucune/, '91 min : plus récente');
+  });
   test('H · l’utilisateur confirme du brouillard → verdict recalculé (observation non officielle)', () => {
     const r = E(base({ reports: [{ kind: 'fog', at: NOW - 5 * 60e3, ...HOME }] }));
     assert.equal(r.worst.lv, 2); assert(r.worst.ev.some(e => e.layer === 'D' && /non officielle/.test(e.text)));
@@ -155,7 +177,10 @@ if (require.main === module) {
     { name: 'moyenne des points au lieu du pire crédible', from: 'c.f.lv > b.f.lv ||', to: 'c.f.lv < b.f.lv ||' },
     { name: 'distance des stations ignorée', from: "dist: [[10, 1], [25, 0.7], [50, 0.4], [Infinity, 0.15]]", to: "dist: [[Infinity, 1]]" },
     { name: 'âge des observations ignoré', from: "age: [[30, 1], [60, 0.8], [120, 0.5], [180, 0.25], [Infinity, 0.1]]", to: "age: [[Infinity, 1]]" },
-    { name: 'observation du futur acceptée avec le poids maximal', from: 'if (rawAge < -1) return;', to: '' },
+    { name: 'observation du futur acceptée avec le poids maximal', from: 'a >= -1 ? Math.max(0, a) : null', to: 'Number.isFinite(a) ? Math.max(0, a) : null' },
+    { name: 'péremption de la prévision rétablie à 90 min (dérive avec le poste Météo)', from: 'const EV_STALE_AFTER_MIN = 60,', to: 'const EV_STALE_AFTER_MIN = 90,' },
+    { name: 'observation du futur confirmant la température', from: 'const obsT = stations.map(s => (s.obs || [])[0]).filter(o => o && fin(o.T) && obsRecent(o));', to: 'const obsT = stations.map(s => (s.obs || [])[0]).filter(o => o && fin(o.T));' },
+    { name: 'observation du futur comptée parmi les stations récentes', from: 'stations.filter(s => (s.obs || []).some(obsRecent)).length', to: 'stations.filter(s => (s.obs || []).some(o => fin(Date.parse(o.t)))).length' },
     { name: 'localisation ne plafonne plus la confiance', from: 'trust = Math.min(trust, locCap);', to: '' },
     { name: 'contradiction moyennée et effacée', from: "if (modelLv <= 1 && physical >= 2) contra =", to: "if (false) contra =" }
   ];
