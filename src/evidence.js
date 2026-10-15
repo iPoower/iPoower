@@ -43,11 +43,12 @@ function evidenceEngine(input) {
   const ceilOf = raw => { let b = null; String(raw || '').replace(/\b(FEW|SCT|BKN|OVC|VV)(\d{3})\b/g, (_, k, h) => { const ft = +h * 100; if (b == null || ft < b) b = ft; }); return b; };
   const locTrust = (inp.location && inp.location.trust) || 'Indisponible';
   const locCap = { Confirmée: 2, Fiable: 2, Estimée: 1, Incertaine: 0, Indisponible: 0 }[locTrust] ?? 0;
-  const fresh = inp.fresh || {}, stale = fresh.offline || (fin(fresh.modelAgeMin) && fresh.modelAgeMin > EV_STALE_AFTER_MIN);
+  const fresh = inp.fresh || {}, ageKnown = fin(fresh.modelAgeMin) && fresh.modelAgeMin >= 0;
+  const stale = !ageKnown || fresh.offline || fresh.modelAgeMin > EV_STALE_AFTER_MIN;
   const pts = (inp.points || []).filter(p => p && p.x && fin(p.ms)).sort((a, b) => a.ms - b.ms);
   if (!pts.length) return null;
   const stations = (inp.stations || []).filter(s => s && fin(s.lat) && fin(s.lon));
-  const reports = (inp.reports || []).filter(r => r && fin(r.at) && fin(r.lat) && fin(r.lon));
+  const reports = (inp.reports || []).filter(r => r && fin(r.at) && r.at <= now + 60000 && fin(r.lat) && fin(r.lon));
   const comm = inp.community && inp.community.available ? (inp.community.items || []) : null;
 
   /* ---------- brouillard et visibilité, par point (heure de passage) ---------- */
@@ -152,11 +153,11 @@ function evidenceEngine(input) {
   /* ---------- axes de confiance séparés ---------- */
   const nObs = stations.filter(s => (s.obs || []).some(obsRecent)).length;
   const axes = {
-    data: stale ? 'dégradée (données anciennes ou hors ligne)' : 'bonne',
+    data: !ageKnown ? 'dégradée (âge inconnu)' : stale ? 'dégradée (données anciennes ou hors ligne)' : 'bonne',
     models: inp.ensemble ? (inp.ensemble.spread || 'disponible') : 'non mesuré (un seul modèle déterministe)',
     location: locTrust,
     observations: nObs ? `${nObs} station(s) récente(s)` : 'aucune observation récente',
-    freshness: fin(fresh.modelAgeMin) ? `prévision reçue il y a ${Math.round(fresh.modelAgeMin)} min` : 'inconnue'
+    freshness: ageKnown ? `prévision reçue il y a ${Math.round(fresh.modelAgeMin)} min` : 'inconnue'
   };
   /* ---------- verdict : phénomènes critiques d'abord, alerte seulement si utile ---------- */
   const crit = phen.filter(x => ['fog', 'frost', 'rain', 'wind'].includes(x.id) && x.lv >= 2).sort((a, b) => b.lv - a.lv);
