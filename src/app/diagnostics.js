@@ -44,6 +44,7 @@ function diagRows(forCopy) {
     ['API météo', (() => { const p = WEATHER_REQUESTS.state(); return p.until > Date.now() ? `HTTP 429 · pause jusqu’à ${hmLocal(p.until)} · ${p.kind}` : `file réseau · ${p.active}/2 requêtes actives · ${p.queued} en attente · état du fournisseur non vérifié`; })()],
     ['Derniers incidents météo', weatherIncidentText()],
     ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
+    ['Correction par station', (() => { const o = CX && CX.m && CX.m.obs; return o ? wxStationLine(o) : 'aucune : pas de relevé de station récent à proximité, prévisions du modèle seules'; })()],
     ['Agenda', calendarDiagText()],
     ['Stockage local', (() => { const d = USER_STORE.durability(), valid = d.validatedAt ? ` · validé il y a ${ageTxt(ageOf(d.validatedAt))}` : ' · validation de reprise en attente'; return `${d.status === 'durable' ? 'DURABLE' : 'DEGRADED'}${valid} · ${n} clés · ${Math.round(bytes / 1024)} Ko${d.error ? ' · ' + noUrl(d.error) : ''}`; })()],
     ['Cohérence production', VERSION_COHERENCE === 'current' ? 'À JOUR · build chargé = build publié' : VERSION_COHERENCE === 'offline' ? 'ANCIEN SHELL · mise à jour au retour réseau' : VERSION_COHERENCE === 'deferred' ? 'MISE À JOUR DIFFÉRÉE · trajet en cours' : VERSION_COHERENCE === 'reload' ? 'MISE À JOUR · rechargement demandé' : VERSION_COHERENCE === 'stale' ? 'ANCIEN SHELL · rechargement déjà tenté' : 'inconnue'],
