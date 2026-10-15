@@ -24,7 +24,9 @@ function tripPassagePoints(t) {
     const f = q.f != null ? q.f : last > 0 ? j / last : 0;
     const at = q.t || (Number.isFinite(duration) && duration >= 0 ? addMin(t.dep, duration * f) : null);
     if (!at) return null;
-    return { t: at, f, km: q.km != null ? q.km : null, name: q.name || q.loc || null, x };
+    const located = Number.isFinite(q.lat) && Number.isFinite(q.lon) && Math.abs(q.lat) <= 90 && Math.abs(q.lon) <= 180;
+    return { t: at, f, km: q.km != null ? q.km : null, name: q.name || q.loc || null, x,
+      lat: located ? q.lat : null, lon: located ? q.lon : null };
   }).filter(Boolean);
 }
 function wxTrips(clockModel) {
@@ -199,17 +201,18 @@ function evInput() {
   // points : prochain trajet dans les 3 h (départ, passages, arrivée), sinon le lieu affiché pour les 3 prochaines heures
   const trip = wxTrips(m).find(t => t.points.length && t.arr > nowL && msOf(t.dep) - now <= 3 * 3600e3);
   const labels = ['départ', '25 %', '50 %', '75 %', 'arrivée'];
-  const points = trip ? trip.points.map((p, k, a) => ({ lat: p.lat ?? (k === 0 ? (l && l.lat) : null), lon: p.lon ?? (k === 0 ? (l && l.lon) : null), t: p.t, ms: msOf(p.t), x: p.x, label: a.length === 5 ? labels[k] : k === 0 ? 'départ' : k === a.length - 1 ? 'arrivée' : `point ${k}` }))
+  const points = trip ? trip.points.map((p, k, a) => ({ lat: p.lat, lon: p.lon, t: p.t, ms: msOf(p.t), x: p.x, label: a.length === 5 ? labels[k] : k === 0 ? 'départ' : k === a.length - 1 ? 'arrivée' : `point ${k}` }))
     : [0, 1, 2, 3].map(k => m.hs[m.nowI + k]).filter(Boolean).map((x, k) => ({ lat: l.lat, lon: l.lon, t: x.t, ms: msOf(x.t), x, label: k ? '+' + k + ' h' : 'maintenant' }));
   const raw = RAW[UI.loc];
-  return { now, points: points.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon)), stations: evStations(), reports: reportsLive(), community: { available: false },
+  const located = points.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+  return { now, points: located, coverage: { expected: points.length, located: located.length }, stations: evStations(), reports: reportsLive(), community: { available: false },
     location: { trust: evLocTrust() }, fresh: { modelAgeMin: raw && raw.t ? (Date.now() - raw.t) / 60e3 : null, offline: offlineNow() }, onTrip: !!trip, tripKey: trip && trip.id };
 }
 function evNow() {
   const i = evInput(); if (!i || !i.points.length) return null;
   const r = evidenceEngine(i); if (!r) return null;
   const v1 = CX.alerts.fog ? CX.alerts.fog.sev : CX.alerts.vis ? 1 : 0;
-  return { r, v1, prevLv: r.worst.lv };
+  return { r, v1, prevLv: r.worst.lv, coverage: i.coverage };
 }
 function evShadowTick(v) {
   if (!v || DEMO.on) return;
@@ -221,7 +224,10 @@ function evShadowTick(v) {
 }
 function evidenceHtml() {
   const flag = EV_FLAG(); if (flag === 'off') return '';
-  const v = evNow(); if (!v) return '';
+  const v = evNow(); if (!v) {
+    const i = evInput();
+    return i && i.onTrip ? '<p class="wx-stale" role="status">Preuves météo du trajet indisponibles : points de passage non localisés.</p>' : '';
+  }
   evShadowTick(v);
   const r = v.r, E = WXD_EMO, h = r.headline, T = ['faible', 'moyenne', 'élevée'];
   const lastObs = r.fog.flatMap(f => f.ev).filter(e => e.layer === 'A').sort((a, b) => b.w - a.w)[0];   // observation la plus pertinente, tous points confondus
@@ -234,7 +240,7 @@ function evidenceHtml() {
   const rep = Object.entries(REPORT_KINDS).map(([k, t]) => `<button class="btn sm" data-act="ev-report" data-k="${k}">${t}</button>`).join('');
   const mine = reportsLive().slice(-3).reverse().map(x => `${REPORT_KINDS[x.kind]} à ${hmLocal(x.at)}`).join(' · ');
   return `<details class="wx-pc ev" data-k="ev"${UI.evOpen || (flag === 'on' && h) ? ' open' : ''}><summary><span class="ic" aria-hidden="true">🧪</span><span class="tt">Preuves météo · moteur v2${flag === 'shadow' ? ' (mode observation)' : ''}</span><span class="ln">${h ? E[r.worst.lv] + ' ' + esc(h.text.toLowerCase()) : 'aucun phénomène critique prouvé'}${r.contradiction ? ' · contradiction' : ''}</span></summary>
-    <div class="ev-b">${off}${head}${contra}<ul class="ev-ph">${rows}</ul>
+    <div class="ev-b">${off}${v.coverage && v.coverage.located < v.coverage.expected ? `<p class="wx-stale">Couverture partielle : ${v.coverage.located} point(s) localisé(s) sur ${v.coverage.expected}. Les autres portions ne sont pas vérifiées.</p>` : ''}${head}${contra}<ul class="ev-ph">${rows}</ul>
     <p class="sub">Axes : données ${esc(r.axes.data)} · modèles ${esc(r.axes.models)} · localisation ${esc(r.axes.location)} · ${esc(r.axes.observations)} · ${esc(r.axes.freshness)} · communauté ${esc(r.community)}.</p>
     <details class="wx-how" data-k="evprov"><summary>Provenance du verdict brouillard${r.worst.label ? ' (' + esc(r.worst.label) + ')' : ''}</summary><ul class="lab-why">${prov}</ul><p class="sub">A observation · C modèle · D terrain · E physique. Une observation pèse selon sa distance, son âge et l’échéance ; l’absence de signalement ne prouve rien.</p></details>
     <div class="ev-rep"><p class="sub"><b>Signaler les conditions réelles</b> (votre observation, non officielle)${mine ? ' · récents : ' + esc(mine) : ''}</p><div class="chips">${rep}</div></div></div></details>`;

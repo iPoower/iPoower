@@ -2848,7 +2848,7 @@ function calTrip(ev) {
   if (!B) { if (!CALM[id]) calModel(ev); return { km, dur, loading: true }; }
   const startMin = ev.allDay ? toMin('09:00') : toMin(ev.s.slice(11, 16)), day = ev.s.slice(0, 10);
   const dep = addMin(day + 'T00:00', startMin - dur - 10), arr = addMin(dep, dur), seq = [];
-  for (let t = dep.slice(0, 13) + ':00'; t <= arr.slice(0, 13) + ':00'; t = addMin(t, 60)) { const a = home.byTime.get(t), b = B.byTime.get(t); if (a != null) seq.push({ hs: home.hs, i: a }); if (b != null) seq.push({ hs: B.hs, i: b }); }
+  for (let t = dep.slice(0, 13) + ':00'; t <= arr.slice(0, 13) + ':00'; t = addMin(t, 60)) { const a = home.byTime.get(t), b = B.byTime.get(t); if (a != null) seq.push({ hs: home.hs, i: a, lat: S.locs[0].lat, lon: S.locs[0].lon }); if (b != null) seq.push({ hs: B.hs, i: b, lat: ev.lat, lon: ev.lon }); }
   if (!seq.length) return { km, dur, dep, beyond: true };
   const res = appTripCars().map(c => ({ c, w: windowAssess(c, seq, 'trip') })).filter(r => r.w);
   return { km, dur, dep, arr, sum: summarize(seq), res: res.length ? res : null, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null };
@@ -3336,16 +3336,16 @@ function tripData(dir = UI.dir, off = null, departure = null) {
   const hDep = dep.slice(0, 13) + ':00', hArr = arr.slice(0, 13) + ':00', seq = [];
   const dist = distKm(LA, LB), mids = midPoints(LA, LB);
   if (mids.length) ensureMids(mids); // garder les modèles anciens tout en renouvelant les points arrivés au TTL
-  const chain = [{ m: A, f: 0, name: nm(fromId) }, ...mids.filter(p => MIDM[p.id]).map(p => ({ m: MIDM[p.id], f: p.f, name: p.name })), { m: B, f: 1, name: nm(toId) }];
+  const chain = [{ m: A, f: 0, name: nm(fromId), lat: LA.lat, lon: LA.lon }, ...mids.filter(p => MIDM[p.id]).map(p => ({ m: MIDM[p.id], f: p.f, name: p.name, lat: p.lat, lon: p.lon })), { m: B, f: 1, name: nm(toId), lat: LB.lat, lon: LB.lon }];
   for (let t = hDep; t <= hArr; t = addMin(t, 60)) {
     const frac = clamp((tsToDate(t) - tsToDate(dep)) / ((tsToDate(arr) - tsToDate(dep)) || 1), 0, 1);
     if (dur <= 90 && !mids.length) {
       const iA = A.byTime.get(t), iB = B.byTime.get(t);
-      if (iA != null) seq.push({ hs: A.hs, i: iA, loc: nm(fromId) });
-      if (iB != null && B !== A) seq.push({ hs: B.hs, i: iB, loc: nm(toId) });
+      if (iA != null) seq.push({ hs: A.hs, i: iA, loc: nm(fromId), lat: LA.lat, lon: LA.lon });
+      if (iB != null && B !== A) seq.push({ hs: B.hs, i: iB, loc: nm(toId), lat: LB.lat, lon: LB.lon });
     } else {
       const pt = chain.reduce((b, c) => Math.abs(c.f - frac) < Math.abs(b.f - frac) ? c : b, chain[0]);
-      const i = pt.m.byTime.get(t); if (i != null) seq.push({ hs: pt.m.hs, i, loc: pt.name });
+      const i = pt.m.byTime.get(t); if (i != null) seq.push({ hs: pt.m.hs, i, loc: pt.name, lat: pt.lat, lon: pt.lon });
     }
   }
   if (!seq.length) return { err: 'Horaire hors de la plage de prévision disponible.' };
