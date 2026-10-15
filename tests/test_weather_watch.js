@@ -78,6 +78,12 @@ check('une révision compare une même échéance et est séparée d’une estim
   const r = m.ingest(t); assert(r.events.some(x => x.kind === 'prévision' && x.text.includes('09:00'))); assert(r.events.some(x => x.kind === 'estimation'));
   assert(!r.events.some(x => x.kind === 'observation'));
 });
+check('observation de station datée du futur : jamais présentée, petite dérive tolérée, âge jamais négatif', () => {
+  const obsAt = ms => build({ model: { ...model, obs: { id: 'TEST', name: 'Station fictive', t: new Date(NOW + ms).toISOString(), T: 8, vis: 3000 } } }).observation;
+  assert.equal(obsAt(3 * 3600e3), null, '+3 h'); assert.equal(obsAt(2 * 60e3), null, '+2 min');
+  assert.equal(obsAt(30e3).ageMin, 0, '+30 s : dérive tolérée'); assert.equal(obsAt(-10 * 60e3).ageMin, 10, 'témoin −10 min');
+  assert.equal(build({ model: { ...model, obs: { id: 'TEST', t: 'pas une date', T: 8 } } }).observation, null);
+});
 check('une station observée est datée et journalisée une seule fois par relevé', () => {
   const m = c.W.monitor(), s = { ...base(), observation: { id: 'TEST', name: 'Station fictive', t: '2026-10-12T06:00:00Z', T: 8, vis: 3000 } };
   assert.equal(m.ingest(s).events.filter(x => x.kind === 'observation').length, 1);

@@ -139,6 +139,12 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     a = await lab(s.p);
     const memOk = (() => { try { const o = JSON.parse(mem).carA; return Object.keys(o).sort().join(',') === 'T,at,sig' && !/lat|lon|\d{2}\.\d{3}/.test(mem); } catch (e) { return false; } })();
     check('3 · roulage suivi : mémoire thermique écrite (heure + température seulement, aucune position)', memOk, mem);
+    // 4a. frontière de péremption (politique unique 15 / 60 min) : 59 min encore valable, 61 min « Météo ancienne »
+    const aged = min => s.p.evaluate(min => { RAW[UI.loc].t = Date.now() - min * 60e3; M[UI.loc].mode = 'cache'; renderAll(); return Reliability.freshState(Reliability.ageMin(RAW[UI.loc].t)); }, min);
+    let fs59 = await aged(59); await s.settle(1); a = await lab(s.p);
+    check('4 · 59 min : encore valable (AGING), aucun motif « Météo ancienne »', fs59 === 'AGING' && !/Météo ancienne/.test(a.all), fs59 + ' · ' + a.all.slice(-200));
+    let fs61 = await aged(61); await s.settle(1); a = await lab(s.p);
+    check('4 · 61 min : périmée (STALE), motif « Météo ancienne (1 h) » affiché, même seuil que Météo et diagnostic', fs61 === 'STALE' && /Météo ancienne \(1 h\)/.test(a.all), fs61 + ' · ' + a.all.slice(-200));
     // 4. données anciennes puis hors connexion : l'analyse reste disponible, confiance réduite
     await s.p.evaluate(() => { RAW[UI.loc].t = Date.now() - 4 * 3600e3; M[UI.loc].mode = 'cache'; renderAll(); }); await s.settle(1); a = await lab(s.p);
     check('4 · données anciennes : confiance réduite et motif affiché', /Météo ancienne \(4 h\)/.test(a.all), a.all.slice(-500));

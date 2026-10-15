@@ -67,7 +67,8 @@ const Reliability = (() => {
   // AGING ≤ 60 min (à confirmer) · STALE au-delà · UNAVAILABLE sans âge connu. Les modules purs (decision, wxdesk, tyrelab, f1-pure,
   // weather-watch) en gardent une copie nommée, vérifiée par tests/test_reliability.js. Seuils volontairement distincts (autres notions) :
   // relais 20/35 min (santé du relais), station METAR ≤ 100 min, nowcast ≤ 30 min, bloc `current` du fournisseur −5/+20 min (moteur),
-  // conservation du cache 36 h.
+  // tolérance de la Tenue pour ce bloc −15/+90 min (sans bloc `current` valable, le moteur date le repli au DÉBUT de l'heure en cours,
+  // donc jusqu'à 59 min : le limiter à 20 min écarterait des valeurs horaires légitimes), conservation du cache 36 h.
   const FRESHNESS = Object.freeze({ freshMaxMin: 15, agingMaxMin: 60 });
   const freshState = age => typeof age !== 'number' || !Number.isFinite(age) || age < 0 ? 'UNAVAILABLE'
     : age <= FRESHNESS.freshMaxMin ? 'FRESH' : age <= FRESHNESS.agingMaxMin ? 'AGING' : 'STALE';
