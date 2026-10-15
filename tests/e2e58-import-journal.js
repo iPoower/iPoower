@@ -70,6 +70,26 @@ async function session(b, dev, T0) {
       check(dev + ' · après import V1 et rechargement : la réponse du matin est toujours là', !!st.e && st.e.grip === 'normal' && JSON.stringify(st.e.cond) === '["wet"]', JSON.stringify(st));
       check(dev + ' · le trajet du matin reste clos : aucun débrief redemandé', st.done && !st.pending.includes(key) && !st.form, JSON.stringify(st));
       check(dev + ' · l’état propre à l’appareil repart de zéro (aucun GPS restauré)', st.gps == null, JSON.stringify(st.gps));
+      // Aller-retour chiffré réel : les journaux météo entrent dans l'export de l'interface.
+      await p.evaluate(() => {
+        const at = Date.now();
+        lsSet('twrc.reports.v1', JSON.stringify([{ kind: 'fog', at, lat: 48.7, lon: 2.2, place: 'test' }]));
+        lsSet('twrc.shadow.v1', JSON.stringify([{ at, loc: 'test', v1: 0, v2: 1, obs: 1, src: 'utilisateur', independent: true }]));
+        document.getElementById('settings').open = true; renderSettings(true);
+      });
+      await p.fill('#bkPw', PW);
+      const [download] = await Promise.all([p.waitForEvent('download'), p.click('[data-act="bk-export"]')]);
+      const exported = fs.readFileSync(await download.path());
+      check(dev + ' · export météo chiffré : aucun journal en clair', !exported.toString().includes('independent') && !exported.toString().includes('48.7'));
+      await p.evaluate(() => { lsSet('twrc.reports.v1', '[]'); lsSet('twrc.shadow.v1', '[]'); });
+      await Promise.all([p.waitForNavigation({ timeout: 60000 }), (async () => {
+        await p.setInputFiles('#bkFile', { name: 'roundtrip-weather.json', mimeType: 'application/json', buffer: exported });
+        for (let i = 0; i < 20; i++) { await p.clock.runFor(500); await p.waitForTimeout(100); }
+      })()]);
+      await s.unlock();
+      const weather = await p.evaluate(() => backupWeatherState());
+      check(dev + ' · import et reload : signalement et prévision antérieure restaurés', weather.reports.length === 1 && weather.reports[0].kind === 'fog'
+        && weather.shadow.some(e => e.src === 'utilisateur' && e.v2 === 1 && e.independent === true), JSON.stringify(weather));
       // Un refus au milieu de l'import ne peut annoncer une réussite ni mélanger les états.
       // Le rechargement referme ce panneau : le rouvrir par l'interface avant les actions suivantes.
       if (!await p.$eval('#settings', d => d.open)) await p.click('#settings > summary');

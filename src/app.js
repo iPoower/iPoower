@@ -1726,13 +1726,16 @@ async function bkKey(pass, salt, it, use) {
 }
 const bkMsg = t => { const e = $('#bkMsg'); if (e) e.textContent = t; };
 function bkPass() { const v = (($('#bkPw') || {}).value || '').trim(); return v || lsGet('twrc.key') || ''; }
+function backupWeatherState() {
+  return { reports: JSON.parse(lsGet('twrc.reports.v1') || '[]'), shadow: JSON.parse(lsGet('twrc.shadow.v1') || '[]') };
+}
 async function backupExport() {
   const pass = bkPass();
   if (pass.length < 8) { bkMsg('Entre un code d’au moins 8 caractères : il sera demandé à l’import.'); return; }
   if (!crypto || !crypto.subtle) { bkMsg('Chiffrement indisponible sur ce navigateur.'); return; }
   bkMsg('Chiffrement…');
   try {
-    const data = Backup.make({ settings: S, view: UI.view, context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL, at: new Date().toISOString() });
+    const data = Backup.make({ settings: S, view: UI.view, context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL, weather: backupWeatherState(), at: new Date().toISOString() });
     const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)), it = 600000;
     const key = await bkKey(pass, salt, it, 'encrypt');
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(data))));
@@ -1746,7 +1749,7 @@ async function backupExport() {
     }
     if (!done) { const u = URL.createObjectURL(file), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
     lsSet('twrc.lastbackup', day);
-    bkMsg(`✅ Sauvegarde V2 prête (${Math.max(1, Math.round(txt.length / 1024))} Ko) · contexte durable inclus.`);
+    bkMsg(`✅ Sauvegarde V2 prête (${Math.max(1, Math.round(txt.length / 1024))} Ko) · contexte, signalements et journal météo inclus.`);
     const p = $('#bkSec .sub b'); if (p) p.textContent = fmtDay(day);
   } catch (e) { bkMsg('Échec de la sauvegarde : ' + (e.message || e)); }
 }
@@ -1777,7 +1780,9 @@ async function backupImport(f) {
     data = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(o.i) }, key, b64(o.c))));
   } catch (e) { bkMsg('Code incorrect : entre le code utilisé lors de la sauvegarde.'); return; }
   // le journal des trajets de ce téléphone (ressenti conducteur) est fusionné, jamais effacé par l'import
-  const plan = Backup.restorePlan(data, Date.now(), { context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL, calOrigins: S.calOrigins });
+  let plan;
+  try { plan = Backup.restorePlan(data, Date.now(), { context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL, calOrigins: S.calOrigins, weather: backupWeatherState() }); }
+  catch (e) { bkMsg('Import non appliqué : journal météo local à vérifier. Tes données restent conservées.'); return; }
   if (!plan) { bkMsg('Sauvegarde incomplète.'); return; }
   const when = new Date(data.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const version = data.v >= 2 ? 'V2' : 'V1';

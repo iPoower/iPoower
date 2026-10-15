@@ -1,5 +1,5 @@
 // Sauvegarde V2 : seulement l'état utilisateur durable.
-// Les observations physiques (GPS), trajets actifs, caches réseau et diagnostics runtime
+// Les positions GPS, trajets actifs, caches réseau et diagnostics runtime
 // restent propres à l'appareil courant et ne sont jamais transportés.
 'use strict';
 const Backup = (() => {
@@ -11,7 +11,9 @@ const Backup = (() => {
   const local = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?$/.test(v) ? v : null;
   const point = (v, fallback) => obj(v) && Number.isFinite(v.lat) && Number.isFinite(v.lon) && Math.abs(v.lat) <= 90 && Math.abs(v.lon) <= 180 ? {
     id: text(v.id, 120) || fallback, name: text(v.name || v.label, 220) || 'Lieu', address: text(v.address, 320) || '',
-    lat: +v.lat, lon: +v.lon, provider: text(v.provider, 80) || '', precision: text(v.precision, 80) || ''
+    lat: +v.lat, lon: +v.lon, provider: text(v.provider, 80) || '', precision: text(v.precision, 80) || '',
+    deptCode: text(v.deptCode, 3) || '', dept: text(v.dept, 100) || '', city: text(v.city, 120) || '',
+    cityCode: text(v.cityCode, 5) || '', postcode: text(v.postcode, 5) || ''
   } : null;
 
   function dayContext(v) {
@@ -25,7 +27,8 @@ const Backup = (() => {
         placeId: text(n.placeId, 120), source: ['user', 'manual', 'calendar', 'live', 'pending'].includes(n.source) ? n.source : 'pending',
         confirmedAt: n.confirmedAt, expiresAt: n.expiresAt, originId: text(n.originId, 120),
         originPoint: point(n.originPoint, 'manual-origin'), destinationPoint: point(n.destinationPoint, 'manual-destination'),
-        tripKey: text(n.tripKey), dep: local(n.dep), createdAt: stamp(n.createdAt), updatedAt: stamp(n.updatedAt)
+        tripKey: text(n.tripKey), dep: local(n.dep), createdAt: stamp(n.createdAt), updatedAt: stamp(n.updatedAt),
+        ...(/^cal-[0-9a-f]{32}$/.test(n.calendarEventId || '') ? { calendarEventId: n.calendarEventId } : {})
       } : null,
       lastConfirmedPlace: p && text(p.placeId, 120) && stamp(p.at) != null ? { placeId: text(p.placeId, 120), at: p.at, source: 'manual' } : null,
       departedAt: stamp(v.departedAt), arrivedAt: stamp(v.arrivedAt),
@@ -139,14 +142,45 @@ const Backup = (() => {
     });
     return out;
   }
-  function make({ settings, view, context: state, tyreTherm: therm, tripCancel: cancel, at = new Date().toISOString() } = {}) {
+  // Champs métier connus uniquement. Un format inconnu fait échouer l'export/import,
+  // sans produire une sauvegarde annoncée complète après une perte silencieuse.
+  function weather(v) {
+    v = v == null ? {} : v;
+    if (!obj(v) || v.v != null && v.v !== 1) throw new Error('Format du journal météo inconnu');
+    const rows = (name, limit) => {
+      const a = v[name] == null ? [] : v[name];
+      if (!Array.isArray(a) || a.length > limit) throw new Error('Journal météo incomplet : ' + name);
+      return a;
+    };
+    const reports = rows('reports', 30).map(r => {
+      if (!obj(r) || !['fog', 'lowvis', 'rain', 'wet', 'snow', 'ice', 'slippery'].includes(r.kind) || stamp(r.at) == null
+        || !Number.isFinite(r.lat) || !Number.isFinite(r.lon) || Math.abs(r.lat) > 90 || Math.abs(r.lon) > 180) throw new Error('Signalement météo invalide');
+      return { kind: r.kind, at: r.at, lat: r.lat, lon: r.lon, place: text(r.place) };
+    });
+    const shadow = rows('shadow', 200).map(e => {
+      const level = x => Number.isInteger(x) && x >= 0 && x <= 3;
+      if (!obj(e) || stamp(e.at) == null || !level(e.v1) || !level(e.v2) || e.obs != null && ![0, 1].includes(e.obs)) throw new Error('Journal de validation météo invalide');
+      return { at: e.at, loc: text(e.loc), v1: e.v1, v2: e.v2,
+        ...(e.obs != null ? { obs: e.obs } : {}), ...(Number.isInteger(e.trust) && e.trust >= 0 && e.trust <= 2 ? { trust: e.trust } : {}),
+        ...(typeof e.contra === 'boolean' ? { contra: e.contra } : {}),
+        ...(['utilisateur', 'station'].includes(e.src) ? { src: e.src } : {}),
+        ...(typeof e.independent === 'boolean' ? { independent: e.independent } : {}) };
+    });
+    return { v: 1, reports, shadow };
+  }
+  function mergeWeather(a, b) {
+    const left = weather(a), right = weather(b);
+    const merge = (key, limit) => [...new Map([...left[key], ...right[key]].map(e => [JSON.stringify(e), e])).values()].sort((a, b) => a.at - b.at).slice(-limit);
+    return { v: 1, reports: merge('reports', 30), shadow: merge('shadow', 200) };
+  }
+  function make({ settings, view, context: state, tyreTherm: therm, tripCancel: cancel, weather: wx, at = new Date().toISOString() } = {}) {
     if (!obj(settings)) throw new Error('réglages absents');
     const epoch = Number.isFinite(Date.parse(at)) ? Date.parse(at) : Date.now();
     const savedSettings = clone(settings);
     if ('calOrigins' in savedSettings) savedSettings.calOrigins = CalendarOrigin.clean(savedSettings.calOrigins, epoch);
     return {
       app: 'twrc', v: VERSION, at, settings: savedSettings, view: text(view, 40) || null,
-      durable: { context: context(state, epoch), tyreTherm: tyreTherm(therm), tripCancel: tripCancel(cancel) }
+      durable: { context: context(state, epoch), tyreTherm: tyreTherm(therm), tripCancel: tripCancel(cancel), weather: weather(wx) }
     };
   }
 
@@ -183,6 +217,13 @@ const Backup = (() => {
     const remove = [...CONTEXT_KEYS, ...DURABLE_KEYS, ...DERIVED_KEYS];
     const cur = obj(phone) && obj(phone.context) ? context(phone.context, now) : null;
     const curCancel = obj(phone) ? tripCancel(phone.tripCancel) : {};
+    if (obj(data.durable) && data.durable.weather != null || obj(phone) && phone.weather != null) {
+      let wx;
+      try { wx = mergeWeather(data.durable && data.durable.weather, phone && phone.weather); }
+      catch (e) { return null; }
+      writes['twrc.reports.v1'] = JSON.stringify(wx.reports);
+      writes['twrc.shadow.v1'] = JSON.stringify(wx.shadow);
+    }
     let kept = 0;
     if (data.v >= 2 && obj(data.durable)) {
       const ctx = context(data.durable.context, now);

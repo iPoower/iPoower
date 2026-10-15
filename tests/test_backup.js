@@ -35,6 +35,32 @@ check('V2 conserve le contexte métier sans observation physique', () => {
   assert(!JSON.stringify(d.durable.context).includes('"lat"')); assert(!JSON.stringify(d.durable.context).includes('"lon"'));
   assert.equal(d.durable.tyreTherm.car1.T, 18.3); assert(d.durable.tripCancel['work-2026-10-07']); assert(!d.durable.tripCancel.bad);
 });
+check('aller-retour : identifiant Agenda et métadonnées administratives des points conservés', () => {
+  const context = json(state), next = context.dayContext.nextDestination;
+  next.source = 'calendar'; next.calendarEventId = 'cal-' + 'a'.repeat(32);
+  next.destinationPoint = { id: 'manual-destination', name: 'Lieu B', lat: 48.7, lon: 2.2,
+    deptCode: '74', dept: 'Département test', city: 'Ville test', cityCode: '74001', postcode: '74000' };
+  const archive = B.make({ settings: {}, context, at: new Date(at).toISOString() });
+  const plan = B.restorePlan(archive, at + 1000), restored = JSON.parse(plan.writes['twrc.context.v1']).dayContext.nextDestination;
+  assert.equal(restored.calendarEventId, next.calendarEventId);
+  for (const key of ['deptCode', 'dept', 'city', 'cityCode', 'postcode']) assert.equal(restored.destinationPoint[key], next.destinationPoint[key]);
+});
+check('aller-retour : signalements et journal de validation préservés sans champs arbitraires', () => {
+  const weather = { reports: [{ kind: 'fog', at: at - 1000, lat: 48.7, lon: 2.2, place: 'test', unwanted: 'private-extra' }],
+    shadow: [{ at: at - 1000, loc: 'test', v1: 0, v2: 1, obs: 1, src: 'utilisateur', independent: true, unwanted: 'private-extra' }] };
+  const archive = B.make({ settings: {}, weather, at: new Date(at).toISOString() });
+  const restored = B.restorePlan(archive, at + 1000);
+  const reports = JSON.parse(restored.writes['twrc.reports.v1']), shadow = JSON.parse(restored.writes['twrc.shadow.v1']);
+  assert.equal(reports[0].kind, 'fog'); assert.equal(shadow[0].v2, 1); assert.equal(shadow[0].independent, true);
+  assert(!JSON.stringify(archive).includes('private-extra'));
+  assert.deepEqual(json(weather.reports[0]), { kind: 'fog', at: at - 1000, lat: 48.7, lon: 2.2, place: 'test', unwanted: 'private-extra' });
+  const phone = { weather: { reports: [{ kind: 'rain', at, lat: 48.7, lon: 2.2 }], shadow: [{ at, loc: 'test', v1: 0, v2: 0 }] } };
+  const merged = B.restorePlan(archive, at + 1000, phone);
+  assert.equal(JSON.parse(merged.writes['twrc.reports.v1']).length, 2);
+  assert.equal(JSON.parse(merged.writes['twrc.shadow.v1']).length, 2);
+  const legacy = B.restorePlan({ app: 'twrc', v: 2, settings: {}, durable: {} }, at, phone);
+  assert.equal(JSON.parse(legacy.writes['twrc.reports.v1'])[0].kind, 'rain', 'ancien export sans météo : le téléphone conserve ses observations');
+});
 check('restauration V2 remplace le canonique et purge les états dérivés', () => {
   const d = B.make({ settings: { configured: 0, x: 1 }, view: 'meteo', context: state, tyreTherm: {}, tripCancel: {}, at: new Date(at).toISOString() });
   const p = B.restorePlan(d, at + 1000); assert(p);
@@ -116,6 +142,9 @@ check('dernier roulage déclaré invalide : jamais restauré comme historique au
 });
 check('payload invalide refusé', () => {
   assert.equal(B.restorePlan(null, at), null); assert.equal(B.restorePlan({ app: 'other', settings: {} }, at), null); assert.equal(B.restorePlan({ app: 'twrc' }, at), null);
+  assert.throws(() => B.make({ settings: {}, weather: { reports: {}, shadow: [] } }), /Journal météo/);
+  assert.equal(B.restorePlan({ app: 'twrc', v: 2, settings: {}, durable: { weather: { v: 999 } } }, at), null);
+  assert.equal(B.restorePlan({ app: 'twrc', v: 2, settings: {}, durable: { weather: { reports: [{ kind: 'fog' }] } } }, at), null);
 });
 check('intégration build et interface utilise le module V2', () => {
   const build = fs.readFileSync(path.resolve(__dirname, '../tools/build.js'), 'utf8'), app = fs.readFileSync(path.resolve(__dirname, '../src/app.js'), 'utf8');
