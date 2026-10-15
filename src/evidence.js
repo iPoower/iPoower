@@ -27,17 +27,23 @@ const EV_CFG = {
   community: { km: 7, min: 15, n: 3, farKm: 30, farMin: 45 }
 };
 const EV_TRUST = ['faible', 'moyenne', 'élevée'];
+// Prévision reçue il y a plus de 60 min = périmée : même politique que le poste Météo (Reliability.FRESHNESS.agingMaxMin, copie vérifiée par test,
+// ce module tournant aussi dans le relais sans Reliability). L'âge d'une OBSERVATION de station (90 min) est une autre grandeur.
+const EV_STALE_AFTER_MIN = 60, EV_OBS_RECENT_MIN = 90;
 function evidenceEngine(input) {
   const inp = input || {}, now = inp.now, C = Object.assign({}, EV_CFG, inp.cfg || {});
   const fin = v => typeof v === 'number' && Number.isFinite(v), n = v => fin(v) ? v : null;
   const R = Math.PI / 180, km = (a, b) => { const h = Math.sin((b.lat - a.lat) * R / 2) ** 2 + Math.cos(a.lat * R) * Math.cos(b.lat * R) * Math.sin((b.lon - a.lon) * R / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); };
   const step = (tab, v) => tab.find(([lim]) => v <= lim)[1];
+  // âge d'une observation : null si datée du futur (horloge ou relais fautif, petite dérive de 1 min tolérée) ; jamais négatif
+  const obsAge = o => { const a = (now - Date.parse(o.t)) / 60e3; return Number.isFinite(a) && a >= -1 ? Math.max(0, a) : null; };
+  const obsRecent = o => { const a = obsAge(o); return a != null && a <= EV_OBS_RECENT_MIN; };
   const fmtVis = v => v >= 10000 ? '> 10 km' : v >= 1000 ? (Math.round(v / 100) / 10).toString().replace('.', ',') + ' km' : Math.round(v / 10) * 10 + ' m';
   const visLv = v => v == null ? null : v < C.vis[0] ? 3 : v < C.vis[1] ? 2 : v < C.vis[2] ? 1 : 0;
   const ceilOf = raw => { let b = null; String(raw || '').replace(/\b(FEW|SCT|BKN|OVC|VV)(\d{3})\b/g, (_, k, h) => { const ft = +h * 100; if (b == null || ft < b) b = ft; }); return b; };
   const locTrust = (inp.location && inp.location.trust) || 'Indisponible';
   const locCap = { Confirmée: 2, Fiable: 2, Estimée: 1, Incertaine: 0, Indisponible: 0 }[locTrust] ?? 0;
-  const fresh = inp.fresh || {}, stale = fresh.offline || (fin(fresh.modelAgeMin) && fresh.modelAgeMin > 90);
+  const fresh = inp.fresh || {}, stale = fresh.offline || (fin(fresh.modelAgeMin) && fresh.modelAgeMin > EV_STALE_AFTER_MIN);
   const pts = (inp.points || []).filter(p => p && p.x && fin(p.ms)).sort((a, b) => a.ms - b.ms);
   if (!pts.length) return null;
   const stations = (inp.stations || []).filter(s => s && fin(s.lat) && fin(s.lon));
@@ -71,8 +77,8 @@ function evidenceEngine(input) {
     // A — observations : distance × âge × altitude × échéance
     stations.forEach(st => {
       const o = (st.obs || []).filter(o => o && fin(Date.parse(o.t))).sort((a, b) => Date.parse(b.t) - Date.parse(a.t))[0]; if (!o) return;
-      const rawAge = (now - Date.parse(o.t)) / 60e3; if (rawAge < -1) return;   // observation datée du futur (horloge ou relais fautif) : ignorée, jamais « à l'instant »
-      const d = km(p, st), age = Math.max(0, rawAge), w0 = step(C.dist, d) * step(C.age, age) * (fin(st.elev) && fin(p.elev) && Math.abs(st.elev - p.elev) > C.altDiff ? C.altFactor : 1);
+      const age = obsAge(o); if (age == null) return;   // observation datée du futur : ignorée, jamais « à l'instant »
+      const d = km(p, st), w0 = step(C.dist, d) * step(C.age, age) * (fin(st.elev) && fin(p.elev) && Math.abs(st.elev - p.elev) > C.altDiff ? C.altFactor : 1);
       const w = w0 * Math.max(0, 1 - lead / C.lead); if (w <= 0.02) return;
       const fg = /FG/.test(o.wx || ''), br = /BR/.test(o.wx || ''), ceil = ceilOf(o.raw), osp = fin(o.T) && fin(o.Td) ? o.T - o.Td : null;
       let lv = visLv(n(o.vis)) || 0;
@@ -124,7 +130,7 @@ function evidenceEngine(input) {
   /* ---------- autres phénomènes : valeur, niveau, confiance ---------- */
   const xs = pts.map(p => p.x);
   const min = k => { const v = xs.map(x => n(x[k])).filter(v => v != null); return v.length ? Math.min(...v) : null; }, max = k => { const v = xs.map(x => n(x[k])).filter(v => v != null); return v.length ? Math.max(...v) : null; };
-  const obsT = stations.map(s => (s.obs || [])[0]).filter(o => o && fin(o.T) && (now - Date.parse(o.t)) / 60e3 <= 90);
+  const obsT = stations.map(s => (s.obs || [])[0]).filter(o => o && fin(o.T) && obsRecent(o));
   const tNow = n(pts[0].x.T), tAgree = obsT.length && tNow != null ? Math.min(...obsT.map(o => Math.abs(o.T - tNow))) : null;
   const tTrust = Math.max(0, (tAgree == null ? 1 : tAgree <= 2 ? 2 : 1) - (stale ? 1 : 0));
   const Pmax = Math.max(0, ...xs.map(x => n(x.Pl) ?? n(x.P) ?? 0)), ppMax = max('pp');
@@ -144,7 +150,7 @@ function evidenceEngine(input) {
     { id: 'loc', icon: '📍', label: 'Localisation', value: locTrust, lv: locCap === 0 ? 2 : locCap === 1 ? 1 : 0, trust: locCap, why: 'plafonne la confiance des phénomènes locaux' }
   ].map(x => ({ ...x, trustTxt: EV_TRUST[Math.max(0, Math.min(2, x.trust))] }));
   /* ---------- axes de confiance séparés ---------- */
-  const nObs = stations.filter(s => (s.obs || []).some(o => (now - Date.parse(o.t)) / 60e3 <= 90)).length;
+  const nObs = stations.filter(s => (s.obs || []).some(obsRecent)).length;
   const axes = {
     data: stale ? 'dégradée (données anciennes ou hors ligne)' : 'bonne',
     models: inp.ensemble ? (inp.ensemble.spread || 'disponible') : 'non mesuré (un seul modèle déterministe)',
