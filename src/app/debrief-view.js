@@ -11,9 +11,12 @@ function debriefDeparture(t, s) {
   const fetched = seq.map(q => sources.find(c => c.m && c.m.hs === q.hs && Number.isFinite(c.at)));
   const fetchedAt = fetched.length && fetched.every(Boolean) ? Math.min(...fetched.map(c => c.at)) : null;
   const flags = new Set();
-  hours.forEach(x => {
+  seq.forEach(q => {
+    const x = q.hs && q.hs[q.i]; if (!x) return;
     if ((x.Pl ?? x.P ?? 0) >= 0.1) flags.add('rain');
-    if ((x.RH ?? 0) >= 95) flags.add('wet');
+    const saturated = Number.isFinite(x.RH) && x.RH >= ROAD_POLICY.humidRH
+      && (x.Td == null || Number.isFinite(x.T) && x.T - x.Td < ROAD_POLICY.humidSpreadC);
+    if (roadWet(q.hs, q.i) || saturated) flags.add('wet');
     if (x.vis != null && x.vis < 1000 || [45, 48].includes(x.code)) flags.add('fog');
     if ((x.snow || 0) > 0.05 || [71, 73, 75, 77, 85, 86].includes(x.code)) flags.add('snow');
     if (x.ice && x.ice.level >= 1 || [56, 57, 66, 67].includes(x.code)) flags.add('ice');

@@ -6,7 +6,8 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = {}; vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tirespecs.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tyrestate.js'), 'utf8') + source + '\nthis.lab = tyreLab; this.lastDrive = tyreLabLastDrive; this.coldCombine = tlColdCombine; this.treadWet = tlTreadWet;', ctx);
   const plain = v => JSON.parse(JSON.stringify(v));
-  const lab = input => plain(ctx.lab(plain(input)));
+  // Ces scénarios thermiques utilisent une météo reçue depuis 5 min, sauf cas d'âge explicite.
+  const lab = input => plain(ctx.lab({ ageMin: 5, ...plain(input) }));
   const ts = (h, day = '2026-10-06') => `${day}T${h}`;
   // 36 h de météo homogène à partir de la veille 18:00 ; chaque scénario modifie les champs utiles
   const H = (base = {}, from = '2026-10-05T18:00', n = 40) => Array.from({ length: n }, (_, k) => ({
@@ -93,7 +94,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const ice = lab({ now: ts('15:00'), car: car(), hours: H({ T: -2, Tr: -3, P: 1, Pl: 1 }), drive: drive('14:00', 'route') }); assert.match(L(ice), /Aucune distance de freinage chiffrée/);
     const worn = lab({ now: ts('15:00'), car: car({ tread: 1.2 }), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route') }); assert.match(L(worn), /sous le minimum légal/);
     const old = lab({ now: ts('15:00'), car: car(), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route'), ageMin: 240 }); assert.match(L(old), /Météo ancienne \(4 h\)/);
-    const reported = lab({ now: ts('15:00'), car: car(), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route'), reports: [{ kind: 'wet', at: ts('14:50') }] }); assert.match(L(reported), /signalée par vous/);
+    const reported = lab({ now: ts('15:00'), car: car(), location: { lat: 48.7, lon: 2.2 }, hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route'), reports: [{ kind: 'wet', at: ts('14:50'), lat: 48.7, lon: 2.2 }] }); assert.match(L(reported), /signalée par vous/);
   });
   test('2 °C chauffe moins vite que 20 °C (même pneu, même route)', () => {
     const cold = lab({ now: ts('10:00'), car: car(), hours: H({ T: 2, Tr: 2 }), drive: drive('09:50', 'route') }), warm = lab({ now: ts('10:00'), car: car(), hours: H({ T: 20, Tr: 20 }), drive: drive('09:50', 'route') });
@@ -275,6 +276,16 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.notDeepEqual(old, fresh, '61 min : incertitude et confiance dégradées');
     assert(/Météo ancienne/.test(JSON.stringify(old)), 'le motif est affiché'); assert(!/Météo ancienne/.test(JSON.stringify(edge)));
   });
+  test('âge météo inconnu ou invalide : jamais récent, confiance et incertitude dégradées', () => {
+    const base = { now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), drive: drive('10:00', 'route') };
+    const fresh = plain(ctx.lab({ ...base, ageMin: 5 }));
+    for (const ageMin of [null, undefined, -1, NaN, Infinity]) {
+      const r = plain(ctx.lab({ ...base, ageMin }));
+      assert.equal(r.confidence.axes.find(x => x[0] === 'Météo')[1], 'âge inconnu');
+      assert(r.confidence.reasons.some(x => /Âge météo inconnu/.test(x)));
+      assert(r.thermal.range[1] - r.thermal.range[0] > fresh.thermal.range[1] - fresh.thermal.range[0]);
+    }
+  });
   test('données manquantes ou anciennes : confiance plus faible ; GPS et données complètes : moyenne au plus (aucun capteur), axes séparés', () => {
     const full = lab({ now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), drive: drive('10:00', 'route'), ageMin: 10 });
     const poor = lab({ now: ts('10:20'), car: car({ brand: '', model: '', press: '', tread: null }), hours: H(), ageMin: 240 });
@@ -299,12 +310,21 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert(s.grip.mu < a.grip.mu && a.grip.mu <= w.grip.mu);
   });
   test('signalement terrain : verglas signalé aggrave la surface, brouillard = humidité accrue seulement', () => {
-    const ice = lab({ now: ts('07:00'), car: car(), hours: H({ T: 3, Tr: 2 }), reports: [{ kind: 'ice', at: ts('06:50') }] });
+    const ice = lab({ now: ts('07:00'), car: car(), location: { lat: 48.7, lon: 2.2 }, hours: H({ T: 3, Tr: 2 }), reports: [{ kind: 'ice', at: ts('06:50'), lat: 48.7, lon: 2.2 }] });
     assert.equal(ice.env.surf, 'ice'); assert.equal(ice.grip.word, 'Très dégradé'); assert(ice.thermal.why.some(x => /signalée par vous/.test(x)));
-    const fog = lab({ now: ts('07:00'), car: car(), hours: H({ T: 8, Tr: 8 }), reports: [{ kind: 'fog', at: ts('06:55') }] });
+    const fog = lab({ now: ts('07:00'), car: car(), location: { lat: 48.7, lon: 2.2 }, hours: H({ T: 8, Tr: 8 }), reports: [{ kind: 'fog', at: ts('06:55'), lat: 48.7, lon: 2.2 }] });
     assert.equal(fog.env.surf, 'damp');
-    const old = lab({ now: ts('09:00'), car: car(), hours: H({ T: 8, Tr: 8 }), reports: [{ kind: 'ice', at: ts('06:50') }] });
+    const old = lab({ now: ts('09:00'), car: car(), location: { lat: 48.7, lon: 2.2 }, hours: H({ T: 8, Tr: 8 }), reports: [{ kind: 'ice', at: ts('06:50'), lat: 48.7, lon: 2.2 }] });
     assert.equal(old.env.surf, 'dry');
+  });
+  test('terrain : signalement lointain, futur ou sans lieu ne contamine pas le lieu météo courant', () => {
+    const location = { lat: 48.7, lon: 2.2 }, base = { now: ts('10:00'), car: car(), hours: H(), location };
+    const result = report => lab({ ...base, reports: [report] }).env.surf;
+    assert.equal(result({ kind: 'ice', at: ts('09:55'), ...location }), 'ice', 'témoin local récent');
+    assert.equal(result({ kind: 'ice', at: ts('09:55'), lat: 40, lon: 1 }), 'dry');
+    assert.equal(result({ kind: 'ice', at: ts('10:30'), ...location }), 'dry');
+    assert.equal(result({ kind: 'ice', at: ts('09:55') }), 'dry');
+    assert.equal(lab({ ...base, location: null, reports: [{ kind: 'ice', at: ts('09:55'), ...location }] }).env.surf, 'dry');
   });
   test('déterminisme : mêmes entrées, même résultat, entrées intactes', () => {
     const input = { now: ts('10:20'), car: car(), hours: H(), drive: drive('10:00', 'route'), history: { at: ts('09:00'), T: 25 } };

@@ -61,15 +61,19 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), { quiet = false 
     const state = D.reply(arrived(['fog']), 'aller', { conditions: [], grip: 'normal' }, at + 2000), stats = D.stats(state, at + 2000);
     assert.equal(stats.answered, 1); assert.equal(stats.counts.match, 1); assert.equal(stats.counts.missed, 0);
   });
-  check('météo absente, âge inconnu ou > 90 min : prévision non comparable', () => {
+  check('météo absente, âge inconnu ou > 60 min : prévision non comparable', () => {
     for (const override of [{ known: false }, { fetchedAt: null }, { fetchedAt: at - 121 * 60e3 }]) {
       const s = departure(); Object.assign(s.prediction, override); const state = arrived([], s);
       assert.equal(D.compare(state.entries[0]).kind, 'unknown'); assert.equal(D.stats(state, at + 1000).comparable, 0);
     }
   });
   check('la limite de fraîcheur est exacte, hors ligne seul ne dégrade pas une prévision fraîche', () => {
-    const s = departure(); s.prediction.fetchedAt = s.at - 90 * 60e3; s.prediction.offline = true;
+    const s = departure(); s.prediction.fetchedAt = s.at - 60 * 60e3; s.prediction.offline = true;
     assert.equal(D.compare(arrived([], s).entries[0]).kind, 'match');
+    for (const age of [61, 75, 90]) {
+      s.prediction.fetchedAt = s.at - age * 60e3;
+      assert.equal(D.compare(arrived([], s).entries[0]).kind, 'unknown', 'prévision ancienne à ' + age + ' min');
+    }
   });
   check('cinq états thermiques dont signal chaud 3 et très chaud 4, confiance limitée à faible/moyenne', () => {
     for (const s of [0, 1, 2, 3, 4]) for (const conf of ['faible', 'moyenne']) assert.equal(D.thermal({ s, range: [10, 30], conf }).s, s);
@@ -139,3 +143,18 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), { quiet = false 
 }
 if (require.main === module) { const n = runTests(); console.log(`${n}/${n} scénarios OK`); }
 module.exports = { sourcePath, runTests };
+
+if (require.main === module) {
+  const at = Date.parse('2026-10-07T08:00:00Z');
+  const FixedDate = class extends Date { constructor(...a) { super(...(a.length ? a : [at])); } static now() { return at; } };
+  const hours = [{ t: '2026-10-07T09:00', T: 20, Td: 14, RH: 70, P: 1, Pl: 1 }, { t: '2026-10-07T10:00', T: 20, Td: 14, RH: 70, P: 0, Pl: 0 }];
+  const model = { id: 'test', hs: hours }, c = { Date: FixedDate, Intl, Math, JSON, Set, Map,
+    DEMO: { on: false }, labCar: () => ({ id: 'car', name: 'Auto test' }), M: { test: model }, RAW: { test: { t: at - 300000 } },
+    MIDM: {}, MIDP: {}, CALM: {}, LEGM: {}, USER_STORE: { state: { debrief: null } }, EV_FLAG: () => 'off', tripLab: () => null, offlineNow: () => false };
+  vm.createContext(c);
+  const app = fs.readFileSync(require('node:path').resolve(__dirname, '../src/app/debrief-view.js'), 'utf8').split('function closeTrip(')[0];
+  vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(sourcePath, 'utf8') + app + ';this.depart=debriefDeparture;', c);
+  c.depart({ key: 'trip-test', seq: [{ hs: hours, i: 1 }] }, { at });
+  assert(c.USER_STORE.state.debrief.active.prediction.conditions.includes('wet'), 'la pluie passée qui humidifie la route figure dans la prévision figée');
+  console.log('✅ Débrief : snapshot humide après pluie passée, même politique que le verdict du trajet');
+}

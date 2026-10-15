@@ -37,7 +37,7 @@ function labInput(car) {
   const m = CX && CX.m, tz = (m && m.tz) || 'Europe/Paris';
   if (!m) return { now: nowIn(tz), car, hours: [], state: tyreStateOf(car) };
   const now = DEMO.on ? m.nowStr.slice(0, 16) : nowIn(tz);
-  const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Reliability.ageMin(raw.t);
+  const raw = RAW[UI.loc], ageMin = DEMO.on ? 0 : !raw || !raw.t ? null : Reliability.ageMin(raw.t);
   let drive = null;
   if (!DEMO.on && LIVE.phase === 'active' && LIVE.startFix) {
     const sf = LIVE.startFix, geo = Number.isFinite(sf.lat), cand = [FIX, LIVE.lastFix].find(f => f && f.ts > sf.ts), lf = geo && cand ? cand : null;
@@ -60,8 +60,8 @@ function labInput(car) {
     trip = { label: t0.label, km, kind: v == null ? null : v < 45 ? 'ville' : v < 80 ? 'route' : 'autoroute', points: t0.points.map(p => ({ t: p.t, f: p.f, km: p.km, name: p.name, x: p.x })) };
   }
   const h = ttLoad()[car.id], state = tyreStateOf(car);
-  const reports = reportsLive().map(r => ({ kind: r.kind, at: localTs(r.at, tz) }));
-  return { now, car, hours: m.hs.slice(Math.max(0, m.nowI - 36), m.nowI + 40), history: h && h.at <= now && tyreMemoryValid(h, state) ? h : null, state, drive, trip, ageMin, reports,
+  const reports = reportsLive().map(r => ({ kind: r.kind, at: localTs(r.at, tz), lat: r.lat, lon: r.lon }));
+  return { now, car, location: curLoc(), hours: m.hs.slice(Math.max(0, m.nowI - 36), m.nowI + 40), history: h && h.at <= now && tyreMemoryValid(h, state) ? h : null, state, drive, trip, ageMin, reports,
     db: car.tire && (car.tire.brand || car.tire.model) ? findTire(car.tire.brand, car.tire.model) : null };
 }
 // Gomme estimée le long d'un trajet du briefing (mêmes points datés que la météo du trajet) : tyreLab pur, aucune donnée nouvelle.
