@@ -54,7 +54,7 @@ function diagRows(forCopy) {
       const ax = a => `${a.model || 'modèle ?'} · ${a.size || 'dimension ?'} · DOT ${a.dot || '?'} · ${a.tread != null ? a.tread + ' mm' : 'profondeur ?'} · ${a.press != null ? a.press + ' bar' : 'pression ?'}`;
       return [['Véhicule (Analyse)', st.vehicle.name], ['Monte active', st.active ? st.active.label : 'inconnue'], ['Avant', ax(st.axles.front)], ['Arrière', ax(st.axles.rear)],
         ['Profil pneu', `${st.profile.kind} · ${st.profile.label}`], ['Données pneu', st.quality.map(q => q.st + ' ' + q.k).join(' · ')], ['Mémoire thermique', (() => { const h = ttLoad()[car.id]; return !h ? 'aucune' : tyreMemoryValid(h, st) ? `valide · ${h.at}` : 'ignorée (autre monte ou ancienne version)'; })()]]; })(),
-    ['Moteur v2 (preuves)', (() => { const L = shadowLoad(), s2 = evidenceScore(L.map(e => ({ pred: e.v2, obs: e.obs }))), s1 = evidenceScore(L.map(e => ({ pred: e.v1, obs: e.obs })));
+    ['Moteur v2 (preuves)', (() => { const L = shadowLoad(), eligible = L.filter(e => e.independent === true && e.src === 'utilisateur'), s2 = evidenceScore(eligible.map(e => ({ pred: e.v2, obs: e.obs }))), s1 = evidenceScore(eligible.map(e => ({ pred: e.v1, obs: e.obs })));
       return `mode ${EV_FLAG()} · ${L.length} entrées · vérités terrain ${s2.n} · faux négatifs v1 ${s1.fn} / v2 ${s2.fn} · faux positifs v1 ${s1.fp} / v2 ${s2.fp}`; })()],
     ['Trajet vivant', `${LIVE.phase}${FIX ? ` · dernier relevé GPS il y a ${ageTxt(ageOf(FIX.ts))} (${Number.isFinite(FIX.acc) ? '±' + Math.round(FIX.acc) + ' m' : 'précision inconnue'})` : ' · aucun relevé GPS'}`]
   ];

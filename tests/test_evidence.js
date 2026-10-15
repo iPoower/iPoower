@@ -192,3 +192,22 @@ if (require.main === module) {
   }
   console.log(`${count}/${count} scénarios OK · ${mutations.length}/${mutations.length} régressions rejetées`);
 }
+
+if (require.main === module) {
+  const app = fs.readFileSync(path.join(__dirname, '../src/app/weather-view.js'), 'utf8');
+  const reportSource = app.slice(app.indexOf('function reportAdd('), app.indexOf('function shadowLoad('));
+  const values = [], point = { id: 'test', lat: 48.7, lon: 2.2 };
+  const c = { Date, Math, REPORT_KINDS: { fog: 'Brouillard' }, REPORTS: [], UI: {},
+    placeNow: () => ({ place: point }), curLoc: () => point, locHasCoords: () => true,
+    reportsLive: () => c.REPORTS, lsSet: () => {}, REPORT_KEY: 'reports',
+    evNow: () => ({ v1: 0, prevLv: c.REPORTS.length ? 2 : 0 }), shadowPush: e => values.push(e), renderAll: () => {} };
+  vm.createContext(c); vm.runInContext(reportSource + ';this.add=reportAdd;', c);
+  c.add('fog');
+  assert.equal(c.evNow().prevLv, 2, 'le signalement actualise toujours les conditions courantes');
+  assert.equal(values[0].v2, 0, 'le journal conserve la prévision avant assimilation');
+  assert.equal(values[0].obs, 1);
+  assert.equal(values[0].independent, true, 'les anciens journaux ne sont pas requalifiés implicitement');
+  const diagnostics = fs.readFileSync(path.join(__dirname, '../src/app/diagnostics.js'), 'utf8');
+  assert(diagnostics.includes('e.independent === true'), 'les observations déjà assimilées sont exclues des métriques');
+  console.log('✅ Signalement : prévision avant assimilation, décision courante actualisée, provenance indépendante explicite');
+}

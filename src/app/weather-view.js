@@ -174,10 +174,12 @@ function reportAdd(kind) {
   if (!REPORT_KINDS[kind]) return;
   const c = placeNow(), l = c.place || (GPS && placeFixClass({ acc: GPS.acc }) !== 'network' ? GPS : null) || curLoc();
   if (!l || !locHasCoords(l)) return;
+  // Figer la prévision AVANT l'assimilation : le signalement ne valide pas son propre effet.
+  const before = kind === 'fog' || kind === 'lowvis' ? evNow() : null;
   REPORTS = reportsLive().concat([{ kind, at: Date.now(), lat: Math.round(l.lat * 100) / 100, lon: Math.round(l.lon * 100) / 100, place: c.place ? c.place.id : null }]).slice(-30);
   lsSet(REPORT_KEY, JSON.stringify(REPORTS));
   // journal prévision / observation : ce que les deux moteurs disaient juste avant le signalement
-  if (kind === 'fog' || kind === 'lowvis') { const v = evNow(); if (v) shadowPush({ obs: 1, src: 'utilisateur', v1: v.v1, v2: v.prevLv }); }
+  if (before) shadowPush({ obs: 1, src: 'utilisateur', independent: true, v1: before.v1, v2: before.prevLv });
   UI.evOpen = true; renderAll();
 }
 function shadowLoad() { try { return JSON.parse(lsGet(SHADOW_KEY) || '[]') || []; } catch (e) { return []; } }
