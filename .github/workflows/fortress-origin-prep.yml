@@ -1,0 +1,29 @@
+name: Forteresse II · fixtures d'origine (PR uniquement)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/fortress-ii-origin-preparation.md'
+      - 'tests/fortress-origin-fixture.js'
+      - 'tests/fortress-origin-inventory.js'
+      - '.github/workflows/fortress-origin-prep.yml'
+permissions:
+  contents: read
+jobs:
+  fictive-crypto-and-rollback:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7, SHA épinglé
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0, SHA épinglé
+        with:
+          node-version: 24
+      - name: Vérifier la syntaxe de l'outil fictif
+        run: node --check tests/fortress-origin-fixture.js
+      - name: Inventaire statique des clés — aucune donnée personnelle
+        run: node tests/fortress-origin-inventory.js
+      - name: Éprouver uniquement les fixtures locales
+        run: node tests/fortress-origin-fixture.js
