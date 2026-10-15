@@ -65,6 +65,16 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const a = E(base({ stations: [fresh] })).worst.ev.find(e => e.layer === 'A'), b = E(base({ stations: [old] })).worst.ev.find(e => e.layer === 'A');
     assert(a.w >= 0.9 && b.w <= 0.1, `${a.w} / ${b.w}`); assert(E(base({ stations: [old] })).worst.lv <= 1);
   });
+  test('K · observation datée du FUTUR (horloge ou relais fautif) : ignorée, jamais prise pour « à l’instant »', () => {
+    const mk = t => ({ id: 'S', name: 'S', lat: 48.81, lon: 2.30, obs: [metar('m', t, 7, 7, 300, 0, 'FG')] });   // NOW = 04:30Z
+    const layerA = t => E(base({ stations: [mk(t)] })).worst.ev.filter(e => e.layer === 'A').length;
+    const none = E(base()).worst;
+    assert.equal(layerA('2026-10-05T07:30:00Z'), 0, '+3 h : ignorée'); assert.equal(layerA('2026-10-05T04:32:00Z'), 0, '+2 min : ignorée');
+    assert.equal(layerA('2099-01-01T00:00:00Z'), 0, 'an 2099 : ignorée');
+    assert.equal(layerA('2026-10-05T04:30:30Z'), 1, '+30 s : petite dérive d’horloge tolérée'); assert.equal(layerA('2026-10-05T04:20:00Z'), 1, 'témoin −10 min : retenue');
+    const future = E(base({ stations: [mk('2026-10-05T07:30:00Z')] })).worst;
+    assert.equal(future.lv, none.lv, 'une observation du futur ne change pas le verdict'); assert.deepEqual(future.ev, none.ev);
+  });
   test('H · l’utilisateur confirme du brouillard → verdict recalculé (observation non officielle)', () => {
     const r = E(base({ reports: [{ kind: 'fog', at: NOW - 5 * 60e3, ...HOME }] }));
     assert.equal(r.worst.lv, 2); assert(r.worst.ev.some(e => e.layer === 'D' && /non officielle/.test(e.text)));
@@ -145,6 +155,7 @@ if (require.main === module) {
     { name: 'moyenne des points au lieu du pire crédible', from: 'c.f.lv > b.f.lv ||', to: 'c.f.lv < b.f.lv ||' },
     { name: 'distance des stations ignorée', from: "dist: [[10, 1], [25, 0.7], [50, 0.4], [Infinity, 0.15]]", to: "dist: [[Infinity, 1]]" },
     { name: 'âge des observations ignoré', from: "age: [[30, 1], [60, 0.8], [120, 0.5], [180, 0.25], [Infinity, 0.1]]", to: "age: [[Infinity, 1]]" },
+    { name: 'observation du futur acceptée avec le poids maximal', from: 'if (rawAge < -1) return;', to: '' },
     { name: 'localisation ne plafonne plus la confiance', from: 'trust = Math.min(trust, locCap);', to: '' },
     { name: 'contradiction moyennée et effacée', from: "if (modelLv <= 1 && physical >= 2) contra =", to: "if (false) contra =" }
   ];
