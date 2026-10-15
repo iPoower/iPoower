@@ -57,7 +57,7 @@ function labInput(car) {
   if (t0) {
     const b = BRF_SHOWN.find(x => x.key === t0.id), km = t0.km != null ? t0.km : b && b.td && b.td.dist ? b.td.dist * 1.3 : null;
     const dur = (tsToDate(t0.arr) - tsToDate(t0.dep)) / 60e3, v = km && dur > 0 ? km / dur * 60 : null;
-    trip = { label: t0.label, km, kind: v == null ? null : v < 45 ? 'ville' : v < 80 ? 'route' : 'autoroute', points: t0.points.map(p => ({ t: p.t, f: p.f, km: p.km, name: p.name, x: p.x })) };
+    trip = { label: t0.label, km, kind: v == null ? null : v < 45 ? 'ville' : v < 80 ? 'route' : 'autoroute', points: t0.points.map(p => ({ t: p.t, f: p.f, km: p.km, name: p.name, x: p.x, hs: p.hs, lat: p.lat, lon: p.lon })) };
   }
   const h = ttLoad()[car.id], state = tyreStateOf(car);
   const reports = reportsLive().map(r => ({ kind: r.kind, at: localTs(r.at, tz), lat: r.lat, lon: r.lon }));

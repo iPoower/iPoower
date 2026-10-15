@@ -25,7 +25,7 @@ function tripPassagePoints(t) {
     const at = q.t || (Number.isFinite(duration) && duration >= 0 ? addMin(t.dep, duration * f) : null);
     if (!at) return null;
     const located = Number.isFinite(q.lat) && Number.isFinite(q.lon) && Math.abs(q.lat) <= 90 && Math.abs(q.lon) <= 180;
-    return { t: at, f, km: q.km != null ? q.km : null, name: q.name || q.loc || null, x,
+    return { t: at, f, km: q.km != null ? q.km : null, name: q.name || q.loc || null, x, hs: q.hs,
       lat: located ? q.lat : null, lon: located ? q.lon : null };
   }).filter(Boolean);
 }

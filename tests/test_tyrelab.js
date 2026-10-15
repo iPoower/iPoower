@@ -233,6 +233,28 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const long = lab({ now: ts('08:00'), car: car(), hours: hs, trip: { km: 90, points: P([['08:10', 0], ['08:40', 40], ['09:05', 90]]) } });
     assert(short.trip.rows.at(-1).s <= 1, short.trip.rows.at(-1).state); assert.equal(long.trip.rows.at(-1).state, 'Fenêtre favorable');
   });
+  test('trajet géolocalisé : météo aval, historique de pluie et signalements suivent chaque portion', () => {
+    const origin = { lat: 48.7, lon: 2.2 }, destination = { lat: 49.2, lon: 2.5 };
+    const dry = H({ T: 12, Tr: 12 }), rain = H({ T: 12, Tr: 12, P: 1.5, Pl: 1.5 });
+    const sample = (hs, h, km, location) => ({ t: ts(h), km, ...location, hs, x: hs.find(x => x.t === ts(h.slice(0, 2) + ':00')) });
+    const points = [sample(dry, '07:00', 0, origin), sample(rain, '08:00', 60, destination)];
+    const base = { now: ts('06:50'), car: car(), hours: dry, location: origin, trip: { km: 60, points } };
+    const wet = lab(base), allDry = lab({ ...base, trip: { km: 60, points: [points[0], sample(dry, '08:00', 60, destination)] } });
+    assert(wet.trip.rows.at(-1).events.some(x => /Début pluie/.test(x.text)), 'la pluie à destination doit être annoncée');
+    assert(wet.trip.rows.at(-1).range[0] < allDry.trip.rows.at(-1).range[0], 'la pluie aval refroidit aussi la projection thermique');
+    assert(wet.compare.rows.find(x => x.label === 'Aquaplaning').b.lv > allDry.compare.rows.find(x => x.label === 'Aquaplaning').b.lv, 'comparaison = météo aval');
+    const remotePreview = lab({ ...base, hours: H({ T: 30, Tr: 35, P: 8, Pl: 8 }) });
+    assert.deepEqual(remotePreview.trip.rows.map(x => x.events), wet.trip.rows.map(x => x.events), 'l’aperçu météo ne remplace pas les conditions du trajet');
+    const localIce = { kind: 'ice', at: ts('06:45'), ...origin };
+    const reported = lab({ ...base, reports: [localIce] });
+    assert.equal(reported.trip.rows[0].brake, 'Très dégradé');
+    assert.equal(reported.trip.rows.at(-1).brake, wet.trip.rows.at(-1).brake, 'un signalement au départ ne se déplace pas à destination');
+    const soaked = H({ T: -1, Tr: -1 }); Object.assign(soaked.find(x => x.t === ts('07:00')), { P: 1, Pl: 1 });
+    const icy = lab({ ...base, trip: { km: 60, points: [points[0], sample(soaked, '08:00', 60, destination)] } });
+    assert(icy.trip.rows.at(-1).events.some(x => /verglas/.test(x.text)), 'la pluie passée à destination est conservée');
+    const missing = lab({ ...base, trip: { km: 60, points: [points[0], { ...points[1], x: null }] } });
+    assert.equal(missing.trip, null); assert.match(missing.tripIssue, /météo.*portion/);
+  });
   test('progression inversée ou sans durée : projection suspendue, estimation actuelle conservée', () => {
     const cases = [
       [['06:30', 14], ['06:45', 0], ['07:10', 41]],
@@ -431,6 +453,7 @@ module.exports = { runTests, sourcePath };
 if (require.main === module) {
   const original = fs.readFileSync(sourcePath, 'utf8'), count = runTests(original);
   const mutations = [
+    { name: 'météo des étapes ignorée au profit du lieu consulté', from: 'const x = point && point.x || rowAt(m), location = point ? point : inp.location;', to: 'const x = rowAt(m), location = inp.location;' },
     { name: 'mémoire du roulage en cours ignorée', from: 'else if (hist && mins(hist.at) <= nowM) { T0 = hist.T; t0 = mins(hist.at); }', to: '' },
     { name: 'refroidissement 10× plus lent (mémoire éternelle)', from: 'const TL_TAU_PARK = 50;', to: 'const TL_TAU_PARK = 500;' },
     { name: 'ville et autoroute identiques', from: "ville: { dT: 14, tauKm: 7, v: 30", to: "ville: { dT: 26, tauKm: 10, v: 115" },

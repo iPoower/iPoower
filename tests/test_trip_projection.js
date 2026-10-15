@@ -8,7 +8,7 @@ vm.runInContext(read('engine.js') + read('tirespecs.js') + read('tyrelab.js') + 
   const APP_CONTEXT = { snapshot: { trips: [], activeTrip: null } };
   const CX = {}, PROFILE = () => ({ commuteOk: true }), locHasCoords = () => false;
 ` + read('app/weather-view.js') + read('app/analysis-view.js') + `
-  labInput = car => ({ now: '2026-10-06T06:00', car, hours: APP_CONTEXT.snapshot.trips[0].seq[0].hs });
+  labInput = car => ({ now: '2026-10-06T06:00', ageMin: 5, car, hours: APP_CONTEXT.snapshot.trips[0].seq[0].hs });
   this.adapt = t => { APP_CONTEXT.snapshot.trips = [t]; return wxTrips({ payload: { utc_offset_seconds: 7200 } })[0]; };
   this.project = (t, car) => tripLab(t, car);
   this.lab = tyreLab;
@@ -23,7 +23,7 @@ const original = JSON.stringify(trip), adapted = plain(ctx.adapt(trip)), briefin
 assert.equal(adapted.points[0].t, trip.dep); assert.equal(adapted.points.at(-1).t, trip.arr);
 assert(adapted.points.every((p, i, a) => p.t >= trip.dep && p.t <= trip.arr && (!i || p.t >= a[i - 1].t)));
 assert.deepEqual(adapted.points.map(p => p.x), trip.seq.map(q => q.hs[q.i]), 'les échantillons météo existants sont conservés');
-const analysis = plain(ctx.lab({ now: '2026-10-06T06:00', car, hours, trip: adapted }));
+const analysis = plain(ctx.lab({ now: '2026-10-06T06:00', ageMin: 5, car, hours, trip: adapted }));
 assert.deepEqual(briefing.trip.rows, analysis.trip.rows, 'briefing et Analyse partagent exactement les passages');
 assert.deepEqual(analysis.trip.rows.map(p => p.km), [0, 14, 27, 41]);
 assert(analysis.trip.rows.every(p => p.range[0] >= 0 && p.range[1] <= 45), '8 °C homogènes : aucune chauffe négative');

@@ -110,10 +110,12 @@ function tyreLab(input) {
   const noWeather = !currentHour || !['T', 'Tr', 'P', 'RH', 'gust'].every(k => n(currentHour[k]) != null);
   if (noWeather) return { known: true, tyre, spec: specOut, noWeather: true, state: inp.state || null, confidence: { level: 'faible', reasons: ['Aucune météo pour l’heure en cours : aucune estimation thermique possible.'] } };
   const rowAt = m => { let b = H[0]; for (const x of H) { if (mins(x.t) <= m) b = x; else break; } return b; };
-  const recentRain = m => H.filter(x => { const t = mins(x.t); return t <= m && t > m - TL_ROAD.soakHours * 60; }).reduce((a, x) => a + (n(x.Pl) ?? n(x.P) ?? 0), 0);
-  function env(m) {
-    const x = rowAt(m), Ta = n(x.T), Tr = n(x.Tr) ?? Ta, Pl = n(x.Pl) ?? n(x.P) ?? 0, snow = (n(x.snow) || 0) > 0.05 || [71, 73, 75, 77, 85, 86].includes(n(x.code));
-    const iceLv = x.ice && finite(x.ice.level) ? x.ice.level : 0, fz = [56, 57, 66, 67].includes(n(x.code)), acc = recentRain(m);
+  const recentRain = (m, hours) => hours.filter(x => { const t = mins(x.t); return t <= m && t > m - TL_ROAD.soakHours * 60; }).reduce((a, x) => a + (n(x.Pl) ?? n(x.P) ?? 0), 0);
+  function env(m, point = null) {
+    const x = point && point.x || rowAt(m), location = point ? point : inp.location;
+    const hours = point && point.x ? (Array.isArray(point.hs) ? point.hs : [x]) : H;
+    const Ta = n(x.T), Tr = n(x.Tr) ?? Ta, Pl = n(x.Pl) ?? n(x.P) ?? 0, snow = (n(x.snow) || 0) > 0.05 || [71, 73, 75, 77, 85, 86].includes(n(x.code));
+    const iceLv = x.ice && finite(x.ice.level) ? x.ice.level : 0, fz = [56, 57, 66, 67].includes(n(x.code)), acc = recentRain(m, hours);
     // air saturé : HR ≥ 95 % et T − Td < 1 °C (ou HR seule quand le point de rosée est inconnu)
     const humidAir = n(x.RH) != null && x.RH >= TL_ROAD.humidRH && (n(x.Td) == null || Ta - x.Td < TL_ROAD.humidSpreadC);
     const surf = fz || iceLv >= 2 || (Tr != null && Tr <= 0 && (Pl >= TL_ROAD.dampMmH || acc >= TL_ROAD.soakMm)) ? 'ice' : snow ? 'snow' : Pl >= 2 && acc >= 6 ? 'pool' : Pl >= 2 ? 'heavy' : Pl >= TL_ROAD.rainMmH ? 'rain'
@@ -124,7 +126,7 @@ function tyreLab(input) {
     let sf = surf; (inp.reports || []).forEach(r => {
       const t = mins(r.at), k = RK[r.kind];
       if (k && Number.isFinite(t) && t <= nowM + 1 && Math.abs(m - t) <= TL_REPORT_MIN
-        && located(inp.location) && located(r) && distKm(inp.location, r) <= TL_REPORT_KM && ORD.indexOf(k) > ORD.indexOf(sf)) sf = k;
+        && located(location) && located(r) && distKm(location, r) <= TL_REPORT_KM && ORD.indexOf(k) > ORD.indexOf(sf)) sf = k;
     });
     return { x, Ta, Tr, Tenv: (Ta + Tr) / 2, Pl, acc, surf: sf, reported: sf !== surf, gust: n(x.gust), rad: n(x.rad), RH: n(x.RH), t: x.t };
   }
@@ -144,10 +146,10 @@ function tyreLab(input) {
   }
   function eqPark(e) { return { Teq: e.Tenv + (e.rad != null && e.rad > 300 ? 3 : 0), tau: TL_TAU_PARK * (['rain', 'heavy', 'pool'].includes(e.surf) ? 0.8 : 1) }; }
   // fait évoluer T de m0 à m1 ; drive = { kind, v } ou null (arrêt) ; renvoie T et la distance parcourue
-  function evolve(T, m0, m1, drive) {
+  function evolve(T, m0, m1, drive, environment = env) {
     let m = m0, km = 0;
     while (m < m1 - 1e-6) {
-      const dt = Math.min(2, m1 - m), e = env(m);
+      const dt = Math.min(2, m1 - m), e = environment(m);
       if (drive && !(drive.v != null && drive.v < TL_STOP_KMH)) { const q = eqDrive(e, drive.kind, T), v = drive.v == null ? q.v : drive.v, dk = v * dt / 60; T = q.Teq + (T - q.Teq) * Math.exp(-dk / q.tauKm); km += dk; }
       else { const q = eqPark(e); T = q.Teq + (T - q.Teq) * Math.exp(-dt / q.tau); }
       m += dt;
@@ -316,7 +318,7 @@ function tyreLab(input) {
   }
   const gNow = gripAt(eNow, st, kind);
   /* ---------- 8. trajet : état le long du parcours ---------- */
-  let trip = null, tripIssue = null, tripStartM = null, tripEndM = null;
+  let trip = null, tripIssue = null, tripStartEnv = null, tripEndEnv = null;
   const tp = inp.trip && Array.isArray(inp.trip.points) && inp.trip.points.length ? inp.trip : null;
   const pts = tp ? tp.points.map(p => ({ ...p, m: mins(p && p.t) })).filter(p => Number.isFinite(p.m)).sort((a, b) => a.m - b.m) : [];
   const totKm = tp ? n(tp.km) : null;
@@ -327,6 +329,10 @@ function tyreLab(input) {
     const km = kmOf(p), prev = i ? kmOf(pts[i - 1]) : null;
     return km != null && (km < 0 || (prev != null && (km < prev || (p.m === pts[i - 1].m && km > prev))));
   }))) tripIssue = 'Projection du trajet indisponible : heures ou progression kilométrique incohérentes.';
+  const spatialWeather = pts.some(p => p.x != null);
+  if (!tripIssue && spatialWeather && pts.some(p => !p.x || !['T', 'Tr', 'P', 'RH', 'gust'].every(k => n(p.x[k]) != null)))
+    tripIssue = 'Projection du trajet indisponible : météo absente ou incomplète sur une portion du trajet.';
+  const pointEnv = (m, p) => env(m, spatialWeather ? p : null);
   if (tp && !tripIssue) {
     let Tt = T, mPrev = nowM, prevWet = null; const rows = [];
     const startM = pts[0].m;
@@ -336,11 +342,15 @@ function tyreLab(input) {
       if (i > 0) {
         const a = pts[i - 1], dk = kmOf(p) != null && kmOf(a) != null ? kmOf(p) - kmOf(a) : null, dmin = p.m - a.m;
         const v = dk != null && dmin > 0 ? dk / dmin * 60 : null, k = kindOf(v) || tripKind || 'route';
-        if (p.m > mPrev) Tt = evolve(Tt, mPrev, p.m, { kind: k, v: v == null ? TL_KIND[k].v : v }).T;
+        // Échantillons voisins, sans inventer de météo intermédiaire : chaque moitié
+        // du segment utilise son point le plus proche. L'approximation reste affichée.
+        const mid = (a.m + p.m) / 2, drive = { kind: k, v: v == null ? TL_KIND[k].v : v };
+        if (mid > mPrev) Tt = evolve(Tt, mPrev, mid, drive, m => pointEnv(m, a)).T;
+        if (p.m > Math.max(mPrev, mid)) Tt = evolve(Tt, Math.max(mPrev, mid), p.m, drive, m => pointEnv(m, p)).T;
         p.kind = k;
       }
       mPrev = Math.max(mPrev, p.m);
-      const e = env(p.m), uu = 3 + 0.25 * Math.abs(Tt - e.Tenv) + unk(kmOf(p) != null && kmOf(pts[0]) != null ? kmOf(p) - kmOf(pts[0]) : 0);
+      const e = pointEnv(p.m, p), uu = 3 + 0.25 * Math.abs(Tt - e.Tenv) + unk(kmOf(p) != null && kmOf(pts[0]) != null ? kmOf(p) - kmOf(pts[0]) : 0) + (stale ? 3 : 0);
       const s = stateOf(Tt, uu);
       const g = gripAt(e, s, p.kind || 'route'), wet = !['dry', 'damp'].includes(e.surf);
       const events = [];
@@ -350,7 +360,7 @@ function tyreLab(input) {
       rows.push({ t: hm(p.m), name: p.name || null, km: kmOf(p) != null ? Math.round(kmOf(p)) : null, state: TL_STATES[s], s, lv: stLv(s), brakeLv: g.lv, range: [Math.floor(Tt - uu), Math.ceil(Tt + uu)], brake: g.word, events, kind: p.kind || null });
     });
     trip = { label: tp.label || 'trajet', dep: hm(pts[0].m), arr: hm(pts[pts.length - 1].m), rows, startS: rows[0].s, endS: rows[rows.length - 1].s };
-    tripStartM = pts[0].m; tripEndM = pts[pts.length - 1].m;
+    tripStartEnv = pointEnv(pts[0].m, pts[0]); tripEndEnv = pointEnv(pts[pts.length - 1].m, pts[pts.length - 1]);
   }
   /* ---------- 9. comparaison départ / maintenant ---------- */
   const cmpRow = (lbl, a, b) => ({ label: lbl, a, b });
@@ -359,7 +369,7 @@ function tyreLab(input) {
   {
     let aLbl, bLbl, sA, sB, eA, eB, kA = kind, kB = kind;
     if (drv) { aLbl = 'Départ'; bLbl = 'Maintenant'; const since = mins(drv.since), Ts = hist && mins(hist.at) <= since ? evolve(hist.T, mins(hist.at), since, null).T : env(since).Tenv; eA = env(since); sA = stateOf(Ts, u); sB = st; eB = eNow; }
-    else if (trip) { aLbl = `Départ ${trip.dep}`; bLbl = `Arrivée ${trip.arr}`; sA = trip.startS; sB = trip.endS; eA = env(tripStartM); eB = env(tripEndM); }
+    else if (trip) { aLbl = `Départ ${trip.dep}`; bLbl = `Arrivée ${trip.arr}`; sA = trip.startS; sB = trip.endS; eA = tripStartEnv; eB = tripEndEnv; }
     else { aLbl = 'Maintenant'; bLbl = 'Après ~15 km'; sA = st; eA = eB = eNow; const r = evolve(T, nowM, nowM + 15 / TL_KIND[kind].v * 60, { kind, v: TL_KIND[kind].v }); sB = stateOf(r.T, u); }
     const wetE = e => ({ ...e, surf: e.surf === 'dry' || e.surf === 'damp' ? 'rain' : e.surf, Pl: Math.max(e.Pl, 1) }), dryE = e => ({ ...e, surf: 'dry' });
     const A = { d: gripAt(dryE(eA), sA, kA), w: gripAt(wetE(eA), sA, kA), n: gripAt(eA, sA, kA) }, B = { d: gripAt(dryE(eB), sB, kB), w: gripAt(wetE(eB), sB, kB), n: gripAt(eB, sB, kB) };
@@ -410,11 +420,12 @@ function tyreLab(input) {
     ['Météo', unknownAge ? 'âge inconnu' : stale ? 'ancienne' : 'récente'], ['Modèle thermique', 'générique (estimation Race Control)'], ['Capteur direct', 'non']];
   // limites de cette estimation, en clair : ce qui est mesuré, supposé ou estimé (affichées dans le panneau de confiance)
   const limits = ['Aucun capteur : la température de la gomme et la pression sont des estimations, jamais des mesures.',
+    ...(trip ? [spatialWeather ? 'Entre deux points du trajet, les conditions sont approximées à partir des échantillons météo voisins.' : 'Projection avec la météo du lieu consulté : aucune météo par étape disponible.'] : []),
     phase === 'driving' ? (stopped ? `Arrêt déduit d’une vitesse moyenne sous ${TL_STOP_KMH} km/h depuis le départ.` : 'Vitesse suivie = moyenne depuis le départ : un arrêt court en cours de route n’est pas détecté.')
       : phase === 'unknown' ? 'Historique d’arrêt inconnu : gomme supposée à la température ambiante.' : hist && hist.source === 'manual' ? 'Roulage déclaré par vous, départ supposé froid : non mesuré.' : 'Température de la gomme extrapolée depuis le dernier état estimé.',
     eNow.reported ? 'Chaussée signalée par vous (≤ 60 min).' : 'Chaussée estimée par la météo (pluie récente, humidité de l’air), pas par un capteur routier.',
     gNow.dist ? 'Distances de freinage : ordre de grandeur issu d’écarts d’essais publiés, hypothèse non calibrée sur ce véhicule, jamais une garantie d’arrêt.' : 'Aucune distance de freinage chiffrée : ' + (criticalTread ? 'pneu sous le minimum légal.' : 'données ou conditions hors du domaine des essais.'),
-    ...(stale ? [`Météo ancienne (${Math.round(inp.ageMin / 60)} h) : estimation moins fiable.`] : [])];
+    ...(stale ? [unknownAge ? 'Âge météo inconnu : estimation moins fiable.' : `Météo ancienne (${Math.round(inp.ageMin / 60)} h) : estimation moins fiable.`] : [])];
   const confidence = { level: score >= 1.5 ? 'moyenne' : 'faible', score, reasons, axes, limits };
   /* ---------- 12. verdict principal ---------- */
   const limiting = gNow.dom ? (gNow.dom.k.startsWith('Gomme') ? ['gomme froide', 'gomme sous sa plage favorable', 'gomme dans sa fenêtre', 'gomme chaude', 'gomme très chaude'][st] : gNow.dom.k.toLowerCase()) : 'aucun';
