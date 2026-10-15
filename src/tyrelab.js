@@ -72,6 +72,7 @@ function tlTreadWet(mm) { return mm == null || !Number.isFinite(mm) ? null : { o
 const TL_COLD_MODE = 'product';
 function tlColdCombine(tf, c7, mode) { if (c7 >= 1) return tf; return mode === 'max' ? Math.min(tf, c7) : mode === 'overlap' ? tf * (1 - 0.5 * (1 - c7)) : tf * c7; }
 const TL_TAU_PARK = 50;
+const TL_REPORT_KM = 5, TL_REPORT_MIN = 60;
 function tyreLab(input) {
   const finite = v => typeof v === 'number' && Number.isFinite(v), n = v => finite(v) ? v : null;
   const mins = ts => typeof ts === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(ts) ? Date.parse(ts.slice(0, 16) + ':00Z') / 60000 : NaN;
@@ -119,7 +120,12 @@ function tyreLab(input) {
       : Pl >= TL_ROAD.dampMmH || acc >= TL_ROAD.soakMm || humidAir ? 'damp' : 'dry';
     // signalement terrain de l'utilisateur (≤ 60 min) : aggrave l'état de surface, jamais ne l'améliore ; brouillard = humidité accrue
     const RK = { ice: 'ice', snow: 'snow', rain: 'rain', wet: 'damp', slippery: 'damp', fog: 'damp', lowvis: 'damp' }, ORD = ['dry', 'damp', 'rain', 'heavy', 'pool', 'snow', 'ice'];
-    let sf = surf; (inp.reports || []).forEach(r => { const t = mins(r.at), k = RK[r.kind]; if (k && Number.isFinite(t) && Math.abs(m - t) <= 60 && ORD.indexOf(k) > ORD.indexOf(sf)) sf = k; });
+    const located = p => p && finite(p.lat) && finite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180;
+    let sf = surf; (inp.reports || []).forEach(r => {
+      const t = mins(r.at), k = RK[r.kind];
+      if (k && Number.isFinite(t) && t <= nowM + 1 && Math.abs(m - t) <= TL_REPORT_MIN
+        && located(inp.location) && located(r) && distKm(inp.location, r) <= TL_REPORT_KM && ORD.indexOf(k) > ORD.indexOf(sf)) sf = k;
+    });
     return { x, Ta, Tr, Tenv: (Ta + Tr) / 2, Pl, acc, surf: sf, reported: sf !== surf, gust: n(x.gust), rad: n(x.rad), RH: n(x.RH), t: x.t };
   }
   const SURF_TXT = { dry: 'sec', damp: 'humide', rain: 'pluie', heavy: 'pluie forte', pool: 'eau stagnante probable', snow: 'neige', ice: 'verglas possible' };

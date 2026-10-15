@@ -47,7 +47,7 @@ function evidenceEngine(input) {
   const pts = (inp.points || []).filter(p => p && p.x && fin(p.ms)).sort((a, b) => a.ms - b.ms);
   if (!pts.length) return null;
   const stations = (inp.stations || []).filter(s => s && fin(s.lat) && fin(s.lon));
-  const reports = (inp.reports || []).filter(r => r && fin(r.at) && fin(r.lat) && fin(r.lon));
+  const reports = (inp.reports || []).filter(r => r && fin(r.at) && r.at <= now + 60000 && fin(r.lat) && fin(r.lon));
   const comm = inp.community && inp.community.available ? (inp.community.items || []) : null;
 
   /* ---------- brouillard et visibilité, par point (heure de passage) ---------- */

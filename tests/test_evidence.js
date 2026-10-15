@@ -97,6 +97,13 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.match(run('2026-10-05T03:00:00Z').axes.observations, /1 station/, '90 min : encore récente');
     assert.match(run('2026-10-05T02:59:00Z').axes.observations, /aucune/, '91 min : plus récente');
   });
+  test('signalement utilisateur daté du futur : absent des preuves, dérive d’une minute tolérée', () => {
+    const at = offset => E(base({ reports: [{ kind: 'fog', at: NOW + offset, ...HOME }] })).worst;
+    assert.equal(at(30 * 60000).userLv, null);
+    assert.equal(at(61000).userLv, null);
+    assert.equal(at(30000).userLv, 2);
+    assert.equal(at(-60000).userLv, 2);
+  });
   test('H · l’utilisateur confirme du brouillard → verdict recalculé (observation non officielle)', () => {
     const r = E(base({ reports: [{ kind: 'fog', at: NOW - 5 * 60e3, ...HOME }] }));
     assert.equal(r.worst.lv, 2); assert(r.worst.ev.some(e => e.layer === 'D' && /non officielle/.test(e.text)));

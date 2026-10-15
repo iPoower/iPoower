@@ -169,7 +169,7 @@ const EV_FLAG = () => { const f = S.flags && S.flags.weatherEvidenceV2; return [
 const REPORT_KEY = 'twrc.reports.v1', SHADOW_KEY = 'twrc.shadow.v1';
 const REPORT_KINDS = { fog: '🌫 Brouillard', lowvis: '👁 Visibilité très réduite', rain: '🌧 Pluie', wet: '💧 Route humide', snow: '❄️ Neige', ice: '🧊 Verglas', slippery: '⚠️ Route glissante' };
 let REPORTS = []; try { REPORTS = JSON.parse(lsGet(REPORT_KEY) || '[]') || []; } catch (e) { REPORTS = []; }
-const reportsLive = () => { const n = Date.now(); REPORTS = REPORTS.filter(r => r && n - r.at < 6 * 3600e3); return REPORTS; };
+const reportsLive = () => { const n = Date.now(); REPORTS = REPORTS.filter(r => r && Number.isFinite(r.at) && r.at <= n + 60000 && n - r.at < 6 * 3600e3); return REPORTS; };
 function reportAdd(kind) {
   if (!REPORT_KINDS[kind]) return;
   const c = placeNow(), l = c.place || (GPS && placeFixClass({ acc: GPS.acc }) !== 'network' ? GPS : null) || curLoc();
