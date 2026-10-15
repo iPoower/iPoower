@@ -81,7 +81,13 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const at = m => E(base({ fresh: { modelAgeMin: m } })), trust = r => r.phen.find(p => p.id === 'wind').trust;
     assert.match(at(60).axes.data, /bonne/); assert.match(at(61).axes.data, /dégradée/); assert.match(at(89).axes.data, /dégradée/);
     assert.equal(trust(at(60)) - trust(at(61)), 1, 'la confiance baisse d’un cran dès 61 min');
-    assert.match(at(120).axes.data, /dégradée/); assert.match(at(null).axes.data, /bonne/, 'âge inconnu : pas de péremption inventée');
+    assert.match(at(120).axes.data, /dégradée/);
+    for (const age of [null, undefined, -120, NaN, Infinity]) {
+      const unknown = at(age);
+      assert.match(unknown.axes.data, /dégradée.*âge inconnu/);
+      assert.equal(unknown.axes.freshness, 'inconnue');
+      assert(trust(unknown) < trust(at(5)), 'sans âge connu, la confiance ne reste pas fraîche');
+    }
   });
   test('N · observation datée du FUTUR : ne confirme pas la température et ne compte pas parmi les stations récentes', () => {
     const mk = (t, T = 9.4) => ({ id: 'S', name: 'S', lat: 48.81, lon: 2.30, obs: [metar('m', t, T, 5, 20000, 5, null)] });   // modèle 9 °C ; NOW = 04:30Z

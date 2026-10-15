@@ -173,7 +173,8 @@ function tyreLab(input) {
   why.unshift(`Air : ${r1(eNow.Ta)} °C`, `Chaussée estimée : ${r1(eNow.Tr)} °C`);
   why.push(`Pneu ${TYPES[type]}${uhp ? ' haute performance (indice ' + (d.si || 'ZR') + ')' : ''}`, `Chaussée : ${SURF_TXT[eNow.surf]}${eNow.reported ? ' (signalée par vous)' : ''}`);
   /* ---------- 5. incertitude, état, fenêtre ---------- */
-  const stale = finite(inp.ageMin) && inp.ageMin > TL_STALE_AFTER_MIN;
+  const unknownAge = !finite(inp.ageMin) || inp.ageMin < 0;
+  const stale = unknownAge || inp.ageMin > TL_STALE_AFTER_MIN;
   // l'incertitude sur l'état de départ inconnu s'estompe avec la distance roulée (même constante que l'échauffement)
   const unk = km => phase === 'unknown' || (phase === 'driving' && !hist) ? 3 * Math.exp(-(km || 0) / 10) : hist && hist.source === 'manual' ? 3 : 0;
   const u = 3 + 0.25 * Math.abs(T - eNow.Tenv) + unk(drivenKm) + (stale ? 3 : 0);
@@ -388,7 +389,7 @@ function tyreLab(input) {
   else if (!spec) { score -= 0.5; reasons.push('Fiche constructeur non disponible dans Race Control'); }
   if (target == null) { score -= 0.5; reasons.push('Pression cible inconnue'); }
   if (tread == null) { score -= 0.5; reasons.push('Profondeur de sculpture inconnue'); }
-  if (stale) { score -= 1; reasons.push(`Météo ancienne (${Math.round(inp.ageMin / 60)} h)`); }
+  if (stale) { score -= 1; reasons.push(unknownAge ? 'Âge météo inconnu : estimation à confirmer' : `Météo ancienne (${Math.round(inp.ageMin / 60)} h)`); }
   if (!drv && !tripKind) { score -= 0.5; reasons.push('Type de route supposé (aucun trajet ni roulage en cours)'); }
   // état pneumatique (onglet Pneus) : la qualité et la fraîcheur comptent, pas le nombre de champs remplis
   const st0 = inp.state;
@@ -400,7 +401,7 @@ function tyreLab(input) {
   // axes séparés ; niveau global plafonné à « moyenne » : modèle thermique générique, aucun capteur de pression ni de température
   const axes = [['Données pneu', modelKnown && target != null && tread != null ? (st0 && st0.tread && st0.tread.est ? 'renseignées dans Pneus, profondeur estimée' : 'renseignées dans Pneus') : 'incomplètes'],
     ['Trajet', drv ? (drv.kmSrc === 'route' ? 'roulage suivi, progression sur l’itinéraire' : 'roulage suivi, distance estimée (vol d’oiseau ×1,2)') : tripKind ? 'trajet prévu (agenda)' : 'supposé'],
-    ['Météo', stale ? 'ancienne' : 'récente'], ['Modèle thermique', 'générique (estimation Race Control)'], ['Capteur direct', 'non']];
+    ['Météo', unknownAge ? 'âge inconnu' : stale ? 'ancienne' : 'récente'], ['Modèle thermique', 'générique (estimation Race Control)'], ['Capteur direct', 'non']];
   // limites de cette estimation, en clair : ce qui est mesuré, supposé ou estimé (affichées dans le panneau de confiance)
   const limits = ['Aucun capteur : la température de la gomme et la pression sont des estimations, jamais des mesures.',
     phase === 'driving' ? (stopped ? `Arrêt déduit d’une vitesse moyenne sous ${TL_STOP_KMH} km/h depuis le départ.` : 'Vitesse suivie = moyenne depuis le départ : un arrêt court en cours de route n’est pas détecté.')

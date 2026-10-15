@@ -59,7 +59,8 @@ const FRESH_RULES = [
   ['src/app/lifecycle.js', 'if (navigator.onLine !== false', 'Reliability.isDue(VER_CHECK_AT, AUTO_MS)', 'contrôle de version dû malgré une horloge reculée'],
   ['src/app/diagnostics.js', 'const ageOf = t =>', 'Reliability.ageMin(t)', 'diagnostic : âge inconnu si futur'],
   ['src/app/weather-view.js', 'const raw = RAW[UI.loc], ageMin =', 'Reliability.ageMin(raw.t)', 'vue Météo'],
-  ['src/app/analysis-view.js', 'const raw = RAW[UI.loc], ageMin =', 'Reliability.ageMin(raw.t)', 'vue Analyse']
+  ['src/app/analysis-view.js', 'const raw = RAW[UI.loc], ageMin =', 'Reliability.ageMin(raw.t)', 'vue Analyse'],
+  ['src/app/weather-view.js', 'location: { trust: evLocTrust() }', 'Reliability.ageMin(raw.t)', 'preuves : même garde du futur que les autres vues']
 ];
 const BARE = [/Date\.now\(\) - [cr]\.t > LIVE_MAX_MS/, /!\(now - r\.t <= LIVE_MAX_MS\)/, /Date\.now\(\) - ref >= AUTO_MS/, /Date\.now\(\) - VER_CHECK_AT >= AUTO_MS/];
 function freshnessContract(read) {
@@ -99,7 +100,8 @@ const POLICY_VALUES = [['src/decision.js', 'FRESH_MAX_MIN', 'freshMaxMin'], ['sr
   ['src/evidence.js', 'EV_STALE_AFTER_MIN', 'agingMaxMin']];
 const POLICY_USES = [['src/app.js', 'LIVE_MAX_MS = Reliability.FRESHNESS.freshMaxMin * 60e3'], ['src/app/diagnostics.js', 'Reliability.freshState('],
   ['src/app/race-views.js', 'Reliability.FRESHNESS.agingMaxMin']];
-const LITERAL_AGE = /ageMin\s*(?:<=|>=|<|>)\s*\d+\b(?!\s*\*)/;
+// Zéro valide le domaine d'un âge ; les seuils de péremption positifs doivent rester nommés.
+const LITERAL_AGE = /ageMin\s*(?:<=|>=|<|>)\s*[1-9]\d*\b(?!\s*\*)/;
 function policyContract(read) {
   const bad = [];
   for (const [file, name, key] of POLICY_VALUES) {

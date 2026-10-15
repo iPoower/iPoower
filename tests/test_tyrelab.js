@@ -6,7 +6,8 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = {}; vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tirespecs.js'), 'utf8') + fs.readFileSync(path.join(__dirname, '../src/tyrestate.js'), 'utf8') + source + '\nthis.lab = tyreLab; this.lastDrive = tyreLabLastDrive; this.coldCombine = tlColdCombine; this.treadWet = tlTreadWet;', ctx);
   const plain = v => JSON.parse(JSON.stringify(v));
-  const lab = input => plain(ctx.lab(plain(input)));
+  // Ces scénarios thermiques utilisent une météo reçue depuis 5 min, sauf cas d'âge explicite.
+  const lab = input => plain(ctx.lab({ ageMin: 5, ...plain(input) }));
   const ts = (h, day = '2026-10-06') => `${day}T${h}`;
   // 36 h de météo homogène à partir de la veille 18:00 ; chaque scénario modifie les champs utiles
   const H = (base = {}, from = '2026-10-05T18:00', n = 40) => Array.from({ length: n }, (_, k) => ({
@@ -274,6 +275,16 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.deepEqual(edge, fresh, '60 min : aucune pénalité de fraîcheur');
     assert.notDeepEqual(old, fresh, '61 min : incertitude et confiance dégradées');
     assert(/Météo ancienne/.test(JSON.stringify(old)), 'le motif est affiché'); assert(!/Météo ancienne/.test(JSON.stringify(edge)));
+  });
+  test('âge météo inconnu ou invalide : jamais récent, confiance et incertitude dégradées', () => {
+    const base = { now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), drive: drive('10:00', 'route') };
+    const fresh = plain(ctx.lab({ ...base, ageMin: 5 }));
+    for (const ageMin of [null, undefined, -1, NaN, Infinity]) {
+      const r = plain(ctx.lab({ ...base, ageMin }));
+      assert.equal(r.confidence.axes.find(x => x[0] === 'Météo')[1], 'âge inconnu');
+      assert(r.confidence.reasons.some(x => /Âge météo inconnu/.test(x)));
+      assert(r.thermal.range[1] - r.thermal.range[0] > fresh.thermal.range[1] - fresh.thermal.range[0]);
+    }
   });
   test('données manquantes ou anciennes : confiance plus faible ; GPS et données complètes : moyenne au plus (aucun capteur), axes séparés', () => {
     const full = lab({ now: ts('10:20'), car: car({ brand: 'Michelin', model: 'Pilot Sport 4S' }), hours: H(), drive: drive('10:00', 'route'), ageMin: 10 });
