@@ -3,7 +3,7 @@
  * Les états thermiques 0–4 et la confiance faible/moyenne viennent de tyreLab.
  */
 const Debrief = (() => {
-  const LIMIT = 60, RETENTION = 90 * 86400000;
+  const LIMIT = 60, RETENTION = 90 * 86400000, FORECAST_MAX_MIN = 60;
   const CONDITIONS = ['wet', 'rain', 'fog', 'snow', 'ice'];
   const LABELS = { wet: 'Chaussée humide', rain: 'Pluie', fog: 'Brume / brouillard', snow: 'Neige', ice: 'Verglas' };
   const obj = x => x && typeof x === 'object' && !Array.isArray(x);
@@ -106,7 +106,8 @@ const Debrief = (() => {
   function compare(e) {
     const p = e && e.start && e.start.prediction, f = e && e.feedback;
     if (!f) return { kind: 'pending', missed: [], unused: [] };
-    if (!p || !p.known || !p.fetchedAt || e.start.at - p.fetchedAt > 90 * 60e3) return { kind: 'unknown', missed: [], unused: [] };
+    const age = p && Number.isFinite(p.fetchedAt) ? (e.start.at - p.fetchedAt) / 60000 : NaN;
+    if (!p || !p.known || !p.fetchedAt || !Number.isFinite(age) || age < -1 || age > FORECAST_MAX_MIN) return { kind: 'unknown', missed: [], unused: [] };
     // Pluie et chaussée humide décrivent la même famille ; brume, neige et
     // verglas restent séparés pour ne pas masquer un phénomène non annoncé.
     const family = xs => [...new Set(xs.map(k => ['wet', 'rain'].includes(k) ? 'wet' : k))];
