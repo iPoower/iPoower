@@ -35,7 +35,7 @@ permissions:
   contents: read
 jobs:
   version:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 2
     outputs:
       ref: ${{ steps.v.outputs.ref }}
@@ -66,7 +66,7 @@ jobs:
     # frontière des secrets : jamais sur une pull request (son code n'est pas encore approuvé).
     # Uniquement sur main (push après fusion) ou un retour arrière lancé depuis main (étiquette prod-N = ancien code de main).
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.inputs.version != '')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -97,7 +97,7 @@ jobs:
   unit:
     needs: version
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.version == ''
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     concurrency:
       group: ci-unit-${{ github.ref }}
@@ -140,7 +140,7 @@ jobs:
   tests:
     needs: [version, unit]
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.version == ''
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     # Chaque job a son navigateur, son runner et son workspace. Aucun shard n'annule un autre shard.
     concurrency:
@@ -209,7 +209,7 @@ jobs:
     needs: version
     # Les anciens tags n'ont pas les helpers de sharding : conserver leur runner intégral.
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     # seuls les tests d'une modification remplacée par une plus récente sont annulés (jamais un déploiement)
     concurrency:
@@ -247,7 +247,7 @@ jobs:
         run: node tests/run-ci.js
   relay-smoke:
     needs: version
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -271,7 +271,7 @@ jobs:
     needs: [version, unit, tests, tests-rollback, relay-smoke, confidentialite]
     # Même en cas d'échec d'un parent, le verdict doit être rouge, jamais sauté en silence.
     if: always() && !cancelled()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     env:
       CI_NEEDS: ${{ toJSON(needs) }}
@@ -306,7 +306,7 @@ jobs:
     needs: [version, confidentialite, validation, relay-smoke]
     # Le verdict gère les skips attendus de rollback ; aucune dépendance échouée ne permet de publier.
     if: ${{ !cancelled() && needs.version.result == 'success' && needs.confidentialite.result == 'success' && needs.validation.result == 'success' && needs.relay-smoke.result == 'success' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.inputs.version != '')) }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: write

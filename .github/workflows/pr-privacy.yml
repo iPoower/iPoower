@@ -26,7 +26,7 @@ jobs:
       name: production
       deployment: false
     if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.ref == 'main' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Scanner de confiance = main
