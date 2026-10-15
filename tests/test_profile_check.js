@@ -15,6 +15,13 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const work = (durMin = 30) => ({ from: 'home', to: 'work', durMin });
   const car = (brand = 'Marque test', model = 'Modèle test', extra = {}) => ({ id: 'c', short: 'Citadine', tire: { type: 'summer', brand, model, size: '', dot: '', tread: null, press: '', ...extra } });
 
+  vm.runInContext(app.slice(app.indexOf('const BASE ='), app.indexOf('const clone =')) + ';this.neutral=BASE;', ctx);
+  test('réglage neutre livré : trajet plausible, lieux et pneus toujours en aperçu', () => {
+    const r = P.check(ctx.neutral);
+    assert.equal(r.commuteOk, true, 'la durée d’exemple doit être plausible pour ses lieux');
+    assert.equal(r.generic, true); assert.equal(r.car(ctx.neutral.cars[0]).generic, true);
+    assert(!r.gaps.some(g => g.id === 'commute'));
+  });
   test('réglage neutre (Paris/Lille, voiture sans modèle) : aperçu générique, raisons listées', () => {
     const r = P.check({ locs: EX, work: work(40) }), c = r.car(car('', ''));
     assert.equal(r.generic, true); assert.equal(c.generic, true);
@@ -80,6 +87,11 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   ctx.CalendarOrigin = { clean: x => x || {} };
   vm.runInContext(app.slice(app.indexOf('const clone ='), app.indexOf('// Migration étroite')), ctx);
   const base = { locs: REAL, cars: [car()], customs: [], work: work() };
+  test('nouvelle durée d’exemple : une durée personnelle enregistrée est conservée', () => {
+    const saved = { work: { ...work(40) }, locs: REAL, cars: [car()] }, before = JSON.stringify(saved);
+    const normalized = ctx.normalize(saved, ctx.neutral);
+    assert.equal(normalized.work.durMin, 40); assert.equal(JSON.stringify(saved), before);
+  });
   test('relecture des réglages : coordonnées explicitement effacées conservées, profil incomplet', () => {
     for (const key of ['lat', 'lon']) {
       const saved = { ...base, locs: [{ ...REAL[0], [key]: null }, REAL[1]] }, before = JSON.stringify(saved);
@@ -145,6 +157,13 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   test('Agenda configuré : conclusions favorables rétablies', () => {
     const r = renderAgenda(false);
     assert.match(r, /🟢 GO 100/);
+  });
+  const analysis = fs.readFileSync(path.join(__dirname, '../src/app/analysis-view.js'), 'utf8');
+  vm.runInContext(analysis.slice(analysis.indexOf('function briefThermalHtml('), analysis.indexOf('// suivi de la mémoire thermique')), ctx);
+  test('profil générique plausible : aucune échéance de chauffe personnelle calculée', () => {
+    Object.assign(ctx, { workCommuteBad: () => false, carProfile: () => ({ generic: true }),
+      tripLab: () => { throw new Error('la chauffe personnelle ne doit pas être calculée sur un aperçu'); } });
+    assert.equal(ctx.briefThermalHtml({}, car()), '');
   });
   return count;
 }

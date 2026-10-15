@@ -66,6 +66,8 @@ const rg = x => `${String(x[0]).replace('-', '−')}–${String(x[1]).replace('-
   try {
     for (const [scn, dev] of [['pluie', 'iphone'], ['doux', 'pc'], ['froid', 'iphone']]) {
       const s = await session(b, { at: '2026-10-07T06:00:00+02:00', scn, dev }), p = s.p, tag = `${dev} · ${scn}`;
+      // Une échéance thermique personnelle exige une monte renseignée ; les profils neutres sont vérifiés séparément.
+      await p.evaluate(() => { Object.assign(S.cars[0].tire, { brand: 'Marque test', model: 'Modèle test' }); renderAll(); });
       await s.settle(6); const g = await probe(p);
       check(tag + ' · un trajet analysé et sa ligne Gomme dans le briefing', g.has && g.n >= 2 && !!g.txt && /Gomme · estimation/.test(g.txt), JSON.stringify(g));
       check(tag + ' · passages entre le départ et l’arrivée, kilomètres qui ne reculent jamais', g.ordered, JSON.stringify(g));

@@ -22,7 +22,7 @@ const BASE = {
     { id: 'work', name: 'Lieu de travail', sub: '', lat: 50.6292, lon: 3.0573 }
   ],
   customs: [],
-  work: { from: 'home', to: 'work', durMin: 40, dep: '07:30', ret: '17:30', days: [1, 2, 3, 4, 5] },
+  work: { from: 'home', to: 'work', durMin: 180, dep: '07:30', ret: '17:30', days: [1, 2, 3, 4, 5] },
   horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on', f1RaceEngineer: 0, f1TrackConditions: 0, f1TyreManagement: 0,
     f1StrategyAB: 0, f1TheGarage: 0, f1TelemetryReplay: 0 }, road: { on: 1 },
   alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
@@ -1120,10 +1120,10 @@ function renderDecisionCore() {
     // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
     (matters.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + matters.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
       : '') +
-    '<div class="decision-meta"><span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + forecastHtml + '</span>' +
+    '<div class="decision-meta">' + destinationHtml + '<span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + forecastHtml + '</span>' +
     '<span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span>' +
     (UI.view === 'pneus' && car ? '<span class="decision-mount">Monte · <b>' + esc(TYPE_LABEL[tyre.type] || 'à confirmer') + '</b> · ' + esc([tyre.brand, tyre.model].filter(Boolean).join(' ') || 'modèle non renseigné') + '</span>' : '') +
-    destinationHtml + '</div>' +
+    '</div>' +
     changesHtml;
   const html = UI.view === 'analyse'
     ? uxFold('analysis-context', 'Contexte météo et voiture', '<div class="decision-core lv' + decision.displayLevel + '">' + coreHtml + '</div>') : coreHtml;

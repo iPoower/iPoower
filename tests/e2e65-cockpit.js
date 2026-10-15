@@ -45,6 +45,16 @@ const layout = p => p.evaluate(() => {
         const brf = await p.locator('#secBrf').innerText();
         if (r.conf >= 2) assert.doesNotMatch(brf, /🟢 GO/);
       });
+      await check(dev + ' · départ avant les détails de lieu, voiture et monte, sans changer le contexte', async () => {
+        const order = await p.locator('#decisionCore .decision-meta').evaluate(el => {
+          const trip = el.querySelector('.decision-trip'), place = el.querySelector('.decision-place');
+          return { firstIsTrip: el.firstElementChild === trip, tripBottom: trip.getBoundingClientRect().bottom,
+            placeTop: place.getBoundingClientRect().top, text: trip.innerText };
+        });
+        assert(order.firstIsTrip, 'le prochain départ doit précéder les détails');
+        assert(order.tripBottom <= order.placeTop + 1, JSON.stringify(order));
+        assert.match(order.text, /Prochain trajet.*→/); assert.match(order.text, /départ prévu.*06:30/);
+      });
       await check(dev + ' · résumé trajet : origine en attente, date future et absence de trajet restent explicites', async () => {
         const x = await p.evaluate(() => {
           const before = APP_CONTEXT.snapshot, trip = before.nextTrip; if (!trip) throw new Error('Trajet fictif attendu');

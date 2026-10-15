@@ -1,6 +1,6 @@
 // Audit A06 dans le vrai navigateur : réglage neutre (appareil verrouillé, Paris/Lille d'exemple, voitures sans modèle)
 // → « Aperçu générique » au niveau des conclusions, jamais GO ni score /100, aucune échéance de chauffe sur un planning
-// à ≈ 380 km/h. Puis vrai profil (fixtures fictives) + monte renseignée → verdict personnel rétabli. iPhone et PC.
+// à ≈ 380 km/h injecté explicitement. L’exemple livré reste plausible. Puis profil fictif renseigné → verdict personnel rétabli.
 'use strict';
 const assert = require('node:assert/strict');
 const { session, BR, errors } = require('./lib/context-session');
@@ -12,10 +12,10 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
   try {
     for (const dev of ['iphone', 'pc']) {
       const s = await session(b, { at: '2026-10-08T06:40:00+02:00', dev, unlock: false }), p = s.p;
-      await check(dev + ' · verrouillé : profil générique reconnu (lieux d’exemple, monte absente, planning ≈ 380 km/h)', async () => {
+      await check(dev + ' · verrouillé : exemple plausible, lieux et monte toujours génériques', async () => {
         const r = await p.evaluate(() => { const x = PROFILE(); return { locked: LOCKED(), generic: x.generic, ids: x.gaps.map(g => g.id), kmh: x.commute && x.commute.kmh, car: carProfile(S.cars[0]).generic }; });
         assert.equal(r.locked, true); assert.equal(r.generic, true); assert.equal(r.car, true);
-        assert.deepEqual(r.ids, ['locked', 'places', 'commute']); assert(r.kmh > 300, String(r.kmh));
+        assert.deepEqual(r.ids, ['locked', 'places']); assert(r.kmh > 0 && r.kmh <= 130, String(r.kmh));
       });
       await view(s, 'pneus');
       await check(dev + ' · diagnostic agenda verrouillé : pas de faux chargement, même dans la copie', async () => {
@@ -41,13 +41,21 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
         assert.doesNotMatch(compare, /\d+\s*\/\s*100|Écart d’indice|indice proche \(\d+/);
         assert.doesNotMatch(await txt(p, '#secBrf'), /🟢 Aucun risque identifié/);
       });
-      await check(dev + ' · briefing : aucune conclusion favorable ni échéance de chauffe sur un planning impossible', async () => {
+      await check(dev + ' · briefing d’exemple : pas d’alerte de vitesse impossible ni de chauffe personnelle', async () => {
+        const brf = await txt(p, '#secBrf');
+        assert.match(brf, /APERÇU GÉNÉRIQUE/);
+        assert.doesNotMatch(brf, /km\/h de moyenne|trajet domicile-travail incohérent|Fenêtre favorable atteinte|N’atteint pas sa fenêtre/);
+        assert.equal(await p.locator('#secBrf [data-k=gum]').count(), 0);
+      });
+      await p.evaluate(() => { S.work.durMin = 40; rebuild(); renderAll(); }); await s.settle(6);
+      await check(dev + ' · planning impossible injecté : contrôle de vitesse et chauffe suspendue conservés', async () => {
         const brf = await txt(p, '#secBrf');
         assert.match(brf, /PROCHAIN TRAJET/i, 'le trajet domicile-travail d’exemple est bien briefé'); assert.match(brf, /🧪 APERÇU/); assert.match(brf, /APERÇU GÉNÉRIQUE/);
         assert.doesNotMatch(brf, /✓ Pneus actuels adaptés au trajet|🟢 GO|🟡 CAUTION|HIGH RISK|NO GO|\/ 100|\d+\/100/);
         assert.match(brf, /Gomme · estimation suspendue/); assert.match(brf, /≈ \d{3} km\/h de moyenne/); assert.doesNotMatch(brf, /Fenêtre favorable atteinte|N’atteint pas sa fenêtre/);
         assert.equal(await p.locator('#secBrf .gauge text.g-l').first().textContent(), 'aperçu');
       });
+      await p.evaluate(() => { S.work.durMin = BASE.work.durMin; rebuild(); renderAll(); }); await s.settle(4);
       await view(s, 'analyse');
       await check(dev + ' · Analyse : aperçu dans le verdict, visible sans défilement sur iPhone', async () => {
         const lab = await txt(p, '#secLab .lab-hero');
