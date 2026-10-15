@@ -246,13 +246,16 @@ const layout = (p, mobile) => p.evaluate(mobile => {
         const real = CX.m.obs, source = wxDesk(wxInput()).current.source, render = () => { renderWx.last = ''; renderWx(); };
         CX.m.obs = { id: 'LFXX', name: 'Station test', dist: 12.4, t: new Date(Date.now() - 10 * 60e3).toISOString(), T: 7.1, dT: -2 };
         render(); const withObs = [...document.querySelectorAll('#secWx .wx-now-src')].map(e => e.innerText.trim()), hasK = !!document.querySelector('#secWx [data-k=station]');
+        const diagWith = diagRows(true).find(r => r[0] === 'Correction par station')[1];
         CX.m.obs = null; render(); const without = [...document.querySelectorAll('#secWx .wx-now-src')].map(e => e.innerText.trim());
+        const diagWithout = diagRows(true).find(r => r[0] === 'Correction par station')[1];
         CX.m.obs = real; render();
-        return { source, withObs, hasK, without };
+        return { source, withObs, hasK, without, diagWith, diagWithout };
       });
       const wantSrc = prov.source === 'current' ? /^PRÉVU · Donnée actuelle du modèle/ : /^ESTIMÉ · modèle ajusté par station/;
       check(`${dev} · avec station : le grand chiffre ne prétend pas être ajusté quand il vient du modèle`, wantSrc.test(prov.withObs[0] || '') && (prov.source !== 'current' || !/ajusté par station/.test(prov.withObs[0])), JSON.stringify(prov));
       check(`${dev} · avec station : nom, distance, âge du relevé et correction des prévisions horaires affichés`, prov.hasK && /Station Station test · 12 km · relevé il y a 10 min · prévisions horaires corrigées de −2,0 °C/.test(prov.withObs[1] || ''), JSON.stringify(prov.withObs));
+      check(`${dev} · diagnostic : la station utilisée est nommée, ou « aucune » sans relevé`, /^Station Station test · 12 km · relevé il y a 10 min · prévisions horaires corrigées de −2,0 °C$/.test(prov.diagWith) && /^aucune/.test(prov.diagWithout), JSON.stringify([prov.diagWith, prov.diagWithout]));
       check(`${dev} · sans station : aucune ligne de station inventée`, prov.without.length === 1 && !/Station/.test(prov.without[0]), JSON.stringify(prov.without));
       await s.c.close();
     }
