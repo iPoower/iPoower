@@ -265,6 +265,29 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert(r.matters.some(m => m.text === 'Pas de pluie attendue sur les trajets d’ici 19:00'), JSON.stringify(r.matters));
     assert(!JSON.stringify(r).includes('possible ·') && r.phen.find(p => p.id === 'rain').line === 'Aucune avant 19:00');
   });
+  // Heures hors d'aujourd'hui : le jour est toujours dit (« demain 08:32 »), jamais une heure nue qui se lit comme déjà passée.
+  const tomorrowSun = () => {
+    const hs = H('2026-10-06T00:00', 60), at = h => hs.find(x => x.t === h);
+    const tr = { id: 'go', label: 'trajet vers Lieu B', from: 'Lieu A', to: 'Lieu B', dep: '2026-10-07T08:32', arr: '2026-10-07T08:50', glare: { ts: '2026-10-07T08:32' },
+      points: [['2026-10-07T08:32', 0, 0], ['2026-10-07T08:50', 1, 12]].map(([t, f, km]) => ({ t, f, km, x: at(t.slice(0, 13) + ':00') })) };
+    return { hs, tr };
+  };
+  test('soleil rasant demain matin : « demain 08:32 » et « jusqu’à demain », jamais une heure nue à 20 h', () => {
+    const { hs, tr } = tomorrowSun(), r = desk({ now: '2026-10-06T20:11', hours: hs, trips: [tr] });
+    assert.equal(r.hero.title, 'SOLEIL RASANT'); assert.match(r.hero.lines[0], /^Vers demain 08:32 pendant le trajet vers Lieu B$/, r.hero.lines.join(' | '));
+    assert.match(r.window.toLabel, /^demain \d\d:\d\d$/, r.window.toLabel); assert.match(r.window.to, /^\d\d:\d\d$/, 'champ court conservé');
+    assert(r.matters.some(m => /Soleil rasant vers demain 08:32/.test(m.text)), JSON.stringify(r.matters));
+    assert.match(r.phen.find(p => p.id === 'sun').line, /^Vers demain 08:32/);
+    const same = desk({ now: '2026-10-06T07:00', hours: hs, trips: [{ ...tr, dep: '2026-10-06T08:32', arr: '2026-10-06T08:50', glare: { ts: '2026-10-06T08:32' }, points: tr.points.map(p => ({ ...p, t: p.t.replace('-07T', '-06T'), x: hs.find(x => x.t === p.t.replace('-07T', '-06T').slice(0, 13) + ':00') })) }] });
+    assert.match(same.hero.lines[0], /^Vers 08:32 pendant le/, 'le même jour : heure seule, comme avant');
+  });
+  test('soir, sans trajet : « jusqu’à demain HH:MM », la fenêtre de 24 h ne se lit pas comme une heure déjà passée', () => {
+    const r = desk({ now: '2026-10-06T20:11', hours: H('2026-10-06T00:00', 60), trips: [] });
+    assert.match(r.hero.lines[1], /^Aucun phénomène notable jusqu’à demain \d\d:\d\d$/, r.hero.lines.join(' | '));
+    assert.match(r.window.toLabel, /^demain \d\d:\d\d$/); assert(r.matters.some(m => /d’ici demain \d\d:\d\d/.test(m.text)), JSON.stringify(r.matters));
+    const morning = desk({ now: '2026-10-06T07:00', hours: H('2026-10-06T00:00', 60), trips: [] });
+    assert.match(morning.hero.lines[1], /jusqu’à (demain )?\d\d:\d\d/); assert.doesNotMatch(morning.window.toLabel, /^$/);
+  });
   test('A03 · grille : un signal de pluie (règle Tenue ou pénalité route) n’est jamais présenté comme un temps sec', () => {
     let n = 0;
     for (const pp of [0, 49, 50, 59, 60, 90]) for (const Pl of [0, 0.05, 0.1, 0.15]) for (const code of [1, 3, 51, 61, 80]) for (const Pb of [null, 0, 0.5]) {
@@ -287,6 +310,8 @@ if (require.main === module) {
   const original = fs.readFileSync(sourcePath, 'utf8'), count = runTests(original);
   // contre-tests : chaque régression métier doit être rejetée par au moins un scénario
   const mutations = [
+    { name: 'jour omis : « Vers 08:32 » pour un trajet de demain', from: "if (!day || !today || day === today) return hm(ts);", to: 'return hm(ts);' },
+    { name: 'fenêtre « jusqu’à » sans le jour', from: 'toLabel: hmd(endTs)', to: 'toLabel: hm(endTs)' },
     { name: 'seuil de brouillard abaissé à 500 m', from: 'vis < 1000 ? 1 : 0', to: 'vis < 500 ? 1 : 0' },
     { name: 'verglas ÉLEVÉ rétrogradé en orange', from: 'iceLv >= 2 ? 3 : iceLv === 1 ? 2 : 0', to: 'iceLv >= 2 ? 2 : iceLv === 1 ? 2 : 0' },
     { name: 'pluie verglaçante ignorée', from: 'FZ.has(code) ? 3 :', to: '' },

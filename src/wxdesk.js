@@ -30,6 +30,14 @@ function wxDesk(input) {
   const ORDER = ['ice', 'snow', 'fog', 'rain', 'wind', 'temp', 'sun'];
   const SNOW = new Set([71, 73, 75, 77, 85, 86]), FZ = new Set([56, 57, 66, 67]), FOG = new Set([45, 48]), RAINY = new Set([51, 53, 55, 61, 63, 65, 80, 81, 82]);
   const now = input && input.now, nowM = mins(now);
+  // Heure avec son jour quand ce n'est pas aujourd'hui : « demain 08:32 », « 07/10 08:32 ». Une heure nue se lit comme « aujourd'hui »,
+  // donc comme déjà passée à 20 h pour un trajet de demain matin. Aujourd'hui : « 08:32 », comme avant.
+  const hmd = ts => {
+    const day = String(ts || '').slice(0, 10), today = String(now || '').slice(0, 10);
+    if (!day || !today || day === today) return hm(ts);
+    const tomorrow = new Date(Date.parse(today + 'T12:00:00Z') + 864e5).toISOString().slice(0, 10);
+    return (day === tomorrow ? 'demain ' : day.slice(8, 10) + '/' + day.slice(5, 7) + ' ') + hm(ts);
+  };
   const all = ((input && input.hours) || []).filter(x => x && Number.isFinite(mins(x.t))).slice().sort((a, b) => mins(a.t) - mins(b.t));
   if (!Number.isFinite(nowM) || !all.length) return null;
   const hour0 = Math.floor(nowM / 60) * 60;
@@ -132,7 +140,7 @@ function wxDesk(input) {
   const where = s => {
     const ts = tripsOf(s); if (!ts.length) return '';
     const t = ts[0];
-    return `${t.label || 'trajet'} de ${hm(t.dep)}${ts.length > 1 ? ' et ' + (ts.length - 1) + ' autre' + (ts.length > 2 ? 's' : '') : ''}`;
+    return `${t.label || 'trajet'} de ${hmd(t.dep)}${ts.length > 1 ? ' et ' + (ts.length - 1) + ' autre' + (ts.length > 2 ? 's' : '') : ''}`;
   };
 
   // Pluie possible sur des heures/points : niveau, moment, et explication sourcée (aucune certitude dans un sens ou l'autre).
@@ -151,7 +159,7 @@ function wxDesk(input) {
       code != null && Pl < 0.1 ? 'Code pluvieux avec quantité arrondie à 0 : averse brève ou locale possible' : null].filter(Boolean);
     return { lv: pp != null && pp >= 60 ? 1 : 0, m: R[0].m, t: R[0].t, pp, Pl, Pb, ar, code, text: [sig.join(', '), qty].filter(Boolean).join(' · '), explain };
   }
-  const mbH = maybeOf(H.filter(r => r.m + 60 > nowM)), whenM = mb => mb.m <= nowM ? 'maintenant' : 'vers ' + hm(mb.t);
+  const mbH = maybeOf(H.filter(r => r.m + 60 > nowM)), whenM = mb => mb.m <= nowM ? 'maintenant' : 'vers ' + hmd(mb.t);
 
   /* ---------- changements significatifs ---------- */
   const changes = [];
@@ -184,18 +192,18 @@ function wxDesk(input) {
   const inMin = m => { const d = Math.max(0, Math.round(m - nowM)); return d < 60 ? `dans ${d} min` : `dans ${Math.floor(d / 60)} h${d % 60 ? ' ' + String(d % 60).padStart(2, '0') : ''}`; };
   if (!dominant) {
     title = 'CONDITIONS NORMALES';
-    lines.push(tempLine, mbH ? `Pluie possible ${whenM(mbH)} · peu d’eau prévue (${r1(mbH.Pl)} mm/h)` : `Aucun phénomène notable jusqu’à ${hm(endTs)}`);
+    lines.push(tempLine, mbH ? `Pluie possible ${whenM(mbH)} · peu d’eau prévue (${r1(mbH.Pl)} mm/h)` : `Aucun phénomène notable jusqu’à ${hmd(endTs)}`);
   } else {
-    const s = dominant, now_ = active(s), pk = s.peakRow ? s.peakRow.x : null, span = `${hm(atMin(s.start))}–${hm(atMin(s.end))}`;
+    const s = dominant, now_ = active(s), pk = s.peakRow ? s.peakRow.x : null, span = `${hmd(atMin(s.start))}–${hmd(atMin(s.end))}`;
     if (s.id === 'ice') {
       title = s.lv >= 3 ? 'RISQUE DE VERGLAS' : s.lv === 2 ? 'GEL DE SURFACE PROBABLE' : 'CHAUSSÉE PROCHE DU GEL';
-      lines.push(`Fenêtre critique ${now_ ? 'maintenant' : hm(atMin(s.start))}–${hm(atMin(s.end))}`, `Chaussée estimée ${r1(pk.Tr)} °C ± 2`, tempLine);
+      lines.push(`Fenêtre critique ${now_ ? 'maintenant' : hmd(atMin(s.start))}–${hmd(atMin(s.end))}`, `Chaussée estimée ${r1(pk.Tr)} °C ± 2`, tempLine);
     } else if (s.id === 'sun') {
-      title = 'SOLEIL RASANT'; lines.push(`Vers ${hm(atMin(s.start))} pendant le ${s.trip.label || 'trajet'}`, tempLine);
+      title = 'SOLEIL RASANT'; lines.push(`Vers ${hmd(atMin(s.start))} pendant le ${s.trip.label || 'trajet'}`, tempLine);
     } else {
       const label = { rain: rainTxt(pk).toUpperCase(), snow: 'NEIGE', fog: 'BROUILLARD', wind: 'RAFALES', temp: n(pk.T) >= 35 ? 'FORTE CHALEUR' : 'FROID INTENSE' }[s.id];
-      title = now_ ? `${label} EN COURS` : `${label} À PARTIR DE ${hm(atMin(s.start))}`;
-      if (now_) lines.push(s.end < endM ? `Fin probable vers ${hm(atMin(s.end))}` : `Jusqu’à au moins ${hm(endTs)}`);
+      title = now_ ? `${label} EN COURS` : `${label} À PARTIR DE ${hmd(atMin(s.start)).toUpperCase()}`;
+      if (now_) lines.push(s.end < endM ? `Fin probable vers ${hmd(atMin(s.end))}` : `Jusqu’à au moins ${hmd(endTs)}`);
       else lines.push(`Début estimé ${inMin(s.start)}${s.precise ? '' : ' (prévision horaire)'}`);
       if (s.id === 'fog') lines.push(`Visibilité minimale ${visTxt(n(pk.vis))} · ${span}`);
       if (s.id === 'wind') lines.push(`Rafales jusqu’à ${r0(pk.gust)} km/h`);
@@ -204,7 +212,7 @@ function wxDesk(input) {
     const w = s.id === 'sun' ? '' : where(s);
     if (w) lines.splice(1, 0, `${w[0].toUpperCase() + w.slice(1)} potentiellement concerné${tripsOf(s).length > 1 ? 's' : ''}`);
   }
-  if (nextChange && !(dominant && nextChange.m === dominant.start && nextChange.id === dominant.id)) lines.push(`Prochain changement : ${hm(atMin(nextChange.m))} · ${nextChange.text}`);
+  if (nextChange && !(dominant && nextChange.m === dominant.start && nextChange.id === dominant.id)) lines.push(`Prochain changement : ${hmd(atMin(nextChange.m))} · ${nextChange.text}`);
   const ageMin = input && finite(input.ageMin) ? input.ageMin : null, stale = ageMin != null && ageMin > WXD_STALE_AFTER_MIN;
   const hero = { level, emoji: EMO[level], title, lines: lines.slice(0, 4), dominant: dominant ? dominant.id : null, stale };
 
@@ -219,7 +227,7 @@ function wxDesk(input) {
     if (t.arrM > t.depM) moments.push({ m: t.arrM, kind: 'arr', lv, text: `arrivée${t.to ? ' · ' + t.to : ''}`, trip: t.id });
   });
   const tl = moments.filter(x => x.m >= nowM - 1 && x.m <= endM).sort((a, b) => a.m - b.m || (a.kind === 'wx') - (b.kind === 'wx'))
-    .slice(0, 12).map(x => ({ t: x.now ? 'maintenant' : hm(atMin(x.m)), ts: atMin(x.m), kind: x.kind, id: x.id || null, lv: x.lv, text: x.text, trip: x.trip || null }));
+    .slice(0, 12).map(x => ({ t: x.now ? 'maintenant' : hmd(atMin(x.m)), ts: atMin(x.m), kind: x.kind, id: x.id || null, lv: x.lv, text: x.text, trip: x.trip || null }));
   const strip = H.map(r => {
     const x = r.x, trip = tripList.find(t => !t.pending && r.m + 60 > t.depM && r.m <= t.arrM);
     const ic = r.h.ice >= 2 ? 'ice' : r.h.snow ? 'snow' : r.h.fog ? 'fog' : r.h.rain ? 'rain' : r.h.wind ? 'wind' : null;
@@ -234,9 +242,9 @@ function wxDesk(input) {
   const phen = [];
   { const s = first('rain') || first('snow'), Psum = H.reduce((a, r) => a + (n(r.x.Pl) ?? n(r.x.P) ?? 0), 0), ppM = maxOf('pp');
     const mb = !s ? mbH : null;
-    const line = mb ? `Possible ${whenM(mb)} · peu d’eau prévue` : !s ? `Aucune avant ${hm(endTs)}` : active(s) ? `${s.id === 'snow' ? 'Neige' : cap(rainTxt(s.peakRow.x))} en cours${s.end < endM ? ' · fin vers ' + hm(atMin(s.end)) : ' · au moins jusqu’à ' + hm(endTs)}` : `${s.id === 'snow' ? 'Neige' : cap(rainTxt(s.peakRow.x))} à partir de ${hm(atMin(s.start))}`;
+    const line = mb ? `Possible ${whenM(mb)} · peu d’eau prévue` : !s ? `Aucune avant ${hmd(endTs)}` : active(s) ? `${s.id === 'snow' ? 'Neige' : cap(rainTxt(s.peakRow.x))} en cours${s.end < endM ? ' · fin vers ' + hm(atMin(s.end)) : ' · au moins jusqu’à ' + hm(endTs)}` : `${s.id === 'snow' ? 'Neige' : cap(rainTxt(s.peakRow.x))} à partir de ${hm(atMin(s.start))}`;
     phen.push({ id: 'rain', icon: s && s.id === 'snow' ? '🌨' : '🌧', title: s && s.id === 'snow' ? 'Neige' : 'Pluie', lv: s ? s.lv : mb ? mb.lv : 0, line,
-      detail: [`Cumul ${r1(Psum)} mm jusqu’à ${hm(endTs)}`, ppM != null ? `Probabilité maximale ${r0(ppM)} %` : null, ...(mb ? mb.explain : []), s ? `Intensité maximale ${r1(n(s.peakRow.x.Pl) ?? n(s.peakRow.x.P))} mm/h vers ${hm(s.peakRow.t)}` : null,
+      detail: [`Cumul ${r1(Psum)} mm jusqu’à ${hmd(endTs)}`, ppM != null ? `Probabilité maximale ${r0(ppM)} %` : null, ...(mb ? mb.explain : []), s ? `Intensité maximale ${r1(n(s.peakRow.x.Pl) ?? n(s.peakRow.x.P))} mm/h vers ${hm(s.peakRow.t)}` : null,
         nc ? (nc.nowWet ? `Au quart d’heure : ${nc.snow ? 'neige' : 'pluie'} en cours${nc.stopAt ? ', fin vers ' + nc.stopAt : ''}` : finite(nc.startIn) ? `Au quart d’heure : début dans ${nc.startIn} min` : 'Au quart d’heure : rien d’ici 2 h') : null].filter(Boolean) }); }
   { const s = first('fog'), vmin = rowMax('vis', -1);
     phen.push({ id: 'fog', icon: '🌫', title: 'Brouillard · visibilité', lv: s ? s.lv : 0,
@@ -255,7 +263,7 @@ function wxDesk(input) {
       detail: [`Ressenti ${Tapp == null ? '—' : r1(Tapp)} °C maintenant`, z ? `${cap(z.text)} vers ${hm(atMin(z.m))}` : null].filter(Boolean) }); }
   { const g = glareTrips[0], sun = (input && input.sun) || {};
     phen.push({ id: 'sun', icon: '🌅', title: 'Soleil rasant', lv: g ? 1 : 0,
-      line: g ? `Vers ${hm(g.glare.ts)} · ${g.label || 'trajet'}` : 'Pas dans l’axe des trajets prévus',
+      line: g ? `Vers ${hmd(g.glare.ts)} · ${g.label || 'trajet'}` : 'Pas dans l’axe des trajets prévus',
       detail: [sun.sunrise ? `Lever ${hm(sun.sunrise)} · coucher ${hm(sun.sunset)}` : null, g ? 'Soleil bas (moins de 15°) à moins de 30° du cap de la route, ciel peu couvert' : 'Calcul fait uniquement pour les trajets connus'].filter(Boolean) }); }
   const roadNow = roadState(nowRow), roadWorst = H.map(r => roadState(r)).sort((a, b) => b.rank - a.rank)[0];
   // l'état actuel, puis le pire état à venir s'il est plus délicat : la couleur correspond toujours au texte affiché
@@ -278,7 +286,7 @@ function wxDesk(input) {
   const next = tripList.find(t => t.depM >= nowM - 1 && t.depM - nowM <= 12 * 60 && t.pts.length) || tripList.find(t => t.depM < nowM && t.arrM > nowM && t.pts.length);
   const wRows = next ? next.pts.map(p => ({ x: p.x, h: p.h, t: p.t, m: p.m, maybe: p.maybe })) : H.filter(r => r.m <= nowM + 6 * 60);
   const road = roadScore(wRows, next ? !!next.glare : false);
-  road.window = next ? { kind: 'trip', label: `sur le ${next.label || 'trajet'} ${hm(next.dep)}–${hm(next.arr || next.dep)}` } : { kind: 'hours', label: `maintenant → ${hm(atMin(Math.min(endM, nowM + 6 * 60)))}` };
+  road.window = next ? { kind: 'trip', label: `sur le ${next.label || 'trajet'} ${hmd(next.dep)}–${hm(next.arr || next.dep)}` } : { kind: 'hours', label: `maintenant → ${hm(atMin(Math.min(endM, nowM + 6 * 60)))}` };
   function roadScore(rows, glare) {
     const mx = id => rows.reduce((a, r) => Math.max(a, r.h[id]), 0), xs = rows.map(r => r.x);
     const max = k => { const v = xs.map(x => n(x[k])).filter(v => v != null); return v.length ? Math.max(...v) : null; }, min = k => { const v = xs.map(x => n(x[k])).filter(v => v != null); return v.length ? Math.min(...v) : null; };
@@ -317,7 +325,7 @@ function wxDesk(input) {
       const kmTxt = fp && finite(fp.km) && fp.km > 0 ? (prev && finite(prev.km) && prev.km < fp.km ? ` après environ ${r0(prev.km)}–${r0(fp.km)} km` : ` vers le km ${r0(fp.km)}`) : firstIdx === 0 ? ' dès le départ' : fp ? ` vers ${hm(fp.t)}` : '';
       crit = { lv: worst.lv, id, text: `${cap(id === 'rain' ? (worst.lv >= 2 ? rainTxt(worst.x) : 'pluie probable') : id === 'ice' ? ICE_TXT[worst.lv] : id === 'fog' ? 'brouillard ' + visTxt(n(worst.x.vis)) : id === 'wind' ? 'rafales ' + r0(worst.x.gust) + ' km/h' : NAME[id])}${kmTxt}`, at: hm(P[i].t) };
     }
-    if (!crit && tt.glare) crit = { lv: 1, id: 'sun', text: `Soleil rasant vers ${hm(tt.glare.ts)}`, at: hm(tt.glare.ts) };
+    if (!crit && tt.glare) crit = { lv: 1, id: 'sun', text: `Soleil rasant vers ${hmd(tt.glare.ts)}`, at: hm(tt.glare.ts) };
     const tmb = !tt.pending && !crit && maybeOf(tripRows(tt));
     if (tmb) crit = { lv: tmb.lv, id: 'rain', text: `Pluie possible ${tmb.m <= tt.depM ? 'dès le départ' : 'vers ' + hm(tmb.t)} · ${tmb.text}`, at: hm(tmb.t), possible: true };
     const later = tripList.filter(t => !t.pending && t !== tt && t.depM > tt.depM).slice(0, 3).map(t => ({ dep: hm(t.dep), label: t.label || 'trajet', lv: t.pts.length ? t.pts.reduce((a, p) => Math.max(a, p.lv), t.glare ? 1 : 0) : null, day: t.dep.slice(0, 10) }));
@@ -334,15 +342,15 @@ function wxDesk(input) {
   tripList.forEach(t => {
     const w = t.pts.reduce((b, p) => !b || p.lv > b.lv ? p : b, null); if (!w || !w.lv) return;
     const id = ORDER.filter(k => w.h[k] === w.lv)[0], what = { rain: w.lv >= 2 ? cap(rainTxt(w.x)) : 'Pluie probable', snow: 'Neige', fog: 'Brouillard', wind: 'Rafales', ice: cap(ICE_TXT[w.lv]), temp: 'Température extrême' }[id];
-    push(w.lv, `${what} pendant le ${t.label || 'trajet'} (${hm(t.dep)})`, t.depM, id + '@trip');
+    push(w.lv, `${what} pendant le ${t.label || 'trajet'} (${hmd(t.dep)})`, t.depM, id + '@trip');
   });
   const tripMaybe = tripList.map(t => ({ t, mb: maybeOf(tripRows(t)) })).filter(o => o.mb);
-  tripMaybe.forEach(({ t, mb }) => push(mb.lv, `Pluie possible pendant le ${t.label || 'trajet'} (${hm(t.dep)}) · ${mb.text}`, t.depM, 'rainmaybe@trip'));
+  tripMaybe.forEach(({ t, mb }) => push(mb.lv, `Pluie possible pendant le ${t.label || 'trajet'} (${hmd(t.dep)}) · ${mb.text}`, t.depM, 'rainmaybe@trip'));
   if (mbH && !tripMaybe.length && !first('rain') && !first('snow')) push(mbH.lv, `Pluie possible ${whenM(mbH)} · ${mbH.text}`, mbH.m, 'rainmaybe');
   real.forEach(s => {
-    if (s.id === 'sun') { push(1, `Soleil rasant vers ${hm(atMin(s.start))} (${s.trip.label || 'trajet'})`, s.start, 'sun'); return; }
+    if (s.id === 'sun') { push(1, `Soleil rasant vers ${hmd(atMin(s.start))} (${s.trip.label || 'trajet'})`, s.start, 'sun'); return; }
     if (items.some(i => i.key === s.id + '@trip') && s.lv <= 1) return;
-    const pk = s.peakRow.x, a = active(s) ? 'maintenant' : hm(atMin(s.start)), b = hm(atMin(s.end));
+    const pk = s.peakRow.x, a = active(s) ? 'maintenant' : hmd(atMin(s.start)), b = hmd(atMin(s.end));
     const txt = {
       rain: active(s) ? `${cap(rainTxt(pk))} en cours ${s.end < endM ? 'jusqu’à ' + b : 'au moins jusqu’à ' + b}` : `${cap(rainTxt(pk))} probable ${s.end < endM ? `de ${a} à ${b}` : 'à partir de ' + a}`,
       snow: `Neige possible ${active(s) ? 'dès maintenant' : 'à partir de ' + a}`,
@@ -361,10 +369,10 @@ function wxDesk(input) {
   if (matters.length < 5 && !first('rain') && !first('snow') && !tripMaybe.length && tripList.length && tripList.every(t => !t.pending && t.pts.length)) matters.push({ lv: 0, text: `Pas de pluie attendue sur les trajets d’ici ${hm(endTs)}` });
   // conseil pratique seulement si la pluie touche un trajet ou tombe dans les 12 h
   if (matters.length < 5 && real.some(s => (s.id === 'rain' || s.id === 'snow') && (s.start - nowM <= 12 * 60 || tripsOf(s).length))) matters.push({ lv: 0, text: 'Prévoir une couche imperméable' });
-  if (!matters.length) matters.push({ lv: 0, text: `Rien de notable d’ici ${hm(endTs)} : conditions stables` });
+  if (!matters.length) matters.push({ lv: 0, text: `Rien de notable d’ici ${hmd(endTs)} : conditions stables` });
 
   return { level, hero, current: { T, Tapp, source: currentSource }, nextChange: nextChange ? { t: hm(atMin(nextChange.m)), text: nextChange.text, lv: nextChange.lv } : null,
-    window: { from: hm(now), to: hm(endTs), end: endTs }, timeline: { moments: tl, strip }, matters: matters.slice(0, 5), phen, road, trip };
+    window: { from: hm(now), to: hm(endTs), toLabel: hmd(endTs), end: endTs }, timeline: { moments: tl, strip }, matters: matters.slice(0, 5), phen, road, trip };
   function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 }
 // Pénalités des conditions route (points retirés de 100), dans l'ordre des seuils de l'en-tête.

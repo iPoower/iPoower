@@ -52,6 +52,12 @@ function wxInput() {
   return { now, hours: m.hs.slice(Math.max(0, m.nowI - 4)), cur, trips: wxTrips(m), nowcast: ageMin != null && ageMin > 30 ? null : m.nc || null,
     sun: { sunrise: day.sunrise || null, sunset: day.sunset || null }, ageMin };
 }
+// Provenance de la correction par station : laquelle, à quelle distance, de quand, et de combien elle décale les prévisions horaires.
+// Le grand chiffre « actuel » est la donnée du modèle (source « current ») : seules les heures sont corrigées par la station.
+function wxStationLine(o) {
+  const a = Reliability.ageMin(o.t), dT = Number.isFinite(o.dT) ? o.dT : null;
+  return `Station ${o.name || o.id || '?'}${Number.isFinite(o.dist) ? ' · ' + Math.round(o.dist) + ' km' : ''} · ${a == null ? 'heure inconnue' : 'relevé il y a ' + ageTxt(a)}${dT == null ? '' : ' · prévisions horaires corrigées de ' + (dT >= 0 ? '+' : '−') + f1(Math.abs(dT)) + ' °C'}`;
+}
 function renderWx() {
   const el = $('#secWx'); if (!el) return;
   if (UI.view === 'meteo' && !CX && M[UI.loc] && M[UI.loc].nowI < 0) {
@@ -77,7 +83,8 @@ function renderWx() {
       <div class="wx-now-main"><span class="wx-now-v num">${f1(nowWx.T)}</span><span class="wx-now-u">°C</span></div>
       <div class="wx-now-side"><span class="wx-now-k">Température actuelle</span>
         <b class="wx-now-feel">Ressenti ${Number.isFinite(nowWx.Tapp) ? f1(nowWx.Tapp) + ' °C' : '—'}</b>
-        <span class="wx-now-src">${m.obs ? 'ESTIMÉ · modèle ajusté par station' : 'PRÉVU · ' + (nowWx.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours')}${m.mode === 'cache' || offlineNow() ? ' · CACHE' : ''}</span></div>
+        <span class="wx-now-src">${m.obs && nowWx.source !== 'current' ? 'ESTIMÉ · modèle ajusté par station' : 'PRÉVU · ' + (nowWx.source === 'current' ? 'Donnée actuelle du modèle' : 'Estimation de l’heure en cours')}${m.mode === 'cache' || offlineNow() ? ' · CACHE' : ''}</span>
+        ${m.obs ? `<span class="wx-now-src wx-now-obs" data-k="station">${esc(wxStationLine(m.obs))}</span>` : ''}</div>
     </div>` : '';
   // Une même icône météo pour la lecture rapide et la chronologie détaillée.
   const skyIc = x => { const dd = m.days.find(z => z.date === x.t.slice(0, 10)) || {}, night = dd.sunrise && dd.sunset && (x.t < dd.sunrise.slice(0, 13) + ':00' || x.t > dd.sunset);
