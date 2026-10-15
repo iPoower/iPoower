@@ -3,7 +3,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm'), assert = r
 const sourcePath = path.join(__dirname, '../src/tyrestate.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = {}; vm.createContext(ctx);
-  vm.runInContext(['engine.js', 'tirespecs.js'].map(f => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8')).join('\n') + source + fs.readFileSync(path.join(__dirname, '../src/tyrelab.js'), 'utf8') + '\nthis.ts = tyreState; this.valid = tyreMemoryValid; this.lab = tyreLab; this.mount = confirmWinterMount; this.switchTire = switchTire; this.setAx = setTreadAxle; this.axles = treadAxles; this.loadCatalog = loadTireDB; this.catalogTire = findTire; this.catalogVariant = tirePlanVariant;', ctx);
+  vm.runInContext(['engine.js', 'tirespecs.js'].map(f => options.specSource && f === 'tirespecs.js' ? options.specSource : fs.readFileSync(path.join(__dirname, '../src', f), 'utf8')).join('\n') + source + fs.readFileSync(path.join(__dirname, '../src/tyrelab.js'), 'utf8') + '\nthis.ts = tyreState; this.valid = tyreMemoryValid; this.lab = tyreLab; this.mount = confirmWinterMount; this.switchTire = switchTire; this.setAx = setTreadAxle; this.axles = treadAxles; this.loadCatalog = loadTireDB; this.catalogTire = findTire; this.catalogVariant = tirePlanVariant;', ctx);
   const plain = v => JSON.parse(JSON.stringify(v)), TS = (c, o) => plain(ctx.ts(plain(c), o)), today = '2026-10-06';
   const H = (b = {}) => Array.from({ length: 40 }, (_, k) => ({ t: new Date(Date.parse('2026-10-05T18:00:00Z') + k * 36e5).toISOString().slice(0, 16), T: 12, Tr: 12, RH: 70, P: 0, Pl: 0, gust: 15, rad: 0, ice: { level: 0 }, ...b }));
   const car = (tire = {}, extra = {}) => ({ id: 'carA', name: 'Voiture test', odo: [{ d: '2026-10-01', km: 23400 }], ...extra,
@@ -13,6 +13,16 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   let count = 0;
   const test = (name, fn) => { try { fn(); } catch (e) { e.scenario = name; throw e; } count++; if (!options.quiet) console.log('✅ ' + name); };
 
+  // Saisie réelle d'un conducteur (diagnostic iPhone du 15/10) : « Pilot Sport 4S (AV + AR) ». L'annotation entre parenthèses ne change pas
+  // le pneu : la fiche constructeur est retrouvée, comme le fait déjà findTire pour la base de pneus. Un autre modèle reste générique.
+  test('L · annotation entre parenthèses dans le modèle (« AV + AR ») : fiche constructeur retrouvée, autres modèles non confondus', () => {
+    const prof = model => TS(car({ model }), { today });
+    for (const m of ['Pilot Sport 4S', 'Pilot Sport 4S (AV + AR)', 'Pilot Sport 4S (AV+AR)', 'Pilot Sport 4S (été)', 'Pilot Sport 4 S (AV + AR)']) {
+      const r = prof(m); assert.equal(r.profile.kind, 'manufacturer-specific', m); assert.match(r.profile.label, /fiche constructeur/, m);
+      assert.equal(r.quality.find(q => q.k === 'Spécification constructeur').st, '🟢', m);
+    }
+    for (const m of ['Pilot Sport 4 SUV', 'Pilot Sport 4S XL', 'Pilot Sport (4S)', 'Pilot Sport 4']) assert.equal(prof(m).profile.kind, 'generic', m);
+  });
   test('A · profondeur modifiée dans Pneus → aquaplaning et freinage pluie recalculés', () => {
     const rain = { P: 1, Pl: 1 }, a = analyse(car({ tread: 6.4 }), rain), b = analyse(car({ tread: 2.4 }), rain);
     assert(b.grip.aqua.lv > a.grip.aqua.lv, `${a.grip.aqua.lv} → ${b.grip.aqua.lv}`); assert(b.grip.mu < a.grip.mu);
@@ -178,6 +188,10 @@ if (require.main === module) {
     { name: 'jeu stocké pris pour la monte active', from: "k !== type && v &&", to: "v &&" },
     { name: 'tendance d’usure extrapolée depuis une seule mesure', from: 'if (withKm.length >= 2) {', to: 'if (withKm.length === 1) rate = 0.5; if (withKm.length >= 2) {' }
   ];
+  // mutation de la fiche constructeur (tirespecs.js) : le test L doit la rejeter
+  { const specs = fs.readFileSync(path.join(__dirname, '../src/tirespecs.js'), 'utf8'), from = ".replace(/\\(.*?\\)/g, '')";
+    assert(specs.includes(from), 'Mutation introuvable : annotation entre parenthèses'); let rej; try { runTests(original, { quiet: true, specSource: specs.replace(from, '') }); } catch (e) { rej = e; }
+    assert(rej && rej.scenario, 'La mutation doit être rejetée : annotation entre parenthèses ignorée retirée'); console.log('✅ Contre-test rejeté : annotation entre parenthèses ignorée retirée → ' + rej.scenario); }
   for (const m of mutations) {
     assert(original.includes(m.from), 'Mutation introuvable : ' + m.name);
     let rej; try { runTests(original.replace(m.from, m.to), { quiet: true }); } catch (e) { rej = e; }
