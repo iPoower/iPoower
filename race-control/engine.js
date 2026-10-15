@@ -102,6 +102,15 @@ function recentPrecip(hs, i, n) {
   for (let k = 0; k < n; k++) { const x = hs[i - k]; if (x && x.P != null) s += x.P; }
   return s;
 }
+/* Chaussée mouillée / humide : UNE définition pour le verdict (ici), l'Analyse (tyrelab.js : TL_ROAD) et le poste Météo (wxdesk.js : WXD_ROAD),
+   dont les copies sont verrouillées par tests/test_road_policy.js. Pluie en cours ≥ 0,2 mm/h ; humide dès 0,1 mm/h ou 0,3 mm cumulés sur les
+   3 dernières heures (heure courante comprise) ; air saturé (HR ≥ 95 % et T − Td < 1 °C) = humide sans précipitation (Analyse et poste Météo
+   seulement : le verdict pneus ne compte que les précipitations). Distinct d'estRoad ci-dessous, modèle physique de la température de chaussée. */
+const ROAD_POLICY = Object.freeze({ rainMmH: 0.2, dampMmH: 0.1, soakMm: 0.3, soakHours: 3, humidRH: 95, humidSpreadC: 1 });
+function roadWet(hs, i) {
+  const x = hs[i];
+  return !!x && ((x.P || 0) >= ROAD_POLICY.dampMmH || recentPrecip(hs, i, ROAD_POLICY.soakHours) >= ROAD_POLICY.soakMm);
+}
 function recentSnow(hs, i, n) {
   let s = 0;
   for (let k = 0; k < n; k++) { const x = hs[i - k]; if (x && x.snow != null) s += x.snow; }
@@ -263,7 +272,7 @@ function tireAssess(car, hs, i) {
   const add = (label, v, kind) => { if (v >= 0.5) { parts.push({ label, v: Math.round(v), kind }); pen += v; } };
   const Ta = x.T, Tr = x.Tr, Tc = Tr != null ? (Ta + Tr) / 2 : Ta;
   const P = x.Pl || 0;
-  const wet = (x.P || 0) >= 0.1 || recentPrecip(hs, i, 2) >= 0.3;
+  const wet = roadWet(hs, i);
   const snow = (x.snow || 0) > 0.05 || SNOW_CODES.has(x.code);
   const fz = FZ_CODES.has(x.code);
   const ice = x.ice && x.ice.score != null ? x.ice.score : 0;
@@ -389,7 +398,7 @@ function narrate(car, w, sum, intro) {
   s.push(`${f1(x0.T)} °C ${intro}${wet0 ? ', chaussée humide' : ', chaussée sèche'}.`);
   const drop = sum.Tmin != null && x0.T - sum.Tmin >= 2;
   if (drop) {
-    const it = sum.iTmin, wetT = recentPrecip(it.hs, it.i, 2) >= 0.3 || (it.hs[it.i].P || 0) >= 0.1;
+    const it = sum.iTmin, wetT = roadWet(it.hs, it.i);
     s.push(`Baisse vers ${f1(sum.Tmin)} °C prévue à ${hhmm(it)}${wetT ? ' avec chaussée humide' : ', chaussée sèche'}.`);
   } else if (sum.Tmax != null && sum.Tmax - sum.Tmin >= 2) {
     s.push(`Températures comprises entre ${f0(sum.Tmin)} et ${f0(sum.Tmax)} °C.`);
