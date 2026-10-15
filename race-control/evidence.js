@@ -71,7 +71,8 @@ function evidenceEngine(input) {
     // A — observations : distance × âge × altitude × échéance
     stations.forEach(st => {
       const o = (st.obs || []).filter(o => o && fin(Date.parse(o.t))).sort((a, b) => Date.parse(b.t) - Date.parse(a.t))[0]; if (!o) return;
-      const d = km(p, st), age = Math.max(0, (now - Date.parse(o.t)) / 60e3), w0 = step(C.dist, d) * step(C.age, age) * (fin(st.elev) && fin(p.elev) && Math.abs(st.elev - p.elev) > C.altDiff ? C.altFactor : 1);
+      const rawAge = (now - Date.parse(o.t)) / 60e3; if (rawAge < -1) return;   // observation datée du futur (horloge ou relais fautif) : ignorée, jamais « à l'instant »
+      const d = km(p, st), age = Math.max(0, rawAge), w0 = step(C.dist, d) * step(C.age, age) * (fin(st.elev) && fin(p.elev) && Math.abs(st.elev - p.elev) > C.altDiff ? C.altFactor : 1);
       const w = w0 * Math.max(0, 1 - lead / C.lead); if (w <= 0.02) return;
       const fg = /FG/.test(o.wx || ''), br = /BR/.test(o.wx || ''), ceil = ceilOf(o.raw), osp = fin(o.T) && fin(o.Td) ? o.T - o.Td : null;
       let lv = visLv(n(o.vis)) || 0;
