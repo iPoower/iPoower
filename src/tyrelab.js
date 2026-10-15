@@ -51,6 +51,8 @@ const TL_STALE_AFTER_MIN = 60;   // météo reçue il y a plus de 60 min = péri
 const TL_STOP_KMH = 3;
 // Minimum légal de sculpture (France) : en dessous, le pneu est un état critique qui prime sur tout indice calculé.
 const TL_LEGAL_MM = 1.6;
+// Chaussée mouillée / humide : copie de ROAD_POLICY (engine.js), verrouillée par tests/test_road_policy.js
+const TL_ROAD = { rainMmH: 0.2, dampMmH: 0.1, soakMm: 0.3, soakHours: 3, humidRH: 95, humidSpreadC: 1 };
 const TL_SETTLE = 0.05, TL_BASE_U = 3;   // convergence (part de la montée) ; incertitude de base (°C)
 const TL_KIND = { ville: { dT: 14, tauKm: 7, v: 30, label: 'ville' }, route: { dT: 20, tauKm: 10, v: 70, label: 'route' }, autoroute: { dT: 26, tauKm: 10, v: 115, label: 'autoroute' } };
 const TL_MU = { dry: [0.7, 0.9], wet: [0.4, 0.55] };
@@ -107,12 +109,14 @@ function tyreLab(input) {
   const noWeather = !currentHour || !['T', 'Tr', 'P', 'RH', 'gust'].every(k => n(currentHour[k]) != null);
   if (noWeather) return { known: true, tyre, spec: specOut, noWeather: true, state: inp.state || null, confidence: { level: 'faible', reasons: ['Aucune météo pour l’heure en cours : aucune estimation thermique possible.'] } };
   const rowAt = m => { let b = H[0]; for (const x of H) { if (mins(x.t) <= m) b = x; else break; } return b; };
-  const recentRain = m => H.filter(x => { const t = mins(x.t); return t <= m && t > m - 180; }).reduce((a, x) => a + (n(x.Pl) ?? n(x.P) ?? 0), 0);
+  const recentRain = m => H.filter(x => { const t = mins(x.t); return t <= m && t > m - TL_ROAD.soakHours * 60; }).reduce((a, x) => a + (n(x.Pl) ?? n(x.P) ?? 0), 0);
   function env(m) {
     const x = rowAt(m), Ta = n(x.T), Tr = n(x.Tr) ?? Ta, Pl = n(x.Pl) ?? n(x.P) ?? 0, snow = (n(x.snow) || 0) > 0.05 || [71, 73, 75, 77, 85, 86].includes(n(x.code));
     const iceLv = x.ice && finite(x.ice.level) ? x.ice.level : 0, fz = [56, 57, 66, 67].includes(n(x.code)), acc = recentRain(m);
-    const surf = fz || iceLv >= 2 || (Tr != null && Tr <= 0 && (Pl >= 0.1 || acc >= 0.3)) ? 'ice' : snow ? 'snow' : Pl >= 2 && acc >= 6 ? 'pool' : Pl >= 2 ? 'heavy' : Pl >= 0.2 ? 'rain'
-      : acc >= 0.3 || (n(x.RH) != null && x.RH >= 95) ? 'damp' : 'dry';
+    // air saturé : HR ≥ 95 % et T − Td < 1 °C (ou HR seule quand le point de rosée est inconnu)
+    const humidAir = n(x.RH) != null && x.RH >= TL_ROAD.humidRH && (n(x.Td) == null || Ta - x.Td < TL_ROAD.humidSpreadC);
+    const surf = fz || iceLv >= 2 || (Tr != null && Tr <= 0 && (Pl >= TL_ROAD.dampMmH || acc >= TL_ROAD.soakMm)) ? 'ice' : snow ? 'snow' : Pl >= 2 && acc >= 6 ? 'pool' : Pl >= 2 ? 'heavy' : Pl >= TL_ROAD.rainMmH ? 'rain'
+      : Pl >= TL_ROAD.dampMmH || acc >= TL_ROAD.soakMm || humidAir ? 'damp' : 'dry';
     // signalement terrain de l'utilisateur (≤ 60 min) : aggrave l'état de surface, jamais ne l'améliore ; brouillard = humidité accrue
     const RK = { ice: 'ice', snow: 'snow', rain: 'rain', wet: 'damp', slippery: 'damp', fog: 'damp', lowvis: 'damp' }, ORD = ['dry', 'damp', 'rain', 'heavy', 'pool', 'snow', 'ice'];
     let sf = surf; (inp.reports || []).forEach(r => { const t = mins(r.at), k = RK[r.kind]; if (k && Number.isFinite(t) && Math.abs(m - t) <= 60 && ORD.indexOf(k) > ORD.indexOf(sf)) sf = k; });
@@ -397,7 +401,14 @@ function tyreLab(input) {
   const axes = [['Données pneu', modelKnown && target != null && tread != null ? (st0 && st0.tread && st0.tread.est ? 'renseignées dans Pneus, profondeur estimée' : 'renseignées dans Pneus') : 'incomplètes'],
     ['Trajet', drv ? (drv.kmSrc === 'route' ? 'roulage suivi, progression sur l’itinéraire' : 'roulage suivi, distance estimée (vol d’oiseau ×1,2)') : tripKind ? 'trajet prévu (agenda)' : 'supposé'],
     ['Météo', stale ? 'ancienne' : 'récente'], ['Modèle thermique', 'générique (estimation Race Control)'], ['Capteur direct', 'non']];
-  const confidence = { level: score >= 1.5 ? 'moyenne' : 'faible', score, reasons, axes };
+  // limites de cette estimation, en clair : ce qui est mesuré, supposé ou estimé (affichées dans le panneau de confiance)
+  const limits = ['Aucun capteur : la température de la gomme et la pression sont des estimations, jamais des mesures.',
+    phase === 'driving' ? (stopped ? `Arrêt déduit d’une vitesse moyenne sous ${TL_STOP_KMH} km/h depuis le départ.` : 'Vitesse suivie = moyenne depuis le départ : un arrêt court en cours de route n’est pas détecté.')
+      : phase === 'unknown' ? 'Historique d’arrêt inconnu : gomme supposée à la température ambiante.' : hist && hist.source === 'manual' ? 'Roulage déclaré par vous, départ supposé froid : non mesuré.' : 'Température de la gomme extrapolée depuis le dernier état estimé.',
+    eNow.reported ? 'Chaussée signalée par vous (≤ 60 min).' : 'Chaussée estimée par la météo (pluie récente, humidité de l’air), pas par un capteur routier.',
+    gNow.dist ? 'Distances de freinage : ordre de grandeur issu d’écarts d’essais publiés, hypothèse non calibrée sur ce véhicule, jamais une garantie d’arrêt.' : 'Aucune distance de freinage chiffrée : ' + (criticalTread ? 'pneu sous le minimum légal.' : 'données ou conditions hors du domaine des essais.'),
+    ...(stale ? [`Météo ancienne (${Math.round(inp.ageMin / 60)} h) : estimation moins fiable.`] : [])];
+  const confidence = { level: score >= 1.5 ? 'moyenne' : 'faible', score, reasons, axes, limits };
   /* ---------- 12. verdict principal ---------- */
   const limiting = gNow.dom ? (gNow.dom.k.startsWith('Gomme') ? ['gomme froide', 'gomme sous sa plage favorable', 'gomme dans sa fenêtre', 'gomme chaude', 'gomme très chaude'][st] : gNow.dom.k.toLowerCase()) : 'aucun';
   const lvl = Math.max(stLv(st), gNow.lv);

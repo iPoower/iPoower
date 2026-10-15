@@ -3456,7 +3456,7 @@ function renderCompare() {
   const res = TCARS().map(car => ({ car, w: windowAssess(car, seq, mode) })).filter(r => r.w);
   if (res.length < 2) { const wait = S.cars.filter(c => !hasTires(c)).map(c => c.short); el.hidden = false;
     el.innerHTML = `<div class="mod-h"><h2>🚗 Quelle voiture prendre ?</h2><span class="src">comparaison factuelle</span></div><p class="sub">${wait.length ? `Comparaison suspendue : ${esc(wait.join(', '))} en attente de pneus. Seule ${esc(res.map(r => r.car.short).join(', ') || 'aucune voiture')} est analysée.` : 'Comparaison indisponible.'}</p>`; return; }
-  const wet = seq.some(s => { const x = s.hs[s.i]; return (x.P || 0) >= 0.1 || recentPrecip(s.hs, s.i, 2) >= 0.3; });
+  const wet = seq.some(s => roadWet(s.hs, s.i));
   const cold = sm.Tmin != null && sm.Tmin < 7;
   const best = [...res].sort((a, b) => b.w.score - a.w.score)[0], gap = Math.abs(res[0].w.score - res[1].w.score), genericCompare = res.some(r => carProfile(r.car).generic);
   const cards = res.map(({ car, w }) => {

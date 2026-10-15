@@ -47,7 +47,7 @@ function wxDesk(input) {
     const Pl = n(x.Pl) ?? n(x.P) ?? 0, P = n(x.P) ?? 0, pp = n(x.pp), vis = n(x.vis), gust = n(x.gust), Tr = n(x.Tr), code = n(x.code);
     const iceLv = x.ice && finite(x.ice.level) ? x.ice.level : 0, snowy = (n(x.snow) || 0) > 0.05 || SNOW.has(code);
     const storm = code != null && code >= 95;
-    const wet = Pl >= 0.2 || (pp != null && pp >= 60 && P >= 0.1);
+    const wet = Pl >= WXD_ROAD.rainMmH || (pp != null && pp >= 60 && P >= WXD_ROAD.dampMmH);
     const o = { rain: 0, snow: 0, fog: 0, wind: 0, ice: 0, temp: 0 };
     if (!snowy) o.rain = storm || Pl >= 2 ? 2 : wet ? 1 : 0;
     if (snowy) o.snow = 2;
@@ -262,13 +262,14 @@ function wxDesk(input) {
   phen.push({ id: 'road', icon: '🛣', title: 'Chaussée estimée', lv: Math.min(3, roadWorst.lv), line: `${cap(roadNow.text)}${n(nowRow.x.Tr) != null ? ' ' + r1(nowRow.x.Tr) + ' °C' : ''}${roadWorst.rank > roadNow.rank ? ' → ' + roadWorst.text + ' ' + hm(roadWorst.t) : ''}`,
     detail: [roadWorst.rank > roadNow.rank ? `Au pire : ${roadWorst.text} vers ${hm(roadWorst.t)}` : 'État stable sur la période', 'Estimation (air, pluie récente, rosée, rayonnement) : pas un capteur routier'] });
   function roadState(r) {
-    const x = r.x, prev = all.some(p => { const m = mins(p.t); return m < r.m && m >= r.m - 180 && (n(p.Pl) ?? n(p.P) ?? 0) >= 0.2; });   // pluie des 3 h précédentes
-    const humid = n(x.RH) != null && n(x.RH) >= 95 && n(x.T) != null && n(x.Td) != null && x.T - x.Td < 1;
+    // eau récente : 0,1 mm/h maintenant ou 0,3 mm cumulés sur les 3 dernières heures (heure courante comprise), comme le verdict et l'Analyse
+    const x = r.x, liq = p => n(p.Pl) ?? n(p.P) ?? 0, soaked = liq(x) >= WXD_ROAD.dampMmH || all.reduce((a, p) => { const m = mins(p.t); return m <= r.m && m > r.m - WXD_ROAD.soakHours * 60 ? a + liq(p) : a; }, 0) >= WXD_ROAD.soakMm;
+    const humid = wxdHumidAir(x);
     if (r.h.snow) return { rank: 5, lv: 2, text: 'enneigée possible', t: r.t };
     if (r.h.ice >= 3) return { rank: 4, lv: 3, text: 'verglas possible', t: r.t };
-    if (r.h.ice === 2 && (r.h.rain || prev || humid)) return { rank: 4, lv: 2, text: 'givre possible', t: r.t };
+    if (r.h.ice === 2 && (r.h.rain || soaked || humid)) return { rank: 4, lv: 2, text: 'givre possible', t: r.t };
     if (r.h.rain) return { rank: 3, lv: r.h.rain, text: 'mouillée', t: r.t };
-    if (prev || humid) return { rank: 2, lv: 1, text: 'humide', t: r.t };
+    if (soaked || humid) return { rank: 2, lv: 1, text: 'humide', t: r.t };
     if (r.h.ice) return { rank: 1, lv: 1, text: 'sèche, froide', t: r.t };
     return { rank: 0, lv: 0, text: 'sèche', t: r.t };
   }
@@ -283,7 +284,7 @@ function wxDesk(input) {
     const max = k => { const v = xs.map(x => n(x[k])).filter(v => v != null); return v.length ? Math.max(...v) : null; }, min = k => { const v = xs.map(x => n(x[k])).filter(v => v != null); return v.length ? Math.min(...v) : null; };
     const Pm = Math.max(0, ...xs.map(x => n(x.Pl) ?? n(x.P) ?? 0)), ppm = max('pp'), vm = min('vis'), gm = max('gust'), Tm = min('T'), TM = max('T'), Trm = min('Tr');
     const iceLv = mx('ice'), fz = xs.some(x => FZ.has(n(x.code)) || (x.ice && x.ice.level >= 2)), iceMod = xs.some(x => x.ice && x.ice.level === 1);
-    const humid = !mx('rain') && xs.some(x => n(x.RH) != null && x.RH >= 95);
+    const humid = !mx('rain') && xs.some(wxdHumidAir);
     const F = [];
     const add = (id, label, lv, pen, why) => F.push({ id, label, lv, pen, why });
     add('temp', 'Température', Tm != null && (Tm <= 3 || (TM != null && TM >= 35)) ? 1 : 0, Tm != null && (Tm <= 3 || (TM != null && TM >= 35)) ? ROAD_PEN.temp : 0,
@@ -367,5 +368,9 @@ function wxDesk(input) {
   function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 }
 // Pénalités des conditions route (points retirés de 100), dans l'ordre des seuils de l'en-tête.
+// Chaussée mouillée / humide : copie de ROAD_POLICY (engine.js), verrouillée par tests/test_road_policy.js
+const WXD_ROAD = { rainMmH: 0.2, dampMmH: 0.1, soakMm: 0.3, soakHours: 3, humidRH: 95, humidSpreadC: 1 };
+// air saturé : HR ≥ 95 % et T − Td < 1 °C (ou HR seule quand le point de rosée est inconnu)
+const wxdHumidAir = x => typeof x.RH === 'number' && Number.isFinite(x.RH) && x.RH >= WXD_ROAD.humidRH && !(typeof x.Td === 'number' && Number.isFinite(x.Td) && typeof x.T === 'number' && x.T - x.Td >= WXD_ROAD.humidSpreadC);
 const ROAD_PEN = { temp: 5, humid: 5, sun: 5, snow: 35, wind: [30, 20, 10], rain: [30, 20, 10, 5], ice: [45, 25, 15, 8], fog: [35, 25, 15] };
 const WXD_EMO = ['🟢', '🟡', '🟠', '🔴'];
