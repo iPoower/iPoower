@@ -24,6 +24,7 @@ const LV = [
   { i: 2, key: 'risk', emoji: '🟠', name: 'HIGH RISK', label: 'HIGH RISK — PRUDENCE RENFORCÉE' },
   { i: 3, key: 'nogo', emoji: '🔴', name: 'NO GO', label: 'NO GO / CONDITIONS DÉFAVORABLES AUX PNEUS MONTÉS' }
 ];
+const TREAD_LEGAL_MM = 1.6;   // minimum légal de sculpture (France) : en dessous, NO GO quel que soit le score (même valeur que TL_LEGAL_MM de tyrelab.js, vérifiée par test)
 const ICE_LV = ['FAIBLE', 'MODÉRÉ', 'ÉLEVÉ', 'TRÈS ÉLEVÉ'];
 const TYPE_LABEL = { summer: 'été', winter: 'hiver', allseason: '4 saisons 3PMSF', unknown: 'non renseignés', none: 'aucun (en attente)' };
 const hasTires = car => car && car.tire && car.tire.type !== 'none';
@@ -316,13 +317,14 @@ function tireAssess(car, hs, i) {
     else if (Ta >= 22 && !wet) add('4 saisons en chaleur', 3, 'tyre');
     if (tread != null && tread < 3 && wet) add('Profondeur < 3 mm sur sol mouillé', 8, 'tyre');
   }
-  if (tread != null && tread < 1.6) add('Profondeur sous le minimum légal (1,6 mm)', 40, 'tyre');
+  if (tread != null && tread < TREAD_LEGAL_MM) add('Profondeur sous le minimum légal (1,6 mm)', 40, 'tyre');
   const age = dotAge(tire.dot, x.t);
   if (age != null && age >= 6 && Tc < 10) add(`Gomme âgée (${age.toFixed(1).replace('.', ',')} ans) : moins d’adhérence à froid`, age >= 10 ? 10 : 5, 'tyre');
-  return { x, pen: Math.min(100, pen), parts, flags: { wet, snow, fz, ice, Tc } };
+  return { x, pen: Math.min(100, pen), parts, flags: { wet, snow, fz, ice, Tc, illegalTread: tread != null && tread < TREAD_LEGAL_MM } };
 }
 function flagLevel(car, a, k) {
   let L = 0; const type = effType(car), f = a.flags, x = a.x, near = k <= 6;
+  if (f.illegalTread) L = 3;   // état critique du pneu (hors minimum légal) : prime sur le score, quelle que soit la météo ou l'heure
   if (f.fz) L = Math.max(L, near ? 3 : 2);
   if (type === 'summer') {
     if (f.snow) L = Math.max(L, near ? 3 : 2);
