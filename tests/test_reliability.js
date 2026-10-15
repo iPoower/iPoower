@@ -127,6 +127,22 @@ check('contre-tests : une dérive de seuil ou un littéral est détecté', () =>
   ];
   for (const m of mutations) assert(policyContract(m).length > 0, 'mutation non détectée');
 });
+// Santé du relais (obs.json) : ok tant que les observations restent utilisables, en retard au-delà, à l'arrêt possible bien au-delà.
+check('relais : états ok / en retard / à l’arrêt / inconnu aux limites exactes', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(R.RELAY)), { warnMin: 20, obsMaxMin: 35, outageMin: 90 }); assert(Object.isFrozen(R.RELAY));
+  const cases = [[0, 'ok'], [20, 'ok'], [35, 'ok'], [35.01, 'late'], [90, 'late'], [90.01, 'down'], [600, 'down'],
+    [null, 'unknown'], [undefined, 'unknown'], [NaN, 'unknown'], [Infinity, 'unknown'], [-1, 'unknown'], ['40', 'unknown']];
+  for (const [age, state] of cases) assert.equal(R.relayState(age), state, String(age));
+});
+const RELAY_USES = [['src/app.js', 'RELAY_WARN_MIN = Reliability.RELAY.warnMin'], ['src/app.js', 'RELAY_OBS_MAX_MIN = Reliability.RELAY.obsMaxMin'],
+  ['src/app.js', 'Reliability.relayState(relayAgeMin(RELAY_AT))'], ['src/app.js', "data-k=\"relay\""]];
+function relayContract(read) { const bad = []; for (const [file, text] of RELAY_USES) if (!read(file).includes(text)) bad.push(`${file} : « ${text} » attendu`); return bad; }
+check('contrat : le bandeau « relais en retard » dérive des mêmes seuils que le reste de l’application', () => assert.deepEqual(relayContract(rd), []));
+check('contre-tests : seuil relais recopié en littéral, état non dérivé ou bandeau retiré est détecté', () => {
+  const mutate = (from, to) => f => { const t = rd(f); if (f !== 'src/app.js') return t; assert(t.includes(from), from); return t.split(from).join(to); };   // toutes les occurrences
+  for (const m of [mutate('RELAY_OBS_MAX_MIN = Reliability.RELAY.obsMaxMin', 'RELAY_OBS_MAX_MIN = 35'), mutate('RELAY_WARN_MIN = Reliability.RELAY.warnMin', 'RELAY_WARN_MIN = 20'),
+    mutate('Reliability.relayState(relayAgeMin(RELAY_AT))', 'null'), mutate('data-k="relay"', 'data-k="x"')]) assert(relayContract(m).length > 0, 'mutation non détectée');
+});
 check('texte runtime borné', () => assert(R.clip('x'.repeat(500)).length <= 180));
 const diagnosticSource = fs.readFileSync(path.join(__dirname, '../src/app/diagnostics.js'), 'utf8');
 function agendaDiagnostic(options = {}, input = diagnosticSource) {

@@ -800,7 +800,7 @@ async function geocode(q) { return (await GeoSearch.search(q, fetchJSON)).map(h 
 
 /* ---------- formats ---------- */
 const hmLocal = ms => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-const RELAY_WARN_MIN = 20, RELAY_OBS_MAX_MIN = 35;
+const RELAY_WARN_MIN = Reliability.RELAY.warnMin, RELAY_OBS_MAX_MIN = Reliability.RELAY.obsMaxMin;
 let RELAY_AT = null, RELAY_ERR = null, RELAY_SEEN = false;   // dernier obs.json lu (même trop vieux pour enrichir la météo) : diagnostic uniquement
 // Âge inconnu (date absente, illisible ou dans le futur) = Infinity : jamais « 0 minute », donc jamais « tout frais ».
 const relayAgeMin = ts => { const a = Reliability.ageMin(ts); return a === null ? Infinity : a; };
@@ -942,6 +942,15 @@ function renderSrc() {
   const el = $('#srcline'), open = el.querySelector('details') && el.querySelector('details').open;
   el.innerHTML = `<details${open ? ' open' : ''}><summary>ⓘ Sources et fraîcheur des données${lastOk && m.mode === 'live' ? ' · MAJ ' + hmLocal(lastOk) : ''}</summary><div>${srcHtml}</div></details>`;
 }
+// Relais en retard : ses observations de stations sont alors ignorées (voir refreshAll). L'utilisateur doit le savoir, pas le deviner.
+function relayLateNote() {
+  if (DEMO.on || !RELAY_SEEN || !RELAY_AT || offlineNow()) return '';
+  const age = relayAgeMin(RELAY_AT), st = Reliability.relayState(relayAgeMin(RELAY_AT));
+  if (st === 'ok') return '';
+  if (st === 'unknown') return '<div class="note lv1" role="status" data-k="relay"><b>RELAIS : DATE INCOHÉRENTE</b><span>L’heure de publication du relais est illisible ou dans le futur : observations de stations ignorées, prévisions du modèle seules.</span></div>';
+  const down = st === 'down';
+  return `<div class="note ${down ? 'lv2' : 'lv1'}" role="status" data-k="relay"><b>${down ? 'RELAIS PEUT-ÊTRE À L’ARRÊT' : 'RELAIS EN RETARD'}</b><span>Dernière publication à ${hmLocal(Date.parse(RELAY_AT))} (il y a ${relayAgeTxt(age)}). Observations de stations ignorées : prévisions du modèle seules, brouillard local moins bien détecté.${down ? ' Les notifications du matin envoyées par le relais peuvent aussi manquer : vérifie le trajet dans l’application.' : ''}</span></div>`;
+}
 function renderNotice() {
   const m = M[UI.loc], el = $('#notice');
   if (window.TWRC_STORAGE_ERROR) { el.innerHTML = '<div class="note lvx" role="alert"><b>RÉCUPÉRATION LOCALE</b><span>Une restauration interrompue reste protégée. Libère de l’espace de stockage puis rouvre l’app ; aucun réglage personnel n’est chargé.</span></div>'; return; }
@@ -964,7 +973,7 @@ function renderNotice() {
     // La capture/validation reste active ; les erreurs de coffre ou de nettoyage restent visibles.
     const staleLink = importStatus && importStatus.state === 'invalid' && !LOCKED() && (S.configured === 1 || S.configured === true);
     const importMessage = importStatus && !staleLink ? ConfigImport.message(importStatus) : '';
-    const extra = vaultNote + (importMessage ? `<div class="note lv1" role="status" data-k="config-import"><b>IMPORT DE CONFIGURATION</b><span>${esc(importMessage)}</span></div>` : '') + extra0;
+    const extra = vaultNote + relayLateNote() + (importMessage ? `<div class="note lv1" role="status" data-k="config-import"><b>IMPORT DE CONFIGURATION</b><span>${esc(importMessage)}</span></div>` : '') + extra0;
     const form = el.querySelector('.unlock');
     if (lock && form) {
       Array.from(el.childNodes).forEach(node => { if (node !== form) node.remove(); });

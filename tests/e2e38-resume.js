@@ -65,5 +65,21 @@ check('38.14 · relais daté de 2099 : observations ignorées',!o.kept&&o.diag==
 obsUpdated=new Date(TNOW-5*60e3).toISOString();await p.evaluate(()=>{refreshAll(true);});await settle(8);o=await obsState();
 check('38.15 · relais daté de −5 min (témoin) : observations conservées, FRESH',o.kept&&o.diag==='FRESH'&&o.age>=4.9&&o.age<6,JSON.stringify(o));
 
+// bandeau « relais en retard » : visible seulement quand les observations de stations sont ignorées
+const relayNote=()=>p.evaluate(()=>{const n=document.querySelector('#notice [data-k="relay"]');return n?{cls:n.className,txt:n.innerText.replace(/\s+/g,' ')}:null;});
+const refreshWith=async iso=>{obsUpdated=iso;await p.evaluate(()=>{refreshAll(true);});await settle(8);return {note:await relayNote(),kept:await p.evaluate(()=>OBS!==null)};};
+let r=await refreshWith(new Date(TNOW-5*60e3).toISOString());
+check('38.16 · relais récent (−5 min) : aucun bandeau, observations conservées',!r.note&&r.kept,JSON.stringify(r));
+r=await refreshWith(new Date(TNOW-35*60e3+60e3).toISOString());
+check('38.17 · relais à 34 min (limite) : encore utilisé, aucun bandeau',!r.note&&r.kept,JSON.stringify(r));
+r=await refreshWith(new Date(TNOW-50*60e3).toISOString());
+check('38.18 · relais en retard de 50 min : bandeau orange « RELAIS EN RETARD », 50 min, observations ignorées, sans alarme sur les notifications',!!r.note&&/RELAIS EN RETARD/.test(r.note.txt)&&/5[01] min/.test(r.note.txt)&&/ignorées/.test(r.note.txt)&&!/notifications/.test(r.note.txt)&&/lv1/.test(r.note.cls)&&!r.kept,JSON.stringify(r));
+r=await refreshWith(new Date(TNOW-120*60e3).toISOString());
+check('38.19 · relais en retard de 2 h : bandeau rouge « à l’arrêt », notifications du matin mentionnées',!!r.note&&/À L.ARRÊT/.test(r.note.txt)&&/notifications du matin/.test(r.note.txt)&&/lv2/.test(r.note.cls)&&!r.kept,JSON.stringify(r));
+r=await refreshWith(new Date(TNOW+3*3600e3).toISOString());
+check('38.20 · relais daté du futur : bandeau « date incohérente », jamais « il y a 0 min »',!!r.note&&/DATE INCOHÉRENTE/.test(r.note.txt)&&!/il y a 0 min/.test(r.note.txt)&&!r.kept,JSON.stringify(r));
+r=await refreshWith(new Date(TNOW-5*60e3).toISOString());
+check('38.21 · relais rétabli : le bandeau disparaît et les observations reviennent',!r.note&&r.kept,JSON.stringify(r));
+
 console.log(rows.join('\n')+'\n\n'+(rows.length-fail)+'/'+rows.length+' scénarios OK · erreurs JS : '+(rows.some(x=>x.startsWith('ERR '))?'présentes':'aucune'));
 await c.close();await b.close();process.exit(fail||rows.some(x=>x.startsWith('ERR '))?1:0);})();
