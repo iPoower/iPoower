@@ -70,9 +70,9 @@ module.exports = async function run(b) {
     } finally { await plain.c.close(); }
   });
   const seed = { [VAULT]: legacyVault(settings) };
-  const s = await session(b, { at: T, dev: 'iphone', seed }); let p = s.p;
+  let s = await session(b, { at: T, dev: 'iphone', seed }), p = s.p;
   p.on('dialog', d => d.accept());
-  s.c.on('page', page => {
+  const track = context => context.on('page', page => {
     page.on('dialog', d => d.accept());
     page.on('pageerror', e => {
       const full = String(e.name || '') + ': ' + String(e.message || '');
@@ -80,6 +80,7 @@ module.exports = async function run(b) {
       errors.push(full);
     });
   });
+  track(s.c);
   try {
     await check('ancien profil : 120 trajets affichables, 91/365 jours ; aucune migration implicite', async () => {
       const state = await p.evaluate(() => ({ count: USER_STORE.state.debrief.entries.length, needs: TWRC_VAULT.journalNeedsRecovery,
@@ -136,16 +137,23 @@ module.exports = async function run(b) {
       assert.equal(replies.size, 4);
       assert(containsSources(state.archive));
     });
+    const isolated = await p.evaluate(async () => { await TWRC_VAULT.flush(); if (TWRC_VAULT.error) throw new Error('Source non durable.'); return TWRC_RAW_STORAGE.getItem(SessionVault.VAULT); });
+    await s.c.close();
+    s = await session(b, { at: T, dev: 'iphone', seed: { [VAULT]: isolated } }); p = s.p;
+    p.on('dialog', d => d.accept()); track(s.c);
+    assert.equal((await canonicalRows(p)).entries.length, 122);
     await check('quota : ajout non confirmé, alerte et coffre précédent inchangé ; rechargement exhaustif', async () => {
-      const before = await p.evaluate(() => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT));
-      await p.evaluate(async () => {
-        window.storageSet = Storage.prototype.setItem;
-        Storage.prototype.setItem = function(k, v) { if (k === SessionVault.VAULT) throw new DOMException('Quota fictif', 'QuotaExceededError'); return storageSet.call(this, k, v); };
+      const before = await p.evaluate(async () => {
+        await TWRC_VAULT.flush(); if (TWRC_VAULT.error) throw new Error('Précondition non durable.');
+        window.storageSet = Storage.prototype.setItem; window.quotaHits = 0;
+        Storage.prototype.setItem = function(k, v) { if (k === SessionVault.VAULT) { quotaHits++; throw new DOMException('Quota fictif', 'QuotaExceededError'); } return storageSet.call(this, k, v); };
+        // Installer le refus AVANT l'instantané, dans la même tâche JS.
+        const previous = TWRC_RAW_STORAGE.getItem(SessionVault.VAULT);
         USER_STORE.transaction(state => { state.debrief = Debrief.close(state.debrief, { key: 'ajout-refuse', how: 'auto' }); });
-        await TWRC_VAULT.flush();
+        await TWRC_VAULT.flush(); return previous;
       });
-      assert(await p.evaluate(() => !!TWRC_VAULT.error));
-      assert.equal(await p.evaluate(() => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), before);
+      assert(await p.evaluate(() => !!TWRC_VAULT.error && quotaHits > 0));
+      assert(await p.evaluate(previous => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) === previous, before), 'quota : les octets durables précédents doivent être identiques');
       // Aucun succès n'a été annoncé : simuler la disparition de cette page.
       const replacement = await s.c.newPage(); await replacement.clock.install({ time: T });
       await replacement.goto(U); await opened(replacement);
@@ -158,6 +166,9 @@ module.exports = async function run(b) {
     await check('interruption pendant WebCrypto : aucun commit partiel, toutes les sources durables après réouverture', async () => {
       const crash = await s.c.newPage(); await crash.clock.install({ time: T }); await crash.goto(U); await opened(crash);
       await Promise.all([p, crash].map(page => page.evaluate(async () => { await TWRC_VAULT.flush(); if (TWRC_VAULT.error) throw new Error('Précondition non durable.'); })));
+      // L'observateur ne publie pas de cache/recalcul pendant l'interruption :
+      // cette assertion d'octets concerne uniquement le writer interrompu.
+      await p.evaluate(() => DeviceStorage.freeze(true));
       const before = await p.evaluate(() => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT));
       await crash.evaluate(() => {
         const paused = () => { window.encryptionPaused = true; return new Promise(() => {}); };
@@ -165,9 +176,11 @@ module.exports = async function run(b) {
         if (crypto.subtle.encrypt !== paused) throw new Error('Injection WebCrypto indisponible.');
         USER_STORE.transaction(state => { state.debrief = Debrief.close(state.debrief, { key: 'interruption-avant-commit', how: 'auto' }); });
       });
-      await crash.waitForFunction(() => window.encryptionPaused);
+      let paused = false;
+      for (let i = 0; i < 30 && !paused; i++) { paused = await crash.evaluate(() => !!window.encryptionPaused); if (!paused) { await crash.clock.runFor(100); await crash.waitForTimeout(50); } }
+      assert(paused, 'le test doit interrompre un chiffrement réellement en attente');
       await crash.close();
-      assert.equal(await p.evaluate(() => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), before);
+      assert(await p.evaluate(previous => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) === previous, before), 'interruption : aucun commit partiel');
       await p.reload(); await opened(p); assert.equal((await canonicalRows(p)).entries.length, 122);
     });
     let exported, expected;
