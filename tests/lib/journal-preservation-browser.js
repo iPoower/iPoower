@@ -21,7 +21,30 @@ function legacyVault(settings) {
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv), bytes = Buffer.concat([cipher.update(JSON.stringify({ v: 2, n, t, values })), cipher.final(), cipher.getAuthTag()]);
   return JSON.stringify({ v: 2, n, t, kdf: 'PBKDF2-SHA256', it: 600000, s: salt.toString('base64'), i: iv.toString('base64'), c: bytes.toString('base64') });
 }
-async function settingsPanel(p) { await p.evaluate(() => { document.getElementById('settings').open = true; renderSettings(true); }); }
+async function settingsPanel(p) {
+  await p.evaluate(async () => {
+    const details = document.getElementById('settings');
+    if (!details.open) {
+      // Le listener réel de lifecycle.js reconstruit les champs au toggle.
+      // Attendre cet événement natif avant de remplir le code, notamment WebKit.
+      const ready = new Promise(resolve => details.addEventListener('toggle', resolve, { once: true }));
+      details.open = true; await ready;
+    }
+    renderSettings(true);
+  });
+}
+async function exportFile(p) {
+  try {
+    const [file] = await Promise.all([p.waitForEvent('download'), p.click('[data-act=bk-export]')]);
+    return file;
+  } catch (error) {
+    const diagnostic = await p.evaluate(() => ({ mode: TWRC_VAULT.mode, pending: TWRC_VAULT.pendingWrites,
+      message: document.getElementById('bkMsg')?.textContent, codeLength: document.getElementById('bkPw')?.value.length,
+      error: TWRC_VAULT.error }));
+    // Aucune valeur du code ni contenu du journal dans les diagnostics.
+    throw new Error('Export fictif non reçu : ' + JSON.stringify(diagnostic), { cause: error });
+  }
+}
 async function wait(p, n = 6) { for (let i = 0; i < n; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } }
 async function opened(p) {
   await wait(p);
@@ -73,7 +96,8 @@ module.exports = async function run(b) {
       await readOnlyActions(plain.p);
       const before = await plain.p.evaluate(() => TWRC_RAW_STORAGE.getItem(JournalArchive.CONTEXT));
       await settingsPanel(plain.p); await plain.p.fill('#bkPw', PW);
-      const [file] = await Promise.all([plain.p.waitForEvent('download'), plain.p.click('[data-act=bk-export]')]);
+      assert.equal(await plain.p.evaluate(() => document.getElementById('bkPw').value.length), PW.length);
+      const file = await exportFile(plain.p);
       const bytes = fs.readFileSync(await file.path());
       assert.equal(await plain.p.evaluate(() => TWRC_RAW_STORAGE.getItem(JournalArchive.CONTEXT)), before);
       assert(!bytes.toString().includes('Lieu A')); assert(!bytes.toString().includes(PW));
@@ -115,7 +139,7 @@ module.exports = async function run(b) {
       await p.evaluate(() => { window.beforeMigration = TWRC_RAW_STORAGE.getItem(SessionVault.VAULT); });
       await settingsPanel(p);
     });
-    const [download] = await Promise.all([p.waitForEvent('download'), p.click('[data-act=bk-export]')]);
+    const download = await exportFile(p);
     const copy = fs.readFileSync(await download.path());
     await check('fichier externe chiffré ; sélection incorrecte refusée sans écriture', async () => {
       assert(!copy.toString().includes('Lieu A')); assert(!copy.toString().includes(PW));
@@ -229,7 +253,7 @@ module.exports = async function run(b) {
     let exported, expected;
     await check('export complet : fichier opaque et projection limitée à 60 sans troncature de l’archive', async () => {
       await settingsPanel(p);
-      const [file] = await Promise.all([p.waitForEvent('download'), p.click('[data-act=bk-export]')]);
+      const file = await exportFile(p);
       exported = fs.readFileSync(await file.path()); expected = await canonicalRows(p);
       assert(!exported.toString().includes('Lieu A')); assert(!exported.toString().includes(PW));
       await p.evaluate(() => renderDebrief()); assert.equal(await p.locator('#secDebrief .debrief-entry').count(), 60);
