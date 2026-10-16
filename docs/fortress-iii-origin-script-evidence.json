@@ -1,0 +1,235 @@
+{
+  "read_at_utc": "2026-10-13T10:41:44.571699+00:00",
+  "method": "Read-only public script source; no execution, authentication or browser storage access",
+  "scope": "static indicators only, not an exhaustive runtime inventory",
+  "scripts": [
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/app.js",
+      "source_signals": {
+        "localStorage": true,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": true,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [
+        "sw.js"
+      ],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/cloud-transport.js",
+      "source_signals": {
+        "localStorage": false,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/cloud-ui.js",
+      "source_signals": {
+        "localStorage": false,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/course-foundations.js",
+      "source_signals": {
+        "localStorage": false,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": true,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/course-operations.js",
+      "source_signals": {
+        "localStorage": true,
+        "sessionStorage": true,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/course-race.js",
+      "source_signals": {
+        "localStorage": false,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/daily-five.js",
+      "source_signals": {
+        "localStorage": false,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/data.js",
+      "source_signals": {
+        "localStorage": false,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/deep-dives.js",
+      "source_signals": {
+        "localStorage": false,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/drive-learning.js",
+      "source_signals": {
+        "localStorage": false,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/english.js",
+      "source_signals": {
+        "localStorage": false,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/evidence-checks.js",
+      "source_signals": {
+        "localStorage": false,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Reconversion-Control/learning.js",
+      "source_signals": {
+        "localStorage": true,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": false,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [],
+      "sw_scope_verified": false
+    },
+    {
+      "url": "https://ipoower.github.io/Control-Vault/assets/index-DGjjl8xu.js",
+      "source_signals": {
+        "localStorage": true,
+        "sessionStorage": false,
+        "indexedDB": false,
+        "cacheStorage": false,
+        "serviceWorker": true,
+        "cookie": false,
+        "postMessage": false
+      },
+      "static_storage_keys": [],
+      "static_db_names": [],
+      "sw_script_literals": [
+        "sw.js"
+      ],
+      "sw_scope_verified": false
+    }
+  ]
+}
