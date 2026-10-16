@@ -57,6 +57,11 @@ module.exports = async function run(b) {
       const bytes = fs.readFileSync(await file.path());
       assert.equal(await plain.p.evaluate(() => TWRC_RAW_STORAGE.getItem(JournalArchive.CONTEXT)), before);
       assert(!bytes.toString().includes('Lieu A')); assert(!bytes.toString().includes(PW));
+      await plain.p.fill('#bkPw', 'code-fictif-incorrect');
+      await plain.p.setInputFiles('#journalCopy', { name: 'profil-sans-code.json', mimeType: 'application/json', buffer: bytes }); await wait(plain.p);
+      assert.match(await plain.p.locator('#bkMsg').textContent(), /Activation refusée/);
+      assert.equal(await plain.p.evaluate(() => TWRC_RAW_STORAGE.getItem(JournalArchive.CONTEXT)), before);
+      await plain.p.fill('#bkPw', PW);
       await Promise.all([plain.p.waitForNavigation({ timeout: 60000 }), (async () => {
         await plain.p.setInputFiles('#journalCopy', { name: 'profil-sans-code.json', mimeType: 'application/json', buffer: bytes }); await wait(plain.p, 16);
       })()]); await opened(plain.p);
@@ -65,8 +70,16 @@ module.exports = async function run(b) {
     } finally { await plain.c.close(); }
   });
   const seed = { [VAULT]: legacyVault(settings) };
-  const s = await session(b, { at: T, dev: 'iphone', seed }), p = s.p;
+  const s = await session(b, { at: T, dev: 'iphone', seed }); let p = s.p;
   p.on('dialog', d => d.accept());
+  s.c.on('page', page => {
+    page.on('dialog', d => d.accept());
+    page.on('pageerror', e => {
+      const full = String(e.name || '') + ': ' + String(e.message || '');
+      if (/Fetch API cannot load/.test(full) && !/ReferenceError|SyntaxError|TypeError|is not defined/.test(full)) return;
+      errors.push(full);
+    });
+  });
   try {
     await check('ancien profil : 120 trajets affichables, 91/365 jours ; aucune migration implicite', async () => {
       const state = await p.evaluate(() => ({ count: USER_STORE.state.debrief.entries.length, needs: TWRC_VAULT.journalNeedsRecovery,
@@ -102,7 +115,7 @@ module.exports = async function run(b) {
       assert(containsSources(state.archive), 'comparaison indépendante aux sources avant projection');
       assert(await p.evaluate(() => !TWRC_VAULT.journalNeedsRecovery));
     });
-    const q = await s.c.newPage(); await q.clock.install({ time: T }); q.on('dialog', d => d.accept());
+    const q = await s.c.newPage(); await q.clock.install({ time: T });
     await q.goto(U); await opened(q);
     // Retarder réellement les notifications entre les deux pages : le verrou
     // et la fusion sur disque doivent suffire, sans timing favorable des events.
@@ -136,17 +149,23 @@ module.exports = async function run(b) {
       // Aucun succès n'a été annoncé : simuler la disparition de cette page.
       const replacement = await s.c.newPage(); await replacement.clock.install({ time: T });
       await replacement.goto(U); await opened(replacement);
-      assert.equal((await canonicalRows(replacement)).entries.length, 122); await replacement.close();
-      await p.evaluate(() => { Storage.prototype.setItem = storageSet; });
-      await p.reload(); await opened(p); // l'ajout refusé n'est pas confirmé après fermeture
+      assert.equal((await canonicalRows(replacement)).entries.length, 122);
+      // Garder le quota jusqu'à la fermeture : rétablir l'écriture avant de
+      // fermer autoriserait légitimement le retry d'une notification distante.
+      await p.close(); p = replacement;
+      await p.evaluate(async () => { await TWRC_VAULT.flush(); if (TWRC_VAULT.error) throw new Error('Reprise non confirmée.'); });
     });
     await check('interruption pendant WebCrypto : aucun commit partiel, toutes les sources durables après réouverture', async () => {
       const crash = await s.c.newPage(); await crash.clock.install({ time: T }); await crash.goto(U); await opened(crash);
+      await Promise.all([p, crash].map(page => page.evaluate(async () => { await TWRC_VAULT.flush(); if (TWRC_VAULT.error) throw new Error('Précondition non durable.'); })));
       const before = await p.evaluate(() => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT));
       await crash.evaluate(() => {
-        crypto.subtle.encrypt = () => new Promise(() => {});
+        const paused = () => { window.encryptionPaused = true; return new Promise(() => {}); };
+        Object.defineProperty(crypto.subtle, 'encrypt', { configurable: true, value: paused });
+        if (crypto.subtle.encrypt !== paused) throw new Error('Injection WebCrypto indisponible.');
         USER_STORE.transaction(state => { state.debrief = Debrief.close(state.debrief, { key: 'interruption-avant-commit', how: 'auto' }); });
       });
+      await crash.waitForFunction(() => window.encryptionPaused);
       await crash.close();
       assert.equal(await p.evaluate(() => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), before);
       await p.reload(); await opened(p); assert.equal((await canonicalRows(p)).entries.length, 122);

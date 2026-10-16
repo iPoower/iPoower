@@ -43,6 +43,7 @@ function debriefDeparture(t, s) {
 function journalWritable(notify = true) {
   const VS = window.TWRC_VAULT;
   if (!VS || VS.mode !== 'vault' || VS.journalNeedsRecovery) {
+    window.TWRC_JOURNAL_REFUSED = true;
     if (notify) window.alert('Avant de modifier le journal : exporte la copie de récupération dans les paramètres, puis rouvre ce fichier pour la vérifier.');
     return false;
   }
