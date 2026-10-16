@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'">
+  <meta name="theme-color" content="#080c11">
+  <title>Weather Desk · Mode Invité · Race Control</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <main class="desk" aria-label="Weather Desk public">
+    <header class="head">
+      <div><small class="kicker">RACE CONTROL · WEATHER DESK</small><h1>🌦️ Météo publique</h1><p>Mode Invité · sans coffre, GPS, agenda ni véhicule</p></div>
+      <div class="actions"><button id="fullscreen" type="button">⛶ Plein écran</button>
+        <a href="https://ipoower.github.io/iPoower/race-control/" referrerpolicy="no-referrer" rel="noreferrer noopener">Accès personnel ↗</a></div>
+    </header>
+    <div class="bar"><label for="city">Ville publique</label>
+      <select id="city"><option value="amiens">Amiens</option><option value="lille">Lille</option><option value="rouen">Rouen</option><option value="paris">Paris</option></select>
+      <button id="refresh" type="button">↻ Actualiser</button>
+      <div id="status" class="status" role="status" aria-live="polite">DONNÉES INDISPONIBLES</div>
+    </div>
+    <p id="updated" class="updated">Aucune donnée reçue.</p>
+    <section class="panel hero" aria-label="Conditions du modèle"><div><p class="kicker">TEMPÉRATURE MODÉLISÉE</p><div id="temp" class="temperature">—</div><p id="feels">Ressenti —</p></div>
+      <div class="tiles"><div><small>Précipitations</small><strong id="rain">—</strong></div>
+      <div><small>Vent</small><strong id="wind">—</strong></div>
+      <div><small>Rafales</small><strong id="gust">—</strong></div>
+      <div><small>Gel / verglas</small><strong id="frost">—</strong></div></div>
+    </section>
+    <section class="panel"><h2>Prévisions · 12 prochaines heures</h2><ol id="hours" class="hours" aria-label="Prévisions horaires"></ol></section>
+    <footer>Source des prévisions : Open-Meteo (traitement côté serveur, données publiques uniquement). LIVE désigne la fraîcheur du fichier, pas une mesure de station. Risque de gel calculé à partir de l’air et des précipitations : <b>estimation, jamais une mesure de chaussée</b>. Aucune géolocalisation ni notification.</footer>
+  </main>
+</body>
+</html>
