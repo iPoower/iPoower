@@ -1,4 +1,6 @@
 'use strict';
+// Oracle de contrat exécuté dans la suite sauvegarde existante, sans changer le registre CI.
+require('./test_integration_contract');
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict'), path = require('node:path');
 const source = fs.readFileSync(path.resolve(__dirname, '../src/backup.js'), 'utf8');
 const ctx = { Date, JSON, Math, Number, Object, Array, RegExp }; vm.createContext(ctx); vm.runInContext(source + ';this.api=Backup;', ctx);
