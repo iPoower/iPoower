@@ -37,7 +37,12 @@ module.exports = async browser => {
     const port = await new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port))), base = 'http://localhost:' + port + '/journal-legacy/';
     context = await browser.newContext({ serviceWorkers: 'allow', viewport: { width: 414, height: 896 }, isMobile: true, hasTouch: true });
     const errors = []; context.on('page', p => p.on('pageerror', e => errors.push(e.message)));
-    await context.addInitScript(({ name, value }) => { if (!localStorage.getItem('fixture.legacy.seeded')) { localStorage.setItem('fixture.legacy.seeded', '1'); localStorage.setItem(name, value); } }, { name: VAULT, value: seed() });
+    await context.addInitScript(({ name, value }) => {
+      // newPage passe par about:blank : son origine opaque n’a pas de stockage.
+      // Ne pas masquer une erreur sur l’origine localhost réellement testée.
+      if (location.protocol !== 'http:') return;
+      if (!localStorage.getItem('fixture.legacy.seeded')) { localStorage.setItem('fixture.legacy.seeded', '1'); localStorage.setItem(name, value); }
+    }, { name: VAULT, value: seed() });
     const old = await context.newPage(); await old.goto(base); await old.waitForFunction(() => window.readerReady);
     await old.evaluate(async () => { await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready; });
     await old.reload(); await old.waitForFunction(() => window.readerReady && !!navigator.serviceWorker.controller);
@@ -61,7 +66,7 @@ module.exports = async browser => {
     await current.reload(); await current.waitForFunction(() => window.readerReady); await current.evaluate(pass => reader.unlock(pass), PASS);
     const restored = await current.evaluate(() => JournalArchive.read(reader.store.getItem(JournalArchive.KEY)).records.map(r => JSON.parse(r)));
     for (const row of rows) assert(restored.some(r => isDeepStrictEqual(r, row)));
-    assert(restored.some(r => r.key === 'pwa-apres-activation')); assert.equal(errors.length, 0);
+    assert(restored.some(r => r.key === 'pwa-apres-activation')); assert.deepEqual(errors, [], 'erreurs JavaScript réelles de la fixture SW');
     console.log('✅ coffre v3 : ancien onglet réel et ancien lecteur en cache SW hors ligne bloqués ; retour candidat avec 121 sources intactes');
   } finally { if (context) await context.close(); await new Promise(resolve => server.close(resolve)); }
 };
