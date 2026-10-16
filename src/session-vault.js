@@ -70,6 +70,11 @@ const SessionVault = (() => {
   // Copies lisibles retirées seulement après un coffre relu ET déchiffré identique (appelé uniquement dans ce cas).
   function dropPlain(raw, names) { names.forEach(k => { if (secret(k)) put(raw, k, null); }); }
   function plainSnapshot(raw) { const o = {}; keysOf(raw).filter(secret).forEach(k => { const v = raw.getItem(k); if (v != null) o[k] = v; }); return o; }
+  function mergeStray(saved, stray) {
+    const values = { ...stray, ...saved };
+    if (saved[JournalArchive.KEY] != null) values[JournalArchive.KEY] = JSON.stringify(JournalArchive.union(JournalArchive.capture(saved), JournalArchive.capture(stray)));
+    return values;
+  }
   // Les caches recalculables (météo, routes) peuvent être sacrifiés si le stockage est plein — jamais les données durables.
   const CACHE = k => k.startsWith('twrc.cache.') || k.startsWith('twrc.croute') || k.startsWith('twrc.road.');
   // seul un stockage PLEIN justifie de sacrifier les caches ; un refus (mode privé, permission) ne supprime rien
@@ -244,7 +249,10 @@ const SessionVault = (() => {
     async function writeVerified(vals, salt, guard, evictCaches = true) {
       requireLocks();
       const key = st.key, signal = raw.getItem(LOCK_SIGNAL), previous = raw.getItem(VAULT);
-      const active = guard || (() => { if (st.key !== key || raw.getItem(LOCK_SIGNAL) !== signal) throw Object.assign(new Error('Session modifiée.'), { cancelled: true }); });
+      const active = () => {
+        if (st.key !== key || raw.getItem(LOCK_SIGNAL) !== signal) throw Object.assign(new Error('Session modifiée.'), { cancelled: true });
+        if (guard) guard();
+      };
       active();
       const prior = readVault(raw);
       if (prior && !prior.invalid && prior.v === 3 && vals[JournalArchive.KEY] == null)
@@ -273,13 +281,13 @@ const SessionVault = (() => {
       st.n = nx.n; st.t = nx.t; st.saved = { ...vals };
     }
     // stockage plein pendant la migration : sacrifier les caches recalculables puis réessayer une seule fois
-    async function writeWithRoom(vals, salt) {
-      try { await writeVerified(vals, salt); return vals; } catch (e) {
+    async function writeWithRoom(vals, salt, guard) {
+      try { await writeVerified(vals, salt, guard); return vals; } catch (e) {
         if (!full(e)) throw e;
         const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));
         // setItem remplace atomiquement l'ancien coffre. Le supprimer n'économise rien dans la taille finale et expose à une perte au nouvel échec.
         keysOf(raw).filter(k => isApp(k) && CACHE(k)).forEach(k => { try { raw.removeItem(k); } catch (x) { /* rien */ } });
-        await writeVerified(lean, salt); return lean;
+        await writeVerified(lean, salt, guard); return lean;
       }
     }
     function enter(vals) { st.epoch++; st.mem = memStore(raw, vals, persist, allowStore); st.saved = { ...vals }; st.lockSignal = raw.getItem(LOCK_SIGNAL); st.mode = 'vault'; st.error = null; }
@@ -353,7 +361,7 @@ const SessionVault = (() => {
             const data = await open(vault, st.key, crypto);
             if (raw.getItem(LOCK_SIGNAL) !== signal || now() >= active.expiresAt) throw new Error('Autorisation révoquée');
             st.n = order(data).n; st.t = order(data).t;
-            const stray = plainSnapshot(raw), vals = { ...stray, ...data.values };
+            const stray = plainSnapshot(raw), vals = mergeStray(data.values, stray);
             const kept = Object.keys(stray).length ? await writeWithRoom(vals, st.salt) : vals;
             await saveSession(active.rawKey, st.salt, active.expiresAt, valid && ses.v === 4 ? ses : null); active.rawKey.fill(0);
             enter(kept);
@@ -382,7 +390,7 @@ const SessionVault = (() => {
       while (st.mode === 'vault' && st.mem.dirty.size) await savePending();
       return unlockInside(pass, extra, keepWeek);
     }); }
-    async function unlockInside(pass, extra, keepWeek) {
+    async function unlockInside(pass, extra, keepWeek, recoverySource = null) {
       const vault = readVault(raw);
       if (vault && vault.invalid) throw new Error('Coffre local illisible : conservé tel quel.');
       let vals, salt, rawKey, drop = [], dropV1 = false;
@@ -390,7 +398,7 @@ const SessionVault = (() => {
         salt = dec(vault.s); rawKey = await deriveRaw(pass, salt, crypto);
         const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);   // code faux → OperationError, clé de la session inchangée
         st.key = key; st.salt = salt;
-        const stray = plainSnapshot(raw); vals = { ...stray, ...data.values }; drop = Object.keys(stray); st.n = order(data).n; st.t = order(data).t;
+        const stray = plainSnapshot(raw); vals = mergeStray(data.values, stray); drop = Object.keys(stray); st.n = order(data).n; st.t = order(data).t;
         // Suite à une expiration, seules les modifications non confirmées sont reprises.
         // Aucune perte sur mauvais code / quota plein : l'ancien MemStore reste intact jusqu'au coffre vérifié.
         if (st.mode === 'expired' && st.mem) st.mem.dirty.forEach(k => {
@@ -405,8 +413,11 @@ const SessionVault = (() => {
       if (vault && vault.v === 3) vals = JournalArchive.protect((await open(vault, st.key, crypto)).values, vals);
       Object.assign(vals, extra || {}, { 'twrc.key': pass });
       Object.keys(vals).forEach(k => { if (!secret(k)) { delete vals[k]; } });
-      const kept = await writeWithRoom(vals, salt);
+      const guard = recoverySource ? () => { if (!same(plainSnapshot(raw), recoverySource)) throw new Error('Source modifiée depuis la copie : activation refusée.'); } : null;
+      if (guard) guard();
+      const kept = await writeWithRoom(vals, salt, guard);
       await saveSession(rawKey, salt);
+      if (guard) guard();
       dropPlain(raw, drop); if (dropV1) put(raw, V1, null);
       enter(kept);
       // Autorisation persistante facultative, non exportée dans les sauvegardes.
@@ -464,6 +475,18 @@ const SessionVault = (() => {
     }
     // Une copie externe est vérifiée par réouverture du fichier sélectionné.
     // La preuve est liée aux octets du coffre courant, pas à une case cochée.
+    async function plainRecovery(pass) { return exclusive(async () => {
+      if (st.mode !== 'plain' || raw.getItem(VAULT) || raw.getItem(V1) || raw.getItem(PENDING)) throw new Error('Source de récupération indisponible.');
+      if (typeof pass !== 'string' || pass.length < 8) throw new Error('Entre un code d’au moins 8 caractères pour cette copie.');
+      const snapshot = plainSnapshot(raw), salt = crypto.getRandomValues(new Uint8Array(16));
+      const rawKey = await deriveRaw(pass, salt, crypto);
+      try {
+        const key = await importKey(rawKey, crypto), out = await seal(snapshot, key, salt, crypto, 1, now());
+        const checked = await open(JSON.parse(out.sealed), key, crypto);
+        if (!same(checked.values, snapshot) || !same(plainSnapshot(raw), snapshot)) throw new Error('Source modifiée : recommence la copie.');
+        return out.sealed;
+      } finally { rawKey.fill(0); }
+    }); }
     async function recoverySnapshot() { return exclusive(async () => {
       expire(); if (st.mode !== 'vault') throw new Error('Déverrouille cet appareil.');
       const sealed = raw.getItem(VAULT), vault = JSON.parse(sealed);
@@ -472,7 +495,13 @@ const SessionVault = (() => {
       if (raw.getItem(VAULT) !== sealed) throw new Error('Coffre modifié : recommence la copie.');
       return sealed;
     }); }
-    async function activateJournal(fileText) { return exclusive(async () => {
+    async function activateJournal(fileText, pass) { return exclusive(async () => {
+      if (st.mode === 'plain') {
+        if (raw.getItem(VAULT) || raw.getItem(V1) || raw.getItem(PENDING)) throw new Error('Source de récupération indisponible.');
+        const snapshot = await readRecovery(fileText, pass, crypto);
+        if (!same(plainSnapshot(raw), snapshot)) throw new Error('La copie ne correspond plus au profil courant.');
+        return unlockInside(pass, { [JournalArchive.KEY]: JSON.stringify(JournalArchive.capture(snapshot)) }, false, snapshot);
+      }
       expire(); if (st.mode !== 'vault') throw new Error('Déverrouille cet appareil.');
       const epoch = st.epoch, mem = st.mem, guard = () => guardSession(epoch, mem);
       const sealed = raw.getItem(VAULT);
@@ -526,7 +555,7 @@ const SessionVault = (() => {
       return { state };
     }); }
     return {
-      boot, unlock, lock, flush, onStorage, importConfig, recoverySnapshot, activateJournal,
+      boot, unlock, lock, flush, onStorage, importConfig, recoverySnapshot, plainRecovery, activateJournal,
       expired: () => expire(),
       get expiresAt() { return st.expiresAt; },
       get pendingRecovery() { return st.mode === 'expired' && !!st.mem && st.mem.dirty.size > 0; },

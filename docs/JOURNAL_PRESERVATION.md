@@ -13,11 +13,11 @@ Statut : proposition en brouillon, revue humaine obligatoire. Aucun profil réel
 
 ## Copie indépendante avant activation
 
-Un profil avec un journal historique reste en lecture seule pour le journal. L’application demande d’exporter le coffre chiffré courant, de l’enregistrer hors du navigateur, puis de sélectionner ce fichier via le sélecteur de fichiers. Le fichier doit être **strictement identique au coffre courant**, puis son authentification AES-GCM doit réussir sous verrou. Une copie périmée, modifiée, incomplète ou un quota insuffisant font refuser l’activation. Aucun clic de confirmation, simple hash ou copie dans le même stockage ne remplace cette preuve.
+Un profil avec un journal historique, ou sans coffre chiffré, reste en lecture seule pour le journal. Hors coffre, les autres fonctions de trajet restent utilisables, mais aucun nouveau débrief n’est annoncé enregistré. Sans code existant, un code d’au moins 8 caractères chiffre la copie indépendante sans modifier la source ; sa réouverture et sa concordance exacte avec le profil autorisent ensuite seulement la création du coffre et le nettoyage vérifié des copies lisibles. L’application demande d’exporter le coffre chiffré courant, de l’enregistrer hors du navigateur, puis de sélectionner ce fichier via le sélecteur de fichiers. Le fichier doit être **strictement identique au coffre courant**, puis son authentification AES-GCM doit réussir sous verrou. Une copie périmée, modifiée, incomplète ou un quota insuffisant font refuser l’activation. Aucun clic de confirmation, simple hash ou copie dans le même stockage ne remplace cette preuve.
 
 Après cette preuve seulement, l’archive peut être initialisée à partir des sources originales et des modifications locales en attente. Le résultat est relu et vérifié avant succès. Une interruption laisse soit le coffre précédent, soit un coffre complet publié atomiquement. Une panne de vérification après notre écriture provoque un retour aux octets précédents, uniquement si aucun autre acteur n’a remplacé notre écriture. Un échec de rollback demeure une erreur explicite et requiert la copie indépendante.
 
-Un profil initialement vide n’a pas de journal à migrer et initialise une archive vide. Il n’existe pas de migration en arrière-plan d’un journal non vide.
+Un coffre initialement vide n’a pas de journal à migrer et initialise une archive vide. Sans coffre/Web Locks, les écritures du journal sont refusées ; aucun export/import brut n’est utilisé pour contourner ce refus. Il n’existe pas de migration en arrière-plan d’un journal non vide.
 
 ## Coffre et fichier de récupération
 

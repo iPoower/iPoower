@@ -119,5 +119,18 @@ module.exports = (async () => {
     const values = await V.readRecovery(await client.recoverySnapshot(), PASS, webcrypto);
     assert(sourceBytes.every(r => J.capture(values).records.includes(r)));
   });
+  await check('profil sans code : copie chiffrée indépendante, refus sans perte, activation seulement après réouverture', async () => {
+    const plain = storage({ 'twrc.settings.v1': JSON.stringify({ configured: 1 }), [J.CONTEXT]: JSON.stringify({ v: 1, debrief: { entries: source } }) });
+    const client = V.create({ raw: plain, session: storage(), crypto: webcrypto, locks, target: null, now: () => T });
+    assert.equal(await client.boot(), 'plain');
+    const before = [...plain.map]; await assert.rejects(client.plainRecovery('court'), /8/);
+    const file = await client.plainRecovery(PASS); assert.deepEqual([...plain.map], before);
+    await assert.rejects(client.activateJournal(file, 'mauvais-code-fictif')); assert.deepEqual([...plain.map], before);
+    plain.refused = true; await assert.rejects(client.activateJournal(file, PASS)); plain.refused = false;
+    assert.equal(plain.getItem(J.CONTEXT), before.find(([k]) => k === J.CONTEXT)[1]);
+    await client.activateJournal(file, PASS); assert.equal(client.mode, 'vault'); assert.equal(plain.getItem(J.CONTEXT), null);
+    assert.equal(JSON.parse(plain.getItem(V.VAULT)).v, 3);
+    assert(sourceBytes.every(r => J.read(client.store.getItem(J.KEY)).records.includes(r)));
+  });
   console.log(`${count}/${count} scénarios de conservation OK`);
 })().catch(e => { console.error('❌ conservation : ' + e.stack); process.exitCode = 1; });

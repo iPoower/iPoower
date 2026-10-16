@@ -3,6 +3,13 @@
  * projection commune AVANT le rendu de Pneus, Météo, Tenue, Analyse et Agenda.
  */
 const USER_STORE = userContextStore({ read: lsGet, write: (k, v) => {
+  // Hors coffre, ne jamais convertir/réécrire un journal non vide sans copie
+  // indépendante vérifiée ni verrou global. Les autres contextes restent utilisables.
+  const VS = window.TWRC_VAULT;
+  if ((!VS || VS.mode !== 'vault') && v && [JournalArchive.CONTEXT, JournalArchive.MIRROR].includes(k)) {
+    const value = JSON.parse(v), journal = k === JournalArchive.CONTEXT ? value.debrief : value;
+    if (JournalArchive.collect(journal).records.length) throw new Error('Journal en lecture seule : exporte puis vérifie une copie chiffrée pour activer sa conservation.');
+  }
   if (v == null) APP_STORAGE.removeItem(k); else APP_STORAGE.setItem(k, v);
 } });
 ['GPS', 'PLACE', 'TRIPSTART', 'TRIPEND', 'RETURNHOME'].forEach((name, i) => {

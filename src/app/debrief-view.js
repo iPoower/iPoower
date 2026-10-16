@@ -1,6 +1,6 @@
 /* Arrivée et débrief : même transaction canonique pour les quatre onglets. */
 function debriefDeparture(t, s) {
-  if (DEMO.on) return;
+  if (DEMO.on || !window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault' || window.TWRC_VAULT.journalNeedsRecovery) return;
   const car = labCar(), seq = t.seq || [], hours = seq.map(q => q.hs && q.hs[q.i]).filter(Boolean);
   const sources = [
     ...Object.values(M).filter(Boolean).map(m => ({ m, at: RAW[m.id] && RAW[m.id].t })),
@@ -40,16 +40,16 @@ function debriefDeparture(t, s) {
     prediction: { known: hours.length === seq.length && hours.length > 0, conditions: [...flags], fetchedAt,
       offline: offlineNow(), verdict: verdict ? LV[verdict.w.level].name : '', thermal, evidence } });
 }
-function journalWritable() {
+function journalWritable(notify = true) {
   const VS = window.TWRC_VAULT;
-  if (VS && VS.journalNeedsRecovery) {
-    window.alert('Avant de modifier le journal : exporte la copie de récupération dans les paramètres, puis rouvre ce fichier pour la vérifier.');
+  if (!VS || VS.mode !== 'vault' || VS.journalNeedsRecovery) {
+    if (notify) window.alert('Avant de modifier le journal : exporte la copie de récupération dans les paramètres, puis rouvre ce fichier pour la vérifier.');
     return false;
   }
   return true;
 }
 function closeTrip(t, how = 'confirmé') {
-  if (!journalWritable()) return null;
+  const record = journalWritable(false);
   return appAction(() => {
     if (DEMO.on || !t || !t.key || !['auto', 'confirmé'].includes(how)) return null;
     const prior = USER_STORE.state.debrief.entries.find(e => e.key === t.key && !e.cancelledAt);
@@ -63,7 +63,7 @@ function closeTrip(t, how = 'confirmé') {
     // Une arrivée déclarée après coup n'invente ni départ réel ni bilan thermique.
     TRIPEND = d && r ? { key: t.key, carId: vehicle.id, at, name: t.name || '', km: d.km, kmSrc: d.kmSrc,
       min: Math.round((at - d.startTs) / 60e3), range: r.thermal.range, state: r.thermal.state, conf: r.confidence.level } : null;
-    USER_STORE.state.debrief = Debrief.close(USER_STORE.state.debrief, { key: t.key, how,
+    if (record) USER_STORE.state.debrief = Debrief.close(USER_STORE.state.debrief, { key: t.key, how,
       name: t.name, from: t.from, to: t.to, end }, at);
     liveDonePersist(t.key, how); LIVE.lastDone = { key: t.key, name: t.name || '', at };
     returnHomeClear(t.key); appArrival(t, how, at);

@@ -964,7 +964,7 @@ function renderNotice() {
   // Une réponse météo peut arriver entre la saisie et la validation du code.
   // Garder le formulaire en place conserve la valeur, le focus et le remplissage du gestionnaire de mots de passe.
   // Sécurité V1 : état du coffre de session (erreur d'écriture, migration non terminée, migration réussie)
-  const VS = window.TWRC_VAULT, vaultNote = USER_STORE.durability().status === 'degraded' ? `<div class="note lv2" role="alert"><b>ENREGISTREMENT NON CONFIRMÉ</b><span>${esc(USER_STORE.durability().error || 'Conserve cette page ouverte et réessaie.')}</span></div>` : !VS ? '' : VS.journalNeedsRecovery ? `<div class="note lv2" role="alert" data-k="vault"><b>JOURNAL EN LECTURE SEULE</b><span>Avant de modifier le journal, exporte une copie de récupération dans les paramètres, puis rouvre le fichier enregistré pour la vérifier. Aucune ancienne entrée ne sera supprimée.</span></div>` : VS.error ? `<div class="note lv2" role="alert" data-k="vault"><b>ENREGISTREMENT CHIFFRÉ</b><span>${esc(VS.error)}</span></div>`
+  const VS = window.TWRC_VAULT, vaultNote = USER_STORE.durability().status === 'degraded' ? `<div class="note lv2" role="alert"><b>ENREGISTREMENT NON CONFIRMÉ</b><span>${esc(USER_STORE.durability().error || 'Conserve cette page ouverte et réessaie.')}</span></div>` : !VS ? '' : VS.mode === 'plain' || VS.journalNeedsRecovery ? `<div class="note lv2" role="alert" data-k="vault"><b>JOURNAL EN LECTURE SEULE</b><span>Avant de modifier le journal, exporte une copie de récupération dans les paramètres, puis rouvre le fichier enregistré pour la vérifier. Aucune ancienne entrée ne sera supprimée.</span></div>` : VS.error ? `<div class="note lv2" role="alert" data-k="vault"><b>ENREGISTREMENT CHIFFRÉ</b><span>${esc(VS.error)}</span></div>`
     : VS.warn ? `<div class="note lv1" role="status" data-k="vault"><b>STOCKAGE LOCAL</b><span>${esc(VS.warn)}</span></div>`
     : VS.migrated ? `<div class="note lv0" role="status" data-k="vault"><b>🔐 DONNÉES CHIFFRÉES SUR CET APPAREIL</b><span>Réglages, lieux, journal et code sont désormais chiffrés au repos. Tu peux autoriser cet appareil à rester connecté pendant 7 jours lors du prochain déverrouillage.</span></div>` : '';
   const setContent = extra0 => {
@@ -1742,8 +1742,12 @@ async function downloadRecovery(text) {
 }
 async function backupExport() {
   const VS = window.TWRC_VAULT;
-  if (!VS || VS.mode !== 'vault') { bkMsg('Déverrouille le coffre chiffré pour exporter une copie complète.'); return; }
+  if (!VS || !['vault', 'plain'].includes(VS.mode)) { bkMsg('Déverrouille le coffre chiffré pour exporter une copie complète.'); return; }
   try {
+    if (VS.mode === 'plain') {
+      await downloadRecovery(await VS.plainRecovery(bkPass()));
+      bkMsg('Copie chiffrée exportée avec le code saisi. Rouvre le fichier enregistré pour vérifier et activer le journal.'); return;
+    }
     if (!VS.journalNeedsRecovery) {
       USER_STORE.flush(); localStorage.setItem('twrc.settings.v1', JSON.stringify(S));
       await VS.flush(); if (VS.error || VS.pendingWrites) throw new Error('Enregistrement en attente : copie refusée, garde cette page ouverte.');
@@ -1756,7 +1760,7 @@ async function journalVerifyCopy(file) {
   const VS = window.TWRC_VAULT;
   if (!VS || !file || file.size > 68 * 1024 * 1024) { bkMsg('Copie indisponible ou trop volumineuse.'); return; }
   try {
-    await VS.activateJournal(await file.text());
+    await VS.activateJournal(await file.text(), bkPass());
     bkMsg('Copie vérifiée. Archive exhaustive activée sur cet appareil. Rechargement…');
     DeviceStorage.freeze(true); reloadSafe(100);
   } catch (e) { bkMsg('Activation refusée : ' + e.message + ' Les données précédentes sont conservées.'); }
@@ -1775,7 +1779,7 @@ async function backupApplyPlan(plan) {
   }
 }
 async function backupImport(f) {
-  if (window.TWRC_VAULT && window.TWRC_VAULT.journalNeedsRecovery) { bkMsg('Vérifie d’abord une copie de récupération du journal actuel. Aucun import appliqué.'); return; }
+  if (!window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault' || window.TWRC_VAULT.journalNeedsRecovery) { bkMsg('Vérifie d’abord une copie de récupération du journal actuel dans un coffre déverrouillé. Aucun import appliqué.'); return; }
   bkMsg('Lecture du fichier…');
   if (f && Number.isFinite(f.size) && f.size > 68 * 1024 * 1024) { bkMsg('Sauvegarde trop volumineuse : fichier conservé, aucun réglage modifié.'); return; }
   let o, fileText; try { fileText = await f.text(); o = JSON.parse(fileText); } catch (e) { bkMsg('Fichier illisible.'); return; }
@@ -3830,8 +3834,8 @@ function renderSettings(force) {
       <p class="sub">Journal, DOT, usure, kilométrage, pressions, photos, calibration et réglages, dans un seul fichier <b>chiffré avec ton code</b>. À faire avant de changer de téléphone ou de vider Safari. Sur le nouveau téléphone : Importer, puis le même code. Conserve le fichier enregistré hors du navigateur.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="password" id="bkPw" autocomplete="current-password" placeholder="code du fichier à importer (vide = code actuel)" style="flex:1;min-width:160px">
         <button class="btn pri" data-act="bk-export">Exporter</button><label class="btn" for="bkFile">Importer</label><input type="file" id="bkFile" accept=".json,application/json,text/plain" hidden></div>
-      <p class="sub">La copie complète conserve le journal et toutes ses versions. Elle inclut aussi l’état local chiffré de cet appareil ; seuls les champs durables seront restaurés. Son code est le code actuel de l’appareil. Les anciennes sauvegardes V1/V2 restent importables. Les anciennes versions de l’app refusent cette copie.</p>
-      ${window.TWRC_VAULT && window.TWRC_VAULT.journalNeedsRecovery ? '<label class="btn" for="journalCopy">Vérifier la copie enregistrée et activer l’archive</label><input type="file" id="journalCopy" accept=".json,application/json" hidden>' : ''}
+      <p class="sub">La copie complète conserve le journal et toutes ses versions. Elle inclut aussi l’état local chiffré de cet appareil ; seuls les champs durables seront restaurés. Son code est le code actuel de l’appareil ; sans coffre, saisis un code d’au moins 8 caractères avant l’export et la vérification. Les anciennes sauvegardes V1/V2 restent importables. Les anciennes versions de l’app refusent cette copie.</p>
+      ${window.TWRC_VAULT && (window.TWRC_VAULT.mode === 'plain' || window.TWRC_VAULT.journalNeedsRecovery) ? '<label class="btn" for="journalCopy">Vérifier la copie enregistrée et activer l’archive</label><input type="file" id="journalCopy" accept=".json,application/json" hidden>' : ''}
       <p class="sub" id="bkMsg" aria-live="polite"></p></div>
     <div class="set-sec"><h3>🗂️ Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>

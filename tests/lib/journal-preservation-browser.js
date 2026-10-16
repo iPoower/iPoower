@@ -40,6 +40,28 @@ module.exports = async function run(b) {
   // Les réglages proviennent exclusivement du preset.fake.json du build CI.
   const probe = await session(b, { at: T, dev: 'iphone' });
   const settings = await probe.p.evaluate(() => JSON.parse(JSON.stringify(S))); await probe.c.close();
+  await check('profil sans coffre : journal en lecture seule, export chiffré puis activation après sélection du fichier', async () => {
+    const html = fs.readFileSync('site/index.html', 'utf8');
+    const version = JSON.parse(/window\.TWRC_SEALED_V=("[^"]+")/.exec(html)[1]);
+    const plain = await session(b, { at: T, dev: 'iphone', unlock: false, seed: {
+      'twrc.plain': JSON.stringify(settings), 'twrc.plain.v': version,
+      [CONTEXT]: JSON.stringify({ v: 1, debrief: { entries: sources } })
+    } });
+    try {
+      assert.equal(await plain.p.evaluate(() => TWRC_VAULT.mode), 'plain');
+      const before = await plain.p.evaluate(() => TWRC_RAW_STORAGE.getItem(JournalArchive.CONTEXT));
+      await settingsPanel(plain.p); await plain.p.fill('#bkPw', PW);
+      const [file] = await Promise.all([plain.p.waitForEvent('download'), plain.p.click('[data-act=bk-export]')]);
+      const bytes = fs.readFileSync(await file.path());
+      assert.equal(await plain.p.evaluate(() => TWRC_RAW_STORAGE.getItem(JournalArchive.CONTEXT)), before);
+      assert(!bytes.toString().includes('Lieu A')); assert(!bytes.toString().includes(PW));
+      await Promise.all([plain.p.waitForNavigation({ timeout: 60000 }), (async () => {
+        await plain.p.setInputFiles('#journalCopy', { name: 'profil-sans-code.json', mimeType: 'application/json', buffer: bytes }); await wait(plain.p, 16);
+      })()]); await opened(plain.p);
+      const restored = await canonicalRows(plain.p); assert.equal(restored.version, 3); assert.equal(restored.entries.length, 120);
+      assert(await plain.p.evaluate(input => input.every(r => JSON.parse(localStorage.getItem(JournalArchive.KEY)).records.includes(JournalArchive.encode(r))), sources));
+    } finally { await plain.c.close(); }
+  });
   const seed = { [VAULT]: legacyVault(settings) };
   const s = await session(b, { at: T, dev: 'iphone', seed }), p = s.p;
   p.on('dialog', d => d.accept());

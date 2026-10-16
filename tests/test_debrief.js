@@ -151,6 +151,7 @@ if (require.main === module) {
   const model = { id: 'test', hs: hours }, c = { Date: FixedDate, Intl, Math, JSON, Set, Map,
     DEMO: { on: false }, labCar: () => ({ id: 'car', name: 'Auto test' }), M: { test: model }, RAW: { test: { t: at - 300000 } },
     MIDM: {}, MIDP: {}, CALM: {}, LEGM: {}, USER_STORE: { state: { debrief: null } }, EV_FLAG: () => 'off', tripLab: () => null, offlineNow: () => false };
+  c.window = { TWRC_VAULT: { mode: 'vault', journalNeedsRecovery: false } };
   vm.createContext(c);
   const app = fs.readFileSync(require('node:path').resolve(__dirname, '../src/app/debrief-view.js'), 'utf8').split('function closeTrip(')[0];
   vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/journal-archive.js'), 'utf8') + fs.readFileSync(require('node:path').resolve(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(sourcePath, 'utf8') + app + ';this.depart=debriefDeparture;', c);
