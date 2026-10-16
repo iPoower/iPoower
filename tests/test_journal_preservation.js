@@ -30,6 +30,7 @@ function storage(initial = {}) {
     removeItem: k => map.delete(k) };
 }
 module.exports = (async () => {
+  await require('./test_journal_actions');
   await check('120 trajets, 91/365 jours, versions et source opaque sans troncature', () => {
     const before = JSON.stringify(source), state = D.clean({ entries: source }, T);
     assert.equal(state.entries.length, 120);
@@ -74,6 +75,10 @@ module.exports = (async () => {
   const raw = storage({ 'twrc.key': PASS, 'twrc.settings.v1': JSON.stringify({ configured: 1, cars: [] }), [J.CONTEXT]: JSON.stringify({ v: 1, debrief: { entries: source } }) });
   const make = crypto => V.create({ raw, session: storage(), crypto: crypto || webcrypto, locks, target: null, now: () => T });
   const a = make(); await a.boot();
+  const oldContext = { ...ctx }; vm.createContext(oldContext);
+  vm.runInContext(require('./lib/legacy-vault-fixture').source + ';this.oldAPI=SessionVault;', oldContext);
+  const oldReader = () => oldContext.oldAPI.create({ raw, session: storage(), crypto: webcrypto, locks, target: null, now: () => T });
+  const old = oldReader(); await old.boot(); await old.unlock(PASS);
   let copy;
   await check('aucune migration implicite ; copie différente ou quota = octets précédents intacts', async () => {
     copy = await a.recoverySnapshot();
@@ -88,6 +93,15 @@ module.exports = (async () => {
     assert.deepEqual(JSON.parse(values[J.CONTEXT]).debrief.entries, source);
     assert(sourceBytes.every(r => J.capture(values).records.includes(r)), 'copie pré-migration récupérable et exhaustive');
     await assert.rejects(V.readRecovery(copy, 'code-fictif-incorrect', webcrypto));
+  });
+  await check('lecteur historique exact : ancien onglet ouvert, retour logiciel et réouverture refusent v3 sans écriture', async () => {
+    const before = raw.getItem(V.VAULT);
+    old.store.setItem(J.CONTEXT, JSON.stringify({ v: 1, debrief: { entries: [entry('ancien-onglet')] } }));
+    await old.flush(); assert(old.error); assert.equal(raw.getItem(V.VAULT), before);
+    const cold = oldReader(); assert.equal(await cold.boot(), 'locked'); assert.match(cold.warn, /conservé/);
+    await assert.rejects(cold.unlock(PASS), /illisible/); assert.equal(raw.getItem(V.VAULT), before);
+    const returned = make(); await returned.boot(); await returned.unlock(PASS);
+    assert(containsSources(J.capture({ [J.KEY]: returned.store.getItem(J.KEY) })));
   });
   await check('deux contextes, même clé canonique et réponses concurrentes : union durable après réouverture', async () => {
     const b = make(); await b.boot(); await b.unlock(PASS);

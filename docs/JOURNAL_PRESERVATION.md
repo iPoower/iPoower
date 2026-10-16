@@ -47,3 +47,53 @@ Aucune modification du registre CI, des workflows, du service worker ou du contr
 4. La sélection du fichier prouve sa relecture, pas une garantie matérielle de conservation ni une sauvegarde cloud. Conserver des copies indépendantes et tester leur restauration. Un stockage plein n’a pas de capacité infinie.
 5. Cette PR ne peut reconstituer les débriefs déjà supprimés avant son installation. Les anciens acteurs qui ignorent entièrement le protocole de coffre ou du code malveillant de même origine ne sont pas une frontière de sécurité. Les deux apps sur `ipoower.github.io` partagent toujours une origine ; aucune communication ni stockage commun n’est ajouté.
 6. B01–B04 restent ouverts pour la production jusqu’aux preuves CI, à la contre-revue humaine et à la validation physique. Les lots d’intégration suivants, OAuth, vrai Drive et Phase 2 Cloudflare restent interdits.
+
+## Complément de contre-revue P1
+
+Les trois actions « Enregistrer », « Plus tard » et « Ne plus demander aujourd’hui » utilisent la même barrière de lecture seule et la même confirmation durable. Sur un profil ancien non activé ou sans coffre, elles refusent avant toute mutation et conservent le formulaire. Après une erreur d’écriture, le formulaire reste ouvert et le refus est explicite ; les modifications non confirmées peuvent rester en mémoire pour être retentées. Aucun ancien état mémoire n’est réinstallé par-dessus un autre onglet. Un double clic pendant la vérification n’ajoute pas une seconde transaction.
+
+Les tests unitaires de ces gestionnaires échouent sur le code audité `32df5fdb0898` (mutation `deferred` en lecture seule). Ils couvrent les trois actions, les deux profils en lecture seule, quota, exception, attente de confirmation et doubles clics. Les scénarios Chromium/WebKit vérifient aussi les boutons réels en lecture seule et sous quota, avec comparaison des octets durables.
+
+`tests/fixtures/session-vault.prod-124.js` est une copie **exacte**, sans adaptation, du lecteur `src/session-vault.js` de `main` au commit `77b2f5abf5a2` et de la source `prod-124` (`bb078d1b`). Blob Git : `bf86f81ed99a496bc66e7fed7e4f2867d21d771f` ; SHA-256 : `0ba3aed0a56c01a9310da7dd3df067609cac0da53ec204ad1a28b4f463c5d892`, contrôlé par le helper. Les scénarios exécutent réellement cet ancien lecteur avant et après activation : tentative d’écriture d’un onglet déjà ouvert, démarrage à froid et code correct sur v3. Les refus doivent laisser les octets du coffre identiques. Après retour au candidat v3, toutes les sources restent lisibles.
+
+Le test Chromium `journal-legacy-sw.js`, appelé par la suite SW existante, utilise un vrai service worker sur localhost pour mettre **ce lecteur** en cache. Après activation, il ouvre l’ancien lecteur hors ligne, vérifie son refus et reprend le candidat avec les 120 sources et un ajout créé après activation. Cette fixture teste la frontière entre versions du coffre ; elle ne remplace ni la recette de l’app complète en PWA sur iOS ni ses mécanismes réels de mise à jour.
+
+**Retour arrière logiciel ≠ restauration d’une ancienne copie de données.** L’ancien logiciel reste incapable de lire v3 ; aucun déclassement vers v2 n’est prévu. Ne jamais remplacer le coffre activé par la copie antérieure : les nouveaux retours seraient alors absents. Conserver une copie complète récente et revenir à un lecteur compatible v3. Toute restauration métier utilise le plan vérifié et l’union du journal. La copie antérieure ne contient que les données présentes lors de son export.
+
+## Mesures P2 et limites
+
+`node tools/bench-journal.js` mesure 500 puis 1 000 trajets fictifs, deux versions sources par trajet, 91/365 jours, trois ouvertures et écritures par taille. Le script emploie les vrais modules de projection, archive et coffre ; il vérifie la présence des sources après chaque écriture et n’affiche que des compteurs, tailles et durées. Les médianes incluent le déverrouillage PBKDF2/AES-GCM et l’écriture avec union/relecture. La taille UTF-16 est une estimation du blob localStorage, pas une mesure mémoire du processus.
+
+Il s’agit d’un socle Node, sans DOM ni quota matériel. Le coût réel sur un appareil contraint reste **À VÉRIFIER** : temps d’ouverture de l’app, saisie du retour, confirmation durable, export, mémoire et marge de stockage doivent être mesurés sur l’iPhone avec 500 puis 1 000 trajets avant activation sensible. Aucune limite d’archive ni suppression ne sera ajoutée pour améliorer ces mesures.
+
+Premier relevé du 16 octobre 2026, Node v24.19.0, espace de travail aussi occupé par les tests unitaires (trois échantillons par taille, aucun appareil mobile) :
+
+| Trajets / versions sources | Ouverture médiane du coffre | Écriture médiane avec union | Fichier chiffré | Estimation UTF-16 du coffre |
+| --- | --- | --- | --- | --- |
+| 500 / 1 000 | 6,09 s | 4,66 s | 2 997 754 octets | 5 995 534 octets |
+| 1 000 / 2 000 | 10,70 s | 12,45 s | 5 992 422 octets | 11 984 870 octets |
+
+Toutes les sources étaient encore présentes après chaque écriture. Ces tailles concernent cette fixture, incluent la duplication actuelle et peuvent rencontrer un quota navigateur bien avant la limite de fichier de 68 Mio. **P2 reste ouvert** : aucune capacité mobile, latence acceptable ou marge de stockage n’est démontrée par ce relevé ; le refus sans perte reste obligatoire.
+
+## Recette Safari / PWA isolée à autoriser
+
+Statut : **préparation uniquement ; aucune préversion publiée par cette PR**. La publication de cet environnement demande une autorisation distincte. Ne pas utiliser la production `prod-124` pour valider le candidat.
+
+La préversion devra servir le SHA exact qui a passé la CI et sera relu humainement. Après une correction, `32df5fdb0898` ne convient plus. Employer une origine HTTPS dédiée, différente de `ipoower.github.io` et des origines des autres apps, un build avec le preset et les clés publiques de test, aucun OAuth/Drive et exclusivement des fichiers fictifs. Le site doit afficher sa provenance (SHA/build) et permettre de vérifier la version servie avant d’installer la PWA. Ne jamais y importer un profil réel ni une sauvegarde personnelle.
+
+Préparer un état source de 120 trajets, dont 91/365 jours, plusieurs retours pour un même trajet et une source non affichable. Garder un oracle indépendant avant projection et noter ses compteurs/empreintes. Les essais d’ancienne version se font sur cette même origine de recette et ces mêmes données fictives ; ils ne chargent jamais l’origine du profil réel.
+
+| Contrôle physique iPhone 11 Pro Max | Preuve attendue |
+| --- | --- |
+| Version réellement servie et installation Safari/PWA | SHA/build identiques au candidat validé ; stockage fictif isolé |
+| Ancien journal, puis « Plus tard » / silence quotidien / Enregistrer | Refus explicite avant activation ; formulaire et données inchangés |
+| Export puis enregistrement dans Fichiers | Fichier retrouvé et sélectionné à nouveau ; mauvaise copie/code refusés |
+| Activation puis 120 trajets et toutes les versions | Égalité avec les sources intégrales ; 60 lignes seulement à l’affichage |
+| Export/import dans un second profil fictif | Import vérifié, union exhaustive et même journal après déchiffrement |
+| Fermeture complète, veille et réouverture hors ligne | Sources et retours confirmés intacts dans Safari et PWA |
+| Verrouillage, mauvais code, interruption avant confirmation | Refus visible ; aucun état partiel ; reprise des données durables |
+| Deux onglets, ancienne PWA en cache et retour au candidat | Ancien lecteur bloqué sur v3 ; aucun déclassement ; ajouts post-activation conservés |
+| Quota et actions de formulaire | Aucune confirmation trompeuse ; fichier de récupération et coffre précédents récupérables |
+| 500 puis 1 000 trajets, deux versions chacun | Durées ouverture/confirmation/export, tailles, marge de stockage et stabilité consignées |
+
+Pour chaque ligne : noter appareil, iOS, mode Safari/PWA, SHA/build, résultat observé et preuve fictive ; laisser « non testé » si la preuve manque. Un échec d’intégrité, un refus sans explication ou une divergence avec l’oracle arrête la recette. Ne pas tester une libération d’espace en supprimant le coffre, le profil ou des sources. L’exécution et la publication de cette recette ne sont pas autorisées par la préparation du document.

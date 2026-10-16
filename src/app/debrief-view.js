@@ -80,6 +80,7 @@ function closeTrip(t, how = 'confirmé') {
   });
 }
 let DEBRIEF_FORM = null;
+let DEBRIEF_PENDING = false;
 const DEBRIEF_COMPARE = { pending: 'Retour à renseigner', unknown: 'Prévision non comparable', match: 'Concordant',
   missed: 'Phénomène non annoncé', unused: 'Alerte non rencontrée', mixed: 'Écart mixte' };
 const debriefConditions = xs => xs.length ? xs.map(k => Debrief.LABELS[k]).join(' · ') : 'Aucun de ces phénomènes';
@@ -100,12 +101,13 @@ function debriefDetails(e) {
     ${e.feedback ? `<p class="debrief-result"><b>${DEBRIEF_COMPARE[cmp.kind]}</b>${cmp.missed.length ? ' · rencontré sans annonce : ' + esc(debriefConditions(cmp.missed)) : ''}${cmp.unused.length ? ' · annoncé sans rencontre : ' + esc(debriefConditions(cmp.unused)) : ''}</p>` : ''}`;
 }
 function debriefOpen(key) {
+  if (DEBRIEF_PENDING) return;
   const e = USER_STORE.state.debrief.entries.find(e => e.key === key); if (!e) return;
   DEBRIEF_FORM = { key, conditions: e.feedback ? e.feedback.conditions.slice() : null, grip: e.feedback ? e.feedback.grip : 'unknown' };
   renderDebrief(); $('#secDebrief').scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
 }
 function debriefPick(kind, value) {
-  if (!DEBRIEF_FORM) return;
+  if (!DEBRIEF_FORM || DEBRIEF_PENDING) return;
   if (kind === 'condition') {
     if (value === 'normal') DEBRIEF_FORM.conditions = [];
     else if (Debrief.CONDITIONS.includes(value)) {
@@ -115,30 +117,39 @@ function debriefPick(kind, value) {
   } else if (['normal', 'reduced', 'slip', 'unknown'].includes(value)) DEBRIEF_FORM.grip = value;
   renderDebrief();
 }
-async function debriefSave() {
-  if (!DEBRIEF_FORM || !Array.isArray(DEBRIEF_FORM.conditions) || !journalWritable()) return;
+async function debriefCommit(change) {
+  if (!DEBRIEF_FORM || DEBRIEF_PENDING || !journalWritable()) return;
   const form = DEBRIEF_FORM;
+  DEBRIEF_PENDING = true; renderDebrief();
+  try {
+    appAction(() => { USER_STORE.state.debrief = change(USER_STORE.state.debrief, form); });
+    const VS = window.TWRC_VAULT;
+    await VS.flush();
+    if (USER_STORE.durability().status !== 'durable' || VS.mode !== 'vault' || VS.error || VS.pendingWrites)
+      throw new Error('Écriture non confirmée.');
+    if (DEBRIEF_FORM === form) DEBRIEF_FORM = null;
+  } catch (e) {
+    // Une mutation refusée reste éventuellement en mémoire, jamais annoncée
+    // comme durable. Ne pas restaurer un ancien état par-dessus un autre onglet.
+    window.alert('Action du journal non enregistrée durablement. Les données précédentes sont conservées. Garde cette page ouverte et réessaie après avoir libéré de l’espace.');
+  } finally {
+    DEBRIEF_PENDING = false; renderDebrief();
+  }
+}
+async function debriefSave() {
+  if (!DEBRIEF_FORM || !Array.isArray(DEBRIEF_FORM.conditions)) return;
   // Une interaction conserve son identifiant lors d’un retry ; deux réponses
   // identiques, simultanées dans deux onglets, restent deux versions distinctes.
-  if (!form.id) form.id = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
-  appAction(() => { USER_STORE.state.debrief = Debrief.reply(USER_STORE.state.debrief, form.key, form); });
-  const VS = window.TWRC_VAULT;
-  if (VS) await VS.flush();
-  if (USER_STORE.durability().status !== 'durable' || VS && (VS.error || VS.pendingWrites)) {
-    window.alert('Débrief non enregistré durablement. Les données précédentes sont conservées. Garde cette page ouverte et réessaie après avoir libéré de l’espace.');
-    return;
-  }
-  DEBRIEF_FORM = null; renderDebrief();
+  return debriefCommit((state, form) => {
+    if (!form.id) form.id = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+    return Debrief.reply(state, form.key, form);
+  });
 }
-function debriefLater() {
-  if (!DEBRIEF_FORM) return;
-  const key = DEBRIEF_FORM.key; DEBRIEF_FORM = null;
-  appAction(() => { USER_STORE.state.debrief = Debrief.defer(USER_STORE.state.debrief, key); });
-  renderDebrief();
+async function debriefLater() {
+  return debriefCommit((state, form) => Debrief.defer(state, form.key));
 }
-function debriefSnooze() {
-  DEBRIEF_FORM = null;
-  appAction(() => { USER_STORE.state.debrief = Debrief.snooze(USER_STORE.state.debrief, DayContext.endOfDay(Date.now())); });
+async function debriefSnooze() {
+  return debriefCommit(state => Debrief.snooze(state, DayContext.endOfDay(Date.now())));
 }
 function renderDebrief() {
   const el = $('#secDebrief'); if (!el) return;
@@ -153,7 +164,7 @@ function renderDebrief() {
   const form = e ? `<div class="debrief-form"><div class="mod-h"><h2>🏁 Débrief du trajet</h2><span class="src">${esc(e.name || 'Trajet terminé')}</span></div>${debriefSummary(e)}
     <fieldset><legend>Ce que tu as rencontré</legend><p class="sub">Plusieurs réponses possibles. Renseigne ce que tu as effectivement observé.</p><div class="debrief-choices">${choice('debrief-condition', 'normal', 'Aucun de ces phénomènes', Array.isArray(DEBRIEF_FORM.conditions) && !DEBRIEF_FORM.conditions.length)}${Debrief.CONDITIONS.map(k => choice('debrief-condition', k, Debrief.LABELS[k], (DEBRIEF_FORM.conditions || []).includes(k))).join('')}</div></fieldset>
     <fieldset><legend>Adhérence ressentie · facultatif</legend><div class="debrief-choices">${[['unknown', 'Non évaluée'], ['normal', 'Habituelle'], ['reduced', 'Moins bonne'], ['slip', 'Glissement ressenti']].map(([v, label]) => choice('debrief-grip', v, label, DEBRIEF_FORM.grip === v)).join('')}</div></fieldset>
-    <div class="debrief-actions"><button class="btn" data-act="debrief-save"${DEBRIEF_FORM.conditions == null ? ' disabled' : ''}>Enregistrer le débrief</button><button class="btn sm" data-act="debrief-later">Plus tard</button><button class="btn sm" data-act="debrief-snooze">Ne plus demander aujourd’hui</button></div><details class="debrief-snapshot" data-dk="snapshot"${open.has('snapshot') ? ' open' : ''}><summary>Prévision au départ et bilan estimé</summary>${debriefDetails(e)}</details></div>` : '';
+    <div class="debrief-actions"><button class="btn" data-act="debrief-save"${DEBRIEF_PENDING || DEBRIEF_FORM.conditions == null ? ' disabled' : ''}>Enregistrer le débrief</button><button class="btn sm" data-act="debrief-later"${DEBRIEF_PENDING ? ' disabled' : ''}>Plus tard</button><button class="btn sm" data-act="debrief-snooze"${DEBRIEF_PENDING ? ' disabled' : ''}>Ne plus demander aujourd’hui</button></div><details class="debrief-snapshot" data-dk="snapshot"${open.has('snapshot') ? ' open' : ''}><summary>Prévision au départ et bilan estimé</summary>${debriefDetails(e)}</details></div>` : '';
   const counts = st.comparable ? `${st.comparable} retour${st.comparable > 1 ? 's' : ''} comparable${st.comparable > 1 ? 's' : ''} : ${st.counts.match} concordant${st.counts.match > 1 ? 's' : ''} · ${st.counts.missed} phénomène${st.counts.missed > 1 ? 's' : ''} non annoncé${st.counts.missed > 1 ? 's' : ''} · ${st.counts.unused} alerte${st.counts.unused > 1 ? 's' : ''} non rencontrée${st.counts.unused > 1 ? 's' : ''} · ${st.counts.mixed} écart${st.counts.mixed > 1 ? 's' : ''} mixte${st.counts.mixed > 1 ? 's' : ''}.` : 'Aucun retour comparable pour le moment.';
   const duplicates = new Set(Debrief.possibleDuplicates(state));
   const archivedRows = JournalArchive.collect(state).records.map(r => JSON.parse(r));

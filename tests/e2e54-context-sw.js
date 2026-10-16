@@ -130,6 +130,7 @@ async function views(p, expected) {
     });
     await check('vrai SW et application : aucune erreur JavaScript', async () => assert.deepEqual(errors, []));
     await c.close();
+    await check('lecteur prod-124 en cache hors ligne : activation et retour logiciel sans rétrogradation des données', () => require('./lib/journal-legacy-sw')(browser));
   } finally { await browser.close(); await new Promise(r => server.close(r)); }
   console.log(`${n}/${n} scénarios OK · erreurs JS : aucune`);
 })().catch(e => { console.error(e); server.close(); process.exit(1); });

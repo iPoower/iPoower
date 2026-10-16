@@ -32,6 +32,24 @@ async function opened(p) {
   }
   await p.waitForFunction(() => typeof USER_STORE !== 'undefined' && !!USER_STORE.state);
 }
+async function readOnlyActions(p) {
+  const messages = [], capture = d => messages.push(d.message()); p.on('dialog', capture);
+  try {
+    for (const action of ['save', 'later', 'snooze']) {
+      const before = await p.evaluate(() => {
+        debriefOpen('preservation-2'); debriefPick('condition', 'normal');
+        return { journal: JSON.stringify(USER_STORE.state.debrief), raw: TWRC_RAW_STORAGE.getItem(SessionVault.VAULT), context: TWRC_RAW_STORAGE.getItem(JournalArchive.CONTEXT) };
+      });
+      await p.locator('[data-act=debrief-' + action + ']').click();
+      assert.match(messages.at(-1), /copie de récupération/);
+      const after = await p.evaluate(() => ({ journal: JSON.stringify(USER_STORE.state.debrief), raw: TWRC_RAW_STORAGE.getItem(SessionVault.VAULT), context: TWRC_RAW_STORAGE.getItem(JournalArchive.CONTEXT), form: DEBRIEF_FORM && DEBRIEF_FORM.key }));
+      assert.equal(after.journal, before.journal); assert.equal(after.raw, before.raw); assert.equal(after.context, before.context);
+      assert.equal(after.form, 'preservation-2'); assert.equal(await p.locator('.debrief-form').count(), 1);
+    }
+    assert.equal(messages.length, 3);
+    await p.evaluate(() => { DEBRIEF_FORM = null; renderDebrief(); });
+  } finally { p.off('dialog', capture); }
+}
 const canonicalRows = p => p.evaluate(() => ({
   entries: USER_STORE.state.debrief.entries,
   archive: JSON.parse(localStorage.getItem(JournalArchive.KEY) || 'null'),
@@ -49,8 +67,10 @@ module.exports = async function run(b) {
       'twrc.plain': JSON.stringify(settings), 'twrc.plain.v': version,
       [CONTEXT]: JSON.stringify({ v: 1, debrief: { entries: sources } })
     } });
+    plain.p.on('dialog', d => d.accept());
     try {
       assert.equal(await plain.p.evaluate(() => TWRC_VAULT.mode), 'plain');
+      await readOnlyActions(plain.p);
       const before = await plain.p.evaluate(() => TWRC_RAW_STORAGE.getItem(JournalArchive.CONTEXT));
       await settingsPanel(plain.p); await plain.p.fill('#bkPw', PW);
       const [file] = await Promise.all([plain.p.waitForEvent('download'), plain.p.click('[data-act=bk-export]')]);
@@ -82,10 +102,16 @@ module.exports = async function run(b) {
   });
   track(s.c);
   try {
+    const legacy = await s.c.newPage(), legacyUrl = U + 'legacy-reader-fixture';
+    await legacy.route(legacyUrl, r => r.fulfill({ status: 200, contentType: 'text/html', body: require('./legacy-vault-fixture').html }));
+    await legacy.goto(legacyUrl); await legacy.waitForFunction(() => window.legacyReady);
+    await legacy.evaluate(pass => window.legacy.unlock(pass), PW);
+    assert.equal(await legacy.evaluate(() => window.legacy.mode), 'vault');
     await check('ancien profil : 120 trajets affichables, 91/365 jours ; aucune migration implicite', async () => {
       const state = await p.evaluate(() => ({ count: USER_STORE.state.debrief.entries.length, needs: TWRC_VAULT.journalNeedsRecovery,
         v: JSON.parse(TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)).v, source: JSON.parse(TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)).c }));
       assert.equal(state.count, 120); assert(state.needs); assert.equal(state.v, 2);
+      await readOnlyActions(p);
       await p.evaluate(() => { window.beforeMigration = TWRC_RAW_STORAGE.getItem(SessionVault.VAULT); });
       await settingsPanel(p);
     });
@@ -115,6 +141,23 @@ module.exports = async function run(b) {
       const state = await canonicalRows(p); assert.equal(state.entries.length, 120); assert.equal(state.version, 3);
       assert(containsSources(state.archive), 'comparaison indépendante aux sources avant projection');
       assert(await p.evaluate(() => !TWRC_VAULT.journalNeedsRecovery));
+    });
+    await check('lecteur prod-124 réel : onglet déjà ouvert et réouverture refusent v3 sans le réécrire', async () => {
+      const before = await p.evaluate(async () => { await TWRC_VAULT.flush(); DeviceStorage.freeze(true); return TWRC_RAW_STORAGE.getItem(SessionVault.VAULT); });
+      const result = await legacy.evaluate(async () => {
+        legacy.store.setItem('twrc.settings.v1', JSON.stringify({ fiction: 'ancien onglet' })); await legacy.flush();
+        return { error: legacy.error, pending: legacy.pendingWrites, raw: localStorage.getItem('twrc.vault.v2') };
+      });
+      assert(result.error); assert.equal(result.raw, before);
+      await legacy.reload(); await legacy.waitForFunction(() => window.legacyReady);
+      assert.equal(await legacy.evaluate(() => legacy.mode), 'locked');
+      assert.match(await legacy.evaluate(() => legacy.warn), /conservé/);
+      assert(await legacy.evaluate(async pass => { try { await legacy.unlock(pass); return false; } catch (e) { return true; } }, PW));
+      assert.equal(await legacy.evaluate(() => localStorage.getItem('twrc.vault.v2')), before);
+      await legacy.close();
+      // Retour au candidat après un retour logiciel vers l’ancien lecteur :
+      // aucune conversion du coffre en v2, les sources restent lisibles en v3.
+      await p.reload(); await opened(p); assert(containsSources((await canonicalRows(p)).archive));
     });
     const q = await s.c.newPage(); await q.clock.install({ time: T });
     await q.goto(U); await opened(q);
@@ -204,6 +247,26 @@ module.exports = async function run(b) {
         assert(expected.archive.records.every(r => restored.archive.records.includes(r)));
         assert.equal(restored.archive.records.length, expected.archive.records.length);
       } finally { await target.c.close(); }
+    });
+    await check('actions UI sous quota : refus explicite, formulaire conservé et octets durables inchangés', async () => {
+      for (const action of ['save', 'later', 'snooze']) {
+        const target = await session(b, { at: T, dev: 'iphone' }), alerts = [];
+        target.p.on('dialog', d => { alerts.push(d.message()); d.accept(); });
+        try {
+          const before = await target.p.evaluate(async () => {
+            USER_STORE.transaction(state => { state.debrief = Debrief.close(state.debrief, { key: 'quota-ui', how: 'confirmé' }); });
+            await TWRC_VAULT.flush(); if (TWRC_VAULT.error) throw new Error('Fixture non durable');
+            debriefOpen('quota-ui'); debriefPick('condition', 'normal');
+            const original = Storage.prototype.setItem;
+            Storage.prototype.setItem = function(k, v) { if (k === SessionVault.VAULT) throw new DOMException('Quota fictif', 'QuotaExceededError'); return original.call(this, k, v); };
+            return TWRC_RAW_STORAGE.getItem(SessionVault.VAULT);
+          });
+          await target.p.locator('[data-act=debrief-' + action + ']').click(); await wait(target.p, 3);
+          assert.match(alerts.at(-1), /non enregistrée durablement/);
+          assert(await target.p.evaluate(previous => !!DEBRIEF_FORM && !DEBRIEF_PENDING && !!TWRC_VAULT.error && TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) === previous, before));
+          assert.equal(await target.p.locator('.debrief-form').count(), 1);
+        } finally { await target.c.close(); }
+      }
     });
     assert.equal(errors.length, 0, 'erreurs JavaScript réelles');
   } finally { await s.c.close(); }
