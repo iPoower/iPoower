@@ -112,7 +112,7 @@ module.exports = async function run(b) {
       await Promise.all([p, q].map((page, i) => page.evaluate(async i => {
         USER_STORE.transaction(state => {
           state.debrief = Debrief.close(state.debrief, { key: 'vrai-onglet-' + i, how: 'confirmé' });
-          state.debrief = Debrief.reply(state.debrief, 'preservation-2', { conditions: i ? ['ice'] : ['rain'], grip: i ? 'reduced' : 'normal' });
+          state.debrief = Debrief.reply(state.debrief, 'preservation-2', { conditions: ['rain'], grip: 'normal', id: Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('') });
         });
         await TWRC_VAULT.flush(); if (TWRC_VAULT.error || TWRC_VAULT.pendingWrites) throw new Error('Écriture non confirmée');
       }, i)));

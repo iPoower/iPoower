@@ -117,6 +117,9 @@ function debriefPick(kind, value) {
 async function debriefSave() {
   if (!DEBRIEF_FORM || !Array.isArray(DEBRIEF_FORM.conditions) || !journalWritable()) return;
   const form = DEBRIEF_FORM;
+  // Une interaction conserve son identifiant lors d’un retry ; deux réponses
+  // identiques, simultanées dans deux onglets, restent deux versions distinctes.
+  if (!form.id) form.id = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
   appAction(() => { USER_STORE.state.debrief = Debrief.reply(USER_STORE.state.debrief, form.key, form); });
   const VS = window.TWRC_VAULT;
   if (VS) await VS.flush();

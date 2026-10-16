@@ -34,7 +34,8 @@ const Debrief = (() => {
   function feedback(v, now) {
     if (!obj(v) || !time(v.at, now) || !Array.isArray(v.conditions) || v.conditions.some(k => !CONDITIONS.includes(k))) return null;
     return { at: v.at, conditions: conditions(v.conditions),
-      grip: ['normal', 'reduced', 'slip', 'unknown'].includes(v.grip) ? v.grip : 'unknown' };
+      grip: ['normal', 'reduced', 'slip', 'unknown'].includes(v.grip) ? v.grip : 'unknown',
+      ...(/^[0-9a-f]{32}$/.test(v.id || '') ? { id: v.id } : {}) };
   }
   function entry(v, now) {
     if (!obj(v) || !key(v.key) || !time(v.at, now) || !['auto', 'confirmé'].includes(v.how)) return null;

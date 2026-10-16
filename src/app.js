@@ -1783,7 +1783,7 @@ async function backupImport(f) {
   bkMsg('Lecture du fichier…');
   if (f && Number.isFinite(f.size) && f.size > 68 * 1024 * 1024) { bkMsg('Sauvegarde trop volumineuse : fichier conservé, aucun réglage modifié.'); return; }
   let o, fileText; try { fileText = await f.text(); o = JSON.parse(fileText); } catch (e) { bkMsg('Fichier illisible.'); return; }
-  const recovery = SessionVault.validVault(o);
+  const recovery = o && o.app == null && SessionVault.validVault(o);
   if (!recovery && (!o || o.app !== 'twrc-backup' || !o.c)) { bkMsg('Ce fichier n’est pas une sauvegarde Race Control.'); return; }
   if (!recovery && !DeviceStorage.validEnvelope(o, true)) { bkMsg('Sauvegarde chiffrée invalide : aucun réglage modifié.'); return; }
   const pass = bkPass(); if (!pass) { bkMsg('Entre le code utilisé pour la sauvegarde, puis réessaie.'); return; }

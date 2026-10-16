@@ -77,7 +77,8 @@ const Backup = (() => {
   function feedback(v) {
     return obj(v) && stamp(v.at) != null ? {
       at: v.at, conditions: Array.isArray(v.conditions) ? v.conditions.filter(x => ['wet', 'rain', 'fog', 'snow', 'ice'].includes(x)).slice(0, 5) : [],
-      grip: ['normal', 'reduced', 'slip', 'unknown'].includes(v.grip) ? v.grip : 'unknown'
+      grip: ['normal', 'reduced', 'slip', 'unknown'].includes(v.grip) ? v.grip : 'unknown',
+      ...(/^[0-9a-f]{32}$/.test(v.id || '') ? { id: v.id } : {})
     } : null;
   }
   function debriefEntry(v) {

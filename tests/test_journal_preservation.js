@@ -58,6 +58,14 @@ module.exports = (async () => {
     assert.throws(() => J.read({ v: 999, records: [] }), /Archive/);
     assert.throws(() => J.read({ v: 1, records: ['{'] }));
   });
+  await check('réponses identiques à la même milliseconde : deux identifiants, deux versions', () => {
+    const state = D.clean({ entries: [source[2]] }, T);
+    const first = D.reply(state, 'fiction-2', { conditions: ['ice'], grip: 'normal', id: 'a'.repeat(32) }, T);
+    const second = D.reply(state, 'fiction-2', { conditions: ['ice'], grip: 'normal', id: 'b'.repeat(32) }, T);
+    const archive = J.union(first.archive, second.archive);
+    assert.equal(archive.records.map(r => JSON.parse(r)).filter(e => e?.feedback?.id).length, 2);
+    assert.equal(J.union(first.archive, first.archive).records.length, first.archive.records.length);
+  });
   let tail = Promise.resolve();
   const locks = { request(name, opts, fn) { assert.equal(name, V.VAULT); const result = tail.then(fn); tail = result.catch(() => {}); return result; } };
   const raw = storage({ 'twrc.key': PASS, 'twrc.settings.v1': JSON.stringify({ configured: 1, cars: [] }), [J.CONTEXT]: JSON.stringify({ v: 1, debrief: { entries: source } }) });
@@ -66,6 +74,7 @@ module.exports = (async () => {
   let copy;
   await check('aucune migration implicite ; copie différente ou quota = octets précédents intacts', async () => {
     copy = await a.recoverySnapshot();
+    assert.equal(V.validVault({ ...JSON.parse(copy), app: 'twrc-backup' }), false, 'une sauvegarde historique V2 n’est pas un coffre de récupération');
     a.store.setItem(J.CONTEXT, JSON.stringify({ v: 1, debrief: D.clean({ entries: source }, T) }));
     await a.flush(); assert(a.error); assert.equal(raw.getItem(V.VAULT), copy);
     await assert.rejects(a.activateJournal(copy + ' '), /copie/); assert.equal(raw.getItem(V.VAULT), copy);

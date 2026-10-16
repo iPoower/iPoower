@@ -33,7 +33,7 @@ const SessionVault = (() => {
   function validVault(v) {
     try {
       const base64 = x => typeof x === 'string' && x.length > 0 && x.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(x);
-      return !!v && [2, 3].includes(v.v) && v.kdf === 'PBKDF2-SHA256' && v.it === IT &&
+      return !!v && v.app == null && [2, 3].includes(v.v) && v.kdf === 'PBKDF2-SHA256' && v.it === IT &&
         base64(v.s) && v.s.length === 24 && dec(v.s).length === 16 &&
         base64(v.i) && v.i.length === 16 && dec(v.i).length === 12 &&
         base64(v.c) && v.c.length <= 64 * 1024 * 1024 && dec(v.c).length >= 16;
@@ -60,6 +60,10 @@ const SessionVault = (() => {
     const data = JSON.parse(text);
     if (!data || data.v !== vault.v || (vault.n != null && (data.n !== vault.n || data.t !== vault.t)) || !data.values || typeof data.values !== 'object' || Array.isArray(data.values) ||
       !Object.entries(data.values).every(([k, v]) => secret(k) && typeof v === 'string')) throw new Error('Coffre local invalide.');
+    if (data.v === 3) {
+      if (!Object.prototype.hasOwnProperty.call(data.values, JournalArchive.KEY)) throw new Error('Archive exhaustive absente.');
+      JournalArchive.read(data.values[JournalArchive.KEY]);
+    }
     return data;
   }
   const same = (a, b) => { const ka = Object.keys(a), kb = Object.keys(b); return ka.length === kb.length && ka.every(k => b[k] === a[k]); };
