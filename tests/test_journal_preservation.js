@@ -1,7 +1,7 @@
 'use strict';
 // Oracles indépendants : comparaison des sources AVANT nettoyage/projection.
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
-const assert = require('node:assert/strict'), { webcrypto } = require('node:crypto');
+const assert = require('node:assert/strict'), { webcrypto } = require('node:crypto'), { isDeepStrictEqual } = require('node:util');
 const T = Date.parse('2026-10-16T12:00:00Z'), PASS = 'journal-fiction-only-1234';
 const ctx = { TextEncoder, TextDecoder, atob, btoa, Uint8Array, setTimeout, clearTimeout };
 vm.createContext(ctx);
@@ -16,6 +16,9 @@ source.push({ ...entry('fiction-2', source[2].at, ['fog']), start: null });
 // Une source non affichable ne peut être détruite par la projection.
 source.push({ legacyUnrecognized: 'source fictive à préserver', key: 'opaque' });
 const sourceBytes = source.map(r => J.encode(r));
+// Oracle indépendant : égalité structurelle des sources brutes, sans appeler
+// le canonicaliseur, le nettoyeur ou le sélecteur de champs de production.
+const containsSources = archive => source.every(original => archive.records.some(r => isDeepStrictEqual(JSON.parse(r), original)));
 let count = 0;
 const check = async (name, fn) => { await fn(); count++; console.log('✅ conservation : ' + name); };
 function storage(initial = {}) {
@@ -31,10 +34,10 @@ module.exports = (async () => {
     const before = JSON.stringify(source), state = D.clean({ entries: source }, T);
     assert.equal(state.entries.length, 120);
     assert.equal(JSON.stringify(source), before);
-    assert(sourceBytes.every(r => state.archive.records.includes(r)));
+    assert(sourceBytes.every(r => state.archive.records.includes(r))); assert(containsSources(state.archive));
     assert(state.entries.find(e => e.key === 'fiction-2').start, 'le retour sans départ ne détruit pas la prévision');
     const reloaded = D.clean(json(state), T + 400 * 86400000);
-    assert(sourceBytes.every(r => reloaded.archive.records.includes(r)));
+    assert(sourceBytes.every(r => reloaded.archive.records.includes(r))); assert(containsSources(reloaded.archive));
   });
   await check('union commutative, associative, idempotente ; réponses à la même milliseconde', () => {
     const a = D.reply(D.clean({ entries: [source[2]] }, T), 'fiction-2', { conditions: ['ice'], grip: 'reduced' }, T);
@@ -82,6 +85,7 @@ module.exports = (async () => {
     assert.equal(raw.getItem(V.VAULT), copy);
     await a.activateJournal(copy); assert.equal(JSON.parse(raw.getItem(V.VAULT)).v, 3);
     const values = await V.readRecovery(copy, PASS, webcrypto);
+    assert.deepEqual(JSON.parse(values[J.CONTEXT]).debrief.entries, source);
     assert(sourceBytes.every(r => J.capture(values).records.includes(r)), 'copie pré-migration récupérable et exhaustive');
     await assert.rejects(V.readRecovery(copy, 'code-fictif-incorrect', webcrypto));
   });
@@ -94,7 +98,7 @@ module.exports = (async () => {
     await Promise.all([a.flush(), b.flush()]); assert.equal(a.error, null); assert.equal(b.error, null);
     const c = make(); await c.boot(); await c.unlock(PASS);
     const archive = J.capture(Object.fromEntries([...Array(c.store.length)].map((_, i) => c.store.key(i)).filter(V.secret).map(k => [k, c.store.getItem(k)])));
-    assert(sourceBytes.every(r => archive.records.includes(r)));
+    assert(sourceBytes.every(r => archive.records.includes(r))); assert(containsSources(archive));
     const final = D.clean({ archive }, T); assert.equal(final.entries.length, 122);
     const replies = new Set(archive.records.map(r => JSON.parse(r)).filter(e => e?.key === 'fiction-2' && e.feedback).map(e => JSON.stringify(e.feedback)));
     assert.equal(replies.size, 4);
@@ -105,7 +109,7 @@ module.exports = (async () => {
     const { plan } = B.recoveryPlan(values, T, { context: { debrief: { entries: [] } } });
     const restored = storage(); // adaptateur brut : protocole de rollback existant
     vm.runInContext(';this.apply=DeviceStorage.apply;', ctx); ctx.apply(restored, plan);
-    assert(sourceBytes.every(r => J.read(restored.getItem(J.KEY)).records.includes(r)));
+    assert(sourceBytes.every(r => J.read(restored.getItem(J.KEY)).records.includes(r))); assert(containsSources(J.read(restored.getItem(J.KEY))));
     const previous = raw.getItem(V.VAULT); raw.refused = true;
     latest.store.setItem(J.CONTEXT, JSON.stringify({ v: 1, debrief: D.close(JSON.parse(latest.store.getItem(J.CONTEXT)).debrief, { key: 'refus-quota', how: 'auto' }, T) }));
     await latest.flush(); assert(latest.error); assert.equal(raw.getItem(V.VAULT), previous);

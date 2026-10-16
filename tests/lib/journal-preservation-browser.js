@@ -3,6 +3,7 @@
 // réseau et les profils sont fictifs ; aucun accès au site de production.
 const fs = require('node:fs'), crypto = require('node:crypto'), assert = require('node:assert/strict');
 const { session, U, errors } = require('./context-session');
+const { isDeepStrictEqual } = require('node:util');
 const PW = fs.readFileSync('.passphrase', 'utf8').trim(), T = Date.parse('2026-10-16T12:00:00Z');
 const CONTEXT = 'twrc.context.v1', VAULT = 'twrc.vault.v2';
 const rows = Array.from({ length: 120 }, (_, i) => ({ key: 'preservation-' + i, how: 'confirmé', name: 'Trajet fictif ' + i, from: 'Lieu A', to: 'Lieu B',
@@ -12,6 +13,7 @@ const rows = Array.from({ length: 120 }, (_, i) => ({ key: 'preservation-' + i, 
     car: 'Véhicule fictif', prediction: { known: true, conditions: ['wet'], fetchedAt: T - (i === 0 ? 365 : i === 1 ? 91 : 1) * 86400000 - i * 1000 - 120000 } } }));
 const opaque = { key: 'opaque-fiction', futureField: 'source non affichable conservée' };
 const sources = [...rows, { ...rows[2], start: null, feedback: { at: T - 500, conditions: ['fog'], grip: 'slip' } }, opaque];
+const containsSources = archive => sources.every(original => archive.records.some(r => isDeepStrictEqual(JSON.parse(r), original)));
 function legacyVault(settings) {
   const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12), n = 1, t = T;
   const key = crypto.pbkdf2Sync(PW, salt, 600000, 32, 'sha256');
@@ -59,7 +61,7 @@ module.exports = async function run(b) {
         await plain.p.setInputFiles('#journalCopy', { name: 'profil-sans-code.json', mimeType: 'application/json', buffer: bytes }); await wait(plain.p, 16);
       })()]); await opened(plain.p);
       const restored = await canonicalRows(plain.p); assert.equal(restored.version, 3); assert.equal(restored.entries.length, 120);
-      assert(await plain.p.evaluate(input => input.every(r => JSON.parse(localStorage.getItem(JournalArchive.KEY)).records.includes(JournalArchive.encode(r))), sources));
+      assert(containsSources(restored.archive));
     } finally { await plain.c.close(); }
   });
   const seed = { [VAULT]: legacyVault(settings) };
@@ -97,17 +99,16 @@ module.exports = async function run(b) {
         await p.setInputFiles('#journalCopy', { name: 'copie-verifiee.json', mimeType: 'application/json', buffer: copy }); await wait(p, 12);
       })()]); await opened(p);
       const state = await canonicalRows(p); assert.equal(state.entries.length, 120); assert.equal(state.version, 3);
-      const intact = await p.evaluate(input => input.every(r => JSON.parse(localStorage.getItem(JournalArchive.KEY)).records.includes(JournalArchive.encode(r))), sources);
-      assert(intact, 'comparaison aux sources avant projection');
+      assert(containsSources(state.archive), 'comparaison indépendante aux sources avant projection');
       assert(await p.evaluate(() => !TWRC_VAULT.journalNeedsRecovery));
     });
     const q = await s.c.newPage(); await q.clock.install({ time: T }); q.on('dialog', d => d.accept());
     await q.goto(U); await opened(q);
     // Retarder réellement les notifications entre les deux pages : le verrou
     // et la fusion sur disque doivent suffire, sans timing favorable des events.
-    for (const page of [p, q]) await page.evaluate(() => {
+    for (const page of [p, q]) { await page.clock.setFixedTime(T + 10000); await page.evaluate(() => {
       window.addEventListener('storage', e => e.stopImmediatePropagation(), true);
-    });
+    }); }
     await check('deux vrais onglets : ajouts distincts et deux réponses au même trajet, notifications bloquées', async () => {
       await Promise.all([p, q].map((page, i) => page.evaluate(async i => {
         USER_STORE.transaction(state => {
@@ -120,7 +121,7 @@ module.exports = async function run(b) {
       const state = await canonicalRows(p); assert.equal(state.entries.length, 122);
       const replies = new Set(state.archive.records.map(r => JSON.parse(r)).filter(r => r && r.key === 'preservation-2' && r.feedback).map(r => JSON.stringify(r.feedback)));
       assert.equal(replies.size, 4);
-      assert(await p.evaluate(input => input.every(r => JSON.parse(localStorage.getItem(JournalArchive.KEY)).records.includes(JournalArchive.encode(r))), sources));
+      assert(containsSources(state.archive));
     });
     await check('quota : ajout non confirmé, alerte et coffre précédent inchangé ; rechargement exhaustif', async () => {
       const before = await p.evaluate(() => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT));
@@ -166,6 +167,7 @@ module.exports = async function run(b) {
           await target.p.setInputFiles('#bkFile', { name: 'copie-complete.json', mimeType: 'application/json', buffer: exported }); await wait(target.p, 20);
         })()]); await opened(target.p);
         const restored = await canonicalRows(target.p);
+        assert(containsSources(restored.archive));
         assert.deepEqual(restored.entries, expected.entries);
         assert(expected.archive.records.every(r => restored.archive.records.includes(r)));
         assert.equal(restored.archive.records.length, expected.archive.records.length);
