@@ -133,6 +133,7 @@ async function session(b, dev, T0) {
       check(dev + ' · déverrouillage : réglage local et réponse du matin récupérés', restored.name === 'Véhicule local fictif' && restored.grip === 'normal' && restored.done && !restored.locked && restored.vault && !restored.plain.length, JSON.stringify(restored));   // sécurité V1 : coffre conservé, rien en clair
       await s.c.close();
     }
+    await require('./lib/journal-preservation-browser')(b);
   } finally { await b.close(); }
   check('aucune erreur JavaScript', !errors.length, errors.join(' | '));
   console.log(rows.join('\n')); console.log(`${rows.length - fail}/${rows.length} scénarios OK`);

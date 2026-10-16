@@ -28,7 +28,7 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
   const indexedDB = require('./lib/indexeddb.fake')();
   const ctx = { console, indexedDB, setTimeout, clearTimeout, TextEncoder, TextDecoder, atob, btoa, JSON, Proxy, Reflect, Map, Set, Object, Array, Uint8Array, Promise, Error, Event: class { constructor(t) { this.type = t; } } };
   vm.createContext(ctx);
-  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/device-storage.js'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, '../src/remember-device.js'), 'utf8') + '\n' + source + ';this.SV=SessionVault;this.DS=DeviceStorage;this.RD=RememberDevice;', ctx);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/journal-archive.js'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, '../src/device-storage.js'), 'utf8') + '\n' + fs.readFileSync(path.join(__dirname, '../src/remember-device.js'), 'utf8') + '\n' + source + ';this.SV=SessionVault;this.DS=DeviceStorage;this.RD=RememberDevice;', ctx);
   const { SV, DS } = ctx, crypto = webcrypto, PASS = 'code-fictif-de-test-1234';
   let count = 0;
   const test = async (name, fn) => { try { await fn(); } catch (error) { error.scenario = name; throw error; } count++; if (!options.quiet) console.log('✅ ' + name); };
@@ -195,7 +195,7 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
   await test('deux pages indépendantes, notifications retardées : sauvegardes réellement simultanées sans perte', async () => {
     const raw = fakeStorage(); fill(raw, LEGACY()); const sa = session(), A = make(raw, sa).vs; await A.boot();
     // Un autre contexte JS ne peut pas partager une file Promise privée avec le premier.
-    const other = { ...ctx }; vm.createContext(other); vm.runInContext(source + ';this.SV=SessionVault;', other);
+    const other = { ...ctx }; vm.createContext(other); vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/journal-archive.js'), 'utf8') + source + ';this.SV=SessionVault;', other);
     const sb = session(); sb.setItem(SV.SESSION, sa.getItem(SV.SESSION));
     const B = other.SV.create({ raw, session: sb, crypto, target: null, sessionKeys: ctx.RD.sessions, locks }); await B.boot();
     const delayed = []; raw.peers.add(e => delayed.push(e));

@@ -964,7 +964,7 @@ function renderNotice() {
   // Une réponse météo peut arriver entre la saisie et la validation du code.
   // Garder le formulaire en place conserve la valeur, le focus et le remplissage du gestionnaire de mots de passe.
   // Sécurité V1 : état du coffre de session (erreur d'écriture, migration non terminée, migration réussie)
-  const VS = window.TWRC_VAULT, vaultNote = !VS ? '' : VS.error ? `<div class="note lv2" role="alert" data-k="vault"><b>ENREGISTREMENT CHIFFRÉ</b><span>${esc(VS.error)}</span></div>`
+  const VS = window.TWRC_VAULT, vaultNote = USER_STORE.durability().status === 'degraded' ? `<div class="note lv2" role="alert"><b>ENREGISTREMENT NON CONFIRMÉ</b><span>${esc(USER_STORE.durability().error || 'Conserve cette page ouverte et réessaie.')}</span></div>` : !VS ? '' : VS.journalNeedsRecovery ? `<div class="note lv2" role="alert" data-k="vault"><b>JOURNAL EN LECTURE SEULE</b><span>Avant de modifier le journal, exporte une copie de récupération dans les paramètres, puis rouvre le fichier enregistré pour la vérifier. Aucune ancienne entrée ne sera supprimée.</span></div>` : VS.error ? `<div class="note lv2" role="alert" data-k="vault"><b>ENREGISTREMENT CHIFFRÉ</b><span>${esc(VS.error)}</span></div>`
     : VS.warn ? `<div class="note lv1" role="status" data-k="vault"><b>STOCKAGE LOCAL</b><span>${esc(VS.warn)}</span></div>`
     : VS.migrated ? `<div class="note lv0" role="status" data-k="vault"><b>🔐 DONNÉES CHIFFRÉES SUR CET APPAREIL</b><span>Réglages, lieux, journal et code sont désormais chiffrés au repos. Tu peux autoriser cet appareil à rester connecté pendant 7 jours lors du prochain déverrouillage.</span></div>` : '';
   const setContent = extra0 => {
@@ -1729,29 +1729,37 @@ function bkPass() { const v = (($('#bkPw') || {}).value || '').trim(); return v 
 function backupWeatherState() {
   return { reports: JSON.parse(lsGet('twrc.reports.v1') || '[]'), shadow: JSON.parse(lsGet('twrc.shadow.v1') || '[]') };
 }
+async function downloadRecovery(text) {
+  const name = `race-control-recuperation-${new Date().toISOString().slice(0, 10)}.json`;
+  const file = new File([text], name, { type: 'application/json' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'Récupération Race Control' }); return; }
+    catch (e) { if (e.name === 'AbortError') throw new Error('Export annulé.'); }
+  }
+  const url = URL.createObjectURL(file), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
 async function backupExport() {
-  const pass = bkPass();
-  if (pass.length < 8) { bkMsg('Entre un code d’au moins 8 caractères : il sera demandé à l’import.'); return; }
-  if (!crypto || !crypto.subtle) { bkMsg('Chiffrement indisponible sur ce navigateur.'); return; }
-  bkMsg('Chiffrement…');
+  const VS = window.TWRC_VAULT;
+  if (!VS || VS.mode !== 'vault') { bkMsg('Déverrouille le coffre chiffré pour exporter une copie complète.'); return; }
   try {
-    const data = Backup.make({ settings: S, view: UI.view, context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL, weather: backupWeatherState(), at: new Date().toISOString() });
-    const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)), it = 600000;
-    const key = await bkKey(pass, salt, it, 'encrypt');
-    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(data))));
-    const txt = JSON.stringify({ app: 'twrc-backup', v: Backup.VERSION, kdf: 'PBKDF2-SHA256', it, s: b64e(salt), i: b64e(iv), c: b64e(ct) });
-    const day = new Date().toISOString().slice(0, 10), name = `race-control-sauvegarde-${day}.json`;
-    const file = new File([txt], name, { type: 'application/json' });
-    let done = false;
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: 'Sauvegarde Race Control' }); done = true; }
-      catch (e) { if (e && e.name === 'AbortError') { bkMsg('Export annulé.'); return; } }
+    if (!VS.journalNeedsRecovery) {
+      USER_STORE.flush(); localStorage.setItem('twrc.settings.v1', JSON.stringify(S));
+      await VS.flush(); if (VS.error || VS.pendingWrites) throw new Error('Enregistrement en attente : copie refusée, garde cette page ouverte.');
     }
-    if (!done) { const u = URL.createObjectURL(file), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
-    lsSet('twrc.lastbackup', day);
-    bkMsg(`✅ Sauvegarde V2 prête (${Math.max(1, Math.round(txt.length / 1024))} Ko) · contexte, signalements et journal météo inclus.`);
-    const p = $('#bkSec .sub b'); if (p) p.textContent = fmtDay(day);
-  } catch (e) { bkMsg('Échec de la sauvegarde : ' + (e.message || e)); }
+    await downloadRecovery(await VS.recoverySnapshot());
+    bkMsg('Copie chiffrée exportée avec le code de cet appareil. Rouvre le fichier enregistré pour vérifier la récupération.');
+  } catch (e) { bkMsg('Copie non confirmée : ' + e.message); }
+}
+async function journalVerifyCopy(file) {
+  const VS = window.TWRC_VAULT;
+  if (!VS || !file || file.size > 68 * 1024 * 1024) { bkMsg('Copie indisponible ou trop volumineuse.'); return; }
+  try {
+    await VS.activateJournal(await file.text());
+    bkMsg('Copie vérifiée. Archive exhaustive activée sur cet appareil. Rechargement…');
+    DeviceStorage.freeze(true); reloadSafe(100);
+  } catch (e) { bkMsg('Activation refusée : ' + e.message + ' Les données précédentes sont conservées.'); }
 }
 async function backupApplyPlan(plan) {
   const VS = window.TWRC_VAULT;
@@ -1767,25 +1775,34 @@ async function backupApplyPlan(plan) {
   }
 }
 async function backupImport(f) {
+  if (window.TWRC_VAULT && window.TWRC_VAULT.journalNeedsRecovery) { bkMsg('Vérifie d’abord une copie de récupération du journal actuel. Aucun import appliqué.'); return; }
   bkMsg('Lecture du fichier…');
   if (f && Number.isFinite(f.size) && f.size > 68 * 1024 * 1024) { bkMsg('Sauvegarde trop volumineuse : fichier conservé, aucun réglage modifié.'); return; }
-  let o; try { o = JSON.parse(await f.text()); } catch (e) { bkMsg('Fichier illisible.'); return; }
-  if (!o || o.app !== 'twrc-backup' || !o.c) { bkMsg('Ce fichier n’est pas une sauvegarde Race Control.'); return; }
-  if (!DeviceStorage.validEnvelope(o, true)) { bkMsg('Sauvegarde chiffrée invalide : aucun réglage modifié.'); return; }
+  let o, fileText; try { fileText = await f.text(); o = JSON.parse(fileText); } catch (e) { bkMsg('Fichier illisible.'); return; }
+  const recovery = SessionVault.validVault(o);
+  if (!recovery && (!o || o.app !== 'twrc-backup' || !o.c)) { bkMsg('Ce fichier n’est pas une sauvegarde Race Control.'); return; }
+  if (!recovery && !DeviceStorage.validEnvelope(o, true)) { bkMsg('Sauvegarde chiffrée invalide : aucun réglage modifié.'); return; }
   const pass = bkPass(); if (!pass) { bkMsg('Entre le code utilisé pour la sauvegarde, puis réessaie.'); return; }
   bkMsg('Déchiffrement…');
-  let data;
+  let data, recoveryValues;
   try {
+    if (recovery) recoveryValues = await SessionVault.readRecovery(fileText, pass, crypto);
+    else {
     const key = await bkKey(pass, b64(o.s), o.it || 600000, 'decrypt');
     data = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(o.i) }, key, b64(o.c))));
+    }
   } catch (e) { bkMsg('Code incorrect : entre le code utilisé lors de la sauvegarde.'); return; }
   // le journal des trajets de ce téléphone (ressenti conducteur) est fusionné, jamais effacé par l'import
   let plan;
-  try { plan = Backup.restorePlan(data, Date.now(), { context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL, calOrigins: S.calOrigins, weather: backupWeatherState() }); }
+  try {
+    const phone = { context: USER_STORE.state, tyreTherm: ttLoad(), tripCancel: TRIPCANCEL, calOrigins: S.calOrigins, weather: backupWeatherState() };
+    if (recovery) ({ data, plan } = Backup.recoveryPlan(recoveryValues, Date.now(), phone));
+    else plan = Backup.restorePlan(data, Date.now(), phone);
+  }
   catch (e) { bkMsg('Import non appliqué : journal météo local à vérifier. Tes données restent conservées.'); return; }
   if (!plan) { bkMsg('Sauvegarde incomplète.'); return; }
   const when = new Date(data.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const version = data.v >= 2 ? 'V2' : 'V1';
+  const version = recovery ? 'de récupération complète' : data.v >= 2 ? 'V2' : 'V1';
   const kept = plan.kept ? `\n\nJournal des trajets conservé : ${plan.kept} trajet${plan.kept > 1 ? 's' : ''} de ce téléphone ${data.v >= 2 ? 'ajouté' : 'gardé'}${plan.kept > 1 ? 's' : ''}.` : '';
   if (!confirm(`Remplacer les réglages de ce téléphone par la sauvegarde ${version} du ${when} ?${kept}`)) { bkMsg('Import annulé.'); return; }
   if (window.TWRC_PRESET_V) plan.writes['twrc.presetv'] = String(window.TWRC_PRESET_V);
@@ -3810,9 +3827,11 @@ function renderSettings(force) {
     <div class="set-sec"><h3>🚧 Événements routiers</h3><p class="sub">DATEX · Bison Futé / DIR. Couverture partielle du réseau national non concédé. Filtrage local sur le trajet OSRM ; aucune position transmise à DATEX. Alertes visuelles pendant le trajet, app ouverte. Vitesses et ETA trafic indisponibles.</p><div class="fld"><label for="f-road-on">Signalements sur mon trajet</label><select id="f-road-on" data-bind="road.on" data-num="1"><option value="1" ${S.road.on ? 'selected' : ''}>Activés</option><option value="0" ${S.road.on ? '' : 'selected'}>Désactivés</option></select></div></div>
     <div class="set-sec"><h3>🔬 Analyse</h3><div class="frow"><div class="fld"><label for="f-horizon">Horizon des verdicts</label><select id="f-horizon" data-bind="horizon" data-num="1">${[6, 12, 24].map(h => `<option value="${h}" ${S.horizon === h ? 'selected' : ''}>${h} h</option>`).join('')}</select></div>${bindIn('rainThr', S.rainThr, { label: 'Forte pluie (mm/h)', type: 'number', num: 1, attrs: 'min="1" max="30" step="0.5"' })}</div></div>
     <div class="set-sec" id="bkSec"><h3>💾 Sauvegarde</h3>
-      <p class="sub">Journal, DOT, usure, kilométrage, pressions, photos, calibration et réglages, dans un seul fichier <b>chiffré avec ton code</b>. À faire avant de changer de téléphone ou de vider Safari. Sur le nouveau téléphone : Importer, puis le même code. Dernière sauvegarde : <b>${lsGet('twrc.lastbackup') ? fmtDay(lsGet('twrc.lastbackup')) : 'jamais'}</b>.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="password" id="bkPw" autocomplete="current-password" placeholder="${lsGet('twrc.key') ? 'code (vide = code de déverrouillage)' : 'code, 8 caractères minimum'}" style="flex:1;min-width:160px">
+      <p class="sub">Journal, DOT, usure, kilométrage, pressions, photos, calibration et réglages, dans un seul fichier <b>chiffré avec ton code</b>. À faire avant de changer de téléphone ou de vider Safari. Sur le nouveau téléphone : Importer, puis le même code. Conserve le fichier enregistré hors du navigateur.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="password" id="bkPw" autocomplete="current-password" placeholder="code du fichier à importer (vide = code actuel)" style="flex:1;min-width:160px">
         <button class="btn pri" data-act="bk-export">Exporter</button><label class="btn" for="bkFile">Importer</label><input type="file" id="bkFile" accept=".json,application/json,text/plain" hidden></div>
+      <p class="sub">La copie complète conserve le journal et toutes ses versions. Elle inclut aussi l’état local chiffré de cet appareil ; seuls les champs durables seront restaurés. Son code est le code actuel de l’appareil. Les anciennes sauvegardes V1/V2 restent importables. Les anciennes versions de l’app refusent cette copie.</p>
+      ${window.TWRC_VAULT && window.TWRC_VAULT.journalNeedsRecovery ? '<label class="btn" for="journalCopy">Vérifier la copie enregistrée et activer l’archive</label><input type="file" id="journalCopy" accept=".json,application/json" hidden>' : ''}
       <p class="sub" id="bkMsg" aria-live="polite"></p></div>
     <div class="set-sec"><h3>🗂️ Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
@@ -3980,7 +3999,6 @@ document.addEventListener('click', async e => {
   else if (a === 'debrief-later') debriefLater();
   else if (a === 'debrief-snooze') debriefSnooze();
   else if (a === 'debrief-open') debriefOpen(t.dataset.key);
-  else if (a === 'debrief-clear') debriefClear();
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
   else if (a === 'trip-start') liveStart(t.dataset.key);
   else if (a === 'lab-drive-forget') {
@@ -4068,6 +4086,7 @@ document.addEventListener('submit', async e => {
 document.addEventListener('change', e => {
   const t = e.target;
   if (t && t.dataset && t.dataset.tripField) { tripFieldChanged(t); return; }
+  if (t.id === 'journalCopy') { if (t.files && t.files[0]) journalVerifyCopy(t.files[0]); t.value = ''; return; }
   if (t.id === 'bkFile') { if (t.files && t.files[0]) backupImport(t.files[0]); t.value = ''; return; }
   if (t.dataset.photo != null && t.files && t.files[0]) {
     const car = S.cars[+t.dataset.photo];
@@ -4127,3 +4146,10 @@ window.addEventListener('hashchange', async () => {
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && window.TWRC_VAULT) window.TWRC_VAULT.flush(); });
 window.addEventListener('pagehide', () => { if (window.TWRC_VAULT) window.TWRC_VAULT.flush(); });
 window.addEventListener('twrc-vault-error', () => { try { renderNotice(); } catch (e) { /* rendu suivant */ } });
+
+// Une modification non confirmée n'est jamais présentée comme récupérable au
+// rechargement. Le navigateur décide de l'affichage du dialogue de fermeture.
+window.addEventListener('beforeunload', e => {
+  const VS = window.TWRC_VAULT;
+  if (VS && VS.pendingWrites && !DeviceStorage.isFrozen()) { e.preventDefault(); e.returnValue = ''; }
+});

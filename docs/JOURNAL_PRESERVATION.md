@@ -1,0 +1,49 @@
+# Conservation du journal — PR B01–B04
+
+Statut : proposition en brouillon, revue humaine obligatoire. Aucun profil réel migré, aucune activation en production. `docs/INTEGRATION.md` reste strictement inchangé. Ce correctif ne réalise ni le lot 2, ni une liaison Control Vault.
+
+## Garanties et modèle de données
+
+- B01/B02 : toutes les entrées sources sont conservées sans plafond métier ni expiration. L’interface affiche les 60 trajets les plus récents ; le stockage et les exports complets restent exhaustifs.
+- B03 : archive cumulative `twrc.debrief.archive.v1`, **à l’intérieur du coffre chiffré uniquement**. Schéma `{v:1, records:[string, ...]}` : chaque chaîne représente le JSON canonique complet d’un instantané source. Les propriétés sont triées récursivement, les tableaux gardent leur ordre. L’identité utilise tous les octets JSON, sans empreinte abrégée. La même valeur exacte est idempotente ; des réponses distinctes, même horodatées à la même milliseconde, restent distinctes. Deux confirmations strictement identiques ne permettent pas de déduire deux événements distincts.
+- La projection visible choisit un état déterministe par trajet (date de dernière action, arrivée, annulation, présence d’un retour, report, ordre canonique). Les sources concurrentes ne sont jamais remplacées par ce choix. Un départ manquant est retrouvé uniquement parmi les sources de la même arrivée.
+- Une annulation d’arrivée ajoute un état annulé ; elle ne détruit pas les états antérieurs. L’effacement du journal est retiré de l’interface. Les versions des retours sont consultables par trajet.
+- Les enregistrements anciens non affichables, champs inconnus et sources contradictoires sont gardés dans l’archive. Une archive malformée ou de version inconnue fait refuser l’écriture, sans nettoyage. Un contexte illisible ou de version inconnue ne peut être remplacé par un contexte vide.
+- B04 : sous le verrou Web Locks existant, relire et authentifier le dernier coffre, former l’union de ses sources et des changements locaux, chiffrer, publier atomiquement, relire/déchiffrer et comparer. Cette union porte sur le journal contenu dans **la même clé canonique**, pas seulement sur des clés distinctes. Elle est répétée lors de la réception d’une modification distante. Les nouvelles écritures pendant WebCrypto restent en attente.
+
+## Copie indépendante avant activation
+
+Un profil avec un journal historique reste en lecture seule pour le journal. L’application demande d’exporter le coffre chiffré courant, de l’enregistrer hors du navigateur, puis de sélectionner ce fichier via le sélecteur de fichiers. Le fichier doit être **strictement identique au coffre courant**, puis son authentification AES-GCM doit réussir sous verrou. Une copie périmée, modifiée, incomplète ou un quota insuffisant font refuser l’activation. Aucun clic de confirmation, simple hash ou copie dans le même stockage ne remplace cette preuve.
+
+Après cette preuve seulement, l’archive peut être initialisée à partir des sources originales et des modifications locales en attente. Le résultat est relu et vérifié avant succès. Une interruption laisse soit le coffre précédent, soit un coffre complet publié atomiquement. Une panne de vérification après notre écriture provoque un retour aux octets précédents, uniquement si aucun autre acteur n’a remplacé notre écriture. Un échec de rollback demeure une erreur explicite et requiert la copie indépendante.
+
+Un profil initialement vide n’a pas de journal à migrer et initialise une archive vide. Il n’existe pas de migration en arrière-plan d’un journal non vide.
+
+## Coffre et fichier de récupération
+
+L’archive utilise le stockage chiffré existant. Le coffre passe de **v2 à v3** quand il contient l’archive ; la clé de stockage et le verrou restent `twrc.vault.v2`, afin de conserver la même exclusion entre versions. Le lecteur actuel accepte v2/v3, authentifie la concordance de la version entre en-tête et corps, et refuse les autres versions. Le code précédent accepte seulement v2 : il refuse alors de réécrire un coffre v3. Une réapparition de v2 après v3 bloque les nouvelles écritures. **Revenir à l’ancien code après activation ne rend pas ce coffre lisible** : cette barrière évite une reprise destructive.
+
+PBKDF2-SHA256, 600 000 itérations, sel 16 octets, AES-256-GCM, IV aléatoire neuf 12 octets et tag GCM restent ceux du coffre existant. Aucune introduction d’AAD, aucun nouveau mécanisme de clés. La version, l’ordre et la date sont dans le corps authentifié et contrôlés à la lecture. Les vecteurs AAD du futur contrat restent un jalon distinct.
+
+Le bouton Exporter produit une **copie de récupération complète du coffre**, avec le code actuel de l’appareil. Le champ code de l’interface sert à l’import. Cette copie inclut l’état local chiffré, donc aussi le code et les données de session que le coffre contenait déjà, sans jamais les exposer en clair. Elle n’est **pas** l’enveloppe `race-control-backup` du futur contrat et n’est pas envoyée à Control Vault. Ne pas la présenter comme un ancien export V2 : un ancien lecteur la refuse au lieu de tronquer silencieusement le journal.
+
+La restauration est décidée par Race Control : authentifier le fichier, extraire les champs métier, conserver séparément les sources intégrales du journal, former l’union avec le journal local, puis utiliser le plan d’import vérifié existant (`DeviceStorage.apply` et vérification durable du coffre, rollback en cas d’échec). Aucun remplacement brut du coffre source, aucune réinstallation de clé ou de session transportée, aucun GPS actif restauré. Le code/les clés du destinataire ne sont pas remplacés. Les sauvegardes historiques `twrc-backup` V1/V2 restent importables et leur journal est fusionné sans plafond. Une version future est refusée.
+
+Fichiers : maximum 68 Mio de JSON, Base64 limité à 64 Mio pour le contenu chiffré ; sel et IV ont leurs tailles exactes, KDF et coût doivent correspondre. Les fichiers illisibles, tronqués, inconnus ou non authentifiables sont refusés avant tout plan d’écriture. Aucune troncature pour rentrer dans la taille autorisée. Une archive cumulative peut atteindre le quota : refus visible et copie complète requise, jamais suppression de sources. Les évictions existantes restent limitées aux caches recalculables.
+
+## Preuves automatisées prévues dans cette PR
+
+`tests/test_journal_preservation.js` est exécuté par la suite sauvegarde existante. Il compare les enregistrements **avant toute projection**, teste 120 trajets, 91/365 jours, versions concurrentes, sources non affichables, union commutative/associative/idempotente, import historique V1/V2, versions inconnues, copie exacte, quota avant activation, deux contextes sur la même clé, récupération complète, erreur après écriture et rollback exact.
+
+`tests/lib/journal-preservation-browser.js` est exécuté par `e2e58-import-journal.js` dans les lanes Chromium et WebKit existantes, avec le profil **iPhone 11 Pro Max** (414 × 896, échelle 3, tactile). Il utilise deux vrais onglets, bloque leurs notifications storage, teste les ajouts et réponses concurrents, la sélection d’un fichier exporté, un quota pendant l’activation puis l’écriture, une fermeture pendant WebCrypto, le rechargement et l’export/import dans un nouveau profil. Les sources intégrales et toutes les versions sont comparées ; l’affichage limité à 60 est vérifié séparément. Les suites existantes d’import, débrief, coffre, configuration et stockage restent exécutées.
+
+Aucune modification du registre CI, des workflows, du service worker ou du contrat d’intégration. Les résultats doivent être établis sur le SHA exact de la PR. Une simulation WebKit ne constitue pas un essai sur iPhone physique.
+
+## Limites et conditions avant activation réelle
+
+1. Revue humaine/Red Team du diff, du changement de version interne et du fichier de récupération ; CI verte insuffisante. Vérifier particulièrement tous les chemins de fermeture, import, annulation et reprise d’une session expirée.
+2. Validation physique Safari et PWA sur iPhone, y compris le partage vers Fichiers, réouverture, quota, veille et interruption. Aucun résultat physique revendiqué dans cette PR.
+3. Le navigateur/OS peut supprimer son stockage ou être arrêté avant confirmation. Une écriture refusée ou en attente n’est pas un ajout durable ; l’interface ne doit pas annoncer le contraire et demande de garder la page ouverte. L’avertissement de fermeture dépend du navigateur. Une copie externe vérifiée protège les données déjà présentes avant activation ; elle ne rend pas durables des ajouts futurs non confirmés.
+4. La sélection du fichier prouve sa relecture, pas une garantie matérielle de conservation ni une sauvegarde cloud. Conserver des copies indépendantes et tester leur restauration. Un stockage plein n’a pas de capacité infinie.
+5. Cette PR ne peut reconstituer les débriefs déjà supprimés avant son installation. Les anciens acteurs qui ignorent entièrement le protocole de coffre ou du code malveillant de même origine ne sont pas une frontière de sécurité. Les deux apps sur `ipoower.github.io` partagent toujours une origine ; aucune communication ni stockage commun n’est ajouté.
+6. B01–B04 restent ouverts pour la production jusqu’aux preuves CI, à la contre-revue humaine et à la validation physique. Les lots d’intégration suivants, OAuth, vrai Drive et Phase 2 Cloudflare restent interdits.

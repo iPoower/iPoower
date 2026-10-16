@@ -2,7 +2,7 @@
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
 const sourcePath = require('node:path').resolve(__dirname, '../src/debrief.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), { quiet = false } = {}) {
-  const ctx = { Date, Math, JSON, Set }; vm.createContext(ctx); vm.runInContext(source + ';this.api=Debrief;', ctx);
+  const ctx = { Date, Math, JSON, Set }; vm.createContext(ctx); vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/journal-archive.js'), 'utf8') + source + ';this.api=Debrief;', ctx);
   const D = ctx.api, json = v => JSON.parse(JSON.stringify(v)), at = Date.parse('2026-10-07T08:00:00+02:00');
   let n = 0; const check = (name, fn) => { fn(); n++; if (!quiet) console.log('✅ ' + name); };
   const departure = (extra = {}) => ({ key: 'aller', at: at - 30 * 60e3, name: 'Travail test', from: 'Maison test', to: 'Travail test',
@@ -20,7 +20,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), { quiet = false 
   });
   check('deux appels de clôture : une seule entrée et première arrivée conservée', () => {
     const state = D.close(arrived(['fog']), { key: 'aller', how: 'auto' }, at + 5000);
-    assert.equal(state.entries.length, 1); assert.equal(state.entries[0].at, at); assert.deepEqual(json(state.entries[0].feedback.conditions), ['fog']);
+    assert.equal(state.entries.length, 1); assert.equal(state.entries[0].at, at); assert.deepEqual(json(state.entries[0].feedback.conditions), ['fog']); assert(!state.archive.records.some(r => JSON.parse(r).at === at + 5000));
   });
   check('GPS et confirmation manuelle donnent le même journal', () => {
     for (const how of ['auto', 'confirmé']) { const state = D.close(D.begin(null, departure(), at), { key: 'aller', how }, at); assert.equal(state.entries[0].how, how); }
@@ -89,24 +89,24 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), { quiet = false 
     const state = D.reply(D.close(D.begin(null, input, at), { key: 'aller', how: 'auto', ...extra, end: { ...extra, thermal: input.prediction.thermal } }, at), 'aller', { conditions: ['fog'], ...extra }, at);
     assert(!/48\.123456|2\.654321|secret|"lat"|"lon"|"payload"|"gps"/.test(JSON.stringify(state)));
   });
-  check('rétention : 90 jours, 60 trajets maximum, derniers trajets conservés', () => {
+  check('120 trajets conservés, y compris après 91 et 365 jours', () => {
     let state = null;
-    for (let i = 0; i < 65; i++) state = D.close(state, { key: 'trip' + i, how: 'auto' }, at + i * 1000);
-    assert.equal(state.entries.length, 60); assert.equal(state.entries[0].key, 'trip64'); assert.equal(state.entries.at(-1).key, 'trip5');
-    assert.equal(D.clean(state, at + 64000 + D.RETENTION).entries.length, 0);
+    for (let i = 0; i < 120; i++) state = D.close(state, { key: 'trip' + i, how: 'auto' }, at + i * 1000);
+    assert.equal(state.entries.length, 120); assert.equal(state.entries[0].key, 'trip119'); assert.equal(state.entries.at(-1).key, 'trip0');
+    for (const days of [91, 365]) assert.equal(D.clean(state, at + days * 86400000).entries.length, 120);
   });
-  check('annuler une arrivée retire aussi son débrief et ses statistiques', () => {
-    const state = D.undo(arrived(['fog']), 'aller', at + 1000); assert.equal(state.entries.length, 0); assert.equal(D.stats(state, at + 1000).answered, 0);
+  check('annuler une arrivée conserve le débrief et ses statistiques', () => {
+    const state = D.undo(arrived(['fog']), 'aller', at + 1000); assert.equal(state.entries.length, 1); assert.equal(state.entries[0].cancelledAt, at + 1000); assert.equal(D.stats(state, at + 1000).answered, 1);
   });
   check('rechargement : mêmes prévisions, retours et intervalles sans mutation', () => {
     const state = arrived(['fog']), loaded = D.clean(json(state), at + 3600e3); assert.deepEqual(json(loaded), json(state));
   });
   check('document corrompu, futur, mauvais trajet ou réponse inconnue ne deviennent pas une observation', () => {
-    assert.deepEqual(json(D.clean('corrompu', at).entries), []);
+    assert.throws(() => D.clean('corrompu', at), /Journal incomplet/);
     assert.equal(D.begin(null, departure({ at: at + 120000 }), at).active, null);
     const state = D.reply(arrived(['fog']), 'aller', { conditions: ['inconnu'] }, at + 1000); assert.deepEqual(json(state.entries[0].feedback.conditions), ['fog']);
     assert.equal(D.reply(null, 'absent', { conditions: [] }, at).entries.length, 0);
-    const wrong = json(arrived([])); wrong.entries[0].start.key = 'autre'; assert.equal(D.clean(wrong, at).entries[0].start, null);
+    const wrong = json(arrived([])); delete wrong.archive; wrong.entries[0].start.key = 'autre'; assert.equal(D.clean(wrong, at).entries[0].start, null);
   });
   check('silence des questionnaires pendant la journée sans supprimer les anciens retours', () => {
     const initial = arrived(['fog']), until = at + 16 * 3600e3;
@@ -153,7 +153,7 @@ if (require.main === module) {
     MIDM: {}, MIDP: {}, CALM: {}, LEGM: {}, USER_STORE: { state: { debrief: null } }, EV_FLAG: () => 'off', tripLab: () => null, offlineNow: () => false };
   vm.createContext(c);
   const app = fs.readFileSync(require('node:path').resolve(__dirname, '../src/app/debrief-view.js'), 'utf8').split('function closeTrip(')[0];
-  vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(sourcePath, 'utf8') + app + ';this.depart=debriefDeparture;', c);
+  vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/journal-archive.js'), 'utf8') + fs.readFileSync(require('node:path').resolve(__dirname, '../src/engine.js'), 'utf8') + fs.readFileSync(sourcePath, 'utf8') + app + ';this.depart=debriefDeparture;', c);
   c.depart({ key: 'trip-test', seq: [{ hs: hours, i: 1 }] }, { at });
   assert(c.USER_STORE.state.debrief.active.prediction.conditions.includes('wet'), 'la pluie passée qui humidifie la route figure dans la prévision figée');
   console.log('✅ Débrief : snapshot humide après pluie passée, même politique que le verdict du trajet');

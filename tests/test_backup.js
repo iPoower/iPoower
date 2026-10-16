@@ -2,7 +2,7 @@
 // Oracle de contrat exécuté dans la suite sauvegarde existante, sans changer le registre CI.
 require('./test_integration_contract');
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict'), path = require('node:path');
-const source = fs.readFileSync(path.resolve(__dirname, '../src/backup.js'), 'utf8');
+const source = fs.readFileSync(path.resolve(__dirname, '../src/journal-archive.js'), 'utf8') + fs.readFileSync(path.resolve(__dirname, '../src/debrief.js'), 'utf8') + fs.readFileSync(path.resolve(__dirname, '../src/backup.js'), 'utf8');
 const ctx = { Date, JSON, Math, Number, Object, Array, RegExp }; vm.createContext(ctx); vm.runInContext(source + ';this.api=Backup;', ctx);
 const B = ctx.api, json = v => JSON.parse(JSON.stringify(v));
 const at = Date.parse('2026-10-07T10:30:00+02:00');
@@ -105,13 +105,13 @@ check('V2 : journal fusionné par trajet — le retour renseigné l’emporte, l
   assert(c.done.d2 && c.done.x); assert.equal(p.kept, 1);
   assert.equal(c.place.conf.placeId, 'work');   // le contexte métier vient bien de la sauvegarde V2
 });
-check('V2 : deux retours pour le même trajet → le plus récent ; journal plafonné à 60 trajets, plus récents d’abord', () => {
+check('V2 historique : deux retours et 71 trajets conservés, plus récents d’abord', () => {
   const e = (key, t, f) => ({ key, at: t, how: 'auto', name: '', from: '', to: '', feedback: f ? { at: f, conditions: [], grip: 'reduced' } : null });
   const bk = B.make({ settings: {}, context: { debrief: { entries: [{ ...e('k', at, at + 10), feedback: { at: at + 10, conditions: ['rain'], grip: 'slip' } }] } }, at: new Date(at).toISOString() });
   const many = Array.from({ length: 70 }, (_, i) => e('m' + i, at - (i + 1) * 1000));
   const p = B.restorePlan(bk, at, { context: { debrief: { entries: [e('k', at, at + 20), ...many] } } }), c = JSON.parse(p.writes['twrc.context.v1']);
   const k = c.debrief.entries.find(x => x.key === 'k'); assert.equal(k.feedback.grip, 'reduced');
-  assert.equal(c.debrief.entries.length, 60); assert(c.debrief.entries.every((x, i, a) => !i || a[i - 1].at >= x.at));
+  assert.equal(c.debrief.entries.length, 71); assert(c.debrief.entries.every((x, i, a) => !i || a[i - 1].at >= x.at));
 });
 check('V2 conserve un trajet manuel programmé avec points normalisés, sans GPS ni trace', () => {
   const manual = { ...state, dayContext: { ...state.dayContext, nextDestination: {
@@ -150,6 +150,9 @@ check('payload invalide refusé', () => {
 });
 check('intégration build et interface utilise le module V2', () => {
   const build = fs.readFileSync(path.resolve(__dirname, '../tools/build.js'), 'utf8'), app = fs.readFileSync(path.resolve(__dirname, '../src/app.js'), 'utf8');
-  assert(build.includes("r('src/backup.js')")); assert(app.includes('Backup.make({')); assert(app.includes('Backup.restorePlan(data')); assert(app.includes('Sauvegarde V2 prête'));
+  assert(build.includes("r('src/backup.js')")); assert(app.includes('VS.recoverySnapshot()'));  assert(app.includes('Backup.restorePlan(data')); assert(app.includes('Copie chiffrée exportée'));
 });
 console.log(`${n}/${n} scénarios OK`);
+
+// Cette suite est incluse dans la lane sauvegarde existante.
+require('./test_journal_preservation');

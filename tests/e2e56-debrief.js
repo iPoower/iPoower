@@ -71,7 +71,7 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
           const v = await state(s.p); assert.equal(v.journal.entries.length, 1); assert.deepEqual(v.journal.entries[0].feedback.conditions, []);
         });
         await tap(s, '#secBrf [data-act=trip-undo]');
-        await check(dev + ' · annuler l’arrivée retire le débrief et le bilan correspondant', async () => { const v = await state(s.p); assert.equal(v.journal.entries.length, 0); assert.equal(v.end, null); });
+        await check(dev + ' · annuler l’arrivée conserve les versions et retire le bilan actif', async () => { const v = await state(s.p); assert.equal(v.journal.entries.length, 1); assert(v.journal.entries[0].cancelledAt); assert(v.journal.archive.records.some(r => JSON.parse(r).feedback?.conditions.includes('fog'))); assert.equal(v.end, null); });
         await tap(s, '#placeBar [data-act=place-confirm][data-place=work]');
         await tap(s, '#secDebrief [data-act=debrief-later]');
         await check(dev + ' · arrivée après coup et Plus tard : aucune durée ni prévision inventées', async () => {
@@ -82,8 +82,7 @@ async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
           const j = s.p.locator('#secDebrief .debrief-journal');
           if (await j.getAttribute('open') == null) await tap(s, '#secDebrief .debrief-journal > summary');
         });
-        s.p.once('dialog', d => d.accept()); await tap(s, '#secDebrief [data-act=debrief-clear]');
-        await check(dev + ' · effacement explicite : journal supprimé après reload', async () => { await s.p.reload(); await s.settle(8); assert.equal((await state(s.p)).journal.entries.length, 0); });
+        await check(dev + ' · aucune suppression du journal ; archive complète après reload', async () => { assert.equal(await s.p.locator('#secDebrief [data-act=debrief-clear]').count(), 0); await s.p.reload(); await s.settle(8); assert.equal((await state(s.p)).journal.entries.length, 1); });
       } finally { await s.c.close(); }
     }
     const gps = await setup(b, 'iphone');

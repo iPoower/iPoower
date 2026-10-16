@@ -31,7 +31,13 @@ const SessionVault = (() => {
   const te = new TextEncoder(), td = new TextDecoder();
 
   function validVault(v) {
-    try { return !!v && v.v === 2 && v.kdf === 'PBKDF2-SHA256' && v.it === IT && dec(v.s).length === 16 && dec(v.i).length === 12 && dec(v.c).length >= 16; } catch (e) { return false; }
+    try {
+      const base64 = x => typeof x === 'string' && x.length > 0 && x.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(x);
+      return !!v && [2, 3].includes(v.v) && v.kdf === 'PBKDF2-SHA256' && v.it === IT &&
+        base64(v.s) && v.s.length === 24 && dec(v.s).length === 16 &&
+        base64(v.i) && v.i.length === 16 && dec(v.i).length === 12 &&
+        base64(v.c) && v.c.length <= 64 * 1024 * 1024 && dec(v.c).length >= 16;
+    } catch (e) { return false; }
   }
   const readVault = raw => { try { const t = raw.getItem(VAULT); if (!t) return null; const v = JSON.parse(t); return validVault(v) ? v : { invalid: true }; } catch (e) { return { invalid: true }; } };
   async function deriveRaw(pass, salt, crypto) {
@@ -42,16 +48,17 @@ const SessionVault = (() => {
   // n (ordre global des écritures, tous onglets) et t (horodatage) sont en clair dans l'en-tête : aucune donnée personnelle.
   // Ils sont aussi dans le texte chiffré et doivent concorder (un en-tête modifié ne peut pas imposer un état).
   async function seal(values, key, salt, crypto, n, t) {
-    const iv = crypto.getRandomValues(new Uint8Array(12)), text = JSON.stringify({ v: 2, n, t, values });
+    const version = values[JournalArchive.KEY] == null ? 2 : 3;
+    const iv = crypto.getRandomValues(new Uint8Array(12)), text = JSON.stringify({ v: version, n, t, values });
     const c = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, te.encode(text)));
-    return { sealed: JSON.stringify({ v: 2, kdf: 'PBKDF2-SHA256', it: IT, n, t, s: enc(salt), i: enc(iv), c: enc(c) }), text };
+    return { sealed: JSON.stringify({ v: version, kdf: 'PBKDF2-SHA256', it: IT, n, t, s: enc(salt), i: enc(iv), c: enc(c) }), text };
   }
   const order = v => ({ n: Number.isFinite(v && v.n) ? v.n : 0, t: Number.isFinite(v && v.t) ? v.t : 0 });
   const newer = (a, b) => a.n > b.n || (a.n === b.n && a.t > b.t);
   async function open(vault, key, crypto) {
     const text = td.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: dec(vault.i) }, key, dec(vault.c)));
     const data = JSON.parse(text);
-    if (!data || data.v !== 2 || (vault.n != null && (data.n !== vault.n || data.t !== vault.t)) || !data.values || typeof data.values !== 'object' || Array.isArray(data.values) ||
+    if (!data || data.v !== vault.v || (vault.n != null && (data.n !== vault.n || data.t !== vault.t)) || !data.values || typeof data.values !== 'object' || Array.isArray(data.values) ||
       !Object.entries(data.values).every(([k, v]) => secret(k) && typeof v === 'string')) throw new Error('Coffre local invalide.');
     return data;
   }
@@ -146,6 +153,8 @@ const SessionVault = (() => {
     function merge(data, notify) {
       const before = values(), next = { ...data.values };
       st.mem.dirty.forEach(k => { if (st.mem.map.has(k)) next[k] = st.mem.map.get(k); else delete next[k]; });
+      const protectedNext = JournalArchive.protect(data.values, next);
+      Object.assign(next, protectedNext);
       st.n = order(data).n; st.t = order(data).t; st.saved = { ...data.values };
       st.mem.map.clear(); Object.entries(next).forEach(([k, v]) => st.mem.map.set(k, v));
       const changed = [...new Set([...Object.keys(before), ...Object.keys(next)])].filter(k => before[k] !== next[k]);
@@ -159,6 +168,7 @@ const SessionVault = (() => {
     async function latest(guard) {
       const sealed = raw.getItem(VAULT), vault = sealed && JSON.parse(sealed);
       if (!validVault(vault) || vault.s !== enc(st.salt)) throw new Error('Coffre local invalide ou remplacé.');
+      if (st.saved[JournalArchive.KEY] != null && vault.v !== 3) throw Object.assign(new Error('Ancien coffre réapparu : aucune écriture autorisée.'), { archiveConflict: true });
       const data = await open(vault, st.key, crypto); guard();
       if (raw.getItem(VAULT) !== sealed) throw Object.assign(new Error('Coffre modifié pendant la lecture.'), { conflict: true });
       return data;
@@ -169,8 +179,10 @@ const SessionVault = (() => {
       if (!mem.dirty.size) return;
       // Relire le dernier coffre authentifié sous verrou, puis appliquer seulement les clés modifiées (suppression comprise).
       const data = await latest(guard), base = newer({ n: st.n, t: st.t }, order(data)) ? st.saved : data.values;
-      const sent = new Map([...mem.dirty].map(k => [k, mem.map.has(k) ? mem.map.get(k) : null])), snap = { ...base };
+      const sent = new Map([...mem.dirty].map(k => [k, mem.map.has(k) ? mem.map.get(k) : null]));
+      let snap = { ...base };
       sent.forEach((v, k) => { if (v == null) delete snap[k]; else snap[k] = v; });
+      snap = JournalArchive.protect(base, snap);
       await writeVerified(snap, st.salt, guard); guard();
       // Une valeur peut encore changer pendant WebCrypto. Elle reste en attente jusqu'à sa propre écriture vérifiée.
       sent.forEach((v, k) => { if ((mem.map.has(k) ? mem.map.get(k) : null) === v) mem.dirty.delete(k); });
@@ -197,10 +209,12 @@ const SessionVault = (() => {
       if (st.mode !== 'vault') return st.chain;
       st.chain = st.chain.then(saveWithConflictRetry).catch(e => {
         if (e.cancelled || st.mode !== 'vault') return;
-        st.error = (e.unsupported ? e.message + ' ' : 'Enregistrement chiffré non confirmé (stockage plein, refusé ou modifié) : ') + 'les modifications restent en mémoire ; exporte une sauvegarde.';
+        st.error = (e.recoveryRequired ? e.message + ' ' : e.unsupported ? e.message + ' ' : 'Enregistrement chiffré non confirmé (stockage plein, refusé ou modifié) : ') + 'les modifications restent en mémoire ; exporte une sauvegarde.';
         if (target && target.dispatchEvent) try { target.dispatchEvent(new Event('twrc-vault-error')); } catch (x) { /* rien */ }
       });
-      return st.chain;
+      // Inclure aussi la microtâche automatique déclenchée par setItem : le
+      // demandeur ne reçoit pas un ancien Promise alors qu'un retry reste actif.
+      return (async () => { let tail; do { tail = st.chain; await tail; } while (tail !== st.chain || st.timer); })();
     }
     function nextOrder() { const d = order(readVault(raw)); return { n: Math.max(st.n, d.n) + 1, t: Math.max(Date.now(), st.t + 1, d.t + 1) }; }
     async function useKey(rawKey, salt) { st.key = await importKey(rawKey, crypto); st.salt = salt; }
@@ -231,7 +245,11 @@ const SessionVault = (() => {
       requireLocks();
       const key = st.key, signal = raw.getItem(LOCK_SIGNAL), previous = raw.getItem(VAULT);
       const active = guard || (() => { if (st.key !== key || raw.getItem(LOCK_SIGNAL) !== signal) throw Object.assign(new Error('Session modifiée.'), { cancelled: true }); });
-      active(); const nx = nextOrder(), out = await seal(vals, key, salt, crypto, nx.n, nx.t); active();
+      active();
+      const prior = readVault(raw);
+      if (prior && !prior.invalid && prior.v === 3 && vals[JournalArchive.KEY] == null)
+        throw new Error('Archive exhaustive absente : écriture refusée.');
+      const nx = nextOrder(), out = await seal(vals, key, salt, crypto, nx.n, nx.t); active();
       // Les anciennes versions ne prennent pas le verrou : ne pas écraser une écriture qu'elles ont faite pendant WebCrypto.
       if (raw.getItem(VAULT) !== previous) throw Object.assign(new Error('Coffre modifié pendant le chiffrement.'), { conflict: true });
       try { put(raw, VAULT, out.sealed); }
@@ -240,8 +258,18 @@ const SessionVault = (() => {
         keysOf(raw).filter(k => isApp(k) && CACHE(k)).forEach(k => { try { raw.removeItem(k); } catch (x) { /* rien */ } });
         active(); put(raw, VAULT, out.sealed);
       }
-      const back = await open(JSON.parse(raw.getItem(VAULT)), key, crypto); active();
-      if (!same(back.values, vals) || raw.getItem(VAULT) !== out.sealed) throw new Error('Coffre relu différent.');
+      try {
+        const back = await open(JSON.parse(raw.getItem(VAULT)), key, crypto); active();
+        if (!same(back.values, vals) || raw.getItem(VAULT) !== out.sealed) throw new Error('Coffre relu différent.');
+      } catch (e) {
+        // Ne jamais annuler le commit d'un autre onglet. Une écriture dont nous
+        // sommes encore propriétaires revient aux octets précédents.
+        if (raw.getItem(VAULT) === out.sealed) {
+          try { put(raw, VAULT, previous); }
+          catch (rollback) { throw Object.assign(new Error('Vérification interrompue : conserve la copie de récupération.'), { recoveryPending: true }); }
+        }
+        throw e;
+      }
       st.n = nx.n; st.t = nx.t; st.saved = { ...vals };
     }
     // stockage plein pendant la migration : sacrifier les caches recalculables puis réessayer une seule fois
@@ -374,6 +402,7 @@ const SessionVault = (() => {
         if (raw.getItem(V1)) { const plan = await DeviceStorage.unlockPlan(raw, pass, crypto); Object.assign(vals, plan.writes); dropV1 = true; }
         await useKey(rawKey, salt);
       }
+      if (vault && vault.v === 3) vals = JournalArchive.protect((await open(vault, st.key, crypto)).values, vals);
       Object.assign(vals, extra || {}, { 'twrc.key': pass });
       Object.keys(vals).forEach(k => { if (!secret(k)) { delete vals[k]; } });
       const kept = await writeWithRoom(vals, salt);
@@ -428,8 +457,36 @@ const SessionVault = (() => {
           }
           merge(data, notify); if (mem.dirty.size) persist(); return 'merged';
         });
-      } catch (x) { return st.mode === 'locked' ? 'locked' : null; }
+      } catch (x) {
+        if (x.archiveConflict) { st.error = x.message; if (target && target.dispatchEvent) target.dispatchEvent(new Event('twrc-vault-error')); }
+        return st.mode === 'locked' ? 'locked' : null;
+      }
     }
+    // Une copie externe est vérifiée par réouverture du fichier sélectionné.
+    // La preuve est liée aux octets du coffre courant, pas à une case cochée.
+    async function recoverySnapshot() { return exclusive(async () => {
+      expire(); if (st.mode !== 'vault') throw new Error('Déverrouille cet appareil.');
+      const sealed = raw.getItem(VAULT), vault = JSON.parse(sealed);
+      if (sealed.length > 68 * 1024 * 1024) throw new Error('Copie trop volumineuse : aucun fichier incomplet produit.');
+      await open(vault, st.key, crypto);
+      if (raw.getItem(VAULT) !== sealed) throw new Error('Coffre modifié : recommence la copie.');
+      return sealed;
+    }); }
+    async function activateJournal(fileText) { return exclusive(async () => {
+      expire(); if (st.mode !== 'vault') throw new Error('Déverrouille cet appareil.');
+      const epoch = st.epoch, mem = st.mem, guard = () => guardSession(epoch, mem);
+      const sealed = raw.getItem(VAULT);
+      if (fileText !== sealed) throw new Error('La copie ne correspond plus au coffre courant. Exporte une nouvelle copie.');
+      const data = await latest(guard);
+      const sent = new Map([...mem.dirty].map(k => [k, mem.map.has(k) ? mem.map.get(k) : null]));
+      const pending = { ...data.values };
+      sent.forEach((v, k) => { if (v == null) delete pending[k]; else pending[k] = v; });
+      const next = JournalArchive.protect(data.values, pending, true);
+      await writeVerified(next, st.salt, guard, false); guard();
+      sent.forEach((v, k) => { if ((mem.map.has(k) ? mem.map.get(k) : null) === v) mem.dirty.delete(k); });
+      merge({ n: st.n, t: st.t, values: next }); st.error = null;
+      return true;
+    }); }
     // Import d'un lien historique : vérifier sous le MÊME verrou que toutes
     // les écritures, puis publier une unique enveloppe chiffrée et relue.
     // Ni configuration existante ni autre donnée durable ne sont remplacées.
@@ -469,13 +526,23 @@ const SessionVault = (() => {
       return { state };
     }); }
     return {
-      boot, unlock, lock, flush, onStorage, importConfig,
+      boot, unlock, lock, flush, onStorage, importConfig, recoverySnapshot, activateJournal,
       expired: () => expire(),
       get expiresAt() { return st.expiresAt; },
       get pendingRecovery() { return st.mode === 'expired' && !!st.mem && st.mem.dirty.size > 0; },
+      get journalNeedsRecovery() { return st.mode === 'vault' && st.saved[JournalArchive.KEY] == null && JournalArchive.capture(st.saved).records.length > 0; },
+      get pendingWrites() { return !!st.mem && st.mem.dirty.size > 0; },
       get mode() { return st.mode; }, get error() { return st.error; }, get warn() { return st.warn; }, get migrated() { return !!st.migrated; },
       get store() { return st.mem ? st.mem.store : null; }, locked: () => expire() || st.mode === 'locked'
     };
   }
-  return { create, VAULT, SESSION, LOCK_SIGNAL, PUBLIC, secret, validVault, IT };
+  async function readRecovery(text, pass, crypto) {
+    if (typeof text !== 'string' || text.length > 68 * 1024 * 1024) throw new Error('Copie trop volumineuse.');
+    const vault = JSON.parse(text);
+    if (!validVault(vault)) throw new Error('Copie de récupération inconnue.');
+    const rawKey = await deriveRaw(pass, dec(vault.s), crypto);
+    try { return (await open(vault, await importKey(rawKey, crypto), crypto)).values; }
+    finally { rawKey.fill(0); }
+  }
+  return { create, readRecovery, VAULT, SESSION, LOCK_SIGNAL, PUBLIC, secret, validVault, IT };
 })();

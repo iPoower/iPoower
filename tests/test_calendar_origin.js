@@ -2,7 +2,7 @@
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
 const context = {}; vm.createContext(context);
-for (const file of ['calendar-origin', 'trip-cancel', 'backup']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/' + file + '.js'), 'utf8'), context);
+for (const file of ['journal-archive', 'debrief', 'calendar-origin', 'trip-cancel', 'backup']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/' + file + '.js'), 'utf8'), context);
 vm.runInContext('this.O=CalendarOrigin;this.C=TripCancel;this.B=Backup', context);
 const { O, C, B } = context, json = x => JSON.parse(JSON.stringify(x));
 const now = Date.parse('2026-10-09T06:00:00Z'), day = '2026-10-09';

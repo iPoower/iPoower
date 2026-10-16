@@ -40,10 +40,19 @@ function debriefDeparture(t, s) {
     prediction: { known: hours.length === seq.length && hours.length > 0, conditions: [...flags], fetchedAt,
       offline: offlineNow(), verdict: verdict ? LV[verdict.w.level].name : '', thermal, evidence } });
 }
+function journalWritable() {
+  const VS = window.TWRC_VAULT;
+  if (VS && VS.journalNeedsRecovery) {
+    window.alert('Avant de modifier le journal : exporte la copie de récupération dans les paramètres, puis rouvre ce fichier pour la vérifier.');
+    return false;
+  }
+  return true;
+}
 function closeTrip(t, how = 'confirmé') {
+  if (!journalWritable()) return null;
   return appAction(() => {
     if (DEMO.on || !t || !t.key || !['auto', 'confirmé'].includes(how)) return null;
-    const prior = USER_STORE.state.debrief.entries.find(e => e.key === t.key);
+    const prior = USER_STORE.state.debrief.entries.find(e => e.key === t.key && !e.cancelledAt);
     if (LIVE.done[t.key] && prior) return prior;
     const at = Date.now(), active = LIVE.key === t.key;
     const snapshot = USER_STORE.state.debrief.active;
@@ -105,10 +114,17 @@ function debriefPick(kind, value) {
   } else if (['normal', 'reduced', 'slip', 'unknown'].includes(value)) DEBRIEF_FORM.grip = value;
   renderDebrief();
 }
-function debriefSave() {
-  if (!DEBRIEF_FORM || !Array.isArray(DEBRIEF_FORM.conditions)) return;
-  const form = DEBRIEF_FORM; DEBRIEF_FORM = null;
+async function debriefSave() {
+  if (!DEBRIEF_FORM || !Array.isArray(DEBRIEF_FORM.conditions) || !journalWritable()) return;
+  const form = DEBRIEF_FORM;
   appAction(() => { USER_STORE.state.debrief = Debrief.reply(USER_STORE.state.debrief, form.key, form); });
+  const VS = window.TWRC_VAULT;
+  if (VS) await VS.flush();
+  if (USER_STORE.durability().status !== 'durable' || VS && (VS.error || VS.pendingWrites)) {
+    window.alert('Débrief non enregistré durablement. Les données précédentes sont conservées. Garde cette page ouverte et réessaie après avoir libéré de l’espace.');
+    return;
+  }
+  DEBRIEF_FORM = null; renderDebrief();
 }
 function debriefLater() {
   if (!DEBRIEF_FORM) return;
@@ -119,11 +135,6 @@ function debriefLater() {
 function debriefSnooze() {
   DEBRIEF_FORM = null;
   appAction(() => { USER_STORE.state.debrief = Debrief.snooze(USER_STORE.state.debrief, DayContext.endOfDay(Date.now())); });
-}
-function debriefClear() {
-  if (!window.confirm('Effacer les débriefs enregistrés sur cet appareil ?')) return;
-  DEBRIEF_FORM = null;
-  appAction(() => { USER_STORE.state.debrief.entries = []; });
 }
 function renderDebrief() {
   const el = $('#secDebrief'); if (!el) return;
@@ -141,9 +152,10 @@ function renderDebrief() {
     <div class="debrief-actions"><button class="btn" data-act="debrief-save"${DEBRIEF_FORM.conditions == null ? ' disabled' : ''}>Enregistrer le débrief</button><button class="btn sm" data-act="debrief-later">Plus tard</button><button class="btn sm" data-act="debrief-snooze">Ne plus demander aujourd’hui</button></div><details class="debrief-snapshot" data-dk="snapshot"${open.has('snapshot') ? ' open' : ''}><summary>Prévision au départ et bilan estimé</summary>${debriefDetails(e)}</details></div>` : '';
   const counts = st.comparable ? `${st.comparable} retour${st.comparable > 1 ? 's' : ''} comparable${st.comparable > 1 ? 's' : ''} : ${st.counts.match} concordant${st.counts.match > 1 ? 's' : ''} · ${st.counts.missed} phénomène${st.counts.missed > 1 ? 's' : ''} non annoncé${st.counts.missed > 1 ? 's' : ''} · ${st.counts.unused} alerte${st.counts.unused > 1 ? 's' : ''} non rencontrée${st.counts.unused > 1 ? 's' : ''} · ${st.counts.mixed} écart${st.counts.mixed > 1 ? 's' : ''} mixte${st.counts.mixed > 1 ? 's' : ''}.` : 'Aucun retour comparable pour le moment.';
   const duplicates = new Set(Debrief.possibleDuplicates(state));
+  const archivedRows = JournalArchive.collect(state).records.map(r => JSON.parse(r));
   const html = `${form}<details class="debrief-journal" data-dk="journal"${open.has('journal') || !e && hadForm ? ' open' : ''}><summary>Journal des trajets · ${st.total} trajet${st.total > 1 ? 's' : ''} · ${st.answered} débrief${st.answered > 1 ? 's' : ''}</summary><p>${counts}</p>
     <p class="sub">Comparaison des phénomènes annoncés avec tes observations, sur cet appareil. Les températures restent estimées. Une prévision absente ou ancienne n’entre pas dans les retours comparables.</p>
-    ${state.entries.map(row => `<details class="debrief-entry" data-dk="entry-${esc(row.key)}"${open.has('entry-' + row.key) ? ' open' : ''}><summary>${esc(row.name || 'Trajet')} · ${new Date(row.at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' })} · ${DEBRIEF_COMPARE[Debrief.compare(row).kind]}${duplicates.has(row.key) ? ' · Doublon possible' : ''}</summary>${debriefDetails(row)}<button class="btn sm" data-act="debrief-open" data-key="${esc(row.key)}">${row.feedback ? 'Modifier le débrief' : 'Renseigner le débrief'}</button></details>`).join('')}
-    <p class="sub">60 trajets maximum · conservés 90 jours · données locales.</p><button class="btn sm" data-act="debrief-clear">Effacer le journal</button></details>`;
+    ${state.entries.slice(0, Debrief.LIMIT).map(row => `<details class="debrief-entry" data-dk="entry-${esc(row.key)}"${open.has('entry-' + row.key) ? ' open' : ''}><summary>${esc(row.name || 'Trajet')} · ${new Date(row.at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' })} · ${row.cancelledAt ? 'Arrivée annulée · historique conservé' : DEBRIEF_COMPARE[Debrief.compare(row).kind]}${duplicates.has(row.key) ? ' · Doublon possible' : ''}</summary>${debriefDetails(row)}<details><summary>Versions conservées du retour</summary>${[...new Set(archivedRows.filter(r => r && r.key === row.key && r.feedback).map(r => JSON.stringify(r.feedback)))].map(r => { const f = JSON.parse(r); return `<p>${esc(new Date(f.at).toLocaleString('fr-FR'))} · ${esc(debriefConditions(f.conditions || []))} · ${esc(f.grip || 'unknown')}</p>`; }).join('')}</details><button class="btn sm" data-act="debrief-open" data-key="${esc(row.key)}">${row.feedback ? 'Modifier le débrief' : 'Renseigner le débrief'}</button></details>`).join('')}
+    <p class="sub">${Math.min(Debrief.LIMIT, st.total)} trajets affichés sur ${st.total} · archive complète sans expiration. Toutes les versions des retours sont conservées dans la copie de récupération chiffrée.</p></details>`;
   if (renderDebrief.last !== html) { el.innerHTML = html; renderDebrief.last = html; }
 }
