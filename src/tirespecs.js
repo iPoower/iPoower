@@ -20,7 +20,9 @@ const TIRE_SPECS = [
 // Rubriques attendues d'une fiche : celles qui manquent sont affichées « non disponible », jamais estimées.
 const TIRE_SPEC_KEYS = ['Saison', 'Usage prévu', 'Gomme', 'Technologie', 'Sculpture', 'Étiquette UE', 'Homologation constructeur'];
 function tireSpecFor(brand, model) {
-  const n = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  // Une annotation entre parenthèses ne change pas le pneu (« Pilot Sport 4S (AV + AR) ») : ignorée, comme findTire (engine.js).
+  // Tout autre texte (« XL », « SUV »…) reste significatif : un autre modèle n'est jamais confondu avec celui-ci.
+  const n = s => String(s || '').replace(/\(.*?\)/g, '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const b = n(brand), m = n(model); if (!m) return null;
   return TIRE_SPECS.find(x => (!b || n(x.b) === b) && [x.m, ...(x.aka || [])].some(a => n(a) === m)) || null;
 }
