@@ -36,13 +36,17 @@ const JournalArchive = (() => {
   }
   function protect(base, next, activate = false) {
     const context = next[CONTEXT] == null ? null : JSON.parse(next[CONTEXT]);
-    const requested = activate || base[KEY] != null || next[KEY] != null || context && context.debrief && context.debrief.archive;
-    if (!requested) return next; // anciens formats lus sans migration implicite
-    const original = capture(base);
-    if (!activate && base[KEY] == null && original.records.length) {
-      throw Object.assign(new Error('Copie de récupération à exporter puis à rouvrir avant l’activation du journal.'), { recoveryRequired: true });
+    // Une projection peut avoir debrief.archive dès l'initialisation : elle ne
+    // constitue PAS une autorisation de convertir un coffre v2 en v3.
+    // Seule activateJournal (activate=true), après relecture de la copie externe,
+    // peut créer la clé. Un coffre déjà v3 conserve son archive aux écritures.
+    if (!activate && base[KEY] == null) {
+      if (next[KEY] != null || capture(base).records.length || capture(next).records.length) {
+        throw Object.assign(new Error('Copie de récupération à exporter puis à rouvrir avant l’activation du journal.'), { recoveryRequired: true });
+      }
+      return next;
     }
-    const archive = union(original, capture(next)), out = { ...next, [KEY]: JSON.stringify(archive) };
+    const archive = union(capture(base), capture(next)), out = { ...next, [KEY]: JSON.stringify(archive) };
     if (context) {
       context.debrief = { ...(context.debrief || {}), archive };
       out[CONTEXT] = JSON.stringify(context);

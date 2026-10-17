@@ -563,7 +563,9 @@ const SessionVault = (() => {
       expired: () => expire(),
       get expiresAt() { return st.expiresAt; },
       get pendingRecovery() { return st.mode === 'expired' && !!st.mem && st.mem.dirty.size > 0; },
-      get journalNeedsRecovery() { return st.mode === 'vault' && st.saved[JournalArchive.KEY] == null && JournalArchive.capture(st.saved).records.length > 0; },
+      // Même un profil sans historique doit activer explicitement l'archive
+      // avant son premier débrief : aucun passage v3 au premier enregistrement.
+      get journalNeedsRecovery() { return st.mode === 'vault' && st.saved[JournalArchive.KEY] == null; },
       get pendingWrites() { return !!st.mem && st.mem.dirty.size > 0; },
       get mode() { return st.mode; }, get error() { return st.error; }, get warn() { return st.warn; }, get migrated() { return !!st.migrated; },
       get store() { return st.mem ? st.mem.store : null; }, locked: () => expire() || st.mode === 'locked'

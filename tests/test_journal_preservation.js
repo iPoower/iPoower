@@ -70,6 +70,36 @@ module.exports = (async () => {
     assert.equal(archive.records.map(r => JSON.parse(r)).filter(e => e?.feedback?.id).length, 2);
     assert.equal(J.union(first.archive, first.archive).records.length, first.archive.records.length);
   });
+  await check('un contexte initialisé ne déclenche jamais v3, même sur un profil neuf', async () => {
+    for (const entries of [[], [source[2]]]) {
+      const isolated = storage({
+        'twrc.key': PASS,
+        'twrc.settings.v1': JSON.stringify({ configured: 1, cars: [] }),
+        [J.CONTEXT]: JSON.stringify({ v: 1, debrief: { entries } })
+      });
+      const locks = { request(name, opts, fn) { assert.equal(name, V.VAULT); return fn(); } };
+      const vault = V.create({ raw: isolated, session: storage(), crypto: webcrypto, locks, target: null, now: () => T });
+      assert.equal(await vault.boot(), 'vault');
+      assert.equal(JSON.parse(isolated.getItem(V.VAULT)).v, 2);
+      const profile = ctx.api.userContextStore({
+        read: key => vault.store.getItem(key),
+        write: (key, value) => value == null ? vault.store.removeItem(key) : vault.store.setItem(key, value),
+        now: () => T
+      });
+      assert(profile.state.debrief.archive, 'la projection contient bien une archive');
+      await vault.flush();
+      assert.equal(JSON.parse(isolated.getItem(V.VAULT)).v, 2, 'l’initialisation doit garder v2');
+      assert.equal(vault.store.getItem(J.KEY), null, 'aucune clé archive créée sans action explicite');
+      assert.equal(vault.journalNeedsRecovery, true, 'écriture du journal désactivée avant copie vérifiée');
+      if (!entries.length) {
+        const before = isolated.getItem(V.VAULT);
+        vault.store.setItem(J.CONTEXT, JSON.stringify({ v: 1, debrief: { entries: [source[2]] } }));
+        await vault.flush();
+        assert(vault.error, 'premier débrief refusé avant activation');
+        assert.equal(isolated.getItem(V.VAULT), before, 'aucun coffre modifié après refus');
+      }
+    }
+  });
   let tail = Promise.resolve();
   const locks = { request(name, opts, fn) { assert.equal(name, V.VAULT); const result = tail.then(fn); tail = result.catch(() => {}); return result; } };
   const raw = storage({ 'twrc.key': PASS, 'twrc.settings.v1': JSON.stringify({ configured: 1, cars: [] }), [J.CONTEXT]: JSON.stringify({ v: 1, debrief: { entries: source } }) });
