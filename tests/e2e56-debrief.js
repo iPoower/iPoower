@@ -14,6 +14,7 @@ const tab = async (s, view) => { if (view === 'tenue') { await s.p.evaluate(() =
   else await tap(s, '#viewSeg [data-act=view][data-v=' + view + ']'); };
 async function setup(b, dev, at = '2026-10-07T06:20:00+02:00') {
   const s = await session(b, { dev, at }); s.dev = dev;
+  await require('./lib/journal-activation')(s.p);
   await s.p.evaluate(() => { S.work.days = [1, 2, 3, 4, 5]; saveSettings(); renderAll(); }); await s.settle(4); await tab(s, 'pneus'); return s;
 }
 (async () => {

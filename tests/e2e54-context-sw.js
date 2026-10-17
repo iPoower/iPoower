@@ -95,7 +95,8 @@ async function views(p, expected) {
       await p.reload();
       for (let i = 0; i < 12; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); }
       assert.equal(await p.evaluate(() => TWRC_VAULT.mode), 'vault');
-      assert.equal((await read(p)).stored.debrief.entries.length, 0);
+      assert.equal((await read(p)).stored.debrief?.entries?.length || 0, 0);
+      await require('./lib/journal-activation')(p);
     });
     // Lieux et véhicules fictifs uniquement ; choix de contexte par vrais taps.
     await p.evaluate(() => { S.customs = [{ id: 'b', name: 'Lieu B', lat: 48.8, lon: 2.45 }]; const car = structuredClone(S.cars[0]); car.id = 'carB'; car.name = car.short = 'Voiture B'; S.cars[1] = car; saveSettings(); renderAll(); });

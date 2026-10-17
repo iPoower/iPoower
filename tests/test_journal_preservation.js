@@ -71,7 +71,7 @@ module.exports = (async () => {
     assert.equal(J.union(first.archive, first.archive).records.length, first.archive.records.length);
   });
   await check('un contexte initialisé ne déclenche jamais v3, même sur un profil neuf', async () => {
-    for (const entries of [[], [source[2]]]) {
+    for (const entries of [[], source]) {
       const isolated = storage({
         'twrc.key': PASS,
         'twrc.settings.v1': JSON.stringify({ configured: 1, cars: [] }),
@@ -84,10 +84,29 @@ module.exports = (async () => {
       const profile = ctx.api.userContextStore({
         read: key => vault.store.getItem(key),
         write: (key, value) => value == null ? vault.store.removeItem(key) : vault.store.setItem(key, value),
-        now: () => T
+        now: () => T,
+        journalReadOnly: () => vault.journalNeedsRecovery
       });
       assert(profile.state.debrief.archive, 'la projection contient bien une archive');
       await vault.flush();
+      assert.equal(vault.error, null, 'une projection historique ne doit pas bloquer le coffre');
+      profile.state.dayContext.activeCarId = 'vehicule-fictif'; profile.flush();
+      vault.store.setItem('twrc.settings.v1', JSON.stringify({ configured: 1, cars: [], ordinary: 'modifié' }));
+      await vault.flush();
+      assert.equal(vault.error, null, 'réglages et contexte hors journal enregistrables en v2');
+      const recovered = await V.readRecovery(await vault.recoverySnapshot(), PASS, webcrypto);
+      assert.equal(JSON.parse(recovered['twrc.settings.v1']).ordinary, 'modifié');
+      assert.equal(JSON.parse(recovered[J.CONTEXT]).dayContext.activeCarId, 'vehicule-fictif');
+      assert.deepEqual(JSON.parse(recovered[J.CONTEXT]).debrief.entries, entries, 'sources historiques inchangées avant activation');
+      assert.equal(profile.retry(), true, 'relecture cohérente malgré une projection distincte des sources');
+      const reopened = V.create({ raw: isolated, session: storage(), crypto: webcrypto, locks, target: null, now: () => T });
+      assert.equal(await reopened.boot(), 'locked'); await reopened.unlock(PASS);
+      const reloaded = ctx.api.userContextStore({ read: key => reopened.store.getItem(key),
+        write: (key, value) => value == null ? reopened.store.removeItem(key) : reopened.store.setItem(key, value),
+        now: () => T, journalReadOnly: () => reopened.journalNeedsRecovery });
+      reloaded.state.debrief = D.clean(reloaded.state.debrief, T); reloaded.flush(); await reopened.flush();
+      assert.equal(reopened.error, null); assert.equal(JSON.parse(isolated.getItem(V.VAULT)).v, 2);
+      assert.deepEqual(JSON.parse(reopened.store.getItem(J.CONTEXT)).debrief.entries, entries);
       assert.equal(JSON.parse(isolated.getItem(V.VAULT)).v, 2, 'l’initialisation doit garder v2');
       assert.equal(vault.store.getItem(J.KEY), null, 'aucune clé archive créée sans action explicite');
       assert.equal(vault.journalNeedsRecovery, true, 'écriture du journal désactivée avant copie vérifiée');

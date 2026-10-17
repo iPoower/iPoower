@@ -16,6 +16,7 @@ function seal(data) {
   try {
     for (const dev of ['iphone', 'pc']) {
       const s = await session(b, { at: '2026-10-08T07:00:00+02:00', dev }), p = s.p, urls = [];
+      await require('./lib/journal-activation')(p);
       p.on('request', r => { if (/open-meteo|osrm|bigdatacloud|nominatim|geopf/.test(r.url())) urls.push(r.url()); });
       // empreinte personnelle des fixtures (lieux, voiture) + une entrée de journal et un contexte
       const me = await p.evaluate(() => {

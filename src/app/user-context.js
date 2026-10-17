@@ -8,10 +8,12 @@ const USER_STORE = userContextStore({ read: lsGet, write: (k, v) => {
   const VS = window.TWRC_VAULT;
   if ((!VS || VS.mode !== 'vault') && v && [JournalArchive.CONTEXT, JournalArchive.MIRROR].includes(k)) {
     const value = JSON.parse(v), journal = k === JournalArchive.CONTEXT ? value.debrief : value;
-    if (JournalArchive.collect(journal).records.length) throw new Error('Journal en lecture seule : exporte puis vérifie une copie chiffrée pour activer sa conservation.');
+    const prior = JSON.parse(lsGet(k) || 'null'), before = k === JournalArchive.CONTEXT ? prior && prior.debrief : prior;
+    if (JournalArchive.collect(journal).records.length && JournalArchive.encode(journal) !== JournalArchive.encode(before))
+      throw new Error('Journal en lecture seule : exporte puis vérifie une copie chiffrée pour activer sa conservation.');
   }
   if (v == null) APP_STORAGE.removeItem(k); else APP_STORAGE.setItem(k, v);
-} });
+}, journalReadOnly: () => !window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault' || window.TWRC_VAULT.journalNeedsRecovery });
 ['GPS', 'PLACE', 'TRIPSTART', 'TRIPEND', 'RETURNHOME'].forEach((name, i) => {
   const field = ['gps', 'place', 'tripStart', 'tripEnd', 'returnHome'][i];
   Object.defineProperty(window, name, { configurable: false, get: () => USER_STORE.state[field], set: v => { USER_STORE.state[field] = v; } });
