@@ -261,6 +261,7 @@ module.exports = async function run(b) {
     await check('fichier récupéré sur un nouveau profil : import vérifié, rechargement, journal et versions identiques', async () => {
       const target = await session(b, { at: T, dev: 'iphone' }); target.p.on('dialog', d => d.accept());
       try {
+        await require('./journal-activation')(target.p);
         await settingsPanel(target.p); await target.p.fill('#bkPw', PW);
         await Promise.all([target.p.waitForNavigation({ timeout: 60000 }), (async () => {
           await target.p.setInputFiles('#bkFile', { name: 'copie-complete.json', mimeType: 'application/json', buffer: exported }); await wait(target.p, 20);
@@ -277,6 +278,7 @@ module.exports = async function run(b) {
         const target = await session(b, { at: T, dev: 'iphone' }), alerts = [];
         target.p.on('dialog', d => { alerts.push(d.message()); d.accept(); });
         try {
+          await require('./journal-activation')(target.p);
           const before = await target.p.evaluate(async () => {
             USER_STORE.transaction(state => { state.debrief = Debrief.close(state.debrief, { key: 'quota-ui', how: 'confirmé' }); });
             await TWRC_VAULT.flush(); if (TWRC_VAULT.error) throw new Error('Fixture non durable');
