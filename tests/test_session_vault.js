@@ -86,9 +86,12 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
   await test('rechargement du même onglet : déverrouillé sans code (clé de session), écritures rechiffrées et relues', async () => {
     const raw = fakeStorage(); fill(raw, LEGACY()); const ses = session(); const a = make(raw, ses).vs; await a.boot();
     const iv0 = JSON.parse(raw.getItem(SV.VAULT)).i;
-    a.store.setItem('twrc.context.v1', JSON.stringify({ debrief: { entries: [{ key: 'nouveau-fictif' }] } })); await tick(); await a.flush(); assert.equal(a.error, null);
+    // La persistance ordinaire reste possible en v2 ; les nouveaux débriefs
+    // nécessitent désormais l'activation explicite de leur archive.
+    a.store.setItem('twrc.tripcancel', 'nouveau-fictif'); await tick(); await a.flush(); assert.equal(a.error, null);
+    assert.equal(JSON.parse(raw.getItem(SV.VAULT)).v, 2, 'aucune activation v3 au rechargement');
     const iv1 = JSON.parse(raw.getItem(SV.VAULT)).i; assert.notEqual(iv1, iv0, 'IV neuf à chaque écriture'); assert.notEqual(iv1, Buffer.alloc(12).toString('base64'));
-    const b = make(raw, ses).vs; assert.equal(await b.boot(), 'vault'); assert.match(b.store.getItem('twrc.context.v1'), /nouveau-fictif/);
+    const b = make(raw, ses).vs; assert.equal(await b.boot(), 'vault'); assert.equal(b.store.getItem('twrc.tripcancel'), 'nouveau-fictif');
     assert(!JSON.stringify(raw.dump()).includes('nouveau-fictif'));
   });
   await test('Verrouiller : clé de session effacée, signal aux autres onglets, coffre conservé, déverrouillage identique', async () => {
