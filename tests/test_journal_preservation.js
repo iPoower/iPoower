@@ -113,8 +113,12 @@ module.exports = (async () => {
   await check('aucune migration implicite ; copie différente ou quota = octets précédents intacts', async () => {
     copy = await a.recoverySnapshot();
     assert.equal(V.validVault({ ...JSON.parse(copy), app: 'twrc-backup' }), false, 'une sauvegarde historique V2 n’est pas un coffre de récupération');
-    a.store.setItem(J.CONTEXT, JSON.stringify({ v: 1, debrief: D.clean({ entries: [...source, entry('sans-copie')] }, T) }));
-    await a.flush(); assert(a.error); assert.equal(raw.getItem(V.VAULT), copy);
+    // Tester le refus sans laisser une modification fictive en attente dans
+    // le profil qui sera réellement activé avec la copie suivante.
+    const original = { [J.CONTEXT]: JSON.stringify({ v: 1, debrief: { entries: source } }) };
+    const modified = { [J.CONTEXT]: JSON.stringify({ v: 1, debrief: D.clean({ entries: [...source, entry('sans-copie')] }, T) }) };
+    assert.throws(() => J.protect(original, modified), /Copie de récupération/);
+    assert.equal(raw.getItem(V.VAULT), copy);
     await assert.rejects(a.activateJournal(copy + ' '), /copie/); assert.equal(raw.getItem(V.VAULT), copy);
     raw.refused = true; await assert.rejects(a.activateJournal(copy)); raw.refused = false;
     assert.equal(raw.getItem(V.VAULT), copy);
