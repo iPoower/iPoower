@@ -41,7 +41,12 @@ const JournalArchive = (() => {
     // Seule activateJournal (activate=true), après relecture de la copie externe,
     // peut créer la clé. Un coffre déjà v3 conserve son archive aux écritures.
     if (!activate && base[KEY] == null) {
-      if (next[KEY] != null || capture(base).records.length || capture(next).records.length) {
+      // Les réglages et autres données du coffre v2 restent modifiables.
+      // Seul un changement des sources du journal ou l'ajout de la clé
+      // d'archive requiert la copie externe vérifiée.
+      const before = capture(base), after = capture(next);
+      if (next[KEY] != null || before.records.length !== after.records.length ||
+        before.records.some((r, i) => r !== after.records[i])) {
         throw Object.assign(new Error('Copie de récupération à exporter puis à rouvrir avant l’activation du journal.'), { recoveryRequired: true });
       }
       return next;
