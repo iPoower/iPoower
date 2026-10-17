@@ -6,7 +6,7 @@ const { webcrypto, createHash } = require('node:crypto');
 const root = path.resolve(__dirname, '..'), PASS = 'cle-fictive-import-uniquement';
 const ctx = { TextEncoder, TextDecoder, Uint8Array, atob, btoa, URL, setTimeout, clearTimeout, console, JSON, Proxy, Reflect, Map, Set, Object, Array, Promise, Error };
 vm.createContext(ctx);
-vm.runInContext(['device-storage', 'session-vault', 'config-import'].map(f => fs.readFileSync(path.join(root, 'src', f + '.js'), 'utf8')).join('\n') + ';this.CI=ConfigImport;this.SV=SessionVault;', ctx);
+vm.runInContext(['journal-archive', 'device-storage', 'session-vault', 'config-import'].map(f => fs.readFileSync(path.join(root, 'src', f + '.js'), 'utf8')).join('\n') + ';this.CI=ConfigImport;this.SV=SessionVault;', ctx);
 const baselineSource = fs.readFileSync(path.join(root, 'src/app.js'), 'utf8').match(/^const BASE = \{[\s\S]*?^\};/m)[0];
 vm.runInContext(baselineSource + ';this.BASELINE=BASE;', ctx);
 const { CI, SV } = ctx;

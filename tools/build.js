@@ -21,7 +21,7 @@ const fonts='<link rel="preconnect" href="https://fonts.googleapis.com"><link re
 const js=[r('src/reliability.js'),r('src/decision.js'),r('src/f1-pure.js'),r('src/garage.js'),r('src/profile-check.js'),r('src/geosearch.js'),r('src/engine.js'),r('src/demo.js'),r('src/wardrobe.js'),r('src/dayplan.js'),r('src/wxdesk.js'),r('src/weather-watch.js'),r('src/tirespecs.js'),r('src/tyrestate.js'),r('src/tyrelab.js'),r('src/placectx.js'),r('src/evidence.js'),r('src/calendar-origin.js'),r('src/trip-cancel.js'),r('src/weather-requests.js'),r('src/road-intelligence.js'),r('src/road-providers.js'),r('src/debrief.js'),r('src/userctx.js'),r('src/backup.js'),require('./app-source').appSource(ROOT)].join('\n');
 const title='<title>TYRE WEATHER RACE CONTROL</title>';
 const style=`<style>\n${r('src/style.css')}\n</style>`;
-const device=r('src/device-storage.js')+'\n'+r('src/remember-device.js')+'\n'+r('src/session-vault.js')+'\n'+r('src/config-import.js');
+const device=r('src/journal-archive.js')+'\n'+r('src/device-storage.js')+'\n'+r('src/remember-device.js')+'\n'+r('src/session-vault.js')+'\n'+r('src/config-import.js');
 if(/<\/script/i.test(js))throw new Error('Le code applicatif ne doit pas contenir « </script> » (bloc différé).');
 // Sécurité V1 : le code applicatif est différé (bloc text/plain) et démarré seulement après l'ouverture du coffre de session :
 // les réglages et le préréglage déchiffrés n'existent qu'en mémoire, jamais en clair dans localStorage.

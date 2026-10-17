@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
 const root = require('node:path').resolve(__dirname, '..'), context = { Date, JSON, Object, Number, Array, Set, Math };
-vm.createContext(context); vm.runInContext(fs.readFileSync(root + '/src/debrief.js', 'utf8') + fs.readFileSync(root + '/src/userctx.js', 'utf8') + ';this.store=userContextStore;', context);
+vm.createContext(context); vm.runInContext(fs.readFileSync(require('node:path').resolve(__dirname, '../src/journal-archive.js'), 'utf8') + fs.readFileSync(root + '/src/debrief.js', 'utf8') + fs.readFileSync(root + '/src/userctx.js', 'utf8') + ';this.store=userContextStore;', context);
 const t = Date.parse('2026-10-05T06:50:00+02:00'), mem = new Map(), puts = [];
 const read = k => mem.get(k) || null, write = (k, v) => { puts.push([k, v]); if (v == null) mem.delete(k); else mem.set(k, v); };
 const make = () => context.store({ read, write, now: () => t });
@@ -70,7 +70,7 @@ check('hydratation : une confirmation d’arrivée plus récente clôture un anc
   assert.equal(x.state.place.conf.placeId, 'work'); assert.equal(x.state.tripStart, null);
   assert.equal(JSON.parse(data.get(x.key)).tripStart, null);
 });
-check('ancienne page qui ignore le champ : débrief récupéré, effacement canonique respecté', () => {
+check('ancienne page : débrief récupéré ; effacement de projection sans perte d’archive', () => {
   const record = { key: 'trip', at: t - 1000, how: 'confirmé', name: 'Test', start: null, end: null,
     feedback: { at: t - 500, conditions: ['fog'], grip: 'unknown' }, deferred: false };
   const data = new Map([['twrc.context.v1', JSON.stringify({ v: 1, done: {}, place: {} })],
@@ -78,8 +78,8 @@ check('ancienne page qui ignore le champ : débrief récupéré, effacement cano
   const x = context.store({ read: k => data.get(k), write: (k, v) => { if (v == null) data.delete(k); else data.set(k, v); }, now: () => t });
   assert.equal(x.state.debrief.entries.length, 1); assert.deepEqual(json(x.state.debrief.entries[0].feedback.conditions), ['fog']);
   x.transaction(state => { state.debrief.entries = []; });
-  assert.equal(JSON.parse(data.get('twrc.debrief.v1')).entries.length, 0);
-  assert.equal(context.store({ read: k => data.get(k), write: () => {}, now: () => t }).state.debrief.entries.length, 0);
+  assert.equal(JSON.parse(data.get('twrc.debrief.v1')).entries.length, 1);
+  assert.equal(context.store({ read: k => data.get(k), write: () => {}, now: () => t }).state.debrief.entries.length, 1);
 });
 check('snapshot orphelin et ancienne page après fin de trajet : aucune prévision active restaurée', () => {
   const data = new Map([['twrc.context.v1', JSON.stringify({ v: 1, done: {}, place: {} })],
@@ -87,4 +87,14 @@ check('snapshot orphelin et ancienne page après fin de trajet : aucune prévisi
   const x = context.store({ read: k => data.get(k), write: (k, v) => data.set(k, v), now: () => t });
   assert.equal(x.state.debrief.active, null);
 });
+
+check('contexte corrompu ou version inconnue : aucun remplacement silencieux', () => {
+  for (const original of ['{incomplet', JSON.stringify({ v: 999, debrief: { entries: [{ key: 'source-fiction' }] } }), JSON.stringify({ v: 1, debrief: { entries: {} } })]) {
+    const data = new Map([['twrc.context.v1', original]]);
+    const store = context.store({ read: k => data.get(k), write: (k, v) => data.set(k, v), now: () => t });
+    store.transaction(state => { state.gps = null; }); store.retry();
+    assert.equal(data.get('twrc.context.v1'), original); assert.equal(store.durability().status, 'degraded');
+  }
+});
+
 console.log(`${n}/${n} scénarios OK`);

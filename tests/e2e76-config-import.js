@@ -66,9 +66,11 @@ const submit = async (s, code = PW) => {
           assert.deepEqual(state.settings.cars[0].odo, cfg.cars[0].odo); assert.deepEqual(state.settings.journal, cfg.journal);
           assert.equal(new URL(p.url()).hash, '#section=secSeason'); assert.equal(new URL(p.url()).search, '?keep=1');
           const disk = await raw(s.c); assert(disk['twrc.vault.v2']); assert(!disk['twrc.settings.v1']); assert(!disk['twrc.cfghash']);
+          assert.equal(JSON.parse(disk['twrc.vault.v2']).v, 2, 'import de configuration sans activation v3');
           assert(!JSON.stringify(disk).includes(cfg.cars[0].name)); assert(!JSON.stringify(disk).includes(Buffer.from(JSON.stringify(cfg)).toString('base64url')));
         });
         await check(dev + ' · lien identique après modifications locales : aucune réapplication ni perte', async () => {
+          await require('./lib/journal-activation')(p);
           await p.evaluate(() => {
             S.cars[0].plan.date = '2026-12-20'; markEdit('cars.0.plan.date'); saveSettings();
             USER_STORE.state.debrief.entries.unshift({ key: 'journal-fictif-r2', at: Date.now() - 30000, how: 'auto', name: 'Retour fictif', from: 'home', to: 'work', feedback: { at: Date.now() - 10000, conditions: ['wet'], grip: 'normal' } });

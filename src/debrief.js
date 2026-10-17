@@ -3,7 +3,7 @@
  * Les états thermiques 0–4 et la confiance faible/moyenne viennent de tyreLab.
  */
 const Debrief = (() => {
-  const LIMIT = 60, RETENTION = 90 * 86400000, FORECAST_MAX_MIN = 60;
+  const LIMIT = 60, FORECAST_MAX_MIN = 60; // LIMIT concerne seulement l’affichage.
   const CONDITIONS = ['wet', 'rain', 'fog', 'snow', 'ice'];
   const LABELS = { wet: 'Chaussée humide', rain: 'Pluie', fog: 'Brume / brouillard', snow: 'Neige', ice: 'Verglas' };
   const obj = x => x && typeof x === 'object' && !Array.isArray(x);
@@ -34,26 +34,39 @@ const Debrief = (() => {
   function feedback(v, now) {
     if (!obj(v) || !time(v.at, now) || !Array.isArray(v.conditions) || v.conditions.some(k => !CONDITIONS.includes(k))) return null;
     return { at: v.at, conditions: conditions(v.conditions),
-      grip: ['normal', 'reduced', 'slip', 'unknown'].includes(v.grip) ? v.grip : 'unknown' };
+      grip: ['normal', 'reduced', 'slip', 'unknown'].includes(v.grip) ? v.grip : 'unknown',
+      ...(/^[0-9a-f]{32}$/.test(v.id || '') ? { id: v.id } : {}) };
   }
   function entry(v, now) {
-    if (!obj(v) || !key(v.key) || !time(v.at, now) || now - v.at >= RETENTION || !['auto', 'confirmé'].includes(v.how)) return null;
+    if (!obj(v) || !key(v.key) || !time(v.at, now) || !['auto', 'confirmé'].includes(v.how)) return null;
     const s = obj(v.start) && time(v.start.at, now) && v.start.at <= v.at ? start(v.start, v.at) : null;
     const end = obj(v.end) ? { thermal: thermal(v.end.thermal), km: finite(v.end.km, 0, 20000),
       kmSrc: ['route', 'estimate', 'time'].includes(v.end.kmSrc) ? v.end.kmSrc : null } : null;
     const f = feedback(v.feedback, now);
     return { key: v.key, at: v.at, how: v.how, name: text(v.name), from: text(v.from), to: text(v.to),
-      start: s && s.key === v.key ? s : null, end, feedback: f && f.at >= v.at ? f : null, deferred: v.deferred === true };
+      start: s && s.key === v.key ? s : null, end, feedback: f && f.at >= v.at ? f : null, deferred: v.deferred === true, ...(time(v.cancelledAt, now) && v.cancelledAt >= v.at ? { cancelledAt: v.cancelledAt } : {}) };
   }
   function clean(v, now = Date.now()) {
-    const seen = new Set(), entries = [];
-    const rows = obj(v) && Array.isArray(v.entries) ? v.entries : [];
-    rows.slice(0, LIMIT * 2).map(x => entry(x, now)).filter(Boolean).sort((a, b) => b.at - a.at).forEach(e => {
-      if (!seen.has(e.key) && entries.length < LIMIT) { seen.add(e.key); entries.push(e); }
-    });
+    const archive = JournalArchive.collect(v), groups = new Map();
+    for (const raw of archive.records) {
+      const e = entry(JSON.parse(raw), now); if (!e) continue;
+      const rows = groups.get(e.key) || []; rows.push(e); groups.set(e.key, rows);
+    }
+    const rank = e => [Math.max(e.at, e.feedback ? e.feedback.at : -1, e.cancelledAt || -1), e.at];
+    const compare = (a, b) => rank(b)[0] - rank(a)[0] || rank(b)[1] - rank(a)[1] || Number(!!b.cancelledAt) - Number(!!a.cancelledAt) ||
+      Number(!!b.feedback) - Number(!!a.feedback) || Number(b.deferred) - Number(a.deferred) ||
+      (JournalArchive.encode(a) < JournalArchive.encode(b) ? -1 : JournalArchive.encode(a) > JournalArchive.encode(b) ? 1 : 0);
+    const entries = [...groups.values()].map(rows => {
+      rows.sort(compare); const chosen = { ...rows[0] };
+      // La projection peut choisir un retour plus récent sans effacer la
+      // prévision d'un autre instantané. Toutes les sources restent archivées.
+      if (!chosen.start) chosen.start = rows.find(e => e.at === chosen.at && e.start)?.start || null;
+      if (!chosen.end) chosen.end = rows.find(e => e.at === chosen.at && e.end)?.end || null;
+      return chosen;
+    }).sort((a, b) => b.at - a.at || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     // Silence facultatif, uniquement jusqu'à la fin d'une journée locale ; aucune suppression d'historique.
     const quietUntil = obj(v) && Number.isFinite(v.quietUntil) && v.quietUntil > now && v.quietUntil <= now + 48 * 3600e3 ? v.quietUntil : null;
-    return { active: start(v && v.active, now), entries, quietUntil };
+    return { active: start(v && v.active, now), entries, quietUntil, archive };
   }
   function begin(v, value, now = Date.now()) {
     const state = clean(v, now), s = start(value, now);
@@ -64,18 +77,17 @@ const Debrief = (() => {
     const state = clean(v, now);
     if (!obj(value) || !key(value.key) || !['auto', 'confirmé'].includes(value.how)) return state;
     const s = state.active && state.active.key === value.key && state.active.at <= now ? state.active : null;
-    if (!state.entries.some(e => e.key === value.key)) {
+    if (!state.entries.some(e => e.key === value.key && !e.cancelledAt)) {
       const e = entry({ ...value, at: now, start: s, feedback: null, deferred: false }, now);
       if (e) state.entries.unshift(e);
     }
     if (s) state.active = null;
-    state.entries = state.entries.slice(0, LIMIT);
-    return state;
+    return clean(state, now);
   }
   function reply(v, tripKey, value, now = Date.now()) {
     const state = clean(v, now), e = state.entries.find(e => e.key === tripKey), f = feedback({ ...value, at: now }, now);
     if (e && f) { e.feedback = f; e.deferred = false; }
-    return state;
+    return clean(state, now);
   }
   function defer(v, tripKey, now = Date.now()) {
     const state = clean(v, now), e = state.entries.find(e => e.key === tripKey);
@@ -99,9 +111,10 @@ const Debrief = (() => {
     return [...suspect];
   }
   function undo(v, tripKey, now = Date.now()) {
-    const state = clean(v, now); state.entries = state.entries.filter(e => e.key !== tripKey);
+    const state = clean(v, now); // Annuler l'arrivée conserve son historique.
+    const e = state.entries.find(e => e.key === tripKey); if (e) e.cancelledAt = now;
     if (state.active && state.active.key === tripKey) state.active = null;
-    return state;
+    return clean(state, now);
   }
   function compare(e) {
     const p = e && e.start && e.start.prediction, f = e && e.feedback;
@@ -121,5 +134,5 @@ const Debrief = (() => {
     return { total: entries.length, answered: entries.filter(e => e.feedback).length,
       comparable: counts.match + counts.missed + counts.unused + counts.mixed, counts };
   }
-  return { LIMIT, RETENTION, CONDITIONS, LABELS, thermal, clean, begin, close, reply, defer, snooze, possibleDuplicates, undo, compare, stats };
+  return { LIMIT, CONDITIONS, LABELS, thermal, clean, begin, close, reply, defer, snooze, possibleDuplicates, undo, compare, stats };
 })();

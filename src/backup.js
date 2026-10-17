@@ -77,7 +77,8 @@ const Backup = (() => {
   function feedback(v) {
     return obj(v) && stamp(v.at) != null ? {
       at: v.at, conditions: Array.isArray(v.conditions) ? v.conditions.filter(x => ['wet', 'rain', 'fog', 'snow', 'ice'].includes(x)).slice(0, 5) : [],
-      grip: ['normal', 'reduced', 'slip', 'unknown'].includes(v.grip) ? v.grip : 'unknown'
+      grip: ['normal', 'reduced', 'slip', 'unknown'].includes(v.grip) ? v.grip : 'unknown',
+      ...(/^[0-9a-f]{32}$/.test(v.id || '') ? { id: v.id } : {})
     } : null;
   }
   function debriefEntry(v) {
@@ -93,10 +94,13 @@ const Backup = (() => {
     };
   }
   function debrief(v) {
-    const entries = obj(v) && Array.isArray(v.entries) ? v.entries.map(debriefEntry).filter(Boolean).slice(0, 60) : [];
-    // Un trajet actif n'est jamais restauré : il dépend du GPS et de la session appareil.
-    return { active: null, entries };
+    const archive = JournalArchive.collect(v), rows = archive.records.map(r => debriefEntry(JSON.parse(r))).filter(Boolean);
+    const clean = Debrief.clean({ entries: rows }, Number.MAX_SAFE_INTEGER);
+    // Les sources complètes sont gardées séparément par le coffre. La projection
+    // métier de sauvegarde n'emporte pas de champs GPS arbitraires.
+    return { active: null, entries: clean.entries, archive: clean.archive };
   }
+
   function done(v) {
     const out = {};
     if (!obj(v)) return out;
@@ -189,30 +193,24 @@ const Backup = (() => {
   const DERIVED_KEYS = ['twrc.trend', 'twrc.tripmap', 'twrc.croute', 'twrc.calendar.sealed.v1', 'twrc.weather.limit.v1', 'twrc.decision.latest.v1'];
   const DERIVED_PREFIXES = ['twrc.cache.', 'twrc.croute.'];
 
-  /* Journal des trajets = suivi humain (ressenti conducteur) : un import ne l'efface jamais.
-     Fusion par trajet entre la sauvegarde et ce téléphone : un retour renseigné l'emporte sur une entrée sans retour,
-     entre deux retours le plus récent ; plus récent d'abord, 60 trajets au plus (même limite que le journal). */
+  // Union cumulative : ni limite de taille métier, ni rétention, ni gagnant
+  // destructif entre deux réponses. Le choix visible reste une projection.
   function journal(a, b) {
-    const pick = (x, y) => {
-      if (!x) return y; if (!y) return x;
-      if (x.feedback && y.feedback) return y.feedback.at > x.feedback.at ? y : x;
-      if (x.feedback || y.feedback) return x.feedback ? x : y;
-      return y.at > x.at ? y : x;
-    };
-    const m = new Map();
-    [...a.entries, ...b.entries].forEach(e => m.set(e.key, pick(m.get(e.key), e)));
-    return { active: null, entries: [...m.values()].sort((x, y) => y.at - x.at).slice(0, 60) };
+    return debrief({ entries: [...a.entries, ...b.entries], archive: JournalArchive.union(a.archive, b.archive) });
   }
   const later = (a, b) => { const out = { ...a }; Object.entries(b).forEach(([k, d]) => { if (!out[k] || d.at > out[k].at) out[k] = d; }); return out; };
   // phone : état actuel du téléphone ({ context, tyreTherm, tripCancel }), facultatif
   function restorePlan(data, now = Date.now(), phone = null) {
-    if (!obj(data) || data.app !== 'twrc' || !obj(data.settings)) return null;
+    if (!obj(data) || data.app !== 'twrc' || ![1, 2].includes(data.v == null ? 1 : data.v) || !obj(data.settings)) return null;
     const settings = { ...clone(data.settings), configured: 1 };
     if ('calOrigins' in settings || obj(phone) && 'calOrigins' in phone) {
       settings.calOrigins = CalendarOrigin.merge(settings.calOrigins, phone && phone.calOrigins, now);
       settings.edits = { ...(obj(settings.edits) ? settings.edits : {}), calOrigins: 1 };
     }
-    const writes = { 'twrc.settings.v1': JSON.stringify(settings) };
+    const writes = { 'twrc.settings.v1': JSON.stringify(settings),
+      [JournalArchive.KEY]: JSON.stringify(JournalArchive.union(
+        JournalArchive.collect(data.durable && data.durable.context && data.durable.context.debrief),
+        JournalArchive.collect(phone && phone.context && phone.context.debrief))) };
     if (text(data.view, 40)) writes['twrc.view'] = data.view;
     const remove = [...CONTEXT_KEYS, ...DURABLE_KEYS, ...DERIVED_KEYS];
     const cur = obj(phone) && obj(phone.context) ? context(phone.context, now) : null;
@@ -241,5 +239,25 @@ const Backup = (() => {
     }
     return { writes, remove: [...new Set(remove.filter(k => !Object.prototype.hasOwnProperty.call(writes, k)))], removePrefixes: DERIVED_PREFIXES.slice(), kept };
   }
-  return { VERSION, make, restorePlan, context, tyreTherm, tripCancel };
+  // Récupération complète : décodage du coffre par Race Control, puis passage
+  // par le plan d'import vérifié existant. Jamais de remplacement brut du coffre.
+  function recoveryPlan(values, now, phone) {
+    const parse = (key, fallback) => values[key] == null ? fallback : JSON.parse(values[key]);
+    const archive = JournalArchive.capture(values);
+    const data = make({ settings: parse('twrc.settings.v1', parse('twrc.plain', null)),
+      context: parse('twrc.context.v1', { debrief: parse('twrc.debrief.v1', null) }),
+      tyreTherm: parse('twrc.tyretherm.v1', {}), tripCancel: parse('twrc.tripcancel', {}),
+      weather: { reports: parse('twrc.reports.v1', []), shadow: parse('twrc.shadow.v1', []) }, at: new Date(now).toISOString() });
+    const plan = restorePlan(data, now, phone);
+    if (!plan) throw new Error('Copie de récupération incomplète.');
+    const combined = JournalArchive.union(archive, JournalArchive.collect(phone && phone.context && phone.context.debrief));
+    plan.writes[JournalArchive.KEY] = JSON.stringify(combined);
+    if (plan.writes[JournalArchive.CONTEXT]) {
+      const context = JSON.parse(plan.writes[JournalArchive.CONTEXT]);
+      context.debrief.archive = combined;
+      plan.writes[JournalArchive.CONTEXT] = JSON.stringify(context);
+    }
+    return { data, plan };
+  }
+  return { VERSION, recoveryPlan, make, restorePlan, context, tyreTherm, tripCancel };
 })();
