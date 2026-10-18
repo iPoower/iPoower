@@ -206,6 +206,9 @@ let TRIPCANCEL = {}; try { TRIPCANCEL = TripCancel.load(APP_STORAGE, Date.now())
 let TRIPCANCELTIMER = null;
 // position réelle (GPS du téléphone) : reste sur l'appareil
 // @include app/user-context.js
+// @include app/tyre-evidence.js
+// @include app/tyre-intelligence.js
+// @include app/tyre-intelligence-view.js
 // @include app/trip-view.js
 // @include app/calendar-origin-editor.js
 function tripContextLocs() {
@@ -3298,7 +3301,7 @@ function renderCars() {
           <ul class="parts">${wi.parts.length ? wi.parts.map(p => `<li><span>${esc(p.label)}${p.kind === 'hazard' ? ' <span class="muted">(météo)</span>' : ''}</span><b>−${p.v}</b></li>`).join('') : '<li><span>Aucune pénalité notable</span><b>0</b></li>'}</ul>
           <p class="disc" style="margin-top:6px">Indice = 100 − moyenne (heure actuelle, pire heure des ${S.horizon} h). Les seuils de température sont des repères pratiques, pas des bascules.</p></details>`}
         <p class="disc">Indice d’aide à la décision — les conditions réelles de la route et l’état du véhicule restent déterminants.</p>
-      </div></article>`;
+      </div>${tyreIntelligenceHtml(car, 'pneus')}</article>`;
   }).join('');
   if (html === renderCars.last && el.innerHTML) return;
   const foldFocus = uxFocusKey(el);
@@ -3789,8 +3792,10 @@ function renderSettings(force) {
       ${bindIn(`cars.${i}.tire.info`, c.tire.info, { label: 'Fiche du pneu (fabrication, indices…)', wide: 1 })}
       <div class="fld"><label for="odo-${i}">Compteur actuel (km)</label><div style="display:flex;gap:6px"><input type="number" id="odo-${i}" inputmode="numeric" min="0" step="1" placeholder="${lastOdo(c) ? lastOdo(c).km : 'ex. 42150'}" style="flex:1;min-width:0"><button class="btn sm" data-act="odo" data-i="${i}">Enregistrer</button></div></div>
       <div class="fld wide"><label for="trd-${i}">Nouveau relevé de profondeur (mm)</label><div style="display:flex;gap:6px"><input type="number" id="trd-${i}" inputmode="decimal" min="0" max="12" step="0.1" placeholder="ex. 6,5" style="flex:1;min-width:0"><button class="btn sm" data-act="tread-add" data-i="${i}">Enregistrer</button></div>
-        <div style="display:flex;gap:6px;margin-top:6px"><select id="trdax-${i}" aria-label="Essieu du relevé" style="flex:1;min-width:0"><option value="both">AV + AR</option><option value="av">Avant seul</option><option value="ar">Arrière seul</option></select><select id="trdest-${i}" aria-label="Origine du relevé" style="flex:1;min-width:0"><option value="0">Mesure (jauge)</option><option value="1">Estimation</option></select></div></div>
+        <div style="display:flex;gap:6px;margin-top:6px"><select id="trdax-${i}" aria-label="Essieu du relevé" style="flex:1;min-width:0"><option value="both">AV + AR</option><option value="av">Avant seul</option><option value="ar">Arrière seul</option></select><select id="trdest-${i}" aria-label="Origine du relevé" style="flex:1;min-width:0"><option value="0">Mesure (jauge)</option><option value="1">Estimation</option></select></div>
+        <label for="trdpos-${i}">Point mesuré</label><select id="trdpos-${i}"><option value="unknown">Non précisé</option><option value="shoulders">Épaules</option><option value="centre">Centre</option><option value="inner">Intérieur</option><option value="outer">Extérieur</option></select><p class="sub">Un relevé concerne seulement les points mesurés. Pour une position précise, choisir un essieu ; les relevés restent conservés séparément.</p></div>
       ${bindIn(`cars.${i}.tire.mountKm`, c.tire.mountKm, { label: 'Compteur au montage (km)', type: 'number', num: 1, attrs: 'step="1" inputmode="numeric"' })}
+      ${bindIn(`cars.${i}.tire.pchk.av`, (c.tire.pchk || {}).av, { label: 'Pression AV réellement mesurée (bar)', type: 'number', num: 1, attrs: 'min="0" max="6" step="0.05" inputmode="decimal"' })}${bindIn(`cars.${i}.tire.pchk.ar`, (c.tire.pchk || {}).ar, { label: 'Pression AR réellement mesurée (bar)', type: 'number', num: 1, attrs: 'min="0" max="6" step="0.05" inputmode="decimal"' })}
       <div class="fld"><span class="l">Permutation AV/AR</span><button class="btn sm" data-act="rot" data-i="${i}">Permutation faite aujourd’hui</button></div>
       ${bindIn(`cars.${i}.tire.pchk.date`, (c.tire.pchk || {}).date, { label: 'Dernier contrôle pression', type: 'date' })}${bindIn(`cars.${i}.tire.pchk.T`, (c.tire.pchk || {}).T, { label: 'Température au contrôle (°C)', type: 'number', num: 1, attrs: 'step="0.5"' })}</div>
     <div class="frow"><div class="fld wide"><label for="f-cars-${i}-plan-on">Pneus hiver prévus</label><select id="f-cars-${i}-plan-on" data-bind="cars.${i}.plan.on" data-num="1"><option value="1" ${c.plan.on ? 'selected' : ''}>Oui, suivre le montage</option><option value="0" ${c.plan.on ? '' : 'selected'}>Non</option></select></div>
@@ -3972,9 +3977,13 @@ document.addEventListener('click', async e => {
     if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; }
     if (a === 'odo') { const input = $('#odo-' + i), v = parseFloat((input || {}).value); if (!isFinite(v) || v < 0) { commandFeedback(t, 'Saisis un compteur positif ou nul', input); return; } c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).slice(-60); }
     if (a === 'tread-add') { const input = $('#trd-' + i), v = parseFloat(String((input || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) { commandFeedback(t, 'Saisis une profondeur de 0 à 12 mm', input); return; } const lo = lastOdo(c);
-      const mm = Math.round(v * 10) / 10, ax = ($('#trdax-' + i) || {}).value || 'both', est = ($('#trdest-' + i) || {}).value === '1';
-      c.tire.treads = (c.tire.treads || []).concat([{ d: today, mm, km: lo ? lo.km : null, ...(ax !== 'both' ? { ax } : {}), ...(est ? { est: 1 } : {}) }]).slice(-30);
-      setTreadAxle(c.tire, ax === 'av' || ax === 'ar' ? ax : 'both', mm, est); }
+      const mm = Math.round(v * 10) / 10, ax = ($('#trdax-' + i) || {}).value || 'both', est = ($('#trdest-' + i) || {}).value === '1', pos = ($('#trdpos-' + i) || {}).value || 'unknown';
+      if ((c.tire.treads || []).length >= 30) { commandFeedback(t, 'Historique plein : aucun ancien relevé effacé. Conserve un export avant d’organiser les relevés.', input); return; }
+      if (pos !== 'unknown' && ax === 'both') { commandFeedback(t, 'Choisis avant ou arrière pour localiser ce point mesuré.', $('#trdax-' + i)); return; }
+      c.tire.treads = (c.tire.treads || []).concat([{ d: today, mm, km: lo ? lo.km : null, ax, ...(pos !== 'unknown' ? { pos } : {}), ...(est ? { est: 1 } : {}) }]);
+      const sameSession = c.tire.treads.filter(r => r.d === today && r.ax === ax && !!r.est === est);
+      const reference = pos === 'unknown' ? mm : Math.min(...sameSession.map(r => r.mm));
+      setTreadAxle(c.tire, ax === 'av' || ax === 'ar' ? ax : 'both', reference, est); }
     if (a === 'rot') { const lo = lastOdo(c); if (!lo) { t.textContent = 'Enregistre d’abord le compteur'; return; } c.tire.lastRot = lo.km; }
     saveSettings(); renderSettings(); softRender(); commandFeedback($(`#settings [data-act="${a}"][data-i="${i}"]`), 'Enregistré');
   }
@@ -3982,7 +3991,7 @@ document.addEventListener('click', async e => {
     if (!confirm('Effacer tous les retours de calibration et les corrections apprises ? Cette action est définitive.')) return;
     S.calib = []; saveSettings(); applyCalib(); rebuild(); renderSettings(); renderAll();
   }
-  else if (a === 'pchk') { const c = S.cars.find(x => x.id === t.dataset.car), m = M[UI.loc]; if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; } c.tire.pchk = { date: m ? m.nowStr.slice(0, 10) : new Date().toISOString().slice(0, 10), T: m && m.cur.T != null ? Math.round(m.cur.T * 10) / 10 : null }; saveSettings(); renderSettings(); softRender(); }
+  else if (a === 'pchk') { const c = S.cars.find(x => x.id === t.dataset.car), m = M[UI.loc]; if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; } if (c.tire.pchk && [c.tire.pchk.av, c.tire.pchk.ar].some(Number.isFinite)) { commandFeedback(t, 'Les pressions chiffrées et leur date sont conservées : actualise les valeurs mesurées et la date dans Paramètres.'); return; } c.tire.pchk = { date: m ? m.nowStr.slice(0, 10) : new Date().toISOString().slice(0, 10), T: m && m.cur.T != null ? Math.round(m.cur.T * 10) / 10 : null }; saveSettings(); renderSettings(); softRender(); }
   else if (a === 'ntfy-test') {
     try { const r = await fetch('https://ntfy.sh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: window.TWRC_NTFY, title: 'Race Control · test', message: 'Les notifications du matin arrivent bien sur ce téléphone.', tags: ['white_check_mark'], click: location.href.split('#')[0] }) });
       t.textContent = r.ok ? 'Test envoyé' : 'Échec (' + r.status + ')'; } catch (err) { t.textContent = 'Réseau indisponible'; }

@@ -152,7 +152,7 @@ function renderWx() {
   const evH = evidenceHtml(), evOn = EV_FLAG() === 'on' && /class="ev-crit/.test(evH) && d.level < 2;
   const html = (evOn ? evH + hero : hero) + hourlyHtml + (evOn ? '' : evH) + tripHtml +
     uxFold('wx-forecast', 'Prévisions détaillées', tl + matters + ph, 'Chronologie · phénomènes') +
-    uxFold('wx-road', 'Conditions route', road, r.score == null ? 'INDISPONIBLE · données insuffisantes' : r.score + '/100 · ' + ['faible', 'modéré', 'élevé', 'critique'][r.level]) + foot;
+    uxFold('wx-road', 'Conditions route', road, r.score == null ? 'INDISPONIBLE · données insuffisantes' : r.score + '/100 · ' + ['faible', 'modéré', 'élevé', 'critique'][r.level]) + tyreIntelligenceHtml(appActiveCar(), 'meteo') + foot;
   if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
   const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
   const hourlyTrack = el.querySelector('.wx-hours-track'), hourlyLeft = hourlyTrack ? hourlyTrack.scrollLeft : 0;
