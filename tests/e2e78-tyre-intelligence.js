@@ -68,7 +68,7 @@ let count = 0;
       const roveloText = await page.locator('#secCars .ti-panel').nth(1).textContent();
       assert.match(roveloText, /Données d’essais insuffisantes/);
       assert.match(roveloText, /Essais indisponibles/);
-      assert.match(roveloText, /Analyse limitée/);
+      assert.match(roveloText, /Vigilance/); // pluie prévue : la vigilance garde sa priorité sur les données manquantes
       count++; console.log('✅ ' + device + ' · monte exacte, essais différents, mesures et projet non monté');
       for (const [view, selector] of [['meteo', '#secWx'], ['analyse', '#secLab'], ['trajet', '#secTrip']]) {
         await tab(view); const p = page.locator(selector + ' .ti-panel').first();
