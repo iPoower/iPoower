@@ -135,6 +135,8 @@ const TyreIntelligence = (() => {
     }
     if (active && fresh && frost.length) rule('cold-context', 'Vigilance', 'Températures proches du gel ou négatives dans les prévisions : vérifier les conditions locales. Le gel de la chaussée n’est pas établi par la seule température de l’air.',
       { points: frost.map(x => ({ t: x.t, airC: num(x.T) ? x.T : null, roadEstimatedC: num(x.Tr) ? x.Tr : null })) }, [{ kind: 'weather', source: weather.source || null, date: weather.fetchedAt || null }], ['Aucun seuil universel de perte d’adhérence à 7 °C.', 'Comportement au froid propre au modèle non déterminé hors essais documentés.']);
+    if (active && !facts.current.length) rule('depth-missing', 'Données insuffisantes', 'Aucune profondeur de sculpture renseignée pour la monte active : mesurer les rainures et préciser leur portée.',
+      { readings: [] }, [{ kind: 'user', date: null }], ['Une absence de mesure ne permet aucune conclusion sur la conformité des pneus.']);
     if (facts.current.some(x => x.ageDays === null || x.ageDays > 60 || x.ageDays < 0)) rule('depth-age', 'Données insuffisantes', 'Mesure de sculpture ancienne ou date non vérifiable : les valeurs affichées ne sont pas une observation en temps réel.',
       { readings: facts.current }, [{ kind: 'user', date: null }]);
     if (!pressure.recent || pressure.av === null || pressure.ar === null) rule('pressure-check', 'Données insuffisantes', 'Pression réelle récente non documentée pour les deux essieux : contrôler à froid. La cible recommandée n’est pas une mesure.',
@@ -172,9 +174,24 @@ const TyreIntelligence = (() => {
     const planModel = car.plan && car.plan.on ? model(c, car.plan) : null;
     const planned = planModel ? { model: planModel, size: car.plan.size || null, status: 'planned', tests: c.tests.filter(x => x.modelId === planModel.id).map(test => ({ test, comparison: comparable(car.plan, test, c) })) } : null;
     const qualities = rows.map(x => x.comparison.quality), quality = conflicts.length ? 'faible' : qualities.includes('élevée') ? 'élevée' : qualities.includes('moyenne') ? 'moyenne' : qualities.length ? 'faible' : 'indisponible';
+    // Synthèse indépendante : une mesure manquante ne transforme pas un essai publié en essai absent.
+    // Les règles de risque et de vigilance restent prioritaires, même lorsque les preuves sont indirectes.
+    const measurementRuleIds = rules.filter(x => ['depth-missing', 'depth-age', 'pressure-check'].includes(x.id)).map(x => x.id);
+    const weatherMissing = rules.some(x => x.id === 'weather-missing');
+    const risk = rules.some(x => x.state === 'Risque documenté'), caution = rules.some(x => x.state === 'Vigilance');
+    const overview = {
+      safety: risk ? 'Risque documenté' : caution ? 'Vigilance' : weatherMissing || !active ? 'Évaluation limitée' : 'Aucune alerte déclenchée',
+      evidence: !active ? 'Monte active non confirmée' : conflicts.length ? 'Essais contradictoires' : !rows.length ? 'Essais indisponibles' :
+        rows.some(x => x.comparison.kind === 'exact') ? 'Preuves directes pour la monte' : 'Essais du même modèle, non directement transposables',
+      measurements: measurementRuleIds.length ? `À vérifier (${measurementRuleIds.length})` : 'Aucune lacune détectée',
+      weather: weatherMissing ? 'Contexte à vérifier' : 'Prévisions récentes',
+      measurementRuleIds
+    };
+    const status = risk ? 'Risque documenté' : caution ? 'Vigilance' :
+      measurementRuleIds.length || weatherMissing || !rows.length || conflicts.length || !active ? 'Analyse limitée' : 'Information';
     return { schemaVersion: SCHEMA, catalogRevision: c.revision, reviewedOn: c.reviewedOn, active, model: m, title: [t.brand, t.model].filter(Boolean).join(' ') || 'Modèle non renseigné', size: t.size || null,
-      facts, pressure, dot: t.dot || null, weather: wx, tests: rows, facets, rules, conflicts, planned, quality,
-      qualityReasons: [...new Set(rows.flatMap(x => x.comparison.reasons))], status: rules.some(x => x.state === 'Risque documenté') ? 'Risque documenté' : rules.some(x => x.state === 'Vigilance') ? 'Vigilance' : rules.some(x => x.state === 'Données insuffisantes') ? 'Données insuffisantes' : 'Information' };
+      facts, pressure, dot: t.dot || null, weather: wx, tests: rows, facets, rules, conflicts, planned, quality, overview,
+      qualityReasons: [...new Set(rows.flatMap(x => x.comparison.reasons))], status };
   }
   return Object.freeze({ SCHEMA, FACETS, validate, model, size, comparable, readings, analyse });
 })();

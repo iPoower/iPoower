@@ -49,9 +49,18 @@ function tyreIntelligenceHtml(car, mode = 'pneus', trip = null) {
     <p class="sub">Pression recommandée : ${esc(r.pressure.target || 'inconnue')} · contrôle ${esc(r.pressure.date || 'non daté')} · mesure AV ${n(r.pressure.av)} / AR ${n(r.pressure.ar)} bar · DOT saisi ${esc(r.dot || 'inconnu')} (portée non établie pour les quatre roues).</p></div>`;
   const shortFacets = r.facets.filter(f => ['dryBraking', 'wetBraking', 'aquaLongitudinal', 'aquaLateral', 'cold'].includes(f.id)).map(f => `<li><b>${esc(f.label)}</b> : ${f.results.length ? f.results.map(x => `${n(x.metric.value)} ${esc(x.metric.unit)} · ${esc(x.test.source.organisation)} ${x.test.source.year} · ${esc(x.test.size)}${x.metric.rank !== null ? ' · ' + x.metric.rank + '/' + x.metric.count + ' dans cet essai' : ''}`).join(' ; ') : unknown}</li>`).join('');
   const planned = r.planned ? `<details class="ti-planned" data-k="ti-plan"><summary>Prévu · ${esc(r.planned.model.brand + ' ' + r.planned.model.model)} · NON MONTÉ</summary><p>${esc(r.planned.size || 'dimension inconnue')} · ce projet ne participe pas aux recommandations de la monte active.</p>${r.planned.tests.map(testHtml).join('')}</details>` : '';
+  // Les quatre axes sont indépendants ; aucun statut ne garantit la sécurité de la route.
+  const synthesis = `<div class="ti-synthesis" role="group" aria-label="Synthèse des alertes et limites">
+    <p class="sub"><b>Alertes de sécurité :</b> ${esc(r.overview.safety)}</p>
+    <p class="sub"><b>Essais disponibles :</b> ${esc(r.overview.evidence)}</p>
+    <p class="sub"><b>Mesures du véhicule :</b> ${esc(r.overview.measurements)}</p>
+    <p class="sub"><b>Météo :</b> ${esc(r.overview.weather)}</p>
+    <p class="sub">Absence d’alerte ne signifie pas absence de risque ; pression, usure et état de la chaussée ne sont pas mesurés en continu.</p>
+  </div>`;
   const full = mode === 'analyse' || mode === 'pneus';
   return `<details class="ti-panel" data-ux="ti-${esc(mode)}-${esc(car.id)}" data-ti-car="${esc(car.id)}" data-ti-mode="${esc(mode)}" aria-label="Intelligence pneumatique"><summary><strong>Intelligence pneumatique</strong> · ${esc(r.title)} · <span class="ti-state">${esc(r.status)}</span></summary><div class="ti-body">
     <p><b>${esc(r.title)}</b> · ${esc(r.size || 'dimension inconnue')} · ${r.active ? 'monte active déclarée' : 'aucune monte active'}</p>
+    ${synthesis}
     <p class="sub">Qualité des preuves pour cette monte : <b>${esc(r.quality)}</b>. ${esc(r.qualityReasons.join(' '))}</p>
     ${full ? `<ul class="ti-profile">${shortFacets}</ul>` : ''}${weather}${rules}
     ${full ? facts + (r.tests.length ? `<details data-k="ti-evidence"${mode === 'analyse' ? ' open' : ''}><summary>Essais et protocoles · ${r.tests.length}</summary><p class="sub">Valeurs originales : aucune comparaison directe entre essais, aucune moyenne de classements. Les vitesses d’aquaplaning sont propres à l’essai et ne constituent pas des vitesses sûres de circulation.</p>${r.tests.map(testHtml).join('')}</details>` : '<p>Données d’essais insuffisantes.</p>') + planned : ''}

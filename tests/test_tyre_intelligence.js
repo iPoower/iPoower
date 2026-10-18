@@ -87,6 +87,39 @@ check('risque documenté limité à une sculpture effectivement mesurée, jamais
   assert.equal(analyse(input(tire({ treadAv: 1.2 }))).status, 'Risque documenté');
   assert.notEqual(analyse(input(tire({ treadAv: 1.2, treadEst: 1 }))).status, 'Risque documenté');
 });
+check('synthèse V1.1 : preuve indirecte, mesures datées et absence d’alerte sans faux feu vert', () => {
+  const dry = weather({ samples: [{ t: '2026-10-18T10:00', T: 17, Tr: 18, P: 0, Pl: 0 }] });
+  const r = analyse(input(tire({ pchk: { date: '2026-10-17', av: 2.3, ar: 2.4 } }), dry));
+  assert.equal(r.overview.evidence, 'Essais du même modèle, non directement transposables');
+  assert.equal(r.overview.measurements, 'Aucune lacune détectée');
+  assert.equal(r.overview.safety, 'Aucune alerte déclenchée');
+  assert.equal(r.status, 'Information');
+  assert.equal(r.quality, 'faible');
+});
+check('synthèse V1.1 : Rovelo sans essai, dates inconnues et pression non mesurée restent séparés', () => {
+  const t = tire({ brand: 'Rovelo', model: 'RPX988', size: '225/45 R17 94W', treadAv: 4.6, treadAr: 6.5,
+    treads: [], pchk: { date: '2026-10-18' } });
+  const before = JSON.stringify(t), r = analyse(input(t, weather({ samples: [{ t: '2026-10-18T10:00', T: 15, P: 0 }] })));
+  assert.equal(JSON.stringify(t), before);
+  assert.equal(r.quality, 'indisponible'); assert.equal(r.overview.evidence, 'Essais indisponibles');
+  assert.equal(r.status, 'Analyse limitée');
+  assert.equal(r.overview.safety, 'Aucune alerte déclenchée');
+  assert.deepEqual(r.overview.measurementRuleIds.sort(), ['depth-age', 'pressure-check']);
+  assert(r.facts.current.every(x => x.date === null));
+  assert.equal(r.pressure.date, '2026-10-18'); assert.equal(r.pressure.av, null); assert.equal(r.pressure.ar, null);
+});
+check('synthèse V1.1 : risque mesuré prioritaire et météo absente jamais rassurante', () => {
+  const dry = weather({ samples: [{ t: '2026-10-18T10:00', T: 15, P: 0 }] });
+  const critical = analyse(input(tire({ treadAv: 1.2, treads: [] }), dry));
+  assert.equal(critical.overview.safety, 'Risque documenté'); assert.equal(critical.status, 'Risque documenté');
+  assert(critical.overview.measurementRuleIds.includes('depth-age'));
+  const stale = analyse(input(tire(), weather({ samples: [], ageMin: 75 })));
+  assert.equal(stale.overview.safety, 'Évaluation limitée'); assert.equal(stale.status, 'Analyse limitée');
+  assert.equal(stale.overview.weather, 'Contexte à vérifier');
+  const unknown = analyse(input(tire({ treadAv: null, treadAr: null, tread: null, treads: [] }), dry));
+  assert(unknown.overview.measurementRuleIds.includes('depth-missing'));
+  assert(!unknown.rules.some(x => x.id === 'critical-depth'));
+});
 check('protocoles ADAC asphalt/béton et Tyre Reviews distincts ; aucun classement global', () => {
   const r = analyse(input(tire({ type: 'winter', brand: 'Goodyear', model: 'UltraGrip Performance 3' })));
   const wet = r.facets.find(x => x.id === 'wetBraking'); assert.equal(wet.results.length, 3); assert.equal(new Set(wet.results.map(x => x.metric.protocol)).size, 3);
