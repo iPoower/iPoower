@@ -62,8 +62,13 @@ let count = 0;
       await tab('pneus');
       const panel = page.locator('#secCars .ti-panel').first();
       const tyreText = await panel.textContent(); assert.match(tyreText, /Pilot Sport 4S/); assert.match(tyreText, /dimension différente/); assert.match(tyreText, /épaules/); assert.match(tyreText, /centre/); assert.match(tyreText, /NON MONTÉ/);
+      assert.match(tyreText, /Alertes de sécurité/); assert.match(tyreText, /Essais du même modèle, non directement transposables/);
+      assert.match(tyreText, /Mesures du véhicule/);
       assert.equal(await panel.locator('img').count(), 0);
-      assert.match(await page.locator('#secCars .ti-panel').nth(1).textContent(), /Données d’essais insuffisantes/);
+      const roveloText = await page.locator('#secCars .ti-panel').nth(1).textContent();
+      assert.match(roveloText, /Données d’essais insuffisantes/);
+      assert.match(roveloText, /Essais indisponibles/);
+      assert.match(roveloText, /Analyse limitée/);
       count++; console.log('✅ ' + device + ' · monte exacte, essais différents, mesures et projet non monté');
       for (const [view, selector] of [['meteo', '#secWx'], ['analyse', '#secLab'], ['trajet', '#secTrip']]) {
         await tab(view); const p = page.locator(selector + ' .ti-panel').first();
