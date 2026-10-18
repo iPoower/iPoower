@@ -1,0 +1,496 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ipoower.github.io/iPoower/schemas/tyreTestEvidence.v1.schema.json",
+  "title": "Race Control — public tyre test evidence V1",
+  "$comment": "Les contraintes relationnelles (identités, unités par discipline, ordre des vitesses et rang <= effectif) sont en plus contrôlées par TyreIntelligence.validate.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "revision",
+    "reviewedOn",
+    "models",
+    "tests"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "reviewedOn": {
+      "type": "string",
+      "format": "date"
+    },
+    "models": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "brand",
+          "model",
+          "aliases",
+          "type",
+          "gap"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "brand": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "aliases": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "maxLength": 150
+            }
+          },
+          "type": {
+            "enum": [
+              "summer",
+              "winter",
+              "allseason"
+            ]
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "maxLength": 500
+              }
+            ]
+          }
+        }
+      }
+    },
+    "tests": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "testId",
+          "modelId",
+          "size",
+          "variant",
+          "loadIndex",
+          "speedIndex",
+          "xl",
+          "homologation",
+          "tyreState",
+          "treadMm",
+          "airC",
+          "roadC",
+          "track",
+          "source",
+          "vehicle",
+          "metrics",
+          "limitations"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "testId": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "modelId": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "size": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "maxLength": 240
+              }
+            ]
+          },
+          "loadIndex": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "integer",
+                "minimum": 40,
+                "maximum": 150
+              }
+            ]
+          },
+          "speedIndex": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "pattern": "^[A-Z]$"
+              }
+            ]
+          },
+          "xl": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "homologation": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "maxLength": 240
+              }
+            ]
+          },
+          "tyreState": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "enum": [
+                  "new",
+                  "worn",
+                  "other"
+                ]
+              }
+            ]
+          },
+          "treadMm": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 20
+              }
+            ]
+          },
+          "airC": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number",
+                "minimum": -80,
+                "maximum": 100
+              }
+            ]
+          },
+          "roadC": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "number",
+                "minimum": -80,
+                "maximum": 100
+              }
+            ]
+          },
+          "track": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "maxLength": 240
+              }
+            ]
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "organisation",
+              "url",
+              "primary",
+              "year",
+              "publishedOn",
+              "checkedOn"
+            ],
+            "properties": {
+              "organisation": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "url": {
+                "type": "string",
+                "maxLength": 1200,
+                "pattern": "^https://www\\.(adac\\.de|tyrereviews\\.com|autobild\\.de|oeamtc\\.at|tcs\\.ch)/"
+              },
+              "primary": {
+                "const": true
+              },
+              "year": {
+                "type": "integer",
+                "minimum": 1980,
+                "maximum": 2200
+              },
+              "publishedOn": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "string",
+                    "format": "date"
+                  }
+                ]
+              },
+              "checkedOn": {
+                "type": "string",
+                "format": "date"
+              }
+            }
+          },
+          "vehicle": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "maxLength": 240
+              }
+            ]
+          },
+          "metrics": {
+            "type": "array",
+            "maxItems": 40,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "value",
+                "unit",
+                "rank",
+                "count",
+                "protocol",
+                "startKmh",
+                "endKmh",
+                "temperatureC",
+                "temperatureKind",
+                "surface",
+                "waterMm",
+                "kind"
+              ],
+              "properties": {
+                "id": {
+                  "enum": [
+                    "dryBraking",
+                    "wetBraking",
+                    "dryHandling",
+                    "wetHandling",
+                    "aquaLongitudinal",
+                    "aquaLateral",
+                    "cold",
+                    "noise",
+                    "comfort",
+                    "rollingResistance",
+                    "wear",
+                    "snowBraking"
+                  ]
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1000000
+                    }
+                  ]
+                },
+                "unit": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "enum": [
+                        "m",
+                        "s",
+                        "km/h",
+                        "m/s²",
+                        "dB",
+                        "points",
+                        "kg/t",
+                        "km"
+                      ]
+                    }
+                  ]
+                },
+                "rank": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    }
+                  ]
+                },
+                "count": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000
+                    }
+                  ]
+                },
+                "protocol": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "startKmh": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 400
+                    }
+                  ]
+                },
+                "endKmh": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 400
+                    }
+                  ]
+                },
+                "temperatureC": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "array",
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "items": {
+                        "type": "number",
+                        "minimum": -80,
+                        "maximum": 100
+                      }
+                    }
+                  ]
+                },
+                "temperatureKind": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "enum": [
+                        "air",
+                        "road",
+                        "unspecified"
+                      ]
+                    }
+                  ]
+                },
+                "surface": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "string",
+                      "maxLength": 80
+                    }
+                  ]
+                },
+                "waterMm": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                    }
+                  ]
+                },
+                "kind": {
+                  "enum": [
+                    "measured",
+                    "subjective",
+                    "projection"
+                  ]
+                }
+              }
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "maxLength": 600
+            }
+          }
+        }
+      }
+    }
+  }
+}
