@@ -5,8 +5,14 @@ function tyreIntelligenceInput(car, trip = null) {
   const samples = projected ? projected.filter(p => p.x).map(p => ({ ...p.x, t: p.t }))
     : m && m.nowI >= 0 ? m.hs.slice(m.nowI, m.nowI + 7) : [];
   // Les séries horaires sont partagées par référence avec les modèles déjà chargés : aucune requête ni position copiée.
-  const models = projected ? projected.map(p => [ ...Object.values(M), ...Object.values(MIDM), ...Object.values(CALM).map(x => x && x.m), ...Object.values(LEGM).flatMap(x => x && x.models || []) ].find(x => x && x.hs === p.hs)) : [];
-  const stamps = models.map(x => x && x.retrievedAt);
+  const stamp = p => {
+    for (const [id, x] of Object.entries(M)) if (x && x.hs === p.hs) return RAW[id] && RAW[id].t;
+    for (const [id, x] of Object.entries(MIDM)) if (x && x.hs === p.hs) return MIDP[id] && MIDP[id].t;
+    for (const x of Object.values(CALM)) if (x && x.m && x.m.hs === p.hs) return x.t;
+    for (const x of Object.values(LEGM)) if (x && x.models && x.models.some(m => m && m.hs === p.hs)) return x.t;
+    return null;
+  };
+  const stamps = projected ? projected.map(stamp) : [];
   const fetched = projected ? stamps.length && stamps.every(Number.isFinite) ? Math.min(...stamps) : null : raw && Number.isFinite(raw.t) ? raw.t : null;
   return { car, today, weather: { samples, ageMin: DEMO.on ? 0 : Number.isFinite(fetched) ? Reliability.ageMin(fetched) : null,
     source: DEMO.on ? 'Démonstration simulée' : 'Open-Meteo · prévisions déjà chargées',
@@ -15,7 +21,9 @@ function tyreIntelligenceInput(car, trip = null) {
 }
 function tyreIntelligenceHtml(car, mode = 'pneus', trip = null) {
   if (!car) return '';
-  const r = TyreIntelligence.analyse(tyreIntelligenceInput(car, trip));
+  const input = tyreIntelligenceInput(car, trip);
+  if (mode === 'trajet' && !trip) input.weather = { ...input.weather, samples: [], ageMin: null, scope: 'Prévisions du parcours indisponibles · confirmer le trajet pour les analyser' };
+  const r = TyreIntelligence.analyse(input);
   const n = v => v == null ? 'non renseigné' : String(v).replace('.', ','), unknown = 'Données indisponibles';
   const comparison = { exact: 'Dimension et variante identiques', 'same-model': 'Même modèle, dimension différente', indirect: 'Comparabilité partielle', insufficient: 'Données insuffisantes' };
   const ax = { av: 'Avant', ar: 'Arrière', both: 'Deux essieux déclarés', unknown: 'Portée non précisée' };

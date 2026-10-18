@@ -99,6 +99,7 @@ function renderTripView() {
     : `<div class="trip-route-state old"><b>${route.offline ? 'Hors connexion' : 'Calcul en cours'}</b><span>${route.offline ? 'Départ, destination, véhicule et horaire sont conservés. La route sera recalculée au retour du réseau.' : 'OSRM et la météo de route se préparent.'}</span></div>` : '';
   const selectedDest = dest ? `<div class="trip-selected"><b>✓ ${esc(dest.name)}</b><span>${esc(dest.address || dest.sub || '')}</span>${dest.provider ? `<small>${esc(dest.provider)}${dest.precision ? ' · ' + esc(dest.precision) : ''}</small>` : ''}</div>` : '';
   const dep = tripDepartureValue(), immediate = TRIP_FORM.when === 'now';
+  const intelligence = tyreIntelligenceHtml(S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar(), 'trajet', CX && wxTrips(CX.m).find(t => current && t.id === current.tripKey) || null);
   const html = `<div class="mod-h"><h2>🧭 TRAJET</h2><span class="src obs">contexte partagé Race Control</span></div>
     <div class="trip-form">
       <div class="trip-field"><span class="trip-label">Départ</span><div class="trip-origin-head"><b>${origin ? esc(origin.name) : 'Origine à choisir'}</b><span>${TRIP_FORM.originMode === rec.mode ? 'proposé par le contexte' : 'choisi'}</span></div>
@@ -117,14 +118,16 @@ function renderTripView() {
       ${TRIP_FORM.message ? `<p class="trip-message" role="status">${esc(TRIP_FORM.message)}</p>` : ''}${routeLine}
       <div class="trip-actions"><button class="btn pri trip-main" data-act="trip-plan">${immediate ? 'DÉMARRER LE TRAJET' : existing ? 'METTRE À JOUR LE TRAJET' : 'PROGRAMMER LE TRAJET'}</button>
       ${existing ? '<button class="btn" data-act="trip-plan-cancel">Annuler le trajet</button>' : ''}</div>
-    </div>${tyreIntelligenceHtml(S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar(), 'trajet', CX && wxTrips(CX.m).find(t => current && t.id === current.tripKey) || null)}`;
+    </div><div class="trip-intelligence">${intelligence}</div>`;
   // Les mises à jour de la route ne doivent pas détacher les commandes pendant un appui,
   // ni remplacer les champs lorsqu'aucune valeur du formulaire n'a changé.
-  const controlsHTML = html.replace(routeLine, '');
+  const controlsHTML = html.replace(routeLine, '').replace(intelligence, '');
   if (el._tripControlsHTML === controlsHTML && el.querySelector('.trip-form')) {
     const previous = el.querySelector('.trip-route-state');
     if (previous) { if (previous.outerHTML !== routeLine) previous.outerHTML = routeLine; }
     else if (routeLine) el.querySelector('.trip-actions').insertAdjacentHTML('beforebegin', routeLine);
+    const panel = el.querySelector('.trip-intelligence');
+    if (panel && panel.innerHTML !== intelligence) { const focus = uxFocusKey(panel); panel.innerHTML = intelligence; uxRestoreFocus(panel, focus); }
   } else {
     const active = document.activeElement;
     const focus = active && el.contains(active) && active.id ? { id: active.id, start: active.selectionStart, end: active.selectionEnd, direction: active.selectionDirection } : null;
@@ -135,6 +138,7 @@ function renderTripView() {
       if (Number.isInteger(focus.start) && typeof next.setSelectionRange === 'function') next.setSelectionRange(focus.start, focus.end, focus.direction || 'none');
     }
   }
+  const panel = el.querySelector('.trip-intelligence'); if (panel) uxRestoreFocus(panel, null);
   el._tripControlsHTML = controlsHTML;
 }
 function renderTripSummary() {

@@ -88,14 +88,15 @@ const TyreIntelligence = (() => {
   }
   const age = (d, now) => date(d) && date(now) ? Math.floor((Date.parse(now) - Date.parse(d)) / 864e5) : null;
   function readings(tire, today) {
-    const history = (tire.treads || []).filter(r => obj(r) && range(r.mm, 0, 20)).map((r, i) => ({
-      id: 'history-' + i, mm: r.mm, date: date(r.d) ? r.d : null, ageDays: age(r.d, today), axle: r.ax || 'unknown',
+    const mm = v => num(v) ? v : typeof v === 'string' && /^\d+(?:[.,]\d+)?$/.test(v.trim()) ? Number(v.trim().replace(',', '.')) : NaN;
+    const history = (Array.isArray(tire.treads) ? tire.treads : []).filter(r => obj(r) && range(mm(r.mm), 0, 20)).map((r, i) => ({
+      id: 'history-' + i, mm: mm(r.mm), date: date(r.d) ? r.d : null, ageDays: age(r.d, today), axle: r.ax || 'unknown',
       position: r.pos || 'unknown', wheel: r.wheel || null, estimated: !!r.est, source: r.est ? 'USER_ESTIMATED' : 'USER_MEASURED', km: num(r.km) ? r.km : null
     }));
     // Pas de profondeur arrière copiée à l'avant. L'ancien scalaire est affiché une seule fois, portée inconnue.
-    const current = ['Av', 'Ar'].some(k => range(tire['tread' + k], 0, 20))
-      ? ['Av', 'Ar'].filter(k => range(tire['tread' + k], 0, 20)).map(k => ({ axle: k === 'Av' ? 'av' : 'ar', mm: tire['tread' + k] }))
-      : range(tire.tread, 0, 20) ? [{ axle: 'unknown', mm: tire.tread }] : [];
+    const current = ['Av', 'Ar'].some(k => range(mm(tire['tread' + k]), 0, 20))
+      ? ['Av', 'Ar'].filter(k => range(mm(tire['tread' + k]), 0, 20)).map(k => ({ axle: k === 'Av' ? 'av' : 'ar', mm: mm(tire['tread' + k]) }))
+      : range(mm(tire.tread), 0, 20) ? [{ axle: 'unknown', mm: mm(tire.tread) }] : [];
     for (const c of current) {
       const match = history.filter(h => (h.axle === c.axle || h.axle === 'both') && h.mm === c.mm && h.estimated === !!tire.treadEst && h.ageDays !== null && h.ageDays >= 0).sort((a, b) => b.date.localeCompare(a.date))[0];
       Object.assign(c, { date: match ? match.date : null, ageDays: match ? match.ageDays : null, estimated: !!tire.treadEst, position: 'unknown', source: tire.treadEst ? 'USER_ESTIMATED' : 'USER_MEASURED' });
@@ -114,7 +115,7 @@ const TyreIntelligence = (() => {
     const weather = input.weather || {}, samples = Array.isArray(weather.samples) ? weather.samples : [];
     const fresh = num(weather.ageMin) && weather.ageMin >= 0 && weather.ageMin <= 60;
     const valid = samples.filter(x => obj(x) && typeof x.t === 'string' && x.t.length >= 16 && (num(x.T) || num(x.P) || num(x.Pl) || num(x.snow) || num(x.Tr)));
-    const wet = valid.filter(x => (num(x.Pl) ? x.Pl : num(x.P) ? x.P : 0) > 0 || (num(x.snow) && x.snow > 0));
+    const wet = valid.filter(x => (num(x.Pl) ? x.Pl : num(x.P) ? x.P : 0) > 0);
     const frost = valid.filter(x => num(x.T) && x.T <= 0 || num(x.Tr) && x.Tr <= 0);
     const wx = { ...weather, samples: valid, fresh, rainPossible: wet.length > 0, frostPossible: frost.length > 0, roadState: 'unknown' };
     const rules = [];
@@ -141,9 +142,31 @@ const TyreIntelligence = (() => {
     if (active && facts.min !== null && facts.current.some(x => !x.estimated && x.mm < 1.6)) rule('critical-depth', 'Risque documenté', 'Sculpture mesurée sous 1,6 mm : faire remplacer les pneus concernés avant de circuler.',
       { readings: facts.current.filter(x => !x.estimated && x.mm < 1.6), thresholdMm: 1.6 }, [{ kind: 'user', date: facts.current.find(x => !x.estimated && x.mm < 1.6).date }], ['Portée limitée aux points mesurés ; les autres points peuvent être plus usés.']);
     const facets = Object.entries(FACETS).map(([id, [label]]) => ({ id, label, results: rows.flatMap(({ test, comparison }) => test.metrics.filter(x => x.id === id && x.value !== null).map(metric => ({ test, metric, comparison }))) }));
+    // La météo sélectionne les disciplines pertinentes DU modèle, sans extrapoler leurs valeurs au véhicule.
+    if (active && fresh && wet.length) {
+      const missing = [];
+      for (const f of facets.filter(x => ['wetBraking', 'aquaLongitudinal', 'aquaLateral'].includes(x.id))) {
+        if (!f.results.length) { missing.push(f.label); continue; }
+        rule('rain-evidence-' + f.id, 'Information', `${f.label} documenté pour ce modèle : ${f.results.map(x => `${String(x.metric.value).replace('.', ',')} ${x.metric.unit} · ${x.test.source.organisation} ${x.test.source.year} · ${x.test.size}`).join(' ; ')}. Valeurs historiques du protocole, non prédictions pour ce véhicule.`,
+          { forecastTimes: wet.map(x => x.t), evidence: f.results.map(x => ({ testId: x.test.testId, value: x.metric.value, unit: x.metric.unit, protocol: x.metric.protocol, comparison: x.comparison.kind, quality: x.comparison.quality })) },
+          f.results.map(x => ({ kind: 'published', url: x.test.source.url, date: x.test.source.publishedOn })),
+          ['Aucune conversion selon la profondeur actuelle ; consulter dimension, variante et conditions de chaque essai.']);
+      }
+      if (missing.length) rule('rain-evidence-gap', 'Données insuffisantes', 'Preuves manquantes pour ce modèle : ' + missing.join(', ') + '. Une discipline ne remplace pas les autres.', { missing, forecastTimes: wet.map(x => x.t) }, evidenceSources);
+    }
+    if (active && fresh && frost.length && !facets.find(x => x.id === 'cold').results.length) rule('cold-evidence-gap', 'Données insuffisantes', 'Les essais disponibles ne caractérisent pas le freinage de ce modèle au froid dans les conditions prévues.',
+      { airC: frost.map(x => x.T ?? null), roadEstimatedC: frost.map(x => x.Tr ?? null) }, evidenceSources, ['Ne pas assimiler un essai sec à 8–9 °C à un essai sur chaussée froide et mouillée.']);
+    const pressureTargets = /([0-9]+(?:[.,][0-9]+)?)\s*(?:bar\s*)?AV\b[^]*?([0-9]+(?:[.,][0-9]+)?)\s*(?:bar\s*)?AR\b/i.exec(String(t.press || ''));
+    const below = pressureTargets && pressure.recent ? ['av', 'ar'].filter((k, i) => pressure[k] !== null && pressure[k] < Number(pressureTargets[i + 1].replace(',', '.'))) : [];
+    if (active && below && below.length) rule('pressure-target-gap', 'Vigilance', 'Une pression mesurée est inférieure à la cible saisie : vérifier à froid selon la plaque et la charge du véhicule.',
+      { axles: below, pressure, targetText: t.press }, [{ kind: 'user', date: pressure.date }], ['Température, charge et précision du manomètre peuvent limiter cette comparaison ; aucune adhérence calculée.']);
+    if (active && pressure.recent && [pressure.av, pressure.ar].some(x => x === 0)) rule('zero-pressure', 'Risque documenté', 'Le dernier contrôle consigne une pression de 0 bar : vérifier la mesure et faire intervenir un professionnel avant de circuler.',
+      { pressure }, [{ kind: 'user', date: pressure.date }], ['Il s’agit du contrôle daté saisi, sans capteur temps réel.']);
     // Valeurs contradictoires pour le MÊME essai et protocole : aucune moyenne ni choix silencieux.
     const conflicts = [];
-    for (const f of facets) { const groups = new Map(); for (const r of f.results) { const key = [r.test.testId, r.test.size, r.metric.protocol, r.metric.unit].join('|'); const a = groups.get(key) || []; a.push(r); groups.set(key, a); }
+    for (const f of facets) { const groups = new Map(); for (const r of f.results) { const t = r.test, m = r.metric;
+      const key = JSON.stringify([t.testId, t.size, t.variant, t.loadIndex, t.speedIndex, t.xl, t.homologation, t.vehicle, t.airC, t.roadC, t.tyreState, t.treadMm, m.protocol, m.unit, m.startKmh, m.endKmh, m.temperatureC, m.temperatureKind, m.surface, m.waterMm]);
+      const a = groups.get(key) || []; a.push(r); groups.set(key, a); }
       for (const a of groups.values()) if (new Set(a.map(x => x.metric.value)).size > 1) conflicts.push({ facet: f.id, tests: a.map(x => x.test.id) }); }
     if (conflicts.length) rule('source-conflict', 'Données insuffisantes', 'Sources contradictoires pour un même protocole : résultats conservés séparément, conclusion suspendue.', { conflicts }, evidenceSources);
     const planModel = car.plan && car.plan.on ? model(c, car.plan) : null;

@@ -35,7 +35,7 @@ Extension optionnelle `tire.treads[].pos` : `unknown`, `shoulders`, `centre`, `i
 
 La pression cible reste distincte des champs optionnels `pchk.av` et `pchk.ar`, réellement mesurés. Une date de contrôle seule ne suffit pas à prouver ces valeurs. `variant` et `homologation` sont des chaînes optionnelles, sans inférence depuis un nom commercial.
 
-`ConfigImport` autorise strictement ces extensions et refuse position, roue, valeur ou champ inconnus. Les anciens JSON restent acceptés par la nouvelle version ; la sauvegarde native conserve ses versions et enveloppes existantes. La nouvelle structure est transportée par le même coffre chiffré et les mêmes fonctions de copie. Un ancien logiciel à liste fermée peut refuser les nouveaux champs : mettre l'application à jour avant cet import. Aucune donnée de sauvegarde utilisateur n'a été modifiée pendant le développement.
+`ConfigImport` autorise strictement ces extensions et refuse position, roue, valeur ou champ inconnus. La même garde vérifie aussi les extensions après déchiffrement des sauvegardes natives, avant confirmation ou écriture, sans rejeter les anciennes représentations numériques en chaînes. Les anciens JSON restent acceptés par la nouvelle version ; la sauvegarde native conserve ses versions et enveloppes existantes. La nouvelle structure est transportée par le même coffre chiffré et les mêmes fonctions de copie. Un ancien logiciel à liste fermée peut refuser les nouveaux champs : mettre l'application à jour avant cet import. Aucune donnée de sauvegarde utilisateur n'a été modifiée pendant le développement.
 
 ## Recette
 

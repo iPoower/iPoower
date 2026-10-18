@@ -167,7 +167,7 @@ function renderLab() {
         <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.state.toUpperCase())}</h2>
         <p class="wx-hl wx-h1">Gomme estimée ≈ ${rg(th.range)}${h.warm ? ' · ' + esc(h.warm) : ''}</p>
         <p class="wx-hl">Freinage : <b>non mesuré</b> · Virage : <b>non mesuré</b> · ${['rain', 'heavy', 'pool'].includes(r.env.surf) ? 'Pluie' : 'Si pluie'} : <b>non mesurée</b></p>
-        <p class="wx-hl">Facteur limitant : <b>${esc(h.critical ? 'sculpture sous le minimum légal' : 'conditions météo et données saisies, sans adhérence mesurée')}</b> · Confiance : <b>${esc(cf.level)}</b></p>${pf.generic ? genericLine(pf.gaps) : ''}</div>`;
+        <p class="wx-hl">Facteur limitant : <b>${esc(h.critical ? 'sculpture sous le minimum légal' : 'conditions météo et données saisies, sans adhérence mesurée')}</b> · Confiance : <b>${esc(cf.level)}</b></p><p class="sub">Chaussée estimée par le modèle : ${esc(r.env.surfTxt)} · à confirmer sur place.</p>${pf.generic ? genericLine(pf.gaps) : ''}</div>`;
       const pct = x => Math.round(x * 1000) / 10;
       const warmTxt = r.warm.reached ? (r.warm.sinceMin != null ? `Zone favorable atteinte depuis ~${r.warm.sinceMin} min` : 'Zone favorable : gomme estimée dans la plage') : r.warm.never ? 'Zone favorable non atteinte dans ces conditions' : `Avant la zone favorable : ${esc(h.warm)}`;
       const win = `<div class="wx-blk lab-win"><h3>🌡️ Fenêtre de fonctionnement</h3>
@@ -192,8 +192,8 @@ function renderLab() {
     }
   }
   // Le nouveau domaine de preuves ne reprend aucun pourcentage ni distance du simulateur historique.
-  html = cars + tyreIntelligenceHtml(car, 'analyse') +
-    '<p class="sub">Modèle thermique historique : hypothèses générales, distinctes des essais et des mesures réelles. Le seuil de 7 °C n’est pas une frontière physique universelle.</p>' + (html.startsWith(cars) ? html.slice(cars.length) : html);
+  html = cars + tyreIntelligenceHtml(car, 'analyse') + (html.startsWith(cars) ? html.slice(cars.length) : html);
+  html += '<p class="sub">Modèle thermique historique : hypothèses générales, distinctes des essais et des mesures réelles. Le seuil de 7 °C n’est pas une frontière physique universelle.</p>';
   html += `<p class="sub lab-foot">Estimations Race Control (plages, tendances, indicateurs) : aucune mesure de capteur, aucune distance de freinage garantie. État, références et montage : <button class="btn sm" data-act="view" data-v="pneus">onglet Pneus</button></p>`;
   if (html === renderLab.last) return;
   const open = new Set([...el.querySelectorAll('details[open][data-k]')].map(x => x.dataset.k));

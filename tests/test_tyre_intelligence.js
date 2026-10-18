@@ -47,6 +47,11 @@ check('relevés asymétriques et positions individuelles conservés sans mutatio
 check('ancien scalaire lu une seule fois, portée et date inconnues ; aucune migration destructive', () => {
   const r = analyse(input({ type: 'summer', tread: 4.2 })); assert.equal(r.facts.current.length, 1); assert.equal(r.facts.current[0].axle, 'unknown'); assert.equal(r.facts.current[0].date, null);
 });
+check('anciennes profondeurs en chaînes : lecture numérique stricte, octets d’origine conservés', () => {
+  const t = tire({ treadAv: '2,4', treadAr: '5.8', treads: [{ d: '2026-10-12', mm: '2.4', ax: 'av', km: null }] }), before = JSON.stringify(t);
+  const r = analyse(input(t)); assert.equal(r.facts.min, 2.4); assert.equal(r.facts.history[0].mm, 2.4); assert.equal(JSON.stringify(t), before);
+  assert.equal(analyse(input(tire({ treadAv: '2.4mm', treadAr: null, tread: null }))).facts.min, null);
+});
 check('le train prévu ne fournit aucune capacité à la monte active', () => {
   const i = input(); i.car.plan = { on: 1, brand: 'Goodyear', model: 'UltraGrip Performance 3', size: '215/40 R18 89V XL' };
   const r = analyse(i); assert.equal(r.model.id, 'michelin-ps4s'); assert.equal(r.planned.status, 'planned'); assert.equal(r.planned.tests.length, 2);
@@ -91,6 +96,10 @@ check('contradiction pour un même essai/protocole : tous les résultats conserv
   const c = copy(catalog), t = copy(c.tests[0]); t.id += '-contradiction'; t.metrics[0].value += 2; c.tests.push(t);
   const r = analyse(input(), c); assert.equal(r.quality, 'faible'); assert(r.conflicts.length); assert(r.rules.some(x => x.id === 'source-conflict')); assert.equal(r.tests.length, 2);
 });
+check('des températures ou surfaces différentes restent des contextes distincts, pas une contradiction artificielle', () => {
+  const c = copy(catalog), t = copy(c.tests[0]); t.id += '-other-conditions'; t.airC = 5; t.metrics[0].value += 2; c.tests.push(t);
+  const r = analyse(input(), c); assert.equal(r.conflicts.length, 0); assert.equal(r.tests.length, 2);
+});
 check('catalogue invalide refusé : versions, unités, classements, URLs, dates et champs inconnus', () => {
   for (const mutate of [c => c.schemaVersion = 2, c => c.unexpected = 1, c => c.tests[0].source.url = 'javascript:alert(1)',
     c => c.tests[0].source.url = 'https://www.adac.de.attacker.invalid/a', c => c.tests[0].source.checkedOn = '2026-02-30',
@@ -101,13 +110,39 @@ check('source et valeur restent null si non documentées ; aucun appel réseau d
   assert.equal(catalog.tests.find(x => x.source.organisation === 'ADAC').metrics[0].rank, null);
   const src = read('app/tyre-intelligence.js') + read('app/tyre-evidence.js'); assert(!/\b(?:fetch|XMLHttpRequest|localStorage|Date\.now)\s*\(/.test(src));
 });
+check('le contexte pluie sélectionne les trois disciplines du modèle exact et leurs protocoles', () => {
+  const r = analyse(input());
+  for (const id of ['wetBraking', 'aquaLongitudinal', 'aquaLateral']) {
+    const rule = r.rules.find(x => x.id === 'rain-evidence-' + id); assert(rule); assert(rule.triggers.evidence.length); assert(rule.sources.every(x => x.kind === 'published'));
+  }
+  const noRain = analyse(input(tire(), weather({ samples: [{ t: '2026-10-18T10:00', T: 15, Pl: 0 }] })));
+  assert(!noRain.rules.some(x => x.id.startsWith('rain-evidence-')));
+  const empty = analyse(input(tire({ brand: 'Rovelo', model: 'RPX988' }))); assert(empty.rules.some(x => x.id === 'rain-evidence-gap'));
+});
+check('un contrôle sous la cible déclenche une vigilance, zéro bar un risque daté documenté', () => {
+  const t = tire({ press: '2,3 AV / 2,4 AR', pchk: { date: '2026-10-17', T: 18, av: 2.1, ar: 2.4 } });
+  assert(analyse(input(t)).rules.some(x => x.id === 'pressure-target-gap'));
+  t.pchk.av = 0; assert(analyse(input(t)).rules.some(x => x.id === 'zero-pressure'));
+  t.pchk.date = '2025-01-01'; assert(!analyse(input(t)).rules.some(x => x.id === 'zero-pressure'));
+});
+check('points du trajet : fraîcheur de chaque fournisseur, pas celle du seul lieu consulté', () => {
+  vm.runInContext(read('app/tyre-intelligence-view.js') + ';this.gather=tyreIntelligenceInput;', ctx);
+  const now = Date.parse('2026-10-18T08:00Z'), hs = [{ t: '2026-10-18T10:00', T: 10, Pl: 1 }], hsMid = [{ t: '2026-10-18T11:00', T: 12, Pl: 0 }];
+  Object.assign(ctx, { CX: { m: { tz: 'Europe/Paris', hs, nowI: 0 } }, M: { test: { hs } }, RAW: { test: { t: now - 5 * 60000 } }, UI: { loc: 'test' }, MIDM: { middle: { hs: hsMid } }, MIDP: { middle: { t: now - 90 * 60000 } }, CALM: {}, LEGM: {},
+    nowIn: () => '2026-10-18T10:00', Reliability: { ageMin: t => (now - t) / 60000 }, DEMO: { on: false }, offlineNow: () => false });
+  const i = ctx.gather({ tire: tire() }, { points: [{ t: hs[0].t, x: hs[0], hs }, { t: hsMid[0].t, x: hsMid[0], hs: hsMid }] });
+  assert.equal(i.weather.ageMin, 90); assert.equal(i.weather.samples.length, 2); assert(!TI.analyse(i).weather.fresh);
+  ctx.MIDP.middle.t = now - 10 * 60000; assert.equal(ctx.gather({ tire: tire() }, { points: [{ t: hs[0].t, x: hs[0], hs }, { t: hsMid[0].t, x: hsMid[0], hs: hsMid }] }).weather.ageMin, 10);
+});
 // Contrat de persistance : le même export natif garde les champs optionnels, sans changer la version de sauvegarde.
 vm.runInContext(['journal-archive.js', 'debrief.js', 'calendar-origin.js', 'backup.js', 'config-import.js'].map(read).join('\n') + ';this.CI=ConfigImport;this.B=Backup;', ctx);
 check('sauvegarde historique acceptée, extensions strictes et aller-retour JSON sans perte des points', () => {
   const cfg = JSON.parse(fs.readFileSync(path.join(root, 'tests/fixtures/preset.fake.json'), 'utf8'));
   assert(ctx.CI.validate(cfg)); cfg.cars[0].tire = tire({ pchk: { date: '2026-10-12', T: 18, av: 2.3, ar: 2.4 } }); assert(ctx.CI.validate(cfg));
   const b = ctx.B.make({ settings: cfg, at: '2026-10-18T08:00:00Z' }), plan = ctx.B.restorePlan(copy(b));
-  assert(plan); assert.deepEqual(JSON.parse(plan.writes['twrc.settings.v1']).cars[0].tire, cfg.cars[0].tire);
-  for (const mutate of [t => t.treads[0].pos = 'invented', t => t.treads[0].wheel = 'rear-left', t => t.pchk.av = 50, t => t.treads[0].mm = '2.4', t => t.treads[0].unknown = 1]) { const bad = copy(cfg); mutate(bad.cars[0].tire); assert(!ctx.CI.validate(bad)); }
+  assert(plan); assert(ctx.CI.validateTyreExtensions(b.settings)); assert.deepEqual(JSON.parse(plan.writes['twrc.settings.v1']).cars[0].tire, cfg.cars[0].tire);
+  for (const mutate of [t => t.treads[0].pos = 'invented', t => t.treads[0].wheel = 'rear-left', t => t.pchk.av = 50, t => t.treads[0].mm = '2.4', t => t.treads[0].unknown = 1]) { const bad = copy(cfg); mutate(bad.cars[0].tire); assert(!ctx.CI.validate(bad)); assert(!ctx.CI.validateTyreExtensions(bad)); }
+  const legacy = { cars: [{ tire: { tread: '4.2', treads: [{ d: '2020-01-01', mm: '4.2', km: '12000' }], previousField: 'conservé' } }] };
+  assert(ctx.CI.validateTyreExtensions(legacy)); assert.equal(legacy.cars[0].tire.tread, '4.2');
 });
 console.log(`${n}/${n} scénarios OK`);

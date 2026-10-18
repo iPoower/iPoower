@@ -19,10 +19,11 @@ let count = 0;
       await page.route('**/*', route => {
         const u = route.request().url(), json = value => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(value) });
         if (u.includes('open-meteo.com')) {
-          weatherCalls++; const url = new URL(u), lat = +(url.searchParams.get('latitude') || 48.85), lon = +(url.searchParams.get('longitude') || 2.35);
-          if (u.includes('ensemble-api')) return json(x.ensemble(lat, lon, 'Europe/Paris', 'pluie'));
-          if (u.includes('minutely_15=')) return json(x.nowcast(lat, lon, 'Europe/Paris', 'pluie'));
-          return json(x.payload(lat, lon, 'Europe/Paris', 'pluie'));
+          weatherCalls++; const url = new URL(u), q = url.searchParams, lats = String(q.get('latitude') || '48.85').split(','), lons = String(q.get('longitude') || '2.35').split(',');
+          const one = i => x.payload('pluie', { lat: +lats[i], lon: +lons[i] }, 'Europe/Paris', 0);
+          if (lats.length > 1) return json(lats.map((_, i) => one(i)));
+          const base = one(0);
+          return json(u.includes('ensemble-api') ? x.ensemble(base) : q.has('minutely_15') ? x.nowcast(base) : u.includes('air-quality') ? {} : base);
         }
         if (u === U || u.split('?')[0] === U + 'index.html') return route.fulfill({ status: 200, contentType: 'text/html', body: html });
         if (u.includes('calendar.sealed.json')) return route.fulfill({ status: 200, contentType: 'application/json', body: fs.readFileSync(SP + '/cal.fake.json') });
@@ -31,9 +32,11 @@ let count = 0;
         if (u.endsWith('leaflet.css')) return route.fulfill({ status: 200, contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') });
         return route.fulfill({ status: 404, body: '' });
       });
-      await page.goto(U); const settle = async () => { for (let i = 0; i < 6; i++) { await page.clock.runFor(500); await page.waitForTimeout(80); } };
+      await page.goto(U); await page.clock.runFor(2500); const settle = async () => { for (let i = 0; i < 6; i++) { await page.clock.runFor(500); await page.waitForTimeout(80); } };
       await unlockIfLocked(page, settle); await settle();
-      await page.waitForFunction(() => typeof CX !== 'undefined' && CX && S.cars.length === 2);
+      let ready = false;
+      for (let i = 0; i < 30; i++) { ready = await page.evaluate(() => typeof CX !== 'undefined' && !!CX && S.cars.length === 2); if (ready) break; await settle(); }
+      assert(ready, 'Contexte météo fictif indisponible');
       await page.evaluate(() => {
         Object.assign(S.cars[0].tire, { type: 'summer', brand: 'Michelin', model: 'Pilot Sport 4S', size: '215/40 ZR18 89Y XL', treadAv: 2.4, treadAr: 5.8, tread: 2.4, treadEst: 0,
           treads: [{ d: '2026-10-12', mm: 2.4, ax: 'av', pos: 'shoulders', km: null }, { d: '2026-10-12', mm: 3.6, ax: 'av', pos: 'centre', km: null }], info: 'Note fictive <img src=x onerror=alert(1)>' });

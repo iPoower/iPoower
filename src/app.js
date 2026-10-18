@@ -1814,6 +1814,7 @@ async function backupImport(f) {
   }
   catch (e) { bkMsg('Import non appliqué : journal météo local à vérifier. Tes données restent conservées.'); return; }
   if (!plan) { bkMsg('Sauvegarde incomplète.'); return; }
+  if (!ConfigImport.validateTyreExtensions(data.settings)) { bkMsg('Données pneumatiques importées invalides : aucun réglage ni relevé modifié.'); return; }
   const when = new Date(data.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const version = recovery ? 'de récupération complète' : data.v >= 2 ? 'V2' : 'V1';
   const kept = plan.kept ? `\n\nJournal des trajets conservé : ${plan.kept} trajet${plan.kept > 1 ? 's' : ''} de ce téléphone ${data.v >= 2 ? 'ajouté' : 'gardé'}${plan.kept > 1 ? 's' : ''}.` : '';
@@ -3981,9 +3982,10 @@ document.addEventListener('click', async e => {
       if ((c.tire.treads || []).length >= 30) { commandFeedback(t, 'Historique plein : aucun ancien relevé effacé. Conserve un export avant d’organiser les relevés.', input); return; }
       if (pos !== 'unknown' && ax === 'both') { commandFeedback(t, 'Choisis avant ou arrière pour localiser ce point mesuré.', $('#trdax-' + i)); return; }
       c.tire.treads = (c.tire.treads || []).concat([{ d: today, mm, km: lo ? lo.km : null, ax, ...(pos !== 'unknown' ? { pos } : {}), ...(est ? { est: 1 } : {}) }]);
-      const sameSession = c.tire.treads.filter(r => r.d === today && r.ax === ax && !!r.est === est);
+      const sameSession = c.tire.treads.filter(r => r.d === today && r.ax === ax);
       const reference = pos === 'unknown' ? mm : Math.min(...sameSession.map(r => r.mm));
-      setTreadAxle(c.tire, ax === 'av' || ax === 'ar' ? ax : 'both', reference, est); }
+      const referenceEst = pos === 'unknown' ? est : sameSession.filter(r => r.mm === reference).every(r => !!r.est);
+      setTreadAxle(c.tire, ax === 'av' || ax === 'ar' ? ax : 'both', reference, referenceEst); }
     if (a === 'rot') { const lo = lastOdo(c); if (!lo) { t.textContent = 'Enregistre d’abord le compteur'; return; } c.tire.lastRot = lo.km; }
     saveSettings(); renderSettings(); softRender(); commandFeedback($(`#settings [data-act="${a}"][data-i="${i}"]`), 'Enregistré');
   }

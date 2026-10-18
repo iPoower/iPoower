@@ -64,7 +64,8 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
   return { p, c, S, settle, weatherIdle, T0, close };
 }
 const lab = p => p.evaluate(() => {
-  document.querySelectorAll('#secLab details[data-ux]').forEach(d => { d.open = true; });
+  // Cette recette ouvre les détails du modèle historique. Le nouveau panneau possède sa propre recette de déploiement/layout.
+  document.querySelectorAll('#secLab details[data-ux]:not(.ti-panel)').forEach(d => { d.open = true; });
   document.querySelectorAll('#secLab details[data-k=spec], #secLab details[data-k=conf]').forEach(d => { d.open = true; });
   const el = document.getElementById('secLab'), vis = e => !!e && !e.hidden && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0;
   const q = s => el ? [...el.querySelectorAll(s)] : [], t = s => q(s).map(x => x.innerText.replace(/\s+/g, ' ').trim());

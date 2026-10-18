@@ -57,6 +57,30 @@ const ConfigImport = (() => {
       stringFields(v, ['brand', 'model', 'size']) && optional(v, 'on', flag) && optional(v, 'appointmentConfirmed', flag) &&
       ['date', 'ordered', 'etaFrom', 'etaTo', 'etaChecked', 'appointmentDate'].every(k => optional(v, k, date));
   }
+  // Garde des extensions V1 pour les sauvegardes historiques : aucun nettoyage ni réécriture.
+  // Le format général de récupération reste celui du coffre ; les anciens champs ne sont pas rejetés
+  // parce qu'ils proviennent d'une édition antérieure (notamment les anciennes valeurs en chaînes).
+  function validateTyreExtensions(settings) {
+    if (!obj(settings)) return false;
+    if (!own(settings, 'cars')) return true;
+    if (!Array.isArray(settings.cars) || settings.cars.length > 32) return false;
+    const check = t => {
+      if (t == null) return true;
+      if (!obj(t)) return false;
+      if (!['variant', 'homologation'].every(k => optional(t, k, x => x === null || text(x)))) return false;
+      const p = t.pchk;
+      if (obj(p) && ['av', 'ar'].some(k => own(p, k)) && (!safeTree(p) || !fields(p, ['date', 'T', 'av', 'ar']) || !date(p.date) ||
+        !['av', 'ar'].every(k => optional(p, k, x => x === null || number(x, 0, 6))) || !optional(p, 'T', x => x === null || number(x, -100, 100)))) return false;
+      if (t.treads == null) return true;
+      if (!Array.isArray(t.treads)) return false;
+      return t.treads.every(r => !obj(r) ? false : !own(r, 'pos') && !own(r, 'wheel') ||
+        safeTree(r) && fields(r, ['d', 'mm', 'km', 'ax', 'est', 'pos', 'wheel']) && date(r.d) && r.d !== '' && number(r.mm, 0, 20) &&
+        optional(r, 'km', x => x === null || number(x, 0, 10000000)) && optional(r, 'est', flag) && optional(r, 'ax', x => ['av', 'ar', 'both'].includes(x)) &&
+        optional(r, 'pos', x => ['unknown', 'shoulders', 'centre', 'inner', 'outer'].includes(x)) && optional(r, 'wheel', x => x === null ||
+          ['front-left', 'front-right', 'rear-left', 'rear-right'].includes(x) && (r.ax === 'av' ? x.startsWith('front-') : r.ax === 'ar' ? x.startsWith('rear-') : false)));
+    };
+    return settings.cars.every(c => obj(c) && check(c.tire) && (c.sets == null || obj(c.sets) && Object.values(c.sets).every(check)));
+  }
   function car(v) {
     return fields(v, ['id', 'name', 'short', 'spec', 'sporty', 'tire', 'plan', 'sets', 'odo', 'photo']) &&
       text(v.id, 120) && v.id.length > 0 && text(v.name, 220) && stringFields(v, ['short', 'spec']) &&
@@ -208,5 +232,5 @@ const ConfigImport = (() => {
       raw.removeItem(IDENTIFIER); return raw.getItem(IDENTIFIER) === null;
     } catch (e) { return false; }
   }
-  return { SETTINGS, IDENTIFIER, MAX_BYTES, MAX_ENCODED, ID, validate, decode, identifier, legacyIdentifier, initialSettings, message, create, removePlainIdentifier };
+  return { SETTINGS, IDENTIFIER, MAX_BYTES, MAX_ENCODED, ID, validate, validateTyreExtensions, decode, identifier, legacyIdentifier, initialSettings, message, create, removePlainIdentifier };
 })();

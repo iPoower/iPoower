@@ -11,7 +11,7 @@ const TYRE_TEST_EVIDENCE = (() => {
     tyreState: null, treadMm: null, airC: null, roadC: null, track: null,
     limitations: ['Résultats historiques du protocole publié, non transposables en distance réelle sur un autre véhicule.',
       'État et profondeur initiaux non chiffrés dans les données retenues ; aucune extrapolation à un pneu usé.',
-      'Indices, renfort et homologation non documentés dans les données retenues.'] };
+      'Renfort ou homologation partiellement documentés dans les données retenues.'] };
   const data = {
     schemaVersion: 1, revision: 1, reviewedOn: '2026-10-18',
     models: [
