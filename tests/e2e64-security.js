@@ -14,8 +14,14 @@ const submit = async (s, code) => { await s.p.fill('#unlockPw', code); await Pro
     for (const dev of ['iphone', 'pc']) {
       // 1. profil de référence : déverrouillé, réglages + journal fictifs, puis exporté dans l'ANCIEN format (tout en clair)
       const ref = await session(b, { at: '2026-10-08T07:00:00+02:00', dev });
-      await ref.p.evaluate(() => { USER_STORE.state.debrief.entries.unshift({ key: 'journal-fictif-secu', at: Date.now() - 3600e3, how: 'auto', name: 'Trajet fictif', from: 'home', to: 'work', feedback: { at: Date.now() - 3000e3, conditions: [], grip: 'normal' } }); USER_STORE.flush(); saveSettings(); });
-      const legacy = await ref.p.evaluate(() => { const o = {}; Object.keys(localStorage).filter(k => k.startsWith('twrc.')).forEach(k => { o[k] = localStorage.getItem(k); }); return o; });
+      const legacy = await ref.p.evaluate(() => {
+        const o = {}; Object.keys(localStorage).filter(k => k.startsWith('twrc.')).forEach(k => { o[k] = localStorage.getItem(k); });
+        // Construire l'ancien profil comme donnée de fixture, sans contourner
+        // la lecture seule du journal dans l'application candidate.
+        const context = structuredClone(USER_STORE.state);
+        context.debrief.entries.unshift({ key: 'journal-fictif-secu', at: Date.now() - 3600e3, how: 'auto', name: 'Trajet fictif', from: 'home', to: 'work', feedback: { at: Date.now() - 3000e3, conditions: [], grip: 'normal' } });
+        o['twrc.context.v1'] = JSON.stringify(context); return o;
+      });
       const me = await ref.p.evaluate(() => ({ names: S.locs.map(l => l.name), car: S.cars[0].name }));
       await ref.c.close();
       assert(legacy['twrc.key'] && legacy['twrc.plain'] && legacy['twrc.settings.v1'] && /journal-fictif-secu/.test(legacy['twrc.context.v1']), 'ancien profil complet');

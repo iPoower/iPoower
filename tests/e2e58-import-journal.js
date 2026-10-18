@@ -38,6 +38,7 @@ async function session(b, dev, T0) {
   const settle = async (n = 14) => { for (let i = 0; i < n; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); } };
   const unlock = async () => { if (await p.$('#unlockPw')) { await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); } await settle(); };
   await p.goto(U); await p.clock.runFor(2500); await unlock();
+  await require('./lib/journal-activation')(p);
   return { p, c, settle, unlock };
 }
 
@@ -133,6 +134,7 @@ async function session(b, dev, T0) {
       check(dev + ' · déverrouillage : réglage local et réponse du matin récupérés', restored.name === 'Véhicule local fictif' && restored.grip === 'normal' && restored.done && !restored.locked && restored.vault && !restored.plain.length, JSON.stringify(restored));   // sécurité V1 : coffre conservé, rien en clair
       await s.c.close();
     }
+    await require('./lib/journal-preservation-browser')(b);
   } finally { await b.close(); }
   check('aucune erreur JavaScript', !errors.length, errors.join(' | '));
   console.log(rows.join('\n')); console.log(`${rows.length - fail}/${rows.length} scénarios OK`);

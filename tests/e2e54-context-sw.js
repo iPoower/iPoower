@@ -2,6 +2,7 @@
 // réouverture hors ligne. App complète ; données et lieux exclusivement fictifs.
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), vm = require('node:vm'), assert = require('node:assert/strict'), pw = require('playwright');
+const PW = fs.readFileSync('.passphrase', 'utf8').trim();
 const SITE = path.resolve('site'), T = Date.parse('2026-10-05T06:50:00+02:00');
 const ctx = { Date: class extends Date { constructor(...a) { super(...(a.length ? a : [T])); } static now() { return T; } }, Math, Intl, Map, Set, JSON };
 vm.createContext(ctx); vm.runInContext(fs.readFileSync('engine.js', 'utf8') + fs.readFileSync('demo.js', 'utf8') + ';this.mk=makeDemoPayload;', ctx);
@@ -53,8 +54,9 @@ async function views(p, expected) {
       return r.abort();
     });
     await c.addInitScript(({ time }) => {
-      localStorage.setItem('twrc.nocode', '1');
-      if (!localStorage.getItem('twrc.context.v1')) {
+      if (!localStorage.getItem('fixture.context.seeded')) {
+        localStorage.setItem('fixture.context.seeded', '1');
+        localStorage.setItem('twrc.nocode', '1');
         localStorage.setItem('twrc.place.v1', JSON.stringify({ conf: { placeId: 'work', at: time, how: 'manual', day: '2026-10-05' }, last: { placeId: 'work', at: time, source: 'manual' } }));
         localStorage.setItem('twrc.tripdone', JSON.stringify({ 'commute|2026-10-05T07:30|go': { how: 'confirmé', at: time, exp: time + 86400000 } }));
       }
@@ -64,7 +66,10 @@ async function views(p, expected) {
       p = await c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.clock.install({ time: at }); await p.goto(base);
       for (let i = 0; i < 12; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); }
     };
-    const reopen = async () => { const at = await p.evaluate(() => Date.now()); await p.close(); await open(at); };
+    const reopen = async () => {
+      await p.evaluate(async () => { USER_STORE.flush(); if (TWRC_VAULT.mode === 'vault') { await TWRC_VAULT.flush(); if (TWRC_VAULT.error || TWRC_VAULT.pendingWrites) throw new Error('Fermeture refusée : écriture non confirmée.'); } });
+      const at = await p.evaluate(() => Date.now()); await p.close(); await open(at);
+    };
     await open();
     await p.evaluate(async () => { await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }); await navigator.serviceWorker.ready; });
     await p.reload(); await p.waitForFunction(() => navigator.serviceWorker.controller);
@@ -76,6 +81,22 @@ async function views(p, expected) {
       assert.deepEqual((await read(p)).stored, before);
       const urls = await p.evaluate(async () => (await Promise.all((await caches.keys()).map(async k => (await (await caches.open(k)).keys()).map(r => r.url)))).flat());
       assert(urls.every(u => u.startsWith(base))); assert(!urls.some(u => /latitude=|longitude=/.test(u)));
+    });
+    await check('journal : profil fictif vide chiffré avant toute nouvelle arrivée', async () => {
+      // Précondition de fixture : aucun débrief à migrer. Le parcours fichier
+      // d'un journal existant est testé séparément avec les 120 sources brutes.
+      await p.evaluate(async pass => {
+        const settings = JSON.stringify(S);
+        if (USER_STORE.state.debrief.entries.length) throw new Error('La fixture doit avoir un journal vide.');
+        await TWRC_VAULT.unlock(pass, { 'twrc.plain': settings, 'twrc.plain.v': String(TWRC_SEALED_V), 'twrc.settings.v1': settings }, true);
+        TWRC_RAW_STORAGE.setItem('twrc.presetv', String(TWRC_SEALED_V));
+        TWRC_RAW_STORAGE.removeItem('twrc.nocode');
+      }, PW);
+      await p.reload();
+      for (let i = 0; i < 12; i++) { await p.clock.runFor(500); await p.waitForTimeout(80); }
+      assert.equal(await p.evaluate(() => TWRC_VAULT.mode), 'vault');
+      assert.equal((await read(p)).stored.debrief?.entries?.length || 0, 0);
+      await require('./lib/journal-activation')(p);
     });
     // Lieux et véhicules fictifs uniquement ; choix de contexte par vrais taps.
     await p.evaluate(() => { S.customs = [{ id: 'b', name: 'Lieu B', lat: 48.8, lon: 2.45 }]; const car = structuredClone(S.cars[0]); car.id = 'carB'; car.name = car.short = 'Voiture B'; S.cars[1] = car; saveSettings(); renderAll(); });
@@ -94,6 +115,7 @@ async function views(p, expected) {
     await p.locator('#placeBar [data-act=place-confirm][data-place=home]').click();
     await p.locator('#secDebrief [data-act=debrief-condition][data-v=fog]').tap();
     await p.locator('#secDebrief [data-act=debrief-save]').tap();
+    await p.waitForFunction(() => !DEBRIEF_FORM && !TWRC_VAULT.pendingWrites && !TWRC_VAULT.error);
     await reopen();
     await check('arrivée maison puis réouverture hors ligne : lieu et deux trajets clôturés persistants', async () => {
       await views(p, { state: 'home', place: 'home', next: 'go' }); assert.equal((await read(p)).stored.tripStart, null); assert(Object.keys((await read(p)).stored.done).includes(startKey));
@@ -104,11 +126,12 @@ async function views(p, expected) {
       for (const view of ['pneus', 'meteo', 'tenue', 'analyse']) { if (view === 'tenue') await p.evaluate(() => { UI.view = 'tenue'; renderAll(); }); else await p.locator('#viewSeg [data-act=view][data-v=' + view + ']').click(); assert(await p.locator('#secDebrief').isVisible()); }
     });
     await check('ancienne page réécrivant v1 : le journal reste récupérable hors ligne', async () => {
-      await p.evaluate(() => { const old = JSON.parse(localStorage.getItem('twrc.context.v1')); delete old.debrief; localStorage.setItem('twrc.context.v1', JSON.stringify(old)); });
+      await p.evaluate(async () => { const old = JSON.parse(localStorage.getItem('twrc.context.v1')); delete old.debrief; localStorage.setItem('twrc.context.v1', JSON.stringify(old)); await TWRC_VAULT.flush(); if (TWRC_VAULT.error) throw new Error('Réécriture de fixture non confirmée.'); });
       await reopen(); const rows = (await read(p)).stored.debrief.entries; assert.equal(rows.length, 1); assert.deepEqual(rows[0].feedback.conditions, ['fog']);
     });
     await check('vrai SW et application : aucune erreur JavaScript', async () => assert.deepEqual(errors, []));
     await c.close();
+    await check('lecteur prod-124 en cache hors ligne : activation et retour logiciel sans rétrogradation des données', () => require('./lib/journal-legacy-sw')(browser));
   } finally { await browser.close(); await new Promise(r => server.close(r)); }
   console.log(`${n}/${n} scénarios OK · erreurs JS : aucune`);
 })().catch(e => { console.error(e); server.close(); process.exit(1); });

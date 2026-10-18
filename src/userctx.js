@@ -105,20 +105,28 @@ const DayContext = (() => {
   }
   return { date, expiry, endOfDay, tripExpiry, cleanPoint, clean, morningOrigin, destination, returnLeg, rebaseAgendaOrigin, workOn, occasion, prioritize };
 })();
-function userContextStore({ read, write, now = () => Date.now() }) {
+function userContextStore({ read, write, now = () => Date.now(), journalReadOnly = () => false }) {
   const key = 'twrc.context.v1', listeners = new Set();
-  const parse = k => { try { return JSON.parse(read(k) || 'null'); } catch (e) { return null; } };
+  let blocked = null;
+  const parse = k => { try { return JSON.parse(read(k) || 'null'); } catch (e) { if ([key, JournalArchive.MIRROR, JournalArchive.KEY].includes(k)) blocked = 'Journal source illisible : conservé, aucune écriture autorisée.'; return null; } };
   const obj = v => v && typeof v === 'object' && !Array.isArray(v);
   const time = t => Number.isFinite(t) && t >= 0 && t <= now() + 60000;
   const point = p => obj(p) && Number.isFinite(p.lat) && Number.isFinite(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180;
   const trip = t => obj(t) && typeof t.key === 'string' && t.key.length <= 1200 && time(t.at) && now() - t.at < 12 * 3600e3;
+  const journalSource = v => v && Object.prototype.hasOwnProperty.call(v, 'debrief') ? v.debrief : parse(JournalArchive.MIRROR);
+  // Fermer la projection sur elle-même sans jamais remplacer les sources v2.
+  // Un second nettoyage ajoute seulement la représentation des lignes affichées.
+  const journalProjection = v => Debrief.clean(Debrief.clean(v, now()), now());
   function normalize(v) {
     const p = obj(v.place) ? v.place : {}, done = {};
     const conf = obj(p.conf) && typeof p.conf.placeId === 'string' && time(p.conf.at) ? p.conf : null;
     const start = trip(v.tripStart) ? v.tripStart : null;
     // Une ancienne page peut réécrire v1 sans connaître ce nouveau champ.
     // Le miroir sert seulement à cette récupération ; un champ canonique vide gagne.
-    const debrief = Debrief.clean(Object.prototype.hasOwnProperty.call(v, 'debrief') ? v.debrief : parse('twrc.debrief.v1'), now());
+    const source = journalSource(v);
+    let debrief = Debrief.clean({ ...(source || {}), archive: JournalArchive.union(
+      JournalArchive.collect(source), JournalArchive.read(parse(JournalArchive.KEY))) }, now());
+    if (journalReadOnly()) debrief = journalProjection(debrief);
     if (!start || conf && conf.at >= start.at || debrief.active && debrief.active.key !== start.key) debrief.active = null;
     if (obj(v.done)) Object.entries(v.done).slice(-256).forEach(([k, d]) => {
       if (obj(d) && time(d.at) && Number.isFinite(d.exp) && d.exp > now() && typeof d.how === 'string') done[k] = d;
@@ -140,15 +148,39 @@ function userContextStore({ read, write, now = () => Date.now() }) {
   }
   const saved = parse(key), legacy = !saved ? { place: parse('twrc.place.v1'), gps: parse('twrc.gps'),
     tripStart: parse('twrc.tripstart.v1'), tripEnd: parse('twrc.tripend.v1'), returnHome: parse('twrc.returnhome.v1'), done: parse('twrc.tripdone') } : null;
-  let state = normalize(saved && saved.v === 1 ? saved : legacy || {}), depth = 0, baseline = '', publishing = false;
+  if (saved && saved.v !== 1) blocked = 'Version du contexte inconnue : données conservées, aucune écriture autorisée.';
+  let state;
+  try { state = normalize(saved && saved.v === 1 ? saved : legacy || {}); }
+  catch (e) { blocked = 'Journal source invalide : données conservées, aucune écriture autorisée.'; state = { v: 1, revision: 0, updatedAt: now(), dayContext: DayContext.clean({}, now()), place: {}, gps: null, tripStart: null, tripEnd: null, returnHome: null, done: {}, debrief: Debrief.clean(null, now()), lastArrival: null, lastDeparture: null }; }
+  let depth = 0, baseline = '', publishing = false;
   const oldOutfit = read('twrc.outfit.occasion');
   if (!(saved && saved.dayContext) && ['office', 'outing', 'walk'].includes(oldOutfit)) state.dayContext.outfitChoice = { date: DayContext.date(now()), occasion: oldOutfit };
   const encode = v => v == null ? null : JSON.stringify(v);
   let durability = { status: 'durable', failedAt: null, lastOkAt: null, validatedAt: null, error: null };
+  function documentToWrite(current) {
+    if (!journalReadOnly()) return state;
+    const source = journalSource(current);
+    if (JournalArchive.encode(normalize(state).debrief) !== JournalArchive.encode(normalize({ ...state, debrief: source }).debrief))
+      throw new Error('Journal en lecture seule : vérifie une copie de récupération avant toute modification.');
+    // Les réglages de trajet peuvent évoluer, le journal durable reste brut.
+    // Ne pas persister les lignes normalisées ni créer un miroir de projection.
+    const out = { ...state };
+    if (source == null) delete out.debrief; else out.debrief = source;
+    return out;
+  }
   function persist() {
+    // Le journal est une union cumulative, même si deux adaptateurs lisent
+    // la même révision avant de publier. Le coffre refait cette union sous verrou.
+    try {
+      if (blocked) throw new Error(blocked);
+      const current = parse(key);
+      if (blocked) throw new Error(blocked);
+      if (!journalReadOnly() && current && current.debrief) state.debrief = Debrief.clean({ ...state.debrief,
+        archive: JournalArchive.union(JournalArchive.collect(current.debrief), JournalArchive.collect(state.debrief)) }, now());
     // Une écriture atomique du document canonique précède les anciens miroirs.
     // Une panne de stockage reste visible et retentable : jamais de faux « sauvegardé ».
-    try { write(key, JSON.stringify(state)); }
+      write(key, JSON.stringify(documentToWrite(current)));
+    }
     catch (e) {
       durability = { status: 'degraded', failedAt: now(), lastOkAt: durability.lastOkAt, validatedAt: durability.validatedAt, error: String(e && e.message || e || 'écriture refusée').slice(0, 120) };
       return false;
@@ -157,7 +189,8 @@ function userContextStore({ read, write, now = () => Date.now() }) {
     if (oldOutfit != null) { try { write('twrc.outfit.occasion', null); } catch (e) { /* migration déjà dans le document */ } }
     const mirrors = { 'twrc.place.v1': { conf: state.place.conf, last: state.place.last }, 'twrc.gps': state.gps,
       'twrc.tripstart.v1': state.tripStart, 'twrc.tripend.v1': state.tripEnd, 'twrc.returnhome.v1': state.returnHome,
-      'twrc.tripdone': Object.keys(state.done).length ? state.done : null, 'twrc.debrief.v1': state.debrief };
+      'twrc.tripdone': Object.keys(state.done).length ? state.done : null,
+      ...(!journalReadOnly() ? { 'twrc.debrief.v1': state.debrief } : {}) };
     Object.entries(mirrors).forEach(([k, v]) => { try { write(k, encode(v)); } catch (e) { /* compatibilité facultative */ } });
     return true;
   }
@@ -165,9 +198,9 @@ function userContextStore({ read, write, now = () => Date.now() }) {
     // Une reprise n'est validée qu'après relecture du document canonique.
     // Cela évite un faux DURABLE si l'écriture a été acceptée sans être relisible
     // (stockage révoqué, contexte navigateur instable ou concurrence inattendue).
-    const expected = JSON.stringify(state);
+    let expected;
     let stored = null;
-    try { stored = read(key); }
+    try { stored = read(key); expected = JSON.stringify(documentToWrite(JSON.parse(stored || 'null'))); }
     catch (e) {
       durability = { status: 'degraded', failedAt: now(), lastOkAt: durability.lastOkAt, validatedAt: durability.validatedAt,
         error: String(e && e.message || e || 'relecture refusée').slice(0, 120) };
@@ -211,6 +244,8 @@ function userContextStore({ read, write, now = () => Date.now() }) {
     // la même milliseconde. Un ancien événement storage retardé est écarté.
     const durable = read(key); if (durable && durable !== value) return false;
     if (JSON.stringify(normalize(incoming)) === baseline) return false;
+    incoming.debrief = { ...(incoming.debrief || {}), archive: JournalArchive.union(
+      JournalArchive.collect(state.debrief), JournalArchive.collect(incoming.debrief)) };
     state = normalize(incoming); baseline = JSON.stringify(state); listeners.forEach(fn => fn(state)); return true;
   }
   baseline = ''; if (persist()) baseline = JSON.stringify(state);

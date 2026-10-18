@@ -31,7 +31,13 @@ const SessionVault = (() => {
   const te = new TextEncoder(), td = new TextDecoder();
 
   function validVault(v) {
-    try { return !!v && v.v === 2 && v.kdf === 'PBKDF2-SHA256' && v.it === IT && dec(v.s).length === 16 && dec(v.i).length === 12 && dec(v.c).length >= 16; } catch (e) { return false; }
+    try {
+      const base64 = x => typeof x === 'string' && x.length > 0 && x.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(x);
+      return !!v && v.app == null && [2, 3].includes(v.v) && v.kdf === 'PBKDF2-SHA256' && v.it === IT &&
+        base64(v.s) && v.s.length === 24 && dec(v.s).length === 16 &&
+        base64(v.i) && v.i.length === 16 && dec(v.i).length === 12 &&
+        base64(v.c) && v.c.length <= 64 * 1024 * 1024 && dec(v.c).length >= 16;
+    } catch (e) { return false; }
   }
   const readVault = raw => { try { const t = raw.getItem(VAULT); if (!t) return null; const v = JSON.parse(t); return validVault(v) ? v : { invalid: true }; } catch (e) { return { invalid: true }; } };
   async function deriveRaw(pass, salt, crypto) {
@@ -42,17 +48,22 @@ const SessionVault = (() => {
   // n (ordre global des écritures, tous onglets) et t (horodatage) sont en clair dans l'en-tête : aucune donnée personnelle.
   // Ils sont aussi dans le texte chiffré et doivent concorder (un en-tête modifié ne peut pas imposer un état).
   async function seal(values, key, salt, crypto, n, t) {
-    const iv = crypto.getRandomValues(new Uint8Array(12)), text = JSON.stringify({ v: 2, n, t, values });
+    const version = values[JournalArchive.KEY] == null ? 2 : 3;
+    const iv = crypto.getRandomValues(new Uint8Array(12)), text = JSON.stringify({ v: version, n, t, values });
     const c = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, te.encode(text)));
-    return { sealed: JSON.stringify({ v: 2, kdf: 'PBKDF2-SHA256', it: IT, n, t, s: enc(salt), i: enc(iv), c: enc(c) }), text };
+    return { sealed: JSON.stringify({ v: version, kdf: 'PBKDF2-SHA256', it: IT, n, t, s: enc(salt), i: enc(iv), c: enc(c) }), text };
   }
   const order = v => ({ n: Number.isFinite(v && v.n) ? v.n : 0, t: Number.isFinite(v && v.t) ? v.t : 0 });
   const newer = (a, b) => a.n > b.n || (a.n === b.n && a.t > b.t);
   async function open(vault, key, crypto) {
     const text = td.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: dec(vault.i) }, key, dec(vault.c)));
     const data = JSON.parse(text);
-    if (!data || data.v !== 2 || (vault.n != null && (data.n !== vault.n || data.t !== vault.t)) || !data.values || typeof data.values !== 'object' || Array.isArray(data.values) ||
+    if (!data || data.v !== vault.v || (vault.n != null && (data.n !== vault.n || data.t !== vault.t)) || !data.values || typeof data.values !== 'object' || Array.isArray(data.values) ||
       !Object.entries(data.values).every(([k, v]) => secret(k) && typeof v === 'string')) throw new Error('Coffre local invalide.');
+    if (data.v === 3) {
+      if (!Object.prototype.hasOwnProperty.call(data.values, JournalArchive.KEY)) throw new Error('Archive exhaustive absente.');
+      JournalArchive.read(data.values[JournalArchive.KEY]);
+    }
     return data;
   }
   const same = (a, b) => { const ka = Object.keys(a), kb = Object.keys(b); return ka.length === kb.length && ka.every(k => b[k] === a[k]); };
@@ -63,6 +74,11 @@ const SessionVault = (() => {
   // Copies lisibles retirées seulement après un coffre relu ET déchiffré identique (appelé uniquement dans ce cas).
   function dropPlain(raw, names) { names.forEach(k => { if (secret(k)) put(raw, k, null); }); }
   function plainSnapshot(raw) { const o = {}; keysOf(raw).filter(secret).forEach(k => { const v = raw.getItem(k); if (v != null) o[k] = v; }); return o; }
+  function mergeStray(saved, stray) {
+    const values = { ...stray, ...saved };
+    if (saved[JournalArchive.KEY] != null) values[JournalArchive.KEY] = JSON.stringify(JournalArchive.union(JournalArchive.capture(saved), JournalArchive.capture(stray)));
+    return values;
+  }
   // Les caches recalculables (météo, routes) peuvent être sacrifiés si le stockage est plein — jamais les données durables.
   const CACHE = k => k.startsWith('twrc.cache.') || k.startsWith('twrc.croute') || k.startsWith('twrc.road.');
   // seul un stockage PLEIN justifie de sacrifier les caches ; un refus (mode privé, permission) ne supprime rien
@@ -146,6 +162,8 @@ const SessionVault = (() => {
     function merge(data, notify) {
       const before = values(), next = { ...data.values };
       st.mem.dirty.forEach(k => { if (st.mem.map.has(k)) next[k] = st.mem.map.get(k); else delete next[k]; });
+      const protectedNext = JournalArchive.protect(data.values, next);
+      Object.assign(next, protectedNext);
       st.n = order(data).n; st.t = order(data).t; st.saved = { ...data.values };
       st.mem.map.clear(); Object.entries(next).forEach(([k, v]) => st.mem.map.set(k, v));
       const changed = [...new Set([...Object.keys(before), ...Object.keys(next)])].filter(k => before[k] !== next[k]);
@@ -159,6 +177,7 @@ const SessionVault = (() => {
     async function latest(guard) {
       const sealed = raw.getItem(VAULT), vault = sealed && JSON.parse(sealed);
       if (!validVault(vault) || vault.s !== enc(st.salt)) throw new Error('Coffre local invalide ou remplacé.');
+      if (st.saved[JournalArchive.KEY] != null && vault.v !== 3) throw Object.assign(new Error('Ancien coffre réapparu : aucune écriture autorisée.'), { archiveConflict: true });
       const data = await open(vault, st.key, crypto); guard();
       if (raw.getItem(VAULT) !== sealed) throw Object.assign(new Error('Coffre modifié pendant la lecture.'), { conflict: true });
       return data;
@@ -169,8 +188,10 @@ const SessionVault = (() => {
       if (!mem.dirty.size) return;
       // Relire le dernier coffre authentifié sous verrou, puis appliquer seulement les clés modifiées (suppression comprise).
       const data = await latest(guard), base = newer({ n: st.n, t: st.t }, order(data)) ? st.saved : data.values;
-      const sent = new Map([...mem.dirty].map(k => [k, mem.map.has(k) ? mem.map.get(k) : null])), snap = { ...base };
+      const sent = new Map([...mem.dirty].map(k => [k, mem.map.has(k) ? mem.map.get(k) : null]));
+      let snap = { ...base };
       sent.forEach((v, k) => { if (v == null) delete snap[k]; else snap[k] = v; });
+      snap = JournalArchive.protect(base, snap);
       await writeVerified(snap, st.salt, guard); guard();
       // Une valeur peut encore changer pendant WebCrypto. Elle reste en attente jusqu'à sa propre écriture vérifiée.
       sent.forEach((v, k) => { if ((mem.map.has(k) ? mem.map.get(k) : null) === v) mem.dirty.delete(k); });
@@ -197,10 +218,12 @@ const SessionVault = (() => {
       if (st.mode !== 'vault') return st.chain;
       st.chain = st.chain.then(saveWithConflictRetry).catch(e => {
         if (e.cancelled || st.mode !== 'vault') return;
-        st.error = (e.unsupported ? e.message + ' ' : 'Enregistrement chiffré non confirmé (stockage plein, refusé ou modifié) : ') + 'les modifications restent en mémoire ; exporte une sauvegarde.';
+        st.error = (e.recoveryRequired ? e.message + ' ' : e.unsupported ? e.message + ' ' : 'Enregistrement chiffré non confirmé (stockage plein, refusé ou modifié) : ') + 'les modifications restent en mémoire ; exporte une sauvegarde.';
         if (target && target.dispatchEvent) try { target.dispatchEvent(new Event('twrc-vault-error')); } catch (x) { /* rien */ }
       });
-      return st.chain;
+      // Inclure aussi la microtâche automatique déclenchée par setItem : le
+      // demandeur ne reçoit pas un ancien Promise alors qu'un retry reste actif.
+      return (async () => { let tail; do { tail = st.chain; await tail; } while (tail !== st.chain || st.timer); })();
     }
     function nextOrder() { const d = order(readVault(raw)); return { n: Math.max(st.n, d.n) + 1, t: Math.max(Date.now(), st.t + 1, d.t + 1) }; }
     async function useKey(rawKey, salt) { st.key = await importKey(rawKey, crypto); st.salt = salt; }
@@ -230,8 +253,15 @@ const SessionVault = (() => {
     async function writeVerified(vals, salt, guard, evictCaches = true) {
       requireLocks();
       const key = st.key, signal = raw.getItem(LOCK_SIGNAL), previous = raw.getItem(VAULT);
-      const active = guard || (() => { if (st.key !== key || raw.getItem(LOCK_SIGNAL) !== signal) throw Object.assign(new Error('Session modifiée.'), { cancelled: true }); });
-      active(); const nx = nextOrder(), out = await seal(vals, key, salt, crypto, nx.n, nx.t); active();
+      const active = () => {
+        if (st.key !== key || raw.getItem(LOCK_SIGNAL) !== signal) throw Object.assign(new Error('Session modifiée.'), { cancelled: true });
+        if (guard) guard();
+      };
+      active();
+      const prior = readVault(raw);
+      if (prior && !prior.invalid && prior.v === 3 && vals[JournalArchive.KEY] == null)
+        throw new Error('Archive exhaustive absente : écriture refusée.');
+      const nx = nextOrder(), out = await seal(vals, key, salt, crypto, nx.n, nx.t); active();
       // Les anciennes versions ne prennent pas le verrou : ne pas écraser une écriture qu'elles ont faite pendant WebCrypto.
       if (raw.getItem(VAULT) !== previous) throw Object.assign(new Error('Coffre modifié pendant le chiffrement.'), { conflict: true });
       try { put(raw, VAULT, out.sealed); }
@@ -240,18 +270,28 @@ const SessionVault = (() => {
         keysOf(raw).filter(k => isApp(k) && CACHE(k)).forEach(k => { try { raw.removeItem(k); } catch (x) { /* rien */ } });
         active(); put(raw, VAULT, out.sealed);
       }
-      const back = await open(JSON.parse(raw.getItem(VAULT)), key, crypto); active();
-      if (!same(back.values, vals) || raw.getItem(VAULT) !== out.sealed) throw new Error('Coffre relu différent.');
+      try {
+        const back = await open(JSON.parse(raw.getItem(VAULT)), key, crypto); active();
+        if (!same(back.values, vals) || raw.getItem(VAULT) !== out.sealed) throw new Error('Coffre relu différent.');
+      } catch (e) {
+        // Ne jamais annuler le commit d'un autre onglet. Une écriture dont nous
+        // sommes encore propriétaires revient aux octets précédents.
+        if (raw.getItem(VAULT) === out.sealed) {
+          try { put(raw, VAULT, previous); }
+          catch (rollback) { throw Object.assign(new Error('Vérification interrompue : conserve la copie de récupération.'), { recoveryPending: true }); }
+        }
+        throw e;
+      }
       st.n = nx.n; st.t = nx.t; st.saved = { ...vals };
     }
     // stockage plein pendant la migration : sacrifier les caches recalculables puis réessayer une seule fois
-    async function writeWithRoom(vals, salt) {
-      try { await writeVerified(vals, salt); return vals; } catch (e) {
+    async function writeWithRoom(vals, salt, guard) {
+      try { await writeVerified(vals, salt, guard); return vals; } catch (e) {
         if (!full(e)) throw e;
         const lean = Object.fromEntries(Object.entries(vals).filter(([k]) => !CACHE(k)));
         // setItem remplace atomiquement l'ancien coffre. Le supprimer n'économise rien dans la taille finale et expose à une perte au nouvel échec.
         keysOf(raw).filter(k => isApp(k) && CACHE(k)).forEach(k => { try { raw.removeItem(k); } catch (x) { /* rien */ } });
-        await writeVerified(lean, salt); return lean;
+        await writeVerified(lean, salt, guard); return lean;
       }
     }
     function enter(vals) { st.epoch++; st.mem = memStore(raw, vals, persist, allowStore); st.saved = { ...vals }; st.lockSignal = raw.getItem(LOCK_SIGNAL); st.mode = 'vault'; st.error = null; }
@@ -325,7 +365,7 @@ const SessionVault = (() => {
             const data = await open(vault, st.key, crypto);
             if (raw.getItem(LOCK_SIGNAL) !== signal || now() >= active.expiresAt) throw new Error('Autorisation révoquée');
             st.n = order(data).n; st.t = order(data).t;
-            const stray = plainSnapshot(raw), vals = { ...stray, ...data.values };
+            const stray = plainSnapshot(raw), vals = mergeStray(data.values, stray);
             const kept = Object.keys(stray).length ? await writeWithRoom(vals, st.salt) : vals;
             await saveSession(active.rawKey, st.salt, active.expiresAt, valid && ses.v === 4 ? ses : null); active.rawKey.fill(0);
             enter(kept);
@@ -354,7 +394,7 @@ const SessionVault = (() => {
       while (st.mode === 'vault' && st.mem.dirty.size) await savePending();
       return unlockInside(pass, extra, keepWeek);
     }); }
-    async function unlockInside(pass, extra, keepWeek) {
+    async function unlockInside(pass, extra, keepWeek, recoverySource = null) {
       const vault = readVault(raw);
       if (vault && vault.invalid) throw new Error('Coffre local illisible : conservé tel quel.');
       let vals, salt, rawKey, drop = [], dropV1 = false;
@@ -362,7 +402,7 @@ const SessionVault = (() => {
         salt = dec(vault.s); rawKey = await deriveRaw(pass, salt, crypto);
         const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);   // code faux → OperationError, clé de la session inchangée
         st.key = key; st.salt = salt;
-        const stray = plainSnapshot(raw); vals = { ...stray, ...data.values }; drop = Object.keys(stray); st.n = order(data).n; st.t = order(data).t;
+        const stray = plainSnapshot(raw); vals = mergeStray(data.values, stray); drop = Object.keys(stray); st.n = order(data).n; st.t = order(data).t;
         // Suite à une expiration, seules les modifications non confirmées sont reprises.
         // Aucune perte sur mauvais code / quota plein : l'ancien MemStore reste intact jusqu'au coffre vérifié.
         if (st.mode === 'expired' && st.mem) st.mem.dirty.forEach(k => {
@@ -374,10 +414,14 @@ const SessionVault = (() => {
         if (raw.getItem(V1)) { const plan = await DeviceStorage.unlockPlan(raw, pass, crypto); Object.assign(vals, plan.writes); dropV1 = true; }
         await useKey(rawKey, salt);
       }
+      if (vault && vault.v === 3) vals = JournalArchive.protect((await open(vault, st.key, crypto)).values, vals);
       Object.assign(vals, extra || {}, { 'twrc.key': pass });
       Object.keys(vals).forEach(k => { if (!secret(k)) { delete vals[k]; } });
-      const kept = await writeWithRoom(vals, salt);
+      const guard = recoverySource ? () => { if (!same(plainSnapshot(raw), recoverySource)) throw new Error('Source modifiée depuis la copie : activation refusée.'); } : null;
+      if (guard) guard();
+      const kept = await writeWithRoom(vals, salt, guard);
       await saveSession(rawKey, salt);
+      if (guard) guard();
       dropPlain(raw, drop); if (dropV1) put(raw, V1, null);
       enter(kept);
       // Autorisation persistante facultative, non exportée dans les sauvegardes.
@@ -428,8 +472,54 @@ const SessionVault = (() => {
           }
           merge(data, notify); if (mem.dirty.size) persist(); return 'merged';
         });
-      } catch (x) { return st.mode === 'locked' ? 'locked' : null; }
+      } catch (x) {
+        if (x.archiveConflict) { st.error = x.message; if (target && target.dispatchEvent) target.dispatchEvent(new Event('twrc-vault-error')); }
+        return st.mode === 'locked' ? 'locked' : null;
+      }
     }
+    // Une copie externe est vérifiée par réouverture du fichier sélectionné.
+    // La preuve est liée aux octets du coffre courant, pas à une case cochée.
+    async function plainRecovery(pass) { return exclusive(async () => {
+      if (st.mode !== 'plain' || raw.getItem(VAULT) || raw.getItem(V1) || raw.getItem(PENDING)) throw new Error('Source de récupération indisponible.');
+      if (typeof pass !== 'string' || pass.length < 8) throw new Error('Entre un code d’au moins 8 caractères pour cette copie.');
+      const snapshot = plainSnapshot(raw), salt = crypto.getRandomValues(new Uint8Array(16));
+      const rawKey = await deriveRaw(pass, salt, crypto);
+      try {
+        const key = await importKey(rawKey, crypto), out = await seal(snapshot, key, salt, crypto, 1, now());
+        const checked = await open(JSON.parse(out.sealed), key, crypto);
+        if (!same(checked.values, snapshot) || !same(plainSnapshot(raw), snapshot)) throw new Error('Source modifiée : recommence la copie.');
+        return out.sealed;
+      } finally { rawKey.fill(0); }
+    }); }
+    async function recoverySnapshot() { return exclusive(async () => {
+      expire(); if (st.mode !== 'vault') throw new Error('Déverrouille cet appareil.');
+      const sealed = raw.getItem(VAULT), vault = JSON.parse(sealed);
+      if (sealed.length > 68 * 1024 * 1024) throw new Error('Copie trop volumineuse : aucun fichier incomplet produit.');
+      await open(vault, st.key, crypto);
+      if (raw.getItem(VAULT) !== sealed) throw new Error('Coffre modifié : recommence la copie.');
+      return sealed;
+    }); }
+    async function activateJournal(fileText, pass) { return exclusive(async () => {
+      if (st.mode === 'plain') {
+        if (raw.getItem(VAULT) || raw.getItem(V1) || raw.getItem(PENDING)) throw new Error('Source de récupération indisponible.');
+        const snapshot = await readRecovery(fileText, pass, crypto);
+        if (!same(plainSnapshot(raw), snapshot)) throw new Error('La copie ne correspond plus au profil courant.');
+        return unlockInside(pass, { [JournalArchive.KEY]: JSON.stringify(JournalArchive.capture(snapshot)) }, false, snapshot);
+      }
+      expire(); if (st.mode !== 'vault') throw new Error('Déverrouille cet appareil.');
+      const epoch = st.epoch, mem = st.mem, guard = () => guardSession(epoch, mem);
+      const sealed = raw.getItem(VAULT);
+      if (fileText !== sealed) throw new Error('La copie ne correspond plus au coffre courant. Exporte une nouvelle copie.');
+      const data = await latest(guard);
+      const sent = new Map([...mem.dirty].map(k => [k, mem.map.has(k) ? mem.map.get(k) : null]));
+      const pending = { ...data.values };
+      sent.forEach((v, k) => { if (v == null) delete pending[k]; else pending[k] = v; });
+      const next = JournalArchive.protect(data.values, pending, true);
+      await writeVerified(next, st.salt, guard, false); guard();
+      sent.forEach((v, k) => { if ((mem.map.has(k) ? mem.map.get(k) : null) === v) mem.dirty.delete(k); });
+      merge({ n: st.n, t: st.t, values: next }); st.error = null;
+      return true;
+    }); }
     // Import d'un lien historique : vérifier sous le MÊME verrou que toutes
     // les écritures, puis publier une unique enveloppe chiffrée et relue.
     // Ni configuration existante ni autre donnée durable ne sont remplacées.
@@ -469,13 +559,25 @@ const SessionVault = (() => {
       return { state };
     }); }
     return {
-      boot, unlock, lock, flush, onStorage, importConfig,
+      boot, unlock, lock, flush, onStorage, importConfig, recoverySnapshot, plainRecovery, activateJournal,
       expired: () => expire(),
       get expiresAt() { return st.expiresAt; },
       get pendingRecovery() { return st.mode === 'expired' && !!st.mem && st.mem.dirty.size > 0; },
+      // Même un profil sans historique doit activer explicitement l'archive
+      // avant son premier débrief : aucun passage v3 au premier enregistrement.
+      get journalNeedsRecovery() { return st.mode === 'vault' && st.saved[JournalArchive.KEY] == null; },
+      get pendingWrites() { return !!st.mem && st.mem.dirty.size > 0; },
       get mode() { return st.mode; }, get error() { return st.error; }, get warn() { return st.warn; }, get migrated() { return !!st.migrated; },
       get store() { return st.mem ? st.mem.store : null; }, locked: () => expire() || st.mode === 'locked'
     };
   }
-  return { create, VAULT, SESSION, LOCK_SIGNAL, PUBLIC, secret, validVault, IT };
+  async function readRecovery(text, pass, crypto) {
+    if (typeof text !== 'string' || text.length > 68 * 1024 * 1024) throw new Error('Copie trop volumineuse.');
+    const vault = JSON.parse(text);
+    if (!validVault(vault)) throw new Error('Copie de récupération inconnue.');
+    const rawKey = await deriveRaw(pass, dec(vault.s), crypto);
+    try { return (await open(vault, await importKey(rawKey, crypto), crypto)).values; }
+    finally { rawKey.fill(0); }
+  }
+  return { create, readRecovery, VAULT, SESSION, LOCK_SIGNAL, PUBLIC, secret, validVault, IT };
 })();
