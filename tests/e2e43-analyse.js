@@ -64,7 +64,8 @@ async function session(b, { at, scn = 'doux', dev = 'iphone', meteo = 'ok', unlo
   return { p, c, S, settle, weatherIdle, T0, close };
 }
 const lab = p => p.evaluate(() => {
-  document.querySelectorAll('#secLab details[data-ux]').forEach(d => { d.open = true; });
+  // Cette recette ouvre les détails du modèle historique. Le nouveau panneau possède sa propre recette de déploiement/layout.
+  document.querySelectorAll('#secLab details[data-ux]:not(.ti-panel)').forEach(d => { d.open = true; });
   document.querySelectorAll('#secLab details[data-k=spec], #secLab details[data-k=conf]').forEach(d => { d.open = true; });
   const el = document.getElementById('secLab'), vis = e => !!e && !e.hidden && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0;
   const q = s => el ? [...el.querySelectorAll(s)] : [], t = s => q(s).map(x => x.innerText.replace(/\s+/g, ' ').trim());
@@ -97,7 +98,7 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     check('1 · verdict : pneu réellement monté (modèle non renseigné → analyse générique été), dimension, état, plage estimée', /Modèle non renseigné · pneu été/.test(a.hero) && /215\/40 ZR18 89Y XL/.test(a.hero) && STATES.test(a.hero) && /Gomme estimée ≈ −?\d+ à −?\d+ °C/.test(a.hero), a.hero);
     check('1 · verdict : freinage, virage, pluie, facteur limitant, confiance', /Freinage : \S+/.test(a.hero) && /Virage : \S+/.test(a.hero) && /(Si pluie|Pluie) : \S+/.test(a.hero) && /Facteur limitant : /.test(a.hero) && /Confiance : (faible|moyenne|élevée)/.test(a.hero), a.hero);
     check('1 · fenêtre de fonctionnement avec repère et explication « Pourquoi ? »', a.marker && /Pourquoi « /.test(a.all) && /FROID EN CHAUFFE FAVORABLE CHAUD/.test(a.all), a.all.slice(0, 300));
-    check('1 · freinage, adhérence en 5 barres, aquaplaning, comparaison en 5 lignes', /🛑 FREINAGE/i.test(a.all) && a.bars === 5 && /AQUAPLANING/i.test(a.all) && a.cmp === 5, JSON.stringify({ bars: a.bars, cmp: a.cmp }));
+    check('1 · freinage non chiffré, 5 critères non mesurés, aquaplaning et intelligence sourcée', /🛑 FREINAGE/i.test(a.all) && a.bars === 5 && /AQUAPLANING/i.test(a.all) && a.cmp === 5 && /Intelligence pneumatique/.test(a.all), JSON.stringify({ bars: a.bars, cmp: a.cmp }));
     check('1 · trajet de l’agenda suivi point par point', /Analyse du trajet ·/i.test(a.trip) && a.tripRows >= 2, a.trip.slice(0, 200));
     check('1 · projection : distances approximatives et sources météo distinguées des positions GPS', /Progression estimée, sans mesure GPS\. Les lieux indiquent les sources météo\./.test(a.trip) && /≈ km \d+/.test(a.trip), a.trip.slice(0, 350));
     check('1 · pression : cible saisie et estimation, jamais « réelle »', /Cible saisie : 2,3 bar/.test(a.all) && /estimation/.test(a.all) && !/pression réelle/i.test(a.all));

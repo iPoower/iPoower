@@ -1191,3 +1191,9 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 }
 #twrcExpiryOverlay #twrcExpiryMessage { overflow-wrap: anywhere; color: #f3bf7d; margin: 0; }
 @media (max-width: 380px) { #twrcExpiryOverlay .twrc-expiry-card { padding: 18px; } }
+/* Tyre Intelligence : valeurs originales, tableaux contenus, liens accessibles sur iPhone. */
+.ti-panel{border:1px solid var(--line,#2a4052);border-radius:12px;background:var(--panel,#101820);padding:16px;margin:14px 0;color:var(--fg);min-width:0;overflow-wrap:anywhere}
+.ti-panel p,.ti-panel li{line-height:1.55}.ti-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.ti-head h3{margin:0}.ti-state{border:1px solid var(--accent);border-radius:6px;padding:4px 8px;font-size:12px}
+.ti-panel details{border-top:1px solid var(--line,#2a4052);margin-top:10px;padding-top:8px}.ti-panel summary{cursor:pointer;min-height:44px;display:list-item;align-content:center;padding:5px 3px;box-sizing:border-box;line-height:1.5}.ti-panel a{display:inline-block;min-height:44px;align-content:center;color:var(--accent)}
+.ti-panel ul{padding-left:20px}.ti-scroll{overflow-x:auto;max-width:100%;outline-offset:2px}.ti-table{border-collapse:collapse;width:100%;font-size:13px}.ti-table th,.ti-table td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line,#2a4052);padding:10px 8px;min-width:90px}.ti-table th{font-weight:600}.ti-table td:last-child{min-width:180px}.ti-foot{border-top:1px solid var(--line,#2a4052);padding-top:10px}.ti-facts h4{margin-bottom:6px}
+@media(max-width:500px){.ti-panel{padding:12px}.ti-profile{font-size:13px}.ti-table{font-size:12px}}

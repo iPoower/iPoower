@@ -1,6 +1,8 @@
 // Registre unique des suites existantes ; aucun scénario E2E n'est modifié.
 'use strict';
 const SUITE = [
+  ['test_tyre_intelligence.js', 'essais pneus : catalogue, comparabilité, règles, positions et sauvegardes', false],
+  ['e2e78-tyre-intelligence.js', 'intelligence pneus : quatre vues, preuves, iPhone/PC, hors ligne et absence de mutation', true],
   ['test_engine.js', 'moteur : verdicts, chaussée, verglas', false], ['test_examples.js', 'moteur : cas de référence', false],
   ['test_engine_verdicts.js', 'moteur : vérités de sécurité GO / NO GO', false], ['engine-countertests.js', 'moteur : régressions de sécurité rejetées par les contre-tests', false],
   ['test_widget.js', 'widget iPhone (Scriptable simulé)', false], ['test_relay_clock.js', 'relais : horloge externe et mesure de fraîcheur', false],
@@ -45,7 +47,7 @@ SUITE.push(['test_geolocation.js', 'localisation : précision, provenance, géof
   ['e2e49-interactions.js', 'commandes : clics réels PC/iPhone, saisie, clipboard, recherche dynamique et rerender', true],
   ['e2e50-geolocation.js', 'localisation : erreurs, priorité GPS, retour de veille, permissions, IP, drift et override', true]);
 // Retour rapide sur la file réseau : GPS remplacé, lieux et reprise HTTP 429 avant les longs parcours.
-const FIRST = ['e2e67-controls-safety.js', 'test_weather_requests.js', 'test_gps_requests.js', 'e2e33.js', 'e2e30.js', 'e2e44-place.js', 'e2e40-network.js'];
+const FIRST = ['e2e78-tyre-intelligence.js', 'e2e67-controls-safety.js', 'test_weather_requests.js', 'test_gps_requests.js', 'e2e33.js', 'e2e30.js', 'e2e44-place.js', 'e2e40-network.js'];
 SUITE.sort((a, b) => (FIRST.includes(a[0]) ? FIRST.indexOf(a[0]) : FIRST.length) - (FIRST.includes(b[0]) ? FIRST.indexOf(b[0]) : FIRST.length));
 
 SUITE.push(['test_road_intelligence.js', 'route : géométrie, sens, progression, validité, dédoublonnage et alertes', false],

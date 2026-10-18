@@ -47,10 +47,11 @@ function treadTxt(x, mm) {
 function treadHistory(t) {
   const tx = treadAxles(t);
   const num = v => { const x = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v; return typeof x === 'number' && Number.isFinite(x) ? x : null; };
-  const hist = ((t && t.treads) || []).filter(x => x && num(x.mm) != null && (!x.ax || !tx.ax || x.ax === tx.ax))
+  const hist = ((t && t.treads) || []).filter(x => x && num(x.mm) != null && (!x.ax || x.ax === 'both' || !tx.ax || x.ax === tx.ax))
     .map(x => ({ ...x, mm: num(x.mm), km: num(x.km) }));
-  const last = hist[hist.length - 1] || null;
-  const withKm = hist.filter(x => x.km != null && !x.est).sort((a, b) => a.km - b.km);
+  const positioned = hist.some(x => x.pos && x.pos !== 'unknown' || x.wheel);
+  const last = positioned ? hist.filter(x => x.mm === tx.worst).slice(-1)[0] || null : hist[hist.length - 1] || null;
+  const withKm = hist.filter(x => x.km != null && !x.est && (!positioned || last && (x.pos || 'unknown') === (last.pos || 'unknown') && (x.wheel || null) === (last.wheel || null))).sort((a, b) => a.km - b.km);
   // Quand aucun essieu n'est le plus usé, deux essieux distincts ne prouvent pas une pente.
   const mixedAxles = !tx.ax && new Set(withKm.map(x => x.ax).filter(Boolean)).size > 1;
   let rate = null; if (withKm.length >= 2) { const a = withKm[0], b = withKm[withKm.length - 1]; if (!mixedAxles && b.km - a.km >= 1000 && a.mm > b.mm) rate = (a.mm - b.mm) / (b.km - a.km) * 1000; }
