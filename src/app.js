@@ -3277,7 +3277,11 @@ function waitCard(car) {
         <button class="btn sm" data-act="goset-cfg">Pneus montés ? Les renseigner</button></div></div></article>`;
 }
 function renderCars() {
-  const el = $('#secCars'); if (!CX) { el.innerHTML = ''; return; }
+  const el = $('#secCars'); if (!CX) {
+    const focus = uxFocusKey(el);
+    el.innerHTML = S.cars.map(car => `<article class="car"><div class="car-h"><h3>${esc(car.name)}</h3><p class="sub">Météo indisponible : mesures et essais conservés, aucune condition actuelle évaluée.</p></div>${tyreIntelligenceHtml(car, 'pneus')}</article>`).join('');
+    renderCars.last = ''; uxRestoreFocus(el, focus); return;
+  }
   const { m } = CX;
   const html = CX.cars.map(({ car, w, nar }) => {
     if (!hasTires(car)) return waitCard(car);
@@ -3981,10 +3985,16 @@ document.addEventListener('click', async e => {
       const mm = Math.round(v * 10) / 10, ax = ($('#trdax-' + i) || {}).value || 'both', est = ($('#trdest-' + i) || {}).value === '1', pos = ($('#trdpos-' + i) || {}).value || 'unknown';
       if ((c.tire.treads || []).length >= 30) { commandFeedback(t, 'Historique plein : aucun ancien relevé effacé. Conserve un export avant d’organiser les relevés.', input); return; }
       if (pos !== 'unknown' && ax === 'both') { commandFeedback(t, 'Choisis avant ou arrière pour localiser ce point mesuré.', $('#trdax-' + i)); return; }
+      const before = treadAxles(c.tire), previousMm = ax === 'av' ? before.av : ax === 'ar' ? before.ar : null;
+      const prior = (c.tire.treads || []).filter(r => (r.ax === ax || r.ax === 'both') && Number(r.mm) === previousMm).slice(-1)[0];
+      const previousEst = prior ? !!prior.est : !!c.tire.treadEst;
       c.tire.treads = (c.tire.treads || []).concat([{ d: today, mm, km: lo ? lo.km : null, ax, ...(pos !== 'unknown' ? { pos } : {}), ...(est ? { est: 1 } : {}) }]);
+      // Un point plus profond, même un autre jour, ne prouve pas que l'ancien minimum a disparu.
+      // Une correction globale reste possible dans les champs AV/AR ou via un relevé non localisé explicite.
       const sameSession = c.tire.treads.filter(r => r.d === today && r.ax === ax);
-      const reference = pos === 'unknown' ? mm : Math.min(...sameSession.map(r => r.mm));
-      const referenceEst = pos === 'unknown' ? est : sameSession.filter(r => r.mm === reference).every(r => !!r.est);
+      const candidates = sameSession.concat(previousMm === null ? [] : [{ mm: previousMm, est: previousEst }]);
+      const reference = pos === 'unknown' ? mm : Math.min(...candidates.map(r => r.mm));
+      const referenceEst = pos === 'unknown' ? est : candidates.filter(r => r.mm === reference).every(r => !!r.est);
       setTreadAxle(c.tire, ax === 'av' || ax === 'ar' ? ax : 'both', reference, referenceEst); }
     if (a === 'rot') { const lo = lastOdo(c); if (!lo) { t.textContent = 'Enregistre d’abord le compteur'; return; } c.tire.lastRot = lo.km; }
     saveSettings(); renderSettings(); softRender(); commandFeedback($(`#settings [data-act="${a}"][data-i="${i}"]`), 'Enregistré');

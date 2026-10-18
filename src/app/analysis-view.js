@@ -192,7 +192,7 @@ function renderLab() {
     }
   }
   // Le nouveau domaine de preuves ne reprend aucun pourcentage ni distance du simulateur historique.
-  html = cars + tyreIntelligenceHtml(car, 'analyse') + (html.startsWith(cars) ? html.slice(cars.length) : html);
+  html += tyreIntelligenceHtml(car, 'analyse');
   html += '<p class="sub">Modèle thermique historique : hypothèses générales, distinctes des essais et des mesures réelles. Le seuil de 7 °C n’est pas une frontière physique universelle.</p>';
   html += `<p class="sub lab-foot">Estimations Race Control (plages, tendances, indicateurs) : aucune mesure de capteur, aucune distance de freinage garantie. État, références et montage : <button class="btn sm" data-act="view" data-v="pneus">onglet Pneus</button></p>`;
   if (html === renderLab.last) return;

@@ -61,14 +61,14 @@ function wxStationLine(o) {
 function renderWx() {
   const el = $('#secWx'); if (!el) return;
   if (UI.view === 'meteo' && !CX && M[UI.loc] && M[UI.loc].nowI < 0) {
-    el.hidden = false; el.innerHTML = '<div class="wx-blk wx-none" role="status"><h3>INDISPONIBLE · météo actuelle</h3><p class="sub">Les prévisions conservées ne couvrent pas l’heure actuelle. Actualise dès que la connexion le permet ; aucune météo n’est extrapolée.</p></div>';
+    el.hidden = false; el.innerHTML = '<div class="wx-blk wx-none" role="status"><h3>INDISPONIBLE · météo actuelle</h3><p class="sub">Les prévisions conservées ne couvrent pas l’heure actuelle. Actualise dès que la connexion le permet ; aucune météo n’est extrapolée.</p></div>' + tyreIntelligenceHtml(appActiveCar(), 'meteo');
     renderWx.last = ''; return;
   }
   if (UI.view !== 'meteo' || !CX) { if (!el.hidden || el.innerHTML) { el.hidden = true; el.innerHTML = ''; renderWx.last = ''; } return; }
   const input = wxInput(), d = wxDesk(input);
   if (!d) {
     el.hidden = false;
-    el.innerHTML = '<div class="wx-blk wx-none" role="status"><h3>INDISPONIBLE · météo actuelle</h3><p class="sub">Les prévisions conservées ne couvrent pas l’heure actuelle. Actualise dès que la connexion le permet ; aucune météo n’est extrapolée.</p></div>';
+    el.innerHTML = '<div class="wx-blk wx-none" role="status"><h3>INDISPONIBLE · météo actuelle</h3><p class="sub">Les prévisions conservées ne couvrent pas l’heure actuelle. Actualise dès que la connexion le permet ; aucune météo n’est extrapolée.</p></div>' + tyreIntelligenceHtml(appActiveCar(), 'meteo');
     renderWx.last = ''; return;
   }
   el.hidden = false;

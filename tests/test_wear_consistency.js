@@ -114,6 +114,17 @@ function run(source = domain, quiet = false) {
     const c = fresh(); ctx.readDepth(c, 2.4, 'av', false, 'shoulders');
     const state = ctx.readDepth(c, 3.6, 'av', true, 'centre'); assert.equal(state.tread.mm, 2.4); assert.equal(state.tread.est, false);
   });
+  test('point mesuré un autre jour : ancien minimum et sa date restent la référence', () => {
+    const c = fresh(); Object.assign(c.tire, { treadAv: 2.4, tread: 2.4, treadEst: 0, treads: [{ d: '2026-08-01', mm: 2.4, km: null, ax: 'av', pos: 'shoulders' }] });
+    const state = ctx.readDepth(c, 3.6, 'av', true, 'centre');
+    assert.equal(state.tread.mm, 2.4); assert.equal(state.tread.est, false); assert.equal(state.tread.date, '2026-08-01'); assert.equal(c.tire.treads.length, 2);
+  });
+  test('tendance d’usure : ne jamais mélanger centre et épaules ou deux roues différentes', () => {
+    const c = fresh(); Object.assign(c.tire, { treadAv: 3, tread: 3, treads: [{ d: '2026-09-01', mm: 6, km: 10000, ax: 'av', pos: 'centre' }, { d: '2026-10-01', mm: 3, km: 12000, ax: 'av', pos: 'shoulders' }] });
+    assert.equal(ctx.state(c).tread.rate, null);
+    c.tire.treads[0].pos = 'shoulders'; assert.equal(ctx.state(c).tread.rate, 1.5);
+    c.tire.treads[0].wheel = 'front-left'; c.tire.treads[1].wheel = 'front-right'; assert.equal(ctx.state(c).tread.rate, null);
+  });
   return n;
 }
 const count = run();

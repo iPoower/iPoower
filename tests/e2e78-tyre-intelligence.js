@@ -17,13 +17,13 @@ let count = 0;
       const page = await context.newPage(), errors = []; let weatherCalls = 0;
       page.on('pageerror', e => errors.push(e.message)); await page.clock.install({ time: T0 });
       await page.route('**/*', route => {
-        const u = route.request().url(), json = value => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(value) });
-        if (u.includes('open-meteo.com')) {
-          weatherCalls++; const url = new URL(u), q = url.searchParams, lats = String(q.get('latitude') || '48.85').split(','), lons = String(q.get('longitude') || '2.35').split(',');
+        const u = route.request().url(), url = new URL(u), json = value => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(value) });
+        if (['api.open-meteo.com', 'ensemble-api.open-meteo.com', 'air-quality-api.open-meteo.com'].includes(url.hostname)) {
+          weatherCalls++; const q = url.searchParams, lats = String(q.get('latitude') || '48.85').split(','), lons = String(q.get('longitude') || '2.35').split(',');
           const one = i => x.payload('pluie', { lat: +lats[i], lon: +lons[i] }, 'Europe/Paris', 0);
           if (lats.length > 1) return json(lats.map((_, i) => one(i)));
           const base = one(0);
-          return json(u.includes('ensemble-api') ? x.ensemble(base) : q.has('minutely_15') ? x.nowcast(base) : u.includes('air-quality') ? {} : base);
+          return json(url.hostname === 'ensemble-api.open-meteo.com' ? x.ensemble(base) : q.has('minutely_15') ? x.nowcast(base) : url.hostname === 'air-quality-api.open-meteo.com' ? {} : base);
         }
         if (u === U || u.split('?')[0] === U + 'index.html') return route.fulfill({ status: 200, contentType: 'text/html', body: html });
         if (u.includes('calendar.sealed.json')) return route.fulfill({ status: 200, contentType: 'application/json', body: fs.readFileSync(SP + '/cal.fake.json') });
@@ -45,6 +45,11 @@ let count = 0;
         saveSettings(); rebuild(); renderAll();
       });
       await settle();
+      // Le contexte canonique exige un choix explicite : aucun véhicule n'est supposé actif.
+      if (await page.locator('#dayContext details.day-editor').getAttribute('open') === null) await page.locator('#dayContext details.day-editor > summary').click();
+      await page.locator('#dayContext [data-act="day-car"]').first().click();
+      await settle();
+      if (await page.locator('#dayContext details.day-editor').getAttribute('open') !== null) await page.locator('#dayContext details.day-editor > summary').click();
       const before = await page.evaluate(() => JSON.stringify(S.cars));
       const tab = async name => { await page.locator(`#viewSeg [data-v="${name}"]`).click(); await settle(); };
       await tab('pneus');
@@ -54,7 +59,9 @@ let count = 0;
       assert.match(await page.locator('#secCars .ti-panel').nth(1).textContent(), /Données d’essais insuffisantes/);
       count++; console.log('✅ ' + device + ' · monte exacte, essais différents, mesures et projet non monté');
       for (const [view, selector] of [['meteo', '#secWx'], ['analyse', '#secLab'], ['trajet', '#secTrip']]) {
-        await tab(view); const p = page.locator(selector + ' .ti-panel').first(); assert(await p.isVisible()); assert.match(await p.textContent(), /Qualité des preuves/);
+        await tab(view); const p = page.locator(selector + ' .ti-panel').first();
+        assert(await p.isVisible(), device + ' · panneau ' + view + ' absent : ' + await page.evaluate(() => JSON.stringify({ view: UI.view, car: appDay().activeCarId, weather: !!CX })));
+        assert.match(await p.textContent(), /Qualité des preuves/);
         count++; console.log('✅ ' + device + ' · intégration ' + view);
       }
       await tab('analyse');
@@ -70,6 +77,9 @@ let count = 0;
       assert.equal(await page.evaluate(() => JSON.stringify(S.cars)), before);
       const calls = weatherCalls; await page.evaluate(() => { for (let i = 0; i < 10; i++) tyreIntelligenceHtml(S.cars[0], 'analyse'); });
       assert.equal(weatherCalls, calls); count++; console.log('✅ ' + device + ' · aucune mutation et aucun appel API du module');
+      const absent = await page.evaluate(() => { const previous = CX; CX = null; renderCars(); const text = document.querySelector('#secCars .ti-panel')?.textContent || ''; CX = previous; renderCars(); return text; });
+      assert.match(absent, /Pilot Sport 4S/); assert.match(absent, /Météo du contexte indisponible/); assert.match(absent, /35,52/);
+      count++; console.log('✅ ' + device + ' · essais accessibles dans Pneus même sans météo');
       await context.setOffline(true); await page.evaluate(() => { RAW[UI.loc].t -= 2 * 3600e3; renderAll(); });
       assert.match(await page.locator('#secLab .ti-panel').first().textContent(), /Météo ancienne/); assert.match(await evidence.textContent(), /35,52/);
       count++; console.log('✅ ' + device + ' · catalogue utilisable hors ligne, météo périmée signalée');
