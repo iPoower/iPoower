@@ -47,7 +47,7 @@ SUITE.push(['test_geolocation.js', 'localisation : précision, provenance, géof
   ['e2e49-interactions.js', 'commandes : clics réels PC/iPhone, saisie, clipboard, recherche dynamique et rerender', true],
   ['e2e50-geolocation.js', 'localisation : erreurs, priorité GPS, retour de veille, permissions, IP, drift et override', true]);
 // Retour rapide sur la file réseau : GPS remplacé, lieux et reprise HTTP 429 avant les longs parcours.
-const FIRST = ['e2e67-controls-safety.js', 'test_weather_requests.js', 'test_gps_requests.js', 'e2e33.js', 'e2e30.js', 'e2e44-place.js', 'e2e40-network.js'];
+const FIRST = ['e2e78-tyre-intelligence.js', 'e2e67-controls-safety.js', 'test_weather_requests.js', 'test_gps_requests.js', 'e2e33.js', 'e2e30.js', 'e2e44-place.js', 'e2e40-network.js'];
 SUITE.sort((a, b) => (FIRST.includes(a[0]) ? FIRST.indexOf(a[0]) : FIRST.length) - (FIRST.includes(b[0]) ? FIRST.indexOf(b[0]) : FIRST.length));
 
 SUITE.push(['test_road_intelligence.js', 'route : géométrie, sens, progression, validité, dédoublonnage et alertes', false],

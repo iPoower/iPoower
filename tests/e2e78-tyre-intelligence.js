@@ -14,8 +14,14 @@ let count = 0;
     for (const device of ['iphone', 'pc']) {
       const context = await browser.newContext({ viewport: device === 'iphone' ? { width: 414, height: 896 } : { width: 1280, height: 800 },
         isMobile: device === 'iphone', hasTouch: device === 'iphone', locale: 'fr-FR', timezoneId: 'Europe/Paris' });
-      const page = await context.newPage(), errors = []; let weatherCalls = 0;
-      page.on('pageerror', e => errors.push(e.message)); await page.clock.install({ time: T0 });
+      const page = await context.newPage(), errors = [], networkNoise = []; let weatherCalls = 0;
+      page.on('pageerror', e => {
+        const full = (e.name ? e.name + ': ' : '') + e.message;
+        // Même distinction que lib/context-session : WebKit remonte les fetch annulés en pageerror.
+        // Comptés explicitement ; les exceptions de code restent bloquantes.
+        if (BR.NAME === 'webkit' && /\bFetch API cannot load\b/.test(full) && !/\b(?:ReferenceError|SyntaxError|RangeError|is not a function|is not defined|undefined is not|null is not)\b/.test(full)) { networkNoise.push(full.replace(/\?.*$/, '')); return; }
+        errors.push(full);
+      }); await page.clock.install({ time: T0 });
       await page.route('**/*', route => {
         const u = route.request().url(), url = new URL(u), json = value => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(value) });
         if (['api.open-meteo.com', 'ensemble-api.open-meteo.com', 'air-quality-api.open-meteo.com'].includes(url.hostname)) {
@@ -30,7 +36,8 @@ let count = 0;
         if (u.endsWith('tiredb.json')) return route.fulfill({ status: 200, contentType: 'application/json', body: fs.readFileSync('site/tiredb.json') });
         if (u.endsWith('leaflet.js')) return route.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') });
         if (u.endsWith('leaflet.css')) return route.fulfill({ status: 200, contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') });
-        return route.fulfill({ status: 404, body: '' });
+        if (url.hostname === 'public.opendatasoft.com') return json({ records: [] });
+        return route.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*' }, body: '' });
       });
       await page.goto(U); await page.clock.runFor(2500); const settle = async () => { for (let i = 0; i < 6; i++) { await page.clock.runFor(500); await page.waitForTimeout(80); } };
       await unlockIfLocked(page, settle); await settle();
@@ -86,7 +93,7 @@ let count = 0;
       await context.setOffline(false); await page.reload(); await unlockIfLocked(page, settle); await settle();
       await tab('pneus'); assert.match(await page.locator('#secCars .ti-panel').first().textContent(), /épaules/);
       assert.equal(await page.evaluate(() => S.cars[0].tire.treads.length), 2); assert.equal(await page.evaluate(() => S.cars[0].tire.treads[1].mm), 3.6);
-      assert.deepEqual(errors, []); count++; console.log('✅ ' + device + ' · points conservés au rechargement, aucune erreur JavaScript');
+      assert.deepEqual(errors, []); count++; console.log('✅ ' + device + ' · points conservés au rechargement, aucune erreur JavaScript · fetch annulés WebKit comptés : ' + networkNoise.length);
       await context.close();
     }
   } finally { await browser.close(); }
