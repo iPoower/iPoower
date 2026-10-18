@@ -38,16 +38,19 @@ const ConfigImport = (() => {
       stringFields(v, ['name', 'label', 'sub', 'dept', 'deptCode', 'city', 'cityCode', 'address', 'provider', 'precision', 'country', 'countryCode']) &&
       (number(v.lat, -90, 90) && number(v.lon, -180, 180) || v.lat === null && v.lon === null);
   }
-  const TIRE_FIELDS = ['type', 'brand', 'model', 'size', 'tread', 'treadAv', 'treadAr', 'treadEst', 'press', 'mounted', 'dot', 'pchk', 'info', 'treads', 'mountKm', 'lastRot'];
+  const TIRE_FIELDS = ['type', 'brand', 'model', 'variant', 'homologation', 'size', 'tread', 'treadAv', 'treadAr', 'treadEst', 'press', 'mounted', 'dot', 'pchk', 'info', 'treads', 'mountKm', 'lastRot'];
   function tire(v) {
-    return fields(v, TIRE_FIELDS) && stringFields(v, ['brand', 'model', 'size', 'press', 'dot', 'info'], true) &&
+    return fields(v, TIRE_FIELDS) && stringFields(v, ['brand', 'model', 'variant', 'homologation', 'size', 'press', 'dot', 'info'], true) &&
       optional(v, 'type', x => ['summer', 'winter', 'allseason', 'unknown', 'none'].includes(x)) &&
       ['tread', 'treadAv', 'treadAr'].every(k => optional(v, k, x => x === null || number(x, 0, 20))) &&
       optional(v, 'treadEst', x => x === null || flag(x)) && optional(v, 'mounted', x => x === null || date(x)) &&
       ['mountKm', 'lastRot'].every(k => optional(v, k, x => x === null || number(x, 0, 10000000))) &&
-      optional(v, 'pchk', x => x === null || fields(x, ['date', 'T']) && date(x.date) && (x.T === null || number(x.T, -100, 100))) &&
-      optional(v, 'treads', x => x === null || boundedArray(x, 30, r => fields(r, ['d', 'mm', 'km', 'ax', 'est']) && date(r.d) && r.d !== '' &&
-        number(r.mm, 0, 20) && (r.km === null || number(r.km, 0, 10000000)) && optional(r, 'ax', a => ['av', 'ar', 'both'].includes(a)) && optional(r, 'est', flag)));
+      optional(v, 'pchk', x => x === null || fields(x, ['date', 'T', 'av', 'ar']) && date(x.date) && (x.T === null || number(x.T, -100, 100)) &&
+        ['av', 'ar'].every(k => optional(x, k, a => a === null || number(a, 0, 6)))) &&
+      optional(v, 'treads', x => x === null || boundedArray(x, 30, r => fields(r, ['d', 'mm', 'km', 'ax', 'est', 'pos', 'wheel']) && date(r.d) && r.d !== '' &&
+        number(r.mm, 0, 20) && (r.km === null || number(r.km, 0, 10000000)) && optional(r, 'ax', a => ['av', 'ar', 'both'].includes(a)) && optional(r, 'est', flag) &&
+        optional(r, 'pos', a => ['unknown', 'shoulders', 'centre', 'inner', 'outer'].includes(a)) &&
+        optional(r, 'wheel', a => a === null || ['front-left', 'front-right', 'rear-left', 'rear-right'].includes(a) && (r.ax === 'av' ? a.startsWith('front-') : r.ax === 'ar' ? a.startsWith('rear-') : false))));
   }
   function plan(v) {
     return fields(v, ['on', 'brand', 'model', 'size', 'date', 'ordered', 'etaFrom', 'etaTo', 'etaChecked', 'appointmentDate', 'appointmentConfirmed']) &&

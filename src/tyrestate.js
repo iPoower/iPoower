@@ -47,7 +47,7 @@ function treadTxt(x, mm) {
 function treadHistory(t) {
   const tx = treadAxles(t);
   const num = v => { const x = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v; return typeof x === 'number' && Number.isFinite(x) ? x : null; };
-  const hist = ((t && t.treads) || []).filter(x => x && num(x.mm) != null && (!x.ax || !tx.ax || x.ax === tx.ax))
+  const hist = ((t && t.treads) || []).filter(x => x && num(x.mm) != null && (!x.ax || x.ax === 'both' || !tx.ax || x.ax === tx.ax))
     .map(x => ({ ...x, mm: num(x.mm), km: num(x.km) }));
   const last = hist[hist.length - 1] || null;
   const withKm = hist.filter(x => x.km != null && !x.est).sort((a, b) => a.km - b.km);
