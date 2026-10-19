@@ -48,6 +48,103 @@ async function precisionReference(browser,dev){
   console.log('PRECISION_REFERENCE '+JSON.stringify(reference));
  }finally{await s.c.close();}
 }
+async function twinScenario(browser){
+ const s=await session(browser,{at:'2026-10-07T06:00:00+02:00',dev:'iphone'}),p=s.p;
+ try{
+  await p.evaluate(()=>{
+   S.cars[0].name='Hyundai i20 N · démonstration fictive';S.cars[1].name='Peugeot 308 · démonstration fictive';
+   USER_STORE.state.dayContext.activeCarId=S.cars[0].id;
+   UI.view='garage';renderAll();APP_CONTEXT.rendering=true;
+   const hs=[{t:'2026-10-07T06:00',T:7,Tr:6,P:1,Pl:1,rain:1,RH:95,vis:800,gust:30,wind:15,dir:270,code:45},
+    {t:'2026-10-07T07:00',T:2,Tr:1,P:0.4,snow:.3,RH:95,vis:4000,gust:25,wind:12,code:73},
+    {t:'2026-10-07T07:00',T:9,Tr:8,P:0,RH:80,vis:10000,gust:5,code:0}];
+   M.twinFixture={hs,mode:'live',days:[{date:'2026-10-07',sunrise:'2026-10-07T07:00',sunset:'2026-10-07T19:00'}]};RAW.twinFixture={t:Date.now()};
+   window.__twinSource=M.twinFixture;window.__twinReceived=RAW.twinFixture;
+   window.__twinTrip={key:'fictif',from:'Lieu A',to:'Lieu B',dep:'2026-10-07T06:30',arr:'2026-10-07T07:15',
+    seq:hs.map((h,i)=>({hs,i,t:i===0?'2026-10-07T06:30':'2026-10-07T07:15',loc:i===0?'Lieu A':i===2?'Lieu B':'Point météo test'})),res:[]};
+   window.__twinRender=()=>{M.twinFixture=window.__twinSource;RAW.twinFixture=window.__twinReceived;APP_CONTEXT.snapshot=Object.freeze({...APP_CONTEXT.snapshot,nextTrip:window.__twinTrip});renderGarage();};
+   window.__twinRender();
+  });
+  await check('Twin · scène schématique, effets documentés et aucun GPS simulé',async()=>{
+   const text=await p.locator('#secGarage').innerText();assert.match(text,/TWIN GARAGE LIVE/);assert.match(text,/SCHÉMA SANS ÉCHELLE/);assert.match(text,/sans suivi GPS/);
+   for(const cls of ['twin-rain','twin-snow','twin-fog','twin-wind','twin-moon','twin-sun'])assert(await p.locator('#secGarage .'+cls).count(),cls);
+   assert.equal(await p.locator('.twin-samples li').count(),3);assert.equal(await p.locator('.twin-car-svg').count(),3);
+  });
+  await check('Twin · clavier, pause volontaire, mouvement réduit et reprise iOS',async()=>{
+   await p.locator('.twin-scene').scrollIntoViewIfNeeded();await p.waitForTimeout(150);
+   assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'true','animation visible');
+   await p.locator('#garageMotion').focus();await p.keyboard.press('Space');
+   assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'false','pause clavier');
+   await p.keyboard.press('Space');
+   await p.emulateMedia({reducedMotion:'reduce'});
+   assert.equal(await p.locator('.twin-drive').evaluate(e=>getComputedStyle(e).animationName),'none','mouvement réduit');
+   await p.emulateMedia({reducedMotion:'no-preference'});await p.waitForTimeout(100);
+   await p.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
+   assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'false','document masqué');
+   await p.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new Event('pageshow'));});
+   await p.waitForFunction(()=>document.querySelector('.twin-scene').dataset.running==='true',null,{timeout:3000});
+   assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'true','reprise document');
+   await p.evaluate(()=>window.dispatchEvent(new Event('pagehide')));assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'false','pagehide');
+   await p.evaluate(()=>window.dispatchEvent(new Event('pageshow')));assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'true','pageshow');
+  });
+  await check('Twin · suspension réelle hors écran via IntersectionObserver',async()=>{
+   await p.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));await p.clock.runFor(300);await p.waitForTimeout(150);
+   await p.waitForFunction(()=>document.querySelector('.twin-scene').dataset.running==='false',null,{timeout:3000});
+   assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'false',JSON.stringify(await p.evaluate(()=>({y:scrollY,top:document.querySelector('.twin-scene').getBoundingClientRect().top,visible:GARAGE_MOTION.visible}))));
+   await p.locator('.twin-scene').scrollIntoViewIfNeeded();await p.clock.runFor(300);await p.waitForTimeout(150);
+   await p.waitForFunction(()=>document.querySelector('.twin-scene').dataset.running==='true',null,{timeout:3000});
+   assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'true');
+  });
+  await check('Twin · rendu sans minuterie par image ni requête supplémentaire',async()=>{
+   // Les événements de reprise précédents requalifient les vrais caches :
+   // réinstaller l'entrée fictive avant de mesurer cinquante entrées identiques.
+   await p.evaluate(()=>__twinRender());
+   const calls=s.S.calls,result=await p.evaluate(()=>{
+    const root=document.querySelector('#secGarage'),node=root.querySelector('.twin-scene'),before=JSON.stringify(S.cars),obs=new MutationObserver(()=>{});obs.observe(root,{childList:true,subtree:true});
+    const start=performance.now();for(let i=0;i<50;i++)renderGarage();const elapsed=performance.now()-start;
+    const mutations=obs.takeRecords().length;obs.disconnect();
+    return {same:node===root.querySelector('.twin-scene'),unchanged:before===JSON.stringify(S.cars),mutations,elapsedMs:elapsed};
+   });assert.equal(s.S.calls,calls);assert(result.same&&result.unchanged,JSON.stringify(result));assert.equal(result.mutations,0,JSON.stringify(result));assert(result.elapsedMs<1000,JSON.stringify(result));
+   fs.writeFileSync(path.join(process.env.SP,'twin-performance-'+BR.NAME+'.json'),JSON.stringify(result,null,2));
+  });
+  await check('Twin · focus boutons et panneaux ouverts conservés après vraies modifications',async()=>{
+   const result=await p.evaluate(()=>{
+    const root=document.querySelector('#secGarage'),b=root.querySelector('.garage-edit');b.focus();S.cars[0].odo=[{d:'2026-10-07',km:12345}];renderGarage();
+    const buttonFocus=document.activeElement===root.querySelector('.garage-edit');
+    const fold=root.querySelector('[data-ux=garage-sources]');fold.open=true;fold.querySelector('summary').focus();M.twinFixture.hs[0].T=6;renderGarage();
+    return {buttonFocus,foldOpen:root.querySelector('[data-ux=garage-sources]').open,foldFocus:document.activeElement===root.querySelector('[data-ux=garage-sources] > summary')};
+   });assert.deepEqual(result,{buttonFocus:true,foldOpen:true,foldFocus:true});
+  });
+  for(const theme of ['dark','light'])for(const width of [320,375,414,1440]){
+   await check('Twin · '+theme+' '+width+' px sans débordement ni cible trop petite',async()=>{
+    await p.setViewportSize({width,height:896});await p.evaluate(theme=>{document.documentElement.dataset.theme=theme;document.querySelector('[data-ux=garage-sources]').open=false;},theme);
+    const result=await p.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('#secGarage *')].filter(e=>{
+     if(e.closest('svg')||!e.getBoundingClientRect().height)return false;const r=e.getBoundingClientRect();return r.left<-.5||r.right>innerWidth+.5;
+    }).map(e=>e.tagName+'.'+e.className),targets:[...document.querySelectorAll('#secGarage .btn')].map(e=>e.getBoundingClientRect().height)}));
+    assert(result.scroll<=result.width+1,JSON.stringify(result));assert.deepEqual(result.overflow,[]);assert(result.targets.every(h=>h>=44));
+    if([414,1440].includes(width))await p.locator('#secGarage').screenshot({path:path.join(process.env.SP,'twin-'+BR.NAME+'-'+theme+'-'+width+'.jpg'),type:'jpeg',quality:80,scale:'css',animations:'disabled',style:'.statusbar{visibility:hidden}'});
+   });
+  }
+  await check('Twin · comparaison incomplète explicite, pression cible distincte du contrôle',async()=>{
+   await p.evaluate(()=>{const f=document.querySelector('[data-ux=garage-comparison]');f.open=true;});
+   const text=await p.locator('[data-ux=garage-comparison]').innerText();assert.match(text,/DONNÉES INSUFFISANTES/);assert.match(text,/Pression cible/i);assert.match(text,/Contrôle déclaré/i);
+  });
+  await check('Twin · changement de lieu et labels non interprétés comme HTML',async()=>{
+   await p.evaluate(()=>{__twinTrip={...__twinTrip,from:'Lieu C',to:'<img src=x onerror=alert(1)>'};__twinRender();});
+   assert.match(await p.locator('.twin-route').innerText(),/Lieu C/);assert.equal(await p.locator('.twin-route img').count(),0);
+  });
+  await check('Twin · hors ligne puis météo absente : aucune animation trompeuse',async()=>{
+   await s.c.setOffline(true);await p.evaluate(()=>__twinRender());assert.match(await p.locator('.twin-trip').innerText(),/HORS LIGNE/);assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'false');
+   await s.c.setOffline(false);await p.evaluate(()=>{__twinTrip={...__twinTrip,seq:[]};__twinRender();});
+   assert.match(await p.locator('.twin-trip').innerText(),/Aucun effet météo représenté/);assert.equal(await p.locator('.twin-rain,.twin-snow,.twin-fog,.twin-wind').count(),0);
+  });
+  await check('Twin · aucun trajet : fiches intactes et observateur déconnecté',async()=>{
+   await p.evaluate(()=>{__twinTrip=null;__twinRender();});assert.equal(await p.locator('.twin-scene').count(),0);assert.equal(await p.locator('.garage-car').count(),2);
+   assert.equal(await p.evaluate(()=>GARAGE_MOTION.observer),null);
+  });
+  await check('Twin · aucune violation de CSP',async()=>assert.deepEqual(await p.evaluate(()=>window.__csp),[]));
+ }finally{await s.c.close();}
+}
 (async()=>{
  const browser=await BR.launch();
  try{
@@ -155,6 +252,7 @@ async function precisionReference(browser,dev){
     });
    } finally{await s.c.close();}
   }
+  await twinScenario(browser);
   await check('Garage · aucune erreur JS',async()=>assert.deepEqual(errors,[]));
  }finally{await browser.close();}
  console.log(n+'/'+n+' scénarios Garage PC/iPhone OK');
