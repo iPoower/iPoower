@@ -13,13 +13,13 @@ function weatherLiveState({ now, receivedAt, mode, offline, busy, demo, pauseUnt
   const label = demo ? 'DÉMO' : offline ? 'HORS LIGNE' : limited ? 'LIMITÉ' : busy ? 'ACTUALISATION' : fresh ? 'LIVE' : mode ? 'CACHE' : 'INDISPONIBLE';
   const receipt = demo ? 'Simulation · aucune donnée réelle' : !dated ? 'Réception météo non datée'
     : 'Météo reçue ' + (LIVE_DAY_FORMAT.format(receivedAt) === LIVE_DAY_FORMAT.format(now) ? 'à ' : 'le ' + LIVE_DAY_FORMAT.format(receivedAt) + ' à ') + LIVE_RECEIPT_FORMAT.format(receivedAt);
-  const ageText = !dated ? 'Âge des données inconnu' : 'Données reçues ' + (age < 1 ? 'il y a moins de 1 min' : 'il y a ' + Math.floor(age) + ' min');
+  const ageText = !dated ? 'Âge des données inconnu' : 'Reçues ' + (age < 1 ? 'il y a < 1 min' : 'il y a ' + Math.floor(age) + ' min');
   const nextAt = weatherCheckAt(lastSuccess, lastAttempt, pauseUntil, now, interval);
   const next = demo ? 'Aucune vérification en simulation' : offline ? 'Vérification au retour du réseau'
     : limited ? 'fournisseur météo limité · reprise automatique après ' + LIVE_DAY_FORMAT.format(pauseUntil).slice(0, 5) + ' ' + LIVE_RECEIPT_FORMAT.format(pauseUntil)
     : busy ? (fresh ? '' : mode ? 'CACHE · ' : '') + 'actualisation en cours…'
     : nextAt <= now ? 'Prochaine vérification imminente' : 'Prochaine vérification dans environ ' + Math.ceil((nextAt - now) / 60000) + ' min';
-  return { label, fresh, receipt, detail: demo ? next : ageText + ' · ' + next, nextAt, limited, dated };
+  return { label, fresh, receipt: receipt + (dated && !fresh && mode && !demo ? ' · CACHE' : ''), detail: demo ? next : ageText + ' · ' + next, nextAt, limited, dated };
 }
 function statusText(el, text) { if (el && el.textContent !== text) el.textContent = text; }
 function updateLiveClock(now = Date.now()) {

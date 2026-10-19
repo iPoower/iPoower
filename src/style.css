@@ -124,6 +124,7 @@ html::before { content: ''; position: fixed; inset: 0 0 auto 0; height: env(safe
 .status-refresh { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
 .refresh-icon { display: inline-block; }
 @media (max-width: 560px) {
+  .statusbar { padding-block: 6px; }
   .statusbar .in { grid-template-columns: auto minmax(0, 1fr) auto; gap: 3px 8px; }
   .statusbar .upd, .status-main { display: contents; }
   #weatherBadge { grid-column: 1; grid-row: 1; font-size: 10px; letter-spacing: .03em; padding-inline: 6px; }

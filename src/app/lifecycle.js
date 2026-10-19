@@ -116,7 +116,7 @@ function renderTemporalWeather() {
     // Ne pas reconstruire un formulaire en cours de saisie. Sa projection reprend à la sortie du champ.
     const project = (selector, draw) => {
       const root = document.querySelector(selector), active = document.activeElement;
-      if (root && root.contains(active) && active.matches('input,textarea,select,[contenteditable="true"]')) { LOCAL_WEATHER_DEFERRED = true; return; }
+      if (root && root.contains(active) && (active.matches('input,textarea,select,[contenteditable="true"]') || active.closest('form,#wxOriginEditor'))) { LOCAL_WEATHER_DEFERRED = true; return; }
       draw();
     };
     renderStatus(); project('#srcline', renderSrc); renderNotice(); renderBanners();
