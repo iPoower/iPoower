@@ -26,6 +26,14 @@ test('seule la voiture HISTORIQUE est retenue, jamais la voiture actuellement ac
   const result=R.project(finished(),[{id:'v2',name:'Autre voiture',active:true}]);
   assert.equal(result.car,'Voiture test');assert.equal(result.carId,'v1');assert.equal(result.silhouette,'generic');
 });
+test('identité historique prioritaire sur le Garage renommé depuis le trajet',()=>{
+  const e=finished([],start([],{car:'308'}));
+  const p=R.project(e,[{id:'v1',name:'Hyundai i20 N actuelle'}]);
+  assert.equal(p.car,'308');assert.equal(p.carSource,'snapshot');assert.equal(p.silhouette,'touring');
+  const missing=R.project(finished([],start([],{car:''})),[{id:'v1',name:'Hyundai i20 N actuelle'}]);
+  assert.equal(missing.carSource,'garage-current');assert.equal(missing.silhouette,null);
+  assert.match(html(finished([],start([],{car:''})),[{id:'v1',name:'Hyundai i20 N actuelle'}]),/identité historique non archivée/);
+});
 test('snapshot immuable, aucun alias vers les sources',()=>{
   const e=finished(['wet','fog'],start(['rain'])), before=JSON.stringify(e);
   const p=R.project(e,cars); p.frames[0].conditions.push('snow');p.frames[1].labels.push('Faux');
