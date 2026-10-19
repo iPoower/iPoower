@@ -18,8 +18,8 @@ let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.pus
   });
   const page = await context.newPage(); page.on('pageerror', e => errors.push(e.message));
   await page.clock.install({ time: T0 });
-  let requests = 0, mainRequests = 0, hold = false, limited = false; const pending = [];
-  const json = (route, data, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(data) });
+  let requests = 0, mainRequests = 0, observationReads = 0, hold = false, limited = false; const pending = [];
+  const json = (route, data, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*', ...(status === 429 ? { 'retry-after': '900', 'access-control-expose-headers': 'retry-after' } : {}) }, body: JSON.stringify(data) });
   const reply = async (route, url) => {
     if (limited) return json(route, { error: true, reason: 'Minutely API request limit exceeded.' }, 429);
     providerNow = await page.evaluate(() => Date.now());
@@ -35,7 +35,7 @@ let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.pus
       if (hold) { pending.push([route, url]); return; } return reply(route, url);
     }
     if (url.includes('/race-control/calendar.sealed.json')) return route.fulfill({ status: 200, contentType: 'application/json', body: fs.readFileSync(path.join(process.env.SP, 'cal.fake.json'), 'utf8') });
-    if (url.includes('/race-control/obs.json')) return json(route, { stations: {} });
+    if (url.includes('/race-control/obs.json')) { observationReads++; return json(route, { stations: {} }); }
     if (url.includes('/race-control/tiredb.json')) return json(route, JSON.parse(fs.readFileSync('site/tiredb.json', 'utf8')));
     if (url.startsWith(U) && !/\.(js|json)$/.test(u.pathname)) return route.fulfill({ status: 200, contentType: 'text/html', body: html });
     return route.abort();
@@ -68,7 +68,9 @@ let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.pus
   await page.evaluate(() => { const settings = document.querySelector('#settings'); settings.open = true; }); await settle(2); await page.evaluate(() => { const settings = document.querySelector('#settings'); const input = settings.querySelector('input[type="text"]'); input.focus(); window.__focusedInput = input; window.__inputValue = input.value; });
   await page.clock.runFor(60000);
   check('saisie : focus, valeur et élément de formulaire intacts', await page.evaluate(() => document.activeElement === __focusedInput && __focusedInput.isConnected && __focusedInput.value === __inputValue));
-  await page.evaluate(() => { document.activeElement.blur(); document.querySelector('#settings').open = false; });
+  await page.evaluate(() => { document.activeElement.blur(); document.querySelector('#settings').open = false; const source = document.querySelector('#srcline details'); source.open = true; source.querySelector('summary').focus(); });
+  await page.clock.runFor(60000);
+  check('sources : panneau ouvert et focus conservés à la minute suivante', await page.evaluate(() => { const d = document.querySelector('#srcline details'); return d.open && document.activeElement === d.querySelector('summary') && /validité du modèle/.test(d.textContent) && !/dernière observation/.test(d.textContent); }));
   // Aucun appel météo avant cinq minutes ; le heartbeat existant vérifie l’échéance sous trente secondes.
   await page.evaluate(() => { lastTry = Date.now(); lastOk = lastTry; });
   const mainBefore = mainRequests; await page.clock.runFor(299000);
@@ -102,6 +104,8 @@ let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.pus
   check('429 : LIMITÉ, cache conservé et reprise annoncée', after.label === 'LIMITÉ' && after.at !== null && /reprise automatique après/.test(after.detail));
   const limitCount = requests; await page.clock.runFor(30000);
   check('429 : l’horloge ne contourne ni la pause ni les boutons désactivés', limitCount === requests && await page.locator('#statusbar [data-act="refresh"]').isDisabled());
+  const relayBefore = observationReads; await page.clock.runFor(330000); await settle();
+  check('429 : relais et agenda continuent leur cycle, sans requête Open-Meteo pendant la pause', observationReads > relayBefore && requests === limitCount && (await status()).label === 'LIMITÉ');
   // Recette visuelle avec données fictives, dans les deux thèmes et aux quatre largeurs.
   for (const width of [414, 375, 320, 1440]) for (const theme of ['dark', 'light']) {
     await page.setViewportSize({ width, height: width === 1440 ? 900 : 896 });

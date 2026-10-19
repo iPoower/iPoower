@@ -126,7 +126,7 @@ function renderTemporalWeather() {
     else if (UI.view === 'trajet') project('#secTrip', () => { renderTripView(); renderTripSummary(); });
     else if (UI.view === 'tenue') project('#secTenue', renderTenue);
     else if (UI.view === 'pneus') {
-      project('#secCars', renderCars); renderDecisionCore(); renderBrfCore(); renderBrief(); renderCompare(); renderSeason(); renderAlerts();
+      project('#secCars', renderCars); renderWeatherLink(); renderDecisionCore(); renderBrfCore(); renderBrief(); renderCompare(); renderSeason(); renderAlerts();
     }
     renderWeatherStation();
   } finally { APP_CONTEXT.rendering = false; }
@@ -172,7 +172,9 @@ function autoTick() {
   if (!DEMO.on && expireLive()) tickLocalClock(true);   // reprise : requalification avant toute requête
   if (DEMO.on || busy || (navigator.onLine === false)) return;
   const now = Date.now();
-  if (weatherCheckAt(lastOk, lastTry, WEATHER_REQUESTS.state().until, now, AUTO_MS) <= now)
+  // Le cycle renouvelle aussi le relais et l’agenda : leur lecture reste indépendante du quota Open-Meteo.
+  // Le gestionnaire réseau applique lui-même la pause aux seules requêtes du fournisseur.
+  if (weatherCheckAt(lastOk, lastTry, 0, now, AUTO_MS) <= now)
     weatherStationAutoRefresh().catch(() => { /* prochaine échéance du moteur */ });
 }
 setInterval(autoTick, 30e3);

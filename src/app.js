@@ -930,7 +930,11 @@ function renderSrc() {
     ? `Source : <b>scénario simulé « ${esc(DEMO_SCN[DEMO.scn].name)} »</b>. Les valeurs ne viennent d’aucun capteur ni d’aucun service météo.`
     : `${dataAt() ? 'Réception météo : <b>' + LIVE_DAY_FORMAT.format(dataAt()) + ' ' + LIVE_RECEIPT_FORMAT.format(dataAt()) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : ' (modèle de base, AROME indisponible)'} · modèles météo, pas une station · validité du modèle : <b>${esc(modelTime)}</b> (${esc(m.tz || 'Europe/Paris')}) · ${m.obs ? 'observation réelle : <b>' + esc(m.obs.t || 'heure inconnue') + '</b> · ' + esc(wxStationLine(m.obs)) : 'aucune observation réelle de station disponible'} · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
   const el = $('#srcline'), open = el.querySelector('details') && el.querySelector('details').open;
-  el.innerHTML = `<details${open ? ' open' : ''}><summary>ⓘ Sources et fraîcheur des données${dataAt() ? ' · reçue à ' + LIVE_RECEIPT_FORMAT.format(dataAt()) : ''}</summary><div>${srcHtml}</div></details>`;
+  const html = `<details${open ? ' open' : ''}><summary>ⓘ Sources et fraîcheur des données${dataAt() ? ' · reçue à ' + LIVE_RECEIPT_FORMAT.format(dataAt()) : ''}</summary><div>${srcHtml}</div></details>`;
+  if (el.innerHTML !== html) {
+    const focused = el.contains(document.activeElement); el.innerHTML = html;
+    if (focused) el.querySelector('summary').focus({ preventScroll: true });
+  }
 }
 // Relais en retard : ses observations de stations sont alors ignorées (voir refreshAll). L'utilisateur doit le savoir, pas le deviner.
 function relayLateNote() {
