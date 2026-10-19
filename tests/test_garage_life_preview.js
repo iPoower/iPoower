@@ -117,4 +117,20 @@ test('code du laboratoire ne sollicite aucun stockage navigateur ni API réseau'
     /\bfetch\s*\(/,/\bXMLHttpRequest\s*\(/,/\bsendBeacon\s*\(/,
     /\bFileReader\s*\(/,/\bcrypto\.subtle\.encrypt\s*\(/])assert.equal(forbidden.test(source),false,String(forbidden));
 });
+test('champs inconnus ou texte trop long refusés sans perte silencieuse',()=>{
+ const s=M.empty(cars);
+ assert.throws(()=>M.validateState({...s,futureFeature:true}));
+ assert.throws(()=>M.add(s,{...op('unknown'),newField:'future'}));
+ assert.throws(()=>M.add(s,op('long','a',{description:'X'.repeat(501)})));
+ assert.throws(()=>M.empty([{id:'a',name:'X'.repeat(121),goalKm:null}]));
+});
+test('relevés contradictoires à une même date = compteur non déterminable',()=>{
+ let s=M.empty(cars);
+ s=M.add(s,op('read1','a',{date:'2026-09-12',odometerKm:10000}));
+ s=M.add(s,op('read2','a',{date:'2026-09-12',odometerKm:10100}));
+ const x=M.summary(s,'a');
+ assert.equal(x.latest,null);
+ assert.equal(x.odometerConflict,true);
+ assert.equal(x.missing.odometer,true);
+});
 console.log('GARAGE LIFE : '+n+'/'+n+' contrôles unitaires du prototype.');
