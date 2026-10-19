@@ -2,7 +2,7 @@
  * Aucune state machine parallèle : nextDestination + activeCarId restent la vérité.
  */
 const TRIP_FORM = {
-  bound: null, destinationId: null, destinationHit: null, destinationQuery: '', destinationResults: [],
+  bound: null, activeCarSeed: null, destinationId: null, destinationHit: null, destinationQuery: '', destinationResults: [],
   originMode: null, originHit: null, originQuery: '', originResults: [], when: 'now', date: '', time: '', carId: null,
   message: '', destGen: 0, originGen: 0
 };
@@ -22,7 +22,15 @@ function tripRecommendedOrigin() {
 function tripDraftInit(force = false) {
   const d = appDay(), n = d.nextDestination, manual = n && n.source === 'manual' ? n : null;
   const token = manual ? manual.tripKey + '|' + manual.updatedAt : 'new';
-  if (!force && TRIP_FORM.bound === token) return;
+  if (!force && TRIP_FORM.bound === token) {
+    // Un changement du véhicule global actualise le brouillon sans effacer
+    // départ, destination ou horaire. Un choix local reste tant que le global ne change pas.
+    if (TRIP_FORM.activeCarSeed !== (d.activeCarId || null)) {
+      TRIP_FORM.carId = d.activeCarId || S.cars[0] && S.cars[0].id || null;
+      TRIP_FORM.activeCarSeed = d.activeCarId || null;
+    }
+    return;
+  }
   // Un ancien résultat réseau ne doit pas réapparaître après rechargement du formulaire.
   TRIP_FORM.destGen++; TRIP_FORM.originGen++;
   TRIP_FORM.destSearching = TRIP_FORM.originSearching = null;
@@ -40,6 +48,7 @@ function tripDraftInit(force = false) {
   TRIP_FORM.when = manual ? dep.slice(0, 10) === now.slice(0, 10) ? (Math.abs(tsToDate(dep) - tsToDate(now)) <= 5 * 60000 ? 'now' : 'later') : 'date' : 'now';
   TRIP_FORM.date = dep.slice(0, 10); TRIP_FORM.time = dep.slice(11, 16);
   TRIP_FORM.carId = d.activeCarId || S.cars[0] && S.cars[0].id || null; TRIP_FORM.message = '';
+  TRIP_FORM.activeCarSeed = d.activeCarId || null;
 }
 function tripCaptureForm() {
   const dest = $('#tripDestQ'), origin = $('#tripOriginQ'), os = $('#tripOriginSel'), car = $('#tripCar'), date = $('#tripDate'), time = $('#tripTime');

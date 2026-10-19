@@ -73,6 +73,7 @@ const TyreIntelligence = (() => {
     if (!m || test.modelId !== m.id) return { kind: 'insufficient', quality: 'indisponible', reasons: ['Le modèle exact ne correspond pas.'] };
     const reasons = [], variantMismatch = tire.variant && test.variant && normal(tire.variant) !== normal(test.variant) || tire.homologation && test.homologation && normal(tire.homologation) !== normal(test.homologation);
     if (variantMismatch) return { kind: 'indirect', quality: 'faible', reasons: ['Variante ou homologation différente : aucune transposition.'] };
+    if (!!tire.homologation !== !!test.homologation) return { kind: 'indirect', quality: 'faible', reasons: ['Homologation non confirmée dans les deux références : aucune correspondance exacte affirmée.'] };
     if (!d || !td) return { kind: 'indirect', quality: 'faible', reasons: ['Dimension de la monte non vérifiable.'] };
     if (d.dimension !== td.dimension) reasons.push(`Dimension différente : essai ${test.size}, monte ${tire.size}.`);
     const indicesKnown = [d.li, d.si, d.xl, test.loadIndex, test.speedIndex, test.xl].every(x => x !== null);
@@ -139,10 +140,12 @@ const TyreIntelligence = (() => {
       { readings: [] }, [{ kind: 'user', date: null }], ['Une absence de mesure ne permet aucune conclusion sur la conformité des pneus.']);
     if (facts.current.some(x => x.ageDays === null || x.ageDays > 60 || x.ageDays < 0)) rule('depth-age', 'Données insuffisantes', 'Mesure de sculpture ancienne ou date non vérifiable : les valeurs affichées ne sont pas une observation en temps réel.',
       { readings: facts.current }, [{ kind: 'user', date: null }]);
-    if (!pressure.recent || pressure.av === null || pressure.ar === null) rule('pressure-check', 'Données insuffisantes', 'Pression réelle récente non documentée pour les deux essieux : contrôler à froid. La cible recommandée n’est pas une mesure.',
+    if (!pressure.recent || pressure.av === null || pressure.ar === null) rule('pressure-check', 'Données insuffisantes', 'Mesure de pression récente non documentée pour les deux essieux : contrôler à froid. La cible recommandée n’est pas une mesure.',
       { pressure }, [{ kind: 'user', date: pressure.date }]);
     if (active && facts.min !== null && facts.current.some(x => !x.estimated && x.mm < 1.6)) rule('critical-depth', 'Risque documenté', 'Sculpture mesurée sous 1,6 mm : faire remplacer les pneus concernés avant de circuler.',
       { readings: facts.current.filter(x => !x.estimated && x.mm < 1.6), thresholdMm: 1.6 }, [{ kind: 'user', date: facts.current.find(x => !x.estimated && x.mm < 1.6).date }], ['Portée limitée aux points mesurés ; les autres points peuvent être plus usés.']);
+    if (active && facts.current.some(x => x.estimated && x.mm < 1.6)) rule('estimated-critical-depth', 'Vigilance', 'Sculpture estimée sous 1,6 mm : vérifier à la jauge avant de circuler ; une estimation ne prouve pas la conformité.',
+      { readings: facts.current.filter(x => x.estimated && x.mm < 1.6), thresholdMm: 1.6 }, [{ kind: 'user', date: facts.current.find(x => x.estimated && x.mm < 1.6).date }], ['Estimation utilisateur, sans diagnostic de non-conformité mesuré.', 'Le seuil de 3 mm reste un repère interne distinct du minimum réglementaire.']);
     const facets = Object.entries(FACETS).map(([id, [label]]) => ({ id, label, results: rows.flatMap(({ test, comparison }) => test.metrics.filter(x => x.id === id && x.value !== null).map(metric => ({ test, metric, comparison }))) }));
     // La météo sélectionne les disciplines pertinentes DU modèle, sans extrapoler leurs valeurs au véhicule.
     if (active && fresh && wet.length) {
@@ -164,6 +167,8 @@ const TyreIntelligence = (() => {
       { axles: below, pressure, targetText: t.press }, [{ kind: 'user', date: pressure.date }], ['Température, charge et précision du manomètre peuvent limiter cette comparaison ; aucune adhérence calculée.']);
     if (active && pressure.recent && [pressure.av, pressure.ar].some(x => x === 0)) rule('zero-pressure', 'Risque documenté', 'Le dernier contrôle consigne une pression de 0 bar : vérifier la mesure et faire intervenir un professionnel avant de circuler.',
       { pressure }, [{ kind: 'user', date: pressure.date }], ['Il s’agit du contrôle daté saisi, sans capteur temps réel.']);
+    if (active && !pressure.recent && [pressure.av, pressure.ar].some(x => x === 0)) rule('historical-zero-pressure', 'Vigilance', 'Un relevé de fraîcheur non vérifiable indique 0 bar : vérifier la pression à froid avant de conclure sur l’état actuel.',
+      { pressure }, [{ kind: 'user', date: pressure.date }], ['Valeur historique ou date non vérifiable ; aucune pression actuelle de 0 bar affirmée.']);
     // Valeurs contradictoires pour le MÊME essai et protocole : aucune moyenne ni choix silencieux.
     const conflicts = [];
     for (const f of facets) { const groups = new Map(); for (const r of f.results) { const t = r.test, m = r.metric;
