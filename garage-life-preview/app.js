@@ -66,6 +66,7 @@
     if(!info.deadlines.length)line(d,'Aucune échéance renseignée','Aucune périodicité constructeur déduite.');
     for(const o of info.deadlines)line(d,date(o.date)+' · '+labels[o.category]+' · '+o.description,
       'Échéance saisie manuellement'+(o.odometerKm===null?'':' · '+o.odometerKm.toLocaleString('fr-FR')+' km saisis'));
+    if(info.odometerConflict)line(missing,'Relevés contradictoires à une même date','Aucun compteur retenu : intervention humaine requise.');
     if(info.missing.odometer)line(missing,'Dernier kilométrage inconnu');
     if(info.missing.records)line(missing,'Historique réalisé incomplet ou vide');
     if(info.missing.costs)line(missing,'Coûts non renseignés pour certaines opérations');
