@@ -1,4 +1,5 @@
 // @include app/garage-scene.js
+// @include app/mission-control.js
 /* Onglet Garage : consultation uniquement des fiches existantes.
  * Aucune nouvelle table, aucun journal d'entretien inventé, aucune connexion OBD.
  */
@@ -53,8 +54,15 @@ function renderGarage() {
   const active = appActiveCar(), cars = Garage.overview(S.cars, active && active.id, tyreStateOf);
   const trip = APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.nextTrip;
   const scene = Garage.preview(trip, { sourceFor: garageWeatherSources(), offline: offlineNow(), now: Date.now(), freshness: Reliability.freshState });
-  const parts = { records: cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>' : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>',
-    trip: garageTripHtml(scene, cars.find(c=>c.active)),
+  const selected = cars.find(c => c.active) || null;
+  const compared = selected ? Garage.comparison([selected], trip, scene)[0] : null;
+  // Le même Waze que dans le briefing historique, uniquement sur geste explicite.
+  const navigation = !DEMO.on && trip && !trip.destinationPending && !(trip.l && trip.l.originPending) ? wazeBtn(tripTo(trip)) : '';
+  const mission = MissionControl.project({ car: selected, trip, scene, comparison: compared,
+    offline: offlineNow(), navigationAvailable: !!navigation, agendaUnavailable: APP_CONTEXT.agendaSelectionUnavailable });
+  const parts = { mission: missionControlHtml(mission, navigation),
+    records: cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>' : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>',
+    trip: garageTripHtml(scene, selected),
     compare: garageCompareHtml(cars, trip, scene) };
   const html = JSON.stringify(parts);
   // Une projection identique conserve le geste en cours, le focus et les extensions F1.
