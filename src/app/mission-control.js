@@ -25,6 +25,9 @@ const MissionControl = (() => {
       vigilance = str(ordered[0].text); vigilanceSource = 'Suivi pneumatique existant · donnée déclarée';
     }
     const count = scene && Number.isInteger(scene.count) ? scene.count : 0;
+    // La prévisualisation compacte écarte les points sans météo : sans alignement
+    // exact avec la séquence source, son dernier point ne prouve PAS l'arrivée.
+    const endpointsAligned = usable && Array.isArray(trip.seq) && count > 0 && count === trip.seq.length;
     return {
       vehicle: car ? str(car.name) || str(car.short) : null,
       carId: car && car.id || null,
@@ -37,8 +40,8 @@ const MissionControl = (() => {
       tripPending: !!trip && !usable,
       weather: { status: usable && scene ? str(scene.status) || 'INDISPONIBLE' : 'INDISPONIBLE',
         complete: !!usable && !!scene && !!scene.complete, demo: !!scene && !!scene.demo,
-        departure: usable ? point(scene,1) : null,
-        arrival: usable && count >= 2 ? point(scene,count) : null },
+        departure: endpointsAligned ? point(scene,1) : null,
+        arrival: endpointsAligned && count >= 2 ? point(scene,count) : null },
       vigilance, vigilanceSource, offline: !!offline,
       navigationAvailable: usable && !!navigationAvailable,
       agendaUnavailable: usable && !!agendaUnavailable && trip.src === 'cal'
