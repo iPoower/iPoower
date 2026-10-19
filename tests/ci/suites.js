@@ -109,4 +109,5 @@ SUITE.push(['test_web_security.js', 'Forteresse : CSP, assets signés, chemins s
 SUITE.push(['test_config_import.js', 'Forteresse III : liens privés, validation, coffre atomique, refus et données conservées', false],
   ['e2e76-config-import.js', 'Forteresse III PC/iPhone : vrais imports fictifs, verrouillage, URL et réouverture', true]);
 SUITE.push(['e2e77-provider-limited.js', 'Incident 429 du 14/10 iPhone/PC : LIMITÉ ≠ HORS LIGNE, boutons en pause, zéro requête, ancien lien de configuration', true]);
+SUITE.push(['test_route_radar.js', 'Route Radar : points réels, ETA, couverture, fraîcheur et absence de mutation', false]);
 SUITE.push(['test_road_policy.js', 'chaussée mouillée/humide : une seule définition pour le verdict, l’Analyse et le poste Météo, contre-tests', false]);
