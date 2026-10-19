@@ -31,6 +31,26 @@ async function run() {
   assert.equal(t.storage.getItem('twrc.settings.v1'), 'avant-réglages'); assert.equal(t.storage.getItem('twrc.context.v1'), 'avant-contexte');
   const ok = make(null, false); await ok.apply(plan());
   assert.equal(ok.storage.getItem('twrc.settings.v1'), 'import-réglages'); assert.equal(ok.storage.getItem('twrc.context.v1'), null); assert.equal(ok.calls(), 1);
+  // Deux sélections de fichier ne doivent pas démarrer deux restaurations.
+  // Fonction d'entrée réelle ; lecture lente et fichiers invalides fictifs.
+  const importStart = source.indexOf('async function backupImport(f) {'), importEnd = source.indexOf('/* ---------- astuces', importStart);
+  assert(importStart >= 0 && importEnd > importStart);
+  const entry = { window: { TWRC_VAULT: { mode: 'vault', journalNeedsRecovery: false } },
+    SessionVault: { validVault: () => false }, bkMsg: () => {} };
+  vm.createContext(entry);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/device-storage.js'), 'utf8') +
+    '\nlet backupImportBusy = false;\n' + source.slice(importStart, importEnd) + ';this.restore=backupImport;this.storage=DeviceStorage;', entry);
+  let finish, reads = 0;
+  const gate = new Promise(resolve => { finish = resolve; });
+  const firstImport = entry.restore({ text: () => { reads++; return gate; } });
+  const file = { text: async () => { reads++; return '{}'; } };
+  await entry.restore(file); assert.equal(reads, 1, 'second import refusé avant lecture du fichier');
+  finish('{}'); await firstImport;
+  await entry.restore(file); assert.equal(reads, 2, 'refus de fichier libère le verrou');
+  await entry.restore({ text: async () => { throw new Error('lecture fictive interrompue'); } });
+  await entry.restore(file); assert.equal(reads, 3, 'lecture interrompue libère le verrou');
+  entry.storage.freeze(true); await entry.restore(file); assert.equal(reads, 3, 'rechargement/stockage gelé interdit tout nouvel import');
+  entry.storage.freeze(false); await entry.restore(file); assert.equal(reads, 4);
   console.log('✅ Import : rollback exact sans conflit, ajouts concurrents préservés et absence de faux succès');
 }
 module.exports = run;

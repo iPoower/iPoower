@@ -34,6 +34,13 @@ remplacée, ajout sur clé supprimée, ajout hors plan, retour exact sans confli
 et succès sans panne. Faux stockage et panne simulée ; vrai gestionnaire et vrai
 moteur DeviceStorage. CI complète Chromium/WebKit exigée sur le SHA courant.
 
+L'entrée d'import acceptait aussi deux lectures de fichier simultanées dans une
+même page. Le contre-test ouvre une lecture lente puis soumet un deuxième
+fichier : deux lectures démarrent avant correction. Un verrou volatile refuse
+désormais le deuxième import avant lecture ou mutation, se libère après chaque
+sortie ou erreur et refuse une nouvelle opération pendant le gel/rechargement.
+Ce garde-fou ne constitue pas un verrou inter-onglets supplémentaire.
+
 Pas de nouveau format, clé, permission, service, SW ou migration. Revenir au code
 précédent réintroduit le risque ; ne pas déclencher d'import tant qu'il est présent.
 Un revert logiciel ne restaure pas une donnée déjà écrasée. Recette physique

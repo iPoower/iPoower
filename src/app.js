@@ -1798,7 +1798,11 @@ async function backupApplyPlan(plan) {
     throw Object.assign(new Error(failure), { restoreConflict });
   }
 }
+let backupImportBusy = false;
 async function backupImport(f) {
+  if (backupImportBusy || DeviceStorage.isFrozen()) { bkMsg('Restauration indisponible pendant une autre opération. Attends sa fin avant de réessayer.'); return; }
+  backupImportBusy = true;
+  try {
   if (!window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault' || window.TWRC_VAULT.journalNeedsRecovery) { bkMsg('Vérifie d’abord une copie de récupération du journal actuel dans un coffre déverrouillé. Aucun import appliqué.'); return; }
   bkMsg('Lecture du fichier…');
   if (f && Number.isFinite(f.size) && f.size > 68 * 1024 * 1024) { bkMsg('Sauvegarde trop volumineuse : fichier conservé, aucun réglage modifié.'); return; }
@@ -1838,6 +1842,7 @@ async function backupImport(f) {
   DeviceStorage.freeze(true);
   bkMsg(`✅ Sauvegarde ${version} restaurée. Redémarrage…`);
   reloadSafe(600);
+  } finally { backupImportBusy = false; }
 }
 
 
