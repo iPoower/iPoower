@@ -13,6 +13,7 @@ const leg = { routed: true, g: [[49, 2], [49.5, 2.5], [50, 3]], pts: [{ f: .5 }]
 const trip = { key: 'lieu-a-lieu-b', dep: '2026-10-19T15:00', arr: '2026-10-19T15:20', l: leg, seq: points([0, .5, 1]) };
 const source = { hs: hours, mode: 'live', at: now - 120000 };
 const view = t => rr.snapshot({ trip: t, sources: [source], now });
+const original = JSON.stringify(trip);
 const first = view(trip);
 assert.equal(first.state, 'ready'); assert.equal(first.partial, false);
 assert.deepEqual([...first.points].map(p => p.label), ['DÉPART', 'PARCOURS', 'ARRIVÉE']);
@@ -21,7 +22,7 @@ assert.equal(first.points[1].temp, 8); assert.equal(first.points[1].visibility, 
 assert.equal(first.points[1].state, 'Prévision conservée');
 assert.match(rr.html(first, String), /600 m/);
 assert.match(rr.html(first, String), /Couverture|Échantillons/);
-assert.equal(JSON.stringify(trip), JSON.stringify({ ...trip }), 'aucune mutation');
+assert.equal(JSON.stringify(trip), original, 'aucune mutation');
 assert.equal(view({ ...trip, seq: points([0, 1]) }).partial, true, 'grand intervalle non couvert');
 assert.equal(view({ ...trip, seq: points([0]) }).partial, true, 'trajet long avec un seul point');
 assert.equal(view({ ...trip, seq: [] }).state, 'unavailable');

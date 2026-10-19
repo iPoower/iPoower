@@ -20,12 +20,10 @@ const RouteRadar = (() => {
       if (!x || typeof x !== 'object') return;
       const exactF = finite(q.f) && q.f >= 0 && q.f <= 1;
       const fraction = exactF ? q.f : last > 0 ? i / last : null;
-      const time = validTime(q.t) ? q.t.slice(0, 16) :
-        fraction != null && finite(duration) && duration >= 0 ? new Date(Date.parse(trip.dep) + Math.round(duration * fraction) * 60000).toISOString().slice(0, 16) : null;
       // Les horaires reconstitués sans fuseau explicite ne doivent pas être affichés.
       const at = validTime(q.t) ? q.t.slice(0, 16) : fraction != null && finite(duration) && duration >= 0 && typeof addMin === 'function' ? addMin(trip.dep, Math.round(duration * fraction)) : null;
       const located = finite(q.lat) && finite(q.lon) && Math.abs(q.lat) <= 90 && Math.abs(q.lon) <= 180;
-      const found = sources.find(s => s && s.hs === q.hs), age = found && finite(stamp(found.at)) ? Math.max(0, (now - stamp(found.at)) / 60000) : null;
+      const found = sources.find(s => s && s.hs === q.hs), age = found && finite(stamp(found.at)) && stamp(found.at) <= now + 60000 ? Math.max(0, (now - stamp(found.at)) / 60000) : null;
       const stale = found && (found.mode === 'cache' || found.mode === 'offline' || found.mode === 'stale') ||
         finite(age) && (typeof Reliability !== 'undefined' && typeof Reliability.liveExpired === 'function'
           ? Reliability.liveExpired(stamp(found.at), now) : age > 30);
@@ -42,13 +40,13 @@ const RouteRadar = (() => {
         temp: finite(x.T) ? x.T : null, rain: finite(x.P) ? x.P : null, probability: finite(x.pp) ? x.pp : null,
         snow, snowKnown: finite(x.snow) || finite(x.code), visibility: finite(x.vis) ? x.vis : null,
         wind: finite(x.wind) ? x.wind : null, gust: finite(x.gust) ? x.gust : null,
-        risk: risk ? { level: risk.lv, fog: !!risk.fog, ice: !!risk.ice } : null,
+        risk: risk && (risk.lv >= 2 || risk.fog || risk.ice) ? { level: risk.lv, fog: !!risk.fog, ice: !!risk.ice } : null,
         source: found ? 'Modèle horaire Race Control' : 'Modèle non identifié',
         age, state, tone: risk && finite(risk.lv) ? Math.min(3, Math.max(0, risk.lv)) : fog || snow ? 2 : rain ? 1 : 0
       });
     });
     p.sort((a, b) => (a.fraction ?? Infinity) - (b.fraction ?? Infinity));
-    const progress = p.filter(x => x.fraction != null).map(x => x.fraction), gaps = progress.slice(1).some((f, i) => f - progress[i] > .4);
+    const progress = p.filter(x => x.fraction != null).map(x => x.fraction), gaps = progress.slice(1).some((f, i) => f - progress[i] > .6);
     const endpoints = progress.length > 1 && progress[0] <= .01 && progress[progress.length - 1] >= .99;
     const expected = leg && Array.isArray(leg.pts) ? leg.pts.length + 2 : null;
     const partial = !geometry || !endpoints || gaps || expected != null && p.length < expected;
