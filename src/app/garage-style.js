@@ -20,6 +20,20 @@ const GARAGE_STYLE = `<style>
 #secGarage .twin-rubber{fill:var(--bg);stroke:var(--line2);stroke-width:2}
 #secGarage .twin-rim{fill:var(--panel2);stroke:var(--fg2);stroke-width:2}
 #secGarage .twin-spokes{stroke:var(--fg2);stroke-width:1.5}
+#secGarage .twin-vehicle-art::before{content:"";position:absolute;right:4%;top:24%;width:27%;height:43%;background:repeating-linear-gradient(163deg,transparent 0 11px,var(--line) 11px 12px);opacity:.35;pointer-events:none}
+#secGarage .twin-vehicle-art .twin-car-svg{position:relative}
+#secGarage .twin-car-svg .twin-paint{stroke-linejoin:round;stroke-linecap:round}
+#secGarage .twin-reflection{fill:none;stroke:var(--panel2);stroke-width:1.7;stroke-linecap:round;opacity:.85}
+#secGarage .twin-character{fill:none;stroke:var(--fg2);stroke-width:1;stroke-linecap:round;stroke-linejoin:round;opacity:.7}
+#secGarage .twin-body-shade{fill:var(--bg);opacity:.16}
+#secGarage .twin-mirror{fill:var(--fg2);stroke:var(--panel);stroke-width:1;stroke-linejoin:round}
+#secGarage .twin-grille,#secGarage .twin-intake{fill:var(--fg3);stroke:var(--fg2);stroke-width:.8}
+#secGarage .twin-rear-lamp{fill:var(--risk);stroke:var(--fg2);stroke-width:.75;stroke-linejoin:round}
+#secGarage .twin-chrome{fill:none;stroke:var(--fg2);stroke-width:1.2;opacity:.9;stroke-linecap:round}
+#secGarage .twin-spoiler{fill:var(--fg2);stroke:var(--accent);stroke-width:1.1;stroke-linejoin:round}
+#secGarage .twin-sport-accent{fill:none;stroke:var(--risk);stroke-width:2.6;stroke-linecap:round}
+#secGarage .twin-car-sport .twin-spokes{stroke-width:2}
+#secGarage .twin-hub{fill:var(--fg2)}
 #secGarage .twin-quality{display:flex;gap:5px;flex-wrap:wrap}
 #secGarage .twin-quality .src{white-space:normal;overflow-wrap:anywhere}
 #secGarage .twin-trip{padding:13px;border:1px solid var(--line2);border-radius:6px;background:var(--panel2);display:grid;gap:12px;min-width:0;scroll-margin-top:70px}
