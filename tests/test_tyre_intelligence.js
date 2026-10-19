@@ -37,6 +37,14 @@ check('identité de dimension et variante exigée ; qualité élevée seulement 
   i.car.tire.variant = 'autre'; assert.equal(analyse(i, c).tests[0].comparison.kind, 'indirect');
   i.car.tire.variant = 'standard'; i.car.tire.size = '225/40 R18 94Y XL'; assert.equal(analyse(i, c).tests[0].comparison.kind, 'indirect');
 });
+check('homologation connue sur une seule référence : aucune correspondance exacte', () => {
+  const c = copy(catalog), t = c.tests[0]; Object.assign(t, { variant: 'standard', vehicle: 'Véhicule fictif', tyreState: 'new', airC: 20, roadC: 22 });
+  const i = input(tire({ size: '225/40 R18 92Y XL', variant: 'standard', homologation: 'AO' }));
+  assert.equal(analyse(i, c).tests[0].comparison.kind, 'indirect');
+  i.car.tire.homologation = ''; t.homologation = 'AO';
+  assert.equal(analyse(i, c).tests[0].comparison.kind, 'indirect');
+  i.car.tire.homologation = 'AO'; assert.equal(analyse(i, c).tests[0].comparison.kind, 'exact');
+});
 check('relevés asymétriques et positions individuelles conservés sans mutation ni moyenne', () => {
   const i = input(), original = JSON.stringify(i), r = analyse(i);
   assert.equal(JSON.stringify(i), original); assert.equal(r.facts.min, 2.4); assert.equal(r.facts.history.length, 3);

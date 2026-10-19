@@ -168,7 +168,7 @@ function renderLab() {
         <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.state.toUpperCase())}</h2>
         <p class="wx-hl wx-h1">Gomme estimée ≈ ${rg(th.range)}${h.warm ? ' · ' + esc(h.warm) : ''}</p>
         <p class="wx-hl">Freinage : <b>non mesuré</b> · Virage : <b>non mesuré</b> · ${['rain', 'heavy', 'pool'].includes(r.env.surf) ? 'Pluie' : 'Si pluie'} : <b>non mesurée</b></p>
-        <p class="wx-hl">Facteur limitant : <b>${esc(h.critical ? 'sculpture sous le minimum légal' : 'conditions météo et données saisies, sans adhérence mesurée')}</b> · Confiance : <b>${esc(cf.level)}</b></p><p class="sub">Chaussée estimée par le modèle : ${esc(r.env.surfTxt)} · à confirmer sur place.</p>${pf.generic ? genericLine(pf.gaps) : ''}</div>`;
+        <p class="wx-hl">Facteur limitant : <b>${esc(h.critical ? st && st.tread.est ? 'profondeur estimée à vérifier avant de circuler' : 'sculpture sous le minimum légal' : 'conditions météo et données saisies, sans adhérence mesurée')}</b> · Confiance : <b>${esc(cf.level)}</b></p><p class="sub">Chaussée estimée par le modèle : ${esc(r.env.surfTxt)} · à confirmer sur place.</p>${pf.generic ? genericLine(pf.gaps) : ''}</div>`;
       const pct = x => Math.round(x * 1000) / 10;
       const warmTxt = r.warm.reached ? (r.warm.sinceMin != null ? `Zone favorable atteinte depuis ~${r.warm.sinceMin} min` : 'Zone favorable : gomme estimée dans la plage') : r.warm.never ? 'Zone favorable non atteinte dans ces conditions' : `Avant la zone favorable : ${esc(h.warm)}`;
       const win = `<div class="wx-blk lab-win"><h3>🌡️ Fenêtre de fonctionnement</h3>

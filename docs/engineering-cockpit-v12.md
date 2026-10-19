@@ -25,3 +25,5 @@ pneumatique ; parcours Chromium/WebKit existant étendu aux six cartes, aux deux
 tailles d'écran et à la lecture seule. La CI sur le SHA exact, sa suite complète
 et le SHA réellement servi restent nécessaires avant livraison. Aucun appareil
 physique n'est testé par ces simulations.
+
+Diagnostics, références, priorités et contexte : [lot V1.2](engineering-diagnostics-v12.md).
