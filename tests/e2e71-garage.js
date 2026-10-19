@@ -71,6 +71,16 @@ async function twinScenario(browser){
    assert.match(await p.locator('.twin-wind').evaluate(e=>e.parentElement.getAttribute('transform')),/^rotate\(0 /,'vent venant de l’ouest : mouvement vers l’est');
    assert.equal(await p.locator('.twin-samples li').count(),3);assert.equal(await p.locator('.twin-car-svg').count(),3);
   });
+  await check('Twin V1.4.1 · gabarits lisibles dans les deux fiches et la scène',async()=>{
+   const shapes=await p.locator('#secGarage .twin-car-svg').evaluateAll(nodes=>nodes.map(x=>x.dataset.shape));
+   assert.deepEqual(shapes,['sport','touring','sport']);
+   assert.equal(await p.locator('.garage-car:first-child .twin-spoiler').count(),1);
+   assert.equal(await p.locator('.garage-car:first-child .twin-sport-accent').count(),1);
+   assert.equal(await p.locator('.garage-car:nth-child(2) .twin-chrome').count(),1);
+   assert.equal(await p.locator('.garage-car:nth-child(2) .twin-spoiler').count(),0);
+   assert.equal(await p.locator('#secGarage image,#secGarage foreignObject').count(),0);
+   assert.equal(await p.locator('#secGarage svg[aria-hidden=true]').count(),3);
+  });
   await check('Twin · clavier, pause volontaire, mouvement réduit et reprise iOS',async()=>{
    await p.locator('.twin-scene').scrollIntoViewIfNeeded();await p.waitForTimeout(150);
    assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'true','animation visible');
