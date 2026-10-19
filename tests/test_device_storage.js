@@ -107,6 +107,7 @@ async function check(name, test) { await test(); n++; console.log('✅ ' + name)
     try { assert.equal(require('../tools/keys').tryUnseal({ ...envelope, it: 2147483647 }, CODE), null); assert.equal(calls, 0); }
     finally { nodeCrypto.pbkdf2Sync = original; }
   });
+  await require('./test_backup_apply_plan')();
   console.log(`${n}/${n} scénarios OK`);
 })().catch(e => { console.error(e); process.exitCode = 1; });
 function oldWithoutOther() { return Object.fromEntries(Object.entries(old).filter(([k]) => k.startsWith('twrc.'))); }

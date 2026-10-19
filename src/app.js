@@ -1782,11 +1782,20 @@ async function backupApplyPlan(plan) {
   // Coffre de session : l'import n'est réussi qu'une fois le coffre chiffré réécrit ET relu ; sinon retour exact à l'état précédent.
   const names = [...new Set([...Object.keys(plan.writes), ...plan.remove])], before = Object.fromEntries(names.map(k => [k, localStorage.getItem(k)]));
   DeviceStorage.apply(localStorage, plan);
+  const published = Object.fromEntries(names.map(k => [k, localStorage.getItem(k)]));
   await VS.flush();
   if (VS.error) {
-    names.forEach(k => { if (before[k] == null) localStorage.removeItem(k); else localStorage.setItem(k, before[k]); });
+    const failure = VS.error;
+    let restoreConflict = false;
+    names.forEach(k => {
+      // Une modification reçue pendant WebCrypto ne nous appartient plus.
+      // Ne jamais réinstaller l'instantané préalable par-dessus cet ajout.
+      if (localStorage.getItem(k) !== published[k]) { restoreConflict = true; return; }
+      if (before[k] === published[k]) return;
+      if (before[k] == null) localStorage.removeItem(k); else localStorage.setItem(k, before[k]);
+    });
     await VS.flush();
-    throw new Error(VS.error);
+    throw Object.assign(new Error(failure), { restoreConflict });
   }
 }
 async function backupImport(f) {
@@ -1824,7 +1833,7 @@ async function backupImport(f) {
   if (window.TWRC_PRESET_V) plan.writes['twrc.presetv'] = String(window.TWRC_PRESET_V);
   plan.writes['twrc.lastbackup'] = String(data.at).slice(0, 10);
   try { await backupApplyPlan(plan); }
-  catch (e) { bkMsg(e.recoveryPending ? 'Import interrompu : la copie de récupération est conservée. Libère de l’espace puis rouvre l’app.' : 'Import non appliqué : stockage local indisponible. Tes réglages et ton journal précédents sont conservés.'); return; }
+  catch (e) { bkMsg(e.restoreConflict ? 'Import non confirmé : des modifications concurrentes sont conservées en mémoire. Garde la page ouverte et rétablis le stockage avant de réessayer.' : e.recoveryPending ? 'Import interrompu : la copie de récupération est conservée. Libère de l’espace puis rouvre l’app.' : 'Import non appliqué : stockage local indisponible. Tes réglages et ton journal précédents sont conservés.'); return; }
   // Les anciens moteurs encore en mémoire ne doivent pas réécrire l'état importé avant le rechargement.
   DeviceStorage.freeze(true);
   bkMsg(`✅ Sauvegarde ${version} restaurée. Redémarrage…`);
