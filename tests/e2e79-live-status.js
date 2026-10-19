@@ -110,11 +110,12 @@ let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.pus
   for (const width of [414, 375, 320, 1440]) for (const theme of ['dark', 'light']) {
     await page.setViewportSize({ width, height: width === 1440 ? 900 : 896 });
     await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
-    const fit = await page.evaluate(() => { const root = document.querySelector('#statusbar'); return document.documentElement.scrollWidth <= innerWidth + 1 && root.getBoundingClientRect().right <= innerWidth + 1 && [...root.querySelectorAll('button,time,.weather-received,.status-detail')].every(x => x.getBoundingClientRect().right <= innerWidth + 1); });
+    const fit = await page.evaluate(() => { const root = document.querySelector('#statusbar'); return document.documentElement.scrollWidth <= innerWidth + 1 && root.getBoundingClientRect().right <= innerWidth + 1 && [...root.querySelectorAll('button,time,.live-clock-wrap,.weather-received,.status-detail')].every(x => x.getBoundingClientRect().right <= innerWidth + 1 && x.getBoundingClientRect().left >= -1); });
     check(`bandeau ${width}px ${theme} : aucun débordement`, fit);
     if (width === 414 || width === 1440) await page.screenshot({ path: path.join(process.env.SP, `place-live-v13-${process.env.BROWSER || 'chromium'}-${width}-${theme}.png`), fullPage: false });
   }
   check('réglages et préférences conservés ; journal automatique enrichi sans disparition d’entrée', await page.evaluate(value => { const before = JSON.parse(value), current = { ...S }; const journal = before.journal || {}; delete before.journal; delete current.journal; return JSON.stringify(current) === JSON.stringify(before) && Object.keys(journal).every(k => Object.hasOwn(S.journal, k)); }, settings));
+  check('libellé accessible de l’horloge masqué visuellement et lisible sans annonce répétée', await page.evaluate(() => { const label = document.querySelector('.live-clock-wrap .sr-only'), r = label.getBoundingClientRect(); return getComputedStyle(label).position === 'absolute' && r.width <= 1 && r.height <= 1 && label.textContent.includes('Europe/Paris'); }));
   check('aucune erreur JavaScript', errors.length === 0);
   console.log(rows.join('\n') + `\n\n${rows.length - failures}/${rows.length} scénarios OK · erreurs JS : ${errors.length ? 'présentes' : 'aucune'}`);
   await context.close(); await browser.close(); process.exit(failures || errors.length ? 1 : 0);
