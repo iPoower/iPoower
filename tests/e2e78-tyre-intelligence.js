@@ -92,8 +92,40 @@ let count = 0;
       const cockpitLayout = await cockpit.evaluate(el => ({ small: [...el.querySelectorAll('summary')].some(x => x.getBoundingClientRect().height < 44),
         wide: [...el.querySelectorAll('*')].some(x => x.getBoundingClientRect().right > document.documentElement.clientWidth + 1) }));
       assert.deepEqual(cockpitLayout, { small: false, wide: false });
-      const state = await page.evaluate(() => { const before = JSON.stringify(S); for (let i = 0; i < 10; i++) engineeringCockpitHtml(labCar()); return { same: before === JSON.stringify(S), focused: true }; });
-      assert(state.same); count++; console.log('✅ ' + device + ' · cockpit V1.2 : six domaines, types, touch, layout et lecture seule');
+      const same = await page.evaluate(() => { const before = JSON.stringify(S); for (let i = 0; i < 10; i++) engineeringCockpitHtml(labCar()); return before === JSON.stringify(S); });
+      assert(same);
+      const keySummary = cockpit.locator('[data-ec-domain="acceleration"] > summary');
+      await keySummary.focus(); await page.keyboard.press('Space');
+      assert.equal(await keySummary.evaluate(e => e.parentElement.open), false);
+      await page.keyboard.press('Space');
+      const focus = await page.evaluate(() => { renderLab.last = ''; renderLab(); const e = document.activeElement; return { domain: e?.parentElement?.dataset.ecDomain, open: e?.parentElement?.open }; });
+      assert.deepEqual(focus, { domain: 'acceleration', open: true });
+      const safety = await page.evaluate(() => {
+        const car = labCar(), saved = structuredClone(car.tire), wx = CX;
+        try {
+          Object.assign(car.tire, { treadAv: 1.2, treadEst: 1 }); renderLab();
+          const estimated = document.querySelector('#secLab .lab-hero').textContent;
+          car.tire.treadEst = 0; CX = null; renderLab();
+          const rules = document.querySelector('#secLab .ec-priorities');
+          return { estimated, first: rules.querySelector('[data-ec-rule]').dataset.ecRule,
+            alert: !!rules.querySelector('[role="alert"]'), text: rules.textContent, unknown: document.querySelector('.ec-weather').textContent };
+        } finally { car.tire = saved; CX = wx; renderLab(); }
+      });
+      assert.match(safety.estimated, /estimée.*jauge.*conformité n’est pas établie/);
+      assert(!/Pneu non conforme/.test(safety.estimated));
+      assert.equal(safety.first, 'critical-depth'); assert(safety.alert); assert.match(safety.text, /Arrêté du 18 juillet 2019/);
+      assert.match(safety.unknown, /INDISPONIBLE/);
+      assert(await cockpit.locator('a[href^="https://www.tyrereviews.com/"]').count() > 0);
+      const carIds = await page.evaluate(() => S.cars.map(c => c.id));
+      await page.locator(`#secLab [data-act="labcar"][data-car="${carIds[1]}"]`).click(); await settle();
+      assert.equal(await cockpit.getAttribute('data-ec-car'), carIds[1]);
+      assert.match(await cockpit.textContent(), /Rovelo/); assert(!/35,52 m/.test(await cockpit.textContent()));
+      for (const [view, selector] of [['meteo', '#secWx'], ['trajet', '#secTrip']]) {
+        await tab(view); assert.equal(await page.locator(selector + ' .ti-panel').first().getAttribute('data-ti-car'), carIds[1]);
+      }
+      await tab('analyse'); await page.locator(`#secLab [data-act="labcar"][data-car="${carIds[0]}"]`).click(); await settle();
+      assert.equal(await cockpit.getAttribute('data-ec-car'), carIds[0]);
+      count++; console.log('✅ ' + device + ' · cockpit : clavier/focus, données typées, sources et risque prioritaire même sans météo');
       const evidence = page.locator('#secLab .ti-panel').first();
       await evidence.locator(':scope > summary').click();
       await evidence.locator('details.ti-test').first().locator('summary').click();
@@ -111,6 +143,8 @@ let count = 0;
       count++; console.log('✅ ' + device + ' · essais accessibles dans Pneus même sans météo');
       await context.setOffline(true); await page.evaluate(() => { RAW[UI.loc].t -= 2 * 3600e3; renderAll(); });
       assert.match(await page.locator('#secLab .ti-panel').first().textContent(), /Météo ancienne/); assert.match(await evidence.textContent(), /35,52/);
+      assert.match(await cockpit.locator('.ec-weather').textContent(), /ANCIENNE OU NON DATÉE/);
+      assert.match(await cockpit.locator('.ec-weather').textContent(), /HORS LIGNE/);
       count++; console.log('✅ ' + device + ' · catalogue utilisable hors ligne, météo périmée signalée');
       await context.setOffline(false); await page.reload(); await unlockIfLocked(page, settle); await settle();
       await tab('pneus'); assert.match(await page.locator('#secCars .ti-panel').first().textContent(), /épaules/);

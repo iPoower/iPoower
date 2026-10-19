@@ -78,6 +78,15 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const legal = lab({ now: ts('15:00'), car: car({ tread: 1.6 }), hours: H({ T: 20, Tr: 24 }), drive: drive('14:00', 'route') });
     assert(legal.hero.lvl < 3 || !/minimum légal/.test(legal.hero.limiting)); assert.equal(legal.hero.critical, null);
   });
+  test('sculpture estimée sous le seuil : alerte conservatrice, sans fausse non-conformité mesurée', () => {
+    for (const state of [null, { tread: { mm: 1.2, est: true } }]) {
+      const r = lab({ now: ts('15:00'), car: car({ tread: 1.2, treadEst: 1 }), state, hours: H({ T: 20, Tr: 24 }) });
+      assert.equal(r.hero.lvl, 3); assert.match(r.hero.critical, /estimée.*jauge.*conformité n’est pas établie/);
+      assert(!/Pneu non conforme/.test(r.hero.critical)); assert.match(r.hero.limiting, /estimée.*conformité inconnue/);
+      assert.equal(r.grip.dist, null); assert.match(r.grip.distNote, /estimée.*Aucune distance/);
+      assert(!/pneu non conforme/.test(r.grip.distNote));
+    }
+  });
   test('minimum légal de sculpture : une seule valeur (1,6 mm) dans le moteur, l’Analyse et l’entretien', () => {
     const src = f => fs.readFileSync(path.join(__dirname, '../src/' + f), 'utf8');
     assert.equal(/const TREAD_LEGAL_MM = (\d+(?:\.\d+)?);/.exec(src('engine.js'))[1], '1.6');
