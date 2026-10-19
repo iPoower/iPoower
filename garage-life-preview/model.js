@@ -14,6 +14,7 @@
   const isObj = x => x !== null && typeof x === 'object' && !Array.isArray(x);
   const str = (x, max) => typeof x === 'string' ? x.trim().slice(0, max) : '';
   const idOk = s => typeof s === 'string' && /^[a-zA-Z0-9_-]{1,60}$/.test(s);
+  const exactKeys = (obj, expected) => Object.keys(obj).length === expected.length && expected.every(k => Object.hasOwn(obj, k));
   function dateOk(s) {
     if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
     const [y,m,d] = s.split('-').map(Number);
@@ -33,13 +34,17 @@
     return cents;
   }
   function validateVehicle(v) {
-    if (!isObj(v) || !idOk(v.id) || !str(v.name,120) || !('goalKm' in v) || (v.goalKm !== null && !kmOk(v.goalKm))) throw new Error('Véhicule invalide.');
+    if (!isObj(v) || !exactKeys(v,['id','name','goalKm']) || !idOk(v.id) ||
+        typeof v.name !== 'string' || !v.name.trim() || v.name.trim().length > 120 ||
+        (v.goalKm !== null && !kmOk(v.goalKm))) throw new Error('Véhicule invalide.');
     return { id:v.id, name:str(v.name,120), goalKm:v.goalKm };
   }
   function validateOperation(o, vehicleIds) {
-    if (!isObj(o) || !idOk(o.id) || !vehicleIds.has(o.vehicleId) ||
+    if (!isObj(o) || !exactKeys(o,['id','vehicleId','date','odometerKm','category','description','amountCents','provider','provenance','evidence']) ||
+        !idOk(o.id) || !vehicleIds.has(o.vehicleId) ||
         !dateOk(o.date) || !CATEGORIES.includes(o.category) ||
-        !str(o.description,500) || ![SOURCE.DONE,SOURCE.DEADLINE].includes(o.provenance) ||
+        typeof o.description !== 'string' || !o.description.trim() || o.description.trim().length > 500 ||
+        ![SOURCE.DONE,SOURCE.DEADLINE].includes(o.provenance) ||
         !(o.odometerKm === null || kmOk(o.odometerKm)) ||
         !centsOk(o.amountCents) || !('amountCents' in o) ||
         !(o.provider === null || typeof o.provider === 'string' && o.provider.length <= 160) ||
@@ -53,7 +58,8 @@
   }
   function fingerprint(o) { return [o.vehicleId,o.date,o.odometerKm,o.category,o.provenance,o.description.toLowerCase()].join('|'); }
   function validateState(input) {
-    if (!isObj(input) || input.schemaVersion !== VERSION || !Array.isArray(input.vehicles) ||
+    if (!isObj(input) || !exactKeys(input,['schemaVersion','vehicles','operations']) ||
+        input.schemaVersion !== VERSION || !Array.isArray(input.vehicles) ||
         !Array.isArray(input.operations) || input.vehicles.length > 20 || input.operations.length > 20000)
       throw new Error('Version ou structure inconnue : aucune donnée importée.');
     const vehicles=input.vehicles.map(validateVehicle), ids=new Set(vehicles.map(v=>v.id));
@@ -85,10 +91,13 @@
     const items=s.operations.filter(o=>o.vehicleId===vehicleId).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
     const done=items.filter(o=>o.provenance===SOURCE.DONE), deadlines=items.filter(o=>o.provenance===SOURCE.DEADLINE);
     const withKm=done.filter(o=>o.odometerKm!==null);
-    const latest=withKm.length?{km:withKm[0].odometerKm,date:withKm[0].date,source:SOURCE.DONE}:null;
+    const newestDate=withKm.length?withKm[0].date:null;
+    const latestReadings=withKm.filter(o=>o.date===newestDate);
+    const odometerConflict=new Set(latestReadings.map(o=>o.odometerKm)).size>1;
+    const latest=withKm.length&&!odometerConflict?{km:withKm[0].odometerKm,date:newestDate,source:SOURCE.DONE}:null;
     const known=done.filter(o=>o.amountCents!==null), costs=known.reduce((sum,o)=>sum+o.amountCents,0);
     return {vehicle:v,history:items,latest,spentCents:costs,knownCosts:known.length,
-      missingCosts:done.length-known.length,deadlines, missing:{
+      missingCosts:done.length-known.length,deadlines,odometerConflict, missing:{
         odometer:latest===null, records:done.length===0, costs:done.some(o=>o.amountCents===null),
         deadlines:deadlines.length===0
       }};
