@@ -103,11 +103,12 @@ const defer = () => { let resolve; const promise = new Promise(r => resolve = r)
   c.fetchJSON = url => { const q = p(); q.current.time = '2026-10-12T12:00'; return Promise.resolve(url.startsWith('nc:') ? {} : q); };
   await assert.rejects(c.loadLoc(c.currentLoc, true), /plus ancienne/); assert.equal(JSON.stringify(c.RAW.home), saved);
   n++; console.log('✅ réponse API plus ancienne : ancien instant refusé avant toute écriture');
-  const lifecycle = read('src/app/lifecycle.js'), start = lifecycle.indexOf('let LOCAL_CLOCK_MINUTE'), end = lifecycle.indexOf('function autoTick', start);
+  const lifecycle = read('src/app/lifecycle.js'), start = lifecycle.indexOf('let LOCAL_CLOCK_MINUTE'), end = lifecycle.indexOf("document.addEventListener('focusout'", start);
   let rebuilt = 0, rendered = 0;
   Object.assign(c, { APP_CONTEXT: { ready: true }, DEMO: { on: false }, offlineNow: () => true,
-    rebuild: () => rebuilt++, renderAll: () => rendered++, markOfflineCache() {} });
+    rebuild: () => rebuilt++, updateLiveClock() {}, renderLiveStatus() {}, renderAll: () => { throw new Error('Un tick local ne doit pas reconstruire tous les onglets'); }, markOfflineCache() {} });
   vm.runInContext(lifecycle.slice(start, end), c);
+  c.renderTemporalWeather = () => rendered++; // Le vrai rendu ciblé est exercé par la suite navigateur.
   c.tickLocalClock(); c.tickLocalClock(); instant += 60e3; c.tickLocalClock();
   assert.equal(rebuilt, 2); assert.equal(rendered, 2); n++;
   console.log('✅ horloge locale hors ligne : un recalcul par minute, aucun accès réseau');

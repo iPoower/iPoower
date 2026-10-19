@@ -1,6 +1,8 @@
 // Registre unique des suites existantes ; aucun scénario E2E n'est modifié.
 'use strict';
 const SUITE = [
+  ['test_live_status.js', 'horloge Paris, dates/DST, réception, fraîcheur et échéance réelle', false],
+  ['e2e79-live-status.js', 'bandeau LIVE : secondes sans réseau, reprise, focus, caches, 429 et mobile/PC', true],
   ['test_tyre_intelligence.js', 'essais pneus : catalogue, comparabilité, règles, positions et sauvegardes', false],
   ['e2e78-tyre-intelligence.js', 'intelligence pneus : quatre vues, preuves, iPhone/PC, hors ligne et absence de mutation', true],
   ['test_engine.js', 'moteur : verdicts, chaussée, verglas', false], ['test_examples.js', 'moteur : cas de référence', false],
