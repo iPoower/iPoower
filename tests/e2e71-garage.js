@@ -68,6 +68,7 @@ async function twinScenario(browser){
   await check('Twin · scène schématique, effets documentés et aucun GPS simulé',async()=>{
    const text=await p.locator('#secGarage').innerText();assert.match(text,/TWIN GARAGE LIVE/);assert.match(text,/SCHÉMA SANS ÉCHELLE/);assert.match(text,/sans suivi GPS/);
    for(const cls of ['twin-rain','twin-snow','twin-fog','twin-wind','twin-moon','twin-sun'])assert(await p.locator('#secGarage .'+cls).count(),cls);
+   assert.match(await p.locator('.twin-wind').evaluate(e=>e.parentElement.getAttribute('transform')),/^rotate\(0 /,'vent venant de l’ouest : mouvement vers l’est');
    assert.equal(await p.locator('.twin-samples li').count(),3);assert.equal(await p.locator('.twin-car-svg').count(),3);
   });
   await check('Twin · clavier, pause volontaire, mouvement réduit et reprise iOS',async()=>{
@@ -125,9 +126,33 @@ async function twinScenario(browser){
     if([414,1440].includes(width))await p.locator('#secGarage').screenshot({path:path.join(process.env.SP,'twin-'+BR.NAME+'-'+theme+'-'+width+'.jpg'),type:'jpeg',quality:80,scale:'css',animations:'disabled',style:'.statusbar{visibility:hidden}'});
    });
   }
+  await check('Twin · thème automatique clair conserve une ambiance de nuit distincte',async()=>{
+   await p.emulateMedia({colorScheme:'light'});await p.evaluate(()=>document.documentElement.dataset.theme='auto');
+   const colors=await p.evaluate(()=>({night:getComputedStyle(document.querySelector('.twin-night')).fill,foreground:getComputedStyle(document.body).color}));
+   assert.equal(colors.night,colors.foreground);await p.evaluate(()=>document.documentElement.dataset.theme='light');
+  });
+  await check('Twin · cycle minute V1.3 projette le Garage et conserve le contrôle focalisé',async()=>{
+   const result=await p.evaluate(()=>{
+    const root=document.querySelector('#secGarage'),input=root.querySelector('#garageMotion'),button=root.querySelector('.garage-edit');
+    input.focus({preventScroll:true});const checked=input.checked,y=scrollY;
+    APP_CONTEXT.rendering=false;
+    try {
+     tickLocalClock(true);
+     const t=APP_CONTEXT.snapshot.nextTrip,labels=[...root.querySelectorAll('.twin-route b')].map(x=>x.textContent);
+     return {expected:t&&[t.from,t.to],labels,focus:document.activeElement===root.querySelector('#garageMotion'),
+      checked:root.querySelector('#garageMotion').checked===checked,sameButton:button===root.querySelector('.garage-edit'),scroll:Math.abs(scrollY-y)};
+    } finally {APP_CONTEXT.rendering=true;}
+   });
+   assert(result.expected);assert.deepEqual(result.labels,result.expected);assert(result.focus&&result.checked&&result.sameButton,JSON.stringify(result));assert(result.scroll<=1);
+   await p.evaluate(()=>__twinRender());
+  });
   await check('Twin · comparaison incomplète explicite, pression cible distincte du contrôle',async()=>{
    await p.evaluate(()=>{const f=document.querySelector('[data-ux=garage-comparison]');f.open=true;});
    const text=await p.locator('[data-ux=garage-comparison]').innerText();assert.match(text,/DONNÉES INSUFFISANTES/);assert.match(text,/Pression cible/i);assert.match(text,/Contrôle déclaré/i);
+   await p.evaluate(()=>{__twinSource.mode='demo';__twinRender();});
+   assert.match(await p.locator('.twin-trip .mod-h .src').innerText(),/DÉMO · SIMULATION/);
+   assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'false');
+   await p.evaluate(()=>{__twinSource.mode='live';__twinRender();});
   });
   await check('Twin · changement de lieu et labels non interprétés comme HTML',async()=>{
    await p.evaluate(()=>{__twinTrip={...__twinTrip,from:'Lieu C',to:'<img src=x onerror=alert(1)>'};__twinRender();});

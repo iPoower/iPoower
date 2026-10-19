@@ -32,7 +32,7 @@ check('47.1 · état initial : les quatre onglets affichés en LIVE',V.every(v=>
 await tab('pneus');SCN='froid';const m0=meteo;const T1=T0+6*60e3;TNOW=T1;await p.clock.fastForward(6*60e3);await settle(10);   // saut jusqu'à l'échéance, puis temps court : les délais d'expiration réseau ne sont pas sautés
 const b1=await bar(),pneusNow=await p.evaluate(()=>document.querySelector('#secCars').innerText.replace(/\s+/g,' '));
 check('47.2 · sans clic : le minuteur relance l’actualisation (nouvelles requêtes météo)',meteo>m0,`${m0} → ${meteo}`);
-check('47.3 · « Dernière mise à jour » = heure de la donnée du lieu affiché (14:06)',/LIVE/.test(b1)&&/14:06/.test(b1),b1);
+check('47.3 · réception météo = heure de la donnée du lieu affiché (14:06), indépendamment de l’horloge',/LIVE/.test(b1)&&/14:06/.test(await p.locator('#weatherReceived').innerText()),b1);
 check('47.4 · Pneus (onglet visible) recalculé avec la nouvelle météo',pneusNow!==before.pneus,pneusNow.slice(0,160));
 for(const v of ['meteo','tenue','analyse']) {
   const now=await tab(v), strip=x=>x.replace(/\d{1,2}[:h]\d{2}|\d+ ?min|LIVE|FRESH|CACHE/gi,'');

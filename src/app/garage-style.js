@@ -38,6 +38,7 @@ const GARAGE_STYLE = `<style>
 #secGarage .twin-sky{fill:var(--panel)}
 #secGarage .twin-night{fill:var(--bg)}
 html[data-theme=light] #secGarage .twin-night{fill:var(--fg)}
+@media(prefers-color-scheme:light){:root:not([data-theme=dark]) #secGarage .twin-night{fill:var(--fg)}}
 #secGarage .twin-horizon{fill:var(--line);opacity:.6}
 #secGarage .twin-land{fill:var(--panel2)}
 #secGarage .twin-road{fill:var(--bg)}
@@ -72,7 +73,7 @@ html[data-theme=light] #secGarage .twin-night{fill:var(--fg)}
 @keyframes twin-rain{to{transform:translate(-7px,24px)}}
 @keyframes twin-snow{to{transform:translate(8px,24px)}}
 @keyframes twin-fog{to{transform:translateX(25px)}}
-@keyframes twin-wind{to{transform:translateY(10px)}}
+@keyframes twin-wind{to{transform:translateX(12px)}}
 @media(max-width:374px){#secGarage .twin-samples{grid-template-columns:minmax(0,1fr)}#secGarage .twin-samples li{display:grid;grid-template-columns:1fr 1fr}#secGarage .twin-samples span{grid-column:1/-1}}
 @media(prefers-reduced-motion:reduce){#secGarage .twin-animated{animation:none!important}#secGarage .twin-motion{display:none}}
 </style>`;

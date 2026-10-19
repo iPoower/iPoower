@@ -47,7 +47,7 @@ check('échéance : une horloge reculée ne repousse jamais une actualisation', 
 });
 // Contrat de source : chaque calcul d'âge ou d'échéance de l'application passe par les mêmes fonctions (aucun `Date.now() - t` nu).
 const rd = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-const FRESH_FILES = ['src/app.js', 'src/app/lifecycle.js', 'src/app/weather-station.js', 'src/app/diagnostics.js', 'src/app/weather-view.js', 'src/app/analysis-view.js'];
+const FRESH_FILES = ['src/app/live-status.js', 'src/app.js', 'src/app/lifecycle.js', 'src/app/weather-station.js', 'src/app/diagnostics.js', 'src/app/weather-view.js', 'src/app/analysis-view.js'];
 const FRESH_RULES = [
   ['src/app.js', 'const relayAgeMin = ts => {', 'Reliability.ageMin(ts)', "l'âge du relais (obs.json, agenda) borne le futur"],
   ['src/app.js', 'function expireLive(', 'Reliability.liveExpired(r.t, now)', 'expireLive utilise l’âge connu'],
@@ -55,7 +55,7 @@ const FRESH_RULES = [
   ['src/app.js', 'for (const c of Object.values(LEGM))', 'Reliability.liveExpired(c.t)', 'prévisions de parcours (LEGM) requalifiées'],
   ['src/app.js', 'const ageMin = value => {', 'Reliability.ageMin(value, now)', 'décision : âges bornés'],
   ['src/app/weather-station.js', "RAW[id] = { ...r, mode:", 'Reliability.liveExpired(r.t)', 'reprise inter-onglets'],
-  ['src/app/lifecycle.js', 'const ref = Math.max(lastOk || 0, lastTry || 0);', 'Reliability.isDue(ref, AUTO_MS)', 'actualisation automatique due malgré une horloge reculée'],
+  ['src/app/live-status.js', 'const ref = Math.max(lastSuccess || 0, lastAttempt || 0);', 'Reliability.isDue(ref || null, interval, now)', 'actualisation automatique due malgré une horloge reculée'],
   ['src/app/lifecycle.js', 'if (navigator.onLine !== false', 'Reliability.isDue(VER_CHECK_AT, AUTO_MS)', 'contrôle de version dû malgré une horloge reculée'],
   ['src/app/diagnostics.js', 'const ageOf = t =>', 'Reliability.ageMin(t)', 'diagnostic : âge inconnu si futur'],
   ['src/app/weather-view.js', 'const raw = RAW[UI.loc], ageMin =', 'Reliability.ageMin(raw.t)', 'vue Météo'],
@@ -80,7 +80,7 @@ check('contre-tests : un retour aux calculs nus est détecté', () => {
     mutate('src/app.js', 'Reliability.ageMin(ts)', 'Math.max(0, (Date.now() - Date.parse(ts || "")) / 60000)'),
     mutate('src/app.js', 'Reliability.liveExpired(r.t, now)', '!(now - r.t <= LIVE_MAX_MS)'),
     mutate('src/app.js', 'Reliability.liveExpired(c.t)', 'Date.now() - c.t > LIVE_MAX_MS'),
-    mutate('src/app/lifecycle.js', 'Reliability.isDue(ref, AUTO_MS)', 'Date.now() - ref >= AUTO_MS'),
+    mutate('src/app/live-status.js', 'Reliability.isDue(ref || null, interval, now)', 'Date.now() - ref >= AUTO_MS'),
     mutate('src/app/diagnostics.js', 'Reliability.ageMin(t)', 'Math.max(0, (Date.now() - t) / 60000)'),
     mutate('src/app/weather-station.js', 'Reliability.liveExpired(r.t)', 'Date.now() - r.t > LIVE_MAX_MS')
   ];

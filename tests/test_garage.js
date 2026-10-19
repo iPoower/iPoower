@@ -98,4 +98,8 @@ test('projection du trajet sans mutations, sans géométrie, vitesse, pression m
  const t=trip([point(hour({rain:1}))]),before=JSON.stringify(t),s=G.preview(t,options);
  assert.equal(JSON.stringify(t),before);for(const k of ['speed','distance','gps','grip','measuredRoadTemperature'])assert.equal(s[k],undefined);
 });
+test('météo de démonstration ne devient pas une prévision réelle ou une comparaison fiable',()=>{
+ const s=G.preview(trip([point(hour())]),{...options,sourceFor:()=>({...source(),mode:'demo'})});
+ assert.equal(s.demo,true);assert.equal(s.status,'DÉMO · SIMULATION');assert.equal(s.complete,false);assert.equal(s.animate,false);
+});
 console.log(n+'/'+n+' scénarios Garage validés');

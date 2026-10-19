@@ -90,15 +90,15 @@ const Garage = (() => {
         rain: !!rain, snow: !!snow, fog: !!fog, visibility: val(h.vis), sun: h.code === 0 || h.code === 1,
         wind: !!wind, windDirection: direction, windSpeed: val(h.wind), gust: val(h.gust),
         phase: daylight(passage, source && source.days), received: known ? received : null,
-        fresh, cache: offline || !!source && source.mode === 'cache',
-        complete: known && fresh !== 'STALE' && ['T', 'Tr', 'P', 'RH', 'vis', 'gust'].every(k => Number.isFinite(h[k])) };
+        fresh, demo: !!source && source.mode === 'demo', cache: offline || !!source && source.mode === 'cache',
+        complete: known && source.mode !== 'demo' && fresh !== 'STALE' && ['T', 'Tr', 'P', 'RH', 'vis', 'gust'].every(k => Number.isFinite(h[k])) };
     });
     const rows = points.filter(Boolean), indexes = [...new Set([0, Math.floor((rows.length - 1) / 2), rows.length - 1])].filter(i => i >= 0 && i < rows.length);
     const complete = !!points.length && points.every(p => p && p.complete);
-    const cached = rows.some(p => p.cache), stale = rows.some(p => p.fresh === 'STALE'), aging = rows.some(p => p.fresh === 'AGING');
+    const cached = rows.some(p => p.cache), stale = rows.some(p => p.fresh === 'STALE'), aging = rows.some(p => p.fresh === 'AGING'), demo = rows.some(p => p.demo);
     return { available: true, from: str(trip.from) || 'Départ à confirmer', to: str(trip.to) || 'Destination à confirmer',
       departure: stamp(trip.dep), arrival: stamp(trip.arr), samples: indexes.map(i => ({ ...rows[i], index: i + 1 })), count: rows.length,
-      complete, status: offline ? 'HORS LIGNE' : !rows.length ? 'MÉTÉO INDISPONIBLE' : stale ? 'CACHE ANCIEN' : cached ? 'CACHE' : !complete || aging ? 'À CONFIRMER' : 'PRÉVISION',
+      complete, demo, status: demo ? 'DÉMO · SIMULATION' : offline ? 'HORS LIGNE' : !rows.length ? 'MÉTÉO INDISPONIBLE' : stale ? 'CACHE ANCIEN' : cached ? 'CACHE' : !complete || aging ? 'À CONFIRMER' : 'PRÉVISION',
       // Une source manquante ou ancienne ne justifie pas une ambiance animée.
       animate: complete && !offline && !cached,
       hasNight: rows.some(p => p.phase === 'night'),

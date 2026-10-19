@@ -49,7 +49,9 @@ function garageWeatherSvg(s, n, count) {
   if (s.fog) shapes += '<g class="twin-fog twin-animated"><path d="M0 117 Q50 101 110 118 T270 115 T450 120 T800 114"/><path d="M0 144 Q80 127 160 141 T370 140 T800 144"/></g>';
   // Le modèle horaire courant ne contient généralement pas de direction :
   // on montre alors les valeurs du vent, sans inventer un sens de déplacement.
-  if (s.wind && s.windDirection != null) shapes += '<g transform="rotate(' + ((s.windDirection+180)%360) + ' ' + w/2 + ' 93)"><g class="twin-wind twin-animated"><path d="M25 93 H' + (w-25) + ' m-12 -5 l12 5 -12 5"/></g></g>';
+  // Direction météo = provenance depuis le nord ; flèche SVG = vers l'est.
+  // Conversion vers le sens d'écoulement : direction + 180 - 90 degrés.
+  if (s.wind && s.windDirection != null) shapes += '<g transform="rotate(' + ((s.windDirection+90)%360) + ' ' + w/2 + ' 93)"><g class="twin-wind twin-animated"><path d="M25 93 H' + (w-25) + ' m-12 -5 l12 5 -12 5"/></g></g>';
   return '<svg x="' + n*w + '" y="0" width="' + w + '" height="210" viewBox="0 0 ' + w + ' 210" overflow="hidden">' + shapes + '</svg>';
 }
 function garageTripHtml(scene, active) {
@@ -76,7 +78,7 @@ function garageTripHtml(scene, active) {
     (samples.length ? '<ol class="twin-samples">' + samples.map(s => '<li><small>POINT ' + s.index + ' / ' + scene.count + (s.at ? ' · ' + esc(s.at.slice(11,16)) : '') + '</small><b>' +
       (s.temperature == null ? 'Température indisponible' : f1(s.temperature) + ' °C') + '</b>' + (s.place ? '<span>' + esc(s.place) + '</span>' : '') +
       '<span>' + esc(garageWeatherText(s).join(' · ')) + '</span></li>').join('') + '</ol>' : '<p class="garage-empty">Prévisions de ce trajet absentes. Aucun effet météo représenté.</p>') +
-    uxFold('garage-sources', 'Sources et confiance', '<p class="sub">Planning : contexte partagé du prochain trajet. Météo : modèles Open-Meteo déjà chargés pour les points de ce parcours, pas une observation terrain.</p>' +
+    uxFold('garage-sources', 'Sources et confiance', '<p class="sub">Planning : contexte partagé du prochain trajet. Météo : ' + (scene.demo ? 'simulation du mode démonstration, pas une prévision réelle.' : 'prévisions Open-Meteo du parcours déjà chargées lorsqu’elles sont disponibles, pas une observation terrain.') + '</p>' +
       '<p class="sub">' + esc(scene.complete ? 'Couverture des paramètres du moteur disponible.' : 'DONNÉES INSUFFISANTES · couverture météo ou provenance incomplète.') + '</p>' +
       '<ul class="lab-why">' + samples.map(s=>'<li>Point ' + s.index + ' · ' + (s.received ? 'Reçu le ' + esc(new Date(s.received).toLocaleString('fr-FR',{timeZone:'Europe/Paris',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})) : 'Réception inconnue') +
         ' · ' + esc(({FRESH:'frais',AGING:'à confirmer',STALE:'ancien',UNKNOWN:'âge inconnu'}[s.fresh] || 'âge inconnu')) + (s.cache ? ' · cache' : '') + '</li>').join('') + '</ul>' +
