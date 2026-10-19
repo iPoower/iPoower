@@ -83,9 +83,14 @@ test('valeurs échappées, navigation exclusive aux liens existants',()=>{
  const p=M.project({car:{...car,name:'<script>alert(1)</script>'},trip,scene});
  const body=html(p);
  assert(!body.includes('<script>alert(1)</script>'));assert(body.includes('&lt;script&gt;'));
- assert(!body.includes('waze.com'));
+ const anchors = text => [...text.matchAll(/<a\\b[^>]*href="([^"]+)"/g)]
+   .map(m => new URL(m[1].replace(/&amp;/g,'&')));
+ assert.equal(anchors(body).length,0,'aucun lien de navigation inventé');
  const active=html(projected(),'<a class="btn" href="https://waze.com/ul?ll=1,2&amp;navigate=yes">Waze</a>');
- assert(active.includes('waze.com'));
+ const urls=anchors(active);
+ assert.equal(urls.length,1);
+ assert.equal(urls[0].hostname,'waze.com');
+ assert.equal(urls[0].protocol,'https:');
 });
 test('les véhicules et les moteurs canoniques ne sont jamais mutés',()=>{
  projected();html(projected());
