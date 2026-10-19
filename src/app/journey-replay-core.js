@@ -22,8 +22,12 @@ const JourneyReplay = (() => {
     const comparison = Debrief.compare(entry);
     const carId = start ? str(start.carId) : '';
     const saved = carId && Array.isArray(cars) ? cars.find(c => c && c.id === carId) : null;
-    const car = start && (str(start.car) || (saved && (str(saved.short) || str(saved.name)))) || null;
-    const silhouette = car ? Garage.silhouette(saved || { name: car }) : null;
+    const historicalCar = start ? str(start.car) : '';
+    const car = historicalCar || (saved && (str(saved.short) || str(saved.name))) || null;
+    const carSource = historicalCar ? 'snapshot' : car ? 'garage-current' : 'unknown';
+    // La voiture actuelle peut avoir été renommée : seule l'identité FIGÉE
+    // au départ autorise une silhouette attribuée au véhicule historique.
+    const silhouette = historicalCar ? Garage.silhouette({ name: historicalCar }) : null;
     const before = forecast ? valid(forecast.conditions) : null;
     const after = feedback ? valid(feedback.conditions) : null;
     const missing = [];
@@ -44,7 +48,7 @@ const JourneyReplay = (() => {
     });
     return {
       available: true, key: str(entry.key), name: str(entry.name) || 'Trajet terminé',
-      from, to, departure: timestamp(start && start.at), arrival: entry.at, car, carId: carId || null, silhouette,
+      from, to, departure: timestamp(start && start.at), arrival: entry.at, car, carSource, carId: carId || null, silhouette,
       frames: [frame('before', before), frame('after', after)], comparison: comparison.kind,
       missed: comparison.missed.map(label), unused: comparison.unused.map(label),
       comparable: ['match', 'missed', 'unused', 'mixed'].includes(comparison.kind),
