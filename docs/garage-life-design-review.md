@@ -19,7 +19,7 @@
 
 `app.js` : plusieurs opérations fictives, formulaire validé, distinction interventions/échéances, tableau des dépenses réellement saisies, kilométrage du relevé déclaré le plus récent, objectif libre et aucune projection de durée de vie.
 
-`model.js` : API `empty / add / setGoal / summary / validateState / roundTripFixture`, version V1, montants en **centimes entiers**, dates calendaires vérifiées, kilomètres entiers vérifiés, doublons de référence ou de contenu exact refusés ; aucune source constructeur artificielle. `schema.v1.json` décrit la structure documentaire.
+`model.js` : API `empty / add / setGoal / summary / validateState / roundTripFixture`, version V1, montants en **centimes entiers**, dates calendaires vérifiées, kilomètres entiers vérifiés, doublons de référence ou de contenu exact refusés, champs futurs inconnus interdits pour éviter une perte silencieuse ; aucune source constructeur artificielle. `schema.v1.json` décrit la structure documentaire.
 
 `tests/test_garage_life_preview.js` : tests de laboratoire autonomes. Leur présence ne prouve ni exécution automatique par la CI existante, ni compatibilité physique iPhone.
 
@@ -35,7 +35,7 @@ Chaque opération = `{id,vehicleId,date,odometerKm,category,description,amountCe
 - `MAKER_SOURCED` est **réservé à une phase future** avec identifiant documentaire, véhicule/version, source officielle et validité. Ce type n'est **pas accepté** dans la V1.
 - `UNKNOWN` est un état d'affichage, non une intervention inventée.
 - `amountCents=null` signifie coût inconnu, différent de zéro euro déclaré. Somme comptable seulement des sommes renseignées.
-- Dernier kilométrage = dernier relevé **daté parmi les interventions déclarées**, pas valeur la plus grande ni compteur courant certain. En intégration, arbitrer explicitement la relation avec `car.odo` sans créer deux compteurs « actuels » concurrents.
+- Dernier kilométrage = dernier relevé **daté parmi les interventions déclarées**, pas valeur la plus grande ni compteur courant certain. Si deux relevés différents portent la même date la plus récente, afficher un conflit et aucun compteur de référence. En intégration, arbitrer explicitement la relation avec `car.odo` sans créer deux compteurs « actuels » concurrents.
 - Objectif kilométrique : facultatif ; aucune durée de vie ni taux de progression temporel calculé.
 
 ## 4. Proposition pour une intégration future, NON implémentée
