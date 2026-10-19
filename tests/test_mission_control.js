@@ -70,6 +70,15 @@ test('point météo unique : pas de température inventée à l’arrivée',()=>
  const p=M.project({car,trip,scene:one});
  assert(p.weather.departure);assert.equal(p.weather.arrival,null);
 });
+test('un point météo final manquant ne devient jamais la météo à destination',()=>{
+ const broken={...trip,seq:[trip.seq[0],null]};
+ const reduced=G.preview(broken,o);
+ assert.equal(reduced.count,1);
+ const p=M.project({car,trip:broken,scene:reduced});
+ assert.equal(p.weather.departure,null);
+ assert.equal(p.weather.arrival,null);
+ assert.equal(p.weather.complete,false);
+});
 test('valeurs échappées, navigation exclusive aux liens existants',()=>{
  const p=M.project({car:{...car,name:'<script>alert(1)</script>'},trip,scene});
  const body=html(p);
