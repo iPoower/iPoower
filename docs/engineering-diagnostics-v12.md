@@ -36,6 +36,9 @@ pas. Aucune sélection de pneu stocké/prévu ne remplace la monte active.
   non-conformité mesurée ; régression sur le vrai moteur, alerte maintenue.
 - Un brouillon Trajet déjà lié au véhicule A restait sur A après choix global B ;
   régression sur le vrai initialiseur et conservation des autres champs.
+- La capture mobile du candidat `474ae5f3` montrait des libellés de priorité
+  coupés au milieu des mots par la disposition héritée. Le flux de texte est
+  rétabli ; le test navigateur vérifie les lignes de chaque mot des libellés.
 - Oracles : seuil exact 1,6 mm, météo absente/ancienne/non datée, frontière
   60/60,1 minutes, pression zéro récente/historique, sources contradictoires,
   mesure contre estimation et absence de mutation.

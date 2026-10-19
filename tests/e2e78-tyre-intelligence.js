@@ -92,6 +92,15 @@ let count = 0;
       const cockpitLayout = await cockpit.evaluate(el => ({ small: [...el.querySelectorAll('summary')].some(x => x.getBoundingClientRect().height < 44),
         wide: [...el.querySelectorAll('*')].some(x => x.getBoundingClientRect().right > document.documentElement.clientWidth + 1) }));
       assert.deepEqual(cockpitLayout, { small: false, wide: false });
+      const splitPriorityWords = await cockpit.locator('.ec-rule > summary > b').evaluateAll(labels => labels.flatMap(label => {
+        const text = label.firstChild;
+        return [...text.textContent.matchAll(/\S+/g)].filter(word => {
+          const range = document.createRange(); range.setStart(text, word.index); range.setEnd(text, word.index + word[0].length);
+          const lines = [...range.getClientRects()].filter(r => r.width > 0);
+          return lines.some(r => Math.abs(r.top - lines[0].top) > 1);
+        }).map(word => word[0]);
+      }));
+      assert.deepEqual(splitPriorityWords, [], 'Les mots des priorités restent lisibles sans coupure interne');
       const same = await page.evaluate(() => { const before = JSON.stringify(S); for (let i = 0; i < 10; i++) engineeringCockpitHtml(labCar()); return before === JSON.stringify(S); });
       assert(same);
       const keySummary = cockpit.locator('[data-ec-domain="acceleration"] > summary');
