@@ -72,13 +72,16 @@ async function check(label,fn){stage=label;await fn();total++;console.log('✅ '
       await p.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
     });
     await check(dev+' · aucune mutation archive, aucune requête nouvelle',async()=>{
+      const callsBefore=s.S.calls;
       const out=await p.evaluate(()=>{
-        const calls=window.fetch&&window.fetch.calls||null,at=JSON.stringify(USER_STORE.state.debrief);
+        const at=JSON.stringify(USER_STORE.state.debrief);
         for(let i=0;i<20;i++)renderDebrief();
         return {same:at===JSON.stringify(USER_STORE.state.debrief),scenes:document.querySelectorAll('#secDebrief .jr-replay').length,
           loaded:typeof JourneyReplay==='object'};
       });
       assert.equal(out.same,true);assert.equal(out.scenes,1);assert.equal(out.loaded,true);
+      await s.settle(1);
+      assert.equal(s.S.calls,callsBefore,'Replay ne doit lancer aucune requête météo');
       assert.equal(JSON.stringify(await p.evaluate(()=>USER_STORE.state.debrief)),baseline);
     });
     await check(dev+' · annulation masque le replay mais conserve l’archive',async()=>{
