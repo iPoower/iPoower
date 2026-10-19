@@ -246,6 +246,7 @@ function tyreLab(input) {
   /* ---------- 7. adhérence, freinage, aquaplaning ---------- */
   const tread = typeof treadAxles === 'function' ? treadAxles(tire).worst : n(tire.tread);   // essieu le plus usé
   const criticalTread = tread != null && tread < TL_LEGAL_MM;
+  const estimatedTread = !!(inp.state && inp.state.tread ? inp.state.tread.est : tire.treadEst);
   // saisie par essieu avec un essieu inconnu : l'essieu renseigné ne représente pas l'autre (garde-fou des distances)
   const axl = typeof treadAxles === 'function' ? treadAxles(tire) : null, axleMissing = !!(axl && axl.split && (axl.av == null || axl.ar == null));
   function aquaOf(e, k) {
@@ -281,11 +282,11 @@ function tyreLab(input) {
     const mu = f.reduce((a, x) => a * x.v, 1);
     // pneu hors minimum légal : état critique, jamais adouci par un indice de freinage calculé sur sol sec
     const lv = criticalTread ? 3 : mu >= 0.9 ? 0 : mu >= 0.72 ? 1 : mu >= 0.5 ? 2 : 3;
-    const dom = criticalTread ? { k: `Profondeur ${r1(tread)} mm : sous le minimum légal (${String(TL_LEGAL_MM).replace('.', ',')} mm), pneu non conforme`, v: 0 } : f.filter(x => x.v < 1).sort((a, b) => a.v - b.v)[0] || null;
+    const dom = criticalTread ? { k: estimatedTread ? `Profondeur estimée ${r1(tread)} mm : vérifier à la jauge avant de circuler, conformité inconnue` : `Profondeur ${r1(tread)} mm : sous le minimum légal (${String(TL_LEGAL_MM).replace('.', ',')} mm), pneu non conforme`, v: 0 } : f.filter(x => x.v < 1).sort((a, b) => a.v - b.v)[0] || null;
     // distances : seulement sur sec/humide/pluie, jamais sur neige ou verglas. μ = plage « sec » × adhérence relative.
     let dist = null, distNote = null;
     // Donnée critique absente ou hors du domaine des essais : Race Control dit qu'il ne peut pas chiffrer, plutôt que d'inventer.
-    if (tread != null && tread < 1.6) distNote = `Profondeur ${r1(tread)} mm : sous le minimum légal de 1,6 mm, pneu non conforme et hors du domaine des essais. Aucune distance affichée : remplacer les pneus avant de rouler.`;
+    if (tread != null && tread < 1.6) distNote = estimatedTread ? `Profondeur estimée ${r1(tread)} mm : sous le repère de 1,6 mm, à confirmer à la jauge avant de circuler. Aucune distance affichée ; conformité inconnue.` : `Profondeur ${r1(tread)} mm : sous le minimum légal de 1,6 mm, pneu non conforme et hors du domaine des essais. Aucune distance affichée : remplacer les pneus avant de rouler.`;
     else if (['snow', 'ice'].includes(e.surf)) distNote = 'Neige ou verglas : aucune distance affichée, l’incertitude est trop grande. Indice relatif seulement.';
     else if (e.surf === 'pool') distNote = 'Eau stagnante probable : l’aquaplaning peut faire perdre le contact de façon brutale et irrégulière. Aucune distance affichée : ralentir nettement.';
     else if (tread == null) distNote = 'Profondeur de sculpture inconnue : aucune distance chiffrée (l’usure peut l’allonger fortement sur mouillé). Mesure-la à la jauge et renseigne-la dans Pneus ; les autres alertes restent actives.';
@@ -424,7 +425,7 @@ function tyreLab(input) {
     phase === 'driving' ? (stopped ? `Arrêt déduit d’une vitesse moyenne sous ${TL_STOP_KMH} km/h depuis le départ.` : 'Vitesse suivie = moyenne depuis le départ : un arrêt court en cours de route n’est pas détecté.')
       : phase === 'unknown' ? 'Historique d’arrêt inconnu : gomme supposée à la température ambiante.' : hist && hist.source === 'manual' ? 'Roulage déclaré par vous, départ supposé froid : non mesuré.' : 'Température de la gomme extrapolée depuis le dernier état estimé.',
     eNow.reported ? 'Chaussée signalée par vous (≤ 60 min).' : 'Chaussée estimée par la météo (pluie récente, humidité de l’air), pas par un capteur routier.',
-    gNow.dist ? 'Distances de freinage : ordre de grandeur issu d’écarts d’essais publiés, hypothèse non calibrée sur ce véhicule, jamais une garantie d’arrêt.' : 'Aucune distance de freinage chiffrée : ' + (criticalTread ? 'pneu sous le minimum légal.' : 'données ou conditions hors du domaine des essais.'),
+    gNow.dist ? 'Distances de freinage : ordre de grandeur issu d’écarts d’essais publiés, hypothèse non calibrée sur ce véhicule, jamais une garantie d’arrêt.' : 'Aucune distance de freinage chiffrée : ' + (criticalTread ? estimatedTread ? 'profondeur estimée à vérifier avant de circuler.' : 'pneu sous le minimum légal.' : 'données ou conditions hors du domaine des essais.'),
     ...(stale ? [unknownAge ? 'Âge météo inconnu : estimation moins fiable.' : `Météo ancienne (${Math.round(inp.ageMin / 60)} h) : estimation moins fiable.`] : [])];
   const confidence = { level: score >= 1.5 ? 'moyenne' : 'faible', score, reasons, axes, limits };
   /* ---------- 12. verdict principal ---------- */
@@ -433,7 +434,7 @@ function tyreLab(input) {
   const hero = { title: tyre.title, size: tyre.size, state: stateTxt, s: st, lvl, emoji: EMO[lvl], range,
     warm: warm.reached ? (warm.sinceMin != null ? `Zone favorable atteinte depuis ~${warm.sinceMin} min` : null) : warm.marginal ? 'limite' : warm.never ? 'Zone favorable non atteinte dans ces conditions' : warm.min[1] == null ? `≥ ${warm.min[0]} min · ≥ ${warm.km[0]} km (peut ne pas être atteinte)` : `≈ ${warm.min[0]}–${warm.min[1]} min · ≈ ${warm.km[0]}–${warm.km[1]} km`,
     brake: gNow.word, corner: gNow.bars[2].word, rain: gNow.aqua.lv ? ['Faible', 'Vigilance', 'Risque élevé', 'Critique'][gNow.aqua.lv] : gripAt({ ...eNow, surf: 'rain', Pl: 1 }, st, kind).word, limiting, confidence: confidence.level,
-    critical: criticalTread ? `Profondeur ${r1(tread)} mm : sous le minimum légal de ${String(TL_LEGAL_MM).replace('.', ',')} mm. Pneu non conforme : remplacer avant de rouler, aucune estimation ne le rend acceptable.` : null };
+    critical: criticalTread ? estimatedTread ? `Profondeur estimée ${r1(tread)} mm : sous le repère réglementaire de ${String(TL_LEGAL_MM).replace('.', ',')} mm. Mesurer à la jauge avant de circuler ; la conformité n’est pas établie.` : `Profondeur ${r1(tread)} mm : sous le minimum légal de ${String(TL_LEGAL_MM).replace('.', ',')} mm. Pneu non conforme : remplacer avant de rouler, aucune estimation ne le rend acceptable.` : null };
   return { known: true, tyre, spec: specOut, now: inp.now, phase, stopped, parkedMin, drivenKm, drivenMin, kind, env: { Ta: eNow.Ta, Tr: eNow.Tr, Tenv: eNow.Tenv, surf: eNow.surf, surfTxt: SURF_TXT[eNow.surf], Pl: eNow.Pl },
     thermal: { T, range, state: stateTxt, level: TL_STATES[st], trend, trendTxt: TL_TREND_TXT[trend], eq: Math.round(eq * 10) / 10, s: st, lv: stLv(st), win, pos, marks, why, uhp }, warm, cool, grip: gNow, trip, tripIssue, compare, press, confidence, hero, state: inp.state || null };
 }
