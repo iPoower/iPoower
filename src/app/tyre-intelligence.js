@@ -140,7 +140,7 @@ const TyreIntelligence = (() => {
       { readings: [] }, [{ kind: 'user', date: null }], ['Une absence de mesure ne permet aucune conclusion sur la conformité des pneus.']);
     if (facts.current.some(x => x.ageDays === null || x.ageDays > 60 || x.ageDays < 0)) rule('depth-age', 'Données insuffisantes', 'Mesure de sculpture ancienne ou date non vérifiable : les valeurs affichées ne sont pas une observation en temps réel.',
       { readings: facts.current }, [{ kind: 'user', date: null }]);
-    if (!pressure.recent || pressure.av === null || pressure.ar === null) rule('pressure-check', 'Données insuffisantes', 'Pression réelle récente non documentée pour les deux essieux : contrôler à froid. La cible recommandée n’est pas une mesure.',
+    if (!pressure.recent || pressure.av === null || pressure.ar === null) rule('pressure-check', 'Données insuffisantes', 'Mesure de pression récente non documentée pour les deux essieux : contrôler à froid. La cible recommandée n’est pas une mesure.',
       { pressure }, [{ kind: 'user', date: pressure.date }]);
     if (active && facts.min !== null && facts.current.some(x => !x.estimated && x.mm < 1.6)) rule('critical-depth', 'Risque documenté', 'Sculpture mesurée sous 1,6 mm : faire remplacer les pneus concernés avant de circuler.',
       { readings: facts.current.filter(x => !x.estimated && x.mm < 1.6), thresholdMm: 1.6 }, [{ kind: 'user', date: facts.current.find(x => !x.estimated && x.mm < 1.6).date }], ['Portée limitée aux points mesurés ; les autres points peuvent être plus usés.']);
