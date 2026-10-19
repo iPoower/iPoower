@@ -124,6 +124,7 @@ function renderTemporalWeather() {
       project('#secWx', renderWx); renderCurrent(); renderChartShell(); renderDays(); renderIce(); renderAlerts(); renderWeatherStationButton();
     } else if (UI.view === 'analyse') project('#secLab', () => { renderLab(); labThermTick(false); });
     else if (UI.view === 'trajet') project('#secTrip', () => { renderTripView(); renderTripSummary(); });
+    else if (UI.view === 'garage') renderGarage();
     else if (UI.view === 'tenue') project('#secTenue', renderTenue);
     else if (UI.view === 'pneus') {
       project('#secCars', renderCars); renderWeatherLink(); renderDecisionCore(); renderBrfCore(); renderBrief(); renderCompare(); renderSeason(); renderAlerts();

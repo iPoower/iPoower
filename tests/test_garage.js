@@ -39,4 +39,67 @@ test('doublons d’identifiants évités sans mutation de la source',()=>{
  const a=[{id:'x',name:'Voiture 1',tire:{}},{id:'x',name:'Voiture 2',tire:{}}],before=JSON.stringify(a);
  assert.equal(G.overview(a,null).length,1);assert.equal(JSON.stringify(a),before);
 });
+const NOW=Date.parse('2026-10-07T04:00:00Z');
+const hour=(data={})=>({t:'2026-10-07T06:00',T:8,Tr:7,P:0,RH:75,vis:10000,gust:5,code:null,...data});
+const point=(h,more={})=>({hs:[h],i:0,...more});
+const trip=seq=>({from:'Lieu A',to:'Lieu B',dep:'2026-10-07T06:30',arr:'2026-10-07T07:10',seq});
+const source=()=>({at:NOW-60000,mode:'live',days:[{date:'2026-10-07',sunrise:'2026-10-07T07:00',sunset:'2026-10-07T19:00'}]});
+const options={now:NOW,sourceFor:source,freshness:x=>x<=15?'FRESH':x<=60?'AGING':'STALE'};
+test('Twin : aucun trajet ni météo inventés',()=>{
+ assert.equal(G.preview(null,options).available,false);
+ const s=G.preview(trip([]),options);assert.equal(s.status,'MÉTÉO INDISPONIBLE');assert.equal(s.animate,false);assert.equal(s.samples.length,0);
+});
+test('silhouettes identifiées seulement depuis le libellé, sans profil codé en dur',()=>{
+ assert.equal(G.silhouette({name:'Hyundai i20 N test'}),'sport');assert.equal(G.silhouette({short:'Peugeot 308 test'}),'touring');
+ assert.equal(G.silhouette({id:'i20n',name:'Voiture fictive'}),'generic');
+});
+test('météo manquante ne devient pas soleil ou pluie et 0 °C reste visible',()=>{
+ const s=G.preview(trip([point(hour({T:0,gust:null}))]),options);assert.equal(s.samples[0].temperature,0);
+ for(const k of ['rain','snow','fog','sun','wind'])assert.equal(s.samples[0][k],false);
+ assert.equal(s.samples[0].phase,'unknown');
+});
+test('effets documentés : pluie, neige, visibilité et vent avec direction explicite',()=>{
+ const seq=[point(hour({rain:1,wind:24,gust:42,dir:270}),{loc:'Lieu A'}),point(hour({snow:0.4,code:73})),point(hour({vis:500,code:45}),{loc:'Lieu B'})];
+ const s=G.preview(trip(seq),options);assert.equal(s.animate,true);
+ assert.equal(s.samples[0].rain,true);assert.equal(s.samples[0].windDirection,270);assert.equal(s.samples[1].snow,true);assert.equal(s.samples[2].fog,true);
+ assert.equal(s.samples[1].windDirection,null);
+ const lowVis=G.preview(trip([point(hour({vis:500,code:95}))]),options).samples[0];assert.equal(lowVis.fog,false);assert.equal(lowVis.rain,false);
+});
+test('jour et nuit suivent le vrai départ/arrivée, pas le début de l’heure météo',()=>{
+ const s=G.preview(trip([point(hour(),{loc:'Lieu A'}),point(hour({t:'2026-10-07T07:00'}),{loc:'Lieu B'})]),options);
+ assert.equal(s.samples[0].phase,'night');assert.equal(s.samples[1].phase,'day');assert.equal(s.phase,'mixed');
+ const late={...trip([point(hour(),{loc:'Lieu A'})]),dep:'2026-10-07T07:15'};
+ assert.equal(G.preview(late,options).samples[0].phase,'day');
+});
+test('schéma borné à trois points, couverture contrôlée sur toute la séquence',()=>{
+ const seq=Array.from({length:9},()=>point(hour()));seq[6]=point(hour({T:null}));
+ const s=G.preview(trip(seq),options);assert.equal(s.samples.length,3);assert.equal(s.count,9);assert.equal(s.complete,false);assert.equal(s.animate,false);
+});
+test('trou de séquence, réception inconnue/future et cache ancien ne donnent pas de feu vert',()=>{
+ for(const seq of [[null], [point(hour()),null,point(hour())]])assert.equal(G.preview(trip(seq),options).complete,false);
+ for(const src of [null,{at:NOW+120000},{at:NOW-61*60000}]){
+  const s=G.preview(trip([point(hour())]),{...options,sourceFor:()=>src});assert.equal(s.complete,false);assert.equal(s.animate,false);
+ }
+});
+test('hors ligne et cache : prévisions lisibles, animation statique et provenance explicite',()=>{
+ const t=trip([point(hour({rain:2}))]);
+ const off=G.preview(t,{...options,offline:true});assert.equal(off.status,'HORS LIGNE');assert.equal(off.animate,false);assert.equal(off.samples[0].rain,true);
+ const cache=G.preview(t,{...options,sourceFor:()=>({...source(),mode:'cache'})});assert.equal(cache.status,'CACHE');assert.equal(cache.animate,false);
+});
+test('comparaison : résultats exacts du moteur, aucun classement et données insuffisantes',()=>{
+ const cars=[{id:'a',tyre:{model:'Modèle fictif',size:'205/55 R16',tread:{mm:5,date:'2026-10-01'},pressure:{checked:'2026-10-01'}}},{id:'b',tyre:null}];
+ const t={res:[{c:{id:'a'},w:{level:2,worst:{parts:[{label:'Vigilance fictive'}]}}}]};
+ const before=JSON.stringify([cars,t]);const rows=G.comparison(cars,t,{complete:true});assert.equal(rows[0].level,2);assert.equal(rows[0].reasons[0],'Vigilance fictive');
+ assert.equal(rows[1].label,'DONNÉES INSUFFISANTES');assert.equal(G.comparison(cars,t,{complete:false})[0].level,null);
+ cars[0].tyre.tread.estimated=true;assert.equal(G.comparison(cars,t,{complete:true})[0].label,'DONNÉES INSUFFISANTES');delete cars[0].tyre.tread.estimated;
+ assert.equal(JSON.stringify([cars,t]),before);
+});
+test('projection du trajet sans mutations, sans géométrie, vitesse, pression mesurée ou localisation déduite',()=>{
+ const t=trip([point(hour({rain:1}))]),before=JSON.stringify(t),s=G.preview(t,options);
+ assert.equal(JSON.stringify(t),before);for(const k of ['speed','distance','gps','grip','measuredRoadTemperature'])assert.equal(s[k],undefined);
+});
+test('météo de démonstration ne devient pas une prévision réelle ou une comparaison fiable',()=>{
+ const s=G.preview(trip([point(hour())]),{...options,sourceFor:()=>({...source(),mode:'demo'})});
+ assert.equal(s.demo,true);assert.equal(s.status,'DÉMO · SIMULATION');assert.equal(s.complete,false);assert.equal(s.animate,false);
+});
 console.log(n+'/'+n+' scénarios Garage validés');
