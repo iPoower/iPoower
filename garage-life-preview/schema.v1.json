@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/iPoower/iPoower/blob/feat/garage-life/garage-life-preview/schema.v1.json",
+  "title": "Garage Life — laboratoire fictif (aucune persistance)",
+  "description": "Schéma conceptuel V1. Le navigateur ne l'enregistre pas. Le validateur métier model.js contrôle notamment le vrai calendrier.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "vehicles",
+    "operations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "vehicles": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "goalKm"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,60}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "goalKm": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 50000000
+          }
+        }
+      }
+    },
+    "operations": {
+      "type": "array",
+      "maxItems": 20000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "vehicleId",
+          "date",
+          "odometerKm",
+          "category",
+          "description",
+          "amountCents",
+          "provider",
+          "provenance",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,60}$"
+          },
+          "vehicleId": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{1,60}$"
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\\\d{4}-\\\\d{2}-\\\\d{2}$"
+          },
+          "odometerKm": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 50000000
+          },
+          "category": {
+            "enum": [
+              "vidange",
+              "filtres",
+              "freinage",
+              "distribution",
+              "pneus",
+              "batterie",
+              "controle-technique",
+              "reparation",
+              "controle",
+              "autre"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "amountCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 999999999
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 160
+          },
+          "provenance": {
+            "enum": [
+              "DECLARED_DONE",
+              "USER_ENTERED_DEADLINE"
+            ]
+          },
+          "evidence": {
+            "type": "null"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "provenance": {
+                  "const": "USER_ENTERED_DEADLINE"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "amountCents": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
