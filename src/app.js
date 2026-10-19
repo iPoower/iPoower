@@ -209,6 +209,8 @@ let TRIPCANCELTIMER = null;
 // @include app/tyre-evidence.js
 // @include app/tyre-intelligence.js
 // @include app/tyre-intelligence-view.js
+// @include app/engineering-cockpit.js
+// @include app/engineering-cockpit-view.js
 // @include app/trip-view.js
 // @include app/calendar-origin-editor.js
 function tripContextLocs() {

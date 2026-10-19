@@ -179,3 +179,4 @@ check('sauvegarde historique acceptée, extensions strictes et aller-retour JSON
   assert(ctx.CI.validateTyreExtensions(legacy)); assert.equal(legacy.cars[0].tire.tread, '4.2');
 });
 console.log(`${n}/${n} scénarios OK`);
+require('./test_engineering_cockpit');

@@ -136,10 +136,11 @@ function renderLab() {
   const car = labCar(), E = WXD_EMO, lvc = l => 'lv' + (l == null ? 'x' : l), sg = v => String(v).replace('-', '−'), rg = r => `${sg(r[0])} à ${sg(r[1])} °C`;
   const cars = S.cars.length > 1 ? `<div class="chips lab-cars" role="group" aria-label="Véhicule analysé">${S.cars.map(c => `<button class="chip" data-act="labcar" data-car="${esc(c.id)}" aria-pressed="${c === car}">${esc(c.short || c.name)}</button>`).join('')}</div>` : '';
   const li = car ? labInput(car) : null, r = car ? tyreLab(li) : { known: false, reason: 'Monte active inconnue — sélectionner les pneus montés.' };
+  const panel = engineeringCockpitHtml(car, li && li.trip);
   let html;
   if (!r.known) html = `${cars}<div class="lab-hero lvx"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car ? car.short || car.name : '')}</span></div>
       <h2 class="wx-ht">${esc(r.reason)}</h2><p class="wx-hl">Race Control n’analyse jamais un autre pneu que celui réellement monté.</p>
-      <div class="cal-v"><button class="btn" data-act="goset-cfg">Renseigner les pneus montés</button><button class="btn" data-act="view" data-v="pneus">Onglet Pneus</button></div></div>`;
+      <div class="cal-v"><button class="btn" data-act="goset-cfg">Renseigner les pneus montés</button><button class="btn" data-act="view" data-v="pneus">Onglet Pneus</button></div></div>${panel}`;
   else {
     const t = r.tyre, idx = [t.li != null ? `charge ${t.li}${t.kg ? ' (' + t.kg + ' kg)' : ''}` : null, t.si ? `vitesse ${t.si}${t.kmh ? ' (' + t.kmh + ' km/h)' : ''}` : null, t.xl ? 'XL renforcé' : null, t.fp ? 'protège-jante' : null, t.rf ? 'roulage à plat' : null, t.pmsf === true ? '3PMSF' : null].filter(Boolean);
     const fiche = `<details class="wx-pc lab-d" data-k="spec"><summary><span class="ic" aria-hidden="true">📋</span><span class="tt">Fiche du pneu monté</span><span class="ln">${esc(t.title)}${t.size ? ' · ' + esc(t.size) : ''}</span></summary>
@@ -158,7 +159,7 @@ function renderLab() {
         ${st.stored.length ? `<li>Jeux stockés (jamais analysés) : ${st.stored.map(x => esc(x.label + ' · ' + x.title)).join(' ; ')}</li>` : ''}</ul>
       ${st.maint.length ? `<p class="lab-tag est">ENTRETIEN (hors verdict de conduite)</p><ul>${st.maint.map(x => `<li>${WXD_EMO[Math.min(3, x.lv)]} ${esc(x.text)}</li>`).join('')}</ul>` : ''}</div></details>` : '';
     if (r.noWeather) html = `${cars}<div class="lab-hero lvx"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car.short || car.name)}</span></div><h2 class="wx-ht">${esc(t.title)}</h2><p class="wx-hl">${esc(t.size || 'dimension non renseignée')}</p>
-      <p class="wx-hl">Météo indisponible : aucune estimation thermique ni d’adhérence (rien n’est inventé).</p></div>${stHtml}${fiche}`;
+      <p class="wx-hl">Météo indisponible : aucune estimation thermique ni d’adhérence (rien n’est inventé).</p></div>${panel}${stHtml}${fiche}`;
     else {
       const h = r.hero, th = r.thermal, g = r.grip, cf = r.confidence, pf = carProfile(car);
       const hero = `<div class="lab-hero ${pf.generic && !h.critical ? 'lvx' : lvc(h.lvl)}" role="status"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car.short || car.name)}</span><span class="wx-age">${r.phase === 'driving' ? (r.stopped ? 'ROULAGE SUIVI · ARRÊT' : 'EN ROULAGE') : r.phase === 'parked' ? 'À L’ARRÊT' : 'HISTORIQUE INCONNU'}</span></div>
@@ -184,7 +185,7 @@ function renderLab() {
         : `<div class="wx-blk lab-trip"><h3>🧭 Analyse du trajet</h3><p class="sub">${r.tripIssue ? esc(r.tripIssue) : 'Aucun trajet prévu : l’analyse suppose un départ sur route (≈ 70 km/h).'}</p></div>`;
       const p = r.press, press = `<div class="wx-blk lab-pr ${p.known && p.low ? 'lv2' : ''}"><h3>🎈 Pression</h3>${p.known ? `<ul class="lab-why">${p.notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="sub">Source : ${esc(p.src)}.</p>` : `<p class="sub">${esc(p.text)}</p>`}</div>`;
       const conf = `<details class="wx-pc lab-d" data-k="conf"><summary><span class="ic" aria-hidden="true">🎯</span><span class="tt">Niveau de confiance</span><span class="ln">${esc(cf.level[0].toUpperCase() + cf.level.slice(1))}</span></summary><ul>${(cf.axes || []).map(([k, v]) => `<li><b>${esc(k)}</b> : ${esc(v)}</li>`).join('')}${cf.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="lab-tag est">LIMITES DE CETTE ESTIMATION</p><ul class="lab-limits">${(cf.limits || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
-      html = cars + hero + labLastDriveHtml(car, li) + labTripState(r, li) +
+      html = cars + hero + panel + labLastDriveHtml(car, li) + labTripState(r, li) +
         (p.known && p.low ? press : '') +
         uxFold('lab-grip', 'Adhérence et freinage', win + brake + grip + aqua + (p.known && p.low ? '' : press), 'Calculs · chauffe · pression') +
         uxFold('lab-route', 'Projection du trajet', tr, r.trip ? r.trip.label + ' · ' + r.trip.dep + ' → ' + r.trip.arr : 'Données du parcours') +

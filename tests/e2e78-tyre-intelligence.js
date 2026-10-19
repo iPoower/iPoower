@@ -77,6 +77,23 @@ let count = 0;
         count++; console.log('✅ ' + device + ' · intégration ' + view);
       }
       await tab('analyse');
+      const cockpit = page.locator('#secLab .ec-panel');
+      assert.equal(await cockpit.locator('.ec-domain').count(), 6);
+      assert.match(await cockpit.textContent(), /Engineering Cockpit/);
+      assert.match(await cockpit.textContent(), /MESURÉE/); assert.match(await cockpit.textContent(), /ESTIMÉE/);
+      assert.match(await cockpit.textContent(), /DOCUMENTÉE/); assert.match(await cockpit.textContent(), /INCONNUE/);
+      for (const id of ['acceleration', 'braking', 'cornering', 'stability', 'aquaplaning', 'tyres']) {
+        const domain = cockpit.locator(`[data-ec-domain="${id}"]`);
+        await domain.locator(':scope > summary').click();
+        assert(await domain.locator('.ec-data').isVisible());
+      }
+      assert.match(await cockpit.locator('[data-ec-domain="braking"]').innerText(), /historique, non transposable/);
+      assert.match(await cockpit.locator('[data-ec-domain="acceleration"]').innerText(), /Aucun 0–100/);
+      const cockpitLayout = await cockpit.evaluate(el => ({ small: [...el.querySelectorAll('summary')].some(x => x.getBoundingClientRect().height < 44),
+        wide: [...el.querySelectorAll('*')].some(x => x.getBoundingClientRect().right > document.documentElement.clientWidth + 1) }));
+      assert.deepEqual(cockpitLayout, { small: false, wide: false });
+      const state = await page.evaluate(() => { const before = JSON.stringify(S); for (let i = 0; i < 10; i++) engineeringCockpitHtml(labCar()); return { same: before === JSON.stringify(S), focused: true }; });
+      assert(state.same); count++; console.log('✅ ' + device + ' · cockpit V1.2 : six domaines, types, touch, layout et lecture seule');
       const evidence = page.locator('#secLab .ti-panel').first();
       await evidence.locator(':scope > summary').click();
       await evidence.locator('details.ti-test').first().locator('summary').click();
