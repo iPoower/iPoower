@@ -90,7 +90,7 @@ function journeyReplayHtml(entry, cars, isOpen = false) {
   return '<details class="jr-replay" data-jr-key="' + esc(model.key) + '" data-dk="journey-' + esc(model.key) + '"' + (isOpen ? ' open' : '') + '>' +
     '<summary>🎬 JOURNEY REPLAY · débrief illustré</summary><div class="jr-body">' +
     '<div class="jr-route"><span>' + esc(model.from || 'Départ inconnu') + '</span><em aria-hidden="true">→</em><span>' + esc(model.to || 'Arrivée inconnue') + '</span></div>' +
-    '<div class="jr-meta">' + (model.car ? 'VÉHICULE AU DÉPART · ' + esc(model.car) + ' · ' : 'VÉHICULE NON ENREGISTRÉ · ') +
+    '<div class="jr-meta">' + (model.car ? (model.carSource === 'snapshot' ? 'VÉHICULE AU DÉPART · ' : 'VÉHICULE ASSOCIÉ AUJOURD’HUI · identité historique non archivée · ') + esc(model.car) + ' · ' : 'VÉHICULE NON ENREGISTRÉ · ') +
       'Départ : ' + esc(fmt(model.departure)) + ' · Arrivée : ' + esc(fmt(model.arrival)) + '</div>' +
     '<div class="jr-controls" role="group" aria-label="Commandes Journey Replay">' +
     '<button type="button" class="btn sm" data-jr-act="play" aria-pressed="true">Pause</button>' +
