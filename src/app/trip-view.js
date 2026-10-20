@@ -65,8 +65,12 @@ function tripCaptureForm() {
 function tripOriginValue() {
   if (TRIP_FORM.originMode === '__manual') return tripPoint(TRIP_FORM.originHit, 'manual-origin', 'Départ manuel');
   if (TRIP_FORM.originMode === '__gps') {
-    const fix = appCurrentGps() || GPS;
-    return fix && locHasCoords(fix) ? tripPoint({ ...fix, name: 'Ma position', provider: 'GPS navigateur', precision: '±' + Math.round(fix.acc || 0) + ' m' }, 'manual-origin', 'Ma position') : tripPoint(TRIP_FORM.originHit, 'manual-origin', 'Ma position');
+    // Le GPS brut et une origine mémorisée ne remplacent pas le fix validé.
+    // Un trajet déjà programmé reste conservé ; seule sa reprogrammation attend un GPS fiable.
+    const fix = appCurrentGps();
+    return fix && locHasCoords(fix)
+      ? tripPoint({ ...fix, name: 'Ma position', provider: 'GPS navigateur', precision: '±' + Math.round(fix.acc || 0) + ' m' }, 'manual-origin', 'Ma position')
+      : null;
   }
   return locById(TRIP_FORM.originMode);
 }
@@ -255,7 +259,12 @@ function tripFieldChanged(target) {
 function tripProgram(button) {
   tripCaptureForm();
   const origin = tripOriginValue(), dest = tripDestinationValue(), dep = tripDepartureValue(), now = localTs(Date.now()).slice(0, 16);
-  if (!origin || !locHasCoords(origin)) { TRIP_FORM.message = 'Choisis un départ valide.'; renderTripView(); return; }
+  if (!origin || !locHasCoords(origin)) {
+    TRIP_FORM.message = TRIP_FORM.originMode === '__gps'
+      ? 'Position GPS indisponible ou non fiable : actualise la localisation ou choisis un autre départ.'
+      : 'Choisis un départ valide.';
+    renderTripView(); return;
+  }
   if (!dest || !locHasCoords(dest)) { TRIP_FORM.message = 'Choisis une destination dans les suggestions.'; renderTripView(); return; }
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dep) || dep < addMin(now, -5)) { TRIP_FORM.message = 'Choisis une heure de départ actuelle ou future.'; renderTripView(); return; }
   const originKnown = TRIP_FORM.originMode !== '__manual' && TRIP_FORM.originMode !== '__gps' ? origin.id : null;
