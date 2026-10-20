@@ -91,6 +91,32 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
   });
   await search(p,dev,'29 Rue Jean Jaurès, 80610 Saint-Ouen');
   await check(dev+' · cas réel : adresse exacte fournie par IGN/BAN',async()=>{const t=await p.locator('#secTrip').innerText();assert.match(t,/29 Rue Jean Jaurès 80610 Saint-Ouen/);assert.match(t,/IGN\/BAN/);});
+  await check(dev+' · origine GPS : le relevé brut non validé bloque la programmation',async()=>{
+    const before=await state(p);
+    await p.evaluate(()=>{
+      window.__tripGpsBackup={gps:GPS,fix:FIX,mode:TRIP_FORM.originMode,hit:TRIP_FORM.originHit};
+      GPS={lat:49.3,lon:2.8,acc:5000,ts:Date.now()-3600000};
+      FIX=null;
+      TRIP_FORM.originMode='__gps';
+      TRIP_FORM.originHit={name:'Ma position',lat:49.3,lon:2.8,provider:'GPS navigateur'};
+      renderTripView();
+    });
+    try{
+      assert.equal(await p.evaluate(()=>!!appCurrentGps()),false,'le fix canonique doit être indisponible');
+      assert.equal(await p.locator('#tripOriginSel').inputValue(),'__gps');
+      await tap(p,dev,'#secTrip [data-act=trip-plan]');
+      const after=await state(p);
+      assert.deepEqual(after.n,before.n,'un relevé GPS brut ne doit jamais créer un trajet');
+      assert.match(await p.locator('#secTrip .trip-message').innerText(),/Position GPS indisponible ou non fiable/);
+    }finally{
+      await p.evaluate(()=>{
+        const b=window.__tripGpsBackup;
+        if(!b)return;
+        GPS=b.gps;FIX=b.fix;TRIP_FORM.originMode=b.mode;TRIP_FORM.originHit=b.hit;
+        TRIP_FORM.message='';delete window.__tripGpsBackup;renderTripView();
+      });
+    }
+  });
   const [carA,carB]=await p.evaluate(()=>S.cars.map(c=>c.id)); await later(p,dev,'17:15',carA);
   await p.waitForFunction(()=>{const n=USER_STORE.state.dayContext.nextDestination,t=n&&APP_CONTEXT.trips.find(x=>x.key===n.tripKey),l=t&&(t.l||t.planL);return !!(l&&!l.originPending&&Number.isFinite(l.km));},{timeout:20000});
   let key;
