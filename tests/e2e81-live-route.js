@@ -117,8 +117,9 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
     });
     await check(dev+' · GPS effacé : dernière position du cockpit supprimée et marqueur masqué',async()=>{
      await p.evaluate(()=>{S.gpsAuto=0;FIX=null;garageLiveRefresh();});
-     const state=await p.evaluate(()=>({last:GARAGE_LIVE.lastGood,opacity:GARAGE_LIVE.marker.options.opacity,valid:GARAGE_LIVE.gps.valid}));
+     const state=await p.evaluate(()=>{const m=GARAGE_LIVE.marker.getLatLng();return{last:GARAGE_LIVE.lastGood,opacity:GARAGE_LIVE.marker.options.opacity,valid:GARAGE_LIVE.gps.valid,marker:[m.lat,m.lng],start:GARAGE_LIVE.route.pts[0]};});
      assert.equal(state.last,null);assert.equal(state.opacity,0);assert.equal(state.valid,false);
+     assert.deepEqual(state.marker,state.start);
      assert.equal(await p.locator('[data-lr-value=distance]').innerText(),'—');
     });
     await check(dev+' · annulation, trajet sans géométrie et sortie du Garage nettoient la carte',async()=>{

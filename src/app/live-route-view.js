@@ -138,7 +138,12 @@ function garageLiveRefresh() {
       const bearing = s.marker.getElement() && s.marker.getElement().querySelector('.lr-bearing');
       if (bearing) bearing.style.transform = 'rotate(' + (state.pose.bearing - 90) + 'deg)';
       if (s.progress) s.progress.setLatLngs([...r.pts.slice(0, state.pose.index), state.pose.point]);
-    } else { s.marker.setOpacity(0); if (s.progress) s.progress.setLatLngs([]); }
+    } else {
+      s.marker.setOpacity(0);
+      // Le marqueur Leaflet ne doit pas conserver une position GPS effacée.
+      if (r) s.marker.setLatLng(r.pts[0]);
+      if (s.progress) s.progress.setLatLngs([]);
+    }
   }
   garageLiveDrawWeather(forecast);
   garageLiveRoad(!simulated && s.gps.valid);
