@@ -33,6 +33,17 @@ const JOURNEY_REPLAY_STYLE = '<style>' +
 '#secDebrief .twin-rubber{fill:var(--bg);stroke:var(--line2);stroke-width:2}' +
 '#secDebrief .twin-rim{fill:var(--panel2);stroke:var(--fg2);stroke-width:2}' +
 '#secDebrief .twin-spokes{stroke:var(--fg2);stroke-width:1.5}' +
+'#secDebrief .twin-reflection{fill:none;stroke:var(--panel2);stroke-width:1.7;stroke-linecap:round;opacity:.85}' +
+'#secDebrief .twin-character{fill:none;stroke:var(--fg2);stroke-width:1;stroke-linecap:round;stroke-linejoin:round;opacity:.7}' +
+'#secDebrief .twin-body-shade{fill:var(--bg);opacity:.16}' +
+'#secDebrief .twin-mirror{fill:var(--fg2);stroke:var(--panel);stroke-width:1}' +
+'#secDebrief .twin-grille,#secDebrief .twin-intake{fill:var(--fg3);stroke:var(--fg2);stroke-width:.8}' +
+'#secDebrief .twin-rear-lamp{fill:var(--risk);stroke:var(--fg2);stroke-width:.75}' +
+'#secDebrief .twin-chrome{fill:none;stroke:var(--fg2);stroke-width:1.2;opacity:.9}' +
+'#secDebrief .twin-spoiler{fill:var(--fg2);stroke:var(--accent);stroke-width:1.1}' +
+'#secDebrief .twin-sport-accent{fill:none;stroke:var(--risk);stroke-width:2.6}' +
+'#secDebrief .twin-car-sport .twin-spokes{stroke-width:2}' +
+'#secDebrief .twin-hub{fill:var(--fg2)}' +
 '#secDebrief .jr-layer{opacity:0}' +
 '#secDebrief .jr-scene[data-mode=before] .jr-before,#secDebrief .jr-scene[data-mode=after] .jr-after{opacity:1}' +
 '#secDebrief .jr-scene[data-mode=auto] .jr-before{animation:jr-before 12s steps(1,end) infinite}' +
