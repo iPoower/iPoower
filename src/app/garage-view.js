@@ -37,6 +37,10 @@ function garageVehicleHtml(c) {
     '<div class="garage-car-head"><div><span class="garage-index">VÉHICULE · ' + esc(c.short) + '</span><h3>' + esc(c.name) +
     '</h3>' + (c.spec ? '<p>' + esc(c.spec) + '</p>' : '') + '</div><div class="garage-choose">' + active + '</div></div>' +
     '<button type="button" class="btn pri garage-edit" data-act="goset-cfg">Modifier la fiche</button>' +
+    '<div class="garage-quick" aria-label="Relevés rapides de ' + esc(c.short) + '"><span>Relevés rapides · formulaire existant</span>' +
+      '<div class="chips">' + [['odo','Compteur km'],['tread','Profondeur mm'],['pressure','Pressions AV/AR']].map(([k,label]) =>
+        '<button type="button" class="btn sm" data-act="garage-quick" data-car="' + esc(c.id) +
+        '" data-garage-target="' + k + '">' + label + '</button>').join('') + '</div></div>' +
     '<div class="twin-vehicle-art">' + garageCarSvg(c.silhouette) + '<small>SILHOUETTE STYLISÉE · TEINTE ILLUSTRATIVE</small></div>' +
     '<div class="garage-meter"><span>COMPTEUR ENREGISTRÉ</span><strong class="num">' + esc(current) + '</strong><small>' + currentNote + '</small></div>' +
     '<div class="twin-quality"><span class="src obs">' + (t ? 'MONTE DÉCLARÉE' : 'MONTE À CONFIRMER') + '</span><span class="src est">' +
