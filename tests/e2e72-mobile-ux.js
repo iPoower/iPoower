@@ -73,6 +73,11 @@ async function run(browser, width, dev) {
             return { top: box.top, bottom: box.bottom, nav: nav.top };
           }, key);
           assert(screen.top >= 0 && (view === 'analyse' ? screen.top < screen.nav - 120 : screen.bottom <= screen.nav), JSON.stringify({ view, ...screen }));
+          // Lot 1 UX : le verdict météo le plus courant tient sur une ligne à 414 pt.
+          if (view === 'meteo') {
+            const verdict = await p.evaluate(() => { const h = document.querySelector('#secWx .wx-ht'); if (!h || !/CONDITIONS NORMALES/i.test(h.textContent)) return null; const lh = parseFloat(getComputedStyle(h).lineHeight) || parseFloat(getComputedStyle(h).fontSize) * 1.05; return { lines: Math.round(h.getBoundingClientRect().height / lh), text: h.textContent.trim() }; });
+            if (verdict) assert.equal(verdict.lines, 1, JSON.stringify(verdict));
+          }
         }
         const size = await p.evaluate(id => {
           const r = document.querySelector(id).getBoundingClientRect();
