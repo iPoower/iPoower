@@ -79,10 +79,18 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
      await p.emulateMedia({reducedMotion:'no-preference'});await p.waitForTimeout(150);await p.clock.runFor(1200);
      await p.waitForFunction(()=>!document.querySelector('#garageLiveRoute [data-lr=play]').disabled,null,{timeout:5000});
      await p.locator('[data-lr=play]').click();await p.clock.runFor(250);
-     await p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await p.waitForTimeout(150);await p.clock.runFor(250);
+     const viewport=p.viewportSize();
+     // Un viewport court garantit un vrai passage hors écran, y compris sur PC.
+     // Attendre la géométrie puis IntersectionObserver, pas un délai fixe de 150 ms.
+     await p.setViewportSize({...viewport,height:360});
+     await p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));
+     await p.waitForFunction(()=>{const r=document.querySelector('#garageLiveRoute').getBoundingClientRect();return r.top>=innerHeight||r.bottom<=0;},null,{timeout:5000});
+     await p.waitForFunction(()=>!GARAGE_LIVE.visible&&!GARAGE_LIVE.playing,null,{timeout:5000});
      assert.equal(await p.evaluate(()=>GARAGE_LIVE.playing),false);
      const f=await p.evaluate(()=>GARAGE_LIVE.fraction);await p.clock.runFor(3000);assert.equal(await p.evaluate(()=>GARAGE_LIVE.fraction),f);
-     await p.locator('#garageLiveRoute').scrollIntoViewIfNeeded();await p.waitForTimeout(100);
+     await p.setViewportSize(viewport);
+     await p.locator('#garageLiveRoute').scrollIntoViewIfNeeded();
+     await p.waitForFunction(()=>GARAGE_LIVE.visible,null,{timeout:5000});
     });
     await check(dev+' · vrai mode GPS alimenté par les fixes canoniques, simulation désactivée',async()=>{
      await p.evaluate(()=>{
