@@ -90,8 +90,22 @@ function renderGarage() {
       // séparément les données d'un trajet effectivement remplacé.
       const liveRoot = key === 'trip' && part.querySelector('#garageLiveRoute');
       if (key === 'trip') garageMotionDetach();
-      part.innerHTML = content;
-      if (liveRoot) { const slot = part.querySelector('#garageLiveRoute'); if (slot) slot.replaceWith(liveRoot); }
+      const template = liveRoot && document.createElement('template');
+      if (template) template.innerHTML = content;
+      const incoming = template && template.content.querySelector('#garageTrip');
+      const slot = incoming && incoming.querySelector('#garageLiveRoute');
+      if (slot && liveRoot.parentElement.id === 'garageTrip') {
+        // Ne pas déconnecter le cockpit, même provisoirement : un input retiré
+        // puis réinséré perdrait son focus et sa capture du pointeur.
+        const parent = liveRoot.parentElement, before = document.createDocumentFragment(), after = document.createDocumentFragment();
+        let passed = false;
+        for (const child of [...incoming.childNodes]) {
+          if (child === slot) { passed = true; continue; }
+          (passed ? after : before).appendChild(child);
+        }
+        for (const child of [...parent.childNodes]) if (child !== liveRoot) child.remove();
+        parent.insertBefore(before, liveRoot); parent.appendChild(after);
+      } else part.innerHTML = content;
       part._garageHTML = content;
     }
   }
