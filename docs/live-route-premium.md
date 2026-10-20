@@ -15,7 +15,7 @@ Le panneau du prochain trajet conserve Twin Garage, ses fiches, ses silhouettes 
 
 La carte, le curseur et la lecture vivent en mémoire. Aucune clé, migration, sauvegarde, autorisation, dépendance, règle de déploiement ou Service Worker supplémentaire. Le trajet domicile-travail réutilise `tripGeo` et son cache cartographique historique `twrc.croute`, avec les mêmes arrondis privés ; le nouveau cockpit ne crée pas de format persistant.
 
-Le DOM du cockpit reste identique pendant les mises à jour météo : zoom, geste et focus sont conservés. Changer réellement de trajet invalide géométrie, anciennes positions et réponses asynchrones. Sortir du Garage ou annuler le trajet nettoie carte, marqueurs, observateur et minuteurs. La lecture s'arrête hors écran, en arrière-plan ou à l'expiration de session.
+Le DOM du cockpit reste identique pendant les mises à jour météo : zoom, geste et focus sont conservés. Changer réellement de trajet invalide géométrie, anciennes positions et réponses asynchrones. Sortir du Garage ou annuler le trajet nettoie carte, marqueurs, observateur et minuteurs. Effacer ou désactiver le GPS supprime aussi le dernier repère mémorisé par ce cockpit. La lecture s'arrête hors écran, en arrière-plan ou à l'expiration de session ; l'événement d'expiration du coffre déclenche son nettoyage.
 
 Les ETA sont des estimations proportionnelles à la durée de l'itinéraire, sans trafic, et non un système de navigation. Si la géométrie courante est celle du parcours restant, le HUD le dit explicitement. Les distances issues d'une géométrie simplifiée sont approximatives.
 

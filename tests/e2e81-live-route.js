@@ -115,6 +115,12 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
      await p.evaluate(()=>{FIX={...FIX,ts:Date.now()};garageLiveRefresh();});
      assert.equal(await p.locator('#garageLiveRoute').getAttribute('data-live'),'true');
     });
+    await check(dev+' · GPS effacé : dernière position du cockpit supprimée et marqueur masqué',async()=>{
+     await p.evaluate(()=>{S.gpsAuto=0;FIX=null;garageLiveRefresh();});
+     const state=await p.evaluate(()=>({last:GARAGE_LIVE.lastGood,opacity:GARAGE_LIVE.marker.options.opacity,valid:GARAGE_LIVE.gps.valid}));
+     assert.equal(state.last,null);assert.equal(state.opacity,0);assert.equal(state.valid,false);
+     assert.equal(await p.locator('[data-lr-value=distance]').innerText(),'—');
+    });
     await check(dev+' · annulation, trajet sans géométrie et sortie du Garage nettoient la carte',async()=>{
      await p.evaluate(()=>{LIVE.phase='idle';LIVE.key=null;__lrTrip={...__lrTrip,key:'route-remplacée',running:false,l:{routed:false},planL:null,seq:[]};__lrRender();});
      assert.equal(await p.locator('#garageLiveRoute .lr-vehicle-icon').count(),0);

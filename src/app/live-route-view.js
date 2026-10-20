@@ -78,6 +78,9 @@ function garageLiveRadar() {
 function garageLivePose() {
   const s = GARAGE_LIVE, active = !!(s.trip && LIVE.key === s.trip.key && LIVE.phase === 'active' &&
     (s.trip.running || APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.key === s.trip.key));
+  // L'effacement/désactivation canonique du GPS vaut aussi pour la dernière
+  // position affichée ici ; seule une perte temporaire garde un repère figé.
+  if (!S.gpsAuto || !FIX || DEMO.on) s.lastGood = null;
   if (active) { s.mode = 'gps'; garageLivePause(); }
   s.gps = LiveRoute.gps({ route: s.route, fix: FIX, previous: s.lastGood, now: Date.now(),
     floor: Math.max(appGpsFloor(), s.resumeAfter), enabled: !!S.gpsAuto, active, held: PLACE_HOLD || !!PLACE_PENDING,
@@ -244,7 +247,7 @@ async function garageLiveEnsure() {
 }
 function garageLivePulse() {
   const s = GARAGE_LIVE; clearTimeout(s.timer); s.timer = null;
-  if (!garageLiveAllowed()) return;
+  if (!garageLiveAllowed()) { if (LOCKED()) garageLiveDetach(); return; }
   const canonical = APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip;
   if (garageLiveContext(canonical) !== s.context) { renderGarage(); return; }
   garageLiveRefresh();
@@ -310,4 +313,4 @@ function garageLiveVisibility() {
 document.addEventListener('visibilitychange', garageLiveVisibility);
 window.addEventListener('pagehide', () => { GARAGE_LIVE.suspended = true; garageLiveVisibility(); });
 window.addEventListener('pageshow', () => { GARAGE_LIVE.suspended = false; garageLiveVisibility(); });
-document.addEventListener('twrc-session-expired', garageLiveDetach);
+window.addEventListener('twrc-session-expired', garageLiveDetach);
