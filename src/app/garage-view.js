@@ -1,4 +1,5 @@
 // @include app/garage-scene.js
+// @include app/live-route-view.js
 // @include app/mission-control.js
 /* Onglet Garage : consultation uniquement des fiches existantes.
  * Aucune nouvelle table, aucun journal d'entretien inventé, aucune connexion OBD.
@@ -49,10 +50,10 @@ function renderGarage() {
   const el = $('#secGarage');
   if (!el) return;
   el.hidden = UI.view !== 'garage';
-  if (el.hidden) { garageMotionDetach(); if (el.innerHTML) el.innerHTML = ''; renderGarage.last = null; return; }
-  if (LOCKED()) { garageMotionDetach(); el.innerHTML = '<p class="sub">Déverrouille Race Control pour retrouver les fiches chiffrées.</p>'; renderGarage.last = null; return; }
+  if (el.hidden) { garageMotionDetach(); garageLiveDetach(); if (el.innerHTML) el.innerHTML = ''; renderGarage.last = null; return; }
+  if (LOCKED()) { garageMotionDetach(); garageLiveDetach(); el.innerHTML = '<p class="sub">Déverrouille Race Control pour retrouver les fiches chiffrées.</p>'; renderGarage.last = null; return; }
   const active = appActiveCar(), cars = Garage.overview(S.cars, active && active.id, tyreStateOf);
-  const trip = APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.nextTrip;
+  const trip = APP_CONTEXT.snapshot && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
   const scene = Garage.preview(trip, { sourceFor: garageWeatherSources(), offline: offlineNow(), now: Date.now(), freshness: Reliability.freshState });
   const selected = cars.find(c => c.active) || null;
   const compared = selected ? Garage.comparison([selected], trip, scene)[0] : null;
@@ -69,21 +70,30 @@ function renderGarage() {
   const html = JSON.stringify(parts);
   // Une projection identique conserve le geste en cours, le focus et les extensions F1.
   // Une vraie modification reste visible, en gardant les plans hiver ouverts par véhicule.
-  if (html === renderGarage.last) { garageMotionAttach(el); return; }
+  if (html === renderGarage.last) { garageMotionAttach(el); garageLiveAttach(trip, selected); return; }
   const focused = document.activeElement, inGarage = focused && el.contains(focused), carNode = inGarage && focused.closest('[data-garage-car]');
   const token = inGarage ? { id: focused.id, act: focused.dataset.act, car: carNode && carNode.dataset.garageCar,
     plan: focused.tagName === 'SUMMARY' && focused.parentElement.classList.contains('garage-plan') } : null;
   const expanded = new Set([...el.querySelectorAll('.garage-plan[open]')]
     .map(plan => plan.closest('[data-garage-car]').dataset.garageCar));
   const foldFocus = uxFocusKey(el);
-  if (!el.querySelector('#twinGarageBody')) el.innerHTML = GARAGE_STYLE +
+  if (!el.querySelector('#twinGarageBody')) el.innerHTML = GARAGE_STYLE + LIVE_ROUTE_STYLE +
     '<div class="mod-h"><h2>🛠️ TWIN GARAGE LIVE</h2><span class="src obs">THE GARAGE · données enregistrées</span></div>' +
-    '<div class="twin-intro"><p>Véhicules · prochain trajet · préparation explicable.</p><div class="mission-actions"><a class="btn sm twin-jump" href="#missionControl">NEXT MISSION ↓</a><a class="btn sm twin-jump" href="#garageTrip">Voir le prochain trajet 2D ↓</a></div></div>' +
+    '<div class="twin-intro"><p>Véhicules · prochain trajet · préparation explicable.</p><div class="mission-actions"><a class="btn sm twin-jump" href="#missionControl">NEXT MISSION ↓</a><a class="btn sm twin-jump" href="#garageTrip">Voir le trajet · LIVE ROUTE ↓</a></div></div>' +
     '<div id="twinGarageBody" class="twin-body">' + Object.keys(parts).map(k=>'<div data-twin-part="' + k + '"></div>').join('') + '</div>' +
     '<p class="garage-note">Les profondeurs et contrôles sont saisis par toi. La pression affichée est une cible, pas une mesure en temps réel. Aucun capteur moteur, diagnostic OBD ou historique de réparations n’est disponible.</p>';
   for (const [key, content] of Object.entries(parts)) {
     const part = el.querySelector('[data-twin-part="' + key + '"]');
-    if (part._garageHTML !== content) { if (key === 'trip') garageMotionDetach(); part.innerHTML = content; part._garageHTML = content; }
+    if (part._garageHTML !== content) {
+      // Les prévisions peuvent changer pendant un geste. Le cockpit conserve
+      // son DOM, sa carte, son zoom et son curseur ; son adaptateur invalide
+      // séparément les données d'un trajet effectivement remplacé.
+      const liveRoot = key === 'trip' && part.querySelector('#garageLiveRoute');
+      if (key === 'trip') garageMotionDetach();
+      part.innerHTML = content;
+      if (liveRoot) { const slot = part.querySelector('#garageLiveRoute'); if (slot) slot.replaceWith(liveRoot); }
+      part._garageHTML = content;
+    }
   }
   renderGarage.last = html;
   el.querySelectorAll('.garage-plan').forEach(plan => {
@@ -97,4 +107,5 @@ function renderGarage() {
     if (target) target.focus({ preventScroll:true });
   }
   garageMotionAttach(el);
+  garageLiveAttach(trip, selected);
 }

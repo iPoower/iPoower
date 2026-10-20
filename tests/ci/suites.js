@@ -115,3 +115,5 @@ SUITE.push(['test_road_policy.js', 'chaussée mouillée/humide : une seule défi
 SUITE.push(['test_journey_replay.js', 'Journey Replay : prévisions archivées, déclaration conducteur, annulations, reprise et absence de télémétrie', false]);
 SUITE.push(['e2e80-journey-replay.js', 'Journey Replay : avant/après, pause, réduction du mouvement, annulations, DOM stable et iPhone/PC', true]);
 SUITE.push(['test_mission_control.js', 'Mission Control : projection canonique, provenance, absence, hors-ligne et absence de mutation', false]);
+SUITE.push(['test_live_route.js', 'Live Route : géométrie, progression, GPS périmé/imprécis, secteurs et prévisions ponctuelles', false],
+  ['e2e81-live-route.js', 'Live Route premium PC/iPhone : vraie carte, simulation, GPS, reprise, focus, thèmes et nettoyage', true]);
