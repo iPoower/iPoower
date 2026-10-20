@@ -92,7 +92,7 @@ function tripRouteState() {
 // Contrôles informatifs : aucune décision d'aptitude à conduire et aucune mutation.
 function tripPreflightHtml(route, car, origin, dest, departure) {
   const tire = car && car.tire;
-  const tyreKnown = !!(tire && tire.type && tire.type !== 'unknown' && (tire.model || tire.brand));
+  const tyreKnown = !!(tire && tire.type && !['unknown', 'none'].includes(tire.type) && (tire.model || tire.brand));
   const weather = RAW && RAW[UI.loc];
   const minutes = weather && weather.t ? Reliability.ageMin(weather.t) : null;
   const weatherFresh = !offlineNow() && Number.isFinite(minutes) && minutes >= 0 && minutes <= 30;
