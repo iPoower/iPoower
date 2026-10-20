@@ -84,12 +84,22 @@ const check = async (label, fn) => { stage = label; await fn(); count++; console
           assert.match(offlineEvidence.text, /Hors ligne · cache/);
         });
         const otherCar = await p.evaluate(() => {
-          appDay().activeCarId = S.cars[1].id; renderTripView();
-          return { count: document.querySelectorAll('.rr-point').length, key: APP_CONTEXT.trips[0].key };
+          // Une action UI réelle reconstruit le contexte canonique : réinstaller
+          // le trajet fictif après le changement pour n'évaluer que Route Radar.
+          const d = appDay(); d.activeCarId = S.cars[1].id;
+          d.nextDestination = { ...window.__radarSelection };
+          APP_CONTEXT.trips = [window.__radarFixture];
+          APP_CONTEXT.snapshot.trips = [window.__radarFixture];
+          renderTripView();
+          return { count: document.querySelectorAll('.rr-point').length,
+            key: APP_CONTEXT.trips[0].key, selected: appDay().nextDestination?.tripKey || null,
+            car: appDay().activeCarId };
         });
         await check(dev + ' · changement de voiture préserve la source unique', async () => {
           assert.equal(otherCar.count, 3);
           assert.equal(otherCar.key, 'fixture-route');
+          assert.equal(otherCar.selected, 'fixture-route');
+          assert(otherCar.car);
         });
         const replaced = await p.evaluate(() => {
           appDay().nextDestination.tripKey = 'nouvelle-destination'; renderTripView();

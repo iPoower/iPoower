@@ -94,10 +94,13 @@ SUITE.push(['test_wear_consistency.js', 'usure : seuil unique, essieu, fraîcheu
   ['e2e69-wear.js', 'usure : saisies réelles PC/iPhone, taux partagé, rechargement et hors ligne', true]);
 SUITE.push(['test_f1_pure.js', 'F1 Pure : six moteurs prudents, sans invention ni mutation', false],
   ['e2e70-f1-pure.js', 'F1 Pure : modules OFF par défaut, activation et rechargement PC/iPhone', true]);
+SUITE.push(['test_mission_control.js', 'Mission Control : projection canonique, provenance, absence, hors-ligne et absence de mutation', false]);
 SUITE.push(['test_garage.js', 'Garage : fiches techniques canoniques, relevés, plans hiver, sources et invariants', false],
   ['e2e71-garage.js', 'Garage : navigation 5 onglets, données véhicules et état, réglages, reload et offline PC/iPhone', true]);
 SUITE.push(['e2e72-mobile-ux.js', 'UX mobile : cinq onglets, détails accessibles, focus, petits écrans, rechargement, données et hors ligne', true]);
 SUITE.push(['e2e73-weekly-login.js', 'sécurité iPhone/PC : session 7 jours en IndexedDB, révocation, expiration et refus', true]);
+SUITE.push(['test_route_radar.js', 'Route Radar : points réels, ETA, couverture, fraîcheur et absence de mutation', false],
+  ['e2e80-route-radar.js', 'Route Radar PC/iPhone : points météo, replis, annulation, offline, focus et zéro nouvelle requête', true]);
 module.exports = { SUITE, FIRST };
 SUITE.push(['test_live_engine.js', 'live : horloge, provenance, données partielles, horizon et réponses tardives', false]);
 SUITE.push(['e2e74-live-offline.js', 'Live/Offline : minuit, heures offline, données anciennes/partielles, reconnexion et 429 iPhone/PC', true]);
@@ -109,6 +112,4 @@ SUITE.push(['test_web_security.js', 'Forteresse : CSP, assets signés, chemins s
 SUITE.push(['test_config_import.js', 'Forteresse III : liens privés, validation, coffre atomique, refus et données conservées', false],
   ['e2e76-config-import.js', 'Forteresse III PC/iPhone : vrais imports fictifs, verrouillage, URL et réouverture', true]);
 SUITE.push(['e2e77-provider-limited.js', 'Incident 429 du 14/10 iPhone/PC : LIMITÉ ≠ HORS LIGNE, boutons en pause, zéro requête, ancien lien de configuration', true]);
-SUITE.push(['test_route_radar.js', 'Route Radar : points réels, ETA, couverture, fraîcheur et absence de mutation', false],
-  ['e2e80-route-radar.js', 'Route Radar PC/iPhone : points météo, replis, annulation, offline, focus et zéro nouvelle requête', true]);
 SUITE.push(['test_road_policy.js', 'chaussée mouillée/humide : une seule définition pour le verdict, l’Analyse et le poste Météo, contre-tests', false]);
