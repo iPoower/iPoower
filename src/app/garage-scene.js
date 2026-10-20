@@ -1,21 +1,67 @@
 /* Twin Garage : SVG/CSS locaux, lecture seule des modèles et de la timeline.
  * Aucune requête, minuterie d'animation, géométrie ou persistance supplémentaire. */
 // @include app/garage-style.js
+// Trois gabarits purement illustratifs, jamais déduits d'une mesure ou d'un
+// capteur. Profil vers la droite, mêmes coordonnées dans les cartes et la scène.
 function garageCarSvg(kind, scene = false) {
   const sport = kind === 'sport', touring = kind === 'touring';
-  const body = sport ? 'M18 60 L32 40 L65 34 L96 12 L167 12 L200 36 L235 45 L246 63 L241 73 L17 73 Z' :
-    touring ? 'M16 59 L27 32 Q35 17 58 14 L154 12 Q172 12 189 31 L208 43 L238 50 L246 66 L239 76 L17 76 Z' :
-      'M17 60 L31 39 L70 31 L99 13 L165 14 L199 38 L233 46 L245 64 L239 75 L17 75 Z';
-  const glass = touring ? 'M41 33 L58 20 L106 19 L106 38 L39 38 Z M113 19 L153 18 Q168 19 181 36 L113 38 Z' :
-    'M78 34 L102 18 L128 18 L128 36 Z M135 18 L163 18 L187 36 L135 36 Z';
-  return (scene ? '<g class="twin-car-svg">' : '<svg class="twin-car-svg" viewBox="0 0 264 100" aria-hidden="true" focusable="false">') +
-    '<ellipse class="twin-shadow" cx="132" cy="87" rx="116" ry="7"/>' +
-    (sport ? '<path class="twin-paint" d="M26 28 H65 L69 34 H26 Z"/>' : '') +
-    '<path class="twin-paint" d="' + body + '"/><path class="twin-glass" d="' + glass + '"/>' +
-    '<path class="twin-trim" d="M81 43 V68 M141 42 V69 M97 45 H107 M158 45 H167 M22 70 H237"/>' +
-    '<path class="twin-lamp" d="M225 47 L239 53 L241 58 L225 56 Z"/><path class="twin-rear" d="M23 44 L30 42 V55 H20 Z"/>' +
-    (sport ? '<path class="twin-rear" d="M81 74 H176"/>' : '') +
-    [61,202].map(x => '<g class="twin-wheel"><circle class="twin-rubber" cx="' + x + '" cy="73" r="19"/><circle class="twin-rim" cx="' + x + '" cy="73" r="11"/><path class="twin-spokes" d="M' + (x-9) + ' 73 H' + (x+9) + ' M' + x + ' 64 V82 M' + (x-6) + ' 67 L' + (x+6) + ' 79 M' + (x+6) + ' 67 L' + (x-6) + ' 79"/></g>').join('') + (scene ? '</g>' : '</svg>');
+  const shape = sport ? 'sport' : touring ? 'touring' : 'generic';
+  const body = sport
+    ? 'M12 54 L19 42 L53 38 L78 23 Q85 16 96 16 H151 Q165 16 174 29 L190 41 L229 45 Q248 48 253 58 L251 72 L243 78 H226 Q222 60 205 60 Q189 60 184 79 H80 Q76 60 57 60 Q39 60 35 79 H17 Q11 75 11 68 Z'
+    : touring
+      ? 'M12 56 Q14 44 24 41 L38 34 Q51 17 81 14 Q119 9 146 15 Q165 20 181 36 L196 46 L234 49 Q247 51 252 61 L249 75 L244 78 H226 Q221 60 204 60 Q187 60 183 79 H78 Q74 60 56 60 Q38 60 34 79 H18 Q11 76 12 65 Z'
+      : 'M14 57 L27 39 L69 33 L96 17 H160 L191 39 L235 47 L250 62 L245 78 H224 Q220 61 203 61 Q186 61 182 79 H79 Q75 61 57 61 Q40 61 35 79 H16 Z';
+  const glass = sport
+    ? 'M77 39 L96 22 H117 V40 H76 Z M124 22 H150 Q160 23 168 33 L179 41 H124 Z'
+    : touring
+      ? 'M43 40 Q54 24 81 20 L111 19 V42 H41 Z M118 19 L141 20 Q158 24 174 42 H118 Z'
+      : 'M77 38 L98 22 H120 V41 H75 Z M127 22 H158 L183 42 H127 Z';
+  const start = scene
+    ? '<g class="twin-car-svg twin-car-' + shape + '" data-shape="' + shape + '">'
+    : '<svg class="twin-car-svg twin-car-' + shape + '" data-shape="' + shape + '" viewBox="0 0 264 100" aria-hidden="true" focusable="false">';
+  const back = sport
+    ? '<path class="twin-spoiler" d="M8 33 L52 33 L61 38 L18 39 L9 37 Z"/>'
+    : '';
+  const details = sport
+    ? '<path class="twin-reflection" d="M29 44 L53 42 M89 20 H150 M195 44 L225 47"/>' +
+      '<path class="twin-body-shade" d="M19 62 L37 58 L36 77 L17 76 Z M81 71 H182 L184 77 H79 Z M227 70 L249 68 L245 77 H226 Z"/>' +
+      '<path class="twin-character" d="M34 52 L87 49 L172 51 L218 47 M119 42 V69 M179 44 L183 66 M124 47 H136"/>' +
+      '<path class="twin-mirror" d="M178 38 L187 39 L188 44 L176 43 Z"/>' +
+      '<path class="twin-grille" d="M241 58 L252 59 L249 70 L239 70 Z"/>' +
+      '<path class="twin-lamp" d="M226 48 L244 51 L239 56 L223 54 Z"/>' +
+      '<path class="twin-rear-lamp" d="M17 46 L25 44 L30 50 L21 53 L15 51 Z"/>' +
+      '<path class="twin-sport-accent" d="M19 76 H35 M82 80 H183 M227 79 H245"/>' +
+      '<path class="twin-intake" d="M20 68 L31 65 L30 72 H20 Z M244 72 H250"/>'
+    : touring
+      ? '<path class="twin-reflection" d="M34 40 Q51 18 81 16 Q119 11 145 17 M197 48 L231 51"/>' +
+        '<path class="twin-body-shade" d="M17 65 L34 60 L34 75 H18 Z M79 72 Q131 76 182 70 L182 78 H79 Z"/>' +
+        '<path class="twin-character" d="M30 54 Q90 48 151 51 Q195 50 224 55 M113 43 V69 M178 45 L183 66 M119 49 H132"/>' +
+        '<path class="twin-chrome" d="M41 44 Q110 46 177 45 M82 78 H180"/>' +
+        '<path class="twin-mirror" d="M181 41 Q192 39 195 44 L191 48 H181 Z"/>' +
+        '<path class="twin-lamp" d="M219 50 Q235 49 245 54 L239 59 L218 57 Z"/>' +
+        '<path class="twin-rear-lamp" d="M15 49 L24 46 L29 50 V58 L14 58 Z"/>' +
+        '<path class="twin-grille" d="M246 62 L252 63 L249 71 L242 72 Z"/>'
+      : '<path class="twin-character" d="M80 44 V69 M125 44 V69 M145 49 H155"/>' +
+        '<path class="twin-lamp" d="M228 50 L245 56 L241 59 L225 56 Z"/>' +
+        '<path class="twin-rear-lamp" d="M18 48 L27 45 V57 H18 Z"/>';
+  const wheels = [57, 204].map(x => {
+    const spokes = sport
+      ? Array.from({length:5}, (_, i) => {
+        const a = i * Math.PI * 2 / 5;
+        const x1 = (x + Math.cos(a) * 3).toFixed(2), y1 = (78 + Math.sin(a) * 3).toFixed(2);
+        const x2 = (x + Math.cos(a) * 9).toFixed(2), y2 = (78 + Math.sin(a) * 9).toFixed(2);
+        return 'M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2;
+      }).join(' ')
+      : 'M' + (x-8) + ' 78 H' + (x+8) + ' M' + x + ' 70 V86 M' + (x-6) + ' 72 L' + (x+6) + ' 84 M' + (x+6) + ' 72 L' + (x-6) + ' 84';
+    return '<g class="twin-wheel"><circle class="twin-rubber" cx="' + x + '" cy="78" r="17"/>' +
+      '<circle class="twin-rim" cx="' + x + '" cy="78" r="10"/>' +
+      '<path class="twin-spokes" d="' + spokes + '"/><circle class="twin-hub" cx="' + x + '" cy="78" r="2.5"/></g>';
+  }).join('');
+  return start +
+    '<ellipse class="twin-shadow" cx="132" cy="95" rx="116" ry="3.5"/>' + back +
+    '<path class="twin-paint" d="' + body + '"/>' +
+    '<path class="twin-glass" d="' + glass + '"/>' + details + wheels +
+    (scene ? '</g>' : '</svg>');
 }
 function garageWeatherSources() {
   const frames = new Map(), add = (m, at) => { if (m && m.hs) frames.set(m.hs, { at, mode: m.mode, days: m.days }); };

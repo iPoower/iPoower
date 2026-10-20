@@ -63,6 +63,12 @@ async function check(label,fn){stage=label;await fn();total++;console.log('✅ '
     await check(dev+' · mouvement réduit et suspension page masquée',async()=>{
       const scene=p.locator('#secDebrief .jr-scene').first();
       await p.emulateMedia({reducedMotion:'reduce'});
+      // WebKit émet parfois le changement MediaQueryList au tour suivant.
+      // Attendre l'effet effectif, sans masquer une défaillance fonctionnelle.
+      await p.waitForFunction(() => {
+        const el = document.querySelector('#secDebrief .jr-scene');
+        return !!el && el.dataset.running === 'false' && el.dataset.mode === 'before';
+      }, null, {timeout: 5000});
       assert.equal(await scene.getAttribute('data-running'),'false');
       assert.equal(await scene.getAttribute('data-mode'),'before');
       assert.equal(await scene.locator('.jr-vehicle').first().evaluate(x=>getComputedStyle(x).animationName),'none');
