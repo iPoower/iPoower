@@ -139,7 +139,10 @@ function renderTripView() {
     if (previous) { if (previous.outerHTML !== routeLine) previous.outerHTML = routeLine; }
     else if (routeLine) el.querySelector('.trip-actions').insertAdjacentHTML('beforebegin', routeLine);
     const radarPanel = el.querySelector('.trip-radar');
-    if (radarPanel && radarPanel.outerHTML !== radarShell) { const focus = uxFocusKey(radarPanel); radarPanel.outerHTML = radarShell; uxRestoreFocus(el.querySelector('.trip-radar'), focus); }
+    if (radarPanel && radarPanel._radarHTML !== radarShell) {
+      const focus = uxFocusKey(radarPanel); radarPanel.outerHTML = radarShell;
+      uxRestoreFocus(el.querySelector('.trip-radar'), focus);
+    }
     const panel = el.querySelector('.trip-intelligence');
     if (panel && panel.innerHTML !== intelligence) { const focus = uxFocusKey(panel); panel.innerHTML = intelligence; uxRestoreFocus(panel, focus); }
   } else {
@@ -153,6 +156,7 @@ function renderTripView() {
     }
   }
   const panel = el.querySelector('.trip-intelligence'); if (panel) uxRestoreFocus(panel, null);
+  const radarMounted = el.querySelector('.trip-radar'); if (radarMounted) radarMounted._radarHTML = radarShell;
   el._tripControlsHTML = controlsHTML;
 }
 function renderTripSummary() {

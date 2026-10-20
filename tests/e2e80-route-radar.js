@@ -15,7 +15,7 @@ const check = async (label, fn) => { stage = label; await fn(); count++; console
           assert.equal(await p.locator('#secTrip .trip-radar details[data-ux=route-radar]').count(), 1);
           assert.equal(await p.locator('#viewSeg [data-act=view]').count(), 5);
         });
-        await p.evaluate(() => {
+        const synthetic = await p.evaluate(() => {
           const m = M[UI.loc] || Object.values(M).find(Boolean);
           const hs = m && m.hs || [{ t: '2026-10-19T15:00', T: 8, P: 1, vis: 800, wind: 15, gust: 30 }];
           const i = m && m.nowI >= 0 ? m.nowI : 0;
@@ -29,18 +29,31 @@ const check = async (label, fn) => { stage = label; await fn(); count++; console
           d.nextDestination = { source: 'manual', tripKey: t.key, dep: t.dep, updatedAt: Date.now(),
             originPoint: { lat: 49, lon: 2, name: 'Lieu A' }, destinationPoint: { lat: 50, lon: 3, name: 'Lieu B' } };
           APP_CONTEXT.trips = [t]; APP_CONTEXT.snapshot.trips = [t];
+          window.__radarFixture = t;
           renderTripView();
+          const root = document.querySelector('#secTrip .trip-radar');
+          const detail = root.querySelector('details'); detail.open = true;
+          const radar = RouteRadar.snapshot({ trip: t, offline: offlineNow() });
+          return { projected: radar.points.length, rendered: root.querySelectorAll('.rr-point').length,
+            band: root.querySelectorAll('.rr-band > span').length, text: root.textContent };
         });
-        await p.locator('.trip-radar summary').click();
-        await check(dev + ' · trois points météo et provenance explicite', async () => {
-          assert.equal(await p.locator('.rr-point').count(), 3);
-          const t = await p.locator('.trip-radar').innerText();
+        await check(dev + ' · trois points météo et provenance explicite au rendu initial', async () => {
+          assert.equal(synthetic.projected, 3, 'trois échantillons synthétiques sont présents');
+          assert.equal(synthetic.rendered, 3, 'projection non perdue entre moteur et HTML : ' + JSON.stringify(synthetic));
+          assert.equal(synthetic.band, 3);
           for (const word of ['DÉPART', 'PARCOURS', 'ARRIVÉE', 'Prévisions aux points', 'Position documentée'])
-            assert(t.includes(word), 'libellé manquant : ' + word);
-          assert.equal(await p.locator('.rr-band > span').count(), 3);
+            assert(synthetic.text.includes(word), 'libellé manquant : ' + word);
         });
         const state = await p.evaluate(() => {
-          const node = document.querySelector('.trip-radar details'), before = JSON.stringify(appDay().nextDestination);
+          // Le test contrôle un instantané du trajet pendant le rendu.
+          // Le contexte vivant peut se recalculer entre deux opérations Playwright.
+          APP_CONTEXT.trips = [window.__radarFixture];
+          APP_CONTEXT.snapshot.trips = [window.__radarFixture];
+          appDay().nextDestination = { source: 'manual', tripKey: window.__radarFixture.key, dep: window.__radarFixture.dep,
+            updatedAt: Date.now(), originPoint: window.__radarFixture.l.from, destinationPoint: window.__radarFixture.l.to };
+          renderTripView();
+          const node = document.querySelector('.trip-radar details'); node.open = true;
+          const before = JSON.stringify(appDay().nextDestination);
           const car = appDay().activeCarId;
           const beforeNetwork = performance.getEntriesByType('resource').filter(x => /open-meteo|project-osrm/.test(x.name)).length;
           for (let k = 0; k < 12; k++) renderTripView();
@@ -55,26 +68,41 @@ const check = async (label, fn) => { stage = label; await fn(); count++; console
           assert(state.scroll <= state.width + 1, JSON.stringify(state));
         });
         await s.c.setOffline(true);
-        await p.evaluate(() => renderTripView());
+        const offlineEvidence = await p.evaluate(() => {
+          APP_CONTEXT.trips = [window.__radarFixture];
+          APP_CONTEXT.snapshot.trips = [window.__radarFixture];
+          appDay().nextDestination = { source: 'manual', tripKey: window.__radarFixture.key, dep: window.__radarFixture.dep,
+            updatedAt: Date.now(), originPoint: window.__radarFixture.l.from, destinationPoint: window.__radarFixture.l.to };
+          renderTripView();
+          return { count: document.querySelectorAll('.rr-point').length,
+            text: document.querySelector('.trip-radar').textContent };
+        });
         await check(dev + ' · hors connexion conserve les points et dégrade la fraîcheur', async () => {
-          assert.equal(await p.locator('.rr-point').count(), 3);
-          assert.match(await p.locator('.trip-radar').innerText(), /Hors ligne · cache/);
+          assert.equal(offlineEvidence.count, 3);
+          assert.match(offlineEvidence.text, /Hors ligne · cache/);
         });
-        await p.evaluate(() => { appDay().activeCarId = S.cars[1].id; renderTripView(); });
+        const otherCar = await p.evaluate(() => {
+          appDay().activeCarId = S.cars[1].id; renderTripView();
+          return { count: document.querySelectorAll('.rr-point').length, key: APP_CONTEXT.trips[0].key };
+        });
         await check(dev + ' · changement de voiture préserve la source unique', async () => {
-          assert.equal(await p.locator('.rr-point').count(), 3);
-          assert.equal(await p.evaluate(() => APP_CONTEXT.trips[0].key), 'fixture-route');
+          assert.equal(otherCar.count, 3);
+          assert.equal(otherCar.key, 'fixture-route');
         });
-        await p.evaluate(() => { appDay().nextDestination.tripKey = 'nouvelle-destination'; renderTripView(); });
+        const replaced = await p.evaluate(() => {
+          appDay().nextDestination.tripKey = 'nouvelle-destination'; renderTripView();
+          return document.querySelectorAll('.rr-point').length;
+        });
         await check(dev + ' · destination changée invalide la prévision précédente', async () => {
-          assert.equal(await p.locator('.rr-point').count(), 0);
+          assert.equal(replaced, 0);
         });
-        await p.evaluate(() => {
+        const cancelled = await p.evaluate(() => {
           appDay().nextDestination = null; APP_CONTEXT.snapshot.nextTrip = null; APP_CONTEXT.snapshot.activeTrip = null;
           renderTripView();
+          return document.querySelectorAll('.rr-point').length;
         });
         await check(dev + ' · annulation sans résidu visuel', async () => {
-          assert.equal(await p.locator('.rr-point').count(), 0);
+          assert.equal(cancelled, 0);
         });
         await s.c.setOffline(false);
       } finally { await s.c.close(); }
