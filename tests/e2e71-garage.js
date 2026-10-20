@@ -300,6 +300,15 @@ async function twinScenario(browser){
       assert.equal(await p.locator('#settings').evaluate(x=>x.open),true);
       assert(await p.locator('#settingsBody [data-bind="cars.0.tire.type"]').count());
     });
+    await check(dev+' · Garage : trois raccourcis ouvrent les champs réels sans modifier la fiche',async()=>{
+      const snapshot=await p.evaluate(()=>JSON.stringify(S.cars));
+      for(const [kind,id] of [['odo','odo-0'],['tread','trd-0'],['pressure','f-cars-0-tire-pchk-av']]){
+        await tap('#secGarage .garage-car:first-child [data-act=garage-quick][data-garage-target='+kind+']');
+        assert.equal(await p.locator('#settings').evaluate(x=>x.open),true);
+        assert.equal(await p.evaluate(id=>document.activeElement===document.getElementById(id),id),true,'raccourci non focalisé : '+kind);
+      }
+      assert.equal(await p.evaluate(()=>JSON.stringify(S.cars)),snapshot,'simple navigation ne doit pas écrire des données');
+    });
     await tap('#viewSeg [data-act=view][data-v=analyse]');
     await tap('#viewSeg [data-act=view][data-v=garage]');
     await check(dev+' · changement onglet ne supprime aucun relevé',async()=>{

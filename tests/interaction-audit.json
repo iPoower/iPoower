@@ -67,6 +67,10 @@
     "suite": "e2e49-interactions.js",
     "result": "origine du trajet enregistrée"
   },
+  "garage-quick": {
+    "suite": "e2e71-garage.js",
+    "result": "focus sur relevé du bon véhicule dans les Paramètres ; aucune écriture au clic"
+  },
   "geo-add": {
     "suite": "e2e49-interactions.js",
     "result": "destination ajoutée ou limite expliquée"
