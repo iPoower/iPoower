@@ -156,7 +156,7 @@ function renderTripView() {
         <label class="sr-only" for="tripOriginSel">Modifier le départ</label><select id="tripOriginSel" data-trip-field="origin">${opts.map(([v,t]) => `<option value="${esc(v)}" ${TRIP_FORM.originMode === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
         ${TRIP_FORM.originMode === '__manual' ? `<div class="trip-search"><input type="search" id="tripOriginQ" value="${esc(TRIP_FORM.originQuery)}" placeholder="Adresse de départ"><button class="btn" data-act="trip-origin-search">Rechercher</button></div><div class="trip-suggestions">${originButtons}</div>` : ''}
       </div>
-      <div class="trip-field trip-destination"><label class="trip-label" for="tripDestQ">Destination</label><div class="trip-search"><input type="search" id="tripDestQ" value="${esc(TRIP_FORM.destinationQuery)}" placeholder="Où allez-vous ?" autocomplete="street-address"><button class="btn" data-act="trip-dest-search">Rechercher</button></div>
+      <div class="trip-field trip-destination"><label class="trip-label" for="tripDestQ">Destination</label><div class="trip-search"><input type="search" id="tripDestQ" value="${esc(TRIP_FORM.destinationQuery)}" placeholder="Où vas-tu ?" autocomplete="street-address"><button class="btn" data-act="trip-dest-search">Rechercher</button></div>
         <div class="chips trip-quick">${quick}</div><div class="trip-suggestions">${resultButtons}</div>${selectedDest}
       </div>
       <fieldset class="trip-field"><legend class="trip-label">Départ</legend><div class="trip-when">

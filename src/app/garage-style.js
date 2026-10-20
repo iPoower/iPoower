@@ -10,7 +10,7 @@ const GARAGE_STYLE = `<style>
 #secGarage .twin-vehicle-art::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle,var(--fg) .9px,transparent 1.35px) 0 0/6px 6px;-webkit-mask:radial-gradient(ellipse at 88% 18%,#000,transparent 62%);mask:radial-gradient(ellipse at 88% 18%,#000,transparent 62%);opacity:.22}
 #secGarage .twin-plate{position:absolute;left:10px;top:2px;z-index:-1;font:900 clamp(46px,17vw,104px)/1 var(--f-disp);letter-spacing:-.02em;text-transform:uppercase;font-style:italic;white-space:nowrap;color:transparent;-webkit-text-stroke:1.4px var(--line2);opacity:.9;pointer-events:none;user-select:none}
 #secGarage .twin-vehicle-art .twin-car-svg{display:block;position:relative;width:100%;height:clamp(108px,26vw,170px)}
-#secGarage .twin-vehicle-art small{display:table;margin:2px 6px 8px auto;padding:2px 6px;font:8px var(--f-mono);letter-spacing:.06em;color:var(--fg2);background:var(--panel);border:1px solid var(--fg2)}
+#secGarage .twin-vehicle-art small{display:table;margin:2px 6px 8px auto;padding:2px 6px;font:11px var(--f-mono);letter-spacing:.06em;color:var(--fg2);background:var(--panel);border:1px solid var(--fg2)}
 #secGarage .garage-car:not(:has(.garage-active)) .twin-vehicle-art{box-shadow:4px 4px 0 var(--line)}
 #secGarage .garage-car:not(:has(.garage-active)) .twin-vehicle-art::before{opacity:0}
 #secGarage .twin-car-svg{overflow:visible;--paint:var(--accent);--ink:#0a0d12;--glass:#111a27;--hl:#fff;--red:#e5243b}
@@ -62,14 +62,14 @@ html[data-theme=light] #secGarage{--halo:#fff;--floor:#0a0d12}
 #secGarage .twin-route{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px}
 #secGarage .twin-route>div{display:grid;gap:4px;min-width:0}
 #secGarage .twin-route>div:last-child{text-align:right}
-#secGarage .twin-route small{font:10px var(--f-mono);letter-spacing:.08em;color:var(--fg2)}
+#secGarage .twin-route small{font:11px var(--f-mono);letter-spacing:.08em;color:var(--fg2)}
 #secGarage .twin-route b{font:600 clamp(16px,4.5vw,21px) var(--f-disp);overflow-wrap:anywhere}
 #secGarage .twin-route>span{color:var(--accent);font-size:20px}
 #secGarage .twin-caption,#secGarage .twin-tools{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center;color:var(--fg2);font-size:11px}
 #secGarage .twin-caption>span{overflow-wrap:anywhere;min-width:0}
 #secGarage .twin-scene{margin:0;overflow:hidden;border:1px solid var(--line);border-radius:4px;background:var(--panel);isolation:isolate;contain:paint}
 #secGarage .twin-scene-svg{display:block;width:100%;height:auto;min-height:110px}
-#secGarage .twin-scene figcaption{position:relative;padding:8px 10px;font:9px/1.6 var(--f-mono);letter-spacing:.035em;color:var(--fg2);background:var(--panel);border-top:1px solid var(--line)}
+#secGarage .twin-scene figcaption{position:relative;padding:8px 10px;font:11px/1.6 var(--f-mono);letter-spacing:.035em;color:var(--fg2);background:var(--panel);border-top:1px solid var(--line)}
 #secGarage .twin-sky{fill:var(--panel)}
 #secGarage .twin-night{fill:var(--bg)}
 html[data-theme=light] #secGarage .twin-night{fill:var(--fg)}
@@ -97,13 +97,13 @@ html[data-theme=light] #secGarage .twin-night{fill:var(--fg)}
 #secGarage .twin-motion:focus-within{outline:2px solid var(--accent);outline-offset:3px}
 #secGarage .twin-samples{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
 #secGarage .twin-samples li{min-width:0;display:flex;flex-direction:column;gap:4px;padding:9px;border:1px solid var(--line);border-radius:4px;background:var(--panel)}
-#secGarage .twin-samples small{font:9px var(--f-mono);color:var(--accent);line-height:1.5}
+#secGarage .twin-samples small{font:11px var(--f-mono);color:var(--accent);line-height:1.5}
 #secGarage .twin-samples b{font:600 22px var(--f-disp)}
 #secGarage .twin-samples span{font-size:11px;line-height:1.5;color:var(--fg2);overflow-wrap:anywhere}
 #secGarage .twin-compare{min-width:0;padding:11px;display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:4px;background:var(--panel)}
 #secGarage .twin-compare h4{font:600 20px var(--f-disp);margin:0;overflow-wrap:anywhere}
 #secGarage .twin-compare dl{display:grid;gap:4px;margin:0;font-size:12px;line-height:1.5}
-#secGarage .twin-compare dt{color:var(--fg2);font-size:10px;text-transform:uppercase;margin-top:4px}
+#secGarage .twin-compare dt{color:var(--fg2);font-size:11px;text-transform:uppercase;margin-top:4px}
 #secGarage .twin-compare dd{margin:0;overflow-wrap:anywhere}
 @keyframes twin-drive{0%{transform:translateX(35px)}95%,100%{transform:translateX(590px)}}
 @keyframes twin-rain{to{transform:translate(-7px,24px)}}

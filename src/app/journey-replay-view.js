@@ -17,7 +17,7 @@ const JOURNEY_REPLAY_STYLE = '<style>' +
 '#secDebrief .jr-phase[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}' +
 '#secDebrief .jr-scene{position:relative;margin:0;overflow:hidden;border:1px solid var(--line);border-radius:5px;background:var(--panel);contain:paint;isolation:isolate}' +
 '#secDebrief .jr-scene svg{display:block;width:100%;height:auto;min-height:114px}' +
-'#secDebrief .jr-scene figcaption{padding:9px;font:10px/1.5 var(--f-mono);color:var(--fg2);border-top:1px solid var(--line)}' +
+'#secDebrief .jr-scene figcaption{padding:9px;font:11px/1.5 var(--f-mono);color:var(--fg2);border-top:1px solid var(--line)}' +
 '#secDebrief .jr-sky{fill:var(--panel)}#secDebrief .jr-ground{fill:var(--panel2)}' +
 '#secDebrief .jr-road{fill:var(--bg)}#secDebrief .jr-lanes{stroke:var(--fg3);stroke-dasharray:26 28;stroke-width:3}' +
 '#secDebrief .jr-wet{fill:var(--c-rain);opacity:.14}#secDebrief .jr-ice{fill:var(--c-ice);opacity:.23}' +

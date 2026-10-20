@@ -60,6 +60,12 @@ let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.pus
   check('trois secondes sans requête, sans rendu complet et sans remplacer les nœuds', after.now - before.now === 3000 && after.clock !== before.clock && count === requests && await page.evaluate(() => __fullRenders === 0 && __clockNode === document.querySelector('#liveClock') && __refreshNode === document.querySelector('#statusbar [data-act="refresh"]')));
   check('horloge silencieuse pour le lecteur d’écran et réception indépendante', await page.locator('#liveClock').getAttribute('aria-live') === 'off' && after.receipt === before.receipt && after.at === before.at);
   check('bandeau compact sur iPhone 414 : moins de 100 px en fonctionnement normal', await page.evaluate(() => document.querySelector('#statusbar').closest('.statusbar').getBoundingClientRect().height <= 100));
+  check('lot 1 UX : à 414 pt, bandeau sur deux lignes (≤ 80 px), réception, horloge et bouton 44 pt sur la première', await page.evaluate(() => {
+    if (innerWidth < 380 || innerWidth > 560) return true;
+    const bar = document.querySelector('#statusbar').closest('.statusbar').getBoundingClientRect(), r = s => document.querySelector(s).getBoundingClientRect();
+    const row = [r('#weatherBadge'), r('#weatherReceived'), r('#liveClock'), r('#statusbar [data-act=refresh]')], mid = b => b.top + b.height / 2;
+    return bar.height <= 80 && row.every(b => Math.abs(mid(b) - mid(row[0])) < 12) && row[3].width >= 44 && row[3].height >= 44 && r('#weatherFreshness').top > row[0].bottom - 1;
+  }));
   // Franchir une minute sans laisser le téléchargement vieillir artificiellement.
   const nextMinute = Math.ceil(after.now / 60000) * 60000;
   await page.clock.setSystemTime(nextMinute - 1000); await page.clock.runFor(2000); after = await status();
