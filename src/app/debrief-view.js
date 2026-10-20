@@ -1,3 +1,4 @@
+// @include app/journey-replay-view.js
 /* Arrivée et débrief : même transaction canonique pour les quatre onglets. */
 function debriefDeparture(t, s) {
   if (DEMO.on || !window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault' || window.TWRC_VAULT.journalNeedsRecovery) return;
@@ -169,9 +170,20 @@ function renderDebrief() {
   const duplicates = new Set(Debrief.possibleDuplicates(state));
   const archivedRows = JournalArchive.collect(state).records.map(r => JSON.parse(r));
   const readonly = !window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault' || window.TWRC_VAULT.journalNeedsRecovery;
-  const html = `${form}<details class="debrief-journal" data-dk="journal"${open.has('journal') || !e && hadForm ? ' open' : ''}><summary>Journal des trajets · ${st.total} trajet${st.total > 1 ? 's' : ''} · ${st.answered} débrief${st.answered > 1 ? 's' : ''}${readonly ? ' · lecture seule' : ''}</summary>${readonly ? '<p class="sub" role="status">Journal en lecture seule : exporte puis vérifie la copie de récupération dans les paramètres avant toute modification.</p>' : ''}<p>${counts}</p>
+  const html = `${JOURNEY_REPLAY_STYLE}${form}<details class="debrief-journal" data-dk="journal"${open.has('journal') || !e && hadForm ? ' open' : ''}><summary>Journal des trajets · ${st.total} trajet${st.total > 1 ? 's' : ''} · ${st.answered} débrief${st.answered > 1 ? 's' : ''}${readonly ? ' · lecture seule' : ''}</summary>${readonly ? '<p class="sub" role="status">Journal en lecture seule : exporte puis vérifie la copie de récupération dans les paramètres avant toute modification.</p>' : ''}<p>${counts}</p>
     <p class="sub">Comparaison des phénomènes annoncés avec tes observations, sur cet appareil. Les températures restent estimées. Une prévision absente ou ancienne n’entre pas dans les retours comparables.</p>
-    ${state.entries.slice(0, Debrief.LIMIT).map(row => `<details class="debrief-entry" data-dk="entry-${esc(row.key)}"${open.has('entry-' + row.key) ? ' open' : ''}><summary>${esc(row.name || 'Trajet')} · ${new Date(row.at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' })} · ${row.cancelledAt ? 'Arrivée annulée · historique conservé' : DEBRIEF_COMPARE[Debrief.compare(row).kind]}${duplicates.has(row.key) ? ' · Doublon possible' : ''}</summary>${debriefDetails(row)}<details><summary>Versions conservées du retour</summary>${[...new Set(archivedRows.filter(r => r && r.key === row.key && r.feedback).map(r => JSON.stringify(r.feedback)))].map(r => { const f = JSON.parse(r); return `<p>${esc(new Date(f.at).toLocaleString('fr-FR'))} · ${esc(debriefConditions(f.conditions || []))} · ${esc(f.grip || 'unknown')}</p>`; }).join('')}</details><button class="btn sm" data-act="debrief-open" data-key="${esc(row.key)}">${row.feedback ? 'Modifier le débrief' : 'Renseigner le débrief'}</button></details>`).join('')}
+    ${state.entries.slice(0, Debrief.LIMIT).map(row => `<details class="debrief-entry" data-dk="entry-${esc(row.key)}"${open.has('entry-' + row.key) ? ' open' : ''}><summary>${esc(row.name || 'Trajet')} · ${new Date(row.at).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit' })} · ${row.cancelledAt ? 'Arrivée annulée · historique conservé' : DEBRIEF_COMPARE[Debrief.compare(row).kind]}${duplicates.has(row.key) ? ' · Doublon possible' : ''}</summary>${debriefDetails(row)}<details><summary>Versions conservées du retour</summary>${[...new Set(archivedRows.filter(r => r && r.key === row.key && r.feedback).map(r => JSON.stringify(r.feedback)))].map(r => { const f = JSON.parse(r); return `<p>${esc(new Date(f.at).toLocaleString('fr-FR'))} · ${esc(debriefConditions(f.conditions || []))} · ${esc(f.grip || 'unknown')}</p>`; }).join('')}</details>${journeyReplayHtml(row, S.cars, open.has('journey-' + row.key))}<button class="btn sm" data-act="debrief-open" data-key="${esc(row.key)}">${row.feedback ? 'Modifier le débrief' : 'Renseigner le débrief'}</button></details>`).join('')}
     <p class="sub">${Math.min(Debrief.LIMIT, st.total)} trajets affichés sur ${st.total} · archive complète sans expiration. Toutes les versions des retours sont conservées dans la copie de récupération chiffrée.</p></details>`;
-  if (renderDebrief.last !== html) { el.innerHTML = html; renderDebrief.last = html; }
+  if (renderDebrief.last !== html) {
+    const focused = document.activeElement, detail = focused && focused.closest && focused.closest('.jr-replay');
+    const key = detail && el.contains(detail) ? detail.dataset.jrKey : null;
+    const action = key && focused.dataset.jrAct;
+    el.innerHTML = html; renderDebrief.last = html;
+    journeyReplayAttach(el);
+    if (key && action) {
+      const found = [...el.querySelectorAll('.jr-replay')].find(x => x.dataset.jrKey === key);
+      const button = found && found.querySelector('[data-jr-act="' + action + '"]');
+      if (button) button.focus({preventScroll:true});
+    }
+  } else journeyReplaySync();
 }
