@@ -19,15 +19,19 @@ const check = async (label, fn) => { stage = label; await fn(); count++; console
           const m = M[UI.loc] || Object.values(M).find(Boolean);
           const hs = m && m.hs || [{ t: '2026-10-19T15:00', T: 8, P: 1, vis: 800, wind: 15, gust: 30 }];
           const i = m && m.nowI >= 0 ? m.nowI : 0;
+          const at = Date.now(), dep = localTs(at).slice(0, 16);
           const point = (f, k) => ({ hs, i: Math.min(i, hs.length - 1), f, lat: 49 + f, lon: 2 + f,
-            km: f * 30, t: '2026-10-19T15:' + String(k * 10).padStart(2, '0') });
-          const t = { key: 'fixture-route', src: 'local', dep: '2026-10-19T15:00', arr: '2026-10-19T15:20', from: 'Lieu A', to: 'Lieu B',
+            km: f * 30, t: addMin(dep, k * 10) });
+          const t = { key: 'fixture-route', src: 'local', dep, arr: addMin(dep, 20), from: 'Lieu A', to: 'Lieu B',
             l: { routed: true, km: 30, min: 20, g: [[49, 2], [49.5, 2.5], [50, 3]], pts: [{ f: .5 }],
               from: { name: 'Lieu A', lat: 49, lon: 2 }, to: { name: 'Lieu B', lat: 50, lon: 3 } },
             seq: [point(0, 0), point(.5, 1), point(1, 2)] };
           const d = appDay();
-          d.nextDestination = { source: 'manual', tripKey: t.key, dep: t.dep, updatedAt: Date.now(),
-            originPoint: { lat: 49, lon: 2, name: 'Lieu A' }, destinationPoint: { lat: 50, lon: 3, name: 'Lieu B' } };
+          d.nextDestination = { source: 'manual', tripKey: t.key, dep: t.dep,
+            confirmedAt: at, expiresAt: DayContext.tripExpiry(t.dep, at), createdAt: at, updatedAt: at,
+            originPoint: { id: 'manual-origin', lat: 49, lon: 2, name: 'Lieu A' },
+            destinationPoint: { id: 'manual-destination', lat: 50, lon: 3, name: 'Lieu B' } };
+          window.__radarSelection = { ...d.nextDestination };
           APP_CONTEXT.trips = [t]; APP_CONTEXT.snapshot.trips = [t];
           window.__radarFixture = t;
           renderTripView();
@@ -49,8 +53,7 @@ const check = async (label, fn) => { stage = label; await fn(); count++; console
           // Le contexte vivant peut se recalculer entre deux opérations Playwright.
           APP_CONTEXT.trips = [window.__radarFixture];
           APP_CONTEXT.snapshot.trips = [window.__radarFixture];
-          appDay().nextDestination = { source: 'manual', tripKey: window.__radarFixture.key, dep: window.__radarFixture.dep,
-            updatedAt: Date.now(), originPoint: window.__radarFixture.l.from, destinationPoint: window.__radarFixture.l.to };
+          appDay().nextDestination = { ...window.__radarSelection };
           renderTripView();
           const node = document.querySelector('.trip-radar details'); node.open = true;
           const before = JSON.stringify(appDay().nextDestination);
@@ -71,8 +74,7 @@ const check = async (label, fn) => { stage = label; await fn(); count++; console
         const offlineEvidence = await p.evaluate(() => {
           APP_CONTEXT.trips = [window.__radarFixture];
           APP_CONTEXT.snapshot.trips = [window.__radarFixture];
-          appDay().nextDestination = { source: 'manual', tripKey: window.__radarFixture.key, dep: window.__radarFixture.dep,
-            updatedAt: Date.now(), originPoint: window.__radarFixture.l.from, destinationPoint: window.__radarFixture.l.to };
+          appDay().nextDestination = { ...window.__radarSelection };
           renderTripView();
           return { count: document.querySelectorAll('.rr-point').length,
             text: document.querySelector('.trip-radar').textContent };
