@@ -118,7 +118,12 @@ function journeyReplaySync() {
     d.querySelectorAll('[data-jr-act]').forEach(button => {
       const action = button.dataset.jrAct;
       button.setAttribute('aria-pressed', String(action === 'play' ? !choice.paused && choice.mode === 'auto' && !reduced : action === choice.mode));
-      if (action === 'play') button.textContent = choice.paused || choice.mode !== 'auto' || reduced ? 'Lecture' : 'Pause';
+      if (action === 'play') {
+        const label = choice.paused || choice.mode !== 'auto' || reduced ? 'Lecture' : 'Pause';
+        // textContent, même inchangé, détruit le nœud texte et produit une
+        // mutation DOM à chaque rafraîchissement du journal.
+        if (button.textContent !== label) button.textContent = label;
+      }
     });
   });
 }
