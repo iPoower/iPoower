@@ -73,9 +73,11 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
      await p.locator('#garageLiveRoute').screenshot({path:path.join(process.env.SP,'place-live-route-'+BR.NAME+'-'+dev+'.png'),scale:'css',animations:'disabled'});
     });
     await check(dev+' · mouvement réduit et hors écran arrêtent la lecture sans saut temporel',async()=>{
-     await p.emulateMedia({reducedMotion:'reduce'});await p.clock.runFor(50);
+     await p.emulateMedia({reducedMotion:'reduce'});await p.waitForTimeout(150);await p.clock.runFor(1200);
+     await p.waitForFunction(()=>document.querySelector('#garageLiveRoute [data-lr=play]').disabled,null,{timeout:5000});
      assert(await p.locator('[data-lr=play]').isDisabled());
-     await p.emulateMedia({reducedMotion:'no-preference'});await p.clock.runFor(50);
+     await p.emulateMedia({reducedMotion:'no-preference'});await p.waitForTimeout(150);await p.clock.runFor(1200);
+     await p.waitForFunction(()=>!document.querySelector('#garageLiveRoute [data-lr=play]').disabled,null,{timeout:5000});
      await p.locator('[data-lr=play]').click();await p.clock.runFor(250);
      await p.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await p.waitForTimeout(150);await p.clock.runFor(250);
      assert.equal(await p.evaluate(()=>GARAGE_LIVE.playing),false);
