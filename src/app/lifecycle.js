@@ -202,7 +202,14 @@ function registerSW() {
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(e => { if (RUNTIME_RECORDER) RUNTIME_RECORDER.record('service-worker', e); });
   } catch (e) { if (RUNTIME_RECORDER) RUNTIME_RECORDER.record('service-worker', e); }
 }
-document.addEventListener('toggle', e => { if (e.target && e.target.id === 'settings' && e.target.open) renderSettings(true); }, true);
+document.addEventListener('toggle', e => {
+  if (e.target && e.target.id === 'settings' && e.target.open) {
+    const body = $('#settingsBody');
+    // Une commande peut avoir déjà rendu et focalisé le formulaire avant cet
+    // événement différé. Ne pas détruire son focus ni les saisies en cours.
+    if (body && (body.dataset.stale === '1' || !body.childElementCount)) renderSettings(true);
+  }
+}, true);
 (function init() {
   if (LOCKED() && lsGet('twrc.key')) unseal(lsGet('twrc.key'), false).then(ok => { if (ok) location.reload(); });
   armSessionDeadline();

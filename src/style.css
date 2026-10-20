@@ -1233,6 +1233,13 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .ti-panel ul{padding-left:20px}.ti-scroll{overflow-x:auto;max-width:100%;outline-offset:2px}.ti-table{border-collapse:collapse;width:100%;font-size:13px}.ti-table th,.ti-table td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line,#2a4052);padding:10px 8px;min-width:90px}.ti-table th{font-weight:600}.ti-table td:last-child{min-width:180px}.ti-foot{border-top:1px solid var(--line,#2a4052);padding-top:10px}.ti-facts h4{margin-bottom:6px}
 @media(max-width:500px){.ti-panel{padding:12px}.ti-profile{font-size:13px}.ti-table{font-size:12px}}
 
+/* Twin Garage : accès rapides aux formulaires existants, sans seconde source de données. */
+.garage-quick{display:grid;gap:7px;padding:10px 0;min-width:0}
+.garage-quick>span{font:600 11px var(--f-mono);color:var(--fg2);letter-spacing:.03em}
+.garage-quick .chips{display:flex;gap:7px;flex-wrap:wrap}
+.garage-quick .btn{min-height:44px}
+@media(max-width:420px){.garage-quick .btn{flex:1 1 130px}}
+
 /* Route Radar — les couleurs héritent des niveaux et tokens Race Control. */
 .trip-radar{margin:12px 0;min-width:0}
 .trip-radar .ux-fold-body{min-width:0}
