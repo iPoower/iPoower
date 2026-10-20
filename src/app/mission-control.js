@@ -58,7 +58,7 @@ const MISSION_STYLE = '<style>' +
   '#secGarage .mission-route{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:9px;align-items:center}' +
   '#secGarage .mission-route>div{min-width:0;display:grid;gap:4px}' +
   '#secGarage .mission-route>div:last-child{text-align:right}' +
-  '#secGarage .mission-route small,#secGarage .mission-grid small{font:10px var(--f-mono);letter-spacing:.04em;color:var(--fg2)}' +
+  '#secGarage .mission-route small,#secGarage .mission-grid small{font:11px var(--f-mono);letter-spacing:.04em;color:var(--fg2)}' +
   '#secGarage .mission-route b{overflow-wrap:anywhere;font:600 16px var(--f-disp)}' +
   '#secGarage .mission-route>span{color:var(--accent)}' +
   '#secGarage .mission-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}' +
