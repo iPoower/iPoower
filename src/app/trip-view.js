@@ -1,6 +1,7 @@
 /* Onglet TRAJET : surface UX au-dessus du contexte canonique existant.
  * Aucune state machine parallèle : nextDestination + activeCarId restent la vérité.
  */
+// @include app/route-radar.js
 const TRIP_FORM = {
   bound: null, activeCarSeed: null, destinationId: null, destinationHit: null, destinationQuery: '', destinationResults: [],
   originMode: null, originHit: null, originQuery: '', originResults: [], when: 'now', date: '', time: '', carId: null,
@@ -108,6 +109,8 @@ function renderTripView() {
     : `<div class="trip-route-state old"><b>${route.offline ? 'Hors connexion' : 'Calcul en cours'}</b><span>${route.offline ? 'Départ, destination, véhicule et horaire sont conservés. La route sera recalculée au retour du réseau.' : 'OSRM et la météo de route se préparent.'}</span></div>` : '';
   const selectedDest = dest ? `<div class="trip-selected"><b>✓ ${esc(dest.name)}</b><span>${esc(dest.address || dest.sub || '')}</span>${dest.provider ? `<small>${esc(dest.provider)}${dest.precision ? ' · ' + esc(dest.precision) : ''}</small>` : ''}</div>` : '';
   const dep = tripDepartureValue(), immediate = TRIP_FORM.when === 'now';
+  const radarTrip = current && APP_CONTEXT.trips.find(x => x.key === current.tripKey) || (!current && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip)) || null;
+  const radarShell = `<div class="trip-radar">${routeRadarHtml(radarTrip)}</div>`;
   const intelligence = tyreIntelligenceHtml(S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar(), 'trajet', CX && wxTrips(CX.m).find(t => current && t.id === current.tripKey) || null);
   const html = `<div class="mod-h"><h2>🧭 TRAJET</h2><span class="src obs">contexte partagé Race Control</span></div>
     <div class="trip-form">
@@ -127,14 +130,19 @@ function renderTripView() {
       ${TRIP_FORM.message ? `<p class="trip-message" role="status">${esc(TRIP_FORM.message)}</p>` : ''}${routeLine}
       <div class="trip-actions"><button class="btn pri trip-main" data-act="trip-plan">${immediate ? 'DÉMARRER LE TRAJET' : existing ? 'METTRE À JOUR LE TRAJET' : 'PROGRAMMER LE TRAJET'}</button>
       ${existing ? '<button class="btn" data-act="trip-plan-cancel">Annuler le trajet</button>' : ''}</div>
-    </div><div class="trip-intelligence">${intelligence}</div>`;
+    </div>${radarShell}<div class="trip-intelligence">${intelligence}</div>`;
   // Les mises à jour de la route ne doivent pas détacher les commandes pendant un appui,
   // ni remplacer les champs lorsqu'aucune valeur du formulaire n'a changé.
-  const controlsHTML = html.replace(routeLine, '').replace(intelligence, '');
+  const controlsHTML = html.replace(routeLine, '').replace(radarShell, '').replace(intelligence, '');
   if (el._tripControlsHTML === controlsHTML && el.querySelector('.trip-form')) {
     const previous = el.querySelector('.trip-route-state');
     if (previous) { if (previous.outerHTML !== routeLine) previous.outerHTML = routeLine; }
     else if (routeLine) el.querySelector('.trip-actions').insertAdjacentHTML('beforebegin', routeLine);
+    const radarPanel = el.querySelector('.trip-radar');
+    if (radarPanel && radarPanel._radarHTML !== radarShell) {
+      const focus = uxFocusKey(radarPanel); radarPanel.outerHTML = radarShell;
+      uxRestoreFocus(el.querySelector('.trip-radar'), focus);
+    }
     const panel = el.querySelector('.trip-intelligence');
     if (panel && panel.innerHTML !== intelligence) { const focus = uxFocusKey(panel); panel.innerHTML = intelligence; uxRestoreFocus(panel, focus); }
   } else {
@@ -148,6 +156,7 @@ function renderTripView() {
     }
   }
   const panel = el.querySelector('.trip-intelligence'); if (panel) uxRestoreFocus(panel, null);
+  const radarMounted = el.querySelector('.trip-radar'); if (radarMounted) radarMounted._radarHTML = radarShell;
   el._tripControlsHTML = controlsHTML;
 }
 function renderTripSummary() {
