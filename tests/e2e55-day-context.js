@@ -17,9 +17,28 @@ async function check(label, fn) { try { await fn(); n++; console.log('✅ ' + la
 async function tap(p, selector) {
   await revealPlaceControls(p, selector);
   if (/data-act=day-(type|car)/.test(selector)) await openDay(p);
+  // Un clic utilisateur sur « Destination suivante » suppose que l'en-tête du cockpit
+  // a été ramené à l'écran. WebKit peut conserver le scroll de la vue précédente
+  // et viser un point recouvert par <main class="wrap">. Aucun clic forcé : on
+  // replace le panneau comme le ferait l'utilisateur, puis Playwright vérifie
+  // toujours visibilité, stabilité et réception réelle des événements pointeur.
+  if (selector === '#dayContext .day-destination > summary') {
+    await p.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
+    await p.locator(selector).first().scrollIntoViewIfNeeded();
+  }
   const el = p.locator(selector).first(); scope.selector = selector;
   try { if (scope.device === 'iphone') await el.tap(); else await el.click(); } catch (e) {
-    console.error('DIAGNOSTIC ' + JSON.stringify({ ...scope, present: await el.count(), visible: await el.isVisible().catch(() => false), enabled: await el.isEnabled().catch(() => false), state: await read(p), overlay: await p.evaluate(() => [...document.querySelectorAll('[role=dialog],dialog[open]')].map(x => x.id)) })); throw e;
+    const hit = await p.evaluate(selector => {
+      const node = document.querySelector(selector), rect = node?.getBoundingClientRect();
+      if (!rect) return null;
+      const x = Math.max(0, Math.min(innerWidth - 1, rect.left + rect.width / 2));
+      const y = Math.max(0, Math.min(innerHeight - 1, rect.top + rect.height / 2));
+      const at = document.elementFromPoint(x, y);
+      return { x, y, box: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+        scrollY, hit: at?.tagName.toLowerCase() + (at?.id ? '#' + at.id : '') + (at?.className && typeof at.className === 'string' ? '.' + at.className.split(' ').slice(0, 2).join('.') : ''),
+        receivesPointer: !!at && (node === at || node.contains(at)) };
+    }, selector).catch(() => null);
+    console.error('DIAGNOSTIC ' + JSON.stringify({ ...scope, present: await el.count(), visible: await el.isVisible().catch(() => false), enabled: await el.isEnabled().catch(() => false), hit, state: await read(p), overlay: await p.evaluate(() => [...document.querySelectorAll('[role=dialog],dialog[open]')].map(x => x.id)) })); throw e;
   }
 }
 async function decisionText(p) {
