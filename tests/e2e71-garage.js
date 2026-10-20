@@ -302,12 +302,28 @@ async function twinScenario(browser){
     });
     await check(dev+' · Garage : trois raccourcis ouvrent les champs réels sans modifier la fiche',async()=>{
       const snapshot=await p.evaluate(()=>JSON.stringify(S.cars));
-      for(const [kind,id] of [['odo','odo-0'],['tread','trd-0'],['pressure','f-cars-0-tire-pchk-av']]){
-        await tap('#secGarage .garage-car:first-child [data-act=garage-quick][data-garage-target='+kind+']');
-        assert.equal(await p.locator('#settings').evaluate(x=>x.open),true);
-        assert.equal(await p.evaluate(id=>document.activeElement===document.getElementById(id),id),true,'raccourci non focalisé : '+kind);
+      // Premier accès depuis un panneau fermé et vidé par le rendu paresseux.
+      await p.evaluate(()=>{document.getElementById('settings').open=false;renderSettings();});
+      await s.settle(1);
+      await p.evaluate(async()=>{await TWRC_VAULT.flush();});
+      const sealed=await p.evaluate(()=>TWRC_RAW_STORAGE.getItem(SessionVault.VAULT));
+      for(const i of [0,1]){
+        for(const [kind,id] of [['odo','odo-'+i],['tread','trd-'+i],['pressure','f-cars-'+i+'-tire-pchk-av']]){
+          await tap('#secGarage .garage-car:nth-child('+(i+1)+') [data-act=garage-quick][data-garage-target='+kind+']');
+          assert.equal(await p.locator('#settings').evaluate(x=>x.open),true);
+          assert.equal(await p.evaluate(id=>document.activeElement===document.getElementById(id),id),true,'raccourci non focalisé : '+id);
+          if(kind==='odo')await p.locator('#'+id).fill(String(123456+i));
+          if(kind==='tread')await p.locator('#'+id).fill('5.5');
+          assert.equal(await p.locator('#odo-'+i).inputValue(),String(123456+i),'brouillon compteur conservé');
+          if(kind==='pressure'){
+            assert.equal(await p.locator('#trd-'+i).inputValue(),'5.5','brouillon profondeur conservé');
+            assert(await p.locator('#f-cars-'+i+'-tire-pchk-ar').count());
+          }
+        }
       }
       assert.equal(await p.evaluate(()=>JSON.stringify(S.cars)),snapshot,'simple navigation ne doit pas écrire des données');
+      await p.evaluate(async()=>{await TWRC_VAULT.flush();});
+      assert.equal(await p.evaluate(()=>TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)),sealed,'aucune écriture du coffre au simple accès');
     });
     await tap('#viewSeg [data-act=view][data-v=analyse]');
     await tap('#viewSeg [data-act=view][data-v=garage]');

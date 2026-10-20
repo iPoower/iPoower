@@ -4062,7 +4062,10 @@ document.addEventListener('click', async e => {
     }
     const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : '#f-cars-' + i + '-tire-pchk-av';
     const d = $('#settings'); if (!d) { commandFeedback(t, 'Paramètres indisponibles'); return; }
-    d.open = true; renderSettings(true);
+    d.open = true;
+    // Réutiliser le formulaire déjà présent : un autre raccourci ne doit pas
+    // effacer un relevé encore non validé ni remplacer les champs focalisés.
+    if (!$(selector) || $('#settingsBody').dataset.stale === '1') renderSettings(true);
     const input = $(selector);
     if (!input) { commandFeedback(t, 'Champ indisponible'); return; }
     input.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
