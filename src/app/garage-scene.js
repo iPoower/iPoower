@@ -3,64 +3,104 @@
 // @include app/garage-style.js
 // Trois gabarits purement illustratifs, jamais déduits d'une mesure ou d'un
 // capteur. Profil vers la droite, mêmes coordonnées dans les cartes et la scène.
+// V1.5 « manga touge » : encrage épais, aplats cel-shading à bord net, reflets
+// durs, roues à l'échelle. Proportions reprises des cotes publiques de chaque
+// gabarit (longueur, empattement, porte-à-faux, hauteur, diamètre de roue),
+// sans livrée, logo ni élément repris d'une œuvre existante.
+const GARAGE_CAR = {
+  // Citadine sportive : caisse courte, porte-à-faux réduits, becquet de pavillon.
+  sport: {
+    wheels: [52, 200],
+    body: 'M22 86 L31 86 A22.5 22.5 0 1 1 73 86 L179 86 A22.5 22.5 0 1 1 221 86 L241 86 L252 89 L252 86 Q253.5 72 249 65 L243 58 Q216 51 188 48 L151 23 Q112 18.5 72 20.5 L62 22 Q45 30 31 45 L23 56 Q18 66 19 78 Z',
+    glass: 'M181 49 L151 27.5 Q120 24 86 25 Q76 27 71 36 L75 47.5 Z',
+    shade: 'M19.4 72 L30.3 72 A22.5 22.5 0 0 0 31 86 L22 86 Z M73.7 72 L178.3 72 A22.5 22.5 0 0 0 179 86 L73 86 A22.5 22.5 0 0 0 73.7 72 Z M221.7 72 L252.6 72 L252 86 L221 86 A22.5 22.5 0 0 0 221.7 72 Z',
+    shine: 'M74 52.5 L186 50.5 L193 53 L76 55.5 Z M198 52.5 L236 57.5 L231 59.5 L199 55.5 Z M92 21.8 L140 22.6 L135 24.6 L95 23.8 Z',
+    glare: 'M163 31 L170 31 L153 47.5 L146 47.5 Z M173 36 L176 36 L165 47.5 L162 47.5 Z M104 27 L109 27 L101 47 L96 47 Z',
+    lines: 'M121 26 V84 M181.5 50 Q184.5 66 180 81 M77 47.5 Q73.5 64 75.5 81 M149 56.5 H159 M97 55.5 H107 M34 58 L120 61.5 L236 62.5',
+    pillar: 'M121 26.2 V48.6',
+    lamp: 'M237 58.5 L249.5 64 L247.5 67.5 L232.5 63 Z',
+    rear: 'M27.5 50 L36 48 L35 56 L22.5 58.5 Z',
+    grille: 'M240 73.5 L252.4 73.5 L252.1 82 L239 82 Z M226 75 L234 75 L233 81 L225 81 Z',
+    mirror: 'M175.5 45 L186 43.5 L188 50 L177.5 51.5 Z',
+    extra: '<path class="twin-spoiler" d="M84 18.5 L57 18.6 L51 23.2 L60 26 L80 22.6 Z"/>' +
+      '<path class="twin-sport-accent" d="M76 86.6 H177 M232 88.4 L251 89.6 M21 86.4 H30"/>'
+  },
+  // Compacte cinq portes : capot long et plongeant, pare-brise très incliné, hayon arrondi.
+  touring: {
+    wheels: [56, 198],
+    body: 'M16 86 L35 86 A22.5 22.5 0 1 1 77 86 L177 86 A22.5 22.5 0 1 1 219 86 L240 86 Q250 86 251 80 L251 70 Q250.5 62 244 58 Q222 50 190 45 L136 17 Q100 11 66 17 Q40 24 24 44 Q15 58 15 74 Z',
+    glass: 'M184 46.5 L137 20.5 Q102 15.5 70 20.5 Q52 27 42.5 42 L45 46.5 Z',
+    shade: 'M15 72 L34.3 72 A22.5 22.5 0 0 0 35 86 L16 86 Z M77.7 72 L176.3 72 A22.5 22.5 0 0 0 177 86 L77 86 A22.5 22.5 0 0 0 77.7 72 Z M219.7 72 L251 72 L251 80 Q250 86 240 86 L219 86 A22.5 22.5 0 0 0 219.7 72 Z',
+    shine: 'M48 50 L186 49 L195 52 L50 53 Z M198 49.5 L238 56 L232 58 L200 52.5 Z M84 15.6 L130 16.8 L124 18.8 L88 17.8 Z',
+    glare: 'M160 25 L167 25 L148 46 L141 46 L160 25 Z M171 31 L174 31 L161 46 L158 46 Z M99 18 L104 18 L95 46 L90 46 Z',
+    lines: 'M128 18.5 V84 M186 47 Q190 65 184 81 M82 46.5 Q79 64 80.5 81 M156 55 H166 M100 54.5 H110 M28 57 Q130 60 238 61',
+    pillar: 'M128 18.8 V47 M73 20 Q66 32 69 46.6',
+    lamp: 'M224 53.5 Q237.5 54.5 247.5 60 L244.5 64.5 Q232 61.5 220.5 58 Z',
+    rear: 'M21.5 49 L31 45.5 L33 54 L19.5 58 Z',
+    grille: 'M237.5 68.5 L251 68.5 L251 79.5 L240 79 Z M226 73 L233 73 L233 80 L226 80 Z',
+    mirror: 'M180 42 Q190 40.5 193 46 L189 50 H180 Z',
+    extra: '<path class="twin-chrome" d="M45 46.5 Q52 27 70 20.5 Q102 15.5 137 20.5 L185 46.6 M46 48.4 L186 48.4"/>'
+  },
+  // Gabarit neutre quand le libellé ne correspond à aucun modèle reconnu.
+  generic: {
+    wheels: [54, 200],
+    body: 'M20 86 L33 86 A22.5 22.5 0 1 1 75 86 L179 86 A22.5 22.5 0 1 1 221 86 L242 86 Q250 86 250 80 L250 68 Q248 61 242 58 L188 47 L152 22 Q112 18 74 20 Q50 26 30 44 Q20 56 20 72 Z',
+    glass: 'M182 48 L152 26 Q116 22 78 24 Q60 30 48 44 L50 47 Z',
+    shade: 'M20 72 L32.3 72 A22.5 22.5 0 0 0 33 86 L20 86 Z M75.7 72 L178.3 72 A22.5 22.5 0 0 0 179 86 L75 86 A22.5 22.5 0 0 0 75.7 72 Z M221.7 72 L250 72 L250 80 Q250 86 242 86 L221 86 A22.5 22.5 0 0 0 221.7 72 Z',
+    shine: 'M52 51 L184 50 L192 53 L54 54 Z M92 19.5 L138 20.6 L132 22.6 L96 21.6 Z',
+    glare: 'M162 29 L168 29 L152 46 L146 46 Z',
+    lines: 'M124 24 V84 M182.5 48.5 Q186 65 181 81 M79 46.5 Q76 64 77.5 81 M151 55 H160 M99 54.5 H108',
+    pillar: 'M124 24.2 V47.5',
+    lamp: 'M232 57 L246 61 L243.5 64.5 L229 61.5 Z',
+    rear: 'M22 50 L32 46 V56 L21.5 58 Z',
+    grille: 'M238 70 L250 70 V79 L239 79 Z',
+    mirror: 'M176 43 L186 42 L187 48 L177 49 Z',
+    extra: ''
+  }
+};
 function garageCarSvg(kind, scene = false) {
-  const sport = kind === 'sport', touring = kind === 'touring';
-  const shape = sport ? 'sport' : touring ? 'touring' : 'generic';
-  const body = sport
-    ? 'M12 54 L19 42 L53 38 L78 23 Q85 16 96 16 H151 Q165 16 174 29 L190 41 L229 45 Q248 48 253 58 L251 72 L243 78 H226 Q222 60 205 60 Q189 60 184 79 H80 Q76 60 57 60 Q39 60 35 79 H17 Q11 75 11 68 Z'
-    : touring
-      ? 'M12 56 Q14 44 24 41 L38 34 Q51 17 81 14 Q119 9 146 15 Q165 20 181 36 L196 46 L234 49 Q247 51 252 61 L249 75 L244 78 H226 Q221 60 204 60 Q187 60 183 79 H78 Q74 60 56 60 Q38 60 34 79 H18 Q11 76 12 65 Z'
-      : 'M14 57 L27 39 L69 33 L96 17 H160 L191 39 L235 47 L250 62 L245 78 H224 Q220 61 203 61 Q186 61 182 79 H79 Q75 61 57 61 Q40 61 35 79 H16 Z';
-  const glass = sport
-    ? 'M77 39 L96 22 H117 V40 H76 Z M124 22 H150 Q160 23 168 33 L179 41 H124 Z'
-    : touring
-      ? 'M43 40 Q54 24 81 20 L111 19 V42 H41 Z M118 19 L141 20 Q158 24 174 42 H118 Z'
-      : 'M77 38 L98 22 H120 V41 H75 Z M127 22 H158 L183 42 H127 Z';
+  const shape = GARAGE_CAR[kind] ? kind : 'generic', g = GARAGE_CAR[shape], sport = shape === 'sport';
   const start = scene
     ? '<g class="twin-car-svg twin-car-' + shape + '" data-shape="' + shape + '">'
     : '<svg class="twin-car-svg twin-car-' + shape + '" data-shape="' + shape + '" viewBox="0 0 264 100" aria-hidden="true" focusable="false">';
-  const back = sport
-    ? '<path class="twin-spoiler" d="M8 33 L52 33 L61 38 L18 39 L9 37 Z"/>'
-    : '';
-  const details = sport
-    ? '<path class="twin-reflection" d="M29 44 L53 42 M89 20 H150 M195 44 L225 47"/>' +
-      '<path class="twin-body-shade" d="M19 62 L37 58 L36 77 L17 76 Z M81 71 H182 L184 77 H79 Z M227 70 L249 68 L245 77 H226 Z"/>' +
-      '<path class="twin-character" d="M34 52 L87 49 L172 51 L218 47 M119 42 V69 M179 44 L183 66 M124 47 H136"/>' +
-      '<path class="twin-mirror" d="M178 38 L187 39 L188 44 L176 43 Z"/>' +
-      '<path class="twin-grille" d="M241 58 L252 59 L249 70 L239 70 Z"/>' +
-      '<path class="twin-lamp" d="M226 48 L244 51 L239 56 L223 54 Z"/>' +
-      '<path class="twin-rear-lamp" d="M17 46 L25 44 L30 50 L21 53 L15 51 Z"/>' +
-      '<path class="twin-sport-accent" d="M19 76 H35 M82 80 H183 M227 79 H245"/>' +
-      '<path class="twin-intake" d="M20 68 L31 65 L30 72 H20 Z M244 72 H250"/>'
-    : touring
-      ? '<path class="twin-reflection" d="M34 40 Q51 18 81 16 Q119 11 145 17 M197 48 L231 51"/>' +
-        '<path class="twin-body-shade" d="M17 65 L34 60 L34 75 H18 Z M79 72 Q131 76 182 70 L182 78 H79 Z"/>' +
-        '<path class="twin-character" d="M30 54 Q90 48 151 51 Q195 50 224 55 M113 43 V69 M178 45 L183 66 M119 49 H132"/>' +
-        '<path class="twin-chrome" d="M41 44 Q110 46 177 45 M82 78 H180"/>' +
-        '<path class="twin-mirror" d="M181 41 Q192 39 195 44 L191 48 H181 Z"/>' +
-        '<path class="twin-lamp" d="M219 50 Q235 49 245 54 L239 59 L218 57 Z"/>' +
-        '<path class="twin-rear-lamp" d="M15 49 L24 46 L29 50 V58 L14 58 Z"/>' +
-        '<path class="twin-grille" d="M246 62 L252 63 L249 71 L242 72 Z"/>'
-      : '<path class="twin-character" d="M80 44 V69 M125 44 V69 M145 49 H155"/>' +
-        '<path class="twin-lamp" d="M228 50 L245 56 L241 59 L225 56 Z"/>' +
-        '<path class="twin-rear-lamp" d="M18 48 L27 45 V57 H18 Z"/>';
-  const wheels = [57, 204].map(x => {
-    const spokes = sport
-      ? Array.from({length:5}, (_, i) => {
-        const a = i * Math.PI * 2 / 5;
-        const x1 = (x + Math.cos(a) * 3).toFixed(2), y1 = (78 + Math.sin(a) * 3).toFixed(2);
-        const x2 = (x + Math.cos(a) * 9).toFixed(2), y2 = (78 + Math.sin(a) * 9).toFixed(2);
-        return 'M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2;
-      }).join(' ')
-      : 'M' + (x-8) + ' 78 H' + (x+8) + ' M' + x + ' 70 V86 M' + (x-6) + ' 72 L' + (x+6) + ' 84 M' + (x+6) + ' 72 L' + (x-6) + ' 84';
-    return '<g class="twin-wheel"><circle class="twin-rubber" cx="' + x + '" cy="78" r="17"/>' +
-      '<circle class="twin-rim" cx="' + x + '" cy="78" r="10"/>' +
-      '<path class="twin-spokes" d="' + spokes + '"/><circle class="twin-hub" cx="' + x + '" cy="78" r="2.5"/></g>';
+  // Roues : pneu, flanc, jante, étrier (sportive), rayons et moyeu. Dans la
+  // scène, seul le groupe des rayons tourne, suspendu avec le reste du mouvement.
+  const wheels = g.wheels.map(x => {
+    const cy = 76, ray = (a, r1, r2) => 'M' + (x + Math.cos(a) * r1).toFixed(2) + ' ' + (cy + Math.sin(a) * r1).toFixed(2) +
+      ' L' + (x + Math.cos(a) * r2).toFixed(2) + ' ' + (cy + Math.sin(a) * r2).toFixed(2);
+    const spokes = Array.from({length: sport ? 10 : 5}, (_, i) => sport
+      ? ray((Math.floor(i / 2) * 72 + (i % 2 ? 7 : -7)) * Math.PI / 180, 3.4, 11.6)
+      : ray((i * 72 + 18) * Math.PI / 180, 3.4, 11.6)).join(' ');
+    const caliper = sport
+      ? '<path class="twin-caliper" d="M' + (x + 4.4) + ' ' + (cy - 8.4) + ' A9.5 9.5 0 0 1 ' + (x + 9.2) + ' ' + (cy - 2.4) + '"/>'
+      : '';
+    return '<g class="twin-wheel"><circle class="twin-rubber" cx="' + x + '" cy="' + cy + '" r="18"/>' +
+      '<circle class="twin-sidewall" cx="' + x + '" cy="' + cy + '" r="15.2"/>' +
+      '<circle class="twin-rim" cx="' + x + '" cy="' + cy + '" r="12.6"/>' + caliper +
+      '<g class="twin-spin' + (scene ? ' twin-animated' : '') + '"><path class="twin-spokes" d="' + spokes + '"/>' +
+      '<circle class="twin-hub" cx="' + x + '" cy="' + cy + '" r="2.8"/></g>' +
+      '<path class="twin-rim-shine" d="M' + (x - 9.5) + ' ' + (cy - 5) + ' A11 11 0 0 1 ' + (x - 3) + ' ' + (cy - 10.6) + '"/></g>';
   }).join('');
+  const wells = g.wheels.map(x => 'M' + (x - 21) + ' 86 A22.5 22.5 0 1 1 ' + (x + 21) + ' 86 Z').join(' ');
+  // Détourage clair sous l'encrage : la silhouette reste lisible sur fond sombre.
+  const halo = '<path class="twin-halo" d="' + g.body + ' ' + g.wheels.map(x => 'M' + (x - 18) + ' 76 A18 18 0 1 0 ' + (x + 18) + ' 76 A18 18 0 1 0 ' + (x - 18) + ' 76 Z').join(' ') + '"/>';
   return start +
-    '<ellipse class="twin-shadow" cx="132" cy="95" rx="116" ry="3.5"/>' + back +
-    '<path class="twin-paint" d="' + body + '"/>' +
-    '<path class="twin-glass" d="' + glass + '"/>' + details + wheels +
+    '<ellipse class="twin-shadow" cx="136" cy="94.5" rx="118" ry="3.6"/>' +
+    halo + '<path class="twin-well" d="' + wells + '"/>' +
+    '<path class="twin-paint" d="' + g.body + '"/>' +
+    '<path class="twin-body-shade" d="' + g.shade + '"/>' +
+    '<path class="twin-reflection" d="' + g.shine + '"/>' +
+    '<path class="twin-glass" d="' + g.glass + '"/>' +
+    '<path class="twin-glare" d="' + g.glare + '"/>' +
+    '<path class="twin-pillar" d="' + g.pillar + '"/>' +
+    '<path class="twin-character" d="' + g.lines + '"/>' +
+    '<path class="twin-mirror" d="' + g.mirror + '"/>' +
+    '<path class="twin-grille" d="' + g.grille + '"/>' +
+    '<path class="twin-lamp" d="' + g.lamp + '"/>' +
+    '<path class="twin-rear-lamp" d="' + g.rear + '"/>' +
+    g.extra +
+    '<path class="twin-ink" d="' + g.body + '"/>' +
+    wheels +
     (scene ? '</g>' : '</svg>');
 }
 function garageWeatherSources() {
@@ -112,7 +152,8 @@ function garageTripHtml(scene, active) {
     '<path class="twin-road" d="M0 184 H800 V235 H0 Z"/><path class="twin-edge" d="M0 185 H800 M0 234 H800"/>' +
     '<path class="twin-lanes" d="M0 211 H800"/>' +
     '<g class="twin-drive twin-animated">' + (active ? '<g transform="translate(0 153) scale(.65)">' +
-      (scene.hasNight ? '<path class="twin-headlights" d="M241 53 L335 25 L335 79 L241 58 Z"/>' : '') +
+      (scene.hasNight ? '<path class="twin-headlights" d="M247 61 L345 34 L345 92 L247 66 Z"/>' : '') +
+      '<path class="twin-speed" d="M-70 30 H8 M-40 44 H14 M-90 58 H4 M-55 72 H18 M-80 86 H10"/>' +
       garageCarSvg(active.silhouette, true) + '</g>' : '') + '</g></svg>';
   return '<div id="garageTrip" class="twin-trip"><div class="mod-h"><h3>PROCHAIN TRAJET · LIVE ROUTE</h3><span class="src est">' + esc(scene.status) + '</span></div>' +
     '<div class="twin-route"><div><small>DÉPART</small><b>' + esc(scene.from) + '</b></div><span aria-hidden="true">→</span><div><small>DESTINATION</small><b>' + esc(scene.to) + '</b></div></div>' +

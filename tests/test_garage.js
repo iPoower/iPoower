@@ -119,4 +119,21 @@ test('V1.4.1 : profils i20 N et 308 réellement distincts, vectoriels et sans im
  assert.match(drive,/^<g class="twin-car-svg twin-car-sport"/);
  assert.doesNotMatch(drive,/<svg/);
 });
+test('V1.5 manga : encrage, détourage, roues à l’échelle et rotation limitée à la scène',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../src/app/garage-scene.js'),'utf8'),scope={};
+ vm.createContext(scope);vm.runInContext(source+';this.draw=garageCarSvg;',scope);
+ for(const kind of ['sport','touring','generic','inconnu']){
+  const card=scope.draw(kind),drive=scope.draw(kind,true);
+  for(const cls of ['twin-halo','twin-ink','twin-well','twin-body-shade','twin-reflection','twin-glare'])assert.equal((card.match(new RegExp('class="'+cls+'"','g'))||[]).length,1,kind+' '+cls);
+  assert.equal((card.match(/class="twin-rubber"[^>]*r="18"/g)||[]).length,2,kind+' pneus r=18');
+  // La même caisse sert au remplissage, à l’encrage et au détourage.
+  const body=card.match(/class="twin-paint" d="([^"]+)"/)[1];
+  assert(card.includes('class="twin-ink" d="'+body+'"'));assert(card.includes('class="twin-halo" d="'+body+' '));
+  assert.doesNotMatch(card,/twin-animated/,'fiche statique');
+  assert.equal((drive.match(/class="twin-spin twin-animated"/g)||[]).length,2,'rotation suspendue avec la scène');
+  assert.doesNotMatch(card+drive,/\bid=|url\(|<(?:image|foreignObject|script|text)\b/);
+ }
+ assert.match(scope.draw('inconnu'),/data-shape="generic"/);
+ assert.match(scope.draw('sport'),/class="twin-caliper"/);assert.doesNotMatch(scope.draw('touring'),/twin-caliper/);
+});
 console.log(n+'/'+n+' scénarios Garage validés');
