@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'; connect-src 'none'; object-src 'none'">
+  <title>Race Control · Garage Life — laboratoire fictif</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="model.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+<main id="secGarage" class="garage-life" aria-labelledby="heading">
+  <header class="mod-h">
+    <div><p class="eyebrow">RACE CONTROL · THE GARAGE</p><h1 id="heading">🛠️ TWIN GARAGE LIVE <span>GARAGE LIFE</span></h1></div>
+    <span class="src obs">DÉMO · DONNÉES FICTIVES</span>
+  </header>
+  <p class="intro">Carnet d'entretien expérimental. Aucune donnée réelle, aucun stockage, aucun justificatif. Tout est perdu au rechargement de cet aperçu.</p>
+  <div class="garage-picker" role="group" aria-label="Choisir le véhicule fictif">
+    <button class="btn pri" id="choose-a" type="button" aria-pressed="true">Véhicule A</button>
+    <button class="btn" id="choose-b" type="button" aria-pressed="false">Véhicule B</button>
+    <button class="btn sm" id="theme" type="button">Thème clair / sombre</button>
+  </div>
+  <section id="car-info" class="garage-car" aria-live="polite"></section>
+  <section class="garage-car">
+    <h2>Ajouter une opération fictive</h2>
+    <p class="sub">Opération déclarée ou échéance saisie par le propriétaire, jamais un conseil constructeur implicite.</p>
+    <form id="operation-form" novalidate>
+      <div class="fields">
+        <label>Date <input name="date" type="date" required value="2026-10-12"></label>
+        <label>Kilométrage déclaré (facultatif) <input name="km" type="number" inputmode="numeric" min="0" max="50000000" step="1" placeholder="Inconnu"></label>
+        <label>Catégorie <select name="category" id="category"></select></label>
+        <label>Nature <select name="kind"><option value="DECLARED_DONE">Opération réalisée et déclarée</option><option value="USER_ENTERED_DEADLINE">Échéance renseignée par l'utilisateur</option></select></label>
+        <label class="wide">Description <input name="description" type="text" maxlength="500" required placeholder="Ex. : remplacement fictif du filtre"></label>
+        <label>Coût réel déclaré (€), facultatif <input name="amount" type="text" inputmode="decimal" placeholder="Ex. : 89,90"></label>
+        <label>Établissement facultatif <input name="provider" maxlength="160" placeholder="Atelier fictif"></label>
+      </div>
+      <p class="sub">Pièces justificatives désactivées dans le laboratoire. Aucune facture n'est acceptée.</p>
+      <button class="btn pri" type="submit">Ajouter à cette session fictive</button>
+      <p id="result" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+  <section class="garage-car">
+    <h2>Historique et échéances</h2>
+    <details class="ux-fold" open><summary><span><b>Historique chronologique</b><small>Déclarations · coûts · kilométrages</small></span></summary><div class="ux-fold-body"><ol id="history"></ol></div></details>
+    <details class="ux-fold"><summary><span><b>Échéances documentées</b><small>Aucun intervalle calculé</small></span></summary><div class="ux-fold-body"><ul id="deadlines"></ul></div></details>
+    <details class="ux-fold"><summary><span><b>Informations manquantes</b><small>Inconnu ≠ bon état mécanique</small></span></summary><div class="ux-fold-body"><ul id="missing"></ul></div></details>
+  </section>
+  <footer>Maquette isolée de Race Control. Aucun accès au coffre, à l'agenda, au GPS, au stockage ou au réseau. Aucun diagnostic mécanique.</footer>
+</main>
+</body>
+</html>

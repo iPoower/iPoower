@@ -99,6 +99,8 @@ SUITE.push(['test_garage.js', 'Garage : fiches techniques canoniques, relevés, 
   ['e2e71-garage.js', 'Garage : navigation 5 onglets, données véhicules et état, réglages, reload et offline PC/iPhone', true]);
 SUITE.push(['e2e72-mobile-ux.js', 'UX mobile : cinq onglets, détails accessibles, focus, petits écrans, rechargement, données et hors ligne', true]);
 SUITE.push(['e2e73-weekly-login.js', 'sécurité iPhone/PC : session 7 jours en IndexedDB, révocation, expiration et refus', true]);
+SUITE.push(['test_garage_life_preview.js', 'Garage Life : carnet fictif, coûts, kilométrages, échéances et round-trip sans perte', false],
+  ['e2e_garage_life_preview.js', 'Garage Life isolé : profils fictifs, thèmes, formulaires, aucun stockage et mobile/PC', true]);
 module.exports = { SUITE, FIRST };
 SUITE.push(['test_live_engine.js', 'live : horloge, provenance, données partielles, horizon et réponses tardives', false]);
 SUITE.push(['e2e74-live-offline.js', 'Live/Offline : minuit, heures offline, données anciennes/partielles, reconnexion et 429 iPhone/PC', true]);
