@@ -60,8 +60,10 @@ function renderGarage() {
   const navigation = !DEMO.on && trip && !trip.destinationPending && !(trip.l && trip.l.originPending) ? wazeBtn(tripTo(trip)) : '';
   const mission = MissionControl.project({ car: selected, trip, scene, comparison: compared,
     offline: offlineNow(), navigationAvailable: !!navigation, agendaUnavailable: APP_CONTEXT.agendaSelectionUnavailable });
-  const parts = { mission: missionControlHtml(mission, navigation),
-    records: cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>' : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>',
+  // La fiche et sa commande d'édition historique restent au premier écran.
+  // NEXT MISSION suit les fiches, accessible immédiatement par ancre dédiée.
+  const parts = { records: cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>' : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>',
+    mission: missionControlHtml(mission, navigation),
     trip: garageTripHtml(scene, selected),
     compare: garageCompareHtml(cars, trip, scene) };
   const html = JSON.stringify(parts);
@@ -76,7 +78,7 @@ function renderGarage() {
   const foldFocus = uxFocusKey(el);
   if (!el.querySelector('#twinGarageBody')) el.innerHTML = GARAGE_STYLE +
     '<div class="mod-h"><h2>🛠️ TWIN GARAGE LIVE</h2><span class="src obs">THE GARAGE · données enregistrées</span></div>' +
-    '<div class="twin-intro"><p>Véhicules · prochain trajet · préparation explicable.</p><a class="btn sm twin-jump" href="#garageTrip">Voir le prochain trajet 2D ↓</a></div>' +
+    '<div class="twin-intro"><p>Véhicules · prochain trajet · préparation explicable.</p><div class="mission-actions"><a class="btn sm twin-jump" href="#missionControl">NEXT MISSION ↓</a><a class="btn sm twin-jump" href="#garageTrip">Voir le prochain trajet 2D ↓</a></div></div>' +
     '<div id="twinGarageBody" class="twin-body">' + Object.keys(parts).map(k=>'<div data-twin-part="' + k + '"></div>').join('') + '</div>' +
     '<p class="garage-note">Les profondeurs et contrôles sont saisis par toi. La pression affichée est une cible, pas une mesure en temps réel. Aucun capteur moteur, diagnostic OBD ou historique de réparations n’est disponible.</p>';
   for (const [key, content] of Object.entries(parts)) {
