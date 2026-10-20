@@ -4052,6 +4052,22 @@ document.addEventListener('click', async e => {
   else if (a === 'mount-save') mountSave();
   else if (a === 'mount-cancel') { MOUNT_FORM = null; renderSeason(); }
   else if (a === 'labcar') { appSetCar(t.dataset.car); }
+  else if (a === 'garage-quick') {
+    // Navigation uniquement : toutes les valeurs restent saisies, validées et sauvées
+    // par les champs historiques du panneau Paramètres.
+    const i = S.cars.findIndex(c => c && c.id === t.dataset.car);
+    const key = t.dataset.garageTarget;
+    if (i < 0 || !['odo', 'tread', 'pressure'].includes(key) || LOCKED()) {
+      commandFeedback(t, 'Fiche indisponible'); return;
+    }
+    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : '#f-cars-' + i + '-tire-pchk-av';
+    const d = $('#settings'); if (!d) { commandFeedback(t, 'Paramètres indisponibles'); return; }
+    d.open = true; renderSettings(true);
+    const input = $(selector);
+    if (!input) { commandFeedback(t, 'Champ indisponible'); return; }
+    input.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+    input.focus({ preventScroll: true });
+  }
   else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); }
   else if (a === 'goset') { UI.locsOpen = false; renderLocChips(); const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
   else if (a === 'reset') {
