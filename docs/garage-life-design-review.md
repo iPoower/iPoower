@@ -60,12 +60,12 @@ python3 -m http.server 8765 --directory garage-life-preview
 
 La suite vérifie données fictives A/B, historique, coûts exacts en euros, dates réelles et bissextiles, kilomètres impossibles, doublons, échéances, objectifs, formes inconnues, aller-retour JSON fictif et refus d'écriture/lecture de stockage en clair dans le prototype.
 
-**Ne pas confondre :** `roundTripFixture()` démontre seulement l'intégrité d'une sérialisation JSON **en mémoire** ; il ne prouve PAS une sauvegarde chiffrée, une reprise après crash, Safari iOS ni la rétention à plusieurs années. Le scénario Playwright dédié couvre Chromium/WebKit sur 320/375/414/1440 px, interactions réelles, réseau externe absent, stockage navigateur vierge et rechargement sans sauvegarde ; **il reste à exécuter** dans un environnement ayant les deux navigateurs. Les tests CI existants, matrices navigateur, analyse confidentialité et test iPhone physique restent à exécuter sur la version intégrée après validation.
+**Ne pas confondre :** `roundTripFixture()` démontre seulement l'intégrité d'une sérialisation JSON **en mémoire** ; il ne prouve PAS une sauvegarde chiffrée, une reprise après crash, Safari iOS ni la rétention à plusieurs années. Le scénario Playwright dédié couvre Chromium/WebKit sur 320/375/414/1440 px, interactions réelles, réseau externe absent, stockage navigateur vierge et rechargement sans sauvegarde ; **leur exécution complète est exigée sur le SHA exact de la PR**. Les tests CI existants, matrices navigateur, analyse confidentialité et test iPhone physique restent à exécuter sur la version intégrée après validation.
 
 ## 6. Coordination, acceptation et retour arrière
 
 - Branche **`feat/garage-life`** exclusivement. Aucun push `main`, aucune édition des panneaux `src/app/garage-*`, `src/app.js`, `tools/build.js`, `src/session-vault.js`, `src/backup.js`, `src/device-storage.js`, workflows, SW ou `encrypted/**`.
-- Fichiers nouveaux uniquement : `garage-life-preview/**`, `tests/test_garage_life_preview.js` `tests/e2e_garage_life_preview.js` et ce document.
+- Fichiers nouveaux uniquement : `garage-life-preview/**`, `tests/test_garage_life_preview.js` `tests/e2e_garage_life_preview.js` `tests/ci/suites.js`, `tests/test_ci_lanes.js` et ce document.
 - PR en **DRAFT** tant que le prototype n'est pas validé/branché par une revue UX, que les tests navigateur et la CI exacte ne sont pas conclus. La présence d'un nouveau module expérimental n'autorise pas une fusion de production.
 - Pour toute PR future de persistance, sauvegarde, restauration, chiffrement, justificatifs ou migration : **accord écrit distinct du propriétaire avant fusion même si tous les contrôles sont verts**.
 - Fusion future non sensible : rebaser sur dernier `main`, détecter conflits multi-agents, rejouer tous les contrôles requis et vérifier le commit exact. Après fusion, vérifier CI et `gh-pages/race-control/version.json` + site servi ; aucune affirmation « livré » avant ces preuves.
