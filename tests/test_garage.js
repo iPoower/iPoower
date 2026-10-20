@@ -135,5 +135,6 @@ test('V1.5 manga : encrage, détourage, roues à l’échelle et rotation limit�
  }
  assert.match(scope.draw('inconnu'),/data-shape="generic"/);
  assert.match(scope.draw('sport'),/class="twin-caliper"/);assert.doesNotMatch(scope.draw('touring'),/twin-caliper/);
+ for(const cls of ['twin-roof','twin-skirt','twin-diffuser']){assert.equal((scope.draw('sport').match(new RegExp('class="'+cls+'"','g'))||[]).length,1,cls);assert.doesNotMatch(scope.draw('touring')+scope.draw('generic'),new RegExp(cls));}
 });
 console.log(n+'/'+n+' scénarios Garage validés');

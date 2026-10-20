@@ -22,8 +22,14 @@ const GARAGE_CAR = {
     rear: 'M27.5 50 L36 48 L35 56 L22.5 58.5 Z',
     grille: 'M240 73.5 L252.4 73.5 L252.1 82 L239 82 Z M226 75 L234 75 L233 81 L225 81 Z',
     mirror: 'M175.5 45 L186 43.5 L188 50 L177.5 51.5 Z',
-    extra: '<path class="twin-spoiler" d="M84 18.5 L57 18.6 L51 23.2 L60 26 L80 22.6 Z"/>' +
-      '<path class="twin-sport-accent" d="M76 86.6 H177 M232 88.4 L251 89.6 M21 86.4 H30"/>'
+    // Signature de la version sportive : toit et montants noirs, bas de caisse
+    // gris souligné de rouge, lame avant rouge, diffuseur noir.
+    extra: '<path class="twin-roof" d="M188 48 L151 23 Q112 18.5 72 20.5 L62 22 Q61 24.5 67 25.2 Q76 24.6 86 25 Q120 24 151 27.5 L181 49 Z"/>' +
+      '<path class="twin-roof-gloss" d="M78 22.2 Q112 20.4 146 23.4"/>' +
+      '<path class="twin-skirt" d="M76 81.2 L178 80.2 L178.6 85.4 L76.4 86 Z"/>' +
+      '<path class="twin-diffuser" d="M19.6 80 L30.6 80 L31 86 L22 86 Z"/>' +
+      '<path class="twin-spoiler" d="M84 18.5 L57 18.6 L51 23.2 L60 26 L80 22.6 Z"/>' +
+      '<path class="twin-sport-accent" d="M76.4 86.8 H178.4 M226 87.6 L252 89.4 M21 86.6 H30.6"/>'
   },
   // Compacte cinq portes : capot long et plongeant, pare-brise très incliné, hayon arrondi.
   touring: {

@@ -5,15 +5,16 @@ const GARAGE_STYLE = `<style>
 #secGarage .twin-intro p{margin:0;color:var(--fg2);font-size:12px}
 #secGarage .twin-jump{min-height:44px;display:inline-flex;align-items:center;color:var(--accent);text-decoration:none}
 #secGarage .twin-body{display:flex;flex-direction:column;gap:12px;min-width:0}
-#secGarage .twin-vehicle-art{--ink:#0a0d12;--paint:var(--accent);--glass:#111a27;--hl:#fff;--red:#e5243b;position:relative;overflow:hidden;contain:paint;isolation:isolate;margin:2px 0;border:2px solid var(--fg);border-radius:3px;background:var(--bg);padding:14px 4px 0;min-width:0;box-shadow:4px 4px 0 var(--line2)}
+#secGarage .twin-vehicle-art{--ink:#0a0d12;--glass:#111a27;--hl:#fff;--red:#e5243b;position:relative;overflow:hidden;contain:paint;isolation:isolate;margin:2px 0;border:2px solid var(--fg);border-radius:3px;background:var(--bg);padding:14px 4px 0;min-width:0;box-shadow:4px 4px 0 var(--line2)}
 #secGarage .twin-vehicle-art::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:repeating-linear-gradient(180deg,transparent 0 6px,var(--fg) 6px 7px,transparent 7px 11px,var(--fg) 11px 11.6px,transparent 11.6px 19px);-webkit-mask:linear-gradient(90deg,#000,transparent 72%);mask:linear-gradient(90deg,#000,transparent 72%);opacity:.13}
 #secGarage .twin-vehicle-art::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle,var(--fg) .9px,transparent 1.35px) 0 0/6px 6px;-webkit-mask:radial-gradient(ellipse at 88% 18%,#000,transparent 62%);mask:radial-gradient(ellipse at 88% 18%,#000,transparent 62%);opacity:.22}
 #secGarage .twin-plate{position:absolute;left:10px;top:2px;z-index:-1;font:900 clamp(46px,17vw,104px)/1 var(--f-disp);letter-spacing:-.02em;text-transform:uppercase;font-style:italic;white-space:nowrap;color:transparent;-webkit-text-stroke:1.4px var(--line2);opacity:.9;pointer-events:none;user-select:none}
 #secGarage .twin-vehicle-art .twin-car-svg{display:block;position:relative;width:100%;height:clamp(108px,26vw,170px)}
 #secGarage .twin-vehicle-art small{display:table;margin:2px 6px 8px auto;padding:2px 6px;font:8px var(--f-mono);letter-spacing:.06em;color:var(--fg2);background:var(--panel);border:1px solid var(--fg2)}
-#secGarage .garage-car:not(:has(.garage-active)) .twin-vehicle-art{--paint:color-mix(in srgb,var(--fg2) 72%,var(--panel));box-shadow:4px 4px 0 var(--line)}
+#secGarage .garage-car:not(:has(.garage-active)) .twin-vehicle-art{box-shadow:4px 4px 0 var(--line)}
+#secGarage .garage-car:not(:has(.garage-active)) .twin-vehicle-art .twin-car-svg{filter:grayscale(.8) brightness(.92)}
 #secGarage .garage-car:not(:has(.garage-active)) .twin-vehicle-art::before{opacity:0}
-#secGarage .twin-car-svg{overflow:visible;--ink:#0a0d12;--glass:#111a27;--hl:#fff;--red:#e5243b}
+#secGarage .twin-car-svg{overflow:visible;--paint:var(--accent);--ink:#0a0d12;--glass:#111a27;--hl:#fff;--red:#e5243b}
 #secGarage .twin-halo{fill:var(--halo,#eef3f8);stroke:var(--halo,#eef3f8);stroke-width:5.5;stroke-linejoin:round}
 #secGarage .twin-shadow{fill:var(--floor,var(--accent));opacity:.3}
 #secGarage .garage-car:not(:has(.garage-active)) .twin-shadow{fill:var(--fg3)}
@@ -45,7 +46,16 @@ html[data-theme=light] #secGarage{--halo:#fff;--floor:#0a0d12}
 #secGarage .twin-rim-shine{fill:none;stroke:var(--hl);stroke-width:1.4;stroke-linecap:round;opacity:.9}
 #secGarage .twin-spin{transform-box:fill-box;transform-origin:center}
 #secGarage .twin-speed{fill:none;stroke:var(--fg2);stroke-width:2;stroke-linecap:round;opacity:.55}
-#secGarage .twin-drive .twin-car-svg{--paint:var(--accent)}
+#secGarage .twin-car-sport{--paint:#8fb3e4}
+#secGarage .twin-roof{fill:#0e1218;stroke:var(--ink);stroke-width:1.2;stroke-linejoin:round}
+#secGarage .twin-roof-gloss{fill:none;stroke:#5d6878;stroke-width:1.4;stroke-linecap:round}
+#secGarage .twin-skirt{fill:#9aa3ae;stroke:var(--ink);stroke-width:1.1;stroke-linejoin:round}
+#secGarage .twin-diffuser{fill:#0e1218}
+#secGarage .twin-car-sport .twin-mirror{fill:#0e1218}
+#secGarage .twin-car-sport .twin-rim{fill:#171b22}
+#secGarage .twin-car-sport .twin-spokes{stroke:#4a5462;stroke-width:2}
+#secGarage .twin-car-sport .twin-hub{fill:#0b0e13;stroke:#4a5462}
+#secGarage .twin-car-sport .twin-sidewall{stroke:#232933}
 #secGarage .twin-quality{display:flex;gap:5px;flex-wrap:wrap}
 #secGarage .twin-quality .src{white-space:normal;overflow-wrap:anywhere}
 #secGarage .twin-trip{padding:13px;border:1px solid var(--line2);border-radius:6px;background:var(--panel2);display:grid;gap:12px;min-width:0;scroll-margin-top:70px}
