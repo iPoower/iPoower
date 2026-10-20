@@ -112,3 +112,4 @@ SUITE.push(['e2e77-provider-limited.js', 'Incident 429 du 14/10 iPhone/PC : LIMI
 SUITE.push(['test_road_policy.js', 'chaussée mouillée/humide : une seule définition pour le verdict, l’Analyse et le poste Météo, contre-tests', false]);
 SUITE.push(['test_journey_replay.js', 'Journey Replay : prévisions archivées, déclaration conducteur, annulations, reprise et absence de télémétrie', false]);
 SUITE.push(['e2e80-journey-replay.js', 'Journey Replay : avant/après, pause, réduction du mouvement, annulations, DOM stable et iPhone/PC', true]);
+SUITE.push(['test_mission_control.js', 'Mission Control : projection canonique, provenance, absence, hors-ligne et absence de mutation', false]);

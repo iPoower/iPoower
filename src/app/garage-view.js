@@ -1,4 +1,5 @@
 // @include app/garage-scene.js
+// @include app/mission-control.js
 /* Onglet Garage : consultation uniquement des fiches existantes.
  * Aucune nouvelle table, aucun journal d'entretien inventé, aucune connexion OBD.
  */
@@ -53,8 +54,17 @@ function renderGarage() {
   const active = appActiveCar(), cars = Garage.overview(S.cars, active && active.id, tyreStateOf);
   const trip = APP_CONTEXT.snapshot && APP_CONTEXT.snapshot.nextTrip;
   const scene = Garage.preview(trip, { sourceFor: garageWeatherSources(), offline: offlineNow(), now: Date.now(), freshness: Reliability.freshState });
+  const selected = cars.find(c => c.active) || null;
+  const compared = selected ? Garage.comparison([selected], trip, scene)[0] : null;
+  // Le même Waze que dans le briefing historique, uniquement sur geste explicite.
+  const navigation = !DEMO.on && trip && !trip.destinationPending && !(trip.l && trip.l.originPending) ? wazeBtn(tripTo(trip)) : '';
+  const mission = MissionControl.project({ car: selected, trip, scene, comparison: compared,
+    offline: offlineNow(), navigationAvailable: !!navigation, agendaUnavailable: APP_CONTEXT.agendaSelectionUnavailable });
+  // La fiche et sa commande d'édition historique restent au premier écran.
+  // NEXT MISSION suit les fiches, accessible immédiatement par ancre dédiée.
   const parts = { records: cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>' : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>',
-    trip: garageTripHtml(scene, cars.find(c=>c.active)),
+    mission: missionControlHtml(mission, navigation),
+    trip: garageTripHtml(scene, selected),
     compare: garageCompareHtml(cars, trip, scene) };
   const html = JSON.stringify(parts);
   // Une projection identique conserve le geste en cours, le focus et les extensions F1.
@@ -68,7 +78,7 @@ function renderGarage() {
   const foldFocus = uxFocusKey(el);
   if (!el.querySelector('#twinGarageBody')) el.innerHTML = GARAGE_STYLE +
     '<div class="mod-h"><h2>🛠️ TWIN GARAGE LIVE</h2><span class="src obs">THE GARAGE · données enregistrées</span></div>' +
-    '<div class="twin-intro"><p>Véhicules · prochain trajet · préparation explicable.</p><a class="btn sm twin-jump" href="#garageTrip">Voir le prochain trajet 2D ↓</a></div>' +
+    '<div class="twin-intro"><p>Véhicules · prochain trajet · préparation explicable.</p><div class="mission-actions"><a class="btn sm twin-jump" href="#missionControl">NEXT MISSION ↓</a><a class="btn sm twin-jump" href="#garageTrip">Voir le prochain trajet 2D ↓</a></div></div>' +
     '<div id="twinGarageBody" class="twin-body">' + Object.keys(parts).map(k=>'<div data-twin-part="' + k + '"></div>').join('') + '</div>' +
     '<p class="garage-note">Les profondeurs et contrôles sont saisis par toi. La pression affichée est une cible, pas une mesure en temps réel. Aucun capteur moteur, diagnostic OBD ou historique de réparations n’est disponible.</p>';
   for (const [key, content] of Object.entries(parts)) {
