@@ -94,7 +94,7 @@ async function twinScenario(browser){
    const after=await p.evaluate(()=>({
     opened:document.querySelector('#missionControl [data-ux=mission-sources]').open,
     focused:document.activeElement===document.querySelector('#missionControl [data-ux=mission-sources] > summary'),
-    updated:document.querySelector('#missionControl .mission-grid b').textContent.includes('6 °C')
+    updated:document.querySelector('#missionControl .mission-grid b').textContent.includes(f1(6)+' °C')
    }));
    assert(after.opened&&after.focused&&after.updated,JSON.stringify(after));
   });
