@@ -93,6 +93,39 @@ function tripRouteState() {
   const l = t && (t.l || t.planL), offline = offlineNow();
   return { n, t, l, offline, ready: !!(l && !l.originPending && Number.isFinite(l.km) && Number.isFinite(l.min)) };
 }
+// Contrôles informatifs : aucune décision d'aptitude à conduire et aucune mutation.
+function tripPreflightHtml(route, car, origin, dest, departure) {
+  const tire = car && car.tire;
+  const tyreKnown = !!(tire && tire.type && !['unknown', 'none'].includes(tire.type) && (tire.model || tire.brand));
+  const weather = RAW && RAW[UI.loc];
+  const minutes = weather && weather.t ? Reliability.ageMin(weather.t) : null;
+  const weatherFresh = !offlineNow() && Number.isFinite(minutes) && minutes >= 0 && minutes <= 30;
+  const routeReady = !!(route && route.ready && !route.offline);
+  const checked = !!(origin && dest && locHasCoords(origin) && locHasCoords(dest));
+  const pendingRoute = !checked ? 'Choisir un départ et une destination valides'
+    : routeReady ? 'Itinéraire enregistré · ' + f1(route.l.km) + ' km (vérifier les modifications avant de partir)'
+    : route && route.offline ? 'Calcul indisponible hors ligne · dernier trajet conservé si connu'
+    : 'Calcul après programmation du trajet';
+  const rows = [
+    ['route', routeReady ? 'disponible' : 'à vérifier', pendingRoute],
+    ['meteo', weatherFresh ? 'récente' : 'à vérifier', weatherFresh
+      ? 'Météo locale reçue il y a ' + Math.floor(minutes) + ' min · pas une observation sur tout le parcours'
+      : offlineNow() ? 'Hors connexion · conditions à actualiser dès que possible'
+        : minutes == null ? 'Réception météo locale non vérifiée'
+          : 'Dernière météo locale reçue il y a ' + Math.max(0, Math.floor(minutes)) + ' min'],
+    ['pneus', tyreKnown ? 'déclarés' : 'à compléter', tyreKnown
+      ? 'Monte déclarée pour ' + (car.short || car.name || 'le véhicule') + ' · pression et état à vérifier physiquement'
+      : 'Monte ou modèle non renseigné · compléter la fiche du véhicule']
+  ];
+  const later = departure && departure > localTs(Date.now()).slice(0, 16);
+  return '<section class="trip-preflight" aria-label="Contrôles avant départ"><h3>✓ CHECK AVANT DÉPART</h3>' +
+    '<ul>' + rows.map(([key, tag, description]) => '<li data-preflight="' + key + '"><b>' +
+      esc(key === 'meteo' ? 'Météo locale' : key === 'pneus' ? 'Pneus' : 'Itinéraire') + ' · ' + esc(tag) +
+      '</b><span>' + esc(description) + '</span></li>').join('') + '</ul>' +
+    '<p>Repères informatifs uniquement · aucun feu vert de sécurité. ' +
+    (later ? 'Les conditions peuvent changer avant le départ.' : 'Vérifie visuellement ton véhicule avant de partir.') +
+    '</p></section>';
+}
 function renderTripView() {
   const el = $('#secTrip'); if (!el) return;
   el.hidden = UI.view !== 'trajet'; if (el.hidden) return;
@@ -113,6 +146,7 @@ function renderTripView() {
     : `<div class="trip-route-state old"><b>${route.offline ? 'Hors connexion' : 'Calcul en cours'}</b><span>${route.offline ? 'Départ, destination, véhicule et horaire sont conservés. La route sera recalculée au retour du réseau.' : 'OSRM et la météo de route se préparent.'}</span></div>` : '';
   const selectedDest = dest ? `<div class="trip-selected"><b>✓ ${esc(dest.name)}</b><span>${esc(dest.address || dest.sub || '')}</span>${dest.provider ? `<small>${esc(dest.provider)}${dest.precision ? ' · ' + esc(dest.precision) : ''}</small>` : ''}</div>` : '';
   const dep = tripDepartureValue(), immediate = TRIP_FORM.when === 'now';
+  const preflight = tripPreflightHtml(route, S.cars.find(c => c.id === TRIP_FORM.carId), origin, dest, dep);
   const radarTrip = current && APP_CONTEXT.trips.find(x => x.key === current.tripKey) || (!current && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip)) || null;
   const radarShell = `<div class="trip-radar">${routeRadarHtml(radarTrip)}</div>`;
   const intelligence = tyreIntelligenceHtml(S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar(), 'trajet', CX && wxTrips(CX.m).find(t => current && t.id === current.tripKey) || null);
@@ -131,17 +165,19 @@ function renderTripView() {
         <label><input type="radio" name="tripWhen" data-trip-field="when" value="date" ${TRIP_FORM.when === 'date' ? 'checked' : ''}> Autre date</label>
       </div><div class="trip-time">${TRIP_FORM.when === 'date' ? `<label>Date<input type="date" id="tripDate" data-trip-field="date" value="${esc(TRIP_FORM.date)}"></label>` : ''}${TRIP_FORM.when !== 'now' ? `<label>Heure<input type="time" id="tripTime" data-trip-field="time" value="${esc(TRIP_FORM.time)}"></label>` : `<span class="sub">Départ immédiat · ${esc(dep.slice(11,16))}</span>`}</div></fieldset>
       <div class="trip-field"><label class="trip-label" for="tripCar">Véhicule</label><select id="tripCar" data-trip-field="car">${carOptions}</select></div>
-      ${TRIP_FORM.message ? `<p class="trip-message" role="status">${esc(TRIP_FORM.message)}</p>` : ''}${routeLine}
+      ${TRIP_FORM.message ? `<p class="trip-message" role="status">${esc(TRIP_FORM.message)}</p>` : ''}${routeLine}${preflight}
       <div class="trip-actions"><button class="btn pri trip-main" data-act="trip-plan">${immediate ? 'DÉMARRER LE TRAJET' : existing ? 'METTRE À JOUR LE TRAJET' : 'PROGRAMMER LE TRAJET'}</button>
       ${existing ? '<button class="btn" data-act="trip-plan-cancel">Annuler le trajet</button>' : ''}</div>
     </div>${radarShell}<div class="trip-intelligence">${intelligence}</div>`;
   // Les mises à jour de la route ne doivent pas détacher les commandes pendant un appui,
   // ni remplacer les champs lorsqu'aucune valeur du formulaire n'a changé.
-  const controlsHTML = html.replace(routeLine, '').replace(radarShell, '').replace(intelligence, '');
+  const controlsHTML = html.replace(routeLine, '').replace(preflight, '').replace(radarShell, '').replace(intelligence, '');
   if (el._tripControlsHTML === controlsHTML && el.querySelector('.trip-form')) {
     const previous = el.querySelector('.trip-route-state');
     if (previous) { if (previous.outerHTML !== routeLine) previous.outerHTML = routeLine; }
     else if (routeLine) el.querySelector('.trip-actions').insertAdjacentHTML('beforebegin', routeLine);
+    const preflightPanel = el.querySelector('.trip-preflight');
+    if (preflightPanel && preflightPanel.outerHTML !== preflight) preflightPanel.outerHTML = preflight;
     const radarPanel = el.querySelector('.trip-radar');
     if (radarPanel && radarPanel._radarHTML !== radarShell) {
       const focus = uxFocusKey(radarPanel); radarPanel.outerHTML = radarShell;

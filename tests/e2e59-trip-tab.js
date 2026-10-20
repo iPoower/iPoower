@@ -80,6 +80,17 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
   const s=await session(b,{at:'2026-10-07T15:00:00+02:00',dev}),p=s.p,ctl=await setup(s,dev);
   await check(dev+' · TRAJET visible en un geste, navigation à cinq onglets',async()=>{const L=await layout(p);assert.deepEqual(L.tabs,['meteo','pneus','trajet','garage','analyse']);assert.equal((await state(p)).view,'trajet');assert(await p.locator('#secTrip').isVisible());});
   await check(dev+' · départ proposé depuis le lieu Travail confirmé',async()=>assert.match(await p.locator('#secTrip').innerText(),/Travail test/));
+  await check(dev+' · CHECK AVANT DÉPART : trois constats réels sans feu vert automatique',async()=>{
+    const panel=p.locator('#secTrip .trip-preflight');
+    assert.equal(await panel.count(),1);
+    assert.equal(await panel.locator('[data-preflight]').count(),3);
+    assert.match(await panel.locator('[data-preflight=route]').innerText(),/Itinéraire.*Calcul|Itinéraire.*Choisir/s);
+    assert.match(await panel.locator('[data-preflight=meteo]').innerText(),/Météo locale/);
+    assert.match(await panel.locator('[data-preflight=pneus]').innerText(),/Pneus.*déclarés/);
+    assert.doesNotMatch(await panel.innerText(),/BON POUR ROULER|GO SÉCURITÉ/);
+    await p.evaluate(()=>renderTripView());
+    assert.equal(await panel.locator('[data-preflight]').count(),3);
+  });
   await staleSearch(p,dev,'destination',s.settle);
   await staleSearch(p,dev,'origin',s.settle);
   await check(dev+' · adresse en cours de saisie : focus et sélection conservés après actualisation',async()=>{
