@@ -65,6 +65,39 @@ async function twinScenario(browser){
    window.__twinRender=()=>{M.twinFixture=window.__twinSource;RAW.twinFixture=window.__twinReceived;APP_CONTEXT.snapshot=Object.freeze({...APP_CONTEXT.snapshot,nextTrip:window.__twinTrip});renderGarage();};
    window.__twinRender();
   });
+  await check('Mission · identité véhicule, origine, destination et météo avec Twin Garage',async()=>{
+   const o=await p.evaluate(()=>{
+    const root=document.querySelector('#missionControl'),twin=document.querySelector('.twin-route');
+    const car=Garage.overview(S.cars,appActiveCar() && appActiveCar().id,tyreStateOf).find(x=>x.active);
+    const scene=Garage.preview(APP_CONTEXT.snapshot.nextTrip,{sourceFor:garageWeatherSources(),offline:offlineNow(),now:Date.now(),freshness:Reliability.freshState});
+    return {car:root.querySelector('[data-mission-car]')?.textContent,expectedCar:car?.name,
+     origin:root.querySelector('[data-mission-from]')?.textContent,
+     destination:root.querySelector('[data-mission-to]')?.textContent,
+     twin: [...twin.querySelectorAll('b')].map(x=>x.textContent),
+     temperature:root.querySelector('.mission-grid b')?.textContent,
+     expectedTemperature:scene.samples[0]?.temperature,
+     withoutExtras:!root.querySelector('script,img'),state:root.querySelector('.mission-grid').textContent};
+   });
+   assert.equal(o.car,o.expectedCar);assert.deepEqual([o.origin,o.destination],o.twin);
+   assert(o.temperature.includes(String(o.expectedTemperature).replace('.',',')),JSON.stringify(o));
+   assert(o.withoutExtras);assert.match(o.state,/PRÉVISION|INDISPONIBLE|CACHE|CONFIRMER/);
+  });
+  await check('Mission · détails accessibles au clavier, sans reconstruire le focus',async()=>{
+   const summary=p.locator('#missionControl [data-ux=mission-sources] > summary');
+   await summary.focus();await p.keyboard.press('Enter');
+   const before=await p.evaluate(()=>({
+    opened:document.querySelector('#missionControl [data-ux=mission-sources]').open,
+    focused:document.activeElement===document.querySelector('#missionControl [data-ux=mission-sources] > summary')
+   }));
+   assert(before.opened&&before.focused,JSON.stringify(before));
+   await p.evaluate(()=>{__twinSource.hs[0].T=6;__twinRender();});
+   const after=await p.evaluate(()=>({
+    opened:document.querySelector('#missionControl [data-ux=mission-sources]').open,
+    focused:document.activeElement===document.querySelector('#missionControl [data-ux=mission-sources] > summary'),
+    updated:document.querySelector('#missionControl .mission-grid b').textContent.includes(f1(6)+' °C')
+   }));
+   assert(after.opened&&after.focused&&after.updated,JSON.stringify(after));
+  });
   await check('Twin · scène schématique, effets documentés et aucun GPS simulé',async()=>{
    const text=await p.locator('#secGarage').innerText();assert.match(text,/TWIN GARAGE LIVE/);assert.match(text,/SCHÉMA SANS ÉCHELLE/);assert.match(text,/sans suivi GPS/);
    for(const cls of ['twin-rain','twin-snow','twin-fog','twin-wind','twin-moon','twin-sun'])assert(await p.locator('#secGarage .'+cls).count(),cls);
@@ -170,11 +203,13 @@ async function twinScenario(browser){
   });
   await check('Twin · hors ligne puis météo absente : aucune animation trompeuse',async()=>{
    await s.c.setOffline(true);await p.evaluate(()=>__twinRender());assert.match(await p.locator('.twin-trip').innerText(),/HORS LIGNE/);assert.equal(await p.locator('.twin-scene').getAttribute('data-running'),'false');
+   assert.match(await p.locator('#missionControl').innerText(),/HORS LIGNE/);
    await s.c.setOffline(false);await p.evaluate(()=>{__twinTrip={...__twinTrip,seq:[]};__twinRender();});
    assert.match(await p.locator('.twin-trip').innerText(),/Aucun effet météo représenté/);assert.equal(await p.locator('.twin-rain,.twin-snow,.twin-fog,.twin-wind').count(),0);
   });
   await check('Twin · aucun trajet : fiches intactes et observateur déconnecté',async()=>{
    await p.evaluate(()=>{__twinTrip=null;__twinRender();});assert.equal(await p.locator('.twin-scene').count(),0);assert.equal(await p.locator('.garage-car').count(),2);
+   assert.match(await p.locator('#missionControl').innerText(),/Aucun prochain trajet connu/);
    assert.equal(await p.evaluate(()=>GARAGE_MOTION.observer),null);
   });
   await check('Twin · aucune violation de CSP',async()=>assert.deepEqual(await p.evaluate(()=>window.__csp),[]));
