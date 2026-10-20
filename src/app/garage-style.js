@@ -12,7 +12,6 @@ const GARAGE_STYLE = `<style>
 #secGarage .twin-vehicle-art .twin-car-svg{display:block;position:relative;width:100%;height:clamp(108px,26vw,170px)}
 #secGarage .twin-vehicle-art small{display:table;margin:2px 6px 8px auto;padding:2px 6px;font:8px var(--f-mono);letter-spacing:.06em;color:var(--fg2);background:var(--panel);border:1px solid var(--fg2)}
 #secGarage .garage-car:not(:has(.garage-active)) .twin-vehicle-art{box-shadow:4px 4px 0 var(--line)}
-#secGarage .garage-car:not(:has(.garage-active)) .twin-vehicle-art .twin-car-svg{filter:grayscale(.8) brightness(.92)}
 #secGarage .garage-car:not(:has(.garage-active)) .twin-vehicle-art::before{opacity:0}
 #secGarage .twin-car-svg{overflow:visible;--paint:var(--accent);--ink:#0a0d12;--glass:#111a27;--hl:#fff;--red:#e5243b}
 #secGarage .twin-halo{fill:var(--halo,#eef3f8);stroke:var(--halo,#eef3f8);stroke-width:5.5;stroke-linejoin:round}
