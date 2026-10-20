@@ -122,11 +122,13 @@ function garageLiveRefresh() {
     for (const [key, b] of Object.entries({ passed: m.sector != null && i + 1 < m.sector, current: i + 1 === m.sector }))
       if (node.dataset[key] !== String(b)) node.dataset[key] = String(b);
   });
-  const radar = garageLiveRadar(), next = LiveRoute.weather(radar.points, state.fraction);
+  const radar = garageLiveRadar(), forecast = { ...radar, points: LiveRoute.forecasts(r, radar.points) }, next = LiveRoute.weather(forecast.points, state.fraction);
   value('weather', next ? (next.snow ? '🌨️ Neige prévue' : next.visibility != null && next.visibility < 1000 ? '🌫️ Visibilité réduite prévue' : next.rain > 0 ? '🌧️ Pluie prévue' : next.gust >= 40 ? '💨 Rafales prévues' : '⚠️ Vigilance prévue') : 'PRÉVISIONS PONCTUELLES');
-  value('weather-detail', next ? 'Au point de prévision · ' + (r ? 'dans ≈ ' + f1(Math.max(0, next.fraction - state.fraction) * r.km) + ' km · ' : '') +
-    (next.time ? next.time.slice(11, 16) + ' · ' : '') + next.state + ' · ' + (next.age == null ? 'réception inconnue' : Math.floor(next.age) + ' min depuis réception') :
-    state.fraction == null ? 'Position non actualisée : distance aux phénomènes non calculée.' : radar.points.length ? 'Aucun phénomène documenté aux points à venir · couverture ponctuelle, pas une mesure continue.' : 'Prévisions de trajet indisponibles · aucun phénomène inventé.');
+  value('weather-detail', next ? 'Point de prévision proche du tracé · ' + (r ? 'dans ≈ ' + f1(Math.max(0, next.fraction - state.fraction) * r.km) + ' km · ' : '') +
+    (next.time ? next.timeKind + ' ' + next.time.slice(11, 16) + ' · ' : '') + next.state + ' · ' + (next.age == null ? 'réception inconnue' : Math.floor(next.age) + ' min depuis réception') +
+    (next.gap > 60 ? ' · point à ≈ ' + Math.round(next.gap) + ' m du tracé' : '') :
+    state.fraction == null ? 'Position non actualisée : distance aux phénomènes non calculée.' : !forecast.points.length && radar.points.length ? 'Position des prévisions non comparable à ce tracé · voir les points météo ci-dessous.' :
+      radar.points.length ? 'Aucun phénomène documenté aux points à venir · couverture ponctuelle, pas une mesure continue.' : 'Prévisions de trajet indisponibles · aucun phénomène inventé.');
   if (s.marker) {
     if (state.pose) {
       s.marker.setLatLng(state.pose.point); s.marker.setOpacity(1);
@@ -135,21 +137,22 @@ function garageLiveRefresh() {
       if (s.progress) s.progress.setLatLngs([...r.pts.slice(0, state.pose.index), state.pose.point]);
     } else { s.marker.setOpacity(0); if (s.progress) s.progress.setLatLngs([]); }
   }
-  garageLiveDrawWeather(radar);
+  garageLiveDrawWeather(forecast);
   garageLiveRoad(!simulated && s.gps.valid);
 }
 function garageLiveDrawWeather(radar) {
   const s = GARAGE_LIVE;
   if (!s.weatherLayer || !s.route) return;
-  const points = radar.points.filter(p => p.position === 'Position documentée par itinéraire' && Number.isFinite(p.fraction));
-  const signature = JSON.stringify(points.map(p => [p.fraction, p.tone, p.state, p.forecastHour]));
+  const points = radar.points.filter(p => p.routeLocated && Number.isFinite(p.fraction));
+  const signature = JSON.stringify(points.map(p => [p.routePoint, p.fraction, p.tone, p.snow, p.rain, p.visibility, p.gust, p.state, p.forecastHour]));
   if (s.weatherLayer._liveSignature === signature) return;
   s.weatherLayer._liveSignature = signature; s.weatherLayer.clearLayers();
   points.slice(0, 12).forEach(p => {
     const pose = LiveRoute.at(s.route, p.fraction); if (!pose) return;
-    L.marker(pose.point, { interactive: true, keyboard: false, icon: L.divIcon({ className: 'lr-weather-icon', iconSize: [24,24], iconAnchor: [12,12],
+    L.marker(p.routePoint, { interactive: true, keyboard: false, icon: L.divIcon({ className: 'lr-weather-icon', iconSize: [24,24], iconAnchor: [12,12],
       html: '<span class="lr-waypoint">' + (p.snow ? '❄' : p.visibility != null && p.visibility < 1000 ? '≋' : p.rain > 0 ? '☂' : '·') + '</span>' }) })
-      .bindTooltip('Prévision ponctuelle · ' + esc(p.time ? p.time.slice(11,16) : 'horaire inconnu') + ' · ' + esc(p.state)).addTo(s.weatherLayer);
+      .bindTooltip('Prévision ponctuelle · ' + esc(p.timeKind) + ' ' + esc(p.time ? p.time.slice(11,16) : 'horaire inconnu') + ' · ' + esc(p.state) +
+        (p.gap > 60 ? ' · à ≈ ' + Math.round(p.gap) + ' m du tracé' : '')).addTo(s.weatherLayer);
   });
 }
 function garageLiveRoad(valid) {

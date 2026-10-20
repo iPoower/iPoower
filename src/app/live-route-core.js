@@ -73,11 +73,22 @@ const LiveRoute = (() => {
       elapsed: simulated ? route.min == null ? null : route.min * f : finite(startedAt) && startedAt <= now ? (now - startedAt) / 60000 : null,
       remainingMin: route.min == null ? null : route.min * (1 - f), sector: Math.min(3, Math.floor(f * 3) + 1) };
   }
+  function forecasts(route, points) {
+    if (!route) return [];
+    return (points || []).flatMap(p => {
+      if (!point([p.lat,p.lon])) return [];
+      const hit = project(route, {lat:p.lat,lon:p.lon});
+      if (!hit || hit.gap > 1000) return [];
+      // Le point météo garde ses coordonnées : sa projection sert seulement
+      // à estimer une distance sur le tracé, jamais à inventer une observation.
+      return [{ ...p, fraction: hit.fraction, routeLocated: true, routePoint: [p.lat,p.lon], gap: hit.gap }];
+    });
+  }
   function weather(points, fraction) {
     if (!finite(fraction)) return null;
     return (points || []).filter(p => finite(p.fraction) && p.fraction >= fraction && p.fraction <= 1 &&
-      p.position === 'Position documentée par itinéraire' && (p.snow || p.rain > 0 || p.visibility != null && p.visibility < 1000 || p.gust >= 40 || p.risk && p.risk.level >= 2))
+      (p.routeLocated || p.position === 'Position documentée par itinéraire') && (p.snow || p.rain > 0 || p.visibility != null && p.visibility < 1000 || p.gust >= 40 || p.risk && p.risk.level >= 2))
       .sort((a, b) => a.fraction - b.fraction)[0] || null;
   }
-  return Object.freeze({ route, at, gps, metrics, weather });
+  return Object.freeze({ route, at, gps, metrics, forecasts, weather });
 })();

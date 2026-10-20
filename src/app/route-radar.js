@@ -36,6 +36,7 @@ const RouteRadar = (() => {
       if (seq.length === 1) label = 'POINT MÉTÉO';
       const risk = trip.crit && trip.crit.q === q ? trip.crit : null;
       p.push({ label, fraction, position: confidence, time: at, timeKind: validTime(q.t) ? 'Passage calculé' : at ? 'Passage estimé' : 'Horaire absent',
+        lat: located ? q.lat : null, lon: located ? q.lon : null,
         km: finite(q.km) ? q.km : null, forecastHour: validTime(x.t) ? x.t.slice(11, 16) : null,
         temp: finite(x.T) ? x.T : null, rain: finite(x.P) ? x.P : null, probability: finite(x.pp) ? x.pp : null,
         snow, snowKnown: finite(x.snow) || finite(x.code), visibility: finite(x.vis) ? x.vis : null,

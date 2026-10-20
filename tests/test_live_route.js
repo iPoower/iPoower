@@ -58,6 +58,12 @@ test('météo ponctuelle : uniquement les phénomènes documentés et encore dev
     {fraction:.4,rain:2,position:'Position locale estimée'},{fraction:.8,snow:true,position:'Position documentée par itinéraire'}];
   assert.equal(L.weather(points,.3),points[2]);assert.equal(L.weather(points,.9),null);assert.equal(L.weather(points,null),null);
 });
+test('points météo réels reprojetés sur le tracé affiché, sans réutiliser une fraction d’un autre tracé', () => {
+  const points=[{lat:48.02,lon:2.02,fraction:.1,rain:2},{lat:40,lon:1,rain:2},{lat:null,lon:null,rain:2}],before=JSON.stringify(points);
+  const projected=L.forecasts(route,points);assert.equal(projected.length,1);assert(projected[0].fraction>.4);
+  assert.equal(projected[0].routePoint[0],48.02);assert.equal(projected[0].routePoint[1],2.02);
+  assert.equal(L.weather(projected,.2).rain,2);assert.equal(JSON.stringify(points),before);
+});
 test('la projection est une fonction pure sans accès navigateur, horloge active ou stockage', () => {
   const code=fs.readFileSync(path.join(__dirname,'../src/app/live-route-core.js'),'utf8');
   assert.doesNotMatch(code,/\b(?:fetch|localStorage|sessionStorage|indexedDB|navigator|setInterval|setTimeout|requestAnimationFrame)\b/);

@@ -66,7 +66,7 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
       assert(sizes.scroll<=sizes.width+1,JSON.stringify(sizes));assert(sizes.targets.every(h=>h>=44),JSON.stringify(sizes));
      }
      await p.setViewportSize({width:dev==='iphone'?414:1280,height:896});await p.evaluate(()=>{document.documentElement.dataset.theme='dark';});await p.evaluate(()=>garageLiveEnsure());
-     await p.locator('#garageLiveRoute').screenshot({path:path.join(process.env.SP,'live-route-'+BR.NAME+'-'+dev+'.png'),scale:'css',animations:'disabled'});
+     await p.locator('#garageLiveRoute').screenshot({path:path.join(process.env.SP,'place-live-route-'+BR.NAME+'-'+dev+'.png'),scale:'css',animations:'disabled'});
     });
     await check(dev+' · mouvement réduit et hors écran arrêtent la lecture sans saut temporel',async()=>{
      await p.emulateMedia({reducedMotion:'reduce'});await p.clock.runFor(50);
