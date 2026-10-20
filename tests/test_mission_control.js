@@ -66,8 +66,9 @@ test('météo absente, source ancienne, offline et simulation : pas de feu vert'
  assert.equal(simulated.weather.demo,true);assert.notEqual(simulated.vigilance,comparison.reasons[0]);
 });
 test('point météo unique : pas de température inventée à l’arrivée',()=>{
- const one=G.preview({...trip,seq:trip.seq.slice(0,1)},o);
- const p=M.project({car,trip,scene:one});
+ const singleTrip={...trip,seq:trip.seq.slice(0,1)};
+ const one=G.preview(singleTrip,o);
+ const p=M.project({car,trip:singleTrip,scene:one});
  assert(p.weather.departure);assert.equal(p.weather.arrival,null);
 });
 test('un point météo final manquant ne devient jamais la météo à destination',()=>{
