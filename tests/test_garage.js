@@ -102,4 +102,21 @@ test('météo de démonstration ne devient pas une prévision réelle ou une com
  const s=G.preview(trip([point(hour())]),{...options,sourceFor:()=>({...source(),mode:'demo'})});
  assert.equal(s.demo,true);assert.equal(s.status,'DÉMO · SIMULATION');assert.equal(s.complete,false);assert.equal(s.animate,false);
 });
+test('V1.4.1 : profils i20 N et 308 réellement distincts, vectoriels et sans image réseau',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../src/app/garage-scene.js'),'utf8'),scope={};
+ vm.createContext(scope);vm.runInContext(source+';this.draw=garageCarSvg;',scope);
+ const sport=scope.draw('sport'),touring=scope.draw('touring'),generic=scope.draw('generic'),drive=scope.draw('sport',true);
+ for(const svg of [sport,touring,generic]){
+  assert.match(svg,/viewBox="0 0 264 100"/);
+  assert.match(svg,/aria-hidden="true"/);
+  assert.equal((svg.match(/class="twin-wheel"/g)||[]).length,2);
+  assert.doesNotMatch(svg,/<(?:image|foreignObject|script)\b|https?:\/\//);
+ }
+ assert.match(sport,/data-shape="sport"/);assert.match(touring,/data-shape="touring"/);
+ assert.match(sport,/twin-spoiler/);assert.match(sport,/twin-sport-accent/);
+ assert.match(touring,/twin-chrome/);assert.doesNotMatch(touring,/twin-spoiler/);
+ assert.notEqual(sport,touring);
+ assert.match(drive,/^<g class="twin-car-svg twin-car-sport"/);
+ assert.doesNotMatch(drive,/<svg/);
+});
 console.log(n+'/'+n+' scénarios Garage validés');
