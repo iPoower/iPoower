@@ -51,8 +51,9 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
      const result=await p.evaluate(()=>{
       const root=GARAGE_LIVE.root,map=GARAGE_LIVE.map,slider=root.querySelector('input');slider.focus();const f=GARAGE_LIVE.fraction;
       map.setZoom(12);const zoom=map.getZoom();const original=JSON.stringify(__lrTrip);
-      for(let i=0;i<12;i++)renderGarage();M.liveRouteFixture.hs[0].T=10;__lrRender();
-      return{sameRoot:root===GARAGE_LIVE.root,sameMap:map===GARAGE_LIVE.map,focus:document.activeElement===slider,f:GARAGE_LIVE.fraction,expected:f,zoom:map.getZoom(),expectedZoom:zoom,unchanged:original===JSON.stringify(__lrTrip)};
+      for(let i=0;i<12;i++)renderGarage();const unchanged=original===JSON.stringify(__lrTrip);
+      M.liveRouteFixture.hs[0].T=10;const updated=JSON.stringify(__lrTrip);__lrRender();
+      return{sameRoot:root===GARAGE_LIVE.root,sameMap:map===GARAGE_LIVE.map,focus:document.activeElement===slider,f:GARAGE_LIVE.fraction,expected:f,zoom:map.getZoom(),expectedZoom:zoom,unchanged:unchanged&&updated===JSON.stringify(__lrTrip)};
      });
      assert(result.sameRoot&&result.sameMap&&result.focus&&result.unchanged,JSON.stringify(result));assert.equal(result.f,result.expected);assert.equal(result.zoom,result.expectedZoom);
     });
