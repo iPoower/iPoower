@@ -9,6 +9,7 @@ const GARAGE_LIVE = { root: null, trip: null, car: null, context: null, route: n
 function garageLiveHtml() {
   return '<section id="garageLiveRoute" aria-label="LIVE ROUTE · cockpit du trajet" data-mode="simulation" data-live="false" data-compact="false">' +
     '<div class="lr-top"><b class="lr-title">LIVE ROUTE</b><span class="lr-mode" role="status">SIMULATION · PRÉPARATION</span></div>' +
+    '<p class="lr-signal" data-lr-value="signal" role="status">SIMULATION · aucune position réelle suivie.</p>' +
     '<div class="lr-hud"><div><small>DISTANCE RESTANTE</small><b data-lr-value="distance">—</b><small>km · estimation du tracé</small></div>' +
     '<div><small data-lr-value="eta-label">ARRIVÉE PRÉVUE</small><b data-lr-value="eta">—</b><small>trafic non inclus</small></div>' +
     '<div><small data-lr-value="progress-label">PARCOURS SIMULÉ</small><b data-lr-value="percent">—</b><small data-lr-value="sector">secteurs de distance</small></div></div>' +
@@ -26,6 +27,15 @@ function garageLiveHtml() {
     '<p class="lr-trust" data-lr-value="gps-trust">Simulation indépendante de la position réelle.</p>' +
     '<p class="lr-trust" data-lr-value="road">Circulation : couverture partielle, selon les sources disponibles.</p>' +
     '<p class="lr-trust">Carte OSRM · secteurs de distance, pas des temps de passage mesurés. Le suivi nécessite l’app ouverte. Manipulations à l’arrêt ou par un passager.</p></section>';
+}
+// Signal d'état indépendant des calculs GPS : aucune donnée de mouvement inventée.
+function garageLiveSignal(simulated, gps, lastGood) {
+  if (simulated) return { kind: 'simulation', text: 'SIMULATION · lecture fictive du parcours, sans position GPS réelle.' };
+  if (gps && gps.valid) return { kind: 'active', text: 'GPS ACTIF · position validée sur le tracé, actualisation tant que la page reste ouverte.' };
+  const reason = gps && gps.reason || 'Position indisponible';
+  if (reason === 'Position non actualisée' || reason === 'Déplacement GPS à confirmer')
+    return { kind: 'stale', text: 'GPS À ACTUALISER · ' + (lastGood ? 'dernière position figée ; ' : '') + 'distance et ETA courantes masquées.' };
+  return { kind: 'unavailable', text: 'GPS INDISPONIBLE OU À CONFIRMER · ' + reason + ' · aucune progression réelle déduite.' };
 }
 function garageLiveText(selector, value) {
   const node = GARAGE_LIVE.root && GARAGE_LIVE.root.querySelector(selector);
@@ -97,6 +107,9 @@ function garageLiveRefresh() {
   const m = LiveRoute.metrics(r, state.fraction, { simulated, now: Date.now(), startedAt });
   const value = (k, v) => garageLiveText('[data-lr-value="' + k + '"]', v);
   garageLiveData('mode', s.mode); garageLiveData('live', !simulated && s.gps.valid); garageLiveData('compact', s.compact);
+  const signal = garageLiveSignal(simulated, s.gps, s.lastGood);
+  garageLiveData('signal', signal.kind);
+  garageLiveText('[data-lr-value="signal"]', signal.text);
   const compact = s.root.querySelector('[data-lr=compact]');
   if (compact.getAttribute('aria-pressed') !== String(s.compact)) compact.setAttribute('aria-pressed', String(s.compact));
   garageLiveText('.lr-mode', simulated ? (DEMO.on ? 'DÉMO · ' : '') + 'SIMULATION · ' + (s.playing ? 'LECTURE ACCÉLÉRÉE' : 'PRÉPARATION') : s.gps.reason);
