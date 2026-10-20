@@ -19,7 +19,7 @@ const server=http.createServer((req,res)=>{
  const origin='http://127.0.0.1:'+server.address().port;
  let checks=0;
  try{
-  for(const [name,engine] of [['chromium',chromium],['webkit',webkit]]){
+  for(const [name,engine] of [['chromium',chromium],['webkit',webkit]].filter(([name])=>!process.env.BROWSER || process.env.BROWSER===name)){
    const browser=await engine.launch({headless:true});
    try{
     for(const width of [320,375,414,1440]){
@@ -56,6 +56,6 @@ const server=http.createServer((req,res)=>{
     }
    }finally{await browser.close();}
   }
-  console.log('GARAGE LIFE navigateur : '+checks+' scénarios Chromium/WebKit (320/375/414/1440).');
+  console.log('GARAGE LIFE navigateur : '+checks+' scénarios navigateur ciblés (320/375/414/1440).');
  }finally{await new Promise(resolve=>server.close(resolve));}
 })().catch(e=>{console.error(e);process.exitCode=1;});
