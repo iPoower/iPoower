@@ -33,6 +33,8 @@ const server=http.createServer((req,res)=>{
      assert.match(await page.locator('#history').innerText(),/Vidange/);
      await page.locator('#choose-b').click();
      assert.match(await page.locator('#car-info').innerText(),/Véhicule B/);
+     // Le panneau échéances est fermé par défaut ; tester son ouverture réelle.
+     await page.locator('.ux-fold:has(#deadlines) > summary').click();
      assert.match(await page.locator('#deadlines').innerText(),/2027/);
      const form=page.locator('#operation-form');
      await form.locator('[name=date]').fill('2026-10-18');
