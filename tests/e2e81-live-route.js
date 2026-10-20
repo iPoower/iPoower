@@ -33,6 +33,8 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
      assert.equal(await p.locator('#garageLiveRoute .lr-vehicle-icon .twin-car-svg').count(),1);
      assert.equal(await p.locator('#garageLiveRoute .lr-sectors span').count(),3);
      assert.match(await p.locator('#garageLiveRoute').innerText(),/SIMULATION.*PRÉPARATION/s);
+     assert.equal(await p.locator('#garageLiveRoute').getAttribute('data-signal'),'simulation');
+     assert.match(await p.locator('.lr-signal').innerText(),/sans position GPS réelle/);
      assert.match(await p.locator('[data-lr-value=weather]').innerText(),/Visibilité réduite prévue/);
      assert.equal(await p.locator('.lr-weather-icon').count(),3);
     });
@@ -99,6 +101,8 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
       FIX={lat:48.005,lon:2,acc:10,ts:Date.now(),speed:null};__lrRender();garageLiveRefresh();
      });
      assert.equal(await p.locator('#garageLiveRoute').getAttribute('data-live'),'true');
+     assert.equal(await p.locator('#garageLiveRoute').getAttribute('data-signal'),'active');
+     assert.match(await p.locator('.lr-signal').innerText(),/GPS ACTIF/);
      assert.match(await p.locator('.lr-mode').innerText(),/GPS LIVE/);
      assert(await p.locator('[data-lr=simulation]').isDisabled());assert(await p.locator('#garageRouteTime').isDisabled());
      const initial=await p.evaluate(()=>GARAGE_LIVE.gps.fraction);await p.clock.runFor(10000);
@@ -111,11 +115,14 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
      await p.clock.runFor(16000);
      assert.equal(await p.locator('#garageLiveRoute').getAttribute('data-live'),'false');
      assert.match(await p.locator('.lr-mode').innerText(),/Position non actualisée/);
+     assert.equal(await p.locator('#garageLiveRoute').getAttribute('data-signal'),'stale');
+     assert.match(await p.locator('.lr-signal').innerText(),/position figée.*ETA courantes masquées/);
      assert.equal(await p.locator('[data-lr-value=distance]').innerText(),'—');assert.equal(await p.locator('[data-lr-value=eta]').innerText(),'—');
      const later=await p.evaluate(()=>{const p=GARAGE_LIVE.marker.getLatLng();return[p.lat,p.lng];});assert.deepEqual(later,point);
     });
     await check(dev+' · GPS imprécis et hors route restent explicites',async()=>{
      await p.evaluate(()=>{FIX={...FIX,acc:2000,ts:Date.now()};garageLiveRefresh();});assert.match(await p.locator('.lr-mode').innerText(),/imprécis/);
+     assert.equal(await p.locator('#garageLiveRoute').getAttribute('data-signal'),'unavailable');
      await p.clock.runFor(3000);await p.evaluate(()=>{GARAGE_LIVE.lastGood=null;FIX={...FIX,acc:10,lat:48.01,lon:2.03,ts:Date.now()};garageLiveRefresh();});
      assert.match(await p.locator('.lr-mode').innerText(),/hors du tracé/);assert.equal(await p.locator('#garageLiveRoute').getAttribute('data-live'),'false');
     });
