@@ -59,6 +59,9 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
     });
     await check(dev+' · vue compacte et thèmes sans débordement sur 320, 375, 414 et PC',async()=>{
      await p.locator('[data-lr=compact]').click();assert.equal(await p.locator('#garageLiveRoute').getAttribute('data-compact'),'true');
+     await p.evaluate(()=>{UI.view='meteo';renderGarage();UI.view='garage';__lrRender();});
+     await p.locator('#garageLiveRoute').scrollIntoViewIfNeeded();await p.waitForFunction(()=>!!GARAGE_LIVE.map);
+     assert.equal(await p.locator('[data-lr=compact]').getAttribute('aria-pressed'),'true');
      await p.locator('[data-lr=compact]').click();
      for(const theme of ['dark','light'])for(const width of [320,375,414,1280]){
       await p.setViewportSize({width,height:896});await p.evaluate(theme=>{document.documentElement.dataset.theme=theme;},theme);

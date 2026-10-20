@@ -97,6 +97,8 @@ function garageLiveRefresh() {
   const m = LiveRoute.metrics(r, state.fraction, { simulated, now: Date.now(), startedAt });
   const value = (k, v) => garageLiveText('[data-lr-value="' + k + '"]', v);
   garageLiveData('mode', s.mode); garageLiveData('live', !simulated && s.gps.valid); garageLiveData('compact', s.compact);
+  const compact = s.root.querySelector('[data-lr=compact]');
+  if (compact.getAttribute('aria-pressed') !== String(s.compact)) compact.setAttribute('aria-pressed', String(s.compact));
   garageLiveText('.lr-mode', simulated ? (DEMO.on ? 'DÉMO · ' : '') + 'SIMULATION · ' + (s.playing ? 'LECTURE ACCÉLÉRÉE' : 'PRÉPARATION') : s.gps.reason);
   value('distance', m.remaining == null ? '—' : f1(m.remaining));
   value('percent', m.percent == null ? '—' : m.percent + '%');
