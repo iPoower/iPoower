@@ -11,6 +11,30 @@
     "suite": "e2e59-brief-gum.js",
     "result": "onglet Analyse ouvert depuis la ligne Gomme du briefing"
   },
+  "cal-origin-apply": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "origine conservée dans le coffre, recalcul via effLegs"
+  },
+  "cal-origin-close": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "brouillon abandonné sans changement du trajet"
+  },
+  "cal-origin-gps": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "position ponctuelle sans modifier GPS ou lieu météo"
+  },
+  "cal-origin-open": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "sélecteur attaché à une occurrence et un sens"
+  },
+  "cal-origin-pick": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "adresse de départ retenue dans le brouillon"
+  },
+  "cal-origin-search": {
+    "suite": "e2e68-calendar-origin.js",
+    "result": "recherche d’adresse avec réponses anciennes rejetées"
+  },
   "caldirect": {
     "suite": "e2e32.js",
     "result": "enchaînement agenda direct recalculé"
@@ -30,6 +54,46 @@
   "day": {
     "suite": "e2e49-interactions.js",
     "result": "jour de trajet sélectionné"
+  },
+  "day-car": {
+    "suite": "e2e55-day-context.js",
+    "result": "voiture active persistante"
+  },
+  "day-destination": {
+    "suite": "e2e55-day-context.js",
+    "result": "destination canonique temporaire"
+  },
+  "day-type": {
+    "suite": "e2e55-day-context.js",
+    "result": "journée explicite datée"
+  },
+  "debrief-condition": {
+    "suite": "e2e56-debrief.js",
+    "result": "conditions rencontrées sélectionnées explicitement"
+  },
+  "debrief-grip": {
+    "suite": "e2e56-debrief.js",
+    "result": "adhérence ressentie facultative sélectionnée"
+  },
+  "debrief-later": {
+    "suite": "e2e56-debrief.js",
+    "result": "débrief différé sans retour inventé"
+  },
+  "debrief-open": {
+    "suite": "e2e56-debrief.js",
+    "result": "débrief repris ou modifié dans le journal"
+  },
+  "debrief-save": {
+    "suite": "e2e56-debrief.js",
+    "result": "observation enregistrée une seule fois dans le journal local"
+  },
+  "debrief-snooze": {
+    "suite": "e2e56-debrief.js",
+    "result": "questionnaires silencieux jusqu’à minuit Paris sans supprimer les trajets"
+  },
+  "decision-car-change": {
+    "suite": "e2e55-day-context.js",
+    "result": "le raccourci Changer du bandeau Race Control ouvre le panneau Aujourd’hui sur le sélecteur de voiture active"
   },
   "demo": {
     "suite": "e2e40-network.js",
@@ -67,6 +131,10 @@
     "suite": "e2e49-interactions.js",
     "result": "origine du trajet enregistrée"
   },
+  "garage-quick": {
+    "suite": "e2e71-garage.js",
+    "result": "focus sur relevé du bon véhicule dans les Paramètres ; aucune écriture au clic"
+  },
   "geo-add": {
     "suite": "e2e49-interactions.js",
     "result": "destination ajoutée ou limite expliquée"
@@ -86,6 +154,10 @@
   "gps-forget": {
     "suite": "e2e50-geolocation.js",
     "result": "suivi arrêté, anciens callbacks ignorés"
+  },
+  "lab-drive-forget": {
+    "suite": "e2e43-analyse.js",
+    "result": "oubli volontaire du dernier roulage par voiture ; refus pendant un trajet actif"
   },
   "labcar": {
     "suite": "e2e49-interactions.js",
@@ -110,6 +182,18 @@
   "locs-toggle": {
     "suite": "e2e49-interactions.js",
     "result": "liste des lieux dépliée"
+  },
+  "mount-cancel": {
+    "suite": "e2e43-analyse.js",
+    "result": "brouillon abandonné sans changement de pneus"
+  },
+  "mount-open": {
+    "suite": "e2e43-analyse.js",
+    "result": "confirmation de montage sans modifier la monte active"
+  },
+  "mount-save": {
+    "suite": "e2e43-analyse.js",
+    "result": "date réelle validée, jeu hiver activé et jeu démonté conservé"
   },
   "nocode": {
     "suite": "e2e49-interactions.js",
@@ -147,6 +231,18 @@
     "suite": "e2e50-geolocation.js",
     "result": "confirmation terminée, aucun départ inventé"
   },
+  "place-toggle": {
+    "suite": "e2e57-place-compact.js",
+    "result": "lieu confirmé compact, départ direct, corrections et météo déployées par Modifier, fermeture après confirmation"
+  },
+  "race-speak": {
+    "suite": "e2e70-f1-pure.js",
+    "result": "lecture vocale du briefing uniquement après un geste explicite et si navigateur compatible"
+  },
+  "race-toggle": {
+    "suite": "e2e70-f1-pure.js",
+    "result": "six modules F1 activés individuellement dans les écrans existants, sans changer les trajets"
+  },
   "rcenter": {
     "suite": "e2e49-interactions.js",
     "result": "radar recentré"
@@ -179,6 +275,34 @@
     "suite": "e2e49-interactions.js",
     "result": "lecture / pause radar"
   },
+  "station-alerts": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "surveillance activée volontairement et franchissements dédupliqués"
+  },
+  "station-close": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "station fermée avec restauration de la vue, du focus et du défilement"
+  },
+  "station-mini": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "mini-fenêtre native sur demande, refus et absence gérés"
+  },
+  "station-notifications": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "permission Windows demandée après clic seulement ; refus et absence gérés"
+  },
+  "station-open": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "station PC ouverte à la demande ; UX et données intactes"
+  },
+  "station-return": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "retour à Race Control depuis la mini-fenêtre"
+  },
+  "station-silent": {
+    "suite": "e2e74-weather-watch.js",
+    "result": "alertes visuelles conservées sans notification système"
+  },
   "tip": {
     "suite": "e2e49-interactions.js",
     "result": "astuce suivante"
@@ -198,6 +322,34 @@
   "trip-cancel-undo": {
     "suite": "e2e34.js",
     "result": "annulation restaurée"
+  },
+  "trip-dest-known": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "destination connue retenue dans le brouillon TRAJET"
+  },
+  "trip-dest-pick": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "suggestion d’adresse retenue dans le brouillon TRAJET"
+  },
+  "trip-dest-search": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "adresse recherchée via le géocodeur partagé ou erreur visible"
+  },
+  "trip-origin-pick": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "suggestion d’origine retenue dans le brouillon TRAJET"
+  },
+  "trip-origin-search": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "origine manuelle recherchée via le géocodeur partagé ou erreur visible"
+  },
+  "trip-plan": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "trajet manuel créé ou mis à jour dans le contexte canonique"
+  },
+  "trip-plan-cancel": {
+    "suite": "e2e59-trip-tab.js",
+    "result": "trajet manuel annulé et planning automatique restauré"
   },
   "trip-preview": {
     "suite": "e2e34.js",
@@ -219,168 +371,20 @@
     "suite": "e2e49-interactions.js",
     "result": "onglet affiché et état aria-pressed"
   },
-  "winter-sap-apply": {
-    "suite": "e2e49-interactions.js",
-    "result": "fiche 580667 appliquée au plan hiver sans modifier la monte active"
-  },
   "wday": {
     "suite": "e2e49-interactions.js",
     "result": "jours enregistrés, dernier jour protégé"
-  },
-  "withcode": {
-    "suite": "e2e49-interactions.js",
-    "result": "formulaire de déverrouillage rétabli"
-  },
-  "day-type": {
-    "suite": "e2e55-day-context.js",
-    "result": "journée explicite datée"
-  },
-  "day-car": {
-    "suite": "e2e55-day-context.js",
-    "result": "voiture active persistante"
-  },
-  "day-destination": {
-    "suite": "e2e55-day-context.js",
-    "result": "destination canonique temporaire"
-  },
-  "debrief-condition": {
-    "suite": "e2e56-debrief.js",
-    "result": "conditions rencontrées sélectionnées explicitement"
-  },
-  "debrief-grip": {
-    "suite": "e2e56-debrief.js",
-    "result": "adhérence ressentie facultative sélectionnée"
-  },
-  "debrief-save": {
-    "suite": "e2e56-debrief.js",
-    "result": "observation enregistrée une seule fois dans le journal local"
-  },
-  "debrief-later": {
-    "suite": "e2e56-debrief.js",
-    "result": "débrief différé sans retour inventé"
-  },
-  "race-toggle": {
-    "suite": "e2e70-f1-pure.js",
-    "result": "six modules F1 activés individuellement dans les écrans existants, sans changer les trajets"
-  },
-  "race-speak": {
-    "suite": "e2e70-f1-pure.js",
-    "result": "lecture vocale du briefing uniquement après un geste explicite et si navigateur compatible"
-  },
-  "debrief-snooze": {
-    "suite": "e2e56-debrief.js",
-    "result": "questionnaires silencieux jusqu’à minuit Paris sans supprimer les trajets"
-  },
-  "debrief-open": {
-    "suite": "e2e56-debrief.js",
-    "result": "débrief repris ou modifié dans le journal"
-  },
-  "mount-open": {
-    "suite": "e2e43-analyse.js",
-    "result": "confirmation de montage sans modifier la monte active"
-  },
-  "mount-save": {
-    "suite": "e2e43-analyse.js",
-    "result": "date réelle validée, jeu hiver activé et jeu démonté conservé"
-  },
-  "mount-cancel": {
-    "suite": "e2e43-analyse.js",
-    "result": "brouillon abandonné sans changement de pneus"
   },
   "weather-details": {
     "suite": "e2e43-analyse.js",
     "result": "détails météo ouverts depuis le résumé Pneus"
   },
-  "place-toggle": {
-    "suite": "e2e57-place-compact.js",
-    "result": "lieu confirmé compact, départ direct, corrections et météo déployées par Modifier, fermeture après confirmation"
+  "winter-sap-apply": {
+    "suite": "e2e49-interactions.js",
+    "result": "fiche 580667 appliquée au plan hiver sans modifier la monte active"
   },
-  "decision-car-change": {
-    "suite": "e2e55-day-context.js",
-    "result": "le raccourci Changer du bandeau Race Control ouvre le panneau Aujourd’hui sur le sélecteur de voiture active"
-  },
-  "lab-drive-forget": {
-    "suite": "e2e43-analyse.js",
-    "result": "oubli volontaire du dernier roulage par voiture ; refus pendant un trajet actif"
-  },
-  "trip-dest-search": {
-    "suite": "e2e59-trip-tab.js",
-    "result": "adresse recherchée via le géocodeur partagé ou erreur visible"
-  },
-  "trip-origin-search": {
-    "suite": "e2e59-trip-tab.js",
-    "result": "origine manuelle recherchée via le géocodeur partagé ou erreur visible"
-  },
-  "trip-dest-pick": {
-    "suite": "e2e59-trip-tab.js",
-    "result": "suggestion d’adresse retenue dans le brouillon TRAJET"
-  },
-  "trip-origin-pick": {
-    "suite": "e2e59-trip-tab.js",
-    "result": "suggestion d’origine retenue dans le brouillon TRAJET"
-  },
-  "trip-dest-known": {
-    "suite": "e2e59-trip-tab.js",
-    "result": "destination connue retenue dans le brouillon TRAJET"
-  },
-  "trip-plan": {
-    "suite": "e2e59-trip-tab.js",
-    "result": "trajet manuel créé ou mis à jour dans le contexte canonique"
-  },
-  "trip-plan-cancel": {
-    "suite": "e2e59-trip-tab.js",
-    "result": "trajet manuel annulé et planning automatique restauré"
-  },
-  "cal-origin-open": {
-    "suite": "e2e68-calendar-origin.js",
-    "result": "sélecteur attaché à une occurrence et un sens"
-  },
-  "cal-origin-close": {
-    "suite": "e2e68-calendar-origin.js",
-    "result": "brouillon abandonné sans changement du trajet"
-  },
-  "cal-origin-search": {
-    "suite": "e2e68-calendar-origin.js",
-    "result": "recherche d’adresse avec réponses anciennes rejetées"
-  },
-  "cal-origin-pick": {
-    "suite": "e2e68-calendar-origin.js",
-    "result": "adresse de départ retenue dans le brouillon"
-  },
-  "cal-origin-gps": {
-    "suite": "e2e68-calendar-origin.js",
-    "result": "position ponctuelle sans modifier GPS ou lieu météo"
-  },
-  "cal-origin-apply": {
-    "suite": "e2e68-calendar-origin.js",
-    "result": "origine conservée dans le coffre, recalcul via effLegs"
-  },
-  "station-open": {
-    "suite": "e2e74-weather-watch.js",
-    "result": "station PC ouverte à la demande ; UX et données intactes"
-  },
-  "station-close": {
-    "suite": "e2e74-weather-watch.js",
-    "result": "station fermée avec restauration de la vue, du focus et du défilement"
-  },
-  "station-alerts": {
-    "suite": "e2e74-weather-watch.js",
-    "result": "surveillance activée volontairement et franchissements dédupliqués"
-  },
-  "station-silent": {
-    "suite": "e2e74-weather-watch.js",
-    "result": "alertes visuelles conservées sans notification système"
-  },
-  "station-mini": {
-    "suite": "e2e74-weather-watch.js",
-    "result": "mini-fenêtre native sur demande, refus et absence gérés"
-  },
-  "station-return": {
-    "suite": "e2e74-weather-watch.js",
-    "result": "retour à Race Control depuis la mini-fenêtre"
-  },
-  "station-notifications": {
-    "suite": "e2e74-weather-watch.js",
-    "result": "permission Windows demandée après clic seulement ; refus et absence gérés"
+  "withcode": {
+    "suite": "e2e49-interactions.js",
+    "result": "formulaire de déverrouillage rétabli"
   }
 }
