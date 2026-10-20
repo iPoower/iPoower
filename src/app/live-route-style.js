@@ -5,6 +5,12 @@ const LIVE_ROUTE_STYLE = `<style>
 #garageLiveRoute .lr-title{font:700 18px var(--f-disp);letter-spacing:.1em;color:var(--accent)}
 #garageLiveRoute .lr-mode{font:10px var(--f-mono);color:var(--fg2);padding:5px 8px;border:1px solid var(--line2);border-radius:3px;overflow-wrap:anywhere;max-width:100%}
 #garageLiveRoute[data-live=true] .lr-mode{color:var(--go-t);border-color:var(--go-t)}
+#garageLiveRoute .lr-signal{margin:0;padding:8px 10px;border-left:3px solid var(--line2);background:var(--panel2);font:11px/1.6 var(--f-mono);color:var(--fg2);overflow-wrap:anywhere}
+#garageLiveRoute[data-signal=active] .lr-signal{border-left-color:var(--go-t);color:var(--go-t)}
+#garageLiveRoute[data-signal=stale] .lr-signal{border-left-color:var(--cau-t)}
+#garageLiveRoute[data-signal=stale] .lr-mode{border-color:var(--cau-t);color:var(--cau-t)}
+#garageLiveRoute[data-signal=unavailable] .lr-signal{border-left-color:var(--risk)}
+
 #garageLiveRoute .lr-map-shell{position:relative;min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:4px;isolation:isolate}
 #garageLiveRoute .lr-map{height:310px;width:100%;background:var(--bg);z-index:0}
 #garageLiveRoute[data-compact=true] .lr-map{height:180px}
