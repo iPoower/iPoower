@@ -28,6 +28,8 @@ const Garage = (() => {
         eta: validDate(p.etaFrom) ? p.etaFrom : null,
         etaTo: validDate(p.etaTo) ? p.etaTo : null,
         appointment: validDate(p.appointmentDate) ? p.appointmentDate : null,
+        estimate: validDate(p.date) ? p.date : null,
+        ordered: validDate(p.ordered) ? p.ordered : null,
         confirmed: !!p.appointmentConfirmed
       } : null;
       return {
