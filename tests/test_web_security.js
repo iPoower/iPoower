@@ -12,7 +12,8 @@ test('CSP assemblée : uniquement empreintes de scripts, aucune origine/CDN ou e
 });
 test('en-têtes dédiés prêts : frame-ancestors/nosniff/Referrer/Permissions ; aucune annonce sur GitHub Pages', () => {
   const headers = fs.readFileSync(path.join(built, '_headers'), 'utf8');
-  for (const text of ["frame-ancestors 'none'", 'X-Frame-Options: DENY', 'X-Content-Type-Options: nosniff', 'Referrer-Policy: no-referrer', 'Permissions-Policy: geolocation=(self)']) assert(headers.includes(text));
+  for (const text of ["frame-ancestors 'none'", 'X-Frame-Options: DENY', 'X-Content-Type-Options: nosniff', 'Referrer-Policy: no-referrer', 'Permissions-Policy: geolocation=(self)', 'Cross-Origin-Opener-Policy: same-origin', 'Cross-Origin-Resource-Policy: same-origin']) assert(headers.includes(text));
+  assert(headers.split('\n').every(line => line.length <= 2000), 'limite de ligne Cloudflare Pages');
   for (const name of ASSETS) assert(fs.existsSync(path.join(built, 'vendor/leaflet', name)));
 });
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-web-assets-'));
