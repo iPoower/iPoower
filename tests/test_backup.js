@@ -63,6 +63,20 @@ check('aller-retour : signalements et journal de validation préservés sans cha
   const legacy = B.restorePlan({ app: 'twrc', v: 2, settings: {}, durable: {} }, at, phone);
   assert.equal(JSON.parse(legacy.writes['twrc.reports.v1'])[0].kind, 'rain', 'ancien export sans météo : le téléphone conserve ses observations');
 });
+check('fusion météo : refuser un dépassement plutôt que supprimer des observations', () => {
+  for (const [key, limit] of [['reports', 30], ['shadow', 200]]) {
+    const row = i => key === 'reports' ? { kind: 'rain', at: at + i, lat: 0, lon: 0, place: 'Lieu fictif' }
+      : { at: at + i, loc: 'Lieu fictif', v1: 0, v2: 1, obs: 1, src: 'utilisateur' };
+    const weather = { [key]: Array.from({ length: limit }, (_, i) => row(i)) };
+    const archive = B.make({ settings: {}, weather, at: new Date(at).toISOString() });
+    const current = { weather: { [key]: [row(limit)] } }, before = JSON.stringify({ archive, current });
+    assert.equal(B.restorePlan(archive, at, current), null, key + ' : aucun plan partiel autorisé');
+    assert.equal(JSON.stringify({ archive, current }), before, 'les deux sources restent intactes');
+    const identical = B.restorePlan(archive, at, { weather });
+    assert(identical, 'les doublons exacts ne dépassent pas la capacité');
+    assert.deepEqual(JSON.parse(identical.writes[key === 'reports' ? 'twrc.reports.v1' : 'twrc.shadow.v1']), json(weather[key]));
+  }
+});
 check('restauration V2 remplace le canonique et purge les états dérivés', () => {
   const d = B.make({ settings: { configured: 0, x: 1 }, view: 'meteo', context: state, tyreTherm: {}, tripCancel: {}, at: new Date(at).toISOString() });
   const p = B.restorePlan(d, at + 1000); assert(p);
