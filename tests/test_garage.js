@@ -137,4 +137,10 @@ test('V1.5 manga : encrage, détourage, roues à l’échelle et rotation limit�
  assert.match(scope.draw('sport'),/class="twin-caliper"/);assert.doesNotMatch(scope.draw('touring'),/twin-caliper/);
  for(const cls of ['twin-roof','twin-skirt','twin-diffuser']){assert.equal((scope.draw('sport').match(new RegExp('class="'+cls+'"','g'))||[]).length,1,cls);assert.doesNotMatch(scope.draw('touring')+scope.draw('generic'),new RegExp(cls));}
 });
+test('plan hiver : montage estimé et commande repris de la fiche, dates invalides ignorées',()=>{
+ const r=G.overview([{id:'w',tire:{type:'summer'},plan:{on:1,date:'2026-11-26',ordered:'2026-09-17',etaFrom:'',appointmentDate:''}}],'w',()=>null)[0];
+ assert.equal(r.winterPlan.estimate,'2026-11-26');assert.equal(r.winterPlan.ordered,'2026-09-17');assert.equal(r.winterPlan.eta,null);assert.equal(r.winterPlan.appointment,null);
+ const bad=G.overview([{id:'x',tire:{type:'summer'},plan:{on:1,date:'26/11',ordered:'bientôt'}}],'x',()=>null)[0];
+ assert.equal(bad.winterPlan.estimate,null);assert.equal(bad.winterPlan.ordered,null);
+});
 console.log(n+'/'+n+' scénarios Garage validés');

@@ -82,6 +82,12 @@ let count = 0;
       assert.match(await cockpit.textContent(), /Engineering Cockpit/);
       assert.match(await cockpit.textContent(), /MESURÉE/); assert.match(await cockpit.textContent(), /ESTIMÉE/);
       assert.match(await cockpit.textContent(), /DOCUMENTÉE/); assert.match(await cockpit.textContent(), /INCONNUE/);
+      // Domaines sans aucune donnée (jamais mesurables sans capteur) : regroupés et repliés en une ligne.
+      const unmeasured = cockpit.locator('.ec-unmeasured');
+      assert.match(await unmeasured.locator(':scope > summary').innerText(), /Non mesurables sans capteur[\s\S]*Accélération[\s\S]*Stabilité/);
+      assert.equal(await unmeasured.evaluate(e => e.open), false);
+      assert.deepEqual(await unmeasured.locator('[data-ec-domain]').evaluateAll(xs => xs.map(x => x.dataset.ecDomain)).then(ids => ids.filter(id => ['acceleration', 'stability'].includes(id)).sort()), ['acceleration', 'stability']);
+      await unmeasured.locator(':scope > summary').click();
       for (const id of ['acceleration', 'braking', 'cornering', 'stability', 'aquaplaning', 'tyres']) {
         const domain = cockpit.locator(`[data-ec-domain="${id}"]`);
         await domain.locator(':scope > summary').click();
