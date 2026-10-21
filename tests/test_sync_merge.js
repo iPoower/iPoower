@@ -129,6 +129,12 @@ check('journal brut de 61/120 trajets et de 91/365 jours, toutes versions conser
     assert.equal(M.values(reloaded, tel).values[J.KEY], reloaded[J.KEY]);
   }
 });
+check('une propriété length ne peut pas supprimer une liste de véhicules', () => {
+  const pc = settings(), tel = settings({ cars: [] });
+  assert.throws(() => M.settings(pc, tel, {}, { 'cars.length': T }), /Indice de liste interdit/);
+  assert.equal(pc.cars.length, 2);
+  assert.throws(() => M.settings(pc, settings({ cars: [car('voitureA'), car('voitureA')] })), /ambiguës/);
+});
 check('mesures et véhicules incomplets : refus, aucune copie nettoyée silencieusement', () => {
   for (const change of [{ odo: {} }, { odo: [null] }, { tire: { treads: {} } }])
     assert.throws(() => M.settings(settings(), settings({ cars: [car('voitureA', change), car('voitureB')] })), /incompl[eè]t|invalide/);

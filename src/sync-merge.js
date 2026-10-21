@@ -37,7 +37,10 @@ const SyncMerge = (() => {
       throw new Error('Chemin de réglage interdit : fusion refusée.');
     return keys;
   }
-  function get(o, path) { return parts(path).reduce((t, k) => own(t, k) ? t[k] : undefined, o); }
+  function arrayKey(o, k) {
+    if (Array.isArray(o) && !/^(0|[1-9][0-9]{0,5})$/.test(k)) throw new Error('Indice de liste interdit : fusion refusée.');
+  }
+  function get(o, path) { return parts(path).reduce((t, k) => { arrayKey(t, k); return own(t, k) ? t[k] : undefined; }, o); }
   function validate(value, depth = 0) {
     if (depth > 64) throw new Error('Copie trop imbriquée : fusion refusée.');
     if (value && typeof value === 'object') for (const k of Object.keys(value)) {
@@ -50,6 +53,7 @@ const SyncMerge = (() => {
     for (let i = 0; i < p.length; i++) {
       const k = p[i];
       if (k === '__proto__' || k === 'constructor' || k === 'prototype') throw new Error('Chemin interdit.');
+      arrayKey(t, k);
       if (i === p.length - 1) { t[k] = value; break; }
       if (!own(t, k) || !obj(t[k]) && !Array.isArray(t[k])) t[k] = /^\d+$/.test(p[i + 1]) ? [] : Object.create(null);
       t = t[k];
@@ -72,6 +76,7 @@ const SyncMerge = (() => {
     const out = clone(local), report = { fromRemote: [], conflicts: [], added: { odo: 0, treads: 0, calib: 0, days: 0 } };
     if (!obj(remote)) return { settings: out, stamps: { ...stampsLocal }, report };
     if (!obj(stampsLocal) || !obj(stampsRemote) || !Array.isArray(local.cars) || !Array.isArray(remote.cars)) throw new Error('Réglages incomplets : fusion refusée.');
+    for (const cars of [local.cars, remote.cars]) if (cars.some(c => !obj(c) || typeof c.id !== 'string' || !c.id) || new Set(cars.map(c => c.id)).size !== cars.length) throw new Error('Identités de véhicules ambiguës : fusion refusée.');
     const blocked = new Set();
     const paths = [...new Set([...Object.keys(local.edits || {}), ...Object.keys(remote.edits || {}),
       ...Object.keys(stampsLocal), ...Object.keys(stampsRemote)])].sort();   // parent avant enfant
