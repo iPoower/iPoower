@@ -78,7 +78,7 @@ const CSP=[`default-src 'self'`,`script-src ${[...inline,deferred].map(sha).join
   `connect-src ${CONNECT.join(' ')}`,`worker-src 'self'`,`manifest-src 'self'`,`object-src 'none'`,`base-uri 'none'`,`form-action 'self'`,`frame-src 'none'`].join('; ');
 w(OUT+'/index.html',page.replace('<head>','<head><meta http-equiv="Content-Security-Policy" content="'+CSP+'">'));
 // en-têtes prêts pour une origine dédiée (Cloudflare Pages) : la même politique, plus frame-ancestors et les en-têtes impossibles en <meta>
-w(OUT+'/_headers',`/*\n  Content-Security-Policy: ${CSP}; frame-ancestors 'none'\n  X-Frame-Options: DENY\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=()\n  Strict-Transport-Security: max-age=31536000; includeSubDomains\n  Cross-Origin-Opener-Policy: same-origin\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n`);
+w(OUT+'/_headers',`/*\n  Content-Security-Policy: ${CSP}; frame-ancestors 'none'\n  X-Frame-Options: DENY\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=()\n  Strict-Transport-Security: max-age=31536000; includeSubDomains\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Resource-Policy: same-origin\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n`);
 webAssets.copy(ROOT,OUT);
 ['sw.js','engine.js','tiredb.json','relay.js','evidence.js'].forEach(f=>w(OUT+'/'+f,r('src/'+f)));
 ['apple-touch-icon.png','icon-192.png','icon-512.png'].forEach(f=>fs.copyFileSync(path.join(ROOT,'src/static',f),path.join(ROOT,OUT,f)));
