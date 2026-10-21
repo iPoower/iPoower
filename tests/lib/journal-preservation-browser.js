@@ -156,8 +156,12 @@ module.exports = async function run(b) {
       await p.evaluate(() => { Storage.prototype.setItem = storageSet; });
     });
     await check('Exporter suffit : copie enregistrée, journal réactivé, sources intégrales conservées', async () => {
-      let download;
-      await Promise.all([p.waitForNavigation({ timeout: 60000 }), (async () => { download = await exportFile(p); await wait(p, 12); })()]); await opened(p);
+      // WebKit signale le téléchargement comme une navigation : attendre le rechargement par un marqueur de page.
+      await p.evaluate(() => { window.__avantRechargement = 1; });
+      const download = await exportFile(p);
+      let reloaded = false;
+      for (let i = 0; i < 60 && !reloaded; i++) { await wait(p, 2); reloaded = await p.evaluate(() => !window.__avantRechargement && typeof TWRC_VAULT !== 'undefined').catch(() => false); }
+      assert(reloaded, 'rechargement après réactivation du journal'); await opened(p);
       const copy = fs.readFileSync(await download.path());
       const archive = await p.evaluate(async ([text, pass]) => JournalArchive.capture(await SessionVault.readRecovery(text, pass, crypto)), [copy.toString(), PW]);
       assert(containsSources(archive), 'la copie exportée contient toutes les sources');
