@@ -24,7 +24,7 @@ function garageMaintHtml(m, c) {
     '<small>' + (o.kmPerDay ? 'Rythme ≈ ' + Math.round(o.kmPerDay).toLocaleString('fr-FR') + ' km/j' : 'Rythme : deux relevés espacés d’au moins 7 jours nécessaires') + ' · rappel chaque semaine</small>' +
     (o.due ? '<button type="button" class="btn sm" data-act="garage-quick" data-car="' + esc(c.id) + '" data-garage-target="odo">Relever le compteur</button>' : '') + '</li>';
   return '<div class="garage-checks garage-maint" data-garage-maint="' + esc(c.id) + '"><h4>🔧 Entretien</h4><ul>' + revision + control + counter + '</ul>' +
-    '<button type="button" class="btn sm garage-maint-edit" data-act="goset-cfg">Renseigner l’entretien</button></div>';
+    '<button type="button" class="btn sm garage-maint-edit" data-act="garage-quick" data-car="' + esc(c.id) + '" data-garage-target="maintenance">Renseigner l’entretien</button></div>';
 }
 function garageDate(d) {
   return /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? esc(d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4)) : 'date non renseignée';

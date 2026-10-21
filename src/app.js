@@ -4101,10 +4101,10 @@ document.addEventListener('click', async e => {
     // par les champs historiques du panneau Paramètres.
     const i = S.cars.findIndex(c => c && c.id === t.dataset.car);
     const key = t.dataset.garageTarget;
-    if (i < 0 || !['odo', 'tread', 'pressure'].includes(key) || LOCKED()) {
+    if (i < 0 || !['odo', 'tread', 'pressure', 'maintenance'].includes(key) || LOCKED()) {
       commandFeedback(t, 'Fiche indisponible'); return;
     }
-    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : '#f-cars-' + i + '-tire-pchk-av';
+    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : key === 'maintenance' ? '#f-cars-' + i + '-maint-rev-d' : '#f-cars-' + i + '-tire-pchk-av';
     const d = $('#settings'); if (!d) { commandFeedback(t, 'Paramètres indisponibles'); return; }
     d.open = true;
     // Réutiliser le formulaire déjà présent : un autre raccourci ne doit pas

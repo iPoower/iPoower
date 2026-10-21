@@ -359,7 +359,7 @@ async function twinScenario(browser){
       assert.equal(await p.locator('#settings').evaluate(x=>x.open),true);
       assert(await p.locator('#settingsBody [data-bind="cars.0.tire.type"]').count());
     });
-    await check(dev+' · Garage : trois raccourcis ouvrent les champs réels sans modifier la fiche',async()=>{
+    await check(dev+' · Garage : relevés et entretien ouvrent les champs du bon véhicule sans modifier la fiche',async()=>{
       const snapshot=await p.evaluate(()=>JSON.stringify(S.cars));
       // Premier accès depuis un panneau fermé et vidé par le rendu paresseux.
       await p.evaluate(()=>{document.getElementById('settings').open=false;renderSettings();});
@@ -367,14 +367,14 @@ async function twinScenario(browser){
       await p.evaluate(async()=>{await TWRC_VAULT.flush();});
       const sealed=await p.evaluate(()=>TWRC_RAW_STORAGE.getItem(SessionVault.VAULT));
       for(const i of [0,1]){
-        for(const [kind,id] of [['odo','odo-'+i],['tread','trd-'+i],['pressure','f-cars-'+i+'-tire-pchk-av']]){
+        for(const [kind,id] of [['odo','odo-'+i],['tread','trd-'+i],['pressure','f-cars-'+i+'-tire-pchk-av'],['maintenance','f-cars-'+i+'-maint-rev-d']]){
           await tap('#secGarage .garage-car:nth-child('+(i+1)+') [data-act=garage-quick][data-garage-target='+kind+']');
           assert.equal(await p.locator('#settings').evaluate(x=>x.open),true);
           assert.equal(await p.evaluate(id=>document.activeElement===document.getElementById(id),id),true,'raccourci non focalisé : '+id);
           if(kind==='odo')await p.locator('#'+id).fill(String(123456+i));
           if(kind==='tread')await p.locator('#'+id).fill('5.5');
           assert.equal(await p.locator('#odo-'+i).inputValue(),String(123456+i),'brouillon compteur conservé');
-          if(kind==='pressure'){
+          if(kind==='pressure'||kind==='maintenance'){
             assert.equal(await p.locator('#trd-'+i).inputValue(),'5.5','brouillon profondeur conservé');
             assert(await p.locator('#f-cars-'+i+'-tire-pchk-ar').count());
           }
