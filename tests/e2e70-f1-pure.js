@@ -57,6 +57,7 @@ const active = p => p.evaluate(() => ({
           });
           assert(placement.top >= 0 && placement.top + placement.height < placement.viewport,
             'bandeau F1 doit se trouver dans le premier écran du document');
+          if (dev === 'iphone') assert(placement.height <= 60, 'bandeau F1 sur une seule ligne au téléphone : ' + placement.height + ' px');
           assert.equal(await p.locator('#f1-panel-raceEngineer').evaluate(x => x.open), true,
             'Race Engineer est ouvert par défaut, puis repliable');
           assert.equal(await p.locator('#secBrief > .mod-h + .f1-extension').count(), 1,

@@ -2,7 +2,7 @@
 'use strict';
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),assert=require('node:assert/strict');
 const code=fs.readFileSync(path.join(__dirname,'../src/garage.js'),'utf8');
-const c={Number,Array,Object,String,Set,JSON};vm.createContext(c);vm.runInContext(code+';this.G=Garage;',c);
+const c={Number,Array,Object,String,Set,JSON,Date,Math};vm.createContext(c);vm.runInContext(code+';this.G=Garage;',c);
 const G=c.G;let n=0;
 const test=(name,fn)=>{fn();n++;console.log('✅ '+name)};
 test('aucune voiture : aucun inventaire fictif',()=>assert.equal(G.overview(null,null).length,0));
@@ -142,5 +142,37 @@ test('plan hiver : montage estimé et commande repris de la fiche, dates invalid
  assert.equal(r.winterPlan.estimate,'2026-11-26');assert.equal(r.winterPlan.ordered,'2026-09-17');assert.equal(r.winterPlan.eta,null);assert.equal(r.winterPlan.appointment,null);
  const bad=G.overview([{id:'x',tire:{type:'summer'},plan:{on:1,date:'26/11',ordered:'bientôt'}}],'x',()=>null)[0];
  assert.equal(bad.winterPlan.estimate,null);assert.equal(bad.winterPlan.ordered,null);
+});
+test('entretien : rien de saisi → rien d’inventé, compteur à relever',()=>{
+ const m=G.maintenance({id:'a'},{today:'2026-10-21'});
+ assert.equal(m.revision.status,'unknown');assert.equal(m.revision.missing,'last');assert.equal(m.revision.dueDate,null);assert.equal(m.revision.dueKm,null);
+ assert.equal(m.ct.next,null);assert.equal(m.ct.status,'unknown');assert.equal(m.odo.last,null);assert.equal(m.odo.due,true);
+ assert.throws(()=>G.maintenance({},{today:'21/10/2026'}),/date du jour/);
+});
+test('entretien : révision au premier atteint (date ou km), km projetés seulement avec un rythme',()=>{
+ const car={odo:[{d:'2026-10-16',km:81147}],maint:{rev:{d:'2026-03-15',km:72000,everyKm:20000,everyMonths:12}}},before=JSON.stringify(car);
+ const a=G.maintenance(car,{today:'2026-10-21'});
+ assert.equal(a.revision.dueDate,'2027-03-15');assert.equal(a.revision.dueKm,92000);assert.equal(a.revision.kmLeft,10853);
+ assert.equal(a.revision.kmDate,null,'aucun rythme : pas de date km');assert.equal(a.revision.dateDaysLeft,145);assert.equal(a.revision.status,'ok');
+ const b=G.maintenance(car,{today:'2026-10-21',kmPerDay:120});
+ assert.equal(b.revision.kmDate,'2027-01-14');assert.equal(b.revision.daysLeft,85,'le premier atteint (km) gouverne');
+ assert.equal(JSON.stringify(car),before,'aucune mutation');
+ assert.equal(G.maintenance({maint:{rev:{d:'2026-03-15',km:72000}}},{today:'2026-10-21'}).revision.missing,'interval');
+});
+test('entretien : bientôt à 30 j ou 1 500 km, en retard une fois dépassé',()=>{
+ const rev=(d,km,odo)=>G.maintenance({odo:[{d:'2026-10-20',km:odo}],maint:{rev:{d,km,everyKm:15000,everyMonths:12}}},{today:'2026-10-21'}).revision.status;
+ assert.equal(rev('2025-11-15',70000,72000),'soon');assert.equal(rev('2025-10-01',70000,72000),'late');
+ assert.equal(rev('2026-06-01',60000,73600),'soon');assert.equal(rev('2026-06-01',60000,75200),'late');
+});
+test('contrôle technique : 2 ans après le dernier, date limite déclarée prioritaire, fin de mois sûre',()=>{
+ assert.deepEqual([G.maintenance({maint:{ct:{d:'2025-06-30'}}},{today:'2026-10-21'}).ct].map(c=>[c.next,c.source,c.status]),[['2027-06-30','two-years','ok']]);
+ const d=G.maintenance({maint:{ct:{d:'2025-06-30',next:'2026-11-10'}}},{today:'2026-10-21'}).ct;assert.deepEqual([d.next,d.source,d.status,d.daysLeft],['2026-11-10','declared','soon',20]);
+ assert.equal(G.maintenance({maint:{ct:{d:'2024-02-29'}}},{today:'2026-10-21'}).ct.next,'2026-02-28');
+ assert.equal(G.maintenance({maint:{ct:{d:'2024-02-29'}}},{today:'2026-10-21'}).ct.status,'late');
+});
+test('compteur : relevé hebdomadaire dû à partir de 7 jours, relevé le plus récent par date',()=>{
+ const o=(d,today)=>G.maintenance({odo:[{d:'2026-01-01',km:999999},{d,km:1000}]},{today}).odo;
+ assert.equal(o('2026-10-15','2026-10-21').due,false);assert.equal(o('2026-10-14','2026-10-21').due,true);
+ assert.equal(o('2026-10-14','2026-10-21').last.km,1000);assert.equal(o('2026-10-14','2026-10-21').ageDays,7);
 });
 console.log(n+'/'+n+' scénarios Garage validés');

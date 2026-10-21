@@ -1,6 +1,6 @@
 /* Garage : projection PURE des voitures déjà enregistrées.
  * Une source de vérité : S.cars + tyreState() ; aucune donnée mécanique inventée,
- * ni nouveau stockage, ni diagnostic OBD. Les dates sont celles déclarées.
+ * ni stockage hors de la fiche, ni diagnostic OBD. Les dates sont celles déclarées.
  */
 'use strict';
 const Garage = (() => {
@@ -121,5 +121,43 @@ const Garage = (() => {
           (!car.tyre || !car.tyre.pressure || !car.tyre.pressure.checked) && 'Contrôle de pression non daté', !valid && 'Évaluation du trajet indisponible ou incomplète'].filter(Boolean) };
     });
   }
-  return { overview, silhouette, preview, comparison, daylight };
+  // Entretien déclaré : révision, contrôle technique et relevé du compteur. Les échéances viennent uniquement des
+  // dates, kilométrages et intervalles saisis (aucun intervalle constructeur inventé) ; le CT suit la règle des 2 ans
+  // sauf date limite déclarée. Le rythme km/jour n'est utilisé que s'il est calculable à partir des relevés.
+  const SOON_DAYS = 30, SOON_KM = 1500, CT_MONTHS = 24;
+  const pos = x => val(x) != null && x > 0 ? x : null;
+  const dayDiff = (a, b) => Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 864e5);
+  const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+  function addMonths(d, months) {
+    const [y, m, day] = d.split('-').map(Number), t = new Date(Date.UTC(y, m - 1 + months, 1));
+    t.setUTCDate(Math.min(day, new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate()));
+    return t.toISOString().slice(0, 10);
+  }
+  const status = (days, km) => days == null && km == null ? 'unknown'
+    : (days != null && days < 0) || (km != null && km <= 0) ? 'late'
+    : (days != null && days <= SOON_DAYS) || (km != null && km <= SOON_KM) ? 'soon' : 'ok';
+  function maintenance(car, { today, kmPerDay = null, odoEveryDays = 7 } = {}) {
+    if (!validDate(today)) throw new Error('date du jour requise');
+    const m = car && car.maint || {}, r = m.rev || {}, ct = m.ct || {};
+    const readings = (car && Array.isArray(car.odo) ? car.odo : []).filter(x => x && val(x.km) != null && validDate(x.d))
+      .slice().sort((a, b) => String(a.d).localeCompare(String(b.d)));
+    const last = readings.length ? readings[readings.length - 1] : null, rate = pos(kmPerDay);
+    const odoAge = last ? dayDiff(last.d, today) : null;
+    const odo = { last: last ? { d: last.d, km: last.km } : null, ageDays: odoAge, everyDays: odoEveryDays, due: !last || odoAge >= odoEveryDays, kmPerDay: rate };
+    const revLast = validDate(r.d) ? { d: str(r.d), km: val(r.km) } : null, everyKm = pos(r.everyKm), everyMonths = pos(r.everyMonths);
+    const dueDate = revLast && everyMonths ? addMonths(revLast.d, everyMonths) : null;
+    const dueKm = revLast && revLast.km != null && everyKm ? revLast.km + everyKm : null;
+    const kmLeft = dueKm != null && last ? dueKm - last.km : null;
+    const kmDate = kmLeft != null && kmLeft > 0 && rate ? addDays(last.d, Math.round(kmLeft / rate)) : null;
+    const days = [dueDate, kmDate].filter(Boolean).map(d => dayDiff(today, d));
+    const revision = { last: revLast, everyKm, everyMonths, dueDate, dueKm, kmLeft, kmDate, dateDaysLeft: dueDate ? dayDiff(today, dueDate) : null,
+      daysLeft: days.length ? Math.min(...days) : null, status: revLast ? status(days.length ? Math.min(...days) : null, kmLeft) : 'unknown',
+      missing: !revLast ? 'last' : !everyKm && !everyMonths ? 'interval' : null };
+    const ctNext = validDate(ct.next) ? str(ct.next) : validDate(ct.d) ? addMonths(str(ct.d), CT_MONTHS) : null;
+    const ctDays = ctNext ? dayDiff(today, ctNext) : null;
+    const control = { last: validDate(ct.d) ? str(ct.d) : null, next: ctNext, source: validDate(ct.next) ? 'declared' : ctNext ? 'two-years' : null,
+      daysLeft: ctDays, status: status(ctDays, null) };
+    return { revision, ct: control, odo };
+  }
+  return { overview, silhouette, preview, comparison, daylight, maintenance };
 })();
