@@ -60,6 +60,20 @@ const layout = p => p.evaluate(() => {
         if (!c.items.length) assert.match(c.text, /pas une garantie de sécurité/);
         assert(!/Lieu courant à confirmer/.test(c.text.replace(/Lieu · [^\n]*/, '')), 'pas de répétition du lieu');
       });
+      await check(dev + ' · « Quelle voiture prendre ? » : usure de la fiche affichée comme dans Garage, jamais « aucune contrainte »', async () => {
+        const r = await p.evaluate(() => {
+          const car = S.cars[0], before = S.cars.map(c => JSON.stringify(c.tire));
+          try {
+            S.cars.forEach(c => { if (!hasTires(c)) c.tire.type = 'allseason'; });   // comparaison possible : deux voitures équipées
+            Object.assign(car.tire, { tread: 2.6, treadAv: 2.6, treadAr: 5.5, treadEst: 1 }); renderCompare();
+            const card = [...document.querySelectorAll('#secCmp .cmpc')].find(c => c.textContent.includes(car.short));
+            return { text: card ? card.innerText : '', garage: tyreStateOf(car).maint.filter(m => m.k === 'tread').map(m => m.text), why: document.querySelector('#secCmp .why')?.innerText || '' };
+          } finally { S.cars.forEach((c, i) => { c.tire = JSON.parse(before[i]); }); renderCompare(); }
+        });
+        assert(r.garage.length === 1 && r.text.includes(r.garage[0]), JSON.stringify(r));
+        assert.match(r.text, /Profondeur estimée : à confirmer avec une jauge/); assert.doesNotMatch(r.text, /Aucune contrainte particulière/);
+        assert.match(r.why, /profondeur que tu as saisie/); assert.doesNotMatch(r.why, /usure réelle/);
+      });
       await check(dev + ' · cohérence : sans voiture active, « Voiture active à choisir » (jamais « pneus inconnus ») et aucun feu vert acquis si données dégradées', async () => {
         const r = await p.evaluate(() => ({ reasons: DECISION_LAST.confidence.reasons, conf: DECISION_LAST.confidence.level, car: !!appActiveCar() }));
         if (!r.car) { assert(r.reasons.includes('Voiture active à choisir') || r.conf === 0, JSON.stringify(r)); assert(!r.reasons.includes('Pneus montés à confirmer'), JSON.stringify(r)); }
