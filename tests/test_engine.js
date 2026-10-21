@@ -99,6 +99,17 @@ for(const k of ['froid','pluie','neige','doux']){
 }
 
 {
+  // « À retenir » de la carte de décision : uniquement des phrases déjà présentes dans le récit, jamais un conseil nouveau
+  const p=A.makeDemoPayload('froid',loc),m=A.makeModel(p,'demo',loc),seq=A.seqOf(m,m.nowI,12),sm=A.summarize(seq);
+  for(const c of cars){ const n=A.narrate(c,A.windowAssess(c,seq,'card'),sm,'actuellement');
+    assert(Array.isArray(n.advice),'advice est une liste'); n.advice.forEach(t=>assert(n.body.includes(t),'conseil repris du récit : '+t)); }
+  const summer=A.narrate(cars[0],A.windowAssess(cars[0],seq,'card'),sm,'actuellement');
+  assert(summer.advice.some(t=>/pneus été sont hors de leur plage de confiance/.test(t)),'froid + pneus été : la conclusion pneus est reprise');
+  const mild=A.makeDemoPayload('doux',loc),mm=A.makeModel(mild,'demo',loc),ms=A.seqOf(mm,mm.nowI,12),msm=A.summarize(ms);
+  assert.deepEqual(A.narrate(cars[0],A.windowAssess(cars[0],ms,'card'),msm,'actuellement').advice,[],'conditions douces : rien à retenir');
+  console.log('✅ récit pneus : conseils « À retenir » extraits du récit, vides par temps doux');
+}
+{
   const p=A.makeDemoPayload('froid',loc),m=A.makeModel(p,'demo',loc),seq=A.seqOf(m,m.nowI,24),sm=A.summarize(seq);
   const al=A.computeAlerts(m,cars,{rainThr:5},{});
   assert(sm.Tmin<=1.5&&al.t0,'scénario froid : alerte proche de 0 °C attendue');
