@@ -143,7 +143,10 @@ module.exports = async function run(b) {
     const copy = fs.readFileSync(await download.path());
     await check('fichier externe chiffré ; sélection incorrecte refusée sans écriture', async () => {
       assert(!copy.toString().includes('Lieu A')); assert(!copy.toString().includes(PW));
-      await p.setInputFiles('#journalCopy', { name: 'mauvaise-copie.json', mimeType: 'application/json', buffer: Buffer.concat([copy, Buffer.from(' ')]) });
+      // Copie altérée (chiffré modifié) : illisible avec le code, donc refusée. Une copie simplement plus ancienne
+      // que le coffre reste acceptée si elle contient tout le journal (test_journal_preservation.js).
+      const broken = JSON.parse(copy.toString()); broken.c = (broken.c[0] === 'A' ? 'B' : 'A') + broken.c.slice(1);
+      await p.setInputFiles('#journalCopy', { name: 'mauvaise-copie.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(broken)) });
       await wait(p);
       assert.match(await p.locator('#bkMsg').textContent(), /Activation refusée/);
       assert(await p.evaluate(() => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) === beforeMigration));

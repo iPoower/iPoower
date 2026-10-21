@@ -141,7 +141,17 @@ module.exports = (async () => {
     await assert.rejects(a.activateJournal(copy + ' '), /copie/); assert.equal(raw.getItem(V.VAULT), copy);
     raw.refused = true; await assert.rejects(a.activateJournal(copy)); raw.refused = false;
     assert.equal(raw.getItem(V.VAULT), copy);
-    await a.activateJournal(copy); assert.equal(JSON.parse(raw.getItem(V.VAULT)).v, 3);
+    // Copie plus ancienne que le coffre (réglage, météo ou GPS réécrits depuis l'export) : acceptée si elle
+    // s'ouvre avec le code de l'appareil et contient tout le journal ; refusée sinon, sans aucune écriture.
+    a.store.setItem('twrc.settings.v1', JSON.stringify({ configured: 1, cars: [], ordinary: 'réécrit après la copie' })); await a.flush();
+    const rewritten = raw.getItem(V.VAULT); assert.notEqual(rewritten, copy);
+    await assert.rejects(a.activateJournal(copy, 'code-fictif-incorrect'), /copie est illisible/); assert.equal(raw.getItem(V.VAULT), rewritten);
+    const fewerRaw = storage({ 'twrc.key': PASS, 'twrc.settings.v1': JSON.stringify({ configured: 1, cars: [] }), [J.CONTEXT]: JSON.stringify({ v: 1, debrief: { entries: source.slice(0, 100) } }) });
+    const fewer = V.create({ raw: fewerRaw, session: storage(), crypto: webcrypto, locks: { request: (n, o, fn) => fn() }, target: null, now: () => T });
+    await fewer.boot(); const fewerCopy = await fewer.recoverySnapshot();
+    await assert.rejects(a.activateJournal(fewerCopy, PASS), /ne contient pas \d+ trajets du journal actuel/); assert.equal(raw.getItem(V.VAULT), rewritten);
+    await a.activateJournal(copy, PASS); assert.equal(JSON.parse(raw.getItem(V.VAULT)).v, 3);
+    assert.equal(JSON.parse((await V.readRecovery(raw.getItem(V.VAULT), PASS, webcrypto))['twrc.settings.v1']).ordinary, 'réécrit après la copie', 'les données plus récentes que la copie sont conservées');
     const values = await V.readRecovery(copy, PASS, webcrypto);
     assert.deepEqual(JSON.parse(values[J.CONTEXT]).debrief.entries, source);
     assert(sourceBytes.every(r => J.capture(values).records.includes(r)), 'copie pré-migration récupérable et exhaustive');

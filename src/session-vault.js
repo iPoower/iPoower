@@ -509,11 +509,22 @@ const SessionVault = (() => {
       expire(); if (st.mode !== 'vault') throw new Error('Déverrouille cet appareil.');
       const epoch = st.epoch, mem = st.mem, guard = () => guardSession(epoch, mem);
       const sealed = raw.getItem(VAULT);
-      if (fileText !== sealed) throw new Error('La copie ne correspond plus au coffre courant. Exporte une nouvelle copie.');
       const data = await latest(guard);
       const sent = new Map([...mem.dirty].map(k => [k, mem.map.has(k) ? mem.map.get(k) : null]));
       const pending = { ...data.values };
       sent.forEach((v, k) => { if (v == null) delete pending[k]; else pending[k] = v; });
+      // La copie n'a pas à être identique octet par octet : météo, GPS et caches réécrivent le coffre
+      // toutes les quelques minutes. Elle doit s'ouvrir avec le code de cet appareil et contenir
+      // chaque trajet du journal actuel, la seule donnée que l'activation protège.
+      if (fileText !== sealed) {
+        let copy;
+        try { copy = await readRecovery(fileText, pass, crypto); }
+        catch (e) { throw new Error('La copie est illisible avec le code de cet appareil. Exporte une nouvelle copie.'); }
+        guard();
+        const kept = new Set(JournalArchive.capture(copy).records);
+        const missing = JournalArchive.capture(pending).records.filter(r => !kept.has(r)).length;
+        if (missing) throw new Error('La copie ne contient pas ' + missing + (missing > 1 ? ' trajets' : ' trajet') + ' du journal actuel. Exporte une nouvelle copie.');
+      }
       const next = JournalArchive.protect(data.values, pending, true);
       await writeVerified(next, st.salt, guard, false); guard();
       sent.forEach((v, k) => { if ((mem.map.has(k) ? mem.map.get(k) : null) === v) mem.dirty.delete(k); });
