@@ -67,6 +67,8 @@ const check = async (name, fn) => { await fn(); n++; console.log('✅ ' + name);
       new Uint8Array([239, 187, 191, 123, 125]), new Uint8Array([0xff]), bytes('{"a":1e999}')])
       await reject(codec.inspect(malformed), 'MALFORMED_FILE');
     await reject(codec.inspect(bytes({ app: 'twrc-backup', v: 2 })), 'LEGACY_REEXPORT_REQUIRED');
+    await reject(codec.inspect(bytes({ ...original, app: 'twrc-backup' })), 'INVALID_ENVELOPE');
+    await reject(codec.inspect(bytes({ app: 'twrc-backup', format: 'future-format' })), 'UNSUPPORTED_FORMAT');
   });
   await check('le métier refuse, ne nettoie pas et ne convertit jamais un coffre brut', async () => {
     assert.throws(() => P.create(), e => e.code === 'CONSERVATION_BLOCKED');
