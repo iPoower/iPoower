@@ -49,6 +49,39 @@ async function precisionReference(browser,dev){
  }finally{await s.c.close();}
 }
 // Profondeur saisie dans « Modifier la fiche » : datée comme un relevé rapide, puis visible avec sa date dans Garage et Analyse.
+// Entretien déclaré dans la fiche (révision, CT) et rappel hebdomadaire du compteur, visibles dans Garage et conservés au rechargement.
+async function maintenanceScenario(browser){
+ const s=await session(browser,{at:'2026-10-21T06:00:00+02:00',dev:'iphone'}),p=s.p;
+ try{
+  await p.evaluate(()=>{const c=S.cars[0];c.odo=[{d:'2026-10-01',km:80000},{d:'2026-10-11',km:81000}];saveSettings();USER_STORE.state.dayContext.activeCarId=c.id;UI.view='garage';renderAll();});
+  await s.settle(2);
+  await check('entretien · rien de saisi : non renseigné, aucun intervalle deviné ; compteur de 10 j à relever',async()=>{
+   const t=await p.locator('[data-garage-maint]').first().innerText();
+   assert.match(t,/Révision · dernière non renseignée/);assert.match(t,/Contrôle technique · dernier non renseigné/);
+   assert.match(t,/Compteur à mettre à jour · relevé il y a 10 j/);assert.match(t,/Rythme ≈ 100 km\/j/);
+   assert.equal(await p.locator('[data-garage-maint] [data-act=garage-quick][data-garage-target=odo]').count()>=1,true);
+  });
+  await p.evaluate(()=>{document.getElementById('settings').open=true;renderSettings(true);});await s.settle(1);
+  const fill=async(id,v)=>{await p.locator('#'+id).fill(v);await p.locator('#'+id).dispatchEvent('change');await s.settle(1);};
+  await fill('f-cars-0-maint-rev-d','2026-03-15');await fill('f-cars-0-maint-rev-km','72000');
+  await fill('f-cars-0-maint-rev-everyKm','10000');await fill('f-cars-0-maint-rev-everyMonths','12');
+  await fill('f-cars-0-maint-ct-d','2024-11-05');
+  await p.evaluate(()=>{UI.view='garage';renderAll();});await s.settle(2);
+  await check('entretien · révision au premier atteint (km à ton rythme), CT à 2 ans bientôt, valeurs de la fiche',async()=>{
+   const t=await p.locator('[data-garage-maint]').first().innerText();
+   assert.match(t,/Révision bientôt · avant le 15\/03\/2027 ou 82\s000 km/);assert.match(t,/1\s000 km restants/);assert.match(t,/km atteints vers le 21\/10\/2026/);
+   assert.match(t,/Contrôle technique bientôt · avant le 05\/11\/2026/);assert.match(t,/2 ans après le dernier/);
+   assert.deepEqual(await p.evaluate(()=>S.cars[0].maint),{rev:{d:'2026-03-15',km:72000,everyKm:10000,everyMonths:12},ct:{d:'2024-11-05',next:''}});
+   assert.deepEqual(await p.evaluate(()=>['cars.0.maint.rev.d','cars.0.maint.ct.d'].every(k=>S.edits[k])),true,'saisies protégées lors d’un nouveau préréglage');
+  });
+  await p.evaluate(()=>window.TWRC_VAULT&&TWRC_VAULT.flush());await p.reload();await s.settle(8);
+  await p.evaluate(()=>{UI.view='garage';renderAll();});await s.settle(2);
+  await check('entretien · conservé au rechargement (coffre chiffré)',async()=>{
+   assert.equal(await p.evaluate(()=>S.cars[0].maint.rev.everyKm),10000);
+   assert.match(await p.locator('[data-garage-maint]').first().innerText(),/avant le 15\/03\/2027/);
+  });
+ }finally{await s.c.close();}
+}
 async function ficheDepthScenario(browser){
  const s=await session(browser,{at:'2026-10-07T06:00:00+02:00',dev:'iphone'}),p=s.p;
  try{
@@ -283,7 +316,7 @@ async function twinScenario(browser){
       assert.match(await car.innerText(),/121\s?000 km|121.000 km/);
       assert.match(await car.innerText(),/Estimée, non mesurée/);
       assert.match(await car.innerText(),/Cible renseignée|Contrôle déclaré/);
-      assert.match(await car.innerText(),/Entretien mécanique : aucun carnet/);
+      assert.match(await car.innerText(),/Révision · dernière non renseignée/);
       await tap('#secGarage .garage-car:first-child .garage-plan > summary');
       assert.match(await car.innerText(),/01\/12\/2026/);
     });
@@ -375,6 +408,7 @@ async function twinScenario(browser){
   }
   await twinScenario(browser);
   await ficheDepthScenario(browser);
+  await maintenanceScenario(browser);
   await check('Garage · aucune erreur JS',async()=>assert.deepEqual(errors,[]));
  }finally{await browser.close();}
  console.log(n+'/'+n+' scénarios Garage PC/iPhone OK');
