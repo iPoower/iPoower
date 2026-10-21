@@ -139,32 +139,28 @@ module.exports = async function run(b) {
       await p.evaluate(() => { window.beforeMigration = TWRC_RAW_STORAGE.getItem(SessionVault.VAULT); });
       await settingsPanel(p);
     });
-    const download = await exportFile(p);
-    const copy = fs.readFileSync(await download.path());
-    await check('fichier externe chiffré ; sélection incorrecte refusée sans écriture', async () => {
-      assert(!copy.toString().includes('Lieu A')); assert(!copy.toString().includes(PW));
-      // Copie altérée (chiffré modifié) : illisible avec le code, donc refusée. Une copie simplement plus ancienne
-      // que le coffre reste acceptée si elle contient tout le journal (test_journal_preservation.js).
-      const broken = JSON.parse(copy.toString()); broken.c = (broken.c[0] === 'A' ? 'B' : 'A') + broken.c.slice(1);
-      await p.setInputFiles('#journalCopy', { name: 'mauvaise-copie.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(broken)) });
-      await wait(p);
-      assert.match(await p.locator('#bkMsg').textContent(), /Activation refusée/);
-      assert(await p.evaluate(() => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) === beforeMigration));
+    await check('coffre : plus de bouton « Vérifier la copie », consigne Exporter seule', async () => {
+      assert.equal(await p.locator('#journalCopy').count(), 0);
+      assert.match(await p.locator('#settings').innerText(), /Appuie sur Exporter : la copie est enregistrée et le journal est réactivé/);
     });
-    await check('quota pendant activation : copie et coffre source intacts', async () => {
+    await check('quota pendant la réactivation : copie exportée, coffre source intact, message explicite', async () => {
       await p.evaluate(() => {
         window.storageSet = Storage.prototype.setItem;
         Storage.prototype.setItem = function(k, v) { if (k === SessionVault.VAULT) throw new DOMException('Quota fictif', 'QuotaExceededError'); return storageSet.call(this, k, v); };
       });
-      await p.setInputFiles('#journalCopy', { name: 'copie-verifiee.json', mimeType: 'application/json', buffer: copy }); await wait(p);
-      assert.match(await p.locator('#bkMsg').textContent(), /Activation refusée/);
+      const download = await exportFile(p); await wait(p);
+      const copy = fs.readFileSync(await download.path());
+      assert(!copy.toString().includes('Lieu A')); assert(!copy.toString().includes(PW));
+      assert.match(await p.locator('#bkMsg').textContent(), /Copie exportée\. Journal non réactivé/);
       assert(await p.evaluate(() => TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) === beforeMigration));
       await p.evaluate(() => { Storage.prototype.setItem = storageSet; });
     });
-    await check('activation après réouverture exacte ; ancien lecteur bloqué ; sources intégrales conservées', async () => {
-      await Promise.all([p.waitForNavigation({ timeout: 60000 }), (async () => {
-        await p.setInputFiles('#journalCopy', { name: 'copie-verifiee.json', mimeType: 'application/json', buffer: copy }); await wait(p, 12);
-      })()]); await opened(p);
+    await check('Exporter suffit : copie enregistrée, journal réactivé, sources intégrales conservées', async () => {
+      let download;
+      await Promise.all([p.waitForNavigation({ timeout: 60000 }), (async () => { download = await exportFile(p); await wait(p, 12); })()]); await opened(p);
+      const copy = fs.readFileSync(await download.path());
+      const archive = await p.evaluate(async ([text, pass]) => JournalArchive.capture(await SessionVault.readRecovery(text, pass, crypto)), [copy.toString(), PW]);
+      assert(containsSources(archive), 'la copie exportée contient toutes les sources');
       const state = await canonicalRows(p); assert.equal(state.entries.length, 120); assert.equal(state.version, 3);
       assert(containsSources(state.archive), 'comparaison indépendante aux sources avant projection');
       assert(await p.evaluate(() => !TWRC_VAULT.journalNeedsRecovery));
