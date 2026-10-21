@@ -190,8 +190,22 @@ async function apply(s, dev, mode) {
       await check(dev + ' · redémarrage hors ligne retrouve agenda chiffré et origine choisie', async () => { const x = await state(p); assert(await p.evaluate(() => navigator.onLine) === false); assert.equal(x.origins[x.id].go.choice.placeId, 'ami'); assert(x.pending); assert.equal(x.key, key); });
       ctl.offline(false); await p.evaluate(() => window.__setOriginOffline(false)); await s.settle(8); await ready(s);
       await check(dev + ' · reconnexion reprend le calcul depuis le départ choisi', async () => { const x = await state(p); assert(!x.pending); assert.equal(x.from, 'Lieu enregistré test'); assert(x.seq.length); });
-      ctl.fail(true); await apply(s, dev, 'saved:work'); await s.settle(3);
-      await check(dev + ' · route 503 garde le rendez-vous et masque les anciennes mesures', async () => { const x = await state(p); assert(x.pending); assert.equal(x.key, key); assert.equal(x.km, null); });
+      ctl.fail(true);
+      await tap(p, dev, '#secWx [data-act=cal-origin-open]'); await p.selectOption('#wxOriginMode', 'saved:work');
+      await p.locator('#wxOriginEditor [data-act=cal-origin-apply]').focus();
+      await check(dev + ' · une minute météo ne reconstruit pas le bouton de validation focalisé', async () => {
+        const stable = await p.evaluate(() => {
+          const root = document.querySelector('#secWx'), button = document.activeElement, observer = new MutationObserver(() => {});
+          observer.observe(root, { childList: true }); RAW[UI.loc].t -= 60000; tickLocalClock(true);
+          const changed = observer.takeRecords().length; observer.disconnect();
+          return { changed, focus: document.activeElement === button && button.isConnected };
+        });
+        assert.equal(stable.changed, 0, 'La projection détache les contrôles du formulaire'); assert(stable.focus);
+      });
+      await tap(p, dev, '#wxOriginEditor [data-act=cal-origin-apply]');
+      for (let i = 0; i < 30 && (await state(p)).editor; i++) await s.settle(1);
+      await s.settle(3);
+      await check(dev + ' · route 503 garde le rendez-vous et masque les anciennes mesures', async () => { const x = await state(p); assert(x.pending, JSON.stringify({ pending: x.pending, from: x.from, km: x.km, editor: x.editor, choice: x.origins[x.id] && x.origins[x.id].go && x.origins[x.id].go.choice })); assert.equal(x.key, key); assert.equal(x.km, null); });
       ctl.fail(false); await p.evaluate(() => window.dispatchEvent(new Event('online'))); await s.settle(5); await ready(s);
       await check(dev + ' · nouvelle connexion relance aussi un itinéraire précédemment en erreur', async () => assert.equal((await state(p)).km, 38.1));
       await p.evaluate(async () => {

@@ -5,8 +5,8 @@ function resumeGps() {
   gpsResumeAt = Date.now(); stopGps(); startWatch(LIVE.phase === 'active' || !FIX || FIX.acc > PLACE_ACC_GPS, true); locate(false, true);
 }
 // iOS peut abandonner le watch et une demande ponctuelle pendant la veille : recréer les deux à la reprise.
-document.addEventListener('visibilitychange', () => { if (document.hidden) { stopGps(); gpsResumeAt = -Infinity; } else { if (checkSessionExpiry()) return; tripCancelSchedulePurge(); renderAll(); resumeGps(); } });
-['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { if (checkSessionExpiry()) return; tripCancelSchedulePurge(); if (APP_CONTEXT.ready) renderAll(); resumeGps(); }));
+document.addEventListener('visibilitychange', () => { if (document.hidden) { stopGps(); gpsResumeAt = -Infinity; } else { if (checkSessionExpiry()) return; tripCancelSchedulePurge(); tickLocalClock(); resumeGps(); } });
+['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => { if (checkSessionExpiry()) return; tripCancelSchedulePurge(); if (APP_CONTEXT.ready) tickLocalClock(); resumeGps(); }));
 // actualisation automatique : toutes les 5 min tant que l'app est à l'écran, et dès le retour dans l'app
 // (vérification toutes les 30 s : résiste à la mise en veille des minuteurs par iOS)
 const AUTO_MS = 5 * 60e3;
@@ -105,17 +105,64 @@ function validateRecovery(reason) {
   return ok;
 }
 let LOCAL_CLOCK_MINUTE = null;
-function tickLocalClock() {
+let LOCAL_WEATHER_DEFERRED = false, LIVE_CLOCK_TIMER = null;
+function renderTemporalWeather() {
+  if (APP_CONTEXT.rendering) return;
+  const y = window.scrollY;
+  APP_CONTEXT.rendering = true;
+  try {
+    APP_CONTEXT.calendarLegs = null;
+    appRefreshContext({ persist: false }); recordJournal();
+    // Ne pas reconstruire un formulaire en cours de saisie. Sa projection reprend à la sortie du champ.
+    const project = (selector, draw) => {
+      const root = document.querySelector(selector), active = document.activeElement;
+      if (root && root.contains(active) && (active.matches('input,textarea,select,[contenteditable="true"]') || active.closest('form,#wxOriginEditor'))) { LOCAL_WEATHER_DEFERRED = true; return; }
+      draw();
+    };
+    renderStatus(); project('#srcline', renderSrc); renderNotice(); renderBanners();
+    if (UI.view === 'meteo') {
+      project('#secWx', renderWx); renderCurrent(); renderChartShell(); renderDays(); renderIce(); renderAlerts(); renderWeatherStationButton();
+    } else if (UI.view === 'analyse') project('#secLab', () => { renderLab(); labThermTick(false); });
+    else if (UI.view === 'trajet') project('#secTrip', () => { renderTripView(); renderTripSummary(); });
+    else if (UI.view === 'garage') renderGarage();
+    else if (UI.view === 'tenue') project('#secTenue', renderTenue);
+    else if (UI.view === 'pneus') {
+      project('#secCars', renderCars); renderWeatherLink(); renderDecisionCore(); renderBrfCore(); renderBrief(); renderCompare(); renderSeason(); renderAlerts();
+    }
+    renderWeatherStation();
+  } finally { APP_CONTEXT.rendering = false; }
+  if (Number.isFinite(y)) window.scrollTo({ top: y, behavior: 'instant' });
+}
+function tickLocalClock(force = false) {
+  updateLiveClock();
+  if (!APP_CONTEXT.ready) return;
   const minute = Math.floor(Date.now() / 60000);
-  if (minute === LOCAL_CLOCK_MINUTE) return;
+  if (!force && minute === LOCAL_CLOCK_MINUTE) { renderLiveStatus(); return; }
   LOCAL_CLOCK_MINUTE = minute;
   if (offlineNow()) markOfflineCache();
   if (!DEMO.on && APP_CONTEXT.ready) {
-    const y = typeof window !== 'undefined' ? window.scrollY : null;
-    rebuild(); renderAll();
-    if (Number.isFinite(y) && typeof window.scrollTo === 'function') window.scrollTo({ top: y, behavior: 'instant' });
-  }
+    rebuild(); renderTemporalWeather();
+  } else renderLiveStatus();
 }
+document.addEventListener('focusout', () => {
+  if (LOCAL_WEATHER_DEFERRED) { LOCAL_WEATHER_DEFERRED = false; setTimeout(() => { if (!document.hidden) tickLocalClock(true); }, 0); }
+});
+function stopLiveClock() { clearTimeout(LIVE_CLOCK_TIMER); LIVE_CLOCK_TIMER = null; }
+function startLiveClock() {
+  stopLiveClock();
+  if (document.hidden || checkSessionExpiry()) return;
+  const pulse = () => {
+    LIVE_CLOCK_TIMER = null;
+    if (document.hidden || checkSessionExpiry()) return;
+    updateLiveClock();
+    if (Math.floor(Date.now() / 60000) !== LOCAL_CLOCK_MINUTE) tickLocalClock();
+    LIVE_CLOCK_TIMER = setTimeout(pulse, 1000 - Date.now() % 1000);
+  };
+  pulse();
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopLiveClock(); else startLiveClock(); });
+window.addEventListener('pagehide', stopLiveClock);
+['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, startLiveClock));
 function autoTick() {
   if (document.hidden && !weatherStationRunning()) return;
   if (window.TWRC_VAULT && window.TWRC_VAULT.expired()) { checkSessionExpiry(); return; }
@@ -123,10 +170,13 @@ function autoTick() {
   calendarOriginPurge();
   if (USER_STORE.durability().status === 'degraded') validateRecovery('retry périodique');
   if (navigator.onLine !== false && Reliability.isDue(VER_CHECK_AT, AUTO_MS)) loadVersion(true); else enforceVersionCoherence();
-  if (!DEMO.on && expireLive()) { rebuild(); renderAll(); }   // reprise : la donnée vieillie est requalifiée avant toute requête
+  if (!DEMO.on && expireLive()) tickLocalClock(true);   // reprise : requalification avant toute requête
   if (DEMO.on || busy || (navigator.onLine === false)) return;
-  const ref = Math.max(lastOk || 0, lastTry || 0);
-  if (Reliability.isDue(ref, AUTO_MS)) weatherStationAutoRefresh().catch(() => { /* prochaine échéance du moteur */ });
+  const now = Date.now();
+  // Le cycle renouvelle aussi le relais et l’agenda : leur lecture reste indépendante du quota Open-Meteo.
+  // Le gestionnaire réseau applique lui-même la pause aux seules requêtes du fournisseur.
+  if (weatherCheckAt(lastOk, lastTry, 0, now, AUTO_MS) <= now)
+    weatherStationAutoRefresh().catch(() => { /* prochaine échéance du moteur */ });
 }
 setInterval(autoTick, 30e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(autoTick, 300); });
@@ -152,7 +202,14 @@ function registerSW() {
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(e => { if (RUNTIME_RECORDER) RUNTIME_RECORDER.record('service-worker', e); });
   } catch (e) { if (RUNTIME_RECORDER) RUNTIME_RECORDER.record('service-worker', e); }
 }
-document.addEventListener('toggle', e => { if (e.target && e.target.id === 'settings' && e.target.open) renderSettings(true); }, true);
+document.addEventListener('toggle', e => {
+  if (e.target && e.target.id === 'settings' && e.target.open) {
+    const body = $('#settingsBody');
+    // Une commande peut avoir déjà rendu et focalisé le formulaire avant cet
+    // événement différé. Ne pas détruire son focus ni les saisies en cours.
+    if (body && (body.dataset.stale === '1' || !body.childElementCount)) renderSettings(true);
+  }
+}, true);
 (function init() {
   if (LOCKED() && lsGet('twrc.key')) unseal(lsGet('twrc.key'), false).then(ok => { if (ok) location.reload(); });
   armSessionDeadline();
@@ -162,5 +219,6 @@ document.addEventListener('toggle', e => { if (e.target && e.target.id === 'sett
   { const c = placeNow(); if (c.source === 'manual') UI.loc = c.place.id; }   // lieu confirmé : contexte de tous les modules (origine verrouillée)
   if (S.gpsAuto && location.protocol === 'https:') setTimeout(() => locate(false), 400);
   loadCache(); if (offlineNow()) markOfflineCache(); rebuild(); APP_CONTEXT.ready = true; renderSettings(); renderAll();
+  LOCAL_CLOCK_MINUTE = Math.floor(Date.now() / 60000); startLiveClock();
   if (offlineNow()) loadCalendar(); else refreshAll();
 })();
