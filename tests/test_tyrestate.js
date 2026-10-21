@@ -155,6 +155,10 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(e.tread.src, 'USER_ESTIMATED'); assert.equal(e.tread.est, true); assert.equal(m.tread.src, 'USER_MEASURED');
     const q = e.quality.find(x => x.k === 'Profondeur'); assert.equal(q.st, '🟡'); assert.match(q.txt, /estimée/);
     assert(e.maint.some(x => /jauge/.test(x.text))); assert(!m.maint.some(x => /jauge/.test(x.text)));
+    // chaque constat d'entretien porte sa nature : la comparaison des voitures reprend ceux d'usure, sans relire le texte
+    assert(e.maint.every(x => ['dot', 'service', 'tread', 'pressure', 'tread-stale', 'tread-est'].includes(x.k)), JSON.stringify(e.maint));
+    assert.deepEqual(e.maint.filter(x => x.k === 'tread').map(x => x.text), ['Profondeur 2,3 mm : performances sur mouillé réduites, remplacement à prévoir']);
+    assert.equal(e.maint.filter(x => x.k === 'tread-est').length, 1);
     const ae = analyse(car({ treadAv: 2.3, treadAr: 5, treadEst: 1 })), am = analyse(car({ treadAv: 2.3, treadAr: 5, treadEst: 0 }));
     assert(ae.confidence.score < am.confidence.score); assert(ae.confidence.reasons.some(r => /estimée/.test(r)));
     assert.equal(TS(car({ tread: null, treads: [], treadEst: 1 }), { today }).tread.src, null);   // rien saisi : ni mesurée ni estimée
