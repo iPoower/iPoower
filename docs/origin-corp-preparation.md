@@ -22,3 +22,10 @@ de leur propre politique explicite ; ce lot n’ouvre pas un accès inter-apps.
 Revue sensible obligatoire car `tools/build.js` est un chemin protégé par
 AGENTS.md. Retour arrière : retirer cet en-tête et sa régression. Aucun état
 de données à annuler ; aucune autre application n’est modifiée.
+
+La CI initiale a également révélé un contrôle trop précoce du bouton de
+notification dans `e2e49-interactions.js`. Sa régression attend désormais la
+réponse POST simulée 200 et son topic fictif, puis le vrai libellé visible sous
+délai borné. Une erreur réseau, un mauvais POST ou un résultat absent restent
+des échecs. Aucun skip, clic forcé ou état de succès injecté ; le code produit
+de notification ne change pas. La même régression est partagée avec #216.
