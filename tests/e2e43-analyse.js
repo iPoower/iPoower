@@ -71,7 +71,7 @@ const lab = p => p.evaluate(() => {
   const q = s => el ? [...el.querySelectorAll(s)] : [], t = s => q(s).map(x => x.innerText.replace(/\s+/g, ' ').trim());
   const first = [...document.querySelectorAll('main.wrap > section, main.wrap > .grid2, main.wrap > details, #deskMain > section, #deskMain > .grid2')].filter(vis)[0];
   return { shown: vis(el), first: first ? first.id : null, hero: t('.lab-hero')[0] || '', all: el ? el.innerText.replace(/\s+/g, ' ') : '',
-    bars: q('.lab-bar').length, cmp: q('.lab-t tbody tr').length, trip: t('.lab-trip')[0] || '', tripRows: q('.lab-tl li:not(.ev)').length, links: q('.lab-sp a').map(a => a.href),
+    bars: q('.lab-bar').length, cmp: q('.lab-cmp .lab-cmp-row').length, trip: t('.lab-trip')[0] || '', tripRows: q('.lab-tl li:not(.ev)').length, links: q('.lab-sp a').map(a => a.href),
     marker: !!el && !!el.querySelector('.lab-mk'), others: ['secCars', 'secWx', 'secGarage', 'secCur'].filter(id => vis(document.getElementById(id))), tabs: [...document.querySelectorAll('#viewSeg button')].map(b => b.dataset.v).join(',') };
 });
 const layout = (p, mobile) => p.evaluate(mobile => {
@@ -107,17 +107,17 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     const L = await layout(s.p, true);
     check('1 · iPhone : aucun débordement, cibles ≥ 44 pt, synthèse globale visible et verdict Analyse déjà engagé', L.sw <= L.W && !L.wide.length && !L.small.length && L.decisionBottom > 0 && L.decisionBottom < 896 && L.heroTop > 0 && L.heroTop < 896, JSON.stringify(L));
     if (process.env.LAB_SHOT) await s.p.locator('#secLab').screenshot({ path: process.env.LAB_SHOT + '-iphone.png' });   // capture locale facultative, après les mesures
-    await s.p.locator('#secLab details[data-k=why] summary').click(); await s.p.locator('#secLab details[data-k=b-brake] summary').click(); await s.settle(1);
+    await s.p.locator('#secLab details[data-k=why] summary').click(); await s.settle(1);
     await s.p.evaluate(() => renderAll()); await s.settle(2);
-    check('1 · explications ouvertes au toucher et conservées après actualisation', await s.p.evaluate(() => document.querySelector('#secLab details[data-k=why]').open && document.querySelector('#secLab details[data-k=b-brake]').open));
+    check('1 · explications ouvertes au toucher et conservées après actualisation', await s.p.evaluate(() => document.querySelector('#secLab details[data-k=why]').open));
     const comparison = s.p.locator('#secLab details[data-k=comparison]');
-    check('1 · comparaison avancée repliée, cinq lignes conservées', await comparison.evaluate(e => !e.open && e.querySelectorAll('tbody tr').length === 5 && e.getBoundingClientRect().height <= 90));
+    check('1 · comparaison avancée repliée, cinq critères conservés sur une ligne', await comparison.evaluate(e => !e.open && e.querySelectorAll('.lab-cmp-row').length === 5 && e.getBoundingClientRect().height <= 90));
     await comparison.locator('summary').click();
     const retained = await s.p.evaluate(() => {
       const e = document.querySelector('#secLab details[data-k=comparison]'); e.querySelector('summary').focus();
       const x = CX.m.hs[CX.m.nowI], T = x.T; x.T += 3; renderLab(); x.T = T;
       const next = document.querySelector('#secLab details[data-k=comparison]');
-      return next.open && document.activeElement === next.querySelector('summary') && next.querySelector('table').getBoundingClientRect().height > 0;
+      return next.open && document.activeElement === next.querySelector('summary') && next.querySelector('.lab-cmp-row').getBoundingClientRect().height > 0;
     });
     check('1 · comparaison ouverte et focus conservés pendant une actualisation météo', retained);
     // voiture B : aucune monte active

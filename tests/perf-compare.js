@@ -158,7 +158,7 @@ async function profile(browser, build, fixture, device) {
       UI.view = 'analyse'; renderAll(); window.scrollTo(0, 0);
       const comparison = document.querySelector('#secLab .lab-cmp');
       const analysis = { height: Math.round(document.getElementById('secLab').getBoundingClientRect().height), comparisonHeight: Math.round(comparison.getBoundingClientRect().height), comparisonCollapsed: comparison.tagName === 'DETAILS' && !comparison.open,
-        comparisonRows: comparison.querySelectorAll('tbody tr').length };
+        comparisonRows: comparison.querySelectorAll('tbody tr, .lab-cmp-row').length };
       UI.view = 'garage'; renderAll();
       const root = document.getElementById('secGarage'), button = root.querySelector('.garage-edit'), plan = root.querySelector('.garage-plan');
       if (plan) plan.open = true; button.focus();

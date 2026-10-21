@@ -1285,3 +1285,14 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
   .status-refresh { grid-column: 4; grid-row: 1; }
   .status-detail { grid-column: 1 / -1; grid-row: 2; }
 }
+/* Domaines sans aucune donnée : regroupés et repliés sous une seule ligne (audit des inconnus du 21/10/2026). */
+.ec-unmeasured{margin-top:8px;border:1px dashed var(--line2);border-radius:8px;background:var(--panel)}
+.ec-unmeasured>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:10px 12px;cursor:pointer;list-style:none}
+.ec-unmeasured>summary::-webkit-details-marker{display:none}
+.ec-unmeasured>summary>span{display:grid;gap:3px;min-width:0;overflow-wrap:anywhere}
+.ec-unmeasured>summary small{color:var(--fg2);font-size:12px}
+.ec-unmeasured>summary::after{content:'+';flex:0 0 20px;text-align:center;color:var(--accent);font:500 20px var(--f-mono)}
+.ec-unmeasured[open]>summary::after{content:'−'}
+.ec-unmeasured>summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.ec-unmeasured>.ec-grid{padding:0 8px 8px}
+.lab-cmp-row,.lab-grip .lab-bar{white-space:nowrap}
