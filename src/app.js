@@ -53,6 +53,8 @@ function normalize(saved, base) {
     return l;
   });
   if (saved && Array.isArray(saved.cars)) S.cars = base.cars.map((d, i) => deepMerge(d, saved.cars[i]));
+  // Entretien déclaré (fiche) : structure toujours présente pour la saisie, valeurs vides par défaut, rien d'inventé.
+  (S.cars || []).forEach(c => { const m = c.maint || {}; c.maint = { rev: { d: '', km: null, everyKm: null, everyMonths: null, ...(m.rev || {}) }, ct: { d: '', next: '', ...(m.ct || {}) } }; });
   S.customs = saved && Array.isArray(saved.customs) ? saved.customs : clone(base.customs);
   S.calOrigins = CalendarOrigin.clean(saved && saved.calOrigins);
   return S;
@@ -901,28 +903,12 @@ function computeCtx() {
 
 /* ---------- rendu : statut, lieux, bandeaux ---------- */
 // heure de la météo réellement utilisée pour le lieu affiché (et non du dernier succès sur un autre lieu)
-const dataAt = () => (RAW[UI.loc] && RAW[UI.loc].t) || lastOk;
+const dataAt = () => (RAW[UI.loc] && RAW[UI.loc].t) || (M[UI.loc] && M[UI.loc].retrievedAt) || null;
 function mainMode() { const m = M[UI.loc]; return locHasCoords(allLocs().find(l => l.id === UI.loc)) && m ? m.mode : null; }
+// @include app/live-status.js
 function renderStatus() {
-  const mode = DEMO.on ? 'demo' : mainMode(), off = !DEMO.on && offlineNow();
-  const pause = WEATHER_REQUESTS.state(), limited = !DEMO.on && pause.until > Date.now();
-  // « HORS LIGNE » seulement quand l'appareil se déclare hors connexion ; en ligne sans donnée : fournisseur limité (429) ou indisponible.
-  const none = off ? 'HORS LIGNE' : limited ? 'LIMITÉ' : 'INDISPONIBLE';
-  const b = mode === 'demo' ? '<span class="badge demo"><i></i>DÉMO</span>' : off ? '<span class="badge"><i></i>HORS LIGNE</span>' : mode === 'live' ? '<span class="badge live"><i></i>LIVE</span>' : mode === 'cache' ? '<span class="badge cache"><i></i>CACHE</span>' : `<span class="badge"><i></i>${none}</span>`;
-  let u;
-  if (mode === 'demo') u = 'Simulation : aucune donnée réelle';
-  else if (off && RAW[UI.loc]) u = 'Données en cache du ' + hmLocal(RAW[UI.loc].t) + ' · prévisions locales, sans actualisation réseau';
-  else if (off) u = 'Aucune donnée météo en cache · reconnexion automatique';
-  else if (mode === 'live' && lastOk) u = '<span class="lg">Dernière mise à jour : </span><span class="sh">MAJ </span>' + hmLocal(dataAt()) + ' <span class="auto" title="Actualisation automatique toutes les 5 minutes">· auto 5 min</span>';
-  else if (mode === 'cache') u = (RAW[UI.loc] ? 'Cache du ' + hmLocal(RAW[UI.loc].t) : 'Cache') + ' · données non actualisées';
-  else u = 'Aucune donnée météo';
-  const blocked = busy || limited && !off;
-  document.querySelectorAll('[data-act="refresh"]').forEach(button => { button.disabled = blocked; button.title = busy ? 'Actualisation en cours' : limited && !off ? 'Reprise automatique après la pause du fournisseur météo' : ''; });
-  if (limited && !off) u += ' · fournisseur météo limité · reprise automatique après ' + new Date(pause.until).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-  if (busy && !off && mode !== 'demo') u += ' <span class="sync">· actualisation…</span>';   // HORS LIGNE → actualisation → LIVE
+  renderLiveStatus();
   if (typeof renderDiag === 'function') renderDiag();
-  $('#statusbar').innerHTML = `${b}<span class="upd" aria-live="polite">${u}</span>
-    <button class="btn pri sm" data-act="refresh" aria-label="Actualiser maintenant" ${blocked ? 'disabled' : ''}><span class="${busy ? 'spin' : ''}" style="display:inline-block">⟳</span> <span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
 }
 function renderLocChips() {
   const el = $('#locChips');
@@ -941,12 +927,16 @@ function renderSrc() {
   const m = M[UI.loc], l = allLocs().find(x => x.id === UI.loc) || allLocs()[0];
   if (!locHasCoords(l)) { $('#srcline').innerHTML = 'Lieu sans coordonnées · météo locale non calculée.'; return; }
   if (!m) { $('#srcline').innerHTML = 'Source : Open-Meteo (aucune donnée chargée).'; return; }
-  const obs = m.cur.time ? m.cur.time.slice(11, 16) : '—';
+  const modelTime = m.cur.time ? m.cur.time.replace('T', ' ') : 'inconnue';
   const srcHtml = DEMO.on
     ? `Source : <b>scénario simulé « ${esc(DEMO_SCN[DEMO.scn].name)} »</b>. Les valeurs ne viennent d’aucun capteur ni d’aucun service météo.`
-    : `${lastOk && m.mode === 'live' ? 'Dernière mise à jour : <b>' + hmLocal(dataAt()) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : ' (modèle de base, AROME indisponible)'} · modèles météo, pas une station · dernière observation : <b>${obs}</b> heure locale (valeurs actuelles du modèle, renouvelées toutes les 15 min) · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
+    : `${dataAt() ? 'Réception météo : <b>' + LIVE_DAY_FORMAT.format(dataAt()) + ' ' + LIVE_RECEIPT_FORMAT.format(dataAt()) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : ' (modèle de base, AROME indisponible)'} · modèles météo, pas une station · validité du modèle : <b>${esc(modelTime)}</b> (${esc(m.tz || 'Europe/Paris')}) · ${m.obs ? 'observation réelle : <b>' + esc(m.obs.t || 'heure inconnue') + '</b> · ' + esc(wxStationLine(m.obs)) : 'aucune observation réelle de station disponible'} · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
   const el = $('#srcline'), open = el.querySelector('details') && el.querySelector('details').open;
-  el.innerHTML = `<details${open ? ' open' : ''}><summary>ⓘ Sources et fraîcheur des données${lastOk && m.mode === 'live' ? ' · MAJ ' + hmLocal(lastOk) : ''}</summary><div>${srcHtml}</div></details>`;
+  const html = `<details${open ? ' open' : ''}><summary>ⓘ Sources et fraîcheur des données${dataAt() ? ' · reçue à ' + LIVE_RECEIPT_FORMAT.format(dataAt()) : ''}</summary><div>${srcHtml}</div></details>`;
+  if (el.innerHTML !== html) {
+    const focused = el.contains(document.activeElement); el.innerHTML = html;
+    if (focused) el.querySelector('summary').focus({ preventScroll: true });
+  }
 }
 // Relais en retard : ses observations de stations sont alors ignorées (voir refreshAll). L'utilisateur doit le savoir, pas le deviner.
 function relayLateNote() {
@@ -1121,11 +1111,14 @@ function renderDecisionCore() {
     : '<span class="decision-confidence ' + confClass + '">' + confidenceLabel + '</span>';
   el.className = UI.view === 'analyse' ? 'decision-context' : 'decision-core lv' + decision.displayLevel;
   el.hidden = false;
+  // À retenir : la conclusion déjà rédigée par le récit pneus de la voiture active (aucun conseil nouveau), dès qu'un signal existe.
+  const advice = decision.riskLevel >= 1 && carEval && carEval.nar && Array.isArray(carEval.nar.advice) ? carEval.nar.advice : [];
   const coreHtml = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL · MÉTÉO ET PNEUS</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
     confidenceHtml + '</div>' +
     // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
     (matters.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + matters.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
       : '') +
+    (advice.length && ['pneus', 'meteo'].includes(UI.view) ? '<p class="decision-advice"><b>À retenir · ' + esc(car.short || car.name || car.id) + '</b> ' + advice.map(esc).join(' ') + '</p>' : '') +
     '<div class="decision-meta">' + destinationHtml + '<span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + forecastHtml + '</span>' +
     '<span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span>' +
     (UI.view === 'pneus' && car ? '<span class="decision-mount">Monte · <b>' + esc(TYPE_LABEL[tyre.type] || 'à confirmer') + '</b> · ' + esc([tyre.brand, tyre.model].filter(Boolean).join(' ') || 'modèle non renseigné') + '</span>' : '') +
@@ -1260,7 +1253,7 @@ function renderView() {
   document.body.classList.toggle('vt', vt);
   document.body.classList.toggle('vg', vg);
   document.body.classList.toggle('va', va);
-  const nav = $('#viewSeg'), navHtml = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-pressed="${vm}"><span class="tab-ic" aria-hidden="true">🌦️</span> Météo</button><button data-act="view" data-v="pneus" aria-pressed="${vp}"><span class="tab-ic" aria-hidden="true">🛞</span> Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-pressed="${vtr}"><span class="tab-ic" aria-hidden="true">🧭</span> TRAJET</button><button data-act="view" data-v="garage" aria-pressed="${vg}"><span class="tab-ic" aria-hidden="true">🛠️</span> Garage</button><button data-act="view" data-v="analyse" aria-pressed="${va}"><span class="tab-ic" aria-hidden="true">🔬</span> Analyse</button></div>`;
+  const nav = $('#viewSeg'), navHtml = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-pressed="${vm}"><span class="tab-ic" aria-hidden="true">🌦️</span> Météo</button><button data-act="view" data-v="pneus" aria-pressed="${vp}"><span class="tab-ic" aria-hidden="true">🛞</span> Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-pressed="${vtr}"><span class="tab-ic" aria-hidden="true">🧭</span> Trajet</button><button data-act="view" data-v="garage" aria-pressed="${vg}"><span class="tab-ic" aria-hidden="true">🛠️</span> Garage</button><button data-act="view" data-v="analyse" aria-pressed="${va}"><span class="tab-ic" aria-hidden="true">🔬</span> Analyse</button></div>`;
   // Un rendu identique conserve les boutons, leur focus et les liens ; les changements restent calculés à chaque appel.
   if (nav.innerHTML !== navHtml) nav.innerHTML = navHtml;
   const links = vtr ? [['secTrip', 'Planifier'], ['settings', 'Réglages']] : va ? [['secLab', 'Analyse'], ['secSeason', 'Saison pneus'], ['secJournal', 'Journal de saison'], ['settings', 'Réglages']] : vg ? [['secGarage', 'Mes véhicules'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
@@ -1279,11 +1272,13 @@ function renderView() {
     : ['secTripSummary', 'secBrf', 'banners', 'hdrMore', 'secCars', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue'];
   if (!order.includes('secGarage')) order.push('secGarage');
   if (!order.includes('secTenue')) order.push('secTenue');
-  if (renderView.last === UI.view) return; renderView.last = UI.view;
+  // Pneus : le prochain trajet passe avant le journal (lecture), sauf question de débrief ouverte juste après une arrivée.
+  const debriefFirst = !vp || !!DEBRIEF_FORM, viewKey = UI.view + (debriefFirst ? '' : ':trajet-avant-journal');
+  if (renderView.last === viewKey) return; renderView.last = viewKey;
   let prev = $('#notice');
   if (!va && !vtr) order.splice(order.indexOf('hdrMore') + 1, 0, 'jump');
   const brf = order.indexOf('secBrf'); if (brf >= 0) order.splice(brf + 1, 0, 'secRoad');
-  if (!vtr) order.splice(va ? 2 : 1, 0, 'secDebrief');
+  if (!vtr) order.splice(va ? 2 : debriefFirst ? 1 : order.indexOf('secRoad') + 1, 0, 'secDebrief');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
   deskLayout(order);
   if (RADAR.map) { const map = RADAR.map; setTimeout(() => { if (RADAR.map === map) map.invalidateSize(); }, 60); }
@@ -1758,8 +1753,17 @@ async function backupExport() {
       USER_STORE.flush(); localStorage.setItem('twrc.settings.v1', JSON.stringify(S));
       await VS.flush(); if (VS.error || VS.pendingWrites) throw new Error('Enregistrement en attente : copie refusée, garde cette page ouverte.');
     }
-    await downloadRecovery(await VS.recoverySnapshot());
-    bkMsg('Copie chiffrée exportée avec le code de cet appareil. Rouvre le fichier enregistré pour vérifier la récupération.');
+    const text = await VS.recoverySnapshot();
+    await downloadRecovery(text);
+    // Plus de deuxième étape « rouvrir le fichier » : la copie que l'on vient d'enregistrer
+    // réactive directement le journal (vérifiée par le coffre : même code, tous les trajets).
+    if (VS.journalNeedsRecovery) {
+      try { await VS.activateJournal(text, bkPass()); }
+      catch (e) { bkMsg('Copie exportée. Journal non réactivé : ' + e.message + ' Les données précédentes sont conservées.'); return; }
+      bkMsg('Copie exportée et journal réactivé. Rechargement…');
+      DeviceStorage.freeze(true); reloadSafe(100); return;
+    }
+    bkMsg('Copie chiffrée exportée avec le code de cet appareil.');
   } catch (e) { bkMsg('Copie non confirmée : ' + e.message); }
 }
 async function journalVerifyCopy(file) {
@@ -1790,7 +1794,7 @@ async function backupApplyPlan(plan) {
   }
 }
 async function backupImport(f) {
-  if (!window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault' || window.TWRC_VAULT.journalNeedsRecovery) { bkMsg('Vérifie d’abord une copie de récupération du journal actuel dans un coffre déverrouillé. Aucun import appliqué.'); return; }
+  if (!window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault' || window.TWRC_VAULT.journalNeedsRecovery) { bkMsg(window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault' && window.TWRC_VAULT.journalNeedsRecovery ? 'Appuie d’abord sur Exporter : le journal sera réactivé, puis importe ton fichier. Aucun import appliqué.' : 'Vérifie d’abord une copie de récupération du journal actuel dans un coffre déverrouillé. Aucun import appliqué.'); return; }
   bkMsg('Lecture du fichier…');
   if (f && Number.isFinite(f.size) && f.size > 68 * 1024 * 1024) { bkMsg('Sauvegarde trop volumineuse : fichier conservé, aucun réglage modifié.'); return; }
   let o, fileText; try { fileText = await f.text(); o = JSON.parse(fileText); } catch (e) { bkMsg('Fichier illisible.'); return; }
@@ -3220,6 +3224,23 @@ const tireTxt = car => {
   return `${a ? esc(a) : '<span class="muted">marque / modèle non renseignés</span>'} · <span class="tt">${esc(t.size || '—')}</span>${t.tread != null ? ` · <span class="tt">${esc(treadTxt(treadAxles(t), treadAxles(t).worst))}${t.treadEst ? ' (estimée)' : ''}</span>` : ''}`;
 };
 const lastOdo = car => (car.odo || []).slice().sort((x, y) => x.km - y.km).slice(-1)[0] || null;
+// Une profondeur de la fiche rejoint l'historique du jour (remplace la saisie non localisée du même jour et du même essieu),
+// avec le compteur connu et l'indication estimée / mesurée. Plafond de 30 relevés : rien n'est effacé pour faire de la place.
+function datedFicheTread(car, axes) {
+  if (!car || !car.tire) return false;
+  const today = (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10), lo = lastOdo(car), x = treadAxles(car.tire);
+  let hist = Array.isArray(car.tire.treads) ? car.tire.treads.slice() : [], changed = false;
+  for (const ax of axes) {
+    const mm = x[ax];
+    if (typeof mm !== 'number' || !Number.isFinite(mm) || mm < 0 || mm > 12) continue;
+    const kept = hist.filter(r => !(r && r.d === today && r.ax === ax && !r.pos && !r.wheel));
+    if (kept.length >= 30) continue;
+    hist = kept.concat([{ d: today, mm: Math.round(mm * 10) / 10, km: lo ? lo.km : null, ax, ...(car.tire.treadEst ? { est: 1 } : {}) }]);
+    changed = true;
+  }
+  if (changed) car.tire.treads = hist;
+  return changed;
+}
 function kmPerDay(car) {
   const o = (car.odo || []).slice().sort((x, y) => x.d < y.d ? -1 : 1); if (o.length < 2) return null;
   const days = dayDiff(o[0].d, o[o.length - 1].d); return days >= 7 ? (o[o.length - 1].km - o[0].km) / days : null;
@@ -3430,6 +3451,8 @@ function renderBrief() {
     }
   };
   const td = tripData(), w = S.work, dir = UI.dir; if (appActiveCar()) UI.bcar = appActiveCar().id;
+  // Le calcul suit le départ réel (lieu confirmé, départ lancé) : les commandes ci-dessous ne règlent que le trajet habituel.
+  const realFrom = !td.err && td.LA && td.LA.id !== (dir === 'go' ? w.from : w.to) ? td.LA : null;
   const time = dir === 'go' ? w.dep : w.ret;
   const locOpts = (sel, key) => allLocs().map(l => `<option value="${esc(l.id)}" ${l.id === sel ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
   if (!appActiveCar() && !TCARS().some(c => c.id === UI.bcar) && TCARS().length) UI.bcar = TCARS()[0].id;
@@ -3445,10 +3468,10 @@ function renderBrief() {
     <div class="fld"><span class="l">Jour</span><div class="seg">${dOffs.map(k => `<button data-act="day" data-off="${k}" aria-pressed="${UI.dayOff === k}">${dayLbl(k)}</button>`).join('')}</div></div>
     <div class="fld"><label for="quick-work-${dir === 'go' ? 'dep' : 'ret'}">Heure de départ</label><input type="time" id="quick-work-${dir === 'go' ? 'dep' : 'ret'}" data-bind="work.${dir === 'go' ? 'dep' : 'ret'}" value="${esc(time)}"></div>
     <div class="fld"><label for="quick-work-durMin">Durée (min)</label><input type="number" id="quick-work-durMin" data-bind="work.durMin" data-num="1" min="5" max="1200" step="5" value="${esc(w.durMin)}" style="width:92px"></div>
-    <div class="fld"><span class="l">Départ depuis</span><div class="seg">${allLocs().filter(l => l.id !== (dir === 'go' ? w.to : w.from)).slice(0, 4).map(l => `<button data-act="from" data-id="${esc(l.id)}" aria-pressed="${(dir === 'go' ? w.from : w.to) === l.id}">${esc(l.name.split(' / ')[0])}</button>`).join('')}</div></div>
-    <div class="fld"><label for="quick-work-from">De</label><select id="quick-work-from" data-bind="work.from">${locOpts(w.from)}</select></div>
+    <div class="fld"><span class="l">${realFrom ? 'Départ habituel' : 'Départ depuis'}</span><div class="seg">${allLocs().filter(l => l.id !== (dir === 'go' ? w.to : w.from)).slice(0, 4).map(l => `<button data-act="from" data-id="${esc(l.id)}" aria-pressed="${(dir === 'go' ? w.from : w.to) === l.id}">${esc(l.name.split(' / ')[0])}</button>`).join('')}</div></div>
+    <div class="fld"><label for="quick-work-from">${realFrom ? 'De (habituel)' : 'De'}</label><select id="quick-work-from" data-bind="work.from">${locOpts(w.from)}</select></div>
     <div class="fld"><label for="quick-work-to">Vers</label><select id="quick-work-to" data-bind="work.to">${locOpts(w.to)}</select></div>
-  </div>`;
+  </div>${realFrom ? `<p class="sub brf-real-from" role="status">Départ calculé depuis <b>${esc(realFrom.name)}</b> (lieu confirmé ou départ en cours), pas depuis le départ habituel ${esc((locById(dir === 'go' ? w.from : w.to) || {}).name || '')}.</p>` : ''}`;
   if (td.err) { paint(head + `<p class="muted">${esc(td.err)}</p>`); return; }
   const car = appActiveCar() || TCARS().find(c => c.id === UI.bcar) || TCARS()[0];
   if (!car) { paint(head + '<p class="muted">Aucune voiture équipée de pneus.</p>'); return; }
@@ -3519,6 +3542,8 @@ function renderCompare() {
     }
     if (sm.Pmax >= 4) L.push(['⚠️', `Pluie jusqu’à ${f1(sm.Pmax)} mm/h`]);
     if (sm.visMin != null && sm.visMin < 1000) L.push(['⚠️', `Brouillard (${f0(sm.visMin)} m) : prudence quel que soit le pneu`]);
+    // Usure : mêmes constats que Garage (même source tyreState), la profondeur saisie entrant déjà dans l'indice
+    tyreStateOf(car).maint.filter(m => ['tread', 'tread-stale', 'tread-est'].includes(m.k)).forEach(m => L.push([m.lv >= 2 ? '⛔' : '⚠️', m.text]));
     if (!L.length) L.push(['✅', 'Aucune contrainte particulière détectée']);
     const gen = carProfile(car).generic;
     return `<div class="cmpc ${gen ? 'lvx' : 'lv' + w.level}"><div class="verdict sm ${gen ? 'lvx' : 'lv' + w.level}"><span class="em">${gen ? '🧪' : LV[w.level].emoji}</span><span>${esc(car.short)} · ${gen ? 'aperçu' : w.score + '/100'}</span></div>
@@ -3530,7 +3555,7 @@ function renderCompare() {
     `Conditions sur ${esc(label)} : ${f1(sm.Tmin)} à ${f1(sm.Tmax)} °C, chaussée estimée jusqu’à ${f1(sm.TrMin)} °C, pluie max ${f1(sm.Pmax)} mm/h, visibilité min ${visTxt(sm.visMin)}, ${sm.snowSum > 0 || sm.snowCode ? 'neige prévue' : 'pas de neige prévue'}, risque de verglas estimé ${ICE_LV[sm.iceLevel].toLowerCase()}.`,
     genericCompare ? 'Comparaison personnalisée en attente : renseigne les lieux et la monte de chaque voiture.' : gap < 5 ? `Les deux configurations obtiennent un indice proche (${a.w.score} et ${b.w.score}) : les pneus ne les distinguent pas nettement dans ces conditions.` : `Écart d’indice : ${gap} points en faveur de ${esc(best.car.short)} pour l’adéquation pneus/météo.`,
     sporty && (cold || wet) ? `${esc(sporty.car.short)} (usage sportif, ${esc(sporty.car.spec || 'puissance élevée')}) sollicite davantage l’adhérence disponible au démarrage et en sortie de courbe quand le pneu est froid.` : '',
-    'Cette comparaison ne porte que sur les pneus et la météo. Elle ne tient pas compte de l’état des freins, de l’usure réelle, du chargement ni de ton expérience : le choix t’appartient.'
+    'Cette comparaison ne porte que sur les pneus et la météo, avec la profondeur que tu as saisie (pas une mesure en temps réel). Elle ne tient pas compte de l’état des freins, du chargement ni de ton expérience : le choix t’appartient.'
   ].filter(Boolean);
   el.innerHTML = `<div class="mod-h"><h2>🚗 Quelle voiture prendre ?</h2><span class="src">comparaison factuelle</span></div>
     <div class="cmp">${cards}</div><div class="why">${why.map(t => `<span>${t}</span>`).join('')}</div>`;
@@ -3817,7 +3842,13 @@ function renderSettings(force) {
       ${bindIn(`cars.${i}.plan.ordered`, c.plan.ordered, { label: 'Commande passée', type: 'date' })}${bindIn(`cars.${i}.plan.etaFrom`, c.plan.etaFrom, { label: 'ETA fournisseur · début', type: 'date' })}${bindIn(`cars.${i}.plan.etaTo`, c.plan.etaTo, { label: 'ETA fournisseur · fin', type: 'date' })}${bindIn(`cars.${i}.plan.etaChecked`, c.plan.etaChecked, { label: 'ETA vérifiée le', type: 'date' })}</div>
     <div class="frow">
       ${bindIn(`cars.${i}.plan.date`, c.plan.date, { label: 'Montage estimé', type: 'date' })}${bindIn(`cars.${i}.plan.appointmentDate`, c.plan.appointmentDate, { label: 'Date du rendez-vous', type: 'date' })}
-      <div class="fld"><label for="f-cars-${i}-plan-appt-ok">Rendez-vous confirmé</label><select id="f-cars-${i}-plan-appt-ok" data-bind="cars.${i}.plan.appointmentConfirmed" data-num="1"><option value="1" ${c.plan.appointmentConfirmed ? 'selected' : ''}>Oui</option><option value="0" ${c.plan.appointmentConfirmed ? '' : 'selected'}>Non</option></select></div></div></div>`).join('');
+      <div class="fld"><label for="f-cars-${i}-plan-appt-ok">Rendez-vous confirmé</label><select id="f-cars-${i}-plan-appt-ok" data-bind="cars.${i}.plan.appointmentConfirmed" data-num="1"><option value="1" ${c.plan.appointmentConfirmed ? 'selected' : ''}>Oui</option><option value="0" ${c.plan.appointmentConfirmed ? '' : 'selected'}>Non</option></select></div></div>
+    <h4 class="set-sub" id="maint-${i}">🔧 Entretien</h4>
+    <div class="frow">
+      ${bindIn(`cars.${i}.maint.rev.d`, c.maint.rev.d, { label: 'Dernière révision', type: 'date' })}${bindIn(`cars.${i}.maint.rev.km`, c.maint.rev.km, { label: 'Compteur à la révision (km)', type: 'number', num: 1, attrs: 'min="0" step="1" inputmode="numeric"' })}
+      ${bindIn(`cars.${i}.maint.rev.everyKm`, c.maint.rev.everyKm, { label: 'Révision tous les (km)', type: 'number', num: 1, ph: 'carnet d’entretien', attrs: 'min="0" step="1000" inputmode="numeric"' })}${bindIn(`cars.${i}.maint.rev.everyMonths`, c.maint.rev.everyMonths, { label: 'ou tous les (mois)', type: 'number', num: 1, ph: 'carnet d’entretien', attrs: 'min="0" max="60" step="1" inputmode="numeric"' })}
+      ${bindIn(`cars.${i}.maint.ct.d`, c.maint.ct.d, { label: 'Dernier contrôle technique', type: 'date' })}${bindIn(`cars.${i}.maint.ct.next`, c.maint.ct.next, { label: 'Prochain CT avant le (si indiqué)', type: 'date' })}
+    </div><p class="sub">Intervalles : ceux de ton carnet d’entretien, aucun n’est deviné. Sans date limite déclarée, le prochain CT est calculé à 2 ans du dernier.</p></div>`).join('');
   const locSet = S.locs.map((l, i) => `<div class="frow">${bindIn(`locs.${i}.name`, l.name, { label: i === 0 ? 'Zone principale' : 'Lieu de travail / 2e zone', wide: 1 })}${bindIn(`locs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`locs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}</div>`).join('') +
     S.customs.map((l, i) => `<div class="frow">${bindIn(`customs.${i}.name`, l.name, { label: 'Destination', wide: 1 })}${bindIn(`customs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`customs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}<div class="fld"><span class="l">&nbsp;</span><button class="btn sm" data-act="loc-del" data-i="${i}">Retirer</button></div></div>`).join('');
   el.innerHTML = `<div class="set-sec"><h3>🚗 Voitures et pneus</h3></div>${carSet}
@@ -3853,7 +3884,8 @@ function renderSettings(force) {
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="password" id="bkPw" autocomplete="current-password" placeholder="code du fichier à importer (vide = code actuel)" style="flex:1;min-width:160px">
         <button class="btn pri" data-act="bk-export">Exporter</button><label class="btn" for="bkFile">Importer</label><input type="file" id="bkFile" accept=".json,application/json,text/plain" hidden></div>
       <p class="sub">La copie complète conserve le journal et toutes ses versions. Elle inclut aussi l’état local chiffré de cet appareil ; seuls les champs durables seront restaurés. Son code est le code actuel de l’appareil ; sans coffre, saisis un code d’au moins 8 caractères pour la copie. L’activation du journal exige un profil déjà déverrouillé et son code de configuration existant. Les anciennes sauvegardes V1/V2 restent importables. Les anciennes versions de l’app refusent cette copie.</p>
-      ${window.TWRC_VAULT && (window.TWRC_VAULT.mode === 'plain' || window.TWRC_VAULT.journalNeedsRecovery) ? '<p class="sub" role="status"><b>Journal en lecture seule.</b> Exporte une copie de récupération, enregistre-la hors du navigateur, puis sélectionne ce fichier pour la vérifier. Les autres réglages restent utilisables.</p><label class="btn" for="journalCopy">Vérifier la copie enregistrée et activer l’archive</label><input type="file" id="journalCopy" accept=".json,application/json" hidden>' : ''}
+      ${window.TWRC_VAULT && window.TWRC_VAULT.mode === 'plain' ? '<p class="sub" role="status"><b>Journal en lecture seule.</b> Exporte une copie de récupération, enregistre-la hors du navigateur, puis sélectionne ce fichier pour la vérifier. Les autres réglages restent utilisables.</p><label class="btn" for="journalCopy">Vérifier la copie enregistrée et activer l’archive</label><input type="file" id="journalCopy" accept=".json,application/json" hidden>'
+        : window.TWRC_VAULT && window.TWRC_VAULT.journalNeedsRecovery ? '<p class="sub" role="status"><b>Journal en lecture seule.</b> Appuie sur Exporter : la copie est enregistrée et le journal est réactivé dans la foulée. Les autres réglages restent utilisables.</p>' : ''}
       <p class="sub" id="bkMsg" aria-live="polite"></p></div>
     <div class="set-sec"><h3>🗂️ Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
@@ -4064,6 +4096,25 @@ document.addEventListener('click', async e => {
   else if (a === 'mount-save') mountSave();
   else if (a === 'mount-cancel') { MOUNT_FORM = null; renderSeason(); }
   else if (a === 'labcar') { appSetCar(t.dataset.car); }
+  else if (a === 'garage-quick') {
+    // Navigation uniquement : toutes les valeurs restent saisies, validées et sauvées
+    // par les champs historiques du panneau Paramètres.
+    const i = S.cars.findIndex(c => c && c.id === t.dataset.car);
+    const key = t.dataset.garageTarget;
+    if (i < 0 || !['odo', 'tread', 'pressure', 'maintenance'].includes(key) || LOCKED()) {
+      commandFeedback(t, 'Fiche indisponible'); return;
+    }
+    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : key === 'maintenance' ? '#f-cars-' + i + '-maint-rev-d' : '#f-cars-' + i + '-tire-pchk-av';
+    const d = $('#settings'); if (!d) { commandFeedback(t, 'Paramètres indisponibles'); return; }
+    d.open = true;
+    // Réutiliser le formulaire déjà présent : un autre raccourci ne doit pas
+    // effacer un relevé encore non validé ni remplacer les champs focalisés.
+    if (!$(selector) || $('#settingsBody').dataset.stale === '1') renderSettings(true);
+    const input = $(selector);
+    if (!input) { commandFeedback(t, 'Champ indisponible'); return; }
+    input.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
+    input.focus({ preventScroll: true });
+  }
   else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); }
   else if (a === 'goset') { UI.locsOpen = false; renderLocChips(); const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
   else if (a === 'reset') {
@@ -4144,6 +4195,9 @@ document.addEventListener('change', e => {
     const trm = /^cars\.(\d+)\.tire\.tread(Av|Ar)$/.exec(t.dataset.bind);
     if (tm) switchTire(S.cars[+tm[1]], v); else if (trm) setTreadAxle(S.cars[+trm[1]].tire, trm[2] === 'Av' ? 'av' : 'ar', v); else setPath(S, t.dataset.bind, v);
     if (trm) { markEdit(`cars.${trm[1]}.tire.tread`); markEdit(`cars.${trm[1]}.tire.treadAv`); markEdit(`cars.${trm[1]}.tire.treadAr`); }
+    // Profondeur saisie dans la fiche : datée comme un relevé rapide non localisé, sinon elle reste « date inconnue » partout.
+    const tem = /^cars\.(\d+)\.tire\.treadEst$/.exec(t.dataset.bind);
+    if (trm || tem) { const ci = +(trm || tem)[1]; if (datedFicheTread(S.cars[ci], trm ? [trm[2] === 'Av' ? 'av' : 'ar'] : ['av', 'ar'])) markEdit(`cars.${ci}.tire.treads`); }
     if (tm) { markEdit(`cars.${tm[1]}.tire`); markEdit(`cars.${tm[1]}.sets`); } else markEdit(t.dataset.bind);
     // modèle reconnu dans la base : le type de pneu se met à jour tout seul
     const bm = /^cars\.(\d+)\.tire\.(brand|model)$/.exec(t.dataset.bind);

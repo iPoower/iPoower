@@ -123,12 +123,12 @@ function tyreState(car, opt = {}) {
   ];
   // entretien : séparé du verdict de conduite
   const maint = [];
-  if (dot && dot.ageY >= 10) maint.push({ lv: 2, text: `Pneu fabriqué il y a plus de 10 ans (${dot.raw}) : remplacement recommandé (repère Michelin)` });
-  if (mount.serviceY != null && mount.serviceY >= 5) maint.push({ lv: 1, text: 'Plus de 5 ans d’usage : contrôle professionnel annuel recommandé (repère Michelin)' });
-  if (mm != null && mm < (type === 'winter' ? 4 : 3)) maint.push({ lv: mm < 1.6 ? 3 : 1, text: mm < 1.6 ? 'Profondeur sous le minimum légal (1,6 mm)' : `Profondeur ${String(mm).replace('.', ',')} mm : performances sur mouillé réduites, remplacement à prévoir` });
-  if (target != null && (!pressure.check || pressure.check.fresh === 'stale')) maint.push({ lv: 1, text: 'Pression à contrôler à froid (dernier contrôle ancien ou non daté)' });
-  if (tread.fresh === 'stale') maint.push({ lv: 1, text: 'Profondeur à remesurer (mesure de plus de 6 mois)' });
-  if (tread.est && tread.fresh !== 'stale') maint.push({ lv: 1, text: 'Profondeur estimée : à confirmer avec une jauge (témoins d’usure à 1,6 mm)' });
+  if (dot && dot.ageY >= 10) maint.push({ k: 'dot', lv: 2, text: `Pneu fabriqué il y a plus de 10 ans (${dot.raw}) : remplacement recommandé (repère Michelin)` });
+  if (mount.serviceY != null && mount.serviceY >= 5) maint.push({ k: 'service', lv: 1, text: 'Plus de 5 ans d’usage : contrôle professionnel annuel recommandé (repère Michelin)' });
+  if (mm != null && mm < (type === 'winter' ? 4 : 3)) maint.push({ k: 'tread', lv: mm < 1.6 ? 3 : 1, text: mm < 1.6 ? 'Profondeur sous le minimum légal (1,6 mm)' : `Profondeur ${String(mm).replace('.', ',')} mm : performances sur mouillé réduites, remplacement à prévoir` });
+  if (target != null && (!pressure.check || pressure.check.fresh === 'stale')) maint.push({ k: 'pressure', lv: 1, text: 'Pression à contrôler à froid (dernier contrôle ancien ou non daté)' });
+  if (tread.fresh === 'stale') maint.push({ k: 'tread-stale', lv: 1, text: 'Profondeur à remesurer (mesure de plus de 6 mois)' });
+  if (tread.est && tread.fresh !== 'stale') maint.push({ k: 'tread-est', lv: 1, text: 'Profondeur estimée : à confirmer avec une jauge (témoins d’usure à 1,6 mm)' });
   const sig = [type, t.brand || '', t.model || '', t.size || ''].join('|');   // identité de la monte : change seulement avec un autre jeu
   return { vehicle: { id: car.id, name: car.name || car.short || car.id }, known, active: known ? { type, label: TS_TYPES[type] } : null, stored,
     model: { brand: t.brand || null, model: t.model || null, src: t.brand && t.model ? 'USER_ENTERED' : null }, size: d, dot, mount, tread, pressure, axles, profile, quality, maint, sig };

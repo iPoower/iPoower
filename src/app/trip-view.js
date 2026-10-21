@@ -1,6 +1,7 @@
 /* Onglet TRAJET : surface UX au-dessus du contexte canonique existant.
  * Aucune state machine parallèle : nextDestination + activeCarId restent la vérité.
  */
+// @include app/route-radar.js
 const TRIP_FORM = {
   bound: null, activeCarSeed: null, destinationId: null, destinationHit: null, destinationQuery: '', destinationResults: [],
   originMode: null, originHit: null, originQuery: '', originResults: [], when: 'now', date: '', time: '', carId: null,
@@ -64,8 +65,12 @@ function tripCaptureForm() {
 function tripOriginValue() {
   if (TRIP_FORM.originMode === '__manual') return tripPoint(TRIP_FORM.originHit, 'manual-origin', 'Départ manuel');
   if (TRIP_FORM.originMode === '__gps') {
-    const fix = appCurrentGps() || GPS;
-    return fix && locHasCoords(fix) ? tripPoint({ ...fix, name: 'Ma position', provider: 'GPS navigateur', precision: '±' + Math.round(fix.acc || 0) + ' m' }, 'manual-origin', 'Ma position') : tripPoint(TRIP_FORM.originHit, 'manual-origin', 'Ma position');
+    // Le GPS brut et une origine mémorisée ne remplacent pas le fix validé.
+    // Un trajet déjà programmé reste conservé ; seule sa reprogrammation attend un GPS fiable.
+    const fix = appCurrentGps();
+    return fix && locHasCoords(fix)
+      ? tripPoint({ ...fix, name: 'Ma position', provider: 'GPS navigateur', precision: '±' + Math.round(fix.acc || 0) + ' m' }, 'manual-origin', 'Ma position')
+      : null;
   }
   return locById(TRIP_FORM.originMode);
 }
@@ -88,6 +93,39 @@ function tripRouteState() {
   const l = t && (t.l || t.planL), offline = offlineNow();
   return { n, t, l, offline, ready: !!(l && !l.originPending && Number.isFinite(l.km) && Number.isFinite(l.min)) };
 }
+// Contrôles informatifs : aucune décision d'aptitude à conduire et aucune mutation.
+function tripPreflightHtml(route, car, origin, dest, departure) {
+  const tire = car && car.tire;
+  const tyreKnown = !!(tire && tire.type && !['unknown', 'none'].includes(tire.type) && (tire.model || tire.brand));
+  const weather = RAW && RAW[UI.loc];
+  const minutes = weather && weather.t ? Reliability.ageMin(weather.t) : null;
+  const weatherFresh = !offlineNow() && Number.isFinite(minutes) && minutes >= 0 && minutes <= 30;
+  const routeReady = !!(route && route.ready && !route.offline);
+  const checked = !!(origin && dest && locHasCoords(origin) && locHasCoords(dest));
+  const pendingRoute = !checked ? 'Choisir un départ et une destination valides'
+    : routeReady ? 'Itinéraire enregistré · ' + f1(route.l.km) + ' km (vérifier les modifications avant de partir)'
+    : route && route.offline ? 'Calcul indisponible hors ligne · dernier trajet conservé si connu'
+    : 'Calcul après programmation du trajet';
+  const rows = [
+    ['route', routeReady ? 'disponible' : 'à vérifier', pendingRoute],
+    ['meteo', weatherFresh ? 'récente' : 'à vérifier', weatherFresh
+      ? 'Météo locale reçue il y a ' + Math.floor(minutes) + ' min · pas une observation sur tout le parcours'
+      : offlineNow() ? 'Hors connexion · conditions à actualiser dès que possible'
+        : minutes == null ? 'Réception météo locale non vérifiée'
+          : 'Dernière météo locale reçue il y a ' + Math.max(0, Math.floor(minutes)) + ' min'],
+    ['pneus', tyreKnown ? 'déclarés' : 'à compléter', tyreKnown
+      ? 'Monte déclarée pour ' + (car.short || car.name || 'le véhicule') + ' · pression et état à vérifier physiquement'
+      : 'Monte ou modèle non renseigné · compléter la fiche du véhicule']
+  ];
+  const later = departure && departure > localTs(Date.now()).slice(0, 16);
+  return '<section class="trip-preflight" aria-label="Contrôles avant départ"><h3>✓ CHECK AVANT DÉPART</h3>' +
+    '<ul>' + rows.map(([key, tag, description]) => '<li data-preflight="' + key + '"><b>' +
+      esc(key === 'meteo' ? 'Météo locale' : key === 'pneus' ? 'Pneus' : 'Itinéraire') + ' · ' + esc(tag) +
+      '</b><span>' + esc(description) + '</span></li>').join('') + '</ul>' +
+    '<p>Repères informatifs uniquement · aucun feu vert de sécurité. ' +
+    (later ? 'Les conditions peuvent changer avant le départ.' : 'Vérifie visuellement ton véhicule avant de partir.') +
+    '</p></section>';
+}
 function renderTripView() {
   const el = $('#secTrip'); if (!el) return;
   el.hidden = UI.view !== 'trajet'; if (el.hidden) return;
@@ -108,6 +146,9 @@ function renderTripView() {
     : `<div class="trip-route-state old"><b>${route.offline ? 'Hors connexion' : 'Calcul en cours'}</b><span>${route.offline ? 'Départ, destination, véhicule et horaire sont conservés. La route sera recalculée au retour du réseau.' : 'OSRM et la météo de route se préparent.'}</span></div>` : '';
   const selectedDest = dest ? `<div class="trip-selected"><b>✓ ${esc(dest.name)}</b><span>${esc(dest.address || dest.sub || '')}</span>${dest.provider ? `<small>${esc(dest.provider)}${dest.precision ? ' · ' + esc(dest.precision) : ''}</small>` : ''}</div>` : '';
   const dep = tripDepartureValue(), immediate = TRIP_FORM.when === 'now';
+  const preflight = tripPreflightHtml(route, S.cars.find(c => c.id === TRIP_FORM.carId), origin, dest, dep);
+  const radarTrip = current && APP_CONTEXT.trips.find(x => x.key === current.tripKey) || (!current && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip)) || null;
+  const radarShell = `<div class="trip-radar">${routeRadarHtml(radarTrip)}</div>`;
   const intelligence = tyreIntelligenceHtml(S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar(), 'trajet', CX && wxTrips(CX.m).find(t => current && t.id === current.tripKey) || null);
   const html = `<div class="mod-h"><h2>🧭 TRAJET</h2><span class="src obs">contexte partagé Race Control</span></div>
     <div class="trip-form">
@@ -115,7 +156,7 @@ function renderTripView() {
         <label class="sr-only" for="tripOriginSel">Modifier le départ</label><select id="tripOriginSel" data-trip-field="origin">${opts.map(([v,t]) => `<option value="${esc(v)}" ${TRIP_FORM.originMode === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
         ${TRIP_FORM.originMode === '__manual' ? `<div class="trip-search"><input type="search" id="tripOriginQ" value="${esc(TRIP_FORM.originQuery)}" placeholder="Adresse de départ"><button class="btn" data-act="trip-origin-search">Rechercher</button></div><div class="trip-suggestions">${originButtons}</div>` : ''}
       </div>
-      <div class="trip-field trip-destination"><label class="trip-label" for="tripDestQ">Destination</label><div class="trip-search"><input type="search" id="tripDestQ" value="${esc(TRIP_FORM.destinationQuery)}" placeholder="Où allez-vous ?" autocomplete="street-address"><button class="btn" data-act="trip-dest-search">Rechercher</button></div>
+      <div class="trip-field trip-destination"><label class="trip-label" for="tripDestQ">Destination</label><div class="trip-search"><input type="search" id="tripDestQ" value="${esc(TRIP_FORM.destinationQuery)}" placeholder="Où vas-tu ?" autocomplete="street-address"><button class="btn" data-act="trip-dest-search">Rechercher</button></div>
         <div class="chips trip-quick">${quick}</div><div class="trip-suggestions">${resultButtons}</div>${selectedDest}
       </div>
       <fieldset class="trip-field"><legend class="trip-label">Départ</legend><div class="trip-when">
@@ -124,17 +165,24 @@ function renderTripView() {
         <label><input type="radio" name="tripWhen" data-trip-field="when" value="date" ${TRIP_FORM.when === 'date' ? 'checked' : ''}> Autre date</label>
       </div><div class="trip-time">${TRIP_FORM.when === 'date' ? `<label>Date<input type="date" id="tripDate" data-trip-field="date" value="${esc(TRIP_FORM.date)}"></label>` : ''}${TRIP_FORM.when !== 'now' ? `<label>Heure<input type="time" id="tripTime" data-trip-field="time" value="${esc(TRIP_FORM.time)}"></label>` : `<span class="sub">Départ immédiat · ${esc(dep.slice(11,16))}</span>`}</div></fieldset>
       <div class="trip-field"><label class="trip-label" for="tripCar">Véhicule</label><select id="tripCar" data-trip-field="car">${carOptions}</select></div>
-      ${TRIP_FORM.message ? `<p class="trip-message" role="status">${esc(TRIP_FORM.message)}</p>` : ''}${routeLine}
+      ${TRIP_FORM.message ? `<p class="trip-message" role="status">${esc(TRIP_FORM.message)}</p>` : ''}${routeLine}${preflight}
       <div class="trip-actions"><button class="btn pri trip-main" data-act="trip-plan">${immediate ? 'DÉMARRER LE TRAJET' : existing ? 'METTRE À JOUR LE TRAJET' : 'PROGRAMMER LE TRAJET'}</button>
       ${existing ? '<button class="btn" data-act="trip-plan-cancel">Annuler le trajet</button>' : ''}</div>
-    </div><div class="trip-intelligence">${intelligence}</div>`;
+    </div>${radarShell}<div class="trip-intelligence">${intelligence}</div>`;
   // Les mises à jour de la route ne doivent pas détacher les commandes pendant un appui,
   // ni remplacer les champs lorsqu'aucune valeur du formulaire n'a changé.
-  const controlsHTML = html.replace(routeLine, '').replace(intelligence, '');
+  const controlsHTML = html.replace(routeLine, '').replace(preflight, '').replace(radarShell, '').replace(intelligence, '');
   if (el._tripControlsHTML === controlsHTML && el.querySelector('.trip-form')) {
     const previous = el.querySelector('.trip-route-state');
     if (previous) { if (previous.outerHTML !== routeLine) previous.outerHTML = routeLine; }
     else if (routeLine) el.querySelector('.trip-actions').insertAdjacentHTML('beforebegin', routeLine);
+    const preflightPanel = el.querySelector('.trip-preflight');
+    if (preflightPanel && preflightPanel.outerHTML !== preflight) preflightPanel.outerHTML = preflight;
+    const radarPanel = el.querySelector('.trip-radar');
+    if (radarPanel && radarPanel._radarHTML !== radarShell) {
+      const focus = uxFocusKey(radarPanel); radarPanel.outerHTML = radarShell;
+      uxRestoreFocus(el.querySelector('.trip-radar'), focus);
+    }
     const panel = el.querySelector('.trip-intelligence');
     if (panel && panel.innerHTML !== intelligence) { const focus = uxFocusKey(panel); panel.innerHTML = intelligence; uxRestoreFocus(panel, focus); }
   } else {
@@ -148,6 +196,7 @@ function renderTripView() {
     }
   }
   const panel = el.querySelector('.trip-intelligence'); if (panel) uxRestoreFocus(panel, null);
+  const radarMounted = el.querySelector('.trip-radar'); if (radarMounted) radarMounted._radarHTML = radarShell;
   el._tripControlsHTML = controlsHTML;
 }
 function renderTripSummary() {
@@ -210,7 +259,12 @@ function tripFieldChanged(target) {
 function tripProgram(button) {
   tripCaptureForm();
   const origin = tripOriginValue(), dest = tripDestinationValue(), dep = tripDepartureValue(), now = localTs(Date.now()).slice(0, 16);
-  if (!origin || !locHasCoords(origin)) { TRIP_FORM.message = 'Choisis un départ valide.'; renderTripView(); return; }
+  if (!origin || !locHasCoords(origin)) {
+    TRIP_FORM.message = TRIP_FORM.originMode === '__gps'
+      ? 'Position GPS indisponible ou non fiable : actualise la localisation ou choisis un autre départ.'
+      : 'Choisis un départ valide.';
+    renderTripView(); return;
+  }
   if (!dest || !locHasCoords(dest)) { TRIP_FORM.message = 'Choisis une destination dans les suggestions.'; renderTripView(); return; }
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dep) || dep < addMin(now, -5)) { TRIP_FORM.message = 'Choisis une heure de départ actuelle ou future.'; renderTripView(); return; }
   const originKnown = TRIP_FORM.originMode !== '__manual' && TRIP_FORM.originMode !== '__gps' ? origin.id : null;

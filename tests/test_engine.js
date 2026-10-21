@@ -1,6 +1,10 @@
 const fs=require('fs'),vm=require('vm'),path=require('path'),assert=require('assert');
 const src=fs.readFileSync(path.join(__dirname,'../src/engine.js'),'utf8')+fs.readFileSync(path.join(__dirname,'../src/demo.js'),'utf8');
-const ctx={console,Math,Date,Intl,Map,Set};vm.createContext(ctx);vm.runInContext(src+`
+// Le scénario « froid » annonce le gel de la nuit suivante : sa fenêtre de
+// douze heures doit commencer le soir, quelle que soit l'heure du runner.
+const scenarioTime=Date.parse('2026-10-10T22:00:00+02:00');
+const ScenarioDate=class extends Date{constructor(...a){super(...(a.length?a:[scenarioTime]));}static now(){return scenarioTime;}};
+const ctx={console,Math,Date:ScenarioDate,Intl,Map,Set};vm.createContext(ctx);vm.runInContext(src+`
 this.api={makeDemoPayload,makeModel,windowAssess,summarize,seqOf,narrate,seasonAnalysis,computeAlerts,LV,ICE_LV,hourVerdict,estRoad,iceRisk,calendarEventRelevant,calendarEventPlace};`,ctx);
 const A=ctx.api;
 // Comparaison exacte au comportement antérieur : formateur caché, pas d'heure ni de décalage UTC cachés.
@@ -98,6 +102,17 @@ for(const k of ['froid','pluie','neige','doux']){
   const al=A.computeAlerts(m,cars,{rainThr:5},{i20:s1,'308':s2}); console.log(' alerts',Object.values(al).map(a=>a.id+':'+a.sev).join(' '));
 }
 
+{
+  // « À retenir » de la carte de décision : uniquement des phrases déjà présentes dans le récit, jamais un conseil nouveau
+  const p=A.makeDemoPayload('froid',loc),m=A.makeModel(p,'demo',loc),seq=A.seqOf(m,m.nowI,12),sm=A.summarize(seq);
+  for(const c of cars){ const n=A.narrate(c,A.windowAssess(c,seq,'card'),sm,'actuellement');
+    assert(Array.isArray(n.advice),'advice est une liste'); n.advice.forEach(t=>assert(n.body.includes(t),'conseil repris du récit : '+t)); }
+  const summer=A.narrate(cars[0],A.windowAssess(cars[0],seq,'card'),sm,'actuellement');
+  assert(summer.advice.some(t=>/pneus été sont hors de leur plage de confiance/.test(t)),'froid + pneus été : la conclusion pneus est reprise');
+  const mild=A.makeDemoPayload('doux',loc),mm=A.makeModel(mild,'demo',loc),ms=A.seqOf(mm,mm.nowI,12),msm=A.summarize(ms);
+  assert.deepEqual(A.narrate(cars[0],A.windowAssess(cars[0],ms,'card'),msm,'actuellement').advice,[],'conditions douces : rien à retenir');
+  console.log('✅ récit pneus : conseils « À retenir » extraits du récit, vides par temps doux');
+}
 {
   const p=A.makeDemoPayload('froid',loc),m=A.makeModel(p,'demo',loc),seq=A.seqOf(m,m.nowI,24),sm=A.summarize(seq);
   const al=A.computeAlerts(m,cars,{rainThr:5},{});

@@ -38,6 +38,22 @@ async function openAt(context, date) {
     (window.TWRC_VAULT.mode === 'locked' || window.TWRC_VAULT.mode === 'vault'));
   return p;
 }
+async function setFixedAfterDurable(p, date) {
+  // Ce parcours exige un coffre déjà durable avant de simuler huit jours
+  // d'absence. Un rendu terminé ne signifie pas que WebCrypto a fini.
+  // Le scénario de récupération des écritures expirées reste distinct.
+  const state = await p.evaluate(async () => {
+    const vault = window.TWRC_VAULT;
+    await vault.flush();
+    return { mode: vault.mode, pending: vault.pendingWrites, error: vault.error,
+      sealed: window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) };
+  });
+  assert.equal(state.mode, 'vault', 'la session doit encore être ouverte avant le saut de date');
+  assert.equal(state.error, null, 'aucune erreur de sauvegarde avant le saut de date');
+  assert.equal(state.pending, false, 'écriture chiffrée confirmée avant le saut de date : ' + state.mode);
+  await p.clock.setFixedTime(date);
+  return state.sealed;
+}
 (async () => {
   const browser = await BR.launch();
   try {
@@ -45,6 +61,7 @@ async function openAt(context, date) {
       const s = await session(browser, { at: '2026-10-10T08:00:00+02:00', dev, remember: true }), p = s.p;
       const initial = await p.evaluate(() => ({ name: S.cars[0].name, locked: LOCKED(), vault: window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) }));
       assert.equal(initial.locked, false); assert(initial.vault);
+      let sealedBeforeExpiry;
       await check(dev + ' · case de maintien : clé AES-GCM non extractible dans IndexedDB, aucune donnée en clair', async () => {
         const state = await p.evaluate(async () => {
           const db = await new Promise((resolve, reject) => { const r = indexedDB.open('twrc.remember-device.v1'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
@@ -67,6 +84,29 @@ async function openAt(context, date) {
         assert.equal(await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem('twrc.key')), null);
       });
       await check(dev + ' · nouvel onglet 24 h après : pas de code et données intactes', async () => {
+        // Une écriture WebCrypto peut encore être en vol après un rendu réussi.
+        // Retarder réellement le prochain chiffrement pour prouver que le saut
+        // artificiel attend sa confirmation, sans modifier le contenu du profil.
+        await p.evaluate(async () => {
+          await TWRC_VAULT.flush();
+          const encrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+          crypto.subtle.encrypt = (...args) => {
+            crypto.subtle.encrypt = encrypt;
+            return new Promise(resolve => { window.__weeklyReleaseEncrypt = resolve; }).then(() => encrypt(...args));
+          };
+          localStorage.setItem('twrc.settings.v1', JSON.stringify(S));
+        });
+        await p.waitForFunction(() => typeof window.__weeklyReleaseEncrypt === 'function' && TWRC_VAULT.pendingWrites,
+          null, { polling: 50, timeout: 15000 });
+        const advancing = setFixedAfterDurable(p, s.T0 + DAY);
+        try {
+          await wait(150); // temps réel Node, indépendant de l'horloge Playwright
+          assert(await p.evaluate(() => Date.now()) < s.T0 + DAY,
+            'le saut de date attend le chiffrement vérifié des pages existantes');
+        } finally {
+          await p.evaluate(() => { window.__weeklyReleaseEncrypt(); delete window.__weeklyReleaseEncrypt; });
+        }
+        await advancing;
         const q = await openAt(s.c, s.T0 + DAY);
         try {
           assert.equal(await q.evaluate(() => TWRC_VAULT.mode), 'vault');
@@ -75,19 +115,26 @@ async function openAt(context, date) {
         } finally { await q.close(); }
       });
       await check(dev + ' · huitième jour : demande le code sans effacer le coffre', async () => {
+        // La première page future avance aussi l'horloge de p. Confirmer la
+        // copie AVANT ce premier saut, pendant que sa session est encore ouverte.
+        sealedBeforeExpiry = await setFixedAfterDurable(p, s.T0 + 8 * DAY);
         const q = await openAt(s.c, s.T0 + 8 * DAY);
         try {
           assert.equal(await q.evaluate(() => LOCKED()), true);
           assert.equal(await q.locator('#unlockPw').count(), 1);
           assert.equal(await q.evaluate(() => !!window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), true);
+          // Rendre explicite le cas où le timer de l'ancien onglet a déjà expiré.
+          // Le scénario suivant doit réauthentifier cet état, sans tenter de le sauvegarder.
+          await p.evaluate(() => checkSessionExpiry());
+          assert.equal(await p.evaluate(() => TWRC_VAULT.mode), 'expired');
         } finally { await q.close(); }
       });
       await check(dev + ' · huitième jour : réauthentification vérifiée puis verrouillage manuel', async () => {
         const PW = require('node:fs').readFileSync('.passphrase', 'utf8').trim();
-        const sealedBefore = await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT));
-        // Les pages du contexte peuvent reprendre leurs propres horloges après
-        // les scénarios multi-onglets. Fixer explicitement l'instant de l'onglet
-        // courant : ne jamais supposer que le saut effectué dans q l'a expiré.
+        // La copie a été confirmée avant le premier saut au huitième jour.
+        // p est maintenant expiré : flush() ne peut plus y confirmer d'écriture.
+        assert.equal(typeof sealedBeforeExpiry, 'string');
+        const sealedBefore = sealedBeforeExpiry;
         await p.clock.setFixedTime(s.T0 + 8 * DAY);
         const expired = await p.evaluate(() => {
           checkSessionExpiry();

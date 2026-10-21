@@ -1,6 +1,8 @@
 // Registre unique des suites existantes ; aucun scénario E2E n'est modifié.
 'use strict';
 const SUITE = [
+  ['test_live_status.js', 'horloge Paris, dates/DST, réception, fraîcheur et échéance réelle', false],
+  ['e2e79-live-status.js', 'bandeau LIVE : secondes sans réseau, reprise, focus, caches, 429 et mobile/PC', true],
   ['test_tyre_intelligence.js', 'essais pneus : catalogue, comparabilité, règles, positions et sauvegardes', false],
   ['e2e78-tyre-intelligence.js', 'intelligence pneus : quatre vues, preuves, iPhone/PC, hors ligne et absence de mutation', true],
   ['test_engine.js', 'moteur : verdicts, chaussée, verglas', false], ['test_examples.js', 'moteur : cas de référence', false],
@@ -47,7 +49,7 @@ SUITE.push(['test_geolocation.js', 'localisation : précision, provenance, géof
   ['e2e49-interactions.js', 'commandes : clics réels PC/iPhone, saisie, clipboard, recherche dynamique et rerender', true],
   ['e2e50-geolocation.js', 'localisation : erreurs, priorité GPS, retour de veille, permissions, IP, drift et override', true]);
 // Retour rapide sur la file réseau : GPS remplacé, lieux et reprise HTTP 429 avant les longs parcours.
-const FIRST = ['e2e78-tyre-intelligence.js', 'e2e67-controls-safety.js', 'test_weather_requests.js', 'test_gps_requests.js', 'e2e33.js', 'e2e30.js', 'e2e44-place.js', 'e2e40-network.js'];
+const FIRST = ['e2e81-live-route.js', 'e2e78-tyre-intelligence.js', 'e2e67-controls-safety.js', 'test_weather_requests.js', 'test_gps_requests.js', 'e2e33.js', 'e2e30.js', 'e2e44-place.js', 'e2e40-network.js'];
 SUITE.sort((a, b) => (FIRST.includes(a[0]) ? FIRST.indexOf(a[0]) : FIRST.length) - (FIRST.includes(b[0]) ? FIRST.indexOf(b[0]) : FIRST.length));
 
 SUITE.push(['test_road_intelligence.js', 'route : géométrie, sens, progression, validité, dédoublonnage et alertes', false],
@@ -96,6 +98,8 @@ SUITE.push(['test_garage.js', 'Garage : fiches techniques canoniques, relevés, 
   ['e2e71-garage.js', 'Garage : navigation 5 onglets, données véhicules et état, réglages, reload et offline PC/iPhone', true]);
 SUITE.push(['e2e72-mobile-ux.js', 'UX mobile : cinq onglets, détails accessibles, focus, petits écrans, rechargement, données et hors ligne', true]);
 SUITE.push(['e2e73-weekly-login.js', 'sécurité iPhone/PC : session 7 jours en IndexedDB, révocation, expiration et refus', true]);
+SUITE.push(['test_route_radar.js', 'Route Radar : points réels, ETA, couverture, fraîcheur et absence de mutation', false],
+  ['e2e80-route-radar.js', 'Route Radar PC/iPhone : points météo, replis, annulation, offline, focus et zéro nouvelle requête', true]);
 module.exports = { SUITE, FIRST };
 SUITE.push(['test_live_engine.js', 'live : horloge, provenance, données partielles, horizon et réponses tardives', false]);
 SUITE.push(['e2e74-live-offline.js', 'Live/Offline : minuit, heures offline, données anciennes/partielles, reconnexion et 429 iPhone/PC', true]);
@@ -108,3 +112,9 @@ SUITE.push(['test_config_import.js', 'Forteresse III : liens privés, validation
   ['e2e76-config-import.js', 'Forteresse III PC/iPhone : vrais imports fictifs, verrouillage, URL et réouverture', true]);
 SUITE.push(['e2e77-provider-limited.js', 'Incident 429 du 14/10 iPhone/PC : LIMITÉ ≠ HORS LIGNE, boutons en pause, zéro requête, ancien lien de configuration', true]);
 SUITE.push(['test_road_policy.js', 'chaussée mouillée/humide : une seule définition pour le verdict, l’Analyse et le poste Météo, contre-tests', false]);
+SUITE.push(['test_journey_replay.js', 'Journey Replay : prévisions archivées, déclaration conducteur, annulations, reprise et absence de télémétrie', false]);
+SUITE.push(['e2e80-journey-replay.js', 'Journey Replay : avant/après, pause, réduction du mouvement, annulations, DOM stable et iPhone/PC', true]);
+SUITE.push(['test_mission_control.js', 'Mission Control : projection canonique, provenance, absence, hors-ligne et absence de mutation', false]);
+SUITE.push(['test_ux_mobile.js', 'UX mobile lot 1 : aucun texte sous 11 px, bandeau LIVE compact, cibles 44 pt et libellés', false]);
+SUITE.push(['test_live_route.js', 'Live Route : géométrie, progression, GPS périmé/imprécis, secteurs et prévisions ponctuelles', false],
+  ['e2e81-live-route.js', 'Live Route premium PC/iPhone : vraie carte, simulation, GPS, reprise, focus, thèmes et nettoyage', true]);
