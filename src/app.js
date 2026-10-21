@@ -3438,6 +3438,8 @@ function renderBrief() {
     }
   };
   const td = tripData(), w = S.work, dir = UI.dir; if (appActiveCar()) UI.bcar = appActiveCar().id;
+  // Le calcul suit le départ réel (lieu confirmé, départ lancé) : les commandes ci-dessous ne règlent que le trajet habituel.
+  const realFrom = !td.err && td.LA && td.LA.id !== (dir === 'go' ? w.from : w.to) ? td.LA : null;
   const time = dir === 'go' ? w.dep : w.ret;
   const locOpts = (sel, key) => allLocs().map(l => `<option value="${esc(l.id)}" ${l.id === sel ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
   if (!appActiveCar() && !TCARS().some(c => c.id === UI.bcar) && TCARS().length) UI.bcar = TCARS()[0].id;
@@ -3453,10 +3455,10 @@ function renderBrief() {
     <div class="fld"><span class="l">Jour</span><div class="seg">${dOffs.map(k => `<button data-act="day" data-off="${k}" aria-pressed="${UI.dayOff === k}">${dayLbl(k)}</button>`).join('')}</div></div>
     <div class="fld"><label for="quick-work-${dir === 'go' ? 'dep' : 'ret'}">Heure de départ</label><input type="time" id="quick-work-${dir === 'go' ? 'dep' : 'ret'}" data-bind="work.${dir === 'go' ? 'dep' : 'ret'}" value="${esc(time)}"></div>
     <div class="fld"><label for="quick-work-durMin">Durée (min)</label><input type="number" id="quick-work-durMin" data-bind="work.durMin" data-num="1" min="5" max="1200" step="5" value="${esc(w.durMin)}" style="width:92px"></div>
-    <div class="fld"><span class="l">Départ depuis</span><div class="seg">${allLocs().filter(l => l.id !== (dir === 'go' ? w.to : w.from)).slice(0, 4).map(l => `<button data-act="from" data-id="${esc(l.id)}" aria-pressed="${(dir === 'go' ? w.from : w.to) === l.id}">${esc(l.name.split(' / ')[0])}</button>`).join('')}</div></div>
-    <div class="fld"><label for="quick-work-from">De</label><select id="quick-work-from" data-bind="work.from">${locOpts(w.from)}</select></div>
+    <div class="fld"><span class="l">${realFrom ? 'Départ habituel' : 'Départ depuis'}</span><div class="seg">${allLocs().filter(l => l.id !== (dir === 'go' ? w.to : w.from)).slice(0, 4).map(l => `<button data-act="from" data-id="${esc(l.id)}" aria-pressed="${(dir === 'go' ? w.from : w.to) === l.id}">${esc(l.name.split(' / ')[0])}</button>`).join('')}</div></div>
+    <div class="fld"><label for="quick-work-from">${realFrom ? 'De (habituel)' : 'De'}</label><select id="quick-work-from" data-bind="work.from">${locOpts(w.from)}</select></div>
     <div class="fld"><label for="quick-work-to">Vers</label><select id="quick-work-to" data-bind="work.to">${locOpts(w.to)}</select></div>
-  </div>`;
+  </div>${realFrom ? `<p class="sub brf-real-from" role="status">Départ calculé depuis <b>${esc(realFrom.name)}</b> (lieu confirmé ou départ en cours), pas depuis le départ habituel ${esc((locById(dir === 'go' ? w.from : w.to) || {}).name || '')}.</p>` : ''}`;
   if (td.err) { paint(head + `<p class="muted">${esc(td.err)}</p>`); return; }
   const car = appActiveCar() || TCARS().find(c => c.id === UI.bcar) || TCARS()[0];
   if (!car) { paint(head + '<p class="muted">Aucune voiture équipée de pneus.</p>'); return; }

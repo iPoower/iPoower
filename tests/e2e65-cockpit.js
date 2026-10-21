@@ -45,6 +45,18 @@ const layout = p => p.evaluate(() => {
         const brf = await p.locator('#secBrf').innerText();
         if (r.conf >= 2) assert.doesNotMatch(brf, /🟢 GO/);
       });
+      await check(dev + ' · Briefing départ : le départ réel (lieu confirmé) est annoncé, les commandes réglent le trajet habituel', async () => {
+        const other = await p.evaluate(() => [...document.querySelectorAll('#placeBar [data-act=place-confirm][data-place]')].map(b => b.dataset.place).find(id => id !== S.work.from && id !== S.work.to) || null);
+        assert(other, 'lieu fictif de test attendu dans la barre de lieu');
+        await p.evaluate(id => { document.querySelector(`#placeBar [data-act=place-confirm][data-place="${id}"]`).click(); }, other); await s.settle(3);
+        const real = await p.evaluate(id => ({ note: document.querySelector('#secBrief .brf-real-from')?.innerText || '', name: (locById(id) || {}).name, from: tripData().LA.id,
+          label: document.querySelector('#secBrief label[for=quick-work-from]')?.textContent || '' }), other);
+        assert.equal(real.from, other, 'le calcul part du lieu confirmé');
+        assert(real.note.includes(real.name) && /départ habituel/.test(real.note), JSON.stringify(real)); assert.equal(real.label, 'De (habituel)');
+        await p.evaluate(() => { const b = document.querySelector('#placeBar [data-act=place-confirm][data-place="' + S.work.from + '"]'); if (b) b.click(); }); await s.settle(3);
+        const back = await p.evaluate(() => ({ from: tripData().LA.id, habit: S.work.from, note: !!document.querySelector('#secBrief .brf-real-from') }));
+        if (back.from === back.habit) assert(!back.note, 'départ réel = habituel : aucune mention ' + JSON.stringify(back));
+      });
       await check(dev + ' · départ avant les détails de lieu, voiture et monte, sans changer le contexte', async () => {
         const order = await p.locator('#decisionCore .decision-meta').evaluate(el => {
           const trip = el.querySelector('.decision-trip'), place = el.querySelector('.decision-place');
