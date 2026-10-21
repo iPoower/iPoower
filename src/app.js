@@ -1751,8 +1751,17 @@ async function backupExport() {
       USER_STORE.flush(); localStorage.setItem('twrc.settings.v1', JSON.stringify(S));
       await VS.flush(); if (VS.error || VS.pendingWrites) throw new Error('Enregistrement en attente : copie refusée, garde cette page ouverte.');
     }
-    await downloadRecovery(await VS.recoverySnapshot());
-    bkMsg('Copie chiffrée exportée avec le code de cet appareil. Rouvre le fichier enregistré pour vérifier la récupération.');
+    const text = await VS.recoverySnapshot();
+    await downloadRecovery(text);
+    // Plus de deuxième étape « rouvrir le fichier » : la copie que l'on vient d'enregistrer
+    // réactive directement le journal (vérifiée par le coffre : même code, tous les trajets).
+    if (VS.journalNeedsRecovery) {
+      try { await VS.activateJournal(text, bkPass()); }
+      catch (e) { bkMsg('Copie exportée. Journal non réactivé : ' + e.message + ' Les données précédentes sont conservées.'); return; }
+      bkMsg('Copie exportée et journal réactivé. Rechargement…');
+      DeviceStorage.freeze(true); reloadSafe(100); return;
+    }
+    bkMsg('Copie chiffrée exportée avec le code de cet appareil.');
   } catch (e) { bkMsg('Copie non confirmée : ' + e.message); }
 }
 async function journalVerifyCopy(file) {
@@ -1783,7 +1792,7 @@ async function backupApplyPlan(plan) {
   }
 }
 async function backupImport(f) {
-  if (!window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault' || window.TWRC_VAULT.journalNeedsRecovery) { bkMsg('Vérifie d’abord une copie de récupération du journal actuel dans un coffre déverrouillé. Aucun import appliqué.'); return; }
+  if (!window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault' || window.TWRC_VAULT.journalNeedsRecovery) { bkMsg(window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault' && window.TWRC_VAULT.journalNeedsRecovery ? 'Appuie d’abord sur Exporter : le journal sera réactivé, puis importe ton fichier. Aucun import appliqué.' : 'Vérifie d’abord une copie de récupération du journal actuel dans un coffre déverrouillé. Aucun import appliqué.'); return; }
   bkMsg('Lecture du fichier…');
   if (f && Number.isFinite(f.size) && f.size > 68 * 1024 * 1024) { bkMsg('Sauvegarde trop volumineuse : fichier conservé, aucun réglage modifié.'); return; }
   let o, fileText; try { fileText = await f.text(); o = JSON.parse(fileText); } catch (e) { bkMsg('Fichier illisible.'); return; }
@@ -3865,7 +3874,8 @@ function renderSettings(force) {
       <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="password" id="bkPw" autocomplete="current-password" placeholder="code du fichier à importer (vide = code actuel)" style="flex:1;min-width:160px">
         <button class="btn pri" data-act="bk-export">Exporter</button><label class="btn" for="bkFile">Importer</label><input type="file" id="bkFile" accept=".json,application/json,text/plain" hidden></div>
       <p class="sub">La copie complète conserve le journal et toutes ses versions. Elle inclut aussi l’état local chiffré de cet appareil ; seuls les champs durables seront restaurés. Son code est le code actuel de l’appareil ; sans coffre, saisis un code d’au moins 8 caractères pour la copie. L’activation du journal exige un profil déjà déverrouillé et son code de configuration existant. Les anciennes sauvegardes V1/V2 restent importables. Les anciennes versions de l’app refusent cette copie.</p>
-      ${window.TWRC_VAULT && (window.TWRC_VAULT.mode === 'plain' || window.TWRC_VAULT.journalNeedsRecovery) ? '<p class="sub" role="status"><b>Journal en lecture seule.</b> Exporte une copie de récupération, enregistre-la hors du navigateur, puis sélectionne ce fichier pour la vérifier. Les autres réglages restent utilisables.</p><label class="btn" for="journalCopy">Vérifier la copie enregistrée et activer l’archive</label><input type="file" id="journalCopy" accept=".json,application/json" hidden>' : ''}
+      ${window.TWRC_VAULT && window.TWRC_VAULT.mode === 'plain' ? '<p class="sub" role="status"><b>Journal en lecture seule.</b> Exporte une copie de récupération, enregistre-la hors du navigateur, puis sélectionne ce fichier pour la vérifier. Les autres réglages restent utilisables.</p><label class="btn" for="journalCopy">Vérifier la copie enregistrée et activer l’archive</label><input type="file" id="journalCopy" accept=".json,application/json" hidden>'
+        : window.TWRC_VAULT && window.TWRC_VAULT.journalNeedsRecovery ? '<p class="sub" role="status"><b>Journal en lecture seule.</b> Appuie sur Exporter : la copie est enregistrée et le journal est réactivé dans la foulée. Les autres réglages restent utilisables.</p>' : ''}
       <p class="sub" id="bkMsg" aria-live="polite"></p></div>
     <div class="set-sec"><h3>🗂️ Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
