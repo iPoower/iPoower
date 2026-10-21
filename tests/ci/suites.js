@@ -118,3 +118,4 @@ SUITE.push(['test_mission_control.js', 'Mission Control : projection canonique, 
 SUITE.push(['test_ux_mobile.js', 'UX mobile lot 1 : aucun texte sous 11 px, bandeau LIVE compact, cibles 44 pt et libellés', false]);
 SUITE.push(['test_live_route.js', 'Live Route : géométrie, progression, GPS périmé/imprécis, secteurs et prévisions ponctuelles', false],
   ['e2e81-live-route.js', 'Live Route premium PC/iPhone : vraie carte, simulation, GPS, reprise, focus, thèmes et nettoyage', true]);
+SUITE.push(['test_sync_merge.js', 'fusion PC ↔ iPhone (étape 1) : journal cumulatif, relevés additifs, réglage le plus récent par chemin, état de l’appareil jamais importé', false]);
