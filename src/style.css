@@ -1296,3 +1296,11 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .ec-unmeasured>summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .ec-unmeasured>.ec-grid{padding:0 8px 8px}
 .lab-cmp-row,.lab-grip .lab-bar{white-space:nowrap}
+/* Carte de décision compacte (iPhone) : trajet, lieu, voiture et monte en texte continu ; seules les commandes
+   « Départ ↗ », « Confirmer » et « Changer » gardent leur cible de 44 pt, sans imposer 44 px de haut à chaque ligne. */
+.decision-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12px; line-height: 1.4; }
+.decision-meta > span { min-height: 0; }
+.decision-meta > .decision-trip { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; }
+.decision-meta .decision-change { margin-block: -11px; }
+.decision-advice { font-size: 13px; line-height: 1.45; color: var(--fg); border-left: 3px solid var(--lv); padding: 3px 0 3px 9px; overflow-wrap: anywhere; }
+.decision-advice b { font-weight: 600; color: var(--lv-t); margin-right: 2px; }

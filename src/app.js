@@ -1109,11 +1109,14 @@ function renderDecisionCore() {
     : '<span class="decision-confidence ' + confClass + '">' + confidenceLabel + '</span>';
   el.className = UI.view === 'analyse' ? 'decision-context' : 'decision-core lv' + decision.displayLevel;
   el.hidden = false;
+  // À retenir : la conclusion déjà rédigée par le récit pneus de la voiture active (aucun conseil nouveau), dès qu'un signal existe.
+  const advice = decision.riskLevel >= 1 && carEval && carEval.nar && Array.isArray(carEval.nar.advice) ? carEval.nar.advice : [];
   const coreHtml = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL · MÉTÉO ET PNEUS</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
     confidenceHtml + '</div>' +
     // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
     (matters.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + matters.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
       : '') +
+    (advice.length && ['pneus', 'meteo'].includes(UI.view) ? '<p class="decision-advice"><b>À retenir · ' + esc(car.short || car.name || car.id) + '</b> ' + advice.map(esc).join(' ') + '</p>' : '') +
     '<div class="decision-meta">' + destinationHtml + '<span class="decision-place">Lieu · <b>' + esc(placeLabel) + '</b>' + (placeOk ? '' : ' <a href="#placeBar" class="decision-change">Confirmer</a>') + forecastHtml + '</span>' +
     '<span class="decision-car">Voiture · <b>' + esc(carLabel) + '</b>' + (car ? ' · choix manuel' : '') + ' <button type="button" class="decision-change" data-act="decision-car-change" aria-label="Changer la voiture active">Changer</button></span>' +
     (UI.view === 'pneus' && car ? '<span class="decision-mount">Monte · <b>' + esc(TYPE_LABEL[tyre.type] || 'à confirmer') + '</b> · ' + esc([tyre.brand, tyre.model].filter(Boolean).join(' ') || 'modèle non renseigné') + '</span>' : '') +

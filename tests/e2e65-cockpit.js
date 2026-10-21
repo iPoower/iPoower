@@ -179,6 +179,26 @@ const layout = p => p.evaluate(() => {
         });
         await t.c.close();
       }
+      // Scénario E — nuit froide, pneus été : la conclusion du récit pneus remonte en « À retenir », jamais sans voiture choisie
+      const f = await session(b, { at: AT, dev, scn: 'froid' }); await monte(f.p);
+      await f.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await f.settle(3);
+      await check(dev + ' · nuit froide : « À retenir » reprend le récit pneus de la voiture active, absent sans voiture', async () => {
+        const r = await f.p.evaluate(() => {
+          const read = () => document.querySelector('#decisionCore .decision-advice')?.innerText || '';
+          const before = USER_STORE.state.dayContext;
+          try {
+            USER_STORE.state.dayContext = { ...before, activeCarId: null }; renderAll(); const none = read();
+            const car = S.cars.find(c => c.tire.type === 'summer') || S.cars[0];
+            USER_STORE.state.dayContext = { ...before, activeCarId: car.id }; renderAll();
+            const ev = CX.cars.find(x => x.car.id === car.id);
+            return { none, shown: read(), advice: ev && ev.nar ? ev.nar.advice : null, body: ev && ev.nar ? ev.nar.body : '', level: DECISION_LAST.decision.riskLevel };
+          } finally { USER_STORE.state.dayContext = before; renderAll(); }
+        });
+        assert.equal(r.none, '', 'sans voiture active, aucune consigne pneus');
+        assert(r.level >= 1 && r.advice && r.advice.length, JSON.stringify(r));
+        assert.match(r.shown, /^À retenir · /); r.advice.forEach(t => { assert(r.shown.includes(t), t); assert(r.body.includes(t), t); });
+      });
+      await f.c.close();
       // Scénario D — données insuffisantes : profil générique (appareil verrouillé, monte inconnue) et météo indisponible
       const g = await session(b, { at: AT, dev, unlock: false, meteo: '503' }); await g.settle(8);
       await check(dev + ' · scénario D (météo indisponible, profil inconnu) : incertitude explicite, aucun feu vert', async () => {
