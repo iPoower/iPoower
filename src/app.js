@@ -3211,6 +3211,23 @@ const tireTxt = car => {
   return `${a ? esc(a) : '<span class="muted">marque / modèle non renseignés</span>'} · <span class="tt">${esc(t.size || '—')}</span>${t.tread != null ? ` · <span class="tt">${esc(treadTxt(treadAxles(t), treadAxles(t).worst))}${t.treadEst ? ' (estimée)' : ''}</span>` : ''}`;
 };
 const lastOdo = car => (car.odo || []).slice().sort((x, y) => x.km - y.km).slice(-1)[0] || null;
+// Une profondeur de la fiche rejoint l'historique du jour (remplace la saisie non localisée du même jour et du même essieu),
+// avec le compteur connu et l'indication estimée / mesurée. Plafond de 30 relevés : rien n'est effacé pour faire de la place.
+function datedFicheTread(car, axes) {
+  if (!car || !car.tire) return false;
+  const today = (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10), lo = lastOdo(car), x = treadAxles(car.tire);
+  let hist = Array.isArray(car.tire.treads) ? car.tire.treads.slice() : [], changed = false;
+  for (const ax of axes) {
+    const mm = x[ax];
+    if (typeof mm !== 'number' || !Number.isFinite(mm) || mm < 0 || mm > 12) continue;
+    const kept = hist.filter(r => !(r && r.d === today && r.ax === ax && !r.pos && !r.wheel));
+    if (kept.length >= 30) continue;
+    hist = kept.concat([{ d: today, mm: Math.round(mm * 10) / 10, km: lo ? lo.km : null, ax, ...(car.tire.treadEst ? { est: 1 } : {}) }]);
+    changed = true;
+  }
+  if (changed) car.tire.treads = hist;
+  return changed;
+}
 function kmPerDay(car) {
   const o = (car.odo || []).slice().sort((x, y) => x.d < y.d ? -1 : 1); if (o.length < 2) return null;
   const days = dayDiff(o[0].d, o[o.length - 1].d); return days >= 7 ? (o[o.length - 1].km - o[0].km) / days : null;
@@ -4154,6 +4171,9 @@ document.addEventListener('change', e => {
     const trm = /^cars\.(\d+)\.tire\.tread(Av|Ar)$/.exec(t.dataset.bind);
     if (tm) switchTire(S.cars[+tm[1]], v); else if (trm) setTreadAxle(S.cars[+trm[1]].tire, trm[2] === 'Av' ? 'av' : 'ar', v); else setPath(S, t.dataset.bind, v);
     if (trm) { markEdit(`cars.${trm[1]}.tire.tread`); markEdit(`cars.${trm[1]}.tire.treadAv`); markEdit(`cars.${trm[1]}.tire.treadAr`); }
+    // Profondeur saisie dans la fiche : datée comme un relevé rapide non localisé, sinon elle reste « date inconnue » partout.
+    const tem = /^cars\.(\d+)\.tire\.treadEst$/.exec(t.dataset.bind);
+    if (trm || tem) { const ci = +(trm || tem)[1]; if (datedFicheTread(S.cars[ci], trm ? [trm[2] === 'Av' ? 'av' : 'ar'] : ['av', 'ar'])) markEdit(`cars.${ci}.tire.treads`); }
     if (tm) { markEdit(`cars.${tm[1]}.tire`); markEdit(`cars.${tm[1]}.sets`); } else markEdit(t.dataset.bind);
     // modèle reconnu dans la base : le type de pneu se met à jour tout seul
     const bm = /^cars\.(\d+)\.tire\.(brand|model)$/.exec(t.dataset.bind);

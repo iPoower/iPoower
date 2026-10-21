@@ -48,6 +48,32 @@ async function precisionReference(browser,dev){
   console.log('PRECISION_REFERENCE '+JSON.stringify(reference));
  }finally{await s.c.close();}
 }
+// Profondeur saisie dans « Modifier la fiche » : datée comme un relevé rapide, puis visible avec sa date dans Garage et Analyse.
+async function ficheDepthScenario(browser){
+ const s=await session(browser,{at:'2026-10-07T06:00:00+02:00',dev:'iphone'}),p=s.p;
+ try{
+  await p.evaluate(()=>{const c=S.cars[0];c.odo=[{d:'2026-10-01',km:12000}];c.tire.treads=[];c.tire.treadEst=1;USER_STORE.state.dayContext.activeCarId=c.id;UI.view='garage';renderAll();document.getElementById('settings').open=true;renderSettings(true);});
+  await s.settle(2);
+  const fill=async(id,v)=>{await p.locator('#'+id).fill(v);await p.locator('#'+id).dispatchEvent('change');await s.settle(1);};
+  await fill('f-cars-0-tire-treadAv','2.6');await fill('f-cars-0-tire-treadAv','2.7');await fill('f-cars-0-tire-treadAr','5.5');
+  await check('fiche · profondeurs datées du jour, une seule saisie par essieu et par jour, compteur et estimation conservés',async()=>{
+   const h=await p.evaluate(()=>S.cars[0].tire.treads);
+   assert.deepEqual(h,[{d:'2026-10-07',mm:2.7,km:12000,ax:'av',est:1},{d:'2026-10-07',mm:5.5,km:12000,ax:'ar',est:1}]);
+  });
+  await p.locator('#f-cars-0-tire-treadEst').selectOption('0');await p.locator('#f-cars-0-tire-treadEst').dispatchEvent('change');await s.settle(1);
+  await check('fiche · passer en « mesurées » re-date les deux essieux sans estimation',async()=>{
+   const h=await p.evaluate(()=>S.cars[0].tire.treads);
+   assert.deepEqual(h.map(x=>[x.ax,x.mm,!!x.est]),[['av',2.7,false],['ar',5.5,false]]);
+  });
+  await p.evaluate(()=>{UI.view='garage';renderAll();});await s.settle(2);
+  await check('Garage et Analyse · la profondeur de la fiche n’est plus « date inconnue »',async()=>{
+   const g=await p.locator('#secGarage .garage-car').first().textContent();
+   assert.match(g,/07\/10\/2026/);
+   const r=await p.evaluate(()=>{const ti=TyreIntelligence.analyse(tyreIntelligenceInput(labCar(),null));return ti.facts.current.map(x=>[x.axle,x.mm,x.date]);});
+   assert.deepEqual(r,[['av',2.7,'2026-10-07'],['ar',5.5,'2026-10-07']]);
+  });
+ }finally{await s.c.close();}
+}
 async function twinScenario(browser){
  const s=await session(browser,{at:'2026-10-07T06:00:00+02:00',dev:'iphone'}),p=s.p;
  try{
@@ -348,6 +374,7 @@ async function twinScenario(browser){
    } finally{await s.c.close();}
   }
   await twinScenario(browser);
+  await ficheDepthScenario(browser);
   await check('Garage · aucune erreur JS',async()=>assert.deepEqual(errors,[]));
  }finally{await browser.close();}
  console.log(n+'/'+n+' scénarios Garage PC/iPhone OK');
