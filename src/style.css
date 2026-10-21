@@ -1113,6 +1113,12 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .garage-checks h4 { color: var(--fg2); font-size: 12px; font-weight: 600; }
 .garage-checks ul { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 5px; }
 .garage-checks li { border-left: 2px solid var(--lv); background: var(--panel); padding: 7px 9px; color: var(--fg2); font-size: 12px; }
+/* Garage · entretien déclaré : échéance en clair, détail en dessous, action seulement quand elle est due */
+.garage-maint li small { display: block; margin-top: 2px; color: var(--fg3); font-size: 11.5px; }
+.garage-maint li b { color: var(--fg); font-weight: 600; }
+.garage-maint .btn { min-height: 44px; }
+.garage-maint li .btn { margin-top: 6px; }
+.garage-maint .garage-maint-edit { margin-top: 8px; }
 .garage-plan { border: 1px solid var(--line2); border-radius: 4px; padding: 0 9px; }
 .garage-plan > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
 .garage-plan > div { display: grid; gap: 4px; padding-bottom: 10px; }
