@@ -174,7 +174,13 @@ const Backup = (() => {
   }
   function mergeWeather(a, b) {
     const left = weather(a), right = weather(b);
-    const merge = (key, limit) => [...new Map([...left[key], ...right[key]].map(e => [JSON.stringify(e), e])).values()].sort((a, b) => a.at - b.at).slice(-limit);
+    const merge = (key, limit) => {
+      const rows = [...new Map([...left[key], ...right[key]].map(e => [JSON.stringify(e), e])).values()].sort((a, b) => a.at - b.at);
+      // Refuser le plan complet plutôt qu'annoncer une restauration réussie
+      // après suppression silencieuse d'observations de l'une des sources.
+      if (rows.length > limit) throw new Error('Fusion du journal météo sans perte impossible : ' + key);
+      return rows;
+    };
     return { v: 1, reports: merge('reports', 30), shadow: merge('shadow', 200) };
   }
   function make({ settings, view, context: state, tyreTherm: therm, tripCancel: cancel, weather: wx, at = new Date().toISOString() } = {}) {
