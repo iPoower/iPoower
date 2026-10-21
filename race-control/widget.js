@@ -430,18 +430,20 @@ function narrate(car, w, sum, intro) {
   else s.push('Pas de risque de verglas notable (estimé).');
   if (sum.visMin != null && sum.visMin < 1000) s.push(`Brouillard : visibilité jusqu’à ${f0(sum.visMin)} m vers ${hhmm(sum.iVis)}.`);
   if (sum.gustMax != null && sum.gustMax >= 55) s.push(`Rafales jusqu’à ${f0(sum.gustMax)} km/h.`);
-  if ((sum.visMin != null && sum.visMin < 500) || (sum.gustMax != null && sum.gustMax >= 90)) s.push('Indépendamment des pneus, la météo elle-même impose une prudence particulière.');
+  // advice : les seules phrases de conseil du récit (même texte), reprises telles quelles par la carte de décision
+  const advice = [], say = t => { s.push(t); advice.push(t); };
+  if ((sum.visMin != null && sum.visMin < 500) || (sum.gustMax != null && sum.gustMax >= 90)) say('Indépendamment des pneus, la météo elle-même impose une prudence particulière.');
   // conclusion selon le pneu
   const cold = sum.Tmin != null && sum.Tmin < 7;
   if (type === 'summer') {
-    if (w.level >= 2) s.push(unk ? 'Si ce sont des pneus été, ils sont hors de leur plage de confiance : vérifie le flanc (marquage 3PMSF ou M+S) pour fixer le type.' : 'Les pneus été sont hors de leur plage de confiance : adhérence fortement réduite, freinages et relances à anticiper.');
-    else if (w.level === 1 && cold) s.push('Adhérence à surveiller, surtout au départ à froid et sur route humide.');
+    if (w.level >= 2) say(unk ? 'Si ce sont des pneus été, ils sont hors de leur plage de confiance : vérifie le flanc (marquage 3PMSF ou M+S) pour fixer le type.' : 'Les pneus été sont hors de leur plage de confiance : adhérence fortement réduite, freinages et relances à anticiper.');
+    else if (w.level === 1 && cold) say('Adhérence à surveiller, surtout au départ à froid et sur route humide.');
   } else if (type === 'winter') {
-    if (sum.Tmax != null && sum.Tmax >= 18) s.push('Douceur : les pneus hiver restent sûrs mais s’usent plus vite et perdent en précision.');
+    if (sum.Tmax != null && sum.Tmax >= 18) say('Douceur : les pneus hiver restent sûrs mais s’usent plus vite et perdent en précision.');
   } else if (cold && w.level >= 1) {
-    s.push('Les 4 saisons 3PMSF sont polyvalents, sans égaler un excellent pneu hiver dans les conditions hivernales sévères.');
+    say('Les 4 saisons 3PMSF sont polyvalents, sans égaler un excellent pneu hiver dans les conditions hivernales sévères.');
   }
-  return { head, body: s.join(' ') };
+  return { head, body: s.join(' '), advice };
 }
 
 /* ---------- saison pneus ---------- */
