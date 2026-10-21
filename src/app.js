@@ -3536,6 +3536,8 @@ function renderCompare() {
     }
     if (sm.Pmax >= 4) L.push(['⚠️', `Pluie jusqu’à ${f1(sm.Pmax)} mm/h`]);
     if (sm.visMin != null && sm.visMin < 1000) L.push(['⚠️', `Brouillard (${f0(sm.visMin)} m) : prudence quel que soit le pneu`]);
+    // Usure : mêmes constats que Garage (même source tyreState), la profondeur saisie entrant déjà dans l'indice
+    tyreStateOf(car).maint.filter(m => ['tread', 'tread-stale', 'tread-est'].includes(m.k)).forEach(m => L.push([m.lv >= 2 ? '⛔' : '⚠️', m.text]));
     if (!L.length) L.push(['✅', 'Aucune contrainte particulière détectée']);
     const gen = carProfile(car).generic;
     return `<div class="cmpc ${gen ? 'lvx' : 'lv' + w.level}"><div class="verdict sm ${gen ? 'lvx' : 'lv' + w.level}"><span class="em">${gen ? '🧪' : LV[w.level].emoji}</span><span>${esc(car.short)} · ${gen ? 'aperçu' : w.score + '/100'}</span></div>
@@ -3547,7 +3549,7 @@ function renderCompare() {
     `Conditions sur ${esc(label)} : ${f1(sm.Tmin)} à ${f1(sm.Tmax)} °C, chaussée estimée jusqu’à ${f1(sm.TrMin)} °C, pluie max ${f1(sm.Pmax)} mm/h, visibilité min ${visTxt(sm.visMin)}, ${sm.snowSum > 0 || sm.snowCode ? 'neige prévue' : 'pas de neige prévue'}, risque de verglas estimé ${ICE_LV[sm.iceLevel].toLowerCase()}.`,
     genericCompare ? 'Comparaison personnalisée en attente : renseigne les lieux et la monte de chaque voiture.' : gap < 5 ? `Les deux configurations obtiennent un indice proche (${a.w.score} et ${b.w.score}) : les pneus ne les distinguent pas nettement dans ces conditions.` : `Écart d’indice : ${gap} points en faveur de ${esc(best.car.short)} pour l’adéquation pneus/météo.`,
     sporty && (cold || wet) ? `${esc(sporty.car.short)} (usage sportif, ${esc(sporty.car.spec || 'puissance élevée')}) sollicite davantage l’adhérence disponible au démarrage et en sortie de courbe quand le pneu est froid.` : '',
-    'Cette comparaison ne porte que sur les pneus et la météo. Elle ne tient pas compte de l’état des freins, de l’usure réelle, du chargement ni de ton expérience : le choix t’appartient.'
+    'Cette comparaison ne porte que sur les pneus et la météo, avec la profondeur que tu as saisie (pas une mesure en temps réel). Elle ne tient pas compte de l’état des freins, du chargement ni de ton expérience : le choix t’appartient.'
   ].filter(Boolean);
   el.innerHTML = `<div class="mod-h"><h2>🚗 Quelle voiture prendre ?</h2><span class="src">comparaison factuelle</span></div>
     <div class="cmp">${cards}</div><div class="why">${why.map(t => `<span>${t}</span>`).join('')}</div>`;
