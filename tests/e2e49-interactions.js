@@ -162,7 +162,19 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         assert.equal(await p.locator('#geoHits').innerText(), ''); assert.equal(await p.evaluate(() => window.__hits.length), 0); s.state.holdSearch = null;
       });
       await check(tag + ' · notification de test : POST simulé, résultat visible', async () => {
-        await p.evaluate(() => { window.TWRC_NTFY = 'fixture-only'; renderSettings(true); }); await click('[data-act=ntfy-test]'); assert.equal(await p.locator('[data-act=ntfy-test]').innerText(), 'Test envoyé');
+        await p.evaluate(() => { window.TWRC_NTFY = 'fixture-only'; renderSettings(true); });
+        // Le délai fixe de settle(1) ne prouve pas la fin de fetch sur un runner
+        // chargé. Exiger la vraie réponse POST simulée, puis le résultat visible.
+        const [response] = await Promise.all([
+          p.waitForResponse(r => r.url() === 'https://ntfy.sh/' && r.request().method() === 'POST', { timeout: 10000 }),
+          click('[data-act=ntfy-test]')
+        ]);
+        assert.equal(response.status(), 200); assert.equal(response.request().postDataJSON().topic, 'fixture-only');
+        await response.finished();
+        const button = p.locator('[data-act=ntfy-test]'), deadline = Date.now() + 10000;
+        let label = await button.innerText();
+        while (label === 'Envoyer un test' && Date.now() < deadline) { await s.settle(1); label = await button.innerText(); }
+        assert.equal(label, 'Test envoyé'); assert.equal(await button.isVisible(), true);
       });
       await check(tag + ' · export et import : erreurs de saisie expliquées', async () => {
         await click('[data-act=bk-export]'); assert.match(await p.locator('#bkMsg').innerText(), /8 caractères/);
