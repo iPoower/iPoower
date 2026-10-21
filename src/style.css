@@ -1079,9 +1079,9 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .f1-extension .lab-sp p { font-size: 11px; color: var(--fg3); line-height: 1.45; }
 .f1-extension .lab-sp .btn { margin-top: 8px; }
 @media (max-width: 560px) {
-  .f1-dock { flex-wrap: wrap; gap: 3px 6px; }
-  .f1-dock-links { flex-basis: 100%; }
-  .f1-dock-title { font-size: 11px; }
+  /* une seule ligne : titre court à gauche, accès défilant à droite (≈ 56 px au lieu de 85 px sur iPhone) */
+  .f1-dock { gap: 6px; padding: 5px 6px; }
+  .f1-dock-title { font-size: 11px; flex-direction: column; align-items: flex-start; gap: 0; line-height: 1.2; }
 }
 
 /* GARAGE : cinquième surface métier, même palette / densité mobile Race Control. */
@@ -1304,3 +1304,5 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .decision-meta .decision-change { margin-block: -11px; }
 .decision-advice { font-size: 13px; line-height: 1.45; color: var(--fg); border-left: 3px solid var(--lv); padding: 3px 0 3px 9px; overflow-wrap: anywhere; }
 .decision-advice b { font-weight: 600; color: var(--lv-t); margin-right: 2px; }
+/* Blocs d'information vides (démo, avis) : aucun espacement fantôme entre l'en-tête et le prochain trajet */
+#demoBar:empty, #notice:empty { display: none; }

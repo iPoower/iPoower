@@ -1270,11 +1270,13 @@ function renderView() {
     : ['secTripSummary', 'secBrf', 'banners', 'hdrMore', 'secCars', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue'];
   if (!order.includes('secGarage')) order.push('secGarage');
   if (!order.includes('secTenue')) order.push('secTenue');
-  if (renderView.last === UI.view) return; renderView.last = UI.view;
+  // Pneus : le prochain trajet passe avant le journal (lecture), sauf question de débrief ouverte juste après une arrivée.
+  const debriefFirst = !vp || !!DEBRIEF_FORM, viewKey = UI.view + (debriefFirst ? '' : ':trajet-avant-journal');
+  if (renderView.last === viewKey) return; renderView.last = viewKey;
   let prev = $('#notice');
   if (!va && !vtr) order.splice(order.indexOf('hdrMore') + 1, 0, 'jump');
   const brf = order.indexOf('secBrf'); if (brf >= 0) order.splice(brf + 1, 0, 'secRoad');
-  if (!vtr) order.splice(va ? 2 : 1, 0, 'secDebrief');
+  if (!vtr) order.splice(va ? 2 : debriefFirst ? 1 : order.indexOf('secRoad') + 1, 0, 'secDebrief');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
   deskLayout(order);
   if (RADAR.map) { const map = RADAR.map; setTimeout(() => { if (RADAR.map === map) map.invalidateSize(); }, 60); }

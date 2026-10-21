@@ -32,6 +32,27 @@ const layout = p => p.evaluate(() => {
         assert.equal(await p.evaluate(() => UI.view), 'pneus');
         const L = await layout(p); assert.deepEqual(L.order, ['decisionCore', 'placeBar', 'secBrf']);
       });
+      await check(dev + ' · Pneus : prochain trajet avant le journal des trajets, débrief en attente toujours en premier', async () => {
+        const r = await p.evaluate(() => {
+          const before = USER_STORE.state.debrief;
+          const order = () => { renderAll(); return [...document.querySelectorAll('#secDebrief, #secBrf')].map(e => e.id).join('>'); };
+          try {
+            USER_STORE.transaction(st => { st.debrief = Debrief.close(st.debrief, { key: 'trajet-fictif-ordre', how: 'confirmé' }); });
+            const read = order(), visible = !!document.getElementById('secDebrief').offsetHeight;
+            DEBRIEF_FORM = { key: 'trajet-fictif-ordre', conditions: null, grip: 'unknown' };
+            const asked = order(), form = !!document.querySelector('#secDebrief .debrief-form');
+            DEBRIEF_FORM = null;
+            return { read, visible, asked, form, back: order() };
+          } finally { DEBRIEF_FORM = null; USER_STORE.transaction(st => { st.debrief = before; }); renderAll(); }
+        });
+        assert(r.visible && r.form, 'journal et question de débrief affichés ' + JSON.stringify(r));
+        // PC : le journal reste dans la colonne de droite, à côté du trajet ; l'ordre ne concerne que la colonne unique du téléphone.
+        if (dev === 'iphone') {
+          assert.equal(r.read, 'secBrf>secDebrief', 'journal en lecture : après le prochain trajet');
+          assert.equal(r.asked, 'secDebrief>secBrf', 'question de débrief ouverte : avant le trajet');
+          assert.equal(r.back, 'secBrf>secDebrief', 'question fermée : retour à l’ordre trajet puis journal');
+        } else assert(await p.evaluate(() => !!document.querySelector('#deskRail #secDebrief')), 'PC : journal dans la colonne de droite');
+      });
       await check(dev + ' · décision : verdict, confiance, âge des données, lieu, voiture et destination dans une seule carte', async () => {
         const c = await core(p); assert(c, 'carte de décision affichée');
         assert.match(c.text, /CONDITIONS STABLES|SURVEILLANCE|PRUDENCE|DANGER|DONNÉES DÉGRADÉES/); assert.match(c.text, /Confiance · (SOLIDE|À CONFIRMER|DÉGRADÉ) · météo/);
