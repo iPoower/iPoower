@@ -1,9 +1,31 @@
 // @include app/garage-scene.js
 // @include app/live-route-view.js
 // @include app/mission-control.js
-/* Onglet Garage : consultation uniquement des fiches existantes.
+/* Onglet Garage : consultation des fiches existantes et de l'entretien déclaré dans ces fiches.
  * Aucune nouvelle table, aucun journal d'entretien inventé, aucune connexion OBD.
  */
+const GARAGE_ODO_EVERY_DAYS = 7;   // rappel du compteur : chaque semaine (choix du propriétaire)
+const GARAGE_MAINT_LV = { late: 2, soon: 1, ok: 0, unknown: 0 };
+function garageMaintHtml(m, c) {
+  const r = m.revision, ct = m.ct, o = m.odo, lv = s => GARAGE_MAINT_LV[s] || 0;
+  const left = (days, km) => [days != null ? (days < 0 ? 'dépassée de ' + -days + ' j' : 'dans ' + days + ' j') : '',
+    km != null ? (km <= 0 ? 'dépassée de ' + garageKm(-km) : garageKm(km) + ' restants') : ''].filter(Boolean).join(' · ');
+  const revision = r.missing === 'last' ? '<li class="lv0">Révision · dernière non renseignée</li>'
+    : r.missing === 'interval' ? '<li class="lv0">Révision · dernière le ' + garageDate(r.last.d) + (r.last.km != null ? ' à ' + garageKm(r.last.km) : '') + ' · intervalle du carnet à renseigner</li>'
+    : '<li class="lv' + lv(r.status) + '"><b>Révision' + (r.status === 'late' ? ' en retard' : r.status === 'soon' ? ' bientôt' : '') + '</b> · avant ' +
+      [r.dueDate ? 'le ' + garageDate(r.dueDate) : '', r.dueKm != null ? garageKm(r.dueKm) : ''].filter(Boolean).join(' ou ') +
+      '<small>' + left(r.dateDaysLeft, r.kmLeft) +
+      (r.kmDate ? ' · km atteints vers le ' + garageDate(r.kmDate) + ' à ton rythme' : r.dueKm != null && !o.kmPerDay ? ' · date selon les km : rythme pas encore calculable' : '') + '</small></li>';
+  const control = ct.next ? '<li class="lv' + lv(ct.status) + '"><b>Contrôle technique' + (ct.status === 'late' ? ' dépassé' : ct.status === 'soon' ? ' bientôt' : '') + '</b> · avant le ' + garageDate(ct.next) +
+      '<small>' + left(ct.daysLeft, null) + (ct.source === 'two-years' ? ' · 2 ans après le dernier (' + garageDate(ct.last) + ')' : ' · date limite déclarée') + '</small></li>'
+    : '<li class="lv0">Contrôle technique · dernier non renseigné</li>';
+  const counter = '<li class="lv' + (o.due ? 1 : 0) + '"><b>' + (o.due ? 'Compteur à mettre à jour' : 'Compteur à jour') + '</b>' +
+    (o.last ? ' · relevé ' + (o.ageDays === 0 ? 'aujourd’hui' : 'il y a ' + o.ageDays + ' j') : ' · aucun relevé') +
+    '<small>' + (o.kmPerDay ? 'Rythme ≈ ' + Math.round(o.kmPerDay).toLocaleString('fr-FR') + ' km/j' : 'Rythme : deux relevés espacés d’au moins 7 jours nécessaires') + ' · rappel chaque semaine</small>' +
+    (o.due ? '<button type="button" class="btn sm" data-act="garage-quick" data-car="' + esc(c.id) + '" data-garage-target="odo">Relever le compteur</button>' : '') + '</li>';
+  return '<div class="garage-checks garage-maint" data-garage-maint="' + esc(c.id) + '"><h4>🔧 Entretien</h4><ul>' + revision + control + counter + '</ul>' +
+    '<button type="button" class="btn sm garage-maint-edit" data-act="garage-quick" data-car="' + esc(c.id) + '" data-garage-target="maintenance">Renseigner l’entretien</button></div>';
+}
 function garageDate(d) {
   return /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? esc(d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4)) : 'date non renseignée';
 }
@@ -49,7 +71,7 @@ function garageVehicleHtml(c) {
     (t && t.tread ? t.tread.estimated ? 'USURE ESTIMÉE' : 'MESURE DÉCLARÉE' : 'USURE INCONNUE') + '</span></div>' +
     mounted + notices +
     uxFold('garage-records-' + c.id, 'Mesures et fiche pneus', tyres + (c.quality.length ? '<ul class="lab-why">' + c.quality.map(q=>'<li>' + esc(q.label + ' · ' + q.text) + '</li>').join('') + '</ul>' : ''), 'Monte · pression · montage') + winter +
-    '<div class="garage-footer"><span>Entretien mécanique : aucun carnet général enregistré dans Race Control.</span></div>' +
+    garageMaintHtml(c.maintenance, c) +
     '</article>';
 }
 function renderGarage() {
@@ -58,7 +80,8 @@ function renderGarage() {
   el.hidden = UI.view !== 'garage';
   if (el.hidden) { garageMotionDetach(); garageLiveDetach(); if (el.innerHTML) el.innerHTML = ''; renderGarage.last = null; return; }
   if (LOCKED()) { garageMotionDetach(); garageLiveDetach(); el.innerHTML = '<p class="sub">Déverrouille Race Control pour retrouver les fiches chiffrées.</p>'; renderGarage.last = null; return; }
-  const active = appActiveCar(), cars = Garage.overview(S.cars, active && active.id, tyreStateOf);
+  const active = appActiveCar(), today = nowIn('Europe/Paris').slice(0, 10), cars = Garage.overview(S.cars, active && active.id, tyreStateOf)
+    .map(c => { const raw = S.cars.find(x => x && x.id === c.id); return { ...c, maintenance: Garage.maintenance(raw, { today, kmPerDay: raw ? kmPerDay(raw) : null, odoEveryDays: GARAGE_ODO_EVERY_DAYS }) }; });
   const trip = APP_CONTEXT.snapshot && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
   const scene = Garage.preview(trip, { sourceFor: garageWeatherSources(), offline: offlineNow(), now: Date.now(), freshness: Reliability.freshState });
   const selected = cars.find(c => c.active) || null;

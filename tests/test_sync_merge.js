@@ -76,23 +76,62 @@ check('état de l’appareil (GPS, caches, contexte du jour) jamais importé de 
   assert.equal(r['twrc.gps'], pc['twrc.gps']); assert.equal(r['twrc.cache.lieuB'], undefined); assert.equal(r['twrc.place.v1'], undefined); assert.equal(r['twrc.key'], undefined);
   assert.equal(JSON.parse(r['twrc.context.v1']).dayContext.activeCarId, 'voitureA');
 });
-check('donnée durable inconnue : ajoutée si absente ici, valeur locale gardée et signalée si différente', () => {
+check('clé inconnue : jamais importée automatiquement, écart signalé', () => {
   const pc = device({ extra: { 'twrc.future.a': 'local' } }), tel = device({ extra: { 'twrc.future.a': 'distant', 'twrc.future.b': 'nouveau' } });
   const r = M.values(pc, tel);
-  assert.equal(r.values['twrc.future.a'], 'local'); assert.equal(r.values['twrc.future.b'], 'nouveau');
-  assert.deepEqual(r.report.keysKept, ['twrc.future.a']); assert(r.report.keysAdded.includes('twrc.future.b'));
+  assert.equal(r.values['twrc.future.a'], 'local'); assert.equal(r.values['twrc.future.b'], undefined);
+  assert.deepEqual(r.report.keysKept, ['twrc.future.a', 'twrc.future.b']); assert(!r.report.keysAdded.includes('twrc.future.b'));
 });
 check('trajets clos : par identifiant, l’enregistrement le plus récent, aucun perdu', () => {
   const pc = device({ done: { a: { at: T, how: 'confirmé' }, b: { at: T + 10, how: 'auto' } } }), tel = device({ done: { b: { at: T + 99, how: 'confirmé' }, c: { at: T, how: 'auto' } } });
   const d = out(M.values(pc, tel)).c.done;
   assert.deepEqual(Object.keys(d).sort(), ['a', 'b', 'c']); assert.equal(d.b.how, 'confirmé');
 });
-check('retours terrain et relevés météo : union bornée aux plafonds de l’appli (30 / 200), les plus récents restent', () => {
-  const rows = (k, n, off) => Array.from({ length: n }, (_, i) => ({ at: T + off + i, k }));
-  const pc = device({ extra: { 'twrc.reports.v1': JSON.stringify(rows('pc', 25, 0)), 'twrc.shadow.v1': JSON.stringify(rows('pc', 150, 0)) } });
-  const tel = device({ extra: { 'twrc.reports.v1': JSON.stringify(rows('tel', 25, 1000)), 'twrc.shadow.v1': JSON.stringify(rows('tel', 150, 1000)) } });
-  const r = M.values(pc, tel).values, rep = JSON.parse(r['twrc.reports.v1']), sh = JSON.parse(r['twrc.shadow.v1']);
-  assert.equal(rep.length, 30); assert.equal(sh.length, 200); assert(rep.every((x, i) => !i || rep[i - 1].at <= x.at)); assert.equal(rep[29].k, 'tel');
+check('observations hors capacité : refus intégral, aucune suppression de la copie source', () => {
+  for (const [key, limit] of [['twrc.reports.v1', 30], ['twrc.shadow.v1', 200]]) {
+    const rows = Array.from({ length: limit }, (_, i) => ({ at: T + i }));
+    const pc = device({ extra: { [key]: JSON.stringify(rows) } });
+    const tel = device({ extra: { [key]: JSON.stringify([{ at: T + limit }]) } });
+    const before = JSON.stringify([pc, tel]);
+    assert.throws(() => M.values(pc, tel), /sans perte impossible/);
+    assert.equal(JSON.stringify([pc, tel]), before);
+    assert.equal(JSON.parse(M.values(pc, pc).values[key]).length, limit, 'doublons exacts à la capacité admis');
+  }
+});
+check('prototype : chemins et objets hostiles refusés avant toute écriture', () => {
+  for (const path of ['__proto__.polluted', 'constructor.prototype.polluted', 'cars.0.__proto__.polluted', 'work.prototype.polluted']) {
+    const pc = settings(), tel = settings({ edits: { [path]: 1 } });
+    assert.throws(() => M.settings(pc, tel, {}, { [path]: T }), /interdit/);
+    assert.equal(Object.prototype.polluted, undefined);
+    assert.equal(vm.runInContext('Object.prototype.polluted', ctx), undefined);
+  }
+  const bad = JSON.parse('{"__proto__":{"polluted":true}}');
+  assert.throws(() => M.settings(settings(), { ...settings(), work: bad }), /interdite/);
+});
+check('conflit de voiture : horodatage distant refusé ne remplace pas la preuve locale', () => {
+  const pc = settings(), tel = settings({ cars: [car('voitureB'), car('voitureA')] });
+  tel.cars[0].short = 'Autre véhicule';
+  const r = M.settings(pc, tel, { 'cars.0.short': T }, { 'cars.0.short': T + 100 });
+  assert.equal(r.stamps['cars.0.short'], T);
+  assert.deepEqual(r.report.conflicts, ['cars.0.short']);
+  const erased = M.settings(pc, settings({ cars: [] }), {}, { cars: T + 100 });
+  assert.equal(erased.settings.cars.length, 2); assert(erased.report.conflicts.includes('cars'));
+});
+check('journal brut de 61/120 trajets et de 91/365 jours, toutes versions conservées après fusion et relecture', () => {
+  for (const count of [61, 120]) {
+    const entries = Array.from({ length: count }, (_, i) => trip('ancien-'+i, -365*86400000-i));
+    entries.push(trip('ancien-0', -365*86400000, { feedback: { at: T - 91*86400000, conditions: ['fog'], grip: 'normal' } }));
+    const pc = device({ entries }), tel = device({ entries: [trip('autre', -91*86400000)] });
+    const one = M.values(pc, tel).values, reloaded = JSON.parse(JSON.stringify(one));
+    const archive = J.capture(reloaded);
+    for (const original of entries) assert(archive.records.some(r => require('node:util').isDeepStrictEqual(JSON.parse(r), original)));
+    assert.equal(JSON.parse(reloaded['twrc.context.v1']).debrief.entries.length, count + 1);
+    assert.equal(M.values(reloaded, tel).values[J.KEY], reloaded[J.KEY]);
+  }
+});
+check('mesures et véhicules incomplets : refus, aucune copie nettoyée silencieusement', () => {
+  for (const change of [{ odo: {} }, { odo: [null] }, { tire: { treads: {} } }])
+    assert.throws(() => M.settings(settings(), settings({ cars: [car('voitureA', change), car('voitureB')] })), /incompl[eè]t|invalide/);
 });
 check('fusion répétée : idempotente, rien ne double', () => {
   const pc = device({ entries: [trip('t1', 0)], s: settings({ cars: [car('voitureA', { odo: [{ d: '2026-10-10', km: 1000 }] }), car('voitureB')] }) });

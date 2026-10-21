@@ -1,6 +1,10 @@
 const fs=require('fs'),vm=require('vm'),path=require('path'),assert=require('assert');
 const src=fs.readFileSync(path.join(__dirname,'../src/engine.js'),'utf8')+fs.readFileSync(path.join(__dirname,'../src/demo.js'),'utf8');
-const ctx={console,Math,Date,Intl,Map,Set};vm.createContext(ctx);vm.runInContext(src+`
+// Le scénario « froid » annonce le gel de la nuit suivante : sa fenêtre de
+// douze heures doit commencer le soir, quelle que soit l'heure du runner.
+const scenarioTime=Date.parse('2026-10-10T22:00:00+02:00');
+const ScenarioDate=class extends Date{constructor(...a){super(...(a.length?a:[scenarioTime]));}static now(){return scenarioTime;}};
+const ctx={console,Math,Date:ScenarioDate,Intl,Map,Set};vm.createContext(ctx);vm.runInContext(src+`
 this.api={makeDemoPayload,makeModel,windowAssess,summarize,seqOf,narrate,seasonAnalysis,computeAlerts,LV,ICE_LV,hourVerdict,estRoad,iceRisk,calendarEventRelevant,calendarEventPlace};`,ctx);
 const A=ctx.api;
 // Comparaison exacte au comportement antérieur : formateur caché, pas d'heure ni de décalage UTC cachés.

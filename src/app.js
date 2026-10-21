@@ -53,6 +53,8 @@ function normalize(saved, base) {
     return l;
   });
   if (saved && Array.isArray(saved.cars)) S.cars = base.cars.map((d, i) => deepMerge(d, saved.cars[i]));
+  // Entretien déclaré (fiche) : structure toujours présente pour la saisie, valeurs vides par défaut, rien d'inventé.
+  (S.cars || []).forEach(c => { const m = c.maint || {}; c.maint = { rev: { d: '', km: null, everyKm: null, everyMonths: null, ...(m.rev || {}) }, ct: { d: '', next: '', ...(m.ct || {}) } }; });
   S.customs = saved && Array.isArray(saved.customs) ? saved.customs : clone(base.customs);
   S.calOrigins = CalendarOrigin.clean(saved && saved.calOrigins);
   return S;
@@ -1270,11 +1272,13 @@ function renderView() {
     : ['secTripSummary', 'secBrf', 'banners', 'hdrMore', 'secCars', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue'];
   if (!order.includes('secGarage')) order.push('secGarage');
   if (!order.includes('secTenue')) order.push('secTenue');
-  if (renderView.last === UI.view) return; renderView.last = UI.view;
+  // Pneus : le prochain trajet passe avant le journal (lecture), sauf question de débrief ouverte juste après une arrivée.
+  const debriefFirst = !vp || !!DEBRIEF_FORM, viewKey = UI.view + (debriefFirst ? '' : ':trajet-avant-journal');
+  if (renderView.last === viewKey) return; renderView.last = viewKey;
   let prev = $('#notice');
   if (!va && !vtr) order.splice(order.indexOf('hdrMore') + 1, 0, 'jump');
   const brf = order.indexOf('secBrf'); if (brf >= 0) order.splice(brf + 1, 0, 'secRoad');
-  if (!vtr) order.splice(va ? 2 : 1, 0, 'secDebrief');
+  if (!vtr) order.splice(va ? 2 : debriefFirst ? 1 : order.indexOf('secRoad') + 1, 0, 'secDebrief');
   order.forEach(id => { const el = document.getElementById(id); if (!el) return; if (prev.nextElementSibling !== el) prev.after(el); prev = el; });
   deskLayout(order);
   if (RADAR.map) { const map = RADAR.map; setTimeout(() => { if (RADAR.map === map) map.invalidateSize(); }, 60); }
@@ -3447,6 +3451,8 @@ function renderBrief() {
     }
   };
   const td = tripData(), w = S.work, dir = UI.dir; if (appActiveCar()) UI.bcar = appActiveCar().id;
+  // Le calcul suit le départ réel (lieu confirmé, départ lancé) : les commandes ci-dessous ne règlent que le trajet habituel.
+  const realFrom = !td.err && td.LA && td.LA.id !== (dir === 'go' ? w.from : w.to) ? td.LA : null;
   const time = dir === 'go' ? w.dep : w.ret;
   const locOpts = (sel, key) => allLocs().map(l => `<option value="${esc(l.id)}" ${l.id === sel ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
   if (!appActiveCar() && !TCARS().some(c => c.id === UI.bcar) && TCARS().length) UI.bcar = TCARS()[0].id;
@@ -3462,10 +3468,10 @@ function renderBrief() {
     <div class="fld"><span class="l">Jour</span><div class="seg">${dOffs.map(k => `<button data-act="day" data-off="${k}" aria-pressed="${UI.dayOff === k}">${dayLbl(k)}</button>`).join('')}</div></div>
     <div class="fld"><label for="quick-work-${dir === 'go' ? 'dep' : 'ret'}">Heure de départ</label><input type="time" id="quick-work-${dir === 'go' ? 'dep' : 'ret'}" data-bind="work.${dir === 'go' ? 'dep' : 'ret'}" value="${esc(time)}"></div>
     <div class="fld"><label for="quick-work-durMin">Durée (min)</label><input type="number" id="quick-work-durMin" data-bind="work.durMin" data-num="1" min="5" max="1200" step="5" value="${esc(w.durMin)}" style="width:92px"></div>
-    <div class="fld"><span class="l">Départ depuis</span><div class="seg">${allLocs().filter(l => l.id !== (dir === 'go' ? w.to : w.from)).slice(0, 4).map(l => `<button data-act="from" data-id="${esc(l.id)}" aria-pressed="${(dir === 'go' ? w.from : w.to) === l.id}">${esc(l.name.split(' / ')[0])}</button>`).join('')}</div></div>
-    <div class="fld"><label for="quick-work-from">De</label><select id="quick-work-from" data-bind="work.from">${locOpts(w.from)}</select></div>
+    <div class="fld"><span class="l">${realFrom ? 'Départ habituel' : 'Départ depuis'}</span><div class="seg">${allLocs().filter(l => l.id !== (dir === 'go' ? w.to : w.from)).slice(0, 4).map(l => `<button data-act="from" data-id="${esc(l.id)}" aria-pressed="${(dir === 'go' ? w.from : w.to) === l.id}">${esc(l.name.split(' / ')[0])}</button>`).join('')}</div></div>
+    <div class="fld"><label for="quick-work-from">${realFrom ? 'De (habituel)' : 'De'}</label><select id="quick-work-from" data-bind="work.from">${locOpts(w.from)}</select></div>
     <div class="fld"><label for="quick-work-to">Vers</label><select id="quick-work-to" data-bind="work.to">${locOpts(w.to)}</select></div>
-  </div>`;
+  </div>${realFrom ? `<p class="sub brf-real-from" role="status">Départ calculé depuis <b>${esc(realFrom.name)}</b> (lieu confirmé ou départ en cours), pas depuis le départ habituel ${esc((locById(dir === 'go' ? w.from : w.to) || {}).name || '')}.</p>` : ''}`;
   if (td.err) { paint(head + `<p class="muted">${esc(td.err)}</p>`); return; }
   const car = appActiveCar() || TCARS().find(c => c.id === UI.bcar) || TCARS()[0];
   if (!car) { paint(head + '<p class="muted">Aucune voiture équipée de pneus.</p>'); return; }
@@ -3836,7 +3842,13 @@ function renderSettings(force) {
       ${bindIn(`cars.${i}.plan.ordered`, c.plan.ordered, { label: 'Commande passée', type: 'date' })}${bindIn(`cars.${i}.plan.etaFrom`, c.plan.etaFrom, { label: 'ETA fournisseur · début', type: 'date' })}${bindIn(`cars.${i}.plan.etaTo`, c.plan.etaTo, { label: 'ETA fournisseur · fin', type: 'date' })}${bindIn(`cars.${i}.plan.etaChecked`, c.plan.etaChecked, { label: 'ETA vérifiée le', type: 'date' })}</div>
     <div class="frow">
       ${bindIn(`cars.${i}.plan.date`, c.plan.date, { label: 'Montage estimé', type: 'date' })}${bindIn(`cars.${i}.plan.appointmentDate`, c.plan.appointmentDate, { label: 'Date du rendez-vous', type: 'date' })}
-      <div class="fld"><label for="f-cars-${i}-plan-appt-ok">Rendez-vous confirmé</label><select id="f-cars-${i}-plan-appt-ok" data-bind="cars.${i}.plan.appointmentConfirmed" data-num="1"><option value="1" ${c.plan.appointmentConfirmed ? 'selected' : ''}>Oui</option><option value="0" ${c.plan.appointmentConfirmed ? '' : 'selected'}>Non</option></select></div></div></div>`).join('');
+      <div class="fld"><label for="f-cars-${i}-plan-appt-ok">Rendez-vous confirmé</label><select id="f-cars-${i}-plan-appt-ok" data-bind="cars.${i}.plan.appointmentConfirmed" data-num="1"><option value="1" ${c.plan.appointmentConfirmed ? 'selected' : ''}>Oui</option><option value="0" ${c.plan.appointmentConfirmed ? '' : 'selected'}>Non</option></select></div></div>
+    <h4 class="set-sub" id="maint-${i}">🔧 Entretien</h4>
+    <div class="frow">
+      ${bindIn(`cars.${i}.maint.rev.d`, c.maint.rev.d, { label: 'Dernière révision', type: 'date' })}${bindIn(`cars.${i}.maint.rev.km`, c.maint.rev.km, { label: 'Compteur à la révision (km)', type: 'number', num: 1, attrs: 'min="0" step="1" inputmode="numeric"' })}
+      ${bindIn(`cars.${i}.maint.rev.everyKm`, c.maint.rev.everyKm, { label: 'Révision tous les (km)', type: 'number', num: 1, ph: 'carnet d’entretien', attrs: 'min="0" step="1000" inputmode="numeric"' })}${bindIn(`cars.${i}.maint.rev.everyMonths`, c.maint.rev.everyMonths, { label: 'ou tous les (mois)', type: 'number', num: 1, ph: 'carnet d’entretien', attrs: 'min="0" max="60" step="1" inputmode="numeric"' })}
+      ${bindIn(`cars.${i}.maint.ct.d`, c.maint.ct.d, { label: 'Dernier contrôle technique', type: 'date' })}${bindIn(`cars.${i}.maint.ct.next`, c.maint.ct.next, { label: 'Prochain CT avant le (si indiqué)', type: 'date' })}
+    </div><p class="sub">Intervalles : ceux de ton carnet d’entretien, aucun n’est deviné. Sans date limite déclarée, le prochain CT est calculé à 2 ans du dernier.</p></div>`).join('');
   const locSet = S.locs.map((l, i) => `<div class="frow">${bindIn(`locs.${i}.name`, l.name, { label: i === 0 ? 'Zone principale' : 'Lieu de travail / 2e zone', wide: 1 })}${bindIn(`locs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`locs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}</div>`).join('') +
     S.customs.map((l, i) => `<div class="frow">${bindIn(`customs.${i}.name`, l.name, { label: 'Destination', wide: 1 })}${bindIn(`customs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`customs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}<div class="fld"><span class="l">&nbsp;</span><button class="btn sm" data-act="loc-del" data-i="${i}">Retirer</button></div></div>`).join('');
   el.innerHTML = `<div class="set-sec"><h3>🚗 Voitures et pneus</h3></div>${carSet}
@@ -4089,10 +4101,10 @@ document.addEventListener('click', async e => {
     // par les champs historiques du panneau Paramètres.
     const i = S.cars.findIndex(c => c && c.id === t.dataset.car);
     const key = t.dataset.garageTarget;
-    if (i < 0 || !['odo', 'tread', 'pressure'].includes(key) || LOCKED()) {
+    if (i < 0 || !['odo', 'tread', 'pressure', 'maintenance'].includes(key) || LOCKED()) {
       commandFeedback(t, 'Fiche indisponible'); return;
     }
-    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : '#f-cars-' + i + '-tire-pchk-av';
+    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : key === 'maintenance' ? '#f-cars-' + i + '-maint-rev-d' : '#f-cars-' + i + '-tire-pchk-av';
     const d = $('#settings'); if (!d) { commandFeedback(t, 'Paramètres indisponibles'); return; }
     d.open = true;
     // Réutiliser le formulaire déjà présent : un autre raccourci ne doit pas
