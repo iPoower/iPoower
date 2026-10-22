@@ -142,6 +142,13 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.version == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    # Image officielle Playwright de la version exacte du package-lock : navigateurs et dépendances système
+    # déjà installés, aucun apt (22/10 : miroir Ubuntu à ~100 Ko/s, CI de main rouge, relais refusé).
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    env:
+      CI_BROWSER_SYSTEM_DEPS: preinstalled
     # Chaque job a son navigateur, son runner et son workspace. Aucun shard n'annule un autre shard.
     concurrency:
       group: ci-tests-${{ github.ref }}-${{ matrix.browser }}-${{ matrix.shard }}
@@ -207,6 +214,13 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    # Image officielle Playwright de la version exacte du package-lock : navigateurs et dépendances système
+    # déjà installés, aucun apt (22/10 : miroir Ubuntu à ~100 Ko/s, CI de main rouge, relais refusé).
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    env:
+      CI_BROWSER_SYSTEM_DEPS: preinstalled
     # seuls les tests d'une modification remplacée par une plus récente sont annulés (jamais un déploiement)
     concurrency:
       group: ci-rollback-${{ github.ref }}-${{ github.event.inputs.version }}-${{ matrix.browser }}
@@ -227,12 +241,9 @@ jobs:
       - name: Dépendances exactes (package-lock.json)
         run: npm ci --no-audit --no-fund
       - name: Navigateur ${{ matrix.browser }}
-        # Installation bornée et relancée : le 7 octobre, elle s'est bloquée plus de 20 min (dépôts apt / téléchargement),
-        # deux jobs WebKit ont expiré à 30 min sans exécuter un seul test. 3 essais de 6 min au plus, puis échec explicite.
-        # Avant chaque nouvel essai, attente bornée de l'apt-get orphelin qui garde le verrou dpkg (incident du 22/10).
-        # 22 min 30 s au pire (essais + attente apt + pauses), puis marge de fin.
-        timeout-minutes: 24
-        run: bash tools/ci-browser-install.sh ${{ matrix.browser }}
+        # Les anciens tags n'ont pas tools/ci-browser-install.sh : installation directe, sans apt (image Playwright).
+        timeout-minutes: 10
+        run: npx playwright install ${{ matrix.browser }}
       - name: Tests (données fictives, sans aucun secret)
         env:
           BROWSER: ${{ matrix.browser }}
