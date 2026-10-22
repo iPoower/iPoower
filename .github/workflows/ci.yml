@@ -369,9 +369,9 @@ jobs:
           done
           echo "::error::La version en ligne ne correspond pas au build après 10 minutes"; exit 1
   # Origine dédiée Cloudflare Pages : INACTIF tant que la variable CLOUDFLARE_RC_PROJECT n'existe pas.
-  # Publie le même commit que gh-pages, seulement après sa publication vérifiée, avec approbation
-  # humaine de l'environnement DÉDIÉ « cloudflare ». Jamais « production » : le relais, le watchdog et
-  # la confidentialité l'utilisent sans intervention ; y exiger une approbation les bloquerait.
+  # Publie le même commit que gh-pages, seulement après sa publication vérifiée,
+  # dans l'environnement production, limité à main. Ne JAMAIS y exiger d'approbation : le relais, le
+  # watchdog et la confidentialité l'utilisent sans intervention et seraient bloqués (incident du 22/10).
   # Les données du relais restent servies par gh-pages (CORS). L'ancienne PWA n'est ni redirigée ni modifiée.
   deploy-cloudflare:
     needs: [version, deploy]
@@ -381,7 +381,7 @@ jobs:
     permissions:
       contents: read
     environment:
-      name: cloudflare
+      name: production
       url: https://${{ vars.CLOUDFLARE_RC_PROJECT }}.pages.dev
     concurrency:
       group: race-control-cloudflare
@@ -433,8 +433,10 @@ jobs:
             [ "$served" = "$SRC_SHA" ] && break; sleep 10
           done
           [ "$served" = "$SRC_SHA" ] || { echo "::error::L'origine dédiée ne sert pas $SRC_SHA"; exit 1; }
+          # Pages redirige /index.html vers / : la page est relue à sa vraie adresse, sans suivre de redirection.
           for f in index.html sw.js manifest.webmanifest; do
-            [ "$(curl -fsS "$url/$f?v=$GITHUB_RUN_ID" | sha256sum | cut -d' ' -f1)" = "$(sha256sum "dist-cloudflare/$f" | cut -d' ' -f1)" ] || { echo "::error::$f servi différent du build"; exit 1; }
+            p="$f"; [ "$f" = index.html ] && p=""
+            [ "$(curl -fsS "$url/$p?v=$GITHUB_RUN_ID" | sha256sum | cut -d' ' -f1)" = "$(sha256sum "dist-cloudflare/$f" | cut -d' ' -f1)" ] || { echo "::error::$f servi différent du build"; exit 1; }
           done
           for path in / /sw.js /manifest.webmanifest; do
             headers=$(curl -fsSI "$url$path")

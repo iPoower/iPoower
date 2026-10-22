@@ -26,19 +26,18 @@ aucune redirection de l'ancienne PWA, aucune donnée migrée.
 
 1. Cloudflare → *My Profile → API Tokens → Create Token → Custom* : permission
    **Account › Cloudflare Pages › Edit** uniquement, ressource : ton compte.
-2. GitHub `iPoower/iPoower` → *Settings → Environments → New environment* **`cloudflare`**
-   (jamais `production`, utilisé sans intervention par le relais, le watchdog et la
-   confidentialité : y exiger une approbation les bloquerait) : *Required reviewers* = toi
-   (décocher « Prevent self-review » et le contournement administrateur), *Deployment branches*
-   = `main` seulement ; secrets `CLOUDFLARE_API_TOKEN` et `CLOUDFLARE_ACCOUNT_ID`.
+2. GitHub `iPoower/iPoower` → *Settings → Environments → production* : secrets
+   `CLOUDFLARE_API_TOKEN` et `CLOUDFLARE_ACCOUNT_ID`, *Deployment branches* = `main`.
+   **Ne jamais cocher « Required reviewers » sur `production`** : le relais, le watchdog
+   et la confidentialité l'utilisent sans intervention (incident du 22/10 : relais arrêté
+   environ 25 minutes). La publication est automatique après CI verte, comme gh-pages.
 3. *Settings → Secrets and variables → Actions → Variables* : `CLOUDFLARE_RC_PROJECT` =
    nom libre et exclusif, par exemple `race-control-<suffixe>` (adresse
    `https://<nom>.pages.dev`). Ne pas créer le projet « Connect to Git ».
 4. Même chose dans `iPoower/Control-Vault` avec sa variable `CLOUDFLARE_PROJECT`
    (déjà prévue par son pipeline) et un nom distinct.
 
-Au premier déploiement suivant de `main`, le job attend ton approbation puis vérifie
-lui-même ce qui est servi. Un nom de projet n'est utilisé que par une application.
+Au déploiement suivant de `main`, le job publie puis vérifie lui-même ce qui est servi. Un nom de projet n'est utilisé que par une application.
 
 ## Preuves
 
