@@ -4,6 +4,10 @@ const STATIC = 'twrc-static-v12', DATA = 'twrc-data-v3';
 const NAV_WAIT_MS = 3000;   // réseau qui ne répond pas (parking, tunnel) : shell en cache au-delà, mise à jour poursuivie en arrière-plan
 const SHELL = ['./', './index.html', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './manifest.webmanifest', './tiredb.json', './vendor/leaflet/leaflet.js', './vendor/leaflet/leaflet.css', './vendor/leaflet/images/layers.png', './vendor/leaflet/images/layers-2x.png', './vendor/leaflet/images/marker-icon.png', './vendor/leaflet/images/marker-icon-2x.png', './vendor/leaflet/images/marker-shadow.png'];
 const DATA_PATHS = /\/(calendar\.sealed\.json|obs\.json|tiredb\.json|version\.json|road-datex\.json)$/;
+// Origine dédiée : les données publiques du relais restent publiées par l'ancien hébergement (CORS).
+// Valeur injectée par tools/build.js depuis RC_DATA_BASE ; vide sur l'hébergement historique.
+const DATA_BASE = '';
+const RELAY_DATA = /^(calendar\.sealed\.json|obs\.json|road-datex\.json)$/;
 
 const canonical = u => new Request(u.origin + u.pathname, { method: 'GET' });
 function roadMetadataValid(j) {
@@ -78,6 +82,11 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const u = new URL(e.request.url);
 
+  // Seuls les trois fichiers publics du relais, directement sous DATA_BASE, sont mis en cache hors de l'origine.
+  if (DATA_BASE && u.href.startsWith(DATA_BASE) && u.origin === new URL(DATA_BASE).origin && RELAY_DATA.test(u.pathname.slice(new URL(DATA_BASE).pathname.length))) {
+    e.respondWith(/\/road-datex\.json$/.test(u.pathname) ? publicRoad(e.request, canonical(u)) : networkFirst(e.request, DATA, canonical(u)));
+    return;
+  }
   // Confidentialité : aucun fournisseur externe (et donc aucune coordonnée GPS envoyée dans ses URL) n'est persisté par le SW.
   if (u.origin !== self.location.origin || !u.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
 
