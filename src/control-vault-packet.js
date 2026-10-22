@@ -138,7 +138,16 @@ const ControlVaultPacket = (() => {
       const plain = await decrypt(packet, await key(pass, packet.salt, ['decrypt']));
       try { return business(plain); } finally { plain.fill(0); }
     }
-    async function seal(data, pass, appVersion, createdAt = new Date().toISOString()) {
+    // Profil synchronisation : clé non extractible reçue de SyncKey, sel de compte
+    // stable et IV neuf. Sans poignée valide, le code reste exigé ; jamais de repli.
+    function handleOf(h) {
+      const k = object(h) ? h.key : null;
+      if (!k || k.type !== 'secret' || k.extractable !== false || !k.algorithm || k.algorithm.name !== 'AES-GCM' ||
+        k.algorithm.length !== 256 || !Array.isArray(k.usages) || !['encrypt', 'decrypt'].every(u => k.usages.includes(u))) return fail('CODE_REQUIRED');
+      try { decode64(h.s, 16, 16); } catch { return fail('CODE_REQUIRED'); }
+      return h;
+    }
+    async function sealing(data, appVersion, createdAt, secret) {
       if (version(appVersion) === null) return fail('UNKNOWN_READER_VERSION');
       if (!iso(createdAt)) return fail('INVALID_ENVELOPE');
       jsonTree(data);
@@ -146,10 +155,9 @@ const ControlVaultPacket = (() => {
       try {
         if (plain.length > LIMITS.cipher - 16) return fail('FILE_TOO_LARGE');
         business(plain);
-        const salt = crypt.getRandomValues(new Uint8Array(16)), iv = crypt.getRandomValues(new Uint8Array(12));
+        const { salt, derived } = await secret(), iv = crypt.getRandomValues(new Uint8Array(12));
         const e = { format: FORMAT, schemaVersion: 1, createdAt, appVersion, sha256: '',
           payload: { alg: 'AES-256-GCM', kdf: 'PBKDF2-SHA256', it: ITERATIONS, s: encode64(salt), i: encode64(iv), c: '' } };
-        const derived = await key(pass, salt, ['encrypt', 'decrypt']);
         const cipher = new Uint8Array(await crypt.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad(e), tagLength: 128 }, derived, plain));
         e.payload.c = encode64(cipher); e.sha256 = await hash(cipher);
         const bytes = utf8(JSON.stringify(e));
@@ -159,7 +167,25 @@ const ControlVaultPacket = (() => {
         return bytes;
       } finally { plain.fill(0); }
     }
-    return Object.freeze({ seal, open, inspect: async (input, referenceHash) => (await read(input, referenceHash)).info });
+    function seal(data, pass, appVersion, createdAt = new Date().toISOString()) {
+      return sealing(data, appVersion, createdAt, async () => {
+        const salt = crypt.getRandomValues(new Uint8Array(16));
+        return { salt, derived: await key(pass, salt, ['encrypt', 'decrypt']) };
+      });
+    }
+    async function sealWith(data, handle, appVersion, createdAt = new Date().toISOString()) {
+      const h = handleOf(handle);
+      return sealing(data, appVersion, createdAt, async () => ({ salt: decode64(h.s, 16, 16), derived: h.key }));
+    }
+    async function openWith(input, handle, readerVersion, referenceHash) {
+      const h = handleOf(handle), packet = await read(input, referenceHash), reader = version(readerVersion);
+      if (reader === null) return fail('UNKNOWN_READER_VERSION');
+      if (version(packet.e.appVersion) > reader) return fail('PRODUCER_TOO_NEW');
+      if (packet.e.payload.s !== h.s) return fail('CODE_REQUIRED');
+      const plain = await decrypt(packet, h.key);
+      try { return business(plain); } finally { plain.fill(0); }
+    }
+    return Object.freeze({ seal, open, sealWith, openWith, inspect: async (input, referenceHash) => (await read(input, referenceHash)).info });
   }
-  return Object.freeze({ LIMITS, loadedVersion, create });
+  return Object.freeze({ LIMITS, loadedVersion, create, strictJson: parse });
 })();
