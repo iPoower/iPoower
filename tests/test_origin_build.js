@@ -32,17 +32,22 @@ try {
     for (const bad of ['http://data.example.test/rc/', 'https://data.example.test/rc', 'https://data.example.test/rc/?x=1'])
       assert.notEqual(build('bad', bad).status, 0, bad);
   });
-  check('publication Cloudflare inactive sans variable, après gh-pages vérifié, octets relus à leur adresse réelle', () => {
-    const wf = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8'), job = wf.split('\n  deploy-cloudflare:\n')[1];
-    const head = job.split('    steps:')[0];
-    assert(head.includes('needs: [version, deploy]'));
-    assert(head.includes("needs.deploy.result == 'success' && needs.deploy.outputs.done == '1' && vars.CLOUDFLARE_RC_PROJECT != ''"));
-    assert(head.includes('name: production') && head.includes('contents: read') && !/always\(\)/.test(job));
-    assert(job.includes('p="$f"; [ "$f" = index.html ] && p=""'), 'index.html relu à son adresse réelle');
-    assert(job.includes('RC_DATA_BASE: https://ipoower.github.io/iPoower/race-control/'));
-    assert((job.match(/wrangler@4\.137\.0/g) || []).length === 3 && !/wrangler(@latest)?\s/.test(job.replace(/wrangler@4\.137\.0/g, '')));
+  check('publication Cloudflare séparée de ci.yml : jamais de blocage du relais, commit déjà publié sur gh-pages', () => {
+    const ci = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+    const wf = fs.readFileSync(path.join(ROOT, '.github/workflows/cloudflare.yml'), 'utf8');
+    // Le relais n'accepte que ci.yml : aucune étape Cloudflare ne doit pouvoir y faire échouer une CI.
+    assert(!/cloudflare|wrangler/i.test(ci), 'ci.yml sans publication Cloudflare');
+    assert(fs.readFileSync(path.join(ROOT, 'tools/relay-trust.js'), 'utf8').includes("r.path === '.github/workflows/ci.yml'"));
+    assert(wf.includes("workflows: ['Race Control · tests']") && /^name: Race Control · tests$/m.test(ci));
+    for (const c of ["vars.CLOUDFLARE_RC_PROJECT != ''", "github.event.workflow_run.conclusion == 'success'", "github.event.workflow_run.event == 'push'",
+      "github.event.workflow_run.head_branch == 'main'", 'github.event.workflow_run.head_repository.full_name == github.repository']) assert(wf.includes(c), c);
+    assert(wf.includes('name: production') && /^permissions:\n  contents: read$/m.test(wf) && !/always\(\)|workflow_dispatch|pull_request/.test(wf));
+    assert(wf.includes('[ "$sha" != "$SRC_SHA" ]') && wf.includes('[ "$build" = "$LIVE_BUILD" ]'), 'seul le commit publié sur gh-pages est republié');
+    assert(wf.includes('p="$f"; [ "$f" = index.html ] && p=""'), 'index.html relu à son adresse réelle');
+    assert(wf.includes('RC_DATA_BASE: https://ipoower.github.io/iPoower/race-control/'));
+    assert((wf.match(/wrangler@4\.137\.0/g) || []).length === 3 && !/wrangler(@latest)?\s/.test(wf.replace(/wrangler@4\.137\.0/g, '')));
     for (const h of ['cross-origin-opener-policy: same-origin', 'cross-origin-resource-policy: same-origin', "frame-ancestors 'none'", 'permissions-policy: geolocation=(self)', 'set-cookie'])
-      assert(job.includes(h), h);
+      assert(wf.includes(h), h);
   });
 } finally { fs.rmSync(path.join(ROOT, WORK), { recursive: true, force: true }); }
 console.log(n + '/' + n + ' scénarios OK · construction pour origine dédiée, aucune publication');
