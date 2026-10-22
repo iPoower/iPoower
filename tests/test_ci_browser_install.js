@@ -51,14 +51,33 @@ try {
       assert.equal(r.status, 2, b); assert.equal(r.calls, 0, b);
     }
   });
-  check('ci.yml et QA Weather Watch passent tous par ce script', () => {
-    for (const f of ['ci.yml', 'weather-watch-qa.yml']) {
+  check('CI, QA Weather Watch et profilage passent tous par ce script', () => {
+    for (const f of ['ci.yml', 'weather-watch-qa.yml', 'performance.yml']) {
       const wf = fs.readFileSync(path.join(ROOT, '.github/workflows', f), 'utf8');
       assert(!/playwright install/.test(wf), f + ' : installation directe restante');
       assert(wf.includes('bash tools/ci-browser-install.sh ${{ matrix.browser }}'), f);
     }
     const ci = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');
     assert.equal((ci.match(/bash tools\/ci-browser-install\.sh/g) || []).length, 2, 'tests et tests-rollback');
+  });
+  check('les délais des étapes et jobs couvrent les essais, les attentes et les tests', () => {
+    const scriptText = fs.readFileSync(script, 'utf8');
+    const seconds = name => Number(scriptText.match(new RegExp(name + ':-(\\d+)\\}'))[1]);
+    const budget = 3 * seconds('CI_INSTALL_ATTEMPT_S') + 2 * seconds('CI_INSTALL_LOCK_WAIT_S') + 3 * seconds('CI_INSTALL_PAUSE_S');
+    for (const [f, jobs] of [['ci.yml', ['tests', 'tests-rollback']], ['weather-watch-qa.yml', ['station-browser']], ['performance.yml', ['profile']]]) {
+      const wf = fs.readFileSync(path.join(ROOT, '.github/workflows', f), 'utf8');
+      for (const job of jobs) {
+        const start = wf.indexOf('  ' + job + ':\n'); assert(start >= 0, f + ': ' + job);
+        const rest = wf.slice(start + job.length + 4), next = rest.search(/^  [\w-]+:\s*$/m);
+        const block = next < 0 ? rest : rest.slice(0, next);
+        const nav = block.indexOf('      - name: Navigateur'); assert(nav >= 0, f + ': navigateur');
+        const end = block.indexOf('\n      - ', nav + 1), step = end < 0 ? block.slice(nav) : block.slice(nav, end);
+        const stepMinutes = Number(step.match(/timeout-minutes: (\d+)/)[1]);
+        const jobMinutes = Number(block.match(/^    timeout-minutes: (\d+)/m)[1]);
+        assert(stepMinutes * 60 >= budget, f + ': étape trop courte pour ' + budget + ' s');
+        assert(jobMinutes >= stepMinutes + 5, f + ': aucune marge pour les tests');
+      }
+    }
   });
 } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 console.log(n + '/' + n + ' scénarios OK · installation du navigateur CI, npx et apt-get fictifs');

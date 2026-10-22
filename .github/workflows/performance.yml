@@ -7,7 +7,7 @@ permissions:
 jobs:
   profile:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -38,10 +38,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Navigateur borné
         working-directory: candidate
-        timeout-minutes: 7
-        env:
-          PERF_BROWSER: ${{ matrix.browser }}
-        run: timeout 360 npx playwright install --with-deps "$PERF_BROWSER"
+        # Même reprise que la CI : attendre l'apt-get orphelin avant un nouvel essai.
+        timeout-minutes: 24
+        run: bash tools/ci-browser-install.sh ${{ matrix.browser }}
       - name: Mesures comparables et fictives seulement
         env:
           BROWSER: ${{ matrix.browser }}

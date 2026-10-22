@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installation bornée et relancée du navigateur Playwright pour la CI (ci.yml, QA Weather Watch).
+# Installation bornée et relancée du navigateur Playwright pour la CI, la QA et le profilage.
 # `timeout` tue `npx playwright` mais pas l'apt-get lancé en root par --with-deps : il continue de
 # télécharger et garde le verrou dpkg, si bien qu'un nouvel essai immédiat échouait en quelques
 # secondes (« Could not get lock /var/lib/dpkg/lock-frontend », 22/10 : cinq jobs perdus sans un test).

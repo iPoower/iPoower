@@ -141,7 +141,7 @@ jobs:
     needs: [version, unit]
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.version == ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     # Chaque job a son navigateur, son runner et son workspace. Aucun shard n'annule un autre shard.
     concurrency:
       group: ci-tests-${{ github.ref }}-${{ matrix.browser }}-${{ matrix.shard }}
@@ -166,7 +166,8 @@ jobs:
         # Installation bornée et relancée : le 7 octobre, elle s'est bloquée plus de 20 min (dépôts apt / téléchargement),
         # deux jobs WebKit ont expiré à 30 min sans exécuter un seul test. 3 essais de 6 min au plus, puis échec explicite.
         # Avant chaque nouvel essai, attente bornée de l'apt-get orphelin qui garde le verrou dpkg (incident du 22/10).
-        timeout-minutes: 20
+        # 22 min 30 s au pire (essais + attente apt + pauses), puis marge de fin.
+        timeout-minutes: 24
         run: bash tools/ci-browser-install.sh ${{ matrix.browser }}
       - name: Fixtures fictives du même run
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -205,7 +206,7 @@ jobs:
     # Les anciens tags n'ont pas les helpers de sharding : conserver leur runner intégral.
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     # seuls les tests d'une modification remplacée par une plus récente sont annulés (jamais un déploiement)
     concurrency:
       group: ci-rollback-${{ github.ref }}-${{ github.event.inputs.version }}-${{ matrix.browser }}
@@ -229,7 +230,8 @@ jobs:
         # Installation bornée et relancée : le 7 octobre, elle s'est bloquée plus de 20 min (dépôts apt / téléchargement),
         # deux jobs WebKit ont expiré à 30 min sans exécuter un seul test. 3 essais de 6 min au plus, puis échec explicite.
         # Avant chaque nouvel essai, attente bornée de l'apt-get orphelin qui garde le verrou dpkg (incident du 22/10).
-        timeout-minutes: 20
+        # 22 min 30 s au pire (essais + attente apt + pauses), puis marge de fin.
+        timeout-minutes: 24
         run: bash tools/ci-browser-install.sh ${{ matrix.browser }}
       - name: Tests (données fictives, sans aucun secret)
         env:
