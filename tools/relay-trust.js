@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const SHA = /^[0-9a-f]{40}$/;
 const REPO = /^[\w.-]+\/[\w.-]+$/;
+const PAGE = 100;
 const PENDING = new Set(['queued', 'in_progress', 'requested', 'waiting', 'pending']);
 function ciState(runs, sha, repo) {
   if (!SHA.test(sha || '') || !REPO.test(repo || '')) return { state: 'rejected', reason: 'invalid_context' };
@@ -47,9 +48,15 @@ async function check({ env = process.env, fetchImpl = fetch } = {}) {
   if (!ctx) return { state: 'rejected', reason: 'invalid_context' };
   try {
     if (await currentMain(ctx, fetchImpl) !== ctx.sha) return { state: 'rejected', reason: 'sha_changed' };
-    const data = await request(ctx, `actions/workflows/ci.yml/runs?head_sha=${ctx.sha}&event=push&per_page=30`, fetchImpl);
-    // Une réponse tronquée ne permet pas de prouver quel run est le plus récent.
-    if (!Number.isSafeInteger(data?.total_count) || data.total_count < 0 || data.total_count > 30 || !Array.isArray(data.workflow_runs) || data.total_count !== data.workflow_runs.length) {
+    // Les filtres head_sha/event de l'API renvoient par intermittence 0 run pour des CI existantes (22/10 : relais
+    // refusé malgré une CI verte). On lit donc la première page non filtrée, du plus récent au plus ancien, et on
+    // filtre ici (ciState : SHA, main, push, ci.yml, dépôt). Tout run de ce SHA plus récent que le dernier de la page
+    // y figure forcément ; s'il n'y est pas : ci_missing, jamais approved.
+    const data = await request(ctx, `actions/workflows/ci.yml/runs?per_page=${PAGE}`, fetchImpl);
+    const list = data?.workflow_runs;
+    if (!Number.isSafeInteger(data?.total_count) || data.total_count < 0 || !Array.isArray(list) || list.length > PAGE ||
+      list.length > data.total_count || (list.length < PAGE && list.length !== data.total_count) ||
+      list.some((r, i) => !Number.isSafeInteger(r?.id) || r.id <= 0 || (i > 0 && r.id >= list[i - 1].id))) {
       return { state: 'unavailable', reason: 'invalid_response' };
     }
     const result = ciState(data.workflow_runs, ctx.sha, ctx.repo);
