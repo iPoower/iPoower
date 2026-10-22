@@ -22,7 +22,12 @@ async function tap(p, selector) {
   // météo. La réception réelle du pointeur reste vérifiée par Playwright.
   if (selector === '#dayContext .day-destination > summary') {
     await p.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }));
-    await p.locator(selector).first().scrollIntoViewIfNeeded();
+    // renderAll() peut remplacer le panneau pendant le défilement (22/10, WebKit : « not attached to the DOM ») :
+    // le sélecteur est relu, trois essais au plus ; le vrai clic reste exigé ensuite.
+    for (let i = 0; ; i++) {
+      try { await p.locator(selector).first().scrollIntoViewIfNeeded(); break; }
+      catch (e) { if (i === 2 || !/not attached/i.test(e.message)) throw e; await p.waitForTimeout(100); }
+    }
   }
   const el = p.locator(selector).first(); scope.selector = selector;
   try { if (scope.device === 'iphone') await el.tap(); else await el.click(); } catch (e) {
