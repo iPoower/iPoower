@@ -125,3 +125,4 @@ SUITE.push(['test_control_vault_packet.js', 'Control Vault : codec propriétaire
 SUITE.push(['test_sync_key.js', 'synchronisation lot D1 : clé dérivée une fois, reprise sans code, expiration, verrouillage et refus', false],
   ['e2e83-sync-key-resume.js', 'synchronisation lot D1 : CryptoKey IndexedDB réelle Chromium/WebKit, onglets rouverts PC/iPhone sans code', true]);
 SUITE.push(['test_sync_revisions.js', 'synchronisation lot D2 : révisions immuables, têtes concurrentes, conflits jamais absorbés, catalogue falsifié et convergence finie', false]);
+SUITE.push(['test_sync_outbox.js', 'synchronisation lot D3 : local d’abord, regroupement, envois séquentiels, reprise après coupure, reconnexion visible et statuts prouvés', false]);
