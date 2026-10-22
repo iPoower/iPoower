@@ -18,8 +18,10 @@ const SyncMerge = (() => {
   // Propre à l'appareil ou recalculable : la valeur locale reste, celle de l'autre appareil est ignorée.
   const DEVICE = new Set(['twrc.key', 'twrc.plain', 'twrc.plain.v', 'twrc.gps', 'twrc.place.v1', 'twrc.tripstart.v1',
     'twrc.tripend.v1', 'twrc.returnhome.v1', 'twrc.trend', 'twrc.tripmap', 'twrc.calendar.sealed.v1', 'twrc.weather.limit.v1',
-    'twrc.decision.latest.v1', 'twrc.weather.incidents.v1', 'twrc.lastbackup', 'twrc.tyretherm.v1', 'twrc.view', 'twrc.presetv']);
-  const device = k => DEVICE.has(k) || /^twrc\.(cache\.|croute|road\.|session|restore\.)/.test(k);
+    'twrc.decision.latest.v1', 'twrc.weather.incidents.v1', 'twrc.lastbackup', 'twrc.tyretherm.v1', 'twrc.view', 'twrc.presetv',
+    // Diagnostic d'exécution, lien de configuration importé sur cet appareil, état de synchronisation local.
+    'twrc.runtime.v1', 'twrc.cfghash']);
+  const device = k => DEVICE.has(k) || /^twrc\.(cache\.|croute|road\.|session|restore\.|sync\.)/.test(k);
   const obj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const clone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
