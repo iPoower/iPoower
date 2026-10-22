@@ -80,7 +80,10 @@ w(OUT+'/index.html',page.replace('<head>','<head><meta http-equiv="Content-Secur
 // en-têtes prêts pour une origine dédiée (Cloudflare Pages) : la même politique, plus frame-ancestors et les en-têtes impossibles en <meta>
 w(OUT+'/_headers',`/*\n  Content-Security-Policy: ${CSP}; frame-ancestors 'none'\n  X-Frame-Options: DENY\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=()\n  Strict-Transport-Security: max-age=31536000; includeSubDomains\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Resource-Policy: same-origin\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n`);
 webAssets.copy(ROOT,OUT);
-['sw.js','engine.js','tiredb.json','relay.js','evidence.js'].forEach(f=>w(OUT+'/'+f,r('src/'+f)));
+// Le SW apprend l'unique base de données externe autorisée (origine dédiée) ; marqueur exigé une seule fois.
+const SW_BASE="const DATA_BASE = '';";if(r('src/sw.js').split(SW_BASE).length!==2)throw new Error('Marqueur DATA_BASE du service worker introuvable');
+['engine.js','tiredb.json','relay.js','evidence.js'].forEach(f=>w(OUT+'/'+f,r('src/'+f)));
+w(OUT+'/sw.js',DATA_BASE?r('src/sw.js').replace(SW_BASE,'const DATA_BASE = '+JSON.stringify(DATA_BASE)+';'):r('src/sw.js'));
 ['apple-touch-icon.png','icon-192.png','icon-512.png'].forEach(f=>fs.copyFileSync(path.join(ROOT,'src/static',f),path.join(ROOT,OUT,f)));
 // widget public sans configuration (le bouton « Copier » de l'app l'ajoute)
 w(OUT+'/widget.js',require('./widget-source').widgetSource(ROOT).replace(/const CFG = [\s\S]*?;\n\nconst Q_CUR/,'const CFG = null; // configuration ajoutée par l’app au moment de la copie\n\nconst Q_CUR'));

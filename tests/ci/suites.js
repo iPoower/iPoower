@@ -122,3 +122,5 @@ SUITE.push(['test_sync_merge.js', 'fusion PC ↔ iPhone (étape 1) : journal cum
 
 SUITE.push(['test_control_vault_packet.js', 'Control Vault : codec propriétaire V1, WebCrypto/AAD, archive intégrale et refus sans écriture', false],
   ['e2e82-control-vault-packet.js', 'Control Vault : chiffrement propriétaire Chromium/WebKit, profils PC/iPhone et fermeture des sessions', true]);
+SUITE.push(['test_origin_build.js', 'origine dédiée : SW et CSP reçoivent la seule base de données autorisée, en-têtes complets, publication Cloudflare inactive et approuvée', false],
+  ['e2e84-sw-data-origin.js', 'origine dédiée : vrai SW, données du relais lues en CORS gardées hors ligne, rien d’autre persisté', true, 'chromium']);
