@@ -12,12 +12,16 @@ n'existe pas. Revue sensible obligatoire (workflow, Service Worker, build). Comp
 - `src/sw.js` : sur l'origine dédiée, seuls `obs.json`, `calendar.sealed.json`
   (chiffré) et `road-datex.json`, directement sous la base, sont gardés hors ligne.
   Aucune réponse opaque, aucun sous-chemin, aucune URL à coordonnées.
-- `.github/workflows/ci.yml`, job `deploy-cloudflare` : après la publication gh-pages
-  vérifiée du **même** commit, build dédié, `version.json` (run, sha, build), envoi
-  direct `wrangler@4.137.0` (aucune connexion Git), puis contrôle **en ligne** :
-  commit servi, octets de `index.html`/`sw.js`/manifest identiques au build,
-  en-têtes CSP (`frame-ancestors 'none'`), XFO, nosniff, Referrer, HSTS, COOP, CORP,
-  `geolocation=(self)` sur trois chemins, absence de cookie, CORS des données gh-pages.
+- `.github/workflows/cloudflare.yml` (workflow **séparé** de `ci.yml`) : lancé après une CI
+  de `main` réussie, il ne republie que le commit que gh-pages sert déjà (`version.json`,
+  même identité de build), sinon il s'arrête sans rien faire. Le relais n'accepte que les CI
+  `ci.yml` vertes (`tools/relay-trust.js`) : un échec Cloudflare ne peut plus bloquer le
+  relais (incident du 22/10 : vérification fautive → CI rouge → relais refusé environ 50 min).
+  Build dédié, `version.json` (run, sha, build), envoi direct `wrangler@4.137.0` (aucune
+  connexion Git), puis contrôle **en ligne** : commit servi, octets de `/`, `sw.js` et
+  manifest identiques au build, en-têtes CSP (`frame-ancestors 'none'`), XFO, nosniff,
+  Referrer, HSTS, COOP, CORP, `geolocation=(self)` sur trois chemins, absence de cookie,
+  CORS des données gh-pages. Un retour arrière manuel de `ci.yml` ne republie pas Cloudflare.
 
 Les données du relais restent publiées sur gh-pages : aucun secret ni relais déplacé,
 aucune redirection de l'ancienne PWA, aucune donnée migrée.

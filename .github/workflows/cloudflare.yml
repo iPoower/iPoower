@@ -1,0 +1,114 @@
+name: Race Control · origine dédiée Cloudflare
+# Workflow SÉPARÉ de ci.yml : le relais n'accepte que les CI ci.yml vertes (tools/relay-trust.js).
+# Un échec de publication ou de vérification Cloudflare ne peut donc jamais bloquer le relais.
+# Déclenché après une CI de main réussie ; ne publie que le commit que gh-pages sert déjà
+# (gh-pages/race-control/version.json), sinon s'arrête sans rien faire (pas de changement de site).
+# INACTIF tant que la variable CLOUDFLARE_RC_PROJECT n'existe pas. Environnement production, limité à main.
+# Ne JAMAIS exiger d'approbation sur production : relais, watchdog et confidentialité l'utilisent (incident du 22/10).
+# Les données du relais restent servies par gh-pages (CORS). L'ancienne PWA n'est ni redirigée ni modifiée.
+# Limite : un retour arrière lancé à la main sur ci.yml ne republie pas Cloudflare.
+on:
+  workflow_run:
+    workflows: ['Race Control · tests']
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: race-control-cloudflare
+  cancel-in-progress: false
+jobs:
+  deploy-cloudflare:
+    if: >-
+      vars.CLOUDFLARE_RC_PROJECT != '' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://${{ vars.CLOUDFLARE_RC_PROJECT }}.pages.dev
+    env:
+      SRC_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: gh-pages
+          path: pages
+          persist-credentials: false
+      - name: gh-pages sert-il ce commit ?
+        id: live
+        run: |
+          v=pages/race-control/version.json
+          sha=$(node -e 'try{const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof j.sha==="string"?j.sha:"")}catch(e){}' "$v")
+          if [ "$sha" != "$SRC_SHA" ]; then
+            echo "::notice title=Cloudflare inchangé::gh-pages ne publie pas $SRC_SHA (aucun changement de site) : rien à republier."
+            echo "go=0" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(!Number.isSafeInteger(j.run)||j.run<1||!/^[0-9a-f]{12}$/.test(j.build||""))process.exit(1);process.stdout.write("run="+j.run+"\nbuild="+j.build+"\n")' "$v" >> "$GITHUB_OUTPUT"
+          echo "go=1" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.live.outputs.go == '1'
+        with:
+          node-version: 24
+      - name: Build pour l'origine dédiée (données du relais lues sur gh-pages)
+        if: steps.live.outputs.go == '1'
+        env:
+          RC_DATA_BASE: https://ipoower.github.io/iPoower/race-control/
+          RC_OUT: dist-cloudflare
+          RUN_N: ${{ steps.live.outputs.run }}
+          LIVE_BUILD: ${{ steps.live.outputs.build }}
+        run: |
+          node tools/build.js
+          for f in obs.json calendar.sealed.json road-datex.json; do [ ! -e "dist-cloudflare/$f" ] || { echo "::error::Donnée du relais dans le build"; exit 1; }; done
+          build=$(sed -nE 's/.*window\.TWRC_BUILD="([^"]+)".*/\1/p' dist-cloudflare/index.html | head -1)
+          [ "$build" = "$LIVE_BUILD" ] || { echo "::error::Build différent de celui publié sur gh-pages"; exit 1; }
+          node -e 'require("fs").writeFileSync("dist-cloudflare/version.json", JSON.stringify({ run: +process.env.RUN_N, sha: process.env.SRC_SHA, at: new Date().toISOString(), build: process.argv[1] }))' "$build"
+          sha256sum dist-cloudflare/index.html dist-cloudflare/sw.js dist-cloudflare/manifest.webmanifest
+      - name: Projet en envoi direct (créé une seule fois, sans connexion Git)
+        if: steps.live.outputs.go == '1'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ vars.CLOUDFLARE_RC_PROJECT }}
+        run: |
+          if npx --yes wrangler@4.137.0 pages project list 2>/dev/null | grep -qw "$PROJECT"; then echo "Projet existant."
+          else npx --yes wrangler@4.137.0 pages project create "$PROJECT" --production-branch main; fi
+      - name: Envoi direct vers Cloudflare Pages
+        if: steps.live.outputs.go == '1'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PROJECT: ${{ vars.CLOUDFLARE_RC_PROJECT }}
+        run: npx --yes wrangler@4.137.0 pages deploy dist-cloudflare --project-name "$PROJECT" --branch main --commit-hash "$SRC_SHA" --commit-dirty=false
+      - name: Octets servis, commit exact et en-têtes HTTP réellement reçus
+        if: steps.live.outputs.go == '1'
+        env:
+          PROJECT: ${{ vars.CLOUDFLARE_RC_PROJECT }}
+        run: |
+          url="https://$PROJECT.pages.dev"
+          for i in $(seq 1 18); do
+            served=$(curl -fsS "$url/version.json?v=$GITHUB_RUN_ID$i" | sed -nE 's/.*"sha":"([0-9a-f]+)".*/\1/p' || true)
+            [ "$served" = "$SRC_SHA" ] && break; sleep 10
+          done
+          [ "$served" = "$SRC_SHA" ] || { echo "::error::L'origine dédiée ne sert pas $SRC_SHA"; exit 1; }
+          # Pages redirige /index.html vers / : la page est relue à sa vraie adresse, sans suivre de redirection.
+          for f in index.html sw.js manifest.webmanifest; do
+            p="$f"; [ "$f" = index.html ] && p=""
+            [ "$(curl -fsS "$url/$p?v=$GITHUB_RUN_ID" | sha256sum | cut -d' ' -f1)" = "$(sha256sum "dist-cloudflare/$f" | cut -d' ' -f1)" ] || { echo "::error::$f servi différent du build"; exit 1; }
+          done
+          for path in / /sw.js /manifest.webmanifest; do
+            headers=$(curl -fsSI "$url$path")
+            for h in "content-security-policy: .*frame-ancestors 'none'" "x-frame-options: DENY" "x-content-type-options: nosniff" "referrer-policy: no-referrer" "strict-transport-security:" "cross-origin-opener-policy: same-origin" "cross-origin-resource-policy: same-origin" "permissions-policy: geolocation=(self)"; do
+              echo "$headers" | grep -qi "$h" || { echo "::error::En-tête manquant sur $path : $h"; exit 1; }
+            done
+            echo "$headers" | grep -qi '^set-cookie:' && { echo "::error::Cookie inattendu sur $path"; exit 1; }
+          done
+          curl -fsSI -H "Origin: $url" "https://ipoower.github.io/iPoower/race-control/obs.json" | grep -qi '^access-control-allow-origin: \*' || { echo "::error::Données du relais non lisibles depuis l'origine dédiée (CORS)"; exit 1; }
+          echo "✅ Origine dédiée : $SRC_SHA servi, octets identiques, en-têtes et CORS des données vérifiés"
