@@ -45,7 +45,7 @@ test('CI complète réussie : approved sur le SHA exact, main vérifié avant et
   const { result, calls } = await gate([GREEN]);
   assert.equal(result.state, 'approved'); assert.equal(result.sha, SHA); assert.equal(result.run.id, GREEN.id);
   assert.equal(calls.length, 3); assert.equal(calls[0], calls[2]);
-  assert(calls[1].includes(`head_sha=${SHA}&event=push&per_page=30`));
+  assert(calls[1].endsWith('/actions/workflows/ci.yml/runs?per_page=100') && !/head_sha|event=|branch=/.test(calls[1]));
 });
 for (const conclusion of ['failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped', null]) {
   test(`CI terminée ${conclusion} : rejet explicite, jamais de secrets`, async () => {
@@ -90,9 +90,25 @@ test('API temporairement indisponible à chaque phase : refus fermé puis repris
   }
   assert.equal((await gate([GREEN])).result.state, 'approved');
 });
+test('filtres head_sha/event de l\u2019API intermittents (22/10) : page non filtrée lue, SHA exact choisi ici, plus récente d\u2019abord', async () => {
+  const other = (id, extra = {}) => ({ ...GREEN, id, head_sha: OTHER, ...extra });
+  // CI verte du SHA au milieu d'autres commits et d'une PR : approuvée.
+  assert.equal((await gate([other(300), { ...GREEN, id: 250, event: 'pull_request' }, GREEN, other(50)])).result.run.id, 100);
+  // Relance plus récente du même SHA en échec : c'est elle qui compte.
+  const { result } = await gate([other(300), { ...GREEN, id: 200, conclusion: 'failure' }, GREEN]);
+  assert.equal(result.state, 'rejected'); assert.equal(result.run.id, 200);
+  // Page pleine sans ce SHA : CI trop ancienne ou absente, refus.
+  const page = Array.from({ length: 100 }, (_, i) => other(1000 - i));
+  assert.deepEqual((await gate(page)).result, { state: 'unavailable', reason: 'ci_missing' });
+  // Total supérieur à la page : valide si la page est pleine et triée.
+  const transport = api([ref(SHA), { total_count: 212, workflow_runs: [...page.slice(0, 99), { ...GREEN, id: 1 }] }, ref(SHA)]);
+  assert.equal((await check({ env: ENV, fetchImpl: transport.fetchImpl })).state, 'approved');
+});
 test('réponses malformées, tronquées ou statuts inconnus : aucune approbation', async () => {
-  for (const payload of [null, {}, { total_count: 0 }, { total_count: 31, workflow_runs: [GREEN] },
+  for (const payload of [null, {}, { total_count: 0 }, { total_count: 0, workflow_runs: [GREEN] },
     { total_count: 2, workflow_runs: [GREEN] }, { total_count: 1, workflow_runs: [null] },
+    runs([{ ...GREEN, id: 90 }, { ...GREEN, id: 100 }]), runs([GREEN, { ...GREEN, id: 100, head_sha: OTHER }]),
+    { total_count: 101, workflow_runs: Array.from({ length: 101 }, (_, i) => ({ ...GREEN, id: 500 - i })) },
     runs([{ ...GREEN, id: '100' }]), runs([{ ...GREEN, status: 'unknown' }]),
     runs([{ ...GREEN, status: 'in_progress', conclusion: 'success' }]),
     runs([{ ...GREEN, head_repository: { full_name: 5 } }])]) {
