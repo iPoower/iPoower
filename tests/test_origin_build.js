@@ -32,12 +32,13 @@ try {
     for (const bad of ['http://data.example.test/rc/', 'https://data.example.test/rc', 'https://data.example.test/rc/?x=1'])
       assert.notEqual(build('bad', bad).status, 0, bad);
   });
-  check('publication Cloudflare inactive sans variable, après gh-pages vérifié, approbation production', () => {
+  check('publication Cloudflare inactive sans variable, après gh-pages vérifié, octets relus à leur adresse réelle', () => {
     const wf = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8'), job = wf.split('\n  deploy-cloudflare:\n')[1];
     const head = job.split('    steps:')[0];
     assert(head.includes('needs: [version, deploy]'));
     assert(head.includes("needs.deploy.result == 'success' && needs.deploy.outputs.done == '1' && vars.CLOUDFLARE_RC_PROJECT != ''"));
     assert(head.includes('name: production') && head.includes('contents: read') && !/always\(\)/.test(job));
+    assert(job.includes('p="$f"; [ "$f" = index.html ] && p=""'), 'index.html relu à son adresse réelle');
     assert(job.includes('RC_DATA_BASE: https://ipoower.github.io/iPoower/race-control/'));
     assert((job.match(/wrangler@4\.137\.0/g) || []).length === 3 && !/wrangler(@latest)?\s/.test(job.replace(/wrangler@4\.137\.0/g, '')));
     for (const h of ['cross-origin-opener-policy: same-origin', 'cross-origin-resource-policy: same-origin', "frame-ancestors 'none'", 'permissions-policy: geolocation=(self)', 'set-cookie'])
