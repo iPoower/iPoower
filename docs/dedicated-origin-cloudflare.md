@@ -26,9 +26,11 @@ aucune redirection de l'ancienne PWA, aucune donnée migrée.
 
 1. Cloudflare → *My Profile → API Tokens → Create Token → Custom* : permission
    **Account › Cloudflare Pages › Edit** uniquement, ressource : ton compte.
-2. GitHub `iPoower/iPoower` → *Settings → Environments → New environment* `production` :
-   *Required reviewers* = toi (décocher « Prevent self-review »), *Deployment branches* =
-   `main` seulement ; secrets `CLOUDFLARE_API_TOKEN` et `CLOUDFLARE_ACCOUNT_ID`.
+2. GitHub `iPoower/iPoower` → *Settings → Environments → New environment* **`cloudflare`**
+   (jamais `production`, utilisé sans intervention par le relais, le watchdog et la
+   confidentialité : y exiger une approbation les bloquerait) : *Required reviewers* = toi
+   (décocher « Prevent self-review » et le contournement administrateur), *Deployment branches*
+   = `main` seulement ; secrets `CLOUDFLARE_API_TOKEN` et `CLOUDFLARE_ACCOUNT_ID`.
 3. *Settings → Secrets and variables → Actions → Variables* : `CLOUDFLARE_RC_PROJECT` =
    nom libre et exclusif, par exemple `race-control-<suffixe>` (adresse
    `https://<nom>.pages.dev`). Ne pas créer le projet « Connect to Git ».

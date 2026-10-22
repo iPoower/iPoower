@@ -370,8 +370,9 @@ jobs:
           echo "::error::La version en ligne ne correspond pas au build après 10 minutes"; exit 1
   # Origine dédiée Cloudflare Pages : INACTIF tant que la variable CLOUDFLARE_RC_PROJECT n'existe pas.
   # Publie le même commit que gh-pages, seulement après sa publication vérifiée, avec approbation
-  # humaine de l'environnement production. Les données du relais restent servies par gh-pages (CORS).
-  # L'ancienne PWA n'est ni redirigée ni modifiée.
+  # humaine de l'environnement DÉDIÉ « cloudflare ». Jamais « production » : le relais, le watchdog et
+  # la confidentialité l'utilisent sans intervention ; y exiger une approbation les bloquerait.
+  # Les données du relais restent servies par gh-pages (CORS). L'ancienne PWA n'est ni redirigée ni modifiée.
   deploy-cloudflare:
     needs: [version, deploy]
     if: ${{ !cancelled() && needs.deploy.result == 'success' && needs.deploy.outputs.done == '1' && vars.CLOUDFLARE_RC_PROJECT != '' }}
@@ -380,7 +381,7 @@ jobs:
     permissions:
       contents: read
     environment:
-      name: production
+      name: cloudflare
       url: https://${{ vars.CLOUDFLARE_RC_PROJECT }}.pages.dev
     concurrency:
       group: race-control-cloudflare
