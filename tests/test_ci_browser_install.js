@@ -51,20 +51,36 @@ try {
       assert.equal(r.status, 2, b); assert.equal(r.calls, 0, b);
     }
   });
-  check('CI, QA Weather Watch et profilage passent tous par ce script', () => {
+  check('CI, QA Weather Watch et profilage passent tous par ce script (retour arrière : installation directe sans apt)', () => {
     for (const f of ['ci.yml', 'weather-watch-qa.yml', 'performance.yml']) {
       const wf = fs.readFileSync(path.join(ROOT, '.github/workflows', f), 'utf8');
-      assert(!/playwright install/.test(wf), f + ' : installation directe restante');
+      assert(!/playwright install --with-deps/.test(wf), f + ' : installation apt directe restante');
       assert(wf.includes('bash tools/ci-browser-install.sh ${{ matrix.browser }}'), f);
     }
     const ci = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');
-    assert.equal((ci.match(/bash tools\/ci-browser-install\.sh/g) || []).length, 2, 'tests et tests-rollback');
+    assert.equal((ci.match(/bash tools\/ci-browser-install\.sh/g) || []).length, 1, 'tests');
+    // Les anciens tags n'ont pas le script : le retour arrière installe seulement le navigateur, dans l'image.
+    assert.equal((ci.match(/run: npx playwright install \$\{\{ matrix\.browser \}\}\n/g) || []).length, 1, 'tests-rollback');
+  });
+  check('image Playwright de la version exacte du package-lock : aucune dépendance apt demandée', () => {
+    const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8')).packages['node_modules/playwright'].version;
+    for (const [f, jobs] of [['ci.yml', ['tests', 'tests-rollback']], ['weather-watch-qa.yml', ['station-browser']]]) {
+      const wf = fs.readFileSync(path.join(ROOT, '.github/workflows', f), 'utf8');
+      for (const job of jobs) {
+        const start = wf.indexOf('  ' + job + ':\n'), rest = wf.slice(start + job.length + 4), next = rest.search(/^  [\w-]+:\s*$/m);
+        const block = next < 0 ? rest : rest.slice(0, next);
+        assert(block.includes('      image: mcr.microsoft.com/playwright:v' + version + '-noble\n'), f + ': ' + job + ' image ' + version);
+        assert(block.includes('      CI_BROWSER_SYSTEM_DEPS: preinstalled\n'), f + ': ' + job + ' sans apt');
+      }
+    }
+    const r = run('webkit', { MODE: 'ok', CI_BROWSER_SYSTEM_DEPS: 'preinstalled' });
+    assert.equal(r.status, 0, r.out); assert.deepEqual(r.args, ['playwright install webkit']);
   });
   check('les délais des étapes et jobs couvrent les essais, les attentes et les tests', () => {
     const scriptText = fs.readFileSync(script, 'utf8');
     const seconds = name => Number(scriptText.match(new RegExp(name + ':-(\\d+)\\}'))[1]);
     const budget = 3 * seconds('CI_INSTALL_ATTEMPT_S') + 2 * seconds('CI_INSTALL_LOCK_WAIT_S') + 3 * seconds('CI_INSTALL_PAUSE_S');
-    for (const [f, jobs] of [['ci.yml', ['tests', 'tests-rollback']], ['weather-watch-qa.yml', ['station-browser']], ['performance.yml', ['profile']]]) {
+    for (const [f, jobs] of [['ci.yml', ['tests']], ['weather-watch-qa.yml', ['station-browser']], ['performance.yml', ['profile']]]) {
       const wf = fs.readFileSync(path.join(ROOT, '.github/workflows', f), 'utf8');
       for (const job of jobs) {
         const start = wf.indexOf('  ' + job + ':\n'); assert(start >= 0, f + ': ' + job);
