@@ -122,3 +122,5 @@ SUITE.push(['test_sync_merge.js', 'fusion PC ↔ iPhone (étape 1) : journal cum
 
 SUITE.push(['test_control_vault_packet.js', 'Control Vault : codec propriétaire V1, WebCrypto/AAD, archive intégrale et refus sans écriture', false],
   ['e2e82-control-vault-packet.js', 'Control Vault : chiffrement propriétaire Chromium/WebKit, profils PC/iPhone et fermeture des sessions', true]);
+SUITE.push(['test_sync_key.js', 'synchronisation lot D1 : clé dérivée une fois, reprise sans code, expiration, verrouillage et refus', false],
+  ['e2e83-sync-key-resume.js', 'synchronisation lot D1 : CryptoKey IndexedDB réelle Chromium/WebKit, onglets rouverts PC/iPhone sans code', true]);
