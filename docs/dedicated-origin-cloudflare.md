@@ -13,8 +13,10 @@ n'existe pas. Revue sensible obligatoire (workflow, Service Worker, build). Comp
   (chiffré) et `road-datex.json`, directement sous la base, sont gardés hors ligne.
   Aucune réponse opaque, aucun sous-chemin, aucune URL à coordonnées.
 - `.github/workflows/cloudflare.yml` (workflow **séparé** de `ci.yml`) : lancé après une CI
-  de `main` réussie, il ne republie que le commit que gh-pages sert déjà (`version.json`,
-  même identité de build), sinon il s'arrête sans rien faire. Le relais n'accepte que les CI
+  de `main` réussie, il ne republie que l'application que gh-pages sert déjà : même identité
+  de build que `version.json`, avec le même numéro et le même commit déclarés, sinon il s'arrête
+  sans rien faire. gh-pages ne republie que si le build change : comparer le commit bloquait toute
+  publication après une PR sans effet sur le build (#218, 22/10). Le relais n'accepte que les CI
   `ci.yml` vertes (`tools/relay-trust.js`) : un échec Cloudflare ne peut plus bloquer le
   relais (incident du 22/10 : vérification fautive → CI rouge → relais refusé environ 50 min).
   Build dédié, `version.json` (run, sha, build), envoi direct `wrangler@4.137.0` (aucune

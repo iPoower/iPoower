@@ -32,7 +32,7 @@ try {
     for (const bad of ['http://data.example.test/rc/', 'https://data.example.test/rc', 'https://data.example.test/rc/?x=1'])
       assert.notEqual(build('bad', bad).status, 0, bad);
   });
-  check('publication Cloudflare séparée de ci.yml : jamais de blocage du relais, commit déjà publié sur gh-pages', () => {
+  check('publication Cloudflare séparée de ci.yml : jamais de blocage du relais, application déjà servie par gh-pages', () => {
     const ci = fs.readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');
     const wf = fs.readFileSync(path.join(ROOT, '.github/workflows/cloudflare.yml'), 'utf8');
     // Le relais n'accepte que ci.yml : aucune étape Cloudflare ne doit pouvoir y faire échouer une CI.
@@ -42,12 +42,32 @@ try {
     for (const c of ["vars.CLOUDFLARE_RC_PROJECT != ''", "github.event.workflow_run.conclusion == 'success'", "github.event.workflow_run.event == 'push'",
       "github.event.workflow_run.head_branch == 'main'", 'github.event.workflow_run.head_repository.full_name == github.repository']) assert(wf.includes(c), c);
     assert(wf.includes('name: production') && /^permissions:\n  contents: read$/m.test(wf) && !/always\(\)|workflow_dispatch|pull_request/.test(wf));
-    assert(wf.includes('[ "$sha" != "$SRC_SHA" ]') && wf.includes('[ "$build" = "$LIVE_BUILD" ]'), 'seul le commit publié sur gh-pages est republié');
+    // gh-pages ne republie que si le build change : on compare l'identité de build, pas le commit (#218 jamais publié sinon).
+    assert(!wf.includes('[ "$sha" != "$SRC_SHA" ]') && wf.includes('[ "$build" != "$LIVE_BUILD" ]'), 'seule l’application servie par gh-pages est republiée');
+    assert(wf.includes('sha: process.env.LIVE_SHA') && wf.includes('[ "$served" = "$LIVE_SHA" ]'), 'même commit déclaré et relu que gh-pages');
+    for (const step of ['Projet en envoi direct', 'Envoi direct vers Cloudflare Pages', 'Octets servis'])
+      assert(new RegExp('- name: ' + step + '[^\\n]*\\n        if: steps\\.build\\.outputs\\.go == \'1\'').test(wf), step);
     assert(wf.includes('p="$f"; [ "$f" = index.html ] && p=""'), 'index.html relu à son adresse réelle');
     assert(wf.includes('RC_DATA_BASE: https://ipoower.github.io/iPoower/race-control/'));
     assert((wf.match(/wrangler@4\.137\.0/g) || []).length === 3 && !/wrangler(@latest)?\s/.test(wf.replace(/wrangler@4\.137\.0/g, '')));
     for (const h of ['cross-origin-opener-policy: same-origin', 'cross-origin-resource-policy: same-origin', "frame-ancestors 'none'", 'permissions-policy: geolocation=(self)', 'set-cookie'])
       assert(wf.includes(h), h);
+  });
+  check('lecture de version.json gh-pages : valide → numéro, commit, build ; illisible → rien à republier', () => {
+    const wf = fs.readFileSync(path.join(ROOT, '.github/workflows/cloudflare.yml'), 'utf8');
+    const body = wf.split('        id: live\n        run: |\n')[1].split('\n      - ')[0].replace(/^ {10}/gm, '');
+    const dir = path.join(ROOT, WORK, 'live'), run = json => {
+      fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(path.join(dir, 'pages/race-control'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'pages/race-control/version.json'), json); fs.writeFileSync(path.join(dir, 'out'), '');
+      const r = spawnSync('bash', ['-e', '-c', body], { cwd: dir, encoding: 'utf8', env: { PATH: process.env.PATH, GITHUB_OUTPUT: path.join(dir, 'out') } });
+      assert.equal(r.status, 0, r.stderr);
+      return Object.fromEntries(fs.readFileSync(path.join(dir, 'out'), 'utf8').trim().split('\n').map(l => l.split('=')));
+    };
+    const sha = 'a'.repeat(40);
+    assert.deepEqual(run(JSON.stringify({ run: 157, sha, at: '2026-10-22T03:51:51.867Z', build: '50988798eb7c' })), { run: '157', sha, build: '50988798eb7c', go: '1' });
+    for (const bad of ['', '{', JSON.stringify({ run: 0, sha, build: '50988798eb7c' }), JSON.stringify({ run: 1, sha: 'abc', build: '50988798eb7c' }),
+      JSON.stringify({ run: 1, sha, build: 'x' }), JSON.stringify({ run: 1, sha: sha + '\ngo=1', build: '50988798eb7c' })])
+      assert.deepEqual(run(bad), { go: '0' }, bad);
   });
 } finally { fs.rmSync(path.join(ROOT, WORK), { recursive: true, force: true }); }
 console.log(n + '/' + n + ' scénarios OK · construction pour origine dédiée, aucune publication');
