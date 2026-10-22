@@ -126,3 +126,4 @@ SUITE.push(['test_origin_build.js', 'origine dédiée : SW et CSP reçoivent la 
   ['e2e84-sw-data-origin.js', 'origine dédiée : vrai SW, données du relais lues en CORS gardées hors ligne, rien d’autre persisté', true, 'chromium']);
 SUITE.push(['test_sync_key.js', 'synchronisation lot D1 : clé dérivée une fois, reprise sans code, expiration, verrouillage et refus', false],
   ['e2e83-sync-key-resume.js', 'synchronisation lot D1 : CryptoKey IndexedDB réelle Chromium/WebKit, onglets rouverts PC/iPhone sans code', true]);
+SUITE.push(['test_sync_revisions.js', 'synchronisation lot D2 : révisions immuables, têtes concurrentes, conflits jamais absorbés, catalogue falsifié et convergence finie', false]);

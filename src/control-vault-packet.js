@@ -95,7 +95,10 @@ const ControlVaultPacket = (() => {
     function business(bytes) {
       const data = parse(bytes, 64);
       jsonTree(data);
-      if (!object(data) || data.app !== 'twrc' || ![1, 2].includes(data.v) || !object(data.settings)) return fail('CONSERVATION_BLOCKED');
+      // Métier V1/V2, ou contenu de synchronisation A2 ; le validateur du propriétaire décide ensuite.
+      const backup = object(data) && data.app === 'twrc' && [1, 2].includes(data.v) && object(data.settings);
+      const sync = object(data) && data.app === 'twrc-sync' && data.v === 1 && object(data.values);
+      if (!backup && !sync) return fail('CONSERVATION_BLOCKED');
       const before = JSON.stringify(data);
       try { if (validateBusiness(data) !== true || JSON.stringify(data) !== before) return fail('CONSERVATION_BLOCKED'); }
       catch { return fail('CONSERVATION_BLOCKED'); }
