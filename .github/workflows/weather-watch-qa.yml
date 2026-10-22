@@ -9,7 +9,7 @@ permissions:
 jobs:
   station-browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -25,8 +25,9 @@ jobs:
       - name: Dépendances reproductibles
         run: npm ci --no-audit --no-fund
       - name: Navigateur borné
-        timeout-minutes: 7
-        run: timeout 360 npx playwright install --with-deps ${{ matrix.browser }}
+        # Mêmes essais bornés que ci.yml, avec attente du verrou dpkg (22/10 : deux échecs sans un test).
+        timeout-minutes: 24
+        run: bash tools/ci-browser-install.sh ${{ matrix.browser }}
       - name: Station PC et iPhone, fixtures uniquement
         env:
           BROWSER: ${{ matrix.browser }}
