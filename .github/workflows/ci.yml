@@ -165,14 +165,9 @@ jobs:
       - name: Navigateur ${{ matrix.browser }}
         # Installation bornée et relancée : le 7 octobre, elle s'est bloquée plus de 20 min (dépôts apt / téléchargement),
         # deux jobs WebKit ont expiré à 30 min sans exécuter un seul test. 3 essais de 6 min au plus, puis échec explicite.
+        # Avant chaque nouvel essai, attente bornée de l'apt-get orphelin qui garde le verrou dpkg (incident du 22/10).
         timeout-minutes: 20
-        run: |
-          for i in 1 2 3; do
-            timeout 360 npx playwright install --with-deps ${{ matrix.browser }} && exit 0
-            echo "::warning title=Navigateur ${{ matrix.browser }}::installation bloquée ou en échec (essai $i/3), nouvelle tentative"
-            sleep $((i * 10))
-          done
-          echo "::error title=Navigateur ${{ matrix.browser }}::installation impossible après 3 essais"; exit 1
+        run: bash tools/ci-browser-install.sh ${{ matrix.browser }}
       - name: Fixtures fictives du même run
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -233,14 +228,9 @@ jobs:
       - name: Navigateur ${{ matrix.browser }}
         # Installation bornée et relancée : le 7 octobre, elle s'est bloquée plus de 20 min (dépôts apt / téléchargement),
         # deux jobs WebKit ont expiré à 30 min sans exécuter un seul test. 3 essais de 6 min au plus, puis échec explicite.
+        # Avant chaque nouvel essai, attente bornée de l'apt-get orphelin qui garde le verrou dpkg (incident du 22/10).
         timeout-minutes: 20
-        run: |
-          for i in 1 2 3; do
-            timeout 360 npx playwright install --with-deps ${{ matrix.browser }} && exit 0
-            echo "::warning title=Navigateur ${{ matrix.browser }}::installation bloquée ou en échec (essai $i/3), nouvelle tentative"
-            sleep $((i * 10))
-          done
-          echo "::error title=Navigateur ${{ matrix.browser }}::installation impossible après 3 essais"; exit 1
+        run: bash tools/ci-browser-install.sh ${{ matrix.browser }}
       - name: Tests (données fictives, sans aucun secret)
         env:
           BROWSER: ${{ matrix.browser }}
