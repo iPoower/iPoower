@@ -1,3 +1,5 @@
+// @include app/garage-economics-core.js
+// @include app/garage-economics-view.js
 // @include app/garage-scene.js
 // @include app/live-route-view.js
 // @include app/mission-control.js
@@ -72,6 +74,7 @@ function garageVehicleHtml(c) {
     mounted + notices +
     uxFold('garage-records-' + c.id, 'Mesures et fiche pneus', tyres + (c.quality.length ? '<ul class="lab-why">' + c.quality.map(q=>'<li>' + esc(q.label + ' · ' + q.text) + '</li>').join('') + '</ul>' : ''), 'Monte · pression · montage') + winter +
     garageMaintHtml(c.maintenance, c) +
+    garageEconomicsHtml(S.cars.find(x => x && x.id === c.id)) +
     '</article>';
 }
 function renderGarage() {
@@ -105,6 +108,8 @@ function renderGarage() {
     plan: focused.tagName === 'SUMMARY' && focused.parentElement.classList.contains('garage-plan') } : null;
   const expanded = new Set([...el.querySelectorAll('.garage-plan[open]')]
     .map(plan => plan.closest('[data-garage-car]').dataset.garageCar));
+  const expandedFinance = new Set([...el.querySelectorAll('.garage-economics[open]')]
+    .map(finance => finance.closest('[data-garage-car]').dataset.garageCar));
   const foldFocus = uxFocusKey(el);
   if (!el.querySelector('#twinGarageBody')) el.innerHTML = GARAGE_STYLE + LIVE_ROUTE_STYLE +
     '<div class="mod-h"><h2>🛠️ TWIN GARAGE LIVE</h2><span class="src obs">THE GARAGE · données enregistrées</span></div>' +
@@ -141,6 +146,9 @@ function renderGarage() {
   renderGarage.last = html;
   el.querySelectorAll('.garage-plan').forEach(plan => {
     if (expanded.has(plan.closest('[data-garage-car]').dataset.garageCar)) plan.open = true;
+  });
+  el.querySelectorAll('.garage-economics').forEach(finance => {
+    if (expandedFinance.has(finance.closest('[data-garage-car]').dataset.garageCar)) finance.open = true;
   });
   uxRestoreFocus(el, foldFocus);
   if (token && focused && !focused.isConnected) {
