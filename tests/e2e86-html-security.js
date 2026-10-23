@@ -15,10 +15,12 @@ let checks = 0;
       const s = await session(browser, { at: '2026-10-23T12:00:00+02:00', dev });
       try {
         const p = s.p;
-        const inspect = () => p.evaluate(({ short, photo }) => {
-          S.cars[0].short = short;
-          S.cars[0].photo = photo;
-          for (const c of S.cars) Object.assign(c.tire, { type: 'allseason', brand: 'Marque fictive', model: 'Modèle fictif', size: '205/55 R16' });
+        const inspect = (seed = true) => p.evaluate(({ short, photo, seed }) => {
+          if (seed) {
+            S.cars[0].short = short;
+            S.cars[0].photo = photo;
+            for (const c of S.cars) Object.assign(c.tire, { type: 'allseason', brand: 'Marque fictive', model: 'Modèle fictif', size: '205/55 R16' });
+          }
           rebuild();
           renderAll();
           renderCompare();
@@ -34,7 +36,7 @@ let checks = 0;
             storedShort: S.cars[0].short,
             storedPhoto: S.cars[0].photo
           };
-        }, { short: SHORT, photo: PHOTO });
+        }, { short: SHORT, photo: PHOTO, seed });
         const a = await inspect();
         assert.equal(a.active, true, dev + ' : comparaison affichée');
         assert.equal(a.storedShort, SHORT);
@@ -64,7 +66,7 @@ let checks = 0;
         }, { short: SHORT, photo: PHOTO });
         await s.settle(5);
         await p.reload(); await s.settle(8);
-        const restored = await inspect();
+        const restored = await inspect(false);
         assert.equal(restored.storedShort, SHORT);
         assert.equal(restored.storedPhoto, PHOTO);
         assert.equal(restored.htmlTag, false);
