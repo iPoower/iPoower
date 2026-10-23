@@ -96,7 +96,7 @@ function renderGarage() {
     offline: offlineNow(), navigationAvailable: !!navigation, agendaUnavailable: APP_CONTEXT.agendaSelectionUnavailable });
   // La fiche et sa commande d'édition historique restent au premier écran.
   // NEXT MISSION suit les fiches, accessible immédiatement par ancre dédiée.
-  const parts = { records: cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>' : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>',
+  const parts = { records: cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>' + garageEconomicsCompareHtml(S.cars) : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>',
     mission: missionControlHtml(mission, navigation),
     trip: garageTripHtml(scene, selected),
     compare: garageCompareHtml(cars, trip, scene) };
