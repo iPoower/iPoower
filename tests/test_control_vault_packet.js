@@ -85,7 +85,7 @@ const check = async (name, fn) => { await fn(); n++; console.log('✅ ' + name);
   await check('taille et absence d’activation : aucun import, stockage, réseau ou changement UX', async () => {
     await reject(codec.inspect(new Uint8Array(P.LIMITS.file + 1)), 'FILE_TOO_LARGE');
     const build = fs.readFileSync(path.join(__dirname, '../tools/build.js'), 'utf8');
-    assert(!build.includes('control-vault-packet.js'));
+    assert(build.includes("'control-vault-packet'"));
     assert.deepEqual(fixture.values, business(owner).values);
   });
   console.log(n + '/' + n + ' scénarios OK · codec propriétaire seul, pas de restauration appliquée');

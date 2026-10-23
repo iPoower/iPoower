@@ -113,9 +113,9 @@ const check = async (name, fn) => { await fn(); n++; console.log('✅ ' + name);
     await reject(pc.codec.sealWith(fixture.data, { ...handle, key: exportable }, 'prod-156', at), 'CODE_REQUIRED');
     await reject(pc.S.storage(pc.idb).remember({ ...handle, key: exportable }, 'device', now + day, now), 'CONSERVATION_BLOCKED');
   });
-  await check('non assemblé : ni build, ni écran, ni réseau', async () => {
+  await check('moteur assemblé sans écran ni réseau propre', async () => {
     const build = fs.readFileSync(path.join(__dirname, '../tools/build.js'), 'utf8');
-    assert(!build.includes('sync-key.js'));
+    assert(build.includes("'sync-key'"));
     assert(!/fetch|XMLHttpRequest|localStorage|sessionStorage/.test(keySource));
   });
   console.log(n + '/' + n + ' scénarios OK · clé de synchronisation seule, aucune synchronisation activée');

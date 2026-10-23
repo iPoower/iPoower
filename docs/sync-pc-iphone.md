@@ -1,6 +1,8 @@
 # Sauvegarde automatique et synchronisation PC ↔ iPhone
 
-Statut : **lot A, étape 1 seulement** (moteur de fusion pur, testé sur données fictives). Rien n'est branché dans l'application, aucune donnée ne quitte l'appareil.
+**Raccord proposé le 23/10/2026 :** voir [drive-runtime.md](drive-runtime.md). Code à relire, activation réelle soumise aux preuves et à la revue sensible.
+
+État historique du lot A : **étape 1 seulement** (moteur de fusion pur, testé sur données fictives). Rien n'est branché dans l'application, aucune donnée ne quitte l'appareil.
 
 ## Décisions du propriétaire (21/10/2026)
 

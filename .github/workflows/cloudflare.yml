@@ -62,6 +62,7 @@ jobs:
         env:
           RC_DATA_BASE: https://ipoower.github.io/iPoower/race-control/
           RC_OUT: dist-cloudflare
+          GOOGLE_DRIVE_CONFIG: ${{ vars.GOOGLE_DRIVE_CONFIG }}
           LIVE_RUN: ${{ steps.live.outputs.run }}
           LIVE_SHA: ${{ steps.live.outputs.sha }}
           LIVE_BUILD: ${{ steps.live.outputs.build }}
@@ -107,7 +108,7 @@ jobs:
           done
           [ "$served" = "$LIVE_SHA" ] || { echo "::error::L'origine dédiée ne sert pas $LIVE_SHA"; exit 1; }
           # Pages redirige /index.html vers / : la page est relue à sa vraie adresse, sans suivre de redirection.
-          for f in index.html sw.js manifest.webmanifest; do
+          for f in index.html sw.js manifest.webmanifest drive-config.json; do
             p="$f"; [ "$f" = index.html ] && p=""
             [ "$(curl -fsS "$url/$p?v=$GITHUB_RUN_ID" | sha256sum | cut -d' ' -f1)" = "$(sha256sum "dist-cloudflare/$f" | cut -d' ' -f1)" ] || { echo "::error::$f servi différent du build"; exit 1; }
           done

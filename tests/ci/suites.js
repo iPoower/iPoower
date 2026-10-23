@@ -129,3 +129,9 @@ SUITE.push(['test_sync_key.js', 'synchronisation lot D1 : clé dérivée une foi
 SUITE.push(['test_sync_revisions.js', 'synchronisation lot D2 : révisions immuables, têtes concurrentes, conflits jamais absorbés, catalogue falsifié et convergence finie', false]);
 SUITE.push(['test_sync_outbox.js', 'synchronisation lot D3 : local d’abord, regroupement, envois séquentiels, reprise après coupure, reconnexion visible et statuts prouvés', false]);
 SUITE.push(['test_ci_browser_install.js', 'CI : installation du navigateur bornée, apt-get orphelin attendu avant chaque nouvel essai, navigateur inconnu refusé', false]);
+
+SUITE.push(['test_drive_sync.js', 'raccord Drive : propriétaire réel, deux appareils, conservation, reprise immuable et blocages', false],
+ ['test_google_drive_session.js', 'Google : origines, portée unique, comptes concurrents et jeton en mémoire', false],
+ ['test_drive_build.js', 'Drive : profils de publication séparés, CSP et configuration publique approuvée', false]);
+
+SUITE.push(['e2e85-drive-runtime.js', 'Drive : deux vrais coffres, file IDB, HTTP opaque, fermeture, copie avant fusion et verrouillage', true]);

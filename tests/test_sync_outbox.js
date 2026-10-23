@@ -162,9 +162,9 @@ const trips = async (bytes, handle) => json(J.capture((await codec.openWith(byte
     const text = JSON.stringify(verified); assert(!/Lieu|Trajet|voiture/.test(text));
     for (const bad of [{ v: 2 }, { ...json(verified), blocked: 'autre' }, { ...json(verified), attempts: -1 }]) assert.throws(() => O.next(bad, T0), e => e.code === 'INVALID_OUTBOX');
   });
-  await check('non assemblé : ni build, ni réseau, ni stockage', async () => {
+  await check('moteur assemblé restant pur, sans réseau ni stockage propre', async () => {
     const build = fs.readFileSync(path.join(__dirname, '../tools/build.js'), 'utf8'), src = read('sync-outbox.js');
-    assert(!build.includes('sync-outbox.js')); assert(!/fetch|XMLHttpRequest|localStorage|sessionStorage|indexedDB/.test(src));
+    assert(build.includes("'sync-outbox'")); assert(!/fetch|XMLHttpRequest|localStorage|sessionStorage|indexedDB/.test(src));
   });
   console.log(n + '/' + n + ' scénarios OK · file d’envoi sur fournisseur simulé, aucune synchronisation activée');
 })().catch(e => { console.error(e); process.exitCode = 1; });

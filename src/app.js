@@ -202,6 +202,10 @@ const saveSettings = () => {
   // Préserver les choix reçus d'un autre onglet lors d'un réglage sans rapport.
   let latest = null; try { latest = JSON.parse(lsGet('twrc.settings.v1') || 'null'); } catch (e) { /* ancienne donnée */ }
   S.calOrigins = CalendarOrigin.merge(S.calOrigins, latest && latest.calOrigins);
+  if (window.TWRC_DRIVE_CONFIGURED) {
+    let stamps = {}; try { stamps = JSON.parse(lsGet(SyncMerge.STAMPS) || '{}'); } catch { /* signale ensuite un conflit */ }
+    lsSet(SyncMerge.STAMPS, JSON.stringify(SyncMerge.edits(latest || S, S, stamps, Date.now())));
+  }
   lsSet('twrc.settings.v1', JSON.stringify(S));
 };
 let TRIPCANCEL = {}; try { TRIPCANCEL = TripCancel.load(APP_STORAGE, Date.now()); } catch (e) { /* stockage indisponible */ }
@@ -1811,6 +1815,7 @@ async function backupImport(f) {
   bkMsg('Lecture du fichier…');
   if (f && Number.isFinite(f.size) && f.size > 68 * 1024 * 1024) { bkMsg('Sauvegarde trop volumineuse : fichier conservé, aucun réglage modifié.'); return; }
   let o, fileText; try { fileText = await f.text(); o = JSON.parse(fileText); } catch (e) { bkMsg('Fichier illisible.'); return; }
+  if (o && o.format === 'race-control-backup') { await backupDriveImport(new TextEncoder().encode(fileText)); return; }
   const recovery = o && o.app == null && SessionVault.validVault(o);
   if (!recovery && (!o || o.app !== 'twrc-backup' || !o.c)) { bkMsg('Ce fichier n’est pas une sauvegarde Race Control.'); return; }
   if (!recovery && !DeviceStorage.validEnvelope(o, true)) { bkMsg('Sauvegarde chiffrée invalide : aucun réglage modifié.'); return; }
@@ -3900,15 +3905,16 @@ function renderSettings(force) {
       <p class="sub">La copie complète conserve le journal et toutes ses versions. Elle inclut aussi l’état local chiffré de cet appareil ; seuls les champs durables seront restaurés. Son code est le code actuel de l’appareil ; sans coffre, saisis un code d’au moins 8 caractères pour la copie. L’activation du journal exige un profil déjà déverrouillé et son code de configuration existant. Les anciennes sauvegardes V1/V2 restent importables. Les anciennes versions de l’app refusent cette copie.</p>
       ${window.TWRC_VAULT && window.TWRC_VAULT.mode === 'plain' ? '<p class="sub" role="status"><b>Journal en lecture seule.</b> Exporte une copie de récupération, enregistre-la hors du navigateur, puis sélectionne ce fichier pour la vérifier. Les autres réglages restent utilisables.</p><label class="btn" for="journalCopy">Vérifier la copie enregistrée et activer l’archive</label><input type="file" id="journalCopy" accept=".json,application/json" hidden>'
         : window.TWRC_VAULT && window.TWRC_VAULT.journalNeedsRecovery ? '<p class="sub" role="status"><b>Journal en lecture seule.</b> Appuie sur Exporter : la copie est enregistrée et le journal est réactivé dans la foulée. Les autres réglages restent utilisables.</p>' : ''}
-      <p class="sub" id="bkMsg" aria-live="polite"></p></div>
+      <p class="sub" id="bkMsg" aria-live="polite"></p><div id="driveSyncPanel"></div></div>
     <div class="set-sec"><h3>🗂️ Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
       <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>
     <div class="set-sec"><h3>🏷️ Version</h3><p class="sub" id="verLine">${verLine()}</p></div>
     <div class="set-sec"><h3>🩺 Diagnostic</h3><p class="sub">Sources et précision à l’écran ; positions arrondies à environ 1 km dans la copie, sans adresse ni titre de rendez-vous.</p>
       <dl class="diag" id="diagBox">${diagHtml()}</dl><div class="chips"><button class="btn" data-act="diag-copy">Copier le diagnostic</button></div></div>`;
-  loadVersion(); loadSwVersion();
+  loadVersion(); loadSwVersion(); renderDriveSync();
 }
+// @include app/drive-sync-view.js
 // @include app/diagnostics.js
 /* ---------- orchestration du rendu ---------- */
 function renderAll() {

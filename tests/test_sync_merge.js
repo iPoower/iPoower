@@ -67,7 +67,7 @@ check('voitures dans un ordre différent : aucun réglage croisé, conflit signa
   const pc = settings({ edits: { 'cars.0.short': 1 } }), tel = settings({ cars: [car('voitureB'), car('voitureA')], edits: { 'cars.0.short': 1 } });
   tel.cars[0].short = 'Renommée';
   const r = M.settings(pc, tel, {}, { 'cars.0.short': T + 9000 });
-  assert.equal(r.settings.cars[0].short, 'voitureA'); assert.deepEqual(r.report.conflicts, ['cars.0.short']);
+  assert.equal(r.settings.cars[0].short, 'voitureA'); assert.deepEqual(r.report.conflicts, ['cars', 'cars.0.short']);
 });
 check('état de l’appareil (GPS, caches, contexte du jour) jamais importé de l’autre appareil', () => {
   const pc = device(), tel = device({ extra: { 'twrc.gps': '{"lat":9,"lon":9}', 'twrc.cache.lieuB': '{"t":2}', 'twrc.place.v1': '{"x":1}', 'twrc.key': 'cle-fictive' } });
@@ -113,7 +113,7 @@ check('conflit de voiture : horodatage distant refusé ne remplace pas la preuve
   tel.cars[0].short = 'Autre véhicule';
   const r = M.settings(pc, tel, { 'cars.0.short': T }, { 'cars.0.short': T + 100 });
   assert.equal(r.stamps['cars.0.short'], T);
-  assert.deepEqual(r.report.conflicts, ['cars.0.short']);
+  assert.deepEqual(r.report.conflicts, ['cars', 'cars.0.short']);
   const erased = M.settings(pc, settings({ cars: [] }), {}, { cars: T + 100 });
   assert.equal(erased.settings.cars.length, 2); assert(erased.report.conflicts.includes('cars'));
 });
@@ -156,6 +156,16 @@ check('copie distante illisible : refus explicite, aucune sortie partielle', () 
   const pc = device(), tel = device(); tel['twrc.settings.v1'] = '{pas du json';
   assert.throws(() => M.values(pc, tel), /illisible.*réglages distants.*refusée/);
   assert.throws(() => M.values(pc, null), /refusée/);
+});
+check('ancien réglage sans edits : un écart de photo est visible, jamais intégré silencieusement', () => {
+  const pc = settings(), tel = settings(); pc.cars[0].photo = 'local'; tel.cars[0].photo = 'remote';
+  const r = M.settings(pc, tel); assert.equal(r.settings.cars[0].photo, 'local'); assert(r.report.conflicts.includes('cars.0.photo'));
+});
+check('horodatage réel : tous les champs de réglage modifiés sont couverts, mesures additives exclues', () => {
+  const before = settings(), after = settings(); after.cars[0].photo = 'new'; after.work = { dep: '08:00' };
+  after.cars[0].odo.push({ d: '2026-10-23', km: 900 });
+  const stamps = json(ctx.M.edits(before, after, {}, T));
+  assert.equal(stamps['cars.0.photo'], T); assert.equal(stamps.work, T); assert(!Object.keys(stamps).some(k => k.includes('odo')));
 });
 check('aucune mutation des entrées', () => {
   const pc = device({ entries: [trip('t1', 0)] }), tel = device({ entries: [trip('t2', 1)] }), a = json(pc), b = json(tel);

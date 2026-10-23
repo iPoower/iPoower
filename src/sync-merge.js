@@ -25,7 +25,23 @@ const SyncMerge = (() => {
   const obj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const clone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  // Couvrir aussi les anciens réglages sans `edits` et les champs saisis sans
+  // markEdit (photo, fiche...). Un écart non horodaté ne doit jamais disparaître.
+  function differences(a, b, prefix = '') {
+    if (same(a, b) || /^(edits|calib|journal)(\.|$)/.test(prefix) || /^cars\.\d+\.(odo|tire\.treads)(\.|$)/.test(prefix)) return [];
+    if (prefix === 'cars' && Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((c, i) => c && b[i] && c.id === b[i].id))
+      return a.flatMap((c, i) => differences(c, b[i], 'cars.' + i));
+    if (obj(a) && obj(b)) return [...new Set([...Object.keys(a), ...Object.keys(b)])].sort().flatMap(k => differences(a[k], b[k], prefix ? prefix + '.' + k : k));
+    return prefix ? [prefix] : [];
+  }
+  function edits(before, after, previous, at) {
+    validate(before); validate(after); validate(previous);
+    const out = { ...previous };
+    for (const path of differences(before, after)) { parts(path); out[path] = Math.max(stamp(at), stamp(out[path]) + 1); }
+    return out;
+  }
   const stamp = v => Number.isFinite(v) && v > 0 ? v : 0;
+  const stampAt = (stamps, path) => { const p = parts(path); return Math.max(0, ...p.map((_, i) => stamp(stamps[p.slice(0, i + 1).join('.')]))); };
   const parse = (text, what) => {
     if (text == null) return null;
     try { return JSON.parse(text); } catch (e) { throw new Error('Copie illisible : ' + what + '. Fusion refusée sans écriture.'); }
@@ -81,12 +97,12 @@ const SyncMerge = (() => {
     for (const cars of [local.cars, remote.cars]) if (cars.some(c => !obj(c) || typeof c.id !== 'string' || !c.id) || new Set(cars.map(c => c.id)).size !== cars.length) throw new Error('Identités de véhicules ambiguës : fusion refusée.');
     const blocked = new Set();
     const paths = [...new Set([...Object.keys(local.edits || {}), ...Object.keys(remote.edits || {}),
-      ...Object.keys(stampsLocal), ...Object.keys(stampsRemote)])].sort();   // parent avant enfant
+      ...Object.keys(stampsLocal), ...Object.keys(stampsRemote), ...differences(local, remote)])].sort();   // parent avant enfant
     for (const p of paths) {
       parts(p);
       // Une liste complète pourrait supprimer des véhicules et leurs historiques.
       if (p === 'cars' || /^cars\.\d+$/.test(p)) { report.conflicts.push(p); blocked.add(p); continue; }
-      const lv = get(local, p), rv = get(remote, p), a = stamp(stampsLocal[p]), b = stamp(stampsRemote[p]);
+      const lv = get(local, p), rv = get(remote, p), a = stampAt(stampsLocal, p), b = stampAt(stampsRemote, p);
       if (!aligned(local, remote, p)) { report.conflicts.push(p); blocked.add(p); continue; }
       if (same(lv, rv)) continue;
       if (rv === undefined && b > a) { report.conflicts.push(p); blocked.add(p); continue; }
@@ -178,5 +194,5 @@ const SyncMerge = (() => {
     if (report.journal.after < report.journal.before) throw new Error('Fusion refusée : le journal perdrait des trajets.');
     return { values: out, report };
   }
-  return { SETTINGS, STAMPS, device, settings, values, get };
+  return { SETTINGS, STAMPS, device, settings, values, get, differences, edits };
 })();
