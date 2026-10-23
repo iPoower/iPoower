@@ -24,6 +24,14 @@ ouvrables ; conflit de réglage gardé local et tête distante toujours visible 
 catalogue falsifié refusé (`REVISION_MISMATCH`) ; cycle, doublon, parent manquant,
 appareil en avance ; propriétés ≤ 124 octets et formes ambiguës refusées.
 
+Le graphe exige l'empreinte SHA-256 des octets de chaque révision authentifiée.
+Deux copies portant le même identifiant mais des empreintes différentes bloquent
+le plan (`DUPLICATE_REVISION`), même si leurs parents, appareil et compteur sont
+identiques. Le test produit deux vrais paquets GCM valides avec des données
+différentes et vérifie le blocage dans les deux ordres, avec ou sans modification
+locale et avec ou sans base déjà connue. Deux références aux mêmes octets restent
+une seule révision ; une empreinte absente ou invalide est refusée.
+
 ## Données durables à arbitrer avant activation
 
 | Clé | Constat | Proposition |
