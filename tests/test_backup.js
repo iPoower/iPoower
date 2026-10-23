@@ -167,7 +167,7 @@ check('intégration build et interface utilise le module V2', () => {
   assert(build.includes("r('src/backup.js')")); assert(app.includes('VS.recoverySnapshot()'));  assert(app.includes('Backup.restorePlan(data')); assert(app.includes('Copie chiffrée exportée'));
 });
 check('NOESIS : import V1/V2 conserve les champs automobiles historiques octet pour octet, même invalides pour affichage', () => {
-  const short = 'Exemple <mark>texte</mark> & éè \\' "';
+  const short = `Exemple <mark>texte</mark> & éè ' "`;
   const photo = 'data:image/png;base64,AA==" data-noesis-photo="marker';
   const settings = { cars: [{ id: 'car1', short, photo }, { id: 'car2', short: 'Autre voiture' }] };
   const archive = B.make({ settings, context: state, at: new Date(at).toISOString() });
