@@ -20,16 +20,32 @@ function renderDriveSync() {
     d.busy = true;
     try {
       if (!d.prepared) { await d.session.prepare(); d.prepared = true; d.text = 'Connexion prête. Appuie sur Se connecter à Google.'; }
-      else { const promise = d.session.connect(); d.selected = false; await promise; d.text = 'Connecté. Choisis le dossier de sauvegarde.'; }
+      else { d.sync.stop(); d.selected = false; const promise = d.session.connect(); await promise; d.text = 'Compte affiché : confirme explicitement ce compte dédié avant tout accès aux fichiers.'; }
     } catch { d.text = 'Connexion Google non confirmée. Réessaie depuis ce bouton.'; }
     finally { d.busy = false; renderDriveSync(); }
   });
-  if (connected) button('Choisir le dossier Google Drive', async () => {
-    d.busy = true;
-    try { const promise = d.session.chooseFolder(); const selected = await promise; d.sync.select(selected); d.selected = true; await d.sync.run(true); }
-    catch { d.text = 'Dossier non sélectionné ou accès non confirmé. Les fichiers sont conservés.'; }
-    finally { d.busy = false; renderDriveSync(); }
-  });
+  if (connected && d.session.identity) {
+    const account = document.createElement('p'); account.className = 'sub'; account.textContent = 'Compte Google sélectionné : ' + d.session.identity.label; root.appendChild(account);
+    if (!d.session.confirmed) button('Confirmer ce compte dédié', () => {
+      try { d.session.confirmAccount(d.session.identity.id); d.text = 'Compte confirmé. Crée un dossier neuf dédié ou retrouve celui créé par cette application dans Picker.'; }
+      catch { d.text = 'Compte non confirmé. Reconnecte le compte dédié.'; }
+      renderDriveSync();
+    });
+  }
+  if (connected && d.session.confirmed) {
+    button('Créer un dossier neuf dédié', async () => {
+      d.busy = true; d.selected = false; const paused = d.sync.pause();
+      try { await d.session.newFolder(); await paused; d.text = 'Dossier neuf dédié créé et relu. Choisis-le maintenant dans Google Picker.'; }
+      catch { d.text = 'Création non confirmée. Réessaie avec le même compte : aucun dossier existant ne sera remplacé.'; }
+      finally { d.busy = false; renderDriveSync(); }
+    });
+    button('Choisir le dossier Google Drive', async () => {
+      d.busy = true; d.selected = false; const paused = d.sync.pause();
+      try { const promise = d.session.chooseFolder(); const [selected] = await Promise.all([promise, paused]); d.sync.select(selected); d.selected = true; d.text = 'Dossier dédié sélectionné : ' + selected.folder; await d.sync.run(true); }
+      catch { d.text = 'Dossier non sélectionné ou accès non confirmé. Les fichiers et la file sont conservés.'; }
+      finally { d.busy = false; renderDriveSync(); }
+    });
+  }
   if (connected && d.selected) button('Vérifier et synchroniser maintenant', () => d.sync.run(true));
   if (connected) button('Déconnecter', () => { d.session.disconnect(); d.sync.stop(); d.selected = false; d.text = 'Déconnecté. Les copies locales et Drive sont conservées.'; renderDriveSync(); });
 }
@@ -67,9 +83,12 @@ async function initDriveSync() {
         TRIPCANCEL = TripCancel.load(APP_STORAGE, Date.now()); rebuild(); renderAll();
       } });
     DRIVE_UI.text = 'Prêt à connecter Google Drive. Exporte d’abord une copie complète et vérifiée de cet appareil.';
-    const tick = () => { if (!document.hidden && !DEMO.on && DRIVE_UI.selected && DRIVE_UI.session.connected) DRIVE_UI.sync.run(); };
+    const tick = () => {
+      if (DRIVE_UI.selected && !DRIVE_UI.session.connected) { DRIVE_UI.sync.stop(); DRIVE_UI.selected = false; DRIVE_UI.text = 'Synchronisation bloquée : autorisation Google expirée ou révoquée. Reconnecte et confirme le compte dédié.'; renderDriveSync(); return; }
+      if (!document.hidden && !DEMO.on && DRIVE_UI.selected && DRIVE_UI.session.connected) DRIVE_UI.sync.run();
+    };
     DRIVE_UI.timer = setInterval(tick, 30000);
-    document.addEventListener('visibilitychange', tick); window.addEventListener('online', tick);
+    document.addEventListener('visibilitychange', tick); window.addEventListener('online', tick); window.addEventListener('focus', tick);
     const stop = () => { DRIVE_UI.session.disconnect(); DRIVE_UI.sync.stop(); DRIVE_UI.selected = false; renderDriveSync(); };
     window.addEventListener('twrc-session-expired', stop); window.addEventListener('twrc-session-locked', stop);
     window.addEventListener('pagehide', stop); renderDriveSync();

@@ -33,7 +33,7 @@ const DriveSync = (() => {
   function create({ vault, provider, store = DriveStore.create(DB), keys = SyncKey.storage(), locks = navigator.locks,
     crypto: crypt = globalThis.crypto, now = () => Date.now(), version, onChange = () => {}, onApplied = () => {} }) {
     const codec = ControlVaultPacket.create({ validateBusiness, crypto: crypt });
-    let selected = null, handle = null, signal = null, running = false, message = 'local', conflicts = [], lastRecovery = null, stopped = false, localVersion = 0, observedVersion = 0, blocked = false;
+    let selected = null, handle = null, signal = null, running = false, message = 'local', conflicts = [], lastRecovery = null, stopped = false, localVersion = 0, observedVersion = 0, blocked = false, finishing = Promise.resolve(), finish = () => {};
     const digest = async bytes => [...new Uint8Array(await crypt.subtle.digest('SHA-256', bytes))].map(x => x.toString(16).padStart(2, '0')).join('');
     const canonical = v => Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canonical(v[k])])) : v;
     const fingerprint = v => digest(new TextEncoder().encode(JSON.stringify(canonical(v))));
@@ -138,7 +138,7 @@ const DriveSync = (() => {
       const confirmed = [], opened = new Map();
       for (const ref of catalog) {
         if (!ref.revision) continue; // sauvegardes manuelles conservées, hors graphe A2
-        const back = await provider.download(ref); guard();
+        const back = await provider.download(ref, undefined, selected.folder); guard();
         const data = await codec.openWith(back.packet.copyBytes(), handle, version(), ref.fileSha256); guard();
         confirmed.push(SyncRevisions.confirm(ref.revision, data, ref.fileSha256, SyncMerge.device));
         opened.set(ref.revision.id, { ref, data, proof: back.proof });
@@ -193,7 +193,7 @@ const DriveSync = (() => {
     async function run(force = false) {
       if (running || stopped) return;
       if (!locks || typeof locks.request !== 'function') { blocked = true; message = 'navigateur à mettre à jour'; notify(); return; }
-      running = true; blocked = false; message = 'vérification'; notify();
+      running = true; finishing = new Promise(resolve => { finish = resolve; }); blocked = false; message = 'vérification'; notify();
       try { await locks.request(LOCK, { ifAvailable: true }, lock => lock ? runInside(force) : undefined); }
       catch (e) {
         blocked = true;
@@ -206,9 +206,10 @@ const DriveSync = (() => {
             s.outbox = SyncOutbox.failed(s.outbox, kind, now()); await save(s);
           });
         } catch { /* ne jamais afficher de succès après un échec IDB */ }
-      } finally { running = false; notify(); }
+      } finally { running = false; finish(); notify(); }
     }
     return Object.freeze({ run, select: value => { if (running) return fail('busy'); selected = { ...value }; handle = null; stopped = false; listen(); },
+      pause: () => { stopped = true; handle = null; selected = null; blocked = false; message = 'local'; notify(); return finishing; },
       stop: () => { if (globalThis.removeEventListener) globalThis.removeEventListener('twrc-vault-change', changed); blocked = false; stopped = true; handle = null; selected = null; provider.disconnect(); message = 'local'; notify(); },
       recovery: () => store.latestRecovery(),
       get status() { return state(); } });

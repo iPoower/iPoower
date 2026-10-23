@@ -50,7 +50,7 @@ function remote() {
         files.set(id,{meta:{...meta,size:String(bytes.length)},bytes}); pending.delete(id);
         if(drop) {drop=false;return r.abort('failed');} return json({id});
       }
-      if(key==='fixture-folder') return json({id:key,mimeType:'application/vnd.google-apps.folder',capabilities:{canAddChildren:true}});
+      if(key==='fixture-folder') return json({id:key,mimeType:'application/vnd.google-apps.folder',trashed:false,ownedByMe:true,appProperties:{cv_contract:'rc-folder-v1'},capabilities:{canAddChildren:true}});
       if(u.pathname==='/drive/v3/files') {
         const contract=(u.searchParams.get('q')||'').includes("value='rc-key-a1'")?'rc-key-a1':'rc-v1';
         return json({incompleteSearch:false,files:[...files.values()].map(f=>f.meta).filter(m=>m.appProperties.cv_contract===contract)});

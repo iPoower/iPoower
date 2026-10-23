@@ -91,6 +91,22 @@ function drive() {
   other.vault.mode = 'locked'; await other.controller.run(true); assert.equal(isolated.files.size, 1);
   console.log('✅ conflit ancien sans date + verrouillage : aucune tête absorbée ni publication silencieuse');
 
+  // Une destination quittée pendant un upload ne peut recevoir un accusé tardif.
+  {
+    const remote = drive(), local = owner(remote, 1, 'paused');
+    let entered, release; const started = new Promise(r => { entered = r; }), held = new Promise(r => { release = r; });
+    remote.beforeUpload = async () => { entered(); await held; };
+    const sending = local.controller.run(true); await started;
+    const paused = local.controller.pause(); release(); await Promise.all([sending, paused]);
+    const pending = local.state.outbox.job; assert(pending); assert.equal(local.state.outbox.verified, null);
+    assert.equal(local.controller.status.state, 'SYNC_BLOCKED');
+    local.controller.select({folder:'other',binding:'b'.repeat(64)}); await local.controller.run(true);
+    assert(local.controller.status.message.includes('autre compte')); assert.equal(remote.files.size,1);
+    local.controller.select({folder:'fixtureFolder',binding:'a'.repeat(64)}); await local.controller.run(true);
+    assert.equal(local.state.outbox.job,null); assert.equal(local.state.outbox.verified.fileId,pending.fileId); assert.equal(remote.files.size,1);
+    console.log('✅ changement de destination pendant envoi : réponse tardive non acquittée, file conservée et même identifiant repris dans la destination initiale');
+  }
+
   const failures = [];
   for (const kind of ['first', 'automatic']) for (const stage of ['seal', 'upload']) {
     try {

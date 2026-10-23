@@ -1,7 +1,7 @@
 /* Transport opaque Control Vault. Reproduction : tools/vendor-vault-drive.js.
  * Aucun code, clé ou déchiffrement. Sources SHA-256 :
 {
- "src/services/opaque-drive.ts": "51a04471f933ca0eb0a2fc9dc2d30e771deaa7c7fe4aee8e27fa988460e4b7a0",
+ "src/services/opaque-drive.ts": "a6699cdb8dd66f7142928194651312b22d8119669bb11b0a53adfd51dd30f5ae",
  "src/core/race-packet.ts": "a9ae071b8e1b6372b2ab3f59005bf92f0a17d2e7fe1e2cc48dae4f4c49154516",
  "src/core/sync-revision.ts": "c7e2414d7d803380407e4e3f38c8d229580eebdea0ba36f8ab2e602cb79ea92d",
  "src/core/crypto.ts": "1f9f7b1e6152d22fca7ac4162ad407539e353f2c8de6d00d521d6f7ccd5a46a8"
@@ -26,14 +26,14 @@ var DriveTransport = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // ../control-vault-drive-sync/drive-entry.ts
+  // ../control-vault-noesis-drive/drive-entry.ts
   var drive_entry_exports = {};
   __export(drive_entry_exports, {
     OpaqueDrive: () => OpaqueDrive,
     readRacePacket: () => readRacePacket
   });
 
-  // ../control-vault-drive-sync/src/core/crypto.ts
+  // ../control-vault-noesis-drive/src/core/crypto.ts
   var MAGIC = new Uint8Array([67, 86, 76, 84]);
   var SALT_LEN = 16;
   var IV_LEN = 12;
@@ -52,7 +52,7 @@ var DriveTransport = (() => {
     return toHex(await subtle().digest("SHA-256", bytes));
   }
 
-  // ../control-vault-drive-sync/src/core/race-packet.ts
+  // ../control-vault-noesis-drive/src/core/race-packet.ts
   var PACKET_LIMITS = Object.freeze({ file: 71303168, cipher: 50331648, depth: 4 });
   var PacketError = class extends Error {
     constructor(code) {
@@ -159,7 +159,7 @@ var DriveTransport = (() => {
     });
   }
 
-  // ../control-vault-drive-sync/src/core/sync-revision.ts
+  // ../control-vault-noesis-drive/src/core/sync-revision.ts
   var invalid = () => {
     throw new Error("INVALID_REVISION");
   };
@@ -203,7 +203,7 @@ var DriveTransport = (() => {
     return a === void 0 || b === void 0 ? a === b : a.id === b.id && a.device === b.device && a.seq === b.seq && a.parents.join(",") === b.parents.join(",");
   }
 
-  // ../control-vault-drive-sync/src/services/opaque-drive.ts
+  // ../control-vault-noesis-drive/src/services/opaque-drive.ts
   var DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
   var API = "https://www.googleapis.com/drive/v3";
   var UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
@@ -250,6 +250,13 @@ var DriveTransport = (() => {
       this.#token = null;
       this.#until = 0;
       this.#epoch++;
+    }
+    get connected() {
+      if (!this.#token || this.now() >= this.#until) {
+        this.disconnect();
+        return false;
+      }
+      return true;
     }
     lease() {
       this.guard();
@@ -383,12 +390,40 @@ var DriveTransport = (() => {
       if (!object3(value.user) || typeof value.user.permissionId !== "string") return fail2("incomplete");
       return id(value.user.permissionId);
     }
+    async identity(signal) {
+      const epoch = this.lease();
+      const value = await this.json(await this.request(API + "/about?fields=user(permissionId,emailAddress)", { signal }, epoch), signal);
+      this.check(epoch, signal);
+      if (!object3(value.user) || typeof value.user.permissionId !== "string" || typeof value.user.emailAddress !== "string" || value.user.emailAddress.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(value.user.emailAddress)) return fail2("incomplete");
+      return Object.freeze({ id: id(value.user.permissionId), label: value.user.emailAddress });
+    }
     async folder(folder, signal) {
       id(folder);
       const epoch = this.lease();
-      const p = await this.json(await this.request(API + "/files/" + folder + "?fields=id,mimeType,trashed,capabilities(canAddChildren)", { signal }, epoch), signal);
+      const p = await this.json(await this.request(API + "/files/" + folder + "?fields=id,mimeType,trashed,ownedByMe,appProperties,capabilities(canAddChildren)", { signal }, epoch), signal);
       this.check(epoch, signal);
-      if (p.id !== folder || p.trashed === true || p.mimeType !== "application/vnd.google-apps.folder" || !object3(p.capabilities) || p.capabilities.canAddChildren !== true) return fail2("conflict");
+      if (p.id !== folder || p.trashed !== false || p.ownedByMe !== true || p.mimeType !== "application/vnd.google-apps.folder" || !object3(p.appProperties) || p.appProperties.cv_contract !== "rc-folder-v1" || !object3(p.capabilities) || p.capabilities.canAddChildren !== true) return fail2("conflict");
+    }
+    async createFolder(fileId, signal) {
+      id(fileId);
+      const epoch = this.lease();
+      try {
+        await this.folder(fileId, signal);
+        this.check(epoch, signal);
+        return fileId;
+      } catch (e) {
+        if (!(e instanceof OpaqueDriveError) || e.code !== "missing") throw e;
+      }
+      const metadata = {
+        id: fileId,
+        name: "Control Vault \u2014 sauvegardes chiffr\xE9es",
+        mimeType: "application/vnd.google-apps.folder",
+        appProperties: { cv_contract: "rc-folder-v1" }
+      };
+      await this.request(API + "/files?fields=id", { method: "POST", signal, headers: { "Content-Type": "application/json; charset=UTF-8" }, body: JSON.stringify(metadata) }, epoch, [409]);
+      await this.folder(fileId, signal);
+      this.check(epoch, signal);
+      return fileId;
     }
     // Descripteur A1 public : jamais un code, une clé ou un profil métier. Son
     // contrôle GCM et sa dérivation restent exclusivement dans Race Control.
@@ -414,19 +449,22 @@ var DriveTransport = (() => {
     }
     async profiles(folder, signal) {
       id(folder);
-      const epoch = this.lease(), out = [], seen = /* @__PURE__ */ new Set();
+      const epoch = this.lease();
+      await this.folder(folder, signal);
+      this.check(epoch, signal);
+      const out = [], seen = /* @__PURE__ */ new Set();
       let next = "";
       do {
         const params = new URLSearchParams({
           q: `'${folder}' in parents and trashed = false and appProperties has { key='cv_contract' and value='rc-key-a1' }`,
           pageSize: "1000",
-          fields: "nextPageToken,incompleteSearch,files(id,size,appProperties)"
+          fields: "nextPageToken,incompleteSearch,files(id,size,trashed,parents,appProperties)"
         });
         if (next) params.set("pageToken", next);
         const page = await this.json(await this.request(API + "/files?" + params, { signal }, epoch), signal);
         if (page.incompleteSearch !== false || !Array.isArray(page.files)) return fail2("incomplete");
         for (const f of page.files) {
-          if (!object3(f) || typeof f.id !== "string" || !object3(f.appProperties) || !hash(f.appProperties.cv_file) || typeof f.size !== "string" || !/^[1-9][0-9]*$/.test(f.size) || Number(f.size) > 2048) return fail2("incomplete");
+          if (!object3(f) || typeof f.id !== "string" || f.trashed === true || !Array.isArray(f.parents) || !f.parents.includes(folder) || !object3(f.appProperties) || f.appProperties.cv_contract !== "rc-key-a1" || !hash(f.appProperties.cv_file) || typeof f.size !== "string" || !/^[1-9][0-9]*$/.test(f.size) || Number(f.size) > 2048) return fail2("incomplete");
           const fileId = id(f.id), bytes = await this.bytes(await this.request(API + "/files/" + fileId + "?alt=media", { signal }, epoch), 2048, signal);
           this.profileBytes(bytes);
           if (bytes.length !== Number(f.size) || await this.digest(bytes) !== f.appProperties.cv_file || out.some((p) => p.fileId === fileId)) return fail2("integrity");
@@ -451,6 +489,8 @@ var DriveTransport = (() => {
       const bytes = input.slice();
       this.profileBytes(bytes);
       const epoch = this.lease(), sha2562 = await this.digest(bytes);
+      await this.folder(folder, signal);
+      this.check(epoch, signal);
       const verify = async () => {
         const meta = await this.json(await this.request(API + "/files/" + fileId + "?fields=id,size,trashed,parents,appProperties", { signal }, epoch), signal);
         if (meta.id !== fileId || meta.trashed === true || !Array.isArray(meta.parents) || !meta.parents.includes(folder) || !object3(meta.appProperties) || meta.appProperties.cv_contract !== "rc-key-a1" || meta.appProperties.cv_file !== sha2562 || meta.size !== String(bytes.length)) return fail2("integrity");
@@ -464,8 +504,6 @@ var DriveTransport = (() => {
       } catch (e) {
         if (!(e instanceof OpaqueDriveError) || e.code !== "missing") throw e;
       }
-      await this.folder(folder, signal);
-      this.check(epoch, signal);
       const boundary = "rc_key_" + sha2562;
       const metadata = { id: fileId, name: "rc-sync-key-" + sha2562 + ".json", mimeType: "application/json", parents: [folder], appProperties: { cv_contract: "rc-key-a1", cv_file: sha2562 } };
       const body = `--${boundary}\r
@@ -502,18 +540,22 @@ ${new TextDecoder().decode(bytes)}\r
     }
     async list(folder, signal) {
       id(folder);
-      const epoch = this.lease(), versions = /* @__PURE__ */ new Map(), tokens = /* @__PURE__ */ new Set();
+      const epoch = this.lease();
+      await this.folder(folder, signal);
+      this.check(epoch, signal);
+      const versions = /* @__PURE__ */ new Map(), tokens = /* @__PURE__ */ new Set();
       let next = "";
       do {
         const p = new URLSearchParams({
           q: `'${folder}' in parents and trashed = false and appProperties has { key='cv_contract' and value='rc-v1' }`,
           pageSize: "1000",
-          fields: "nextPageToken,incompleteSearch,files(id,size,trashed,appProperties)"
+          fields: "nextPageToken,incompleteSearch,files(id,size,trashed,parents,appProperties)"
         });
         if (next) p.set("pageToken", next);
         const page = await this.json(await this.request(API + "/files?" + p, { signal }, epoch), signal);
         if (page.incompleteSearch !== false || !Array.isArray(page.files)) return fail2("incomplete");
         for (const raw of page.files) {
+          if (!object3(raw) || !Array.isArray(raw.parents) || !raw.parents.includes(folder)) return fail2("conflict");
           const v = this.version(raw), old = versions.get(v.fileId);
           if (old && JSON.stringify(old) !== JSON.stringify(v)) return fail2("conflict");
           versions.set(v.fileId, v);
@@ -550,8 +592,13 @@ ${new TextDecoder().decode(bytes)}\r
       this.check(epoch, signal);
       return { packet, proof: Object.freeze({ ...remote, verifiedAt: this.now(), state: "verified-bytes" }) };
     }
-    async download(expected, signal) {
-      return this.verified(expected, this.lease(), void 0, signal);
+    async download(expected, signal, folder) {
+      const epoch = this.lease();
+      if (folder !== void 0) {
+        await this.folder(folder, signal);
+        this.check(epoch, signal);
+      }
+      return this.verified(expected, epoch, folder, signal);
     }
     async upload(fileId, folder, input, signal, progress = () => {
     }) {
@@ -571,6 +618,8 @@ ${new TextDecoder().decode(bytes)}\r
       id(fileId);
       id(folder);
       const packet = await readRacePacket(input.copyBytes(), input.info.fileSha256), epoch = this.lease();
+      await this.folder(folder, signal);
+      this.check(epoch, signal);
       const expected = {
         fileId,
         fileSha256: packet.info.fileSha256,
@@ -584,8 +633,6 @@ ${new TextDecoder().decode(bytes)}\r
       } catch (e) {
         if (!(e instanceof OpaqueDriveError) || e.code !== "missing") throw e;
       }
-      const parent = await this.json(await this.request(API + "/files/" + folder + "?fields=id,mimeType,capabilities(canAddChildren)", { signal }, epoch), signal);
-      if (parent.id !== folder || parent.mimeType !== "application/vnd.google-apps.folder" || !object3(parent.capabilities) || parent.capabilities.canAddChildren !== true) return fail2("conflict");
       const meta = {
         id: fileId,
         name: "rc-" + expected.fileSha256 + ".json",
