@@ -68,6 +68,7 @@ function remote() {
     await drive.routes(pc);await drive.routes(phone);
     const open=async(context,initial)=>{const p=await context.newPage();await p.goto(U);await p.evaluate(initial=>fixture.boot(initial),initial);return p;};
     let p=await open(pc,{code,values:values(120,'pc')}), q=await open(phone,{code,values:values(61,'phone')});
+    const originalPhone = await q.evaluate(async()=>(await vault.syncSnapshot()).values);
     await p.evaluate(()=>sync.run(true)); assert.equal(await p.evaluate(()=>sync.status.message),'synchronisé');
     await q.evaluate(()=>sync.run(true)); assert.equal(await q.evaluate(()=>sync.status.message),'synchronisé');
     for(let i=0;i<3;i++){await p.evaluate(()=>sync.run(true));await q.evaluate(()=>sync.run(true));}
@@ -75,6 +76,8 @@ function remote() {
     const size=drive.files.size;await p.evaluate(()=>sync.run(true));await q.evaluate(()=>sync.run(true));assert.equal(drive.files.size,size);
     const proof=await q.evaluate(async()=>({ recovered:JournalArchive.capture(await fixture.recovery()).records.length, current:await fixture.count(), raw:localStorage.getItem(SessionVault.VAULT).includes('synthetic') }));
     assert.equal(proof.recovered,63);assert.equal(proof.current,185);assert.equal(proof.raw,false);
+    assert.deepEqual(await q.evaluate(()=>fixture.recovery()),originalPhone,'complete authenticated pre-merge recovery equals the original local snapshot');
+    const independentCopy = await q.evaluate(async()=>Array.from(await db.latestRecovery()));
     console.log('✅ coffres réels + transport + IDB : 120/61 trajets, 91/365 jours, historique brut et double réponse conservés ; copie avant fusion déchiffrée');
     drive.loseReply();
     await p.evaluate(async()=>{const s=JSON.parse(vault.store.getItem('twrc.settings.v1'));s.cars[0].photo='synthetic-photo';vault.store.setItem('twrc.settings.v1',JSON.stringify(s));vault.store.setItem('twrc.editstamps.v1',JSON.stringify({'cars.0.photo':Date.now()}));await vault.flush();await sync.run(true);});
@@ -87,6 +90,16 @@ function remote() {
     await p.evaluate(()=>sync.run(true));assert.equal(await p.evaluate(()=>sync.status.message),'code requis');
     console.log('✅ verrouillage : clé révoquée, aucun envoi ni reprise automatique du coffre verrouillé');
     await pc.close();await phone.close();
+    // Les seuls octets de récupération survivent hors des deux installations.
+    const recoveryContext=await browser.newContext();await drive.routes(recoveryContext);
+    const restoredPage=await open(recoveryContext);
+    const restored=await restoredPage.evaluate(async ({bytes,code})=>{
+      if(localStorage.getItem(SessionVault.VAULT))throw Error('installation must be empty');
+      const values=await SessionVault.readRecovery(new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(bytes)),code,crypto);
+      await vault.unlock(code,values,true);return (await vault.syncSnapshot()).values;
+    },{bytes:independentCopy,code});
+    assert.deepEqual(restored,originalPhone,'full values restored in an independent empty installation, no count-only comparison');
+    await recoveryContext.close();console.log('✅ copie indépendante après fermeture : authentification RC, restauration dans un coffre neuf et comparaison structurelle exhaustive');
     for(const kind of ['first','automatic']) {
       const context=await browser.newContext(), isolated=remote();await isolated.routes(context);
       const page=await open(context,{code,values:values(120,'pending-'+kind)});
