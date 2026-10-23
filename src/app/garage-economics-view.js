@@ -111,7 +111,7 @@ function garageEconomicsHtml(car) {
     economyField('Compteur à l’achat (km)','odo',econ.purchaseOdometerKm,'number','min="0" step="1"')+
     economyField('Distance prévue par an (km)','annual',econ.annualDistanceKm,'number','min="0" step="1"')+
     economyField('Revente estimée (€) · facultatif','resale',moneyInput(econ.estimatedResaleCents),'text','inputmode="decimal"')+
-    '</div><button type="submit" class="btn pri">Enregistrer les références</button></form>'+
+    '</div><button type="submit" class="btn pri" data-act="econ-settings-save">Enregistrer les références</button></form>'+
     '<form data-econ-expense-car="'+esc(car.id)+'" class="econ-form">'+
     '<h4>Ajouter une dépense</h4><div class="econ-fields">'+
     economyField('Date','date',nowIn('Europe/Paris').slice(0,10),'date','required')+
@@ -119,13 +119,28 @@ function garageEconomicsHtml(car) {
     economyField('Montant payé (€)','amount','','text','inputmode="decimal" required placeholder="ex. 60"')+
     economyField('Compteur lors du paiement (km) · facultatif','km','','number','min="0" step="1"')+
     economyField('Libellé facultatif (80 caractères)','note','','text','maxlength="80" autocomplete="off"')+
-    '</div><button type="submit" class="btn pri">Ajouter au journal</button></form>'+
+    '</div><button type="submit" class="btn pri" data-act="econ-expense-save">Ajouter au journal</button></form>'+
     months+warning+
     '<div class="econ-history"><h5>Historique récent ('+entries.length+' ligne(s))</h5>'+
     (costs.length?'<ul>'+costs+'</ul>':'<p class="sub">Aucun paiement saisi. Les champs vides ne valent pas zéro.</p>')+
     '</div><p class="sub">Les loyers LOA sont des paiements, pas un prix d’achat. Ne saisis pas deux fois un même coût. '+ 
     'Les données sont enregistrées dans le coffre existant ; vérifier la synchronisation PC ↔ iPhone.</p>'+
     '<p class="econ-status" role="status" aria-live="polite">'+esc(status)+'</p></div></details>';
+}
+function garageEconomicsCompareHtml(cars) {
+  if(!Array.isArray(cars) || !cars.length)return '';
+  return '<section class="econ-comparison" aria-label="Comparatif financier des véhicules">'+
+    '<h3>💶 Comparatif de possession</h3>'+
+    '<p class="sub">Prix d’achat amorti sur 5 ans et dépenses réellement saisies. Comparaison indicative, jamais un classement de rentabilité.</p>'+
+    '<div class="econ-compare-grid">'+cars.map(car=>{
+      const p=economyProjection(car),r=p.data,scenario=r.available && r.scenarios.find(x=>x.months===60);
+      const expenseCents=p.entries.rows.reduce((sum,e)=>sum+e.amountCents,0);
+      return '<div class="econ-compare-car"><b>'+esc(car.short||car.name||'Véhicule')+'</b>'+
+        '<span>Prix d’achat payé</span><strong>'+euro(r.purchasePriceCents)+'</strong>'+
+        '<span>Amorti sur cinq ans</span><strong>'+euro(scenario&&scenario.purchasePerMonthCents)+'/mois</strong>'+
+        '<span>Dépenses enregistrées</span><strong>'+euro(expenseCents)+'</strong>'+
+        '<button type="button" class="btn sm" data-act="econ-open" data-car="'+esc(car.id)+'">Voir le budget</button></div>';
+    }).join('')+'</div><p class="sub">Les dépenses peuvent être incomplètes ; les hypothèses annuelles ne sont pas des paiements.</p></section>';
 }
 async function economyPersist(car, previous, message) {
   const ix=S.cars.findIndex(c=>c && c.id===car.id);
@@ -176,6 +191,12 @@ document.addEventListener('submit', async event=>{
     ECON_MESSAGES[car.id]=error.message || 'Opération non confirmée';
     const status=form.closest('.garage-economics').querySelector('.econ-status');
     if(status) status.textContent=ECON_MESSAGES[car.id];}
+});
+document.addEventListener('click', event=>{
+  const open=event.target.closest('[data-act="econ-open"]');
+  if(!open)return;
+  const card=[...document.querySelectorAll('.garage-economics')].find(d=>d.dataset.garageEconomics===open.dataset.car);
+  if(card){card.open=true;card.scrollIntoView({behavior:'smooth',block:'center'});card.querySelector('summary').focus({preventScroll:true});}
 });
 document.addEventListener('click',async event=>{
   const button=event.target.closest('[data-act="econ-delete"]');
