@@ -1,7 +1,7 @@
 /* Transport opaque Control Vault. Reproduction : tools/vendor-vault-drive.js.
  * Aucun code, clé ou déchiffrement. Sources SHA-256 :
 {
- "src/services/opaque-drive.ts": "a6699cdb8dd66f7142928194651312b22d8119669bb11b0a53adfd51dd30f5ae",
+ "src/services/opaque-drive.ts": "f93ab4f617fc7a2c7d260fc94ad2354790cd32208c9462c832318e5870f712ab",
  "src/core/race-packet.ts": "a9ae071b8e1b6372b2ab3f59005bf92f0a17d2e7fe1e2cc48dae4f4c49154516",
  "src/core/sync-revision.ts": "c7e2414d7d803380407e4e3f38c8d229580eebdea0ba36f8ab2e602cb79ea92d",
  "src/core/crypto.ts": "1f9f7b1e6152d22fca7ac4162ad407539e353f2c8de6d00d521d6f7ccd5a46a8"
@@ -593,6 +593,11 @@ ${new TextDecoder().decode(bytes)}\r
       return { packet, proof: Object.freeze({ ...remote, verifiedAt: this.now(), state: "verified-bytes" }) };
     }
     async download(expected, signal, folder) {
+      try {
+        expected = Object.freeze({ ...expected, ...expected.revision !== void 0 ? { revision: readSyncRevision(expected.revision) } : {} });
+      } catch {
+        return fail2("integrity");
+      }
       const epoch = this.lease();
       if (folder !== void 0) {
         await this.folder(folder, signal);
