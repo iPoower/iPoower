@@ -20,7 +20,7 @@ test('amortissement achat seul 12/24/36/60/84 mois',()=>{
 test('0 renseigné diffère des dépenses manquantes',()=>{
   const x=G.project({purchasePriceCents:50000,expenses:{fuelCents:0}});
   assert.equal(x.recordedExpensesCents,0);
-  assert.deepEqual(x.missingExpenses,['insuranceCents','maintenanceCents','repairsCents']);
+  assert.deepEqual(x.missingExpenses,['insuranceCents','maintenanceCents','repairsCents','tyresCents','tollsCents','leaseCents','otherCents']);
   assert.equal(x.operatingCostCoverage,'PARTIAL');
 });
 test('somme des dépenses déclarées seulement',()=>{
