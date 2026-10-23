@@ -135,3 +135,5 @@ SUITE.push(['test_drive_sync.js', 'raccord Drive : propriétaire réel, deux app
  ['test_drive_build.js', 'Drive : profils de publication séparés, CSP et configuration publique approuvée', false]);
 
 SUITE.push(['e2e85-drive-runtime.js', 'Drive : deux vrais coffres, file IDB, HTTP opaque, fermeture, copie avant fusion et verrouillage', true]);
+
+SUITE.push(['test_drive_store_reopen.js', 'NOESIS-RC-003 : IndexedDB réessayable après erreur, blocage, versionchange et fermeture sans purge', false]);
