@@ -7,7 +7,7 @@ const test=(name,fn)=>{fn();n++;console.log('✓ '+name);};
 const demo=()=>({
   purchasePriceCents:360000,purchaseDate:'2026-01-01',asOfDate:'2026-11-01',
   purchaseOdometerKm:120000,currentOdometerKm:132000,annualDistanceKm:12000,
-  expenses:{fuelCents:42000,insuranceCents:28000,maintenanceCents:0,repairsCents:11000}
+  expenses:{fuelCents:42000,insuranceCents:28000,maintenanceCents:0,repairsCents:11000,tyresCents:0,tollsCents:0,leaseCents:0,otherCents:0}
 });
 test('prix absent = données insuffisantes',()=>{
   const x=G.project({});assert.equal(x.available,false);assert.equal(x.reason,'PURCHASE_PRICE_MISSING');
