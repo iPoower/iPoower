@@ -74,8 +74,12 @@ const SyncRevisions = (() => {
       !Array.isArray(local.base) || local.base.some(b => !ID.test(b)) || typeof local.dirty !== 'boolean') return fail('INVALID_REVISION');
     const by = new Map(), warnings = [];
     for (const c of confirmed) {
-      const m = meta({ id: c.id, parents: c.parents, device: c.device, seq: c.seq });
-      if (by.has(m.id)) { if (!same(by.get(m.id), m)) return { action: 'blocked', reason: 'DUPLICATE_REVISION', heads: [], integrate: [], warnings }; continue; }
+      if (!object(c) || typeof c.fileSha256 !== 'string' || !SHA.test(c.fileSha256)) return fail('INVALID_REVISION');
+      const m = { ...meta({ id: c.id, parents: c.parents, device: c.device, seq: c.seq }), fileSha256: c.fileSha256 };
+      // Deux fichiers authentifiés peuvent partager toutes les métadonnées mais porter des octets différents.
+      // Garder leur empreinte : choisir arbitrairement la première copie ferait disparaître l'autre contenu.
+      if (by.has(m.id)) { if (!same(by.get(m.id), m) || by.get(m.id).fileSha256 !== m.fileSha256)
+        return { action: 'blocked', reason: 'DUPLICATE_REVISION', heads: [], integrate: [], warnings }; continue; }
       by.set(m.id, m);
     }
     // Un graphe cyclique ne vient pas d'un producteur conforme : arrêt sans écriture.

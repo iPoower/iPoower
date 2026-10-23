@@ -143,8 +143,42 @@ const trips = d => json(J.capture(d.values).records).map(r => JSON.parse(r).key)
     assert.equal([...fresh.seen.values()].filter(s => s.refused === 'REVISION_MISMATCH').length, 1);
     drive.pop();
   });
+  await check('même révision authentifiée, contenus différents : bloquer dans les deux ordres sans choisir une copie', async () => {
+    const rev = R.next({ device: hex() }, webcrypto), copies = [];
+    for (const key of ['copie-a', 'copie-b']) {
+      const data = json(R.snapshot(profile([trip(key, 0)]), rev, M.device, at));
+      const bytes = await codec.sealWith(data, handle, 'prod-156', at), digest = sha(bytes);
+      const opened = await codec.openWith(bytes, handle, 'prod-156', digest);
+      copies.push(R.confirm(R.fromProperties(R.properties(rev)), opened, digest, M.device));
+    }
+    assert.notEqual(copies[0].fileSha256, copies[1].fileSha256);
+    const before = JSON.stringify(copies);
+    for (const dirty of [false, true]) for (const base of [[], [rev.id]]) {
+      const local = { device: hex(), seq: 0, base, dirty }, localBefore = JSON.stringify(local);
+      for (const order of [copies, [...copies].reverse()]) {
+        const plan = json(R.plan(order, local));
+        assert.equal(plan.action, 'blocked'); assert.equal(plan.reason, 'DUPLICATE_REVISION');
+        assert.deepEqual(plan.heads, []); assert.deepEqual(plan.integrate, []);
+      }
+      assert.equal(JSON.stringify(local), localBefore);
+    }
+    assert.equal(JSON.stringify(copies), before); // aucune version altérée ni supprimée
+  });
+  await check('deux références aux mêmes octets restent une seule révision', async () => {
+    const f = drive[0], opened = await codec.openWith(f.bytes, handle, 'prod-156', f.sha);
+    const copy = R.confirm(R.fromProperties(f.props), opened, f.sha, M.device);
+    const local = { device: hex(), seq: 0, base: [], dirty: false };
+    assert.deepEqual(json(R.plan([copy, json(copy)], local)), json(R.plan([copy], local)));
+  });
+  await check('graphe : refuser une empreinte absente ou mal formée plutôt que perdre la référence des octets', async () => {
+    const f = drive[0], opened = await codec.openWith(f.bytes, handle, 'prod-156', f.sha);
+    const copy = R.confirm(R.fromProperties(f.props), opened, f.sha, M.device);
+    const local = { device: hex(), seq: 0, base: [], dirty: false };
+    for (const invalid of [undefined, null, '', 'f'.repeat(63), 'F'.repeat(64), 123, 'a'.repeat(64) + '\n'])
+      reject(() => R.plan([{ ...copy, fileSha256: invalid }], local), 'INVALID_REVISION');
+  });
   await check('graphe : cycle et doublon bloqués, parent manquant et appareil en avance signalés', async () => {
-    const a = hex(), b = hex(), d = hex(), m = (id, parents, seq = 1) => ({ id, parents: parents.sort(), device: d, seq });
+    const a = hex(), b = hex(), d = hex(), m = (id, parents, seq = 1) => ({ id, parents: parents.sort(), device: d, seq, fileSha256: sha(id) });
     assert.equal(R.plan([m(a, [b]), m(b, [a])], { device: d, seq: 0, base: [], dirty: false }).reason, 'REVISION_CYCLE');
     assert.equal(R.plan([m(a, []), { ...m(a, []), seq: 2 }], { device: d, seq: 0, base: [], dirty: false }).reason, 'DUPLICATE_REVISION');
     const p = json(R.plan([m(a, [b], 5)], { device: d, seq: 1, base: [hex()], dirty: false }));
