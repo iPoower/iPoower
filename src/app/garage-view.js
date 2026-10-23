@@ -1,4 +1,5 @@
 // @include app/garage-economics-core.js
+// @include app/garage-economics-style.js
 // @include app/garage-economics-view.js
 // @include app/garage-scene.js
 // @include app/live-route-view.js
@@ -111,7 +112,7 @@ function renderGarage() {
   const expandedFinance = new Set([...el.querySelectorAll('.garage-economics[open]')]
     .map(finance => finance.closest('[data-garage-car]').dataset.garageCar));
   const foldFocus = uxFocusKey(el);
-  if (!el.querySelector('#twinGarageBody')) el.innerHTML = GARAGE_STYLE + LIVE_ROUTE_STYLE +
+  if (!el.querySelector('#twinGarageBody')) el.innerHTML = GARAGE_STYLE + ECONOMICS_STYLE + LIVE_ROUTE_STYLE +
     '<div class="mod-h"><h2>🛠️ TWIN GARAGE LIVE</h2><span class="src obs">THE GARAGE · données enregistrées</span></div>' +
     '<div class="twin-intro"><p>Véhicules · prochain trajet · préparation explicable.</p><div class="mission-actions"><a class="btn sm twin-jump" href="#missionControl">NEXT MISSION ↓</a><a class="btn sm twin-jump" href="#garageTrip">Voir le trajet · LIVE ROUTE ↓</a></div></div>' +
     '<div id="twinGarageBody" class="twin-body">' + Object.keys(parts).map(k=>'<div data-twin-part="' + k + '"></div>').join('') + '</div>' +
