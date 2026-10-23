@@ -10,8 +10,8 @@
 const SyncOutbox = (() => {
   const QUIET_MS = 30000, MAX_WAIT_MS = 10 * 60000, BACKOFF = [5000, 15000, 60000, 300000, 900000];
   // Arrêts qui exigent une action humaine : jamais de nouvelle tentative silencieuse.
-  const BLOCKING = ['auth', 'code', 'quota', 'conflict'];
-  const RETRY = ['offline', 'network', 'integrity', 'interrupted'];
+  const BLOCKING = ['auth', 'code', 'quota', 'conflict', 'integrity'];
+  const RETRY = ['offline', 'network', 'interrupted'];
   const ID = /^[0-9a-f]{32}$/, SHA = /^[0-9a-f]{64}$/;
   const fail = code => { throw Object.assign(new Error(code), { code }); };
   const time = v => Number.isSafeInteger(v) && v >= 0;
@@ -74,8 +74,8 @@ const SyncOutbox = (() => {
     if (!time(now) || ![...BLOCKING, ...RETRY].includes(kind)) return fail('INVALID_OUTBOX');
     if (BLOCKING.includes(kind)) { s.blocked = kind; return s; }
     s.attempts++; s.retryAt = now + BACKOFF[Math.min(s.attempts, BACKOFF.length) - 1];
-    // Les octets reçus diffèrent : le fichier n'est ni réutilisé ni supprimé ; un nouvel identifiant est réservé.
-    if (kind === 'integrity' && s.job) { s.job.phase = 'sealed'; s.job.fileId = null; }
+    // Un défaut d'intégrité bloque plus haut : conserver identifiant et octets.
+    // Une nouvelle tentative doit relire la même opération, jamais la dupliquer.
     return s;
   }
   // Action explicite : reconnexion, code saisi, espace libéré ou conflit arbitré.
@@ -86,11 +86,11 @@ const SyncOutbox = (() => {
   // Statuts honnêtes : chaque niveau exige sa preuve.
   function status(state, ctx = {}) {
     const s = check(state), conflicts = ctx.conflicts | 0, pending = ctx.headsPending | 0;
-    const label = s.blocked === 'conflict' || conflicts ? 'conflit' : s.blocked === 'auth' ? 'reconnexion' : s.blocked === 'code' ? 'code' :
+    const label = s.blocked === 'integrity' ? 'intégrité' : s.blocked === 'conflict' || conflicts ? 'conflit' : s.blocked === 'auth' ? 'reconnexion' : s.blocked === 'code' ? 'code' :
       s.blocked === 'quota' ? 'espace' : s.job ? (s.job.phase === 'sent' ? 'vérification' : 'envoi') : s.dirtySince !== null ? 'en attente' :
       pending ? 'à intégrer' : s.verified ? 'synchronisé' : 'local';
     const synced = label === 'synchronisé';
-    return { label, synced, operational: synced && ctx.restoreProof === true && ctx.physicalProof === true,
+    return { label, state: s.blocked || conflicts ? 'SYNC_BLOCKED' : synced ? 'SYNCED' : 'PENDING', synced, operational: synced && ctx.restoreProof === true && ctx.physicalProof === true,
       lastVerified: s.verified ? s.verified.at : null, attempts: s.attempts, retryAt: s.retryAt || null };
   }
   return Object.freeze({ QUIET_MS, MAX_WAIT_MS, BACKOFF, initial, noteChange, next, sealed, reserved, sent, verified, failed, unblock, status });
