@@ -166,6 +166,21 @@ check('intégration build et interface utilise le module V2', () => {
   const build = fs.readFileSync(path.resolve(__dirname, '../tools/build.js'), 'utf8'), app = fs.readFileSync(path.resolve(__dirname, '../src/app.js'), 'utf8');
   assert(build.includes("r('src/backup.js')")); assert(app.includes('VS.recoverySnapshot()'));  assert(app.includes('Backup.restorePlan(data')); assert(app.includes('Copie chiffrée exportée'));
 });
+check('NOESIS : import V1/V2 conserve les champs automobiles historiques octet pour octet, même invalides pour affichage', () => {
+  const short = 'Exemple <mark>texte</mark> & éè \\' "';
+  const photo = 'data:image/png;base64,AA==" data-noesis-photo="marker';
+  const settings = { cars: [{ id: 'car1', short, photo }, { id: 'car2', short: 'Autre voiture' }] };
+  const archive = B.make({ settings, context: state, at: new Date(at).toISOString() });
+  for (const v of [1, 2]) {
+    const historical = { ...archive, v };
+    const before = JSON.stringify(historical), plan = B.restorePlan(historical, at + 1000);
+    assert(plan, 'sauvegarde historique V' + v + ' reconnue');
+    const cars = JSON.parse(plan.writes['twrc.settings.v1']).cars;
+    assert.equal(cars[0].short, short); assert.equal(cars[0].photo, photo);
+    assert.equal(cars[1].short, 'Autre voiture');
+    assert.equal(JSON.stringify(historical), before, 'archives sources inchangées');
+  }
+});
 console.log(`${n}/${n} scénarios OK`);
 
 // Cette suite est incluse dans la lane sauvegarde existante.
