@@ -31,4 +31,11 @@ const ECONOMICS_STYLE = `<style>
 #secGarage .econ-compare-car span{color:var(--fg2);font-size:12px}
 #secGarage .econ-compare-car strong{font:600 12px var(--f-mono)}
 #secGarage .econ-compare-car button{grid-column:1/-1;min-height:44px}
+
+#secGarage .econ-fuel-fields{display:flex;flex-direction:column;gap:9px;padding:12px;border:1px dashed var(--line2);background:var(--panel2);border-radius:5px}
+#secGarage .econ-fuel-fields[hidden]{display:none!important}
+#secGarage .econ-tank-full{display:flex;flex-direction:row;align-items:center;gap:10px;grid-column:1/-1;line-height:1.4}
+#secGarage .econ-tank-full input[type=checkbox]{width:22px;height:22px;min-width:22px;padding:0;accent-color:var(--accent);flex:none}
+#secGarage .econ-fuel-summary{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line2);padding:10px;border-radius:5px}
+#secGarage .econ-fuel-summary h4{font:650 16px var(--f-disp);margin:0}
 </style>`;
