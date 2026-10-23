@@ -10,6 +10,26 @@ const ECON_CATEGORIES = Object.freeze([
 ]);
 const ECON_MESSAGES = Object.create(null);
 const ECON_MAX_ENTRIES = 360;
+const ECON_FUELS = Object.freeze([
+  ['unknown','À confirmer'],['diesel','Gazole (B7)'],['diesel-premium','Gazole premium'],
+  ['sp98','SP98 E5'],['sp95-e5','SP95 E5'],['sp95-e10','SP95 E10'],
+  ['e85','Superéthanol E85'],['other','Autre carburant']
+]);
+const litreText = ml => Number.isSafeInteger(ml) && ml>0
+  ? (ml/1000).toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:3})+' L' : 'volume inconnu';
+const perLitreText = val => Number.isFinite(val)
+  ? val.toLocaleString('fr-FR',{minimumFractionDigits:3,maximumFractionDigits:3})+' €/L' : '—';
+function garageFuelFields() {
+  return '<div class="econ-fuel-fields" data-econ-fuel-fields>'+
+    '<p class="sub">⛽ Ticket carburant : indique le montant <b>effectivement payé après remise</b>. Les litres et le carburant doivent correspondre au ticket.</p>'+
+    '<div class="econ-fields">'+
+    economyField('Litres ajoutés · facultatif','litres','','text','inputmode="decimal" placeholder="ex. 26,667"')+
+    '<label class="econ-field"><span>Carburant indiqué (ou inconnu)</span><select name="fuelType">'+
+      ECON_FUELS.map(([id,label])=>'<option value="'+id+'">'+esc(label)+'</option>').join('')+'</select></label>'+
+    '<label class="econ-field econ-tank-full"><input type="checkbox" name="fullTank" value="yes"><span>Plein complet confirmé (réservoir rempli au même niveau)</span></label>'+
+    '</div><p class="sub">Consommation réelle entre deux pleins complets avec compteurs, à condition d’enregistrer tous les ravitaillements. La photo du ticket n’est pas conservée.</p></div>';
+}
+
 const euro = cents => Number.isSafeInteger(cents)
   ? (cents / 100).toLocaleString('fr-FR',{style:'currency',currency:'EUR'}) : '—';
 const moneyInput = cents => Number.isSafeInteger(cents) ? (cents / 100).toFixed(2) : '';
@@ -75,11 +95,16 @@ function garageEconomicsHtml(car) {
   if (!car) return '';
   const econ=car.economics || {}, p=economyProjection(car), result=p.data;
   const byMonth=Object.keys(p.byMonth).sort().reverse().slice(0,6);
+  const fuel=GarageFuel.summarize(p.entries.rows),real=GarageFuel.fullToFull(p.entries.rows);
   const costs=p.entries.rows.slice().sort((a,b)=>b.date.localeCompare(a.date) || b.id.localeCompare(a.id)).slice(0,15);
   const short=costs.map(e=>{
     const category=ECON_CATEGORIES.find(c=>c[0]===e.category);
     return '<li><span><b>'+garageDate(e.date)+'</b> · '+esc(category && category[1] || 'Autre')+
-      (e.note ? '<small> · '+esc(e.note)+'</small>' : '')+'</span><strong>'+euro(e.amountCents)+'</strong>'+
+      (e.note ? '<small> · '+esc(e.note)+'</small>' : '')+
+      (e.category==='fuel' ? '<small> · '+litreText(e.volumeMl)+
+        (GarageFuel.perLiter(e.amountCents,e.volumeMl)!=null ? ' · '+perLitreText(GarageFuel.perLiter(e.amountCents,e.volumeMl)) : '')+
+        (e.fuelType ? ' · '+esc((ECON_FUELS.find(f=>f[0]===e.fuelType)||['','Carburant à confirmer'])[1]) : '')+
+        (e.fullTank===true ? ' · plein complet déclaré' : '')+'</small>' : '')+'</span><strong>'+euro(e.amountCents)+'</strong>'+
       '<button class="btn sm" type="button" data-act="econ-delete" data-car="'+esc(car.id)+
       '" data-expense-id="'+esc(e.id)+'" aria-label="Supprimer cette dépense">Retirer</button></li>';
   }).join('');
@@ -91,6 +116,16 @@ function garageEconomicsHtml(car) {
     '<div><span>Dépenses enregistrées</span><strong>'+(p.entries.rows.length?euro(p.entries.rows.reduce((s,x)=>s+x.amountCents,0)):'À renseigner')+'</strong></div>'+
     '<div><span>Coût déclaré / km</span><strong>'+(result.currentRecordedCostPerKmCents!=null
       ? euro(result.currentRecordedCostPerKmCents)+'/km' : '—')+'</strong></div></div>';
+  const fuelSummary='<div class="econ-fuel-summary"><h4>⛽ Carburant · relevés saisis</h4>'+
+    '<div class="econ-stats"><div><span>Volume connu</span><strong>'+(fuel.measured?fuel.litres.toLocaleString('fr-FR',{maximumFractionDigits:3})+' L':'—')+'</strong></div>'+
+    '<div><span>Prix moyen payé / L</span><strong>'+perLitreText(fuel.weightedPriceEuroPerL)+'</strong></div>'+
+    '<div><span>Ravitaillements déclarés</span><strong>'+fuel.count+'</strong></div>'+
+    '<div><span>Conso. entre pleins</span><strong>'+(real?real.consumptionL100.toLocaleString('fr-FR',{maximumFractionDigits:2})+' L/100 km':'—')+'</strong></div></div>'+
+    (real ? '<p class="sub">Entre '+garageDate(real.startDate)+' et '+garageDate(real.endDate)+' : '+garageKm(real.distanceKm)+
+      ' · coût carburant déclaré ≈ '+real.costEuroPer100.toLocaleString('fr-FR',{maximumFractionDigits:2})+' €/100 km. '+esc(real.caveat)+'</p>' :
+      '<p class="sub">Consommation réelle non calculable : nécessite deux pleins complets datés et leurs kilométrages, plus tous les apports intermédiaires.</p>')+
+    (fuel.missingVolume ? '<p class="econ-warning">'+fuel.missingVolume+' dépense(s) carburant sans volume : prix moyen basé uniquement sur les tickets avec litres.</p>' : '')+
+    '</div>';
   const months=byMonth.length ? '<div class="econ-months"><h5>Dépenses mensuelles saisies</h5><ul>'+
     byMonth.map(k=>'<li><span>'+esc(k)+'</span><b>'+euro(p.byMonth[k])+'</b></li>').join('')+'</ul></div>' :
     '<p class="sub">Aucune dépense mensuelle enregistrée.</p>';
