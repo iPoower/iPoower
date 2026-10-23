@@ -179,3 +179,4 @@ console.log(n+'/'+n+' scénarios Garage validés');
 
 // Le suivi des couts fait partie de la suite Garage sans modifier le registre CI partagé.
 require('./test_garage_economics.js');
+require('./test_garage_fuel.js');
