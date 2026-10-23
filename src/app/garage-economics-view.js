@@ -150,12 +150,12 @@ function garageEconomicsHtml(car) {
     '<form data-econ-expense-car="'+esc(car.id)+'" class="econ-form">'+
     '<h4>Ajouter une dépense</h4><div class="econ-fields">'+
     economyField('Date','date',nowIn('Europe/Paris').slice(0,10),'date','required')+
-    '<label class="econ-field"><span>Catégorie</span><select name="category">'+catOptions+'</select></label>'+
+    '<label class="econ-field"><span>Catégorie</span><select name="category" data-econ-category>'+catOptions+'</select></label>'+
     economyField('Montant payé (€)','amount','','text','inputmode="decimal" required placeholder="ex. 60"')+
     economyField('Compteur lors du paiement (km) · facultatif','km','','number','min="0" step="1"')+
     economyField('Libellé facultatif (80 caractères)','note','','text','maxlength="80" autocomplete="off"')+
-    '</div><button type="submit" class="btn pri" data-act="econ-expense-save">Ajouter au journal</button></form>'+
-    months+warning+
+    '</div>'+garageFuelFields()+'<button type="submit" class="btn pri" data-act="econ-expense-save">Ajouter au journal</button></form>'+
+    fuelSummary+months+warning+
     '<div class="econ-history"><h5>Historique récent ('+entries.length+' ligne(s))</h5>'+
     (costs.length?'<ul>'+short+'</ul>':'<p class="sub">Aucun paiement saisi. Les champs vides ne valent pas zéro.</p>')+
     '</div><p class="sub">Les loyers LOA sont des paiements, pas un prix d’achat. Ne saisis pas deux fois un même coût. '+ 
@@ -214,18 +214,29 @@ document.addEventListener('submit', async event=>{
     } else {
       const amount=economyMoney(data.get('amount')),date=economyDate(data.get('date')),
         category=data.get('category'),km=economyKm(data.get('km')),note=String(data.get('note')||'').trim().slice(0,80);
+      const volumeMl=category==='fuel'?GarageFuel.parseLitres(data.get('litres')):null;
+      const requestedFuelType=data.get('fuelType'),fuelType=category==='fuel' && ECON_FUELS.some(f=>f[0]===requestedFuelType)?requestedFuelType:null;
+      const fullTank=category==='fuel' && data.get('fullTank')==='yes';
+      if(fullTank && (volumeMl===null || km===null)) throw new Error('Pour un plein complet, renseigne les litres et le compteur au moment du plein.');
       if(amount===null || date===null || !ECON_CATEGORIES.some(c=>c[0]===category)) throw new Error('Date, catégorie ou montant manquant.');
       const entries=Array.isArray(econ.entries) ? econ.entries : [];
       if(entries.length>=ECON_MAX_ENTRIES) throw new Error('Journal plein : préserver un export avant de poursuivre.');
       const nonce=new Uint32Array(2);crypto.getRandomValues(nonce);
       car.economics={...econ,entries:entries.concat([{id:Date.now().toString(36)+'-'+Array.from(nonce,n=>n.toString(36)).join(''),
-        date,category,amountCents:amount,...(km!==null?{km}:{}),...(note?{note}:{})}])};
+        date,category,amountCents:amount,...(km!==null?{km}:{}),...(note?{note}:{}),
+        ...(category==='fuel' ? {...(volumeMl!==null?{volumeMl}:{}),fuelType:fuelType||'unknown',fullTank} : {})}])};
       await economyPersist(car,old,'Dépense ajoutée');
     }
   }catch(error){if(!error.pending)car.economics=old;
     ECON_MESSAGES[car.id]=error.message || 'Opération non confirmée';
     const status=form.closest('.garage-economics').querySelector('.econ-status');
     if(status) status.textContent=ECON_MESSAGES[car.id];}
+});
+document.addEventListener('change',event=>{
+  const select=event.target.closest('select[data-econ-category]');
+  if(!select)return;
+  const form=select.closest('[data-econ-expense-car]'),fields=form&&form.querySelector('[data-econ-fuel-fields]');
+  if(fields)fields.hidden=select.value!=='fuel';
 });
 document.addEventListener('click', event=>{
   const open=event.target.closest('[data-act="econ-open"]');
