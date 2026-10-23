@@ -182,12 +182,12 @@ function loadSettings() {
   if (window.TWRC_PRESET && window.TWRC_PRESET_V && lsGet('twrc.presetv') !== window.TWRC_PRESET_V) {
     // on garde ce qui ne se trouve que sur le téléphone : contrôles de pression, DOT, profondeurs, jeux de pneus
     const old = saved;
-    const keep = saved && Array.isArray(saved.cars) ? Object.assign(saved.cars.map(c => c ? { tire: c.tire ? { pchk: c.tire.pchk, dot: c.tire.dot, tread: c.tire.tread, treadAv: c.tire.treadAv, treadAr: c.tire.treadAr, treadEst: c.tire.treadEst, treads: c.tire.treads, mountKm: c.tire.mountKm, lastRot: c.tire.lastRot } : null, sets: c.sets, photo: c.photo, odo: c.odo } : null), { calib: saved.calib, journal: saved.journal }) : null;
+    const keep = saved && Array.isArray(saved.cars) ? Object.assign(saved.cars.map(c => c ? { tire: c.tire ? { pchk: c.tire.pchk, dot: c.tire.dot, tread: c.tire.tread, treadAv: c.tire.treadAv, treadAr: c.tire.treadAr, treadEst: c.tire.treadEst, treads: c.tire.treads, mountKm: c.tire.mountKm, lastRot: c.tire.lastRot } : null, sets: c.sets, photo: c.photo, odo: c.odo, economics: c.economics } : null), { calib: saved.calib, journal: saved.journal }) : null;
     saved = null; lsSet('twrc.presetv', window.TWRC_PRESET_V);
     try { APP_STORAGE.removeItem('twrc.settings.v1'); } catch (e) { /* stockage indisponible */ }
     if (keep) {
       const fresh = normalize(null, DEFAULTS);
-      keep.forEach((k, i) => { const c = fresh.cars[i]; if (!k || !c) return; if (k.sets) c.sets = k.sets; if (k.photo) c.photo = k.photo; if (k.odo) c.odo = k.odo;
+      keep.forEach((k, i) => { const c = fresh.cars[i]; if (!k || !c) return; if (k.sets) c.sets = k.sets; if (k.photo) c.photo = k.photo; if (k.odo) c.odo = k.odo; if (k.economics) c.economics = k.economics;
         if (k.tire) ['pchk', 'dot', 'tread', 'treadAv', 'treadAr', 'treadEst', 'treads', 'mountKm', 'lastRot'].forEach(f => { const v = k.tire[f]; if (v != null && v !== '' && !(f === 'pchk' && !v.date)) c.tire[f] = v; }); });
       const oldCalib = keep.calib;
       saved = { ...fresh, configured: 1, calib: oldCalib || [], journal: keep.journal || {} }; reapplyEdits(saved, old); lsSet('twrc.settings.v1', JSON.stringify(saved));
