@@ -133,11 +133,16 @@ async function economyPersist(car, previous, message) {
   markEdit('cars.'+ix+'.economics');
   saveSettings();
   if(lsGet('twrc.settings.v1') !== JSON.stringify(S)) {
-    car.economics=previous;
-    throw new Error('Écriture locale non confirmée : ancienne version conservée en mémoire.');
+    const err=new Error('Écriture non confirmée. Les valeurs restent en mémoire : ne ferme pas la page.');
+    err.pending=true; throw err;
   }
   const vs=window.TWRC_VAULT;
-  if(vs) { await vs.flush(); if(vs.error || vs.pendingRecovery) throw new Error('Sauvegarde chiffrée non confirmée : ne ferme pas la page.'); }
+  try {
+    if(vs) { await vs.flush(); if(vs.error || vs.pendingRecovery) throw new Error('Écriture du coffre en attente'); }
+  } catch(cause) {
+    const err=new Error('Sauvegarde chiffrée non confirmée. Tes données restent en mémoire : ne ferme pas la page.');
+    err.pending=true; throw err;
+  }
   ECON_MESSAGES[car.id]=message+' · Enregistré dans le coffre local.';
   renderGarage.last=null; renderGarage();
 }
@@ -167,8 +172,10 @@ document.addEventListener('submit', async event=>{
         date,category,amountCents:amount,...(km!==null?{km}:{}),...(note?{note}:{})}])};
       await economyPersist(car,old,'Dépense ajoutée');
     }
-  }catch(error){car.economics=old;const status=form.closest('.garage-economics').querySelector('.econ-status');
-    if(status) status.textContent=error.message || 'Opération non confirmée';}
+  }catch(error){if(!error.pending)car.economics=old;
+    ECON_MESSAGES[car.id]=error.message || 'Opération non confirmée';
+    const status=form.closest('.garage-economics').querySelector('.econ-status');
+    if(status) status.textContent=ECON_MESSAGES[car.id];}
 });
 document.addEventListener('click',async event=>{
   const button=event.target.closest('[data-act="econ-delete"]');
@@ -182,6 +189,8 @@ document.addEventListener('click',async event=>{
   try {
     car.economics={...econ,entries:entries.filter(e=>e.id!==button.dataset.expenseId)};
     await economyPersist(car,old,'Dépense retirée');
-  }catch(error){car.economics=old;const status=button.closest('.garage-economics').querySelector('.econ-status');
-    if(status)status.textContent=error.message||'Suppression non confirmée';}
+  }catch(error){if(!error.pending)car.economics=old;
+    ECON_MESSAGES[car.id]=error.message||'Suppression non confirmée';
+    const status=button.closest('.garage-economics').querySelector('.econ-status');
+    if(status)status.textContent=ECON_MESSAGES[car.id];}
 });
