@@ -1,4 +1,5 @@
 // @include app/garage-economics-core.js
+// @include app/garage-economics-fuel.js
 // @include app/garage-economics-style.js
 // @include app/garage-economics-view.js
 // @include app/garage-scene.js
