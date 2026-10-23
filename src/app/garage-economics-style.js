@@ -23,4 +23,12 @@ const ECONOMICS_STYLE = `<style>
 #secGarage .econ-warning{padding:8px;border:1px solid var(--warn);color:var(--fg);border-radius:4px;font-size:12px}
 #secGarage .econ-status{font-size:12px;font-weight:600;color:var(--accent);min-height:14px}
 @media(max-width:359px){#secGarage .econ-stats{grid-template-columns:minmax(0,1fr)}}
+#secGarage .econ-comparison{padding:12px;border:1px solid var(--line2);border-radius:6px;background:var(--panel2);margin-top:12px}
+#secGarage .econ-comparison h3{font:700 20px var(--f-disp);margin:0 0 8px}
+#secGarage .econ-compare-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:8px}
+#secGarage .econ-compare-car{display:grid;grid-template-columns:1fr auto;gap:7px;align-items:center;padding:10px;border:1px solid var(--line2);border-radius:4px;background:var(--panel)}
+#secGarage .econ-compare-car>b{grid-column:1/-1;font:700 17px var(--f-disp)}
+#secGarage .econ-compare-car span{color:var(--fg2);font-size:12px}
+#secGarage .econ-compare-car strong{font:600 12px var(--f-mono)}
+#secGarage .econ-compare-car button{grid-column:1/-1;min-height:44px}
 </style>`;
