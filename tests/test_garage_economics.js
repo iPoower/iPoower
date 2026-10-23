@@ -1,7 +1,7 @@
 // Garage economics: tests sur véhicules entièrement fictifs.
 'use strict';
 const assert=require('node:assert/strict');
-const G=require('../src/garage-economics.js');
+const G=require('../src/app/garage-economics-core.js');
 let n=0;
 const test=(name,fn)=>{fn();n++;console.log('✓ '+name);};
 const demo=()=>({
