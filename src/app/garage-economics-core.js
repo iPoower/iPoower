@@ -5,7 +5,7 @@
 'use strict';
 const GarageEconomics = (() => {
   const HORIZONS = Object.freeze([12,24,36,60,84]);
-  const COST_KEYS = Object.freeze(['fuelCents','insuranceCents','maintenanceCents','repairsCents']);
+  const COST_KEYS = Object.freeze(['fuelCents','insuranceCents','maintenanceCents','repairsCents','tyresCents','tollsCents','leaseCents','otherCents']);
   const validMoney = n => Number.isSafeInteger(n) && n >= 0 ? n : null;
   const validKm = n => Number.isSafeInteger(n) && n >= 0 ? n : null;
   function validDate(value) {
