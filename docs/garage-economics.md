@@ -1,27 +1,37 @@
-# Garage — amortissement et coût d'usage (moteur isolé)
+# Garage · Coûts réels et rentabilité (V1)
+ 
+## Statut au 23 octobre 2026
+**Module raccordé au code de l'onglet Garage sur la PR #231 en brouillon, non fusionné et non déployé.**
+La connexion aux données réelles de l'utilisateur s'effectue exclusivement dans la PWA déverrouillée ; les prix, plaques et autres données personnelles ne doivent pas apparaître dans GitHub.
 
-**Statut : brouillon technique, non raccordé à l'interface et non déployé.**
+## Interface livrée sur la branche
+- Dans chaque fiche véhicule existante, volet repliable « 💶 Coût & rentabilité ».
+- Références facultatives : prix réellement payé, date de l'achat, compteur à l'achat, kilométrage annuel prévisionnel, valeur de revente seulement estimée.
+- Journal des dépenses datées : carburant, assurance, entretien, réparations, pneus, péages, loyer LOA/LLD, autres. Montants saisis en euros et stockés en centimes ; catégorie et date obligatoires, compteur et note facultatifs.
+- Totaux mensuels et historique des 15 dernières écritures (les autres restent conservées), suppression sur confirmation.
+- Amortissement du prix d'acquisition à 3 et 5 ans et coût déclaré par km depuis achat, si compteur et prix disponibles.
+- Coûts partiels et kilométrages manquants explicités ; les loyers LOA ne doivent pas être additionnés deux fois au prix comptant du même véhicule.
+- Aucune nouvelle requête réseau, nouvelle clé de stockage, nouvelle application, nouveau minuteur ou diagnostic mécanique.
 
-Le futur encart « Coût & rentabilité » doit s'ajouter dans l'onglet Garage existant, sans sixième onglet et sans modifier Twin Garage.
-Le calculateur pur `src/garage-economics.js` et ses tests `tests/test_garage_economics.js` sont les seuls changements de cette branche.
+## Données et conservation
+La source unique est `S.cars[i].economics`, enregistrée dans les réglages déjà chiffrés de Race Control, sous `twrc.settings.v1`. Le module ne copie aucune donnée financière dans le JavaScript public. Il utilise la sauvegarde et le protocole de synchronisation des réglages déjà présents, **sans promettre un test physique PC ↔ iPhone**.
 
-## Principes
+Sur modification, le module appelle `markEdit('cars.i.economics')`, `saveSettings()`, vérifie la lecture locale et attend `TWRC_VAULT.flush()` ; un échec est signalé et les valeurs nouvelles demeurent en mémoire sans être présentées comme sauvegardées. La remise à jour du préréglage chiffré préserve désormais l'objet `economics` en plus des données véhicule historiques. Sauvegarde de réinitialisation manuelle et suppression restent sensibles : ne pas activer sans contrôles de restauration.
 
-- Projection du **prix d'acquisition seul** à 12, 24, 36, 60 et 84 mois. Ce n'est pas un seuil de rentabilité.
-- Kilométrages et dépenses : uniquement les valeurs déclarées. Toute valeur manquante est inconnue, jamais zéro.
-- Les frais de carburant, assurance, entretien et réparations sont totalisés à part ; une catégorie manquante impose l'indication « partiel ».
-- Valeur de revente estimée facultative, explicitement distincte d'un encaissement réalisé.
-- Montants en centimes entiers et calculs purs, sans stockage, réseau ni effet de bord.
-- Historique court (< 30 jours ou < 1 000 km) : avertissement contre toute extrapolation.
+**Limites réelles :** la synchronisation Google Drive des réglages peut conduire à un conflit conservateur entre plusieurs appareils. Aucune fusion automatique des journaux financiers concurrents n'est ajoutée ; les conflits doivent être arbitrés. Les dépenses déclarées ne sont pas un TCO complet ni un seuil de rentabilité garanti.
 
-## Coordination impérative
+## Coordination sans collision
+- Aucun fichier de Twin Garage Scene, Live Route, Service Worker, du coffre, des workflows ou des autres dépôts modifié.
+- `src/app/garage-view.js` : montage ciblé du volet + conservation de son état ouvert. `src/app.js` : uniquement préservation explicite du journal lors d'un changement de préréglage.
+- `src/app/garage-economics-core.js`, `src/app/garage-economics-view.js` et `src/app/garage-economics-style.js` : nouveaux fichiers.
+- `tests/test_garage.js` appelle la nouvelle suite dédiée ; le registre CI partagé reste inchangé (important pour #193).
+- Vérifier le statut de #193 Garage Life, de #230 navigation et des autres PR avant toute fusion. Ne pas rendre la branche prête à fusionner avant CI exacte complète et revue du propriétaire, les données financières étant sensibles.
 
-- Ne pas modifier les travaux de l'autre agent sur Garage Life (#193) ni la navigation en cours (#230).
-- Aucun changement dans `src/app.js`, `src/style.css`, `src/garage.js`, coffre, crypto, sauvegardes, synchronisation, Service Worker, CI, Twin Garage ou autres dépôts.
-- Pas de données personnelles ni de prix réels consignés dans la branche, les tests ou la PR publique.
-- Le moteur n'est **pas encore utilisé dans la PWA** : sa présence dans `src/` ne signifie pas qu'un encart apparaît à l'écran.
-- Le futur raccord UI doit préserver `S.cars` comme source unique, le focus, la navigation mobile, les données existantes et les animations.
-- Une éventuelle persistance de données financières exige un audit dédié (confidentialité, sauvegarde, synchronisation, conflits) et un accord séparé.
-- PR à garder en **draft** jusqu'à coordination et validation CI complète sur le SHA exact : tests unitaires, 3 Chromium, 3 WebKit, confidentialité, sécurité et déploiement maîtrisé.
+## Tests requis
+- `node tests/test_garage_economics.js`, puis `node tests/test_garage.js`.
+- Build et scanners de confidentialité ; CI GitHub sur le SHA exact, matrice 3 Chromium + 3 WebKit, tests conservations/backup, intégration et restauration.
+- Exercice navigateur 320/375/414 px et ordinateur, clair/sombre ; entrées invalides, suppression, fermeture/réouverture du coffre, mise à jour du préréglage, panne de stockage et conflit multi-appareils.
+- Vérification iPhone physique distincte d'un test WebKit simulé. Interdire la fusion/déploiement tant qu'une étape obligatoire échoue.
 
-Test autonome : `node tests/test_garage_economics.js`.
+## Mode d'emploi sécurisé
+Ouvrir Garage, développer « Coût & rentabilité » sur la voiture ciblée, renseigner le prix d'achat et sa date, puis ajouter chaque paiement avec sa date, catégorie et montant réellement payé. Pour une LOA, saisir les loyers **payés** en « Loyer LOA/LLD » ; ne jamais saisir simultanément des loyers projetés et le prix comptant comme des décaissements effectifs. L'ancienne feuille Excel reste une référence distincte jusqu'à une procédure d'import auditée.
