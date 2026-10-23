@@ -86,8 +86,8 @@ function garageEconomicsHtml(car) {
   const summary=result.available ? result.scenarios : [];
   const price3=summary.find(s=>s.months===36),price5=summary.find(s=>s.months===60);
   const cards='<div class="econ-stats">'+
-    '<div><span>Achat / 3 ans</span><strong>'+(price3?euro(price3.purchasePerMonthCents)+'/mois':'—')</strong></div>'+
-    '<div><span>Achat / 5 ans</span><strong>'+(price5?euro(price5.purchasePerMonthCents)+'/mois':'—')</strong></div>'+
+    '<div><span>Achat / 3 ans</span><strong>'+(price3?euro(price3.purchasePerMonthCents)+'/mois':'—')+'</strong></div>'+
+    '<div><span>Achat / 5 ans</span><strong>'+(price5?euro(price5.purchasePerMonthCents)+'/mois':'—')+'</strong></div>'+
     '<div><span>Dépenses enregistrées</span><strong>'+(p.entries.rows.length?euro(p.entries.rows.reduce((s,x)=>s+x.amountCents,0)):'À renseigner')+'</strong></div>'+
     '<div><span>Coût déclaré / km</span><strong>'+(result.currentRecordedCostPerKmCents!=null
       ? euro(result.currentRecordedCostPerKmCents)+'/km' : '—')+'</strong></div></div>';
@@ -137,7 +137,7 @@ function garageEconomicsCompareHtml(cars) {
       const expenseCents=p.entries.rows.reduce((sum,e)=>sum+e.amountCents,0);
       return '<div class="econ-compare-car"><b>'+esc(car.short||car.name||'Véhicule')+'</b>'+
         '<span>Prix d’achat payé</span><strong>'+euro(r.purchasePriceCents)+'</strong>'+
-        '<span>Amorti sur cinq ans</span><strong>'+(scenario?euro(scenario.purchasePerMonthCents)+'/mois':'—')</strong>'+
+        '<span>Amorti sur cinq ans</span><strong>'+(scenario?euro(scenario.purchasePerMonthCents)+'/mois':'—')+'</strong>'+
         '<span>Dépenses enregistrées</span><strong>'+(p.entries.rows.length?euro(expenseCents):'À renseigner')+'</strong>'+
         '<button type="button" class="btn sm" data-act="econ-open" data-car="'+esc(car.id)+'">Voir le budget</button></div>';
     }).join('')+'</div><p class="sub">Les dépenses peuvent être incomplètes ; les hypothèses annuelles ne sont pas des paiements.</p></section>';
