@@ -86,9 +86,9 @@ function garageEconomicsHtml(car) {
   const summary=result.available ? result.scenarios : [];
   const price3=summary.find(s=>s.months===36),price5=summary.find(s=>s.months===60);
   const cards='<div class="econ-stats">'+
-    '<div><span>Achat / 3 ans</span><strong>'+euro(price3 && price3.purchasePerMonthCents)+'/mois</strong></div>'+
-    '<div><span>Achat / 5 ans</span><strong>'+euro(price5 && price5.purchasePerMonthCents)+'/mois</strong></div>'+
-    '<div><span>Dépenses enregistrées</span><strong>'+euro(p.entries.rows.reduce((s,x)=>s+x.amountCents,0))+'</strong></div>'+
+    '<div><span>Achat / 3 ans</span><strong>'+(price3?euro(price3.purchasePerMonthCents)+'/mois':'—')</strong></div>'+
+    '<div><span>Achat / 5 ans</span><strong>'+(price5?euro(price5.purchasePerMonthCents)+'/mois':'—')</strong></div>'+
+    '<div><span>Dépenses enregistrées</span><strong>'+(p.entries.rows.length?euro(p.entries.rows.reduce((s,x)=>s+x.amountCents,0)):'À renseigner')+'</strong></div>'+
     '<div><span>Coût déclaré / km</span><strong>'+(result.currentRecordedCostPerKmCents!=null
       ? euro(result.currentRecordedCostPerKmCents)+'/km' : '—')+'</strong></div></div>';
   const months=byMonth.length ? '<div class="econ-months"><h5>Dépenses mensuelles saisies</h5><ul>'+
@@ -122,7 +122,7 @@ function garageEconomicsHtml(car) {
     '</div><button type="submit" class="btn pri" data-act="econ-expense-save">Ajouter au journal</button></form>'+
     months+warning+
     '<div class="econ-history"><h5>Historique récent ('+entries.length+' ligne(s))</h5>'+
-    (costs.length?'<ul>'+costs+'</ul>':'<p class="sub">Aucun paiement saisi. Les champs vides ne valent pas zéro.</p>')+
+    (costs.length?'<ul>'+short+'</ul>':'<p class="sub">Aucun paiement saisi. Les champs vides ne valent pas zéro.</p>')+
     '</div><p class="sub">Les loyers LOA sont des paiements, pas un prix d’achat. Ne saisis pas deux fois un même coût. '+ 
     'Les données sont enregistrées dans le coffre existant ; vérifier la synchronisation PC ↔ iPhone.</p>'+
     '<p class="econ-status" role="status" aria-live="polite">'+esc(status)+'</p></div></details>';
@@ -137,8 +137,8 @@ function garageEconomicsCompareHtml(cars) {
       const expenseCents=p.entries.rows.reduce((sum,e)=>sum+e.amountCents,0);
       return '<div class="econ-compare-car"><b>'+esc(car.short||car.name||'Véhicule')+'</b>'+
         '<span>Prix d’achat payé</span><strong>'+euro(r.purchasePriceCents)+'</strong>'+
-        '<span>Amorti sur cinq ans</span><strong>'+euro(scenario&&scenario.purchasePerMonthCents)+'/mois</strong>'+
-        '<span>Dépenses enregistrées</span><strong>'+euro(expenseCents)+'</strong>'+
+        '<span>Amorti sur cinq ans</span><strong>'+(scenario?euro(scenario.purchasePerMonthCents)+'/mois':'—')</strong>'+
+        '<span>Dépenses enregistrées</span><strong>'+(p.entries.rows.length?euro(expenseCents):'À renseigner')+'</strong>'+
         '<button type="button" class="btn sm" data-act="econ-open" data-car="'+esc(car.id)+'">Voir le budget</button></div>';
     }).join('')+'</div><p class="sub">Les dépenses peuvent être incomplètes ; les hypothèses annuelles ne sont pas des paiements.</p></section>';
 }
