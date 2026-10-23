@@ -1,5 +1,7 @@
 # Garanties exigées avant toute synchronisation réelle
 
+Raccord proposé le 23/10/2026 : [drive-runtime.md](drive-runtime.md). Les preuves automatisées y sont reliées au raccord. Activation réelle encore soumise à la revue, aux vérifications Google et à la recette sur iPhone physique. Le tableau ci-dessous conserve l’état historique des lots du 22/10.
+
 Exigences du propriétaire (22/10/2026). Ce document les rattache au code et aux
 preuves. Une case « à faire » interdit l'activation réelle. Toute nouvelle preuve
 doit pointer vers un test ou une recette, jamais vers une intention.

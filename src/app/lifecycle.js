@@ -219,6 +219,7 @@ document.addEventListener('toggle', e => {
   { const c = placeNow(); if (c.source === 'manual') UI.loc = c.place.id; }   // lieu confirmé : contexte de tous les modules (origine verrouillée)
   if (S.gpsAuto && location.protocol === 'https:') setTimeout(() => locate(false), 400);
   loadCache(); if (offlineNow()) markOfflineCache(); rebuild(); APP_CONTEXT.ready = true; renderSettings(); renderAll();
+  initDriveSync();
   LOCAL_CLOCK_MINUTE = Math.floor(Date.now() / 60000); startLiveClock();
   if (offlineNow()) loadCalendar(); else refreshAll();
 })();

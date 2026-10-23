@@ -1,0 +1,90 @@
+'use strict';
+// Vrais coffres, clés IDB, file IDB et transport HTTP ; Google est intégralement
+// simulé. Chromium/WebKit ne valent pas une recette Safari sur iPhone physique.
+const path = require('node:path');
+const fs = require('node:fs'), assert = require('node:assert/strict'), BR = require('./lib/browser');
+const { load, business, code } = require('./lib/control-vault-owner');
+const U = 'https://race.example.com/';
+const source = ['journal-archive', 'debrief', 'device-storage', 'remember-device', 'session-vault', 'sync-merge', 'sync-revisions', 'sync-outbox', 'sync-key', 'control-vault-packet', 'drive-store', 'drive-transport', 'drive-sync']
+  .map(n => fs.readFileSync(path.resolve(__dirname, '../src/' + n + '.js'), 'utf8')).join('\n') + `
+window.fixture = { async boot(initial) {
+  window.vault = SessionVault.create({raw:localStorage,session:sessionStorage,crypto,target:window,remembered:RememberDevice});
+  await vault.boot(); if(initial) await vault.unlock(initial.code, initial.values, true);
+  window.provider=new DriveTransport.OpaqueDrive([location.origin]); provider.connect('fixture-token',3600,['https://www.googleapis.com/auth/drive.file']);
+  window.db=DriveStore.create('twrc.drive.sync.v1');
+  window.sync=DriveSync.create({vault,provider,version:()=> 'prod-999'});
+  sync.select({folder:'fixture-folder',binding:'a'.repeat(64)});
+}, count: async()=>JournalArchive.capture((await vault.syncSnapshot()).values).records.length,
+recovery: async()=> {const b=await db.latestRecovery();return b&&SessionVault.readRecovery(new TextDecoder().decode(b),'${code}',crypto);}};`;
+function values(count, label) {
+  const owner = load(), b = business(owner, count), v = b.values;
+  const archive = owner.J.capture(v); archive.records = archive.records.map(r => owner.J.encode({ ...JSON.parse(r), key: label + '-' + JSON.parse(r).key }));
+  const ctx = JSON.parse(v[owner.J.CONTEXT]); ctx.debrief.entries = ctx.debrief.entries.map(e => ({ ...e, key: label + '-' + e.key })); ctx.debrief.archive = archive;
+  return { 'twrc.settings.v1': JSON.stringify({ ...b.data.settings, edits: {}, calib: [], journal: {} }), [owner.J.KEY]: JSON.stringify(archive), [owner.J.CONTEXT]: JSON.stringify(ctx) };
+}
+function remote() {
+  const files = new Map(), pending = new Map(); let seq = 0, drop = false;
+  async function routes(context) {
+    await context.route(U + '**', r => r.fulfill({contentType:r.request().url().endsWith('owner.js')?'text/javascript':'text/html',
+      body:r.request().url().endsWith('owner.js')?source:'<!doctype html><html lang="fr"><meta charset="utf-8"><title>RC fictif</title><script src="/owner.js"></script><body>Fiction</body></html>'}));
+    await context.route('https://www.googleapis.com/**', async r => {
+      const req=r.request(), u=new URL(req.url()), key=u.pathname.split('/').pop();
+      const headers={'Access-Control-Allow-Origin':new URL(U).origin,'Access-Control-Allow-Methods':'GET,POST,PUT,OPTIONS','Access-Control-Allow-Headers':'authorization,content-type,content-range,x-upload-content-type,x-upload-content-length','Access-Control-Expose-Headers':'Location,Range,Content-Length'};
+      const json=(v,status=200)=>r.fulfill({status,headers,contentType:'application/json',body:JSON.stringify(v)});
+      if(req.method()==='OPTIONS') return r.fulfill({status:204,headers});
+      assert.equal(req.headers().authorization,'Bearer fixture-token'); assert(!u.searchParams.has('access_token'));
+      if(key==='generateIds') return json({ids:['file-'+ ++seq]});
+      if(req.method()==='POST') {
+        if(u.searchParams.get('uploadType')==='multipart') {
+          const chunks=req.postData().split('\r\n\r\n'), meta=JSON.parse(chunks[1].split('\r\n--')[0]), bytes=Buffer.from(chunks[2].split('\r\n--')[0]);
+          if(files.has(meta.id)) return json({},409); files.set(meta.id,{meta:{...meta,size:String(bytes.length)},bytes}); return json({id:meta.id});
+        }
+        const meta=req.postDataJSON(); pending.set(meta.id,meta);
+        return r.fulfill({status:200,headers:{...headers,Location:'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id='+meta.id}});
+      }
+      if(req.method()==='PUT') {
+        const id=u.searchParams.get('upload_id'), meta=pending.get(id), bytes=req.postDataBuffer();
+        // Les fixtures restent sous 1 MiB ; les gros morceaux sont couverts par B2.
+        assert.equal(req.headers()['content-range'],`bytes 0-${bytes.length-1}/${bytes.length}`);
+        files.set(id,{meta:{...meta,size:String(bytes.length)},bytes}); pending.delete(id);
+        if(drop) {drop=false;return r.abort('failed');} return json({id});
+      }
+      if(key==='fixture-folder') return json({id:key,mimeType:'application/vnd.google-apps.folder',capabilities:{canAddChildren:true}});
+      if(u.pathname==='/drive/v3/files') {
+        const contract=(u.searchParams.get('q')||'').includes("value='rc-key-a1'")?'rc-key-a1':'rc-v1';
+        return json({incompleteSearch:false,files:[...files.values()].map(f=>f.meta).filter(m=>m.appProperties.cv_contract===contract)});
+      }
+      const f=files.get(key); if(!f) return json({},404);
+      return u.searchParams.get('alt')==='media'?r.fulfill({headers,contentType:'application/json',body:f.bytes}):json(f.meta);
+    });
+  }
+  return {routes,files,loseReply:()=>{drop=true;}};
+}
+(async()=>{
+  const browser=await BR.launch(), drive=remote();
+  try {
+    const pc=await browser.newContext(), phone=await browser.newContext({viewport:{width:414,height:896},isMobile:true,hasTouch:true});
+    await drive.routes(pc);await drive.routes(phone);
+    const open=async(context,initial)=>{const p=await context.newPage();await p.goto(U);await p.evaluate(initial=>fixture.boot(initial),initial);return p;};
+    let p=await open(pc,{code,values:values(120,'pc')}), q=await open(phone,{code,values:values(61,'phone')});
+    await p.evaluate(()=>sync.run(true)); assert.equal(await p.evaluate(()=>sync.status.message),'synchronisé');
+    await q.evaluate(()=>sync.run(true)); assert.equal(await q.evaluate(()=>sync.status.message),'synchronisé');
+    for(let i=0;i<3;i++){await p.evaluate(()=>sync.run(true));await q.evaluate(()=>sync.run(true));}
+    assert.equal(await p.evaluate(()=>fixture.count()),185);assert.equal(await q.evaluate(()=>fixture.count()),185);
+    const size=drive.files.size;await p.evaluate(()=>sync.run(true));await q.evaluate(()=>sync.run(true));assert.equal(drive.files.size,size);
+    const proof=await q.evaluate(async()=>({ recovered:JournalArchive.capture(await fixture.recovery()).records.length, current:await fixture.count(), raw:localStorage.getItem(SessionVault.VAULT).includes('synthetic') }));
+    assert.equal(proof.recovered,63);assert.equal(proof.current,185);assert.equal(proof.raw,false);
+    console.log('✅ coffres réels + transport + IDB : 120/61 trajets, 91/365 jours, historique brut et double réponse conservés ; copie avant fusion déchiffrée');
+    drive.loseReply();
+    await p.evaluate(async()=>{const s=JSON.parse(vault.store.getItem('twrc.settings.v1'));s.cars[0].photo='synthetic-photo';vault.store.setItem('twrc.settings.v1',JSON.stringify(s));vault.store.setItem('twrc.editstamps.v1',JSON.stringify({'cars.0.photo':Date.now()}));await vault.flush();await sync.run(true);});
+    const job=await p.evaluate(async()=>(await db.read()).outbox.job);assert(job && drive.files.has(job.fileId));
+    await p.close();p=await open(pc);await p.evaluate(()=>sync.run(true));
+    const receipt=await p.evaluate(async()=>(await db.read()).outbox.verified);assert.equal(receipt.fileId,job.fileId);
+    assert.equal([...drive.files.values()].filter(f=>f.meta.appProperties.rcr===job.rev.id).length,1);
+    console.log('✅ fermeture après réponse perdue : reprise du coffre mémorisé et de la file IDB, même identifiant, un seul fichier');
+    await p.evaluate(()=>vault.lock());assert.equal(await p.evaluate(()=>vault.mode),'locked');
+    await p.evaluate(()=>sync.run(true));assert.equal(await p.evaluate(()=>sync.status.message),'code requis');
+    console.log('✅ verrouillage : clé révoquée, aucun envoi ni reprise automatique du coffre verrouillé');
+    await pc.close();await phone.close();
+  }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

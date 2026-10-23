@@ -196,9 +196,9 @@ const trips = d => json(J.capture(d.values).records).map(r => JSON.parse(r).key)
     reject(() => R.meta({ ...json(rev), parents: [rev.id] }), 'INVALID_REVISION');
     reject(() => R.meta({ ...json(rev), parents: [...parents, hex()] }), 'INVALID_REVISION');
   });
-  await check('non assemblé : ni build, ni réseau, ni stockage', async () => {
+  await check('moteur assemblé restant pur, sans réseau ni stockage propre', async () => {
     const build = fs.readFileSync(path.join(__dirname, '../tools/build.js'), 'utf8'), src = read('sync-revisions.js');
-    assert(!build.includes('sync-revisions.js'));
+    assert(build.includes("'sync-revisions'"));
     assert(!/fetch|XMLHttpRequest|localStorage|sessionStorage|indexedDB/.test(src));
   });
   console.log(n + '/' + n + ' scénarios OK · révisions PC/iPhone sur catalogue simulé, aucune synchronisation activée');

@@ -146,6 +146,8 @@ const SessionVault = (() => {
     function clearSession() {
       let previous = null;
       try { previous = JSON.parse(session.getItem(SESSION) || 'null'); } catch (e) { /* métadonnées corrompues */ }
+      if (previous && /^[0-9a-f]{32}$/.test(previous.id) && typeof SyncKey !== 'undefined')
+        try { SyncKey.storage().revoke('tab:' + previous.id).catch(() => {}); } catch { /* expiration contrôlée aussi à chaque accès */ }
       try { session.removeItem(SESSION); } catch (e) { /* stockage refusé */ }
       if (sessionKeys && previous) try { Promise.resolve(sessionKeys.clear(previous)).catch(() => {}); } catch (e) { /* signal durable conservé */ }
     }
@@ -153,6 +155,8 @@ const SessionVault = (() => {
       st.epoch++; if (st.mem) { st.mem.map.clear(); st.mem.dirty.clear(); st.mem.vol.clear(); }
       clearSession();
       st.key = null; st.salt = null; st.saved = {}; st.expiresAt = 0; st.mode = 'locked'; st.error = null;
+      if (typeof SyncKey !== 'undefined') try { SyncKey.storage().revoke().catch(() => {}); } catch { /* signal de verrou durable fait foi */ }
+      if (target && target.dispatchEvent) try { target.dispatchEvent(new Event('twrc-session-locked')); } catch { /* accès fermé */ }
     }
     function guardSession(epoch, mem) {
       expire();
@@ -569,8 +573,45 @@ const SessionVault = (() => {
       } else merge(data, () => {}); // lecture concurrente authentifiée : ne pas rendre une ancienne copie
       return { state };
     }); }
+    // Le transport ne reçoit jamais ces valeurs. Le propriétaire prend un
+    // instantané après son commit local, sous le verrou du coffre.
+    async function syncSnapshot() {
+      await flush();
+      return exclusive(async () => {
+        expire(); if (st.mode !== 'vault' || st.error || st.mem.dirty.size) throw new Error('Enregistrement local à confirmer.');
+        const epoch = st.epoch, mem = st.mem, guard = () => guardSession(epoch, mem);
+        const data = await latest(guard); guard();
+        if (data.values[JournalArchive.KEY] == null) throw new Error('Exporte et vérifie une copie avant d’activer la synchronisation.');
+        let descriptor; try { descriptor = JSON.parse(session.getItem(SESSION)); } catch { /* code requis */ }
+        return { values: { ...data.values }, signal: raw.getItem(LOCK_SIGNAL), expiresAt: st.expiresAt,
+          binding: descriptor && /^[0-9a-f]{32}$/.test(descriptor.id) ? 'tab:' + descriptor.id : null };
+      });
+    }
+    async function syncApply(transform, keepRecovery, current = () => true) {
+      await flush();
+      return exclusive(async () => {
+        expire(); if (st.mode !== 'vault' || st.error) throw new Error('Déverrouille et confirme le coffre local.');
+        const epoch = st.epoch, mem = st.mem, guard = () => {
+          guardSession(epoch, mem);
+          if (!current() || mem.dirty.size) throw Object.assign(new Error('Saisie locale en cours : fusion différée.'), { conflict: true });
+        };
+        guard(); const data = await latest(guard), previous = raw.getItem(VAULT);
+        const next = transform({ ...data.values }); guard();
+        if (!next || typeof next !== 'object' || Array.isArray(next) || Object.entries(next).some(([k, v]) => !secret(k) || typeof v !== 'string') ||
+          Object.keys(data.values).some(k => !Object.hasOwn(next, k))) throw new Error('Fusion incomplète : aucune écriture.');
+        const protectedNext = JournalArchive.protect(data.values, next);
+        if (!same(protectedNext, next)) throw new Error('Fusion qui réduirait le journal refusée.');
+        if (same(next, data.values)) return false;
+        // La copie complète est déjà chiffrée avec le code local. On la relit
+        // dans IDB avant le moindre remplacement ; quota/interruption = arrêt.
+        await keepRecovery(new TextEncoder().encode(previous)); guard();
+        if (raw.getItem(VAULT) !== previous) throw Object.assign(new Error('Coffre modifié : nouvelle tentative nécessaire.'), { conflict: true });
+        await writeVerified(next, st.salt, guard, false); guard();
+        merge({ n: st.n, t: st.t, values: next }); st.error = null; return true;
+      });
+    }
     return {
-      boot, unlock, lock, flush, onStorage, importConfig, recoverySnapshot, plainRecovery, activateJournal,
+      boot, unlock, lock, flush, onStorage, importConfig, recoverySnapshot, plainRecovery, activateJournal, syncSnapshot, syncApply,
       expired: () => expire(),
       get expiresAt() { return st.expiresAt; },
       get pendingRecovery() { return st.mode === 'expired' && !!st.mem && st.mem.dirty.size > 0; },
