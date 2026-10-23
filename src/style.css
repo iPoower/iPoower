@@ -1312,3 +1312,10 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .decision-advice b { font-weight: 600; color: var(--lv-t); margin-right: 2px; }
 /* Blocs d'information vides (démo, avis) : aucun espacement fantôme entre l'en-tête et le prochain trajet */
 #demoBar:empty, #notice:empty { display: none; }
+/* Navigation entre applications : liens publics, sans transfert de données. */
+.app-links { margin: 16px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.app-links > strong { display: block; color: var(--fg2); font-size: 12px; margin-bottom: 6px; }
+.app-links > div { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.app-links a, .app-links [aria-current] { display: inline-flex; align-items: center; min-height: 44px; padding: 6px 10px; border: 1px solid var(--line2); border-radius: 6px; color: var(--fg); text-decoration: none; overflow-wrap: anywhere; }
+.app-links [aria-current] { color: var(--accent); border-color: var(--accent); }
+.app-links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
