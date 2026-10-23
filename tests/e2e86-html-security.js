@@ -43,6 +43,7 @@ let checks = 0;
         assert.equal(a.storedPhoto, PHOTO);
         assert.equal(a.htmlTag, false, dev + ' : le marqueur doit être du texte, jamais une balise');
         assert.match(a.shortText, /texte HTML fictif/);
+        assert(a.shortText.includes(SHORT), dev + ' : accents, apostrophe, & et balises visibles comme texte sans double échappement');
         assert.equal(a.photoAttribute, false, dev + ' : le champ photo ne crée pas un attribut HTML');
         assert.equal(a.pictureCount, 0, dev + ' : URI photo invalide non utilisée');
         checks++;
@@ -55,6 +56,18 @@ let checks = 0;
           return { raw: S.cars[0].photo, attr: x.querySelector('img') && x.querySelector('img').getAttribute('src'), count: x.querySelectorAll('img').length };
         }, PNG);
         assert.equal(ok.count, 1); assert.equal(ok.raw, PNG); assert.equal(ok.attr, PNG);
+        checks++;
+
+        const formats = await p.evaluate(() => {
+          const valid = ['png', 'jpeg', 'webp'].map(kind => { const value = 'data:image/' + kind + ';base64,AA=='; return safeCarPhoto(value) === value; });
+          const invalid = ['javascript:alert(1)', 'https://example.invalid/photo.png', 'blob:photo', 'data:image/svg+xml;base64,AA==',
+            'data:text/html;base64,AA==', 'data:image/png;base64,AA==" data-extra="marker'].map(value => safeCarPhoto(value) === '');
+          const long = 'data:image/jpeg;base64,' + 'A'.repeat(130000);
+          return { valid, invalid, largeAccepted: safeCarPhoto(long) === long };
+        });
+        assert(formats.valid.every(Boolean), 'PNG/JPEG/WebP compatibles');
+        assert(formats.invalid.every(Boolean), 'schémas et attributs interdits');
+        assert(formats.largeAccepted, 'aucune nouvelle limite de taille introduite');
         checks++;
 
         // Une ancienne donnée invalide reste récupérable dans la sauvegarde fictive,
