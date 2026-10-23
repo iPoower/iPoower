@@ -20,6 +20,18 @@ Sur modification, le module appelle `markEdit('cars.i.economics')`, `saveSetting
 
 **Limites réelles :** la synchronisation Google Drive des réglages peut conduire à un conflit conservateur entre plusieurs appareils. Aucune fusion automatique des journaux financiers concurrents n'est ajoutée ; les conflits doivent être arbitrés. Les dépenses déclarées ne sont pas un TCO complet ni un seuil de rentabilité garanti.
 
+
+## Extension tickets carburant (V1.1, PR en brouillon)
+- Catégorie « Carburant » : chaque ravitaillement permet de renseigner **date, montant réellement payé APRÈS remise, litres (trois décimales), type de carburant déclaré, compteur si disponible, commentaire et case « plein complet confirmé »**.
+- Les carburants sont des valeurs déclarées : gazole, gazole premium, SP98 E5, SP95 E5, SP95 E10, E85, autre ou « à confirmer » ; ne pas inférer le carburant depuis une étiquette « B7 » ou un ticket ambigu.
+- Prix du litre effectif = montant payé ÷ volume effectivement remis. Moyenne pondérée = somme des montants pour les tickets dont le volume est connu / somme de leurs litres. Les tickets sans volume restent comptés dans les dépenses, **pas** dans le prix moyen.
+- La consommation entre pleins est une **estimation conditionnelle de ravitaillement** : deux pleins complets datés, deux compteurs, volume connu pour **tous** les ravitaillements entre eux, chronologie cohérente et aucun double plein indécidable le même jour ; volume des pleins intermédiaires compris. Si l'une des conditions manque, affichage « — ».
+- Après remise TotalEnergies, ne pas enregistrer deux fois le remboursement : seule la somme effectivement déboursée sert au prix réel, et une réduction éventuelle est informative.
+- Les relevés sont conservés dans le même journal canonique \`S.cars[i].economics.entries\`, avec \`volumeMl\` entier, \`fuelType\` et \`fullTank\`. Anciennes dépenses carburant sans litres restent lisibles et ne sont ni complétées fictivement ni supprimées.
+- Les fichiers publics contiennent uniquement des valeurs fictives de tests ; **pas de photos de tickets, reçus réels, numéros de carte ni données d'identité en GitHub**.
+- Dépôt et sync Drive de l'autre agent non modifiés. Aucun accès direct à la PWA chiffrée depuis une photo transmise dans ChatGPT : **la lecture de photo n'est pas une sauvegarde**. Un futur import sécurisé côté application demandera authentification, confirmation de l'utilisateur, accusé de sauvegarde et vérification sur les deux appareils.
+- Contrôles : \`node tests/test_garage_fuel.js\`, et inclusion dans \`tests/test_garage.js\`. Tester le coût au litre après remise, litre manquant, deux pleins avec appoint, compteur décroissant, doublon/date, deux véhicules isolés, affichage mobile, verrouillage du coffre.
+
 ## Coordination sans collision
 - Aucun fichier de Twin Garage Scene, Live Route, Service Worker, du coffre, des workflows ou des autres dépôts modifié.
 - `src/app/garage-view.js` : montage ciblé du volet + conservation de son état ouvert. `src/app.js` : uniquement préservation explicite du journal lors d'un changement de préréglage.
