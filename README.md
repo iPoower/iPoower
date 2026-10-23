@@ -6,7 +6,7 @@
 
 ## 🚀 Selected projects · Projets
 
-### 🏎️ [Race Control](https://github.com/iPoower/iPoower) · [Live application ↗](https://ipoower.github.io/iPoower/race-control/)
+### 🏎️ [Race Control](https://github.com/iPoower/iPoower) · [Live application ↗](https://race-control-ipoower.pages.dev/)
 **FR :** PWA personnelle météo, trajets et pneus. GPS, fonctionnement hors ligne, configuration chiffrée, CI/CD GitHub Actions et tests Chromium / WebKit.
 
 **EN:** A weather, routing and tyre-decision PWA with offline support, encrypted configuration, Playwright tests and automated deployment.
@@ -16,10 +16,10 @@
 
 **EN:** A bilingual learning cockpit with hands-on labs, adaptive revision and local progress tracking.
 
-### 🔐 [Control Vault](https://github.com/iPoower/Control-Vault) · Prototype
-**FR :** Prototype de coffre-fort de sauvegardes : interface mobile, chiffrement expérimental et parcours de restauration simulés. La connexion Google Drive réelle reste à développer.
+### 🔐 [Control Vault](https://github.com/iPoower/Control-Vault) · [Application ↗](https://control-vault-ipoower.pages.dev/)
+**FR :** Coffre de copies chiffrées : interface mobile et transport opaque Google Drive raccordé. La configuration Google et la recette réelle restent à valider ; les autres parcours utilisent des données fictives.
 
-**EN:** A secure-backup PWA prototype with local cryptographic experiments and simulated restoration flows. Live Google Drive integration is **not implemented yet**.
+**EN:** A backup PWA with an opaque Google Drive transport. Google configuration and real-device recovery still need validation; other flows use demo data.
 
 ## 🛠️ Tools & practices · Outils et méthodes
 
