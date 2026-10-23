@@ -94,8 +94,8 @@ const SessionVault = (() => {
       get length() { return listOf().length; },
       key: i => { const l = listOf(); return i >= 0 && i < l.length ? l[i] : null; },
       getItem: k => { if (!access(false)) return null; k = String(k); if (k === PENDING) return vol.has(k) ? vol.get(k) : null; return secret(k) ? (m.has(k) ? m.get(k) : null) : META.has(k) ? null : raw.getItem(k); },
-      setItem: (k, v) => { access(true); k = String(k); v = String(v); if (k === PENDING) { vol.set(k, v); return; } if (META.has(k)) return; if (!secret(k)) { raw.setItem(k, v); return; } m.set(k, v); dirty.add(k); persist(); },
-      removeItem: k => { access(true); k = String(k); if (k === PENDING) { vol.delete(k); return; } if (META.has(k)) return; if (!secret(k)) { raw.removeItem(k); return; } if (m.delete(k)) { dirty.add(k); persist(); } },
+      setItem: (k, v) => { access(true); k = String(k); v = String(v); if (k === PENDING) { vol.set(k, v); return; } if (META.has(k)) return; if (!secret(k)) { raw.setItem(k, v); return; } m.set(k, v); dirty.add(k); persist(k); },
+      removeItem: k => { access(true); k = String(k); if (k === PENDING) { vol.delete(k); return; } if (META.has(k)) return; if (!secret(k)) { raw.removeItem(k); return; } if (m.delete(k)) { dirty.add(k); persist(k); } },
       clear: () => { access(true); [...m.keys()].forEach(k => dirty.add(k)); m.clear(); vol.clear(); persist(); }
     };
     // Présenté comme un vrai Storage : Object.keys(localStorage), localStorage[k], « k in localStorage » fonctionnent.
@@ -201,7 +201,12 @@ const SessionVault = (() => {
       sent.forEach((v, k) => { if ((mem.map.has(k) ? mem.map.get(k) : null) === v) mem.dirty.delete(k); });
       merge({ n: st.n, t: st.t, values: snap }); st.error = null;
     }
-    function persist() {
+    function persist(key) {
+      // Signal local sans valeur : le transport peut invalider son ancien statut
+      // avant sa prochaine vérification. Aucun transfert dans cet événement.
+      if (target && target.dispatchEvent && typeof Event === 'function') {
+        const event = new Event('twrc-vault-change'); event.key = key; target.dispatchEvent(event);
+      }
       if (st.mode !== 'vault' || st.timer) return;
       // microtâche (pas une minuterie) : part dès la fin du code en cours, jamais retardée par une horloge gelée ou un onglet en veille
       st.timer = true; Promise.resolve().then(() => { st.timer = null; flush(); });

@@ -144,12 +144,20 @@ const trips = async (bytes, handle) => json(J.capture((await codec.openWith(byte
     assert.deepEqual(await trips([...drive.files.values()].pop(), handle), ['r1', 'r2']);
     for (const k of ['code', 'quota', 'conflict']) assert.equal(json(O.status(O.failed(O.initial(), k, T0))).label, { code: 'code', quota: 'espace', conflict: 'conflit' }[k]);
   });
-  await check('octets distants différents : non vérifié, nouveau fichier, ancien conservé sans suppression', async () => {
+  await check('octets divergents : SYNC_BLOCKED, même identifiant conservé, aucune duplication automatique', async () => {
     const drive = provider(), d = device(drive, handle);
     drive.corruptOnce = true; d.edit('c1', T0); await d.step(T0 + O.QUIET_MS);
-    assert.equal(d.status().label, 'envoi'); assert.equal(drive.files.size, 1);
+    const reserved = [...drive.files.keys()][0], pending = JSON.parse(d.disk.state).job;
+    assert.equal(d.status().label, 'intégrité'); assert.equal(d.status().state, 'SYNC_BLOCKED');
+    assert.equal(pending.fileId, reserved); assert.equal(drive.files.size, 1);
+    const calls = drive.calls;
     await d.step(T0 + O.QUIET_MS + 60000);
-    assert.equal(d.status().label, 'synchronisé'); assert.equal(drive.files.size, 2);
+    assert.equal(drive.calls, calls); assert.equal(drive.files.size, 1);
+    // Action humaine de relecture : jamais de nouvel identifiant ni de nouveaux octets.
+    d.disk.state = JSON.stringify(O.unblock(JSON.parse(d.disk.state), T0 + 120000));
+    await d.step(T0 + 120000);
+    assert.equal(d.status().label, 'synchronisé'); assert.equal(drive.files.size, 1);
+    assert.equal(JSON.parse(d.disk.state).verified.fileId, reserved);
   });
   await check('statuts : « synchronisé » exige la relecture, « opérationnel » exige restauration ET iPhone physique', async () => {
     const verified = O.verified(O.sent(O.reserved(O.sealed(O.initial(), { rev: { id: hex(), parents: [], device: hex(), seq: 1 }, sha: 'a'.repeat(64), size: 1 }, T0), 'f1')), 'f1', 'a'.repeat(64), T0);
