@@ -1,4 +1,4 @@
-# Bryan Fiarda
+# iPoower
 
 **Cloud · DevSecOps · Cybersecurity — learning by building, securing and testing real applications.**
 
@@ -6,7 +6,7 @@
 
 🇬🇧 Transitioning into Cloud and DevSecOps through **hands-on, evidence-driven projects**. My focus: secure engineering, test automation, reproducible delivery and clear documentation.
 
-[LinkedIn](https://www.linkedin.com/in/bryan-fiarda-0x/) · [Case studies / Études de cas](docs/PORTFOLIO_CASE_STUDIES.md) · [Race Control — technical documentation](docs/RACE_CONTROL_TECHNICAL.md)
+[Case studies / Études de cas](docs/PORTFOLIO_CASE_STUDIES.md) · [Race Control — technical documentation](docs/RACE_CONTROL_TECHNICAL.md)
 
 ---
 
@@ -71,6 +71,6 @@
 
 Building a foundation for **Cloud / DevSecOps / Cloud Security**, with a long-term interest in secure cloud architecture. I value engineering roles centered on systems, reliability and technical problem-solving.
 
-**Contact / Échanger : [LinkedIn](https://www.linkedin.com/in/bryan-fiarda-0x/)**
+**Public developer identity / Identité publique : `iPoower`.** Personal contact details are shared privately when relevant, not published on this profile.
 
 <sub>These are independent learning projects. Demo screens, simulated tests and production integrations are deliberately distinguished; no private customer, vehicle or location data is published in this profile.</sub>
