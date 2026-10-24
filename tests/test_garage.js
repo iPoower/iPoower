@@ -176,3 +176,7 @@ test('compteur : relevé hebdomadaire dû à partir de 7 jours, relevé le plus 
  assert.equal(o('2026-10-14','2026-10-21').last.km,1000);assert.equal(o('2026-10-14','2026-10-21').ageDays,7);
 });
 console.log(n+'/'+n+' scénarios Garage validés');
+
+// Le suivi des couts fait partie de la suite Garage sans modifier le registre CI partagé.
+require('./test_garage_economics.js');
+require('./test_garage_fuel.js');
