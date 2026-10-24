@@ -125,5 +125,15 @@ function remote() {
       }finally{await context.close();}
     }
 
+    const idbContext=await browser.newContext();await drive.routes(idbContext);
+    try {
+      const page=await idbContext.newPage();await page.goto(U);
+      const result=await page.evaluate(fs.readFileSync(path.resolve(__dirname,'fixtures/native-drive-store.js'),'utf8'));
+      assert.equal(result.aborted,true);assert.equal(result.closedRejected,true);
+      for(const key of ['afterAbort','afterReopen','afterVersionChange'])assert.deepEqual(result[key],result.expected,key);
+      assert.match(result.recoveryHash,/^[0-9a-f]{64}$/);assert.deepEqual(result.recovery,[9,8,7,0,255]);
+      console.log('✅ IndexedDB natif : transaction réellement annulée, connexion close réouverte, événement versionchange, octets et récupération WebCrypto intacts');
+    } finally {await idbContext.close();}
+
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -14,3 +14,7 @@ merge, deployment, administrative setting or personal activation is authorized h
 
 Rollback of this validation: leave the branch unused. No data or main branch was changed.
 Sensitive source PRs still require individual human approval and post-integration validation.
+
+The validation branch also includes the isolated #240 lifecycle correction. Native IDB
+regressions exercise a real transaction abort, manual connection close/reopen, the
+versionchange handler and WebCrypto recovery-byte verification inside e2e85.
