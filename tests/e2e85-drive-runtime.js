@@ -23,7 +23,7 @@ function values(count, label) {
   return { 'twrc.settings.v1': JSON.stringify({ ...b.data.settings, edits: {}, calib: [], journal: {} }), [owner.J.KEY]: JSON.stringify(archive), [owner.J.CONTEXT]: JSON.stringify(ctx) };
 }
 function remote() {
-  const files = new Map(), pending = new Map(); let seq = 0, drop = false;
+  const files = new Map(), pending = new Map(); let seq = 0, drop = false, hold = null;
   async function routes(context) {
     await context.route(U + '**', r => r.fulfill({contentType:r.request().url().endsWith('owner.js')?'text/javascript':'text/html',
       body:r.request().url().endsWith('owner.js')?source:'<!doctype html><html lang="fr"><meta charset="utf-8"><title>RC fictif</title><script src="/owner.js"></script><body>Fiction</body></html>'}));
@@ -43,13 +43,14 @@ function remote() {
         return r.fulfill({status:200,headers:{...headers,Location:'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id='+meta.id}});
       }
       if(req.method()==='PUT') {
+        if(hold){const gate=hold;hold=null;gate.started();await gate.promise;}
         const id=u.searchParams.get('upload_id'), meta=pending.get(id), bytes=req.postDataBuffer();
         // Les fixtures restent sous 1 MiB ; les gros morceaux sont couverts par B2.
         assert.equal(req.headers()['content-range'],`bytes 0-${bytes.length-1}/${bytes.length}`);
         files.set(id,{meta:{...meta,size:String(bytes.length)},bytes}); pending.delete(id);
         if(drop) {drop=false;return r.abort('failed');} return json({id});
       }
-      if(key==='fixture-folder') return json({id:key,mimeType:'application/vnd.google-apps.folder',capabilities:{canAddChildren:true}});
+      if(key==='fixture-folder') return json({id:key,mimeType:'application/vnd.google-apps.folder',trashed:false,ownedByMe:true,appProperties:{cv_contract:'rc-folder-v1'},capabilities:{canAddChildren:true}});
       if(u.pathname==='/drive/v3/files') {
         const contract=(u.searchParams.get('q')||'').includes("value='rc-key-a1'")?'rc-key-a1':'rc-v1';
         return json({incompleteSearch:false,files:[...files.values()].map(f=>f.meta).filter(m=>m.appProperties.cv_contract===contract)});
@@ -58,7 +59,7 @@ function remote() {
       return u.searchParams.get('alt')==='media'?r.fulfill({headers,contentType:'application/json',body:f.bytes}):json(f.meta);
     });
   }
-  return {routes,files,loseReply:()=>{drop=true;}};
+  return {routes,files,loseReply:()=>{drop=true;},holdUpload:()=>{let started,release;const reached=new Promise(r=>{started=r;});const promise=new Promise(r=>{release=r;});hold={started,promise};return {reached,release};}};
 }
 (async()=>{
   const browser=await BR.launch(), drive=remote();
@@ -67,6 +68,7 @@ function remote() {
     await drive.routes(pc);await drive.routes(phone);
     const open=async(context,initial)=>{const p=await context.newPage();await p.goto(U);await p.evaluate(initial=>fixture.boot(initial),initial);return p;};
     let p=await open(pc,{code,values:values(120,'pc')}), q=await open(phone,{code,values:values(61,'phone')});
+    const originalPhone = await q.evaluate(async()=>(await vault.syncSnapshot()).values);
     await p.evaluate(()=>sync.run(true)); assert.equal(await p.evaluate(()=>sync.status.message),'synchronisé');
     await q.evaluate(()=>sync.run(true)); assert.equal(await q.evaluate(()=>sync.status.message),'synchronisé');
     for(let i=0;i<3;i++){await p.evaluate(()=>sync.run(true));await q.evaluate(()=>sync.run(true));}
@@ -74,6 +76,8 @@ function remote() {
     const size=drive.files.size;await p.evaluate(()=>sync.run(true));await q.evaluate(()=>sync.run(true));assert.equal(drive.files.size,size);
     const proof=await q.evaluate(async()=>({ recovered:JournalArchive.capture(await fixture.recovery()).records.length, current:await fixture.count(), raw:localStorage.getItem(SessionVault.VAULT).includes('synthetic') }));
     assert.equal(proof.recovered,63);assert.equal(proof.current,185);assert.equal(proof.raw,false);
+    assert.deepEqual(await q.evaluate(()=>fixture.recovery()),originalPhone,'complete authenticated pre-merge recovery equals the original local snapshot');
+    const independentCopy = await q.evaluate(async()=>Array.from(await db.latestRecovery()));
     console.log('✅ coffres réels + transport + IDB : 120/61 trajets, 91/365 jours, historique brut et double réponse conservés ; copie avant fusion déchiffrée');
     drive.loseReply();
     await p.evaluate(async()=>{const s=JSON.parse(vault.store.getItem('twrc.settings.v1'));s.cars[0].photo='synthetic-photo';vault.store.setItem('twrc.settings.v1',JSON.stringify(s));vault.store.setItem('twrc.editstamps.v1',JSON.stringify({'cars.0.photo':Date.now()}));await vault.flush();await sync.run(true);});
@@ -86,5 +90,40 @@ function remote() {
     await p.evaluate(()=>sync.run(true));assert.equal(await p.evaluate(()=>sync.status.message),'code requis');
     console.log('✅ verrouillage : clé révoquée, aucun envoi ni reprise automatique du coffre verrouillé');
     await pc.close();await phone.close();
+    // Les seuls octets de récupération survivent hors des deux installations.
+    const recoveryContext=await browser.newContext();await drive.routes(recoveryContext);
+    const restoredPage=await open(recoveryContext);
+    const restored=await restoredPage.evaluate(async ({bytes,code})=>{
+      if(localStorage.getItem(SessionVault.VAULT))throw Error('installation must be empty');
+      const values=await SessionVault.readRecovery(new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(bytes)),code,crypto);
+      await vault.unlock(code,values,true);return (await vault.syncSnapshot()).values;
+    },{bytes:independentCopy,code});
+    assert.deepEqual(restored,originalPhone,'full values restored in an independent empty installation, no count-only comparison');
+    await recoveryContext.close();console.log('✅ copie indépendante après fermeture : authentification RC, restauration dans un coffre neuf et comparaison structurelle exhaustive');
+    for(const kind of ['first','automatic']) {
+      const context=await browser.newContext(), isolated=remote();await isolated.routes(context);
+      const page=await open(context,{code,values:values(120,'pending-'+kind)});
+      try {
+        if(kind==='automatic')await page.evaluate(()=>sync.run(true));
+        await page.evaluate(async()=>{const s=JSON.parse(vault.store.getItem('twrc.settings.v1'));s.cars[0].photo='fixture-A';vault.store.setItem('twrc.settings.v1',JSON.stringify(s));await vault.flush();});
+        const gate=isolated.holdUpload(), sending=page.evaluate(()=>sync.run(true));
+        let deadline;try{await Promise.race([gate.reached,new Promise((_,reject)=>{deadline=setTimeout(()=>reject(Error('Mock upload not reached')),15000);})]);}finally{clearTimeout(deadline);}
+        await page.evaluate(async()=>{const s=JSON.parse(vault.store.getItem('twrc.settings.v1'));s.cars[0].photo='fixture-B';vault.store.setItem('twrc.settings.v1',JSON.stringify(s));await vault.flush();});
+        gate.release();await sending;
+        const pending=await page.evaluate(async()=>({state:(await db.read()).outbox,local:JSON.parse(vault.store.getItem('twrc.settings.v1')).cars[0].photo,status:sync.status.message}));
+        assert.equal(pending.local,'fixture-B');assert.notEqual(pending.state.dirtySince,null);assert.notEqual(pending.status,'synchronisé');
+        await page.evaluate(()=>sync.run(true));
+        const latest=[...isolated.files.values()].filter(f=>f.meta.appProperties.cv_contract==='rc-v1').at(-1);
+        const check=await page.evaluate(async({bytes,code})=>{const codec=ControlVaultPacket.create({validateBusiness:DriveSync.validateBusiness});const data=await codec.open(new Uint8Array(bytes),code,'prod-999');return {saved:data.values,expected:DriveSync.projection((await vault.syncSnapshot()).values),status:sync.status.message};},{bytes:[...latest.bytes],code});
+        assert.deepEqual(check.saved,check.expected);assert.equal(check.status,'synchronisé');
+        const invalidated=await page.evaluate(()=>{const s=JSON.parse(vault.store.getItem('twrc.settings.v1'));s.cars[0].photo='fixture-C';vault.store.setItem('twrc.settings.v1',JSON.stringify(s));return sync.status;});
+        assert.equal(invalidated.message,'en attente','a foreground edit invalidates the previous success immediately, before the timer');
+        assert.notEqual(invalidated.state,'SYNCED');
+        await page.evaluate(async()=>{await vault.flush();await sync.run(true);});
+        assert.equal(await page.evaluate(()=>sync.status.message),'synchronisé');
+        console.log('✅ '+kind+': real vault/IDB/AES-GCM, edit during upload durably pending, full remote payload verified after its own transmission');
+      }finally{await context.close();}
+    }
+
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
