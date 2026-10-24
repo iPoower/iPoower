@@ -1,0 +1,50 @@
+name: Forteresse II · export exhaustif fictif
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tests/fortress-ii-exhaustive-copy.js'
+      - 'docs/fortress-ii-exhaustive-lab.md'
+      - '.github/workflows/fortress-ii-exhaustive.yml'
+permissions:
+  contents: read
+jobs:
+  app-copy-lab:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # pinned
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # pinned
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked test dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Prepare actual app from synthetic preset and separate fake relay
+        timeout-minutes: 8
+        run: node -e "require('./tests/ci/workspace').prepare()"
+      - name: Install browser
+        timeout-minutes: 16
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          for i in 1 2; do
+            timeout 420 npx playwright install --with-deps "$BROWSER" && exit 0
+            echo "::warning::Browser installation retry $i/2"
+            sleep 5
+          done
+          echo "::error::Browser unavailable"; exit 1
+      - name: Validate integration test syntax
+        run: node --check tests/fortress-ii-exhaustive-copy.js
+      - name: Exercise actual built app with no external network
+        timeout-minutes: 9
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: node tests/fortress-ii-exhaustive-copy.js
