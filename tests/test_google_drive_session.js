@@ -20,7 +20,7 @@ const config = { approved: true, clientId: ['123456', 'fake.apps.googleuserconte
   const host = { location: { origin: config.raceOrigin }, crypto: webcrypto, gapi: { load(_, options) { options.callback(); } },
     google: { accounts: { oauth2: { initTokenClient(options) { clients.push(options); return { requestAccessToken(arg) { assert.equal(arg.prompt, 'select_account'); } }; }, hasGrantedAllScopes: () => true } },
       picker: { DocsView: View, PickerBuilder: Picker, ViewId: { FOLDERS: 'folders' }, Action: { PICKED: 'picked', CANCEL: 'cancel' } } } };
-  const provider = { connect(...args) { connections.push(args); }, disconnect() {}, folder: async () => {}, account: async () => 'synthetic_account' };
+  const provider = { connect(...args) { connections.push(args); }, disconnect() {}, folder: async () => {}, account: async () => 'synthetic_account', identity: async () => ({id:'synthetic_account', label:'fixture-backup@example.invalid'}) };
   const session = G.create(config, provider, host); await session.prepare();
   let first = session.connect().catch(e => e.code); assert.equal(clients.length, 1, 'demande ouverte dans le geste onclick');
   session.disconnect(); assert.equal(await first, 'cancelled');
@@ -28,6 +28,9 @@ const config = { approved: true, clientId: ['123456', 'fake.apps.googleuserconte
   assert.equal(connections.length, 0); assert.equal(session.connected, false);
   clients[1].callback({ access_token: 'new_token', scope, expires_in: 3600 }); await second;
   assert.equal(connections.length, 1); assert.equal(session.connected, true);
+  await assert.rejects(session.chooseFolder(), e => e.code === 'confirmation');
+  assert.equal(session.identity.label, 'fixture-backup@example.invalid');
+  session.confirmAccount('synthetic_account');
   const selected = session.chooseFolder(); await pick({ action: 'picked', docs: [{ id: 'folder_A' }] });
   assert.match((await selected).binding, /^[0-9a-f]{64}$/);
   const cancelled = session.chooseFolder().catch(e => e.code); session.disconnect(); assert.equal(await cancelled, 'cancelled');
