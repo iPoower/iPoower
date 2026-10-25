@@ -44,4 +44,17 @@ try {
   assert.notEqual(run(JSON.stringify(config), false).status, 0, 'jamais de configuration sur le build historique');
   for (const extra of [{ secret: 'no' }, { token: 'no' }, { folderId: 'no' }, { approved: false }]) assert.notEqual(run(JSON.stringify({ ...config, ...extra })).status, 0);
   console.log('✅ deux profils CSP, configuration publique séparée, opt-in strict, aucune configuration Google sur github.io');
+  const profile = spawnSync(process.execPath, [path.join(ROOT, 'tools/build-drive-test.cjs')], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, BUILD_SHA: 'a'.repeat(40), GOOGLE_DRIVE_CONFIG: '' }, timeout: 180000 });
+  assert.equal(profile.status, 0, 'profil TEST complet construit et préréglage fictif déchiffré vérifié');
+  const result = JSON.parse(profile.stdout.trim());
+  const stamped = JSON.parse(fs.readFileSync(path.join(result.site, 'fixture-manifest.json'), 'utf8'));
+  assert.equal(stamped.fixtureOnly, true); assert.equal(stamped.sourceSha, 'a'.repeat(40)); assert.equal(stamped.googleEnabled, false);
+  assert.equal(fs.readFileSync(path.join(result.site, 'drive-config.json'), 'utf8'), 'null');
+  assert(fs.readFileSync(path.join(result.site, 'index.html'), 'utf8').includes('TEST — DONNÉES FICTIVES UNIQUEMENT'));
+  assert(fs.readFileSync(path.join(result.site, '_headers'), 'utf8').includes('geolocation=()'));
+  assert(!Object.keys(stamped.files).some(f => /(^|\/)(preset\.json|artifact\.html|relay-config\.sealed\.json|relay\.js)$/.test(f)));
+  for (const [name, expected] of Object.entries(stamped.files)) assert.equal(require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(result.site, name))).digest('hex'), expected);
+  const denied = spawnSync(process.execPath, [path.join(ROOT, 'tools/build-drive-test.cjs')], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, BUILD_SHA: 'a'.repeat(40), GOOGLE_DRIVE_CONFIG: JSON.stringify(config) } });
+  assert.notEqual(denied.status, 0, 'profil TEST refuse les autres origines avant tout build');
+  console.log('✅ profil TEST : fixture déchiffrée, fichiers limités, empreintes exactes, aucun Google implicite ni origine de production');
 } finally { fs.rmSync(path.join(ROOT, OUT), { recursive: true, force: true }); }

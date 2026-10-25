@@ -59,7 +59,7 @@ if(/<\/script/i.test(recoverySource))throw new Error('Bloc de récupération inv
 const buildId=crypto.createHash('sha256').update(js).update(device).update(style).update(r('src/shell.html')).update(recoverySource).digest('hex').slice(0,12);
 const recoveryScript='window.TWRC_RECOVERY_BUILD='+JSON.stringify(buildId)+';\n'+recoverySource;
 const DATA_BASE=process.env.RC_DATA_BASE||'';
-if(DATA_BASE&&!/^https:\/\/[a-z0-9.-]+\/[A-Za-z0-9._\/-]*\/$/.test(DATA_BASE))throw new Error('RC_DATA_BASE doit être une URL https terminée par « / »');
+if(DATA_BASE&&(!/^https:\/\/[a-z0-9.-]+\/[A-Za-z0-9._\/-]*$/.test(DATA_BASE)||!DATA_BASE.endsWith('/')))throw new Error('RC_DATA_BASE doit être une URL https terminée par « / »');
 const DRIVE=require('./drive-config').read(process.env.GOOGLE_DRIVE_CONFIG,!!DATA_BASE);
 w(OUT+'/drive-config.json',JSON.stringify(DRIVE));
 const boot=`<script>window.TWRC_BUILD=${JSON.stringify(buildId)};window.TWRC_DATA_BASE=${JSON.stringify(DATA_BASE)};window.TWRC_TIREDB=${tdb};window.TWRC_SEALED=${JSON.stringify(sealed)};window.TWRC_SEALED_V=${JSON.stringify(sealedV)};

@@ -120,6 +120,32 @@ module.exports = async function recoveryChecks() {
     for (const many of [false, true]) { const s = setup(); s.provider.list = async () => many ? Array(129).fill(clone(initial.ref)) : [];
       await assert.rejects(s.controller().prepare(pass)); assert.equal(s.state, null); assert.equal(s.stats.uploads, 0); }
   });
+  await test('128 révisions authentifiées acceptées ; 129 refusées avant téléchargement', async () => {
+    const s = setup(); s.files.length = 0;
+    let parent = [];
+    for (let i = 1; i <= 128; i++) {
+      const revision = { id: i.toString(16).padStart(32, '0'), device: rev.device, seq: i, parents: parent };
+      const file = await makeFile(revision); s.files.push(file); parent = [revision.id];
+    }
+    const ticket = await s.controller().prepare(pass);
+    assert.equal(ticket.revision, parent[0]); assert.equal(s.stats.downloads, 128);
+    assert.equal(s.state, null); assert.equal(s.stats.uploads, 0);
+    s.provider.list = async () => [...s.files.map(f => clone(f.ref)), clone(initial.ref)];
+    const before = s.stats.downloads;
+    await assert.rejects(s.controller().prepare(pass), e => e.code === 'limit');
+    assert.equal(s.stats.downloads, before); assert.equal(s.state, null); assert.equal(s.files.length, 128);
+  });
+  await test('budget 128 Mio : dépassement refusé avant HTTP ; borne exacte admise au préflight', async () => {
+    for (const extra of [0, 1]) {
+      const s = setup(), size = 64 * 1024 * 1024;
+      s.provider.list = async () => [clone({ ...initial.ref, size }), clone({ ...initial.ref, fileId: 'budget-second', fileSha256: 'f'.repeat(64), size: size + extra,
+        revision: { ...rev, id: '3'.repeat(32), seq: 2, parents: [rev.id] } })];
+      let called = 0;
+      s.provider.download = async () => { called++; throw Object.assign(new Error('fixture-stop'), { code: 'fixture-stop' }); };
+      await assert.rejects(s.controller().prepare(pass), e => e.code === (extra ? 'limit' : 'fixture-stop'));
+      assert.equal(called, extra ? 0 : 1); assert.equal(s.state, null); assert.equal(s.stats.uploads, 0);
+    }
+  });
   await test('coffre créé par un autre contexte pendant la dérivation : octets étrangers conservés', async () => {
     const raw = storage(); let inject = true;
     const crypt = { getRandomValues: webcrypto.getRandomValues.bind(webcrypto), subtle: new Proxy(webcrypto.subtle, {
