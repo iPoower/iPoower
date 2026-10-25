@@ -21,7 +21,9 @@ try {
   assert.equal(run(JSON.stringify(config)).status, 0);
   const headers = fs.readFileSync(path.join(ROOT, OUT) + '/_headers', 'utf8'), html = fs.readFileSync(path.join(ROOT, OUT) + '/index.html', 'utf8');
   const recovery = fs.readFileSync(path.join(ROOT, OUT) + '/recovery.html', 'utf8');
-  const recoveryCode = recovery.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const scripts = [...recovery.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script\s*>/gi)];
+  assert.equal(scripts.length, 1, 'one exact recovery script, no additional script');
+  const recoveryCode = scripts[0][1];
   const codeHash = require('node:crypto').createHash('sha256').update(recoveryCode).digest('base64');
   assert(headers.includes("'sha256-" + codeHash + "'"), 'the recovery document uses an exact authorized script hash');
   assert(recovery.includes('id="recovery-consent"') && recovery.includes('id="recovery-verify"'));
