@@ -5,17 +5,21 @@ const path = require('node:path');
 const fs = require('node:fs'), assert = require('node:assert/strict'), BR = require('./lib/browser');
 const { load, business, code } = require('./lib/control-vault-owner');
 const U = 'https://race.example.com/';
+const appSource=fs.readFileSync(path.resolve(__dirname,'../src/app.js'),'utf8');
+const unsealSource=appSource.slice(appSource.indexOf('async function unseal('),appSource.indexOf('// coffre de session verrouillé'));
 const source = ['journal-archive', 'debrief', 'device-storage', 'remember-device', 'session-vault', 'sync-merge', 'sync-revisions', 'sync-outbox', 'sync-key', 'control-vault-packet', 'drive-store', 'drive-transport', 'drive-sync']
-  .map(n => fs.readFileSync(path.resolve(__dirname, '../src/' + n + '.js'), 'utf8')).join('\n') + `
+  .concat(['drive-recovery']).map(n => fs.readFileSync(path.resolve(__dirname, '../src/' + n + '.js'), 'utf8')).join('\n') + '\n' + unsealSource + `
 window.fixture = { async boot(initial) {
   window.vault = SessionVault.create({raw:localStorage,session:sessionStorage,crypto,target:window,remembered:RememberDevice});
+  window.TWRC_VAULT=vault;window.TWRC_RAW_STORAGE=localStorage;
   await vault.boot(); if(initial) await vault.unlock(initial.code, initial.values, true);
   window.provider=new DriveTransport.OpaqueDrive([location.origin]); provider.connect('fixture-token',3600,['https://www.googleapis.com/auth/drive.file']);
   window.db=DriveStore.create('twrc.drive.sync.v1');
   window.sync=DriveSync.create({vault,provider,version:()=> 'prod-999'});
   sync.select({folder:'fixture-folder',binding:'a'.repeat(64)});
 }, count: async()=>JournalArchive.capture((await vault.syncSnapshot()).values).records.length,
-recovery: async()=> {const b=await db.latestRecovery();return b&&SessionVault.readRecovery(new TextDecoder().decode(b),'${code}',crypto);}};`;
+recovery: async()=> {const b=await db.latestRecovery();return b&&SessionVault.readRecovery(new TextDecoder().decode(b),'${code}',crypto);},
+newDevice:()=> {const r=DriveRecovery.create({vault,provider,store:db,version:()=> 'prod-999'});r.select({folder:'fixture-folder',binding:'a'.repeat(64)});return r;}};`;
 function values(count, label) {
   const owner = load(), b = business(owner, count), v = b.values;
   const archive = owner.J.capture(v); archive.records = archive.records.map(r => owner.J.encode({ ...JSON.parse(r), key: label + '-' + JSON.parse(r).key }));
@@ -125,5 +129,45 @@ function remote() {
       }finally{await context.close();}
     }
 
+    // A2 autonome : aucune clé ou mémoire d'un autre navigateur ne survit.
+    {
+      const isolated=remote(), sourceContext=await browser.newContext(), targetContext=await browser.newContext();
+      await isolated.routes(sourceContext);await isolated.routes(targetContext);
+      const sourcePage=await open(sourceContext,{code,values:values(120,'a2-source')});
+      await sourcePage.evaluate(()=>sync.run(true));
+      const expected=await sourcePage.evaluate(async()=>DriveSync.projection((await vault.syncSnapshot()).values));
+      let target=await open(targetContext);
+      const preview=await target.evaluate(async code=>{window.restore=fixture.newDevice();window.ticket=await restore.prepare(code);return {ticket,raw:localStorage.length,state:await db.read()};},code);
+      assert.equal(preview.raw,0);assert.equal(preview.state,null);
+      assert.equal(await target.evaluate(async code=>(await restore.install(ticket,code,true)).state,code),'REOPEN_REQUIRED');
+      assert.equal(isolated.files.size,2,'only the preexisting profile and source revision exist');
+      await assert.rejects(target.evaluate(code=>restore.verify(code),code));
+      // La vraie page construite vérifie la copie au prochain document,
+      // même lorsque Google n'est pas activé sur ce profil de build fictif.
+      const recoveryHtml=fs.readFileSync(path.resolve(__dirname,'../.ci/dist/recovery.html'),'utf8');
+      const recoveryBuild=recoveryHtml.match(/window\.TWRC_RECOVERY_BUILD="([0-9a-f]{12})"/)[1];
+      await targetContext.route(U+'recovery.html',r=>r.fulfill({contentType:'text/html',body:recoveryHtml}));
+      await targetContext.route(U+'version.json',r=>r.fulfill({contentType:'application/json',body:JSON.stringify({build:recoveryBuild,run:999})}));
+      await targetContext.route(U+'drive-config.json',r=>r.fulfill({contentType:'application/json',body:'null'}));
+      await target.close();target=await targetContext.newPage();await target.goto(U+'recovery.html');
+      await target.waitForFunction(()=>!document.getElementById('recovery-verify').disabled);
+      await target.locator('#recovery-code').fill(code);await target.locator('#recovery-verify').click();
+      await target.waitForFunction(()=>document.getElementById('recovery-status').textContent.startsWith('Restauration vérifiée après réouverture'));
+      assert.equal(await target.locator('#recovery-code').inputValue(),'');
+      assert.equal(await target.locator('#recovery-open-app').isVisible(),true);
+      await target.close();target=await open(targetContext);
+      const actual=await target.evaluate(async code=>{if(!await unseal(code,false))throw Error('recovered vault must open without the published preset');return DriveSync.projection((await vault.syncSnapshot()).values);},code);
+      assert.deepEqual(actual,expected,'all business values including history survive a new document');
+      await target.evaluate(()=>sync.run(true));assert.equal(await target.evaluate(()=>sync.status.message),'synchronisé');
+      assert.equal(isolated.files.size,2,'adopting a verified head must not create a duplicate revision');
+      await target.evaluate(async()=>{const s=JSON.parse(vault.store.getItem('twrc.settings.v1'));s.cars[0].photo='from-recovered-phone';vault.store.setItem('twrc.settings.v1',JSON.stringify(s));await vault.flush();});
+      await targetContext.setOffline(true);await target.evaluate(()=>sync.run(true));assert.notEqual(await target.evaluate(()=>sync.status.message),'synchronisé');
+      await targetContext.setOffline(false);await target.evaluate(()=>sync.run(true));await sourcePage.evaluate(()=>sync.run(true));
+      assert.equal(await sourcePage.evaluate(()=>JSON.parse(vault.store.getItem('twrc.settings.v1')).cars[0].photo),'from-recovered-phone');
+      await sourcePage.evaluate(async()=>{const s=JSON.parse(vault.store.getItem('twrc.settings.v1'));s.cars[0].photo='return-from-pc';vault.store.setItem('twrc.settings.v1',JSON.stringify(s));await vault.flush();await sync.run(true);});
+      await target.evaluate(()=>sync.run(true));assert.equal(await target.evaluate(()=>JSON.parse(vault.store.getItem('twrc.settings.v1')).cars[0].photo),'return-from-pc');
+      await sourceContext.close();await targetContext.close();
+      console.log('✅ récupération A2 vierge, fermeture/réouverture, comparaison exhaustive, reprise sans doublon puis aller-retour et coupure réseau simulée');
+    }
   }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

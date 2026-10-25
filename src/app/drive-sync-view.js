@@ -10,6 +10,8 @@ function renderDriveSync() {
     const b = document.createElement('button'); b.className = 'btn'; b.textContent = label; b.disabled = disabled || d.busy;
     b.addEventListener('click', action); root.appendChild(b);
   };
+  const recover = document.createElement('a'); recover.className = 'btn'; recover.href = './recovery.html';
+  recover.textContent = 'Récupération sur un nouvel appareil'; root.appendChild(recover);
   button('Exporter la copie avant fusion', async () => {
     try { const bytes = await DriveStore.create('twrc.drive.sync.v1').latestRecovery(); if (!bytes) { d.text = 'Aucune fusion locale effectuée : pas de copie avant fusion.'; renderDriveSync(); return; }
       await downloadRecovery(new TextDecoder('utf-8', { fatal: true }).decode(bytes));

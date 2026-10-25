@@ -57,6 +57,7 @@ const DriveSync = (() => {
         outbox: SyncOutbox.initial(), bytes: null, observed: null, signal: null, recovery: null };
       if (state.v !== 1 || !/^[0-9a-f]{32}$/.test(state.device) || !Array.isArray(state.base) || !Number.isSafeInteger(state.seq)) return fail('stockage');
       SyncOutbox.status(state.outbox);
+      if (state.recoveryInit && state.recoveryInit.phase !== 'verified') return fail('recovery');
       lastRecovery = state.recovery;
       return state;
     }

@@ -148,4 +148,6 @@ function drive() {
   }
   if (failures.length) throw new AggregateError(failures, failures.length + ' concurrency failures');
 
+  await require('./lib/drive-recovery-checks')();
+
 })().catch(e => { console.error(e); process.exitCode = 1; });

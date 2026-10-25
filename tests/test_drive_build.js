@@ -20,6 +20,13 @@ try {
   assert(!cspOrigins(fs.readFileSync(path.join(ROOT, OUT) + '/_headers', 'utf8')).has('https://accounts.google.com'));
   assert.equal(run(JSON.stringify(config)).status, 0);
   const headers = fs.readFileSync(path.join(ROOT, OUT) + '/_headers', 'utf8'), html = fs.readFileSync(path.join(ROOT, OUT) + '/index.html', 'utf8');
+  const recovery = fs.readFileSync(path.join(ROOT, OUT) + '/recovery.html', 'utf8');
+  const recoveryCode = recovery.match(/<script>([\s\S]*?)<\/script>/)[1];
+  const codeHash = require('node:crypto').createHash('sha256').update(recoveryCode).digest('base64');
+  assert(headers.includes("'sha256-" + codeHash + "'"), 'the recovery document uses an exact authorized script hash');
+  assert(recovery.includes('id="recovery-consent"') && recovery.includes('id="recovery-verify"'));
+  assert(!recovery.includes('window.TWRC_SEALED=') && !recovery.includes(config.clientId) && !recovery.includes(config.apiKey));
+  assert(!recovery.includes('DeviceStorage.bootstrap(window,localStorage)') && !recovery.includes('function loadSettings()'));
   assert.equal(header(headers, 'Cross-Origin-Opener-Policy'), 'same-origin-allow-popups');
   assert(cspOrigins(headers, 'frame-src').has('https://docs.google.com'));
   for (const spoof of ['https://docs.google.com.example.org', 'https://docs.google.com@example.org', 'https://example.org/docs.google.com'])

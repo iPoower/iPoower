@@ -89,6 +89,9 @@ self.addEventListener('fetch', e => {
   }
   // Confidentialité : aucun fournisseur externe (et donc aucune coordonnée GPS envoyée dans ses URL) n'est persisté par le SW.
   if (u.origin !== self.location.origin || !u.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
+  // La page de récupération ne doit jamais remplacer index.html dans le cache
+  // du shell. Son réseau/version doivent être confirmés, sans fallback métier.
+  if (/\/recovery\.html$/.test(u.pathname)) return;
 
   if (/\/road-datex\.json$/.test(u.pathname)) { e.respondWith(publicRoad(e.request, canonical(u))); return; }
   // Les futurs bridges commerciaux devront être explicitement autorisés : aucun cache implicite du shell.
