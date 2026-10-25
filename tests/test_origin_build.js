@@ -7,6 +7,26 @@ const build = (out, base) => spawnSync(process.execPath, [path.join(ROOT, 'tools
 const read = (out, f) => fs.readFileSync(path.join(ROOT, WORK, out, f), 'utf8');
 let n = 0; const check = (name, fn) => { fn(); n++; console.log('✅ ' + name); };
 const BASE = 'https://data.example.test/race-control/', SRC = fs.readFileSync(path.join(ROOT, 'src/sw.js'), 'utf8');
+const vm = require('node:vm');
+check('lifecycle : enregistrement du SW sur les origines HTTPS, Cloudflare inclus, jamais HTTP', () => {
+  const lifecycle = fs.readFileSync(path.join(ROOT, 'src/app/lifecycle.js'), 'utf8');
+  const body = lifecycle.match(/function registerSW\(\) \{[\s\S]*?\n\}/)[0];
+  for (const [origin, supported, wanted] of [
+    ['https://race-control-ipoower.pages.dev', true, 1],
+    ['https://rc-drive-test-ipoower.pages.dev', true, 1],
+    ['https://ipoower.github.io', true, 1],
+    ['http://localhost:4173', true, 0],
+    ['https://race-control-ipoower.pages.dev', false, 0]
+  ]) {
+    const calls = [], navigator = supported ? { serviceWorker: { register: (...args) => {
+      calls.push(args); return Promise.resolve({ update() {} });
+    } } } : {};
+    const sandbox = vm.createContext({ navigator, location: new URL(origin), RUNTIME_RECORDER: null });
+    vm.runInContext(body + ';registerSW();', sandbox);
+    assert.equal(calls.length, wanted, origin + ' supported=' + supported);
+    if (wanted) assert.equal(JSON.stringify(calls[0]), JSON.stringify(['sw.js', { updateViaCache: 'none' }]));
+  }
+});
 try {
   fs.rmSync(path.join(ROOT, WORK), { recursive: true, force: true });
   assert.equal(build('legacy').status, 0); assert.equal(build('dedicated', BASE).status, 0);

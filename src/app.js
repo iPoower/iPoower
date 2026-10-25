@@ -73,6 +73,24 @@ function repairVehicleIdentity(settings) {
 // réglages chiffrés (site public) : déchiffrés une fois avec le code, puis gardés sur l'appareil
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function unseal(pass, keepWeek = true, verifyOnly = false) {
+  // Une récupération A2 vérifiée porte son propre profil complet. Son code
+  // peut différer de celui d'un ancien préréglage publié : le coffre local
+  // authentifié reste ouvrable. Aucun repli sur le clair ou un coffre vide.
+  const restoredVault = window.TWRC_VAULT, restoredRaw = window.TWRC_RAW_STORAGE;
+  if (!verifyOnly && restoredVault && restoredRaw) {
+    try {
+      if (!restoredRaw.getItem(SessionVault.VAULT)) throw new Error('no-local-vault');
+      const saved = await DriveStore.create('twrc.drive.sync.v1').read();
+      if (saved && saved.recoveryInit && saved.recoveryInit.phase === 'verified') {
+        const local = await restoredVault.syncVerifyInitialized(pass);
+        if (local['twrc.settings.v1'] && local[JournalArchive.KEY] && !Object.hasOwn(local, 'twrc.plain')) {
+          JournalArchive.read(local[JournalArchive.KEY]);
+          await restoredVault.unlock(pass, null, keepWeek);
+          window.TWRC_STORAGE_ERROR = false; unseal.restored = true; return true;
+        }
+      }
+    } catch { /* le parcours historique conserve ses propres vérifications */ }
+  }
   const S0 = window.TWRC_SEALED; if (!S0 || !crypto || !crypto.subtle) return false;
   let txt;
   try {
@@ -3301,10 +3319,15 @@ function carSilhouette(noTires) {
   return `<svg viewBox="0 0 124 62" aria-hidden="true"><path d="M8 42l2-9q2-5 8-6l20-3 14-10q3-2 8-2h22q6 0 10 4l12 11q8 2 9 7l1 8z" fill="var(--panel2)" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
     <path d="M42 24l11-8h14l1 8zM72 24l-1-8h10q4 0 7 3l5 5z" fill="var(--accent-soft)" stroke="currentColor" stroke-width="1"/>${wheel(30)}${wheel(94)}</svg>`;
 }
+// Validation au point d'affichage : les sauvegardes historiques restent intactes.
+// Seuls les formats data:image employés par Race Control sont autorisés, sans nouvelle limite de taille.
+function safeCarPhoto(value) {
+  return typeof value === 'string' && /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(value) ? value : '';
+}
 function carThumb(car) {
-  const i = S.cars.indexOf(car), ph = car.photo;
+  const i = S.cars.indexOf(car), ph = safeCarPhoto(car.photo);
   return `<label class="thumb${ph ? ' has' : ''}" for="photo-${i}" title="${ph ? 'Changer la photo' : 'Ajouter une photo de la voiture'}">
-    ${ph ? `<img src="${ph}" alt="${esc(car.name)}">` : carSilhouette(!hasTires(car)) + '<span>+ Photo</span>'}
+    ${ph ? `<img src="${esc(ph)}" alt="${esc(car.name)}">` : carSilhouette(!hasTires(car)) + '<span>+ Photo</span>'}
     <input type="file" accept="image/*" id="photo-${i}" data-photo="${i}" hidden></label>`;
 }
 function waitCard(car) {
@@ -3570,7 +3593,7 @@ function renderCompare() {
   }).join('');
   const [a, b] = res, sporty = res.find(r => r.car.sporty && effType(r.car) === 'summer');
   const why = [
-    `Pneus : ${res.map(r => `${r.car.short} en ${TYPE_LABEL[r.car.tire.type]} (${esc(r.car.tire.size)})`).join(' ; ')}.`,
+    `Pneus : ${res.map(r => `${esc(r.car.short)} en ${TYPE_LABEL[r.car.tire.type]} (${esc(r.car.tire.size)})`).join(' ; ')}.`,
     `Conditions sur ${esc(label)} : ${f1(sm.Tmin)} à ${f1(sm.Tmax)} °C, chaussée estimée jusqu’à ${f1(sm.TrMin)} °C, pluie max ${f1(sm.Pmax)} mm/h, visibilité min ${visTxt(sm.visMin)}, ${sm.snowSum > 0 || sm.snowCode ? 'neige prévue' : 'pas de neige prévue'}, risque de verglas estimé ${ICE_LV[sm.iceLevel].toLowerCase()}.`,
     genericCompare ? 'Comparaison personnalisée en attente : renseigne les lieux et la monte de chaque voiture.' : gap < 5 ? `Les deux configurations obtiennent un indice proche (${a.w.score} et ${b.w.score}) : les pneus ne les distinguent pas nettement dans ces conditions.` : `Écart d’indice : ${gap} points en faveur de ${esc(best.car.short)} pour l’adéquation pneus/météo.`,
     sporty && (cold || wet) ? `${esc(sporty.car.short)} (usage sportif, ${esc(sporty.car.spec || 'puissance élevée')}) sollicite davantage l’adhérence disponible au démarrage et en sortie de courbe quand le pneu est froid.` : '',

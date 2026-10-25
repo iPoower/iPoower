@@ -30,14 +30,35 @@ const DriveSync = (() => {
       if (v[key] !== undefined) ControlVaultPacket.strictJson(new TextEncoder().encode(v[key]), 64);
     return JSON.stringify(projection(v)) === JSON.stringify(v);
   }
+  async function premergeRecovery(store = DriveStore.create(DB), crypt = globalThis.crypto) {
+    const state = await store.read();
+    if (!state || state.recovery == null) return null;
+    if (state.v !== 1 || !/^[0-9a-f]{64}$/.test(state.recovery)) return fail('stockage');
+    const bytes = await store.readRecovery(state.recovery);
+    if (!(bytes instanceof Uint8Array)) return fail('stockage');
+    const hash = [...new Uint8Array(await crypt.subtle.digest('SHA-256', bytes))].map(v => v.toString(16).padStart(2, '0')).join('');
+    if (hash !== state.recovery) return fail('integrity');
+    return bytes.slice();
+  }
   function create({ vault, provider, store = DriveStore.create(DB), keys = SyncKey.storage(), locks = navigator.locks,
     crypto: crypt = globalThis.crypto, now = () => Date.now(), version, onChange = () => {}, onApplied = () => {} }) {
     const codec = ControlVaultPacket.create({ validateBusiness, crypto: crypt });
-    let selected = null, handle = null, signal = null, running = false, message = 'local', conflicts = [], lastRecovery = null, stopped = false;
+    let selected = null, handle = null, signal = null, running = false, message = 'local', conflicts = [], lastRecovery = null, stopped = false, localVersion = 0, observedVersion = 0, blocked = false, finishing = Promise.resolve(), finish = () => {};
     const digest = async bytes => [...new Uint8Array(await crypt.subtle.digest('SHA-256', bytes))].map(x => x.toString(16).padStart(2, '0')).join('');
     const canonical = v => Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canonical(v[k])])) : v;
     const fingerprint = v => digest(new TextEncoder().encode(JSON.stringify(canonical(v))));
-    const notify = () => onChange({ message, conflicts: [...conflicts], running, lastRecovery });
+    function state() {
+      if (message === 'synchronisé' && (localVersion !== observedVersion || vault.pendingWrites)) message = 'en attente';
+      return { message, conflicts: [...conflicts], running, lastRecovery,
+        state: blocked ? 'SYNC_BLOCKED' : running ? 'VERIFYING' : message === 'synchronisé' ? 'SYNCED' : selected ? 'PENDING' : 'LOCAL' };
+    }
+    const notify = () => onChange(state());
+    function changed(event) {
+      if (!selected || stopped || event.key && SyncMerge.device(event.key)) return;
+      localVersion++; if (!blocked) message = 'en attente'; notify();
+    }
+    function listen() { if (globalThis.addEventListener) globalThis.addEventListener('twrc-vault-change', changed); }
+    listen();
     function current() { return !stopped && vault.mode === 'vault' && !vault.expired() && vault.expiresAt > now(); }
     function guard() { if (!current()) { handle = null; return fail('code'); } }
     async function read() {
@@ -46,6 +67,7 @@ const DriveSync = (() => {
         outbox: SyncOutbox.initial(), bytes: null, observed: null, signal: null, recovery: null };
       if (state.v !== 1 || !/^[0-9a-f]{32}$/.test(state.device) || !Array.isArray(state.base) || !Number.isSafeInteger(state.seq)) return fail('stockage');
       SyncOutbox.status(state.outbox);
+      if (state.recoveryInit && state.recoveryInit.phase !== 'verified') return fail('recovery');
       lastRecovery = state.recovery;
       return state;
     }
@@ -86,6 +108,17 @@ const DriveSync = (() => {
       }
       s.profile = profile.sha256; s.signal = snap.signal; await save(s);
     }
+    async function observeCurrent(s) {
+      const version = localVersion;
+      const latest = await vault.syncSnapshot(); guard();
+      const hash = await fingerprint(projection(latest.values)); guard();
+      if (s.observed !== hash) {
+        s.outbox = SyncOutbox.noteChange(s.outbox, now()); s.observed = hash;
+      }
+      // Une écriture locale pas encore confirmée ne peut produire un statut vert.
+      if (vault.pendingWrites) s.outbox = SyncOutbox.noteChange(s.outbox, now());
+      observedVersion = version;
+    }
     async function send(s) {
       const job = s.outbox.job;
       if (!job || !(s.bytes instanceof Uint8Array) || await digest(s.bytes) !== job.sha) return fail('stockage');
@@ -95,7 +128,9 @@ const DriveSync = (() => {
       const back = await provider.uploadRevision(s.outbox.job.fileId, selected.folder, packet, job.rev); guard();
       s.outbox = SyncOutbox.sent(s.outbox); await save(s);
       s.outbox = SyncOutbox.verified(s.outbox, back.proof.fileId, back.proof.fileSha256, now());
-      s.base = [job.rev.id]; s.seq = Math.max(s.seq, job.rev.seq); s.bytes = null; await save(s);
+      s.base = [job.rev.id]; s.seq = Math.max(s.seq, job.rev.seq); s.bytes = null;
+      await observeCurrent(s); await save(s);
+      message = SyncOutbox.status(s.outbox).label;
     }
     async function runInside(force) {
       guard(); let s = await read();
@@ -105,7 +140,7 @@ const DriveSync = (() => {
       let snap = await vault.syncSnapshot(); guard();
       const local = projection(snap.values), hash = await fingerprint(local); guard();
       if (s.observed !== hash) { s.outbox = SyncOutbox.noteChange(s.outbox, now()); s.observed = hash; await save(s); }
-      if (s.outbox.blocked && !force) { message = SyncOutbox.status(s.outbox).label; return; }
+      if (s.outbox.blocked && !force) { blocked = true; message = SyncOutbox.status(s.outbox).label; return; }
       if (force) s.outbox = SyncOutbox.unblock(s.outbox, now());
       if (navigator.onLine === false) { message = 'en attente · hors ligne'; return; }
       const catalog = await provider.list(selected.folder); guard();
@@ -114,7 +149,7 @@ const DriveSync = (() => {
       const confirmed = [], opened = new Map();
       for (const ref of catalog) {
         if (!ref.revision) continue; // sauvegardes manuelles conservées, hors graphe A2
-        const back = await provider.download(ref); guard();
+        const back = await provider.download(ref, undefined, selected.folder); guard();
         const data = await codec.openWith(back.packet.copyBytes(), handle, version(), ref.fileSha256); guard();
         confirmed.push(SyncRevisions.confirm(ref.revision, data, ref.fileSha256, SyncMerge.device));
         opened.set(ref.revision.id, { ref, data, proof: back.proof });
@@ -158,20 +193,23 @@ const DriveSync = (() => {
       if (SyncOutbox.next(s.outbox, now()) === 'seal') {
         const rev = SyncRevisions.next({ device: s.device, seq: Math.max(s.seq, planned.nextSeq - 1), parents: s.base }, crypt);
         const snapshotAt = now(), data = SyncRevisions.snapshot(projection(snap.values), rev, SyncMerge.device, new Date(snapshotAt).toISOString());
+        s.observed = await fingerprint(data.values); guard();
         s.bytes = await codec.sealWith(data, handle, version(), data.at); guard();
         s.outbox = SyncOutbox.sealed(s.outbox, { rev, sha: await digest(s.bytes), size: s.bytes.length }, snapshotAt); await save(s);
         message = 'envoi'; notify(); await send(s);
       }
+      await observeCurrent(s); await save(s);
       message = SyncOutbox.status(s.outbox).label;
     }
     async function run(force = false) {
       if (running || stopped) return;
-      if (!locks || typeof locks.request !== 'function') { message = 'navigateur à mettre à jour'; notify(); return; }
-      running = true; notify();
+      if (!locks || typeof locks.request !== 'function') { blocked = true; message = 'navigateur à mettre à jour'; notify(); return; }
+      running = true; finishing = new Promise(resolve => { finish = resolve; }); blocked = false; message = 'vérification'; notify();
       try { await locks.request(LOCK, { ifAvailable: true }, lock => lock ? runInside(force) : undefined); }
       catch (e) {
+        blocked = true;
         const code = e.code || (e.conflict ? 'network' : 'stockage');
-        message = ({ auth: 'reconnexion', code: 'code requis', CODE_REQUIRED: 'code requis', AUTHENTICATION_FAILED: 'code requis', binding: 'autre compte ou dossier : envoi arrêté', conflict: 'conflit : versions conservées', quota: 'espace Drive insuffisant', recovery: 'copie de récupération à vérifier', stockage: 'stockage local non confirmé', PRODUCER_TOO_NEW: 'version plus récente : mets Race Control à jour', UNKNOWN_READER_VERSION: 'version chargée non confirmée : vérifie la mise à jour', FILE_TOO_LARGE: 'copie trop volumineuse : envoi arrêté sans troncature', CONSERVATION_BLOCKED: 'contenu à vérifier : copies conservées' })[code] || 'en attente · transfert non confirmé';
+        message = ({ auth: 'reconnexion', code: 'code requis', CODE_REQUIRED: 'code requis', AUTHENTICATION_FAILED: 'code requis', binding: 'autre compte ou dossier : envoi arrêté', conflict: 'conflit : versions conservées', quota: 'espace Drive insuffisant', integrity: 'intégrité à vérifier : envoi bloqué, identifiant conservé', recovery: 'copie de récupération à vérifier', stockage: 'stockage local non confirmé', PRODUCER_TOO_NEW: 'version plus récente : mets Race Control à jour', UNKNOWN_READER_VERSION: 'version chargée non confirmée : vérifie la mise à jour', FILE_TOO_LARGE: 'copie trop volumineuse : envoi arrêté sans troncature', CONSERVATION_BLOCKED: 'contenu à vérifier : copies conservées' })[code] || 'en attente · transfert non confirmé';
         try {
           await locks.request(LOCK, async () => {
             const s = await read(), kind = ['auth', 'quota', 'conflict'].includes(code) ? code : /code|CODE_REQUIRED|AUTHENTICATION/.test(code) ? 'code' :
@@ -179,12 +217,13 @@ const DriveSync = (() => {
             s.outbox = SyncOutbox.failed(s.outbox, kind, now()); await save(s);
           });
         } catch { /* ne jamais afficher de succès après un échec IDB */ }
-      } finally { running = false; notify(); }
+      } finally { running = false; finish(); notify(); }
     }
-    return Object.freeze({ run, select: value => { if (running) return fail('busy'); selected = { ...value }; handle = null; stopped = false; },
-      stop: () => { stopped = true; handle = null; selected = null; provider.disconnect(); message = 'local'; notify(); },
-      recovery: () => store.latestRecovery(),
-      get status() { return { message, running, conflicts: [...conflicts] }; } });
+    return Object.freeze({ run, select: value => { if (running) return fail('busy'); selected = { ...value }; handle = null; stopped = false; listen(); },
+      pause: () => { stopped = true; handle = null; selected = null; blocked = false; message = 'local'; notify(); return finishing; },
+      stop: () => { if (globalThis.removeEventListener) globalThis.removeEventListener('twrc-vault-change', changed); blocked = false; stopped = true; handle = null; selected = null; provider.disconnect(); message = 'local'; notify(); },
+      recovery: () => premergeRecovery(store, crypt),
+      get status() { return state(); } });
   }
-  return Object.freeze({ create, projection, validateBusiness });
+  return Object.freeze({ create, projection, validateBusiness, premergeRecovery });
 })();
