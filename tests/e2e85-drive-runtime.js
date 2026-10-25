@@ -144,7 +144,7 @@ function remote() {
       await assert.rejects(target.evaluate(code=>restore.verify(code),code));
       // La vraie page construite vérifie la copie au prochain document,
       // même lorsque Google n'est pas activé sur ce profil de build fictif.
-      const recoveryHtml=fs.readFileSync(path.resolve(__dirname,'../.ci/dist/recovery.html'),'utf8');
+      const recoveryHtml=fs.readFileSync(path.resolve('site/recovery.html'),'utf8');
       const recoveryBuild=recoveryHtml.match(/window\.TWRC_RECOVERY_BUILD="([0-9a-f]{12})"/)[1];
       await targetContext.route(U+'recovery.html',r=>r.fulfill({contentType:'text/html',body:recoveryHtml}));
       await targetContext.route(U+'version.json',r=>r.fulfill({contentType:'application/json',body:JSON.stringify({build:recoveryBuild,run:999})}));
