@@ -77,8 +77,9 @@ async function unseal(pass, keepWeek = true, verifyOnly = false) {
   // peut différer de celui d'un ancien préréglage publié : le coffre local
   // authentifié reste ouvrable. Aucun repli sur le clair ou un coffre vide.
   const restoredVault = window.TWRC_VAULT, restoredRaw = window.TWRC_RAW_STORAGE;
-  if (!verifyOnly && restoredVault && restoredRaw && restoredRaw.getItem(SessionVault.VAULT)) {
+  if (!verifyOnly && restoredVault && restoredRaw) {
     try {
+      if (!restoredRaw.getItem(SessionVault.VAULT)) throw new Error('no-local-vault');
       const saved = await DriveStore.create('twrc.drive.sync.v1').read();
       if (saved && saved.recoveryInit && saved.recoveryInit.phase === 'verified') {
         const local = await restoredVault.syncVerifyInitialized(pass);
