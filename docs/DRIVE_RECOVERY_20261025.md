@@ -5,7 +5,8 @@ Auteur : Bryan Fiarda. Candidat sensible, non fusionné, non déployé.
 Cette correction dépend de #235, qui inclut #234. Les correctifs indépendants
 #236 (XSS), #237 (IndexedDB), #238 (preuve V2) et #240 (SW Cloudflare) restent à
 revoir/intégrer séparément. #239 et Control Vault #20 sont des preuves
-temporaires : ne pas les fusionner. Aucune modification de ces branches.
+temporaires : ne pas les fusionner ni les déployer. Leurs compléments de CI
+conservent les têtes historiques et ne modifient aucune branche source existante.
 
 ## Problème et solution
 
