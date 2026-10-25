@@ -130,5 +130,20 @@ module.exports = async function recoveryChecks() {
     await assert.rejects(c.install(ticket, pass, true)); assert.equal(raw.getItem(A.SessionVault.VAULT), 'concurrent-exact-bytes');
     assert.equal(s.state.recoveryInit.phase, 'pending'); assert.equal(s.stats.uploads, 0);
   });
+  await test('accusé IDB perdu après le coffre écrit : vérification du journal pending après réouverture', async () => {
+    const s=setup(), c=s.controller(), ticket=await c.prepare(pass), write=s.store.write;
+    let writes=0;
+    s.store.write=async value=>{if(++writes===2)throw new Error('lost-local-ack');await write(value);};
+    await assert.rejects(c.install(ticket,pass,true));
+    assert(s.raw.getItem(A.SessionVault.VAULT));assert.equal(s.state.recoveryInit.phase,'pending');
+    assert.equal((await s.controller().verify(pass)).state,'RESTORED_VERIFIED');assert.equal(s.copies.size,1);assert.equal(s.stats.uploads,0);
+  });
+  await test('deux onglets préparés : une seule installation, seconde confirmation refusée sans écrasement', async () => {
+    const s=setup(), a=s.controller(), b=s.controller(), ta=await a.prepare(pass), tb=await b.prepare(pass);
+    const results=await Promise.allSettled([a.install(ta,pass,true),b.install(tb,pass,true)]);
+    assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(results.filter(r=>r.status==='rejected').length,1);
+    assert.equal(s.copies.size,1);assert.equal((await s.controller().verify(pass)).state,'RESTORED_VERIFIED');
+    assert.deepEqual(plain(await s.vault().syncVerifyInitialized(pass)),{...projected,'twrc.key':pass});
+  });
   console.log('✅ ' + count + ' groupes de récupération initiale A2, Google simulé uniquement');
 };
