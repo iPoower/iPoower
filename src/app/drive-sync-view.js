@@ -13,7 +13,7 @@ function renderDriveSync() {
   const recover = document.createElement('a'); recover.className = 'btn'; recover.href = './recovery.html';
   recover.textContent = 'Récupération sur un nouvel appareil'; root.appendChild(recover);
   button('Exporter la copie avant fusion', async () => {
-    try { const bytes = await DriveStore.create('twrc.drive.sync.v1').latestRecovery(); if (!bytes) { d.text = 'Aucune fusion locale effectuée : pas de copie avant fusion.'; renderDriveSync(); return; }
+    try { const bytes = await DriveSync.premergeRecovery(); if (!bytes) { d.text = 'Aucune fusion locale effectuée : pas de copie avant fusion.'; renderDriveSync(); return; }
       await downloadRecovery(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
     } catch { d.text = 'Copie avant fusion non lisible. Aucun fichier annoncé complet.'; renderDriveSync(); }
   });

@@ -74,6 +74,7 @@ module.exports = async function recoveryChecks() {
     assert.equal(s.ses.getItem(A.SessionVault.SESSION), null); assert(!JSON.stringify(s.raw.dump()).includes(pass));
     assert(!JSON.stringify(s.state).includes(pass)); assert(!JSON.stringify(s.state).includes('unknown compatible value'));
     assert.equal(s.state.recoveryInit.phase, 'verified'); assert.deepEqual(s.state.base, [rev.id]);
+    assert.equal(await A.DriveSync.premergeRecovery(s.store,webcrypto),null,'initial source copy is not a pre-merge copy');
     const n = s.raw.writes; await fresh.verify(pass); assert.equal(s.raw.writes, n, 'verification never rewrites the vault');
   });
   await test('mauvais code, corruption, profil KDF invalide, graphe incomplet ou divergent : aucune écriture', async () => {

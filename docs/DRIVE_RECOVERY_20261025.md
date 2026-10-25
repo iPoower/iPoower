@@ -70,6 +70,9 @@ Si le coffre est présent, utiliser la vérification après réouverture ; s'il
 est absent, reprendre l'aperçu avec le même compte/dossier/source. Une source
 changée ou un stockage étranger exige un diagnostic, jamais une suppression.
 Le journal et les paquets opaques ne sont pas nettoyés automatiquement.
+La copie source d'une récupération initiale n'est jamais présentée comme une
+copie avant fusion. Cet export utilise son pointeur dédié et vérifie à nouveau
+l'empreinte de ses octets avant téléchargement.
 
 Un coffre récupéré vérifié, contenant le profil et l'archive, peut être
 déverrouillé avec son code même si un ancien préréglage publié utilise un

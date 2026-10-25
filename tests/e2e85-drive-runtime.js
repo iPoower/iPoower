@@ -19,7 +19,10 @@ window.fixture = { async boot(initial) {
   sync.select({folder:'fixture-folder',binding:'a'.repeat(64)});
 }, count: async()=>JournalArchive.capture((await vault.syncSnapshot()).values).records.length,
 recovery: async()=> {const b=await db.latestRecovery();return b&&SessionVault.readRecovery(new TextDecoder().decode(b),'${code}',crypto);},
-newDevice:()=> {const r=DriveRecovery.create({vault,provider,store:db,version:()=> 'prod-999'});r.select({folder:'fixture-folder',binding:'a'.repeat(64)});return r;}};`;
+newDevice:()=> {const r=DriveRecovery.create({vault,provider,store:db,version:()=> 'prod-999'});r.select({folder:'fixture-folder',binding:'a'.repeat(64)});return r;},
+editPhoto:async value=>{const before=JSON.parse(vault.store.getItem(SyncMerge.SETTINGS)),after=structuredClone(before);after.cars[0].photo=value;
+const stamps=JSON.parse(vault.store.getItem(SyncMerge.STAMPS)||'{}');vault.store.setItem(SyncMerge.STAMPS,JSON.stringify(SyncMerge.edits(before,after,stamps,Date.now())));
+vault.store.setItem(SyncMerge.SETTINGS,JSON.stringify(after));await vault.flush();}};`;
 function values(count, label) {
   const owner = load(), b = business(owner, count), v = b.values;
   const archive = owner.J.capture(v); archive.records = archive.records.map(r => owner.J.encode({ ...JSON.parse(r), key: label + '-' + JSON.parse(r).key }));
@@ -81,7 +84,7 @@ function remote() {
     const proof=await q.evaluate(async()=>({ recovered:JournalArchive.capture(await fixture.recovery()).records.length, current:await fixture.count(), raw:localStorage.getItem(SessionVault.VAULT).includes('synthetic') }));
     assert.equal(proof.recovered,63);assert.equal(proof.current,185);assert.equal(proof.raw,false);
     assert.deepEqual(await q.evaluate(()=>fixture.recovery()),originalPhone,'complete authenticated pre-merge recovery equals the original local snapshot');
-    const independentCopy = await q.evaluate(async()=>Array.from(await db.latestRecovery()));
+    const independentCopy = await q.evaluate(async()=>Array.from(await sync.recovery()));
     console.log('✅ coffres réels + transport + IDB : 120/61 trajets, 91/365 jours, historique brut et double réponse conservés ; copie avant fusion déchiffrée');
     drive.loseReply();
     await p.evaluate(async()=>{const s=JSON.parse(vault.store.getItem('twrc.settings.v1'));s.cars[0].photo='synthetic-photo';vault.store.setItem('twrc.settings.v1',JSON.stringify(s));vault.store.setItem('twrc.editstamps.v1',JSON.stringify({'cars.0.photo':Date.now()}));await vault.flush();await sync.run(true);});
@@ -159,12 +162,13 @@ function remote() {
       const actual=await target.evaluate(async code=>{if(!await unseal(code,false))throw Error('recovered vault must open without the published preset');return DriveSync.projection((await vault.syncSnapshot()).values);},code);
       assert.deepEqual(actual,expected,'all business values including history survive a new document');
       await target.evaluate(()=>sync.run(true));assert.equal(await target.evaluate(()=>sync.status.message),'synchronisé');
+      assert.equal(await target.evaluate(()=>sync.recovery()),null,'no pre-merge copy is claimed for an initial restore');
       assert.equal(isolated.files.size,2,'adopting a verified head must not create a duplicate revision');
-      await target.evaluate(async()=>{const s=JSON.parse(vault.store.getItem('twrc.settings.v1'));s.cars[0].photo='from-recovered-phone';vault.store.setItem('twrc.settings.v1',JSON.stringify(s));await vault.flush();});
+      await target.evaluate(()=>fixture.editPhoto('from-recovered-phone'));
       await targetContext.setOffline(true);await target.evaluate(()=>sync.run(true));assert.notEqual(await target.evaluate(()=>sync.status.message),'synchronisé');
       await targetContext.setOffline(false);await target.evaluate(()=>sync.run(true));await sourcePage.evaluate(()=>sync.run(true));
       assert.equal(await sourcePage.evaluate(()=>JSON.parse(vault.store.getItem('twrc.settings.v1')).cars[0].photo),'from-recovered-phone');
-      await sourcePage.evaluate(async()=>{const s=JSON.parse(vault.store.getItem('twrc.settings.v1'));s.cars[0].photo='return-from-pc';vault.store.setItem('twrc.settings.v1',JSON.stringify(s));await vault.flush();await sync.run(true);});
+      await sourcePage.evaluate(async()=>{await fixture.editPhoto('return-from-pc');await sync.run(true);});
       await target.evaluate(()=>sync.run(true));assert.equal(await target.evaluate(()=>JSON.parse(vault.store.getItem('twrc.settings.v1')).cars[0].photo),'return-from-pc');
       await sourceContext.close();await targetContext.close();
       console.log('✅ récupération A2 vierge, fermeture/réouverture, comparaison exhaustive, reprise sans doublon puis aller-retour et coupure réseau simulée');
