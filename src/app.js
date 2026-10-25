@@ -73,6 +73,24 @@ function repairVehicleIdentity(settings) {
 // réglages chiffrés (site public) : déchiffrés une fois avec le code, puis gardés sur l'appareil
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function unseal(pass, keepWeek = true, verifyOnly = false) {
+  // Une récupération A2 vérifiée porte son propre profil complet. Son code
+  // peut différer de celui d'un ancien préréglage publié : le coffre local
+  // authentifié reste ouvrable. Aucun repli sur le clair ou un coffre vide.
+  const restoredVault = window.TWRC_VAULT, restoredRaw = window.TWRC_RAW_STORAGE;
+  if (!verifyOnly && restoredVault && restoredRaw) {
+    try {
+      if (!restoredRaw.getItem(SessionVault.VAULT)) throw new Error('no-local-vault');
+      const saved = await DriveStore.create('twrc.drive.sync.v1').read();
+      if (saved && saved.recoveryInit && saved.recoveryInit.phase === 'verified') {
+        const local = await restoredVault.syncVerifyInitialized(pass);
+        if (local['twrc.settings.v1'] && local[JournalArchive.KEY] && !Object.hasOwn(local, 'twrc.plain')) {
+          JournalArchive.read(local[JournalArchive.KEY]);
+          await restoredVault.unlock(pass, null, keepWeek);
+          window.TWRC_STORAGE_ERROR = false; unseal.restored = true; return true;
+        }
+      }
+    } catch { /* le parcours historique conserve ses propres vérifications */ }
+  }
   const S0 = window.TWRC_SEALED; if (!S0 || !crypto || !crypto.subtle) return false;
   let txt;
   try {

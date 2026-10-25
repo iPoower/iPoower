@@ -45,7 +45,7 @@ test('Service Worker : bibliothèque préchargée et requêtes des autres dossie
   const source = fs.readFileSync(path.join(ROOT, 'src/sw.js'), 'utf8');
   for (const name of ASSETS) assert(source.includes('./vendor/leaflet/' + name));
   vm.runInNewContext(source, context);
-  for (const url of ['https://fixture.invalid/Reconversion-Control/data.json', 'https://external.invalid/race-control/obs.json']) {
+  for (const url of ['https://fixture.invalid/Reconversion-Control/data.json', 'https://external.invalid/race-control/obs.json', 'https://fixture.invalid/race-control/recovery.html']) {
     let intercepted = false; handlers.fetch({ request: new Request(url), respondWith() { intercepted = true; } }); assert.equal(intercepted, false);
   }
 });

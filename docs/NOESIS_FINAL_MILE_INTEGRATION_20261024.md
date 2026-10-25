@@ -18,3 +18,16 @@ Sensitive source PRs still require individual human approval and post-integratio
 The validation branch also includes the isolated #240 lifecycle correction. Native IDB
 regressions exercise a real transaction abort, manual connection close/reopen, the
 versionchange handler and WebCrypto recovery-byte verification inside e2e85.
+## Complément de validation — 25 octobre 2026
+
+La combinaison de test inclut désormais le candidat de récupération initiale
+A2 de la PR #242 (c87196eb3349c6cafe47179fd6683bc0c1ce09e0), en conservant
+#234–#238 et #240 ainsi que toutes les preuves IDB natives. Le conflit d'ajouts
+dans e2e85 est réconcilié en gardant le scénario IDB natif ET la récupération
+A2, la vraie page construite, la relecture après fermeture et les deux sens.
+
+Cette branche reste une preuve de CI uniquement : NE PAS FUSIONNER NI DÉPLOYER.
+La tête historique 739904256b7f72090dd477fe7c372bd5786c2da5 reste dans ses
+ancêtres, et aucune PR source n'est réécrite. Vérifier la nouvelle CI sur son
+propre SHA. Google reste simulé ; aucune recette physique ni donnée personnelle.
+

@@ -30,6 +30,16 @@ const DriveSync = (() => {
       if (v[key] !== undefined) ControlVaultPacket.strictJson(new TextEncoder().encode(v[key]), 64);
     return JSON.stringify(projection(v)) === JSON.stringify(v);
   }
+  async function premergeRecovery(store = DriveStore.create(DB), crypt = globalThis.crypto) {
+    const state = await store.read();
+    if (!state || state.recovery == null) return null;
+    if (state.v !== 1 || !/^[0-9a-f]{64}$/.test(state.recovery)) return fail('stockage');
+    const bytes = await store.readRecovery(state.recovery);
+    if (!(bytes instanceof Uint8Array)) return fail('stockage');
+    const hash = [...new Uint8Array(await crypt.subtle.digest('SHA-256', bytes))].map(v => v.toString(16).padStart(2, '0')).join('');
+    if (hash !== state.recovery) return fail('integrity');
+    return bytes.slice();
+  }
   function create({ vault, provider, store = DriveStore.create(DB), keys = SyncKey.storage(), locks = navigator.locks,
     crypto: crypt = globalThis.crypto, now = () => Date.now(), version, onChange = () => {}, onApplied = () => {} }) {
     const codec = ControlVaultPacket.create({ validateBusiness, crypto: crypt });
@@ -57,6 +67,7 @@ const DriveSync = (() => {
         outbox: SyncOutbox.initial(), bytes: null, observed: null, signal: null, recovery: null };
       if (state.v !== 1 || !/^[0-9a-f]{32}$/.test(state.device) || !Array.isArray(state.base) || !Number.isSafeInteger(state.seq)) return fail('stockage');
       SyncOutbox.status(state.outbox);
+      if (state.recoveryInit && state.recoveryInit.phase !== 'verified') return fail('recovery');
       lastRecovery = state.recovery;
       return state;
     }
@@ -211,8 +222,8 @@ const DriveSync = (() => {
     return Object.freeze({ run, select: value => { if (running) return fail('busy'); selected = { ...value }; handle = null; stopped = false; listen(); },
       pause: () => { stopped = true; handle = null; selected = null; blocked = false; message = 'local'; notify(); return finishing; },
       stop: () => { if (globalThis.removeEventListener) globalThis.removeEventListener('twrc-vault-change', changed); blocked = false; stopped = true; handle = null; selected = null; provider.disconnect(); message = 'local'; notify(); },
-      recovery: () => store.latestRecovery(),
+      recovery: () => premergeRecovery(store, crypt),
       get status() { return state(); } });
   }
-  return Object.freeze({ create, projection, validateBusiness });
+  return Object.freeze({ create, projection, validateBusiness, premergeRecovery });
 })();
