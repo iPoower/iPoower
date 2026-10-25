@@ -149,9 +149,21 @@ function remote() {
       const sourcePage=await open(sourceContext,{code,values:values(120,'a2-source')});
       await sourcePage.evaluate(()=>sync.run(true));
       const expected=await sourcePage.evaluate(async()=>DriveSync.projection((await vault.syncSnapshot()).values));
+      // Reçu vérifié conservé par la source, avant d'ouvrir le navigateur vierge.
+      const knownCheckpoint=await sourcePage.evaluate(async()=>{const receipt=(await db.read()).outbox.verified;return {revision:receipt.id,sha256:receipt.sha};});
       let target=await open(targetContext);
+      const blocked=await target.evaluate(async code=>{
+        const r=fixture.newDevice();
+        try{await r.prepare(code,{revision:'f'.repeat(32),sha256:'f'.repeat(64)});return {accepted:true};}
+        catch(e){return {code:e.code,raw:localStorage.length,state:await db.read()};}
+      },code);
+      assert.deepEqual(blocked,{code:'checkpoint',raw:0,state:null},'an unknown independent checkpoint blocks before any local write');
       const preview=await target.evaluate(async code=>{window.restore=fixture.newDevice();window.ticket=await restore.prepare(code);return {ticket,raw:localStorage.length,state:await db.read()};},code);
       assert.equal(preview.raw,0);assert.equal(preview.state,null);
+      const anchored=await target.evaluate(async ({code,reference})=>{
+        window.ticket=await restore.prepare(code,reference);return ticket;
+      },{code,reference:knownCheckpoint});
+      assert.equal(anchored.revision,preview.ticket.revision);assert.equal(anchored.sha256,preview.ticket.sha256);
       assert.equal(await target.evaluate(async code=>(await restore.install(ticket,code,true)).state,code),'REOPEN_REQUIRED');
       assert.equal(isolated.files.size,2,'only the preexisting profile and source revision exist');
       await assert.rejects(target.evaluate(code=>restore.verify(code),code));
@@ -164,6 +176,9 @@ function remote() {
       await targetContext.route(U+'drive-config.json',r=>r.fulfill({contentType:'application/json',body:'null'}));
       await target.close();target=await targetContext.newPage();await target.goto(U+'recovery.html');
       await target.waitForFunction(()=>!document.getElementById('recovery-verify').disabled);
+      assert.equal(await target.locator('#recovery-known-revision').isVisible(),true);
+      assert.equal(await target.locator('#recovery-known-sha').isVisible(),true);
+      assert((await target.locator('main').textContent()).includes('La lignée seule ne prouve pas la présence de la dernière sauvegarde.'));
       await target.locator('#recovery-code').fill(code);await target.locator('#recovery-verify').click();
       await target.waitForFunction(()=>document.getElementById('recovery-status').textContent.startsWith('Restauration vérifiée après réouverture'));
       assert.equal(await target.locator('#recovery-code').inputValue(),'');

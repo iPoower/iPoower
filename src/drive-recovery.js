@@ -45,7 +45,14 @@ const DriveRecovery = (() => {
       }
       return s;
     }
-    async function load(pass, target, guard) {
+    function checkpoint(value) {
+      if (value === null || value === undefined) return null;
+      if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).sort().join(',') !== 'revision,sha256' ||
+        typeof value.revision !== 'string' || typeof value.sha256 !== 'string' ||
+        !/^[0-9a-f]{32}$/.test(value.revision) || !/^[0-9a-f]{64}$/.test(value.sha256)) return fail('checkpoint');
+      return Object.freeze({ revision: value.revision, sha256: value.sha256 });
+    }
+    async function load(pass, target, guard, reference = null) {
       const profiles = await provider.profiles(target.folder); guard();
       if (profiles.length !== 1) return fail('profile');
       const profile = profiles[0], descriptor = SyncKey.parse(profile.bytes);
@@ -70,23 +77,28 @@ const DriveRecovery = (() => {
       }
       const verified = SyncRevisions.plan(confirmed, local);
       if (!head || verified.action === 'blocked' || verified.heads.length !== 1 || verified.warnings.length || verified.heads[0] !== head.data.rev.id) return fail('conflict');
+      // Une ancre conservée hors de Drive borne le rejeu : elle doit figurer
+      // dans la lignée authentifiée, avec ses octets exacts. Elle ne prouve
+      // pas l'absence d'une version ultérieure encore inconnue de cet appareil.
+      if (reference && !confirmed.some(r => r.id === reference.revision && r.fileSha256 === reference.sha256)) return fail('checkpoint');
       const catalogHash = await fingerprint(catalog.map(r => ({ fileId: r.fileId, sha: r.fileSha256, size: r.size, revision: r.revision })).sort((a, b) => a.fileId.localeCompare(b.fileId)));
       guard();
       return { ...head, profile: profile.sha256, catalog: catalogHash, values: await fingerprint(head.data.values) };
     }
-    async function prepare(pass) { return locked(async () => {
+    async function prepare(pass, knownCheckpoint = null) { return locked(async () => {
       draft = null; const { target, guard } = lease(); const prior = await vacant(target); guard();
-      const data = await load(pass, target, guard); guard();
+      const reference = checkpoint(knownCheckpoint);
+      const data = await load(pass, target, guard, reference); guard();
       if (prior && (prior.recoveryInit.source !== data.ref.fileSha256 || prior.recoveryInit.catalog !== data.catalog || prior.recoveryInit.profile !== data.profile)) return fail('source-changed');
       const ticket = Object.freeze({ revision: data.data.rev.id, at: data.data.at, size: data.bytes.length, sha256: data.ref.fileSha256 });
-      draft = { ...data, ticket, target, generation: epoch, preparedAt: now() }; return ticket;
+      draft = { ...data, ticket, target, reference, generation: epoch, preparedAt: now() }; return ticket;
     }); }
     async function install(ticket, pass, confirmed = false) { return locked(async () => {
       const before = draft, { target, guard } = lease();
       if (!confirmed || !before || before.ticket !== ticket || before.target !== target || before.generation !== epoch || now() - before.preparedAt > 300000) return fail('confirmation');
       const previous = await vacant(target); guard();
       // Une sauvegarde arrivée depuis l'aperçu impose une nouvelle décision.
-      const fresh = await load(pass, target, guard); guard();
+      const fresh = await load(pass, target, guard, before.reference); guard();
       if (fresh.ref.fileSha256 !== before.ref.fileSha256 || fresh.catalog !== before.catalog || fresh.profile !== before.profile) return fail('source-changed');
       let state = null;
       await vault.syncInitialize(fresh.data.values, pass, async () => {

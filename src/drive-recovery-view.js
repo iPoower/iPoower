@@ -26,6 +26,7 @@
     confirmation: 'Relis l’aperçu et confirme explicitement la récupération.',
     limit: 'Historique trop volumineux pour cette récupération. Aucune version n’est tronquée ou supprimée.',
     integrity: 'Intégrité non confirmée. Les copies et les données locales sont conservées.',
+    checkpoint: 'Référence saisie invalide, absente ou différente : récupération bloquée. Conserve les copies et retrouve les deux champs du reçu connu. Aucune donnée locale remplacée.',
     'local-changed': 'Le coffre local diffère de la copie choisie. Aucune réussite annoncée ; conserve les deux copies.' };
   async function action(work) {
     if (busy) return; busy = true; paint();
@@ -34,6 +35,10 @@
     finally { busy = false; paint(); }
   }
   const password = () => { const text = $('recovery-code').value; if (!text || text.length > 1024) throw new Error('code'); return text; };
+  const checkpoint = () => {
+    const revision = $('recovery-known-revision').value.trim(), sha256 = $('recovery-known-sha').value.trim();
+    return revision || sha256 ? { revision, sha256 } : null;
+  };
   function download(bytes) {
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/json' })), a = document.createElement('a');
     a.href = url; a.download = 'Race_Control_copie_chiffree.json'; a.rel = 'noopener'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -80,12 +85,13 @@
     const promise = session.chooseFolder(); action(async () => { recovery.select(await promise); selected = true; say('Dossier confirmé. Saisis le code Race Control pour vérifier les versions.'); });
   });
   $('recovery-preview').addEventListener('click', () => action(async () => {
-    ticket = await recovery.prepare(password()); $('recovery-consent').checked = false;
-    $('recovery-preview-info').textContent = 'Copie du ' + new Date(ticket.at).toLocaleString('fr-FR') + ' · révision ' + ticket.revision + ' · ' + ticket.size + ' octets chiffrés';
-    say('Lignée authentifiée. Exporte cette copie chiffrée indépendamment, puis confirme l’installation sur ce navigateur vierge.');
+    const reference = checkpoint(); ticket = await recovery.prepare(password(), reference); $('recovery-consent').checked = false;
+    $('recovery-preview-info').textContent = 'Copie du ' + new Date(ticket.at).toLocaleString('fr-FR') + ' · révision ' + ticket.revision + ' · ' + ticket.size + ' octets chiffrés · SHA-256 ' + ticket.sha256;
+    say((reference ? 'La référence saisie correspond à une révision authentifiée. Vérifie qu’elle provient bien de ta copie indépendante antérieure. ' : 'Lignée authentifiée sans référence indépendante : la présence de la dernière sauvegarde n’est pas prouvée. ') + 'Exporte cette copie chiffrée indépendamment, puis confirme l’installation sur ce navigateur vierge.');
   }));
   $('recovery-consent').addEventListener('change', paint);
   $('recovery-code').addEventListener('input', () => { ticket = null; paint(); });
+  for (const id of ['recovery-known-revision', 'recovery-known-sha']) $(id).addEventListener('input', () => { ticket = null; paint(); });
   $('recovery-export').addEventListener('click', () => action(async () => { download(recovery.exportCopy(ticket)); say('Fichier chiffré proposé au téléchargement. Vérifie son enregistrement hors du navigateur avant installation.'); }));
   $('recovery-install').addEventListener('click', () => action(async () => {
     if (!$('recovery-consent').checked) return;

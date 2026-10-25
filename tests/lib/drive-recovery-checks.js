@@ -78,15 +78,50 @@ module.exports = async function recoveryChecks() {
     const n = s.raw.writes; await fresh.verify(pass); assert.equal(s.raw.writes, n, 'verification never rewrites the vault');
   });
   await test('mauvais code, corruption, profil KDF invalide, graphe incomplet ou divergent : aucune écriture', async () => {
-    for (const kind of ['password', 'bytes', 'missing-parent', 'two-heads', 'profile']) {
+    for (const kind of ['password', 'bytes', 'missing-parent', 'two-heads', 'profile', 'file-missing']) {
       const s = setup(), c = s.controller();
       if (kind === 'bytes') s.files[0].bytes[s.files[0].bytes.length - 2] ^= 1;
       if (kind === 'missing-parent') s.files[0] = await makeFile({ ...rev, parents: ['3'.repeat(32)] });
       if (kind === 'two-heads') s.files.push(await makeFile({ ...rev, id: '4'.repeat(32), device: '5'.repeat(32) }));
       if (kind === 'profile') s.provider.profiles = async () => [{ bytes: new TextEncoder().encode('{"kdf":null}'), sha256: 'a'.repeat(64) }];
+      if (kind === 'file-missing') s.provider.download = async () => { throw Object.assign(new Error('simulated HTTP 404'), { code: 'absent' }); };
       await assert.rejects(c.prepare(kind === 'password' ? 'wrong' : pass));
       assert.equal(s.raw.getItem(A.SessionVault.VAULT), null); assert.equal(s.state, null); assert.equal(s.copies.size, 0); assert.equal(s.stats.uploads, 0);
     }
+  });
+  await test('suffixe récent masqué : ancre indépendante obligatoire pour prouver le plancher connu', async () => {
+    const s = setup(), latest = await makeFile({ ...rev, id: '7'.repeat(32), parents: [rev.id], seq: 2 });
+    const reference = { revision: latest.ref.revision.id, sha256: latest.ref.fileSha256 };
+    // Les deux paquets sont authentiques, mais le fournisseur ne montre que l'ancien.
+    assert.notEqual(initial.ref.fileSha256, latest.ref.fileSha256);
+    const c = s.controller();
+    assert.equal((await c.prepare(pass)).revision, rev.id, 'sans ancre, fraîcheur absolue impossible à prouver');
+    await assert.rejects(c.prepare(pass, reference), e => e.code === 'checkpoint');
+    assert.equal(s.raw.getItem(A.SessionVault.VAULT), null); assert.equal(s.state, null); assert.equal(s.copies.size, 0);
+    // Une référence ancienne connue reste valable lorsqu'une descendante existe.
+    s.files.push(latest);
+    const ticket = await c.prepare(pass, { revision: rev.id, sha256: initial.ref.fileSha256 });
+    assert.equal(ticket.revision, latest.ref.revision.id);
+    await c.install(ticket, pass, true);
+    assert.equal((await s.controller().verify(pass)).state, 'RESTORED_VERIFIED');
+    assert.equal(s.stats.uploads, 0);
+  });
+  await test('ancre malformée, empreinte différente et révision inconnue : aucune écriture', async () => {
+    for (const reference of [ {}, { revision: rev.id }, { revision: rev.id, sha256: initial.ref.fileSha256, extra: true },
+      { revision: rev.id.toUpperCase() + 'X', sha256: initial.ref.fileSha256 },
+      { revision: rev.id, sha256: 'f'.repeat(64) }, { revision: '9'.repeat(32), sha256: initial.ref.fileSha256 } ]) {
+      const s = setup(); await assert.rejects(s.controller().prepare(pass, reference), e => e.code === 'checkpoint');
+      assert.equal(s.raw.getItem(A.SessionVault.VAULT), null); assert.equal(s.state, null); assert.equal(s.copies.size, 0);
+    }
+  });
+  await test('ancre capturée à l’aperçu puis revalidée à l’installation malgré mutation de son objet appelant', async () => {
+    const s = setup(), latest = await makeFile({ ...rev, id: '8'.repeat(32), parents: [rev.id], seq: 2 }); s.files.push(latest);
+    const reference = { revision: latest.ref.revision.id, sha256: latest.ref.fileSha256 }, c = s.controller();
+    const ticket = await c.prepare(pass, reference);
+    reference.revision = rev.id; reference.sha256 = initial.ref.fileSha256;
+    s.files.pop();
+    await assert.rejects(c.install(ticket, pass, true), e => e.code === 'checkpoint');
+    assert.equal(s.raw.getItem(A.SessionVault.VAULT), null); assert.equal(s.state, null); assert.equal(s.copies.size, 0);
   });
   await test('coffre même illisible, donnée inconnue, ancien coffre, session ou import en attente : refus sans suppression', async () => {
     for (const key of [A.SessionVault.VAULT, 'twrc.settings.v1', 'twrc.unknown', 'twrc.device.vault.v1', 'twrc.restore.pending.v1', A.SessionVault.SESSION]) {
