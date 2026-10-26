@@ -115,5 +115,20 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
     assert.match(await h.cachedShell(), /approved/); // laissé en place, mais filtré de toute réponse de shell
   });
 
+  await check('une redirection HTML externe ou vers une autre page ne remplace jamais le shell hors ligne', async () => {
+    for (const finalUrl of ['https://outside.invalid/login', SCOPE + 'signin.html']) {
+      const h = harness(async () => {
+        const response = new Response('<html>PAGE NON AUTORISÉE</html>', { headers: { 'Content-Type': 'text/html' } });
+        Object.defineProperty(response, 'url', { value: finalUrl });
+        return response;
+      });
+      await h.install();
+      const result = await h.dispatch('index.html');
+      assert.equal(result.intercepted, true);
+      assert.match(await result.response.text(), /FIXTURE RACE SHELL/, finalUrl + ' must fall back to the known shell');
+      assert.match(await h.cachedShell(), /FIXTURE RACE SHELL/, finalUrl + ' must not poison CacheStorage');
+    }
+  });
+
   console.log(`${checks}/${checks} scénarios SW OK · CacheStorage et réseau simulés`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
