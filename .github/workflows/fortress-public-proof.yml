@@ -57,6 +57,8 @@ jobs:
               assert.ok(!seen.has(name),'duplicate path');
               assert.match(expected,/^[a-f0-9]{64}$/,'invalid sha256');
               seen.add(name);
+              // Cloudflare Pages consumes these control files; they are not served as bytes.
+              if(name==='_headers' || name==='_redirects') continue;
               const result=await read(app.origin,name);
               assert.equal(digest(result.bytes),expected,app.name+' mismatch '+name);
             }
