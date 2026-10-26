@@ -72,7 +72,7 @@ const page=`<!doctype html>\n<html lang="fr" data-theme="dark"><head>${head}<lin
 // applicatif démarré après le coffre), aucun eval, aucune origine de script hors Leaflet (SRI). GitHub Pages ne permet pas
 // d'en-têtes HTTP : la politique est en <meta> ; frame-ancestors et les en-têtes sont prêts pour Cloudflare (_headers).
 const sha=t=>"'sha256-"+crypto.createHash('sha256').update(t,'utf8').digest('base64')+"'";
-const inline=[...page.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
+const inline=[...page.matchAll(/<script>([\s\S]*?)<\/script>/gi)].map(m=>m[1]);
 const deferred=(page.match(/<script type="text\/plain" id="twrc-app">([\s\S]*?)<\/script>/)||[])[1];
 if(deferred==null)throw new Error('Bloc applicatif différé introuvable');
 const CONNECT=["'self'",'https://api.open-meteo.com','https://ensemble-api.open-meteo.com','https://air-quality-api.open-meteo.com','https://geocoding-api.open-meteo.com',

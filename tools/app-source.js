@@ -10,8 +10,14 @@ function appSource(root = path.resolve(__dirname, '..')) {
     const full = path.join(dir, file);
     const relative = path.relative(fs.realpathSync(dir), fs.realpathSync(full));
     if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Section hors de src : ' + file);
-    if (!fs.lstatSync(full).isFile()) throw new Error('Section non régulière : ' + file);
-    const text = fs.readFileSync(full, 'utf8');
+    let fd;
+    try { fd = fs.openSync(full, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); }
+    catch (e) { if (e.code === 'ELOOP') throw new Error('Section non régulière : ' + file); throw e; }
+    let text;
+    try {
+      if (!fs.fstatSync(fd).isFile()) throw new Error('Section non régulière : ' + file);
+      text = fs.readFileSync(fd, 'utf8');
+    } finally { fs.closeSync(fd); }
     if (/^\/\/ @include /m.test(text.replace(INCLUDE, ''))) throw new Error('Directive app invalide : ' + file);
     return text.replace(INCLUDE, (_, child) => read(child, [...parents, file]));
   }

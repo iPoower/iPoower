@@ -260,8 +260,14 @@ function reapplyEdits(dst, src) {
 }
 function setPath(o, path, val) {
   const p = path.split('.'); let t = o;
-  for (let i = 0; i < p.length - 1; i++) t = t[p[i]];
-  t[p[p.length - 1]] = val;
+  for (let i = 0; i < p.length - 1; i++) {
+    const key = p[i];
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') throw new Error('Chemin de réglage interdit');
+    t = t[key];
+  }
+  const key = p[p.length - 1];
+  if (key === '__proto__' || key === 'constructor' || key === 'prototype') throw new Error('Chemin de réglage interdit');
+  t[key] = val;
 }
 
 /* ---------- données ---------- */

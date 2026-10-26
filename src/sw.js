@@ -50,18 +50,26 @@ async function publicRoad(req, key) {
   }
 }
 async function networkFirst(req, cacheName, key, fallback, event, waitMs, validate = () => true) {
-  const cache = await caches.open(cacheName), k = key || req;
+  let cache = null;
+  try { cache = await caches.open(cacheName); } catch { /* cache refusé : réseau seul */ }
+  const k = key || req;
   const valid = response => !!response && response.ok && validate(response);
+  const remember = async response => {
+    // Le cache est facultatif : un quota ne doit pas annuler une réponse valide.
+    if (cache) try { await cache.put(k, response.clone()); } catch { /* copie existante conservée */ }
+  };
   const cached = async () => {
-    let response = await cache.match(k, { ignoreSearch: true });
-    if (valid(response)) return response;
-    response = fallback ? await caches.match(fallback) : null;
-    return valid(response) ? response : null;
+    try {
+      let response = cache ? await cache.match(k, { ignoreSearch: true }) : null;
+      if (valid(response)) return response;
+      response = fallback ? await caches.match(fallback) : null;
+      return valid(response) ? response : null;
+    } catch { return null; }
   };
   if (waitMs) {
     const old = await cached();
     if (old) {
-      const net = fetch(req, { cache: 'no-store' }).then(async r => { if (valid(r)) await cache.put(k, r.clone()); return r; });
+      const net = fetch(req, { cache: 'no-store' }).then(async r => { if (valid(r)) await remember(r); return r; });
       if (event) event.waitUntil(net.catch(() => null));
       const r = await Promise.race([net.catch(() => null), new Promise(res => setTimeout(() => res(null), waitMs))]);
       return valid(r) ? r : old;
@@ -69,7 +77,7 @@ async function networkFirst(req, cacheName, key, fallback, event, waitMs, valida
   }
   try {
     const r = await fetch(req, { cache: 'no-store' });
-    if (valid(r)) { await cache.put(k, r.clone()); return r; }
+    if (valid(r)) { await remember(r); return r; }
     // GitHub Pages/CDN peut répondre 5xx sans être techniquement « hors réseau » :
     // dans ce cas on préfère la dernière copie valide plutôt qu'une panne visible.
     const old = await cached();
@@ -141,5 +149,6 @@ self.addEventListener('fetch', e => {
 });
 // Diagnostic (Réglages → Diagnostic) : versions des caches du SW actif.
 self.addEventListener('message', e => {
+  if (e.origin !== self.location.origin) return;
   if (e.data && e.data.type === 'twrc-version' && e.ports && e.ports[0]) e.ports[0].postMessage({ static: STATIC, data: DATA });
 });
