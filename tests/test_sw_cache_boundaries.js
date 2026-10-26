@@ -13,6 +13,15 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
     const url = new URL(raw, SCOPE); if (options.ignoreSearch) url.search = '';
     return url.href;
   };
+  // Les Response() synthétiques de Node n'ont pas d'URL réseau ; le harnais
+  // la conserve explicitement, y compris à travers clone() et CacheStorage.
+  function tagResponse(response, fallbackUrl) {
+    const finalUrl = response.url || fallbackUrl;
+    if (!response.url) Object.defineProperty(response, 'url', { value: finalUrl, configurable: true });
+    const originalClone = response.clone.bind(response);
+    response.clone = () => tagResponse(originalClone(), finalUrl);
+    return response;
+  }
   const caches = {
     async open(name) {
       if (!stores.has(name)) stores.set(name, new Map());
@@ -21,11 +30,11 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
         async addAll(urls) {
           for (const item of urls) {
             const key = keyOf(item);
-            if (key.endsWith('/index.html')) rows.set(key, new Response('<html>FIXTURE RACE SHELL</html>', { headers: { 'Content-Type': 'text/html' } }));
+            if (key.endsWith('/index.html')) rows.set(key, tagResponse(new Response('<html>FIXTURE RACE SHELL</html>', { headers: { 'Content-Type': 'text/html' } }), key));
           }
         },
         async match(input, options) { return rows.get(keyOf(input, options))?.clone(); },
-        async put(input, response) { rows.set(keyOf(input), response.clone()); },
+        async put(input, response) { rows.set(keyOf(input), tagResponse(response.clone(), response.url || keyOf(input))); },
         async delete(input) { return rows.delete(keyOf(input)); },
         async keys() { return [...rows.keys()].map(url => new Request(url)); },
       };
@@ -43,7 +52,10 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
     addEventListener(type, fn) { listeners.set(type, fn); },
     skipWaiting() {}, clients: { claim: async () => {} },
   };
-  const fetchFake = (input, init) => fetcher(new URL(typeof input === 'string' ? input : input.url), init);
+  const fetchFake = async (input, init) => {
+    const url = new URL(typeof input === 'string' ? input : input.url);
+    return tagResponse(await fetcher(url, init), url.href);
+  };
   vm.runInNewContext(SOURCE, { self, caches, URL, Request, Response, Headers, fetch: fetchFake, setTimeout, clearTimeout });
   return {
     async install() { let pending; listeners.get('install')({ waitUntil(p) { pending = p; } }); await pending; },
