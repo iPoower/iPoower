@@ -42,7 +42,12 @@ let html = fs.readFileSync(local('site/index.html'), 'utf8');
 const build = html.match(/window\.TWRC_BUILD="([0-9a-f]{12})"/)[1];
 const banner = '<aside id="drive-test-notice" role="note"><strong>TEST — DONNÉES FICTIVES UNIQUEMENT</strong> · Google personnel interdit · <a href="' + VAULT + '/#/drive" rel="noopener noreferrer">Control Vault TEST</a></aside>';
 html = html.replace('<title>TYRE WEATHER RACE CONTROL</title>', '<title>Race Control — Drive TEST</title>').replace('<head>', '<head><link rel="stylesheet" href="drive-test.css">').replace('<body>', '<body>' + banner);
+// La navigation du laboratoire reste sur ses origines TEST, même sans Google.
+html = html.replace('href="https://control-vault-ipoower.pages.dev/"', 'href="' + VAULT + '/"')
+  .replace(/<a\b[^>]*href="https:\/\/ipoower\.github\.io\/Reconversion-Control\/"[^>]*>[^<]*<\/a>/, '');
 fs.writeFileSync(local('site/index.html'), html);
+const widget = fs.readFileSync(local('site/widget.js'), 'utf8');
+fs.writeFileSync(local('site/widget.js'), widget.replace("const SITE = 'https://ipoower.github.io/iPoower/race-control/';", "const SITE = '" + RACE + "/';"));
 let recovery = fs.readFileSync(local('site/recovery.html'), 'utf8');
 recovery = recovery.replace('<head>', '<head><link rel="stylesheet" href="drive-test.css">').replace('<body>', '<body>' + banner);
 fs.writeFileSync(local('site/recovery.html'), recovery);

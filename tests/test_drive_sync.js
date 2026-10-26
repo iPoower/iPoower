@@ -28,20 +28,25 @@ function owner(network, count, label, crypt = webcrypto) {
       if (JSON.stringify(next) !== JSON.stringify(values)) { await keep(new TextEncoder().encode('encrypted-local-copy')); if (!current()) throw new Error('locked'); values = next; applied++; }
     } };
   const store = { read: async () => copy(state), write: async s => { state = copy(s); }, recovery: async b => { if (failure) throw new Error('quota'); recoveries.push(copy(b)); return sha(b); }, latestRecovery: async () => recoveries.at(-1) || null };
-  const controller = A.DriveSync.create({ vault, provider: network, store, keys: {}, locks: c.navigator.locks, crypto: crypt, now: () => time, version: () => 'prod-999' });
-  controller.select({ folder: 'fixtureFolder', binding: 'a'.repeat(64) });
+  const makeController = () => {
+    const instance = A.DriveSync.create({ vault, provider: network, store, keys: {}, locks: c.navigator.locks, crypto: crypt, now: () => time, version: () => 'prod-999' });
+    instance.select({ folder: 'fixtureFolder', binding: 'a'.repeat(64) });
+    return instance;
+  };
+  const controller = makeController();
   return { A, controller, vault, store, get values() { return copy(values); }, get state() { return copy(state); }, get applied() { return applied; }, recoveries,
-    advance(n) { time += n; }, edit(key, value) { values[key] = value; }, fail(value) { failure = value; } };
+    restart: makeController, advance(n) { time += n; }, edit(key, value) { values[key] = value; }, fail(value) { failure = value; } };
 }
 function drive() {
   const files = new Map(), profileFiles = new Map(); let n = 0;
-  const d = { files, profileFiles, loseReply: false, disconnect() {},
+  const d = { files, profileFiles, loseReply: false, uploadAttempts: 0, disconnect() {},
     async reserveId() { return 'file_' + ++n; },
     async profiles() { return [...profileFiles.values()].map(copy); },
     async uploadProfile(fileId, folder, bytes) { const p = { fileId, bytes: copy(bytes), sha256: sha(bytes) }; profileFiles.set(fileId, p); return copy(p); },
     async list() { return [...files.values()].map(f => copy(f.ref)); },
     async download(ref) { const f = files.get(ref.fileId); return { packet: { copyBytes: () => copy(f.bytes) }, proof: { ...ref, state: 'verified-bytes', verifiedAt: at } }; },
     async uploadRevision(fileId, folder, packet, rev) {
+      d.uploadAttempts++;
       if (d.beforeUpload) await d.beforeUpload();
       const bytes = packet.copyBytes(), prior = files.get(fileId);
       if (prior) assert.equal(sha(prior.bytes), sha(bytes), 'même identifiant, mêmes octets');
@@ -66,6 +71,49 @@ function drive() {
   assert.deepEqual(Array.from(pc.A.JournalArchive.capture(pc.values).records).sort(), originalRecords, 'every complete record and response is preserved, not only its count');
   const count = d.files.size; await pc.controller.run(true); await phone.controller.run(true); assert.equal(d.files.size, count, 'convergence sans versions vides');
   console.log('✅ deux appareils, 120/61 trajets, 91/365 jours, deux réponses : union, copie avant fusion et convergence finie');
+
+  {
+    const remote = drive(), local = owner(remote, 1, 'tampered-revision');
+    remote.beforeUpload = async () => { throw Object.assign(new Error('synthetic interruption'), { code: 'unavailable' }); };
+    await local.controller.run(true);
+    const pending = local.state.outbox.job;
+    assert(pending); assert.equal(pending.phase, 'reserved'); assert.equal(remote.files.size, 0);
+    const attemptsBeforeTamper = remote.uploadAttempts;
+    const pendingBytes = copy(local.state.bytes);
+    const altered = local.state;
+    altered.outbox.job.rev.id = 'f'.repeat(32); // autre révision valide en forme, octets GCM inchangés
+    await local.store.write(altered);
+    remote.beforeUpload = null;
+    await local.controller.run(true);
+    assert.equal(remote.uploadAttempts, attemptsBeforeTamper, 'job.rev altéré doit être refusé avant tout upload');
+    assert.equal(remote.files.size, 0, 'aucun paquet portant des métadonnées de révision incohérentes');
+    assert.equal(local.state.outbox.blocked, 'integrity', 'job incohérent bloqué sans effacer la file');
+    assert.notEqual(local.controller.status.message, 'synchronisé', 'aucun faux succès après reprise');
+    assert(local.state.outbox.job, 'file d’attente conservée');
+    assert.equal(local.state.outbox.job.fileId, pending.fileId, 'identifiant réservé conservé');
+    assert.deepEqual(local.state.bytes, pendingBytes, 'octets chiffrés conservés');
+    console.log('✅ reprise : révision durable altérée refusée avant upload, file chiffrée et identifiant conservés');
+  }
+
+  {
+    const remote = drive(), local = owner(remote, 1, 'intact-resume');
+    remote.beforeUpload = async () => { throw Object.assign(new Error('synthetic interruption'), { code: 'unavailable' }); };
+    await local.controller.run(true);
+    const pending = local.state.outbox.job;
+    assert(pending); assert.equal(remote.files.size, 0);
+    const resumed = local.restart(); // nouveau contrôleur : aucune poignée de clé en mémoire
+    local.vault.mode = 'locked';
+    await resumed.run(true);
+    assert.equal(remote.uploadAttempts, 1, 'coffre verrouillé : aucun nouvel envoi');
+    assert.equal(local.state.outbox.job.fileId, pending.fileId, 'reprise verrouillée conserve l’identifiant');
+    assert.notEqual(resumed.status.message, 'synchronisé');
+    local.vault.mode = 'vault'; remote.beforeUpload = null;
+    await resumed.run(true);
+    assert.equal(remote.files.size, 1);
+    assert.equal(local.state.outbox.job, null);
+    assert.equal(resumed.status.message, 'synchronisé', 'reprise intacte après redérivation du code');
+    console.log('✅ reprise intacte : verrouillage conserve la file, puis redérivation et reçu terminent le même ID');
+  }
 
   const before = pc.state.outbox.verified;
   const settings = JSON.parse(pc.values['twrc.settings.v1']); settings.cars[0].photo = 'synthetic-photo';
