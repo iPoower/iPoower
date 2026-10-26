@@ -42,16 +42,18 @@ async function scenario(browser, engine, app, old, worker) {
     await page.goto(origin+'/');
     await page.evaluate(async()=>{await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;if(!navigator.serviceWorker.controller)await new Promise(done=>navigator.serviceWorker.addEventListener('controllerchange',done,{once:true}));});
     assert.match(await cacheText(),/TRUSTED_INITIAL/);
-    phase='secondary';await page.goto(origin+'/index.html');
+    phase='secondary';const redirected=await page.goto(origin+'/index.html');
     const poisoned=(await cacheText()).includes('UNTRUSTED_SIGNIN');
-    assert.equal(poisoned,old,app.app+' '+engine+' old='+old+' contamination attendue vs observée');
-    if(!old){
-      phase='updated';await page.goto(origin+'/index.html');assert.match(await cacheText(),/TRUSTED_UPDATED/);
-      phase='external';try{await page.goto(origin+'/index.html',{timeout:10000});}catch{}
-      assert.match(await cacheText(),/TRUSTED_UPDATED/);
-    }
-    receipts.push({app:app.app,engine,sha:old?app.old:app.head,sourceSha256:old?app.oldHash:app.hash,old,secondaryPoisoned:poisoned,legitimateUpdate:!old,externalCachePreserved:!old,status:'CONFIRME'});
-    console.log('PASS',app.app,engine,old?'ancienne faille reproduite':'redirections refusées et shell légitime actualisé');
+    // L'hypothèse initiale « ancien code forcément contaminé » est réfutée
+    // par les vrais navigateurs. Ne pas transformer la simulation en exploit.
+    // Exiger l'invariant natif sur les DEUX versions et conserver l'observation.
+    assert.equal(poisoned,false,app.app+' '+engine+' cache contaminé après redirection secondaire');
+    const observed={url:page.url(),status:redirected?.status(),fromServiceWorker:redirected?.fromServiceWorker()};
+    phase='updated';await page.goto(origin+'/index.html');assert.match(await cacheText(),/TRUSTED_UPDATED/);
+    phase='external';try{await page.goto(origin+'/index.html',{timeout:10000});}catch{}
+    assert.match(await cacheText(),/TRUSTED_UPDATED/);
+    receipts.push({app:app.app,engine,sha:old?app.old:app.head,sourceSha256:old?app.oldHash:app.hash,old,secondaryPoisoned:poisoned,baselineVulnerabilityReproduced:old?poisoned:null,observed,legitimateUpdate:true,externalCachePreserved:true,status:'CONFIRME'});
+    console.log('PASS',app.app,engine,old?'ancien code : contamination NON reproduite en HTTP natif':'candidat : cache préservé et shell légitime actualisé');
   } finally {await context.close();await close(server);await close(external);}
 }
 (async()=>{

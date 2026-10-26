@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   real-redirect-proof:
-    name: Native SW red/green HTTP redirects
+    name: Native SW cache invariants and reproduction limits
     runs-on: ubuntu-24.04
     container: mcr.microsoft.com/playwright:v1.63.0-noble
     timeout-minutes: 15
