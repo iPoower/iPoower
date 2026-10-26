@@ -49,26 +49,33 @@ async function publicRoad(req, key) {
     throw error;
   }
 }
-async function networkFirst(req, cacheName, key, fallback, event, waitMs) {
+async function networkFirst(req, cacheName, key, fallback, event, waitMs, validate = () => true) {
   const cache = await caches.open(cacheName), k = key || req;
+  const valid = response => !!response && response.ok && validate(response);
+  const cached = async () => {
+    let response = await cache.match(k, { ignoreSearch: true });
+    if (valid(response)) return response;
+    response = fallback ? await caches.match(fallback) : null;
+    return valid(response) ? response : null;
+  };
   if (waitMs) {
-    const old = await cache.match(k, { ignoreSearch: true }) || (fallback ? await caches.match(fallback) : null);
+    const old = await cached();
     if (old) {
-      const net = fetch(req, { cache: 'no-store' }).then(async r => { if (r && r.ok) await cache.put(k, r.clone()); return r; });
+      const net = fetch(req, { cache: 'no-store' }).then(async r => { if (valid(r)) await cache.put(k, r.clone()); return r; });
       if (event) event.waitUntil(net.catch(() => null));
       const r = await Promise.race([net.catch(() => null), new Promise(res => setTimeout(() => res(null), waitMs))]);
-      return r && r.ok ? r : old;
+      return valid(r) ? r : old;
     }
   }
   try {
     const r = await fetch(req, { cache: 'no-store' });
-    if (r && r.ok) { await cache.put(k, r.clone()); return r; }
+    if (valid(r)) { await cache.put(k, r.clone()); return r; }
     // GitHub Pages/CDN peut répondre 5xx sans être techniquement « hors réseau » :
     // dans ce cas on préfère la dernière copie valide plutôt qu'une panne visible.
-    const old = await cache.match(k, { ignoreSearch: true }) || (fallback ? await caches.match(fallback) : null);
+    const old = await cached();
     return old || r;
   } catch (e) {
-    return (await cache.match(k, { ignoreSearch: true })) || (fallback ? caches.match(fallback) : undefined) || Promise.reject(e);
+    return (await cached()) || Promise.reject(e);
   }
 }
 self.addEventListener('install', e => {
@@ -103,9 +110,23 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Navigation / shell : dernière version réseau, shell préchargé en secours.
-  const isNav = e.request.mode === 'navigate' || /\.html?$|\/$/.test(u.pathname);
-  e.respondWith(networkFirst(e.request, STATIC, isNav ? new Request(new URL('index.html', self.registration.scope).href) : e.request, './index.html', e, isNav ? NAV_WAIT_MS : 0));
+  const scope = new URL(self.registration.scope), path = u.pathname.slice(scope.pathname.length);
+  // Ces pages/configurations doivent aller directement au réseau. CacheStorage.put
+  // n'honore pas Cache-Control: no-store lorsqu'on le remplit explicitement.
+  if (['recovery', 'recovery.html', 'drive-config.json', 'fixture-manifest.json'].includes(path)) return;
+
+  // Seuls les alias explicites de l'application peuvent utiliser le shell en secours.
+  // Une navigation vers un JSON ou une page annexe ne doit jamais écraser index.html.
+  if (e.request.mode === 'navigate') {
+    if (![scope.pathname, new URL('index', scope).pathname, new URL('index.html', scope).pathname].includes(u.pathname)) return;
+    const shell = new URL('index.html', scope);
+    const html = response => /^text\/html(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '');
+    e.respondWith(networkFirst(e.request, STATIC, new Request(shell.href), './index.html', e, NAV_WAIT_MS, html));
+    return;
+  }
+
+  // Les autres ressources peuvent retrouver leur propre URL en cache, jamais le shell.
+  e.respondWith(networkFirst(e.request, STATIC, e.request));
 });
 // Diagnostic (Réglages → Diagnostic) : versions des caches du SW actif.
 self.addEventListener('message', e => {
