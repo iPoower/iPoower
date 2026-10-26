@@ -7,7 +7,9 @@ const LEAFLET = {
 };
 const ASSETS = ['leaflet.js', 'leaflet.css', 'images/layers.png', 'images/layers-2x.png', 'images/marker-icon.png', 'images/marker-icon-2x.png', 'images/marker-shadow.png'];
 function readAsset(source) {
-  const fd = fs.openSync(source, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  let fd;
+  try { fd = fs.openSync(source, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); }
+  catch (e) { if (e.code === 'ELOOP') throw new Error('Intégrité Leaflet refusée : ressource non régulière'); throw e; }
   try {
     if (!fs.fstatSync(fd).isFile()) throw new Error('Ressource Leaflet non régulière');
     return fs.readFileSync(fd);
