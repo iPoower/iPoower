@@ -1,8 +1,8 @@
 name: FORTRESS - independent published TEST proof
 on:
   pull_request:
-    branches: [test/fortress-drive-execution-20261026]
-    paths: [.github/workflows/fortress-public-proof.yml]
+    branches: [test/fortress-drive-execution-20261026, test/fortress-public-proof-20261026]
+    paths: [.github/workflows/fortress-public-proof.yml, tests/fortress-real-redirect-proof.js]
 permissions:
   contents: read
 jobs:
