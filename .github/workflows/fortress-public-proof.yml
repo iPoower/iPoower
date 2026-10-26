@@ -1,0 +1,136 @@
+name: FORTRESS - independent published TEST proof
+on:
+  pull_request:
+    branches: [test/fortress-drive-execution-20261026]
+    paths: [.github/workflows/fortress-public-proof.yml]
+permissions:
+  contents: read
+jobs:
+  http-proof:
+    if: github.head_ref == 'test/fortress-public-proof-20261026'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Setup Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Independently verify 2 published TEST sites, versions, and every file SHA-256
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {createHash} from 'node:crypto';
+          const cases = [
+            {name:'Race Control', origin:'https://rc-drive-test-ipoower.pages.dev', sha:'6d10cd9759f20531d97acb4c9ecae91479b21b57'},
+            {name:'Control Vault',origin:'https://cv-drive-test-ipoower.pages.dev',sha:'28767b29a53436ef7609dac92aa482410f1af728'}
+          ];
+          const digest = data => createHash('sha256').update(data).digest('hex');
+          async function read(origin,path) {
+            const url = origin + '/' + path;
+            const response = await fetch(url,{redirect:'follow',signal:AbortSignal.timeout(25000),headers:{'Accept':'*/*'}});
+            assert.equal(response.status,200,'HTTP status for '+url+': '+response.status);
+            assert.equal(new URL(response.url).origin,origin,'cross-origin redirect at '+url);
+            const bytes = Buffer.from(await response.arrayBuffer());
+            assert.ok(bytes.length>0,'empty file at '+url);
+            return {bytes,headers:response.headers,finalUrl:response.url};
+          }
+          for(const app of cases) {
+            const versionObj=await read(app.origin,'version.json');
+            const manifestObj=await read(app.origin,'fixture-manifest.json');
+            const version=JSON.parse(versionObj.bytes.toString('utf8'));
+            const manifest=JSON.parse(manifestObj.bytes.toString('utf8'));
+            assert.equal(version.sha,app.sha,app.name+' wrong deployed SHA');
+            assert.equal(manifest.sourceSha,app.sha,app.name+' manifest wrong SHA');
+            for(const data of [version,manifest]){
+              assert.equal(data.environment,'isolated-test');
+              assert.equal(data.fixtureOnly,true);
+              assert.equal(data.googleEnabled,true);
+            }
+            assert.equal(manifest.raceOrigin,cases[0].origin);
+            assert.equal(manifest.vaultOrigin,cases[1].origin);
+            const entries=Object.entries(manifest.files||{});
+            assert.ok(entries.length>=6 && entries.length<=100,'unusual number of published files');
+            const seen=new Set();
+            for(const [name,expected] of entries){
+              assert.match(name,/^[A-Za-z0-9_./-]+$/,'illegal path name');
+              assert.ok(!name.startsWith('/') && !name.split('/').includes('..'),'path traversal');
+              assert.ok(!seen.has(name),'duplicate path');
+              assert.match(expected,/^[a-f0-9]{64}$/,'invalid sha256');
+              seen.add(name);
+              const result=await read(app.origin,name);
+              assert.equal(digest(result.bytes),expected,app.name+' mismatch '+name);
+            }
+            const html=(await read(app.origin,'')).bytes.toString('utf8');
+            assert.match(html,/TEST — DONNÉES FICTIVES UNIQUEMENT/,'TEST banner missing');
+            const config=JSON.parse((await read(app.origin,'drive-config.json')).bytes.toString('utf8'));
+            assert.ok(config && typeof config==='object' && !Array.isArray(config),'Google TEST config missing');
+            assert.equal(config.raceOrigin,cases[0].origin);
+            assert.equal(config.vaultOrigin,cases[1].origin);
+            const recovery=await read(app.origin,'recovery');
+            assert.match(recovery.headers.get('content-type')||'',/text\/html/i,'recovery is not HTML');
+            console.log('VERIFIED '+app.name+': '+entries.length+' files, SHA-256, isolated origins, Google TEST and recovery HTTP 200');
+            console.log('HTTP recovery Cache-Control: '+(recovery.headers.get('cache-control')||'(unspecified)'));
+          }
+          console.log('FORTRESS independent HTTP proof PASSED: both sites, no private account, no writes');
+          NODE
+  browser-proof:
+    needs: http-proof
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    timeout-minutes: 15
+    steps:
+      - name: Checkout isolated audit PR only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Setup Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install exact dependencies, no audit fixes
+        run: npm ci --no-audit --no-fund
+      - name: Browser isolated offline/service-worker regression on published Race Control TEST
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { chromium, webkit } from 'playwright';
+          const origin='https://rc-drive-test-ipoower.pages.dev';
+          for(const [name,launcher] of [['chromium',chromium],['webkit',webkit]]){
+            const browser=await launcher.launch({headless:true});
+            const context=await browser.newContext({serviceWorkers:'allow'});
+            const page=await context.newPage();
+            try {
+              const main=await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:30000});
+              assert.equal(main.status(),200);
+              await page.locator('#drive-test-notice').waitFor({timeout:12000});
+              await page.evaluate(()=>navigator.serviceWorker.ready);
+              await page.reload({waitUntil:'domcontentloaded',timeout:20000});
+              await page.waitForFunction(()=>!!navigator.serviceWorker.controller,undefined,{timeout:12000});
+              const before=await page.evaluate(async()=>{
+                const keys=await caches.keys();
+                const entries=await Promise.all(keys.map(async key=>(await (await caches.open(key)).keys()).map(req=>req.url)));
+                return entries.flat();
+              });
+              assert.ok(before.some(u=>u.endsWith('/index.html')),'shell not cached');
+              const conf=await page.goto(origin+'/drive-config.json',{waitUntil:'domcontentloaded',timeout:20000});
+              assert.equal(conf.status(),200);
+              const text=await page.locator('body').innerText();
+              assert.ok(!text.includes('TYRE WEATHER RACE CONTROL'),'JSON route replaced by app shell');
+              await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:20000});
+              await context.setOffline(true);
+              await page.reload({waitUntil:'domcontentloaded',timeout:20000});
+              await page.locator('#drive-test-notice').waitFor({timeout:7000});
+              let recoveryReturnedShell=false;
+              try {
+                await page.goto(origin+'/recovery',{waitUntil:'domcontentloaded',timeout:7000});
+                recoveryReturnedShell=(await page.content()).includes('id="drive-test-notice"');
+              } catch {}
+              assert.equal(recoveryReturnedShell,false,'offline recovery unexpectedly returned application shell');
+              console.log('PASS '+name+': real HTTPS navigation, active SW, JSON isolation, offline shell and offline recovery refusal');
+            } finally { await context.close();await browser.close(); }
+          }
+          NODE
