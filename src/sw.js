@@ -124,8 +124,8 @@ self.addEventListener('fetch', e => {
       if (!/^text\/html(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '')) return false;
       // Response.url reflète l'URL FINALE après redirection. Ne jamais persister
       // une page d'authentification, même HTML 200, en remplacement du shell.
-      // Les doubles Response() sans URL existent uniquement dans le harnais VM.
-      if (!response.url) return true;
+      // Une réponse réseau sans URL finale n'est pas une preuve d'origine.
+      if (!response.url) return false;
       try {
         const final = new URL(response.url);
         return final.origin === scope.origin &&
