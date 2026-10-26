@@ -57,7 +57,8 @@ SUITE.push(['test_road_intelligence.js', 'route : géométrie, sens, progression
   ['test_road_datex.js', 'DATEX serveur : snapshot, deltas, fin, validité, atomique et conservation au déploiement', false],
   ['e2e51-road.js', 'Live Road Intelligence : cockpit PC/iPhone, clics, OSRM, DATEX, fraîcheur, panne et confidentialité', true],
   ['e2e52-road-sw.js', 'SW réel : migration v9/v11, DATEX, hors ligne, rétention et aucun faux LIVE', true, 'chromium'],
-  ['test_sw_cache_boundaries.js', 'SW : routes de récupération/config isolées du shell et alias hors ligne explicites', false]);
+  ['test_sw_cache_boundaries.js', 'SW : routes de récupération/config isolées du shell et alias hors ligne explicites', false],
+  ['test_path_guard.js', 'Réglages : pollution de prototype refusée et édition légitime préservée', false]);
 SUITE.push(['test_userctx.js', 'contexte global : migration, transactions, persistance, fraîcheur et fenêtres', false],
   ['e2e53-global-context.js', 'contexte global : cycle maison/travail/retour dans les quatre vues, profils, iPhone/PC et rechargement', true],
   ['e2e54-context-sw.js', 'contexte global et vrai SW : migration v10/v11, cache, cycle de trajet et réouverture PWA hors ligne', true, 'chromium']);

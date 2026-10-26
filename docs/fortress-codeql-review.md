@@ -1,0 +1,11 @@
+# FORTRESS TEST — revue CodeQL du 26 octobre 2026
+
+Le premier scan complet `security-extended` du HEAD `7149dc6` a produit 188 alertes. Le SARIF original reste conservé dans l’artefact GitHub `12671793598` du run `40370920910` ; son SHA-256 ZIP est `da19d426993f8ef336ae90432f6e95168bb85c6f27714c9fadc5d9d1abe5a03d`.
+
+Six alertes concernent les sources applicatives ou les outils de build : écriture de chemins traversant les prototypes, diagnostic SW sans vérification de l’origine, extraction HTML insensible à la casse et trois lectures de fichiers séparées de leur contrôle. Les correctifs sont dans le candidat TEST ; leur nouveau scan reste requis. Les chemins de réglages hostiles sont refusés avant toute assignation. Les lectures contrôlent désormais le descripteur réellement ouvert et refusent les liens symboliques finaux. Cela ne remplace pas l’isolation du checkout ni une défense contre un attaquant privilégié modifiant ses répertoires parents.
+
+Les 182 autres alertes se trouvent dans 62 fichiers de tests. Leur revue distingue dispatch de réponses fictives et assertions de texte d’une décision d’autorisation. Les navigateurs sont interceptés et les requêtes non prévues sont annulées ; les fixtures historiques autorisent seulement les lectures locales prévues. Les tests réseau récents utilisent en outre le proxy local injoignable de `tests/lib/browser.js`. Les assertions de hostname restent des assertions, pas un filtre de production. Le TOCTOU de test porte sur son propre répertoire temporaire. Le filtre de balises de profilage extrait un build local fictif ; il ne nettoie aucun HTML tiers.
+
+`fortress-codeql-triage.json` conserve chaque alerte, son emplacement, son motif de revue, le SHA-256 du message et celui du fichier entier. Le gate n’exclut aucun fichier de l’analyse et n’efface aucune alerte du SARIF. Il refuse toute alerte applicative, nouvelle, déplacée ou issue d’un fichier de test modifié. Aucun résultat source n’est autorisé par exception. Le premier gate brut échoué reste une preuve historique ; les 182 diagnostics examinés ne doivent jamais être décrits comme « zéro alerte CodeQL ».
+
+Les tests existants restent inchangés. Cette classification ne certifie ni l’authentification Google réelle, ni la restauration distante, ni un appareil iPhone physique. Aucune fusion ni production n’est autorisée.

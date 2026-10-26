@@ -61,6 +61,11 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
   vm.runInNewContext(SOURCE, { self, caches, URL, Request, Response, Headers, fetch: fetchFake, setTimeout, clearTimeout });
   return {
     setCacheFault(value) { cacheFault = value; },
+    message(origin) {
+      const replies = [];
+      listeners.get('message')({ origin, data: { type: 'twrc-version' }, ports: [{ postMessage(value) { replies.push(value); } }] });
+      return replies;
+    },
     async install() { let pending; listeners.get('install')({ waitUntil(p) { pending = p; } }); await pending; },
     async dispatch(pathname, mode = 'navigate') {
       const request = { url: new URL(pathname, SCOPE).href, method: 'GET', mode, headers: new Headers({ Accept: 'text/html,application/xhtml+xml,application/json' }) };
@@ -162,6 +167,11 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
       const result = await h.dispatch('index.html');
       assert.match(await result.response.text(), /RÉSEAU VALIDE MALGRÉ CACHE REFUSÉ/, fault);
     }
+  });
+  await check('le diagnostic SW répond uniquement aux messages de son origine', async () => {
+    const h = harness();
+    for (const origin of ['', 'https://outside.invalid']) assert.equal(h.message(origin).length, 0);
+    assert.deepEqual(h.message(new URL(SCOPE).origin).map(r => r.static), [STATIC]);
   });
   console.log(`${checks}/${checks} scénarios SW OK · CacheStorage et réseau simulés`);
 })().catch(error => { console.error(error); process.exitCode = 1; });

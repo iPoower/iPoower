@@ -149,5 +149,6 @@ self.addEventListener('fetch', e => {
 });
 // Diagnostic (Réglages → Diagnostic) : versions des caches du SW actif.
 self.addEventListener('message', e => {
+  if (e.origin !== self.location.origin) return;
   if (e.data && e.data.type === 'twrc-version' && e.ports && e.ports[0]) e.ports[0].postMessage({ static: STATIC, data: DATA });
 });

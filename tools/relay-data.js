@@ -14,11 +14,9 @@ function directory(p) {
 }
 function read(root, name) {
   const file = path.join(directory(root), name);
-  if (!fs.existsSync(file)) {
-    // existsSync retourne aussi false pour un lien cassé : ne pas l'accepter.
-    try { fs.lstatSync(file); } catch (e) { if (e.code === 'ENOENT') return null; throw e; }
-  }
-  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  let fd;
+  try { fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); }
+  catch (e) { if (e.code === 'ENOENT') return null; throw e; }
   try {
     const stat = fs.fstatSync(fd);
     if (!stat.isFile() || stat.size > 16000000) throw new Error('Fichier de données non régulier ou trop volumineux');

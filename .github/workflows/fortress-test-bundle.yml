@@ -30,23 +30,8 @@ jobs:
         with:
           upload: never
           output: .ci/codeql
-      - name: Refuse error or warning findings
-        run: |
-          node - <<'JS'
-          const fs = require('node:fs');
-          const files = fs.readdirSync('.ci/codeql').filter(n => n.endsWith('.sarif'));
-          if (!files.length) throw Error('No CodeQL proof');
-          let blocking = 0;
-          for (const file of files) for (const run of JSON.parse(fs.readFileSync('.ci/codeql/' + file)).runs) {
-            const rules = new Map((run.tool.driver.rules || []).map(r => [r.id, r]));
-            for (const r of run.results || []) {
-              const level = r.level || rules.get(r.ruleId)?.defaultConfiguration?.level || 'warning';
-              if (['error', 'warning'].includes(level)) blocking++;
-            }
-          }
-          if (blocking) throw Error(blocking + ' CodeQL findings require review');
-          console.log('CodeQL: no error/warning finding');
-          JS
+      - name: Review every finding and refuse unreviewed alerts
+        run: node scripts/review-fortress-codeql.mjs .ci/codeql
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
