@@ -8,6 +8,7 @@ let checks = 0;
 async function check(name, work) { await work(); checks++; console.log('✅ ' + name); }
 
 function harness(fetcher = async () => new Response('panne amont', { status: 503, headers: { 'Content-Type': 'text/plain' } })) {
+  let cacheFault = '';
   const listeners = new Map(), stores = new Map(), keyOf = (input, options = {}) => {
     const raw = typeof input === 'string' ? input : input.url ?? input.href;
     const url = new URL(raw, SCOPE); if (options.ignoreSearch) url.search = '';
@@ -24,6 +25,7 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
   }
   const caches = {
     async open(name) {
+      if (cacheFault === 'open') throw new Error('Cache indisponible (fixture)');
       if (!stores.has(name)) stores.set(name, new Map());
       const rows = stores.get(name);
       return {
@@ -34,7 +36,7 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
           }
         },
         async match(input, options) { return rows.get(keyOf(input, options))?.clone(); },
-        async put(input, response) { rows.set(keyOf(input), tagResponse(response.clone(), response.url || keyOf(input))); },
+        async put(input, response) { if (cacheFault === 'put') throw new Error('Quota cache (fixture)'); rows.set(keyOf(input), tagResponse(response.clone(), response.url || keyOf(input))); },
         async delete(input) { return rows.delete(keyOf(input)); },
         async keys() { return [...rows.keys()].map(url => new Request(url)); },
       };
@@ -58,6 +60,7 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
   };
   vm.runInNewContext(SOURCE, { self, caches, URL, Request, Response, Headers, fetch: fetchFake, setTimeout, clearTimeout });
   return {
+    setCacheFault(value) { cacheFault = value; },
     async install() { let pending; listeners.get('install')({ waitUntil(p) { pending = p; } }); await pending; },
     async dispatch(pathname, mode = 'navigate') {
       const request = { url: new URL(pathname, SCOPE).href, method: 'GET', mode, headers: new Headers({ Accept: 'text/html,application/xhtml+xml,application/json' }) };
@@ -151,5 +154,14 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
     }
   });
 
+  await check('un quota ou un cache refusé ne masque jamais une réponse réseau valide', async () => {
+    for (const fault of ['put', 'open']) {
+      const h = harness(async () => new Response('<html>RÉSEAU VALIDE MALGRÉ CACHE REFUSÉ</html>', { headers: { 'Content-Type': 'text/html' } }));
+      await h.install();
+      h.setCacheFault(fault);
+      const result = await h.dispatch('index.html');
+      assert.match(await result.response.text(), /RÉSEAU VALIDE MALGRÉ CACHE REFUSÉ/, fault);
+    }
+  });
   console.log(`${checks}/${checks} scénarios SW OK · CacheStorage et réseau simulés`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
