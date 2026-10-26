@@ -120,7 +120,18 @@ self.addEventListener('fetch', e => {
   if (e.request.mode === 'navigate') {
     if (![scope.pathname, new URL('index', scope).pathname, new URL('index.html', scope).pathname].includes(u.pathname)) return;
     const shell = new URL('index.html', scope);
-    const html = response => /^text\/html(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '');
+    const html = response => {
+      if (!/^text\/html(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '')) return false;
+      // Response.url reflète l'URL FINALE après redirection. Ne jamais persister
+      // une page d'authentification, même HTML 200, en remplacement du shell.
+      // Les doubles Response() sans URL existent uniquement dans le harnais VM.
+      if (!response.url) return true;
+      try {
+        const final = new URL(response.url);
+        return final.origin === scope.origin &&
+          [scope.pathname, new URL('index', scope).pathname, new URL('index.html', scope).pathname].includes(final.pathname);
+      } catch { return false; }
+    };
     e.respondWith(networkFirst(e.request, STATIC, new Request(shell.href), './index.html', e, NAV_WAIT_MS, html));
     return;
   }
