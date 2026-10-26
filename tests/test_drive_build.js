@@ -51,6 +51,12 @@ try {
   assert.equal(stamped.fixtureOnly, true); assert.equal(stamped.sourceSha, 'a'.repeat(40)); assert.equal(stamped.googleEnabled, false);
   assert.equal(fs.readFileSync(path.join(result.site, 'drive-config.json'), 'utf8'), 'null');
   assert(fs.readFileSync(path.join(result.site, 'index.html'), 'utf8').includes('TEST — DONNÉES FICTIVES UNIQUEMENT'));
+  for (const name of ['index.html', 'recovery.html', 'widget.js']) {
+    const text = fs.readFileSync(path.join(result.site, name), 'utf8');
+    assert(!/https:\/\/(?:control-vault-ipoower\.pages\.dev|ipoower\.github\.io\/(?:iPoower|Reconversion-Control))\//.test(text), 'TEST ne doit proposer aucun accès aux applications de production : ' + name);
+  }
+  assert(fs.readFileSync(path.join(result.site, 'index.html'), 'utf8').includes('href="https://cv-drive-test-ipoower.pages.dev/"'));
+  assert(fs.readFileSync(path.join(result.site, 'widget.js'), 'utf8').includes("const SITE = 'https://rc-drive-test-ipoower.pages.dev/';"));
   assert(fs.readFileSync(path.join(result.site, '_headers'), 'utf8').includes('geolocation=()'));
   assert(!Object.keys(stamped.files).some(f => /(^|\/)(preset\.json|artifact\.html|relay-config\.sealed\.json|relay\.js)$/.test(f)));
   for (const [name, expected] of Object.entries(stamped.files)) assert.equal(require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(result.site, name))).digest('hex'), expected);

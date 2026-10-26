@@ -125,6 +125,10 @@ const DriveSync = (() => {
       guard();
       if (job.phase === 'sealed') { s.outbox = SyncOutbox.reserved(s.outbox, await provider.reserveId()); guard(); await save(s); }
       const packet = await DriveTransport.readRacePacket(s.bytes, job.sha); guard();
+      const opened = await codec.openWith(s.bytes, handle, version(), job.sha); guard();
+      try { SyncRevisions.confirm(job.rev, opened, job.sha, SyncMerge.device); }
+      catch { return fail('integrity'); }
+      guard();
       const back = await provider.uploadRevision(s.outbox.job.fileId, selected.folder, packet, job.rev); guard();
       s.outbox = SyncOutbox.sent(s.outbox); await save(s);
       s.outbox = SyncOutbox.verified(s.outbox, back.proof.fileId, back.proof.fileSha256, now());
