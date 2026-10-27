@@ -10,7 +10,7 @@ const { createHash } = require('node:crypto');
 const { chromium, webkit } = require('playwright');
 const APPS = [
   { name: 'RC', origin: 'https://rc-drive-test-ipoower.pages.dev', source: '7e5cd990f7f736ab77220bb2b35fad643407e672', anchor: 'ea1fe1399127a48e26a358c1bf9710503457fc40756c7e9e8a393ad5fefedd87', count: 24 },
-  { name: 'CV', origin: 'https://cv-drive-test-ipoower.pages.dev', source: '51031e8d1a4b69565bc36830f6ef8efbfd986ca3', anchor: 'd862fe70e3760134c50bff7b9b2681ec29c4d335e51aa71185f5f36cd1e540a8', count: 16 }
+  { name: 'CV', origin: 'https://cv-drive-test-ipoower.pages.dev', source: 'f87834b581532de507a1eb3ca7b5b0ce5616c3c8', anchor: '016e0205134ffe507f0ec12d1fede0eaad31be6d02d9f0e526159561262d506a', count: 16 }
 ];
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
 const timeout = ms => AbortSignal.timeout(ms);
@@ -134,7 +134,7 @@ async function browserProof(app, engine, launcher) {
   const proxy = await makeProxy(app.origin);
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'fortress-fixture-'));
   const options = { headless: true, proxy: { server: proxy.address }, serviceWorkers: 'allow', viewport: { width: 414, height: 896 }, hasTouch: true };
-  let context, page; let phase = 'initialization'; const sentinel = 'synthetic-' + app.name + '-' + engine;
+  let context, page; const offlineDiagnostics = []; let phase = 'initialization'; const sentinel = 'synthetic-' + app.name + '-' + engine;
   try {
     context = await launcher.launchPersistentContext(profile, options);
     page = context.pages()[0] || await context.newPage();
@@ -159,6 +159,10 @@ async function browserProof(app, engine, launcher) {
     assert.equal(browserManifest.source, app.source);
     const before = await page.evaluate(async () => ({ controller: navigator.serviceWorker.controller.scriptURL, caches: (await Promise.all((await caches.keys()).map(async key => ({ key, urls: (await (await caches.open(key)).keys()).map(r => r.url) })))) }));
     assert.ok(before.caches.some(c => c.urls.some(u => new URL(u).pathname === '/index.html')));
+    if (app.name === 'CV') {
+      await page.locator('#offline-diagnostic[data-diagnostic="local-elements-present"]').waitFor({ timeout: 18000 });
+      offlineDiagnostics.push({ phase: 'online-prepared', text: await page.locator('#offline-diagnostic').innerText(), status: await page.locator('#offline-diagnostic').getAttribute('data-diagnostic') });
+    }
     // No setOffline: tear down all TCP sockets and drop future connections.
     phase = 'network-cut-and-probe';
     proxy.cut();
@@ -170,6 +174,10 @@ async function browserProof(app, engine, launcher) {
       await page.locator('#drive-test-notice').waitFor({ timeout: 8000 });
       if (app.name === 'CV') await page.locator('#hero-title').waitFor({ timeout: 8000 });
       assert.equal(await page.evaluate(() => localStorage.getItem('fortress.synthetic.probe')), sentinel);
+      if (app.name === 'CV') {
+        await page.locator('#offline-diagnostic[data-diagnostic="local-elements-present"]').waitFor({ timeout: 18000 });
+        offlineDiagnostics.push({ phase, text: await page.locator('#offline-diagnostic').innerText(), status: await page.locator('#offline-diagnostic').getAttribute('data-diagnostic') });
+      }
     }
     const browserVersion = context.browser().version();
     phase = 'offline-browser-restart';
@@ -180,14 +188,25 @@ async function browserProof(app, engine, launcher) {
     await page.locator('#drive-test-notice').waitFor({ timeout: 8000 });
     if (app.name === 'CV') await page.locator('#hero-title').waitFor({ timeout: 8000 });
     assert.equal(await page.evaluate(() => localStorage.getItem('fortress.synthetic.probe')), sentinel);
+    if (app.name === 'CV') {
+      await page.locator('#offline-diagnostic[data-diagnostic="local-elements-present"]').waitFor({ timeout: 18000 });
+      offlineDiagnostics.push({ phase, text: await page.locator('#offline-diagnostic').innerText(), status: await page.locator('#offline-diagnostic').getAttribute('data-diagnostic') });
+      for (const [route, title] of [['#/fichiers', 'Control Vault'], ['#/historique', 'Historique'], ['#/reglages', 'Réglages']]) {
+        phase = 'offline-navigation-' + route;
+        await page.goto(app.origin + '/' + route, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        await page.waitForFunction(expected => document.querySelector('.topbar-title')?.textContent === expected, title, { timeout: 8000 });
+        assert.ok(await page.locator('#main').innerText(), 'Expected rendered offline view');
+        assert.equal(await page.evaluate(() => localStorage.getItem('fortress.synthetic.probe')), sentinel);
+      }
+    }
     phase = 'offline-recovery';
     let recoveryReturnedShell = false;
     try { await page.goto(app.origin + '/recovery', { waitUntil: 'domcontentloaded', timeout: 12000 }); recoveryReturnedShell = await page.locator('#drive-test-notice').count() > 0; } catch {}
     assert.equal(recoveryReturnedShell, false, 'Recovery navigation fell back to home');
-    return { app: app.name, engine, browserVersion, state: 'CONFIRME', sourceSha: app.source, networkOnlyProbeAfterCut: probe, offlineReloads: 2, fullBrowserRestart: true, syntheticLocalStoragePreserved: true, activeWorker: before.controller, caches: before.caches, proxy: proxy.stats(), scope: 'Published candidate, native unavailable network, mobile viewport; no physical iPhone, business restoration, OAuth or quota measurement' };
+    return { app: app.name, engine, browserVersion, state: 'CONFIRME', sourceSha: app.source, networkOnlyProbeAfterCut: probe, offlineReloads: 2, fullBrowserRestart: true, syntheticLocalStoragePreserved: true, offlineDiagnostics, activeWorker: before.controller, caches: before.caches, proxy: proxy.stats(), scope: 'Published candidate, native unavailable network, mobile viewport; no physical iPhone, business restoration, OAuth or quota measurement' };
   } catch (error) {
     let diagnostic = null;
-    if (page) diagnostic = await page.evaluate(() => ({ url: location.href, title: document.title, text: (document.body?.innerText || '').slice(0, 240) })).catch(() => null);
+    if (page) diagnostic = await page.evaluate(() => ({ url: location.href, title: document.title, offlineDiagnostic: document.querySelector('#offline-diagnostic')?.getAttribute('data-diagnostic'), text: (document.body?.innerText || '').slice(0, 700) })).catch(() => null);
     throw new Error(JSON.stringify({ phase, message: error.message, proxy: proxy.stats(), diagnostic }));
   } finally {
     if (context) await context.close(); await proxy.close();

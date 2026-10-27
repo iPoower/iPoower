@@ -1,7 +1,7 @@
 name: FORTRESS - independent Python HTTP verification
 on:
   pull_request:
-    branches: [audit/fortress-corrected-publication-20261027]
+    branches: [audit/fortress-native-drop-20261027]
     paths:
       - .github/workflows/fortress-python-http-verifier.yml
       - tests/verify_fortress_release.py
