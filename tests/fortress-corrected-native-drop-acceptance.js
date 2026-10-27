@@ -134,7 +134,7 @@ async function browserProof(app, engine, launcher) {
   const proxy = await makeProxy(app.origin);
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'fortress-fixture-'));
   const options = { headless: true, proxy: { server: proxy.address }, serviceWorkers: 'allow', viewport: { width: 414, height: 896 }, hasTouch: true };
-  let context, page; const offlineDiagnostics = []; let phase = 'initialization'; const sentinel = 'synthetic-' + app.name + '-' + engine;
+  let context, page; const offlineDiagnostics = []; const startupAliases = []; let phase = 'initialization'; const sentinel = 'synthetic-' + app.name + '-' + engine;
   try {
     context = await launcher.launchPersistentContext(profile, options);
     page = context.pages()[0] || await context.newPage();
@@ -199,11 +199,25 @@ async function browserProof(app, engine, launcher) {
         assert.equal(await page.evaluate(() => localStorage.getItem('fortress.synthetic.probe')), sentinel);
       }
     }
+    if (app.name === 'CV') {
+      for (const suffix of ['/', '/index', '/index.html', '/?fortress-startup-fixture=1']) {
+        phase = 'offline-startup-alias-' + suffix;
+        await context.close(); context = null;
+        context = await launcher.launchPersistentContext(profile, options);
+        page = context.pages()[0] || await context.newPage();
+        const response = await page.goto(app.origin + suffix, { waitUntil: 'domcontentloaded', timeout: 25000 });
+        assert.equal(response.status(), 200, 'Offline startup must return a successful shell');
+        await page.locator('#hero-title').waitFor({ timeout: 8000 });
+        await page.locator('#offline-diagnostic[data-diagnostic="local-elements-present"]').waitFor({ timeout: 18000 });
+        assert.equal(await page.evaluate(() => localStorage.getItem('fortress.synthetic.probe')), sentinel);
+        startupAliases.push({ requestedUrl: app.origin + suffix, observedUrl: page.url(), status: response.status(), diagnostic: await page.locator('#offline-diagnostic').getAttribute('data-diagnostic'), browserFullyRestartedBeforeCase: true, sentinelPreserved: true });
+      }
+    }
     phase = 'offline-recovery';
     let recoveryReturnedShell = false;
     try { await page.goto(app.origin + '/recovery', { waitUntil: 'domcontentloaded', timeout: 12000 }); recoveryReturnedShell = await page.locator('#drive-test-notice').count() > 0; } catch {}
     assert.equal(recoveryReturnedShell, false, 'Recovery navigation fell back to home');
-    return { app: app.name, engine, browserVersion, state: 'CONFIRME', sourceSha: app.source, networkOnlyProbeAfterCut: probe, offlineReloads: 2, fullBrowserRestart: true, syntheticLocalStoragePreserved: true, offlineDiagnostics, activeWorker: before.controller, caches: before.caches, proxy: proxy.stats(), scope: 'Published candidate, native unavailable network, mobile viewport; no physical iPhone, business restoration, OAuth or quota measurement' };
+    return { app: app.name, engine, browserVersion, state: 'CONFIRME', sourceSha: app.source, networkOnlyProbeAfterCut: probe, offlineReloads: 2, fullBrowserRestart: true, syntheticLocalStoragePreserved: true, offlineDiagnostics, startupAliases, activeWorker: before.controller, caches: before.caches, proxy: proxy.stats(), scope: 'Published candidate, native unavailable network, mobile viewport, CV startup alias matrix with browser process restarts; no physical iPhone, business restoration, OAuth or quota measurement' };
   } catch (error) {
     let diagnostic = null;
     if (page) diagnostic = await page.evaluate(() => ({ url: location.href, title: document.title, offlineDiagnostic: document.querySelector('#offline-diagnostic')?.getAttribute('data-diagnostic'), text: (document.body?.innerText || '').slice(0, 700) })).catch(() => null);
@@ -230,3 +244,4 @@ async function main() {
   process.exitCode = report.failures.length ? 1 : 0;
 }
 main().catch(error => { console.error(error.message); process.exitCode = 1; });
+

@@ -1,7 +1,7 @@
 name: FORTRESS - native disconnected TCP acceptance
 on:
   pull_request:
-    branches: [audit/fortress-native-drop-20261027]
+    branches: [audit/fortress-cv-diagnostic-published-20261027]
     paths:
       - .github/workflows/fortress-native-drop-acceptance.yml
       - tests/fortress-corrected-native-drop-acceptance.js
