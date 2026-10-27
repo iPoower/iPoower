@@ -200,17 +200,19 @@ async function browserProof(app, engine, launcher) {
       }
     }
     if (app.name === 'CV') {
-      for (const suffix of ['/', '/index', '/index.html', '/?fortress-startup-fixture=1']) {
-        phase = 'offline-startup-alias-' + suffix;
+      for (const browserOffline of [false, true]) for (const suffix of ['/', '/index', '/index.html', '/?fortress-startup-fixture=1']) {
+        phase = 'offline-startup-alias-' + (browserOffline ? 'browser-offline-' : 'native-tcp-only-') + suffix;
         await context.close(); context = null;
-        context = await launcher.launchPersistentContext(profile, options);
+        context = await launcher.launchPersistentContext(profile, { ...options, offline: browserOffline });
         page = context.pages()[0] || await context.newPage();
         const response = await page.goto(app.origin + suffix, { waitUntil: 'domcontentloaded', timeout: 25000 });
         assert.equal(response.status(), 200, 'Offline startup must return a successful shell');
         await page.locator('#hero-title').waitFor({ timeout: 8000 });
         await page.locator('#offline-diagnostic[data-diagnostic="local-elements-present"]').waitFor({ timeout: 18000 });
         assert.equal(await page.evaluate(() => localStorage.getItem('fortress.synthetic.probe')), sentinel);
-        startupAliases.push({ requestedUrl: app.origin + suffix, observedUrl: page.url(), status: response.status(), diagnostic: await page.locator('#offline-diagnostic').getAttribute('data-diagnostic'), browserFullyRestartedBeforeCase: true, sentinelPreserved: true });
+        const navigatorOnline = await page.evaluate(() => navigator.onLine);
+        if (browserOffline) assert.equal(navigatorOnline, false, 'Offline flag must be observable in the document');
+        startupAliases.push({ browserOfflineEmulated: browserOffline, navigatorOnline, requestedUrl: app.origin + suffix, observedUrl: page.url(), status: response.status(), diagnostic: await page.locator('#offline-diagnostic').getAttribute('data-diagnostic'), browserFullyRestartedBeforeCase: true, sentinelPreserved: true });
       }
     }
     phase = 'offline-recovery';
@@ -221,7 +223,7 @@ async function browserProof(app, engine, launcher) {
   } catch (error) {
     let diagnostic = null;
     if (page) diagnostic = await page.evaluate(() => ({ url: location.href, title: document.title, offlineDiagnostic: document.querySelector('#offline-diagnostic')?.getAttribute('data-diagnostic'), text: (document.body?.innerText || '').slice(0, 700) })).catch(() => null);
-    throw new Error(JSON.stringify({ phase, message: error.message, proxy: proxy.stats(), diagnostic }));
+    throw new Error(JSON.stringify({ phase, message: error.message, completedStartupAliases: startupAliases, proxy: proxy.stats(), diagnostic }));
   } finally {
     if (context) await context.close(); await proxy.close();
     // Remove only this newly-created, disposable test profile.
