@@ -2,7 +2,7 @@
 // Les requêtes vers OSRM, Open-Meteo, BigDataCloud, RainViewer et les tuiles externes ne sont JAMAIS mises en Cache Storage.
 const STATIC = 'twrc-static-v12', DATA = 'twrc-data-v3';
 const NAV_WAIT_MS = 3000;   // réseau qui ne répond pas (parking, tunnel) : shell en cache au-delà, mise à jour poursuivie en arrière-plan
-const SHELL = ['./', './index.html', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './manifest.webmanifest', './tiredb.json', './vendor/leaflet/leaflet.js', './vendor/leaflet/leaflet.css', './vendor/leaflet/images/layers.png', './vendor/leaflet/images/layers-2x.png', './vendor/leaflet/images/marker-icon.png', './vendor/leaflet/images/marker-icon-2x.png', './vendor/leaflet/images/marker-shadow.png'];
+const SHELL = ['./', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './manifest.webmanifest', './tiredb.json', './vendor/leaflet/leaflet.js', './vendor/leaflet/leaflet.css', './vendor/leaflet/images/layers.png', './vendor/leaflet/images/layers-2x.png', './vendor/leaflet/images/marker-icon.png', './vendor/leaflet/images/marker-icon-2x.png', './vendor/leaflet/images/marker-shadow.png'];
 const DATA_PATHS = /\/(calendar\.sealed\.json|obs\.json|tiredb\.json|version\.json|road-datex\.json)$/;
 // Origine dédiée : les données publiques du relais restent publiées par l'ancien hébergement (CORS).
 // Valeur injectée par tools/build.js depuis RC_DATA_BASE ; vide sur l'hébergement historique.
@@ -87,7 +87,15 @@ async function networkFirst(req, cacheName, key, fallback, event, waitMs, valida
   }
 }
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(STATIC).then(c => c.addAll(SHELL)));
+  e.waitUntil(caches.open(STATIC).then(async c => {
+    await c.addAll(SHELL);
+    // Pages redirige parfois index.html vers /. Une réponse redirigée ne
+    // peut pas être rendue comme navigation par tous les navigateurs.
+    const root = await c.match('./');
+    if (!root?.ok || root.redirected || root.url !== self.registration.scope ||
+        !/^text\/html(?:\s*;|$)/i.test(root.headers.get('Content-Type') || '')) throw new Error('Shell racine non vérifié');
+    await c.put('./index.html', root);
+  }));
   self.skipWaiting();
 });
 self.addEventListener('activate', e => {
@@ -129,6 +137,7 @@ self.addEventListener('fetch', e => {
     if (![scope.pathname, new URL('index', scope).pathname, new URL('index.html', scope).pathname].includes(u.pathname)) return;
     const shell = new URL('index.html', scope);
     const html = response => {
+      if (response.redirected) return false;
       if (!/^text\/html(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '')) return false;
       // Response.url reflète l'URL FINALE après redirection. Ne jamais persister
       // une page d'authentification, même HTML 200, en remplacement du shell.
@@ -140,7 +149,10 @@ self.addEventListener('fetch', e => {
           [scope.pathname, new URL('index', scope).pathname, new URL('index.html', scope).pathname].includes(final.pathname);
       } catch { return false; }
     };
-    e.respondWith(networkFirst(e.request, STATIC, new Request(shell.href), './index.html', e, NAV_WAIT_MS, html));
+    // Les alias peuvent être redirigés par l'hébergeur : demander directement
+    // la racine évite de renvoyer une réponse de navigation redirigée.
+    const networkRequest = u.pathname === scope.pathname ? e.request : new URL(scope.pathname + u.search, scope.origin).href;
+    e.respondWith(networkFirst(networkRequest, STATIC, new Request(shell.href), './index.html', e, NAV_WAIT_MS, html));
     return;
   }
 

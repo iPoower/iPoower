@@ -7,7 +7,7 @@ const STATIC = 'twrc-static-v12';
 let checks = 0;
 async function check(name, work) { await work(); checks++; console.log('✅ ' + name); }
 
-function harness(fetcher = async () => new Response('panne amont', { status: 503, headers: { 'Content-Type': 'text/plain' } })) {
+function harness(fetcher = async () => new Response('panne amont', { status: 503, headers: { 'Content-Type': 'text/plain' } }), options = {}) {
   let cacheFault = '';
   const listeners = new Map(), stores = new Map(), keyOf = (input, options = {}) => {
     const raw = typeof input === 'string' ? input : input.url ?? input.href;
@@ -18,9 +18,14 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
   // la conserve explicitement, y compris à travers clone() et CacheStorage.
   function tagResponse(response, fallbackUrl) {
     const finalUrl = response.url || fallbackUrl;
+    const redirected = response.redirected;
     if (!response.url) Object.defineProperty(response, 'url', { value: finalUrl, configurable: true });
     const originalClone = response.clone.bind(response);
-    response.clone = () => tagResponse(originalClone(), finalUrl);
+    response.clone = () => {
+      const copy = originalClone();
+      if (redirected) Object.defineProperty(copy, 'redirected', { value: true, configurable: true });
+      return tagResponse(copy, finalUrl);
+    };
     return response;
   }
   const caches = {
@@ -32,7 +37,11 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
         async addAll(urls) {
           for (const item of urls) {
             const key = keyOf(item);
-            if (key.endsWith('/index.html')) rows.set(key, tagResponse(new Response('<html>FIXTURE RACE SHELL</html>', { headers: { 'Content-Type': 'text/html' } }), key));
+            if (key === SCOPE || key.endsWith('/index.html')) {
+              const response = new Response('<html>FIXTURE RACE SHELL</html>', { headers: { 'Content-Type': 'text/html' } });
+              if ((key === SCOPE && options.redirectRoot) || (key.endsWith('/index.html') && options.redirectIndex)) Object.defineProperty(response, 'redirected', { value: true, configurable: true });
+              rows.set(key, tagResponse(response, key.endsWith('/index.html') && options.redirectIndex ? SCOPE : key));
+            }
           }
         },
         async match(input, options) { return rows.get(keyOf(input, options))?.clone(); },
@@ -77,12 +86,28 @@ function harness(fetcher = async () => new Response('panne amont', { status: 503
       return { intercepted: true, response };
     },
     async cachedShell() { return (await (await caches.open(STATIC)).match(new URL('index.html', SCOPE)))?.text() ?? null; },
+    async cachedShellInfo() { const r = await (await caches.open(STATIC)).match(new URL('index.html', SCOPE)); return r && { url: r.url, redirected: r.redirected }; },
     async seedShell(response) { await (await caches.open(STATIC)).put(new URL('index.html', SCOPE), response); },
     async cachedUrls() { return [...stores.values()].flatMap(rows => [...rows.keys()]); },
   };
 }
 
 (async () => {
+  await check('installation : le shell de repli provient de la racine sans redirection', async () => {
+    const h = harness(undefined, { redirectIndex: true }); await h.install();
+    const info = await h.cachedShellInfo();
+    assert.equal(info.url, SCOPE); assert.equal(info.redirected, false);
+  });
+  await check('installation : une racine elle-même redirigée est refusée', async () => {
+    const h = harness(undefined, { redirectRoot: true, redirectIndex: true });
+    await assert.rejects(h.install(), /shell|racine|redirect/i);
+  });
+  await check('un alias de navigation demande directement la racine au réseau', async () => {
+    let target = '';
+    const h = harness(async url => { target = url.href; return new Response('<html>OK</html>', {headers:{'Content-Type':'text/html'}}); });
+    await h.install(); await h.dispatch('index.html?fixture=1');
+    assert.equal(target, SCOPE + '?fixture=1');
+  });
   await check('les chemins de récupération, config et manifeste ne sont jamais interceptés/cachés', async () => {
     const h = harness(async url => new Response(url.pathname.endsWith('drive-config.json') ? '{"fixture":true}' : '<html>RECOVERY</html>', {
       headers: { 'Content-Type': url.pathname.endsWith('.json') ? 'application/json' : 'text/html', 'Cache-Control': 'no-store' },
