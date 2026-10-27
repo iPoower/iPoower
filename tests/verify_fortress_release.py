@@ -12,7 +12,7 @@ RACE = 'https://rc-drive-test-ipoower.pages.dev'
 VAULT = 'https://cv-drive-test-ipoower.pages.dev'
 EXPECTED = [
     ('race-final.zip', RACE, '7e5cd990f7f736ab77220bb2b35fad643407e672', '5ceae635579aadf2383c0700685d0485ad01947e1826f611123281ae9473993e', 'ea1fe1399127a48e26a358c1bf9710503457fc40756c7e9e8a393ad5fefedd87', 24),
-    ('vault-final.zip', VAULT, '51031e8d1a4b69565bc36830f6ef8efbfd986ca3', '73c7eaf61474acda4c880c83ebd92d118e8f7421895a7d90aa201f84a99c3731', 'd862fe70e3760134c50bff7b9b2681ec29c4d335e51aa71185f5f36cd1e540a8', 16),
+    ('vault-final.zip', VAULT, 'f87834b581532de507a1eb3ca7b5b0ce5616c3c8', '90193aa817dbfe6a50b4ca4a706565ed90eec8bae3a762ca75442d49648b6eea', '016e0205134ffe507f0ec12d1fede0eaad31be6d02d9f0e526159561262d506a', 16),
 ]
 def sha(data):
     return hashlib.sha256(data).hexdigest()
