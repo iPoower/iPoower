@@ -191,9 +191,11 @@ async function browserProof(app, engine, launcher) {
     if (app.name === 'CV') {
       await page.locator('#offline-diagnostic[data-diagnostic="local-elements-present"]').waitFor({ timeout: 18000 });
       offlineDiagnostics.push({ phase, text: await page.locator('#offline-diagnostic').innerText(), status: await page.locator('#offline-diagnostic').getAttribute('data-diagnostic') });
-      for (const route of ['#/fichiers', '#/historique', '#/reglages']) {
+      for (const [route, title] of [['#/fichiers', 'Control Vault'], ['#/historique', 'Historique'], ['#/reglages', 'Réglages']]) {
+        phase = 'offline-navigation-' + route;
         await page.goto(app.origin + '/' + route, { waitUntil: 'domcontentloaded', timeout: 15000 });
-        await page.locator('#main h1').waitFor({ timeout: 8000 });
+        await page.waitForFunction(expected => document.querySelector('.topbar-title')?.textContent === expected, title, { timeout: 8000 });
+        assert.ok(await page.locator('#main').innerText(), 'Expected rendered offline view');
         assert.equal(await page.evaluate(() => localStorage.getItem('fortress.synthetic.probe')), sentinel);
       }
     }
