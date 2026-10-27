@@ -1,19 +1,27 @@
-name: FORTRESS - native disconnected TCP acceptance
+name: FORTRESS - native and browser offline comparison
 on:
   pull_request:
     branches: [audit/fortress-cv-diagnostic-published-20261027]
     paths:
       - .github/workflows/fortress-native-drop-acceptance.yml
       - tests/fortress-corrected-native-drop-acceptance.js
+      - tests/fortress-minimal-offline-control.js
 permissions:
   contents: read
 jobs:
-  verify-native-network-drop:
+  verify-network-and-offline-control:
+    strategy:
+      fail-fast: false
+      matrix:
+        playwright: ['1.63.0', '1.64.1']
     runs-on: ubuntu-24.04
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v${{ matrix.playwright }}-noble
       options: --ipc=host
     timeout-minutes: 15
+    env:
+      FORTRESS_PLAYWRIGHT_MODULE: ${{ runner.temp }}/fortress-playwright-tools/node_modules/playwright
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -22,13 +30,20 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: '24'
-      - run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Anchored published bytes and native disconnected TCP browsers
+      - name: Install exact independent browser tool in temporary directory
+        run: npm install --prefix "${{ runner.temp }}/fortress-playwright-tools" --save-exact --ignore-scripts --no-audit --no-fund "playwright@${{ matrix.playwright }}"
+      - name: Anchored published bytes and offline startup matrix
         run: node tests/fortress-corrected-native-drop-acceptance.js
+      - name: Literal service worker control without application
+        if: always()
+        run: node tests/fortress-minimal-offline-control.js
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: fortress-native-drop-proof
-          path: fortress-candidate-proof.json
+          name: fortress-offline-comparison-${{ matrix.playwright }}
+          path: |
+            fortress-candidate-proof.json
+            fortress-minimal-offline-control.json
+            ${{ runner.temp }}/fortress-playwright-tools/package-lock.json
           if-no-files-found: error
           retention-days: 14

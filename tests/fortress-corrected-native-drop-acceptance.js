@@ -7,7 +7,8 @@ const os = require('node:os');
 const http = require('node:http');
 const net = require('node:net');
 const { createHash } = require('node:crypto');
-const { chromium, webkit } = require('playwright');
+const PLAYWRIGHT_MODULE = process.env.FORTRESS_PLAYWRIGHT_MODULE || 'playwright';
+const { chromium, webkit } = require(PLAYWRIGHT_MODULE);
 const APPS = [
   { name: 'RC', origin: 'https://rc-drive-test-ipoower.pages.dev', source: '7e5cd990f7f736ab77220bb2b35fad643407e672', anchor: 'ea1fe1399127a48e26a358c1bf9710503457fc40756c7e9e8a393ad5fefedd87', count: 24 },
   { name: 'CV', origin: 'https://cv-drive-test-ipoower.pages.dev', source: 'f87834b581532de507a1eb3ca7b5b0ce5616c3c8', anchor: '016e0205134ffe507f0ec12d1fede0eaad31be6d02d9f0e526159561262d506a', count: 16 }
@@ -232,7 +233,7 @@ async function browserProof(app, engine, launcher) {
 }
 async function main() {
   const selfOnly = process.argv.includes('--self-test');
-  const report = { createdAt: new Date().toISOString(), playwright: require('playwright/package.json').version, mode: selfOnly ? 'synthetic-proxy-self-test' : 'published-candidate-acceptance', http: [], browsers: [], failures: [] };
+  const report = { createdAt: new Date().toISOString(), playwright: require(PLAYWRIGHT_MODULE + '/package.json').version, mode: selfOnly ? 'synthetic-proxy-self-test' : 'published-candidate-acceptance', http: [], browsers: [], failures: [] };
   const engines = process.env.FORTRESS_ENGINE === 'chromium' ? [['chromium', chromium]] : [['chromium', chromium], ['webkit', webkit]];
   async function attempt(label, work, target) { try { target.push(await work()); } catch (error) { report.failures.push({ label, state: 'ECHEC', reason: error.message }); } }
   if (selfOnly) for (const [name, launcher] of engines) await attempt(name, () => selfTest(name, launcher), report.browsers);
