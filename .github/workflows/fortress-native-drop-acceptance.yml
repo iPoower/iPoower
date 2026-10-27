@@ -20,7 +20,7 @@ jobs:
       options: --ipc=host
     timeout-minutes: 15
     env:
-      FORTRESS_PLAYWRIGHT_MODULE: ${{ runner.temp }}/fortress-playwright-tools/node_modules/playwright
+      FORTRESS_PLAYWRIGHT_MODULE: /tmp/fortress-playwright-tools/node_modules/playwright
       NPM_CONFIG_REGISTRY: https://registry.npmjs.org
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -31,7 +31,7 @@ jobs:
         with:
           node-version: '24'
       - name: Install exact independent browser tool in temporary directory
-        run: npm install --prefix "${{ runner.temp }}/fortress-playwright-tools" --save-exact --ignore-scripts --no-audit --no-fund "playwright@${{ matrix.playwright }}"
+        run: npm install --prefix "/tmp/fortress-playwright-tools" --save-exact --ignore-scripts --no-audit --no-fund "playwright@${{ matrix.playwright }}"
       - name: Anchored published bytes and offline startup matrix
         run: node tests/fortress-corrected-native-drop-acceptance.js
       - name: Literal service worker control without application
@@ -44,6 +44,6 @@ jobs:
           path: |
             fortress-candidate-proof.json
             fortress-minimal-offline-control.json
-            ${{ runner.temp }}/fortress-playwright-tools/package-lock.json
+            /tmp/fortress-playwright-tools/package-lock.json
           if-no-files-found: error
           retention-days: 14
