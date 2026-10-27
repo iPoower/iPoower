@@ -128,5 +128,12 @@ if __name__ == '__main__':
     try:
         print(json.dumps(check_http_only() if args.http_only else check(args.artifacts, args.http), indent=2))
     except Exception as error:
-        print(json.dumps({'status': 'ECHEC', 'reason': str(error)}))
+        failure = {'status': 'ECHEC', 'reason': str(error)}
+        if isinstance(error, urllib.error.HTTPError):
+            failure['httpStatus'] = error.code
+            failure['origin'] = urlsplit(error.url).netloc
+            failure['path'] = urlsplit(error.url).path
+            failure['server'] = error.headers.get('server')
+            failure['cfRayPresent'] = bool(error.headers.get('cf-ray'))
+        print(json.dumps(failure))
         raise SystemExit(1)
