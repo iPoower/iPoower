@@ -45,6 +45,18 @@ function renderDriveSync() {
     });
   }
   if (!d.config) return;
+  // Reprise : même compte et même dossier qu'une liaison déjà confirmée ⇒ un geste (deux à la première
+  // ouverture : chargement Google puis autorisation). Aucun jeton conservé ; Google exige ce geste.
+  if (d.hint && !(connected && d.selected)) button(d.prepared ? 'Reprendre la synchronisation Drive' : 'Préparer la reprise Drive', async () => {
+    d.busy = true;
+    try {
+      if (!d.prepared) { await d.session.prepare(); d.prepared = true; d.text = 'Connexion prête : appuie sur Reprendre la synchronisation Drive.'; return; }
+      d.sync.stop(); d.selected = false; const promise = d.session.connect();   // appel synchrone dans le geste
+      await promise; const selected = await d.session.resume(d.hint);
+      d.sync.select(selected); d.selected = true; d.text = 'Synchronisation reprise avec le même compte et le même dossier.'; await d.sync.run(true);
+    } catch (e) { d.text = e && e.code === 'confirmation' ? 'Compte ou dossier différent de la liaison confirmée : confirme explicitement le compte, puis le dossier.' : 'Reprise non confirmée. Les copies et la file d’envoi sont conservées ; réessaie depuis ce bouton.'; }
+    finally { d.busy = false; renderDriveSync(); }
+  });
   button(!d.prepared ? 'Préparer la connexion Google' : connected ? 'Changer de compte Google' : 'Se connecter à Google', async () => {
     d.busy = true;
     try {
@@ -128,12 +140,18 @@ async function initDriveSync() {
         TRIPCANCEL = TripCancel.load(APP_STORAGE, Date.now()); rebuild(); renderAll();
       } });
     DRIVE_UI.text = 'Prêt à connecter Google Drive. Exporte d’abord une copie complète et vérifiée de cet appareil.';
+    try { DRIVE_UI.hint = await DriveSync.resumeHint(); } catch { DRIVE_UI.hint = null; }
     const tick = () => {
-      if (DRIVE_UI.selected && !DRIVE_UI.session.connected) { DRIVE_UI.sync.stop(); DRIVE_UI.selected = false; DRIVE_UI.text = 'Synchronisation bloquée : autorisation Google expirée ou révoquée. Reconnecte et confirme le compte dédié.'; renderDriveSync(); return; }
+      if (DRIVE_UI.selected && !DRIVE_UI.session.connected) { DRIVE_UI.sync.stop(); DRIVE_UI.selected = false; DRIVE_UI.text = 'Envoi Drive en pause : autorisation Google expirée ou révoquée. Les saisies restent enregistrées localement ; appuie sur Reprendre la synchronisation Drive.'; DriveSync.resumeHint().then(h => { DRIVE_UI.hint = h; renderDriveSync(); }, () => renderDriveSync()); return; }
       if (!document.hidden && !DEMO.on && DRIVE_UI.selected && DRIVE_UI.session.connected) DRIVE_UI.sync.run();
     };
     DRIVE_UI.timer = setInterval(tick, 30000);
     document.addEventListener('visibilitychange', tick); window.addEventListener('online', tick); window.addEventListener('focus', tick);
+    // iPhone : l'app peut être suspendue dès son passage en arrière-plan ; envoyer la dernière saisie
+    // sans attendre la fenêtre de calme (blocages et délais de reprise respectés).
+    document.addEventListener('visibilitychange', () => { if (document.hidden && !DEMO.on && DRIVE_UI.selected && DRIVE_UI.session.connected) DRIVE_UI.sync.run(false, true); });
+    // Saisie locale : vérifier juste après la fenêtre de calme au lieu d'attendre le prochain cycle de 30 s.
+    let soon = null; window.addEventListener('twrc-vault-change', () => { clearTimeout(soon); soon = setTimeout(tick, SyncOutbox.QUIET_MS + 1000); });
     const stop = () => { DRIVE_UI.session.disconnect(); DRIVE_UI.sync.stop(); DRIVE_UI.selected = false; DRIVE_UI.dedicatedFolders = []; renderDriveSync(); };
     window.addEventListener('twrc-session-expired', stop); window.addEventListener('twrc-session-locked', stop);
     window.addEventListener('pagehide', stop); renderDriveSync();

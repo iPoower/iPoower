@@ -47,6 +47,11 @@ const DriveSync = (() => {
     if (hash !== target) return fail('integrity');
     return bytes.slice();
   }
+  // Indice de reprise en un geste : dossier et empreinte de liaison déjà confirmés sur cet appareil.
+  async function resumeHint(store = DriveStore.create(DB)) {
+    const s = await store.read();
+    return s && typeof s.folder === 'string' && /^[0-9a-f]{64}$/.test(s.binding || '') ? { folder: s.folder, binding: s.binding } : null;
+  }
   async function premergeRecoveries(store = DriveStore.create(DB)) { return typeof store.recoveries === 'function' ? store.recoveries() : []; }
   function create({ vault, provider, store = DriveStore.create(DB), keys = SyncKey.storage(), locks = navigator.locks,
     crypto: crypt = globalThis.crypto, now = () => Date.now(), version, onChange = () => {}, onApplied = () => {} }) {
@@ -145,11 +150,13 @@ const DriveSync = (() => {
       await observeCurrent(s); await save(s);
       message = SyncOutbox.status(s.outbox).label;
     }
-    async function runInside(force) {
+    // `flush` : passage en arrière-plan. Scelle sans attendre la fenêtre de calme, mais ne lève ni
+    // blocage ni délai de reprise (contrairement à `force`, réservé au geste explicite).
+    async function runInside(force, flush = false) {
       guard(); let s = await read();
       if (!selected) { message = 'reconnexion'; return; }
       if (s.binding && s.binding !== selected.binding) return fail('binding');
-      s.binding = selected.binding;
+      s.binding = selected.binding; s.folder = selected.folder;   // indice de reprise : aucun jeton, aucun code
       let snap = await vault.syncSnapshot(); guard();
       const local = projection(snap.values), hash = await fingerprint(local); guard();
       if (s.observed !== hash) { s.outbox = SyncOutbox.noteChange(s.outbox, now()); s.observed = hash; await save(s); }
@@ -212,7 +219,7 @@ const DriveSync = (() => {
         } else s.outbox = SyncOutbox.noteChange(s.outbox, now());
         s.observed = await fingerprint(after); await save(s);
       }
-      if (force && s.outbox.dirtySince !== null) s.outbox.lastChange = Math.max(0, now() - SyncOutbox.QUIET_MS);
+      if ((force || flush) && s.outbox.dirtySince !== null) s.outbox.lastChange = Math.max(0, now() - SyncOutbox.QUIET_MS);
       if (SyncOutbox.next(s.outbox, now()) === 'seal') {
         const rev = SyncRevisions.next({ device: s.device, seq: Math.max(s.seq, planned.nextSeq - 1), parents: s.base }, crypt);
         const snapshotAt = now(), data = SyncRevisions.snapshot(projection(snap.values), rev, SyncMerge.device, new Date(snapshotAt).toISOString());
@@ -230,11 +237,11 @@ const DriveSync = (() => {
       if (!d || !d.resolvable || !['local', 'remote'].includes(choice)) return fail('confirmation');
       resolutions.set(rid, { ...(resolutions.get(rid) || {}), [path]: choice });
     }
-    async function run(force = false) {
+    async function run(force = false, flush = false) {
       if (running || stopped) return;
       if (!locks || typeof locks.request !== 'function') { blocked = true; message = 'navigateur à mettre à jour'; notify(); return; }
       running = true; finishing = new Promise(resolve => { finish = resolve; }); blocked = false; message = 'vérification'; notify();
-      try { await locks.request(LOCK, { ifAvailable: true }, lock => lock ? runInside(force) : undefined); }
+      try { await locks.request(LOCK, { ifAvailable: true }, lock => lock ? runInside(force, flush) : undefined); }
       catch (e) {
         blocked = true;
         const code = e.code || (e.conflict ? 'network' : 'stockage');
@@ -254,5 +261,5 @@ const DriveSync = (() => {
       recovery: () => premergeRecovery(store, crypt),
       get status() { return state(); } });
   }
-  return Object.freeze({ create, projection, validateBusiness, premergeRecovery, premergeRecoveries });
+  return Object.freeze({ create, projection, validateBusiness, premergeRecovery, premergeRecoveries, resumeHint });
 })();

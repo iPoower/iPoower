@@ -86,4 +86,26 @@ const config = { approved: true, clientId: ['123456', 'fake.apps.googleuserconte
   await assert.rejects(apiOnly.chooseFolder(), e => e.code === 'network');
   apiOnly.disconnect();
   console.log('✅ Picker indisponible : connexion et sélection Drive API restent utilisables');
+  // NOESIS 13.4 : reprise en un geste. Seule une liaison identique (même client, même compte, même dossier)
+  // à celle déjà confirmée explicitement évite le parcours complet ; sinon confirmation obligatoire.
+  {
+  const resumeHost = { ...noPickerHost, google: { accounts: { oauth2: { initTokenClient(o) { offlineClients.push(o); return { requestAccessToken() {} }; }, hasGrantedAllScopes: () => true } } } };
+  const resumeProvider = { ...offlineProvider, checked: [], folder: async f => { resumeProvider.checked.push(f); } };
+  const first = G.create(config, resumeProvider, resumeHost); await first.prepare();
+  let p = first.connect(); await offlineClients.at(-1).callback({ access_token: 'fixture-token', scope, expires_in: 3600 }); await p;
+  first.confirmAccount('synthetic_account'); await first.listDedicatedFolders();
+  const hint = await first.chooseDedicatedFolder('folder_A'); first.disconnect();
+  const again = G.create(config, resumeProvider, resumeHost); await again.prepare();
+  await assert.rejects(again.resume({ folder: hint.folder, binding: hint.binding }), e => e.code === 'auth', 'sans jeton : aucune reprise');
+  p = again.connect(); await offlineClients.at(-1).callback({ access_token: 'fixture-token-2', scope, expires_in: 3600 }); await p;
+  const resumed = await again.resume({ folder: hint.folder, binding: hint.binding });
+  assert.deepEqual({ ...resumed }, { ...hint }); assert.equal(again.confirmed, true); assert.equal(resumeProvider.checked.at(-1), 'folder_A', 'contrat du dossier relu');
+  again.disconnect();
+  const other = G.create(config, { ...resumeProvider, account: async () => 'other_account', identity: async () => ({ id: 'other_account', label: 'autre@example.invalid' }) }, resumeHost);
+  await other.prepare(); p = other.connect(); await offlineClients.at(-1).callback({ access_token: 'fixture-token-3', scope, expires_in: 3600 }); await p;
+  await assert.rejects(other.resume({ folder: hint.folder, binding: hint.binding }), e => e.code === 'confirmation', 'autre compte : confirmation explicite exigée');
+  assert.equal(other.confirmed, false);
+  await assert.rejects(again.resume({ folder: 'x', binding: 'zz' }), e => ['auth', 'confirmation'].includes(e.code));
+  console.log('✅ reprise en un geste : seulement pour la liaison compte/dossier déjà confirmée, contrat du dossier relu, aucun stockage de jeton');
+  }
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -275,6 +275,23 @@ function drive() {
   }
   if (failures.length) throw new AggregateError(failures, failures.length + ' concurrency failures');
 
+  // NOESIS 13.4 : passage en arrière-plan (iPhone) ⇒ envoi anticipé sans attendre la fenêtre de calme,
+  // mais sans lever un blocage ni ignorer le délai de reprise après échec.
+  {
+    const net = drive(), dev = owner(net, 1, 'flush');
+    await dev.controller.run(true); const before = net.files.size;
+    const s = JSON.parse(dev.values['twrc.settings.v1']); s.cars[0].short = 'saisie-avant-fermeture'; dev.edit('twrc.settings.v1', JSON.stringify(s));
+    await dev.controller.run(); assert.equal(net.files.size, before, 'fenêtre de calme : pas encore d’envoi');
+    await dev.controller.run(false, true); assert.equal(net.files.size, before + 1, 'arrière-plan : saisie envoyée et relue immédiatement');
+    assert.equal(dev.state.outbox.dirtySince, null);
+    const s2 = JSON.parse(dev.values['twrc.settings.v1']); s2.cars[0].short = 'pendant-coupure'; dev.edit('twrc.settings.v1', JSON.stringify(s2));
+    net.loseReply = true; await dev.controller.run(false, true); const after = net.files.size;
+    await dev.controller.run(false, true); assert.equal(net.files.size, after, 'délai de reprise respecté : pas de rafale d’envois au masquage');
+    const hint = await dev.A.DriveSync.resumeHint(dev.store);
+    assert.deepEqual(JSON.parse(JSON.stringify(hint)), { folder: 'fixtureFolder', binding: 'a'.repeat(64) }, 'indice de reprise sans jeton ni code');
+    assert(!JSON.stringify(dev.state).includes('synthetic-runtime-code'), 'aucun code dans l’état de synchronisation');
+    console.log('✅ arrière-plan : envoi anticipé de la dernière saisie, délai de reprise après échec respecté');
+  }
   await require('./lib/drive-recovery-checks')();
 
 })().catch(e => { console.error(e); process.exitCode = 1; });

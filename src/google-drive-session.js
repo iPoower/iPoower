@@ -127,6 +127,23 @@ const GoogleDriveSession = (() => {
       if (lease !== epoch || Date.now() >= until) return fail('auth');
       return { folder, binding, account: identity.label };
     }
+    // Reprise après réouverture ou expiration du jeton : un seul geste (connect) suffit si, et seulement
+    // si, le compte et le dossier reproduisent la liaison déjà confirmée explicitement auparavant.
+    // `hint` vient de l'état local de synchronisation (identifiant de dossier + empreinte, aucun jeton).
+    async function resume(hint) {
+      if (!token || Date.now() >= until || !identity) { return fail('auth'); }
+      if (!hint || typeof hint.folder !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(hint.folder) || typeof hint.binding !== 'string' || !/^[0-9a-f]{64}$/.test(hint.binding)) return fail('confirmation');
+      const lease = epoch, account = await provider.account();
+      if (lease !== epoch || account !== identity.id) return fail('auth');
+      const binding = [...new Uint8Array(await host.crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([cfg.clientId, account, hint.folder]))))].map(x => x.toString(16).padStart(2, '0')).join('');
+      if (lease !== epoch) return fail('auth');
+      if (binding !== hint.binding) return fail('confirmation');
+      approvedAccount = account; fileAccess();
+      await provider.folder(hint.folder);   // contrat du dossier dédié relu (propriétaire, étiquette)
+      if (lease !== epoch || Date.now() >= until) { approvedAccount = null; return fail('auth'); }
+      dedicated.add(hint.folder);
+      return { folder: hint.folder, binding, account: identity.label };
+    }
     function chooseFolder() {
       if (pickReject) return Promise.reject(Object.assign(new Error('busy'), { code: 'busy' }));
       if (!token || Date.now() >= until) { disconnect(); return Promise.reject(Object.assign(new Error('auth'), { code: 'auth' })); }
@@ -162,7 +179,7 @@ const GoogleDriveSession = (() => {
         picker.setVisible(true);
       });
     }
-    return Object.freeze({ prepare, connect, confirmAccount, newFolder, listDedicatedFolders, chooseDedicatedFolder, chooseFolder, disconnect,
+    return Object.freeze({ prepare, connect, confirmAccount, newFolder, listDedicatedFolders, chooseDedicatedFolder, chooseFolder, resume, disconnect,
       get identity() { return identity && { ...identity }; }, get confirmed() { return !!approvedAccount; },
       get connected() { if (token && (Date.now() >= until || provider.connected === false)) disconnect(); return !!token; } });
   }
