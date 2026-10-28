@@ -30,16 +30,24 @@ const DriveSync = (() => {
       if (v[key] !== undefined) ControlVaultPacket.strictJson(new TextEncoder().encode(v[key]), 64);
     return JSON.stringify(projection(v)) === JSON.stringify(v);
   }
-  async function premergeRecovery(store = DriveStore.create(DB), crypt = globalThis.crypto) {
-    const state = await store.read();
-    if (!state || state.recovery == null) return null;
-    if (state.v !== 1 || !/^[0-9a-f]{64}$/.test(state.recovery)) return fail('stockage');
-    const bytes = await store.readRecovery(state.recovery);
+  // Sans `wanted` : la dernière copie avant fusion de la synchronisation ; sinon la copie désignée
+  // par son empreinte (toutes restent exportables). Intégrité vérifiée avant toute restitution.
+  async function premergeRecovery(store = DriveStore.create(DB), crypt = globalThis.crypto, wanted = null) {
+    let target = wanted;
+    if (target === null) {
+      const state = await store.read();
+      if (!state || state.recovery == null) return null;
+      if (state.v !== 1) return fail('stockage');
+      target = state.recovery;
+    }
+    if (typeof target !== 'string' || !/^[0-9a-f]{64}$/.test(target)) return fail('stockage');
+    const bytes = await store.readRecovery(target);
     if (!(bytes instanceof Uint8Array)) return fail('stockage');
     const hash = [...new Uint8Array(await crypt.subtle.digest('SHA-256', bytes))].map(v => v.toString(16).padStart(2, '0')).join('');
-    if (hash !== state.recovery) return fail('integrity');
+    if (hash !== target) return fail('integrity');
     return bytes.slice();
   }
+  async function premergeRecoveries(store = DriveStore.create(DB)) { return typeof store.recoveries === 'function' ? store.recoveries() : []; }
   function create({ vault, provider, store = DriveStore.create(DB), keys = SyncKey.storage(), locks = navigator.locks,
     crypto: crypt = globalThis.crypto, now = () => Date.now(), version, onChange = () => {}, onApplied = () => {} }) {
     const codec = ControlVaultPacket.create({ validateBusiness, crypto: crypt });
@@ -246,5 +254,5 @@ const DriveSync = (() => {
       recovery: () => premergeRecovery(store, crypt),
       get status() { return state(); } });
   }
-  return Object.freeze({ create, projection, validateBusiness, premergeRecovery });
+  return Object.freeze({ create, projection, validateBusiness, premergeRecovery, premergeRecoveries });
 })();

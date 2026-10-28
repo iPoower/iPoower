@@ -52,7 +52,8 @@ const DriveRecovery = (() => {
         !/^[0-9a-f]{32}$/.test(value.revision) || !/^[0-9a-f]{64}$/.test(value.sha256)) return fail('checkpoint');
       return Object.freeze({ revision: value.revision, sha256: value.sha256 });
     }
-    async function load(pass, target, guard, reference = null) {
+    // `choice` : tête choisie explicitement quand plusieurs coexistent (conflit ouvert, appareil perdu).
+    async function load(pass, target, guard, reference = null, choice = null) {
       const profiles = await provider.profiles(target.folder); guard();
       if (profiles.length !== 1) return fail('profile');
       const profile = profiles[0], descriptor = SyncKey.parse(profile.bytes);
@@ -66,17 +67,25 @@ const DriveRecovery = (() => {
       const local = { device: random(), seq: 0, base: [], dirty: false };
       const claimed = catalog.map(r => ({ ...SyncRevisions.meta(r.revision), fileSha256: r.fileSha256 }));
       const plan = SyncRevisions.plan(claimed, local);
-      if (plan.action === 'blocked' || plan.heads.length !== 1 || plan.warnings.length) return fail('conflict');
+      if (plan.action === 'blocked' || plan.warnings.length) return fail('conflict');
+      if (plan.heads.length > 1 && choice === null) {
+        // Jamais de choix par date : proposer les têtes, l'utilisateur en désigne une.
+        const heads = plan.heads.map(id => { const c = claimed.find(x => x.id === id); return Object.freeze({ id, device: c.device, seq: c.seq }); });
+        throw Object.assign(new Error('heads'), { code: 'heads', heads });
+      }
+      const wanted = plan.heads.length === 1 && choice === null ? plan.heads[0] : choice;
+      if (typeof wanted !== 'string' || !plan.heads.includes(wanted)) return fail('conflict');
       let head = null; const confirmed = [];
       for (const ref of catalog) {
         const back = await provider.download(ref, undefined, target.folder); guard();
         const bytes = back.packet.copyBytes();
         const data = await codec.openWith(bytes, handle, version(), ref.fileSha256); guard();
         confirmed.push(SyncRevisions.confirm(ref.revision, data, ref.fileSha256, SyncMerge.device));
-        if (ref.revision.id === plan.heads[0]) head = { bytes, data, ref: structuredClone(ref), proof: structuredClone(back.proof) };
+        if (ref.revision.id === wanted) head = { bytes, data, ref: structuredClone(ref), proof: structuredClone(back.proof) };
       }
       const verified = SyncRevisions.plan(confirmed, local);
-      if (!head || verified.action === 'blocked' || verified.heads.length !== 1 || verified.warnings.length || verified.heads[0] !== head.data.rev.id) return fail('conflict');
+      if (!head || verified.action === 'blocked' || verified.warnings.length || verified.heads.length !== plan.heads.length ||
+        !verified.heads.includes(wanted) || head.data.rev.id !== wanted) return fail('conflict');
       // Une ancre conservée hors de Drive borne le rejeu : elle doit figurer
       // dans la lignée authentifiée, avec ses octets exacts. Elle ne prouve
       // pas l'absence d'une version ultérieure encore inconnue de cet appareil.
@@ -85,20 +94,20 @@ const DriveRecovery = (() => {
       guard();
       return { ...head, profile: profile.sha256, catalog: catalogHash, values: await fingerprint(head.data.values) };
     }
-    async function prepare(pass, knownCheckpoint = null) { return locked(async () => {
+    async function prepare(pass, knownCheckpoint = null, head = null) { return locked(async () => {
       draft = null; const { target, guard } = lease(); const prior = await vacant(target); guard();
       const reference = checkpoint(knownCheckpoint);
-      const data = await load(pass, target, guard, reference); guard();
+      const data = await load(pass, target, guard, reference, head); guard();
       if (prior && (prior.recoveryInit.source !== data.ref.fileSha256 || prior.recoveryInit.catalog !== data.catalog || prior.recoveryInit.profile !== data.profile)) return fail('source-changed');
       const ticket = Object.freeze({ revision: data.data.rev.id, at: data.data.at, size: data.bytes.length, sha256: data.ref.fileSha256 });
-      draft = { ...data, ticket, target, reference, generation: epoch, preparedAt: now() }; return ticket;
+      draft = { ...data, ticket, target, reference, head, generation: epoch, preparedAt: now() }; return ticket;
     }); }
     async function install(ticket, pass, confirmed = false) { return locked(async () => {
       const before = draft, { target, guard } = lease();
       if (!confirmed || !before || before.ticket !== ticket || before.target !== target || before.generation !== epoch || now() - before.preparedAt > 300000) return fail('confirmation');
       const previous = await vacant(target); guard();
       // Une sauvegarde arrivée depuis l'aperçu impose une nouvelle décision.
-      const fresh = await load(pass, target, guard, before.reference); guard();
+      const fresh = await load(pass, target, guard, before.reference, before.head); guard();
       if (fresh.ref.fileSha256 !== before.ref.fileSha256 || fresh.catalog !== before.catalog || fresh.profile !== before.profile) return fail('source-changed');
       let state = null;
       await vault.syncInitialize(fresh.data.values, pass, async () => {

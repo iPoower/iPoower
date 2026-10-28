@@ -105,10 +105,27 @@
     }
     say(folders.length ? 'Dossiers dédiés retrouvés. Choisis explicitement celui à utiliser.' : 'Aucun dossier dédié autorisé trouvé. Vérifie le compte et la destination de la sauvegarde.');
   }));
-  $('recovery-preview').addEventListener('click', () => action(async () => {
-    const reference = checkpoint(); ticket = await recovery.prepare(password(), reference); $('recovery-consent').checked = false;
+  // Plusieurs têtes (conflit resté ouvert, appareil perdu) : aucune n'est choisie automatiquement.
+  // Chaque tête est proposée ; l'autre reste sur Drive et sera fusionnée ensuite, conflits affichés.
+  function offerHeads(heads, reference) {
+    const info = $('recovery-preview-info'); info.replaceChildren();
+    const intro = document.createElement('p'); intro.textContent = heads.length + ' versions divergentes coexistent sur Drive. Choisis celle à restaurer ; les autres restent conservées et seront proposées en fusion après restauration.';
+    info.append(intro);
+    for (const h of heads) {
+      const b = document.createElement('button'); b.textContent = 'Restaurer la version de l’appareil …' + h.device.slice(-6) + ' (révision n° ' + h.seq + ')';
+      b.addEventListener('click', () => action(async () => { await previewWith(reference, h.id); }));
+      info.append(b);
+    }
+  }
+  async function previewWith(reference, head = null) {
+    ticket = await recovery.prepare(password(), reference, head); $('recovery-consent').checked = false;
     $('recovery-preview-info').textContent = 'Copie du ' + new Date(ticket.at).toLocaleString('fr-FR') + ' · révision ' + ticket.revision + ' · ' + ticket.size + ' octets chiffrés · SHA-256 ' + ticket.sha256;
     say((reference ? 'La référence saisie correspond à une révision authentifiée. Vérifie qu’elle provient bien de ta copie indépendante antérieure. ' : 'Lignée authentifiée sans référence indépendante : la présence de la dernière sauvegarde n’est pas prouvée. ') + 'Exporte cette copie chiffrée indépendamment, puis confirme l’installation sur ce navigateur vierge.');
+  }
+  $('recovery-preview').addEventListener('click', () => action(async () => {
+    const reference = checkpoint();
+    try { await previewWith(reference); }
+    catch (e) { if (e.code !== 'heads') throw e; ticket = null; offerHeads(e.heads, reference); say('Versions divergentes : choix explicite requis. Rien n’a été écrit.'); }
   }));
   $('recovery-consent').addEventListener('change', paint);
   $('recovery-code').addEventListener('input', () => { ticket = null; paint(); });

@@ -89,6 +89,20 @@ module.exports = async function recoveryChecks() {
       assert.equal(s.raw.getItem(A.SessionVault.VAULT), null); assert.equal(s.state, null); assert.equal(s.copies.size, 0); assert.equal(s.stats.uploads, 0);
     }
   });
+  await test('appareil perdu pendant un conflit : deux têtes ⇒ liste proposée, restauration seulement de la tête choisie', async () => {
+    const s = setup(), other = await makeFile({ ...rev, id: '4'.repeat(32), device: '5'.repeat(32) }); s.files.push(other);
+    const c = s.controller();
+    const refused = await c.prepare(pass).then(() => null, e => e);
+    assert.equal(refused && refused.code, 'heads', 'sans choix explicite : aucune tête devinée');
+    assert.deepEqual(JSON.parse(JSON.stringify(refused.heads.map(h => h.id).sort())), [rev.id, '4'.repeat(32)].sort());
+    assert.equal(s.raw.getItem(A.SessionVault.VAULT), null); assert.equal(s.state, null);
+    await assert.rejects(c.prepare(pass, null, '9'.repeat(32)), e => e.code === 'conflict', 'tête inconnue refusée');
+    const ticket = await c.prepare(pass, null, '4'.repeat(32)); assert.equal(ticket.revision, '4'.repeat(32));
+    await c.install(ticket, pass, true);
+    const proof = await s.controller().verify(pass); assert.equal(proof.revision, '4'.repeat(32));
+    assert.deepEqual(s.state.base, ['4'.repeat(32)], 'la synchronisation intégrera ensuite l’autre tête par fusion à trois voies');
+    assert.equal(s.stats.uploads, 0);
+  });
   await test('suffixe récent masqué : ancre indépendante obligatoire pour prouver le plancher connu', async () => {
     const s = setup(), latest = await makeFile({ ...rev, id: '7'.repeat(32), parents: [rev.id], seq: 2 });
     const reference = { revision: latest.ref.revision.id, sha256: latest.ref.fileSha256 };

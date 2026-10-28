@@ -58,7 +58,8 @@ const DriveStore = (() => {
       };
       if (!same(expected, await read('state', 'current'))) throw new Error('stockage');
     }
-    async function recovery(bytes, crypto = globalThis.crypto) {
+    // `at` : horodatage informatif de la copie (affichage), jamais un arbitre de fusion.
+    async function recovery(bytes, crypto = globalThis.crypto, at = Date.now()) {
       const copy = bytes.slice(), hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', copy))].map(x => x.toString(16).padStart(2, '0')).join('');
       const db = await open();
       await new Promise((resolve, reject) => {
@@ -72,9 +73,29 @@ const DriveStore = (() => {
         const tx = transaction(db, 'state', 'readwrite'); tx.objectStore('state').put(hash, 'recovery-latest');
         tx.oncomplete = resolve; tx.onerror = tx.onabort = () => reject(new Error('stockage'));
       });
+      // Index de TOUTES les copies (empreinte, date, taille) : chacune reste exportable, aucune purge.
+      const index = await read('state', 'recovery-index') || [];
+      if (!index.some(e => e.hash === hash)) {
+        const next = [...index, { hash, at: Number.isFinite(at) ? at : null, size: copy.length }];
+        await new Promise((resolve, reject) => {
+          const tx = transaction(db, 'state', 'readwrite'); tx.objectStore('state').put(next, 'recovery-index');
+          tx.oncomplete = resolve; tx.onerror = tx.onabort = () => reject(new Error('stockage'));
+        });
+        const back = await read('state', 'recovery-index');
+        if (!Array.isArray(back) || back.length !== next.length) throw new Error('stockage');
+      }
       return hash;
     }
-    return Object.freeze({ read: () => read('state', 'current'), write, recovery, readRecovery: hash => read('recovery', hash),
+    // Plus récente d'abord. Une copie antérieure à l'index (seulement « recovery-latest ») reste listée.
+    async function recoveries() {
+      const index = [...(await read('state', 'recovery-index') || [])], latest = await read('state', 'recovery-latest');
+      if (latest && !index.some(e => e.hash === latest)) {
+        const bytes = await read('recovery', latest);
+        if (bytes instanceof Uint8Array) index.push({ hash: latest, at: null, size: bytes.length });
+      }
+      return index.map(e => ({ hash: e.hash, at: e.at, size: e.size })).sort((a, b) => (b.at ?? -1) - (a.at ?? -1));
+    }
+    return Object.freeze({ read: () => read('state', 'current'), write, recovery, recoveries, readRecovery: hash => read('recovery', hash),
       latestRecovery: async () => { const hash = await read('state', 'recovery-latest'); return hash ? read('recovery', hash) : null; } });
   }
   return Object.freeze({ create });

@@ -15,7 +15,8 @@ function fake() {
     if(closed)throw Error("InvalidStateError: closed database");
     const tx = {objectStore(){return {
      get(key) {const request={};queueMicrotask(()=>{request.result=rows[name].get(key);request.onsuccess?.();queueMicrotask(()=>tx.oncomplete?.());});return request;},
-     put(value,key){rows[name].set(key,structuredClone(value));queueMicrotask(()=>tx.oncomplete?.());}
+     put(value,key){rows[name].set(key,structuredClone(value));queueMicrotask(()=>tx.oncomplete?.());},
+     add(value,key){if(rows[name].has(key))throw Error("ConstraintError");rows[name].set(key,structuredClone(value));}
     };}};
     return tx;
    }, get closed(){return closed;}};
@@ -37,7 +38,7 @@ function fake() {
  return {indexedDB,connections,late,rows,set mode(v){mode=v;},get opens(){return opens;},get deletes(){return deletes;}};
 }
 function make(f) {
- const env={indexedDB:f.indexedDB,structuredClone,Uint8Array,queueMicrotask,globalThis:null};
+ const env={indexedDB:f.indexedDB,structuredClone,Uint8Array,queueMicrotask,Date,globalThis:null};
  env.globalThis=env;
  vm.createContext(env);
  vm.runInContext(source+"\nglobalThis.Store=DriveStore;",env);
@@ -80,6 +81,21 @@ async function main() {
   await s.write(value);f.connections[0].onversionchange();
   assert.equal((await s.read()).receipts[0].fileId,"synthetic");
   assert.equal(f.deletes,0);
+ });
+ await test("NOESIS 13.4 : toutes les copies avant fusion sont indexées et relisibles, aucune n'est purgée",async()=>{
+  const {webcrypto}=require("node:crypto"),f=fake(),s=make(f),enc=t=>new TextEncoder().encode(t);
+  const h1=await s.recovery(enc("copie-1"),webcrypto,1000),h2=await s.recovery(enc("copie-2"),webcrypto,2000),again=await s.recovery(enc("copie-1"),webcrypto,3000);
+  assert.equal(again,h1,"copie identique : même empreinte, pas de doublon");
+  const list=JSON.parse(JSON.stringify(await s.recoveries()));
+  assert.deepEqual(list.map(x=>x.hash),[h2,h1],"plus récente d'abord");
+  assert.deepEqual(list.map(x=>x.at),[2000,1000]);assert.deepEqual(list.map(x=>x.size),[7,7]);
+  assert.equal(new TextDecoder().decode(await s.readRecovery(h1)),"copie-1");
+  assert.equal(f.rows.recovery.size,2);assert.equal(f.deletes,0);
+ });
+ await test("NOESIS 13.4 : copie antérieure à l'index (recovery-latest seul) toujours listée",async()=>{
+  const f=fake(),s=make(f);f.rows.recovery.set("b".repeat(64),new Uint8Array([1,2,3]));f.rows.state.set("recovery-latest","b".repeat(64));
+  const list=JSON.parse(JSON.stringify(await s.recoveries()));
+  assert.deepEqual(list,[{hash:"b".repeat(64),at:null,size:3}]);
  });
  console.log("NOESIS-RC-003: "+count+" tests, synthetic IndexedDB only.");
 }

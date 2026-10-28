@@ -12,11 +12,38 @@ function renderDriveSync() {
   };
   const recover = document.createElement('a'); recover.className = 'btn'; recover.href = './recovery.html';
   recover.textContent = 'Récupération sur un nouvel appareil'; root.appendChild(recover);
-  button('Exporter la copie avant fusion', async () => {
-    try { const bytes = await DriveSync.premergeRecovery(); if (!bytes) { d.text = 'Aucune fusion locale effectuée : pas de copie avant fusion.'; renderDriveSync(); return; }
-      await downloadRecovery(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-    } catch { d.text = 'Copie avant fusion non lisible. Aucun fichier annoncé complet.'; renderDriveSync(); }
+  // État en trois volets : jamais « tout est sauvegardé » quand seule la copie locale est confirmée.
+  const st = d.status || null, line = text => { const p = document.createElement('p'); p.className = 'sub'; p.textContent = text; root.appendChild(p); return p; };
+  line('LOCAL · coffre chiffré sur cet appareil : ' + (window.TWRC_STORAGE_ERROR ? 'échec d’écriture locale, données en mémoire à vérifier' : window.TWRC_VAULT && window.TWRC_VAULT.pendingWrites ? 'écriture en attente' : 'enregistré'));
+  line('CLOUD · ' + (!d.config ? 'Google Drive non activé sur cette version' : !connected ? 'connexion requise (aucune copie Drive envoyée depuis cet appareil tant qu’elle manque)' :
+    !st ? 'en attente' : ({ SYNCED: 'envoi confirmé et relu (intégrité vérifiée)', VERIFYING: 'envoi ou vérification en cours', PENDING: 'en attente d’envoi', CONFLICT: 'saisies locales envoyées · conflit à arbitrer', SYNC_BLOCKED: 'bloqué : ' + st.message, LOCAL: 'local seulement' })[st.state] || st.message));
+  line('PÉRIMÈTRE · Drive exclut volontairement la position, le trajet en cours, les caches, le code et la mémoire thermique des pneus (estimation de quelques heures) ; la copie complète exportée les contient.');
+  if (st && st.conflictDetails && st.conflictDetails.length) {
+    line('CONFLIT · action requise. Les deux versions sont conservées ; rien n’est remplacé sans ton choix.').setAttribute('role', 'alert');
+    const show = v => { const t = v === undefined ? '(absent)' : JSON.stringify(v); return t.length > 120 ? t.slice(0, 117) + '…' : t; };
+    for (const c of st.conflictDetails) {
+      line(c.path + ' · cet appareil : ' + show(c.local) + ' · autre appareil (…' + String(c.device).slice(-6) + ') : ' + show(c.remote));
+      if (!c.resolvable) { line('Résolution par choix simple impossible (liste de véhicules ou donnée entière) : exporte les deux copies et compare-les.'); continue; }
+      for (const [label, choice] of [['Garder cet appareil', 'local'], ['Prendre l’autre appareil', 'remote']])
+        button(label + ' · ' + c.path, async () => {
+          try { d.sync.resolve(c.id, c.path, choice); d.text = 'Choix enregistré : vérification et synchronisation…'; await d.sync.run(true); }
+          catch { d.text = 'Choix non appliqué : conflit modifié entre-temps. Les deux versions restent conservées.'; }
+          renderDriveSync();
+        });
+    }
+  }
+  button('Copies avant fusion (toutes)', async () => {
+    try { d.copies = await DriveSync.premergeRecoveries(); d.text = d.copies.length ? d.copies.length + ' copie(s) avant fusion conservée(s) sur cet appareil.' : 'Aucune fusion locale effectuée : pas de copie avant fusion.'; }
+    catch { d.text = 'Copies avant fusion non lisibles. Aucun fichier annoncé complet.'; }
+    renderDriveSync();
   });
+  for (const copy of d.copies || []) {
+    line('Copie avant fusion · ' + (copy.at ? new Date(copy.at).toLocaleString('fr-FR') : 'date inconnue (copie antérieure)') + ' · ' + copy.size + ' octets · ' + copy.hash.slice(0, 12));
+    button('Exporter cette copie', async () => {
+      try { const bytes = await DriveSync.premergeRecovery(undefined, undefined, copy.hash); await downloadRecovery(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+      catch { d.text = 'Copie avant fusion non lisible ou altérée. Aucun fichier annoncé complet.'; renderDriveSync(); }
+    });
+  }
   if (!d.config) return;
   button(!d.prepared ? 'Préparer la connexion Google' : connected ? 'Changer de compte Google' : 'Se connecter à Google', async () => {
     d.busy = true;
@@ -64,7 +91,7 @@ function renderDriveSync() {
       finally { d.busy = false; renderDriveSync(); }
     });
   }
-  if (connected && d.selected) button('Vérifier et synchroniser maintenant', () => d.sync.run(true));
+  if (connected && d.selected) button('Sauvegarder maintenant (envoi, relecture, vérification)', () => d.sync.run(true));
   if (connected) button('Déconnecter', () => { d.session.disconnect(); d.sync.stop(); d.selected = false; d.dedicatedFolders = []; d.text = 'Déconnecté. Les copies locales et Drive sont conservées.'; renderDriveSync(); });
 }
 async function backupDriveImport(bytes) {
@@ -94,7 +121,7 @@ async function initDriveSync() {
     DRIVE_UI.session = GoogleDriveSession.create(config, provider);
     DRIVE_UI.sync = DriveSync.create({ vault: window.TWRC_VAULT, provider,
       version: () => ControlVaultPacket.loadedVersion(window.TWRC_BUILD, VER),
-      onChange: state => { DRIVE_UI.text = state.message; renderDriveSync(); },
+      onChange: state => { DRIVE_UI.text = state.message; DRIVE_UI.status = state; renderDriveSync(); },
       onApplied: () => {
         S = loadSettings();
         const context = lsGet(USER_STORE.key); if (context) USER_STORE.receive(context);
