@@ -131,6 +131,9 @@ async function run(){
   await check('real UI encrypts backup: downloadable bytes disclose no synthetic car',async()=>{
    await a.evaluate(()=>{document.querySelector('#settings').open=true;renderSettings(true)});
    await a.locator('#bkPw').fill(APP_KEY_TEST);
+   const activates=await a.evaluate(()=>window.TWRC_VAULT?.journalNeedsRecovery===true);
+   // Register BEFORE export: iOS WebKit can schedule a same-URL reload in 100 ms.
+   const afterExport=activates?a.waitForNavigation({waitUntil:'domcontentloaded',timeout:30000}):null;
    const [download]=await Promise.all([
     a.waitForEvent('download',{timeout:90000}),
     a.locator('[data-act="bk-export"]').click()
@@ -159,12 +162,42 @@ async function run(){
    assert(!text.includes(FAKE_CAR));
    assert(!text.includes(FAKE_REPORT_ID));
    a.__f2backup=bytes;
-   // Exporter can activate the journal and reload; test the authenticated
-   // resumed session AND the actual persisted car after re-opening the same origin.
+   // Wait for the actual automatic reload before any further navigation.
+   if(afterExport)await afterExport;
+   // Verify a new navigation resumes the existing encrypted vault without loss.
    await loadApp(a,left.origin);
    assert.equal(await a.evaluate(()=>S.cars[0].name),FAKE_CAR,
     'car persists across post-export browser navigation');
    assert.equal(await a.evaluate(()=>window.TWRC_VAULT?.mode),'vault');
+  });
+  await check('destination refuses import until its recovery journal is protected',async()=>{
+   const needs=await b.evaluate(()=>window.TWRC_VAULT?.journalNeedsRecovery===true);
+   assert.equal(needs,true,'fresh destination must require local journal activation');
+   await b.evaluate(()=>{document.querySelector('#settings').open=true;renderSettings(true)});
+   const before=await b.evaluate(()=>S.cars[0].name);
+   await b.locator('#bkPw').fill(APP_KEY_TEST);
+   await b.locator('#bkFile').setInputFiles({name:'f2-backup-fake.json',mimeType:'application/json',buffer:a.__f2backup});
+   await b.waitForFunction(()=>/Appuie d’abord sur Exporter/.test(document.querySelector('#bkMsg')?.textContent||''),undefined,{timeout:20000});
+   assert.equal(await b.evaluate(()=>S.cars[0].name),before);
+  });
+  await check('destination independently exports a recoverable vault before import',async()=>{
+   await b.evaluate(()=>{document.querySelector('#settings').open=true;renderSettings(true)});
+   await b.locator('#bkPw').fill(APP_KEY_TEST);
+   const onReload=b.waitForNavigation({waitUntil:'domcontentloaded',timeout:30000});
+   const [download]=await Promise.all([
+    b.waitForEvent('download',{timeout:90000}),
+    b.locator('[data-act="bk-export"]').click()
+   ]);
+   const destinationBytes=fs.readFileSync(await download.path()).toString('utf8');
+   const sandbox={TextEncoder,TextDecoder,Uint8Array,ArrayBuffer,atob,btoa,crypto:webcrypto};
+   vm.createContext(sandbox);
+   vm.runInContext(fs.readFileSync(path.join(ROOT,'src/session-vault.js'),'utf8')+';this.codec=SessionVault;',sandbox);
+   const values=await sandbox.codec.readRecovery(destinationBytes,APP_KEY_TEST,webcrypto);
+   assert.equal(JSON.parse(values['twrc.settings.v1']).cars.length,2);
+   await onReload;
+   await loadApp(b,right.origin);
+   assert.equal(await b.evaluate(()=>window.TWRC_VAULT?.journalNeedsRecovery),false);
+   assert.notEqual(await b.evaluate(()=>S.cars[0].name),FAKE_CAR);
   });
   await check('wrong password in real UI refuses import without changing destination',async()=>{
    await b.evaluate(()=>{document.querySelector('#settings').open=true;renderSettings(true)});
