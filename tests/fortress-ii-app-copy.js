@@ -38,8 +38,7 @@ function makeServer(){
   server.listen(0,'127.0.0.1',()=>ok({server,origin:'http://127.0.0.1:'+server.address().port}));
  });
 }
-async function loadApp(page,origin){
- await page.goto(origin+'/race-control/',{waitUntil:'domcontentloaded'});
+async function settleApp(page){
  // Initial installation requires the password, whereas a post-export reload may
  // resume the already authenticated vault. The latter MUST NOT expose #unlockPw.
  await page.waitForFunction(()=>{
@@ -55,6 +54,10 @@ async function loadApp(page,origin){
  await page.waitForFunction(()=>window.TWRC_VAULT?.mode==='vault'&&
   typeof Backup!=='undefined'&&typeof USER_STORE!=='undefined'&&
   typeof S!=='undefined'&&!!S.cars?.length,undefined,{timeout:45000});
+}
+async function loadApp(page,origin){
+ await page.goto(origin+'/race-control/',{waitUntil:'domcontentloaded'});
+ await settleApp(page);
 }
 async function run(){
  const [left,right]=await Promise.all([makeServer(),makeServer()]);
@@ -133,7 +136,8 @@ async function run(){
    await a.locator('#bkPw').fill(APP_KEY_TEST);
    const activates=await a.evaluate(()=>window.TWRC_VAULT?.journalNeedsRecovery===true);
    // Register BEFORE export: iOS WebKit can schedule a same-URL reload in 100 ms.
-   const afterExport=activates?a.waitForNavigation({waitUntil:'domcontentloaded',timeout:30000}):null;
+   const afterExport=activates?a.waitForEvent('framenavigated',{
+    predicate:frame=>frame===a.mainFrame(),timeout:30000}):null;
    const [download]=await Promise.all([
     a.waitForEvent('download',{timeout:90000}),
     a.locator('[data-act="bk-export"]').click()
@@ -164,8 +168,8 @@ async function run(){
    a.__f2backup=bytes;
    // Wait for the actual automatic reload before any further navigation.
    if(afterExport)await afterExport;
-   // Verify a new navigation resumes the existing encrypted vault without loss.
-   await loadApp(a,left.origin);
+   // Wait for the post-export application to re-enter a valid authenticated state.
+   await settleApp(a);
    assert.equal(await a.evaluate(()=>S.cars[0].name),FAKE_CAR,
     'car persists across post-export browser navigation');
    assert.equal(await a.evaluate(()=>window.TWRC_VAULT?.mode),'vault');
@@ -183,7 +187,8 @@ async function run(){
   await check('destination independently exports a recoverable vault before import',async()=>{
    await b.evaluate(()=>{document.querySelector('#settings').open=true;renderSettings(true)});
    await b.locator('#bkPw').fill(APP_KEY_TEST);
-   const onReload=b.waitForNavigation({waitUntil:'domcontentloaded',timeout:30000});
+   const onReload=b.waitForEvent('framenavigated',{
+    predicate:frame=>frame===b.mainFrame(),timeout:30000});
    const [download]=await Promise.all([
     b.waitForEvent('download',{timeout:90000}),
     b.locator('[data-act="bk-export"]').click()
@@ -195,7 +200,7 @@ async function run(){
    const values=await sandbox.codec.readRecovery(destinationBytes,APP_KEY_TEST,webcrypto);
    assert.equal(JSON.parse(values['twrc.settings.v1']).cars.length,2);
    await onReload;
-   await loadApp(b,right.origin);
+   await settleApp(b);
    assert.equal(await b.evaluate(()=>window.TWRC_VAULT?.journalNeedsRecovery),false);
    assert.notEqual(await b.evaluate(()=>S.cars[0].name),FAKE_CAR);
   });
