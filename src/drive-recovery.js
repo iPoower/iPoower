@@ -90,6 +90,12 @@ const DriveRecovery = (() => {
       // dans la lignée authentifiée, avec ses octets exacts. Elle ne prouve
       // pas l'absence d'une version ultérieure encore inconnue de cet appareil.
       if (reference && !confirmed.some(r => r.id === reference.revision && r.fileSha256 === reference.sha256)) return fail('checkpoint');
+      // L'ancre doit appartenir à la lignée de la tête restaurée, pas seulement au catalogue (A2).
+      if (reference) {
+        const by = new Map(confirmed.map(r => [r.id, r.parents])), seen = new Set(), stack = [wanted];
+        while (stack.length) { const id = stack.pop(); if (seen.has(id) || !by.has(id)) continue; seen.add(id); stack.push(...by.get(id)); }
+        if (!seen.has(reference.revision)) return fail('checkpoint');
+      }
       const catalogHash = await fingerprint(catalog.map(r => ({ fileId: r.fileId, sha: r.fileSha256, size: r.size, revision: r.revision })).sort((a, b) => a.fileId.localeCompare(b.fileId)));
       guard();
       return { ...head, profile: profile.sha256, catalog: catalogHash, values: await fingerprint(head.data.values) };

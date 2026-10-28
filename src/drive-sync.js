@@ -229,7 +229,9 @@ const DriveSync = (() => {
         message = 'envoi'; notify(); await send(s);
       }
       await observeCurrent(s); await save(s);
-      message = conflicts.length ? 'conflit : choix requis, saisies locales envoyées' : SyncOutbox.status(s.outbox).label;
+      // Jamais « envoyées » tant qu'une saisie attend la fenêtre de calme ou un envoi relu (A3).
+      const waiting = s.outbox.dirtySince !== null || !!s.outbox.job;
+      message = conflicts.length ? (waiting ? 'conflit : choix requis · saisies locales en attente d’envoi' : 'conflit : choix requis · saisies locales envoyées et relues') : SyncOutbox.status(s.outbox).label;
     }
     // Choix explicite pour un chemin en conflit ; appliqué à la prochaine vérification.
     function resolve(rid, path, choice) {

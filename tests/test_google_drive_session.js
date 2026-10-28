@@ -106,6 +106,10 @@ const config = { approved: true, clientId: ['123456', 'fake.apps.googleuserconte
   await assert.rejects(other.resume({ folder: hint.folder, binding: hint.binding }), e => e.code === 'confirmation', 'autre compte : confirmation explicite exigée');
   assert.equal(other.confirmed, false);
   await assert.rejects(again.resume({ folder: 'x', binding: 'zz' }), e => ['auth', 'confirmation'].includes(e.code));
+  // Contre-expertise A8 : dossier refusé à la relecture ⇒ compte non approuvé.
+  const strict = G.create(config, { ...resumeProvider, folder: async () => { throw Object.assign(new Error('conflict'), { code: 'conflict' }); } }, resumeHost);
+  await strict.prepare(); p = strict.connect(); await offlineClients.at(-1).callback({ access_token: 'fixture-token-4', scope, expires_in: 3600 }); await p;
+  await assert.rejects(strict.resume({ folder: hint.folder, binding: hint.binding })); assert.equal(strict.confirmed, false, 'aucune approbation implicite après échec');
   console.log('✅ reprise en un geste : seulement pour la liaison compte/dossier déjà confirmée, contrat du dossier relu, aucun stockage de jeton');
   }
 })().catch(e => { console.error(e); process.exitCode = 1; });

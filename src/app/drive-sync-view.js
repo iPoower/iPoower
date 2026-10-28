@@ -16,14 +16,14 @@ function renderDriveSync() {
   const st = d.status || null, line = text => { const p = document.createElement('p'); p.className = 'sub'; p.textContent = text; root.appendChild(p); return p; };
   line('LOCAL · coffre chiffré sur cet appareil : ' + (window.TWRC_STORAGE_ERROR ? 'échec d’écriture locale, données en mémoire à vérifier' : window.TWRC_VAULT && window.TWRC_VAULT.pendingWrites ? 'écriture en attente' : 'enregistré'));
   line('CLOUD · ' + (!d.config ? 'Google Drive non activé sur cette version' : !connected ? 'connexion requise (aucune copie Drive envoyée depuis cet appareil tant qu’elle manque)' :
-    !st ? 'en attente' : ({ SYNCED: 'envoi confirmé et relu (intégrité vérifiée)', VERIFYING: 'envoi ou vérification en cours', PENDING: 'en attente d’envoi', CONFLICT: 'saisies locales envoyées · conflit à arbitrer', SYNC_BLOCKED: 'bloqué : ' + st.message, LOCAL: 'local seulement' })[st.state] || st.message));
+    !st ? 'en attente' : ({ SYNCED: 'envoi confirmé et relu (intégrité vérifiée)', VERIFYING: 'envoi ou vérification en cours', PENDING: 'en attente d’envoi', CONFLICT: st.message, SYNC_BLOCKED: 'bloqué : ' + st.message, LOCAL: 'local seulement' })[st.state] || st.message));
   line('PÉRIMÈTRE · Drive exclut volontairement la position, le trajet en cours, les caches, le code et la mémoire thermique des pneus (estimation de quelques heures) ; la copie complète exportée les contient.');
   if (st && st.conflictDetails && st.conflictDetails.length) {
     line('CONFLIT · action requise. Les deux versions sont conservées ; rien n’est remplacé sans ton choix.').setAttribute('role', 'alert');
     const show = v => { const t = v === undefined ? '(absent)' : JSON.stringify(v); return t.length > 120 ? t.slice(0, 117) + '…' : t; };
     for (const c of st.conflictDetails) {
       line(c.path + ' · cet appareil : ' + show(c.local) + ' · autre appareil (…' + String(c.device).slice(-6) + ') : ' + show(c.remote));
-      if (!c.resolvable) { line('Résolution par choix simple impossible (liste de véhicules ou donnée entière) : exporte les deux copies et compare-les.'); continue; }
+      if (!c.resolvable) { line('Résolution impossible dans l’app pour ce type d’écart (véhicule ajouté ou retiré d’un seul côté, ou donnée entière). Les deux versions restent conservées, mais les nouvelles saisies de l’autre appareil ne seront PAS intégrées ici tant que ce point n’est pas traité. Exporte une copie complète de chaque appareil.'); continue; }
       for (const [label, choice] of [['Garder cet appareil', 'local'], ['Prendre l’autre appareil', 'remote']])
         button(label + ' · ' + c.path, async () => {
           try { d.sync.resolve(c.id, c.path, choice); d.text = 'Choix enregistré : vérification et synchronisation…'; await d.sync.run(true); }

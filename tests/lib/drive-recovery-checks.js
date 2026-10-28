@@ -102,6 +102,13 @@ module.exports = async function recoveryChecks() {
     const proof = await s.controller().verify(pass); assert.equal(proof.revision, '4'.repeat(32));
     assert.deepEqual(s.state.base, ['4'.repeat(32)], 'la synchronisation intégrera ensuite l’autre tête par fusion à trois voies');
     assert.equal(s.stats.uploads, 0);
+    // Contre-expertise A2 : l'ancre indépendante doit appartenir à la lignée de la tête choisie.
+    const s2 = setup(), seven = await makeFile({ ...rev, id: '7'.repeat(32), parents: [rev.id], seq: 2 }), four = await makeFile({ ...rev, id: '4'.repeat(32), device: '5'.repeat(32) });
+    s2.files.push(seven, four);
+    const anchorRef = { revision: seven.ref.revision.id, sha256: seven.ref.fileSha256 }, c2 = s2.controller();
+    await assert.rejects(c2.prepare(pass, anchorRef, '4'.repeat(32)), e => e.code === 'checkpoint', 'tête hors de la lignée de l’ancre refusée');
+    assert.equal((await c2.prepare(pass, anchorRef, '7'.repeat(32))).revision, '7'.repeat(32));
+    assert.equal(s2.state, null); assert.equal(s2.stats.uploads, 0);
   });
   await test('suffixe récent masqué : ancre indépendante obligatoire pour prouver le plancher connu', async () => {
     const s = setup(), latest = await makeFile({ ...rev, id: '7'.repeat(32), parents: [rev.id], seq: 2 });

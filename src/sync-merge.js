@@ -42,6 +42,9 @@ const SyncMerge = (() => {
   }
   const stamp = v => Number.isFinite(v) && v > 0 ? v : 0;
   const stampAt = (stamps, path) => { const p = parts(path); return Math.max(0, ...p.map((_, i) => stamp(stamps[p.slice(0, i + 1).join('.')]))); };
+  // Modifié depuis la base : n'importe quel horodatage de la chaîne (chemin et parents) diffère de la
+  // base. Jamais un maximum : un parent daté par une horloge en avance masquerait l'enfant (A1).
+  const changedSince = (stamps, base, path) => { const p = parts(path); return p.some((_, i) => { const k = p.slice(0, i + 1).join('.'); return stamp(stamps[k]) !== stamp(base[k]); }); };
   const parse = (text, what) => {
     if (text == null) return null;
     try { return JSON.parse(text); } catch (e) { throw new Error('Copie illisible : ' + what + '. Fusion refusée sans écriture.'); }
@@ -120,10 +123,10 @@ const SyncMerge = (() => {
       if (same(lv, rv)) continue;
       // Objet des deux côtés et jamais remplacé en tant que tel : l'écart vient de chemins enfants,
       // énumérés séparément (differences) ; ce sont eux qui décident, pas le parent.
-      if (obj(lv) && obj(rv) && (base ? a === stampAt(base, p) && b === stampAt(base, p) : a === b)) continue;
+      if (obj(lv) && obj(rv) && (base ? !changedSince(stampsLocal, base, p) && !changedSince(stampsRemote, base, p) : a === b)) continue;
       let verdict;
       if (base) {
-        const o = stampAt(base, p), mine = a !== o, theirs = b !== o;
+        const mine = changedSince(stampsLocal, base, p), theirs = changedSince(stampsRemote, base, p);
         verdict = theirs && !mine ? 'remote' : mine && !theirs ? 'local' : 'conflict';
       } else verdict = a > 0 && b > 0 ? 'conflict' : b > a ? 'remote' : a > b ? 'local' : 'conflict';
       if (verdict === 'remote' && rv === undefined) verdict = 'conflict';

@@ -138,8 +138,9 @@ const GoogleDriveSession = (() => {
       const binding = [...new Uint8Array(await host.crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([cfg.clientId, account, hint.folder]))))].map(x => x.toString(16).padStart(2, '0')).join('');
       if (lease !== epoch) return fail('auth');
       if (binding !== hint.binding) return fail('confirmation');
-      approvedAccount = account; fileAccess();
-      await provider.folder(hint.folder);   // contrat du dossier dédié relu (propriétaire, étiquette)
+      approvedAccount = account;
+      try { fileAccess(); await provider.folder(hint.folder); }   // contrat du dossier dédié relu (propriétaire, étiquette)
+      catch (e) { approvedAccount = null; throw e; }   // jamais d'approbation implicite après un échec (A8)
       if (lease !== epoch || Date.now() >= until) { approvedAccount = null; return fail('auth'); }
       dedicated.add(hint.folder);
       return { folder: hint.folder, binding, account: identity.label };

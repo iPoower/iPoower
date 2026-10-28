@@ -16,7 +16,8 @@ function fake() {
     const tx = {objectStore(){return {
      get(key) {const request={};queueMicrotask(()=>{request.result=rows[name].get(key);request.onsuccess?.();queueMicrotask(()=>tx.oncomplete?.());});return request;},
      put(value,key){rows[name].set(key,structuredClone(value));queueMicrotask(()=>tx.oncomplete?.());},
-     add(value,key){if(rows[name].has(key))throw Error("ConstraintError");rows[name].set(key,structuredClone(value));}
+     add(value,key){if(rows[name].has(key))throw Error("ConstraintError");rows[name].set(key,structuredClone(value));},
+     getAllKeys(){const request={};queueMicrotask(()=>{request.result=[...rows[name].keys()];request.onsuccess?.();queueMicrotask(()=>tx.oncomplete?.());});return request;}
     };}};
     return tx;
    }, get closed(){return closed;}};
@@ -96,6 +97,13 @@ async function main() {
   const f=fake(),s=make(f);f.rows.recovery.set("b".repeat(64),new Uint8Array([1,2,3]));f.rows.state.set("recovery-latest","b".repeat(64));
   const list=JSON.parse(JSON.stringify(await s.recoveries()));
   assert.deepEqual(list,[{hash:"b".repeat(64),at:null,size:3}]);
+ });
+ await test("contre-expertise A7 : toutes les copies antérieures à l'index restent listées",async()=>{
+  const f=fake(),s=make(f);
+  for(const [h,n] of [["c".repeat(64),4],["d".repeat(64),5]])f.rows.recovery.set(h,new Uint8Array(n));
+  f.rows.state.set("recovery-latest","d".repeat(64));
+  const list=JSON.parse(JSON.stringify(await s.recoveries()));
+  assert.deepEqual(list.map(x=>x.hash).sort(),["c".repeat(64),"d".repeat(64)]);assert(list.every(x=>x.at===null));
  });
  console.log("NOESIS-RC-003: "+count+" tests, synthetic IndexedDB only.");
 }

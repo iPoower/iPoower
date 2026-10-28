@@ -98,6 +98,15 @@ check('parent horodaté une seule fois (création) : seuls les chemins enfants d
   // mais le parent lui-même n'est plus un faux conflit.
   assert.equal(noBase.settings.prefs.pressure, 2.4); assert.deepEqual(noBase.report.conflicts, ['prefs.pressure']);
 });
+check('contre-expertise A1 : un parent horodaté dans le futur ne masque plus la modification d’un enfant', () => {
+  // PC (horloge +60 min) crée l'objet notes ; l'iPhone l'intègre, puis les deux modifient notes.alert.
+  const s0 = settings(), r1 = settings({ notes: { alert: 1 } }), st1 = json(ctx.M.edits(s0, r1, {}, T + 60 * MIN));
+  const tel = settings({ notes: { alert: 2 } }), sTel = json(ctx.M.edits(r1, tel, st1, T + 5 * MIN));
+  const pc = settings({ notes: { alert: 3 } }), sPc = json(ctx.M.edits(r1, pc, st1, T + 70 * MIN));
+  const onTel = M.settings(tel, pc, sTel, sPc, { base: st1 }), onPc = M.settings(pc, tel, sPc, sTel, { base: st1 });
+  assert.equal(onTel.settings.notes.alert, 2, 'iPhone garde sa valeur'); assert.deepEqual(onTel.report.conflicts, ['notes.alert']);
+  assert.equal(onPc.settings.notes.alert, 3); assert.deepEqual(onPc.report.conflicts, ['notes.alert']);
+});
 check('values() : la base est lue dans les valeurs de l’ancêtre commun', () => {
   const v = (s, st) => ({ 'twrc.settings.v1': JSON.stringify(s), 'twrc.editstamps.v1': JSON.stringify(st) });
   const pc = settings(), tel = settings(); pc.prefs.pressure = 2.6; tel.prefs.pressure = 2.2;

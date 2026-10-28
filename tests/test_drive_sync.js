@@ -182,6 +182,12 @@ function drive() {
   assert.equal(sister.length, 1, 'saisies locales sauvegardées dans une tête séparée'); assert(!sister[0].ref.revision.parents.includes(oldHead));
   const detail = other.controller.status.conflictDetails.find(x => x.path === 'cars.0.photo');
   assert(detail && detail.resolvable && detail.local === 'divergence-sans-date' && detail.remote === oldPhoto && detail.id === oldHead);
+  // Contre-expertise A3 : pendant un conflit, une saisie encore dans la fenêtre de calme n'est jamais annoncée « envoyée ».
+  { const c2 = JSON.parse(other.values['twrc.context.v1']); c2.debrief.entries.push({ ...c2.debrief.entries[0], key: 'trajet-en-attente' }); other.edit('twrc.context.v1', JSON.stringify(c2)); }   // saisie additive : jamais en conflit
+  const sizeBefore = isolated.files.size; await other.controller.run();
+  assert.equal(isolated.files.size, sizeBefore); assert(other.controller.status.message.includes('en attente'), other.controller.status.message);
+  assert(!other.controller.status.message.includes('envoyées'));
+  await other.controller.run(false, true); assert(other.controller.status.message.includes('envoyées'), 'après envoi relu : envoyées');
   const published = isolated.files.size; other.vault.mode = 'locked'; await other.controller.run(true); assert.equal(isolated.files.size, published);
   console.log('✅ conflit ancien sans date : tête distante jamais absorbée, saisies locales sauvegardées à part, versions consultables, verrouillage respecté');
   other.vault.mode = 'vault';

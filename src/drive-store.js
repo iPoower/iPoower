@@ -69,11 +69,8 @@ const DriveStore = (() => {
       });
       const back = await read('recovery', hash);
       if (!(back instanceof Uint8Array) || back.length !== copy.length || back.some((v, i) => v !== copy[i])) throw new Error('stockage');
-      await new Promise((resolve, reject) => {
-        const tx = transaction(db, 'state', 'readwrite'); tx.objectStore('state').put(hash, 'recovery-latest');
-        tx.oncomplete = resolve; tx.onerror = tx.onabort = () => reject(new Error('stockage'));
-      });
-      // Index de TOUTES les copies (empreinte, date, taille) : chacune reste exportable, aucune purge.
+      // Index de TOUTES les copies (empreinte, date, taille) AVANT « recovery-latest » : une
+      // interruption ne laisse jamais la dernière copie hors de la liste. Aucune purge.
       const index = await read('state', 'recovery-index') || [];
       if (!index.some(e => e.hash === hash)) {
         const next = [...index, { hash, at: Number.isFinite(at) ? at : null, size: copy.length }];
@@ -84,14 +81,29 @@ const DriveStore = (() => {
         const back = await read('state', 'recovery-index');
         if (!Array.isArray(back) || back.length !== next.length) throw new Error('stockage');
       }
+      await new Promise((resolve, reject) => {
+        const tx = transaction(db, 'state', 'readwrite'); tx.objectStore('state').put(hash, 'recovery-latest');
+        tx.oncomplete = resolve; tx.onerror = tx.onabort = () => reject(new Error('stockage'));
+      });
       return hash;
     }
     // Plus récente d'abord. Une copie antérieure à l'index (seulement « recovery-latest ») reste listée.
+    async function keys(store) {
+      const db = await open();
+      return new Promise((resolve, reject) => {
+        const tx = transaction(db, store, 'readonly'), os = tx.objectStore(store); let value = null;
+        if (typeof os.getAllKeys !== 'function') { resolve(null); return; }
+        const request = os.getAllKeys(); request.onsuccess = () => { value = request.result; };
+        tx.oncomplete = () => resolve(Array.isArray(value) ? value : null); tx.onabort = tx.onerror = () => reject(new Error('stockage'));
+      });
+    }
     async function recoveries() {
       const index = [...(await read('state', 'recovery-index') || [])], latest = await read('state', 'recovery-latest');
-      if (latest && !index.some(e => e.hash === latest)) {
-        const bytes = await read('recovery', latest);
-        if (bytes instanceof Uint8Array) index.push({ hash: latest, at: null, size: bytes.length });
+      // Copies antérieures à l'index : toutes les clés du magasin (A7), sinon au moins la dernière.
+      const all = (await keys('recovery')) || (latest ? [latest] : []);
+      for (const hash of all) if (typeof hash === 'string' && !index.some(e => e.hash === hash)) {
+        const bytes = await read('recovery', hash);
+        if (bytes instanceof Uint8Array) index.push({ hash, at: null, size: bytes.length });
       }
       return index.map(e => ({ hash: e.hash, at: e.at, size: e.size })).sort((a, b) => (b.at ?? -1) - (a.at ?? -1));
     }
