@@ -124,11 +124,25 @@ async function run(){
     a.locator('[data-act="bk-export"]').click()
    ]);
    const bytes=fs.readFileSync(await download.path());
-   const envelope=JSON.parse(bytes.toString('utf8'));
-   assert.equal(envelope.app,'twrc-backup');assert.equal(envelope.v,2);
+   const text=bytes.toString('utf8'),envelope=JSON.parse(text);
+   // The current Exporter produces an authenticated SessionVault V2/V3 copy,
+   // not the old twrc-backup projection. Verify the actual exported codec.
+   const proof=await a.evaluate(async ({text,code,name})=>{
+    const e=JSON.parse(text);
+    if(!SessionVault.validVault(e))return {valid:false};
+    const values=await SessionVault.readRecovery(text,code,crypto);
+    const settings=JSON.parse(values['twrc.settings.v1']||'null');
+    return {valid:true,car:settings?.cars?.[0]?.name===name,
+     archive:Object.hasOwn(values,JournalArchive.KEY),version:e.v};
+   },{text,code:APP_KEY_TEST,name:FAKE_CAR});
+   assert.equal(proof.valid,true,'export recognised by actual SessionVault codec');
+   assert.equal(proof.car,true,'decrypted values retain the complete fictitious car');
+   assert.equal(envelope.app,undefined,'export is not mislabeled as legacy twrc-backup');
+   assert.equal(envelope.v,proof.archive?3:2,'archive presence determines vault version');
+   assert.equal(envelope.kdf,'PBKDF2-SHA256');
    assert.equal(envelope.it,600000);
-   assert(!bytes.toString('utf8').includes(FAKE_CAR));
-   assert(!bytes.toString('utf8').includes(FAKE_REPORT_ID));
+   assert(!text.includes(FAKE_CAR));
+   assert(!text.includes(FAKE_REPORT_ID));
    a.__f2backup=bytes;
   });
   await check('wrong password in real UI refuses import without changing destination',async()=>{
