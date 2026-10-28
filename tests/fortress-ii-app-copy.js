@@ -89,20 +89,23 @@ async function run(){
    assert.equal(await a.evaluate(()=>S.cars[0].name),FAKE_CAR);
    assert.notEqual(await b.evaluate(()=>S.cars[0].name),FAKE_CAR);
   });
-  await check('human observations are present in vault but absent from Backup V2',async()=>{
+  await check('Backup V2 preserves human observations when the current weather source is supplied',async()=>{
    const audit=await a.evaluate(async id=>{
-    lsSet('twrc.reports.v1',JSON.stringify([{kind:'fog',at:Date.now(),place:'fictional',lat:0,lon:0,id}]));
-    lsSet('twrc.shadow.v1',JSON.stringify([{at:Date.now(),loc:'fictional',obs:1,id}]));
+    lsSet('twrc.reports.v1',JSON.stringify([{kind:'fog',at:Date.now(),place:id,lat:0,lon:0}]));
+    lsSet('twrc.shadow.v1',JSON.stringify([{at:Date.now(),loc:id,obs:1,v1:1,v2:2}]));
     await window.TWRC_VAULT.flush();
-    const archive=Backup.make({settings:S,view:UI.view,context:USER_STORE.state,tyreTherm:ttLoad(),tripCancel:TRIPCANCEL,at:new Date().toISOString()});
+    const input={settings:S,view:UI.view,context:USER_STORE.state,tyreTherm:ttLoad(),tripCancel:TRIPCANCEL,at:new Date().toISOString()};
+    const archive=Backup.make({...input,weather:backupWeatherState()});
     return {report:JSON.parse(lsGet('twrc.reports.v1')),shadow:JSON.parse(lsGet('twrc.shadow.v1')),v:archive.v,
-      archive:JSON.stringify(archive),encrypted:window.TWRC_RAW_STORAGE.getItem('twrc.vault.v2')?.length>0,
+      weather:archive.durable.weather,legacy:JSON.stringify(Backup.make(input)),encrypted:window.TWRC_RAW_STORAGE.getItem('twrc.vault.v2')?.length>0,
       rawReports:window.TWRC_RAW_STORAGE.getItem('twrc.reports.v1')};
    },FAKE_REPORT_ID);
-   assert.equal(audit.v,2);assert.equal(audit.report[0].id,FAKE_REPORT_ID);
-   assert.equal(audit.shadow[0].id,FAKE_REPORT_ID);
+   assert.equal(audit.v,2);assert.equal(audit.report[0].place,FAKE_REPORT_ID);
+   assert.equal(audit.shadow[0].loc,FAKE_REPORT_ID);
+   assert.deepEqual(audit.weather.reports,audit.report);
+   assert.deepEqual(audit.weather.shadow,audit.shadow);
    assert(audit.encrypted);assert.equal(audit.rawReports,null);
-   assert(!audit.archive.includes(FAKE_REPORT_ID));
+   assert(!audit.legacy.includes(FAKE_REPORT_ID),'a caller omitting weather cannot claim an exhaustive projection');
   });
   await check('fail-closed migration preflight rejects meaningful human observations',async()=>{
    const reasons=await a.evaluate(()=>{
@@ -117,12 +120,7 @@ async function run(){
    assert.deepEqual(reasons,['twrc.reports.v1','twrc.shadow.v1']);
    assert.notEqual(await b.evaluate(()=>S.cars[0].name),FAKE_CAR);
   });
-  // No real observations are deleted here; only dummy records introduced above.
-  await a.evaluate(async()=>{
-   lsSet('twrc.reports.v1','[]');lsSet('twrc.shadow.v1','[]');
-   await window.TWRC_VAULT.flush();
-   if(window.TWRC_VAULT.error)throw Error('fixture reset failed');
-  });
+  // Keep both synthetic observations through the REAL export and UI import.
   await check('real Backup.make V2 from app copy excludes transient state',async()=>{
    const data=await a.evaluate(()=>Backup.make({settings:S,view:UI.view,context:USER_STORE.state,
      tyreTherm:ttLoad(),tripCancel:TRIPCANCEL,at:new Date().toISOString()}));
@@ -136,10 +134,10 @@ async function run(){
    await a.locator('#bkPw').fill(APP_KEY_TEST);
    const activates=await a.evaluate(()=>window.TWRC_VAULT?.journalNeedsRecovery===true);
    // Register BEFORE export: iOS WebKit can schedule a same-URL reload in 100 ms.
-   const afterExport=activates?a.waitForEvent('framenavigated',{
-    predicate:frame=>frame===a.mainFrame(),timeout:30000}):null;
    const [download]=await Promise.all([
     a.waitForEvent('download',{timeout:90000}),
+    ...(activates?[a.waitForEvent('framenavigated',{
+     predicate:frame=>frame===a.mainFrame(),timeout:30000})]:[]),
     a.locator('[data-act="bk-export"]').click()
    ]);
    const bytes=fs.readFileSync(await download.path());
@@ -151,7 +149,7 @@ async function run(){
    // in an isolated Node/WebCrypto context, independent of page navigation.
    const context={TextEncoder,TextDecoder,Uint8Array,ArrayBuffer,atob,btoa,crypto:webcrypto};
    vm.createContext(context);
-   vm.runInContext(fs.readFileSync(path.join(ROOT,'src/session-vault.js'),'utf8')+';this.codec=SessionVault;',context);
+   vm.runInContext(fs.readFileSync(path.join(ROOT,'src/journal-archive.js'),'utf8')+'\n'+fs.readFileSync(path.join(ROOT,'src/session-vault.js'),'utf8')+';this.codec=SessionVault;',context);
    const codec=context.codec,values=await codec.readRecovery(text,APP_KEY_TEST,webcrypto);
    const settings=JSON.parse(values['twrc.settings.v1']||'null');
    const proof={valid:codec.validVault(envelope),
@@ -159,6 +157,8 @@ async function run(){
     archive:Object.hasOwn(values,'twrc.debrief.archive.v1'),version:envelope.v};
    assert.equal(proof.valid,true,'export recognised by actual SessionVault codec');
    assert.equal(proof.car,true,'decrypted values retain the complete fictitious car');
+   assert.equal(JSON.parse(values['twrc.reports.v1'])[0].place,FAKE_REPORT_ID);
+   assert.equal(JSON.parse(values['twrc.shadow.v1'])[0].loc,FAKE_REPORT_ID);
    assert.equal(envelope.app,undefined,'export is not mislabeled as legacy twrc-backup');
    assert.equal(envelope.v,proof.archive?3:2,'archive presence determines vault version');
    assert.equal(envelope.kdf,'PBKDF2-SHA256');
@@ -167,7 +167,6 @@ async function run(){
    assert(!text.includes(FAKE_REPORT_ID));
    a.__f2backup=bytes;
    // Wait for the actual automatic reload before any further navigation.
-   if(afterExport)await afterExport;
    // Wait for the post-export application to re-enter a valid authenticated state.
    await settleApp(a);
    assert.equal(await a.evaluate(()=>S.cars[0].name),FAKE_CAR,
@@ -185,21 +184,29 @@ async function run(){
    assert.equal(await b.evaluate(()=>S.cars[0].name),before);
   });
   await check('destination independently exports a recoverable vault before import',async()=>{
+   // Defaults in S need not exist in persistent storage. Save a real synthetic
+   // choice before asserting that its recovery file contains settings.
+   const expected=await b.evaluate(async()=>{
+    S.cars[0].name='F2-DESTINATION-VOITURE-FICTIVE';saveSettings();
+    await TWRC_VAULT.flush();
+    if(TWRC_VAULT.error||TWRC_VAULT.pendingWrites)throw Error('destination fixture not durable');
+    return JSON.parse(lsGet('twrc.settings.v1'));
+   });
    await b.evaluate(()=>{document.querySelector('#settings').open=true;renderSettings(true)});
    await b.locator('#bkPw').fill(APP_KEY_TEST);
-   const onReload=b.waitForEvent('framenavigated',{
-    predicate:frame=>frame===b.mainFrame(),timeout:30000});
+   // Observe every promise immediately, so a codec/assertion error is not
+   // replaced by an unhandled navigation rejection during browser cleanup.
    const [download]=await Promise.all([
     b.waitForEvent('download',{timeout:90000}),
+    b.waitForEvent('framenavigated',{predicate:frame=>frame===b.mainFrame(),timeout:30000}),
     b.locator('[data-act="bk-export"]').click()
    ]);
    const destinationBytes=fs.readFileSync(await download.path()).toString('utf8');
    const sandbox={TextEncoder,TextDecoder,Uint8Array,ArrayBuffer,atob,btoa,crypto:webcrypto};
    vm.createContext(sandbox);
-   vm.runInContext(fs.readFileSync(path.join(ROOT,'src/session-vault.js'),'utf8')+';this.codec=SessionVault;',sandbox);
+   vm.runInContext(fs.readFileSync(path.join(ROOT,'src/journal-archive.js'),'utf8')+'\n'+fs.readFileSync(path.join(ROOT,'src/session-vault.js'),'utf8')+';this.codec=SessionVault;',sandbox);
    const values=await sandbox.codec.readRecovery(destinationBytes,APP_KEY_TEST,webcrypto);
-   assert.equal(JSON.parse(values['twrc.settings.v1']).cars.length,2);
-   await onReload;
+   assert.deepEqual(JSON.parse(values['twrc.settings.v1']),expected);
    await settleApp(b);
    assert.equal(await b.evaluate(()=>window.TWRC_VAULT?.journalNeedsRecovery),false);
    assert.notEqual(await b.evaluate(()=>S.cars[0].name),FAKE_CAR);
@@ -219,6 +226,8 @@ async function run(){
    await navigate;
    await b.waitForFunction(name=>typeof S!=='undefined'&&S.cars[0].name===name,FAKE_CAR,{timeout:45000});
    assert.equal(await b.evaluate(()=>S.cars[0].name),FAKE_CAR);
+   assert.equal(await b.evaluate(id=>JSON.parse(lsGet('twrc.reports.v1')).some(r=>r.place===id),FAKE_REPORT_ID),true);
+   assert.equal(await b.evaluate(id=>JSON.parse(lsGet('twrc.shadow.v1')).some(r=>r.loc===id),FAKE_REPORT_ID),true);
   });
   await check('post-import vault still encrypted, no raw settings and source unchanged',async()=>{
    for(const p of [a,b]){
