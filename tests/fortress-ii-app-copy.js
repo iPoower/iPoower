@@ -3,7 +3,8 @@
 // Only synthesized CI secrets and sample data; network locked to loopback servers.
 // NO production migration, user data, external fetch, or app-source changes.
 'use strict';
-const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict'),vm=require('node:vm');
+const {webcrypto}=require('node:crypto');
 const {chromium,webkit}=require('playwright');
 const {workspace}=require('./ci/workspace');
 const {APP_KEY_TEST}=require('./lib/test-keys');
@@ -127,14 +128,17 @@ async function run(){
    const text=bytes.toString('utf8'),envelope=JSON.parse(text);
    // The current Exporter produces an authenticated SessionVault V2/V3 copy,
    // not the old twrc-backup projection. Verify the actual exported codec.
-   const proof=await a.evaluate(async ({text,code,name})=>{
-    const e=JSON.parse(text);
-    if(!SessionVault.validVault(e))return {valid:false};
-    const values=await SessionVault.readRecovery(text,code,crypto);
-    const settings=JSON.parse(values['twrc.settings.v1']||'null');
-    return {valid:true,car:settings?.cars?.[0]?.name===name,
-     archive:Object.hasOwn(values,JournalArchive.KEY),version:e.v};
-   },{text,code:APP_KEY_TEST,name:FAKE_CAR});
+   // The browser may reload immediately after Exporter (journal activation).
+   // Decrypt the actual downloaded bytes with the production SessionVault source
+   // in an isolated Node/WebCrypto context, independent of page navigation.
+   const context={TextEncoder,TextDecoder,Uint8Array,ArrayBuffer,atob,btoa,crypto:webcrypto};
+   vm.createContext(context);
+   vm.runInContext(fs.readFileSync(path.join(ROOT,'src/session-vault.js'),'utf8')+';this.codec=SessionVault;',context);
+   const codec=context.codec,values=await codec.readRecovery(text,APP_KEY_TEST,webcrypto);
+   const settings=JSON.parse(values['twrc.settings.v1']||'null');
+   const proof={valid:codec.validVault(envelope),
+    car:settings?.cars?.[0]?.name===FAKE_CAR,
+    archive:Object.hasOwn(values,'twrc.debrief.archive.v1'),version:envelope.v};
    assert.equal(proof.valid,true,'export recognised by actual SessionVault codec');
    assert.equal(proof.car,true,'decrypted values retain the complete fictitious car');
    assert.equal(envelope.app,undefined,'export is not mislabeled as legacy twrc-backup');
@@ -144,6 +148,8 @@ async function run(){
    assert(!text.includes(FAKE_CAR));
    assert(!text.includes(FAKE_REPORT_ID));
    a.__f2backup=bytes;
+   // Exporter can activate the journal and reload; re-open source deterministically.
+   await loadApp(a,left.origin);
   });
   await check('wrong password in real UI refuses import without changing destination',async()=>{
    await b.evaluate(()=>{document.querySelector('#settings').open=true;renderSettings(true)});
