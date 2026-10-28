@@ -1,7 +1,7 @@
 /* Transport opaque Control Vault. Reproduction : tools/vendor-vault-drive.js.
  * Aucun code, clé ou déchiffrement. Sources SHA-256 :
 {
- "src/services/opaque-drive.ts": "714febdca7731a19a46d38686025d95c5e1d2f707552e23428c0442dad17bb29",
+ "src/services/opaque-drive.ts": "dce5beafe7dab3fffa4beabb17a8d059fc8393de22b95df2ab9aa0663b969985",
  "src/core/race-packet.ts": "a9ae071b8e1b6372b2ab3f59005bf92f0a17d2e7fe1e2cc48dae4f4c49154516",
  "src/core/sync-revision.ts": "c7e2414d7d803380407e4e3f38c8d229580eebdea0ba36f8ab2e602cb79ea92d",
  "src/core/crypto.ts": "1f9f7b1e6152d22fca7ac4162ad407539e353f2c8de6d00d521d6f7ccd5a46a8"
@@ -420,7 +420,7 @@ var DriveTransport = (() => {
         if (next) params.set("pageToken", next);
         const page = await this.json(await this.request(API + "/files?" + params, { signal }, epoch), signal);
         this.check(epoch, signal);
-        if (page.incompleteSearch !== false || !Array.isArray(page.files) || page.files.length > 100) return fail2("incomplete");
+        if ((page.incompleteSearch !== void 0 && page.incompleteSearch !== false) || !Array.isArray(page.files) || page.files.length > 100) return fail2("incomplete");
         for (const f of page.files) {
           if (!object3(f) || typeof f.id !== "string" || typeof f.name !== "string" || !f.name || f.name.length > 1024 || typeof f.createdTime !== "string" || f.createdTime.length > 40 || !Number.isFinite(Date.parse(f.createdTime)) || f.mimeType !== "application/vnd.google-apps.folder" || f.trashed !== false || f.ownedByMe !== true || !object3(f.appProperties) || f.appProperties.cv_contract !== "rc-folder-v1" || !object3(f.capabilities) || f.capabilities.canAddChildren !== true) return fail2("conflict");
           const folder = id(f.id);
@@ -496,7 +496,7 @@ var DriveTransport = (() => {
         });
         if (next) params.set("pageToken", next);
         const page = await this.json(await this.request(API + "/files?" + params, { signal }, epoch), signal);
-        if (page.incompleteSearch !== false || !Array.isArray(page.files)) return fail2("incomplete");
+        if ((page.incompleteSearch !== void 0 && page.incompleteSearch !== false) || !Array.isArray(page.files)) return fail2("incomplete");
         for (const f of page.files) {
           if (!object3(f) || typeof f.id !== "string" || f.trashed === true || !Array.isArray(f.parents) || !f.parents.includes(folder) || !object3(f.appProperties) || f.appProperties.cv_contract !== "rc-key-a1" || !hash(f.appProperties.cv_file) || typeof f.size !== "string" || !/^[1-9][0-9]*$/.test(f.size) || Number(f.size) > 2048) return fail2("incomplete");
           const fileId = id(f.id), bytes = await this.bytes(await this.request(API + "/files/" + fileId + "?alt=media", { signal }, epoch), 2048, signal);
@@ -587,7 +587,7 @@ ${new TextDecoder().decode(bytes)}\r
         });
         if (next) p.set("pageToken", next);
         const page = await this.json(await this.request(API + "/files?" + p, { signal }, epoch), signal);
-        if (page.incompleteSearch !== false || !Array.isArray(page.files)) return fail2("incomplete");
+        if ((page.incompleteSearch !== void 0 && page.incompleteSearch !== false) || !Array.isArray(page.files)) return fail2("incomplete");
         for (const raw of page.files) {
           if (!object3(raw) || !Array.isArray(raw.parents) || !raw.parents.includes(folder)) return fail2("conflict");
           const v = this.version(raw), old = versions.get(v.fileId);
