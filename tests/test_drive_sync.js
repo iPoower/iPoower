@@ -281,6 +281,39 @@ function drive() {
   }
   if (failures.length) throw new AggregateError(failures, failures.length + ' concurrency failures');
 
+  // NOESIS 13.5 : (1) véhicules = emplacements fixes du préréglage, relus par position (app.js normalize).
+  // Une identité de véhicule divergente (préréglage/configuration différents) est ISOLÉE : conflit explicite,
+  // aucune donnée perdue, saisies locales toujours sauvegardées ; même configuration ⇒ reprise automatique.
+  // (2) relevés saisis le même jour sur les deux appareils : convergence finie (ordre canonique).
+  {
+    const net = drive(), pc = owner(net, 1, 'cfgpc'), tel = owner(net, 1, 'cfgtel');
+    const cars = o => JSON.parse(o.values['twrc.settings.v1']).cars;
+    await pc.controller.run(true);
+    { const s = JSON.parse(tel.values['twrc.settings.v1']); s.cars = [{ id: 'carX', odo: [{ d: '2026-10-27', km: 777 }], tire: { treads: [] } }]; tel.edit('twrc.settings.v1', JSON.stringify(s)); }
+    await tel.controller.run(true);
+    assert.equal(tel.controller.status.state, 'CONFLICT'); assert(tel.controller.status.conflicts[0].paths.includes('cars'));
+    assert(tel.controller.status.conflictDetails.every(d => d.path !== 'cars' || d.resolvable === false), 'jamais remplacé par un simple choix');
+    assert.deepEqual(cars(tel).map(c => c.id), ['carX'], 'liste locale intacte'); assert.equal(cars(tel)[0].odo[0].km, 777, 'historique local intact');
+    assert.deepEqual(cars(pc).map(c => c.id), ['carA'], 'l’autre appareil intact');
+    const sister = [...net.files.values()].some(f => f.ref.revision.device !== [...net.files.values()][0].ref.revision.device);
+    assert(sister, 'saisies de l’appareil divergent sauvegardées dans une tête séparée');
+    // Même configuration appliquée sur l'iPhone (mêmes véhicules) : la synchronisation reprend seule.
+    { const s = JSON.parse(tel.values['twrc.settings.v1']); s.cars = [{ id: 'carA', odo: [{ d: '2026-10-27', km: 777 }], tire: { treads: [] } }]; tel.edit('twrc.settings.v1', JSON.stringify(s)); }
+    for (let i = 0; i < 2; i++) { await tel.controller.run(true); await pc.controller.run(true); }
+    assert.equal(tel.controller.status.conflicts.length, 0); assert.equal(pc.controller.status.conflicts.length, 0);
+    assert(cars(pc)[0].odo.some(r => r.km === 777), 'relevé de l’iPhone reçu par le PC après alignement');
+    console.log('✅ véhicule d’identité divergente : isolé (conflit explicite, rien perdu, saisies sauvegardées), reprise automatique après alignement');
+    // Relevés le même jour des deux côtés : plus de publication sans fin.
+    const add = (o, r, t) => { const s = JSON.parse(o.values['twrc.settings.v1']); s.cars[0].odo.push(r.odo); s.cars[0].tire.treads.push(r.tread); o.edit('twrc.settings.v1', JSON.stringify(s)); };
+    add(pc, { odo: { d: '2026-10-28', km: 1001 }, tread: { d: '2026-10-28', mm: 6.1, ax: 'av' } }); add(tel, { odo: { d: '2026-10-28', km: 1002 }, tread: { d: '2026-10-28', mm: 6.4, ax: 'av' } });
+    pc.advance(60000); tel.advance(60000);
+    const sizes = [];
+    for (let i = 0; i < 5; i++) { await pc.controller.run(true); await tel.controller.run(true); sizes.push(net.files.size); }
+    assert.equal(sizes.at(-1), sizes.at(-2), 'convergence finie, publications : ' + sizes.join(','));
+    assert.deepEqual(cars(pc)[0].tire.treads, cars(tel)[0].tire.treads); assert.deepEqual(cars(pc)[0].odo, cars(tel)[0].odo);
+    assert.equal(cars(pc)[0].tire.treads.length, 2); assert.equal(cars(pc)[0].odo.filter(r => r.d === '2026-10-28').length, 2);
+    console.log('✅ relevés du même jour sur les deux appareils : tous conservés, ordre identique, convergence finie');
+  }
   // NOESIS 13.4 : passage en arrière-plan (iPhone) ⇒ envoi anticipé sans attendre la fenêtre de calme,
   // mais sans lever un blocage ni ignorer le délai de reprise après échec.
   {

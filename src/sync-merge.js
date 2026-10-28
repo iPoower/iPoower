@@ -150,13 +150,16 @@ const SyncMerge = (() => {
       if (!car || !r) return;
       if (l && l.odo != null && !Array.isArray(l.odo) || r.odo != null && !Array.isArray(r.odo)) throw new Error('Relevés incomplets : fusion refusée.');
       if ([...(l && l.odo || []), ...(r.odo || [])].some(x => !obj(x) || !x.d)) throw new Error('Relevé invalide : fusion refusée.');
-      const odo = unionBy(l && l.odo, r.odo, x => JournalArchive.encode(x)).sort((x, y) => String(x.d).localeCompare(String(y.d)));
+      // Ordre canonique (date, puis contenu) : deux relevés du même jour gardent le même ordre sur les
+      // deux appareils, sinon chacun republierait sans fin la liste permutée (NOESIS 13.5).
+      const canon = (x, y) => String(x.d).localeCompare(String(y.d)) || (JSON.stringify(x) < JSON.stringify(y) ? -1 : JSON.stringify(x) > JSON.stringify(y) ? 1 : 0);
+      const odo = unionBy(l && l.odo, r.odo, x => JournalArchive.encode(x)).sort(canon);
       report.added.odo += odo.length - (Array.isArray(l && l.odo) ? l.odo.length : 0); car.odo = odo;
       if (car.tire || r.tire) {
         const lt = l && l.tire && l.tire.treads, rt = r.tire && r.tire.treads;
         if (lt != null && !Array.isArray(lt) || rt != null && !Array.isArray(rt)) throw new Error('Profondeurs incomplètes : fusion refusée.');
         if (Array.isArray(lt) || Array.isArray(rt)) {
-          const treads = unionBy(lt, rt, x => JSON.stringify(x));
+          const treads = unionBy(lt, rt, x => JSON.stringify(x)).sort(canon);
           report.added.treads += treads.length - (Array.isArray(lt) ? lt.length : 0);
           car.tire = { ...(car.tire || {}), treads };
         }
