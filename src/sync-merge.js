@@ -77,6 +77,10 @@ const SyncMerge = (() => {
       t = t[k];
     }
   }
+  function unset(o, path) {
+    const p = parts(path), parent = p.length > 1 ? get(o, p.slice(0, -1).join('.')) : o, k = p[p.length - 1];
+    if (parent != null && typeof parent === 'object' && !Array.isArray(parent) && own(parent, k)) delete parent[k];
+  }
   // Les chemins « cars.N… » ne s'appliquent que si la voiture N est la même des deux côtés.
   function aligned(a, b, path) {
     const m = /^cars\.(\d+)(\.|$)/.exec(path); if (!m) return true;
@@ -88,10 +92,19 @@ const SyncMerge = (() => {
     return [...seen.values()];
   };
 
-  function settings(local, remote, stampsLocal = {}, stampsRemote = {}) {
+  // Fusion à trois voies. `options.base` : horodatages de l'ancêtre commun (null = inconnu).
+  // Les horodatages servent seulement à savoir QUI a modifié depuis la base, jamais à comparer
+  // les horloges de deux appareils. Sans base, deux modifications horodatées divergentes sont un
+  // conflit. `options.resolutions` : choix explicites { chemin: 'local' | 'remote' }.
+  function settings(local, remote, stampsLocal = {}, stampsRemote = {}, options = {}) {
     validate(local); validate(remote); validate(stampsLocal); validate(stampsRemote);
     if (!obj(local)) throw new Error('Réglages de cet appareil absents : fusion refusée.');
-    const out = clone(local), report = { fromRemote: [], conflicts: [], added: { odo: 0, treads: 0, calib: 0, days: 0 } };
+    const base = obj(options) && obj(options.base) ? options.base : null;
+    const resolutions = obj(options) && obj(options.resolutions) ? options.resolutions : {};
+    if (base) validate(base);
+    validate(resolutions);
+    const out = clone(local), report = { fromRemote: [], conflicts: [], resolved: [], added: { odo: 0, treads: 0, calib: 0, days: 0 } };
+    const chosen = {};
     if (!obj(remote)) return { settings: out, stamps: { ...stampsLocal }, report };
     if (!obj(stampsLocal) || !obj(stampsRemote) || !Array.isArray(local.cars) || !Array.isArray(remote.cars)) throw new Error('Réglages incomplets : fusion refusée.');
     for (const cars of [local.cars, remote.cars]) if (cars.some(c => !obj(c) || typeof c.id !== 'string' || !c.id) || new Set(cars.map(c => c.id)).size !== cars.length) throw new Error('Identités de véhicules ambiguës : fusion refusée.');
@@ -105,9 +118,25 @@ const SyncMerge = (() => {
       const lv = get(local, p), rv = get(remote, p), a = stampAt(stampsLocal, p), b = stampAt(stampsRemote, p);
       if (!aligned(local, remote, p)) { report.conflicts.push(p); blocked.add(p); continue; }
       if (same(lv, rv)) continue;
-      if (rv === undefined && b > a) { report.conflicts.push(p); blocked.add(p); continue; }
-      if (b > a && rv !== undefined) { set(out, p, clone(rv)); report.fromRemote.push(p); }
-      else { if (lv !== undefined) set(out, p, clone(lv)); if (a === b) report.conflicts.push(p); }
+      // Objet des deux côtés et jamais remplacé en tant que tel : l'écart vient de chemins enfants,
+      // énumérés séparément (differences) ; ce sont eux qui décident, pas le parent.
+      if (obj(lv) && obj(rv) && (base ? a === stampAt(base, p) && b === stampAt(base, p) : a === b)) continue;
+      let verdict;
+      if (base) {
+        const o = stampAt(base, p), mine = a !== o, theirs = b !== o;
+        verdict = theirs && !mine ? 'remote' : mine && !theirs ? 'local' : 'conflict';
+      } else verdict = a > 0 && b > 0 ? 'conflict' : b > a ? 'remote' : a > b ? 'local' : 'conflict';
+      if (verdict === 'remote' && rv === undefined) verdict = 'conflict';
+      if (verdict === 'conflict' && (resolutions[p] === 'local' || resolutions[p] === 'remote')) {
+        verdict = resolutions[p]; report.resolved.push(p); chosen[p] = Math.max(a, b) + 1;
+      }
+      // Une absence distante ne s'applique que sur choix explicite (jamais par déduction).
+      if (verdict === 'remote' && rv === undefined) { unset(out, p); }
+      else if (verdict === 'remote') { set(out, p, clone(rv)); if (!chosen[p]) report.fromRemote.push(p); }
+      else {
+        if (lv !== undefined) set(out, p, clone(lv));
+        if (verdict === 'conflict') { report.conflicts.push(p); blocked.add(p); }
+      }
     }
     out.edits = { ...(obj(remote.edits) ? remote.edits : {}), ...(obj(local.edits) ? local.edits : {}) };
     for (const car of remote.cars) if (!car || !local.cars.some(c => c && c.id === car.id)) report.conflicts.push('cars');
@@ -138,6 +167,7 @@ const SyncMerge = (() => {
     report.added.days = Object.keys(days).length - Object.keys(obj(local.journal) ? local.journal : {}).length; out.journal = days;
     const stamps = { ...stampsLocal };
     Object.entries(stampsRemote).forEach(([p, t]) => { if (!blocked.has(p) && stamp(t) > stamp(stamps[p])) stamps[p] = t; });
+    Object.assign(stamps, chosen);   // un choix explicite devient la modification la plus récente des deux côtés
     return { settings: out, stamps, report };
   }
 
@@ -155,14 +185,16 @@ const SyncMerge = (() => {
     return { ...l, entries: clean.entries, archive: JournalArchive.union(archive, clean.archive) };
   }
 
-  function values(local, remote) {
+  // `options.base` : valeurs déchiffrées de l'ancêtre commun (absent = base inconnue).
+  function values(local, remote, options = {}) {
     if (!obj(local) || !obj(remote)) throw new Error('Deux coffres déchiffrés sont nécessaires : fusion refusée.');
     validate(local); validate(remote);
     const out = { ...local }, report = { settings: null, journal: { before: 0, after: 0 }, keysAdded: [], keysKept: [] };
     const sl = parse(local[STAMPS], 'horodatages locaux') || {}, sr = parse(remote[STAMPS], 'horodatages distants') || {};
     const ls = parse(local[SETTINGS], 'réglages locaux'), rs = parse(remote[SETTINGS], 'réglages distants');
+    const baseStamps = obj(options) && obj(options.base) ? parse(options.base[STAMPS], 'horodatages de base') || {} : null;
     if (ls) {
-      const m = settings(ls, rs, sl, sr);
+      const m = settings(ls, rs, sl, sr, { base: baseStamps, resolutions: obj(options) ? options.resolutions : undefined });
       out[SETTINGS] = JSON.stringify(m.settings); out[STAMPS] = JSON.stringify(m.stamps); report.settings = m.report;
     } else if (rs) throw new Error('Profil local absent : restauration contrôlée nécessaire avant synchronisation.');
     let archive = JournalArchive.union(JournalArchive.capture(local), JournalArchive.capture(remote));
@@ -194,5 +226,15 @@ const SyncMerge = (() => {
     if (report.journal.after < report.journal.before) throw new Error('Fusion refusée : le journal perdrait des trajets.');
     return { values: out, report };
   }
-  return { SETTINGS, STAMPS, device, settings, values, get, differences, edits };
+  // Consultation d'un conflit : les deux versions d'un chemin de réglage. Une liste de véhicules
+  // ou une clé entière n'est jamais résoluble par un simple choix (historiques à préserver).
+  function conflictValues(local, remote, paths) {
+    const ls = obj(local) ? parse(local[SETTINGS], 'réglages locaux') : null, rs = obj(remote) ? parse(remote[SETTINGS], 'réglages distants') : null;
+    return (Array.isArray(paths) ? paths : []).map(p => {
+      if (typeof p !== 'string' || p.startsWith('clé:') || p === 'cars' || /^cars\.\d+$/.test(p) || !obj(ls) || !obj(rs)) return { path: String(p), resolvable: false };
+      try { return { path: p, local: clone(get(ls, p)), remote: clone(get(rs, p)), resolvable: true }; }
+      catch { return { path: p, resolvable: false }; }
+    });
+  }
+  return { SETTINGS, STAMPS, device, settings, values, get, differences, edits, conflictValues };
 })();

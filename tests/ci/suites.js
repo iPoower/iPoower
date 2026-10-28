@@ -120,7 +120,8 @@ SUITE.push(['test_mission_control.js', 'Mission Control : projection canonique, 
 SUITE.push(['test_ux_mobile.js', 'UX mobile lot 1 : aucun texte sous 11 px, bandeau LIVE compact, cibles 44 pt et libellés', false]);
 SUITE.push(['test_live_route.js', 'Live Route : géométrie, progression, GPS périmé/imprécis, secteurs et prévisions ponctuelles', false],
   ['e2e81-live-route.js', 'Live Route premium PC/iPhone : vraie carte, simulation, GPS, reprise, focus, thèmes et nettoyage', true]);
-SUITE.push(['test_sync_merge.js', 'fusion PC ↔ iPhone (étape 1) : journal cumulatif, relevés additifs, réglage le plus récent par chemin, état de l’appareil jamais importé', false]);
+SUITE.push(['test_sync_merge.js', 'fusion PC ↔ iPhone (étape 1) : journal cumulatif, relevés additifs, réglages par chemin sans arbitrage d’horloge, état de l’appareil jamais importé', false]);
+SUITE.push(['test_sync_three_way.js', 'fusion à trois voies : ancêtre commun, horloges décalées, conflits consultables et résolution explicite', false]);
 
 SUITE.push(['test_control_vault_packet.js', 'Control Vault : codec propriétaire V1, WebCrypto/AAD, archive intégrale et refus sans écriture', false],
   ['e2e82-control-vault-packet.js', 'Control Vault : chiffrement propriétaire Chromium/WebKit, profils PC/iPhone et fermeture des sessions', true]);

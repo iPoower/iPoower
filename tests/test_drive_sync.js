@@ -172,9 +172,51 @@ function drive() {
   const isolated = drive(), old = owner(isolated, 1, 'old'), other = owner(isolated, 1, 'other');
   await old.controller.run(true);
   const s = JSON.parse(other.values['twrc.settings.v1']); s.cars[0].photo = 'divergence-sans-date'; other.edit('twrc.settings.v1', JSON.stringify(s));
-  await other.controller.run(true); assert(other.controller.status.message.startsWith('conflit')); assert.equal(other.state.base.length, 0); assert.equal(isolated.files.size, 1);
-  other.vault.mode = 'locked'; await other.controller.run(true); assert.equal(isolated.files.size, 1);
-  console.log('✅ conflit ancien sans date + verrouillage : aucune tête absorbée ni publication silencieuse');
+  // NOESIS 13.4 : un conflit n'empêche plus de sauvegarder les saisies locales. La tête distante n'est
+  // jamais absorbée ; cet appareil publie une tête SŒUR (sans la tête distante comme parent) et les deux
+  // versions restent consultables jusqu'au choix explicite.
+  const oldHead = [...isolated.files.values()][0].ref.revision.id, oldPhoto = JSON.parse(old.values['twrc.settings.v1']).cars[0].photo;
+  await other.controller.run(true); assert(other.controller.status.message.startsWith('conflit')); assert.equal(other.controller.status.state, 'CONFLICT');
+  assert(!other.state.base.includes(oldHead), 'tête distante jamais absorbée');
+  const sister = [...isolated.files.values()].filter(f => f.ref.revision.id !== oldHead);
+  assert.equal(sister.length, 1, 'saisies locales sauvegardées dans une tête séparée'); assert(!sister[0].ref.revision.parents.includes(oldHead));
+  const detail = other.controller.status.conflictDetails.find(x => x.path === 'cars.0.photo');
+  assert(detail && detail.resolvable && detail.local === 'divergence-sans-date' && detail.remote === oldPhoto && detail.id === oldHead);
+  const published = isolated.files.size; other.vault.mode = 'locked'; await other.controller.run(true); assert.equal(isolated.files.size, published);
+  console.log('✅ conflit ancien sans date : tête distante jamais absorbée, saisies locales sauvegardées à part, versions consultables, verrouillage respecté');
+  other.vault.mode = 'vault';
+  assert.throws(() => other.controller.resolve(oldHead, 'cars', 'remote'), /confirmation/, 'chemin non résoluble refusé');
+  other.controller.resolve(oldHead, 'cars.0.photo', 'remote'); await other.controller.run(true);
+  assert.equal(other.controller.status.conflicts.length, 0); const mergedRev = [...isolated.files.values()].find(f => f.ref.revision.id === other.state.base[0]);
+  assert(mergedRev && mergedRev.ref.revision.parents.includes(oldHead), 'tête distante intégrée après choix : parent de la révision de fusion');
+  assert.equal(JSON.parse(other.values['twrc.settings.v1']).cars[0].photo, oldPhoto);
+  await old.controller.run(true); assert.equal(old.controller.status.conflicts.length, 0);
+  assert.equal(JSON.parse(old.values['twrc.settings.v1']).cars[0].photo, oldPhoto);
+  console.log('✅ résolution explicite : choix appliqué, tête intégrée, l’autre appareil converge sans nouveau conflit');
+
+  // Horloges divergentes de bout en bout : l'iPhone (horloge +10 min) modifie AVANT le PC.
+  {
+    const net = drive(), pc = owner(net, 1, 'pc'), tel = owner(net, 1, 'tel');
+    const setPressure = (o, value, stamp) => {
+      // Horodatages calculés comme dans l'app (SyncMerge.edits), avec l'horloge propre à l'appareil.
+      const before = JSON.parse(o.values['twrc.settings.v1']), s = JSON.parse(o.values['twrc.settings.v1']); s.prefs = { ...(s.prefs || {}), pressure: value };
+      const st = JSON.parse(JSON.stringify(o.A.SyncMerge.edits(before, s, JSON.parse(o.values['twrc.editstamps.v1'] || '{}'), stamp)));
+      o.edit('twrc.settings.v1', JSON.stringify(s)); o.edit('twrc.editstamps.v1', JSON.stringify(st));
+    };
+    setPressure(pc, 2.4, at); await pc.controller.run(true); await tel.controller.run(true); await pc.controller.run(true);
+    assert.equal(JSON.parse(tel.values['twrc.settings.v1']).prefs.pressure, 2.4, 'base commune reçue');
+    setPressure(tel, 2.2, at + 10 * 60000); tel.advance(60000); await tel.controller.run(true);
+    setPressure(pc, 2.6, at + 5 * 60000); pc.advance(120000); await pc.controller.run(true);
+    assert.equal(JSON.parse(pc.values['twrc.settings.v1']).prefs.pressure, 2.6, 'modification la plus récente (PC) jamais écrasée par l’horloge en avance');
+    assert.equal(pc.controller.status.state, 'CONFLICT'); assert(pc.controller.status.conflictDetails.some(d => d.path === 'prefs.pressure' && d.local === 2.6 && d.remote === 2.2));
+    await tel.controller.run(true); assert.equal(JSON.parse(tel.values['twrc.settings.v1']).prefs.pressure, 2.2, 'l’iPhone garde aussi sa version');
+    assert.equal(tel.controller.status.state, 'CONFLICT');
+    const rid = pc.controller.status.conflictDetails.find(d => d.path === 'prefs.pressure').id;
+    pc.controller.resolve(rid, 'prefs.pressure', 'local'); pc.advance(60000); await pc.controller.run(true); await tel.controller.run(true);
+    assert.equal(JSON.parse(tel.values['twrc.settings.v1']).prefs.pressure, 2.6); assert.equal(tel.controller.status.conflicts.length, 0);
+    assert.equal(pc.controller.status.conflicts.length, 0);
+    console.log('✅ horloge en avance sur l’iPhone : conflit des deux côtés, aucune valeur écrasée, choix explicite puis convergence');
+  }
 
   // Une destination quittée pendant un upload ne peut recevoir un accusé tardif.
   {

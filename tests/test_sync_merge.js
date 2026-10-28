@@ -43,11 +43,22 @@ check('relevés : compteur et profondeurs saisis sur chaque appareil, union par 
   assert.deepEqual(r.settings.cars[0].odo, [{ d: '2026-10-10', km: 1000 }, { d: '2026-10-18', km: 1700 }]);
   assert.equal(r.settings.cars[0].tire.treads.length, 2); assert.equal(r.report.added.odo, 1); assert.equal(r.report.added.treads, 1);
 });
-check('réglage : la modification la plus récente gagne, des deux côtés, horodatages fusionnés', () => {
+// NOESIS 13.4 : l'ancienne règle « la plus récente selon l'horloge gagne » écrasait en silence
+// la modification concurrente d'un appareil à l'horloge décalée. Deux modifications = conflit.
+check('réglage : deux modifications concurrentes sans base ⇒ conflit des deux côtés, chacun garde sa valeur', () => {
   const pc = settings({ edits: { 'cars.0.tire.dot': 1 } }), tel = settings({ edits: { 'cars.0.tire.dot': 1 } });
   pc.cars[0].tire.dot = '2124'; tel.cars[0].tire.dot = '3924';
   const sPc = { 'cars.0.tire.dot': T + 5000 }, sTel = { 'cars.0.tire.dot': T + 1000 };
   const a = M.settings(pc, tel, sPc, sTel), b = M.settings(tel, pc, sTel, sPc);
+  assert.equal(a.settings.cars[0].tire.dot, '2124'); assert.equal(b.settings.cars[0].tire.dot, '3924');
+  assert.deepEqual(a.report.conflicts, ['cars.0.tire.dot']); assert.deepEqual(b.report.conflicts, ['cars.0.tire.dot']);
+  assert.equal(b.stamps['cars.0.tire.dot'], T + 1000, 'horodatage local conservé tant que le conflit reste ouvert');
+});
+check('réglage : une seule modification depuis la base commune ⇒ reprise des deux côtés, horodatages fusionnés', () => {
+  const pc = settings({ edits: { 'cars.0.tire.dot': 1 } }), tel = settings({ edits: { 'cars.0.tire.dot': 1 } });
+  pc.cars[0].tire.dot = '2124';
+  const base = { 'cars.0.tire.dot': T }, sPc = { 'cars.0.tire.dot': T + 5000 }, sTel = { ...base };
+  const a = M.settings(pc, tel, sPc, sTel, { base }), b = M.settings(tel, pc, sTel, sPc, { base });
   assert.equal(a.settings.cars[0].tire.dot, '2124'); assert.equal(b.settings.cars[0].tire.dot, '2124');
   assert.deepEqual(b.report.fromRemote, ['cars.0.tire.dot']); assert.equal(b.stamps['cars.0.tire.dot'], T + 5000);
 });
@@ -59,9 +70,13 @@ check('réglage : sans preuve de fraîcheur, la valeur de cet appareil reste et 
 check('réglage parent puis enfant : chaque chemin suit son propre horodatage', () => {
   const pc = settings({ edits: { 'cars.0.tire': 1, 'cars.0.tire.dot': 1 } }), tel = settings({ edits: { 'cars.0.tire': 1 } });
   pc.cars[0].tire = { type: 'summer', brand: 'Marque A', dot: '1111', treads: [] }; tel.cars[0].tire = { type: 'winter', brand: 'Marque B', dot: '2222', treads: [] };
-  const r = M.settings(pc, tel, { 'cars.0.tire': T, 'cars.0.tire.dot': T + 9000 }, { 'cars.0.tire': T + 5000 });
-  assert.equal(r.settings.cars[0].tire.brand, 'Marque B', 'monte plus récente sur l’autre appareil');
-  assert.equal(r.settings.cars[0].tire.dot, '1111', 'DOT modifié plus tard ici : il reste');
+  // Base : monte posée à T sur les deux appareils. Seul l'autre appareil a changé la monte ensuite ;
+  // cet appareil a seulement modifié le DOT.
+  const base = { 'cars.0.tire': T };
+  const r = M.settings(pc, tel, { 'cars.0.tire': T, 'cars.0.tire.dot': T + 9000 }, { 'cars.0.tire': T + 5000 }, { base });
+  assert.equal(r.settings.cars[0].tire.brand, 'Marque B', 'monte modifiée sur l’autre appareil seulement');
+  assert.equal(r.settings.cars[0].tire.dot, '1111', 'DOT modifié ici : chemin enfant plus précis, il reste');
+  assert(r.report.conflicts.includes('cars.0.tire.dot'), 'DOT changé des deux côtés (monte entière remplacée là-bas) : conflit signalé');
 });
 check('voitures dans un ordre différent : aucun réglage croisé, conflit signalé', () => {
   const pc = settings({ edits: { 'cars.0.short': 1 } }), tel = settings({ cars: [car('voitureB'), car('voitureA')], edits: { 'cars.0.short': 1 } });
