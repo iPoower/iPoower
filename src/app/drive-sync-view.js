@@ -1,6 +1,6 @@
 /* Réglages → Sauvegarde. Aucun changement des écrans Twin Garage. */
 let DRIVE_UI = { config: null, session: null, sync: null, prepared: false, selected: false, busy: false,
-  text: 'Google Drive : non activé sur cette version.', timer: null };
+  text: 'Google Drive : non activé sur cette version.', timer: null, dedicatedFolders: [] };
 function renderDriveSync() {
   const root = document.getElementById('driveSyncPanel'); if (!root) return;
   const d = DRIVE_UI, connected = d.session && d.session.connected;
@@ -22,14 +22,14 @@ function renderDriveSync() {
     d.busy = true;
     try {
       if (!d.prepared) { await d.session.prepare(); d.prepared = true; d.text = 'Connexion prête. Appuie sur Se connecter à Google.'; }
-      else { d.sync.stop(); d.selected = false; const promise = d.session.connect(); await promise; d.text = 'Compte affiché : confirme explicitement ce compte dédié avant tout accès aux fichiers.'; }
+      else { d.sync.stop(); d.selected = false; d.dedicatedFolders = []; const promise = d.session.connect(); await promise; d.text = 'Compte affiché : confirme explicitement ce compte dédié avant tout accès aux fichiers.'; }
     } catch { d.text = 'Connexion Google non confirmée. Réessaie depuis ce bouton.'; }
     finally { d.busy = false; renderDriveSync(); }
   });
   if (connected && d.session.identity) {
     const account = document.createElement('p'); account.className = 'sub'; account.textContent = 'Compte Google sélectionné : ' + d.session.identity.label; root.appendChild(account);
     if (!d.session.confirmed) button('Confirmer ce compte dédié', () => {
-      try { d.session.confirmAccount(d.session.identity.id); d.text = 'Compte confirmé. Crée un dossier neuf dédié ou retrouve celui créé par cette application dans Picker.'; }
+      try { d.session.confirmAccount(d.session.identity.id); d.text = 'Compte confirmé. Crée un dossier neuf dédié ou retrouve les dossiers déjà autorisés pour cette application.'; }
       catch { d.text = 'Compte non confirmé. Reconnecte le compte dédié.'; }
       renderDriveSync();
     });
@@ -37,10 +37,26 @@ function renderDriveSync() {
   if (connected && d.session.confirmed) {
     button('Créer un dossier neuf dédié', async () => {
       d.busy = true; d.selected = false; const paused = d.sync.pause();
-      try { await d.session.newFolder(); await paused; d.text = 'Dossier neuf dédié créé et relu. Choisis-le maintenant dans Google Picker.'; }
+      try { await d.session.newFolder(); await paused; d.dedicatedFolders = []; d.text = 'Dossier neuf dédié créé et relu. Retrouve les dossiers dédiés pour le sélectionner.'; }
       catch { d.text = 'Création non confirmée. Réessaie avec le même compte : aucun dossier existant ne sera remplacé.'; }
       finally { d.busy = false; renderDriveSync(); }
     });
+    button('Retrouver les dossiers dédiés', async () => {
+      d.busy = true; d.selected = false; d.dedicatedFolders = []; const paused = d.sync.pause();
+      try { [d.dedicatedFolders] = await Promise.all([d.session.listDedicatedFolders(), paused]); d.text = d.dedicatedFolders.length ? 'Dossiers dédiés retrouvés. Choisis explicitement celui à utiliser.' : 'Aucun dossier dédié autorisé trouvé. Crée un dossier neuf, puis actualise cette liste.'; }
+      catch { d.text = 'Liste des dossiers non confirmée. Les fichiers et la file sont conservés.'; }
+      finally { d.busy = false; renderDriveSync(); }
+    });
+    for (const folder of d.dedicatedFolders) {
+      const label = document.createElement('p'); label.className = 'sub';
+      label.textContent = folder.name + ' · créé le ' + new Date(folder.createdTime).toLocaleString('fr-FR') + ' · référence ' + folder.id.slice(-8); root.appendChild(label);
+      button('Utiliser ce dossier', async () => {
+        d.busy = true; d.selected = false; const paused = d.sync.pause();
+        try { const [selected] = await Promise.all([d.session.chooseDedicatedFolder(folder.id), paused]); d.sync.select(selected); d.selected = true; d.text = 'Dossier dédié relu et sélectionné : ' + selected.folder; await d.sync.run(true); }
+        catch { d.text = 'Dossier non sélectionné ou accès non confirmé. Les fichiers et la file sont conservés.'; }
+        finally { d.busy = false; renderDriveSync(); }
+      });
+    }
     button('Choisir le dossier Google Drive', async () => {
       d.busy = true; d.selected = false; const paused = d.sync.pause();
       try { const promise = d.session.chooseFolder(); const [selected] = await Promise.all([promise, paused]); d.sync.select(selected); d.selected = true; d.text = 'Dossier dédié sélectionné : ' + selected.folder; await d.sync.run(true); }
@@ -49,7 +65,7 @@ function renderDriveSync() {
     });
   }
   if (connected && d.selected) button('Vérifier et synchroniser maintenant', () => d.sync.run(true));
-  if (connected) button('Déconnecter', () => { d.session.disconnect(); d.sync.stop(); d.selected = false; d.text = 'Déconnecté. Les copies locales et Drive sont conservées.'; renderDriveSync(); });
+  if (connected) button('Déconnecter', () => { d.session.disconnect(); d.sync.stop(); d.selected = false; d.dedicatedFolders = []; d.text = 'Déconnecté. Les copies locales et Drive sont conservées.'; renderDriveSync(); });
 }
 async function backupDriveImport(bytes) {
   if (DEMO.on) { bkMsg('Quitte la démonstration avant une restauration.'); return; }
@@ -91,7 +107,7 @@ async function initDriveSync() {
     };
     DRIVE_UI.timer = setInterval(tick, 30000);
     document.addEventListener('visibilitychange', tick); window.addEventListener('online', tick); window.addEventListener('focus', tick);
-    const stop = () => { DRIVE_UI.session.disconnect(); DRIVE_UI.sync.stop(); DRIVE_UI.selected = false; renderDriveSync(); };
+    const stop = () => { DRIVE_UI.session.disconnect(); DRIVE_UI.sync.stop(); DRIVE_UI.selected = false; DRIVE_UI.dedicatedFolders = []; renderDriveSync(); };
     window.addEventListener('twrc-session-expired', stop); window.addEventListener('twrc-session-locked', stop);
     window.addEventListener('pagehide', stop); renderDriveSync();
   } catch { /* configuration absente/non approuvée : sauvegardes locales inchangées */ }

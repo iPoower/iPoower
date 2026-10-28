@@ -1,7 +1,7 @@
 /* Transport opaque Control Vault. Reproduction : tools/vendor-vault-drive.js.
  * Aucun code, clé ou déchiffrement. Sources SHA-256 :
 {
- "src/services/opaque-drive.ts": "f93ab4f617fc7a2c7d260fc94ad2354790cd32208c9462c832318e5870f712ab",
+ "src/services/opaque-drive.ts": "714febdca7731a19a46d38686025d95c5e1d2f707552e23428c0442dad17bb29",
  "src/core/race-packet.ts": "a9ae071b8e1b6372b2ab3f59005bf92f0a17d2e7fe1e2cc48dae4f4c49154516",
  "src/core/sync-revision.ts": "c7e2414d7d803380407e4e3f38c8d229580eebdea0ba36f8ab2e602cb79ea92d",
  "src/core/crypto.ts": "1f9f7b1e6152d22fca7ac4162ad407539e353f2c8de6d00d521d6f7ccd5a46a8"
@@ -26,14 +26,14 @@ var DriveTransport = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // ../control-vault-noesis-drive/drive-entry.ts
+  // ../cv-direct/drive-entry.ts
   var drive_entry_exports = {};
   __export(drive_entry_exports, {
     OpaqueDrive: () => OpaqueDrive,
     readRacePacket: () => readRacePacket
   });
 
-  // ../control-vault-noesis-drive/src/core/crypto.ts
+  // ../cv-direct/src/core/crypto.ts
   var MAGIC = new Uint8Array([67, 86, 76, 84]);
   var SALT_LEN = 16;
   var IV_LEN = 12;
@@ -52,7 +52,7 @@ var DriveTransport = (() => {
     return toHex(await subtle().digest("SHA-256", bytes));
   }
 
-  // ../control-vault-noesis-drive/src/core/race-packet.ts
+  // ../cv-direct/src/core/race-packet.ts
   var PACKET_LIMITS = Object.freeze({ file: 71303168, cipher: 50331648, depth: 4 });
   var PacketError = class extends Error {
     constructor(code) {
@@ -159,7 +159,7 @@ var DriveTransport = (() => {
     });
   }
 
-  // ../control-vault-noesis-drive/src/core/sync-revision.ts
+  // ../cv-direct/src/core/sync-revision.ts
   var invalid = () => {
     throw new Error("INVALID_REVISION");
   };
@@ -203,7 +203,7 @@ var DriveTransport = (() => {
     return a === void 0 || b === void 0 ? a === b : a.id === b.id && a.device === b.device && a.seq === b.seq && a.parents.join(",") === b.parents.join(",");
   }
 
-  // ../control-vault-noesis-drive/src/services/opaque-drive.ts
+  // ../cv-direct/src/services/opaque-drive.ts
   var DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
   var API = "https://www.googleapis.com/drive/v3";
   var UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
@@ -403,6 +403,40 @@ var DriveTransport = (() => {
       const p = await this.json(await this.request(API + "/files/" + folder + "?fields=id,mimeType,trashed,ownedByMe,appProperties,capabilities(canAddChildren)", { signal }, epoch), signal);
       this.check(epoch, signal);
       if (p.id !== folder || p.trashed !== false || p.ownedByMe !== true || p.mimeType !== "application/vnd.google-apps.folder" || !object3(p.appProperties) || p.appProperties.cv_contract !== "rc-folder-v1" || !object3(p.capabilities) || p.capabilities.canAddChildren !== true) return fail2("conflict");
+    }
+    // Only folders already visible to this OAuth application and bearing its
+    // private contract. This never grants access to an arbitrary Drive folder.
+    async folders(signal) {
+      const epoch = this.lease(), out = [], pages = /* @__PURE__ */ new Set(), ids = /* @__PURE__ */ new Set();
+      let next = "", count = 0;
+      do {
+        if (++count > 10) return fail2("incomplete");
+        const params = new URLSearchParams({
+          q: "mimeType = 'application/vnd.google-apps.folder' and trashed = false and 'me' in owners and appProperties has { key='cv_contract' and value='rc-folder-v1' }",
+          spaces: "drive",
+          pageSize: "100",
+          fields: "nextPageToken,incompleteSearch,files(id,name,createdTime,mimeType,trashed,ownedByMe,appProperties,capabilities(canAddChildren))"
+        });
+        if (next) params.set("pageToken", next);
+        const page = await this.json(await this.request(API + "/files?" + params, { signal }, epoch), signal);
+        this.check(epoch, signal);
+        if (page.incompleteSearch !== false || !Array.isArray(page.files) || page.files.length > 100) return fail2("incomplete");
+        for (const f of page.files) {
+          if (!object3(f) || typeof f.id !== "string" || typeof f.name !== "string" || !f.name || f.name.length > 1024 || typeof f.createdTime !== "string" || f.createdTime.length > 40 || !Number.isFinite(Date.parse(f.createdTime)) || f.mimeType !== "application/vnd.google-apps.folder" || f.trashed !== false || f.ownedByMe !== true || !object3(f.appProperties) || f.appProperties.cv_contract !== "rc-folder-v1" || !object3(f.capabilities) || f.capabilities.canAddChildren !== true) return fail2("conflict");
+          const folder = id(f.id);
+          if (ids.has(folder) || out.length >= 1e3) return fail2("incomplete");
+          ids.add(folder);
+          out.push(Object.freeze({ id: folder, name: f.name, createdTime: f.createdTime }));
+        }
+        if (page.nextPageToken === void 0) next = "";
+        else if (typeof page.nextPageToken !== "string" || !page.nextPageToken || page.nextPageToken.length > 4096 || pages.has(page.nextPageToken)) return fail2("incomplete");
+        else {
+          next = page.nextPageToken;
+          pages.add(next);
+        }
+      } while (next);
+      this.check(epoch, signal);
+      return out.sort((a, b) => b.createdTime.localeCompare(a.createdTime) || a.id.localeCompare(b.id));
     }
     async createFolder(fileId, signal) {
       id(fileId);
