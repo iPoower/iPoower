@@ -66,7 +66,7 @@ function drive() {
       'all three Drive list paths must accept the omitted optional default');
     const context = {
       location: { origin: 'https://race.example.com' }, crypto: webcrypto,
-      TextEncoder, TextDecoder, Uint8Array, URL, btoa, atob,
+      TextEncoder, TextDecoder, Uint8Array, URL, URLSearchParams, btoa, atob,
       Response, AbortController, setTimeout, clearTimeout,
     };
     vm.createContext(context);
