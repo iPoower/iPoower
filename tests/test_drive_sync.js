@@ -57,6 +57,43 @@ function drive() {
   return d;
 }
 (async () => {
+  // Test the vendored Google Drive transport, not a local imitation of its method.
+  {
+    const sourceHash = 'dce5beafe7dab3fffa4beabb17a8d059fc8393de22b95df2ab9aa0663b969985';
+    const vendor = fs.readFileSync(path.resolve(__dirname, '../src/drive-transport.js'), 'utf8');
+    assert.match(vendor, new RegExp('"src/services/opaque-drive.ts": "' + sourceHash + '"'));
+    assert.equal((vendor.match(/page\\.incompleteSearch !== void 0 && page\\.incompleteSearch !== false/g) || []).length, 3,
+      'all three Drive list paths must accept the omitted optional default');
+    const context = {
+      location: { origin: 'https://race.example.com' }, crypto: webcrypto,
+      TextEncoder, TextDecoder, Uint8Array, URL, btoa, atob,
+      Response, AbortController, setTimeout, clearTimeout,
+    };
+    vm.createContext(context);
+    vm.runInContext(vendor + ';this.T=DriveTransport;', context);
+    const T = context.T, scope = 'https://www.googleapis.com/auth/drive.file';
+    let incomplete = undefined;
+    const fetcher = async url => {
+      const u = new URL(String(url));
+      if (u.pathname.endsWith('/files/folder_A')) return new Response(JSON.stringify({
+        id: 'folder_A', mimeType: 'application/vnd.google-apps.folder', trashed: false,
+        ownedByMe: true, appProperties: { cv_contract: 'rc-folder-v1' }, capabilities: { canAddChildren: true },
+      }));
+      assert.equal(u.pathname, '/drive/v3/files');
+      return new Response(JSON.stringify({ ...(incomplete !== undefined ? { incompleteSearch: incomplete } : {}), files: [] }));
+    };
+    const client = new T.OpaqueDrive(['https://race.example.com'], fetcher);
+    client.connect('fixture_token', 3600, [scope]);
+    assert.deepEqual(Array.from(await client.folders()), []);
+    assert.deepEqual(Array.from(await client.profiles('folder_A')), []);
+    assert.deepEqual(Array.from(await client.list('folder_A')), []);
+    incomplete = true;
+    await assert.rejects(client.folders(), e => e.code === 'incomplete');
+    incomplete = null;
+    await assert.rejects(client.folders(), e => e.code === 'incomplete');
+    client.disconnect();
+    console.log('✅ transport vendored synchronisé : trois listes Google acceptent le champ absent et refusent true/null');
+  }
   const d = drive(), pc = owner(d, 120, 'pc'), phone = owner(d, 61, 'phone');
   const originalRecords = [...new Set([...pc.A.JournalArchive.capture(pc.values).records, ...phone.A.JournalArchive.capture(phone.values).records])].sort();
   await pc.controller.run(true); assert.equal(d.files.size, 1); assert.equal(pc.state.outbox.job, null);
