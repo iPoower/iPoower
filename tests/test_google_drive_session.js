@@ -59,4 +59,31 @@ const config = { approved: true, clientId: ['123456', 'fake.apps.googleuserconte
   await assert.rejects(session.chooseDedicatedFolder('folder_A'),e=>e.code==='auth');
   session.disconnect();
   console.log('✅ dossiers dédiés explicites, liaison identique à Picker, compte relu, ancienne liste invalidée après déconnexion');
+  // An unavailable Google Picker must not block the independent drive.file API route.
+  const offlineClients = [];
+  const noPickerHost = {
+    location: { origin: config.raceOrigin }, crypto: webcrypto,
+    gapi: { load(_name, callbacks) { callbacks.onerror(); } },
+    google: { accounts: { oauth2: {
+      initTokenClient(options) { offlineClients.push(options); return { requestAccessToken() {} }; },
+      hasGrantedAllScopes: () => true,
+    } } },
+  };
+  const offlineProvider = {
+    connect() {}, disconnect() {},
+    account: async () => 'synthetic_account',
+    identity: async () => ({ id: 'synthetic_account', label: 'fixture@example.invalid' }),
+    folder: async () => {}, folders: async () => dedicatedFolders,
+  };
+  const apiOnly = G.create(config, offlineProvider, noPickerHost);
+  await apiOnly.prepare();
+  const auth = apiOnly.connect();
+  await offlineClients.at(-1).callback({ access_token: 'fixture-token', scope, expires_in: 3600 });
+  await auth;
+  apiOnly.confirmAccount('synthetic_account');
+  assert.equal((await apiOnly.listDedicatedFolders())[0].id, 'folder_A');
+  assert.equal((await apiOnly.chooseDedicatedFolder('folder_A')).folder, 'folder_A');
+  await assert.rejects(apiOnly.chooseFolder(), e => e.code === 'network');
+  apiOnly.disconnect();
+  console.log('✅ Picker indisponible : connexion et sélection Drive API restent utilisables');
 })().catch(e => { console.error(e); process.exitCode = 1; });
