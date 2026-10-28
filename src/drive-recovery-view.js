@@ -10,6 +10,8 @@
     $('recovery-connect').disabled = busy || !session;
     $('recovery-confirm-account').disabled = busy || !connected || confirmed;
     $('recovery-folder').disabled = busy || !confirmed;
+    $('recovery-dedicated').disabled = busy || !confirmed;
+    for (const button of $('recovery-dedicated-list').querySelectorAll('button')) button.disabled = busy || !confirmed;
     $('recovery-preview').disabled = busy || !selected || !confirmed || !reader;
     $('recovery-export').disabled = busy || !ticket;
     $('recovery-install').disabled = busy || !ticket || !$('recovery-consent').checked;
@@ -74,6 +76,7 @@
     // GIS doit conserver le geste utilisateur avant le premier await.
     if (prepared) {
       recovery.cancel(); selected = false; ticket = null;
+      $('recovery-dedicated-list').replaceChildren();
       const promise = session.connect(); action(async () => { await promise; say('Vérifie le compte affiché puis confirme-le.'); });
     } else action(async () => { await session.prepare(); prepared = true; $('recovery-connect').textContent = 'Se connecter à Google'; say('Connexion prête. Appuie sur Se connecter à Google.'); });
   });
@@ -84,6 +87,24 @@
     if (busy) return; selected = false; ticket = null; recovery.cancel();
     const promise = session.chooseFolder(); action(async () => { recovery.select(await promise); selected = true; say('Dossier confirmé. Saisis le code Race Control pour vérifier les versions.'); });
   });
+  $('recovery-dedicated').addEventListener('click', () => action(async () => {
+    selected = false; ticket = null; recovery.cancel();
+    $('recovery-preview-info').textContent = ''; $('recovery-consent').checked = false;
+    $('recovery-dedicated-list').replaceChildren();
+    const folders = await session.listDedicatedFolders();
+    for (const folder of folders) {
+      const label = document.createElement('p'), button = document.createElement('button');
+      label.textContent = folder.name + ' · créé le ' + new Date(folder.createdTime).toLocaleString('fr-FR') + ' · référence ' + folder.id.slice(-8);
+      button.textContent = 'Utiliser ce dossier';
+      button.addEventListener('click', () => action(async () => {
+        selected = false; ticket = null; recovery.cancel();
+        recovery.select(await session.chooseDedicatedFolder(folder.id)); selected = true;
+        say('Dossier dédié relu et confirmé. Saisis le code Race Control pour vérifier les versions.');
+      }));
+      $('recovery-dedicated-list').append(label, button);
+    }
+    say(folders.length ? 'Dossiers dédiés retrouvés. Choisis explicitement celui à utiliser.' : 'Aucun dossier dédié autorisé trouvé. Vérifie le compte et la destination de la sauvegarde.');
+  }));
   $('recovery-preview').addEventListener('click', () => action(async () => {
     const reference = checkpoint(); ticket = await recovery.prepare(password(), reference); $('recovery-consent').checked = false;
     $('recovery-preview-info').textContent = 'Copie du ' + new Date(ticket.at).toLocaleString('fr-FR') + ' · révision ' + ticket.revision + ' · ' + ticket.size + ' octets chiffrés · SHA-256 ' + ticket.sha256;
@@ -105,8 +126,8 @@
     $('recovery-open-app').hidden = false;
   }));
   $('recovery-pending-copy').addEventListener('click', () => action(async () => { download(await recovery.pendingCopy()); say('Copie chiffrée de l’opération proposée au téléchargement.'); }));
-  $('recovery-disconnect').addEventListener('click', () => { session?.disconnect(); recovery?.cancel(); selected = false; ticket = null; $('recovery-code').value = ''; say('Déconnecté. Les copies restent conservées.'); paint(); });
-  const stop = () => { session?.disconnect(); recovery?.cancel(); selected = false; ticket = null; $('recovery-code').value = ''; };
+  $('recovery-disconnect').addEventListener('click', () => { session?.disconnect(); recovery?.cancel(); selected = false; ticket = null; $('recovery-code').value = ''; $('recovery-dedicated-list').replaceChildren(); say('Déconnecté. Les copies restent conservées.'); paint(); });
+  const stop = () => { session?.disconnect(); recovery?.cancel(); selected = false; ticket = null; $('recovery-code').value = ''; $('recovery-dedicated-list').replaceChildren(); };
   window.addEventListener('pagehide', stop);
   document.addEventListener('visibilitychange', () => { if (document.hidden) { $('recovery-code').value = ''; ticket = null; } else paint(); });
   paint();
