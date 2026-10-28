@@ -62,7 +62,7 @@ function drive() {
     const sourceHash = 'dce5beafe7dab3fffa4beabb17a8d059fc8393de22b95df2ab9aa0663b969985';
     const vendor = fs.readFileSync(path.resolve(__dirname, '../src/drive-transport.js'), 'utf8');
     assert.match(vendor, new RegExp('"src/services/opaque-drive.ts": "' + sourceHash + '"'));
-    assert.equal((vendor.match(/page\\.incompleteSearch !== void 0 && page\\.incompleteSearch !== false/g) || []).length, 3,
+    assert.equal((vendor.match(/page\.incompleteSearch !== void 0 && page\.incompleteSearch !== false/g) || []).length, 3,
       'all three Drive list paths must accept the omitted optional default');
     const context = {
       location: { origin: 'https://race.example.com' }, crypto: webcrypto,
