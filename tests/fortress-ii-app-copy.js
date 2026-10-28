@@ -40,10 +40,21 @@ function makeServer(){
 }
 async function loadApp(page,origin){
  await page.goto(origin+'/race-control/',{waitUntil:'domcontentloaded'});
- await page.locator('#unlockPw').waitFor({timeout:30000});
- await page.locator('#unlockPw').fill(APP_KEY_TEST);
- await Promise.all([page.waitForNavigation({timeout:60000}),page.locator('#unlockForm button[type=submit]').click()]);
- await page.waitForFunction(()=>typeof Backup!=='undefined'&&typeof USER_STORE!=='undefined'&&typeof S!=='undefined'&&!!S.cars?.length,undefined,{timeout:45000});
+ // Initial installation requires the password, whereas a post-export reload may
+ // resume the already authenticated vault. The latter MUST NOT expose #unlockPw.
+ await page.waitForFunction(()=>{
+  const ready=window.TWRC_VAULT?.mode==='vault'&&typeof Backup!=='undefined'&&
+   typeof USER_STORE!=='undefined'&&typeof S!=='undefined'&&!!S.cars?.length;
+  const field=document.querySelector('#unlockPw');
+  return ready||!!(field&&field.getClientRects().length);
+ },undefined,{timeout:45000});
+ if(await page.locator('#unlockPw').isVisible()){
+  await page.locator('#unlockPw').fill(APP_KEY_TEST);
+  await Promise.all([page.waitForNavigation({timeout:60000}),page.locator('#unlockForm button[type=submit]').click()]);
+ }
+ await page.waitForFunction(()=>window.TWRC_VAULT?.mode==='vault'&&
+  typeof Backup!=='undefined'&&typeof USER_STORE!=='undefined'&&
+  typeof S!=='undefined'&&!!S.cars?.length,undefined,{timeout:45000});
 }
 async function run(){
  const [left,right]=await Promise.all([makeServer(),makeServer()]);
@@ -148,8 +159,12 @@ async function run(){
    assert(!text.includes(FAKE_CAR));
    assert(!text.includes(FAKE_REPORT_ID));
    a.__f2backup=bytes;
-   // Exporter can activate the journal and reload; re-open source deterministically.
+   // Exporter can activate the journal and reload; test the authenticated
+   // resumed session AND the actual persisted car after re-opening the same origin.
    await loadApp(a,left.origin);
+   assert.equal(await a.evaluate(()=>S.cars[0].name),FAKE_CAR,
+    'car persists across post-export browser navigation');
+   assert.equal(await a.evaluate(()=>window.TWRC_VAULT?.mode),'vault');
   });
   await check('wrong password in real UI refuses import without changing destination',async()=>{
    await b.evaluate(()=>{document.querySelector('#settings').open=true;renderSettings(true)});
