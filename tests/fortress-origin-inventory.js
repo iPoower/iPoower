@@ -18,7 +18,9 @@ const groups = {
   // Ces valeurs sont présentes dans le coffre mais ne sont PAS couvertes en intégralité
   // par Backup V2. Elles exigent classification approfondie et règle de consentement.
   review_before_export: [
-    'twrc.reports.v1', 'twrc.shadow.v1', 'twrc.weather.incidents.v1', 'twrc.trend'
+    'twrc.reports.v1', 'twrc.shadow.v1', 'twrc.weather.incidents.v1', 'twrc.trend',
+    // Cumulative human history and merge metadata: preserve pending explicit export/restore review.
+    'twrc.debrief.archive.v1', 'twrc.editstamps.v1'
   ],
   ephemeral: [
     'twrc.gps', 'twrc.place.v1', 'twrc.tripstart.v1', 'twrc.tripend.v1',
@@ -30,7 +32,9 @@ const groups = {
   confidential_metadata: [
     'twrc.vault.v2', 'twrc.session.v2', 'twrc.device.vault.v1',
     'twrc.restore.pending.v1', 'twrc.lock.signal', 'twrc.remember-device.v1',
-    'twrc.key', 'twrc.plain', 'twrc.plain.v'
+    'twrc.key', 'twrc.plain', 'twrc.plain.v',
+    // IndexedDB/Lock names for sync state and wrapped-key descriptors: never bulk-export as business data.
+    'twrc.drive.sync.v1', 'twrc.sync-key.v1'
   ],
   cache_prefix: ['twrc.cache.', 'twrc.croute', 'twrc.croute.', 'twrc.road.', 'twrc.reload.'],
   not_a_storage_key: ['twrc.weather.station.', 'twrc.tripcancel.']
@@ -65,6 +69,10 @@ for (const required of ['twrc.settings.v1', 'twrc.context.v1', 'twrc.reports.v1'
 assert.equal(groupOf('twrc.vault.v2'), 'confidential_metadata');
 assert.equal(groupOf('twrc.reports.v1'), 'review_before_export');
 assert.equal(groupOf('twrc.shadow.v1'), 'review_before_export');
+assert.equal(groupOf('twrc.debrief.archive.v1'), 'review_before_export');
+assert.equal(groupOf('twrc.editstamps.v1'), 'review_before_export');
+assert.equal(groupOf('twrc.drive.sync.v1'), 'confidential_metadata');
+assert.equal(groupOf('twrc.sync-key.v1'), 'confidential_metadata');
 assert.equal(groupOf('twrc.cache.fiction'), 'cache_prefix');
 assert.equal(groupOf('twrc.unknown.v9'), null, 'inconnue doit entraîner le blocage');
 console.log('✅ inventaire statique : ' + walk(root).length + ' JS analysés · ' +
