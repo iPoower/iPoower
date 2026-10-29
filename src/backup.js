@@ -174,14 +174,15 @@ const Backup = (() => {
   }
   function mergeWeather(a, b) {
     const left = weather(a), right = weather(b);
+    let trimmed = 0;
     const merge = (key, limit) => {
       const rows = [...new Map([...left[key], ...right[key]].map(e => [JSON.stringify(e), e])).values()].sort((a, b) => a.at - b.at);
-      // Refuser le plan complet plutôt qu'annoncer une restauration réussie
-      // après suppression silencieuse d'observations de l'une des sources.
-      if (rows.length > limit) throw new Error('Fusion du journal météo sans perte impossible : ' + key);
-      return rows;
+      // Même fenêtre glissante que chaque appareil (weather-view : 30 signalements, 200 comparaisons) :
+      // deux appareils pleins ne bloquent plus la restauration ; les plus anciennes sortent, comptées.
+      trimmed += Math.max(0, rows.length - limit);
+      return rows.slice(-limit);
     };
-    return { v: 1, reports: merge('reports', 30), shadow: merge('shadow', 200) };
+    return { v: 1, reports: merge('reports', 30), shadow: merge('shadow', 200), trimmed };
   }
   function make({ settings, view, context: state, tyreTherm: therm, tripCancel: cancel, weather: wx, at = new Date().toISOString() } = {}) {
     if (!obj(settings)) throw new Error('réglages absents');
@@ -221,12 +222,14 @@ const Backup = (() => {
     const remove = [...CONTEXT_KEYS, ...DURABLE_KEYS, ...DERIVED_KEYS];
     const cur = obj(phone) && obj(phone.context) ? context(phone.context, now) : null;
     const curCancel = obj(phone) ? tripCancel(phone.tripCancel) : {};
+    let weatherTrimmed = 0;
     if (obj(data.durable) && data.durable.weather != null || obj(phone) && phone.weather != null) {
       let wx;
       try { wx = mergeWeather(data.durable && data.durable.weather, phone && phone.weather); }
       catch (e) { return null; }
       writes['twrc.reports.v1'] = JSON.stringify(wx.reports);
       writes['twrc.shadow.v1'] = JSON.stringify(wx.shadow);
+      weatherTrimmed = wx.trimmed;
     }
     let kept = 0;
     if (data.v >= 2 && obj(data.durable)) {
@@ -243,7 +246,7 @@ const Backup = (() => {
       writes['twrc.tripcancel'] = JSON.stringify(curCancel);
       kept = cur.debrief.entries.length;
     }
-    return { writes, remove: [...new Set(remove.filter(k => !Object.prototype.hasOwnProperty.call(writes, k)))], removePrefixes: DERIVED_PREFIXES.slice(), kept };
+    return { writes, remove: [...new Set(remove.filter(k => !Object.prototype.hasOwnProperty.call(writes, k)))], removePrefixes: DERIVED_PREFIXES.slice(), kept, weatherTrimmed };
   }
   // Récupération complète : décodage du coffre par Race Control, puis passage
   // par le plan d'import vérifié existant. Jamais de remplacement brut du coffre.

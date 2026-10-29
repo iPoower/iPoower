@@ -1860,13 +1860,14 @@ async function backupImport(f) {
     if (recovery) ({ data, plan } = Backup.recoveryPlan(recoveryValues, Date.now(), phone));
     else plan = Backup.restorePlan(data, Date.now(), phone);
   }
-  catch (e) { bkMsg('Import non appliqué : journal météo local à vérifier. Tes données restent conservées.'); return; }
+  catch (e) { bkMsg('Import non appliqué : ' + (e && e.message ? String(e.message).slice(0, 120) : 'contenu à vérifier') + '. Tes données restent conservées.'); return; }
   if (!plan) { bkMsg('Sauvegarde incomplète.'); return; }
   if (!ConfigImport.validateTyreExtensions(data.settings)) { bkMsg('Données pneumatiques importées invalides : aucun réglage ni relevé modifié.'); return; }
   const when = new Date(data.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const version = recovery ? 'de récupération complète' : data.v >= 2 ? 'V2' : 'V1';
   const kept = plan.kept ? `\n\nJournal des trajets conservé : ${plan.kept} trajet${plan.kept > 1 ? 's' : ''} de ce téléphone ${data.v >= 2 ? 'ajouté' : 'gardé'}${plan.kept > 1 ? 's' : ''}.` : '';
-  if (!confirm(`Remplacer les réglages de ce téléphone par la sauvegarde ${version} du ${when} ?${kept}`)) { bkMsg('Import annulé.'); return; }
+  const trimmedWx = plan.weatherTrimmed ? `\n\nJournal météo : ${plan.weatherTrimmed} observation${plan.weatherTrimmed > 1 ? 's' : ''} parmi les plus ancienne${plan.weatherTrimmed > 1 ? 's' : ''} ne ${plan.weatherTrimmed > 1 ? 'sont' : 'est'} pas reprise${plan.weatherTrimmed > 1 ? 's' : ''} (même fenêtre que chaque appareil : 30 signalements, 200 comparaisons). Le fichier importé reste intact.` : '';
+  if (!confirm(`Remplacer les réglages de ce téléphone par la sauvegarde ${version} du ${when} ?${kept}${trimmedWx}`)) { bkMsg('Import annulé.'); return; }
   if (window.TWRC_PRESET_V) plan.writes['twrc.presetv'] = String(window.TWRC_PRESET_V);
   plan.writes['twrc.lastbackup'] = String(data.at).slice(0, 10);
   try { await backupApplyPlan(plan); }
