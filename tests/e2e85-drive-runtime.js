@@ -176,6 +176,9 @@ function remote() {
       await targetContext.route(U+'drive-config.json',r=>r.fulfill({contentType:'application/json',body:'null'}));
       await target.close();target=await targetContext.newPage();await target.goto(U+'recovery.html');
       await target.waitForFunction(()=>!document.getElementById('recovery-verify').disabled);
+      // Référence indépendante toujours disponible, repliée dans les options avancées.
+      assert.equal(await target.locator('#recovery-known-revision').isVisible(),false);
+      await target.locator('#recovery-advanced > summary').click();
       assert.equal(await target.locator('#recovery-known-revision').isVisible(),true);
       assert.equal(await target.locator('#recovery-known-sha').isVisible(),true);
       assert((await target.locator('main').textContent()).includes('La lignée seule ne prouve pas la présence de la dernière sauvegarde.'));

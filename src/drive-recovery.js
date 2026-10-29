@@ -129,7 +129,8 @@ const DriveRecovery = (() => {
       draft = null; return Object.freeze({ state: 'REOPEN_REQUIRED', revision: state.recoveryInit.revision.id });
     }); }
     async function verify(pass) { return locked(async () => {
-      const s = await store.read(), r = pending(s);
+      const s = await store.read(); if (!s) return fail('not-installed');
+      const r = pending(s);
       if (r.document === documentId) return fail('reopen-required');
       const bytes = await store.readRecovery(r.source);
       if (!(bytes instanceof Uint8Array) || await hash(bytes) !== r.source) return fail('integrity');
@@ -150,7 +151,7 @@ const DriveRecovery = (() => {
         selected = Object.freeze({ folder: value.folder, binding: value.binding }); },
       cancel() { epoch++; selected = null; draft = null; },
       exportCopy(ticket) { if (!draft || draft.ticket !== ticket || draft.generation !== epoch) return fail('confirmation'); return draft.bytes.slice(); },
-      async pendingCopy() { const s = await store.read(); const r = pending(s); const bytes = await store.readRecovery(r.source);
+      async pendingCopy() { const s = await store.read(); if (!s) return fail('not-installed'); const r = pending(s); const bytes = await store.readRecovery(r.source);
         if (!(bytes instanceof Uint8Array) || await hash(bytes) !== r.source) return fail('integrity'); return bytes.slice(); }
     });
   }

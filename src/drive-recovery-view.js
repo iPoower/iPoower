@@ -18,7 +18,9 @@
     $('recovery-verify').disabled = busy || !recovery || !reader;
     $('recovery-pending-copy').disabled = busy || !recovery;
   }
-  const errors = { 'not-empty': 'Ce navigateur contient déjà des données Race Control. Elles sont conservées. Utilise la procédure de sauvegarde puis de fusion contrôlée.',
+  const errors = { 'not-empty': 'Race Control contient déjà des données sur cet appareil : elles sont conservées. Ouvre l’app puis Réglages → Sauvegarde → Sauvegarder mes données : Google Drive les complète sans rien remplacer sans ton choix.',
+    'not-installed': 'Aucune copie installée sur cet appareil pour l’instant : connecte Google, vérifie la copie puis installe-la avant cette vérification.',
+    stockage: 'Stockage du navigateur indisponible ou incomplet (navigation privée, espace plein ou réglage Safari). Aucune donnée supprimée.',
     pending: 'Une opération existe déjà. Conserve sa copie et termine sa vérification ; aucun état n’est remplacé.',
     conflict: 'Plusieurs versions divergent ou la lignée est incomplète. Aucune version n’est choisie automatiquement.',
     absent: 'Aucune révision A2 trouvée dans ce dossier.', profile: 'Profil de chiffrement absent ou ambigu. Copies conservées.',
@@ -51,8 +53,10 @@
   };
   function download(bytes) {
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/json' })), a = document.createElement('a');
-    a.href = url; a.download = 'Race_Control_copie_chiffree.json'; a.rel = 'noopener'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+    a.href = url; a.download = 'Race_Control_copie_chiffree.json'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
+  let prepared = false, reopened = false;
+  try { reopened = sessionStorage.getItem('twrc.recovery.reopen') === '1'; sessionStorage.removeItem('twrc.recovery.reopen'); } catch { reopened = false; }
   // Sur l'origine partagée, ne lire aucun stockage privé et ne charger Google.
   if (location.protocol !== 'https:' || /(^|\.)github\.io$/.test(location.hostname)) {
     say('Récupération disponible uniquement sur l’origine Cloudflare dédiée et autorisée.'); paint(); return;
@@ -72,21 +76,22 @@
     const bytes = new Uint8Array(size); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
     reader = ControlVaultPacket.loadedVersion(window.TWRC_RECOVERY_BUILD, ControlVaultPacket.strictJson(bytes, 4));
     $('recovery-version').textContent = 'Version chargée : ' + reader + ' · ' + window.TWRC_RECOVERY_BUILD;
-    say('Vérification locale après réouverture disponible. Pour récupérer depuis Drive, prépare puis connecte Google.');
+    say(reopened ? 'Copie installée. Saisis ton code puis touche Vérifier la restauration.' : 'Pour récupérer depuis Google Drive, touche Se connecter à Google.');
     try {
       const cfg = await GoogleDriveSession.load(); if (cfg.raceOrigin !== location.origin) throw new Error('origin');
       session = GoogleDriveSession.create(cfg, provider);
-    } catch { say('Google Drive non activé sur cette version. La vérification d’une récupération déjà installée reste disponible.'); }
+      // Google chargé à l'avance : un seul geste suffit pour ouvrir la fenêtre de connexion.
+      if (!reopened) session.prepare().then(() => { prepared = true; paint(); }, () => {});
+    } catch { say(reopened ? 'Copie installée. Saisis ton code puis touche Vérifier la restauration.' : 'Google Drive non activé sur cette version. La vérification d’une récupération déjà installée reste disponible.'); }
   } catch { say('Version ou stockage non confirmé. Aucune récupération appliquée. Rétablis le réseau pour vérifier la version chargée.'); }
-  let prepared = false;
   $('recovery-connect').addEventListener('click', () => {
     if (busy || !session) return;
     // GIS doit conserver le geste utilisateur avant le premier await.
     if (prepared) {
       recovery.cancel(); selected = false; ticket = null;
       $('recovery-dedicated-list').replaceChildren();
-      const promise = session.connect(); action(async () => { await promise; say('Vérifie le compte affiché puis confirme-le.'); });
-    } else action(async () => { await session.prepare(); prepared = true; $('recovery-connect').textContent = 'Se connecter à Google'; say('Connexion prête. Appuie sur Se connecter à Google.'); });
+      const promise = session.connect(); action(async () => { await promise; await guided(); });
+    } else action(async () => { await session.prepare(); prepared = true; say('Google est prêt : touche encore Se connecter à Google.'); });
   });
   $('recovery-confirm-account').addEventListener('click', () => action(async () => {
     session.confirmAccount(session.identity.id); say('Compte confirmé. Choisis le dossier dédié existant ; aucun dossier ni fichier n’est créé ici.');
@@ -95,7 +100,19 @@
     if (busy) return; selected = false; ticket = null; recovery.cancel();
     const promise = session.chooseFolder(); action(async () => { recovery.select(await promise); selected = true; say('Dossier confirmé. Saisis le code Race Control pour vérifier les versions.'); });
   });
-  $('recovery-dedicated').addEventListener('click', () => action(async () => {
+  // Parcours guidé : compte puis dossier confirmés explicitement (boîtes de dialogue), mêmes contrôles qu'en mode avancé.
+  async function guided() {
+    if (!confirm('Récupérer les données sauvegardées avec le compte Google ' + session.identity.label + ' ?')) { say('Compte non confirmé. Rien n’a été lu ni écrit.'); return; }
+    session.confirmAccount(session.identity.id);
+    const folders = await listFolders();
+    if (folders.length !== 1) return;
+    const folder = folders[0];
+    if (!confirm('Récupérer depuis le dossier « ' + folder.name + ' » (référence ' + folder.id.slice(-8) + ') ?')) { say('Dossier non confirmé. Choisis-le dans la liste.'); return; }
+    recovery.select(await session.chooseDedicatedFolder(folder.id)); selected = true;
+    say('Dossier confirmé. Saisis ton code Race Control puis touche Vérifier la copie.'); $('recovery-code').focus();
+  }
+  $('recovery-dedicated').addEventListener('click', () => action(listFolders));
+  async function listFolders() {
     selected = false; ticket = null; recovery.cancel();
     $('recovery-preview-info').textContent = ''; $('recovery-consent').checked = false;
     $('recovery-dedicated-list').replaceChildren();
@@ -111,8 +128,9 @@
       }));
       $('recovery-dedicated-list').append(label, button);
     }
-    say(folders.length ? 'Dossiers dédiés retrouvés. Choisis explicitement celui à utiliser.' : 'Aucun dossier dédié autorisé trouvé. Vérifie le compte et la destination de la sauvegarde.');
-  }));
+    say(folders.length ? 'Dossiers dédiés retrouvés. Choisis explicitement celui à utiliser.' : 'Aucun dossier de sauvegarde Race Control trouvé sur ce compte. Vérifie le compte utilisé sur ton autre appareil.');
+    return folders;
+  }
   // Plusieurs têtes (conflit resté ouvert, appareil perdu) : aucune n'est choisie automatiquement.
   // Chaque tête est proposée ; l'autre reste sur Drive et sera fusionnée ensuite, conflits affichés.
   function offerHeads(heads, reference) {
@@ -143,11 +161,14 @@
     if (!$('recovery-consent').checked) return;
     await recovery.install(ticket, password(), true); ticket = null; $('recovery-code').value = '';
     session.disconnect(); selected = false;
-    say('Copie installée dans le coffre chiffré. Restauration à vérifier : ferme cette page, rouvre-la et utilise Vérifier après réouverture.');
+    say('Copie installée dans le coffre chiffré. La page se recharge pour la vérification…');
+    // Nouveau document = même contrôle que fermer puis rouvrir : relecture complète depuis le stockage.
+    try { sessionStorage.setItem('twrc.recovery.reopen', '1'); } catch { /* sans stockage de session : message générique */ }
+    setTimeout(() => location.reload(), 1200);
   }));
   $('recovery-verify').addEventListener('click', () => action(async () => {
     const proof = await recovery.verify(password()); $('recovery-code').value = '';
-    say('Restauration vérifiée après réouverture : toutes les valeurs du coffre correspondent à la révision ' + proof.revision + '. Tu peux ouvrir Race Control, le déverrouiller puis reconnecter le même compte et dossier.');
+    say('Restauration vérifiée après réouverture : toutes les valeurs du coffre correspondent à la révision ' + proof.revision + '. Ouvre Race Control, déverrouille-le avec ton code puis touche Sauvegarder mes données pour reprendre la sauvegarde automatique.');
     $('recovery-open-app').hidden = false;
   }));
   $('recovery-pending-copy').addEventListener('click', () => action(async () => { download(await recovery.pendingCopy()); say('Copie chiffrée de l’opération proposée au téléchargement.'); }));
