@@ -69,7 +69,7 @@ const until = async (page, fn, arg, timeout = 20000) => page.waitForFunction(fn,
 
 // Erreurs « expliquées » : uniquement des causes établies par la recette elle-même.
 function classify(text, url) {
-  if (/ERR_INTERNET_DISCONNECTED/.test(text) && /hors ligne/.test(current)) return 'coupure réseau simulée par la recette (étape hors ligne)';
+  if (/Failed to load resource|ERR_INTERNET_DISCONNECTED/.test(text) && /hors ligne/.test(current)) return 'coupure réseau simulée par la recette (étape hors ligne)';
   if (/Failed to load resource/.test(text) && url && !url.startsWith(ORIGIN)) return 'requête externe non simulée, bloquée par la recette (' + new URL(url).hostname + ')';
   if (/Failed to load resource: the server responded with a status of 404/.test(text) && url && url.startsWith(ORIGIN + '/data/')) return 'donnée relais fictive absente du jeu de test (' + url.slice(ORIGIN.length) + ')';
   return null;
@@ -348,6 +348,11 @@ async function journeys() {
     if (/motif : stockage/.test(msg)) throw new Error('message trompeur : « ' + msg.slice(0, 140) + ' » (rien n’est installé, le stockage fonctionne)');
     return msg.slice(0, 160);
   });
+  await step(f, J8, 'recovery.html : chaque bouton grisé explique l’étape qui le débloque', async () => {
+    const mute = await f.evaluate(() => [...document.querySelectorAll('main button')].filter(b => b.disabled && !b.title && !b.getAttribute('aria-describedby')).map(b => b.textContent.trim()));
+    if (mute.length) throw new Error(mute.length + ' bouton(s) grisé(s) sans explication : ' + mute.join(' · '));
+    return 'tous les boutons grisés sont expliqués';
+  });
   await step(s, J8, 'récupération refusée sur appareil déjà utilisé : message actionnable', async () => {
     const msg = await s.locator('#recovery-status').innerText();
     if (/procédure de sauvegarde puis de fusion contrôlée/.test(msg)) throw new Error('message sans action concrète : « ' + msg + ' »');
@@ -444,7 +449,7 @@ const ENUM = () => {
   const sel = 'button, a[href], input:not([type=hidden]):not([type=file]), select, textarea, summary, [role=button], label[for]';
   const vis = el => { const r = el.getBoundingClientRect(), s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !el.closest('[hidden]') && (!el.checkVisibility || el.checkVisibility()); };
   const seen = new Map();
-  return [...document.querySelectorAll(sel)].filter(vis).filter(el => el.tagName !== 'LABEL' || (document.getElementById(el.htmlFor) || {}).type === 'file').map(el => {
+  return [...document.querySelectorAll(sel)].filter(vis).filter(el => el.tagName !== 'LABEL' || (document.getElementById(el.htmlFor) || {}).type === 'file').filter(el => !el.closest('[aria-hidden="true"]')).map(el => {
     const field = /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName), lab = field && el.id ? document.querySelector('label[for="' + el.id + '"]') : null;
     const text = (el.getAttribute('aria-label') || (field ? (lab && lab.innerText) || el.placeholder || el.name || '' : el.innerText || el.value) || el.title || '').replace(/\s+/g, ' ').trim().slice(0, 70);
     const key = [el.tagName.toLowerCase(), el.type || '', el.dataset.act || '', el.dataset.v || el.dataset.i || el.dataset.car || '', el.id || '', el.dataset.bind || '', text].join('|');
@@ -460,7 +465,7 @@ async function locate(page, key) {
     const items = (0, eval)('(' + enumSrc + ')')(); const i = items.findIndex(x => x.key === key); if (i < 0) return null;
     const sel = 'button, a[href], input:not([type=hidden]):not([type=file]), select, textarea, summary, [role=button], label[for]';
     const vis = el => { const r = el.getBoundingClientRect(), s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !el.closest('[hidden]') && (!el.checkVisibility || el.checkVisibility()); };
-    return [...document.querySelectorAll(sel)].filter(vis).filter(el => el.tagName !== 'LABEL' || (document.getElementById(el.htmlFor) || {}).type === 'file')[i];
+    return [...document.querySelectorAll(sel)].filter(vis).filter(el => el.tagName !== 'LABEL' || (document.getElementById(el.htmlFor) || {}).type === 'file').filter(el => !el.closest('[aria-hidden="true"]'))[i];
   }, { key, enumSrc: ENUM.toString() });
 }
 async function closeDialogs(p) {
@@ -482,7 +487,9 @@ async function humanClick(el) {
 }
 async function explore() {
   const drive = fakeDrive([ORIGIN]);
-  const E = await device('E-exploration', drive), p = E.page;
+  const E = await device('E-exploration', drive); let p = E.page, blank = null;
+  // Écrans d'appareil vierge : chaque ouverture dans un contexte neuf (aucun stockage), comme un nouveau téléphone.
+  const fresh = async url => { if (blank) await finish(blank); blank = await device('E-appareil-vierge', drive); p = blank.page; p.__dialog = 'dismiss'; await p.goto(ORIGIN + url); await p.waitForTimeout(1500); };
   p.__dialog = 'dismiss';   // jamais de confirmation destructive pendant l'exploration (message relevé)
   const home = async () => { await p.goto(ORIGIN + '/'); await p.waitForLoadState('domcontentloaded'); await p.waitForTimeout(800); await unlock(p).catch(() => {}); };
   const screens = [
@@ -492,8 +499,8 @@ async function explore() {
     ['Garage', async () => { await home(); await p.locator('[data-act=view][data-v=garage]').first().click(); }],
     ['Analyse', async () => { await home(); await p.locator('[data-act=view][data-v=analyse]').first().click(); }],
     ['Paramètres', async () => { await home(); await openSettings(p); }],
-    ['Écran de code (premier lancement)', async () => { await p.context().clearCookies(); await p.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }).catch(() => {}); await p.goto(ORIGIN + '/'); await p.waitForTimeout(800); }],
-    ['Récupération (recovery.html)', async () => { await p.goto(ORIGIN + '/recovery.html'); await p.waitForTimeout(1500); }]
+    ['Écran de code (premier lancement)', () => fresh('/')],
+    ['Récupération (recovery.html)', () => fresh('/recovery.html')]
   ];
   for (const [screen, open] of screens.filter(([n]) => !process.env.SCREENS || process.env.SCREENS.split(',').some(x => n.startsWith(x)))) {
     current = 'exploration · ' + screen;
@@ -550,7 +557,7 @@ async function explore() {
       if (p.url().replace(/#.*/, '') !== before.url.replace(/#.*/, '') || await p.locator('#unlockPw').isVisible().catch(() => false) && screen !== 'Écran de code (premier lancement)') { try { await open(); } catch { /* */ } }
     }
   }
-  await finish(E);
+  await finish(E); if (blank) await finish(blank);
 }
 
 // ---------- 3. robustesse : clics aléatoires (équivalent gremlins.js, événements synthétiques dans la page) ----------
