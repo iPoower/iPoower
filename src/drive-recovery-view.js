@@ -18,7 +18,8 @@
     $('recovery-verify').disabled = busy || !recovery || !reader;
     $('recovery-pending-copy').disabled = busy || !recovery;
   }
-  const errors = { 'not-empty': 'Ce navigateur contient déjà des données Race Control. Elles sont conservées. Utilise la procédure de sauvegarde puis de fusion contrôlée.',
+  const errors = { 'not-empty': 'Race Control contient déjà des données sur cet appareil : elles sont conservées et cette récupération est réservée à un appareil vierge. Ouvre l’app, puis Paramètres → Sauvegarde → choisis le même compte et le même dossier : Google Drive complète tes données sans rien remplacer sans ton choix.',
+    'not-installed': 'Aucune copie installée sur cet appareil pour l’instant : connecte Google, vérifie la copie puis installe-la avant cette vérification.',
     pending: 'Une opération existe déjà. Conserve sa copie et termine sa vérification ; aucun état n’est remplacé.',
     conflict: 'Plusieurs versions divergent ou la lignée est incomplète. Aucune version n’est choisie automatiquement.',
     absent: 'Aucune révision A2 trouvée dans ce dossier.', profile: 'Profil de chiffrement absent ou ambigu. Copies conservées.',
