@@ -94,7 +94,8 @@ async function device(label, drive) {
     window.__hidden = false;
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => !!window.__hidden });
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => window.__hidden ? 'hidden' : 'visible' });
-    window.__mut = 0;
+    window.__mut = 0; window.__vaultKeys = [];
+    window.addEventListener('twrc-vault-change', e => { window.__vaultKeys.push(e.key); if (window.__vaultKeys.length > 40) window.__vaultKeys.shift(); });
     new MutationObserver(m => { window.__mut += m.length; }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
   }, { iphone });
   const dev = { offline: false };
@@ -412,7 +413,7 @@ async function badgeJourney() {
     if (km !== 18800) throw new Error('compteur sur l’appareil revenu au premier plan : ' + km);
     return 'modification de l’autre appareil reçue ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s après le retour';
   });
-  await step(g, J9, 'écran principal avec badge (capture après)', async () => { await g.locator('[data-act=view][data-v=meteo]').first().click(); await g.evaluate(() => scrollTo(0, 0)); await g.waitForTimeout(800); return badgeText(g); });
+  await step(g, J9, 'écran principal avec badge (capture après)', async () => { await g.locator('[data-act=view][data-v=meteo]').first().click(); await g.evaluate(() => scrollTo(0, 0)); await g.waitForTimeout(800); return (await badgeText(g)) + ' · dernières clés écrites : ' + (await g.evaluate(() => window.__vaultKeys.slice(-6).join(','))); });
   for (const dev of [G, H]) await finish(dev);
 }
 
