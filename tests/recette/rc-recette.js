@@ -421,7 +421,7 @@ async function badgeJourney() {
 // Chaque élément visible (bouton, lien, champ, sélecteur, résumé) est retrouvé par sa description, puis actionné.
 const ENUM = () => {
   const sel = 'button, a[href], input:not([type=hidden]):not([type=file]), select, textarea, summary, [role=button], label[for]';
-  const vis = el => { const r = el.getBoundingClientRect(), s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !el.closest('[hidden]'); };
+  const vis = el => { const r = el.getBoundingClientRect(), s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !el.closest('[hidden]') && (!el.checkVisibility || el.checkVisibility()); };
   const seen = new Map();
   return [...document.querySelectorAll(sel)].filter(vis).filter(el => el.tagName !== 'LABEL' || (document.getElementById(el.htmlFor) || {}).type === 'file').map(el => {
     const field = /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName), lab = field && el.id ? document.querySelector('label[for="' + el.id + '"]') : null;
@@ -438,7 +438,7 @@ async function locate(page, key) {
   return page.evaluateHandle(({ key, enumSrc }) => {
     const items = (0, eval)('(' + enumSrc + ')')(); const i = items.findIndex(x => x.key === key); if (i < 0) return null;
     const sel = 'button, a[href], input:not([type=hidden]):not([type=file]), select, textarea, summary, [role=button], label[for]';
-    const vis = el => { const r = el.getBoundingClientRect(), s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !el.closest('[hidden]'); };
+    const vis = el => { const r = el.getBoundingClientRect(), s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !el.closest('[hidden]') && (!el.checkVisibility || el.checkVisibility()); };
     return [...document.querySelectorAll(sel)].filter(vis).filter(el => el.tagName !== 'LABEL' || (document.getElementById(el.htmlFor) || {}).type === 'file')[i];
   }, { key, enumSrc: ENUM.toString() });
 }
@@ -474,11 +474,13 @@ async function explore() {
     ['Écran de code (premier lancement)', async () => { await p.context().clearCookies(); await p.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }).catch(() => {}); await p.goto(ORIGIN + '/'); await p.waitForTimeout(800); }],
     ['Récupération (recovery.html)', async () => { await p.goto(ORIGIN + '/recovery.html'); await p.waitForTimeout(1500); }]
   ];
-  for (const [screen, open] of screens) {
+  for (const [screen, open] of screens.filter(([n]) => !process.env.SCREENS || process.env.SCREENS.split(',').some(x => n.startsWith(x)))) {
     current = 'exploration · ' + screen;
-    try { await open(); } catch (e) { matrix.push({ screen, element: '(ouverture de l’écran)', browser: BROWSER, result: 'KO', detail: String(e.message).slice(0, 200) }); continue; }
-    await p.waitForTimeout(500); await shot(p, 'exploration-' + screen);
-    const items = await p.evaluate(ENUM);
+    try { await open().catch(async () => { await p.waitForTimeout(1500); await open(); }); } catch (e) { matrix.push({ screen, element: '(ouverture de l’écran)', browser: BROWSER, result: 'KO', detail: String(e.message).slice(0, 200) }); continue; }
+    // Comme un utilisateur curieux : chaque section repliable est dépliée, puis les titres de section sont actionnés en dernier.
+    const expand = () => p.evaluate(all => document.querySelectorAll('details:not([open])').forEach(d => { if (all || d.id !== 'settings') d.open = true; }), screen === 'Paramètres').catch(() => {});
+    await expand(); await p.waitForTimeout(500); await shot(p, 'exploration-' + screen);
+    const items = (await p.evaluate(ENUM)).sort((a, b) => (a.tag === 'summary') - (b.tag === 'summary'));
     console.log(`🔎 ${screen} : ${items.length} éléments`);
     for (const it of items) {
       const label = (it.text || it.id || it.act || it.tag) + (it.act ? ' [' + it.act + ']' : '') + (it.id ? ' #' + it.id : '');
@@ -487,7 +489,7 @@ async function explore() {
       if (it.href && !it.href.startsWith(ORIGIN)) { row.result = 'NON TESTABLE'; row.detail = 'lien externe ' + new URL(it.href).hostname + ' (non suivi)'; continue; }
       if (it.disabled) { row.result = it.why ? 'DÉSACTIVÉ (expliqué)' : 'DÉSACTIVÉ SANS EXPLICATION'; row.detail = it.why || 'aucun title / aria-describedby'; continue; }
       let h = await locate(p, it.key).catch(() => null);
-      if (!h || !(await h.evaluate(x => !!x).catch(() => false))) { try { await open(); await p.waitForTimeout(400); } catch { /* */ } h = await locate(p, it.key).catch(() => null); }
+      if (!h || !(await h.evaluate(x => !!x).catch(() => false))) { try { await open(); await expand(); await p.waitForTimeout(400); } catch { /* */ } h = await locate(p, it.key).catch(() => null); }
       if (!h || !(await h.evaluate(x => !!x).catch(() => false))) { row.result = 'NON RETROUVÉ'; row.detail = 'élément disparu (dépend d’un état précédent)'; continue; }
       await closeDialogs(p);   // une fenêtre modale ouverte par l'élément précédent ne doit pas masquer les suivants
       h = await locate(p, it.key).catch(() => null);
@@ -500,18 +502,25 @@ async function explore() {
         if (it.type === 'range') await el.evaluate(x => { x.value = x.min || 0; x.dispatchEvent(new Event('input', { bubbles: true })); x.dispatchEvent(new Event('change', { bubbles: true })); });
         else if (it.tag === 'select') { const vals = await el.evaluate(s => [...s.options].map(o => o.value)); const now = await el.evaluate(s => s.value); const v = vals.find(x => x !== now); if (v !== undefined) await el.selectOption(v); }
         else if (it.tag === 'input' && ['checkbox', 'radio'].includes(it.type)) await humanClick(el);
+        else if ((it.tag === 'input' || it.tag === 'textarea') && await el.evaluate(x => x.readOnly)) { row.note = 'champ en lecture seule (valeur à copier)'; await el.click({ timeout: 2000 }); }
         else if (it.tag === 'input' || it.tag === 'textarea') { const v = it.type === 'number' ? '12' : it.type === 'date' ? '2026-10-15' : it.type === 'time' ? '07:45' : it.type === 'password' ? 'code-faux-recette' : 'Test recette'; await el.fill(v, { timeout: 3000 }); await el.press('Tab').catch(() => {}); }
         else row.note = await humanClick(el);
         await p.waitForTimeout(450);
         const after = { err: errors.filter(e => !e.explained).length, mut: await p.evaluate(() => window.__mut).catch(() => -1), url: p.url() };
         const newErr = errors.filter(e => !e.explained).slice(before.err);
         if (newErr.length) { row.result = 'KO'; row.detail = newErr.map(e => e.text).join(' / ').slice(0, 250); }
-        else if (after.url !== before.url || after.mut !== before.mut || dialogs.length > before.dlg || downloaded || (p.__chooser || 0) > before.fc || popups.length) {
+        else if (/lecture seule/.test(row.note || '') || after.url !== before.url || after.mut !== before.mut || dialogs.length > before.dlg || downloaded || (p.__chooser || 0) > before.fc || popups.length) {
           row.result = 'OK'; row.detail = [row.note || '', after.url !== before.url ? 'navigation ' + after.url.replace(ORIGIN, '') : '', dialogs.length > before.dlg ? 'boîte : « ' + dialogs[dialogs.length - 1].message.slice(0, 80) + ' » (annulée)' : '', downloaded ? 'téléchargement' : '', (p.__chooser || 0) > before.fc ? 'sélecteur de fichier' : '', popups.length ? 'fenêtre ouverte' : ''].filter(Boolean).join(' · ');
         } else { row.result = 'SANS EFFET VISIBLE'; row.detail = 'aucun changement du DOM, ni navigation, ni boîte de dialogue'; }
       } catch (e) {
         const m = String(e.message), cover = /<([^>]{1,120})> (?:from <[^>]*> subtree )?intercepts pointer events/.exec(m);
-        row.result = cover ? 'MASQUÉ' : 'KO'; row.detail = cover ? 'inatteignable au doigt : recouvert par <' + cover[1] + '>' : 'action impossible : ' + m.split('\n')[0].slice(0, 200);
+        const why = m.split('\n').map(l => l.replace(/\x1b\[[0-9;]*m/g, '').trim()).filter(l => /^- /.test(l) && !/^- (waiting|retrying)/.test(l)).slice(-1)[0] || '';
+        // Diagnostic : quel ancêtre rend l'élément invisible pour le navigateur (repli, onglet inactif…).
+        const hidden = /not visible/.test(why) ? await h.evaluate(x => { let a = x; while (a && a !== document.body) { const st = getComputedStyle(a), r = a.getBoundingClientRect();
+          if (st.display === 'none' || st.visibility === 'hidden' || st.contentVisibility === 'hidden' || +st.opacity === 0 || r.width === 0 || r.height === 0) return a.tagName.toLowerCase() + (a.id ? '#' + a.id : '') + (a.className && typeof a.className === 'string' ? '.' + a.className.split(' ')[0] : '') + ' (' + (st.display === 'none' ? 'display:none' : +st.opacity === 0 ? 'opacity:0' : st.visibility === 'hidden' ? 'visibility:hidden' : 'taille nulle') + ')';
+          a = a.parentElement; } return x.isConnected ? 'aucun ancêtre masqué' : 'élément retiré du DOM'; }).catch(() => 'élément retiré du DOM') : '';
+        row.result = cover ? 'MASQUÉ' : hidden ? 'NON RETROUVÉ' : 'KO';
+        row.detail = cover ? 'inatteignable au doigt : recouvert par <' + cover[1] + '>' : hidden ? 'devenu invisible avant le clic : ' + hidden : 'action impossible : ' + m.split('\n')[0].slice(0, 120) + (why ? ' · ' + why.slice(0, 120) : '');
       }
       finally { p.off('download', onDl); p.context().off('page', onPopup); }
       // Rester sur l'écran exploré (verrouillage, navigation, réinitialisation…).
@@ -525,7 +534,7 @@ async function explore() {
 const GREMLINS = async ({ ms, seed, origin }) => {
   let x = seed; const rnd = k => { x = (x * 1103515245 + 12345) % 2147483648; return x % k; };
   const sel = 'button, a[href], input:not([type=hidden]):not([type=file]), select, textarea, summary, [role=button], [data-act]';
-  const vis = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && !el.closest('[hidden]') && getComputedStyle(el).visibility !== 'hidden'; };
+  const vis = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && !el.closest('[hidden]') && getComputedStyle(el).visibility !== 'hidden' && (!el.checkVisibility || el.checkVisibility()); };
   const junk = ['', 'x', '-5', '0', '99999999', '2026-02-30', '<b>é</b>', '12', '   ', 'Lieu A'];
   const t0 = Date.now(); let n = 0;
   window.__gremlins = { n: 0, last: [] };
