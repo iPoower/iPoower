@@ -440,6 +440,11 @@ async function locate(page, key) {
     return [...document.querySelectorAll(sel)].filter(vis).filter(el => el.tagName !== 'LABEL' || (document.getElementById(el.htmlFor) || {}).type === 'file')[i];
   }, { key, enumSrc: ENUM.toString() });
 }
+async function closeDialogs(p) {
+  if (!await p.evaluate(() => !!document.querySelector('dialog[open]')).catch(() => false)) return;
+  await p.keyboard.press('Escape').catch(() => {});
+  await p.evaluate(() => document.querySelectorAll('dialog[open]').forEach(d => d.close())).catch(() => {});
+}
 async function humanClick(el) {
   await el.evaluate(x => x.scrollIntoView({ block: 'center', inline: 'nearest' })).catch(() => {});
   try { await el.click({ timeout: 2000 }); return ''; }
@@ -482,12 +487,16 @@ async function explore() {
       let h = await locate(p, it.key).catch(() => null);
       if (!h || !(await h.evaluate(x => !!x).catch(() => false))) { try { await open(); await p.waitForTimeout(400); } catch { /* */ } h = await locate(p, it.key).catch(() => null); }
       if (!h || !(await h.evaluate(x => !!x).catch(() => false))) { row.result = 'NON RETROUVÉ'; row.detail = 'élément disparu (dépend d’un état précédent)'; continue; }
+      await closeDialogs(p);   // une fenêtre modale ouverte par l'élément précédent ne doit pas masquer les suivants
+      h = await locate(p, it.key).catch(() => null);
+      if (!h || !(await h.evaluate(x => !!x).catch(() => false))) { row.result = 'NON RETROUVÉ'; row.detail = 'élément disparu (dépend d’un état précédent)'; continue; }
       const before = { err: errors.filter(e => !e.explained).length, mut: await p.evaluate(() => window.__mut).catch(() => 0), url: p.url(), dlg: dialogs.length, fc: p.__chooser || 0 };
       let downloaded = false; const onDl = () => { downloaded = true; }; p.on('download', onDl);
       const popups = []; const onPopup = pg => { popups.push(pg); pg.close().catch(() => {}); }; p.context().on('page', onPopup);
       try {
         const el = h.asElement();
-        if (it.tag === 'select') { const vals = await el.evaluate(s => [...s.options].map(o => o.value)); const now = await el.evaluate(s => s.value); const v = vals.find(x => x !== now); if (v !== undefined) await el.selectOption(v); }
+        if (it.type === 'range') await el.evaluate(x => { x.value = x.min || 0; x.dispatchEvent(new Event('input', { bubbles: true })); x.dispatchEvent(new Event('change', { bubbles: true })); });
+        else if (it.tag === 'select') { const vals = await el.evaluate(s => [...s.options].map(o => o.value)); const now = await el.evaluate(s => s.value); const v = vals.find(x => x !== now); if (v !== undefined) await el.selectOption(v); }
         else if (it.tag === 'input' && ['checkbox', 'radio'].includes(it.type)) await humanClick(el);
         else if (it.tag === 'input' || it.tag === 'textarea') { const v = it.type === 'number' ? '12' : it.type === 'date' ? '2026-10-15' : it.type === 'time' ? '07:45' : it.type === 'password' ? 'code-faux-recette' : 'Test recette'; await el.fill(v, { timeout: 3000 }); await el.press('Tab').catch(() => {}); }
         else row.note = await humanClick(el);
@@ -591,6 +600,7 @@ function report(drive, monkeyStats) {
   let drive = null, monkeyStats = null;
   try {
     if (!process.env.ONLY || process.env.ONLY.includes('parcours')) drive = await journeys();
+    else if (process.env.ONLY.includes('badge')) await badgeJourney();
     if (!process.env.ONLY || process.env.ONLY.includes('exploration')) await explore();
     if ((!process.env.ONLY || process.env.ONLY.includes('monkey')) && MONKEY_MS > 0) monkeyStats = await monkey();
   } finally { await browser.close().catch(() => {}); }
