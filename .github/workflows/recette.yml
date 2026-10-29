@@ -1,0 +1,57 @@
+name: Race Control · recette testeur (Phase T)
+# Parcours cliqués comme un utilisateur, exploration de chaque bouton, clics aléatoires (5 min).
+# Google Identity et Drive simulés, données fictives uniquement, aucune requête externe.
+# Traces Playwright, captures, matrice de couverture et erreurs console publiées en artefacts.
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tools/**'
+      - 'tests/recette/**'
+      - '.github/workflows/recette.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recette:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Dépendances reproductibles
+        run: npm ci --no-audit --no-fund
+      - name: Navigateur ${{ matrix.browser }}
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Fixtures fictives (agenda chiffré de test)
+        run: node tests/run-ci.js --prepare-only
+      - name: Recette ${{ matrix.browser }} (PC Chromium · iPhone WebKit autonome)
+        env:
+          BROWSER: ${{ matrix.browser }}
+          MONKEY_MS: '300000'
+        run: node tests/recette/rc-recette.js
+      - name: Résumé
+        if: always()
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          d="recette-output/$BROWSER"
+          if [ -f "$d/PARCOURS.md" ]; then cat "$d/PARCOURS.md" >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ -f "$d/MATRICE.md" ]; then head -n 6 "$d/MATRICE.md" >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Traces, captures et matrice
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: recette-${{ matrix.browser }}
+          path: recette-output/${{ matrix.browser }}
+          retention-days: 14
+          if-no-files-found: error
