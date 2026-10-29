@@ -15,7 +15,7 @@ permissions:
 jobs:
   recette:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:

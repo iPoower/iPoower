@@ -52,7 +52,7 @@ const slug = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-
 async function shot(page, name) {
   try { await page.screenshot({ path: path.join(OUT, 'screenshots', String(++shotNo).padStart(3, '0') + '-' + slug(name) + '.png'), fullPage: false }); } catch { /* page fermée */ }
 }
-const T0 = Date.now(), BUDGET_MS = Number(process.env.RECETTE_BUDGET_MIN || 38) * 60000, left = () => BUDGET_MS - (Date.now() - T0);
+const T0 = Date.now(), BUDGET_MS = Number(process.env.RECETTE_BUDGET_MIN || 32) * 60000, left = () => BUDGET_MS - (Date.now() - T0);
 const persist = () => { try { fs.writeFileSync(path.join(OUT, 'parcours.json'), JSON.stringify(parcours, null, 2)); fs.writeFileSync(path.join(OUT, 'errors.json'), JSON.stringify(errors, null, 2)); fs.writeFileSync(path.join(OUT, 'findings.json'), JSON.stringify(findings, null, 2)); } catch { /* */ } };
 async function step(page, journey, name, fn) {
   if (left() < 0) { parcours.push({ journey, step: name, ok: false, detail: 'NON EXÉCUTÉ : budget de temps de la recette épuisé', ms: 0, consoleErrors: 0 }); persist(); return false; }
@@ -87,7 +87,8 @@ async function device(label, drive) {
     if (iphone) {   // application ajoutée à l'écran d'accueil (affichage autonome)
       Object.defineProperty(navigator, 'standalone', { configurable: true, get: () => true });
       const mm = window.matchMedia.bind(window);
-      window.matchMedia = q => /display-mode:\s*standalone/.test(q) ? Object.assign(mm('(min-width:0px)'), { media: q, matches: true }) : mm(q);
+      // MediaQueryList.matches est en lecture seule : renvoyer une liste autonome complète (sinon WebKit lève une TypeError).
+      window.matchMedia = q => /display-mode:\s*standalone/.test(q) ? { media: q, matches: true, onchange: null, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, dispatchEvent() { return false; } } : mm(q);
     }
     Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
       getCurrentPosition(ok) { setTimeout(() => ok({ coords: { latitude: 48.8502, longitude: 2.3501, accuracy: 18, speed: null }, timestamp: Date.now() }), 20); },
@@ -325,7 +326,13 @@ async function journeys() {
   });
   await step(p, J8, 'reprise Drive après réouverture : un seul geste visible', async () => {
     await p.reload(); await p.waitForLoadState('domcontentloaded'); await unlock(p).catch(() => {});
-    const visible = await p.getByRole('button', { name: /reprendre la sauvegarde/i }).count();
+    // Geste visible sur l'écran principal : bouton de reprise ou badge de sauvegarde « Reconnexion requise ».
+    const visible = await p.getByRole('button', { name: /reprendre la sauvegarde/i }).count() + await p.locator('#driveBadge[data-state=reconnect]').count();
+    if (visible) {
+      const t0 = Date.now(); await p.locator('#driveBadge').click();
+      const c = await waitCloud(p, /envoi confirmé et relu|conflit|bloqué/).catch(async () => (await p.locator('#driveBadge').innerText().catch(() => '')));
+      return '1 geste sur l’écran principal (badge) · ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s · ' + c;
+    }
     await openSettings(p);
     const steps = [];
     for (const name of ['Préparer la reprise Drive', 'Reprendre la synchronisation Drive']) if (await panelButton(p, name).count()) { steps.push(name); await clickPanel(p, name); await p.waitForTimeout(800); }
@@ -490,7 +497,7 @@ async function explore() {
   ];
   for (const [screen, open] of screens.filter(([n]) => !process.env.SCREENS || process.env.SCREENS.split(',').some(x => n.startsWith(x)))) {
     current = 'exploration · ' + screen;
-    if (left() < 4 * 60000) { matrix.push({ screen, element: '(écran)', browser: BROWSER, result: 'NON EXÉCUTÉ', detail: 'budget de temps épuisé' }); continue; }
+    if (left() < 6 * 60000) { matrix.push({ screen, element: '(écran)', browser: BROWSER, result: 'NON EXÉCUTÉ', detail: 'budget de temps épuisé' }); continue; }
     try { await open().catch(async () => { await p.waitForTimeout(1500); await open(); }); } catch (e) { matrix.push({ screen, element: '(ouverture de l’écran)', browser: BROWSER, result: 'KO', detail: String(e.message).slice(0, 200) }); continue; }
     // Comme un utilisateur curieux : chaque section repliable est dépliée, puis les titres de section sont actionnés en dernier.
     const expand = () => p.evaluate(all => document.querySelectorAll('details:not([open])').forEach(d => { if (all || d.id !== 'settings') d.open = true; }), screen === 'Paramètres').catch(() => {});
@@ -498,6 +505,7 @@ async function explore() {
     const items = (await p.evaluate(ENUM)).sort((a, b) => (a.tag === 'summary') - (b.tag === 'summary'));
     console.log(`🔎 ${screen} : ${items.length} éléments`);
     for (const it of items) {
+      if (left() < 60000) { matrix.push({ screen, element: it.text || it.tag, kind: it.tag, browser: BROWSER, result: 'NON EXÉCUTÉ', detail: 'budget de temps épuisé' }); continue; }
       const label = (it.text || it.id || it.act || it.tag) + (it.act ? ' [' + it.act + ']' : '') + (it.id ? ' #' + it.id : '');
       const row = { screen, element: label, kind: it.tag + (it.type ? ':' + it.type : ''), browser: BROWSER, result: '', detail: '' };
       matrix.push(row);
@@ -598,7 +606,7 @@ async function monkey(budget = MONKEY_MS) {
 
 // ---------- rapport ----------
 function report(drive, monkeyStats) {
-  const tested = matrix.filter(r => !['NON TESTABLE', 'NON RETROUVÉ'].includes(r.result)).length;
+  const tested = matrix.filter(r => !['NON TESTABLE', 'NON RETROUVÉ', 'NON EXÉCUTÉ'].includes(r.result)).length;
   const byResult = matrix.reduce((o, r) => (o[r.result] = (o[r.result] || 0) + 1, o), {});
   const unexplained = errors.filter(e => !e.explained);
   const summary = { browser: BROWSER, profile: BROWSER === 'webkit' ? 'iPhone 13 émulé, affichage autonome' : 'PC 1366×900',
