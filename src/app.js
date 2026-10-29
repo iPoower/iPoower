@@ -3810,7 +3810,9 @@ function recordJournal() {
     const depI = m.byTime.get(date + 'T' + S.work.dep.slice(0, 2) + ':00');
     const lv = {}; TCARS().forEach(c => { const v = depI != null ? hourVerdict(c, m.hs, depI) : null; if (v) lv[c.id] = v.level; });
     const rec = { T: Math.round(mn('T') * 10) / 10, Tr: Math.round(mn('Tr') * 10) / 10, ice: Math.max(...xs.map(x => x.ice && x.ice.level || 0)), vis: Math.round(mn('vis')), lv };
-    if (JSON.stringify(J[date]) !== JSON.stringify(rec)) { J[date] = rec; changed = true; }
+    // Un matin enregistré n'est plus recalculé : sinon chaque appareil réécrirait sans fin sa propre estimation
+    // et la synchronisation PC ↔ iPhone ne convergerait jamais (fusion déterministe dans SyncMerge).
+    if (!J[date]) { J[date] = rec; changed = true; }
   });
   const keys = Object.keys(J).sort(); if (keys.length > 400) keys.slice(0, keys.length - 400).forEach(k => delete J[k]);
   if (changed) lsSet('twrc.settings.v1', JSON.stringify(S));   // un journal automatique ne configure pas les lieux et voitures
