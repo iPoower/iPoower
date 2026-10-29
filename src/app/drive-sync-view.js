@@ -124,7 +124,7 @@ function driveBadgeState() {
   if (st.state === 'SYNC_BLOCKED' && /en attente/.test(st.message)) return { cls: 'cache', icon: '⏳', text: 'Envoi en attente' + wait, hint: 'Nouvel essai automatique.', act: 'open' };
   if (st.state === 'CONFLICT' || st.state === 'SYNC_BLOCKED') return { cls: 'cache', icon: '⚠️', text: 'Action requise', hint: st.message || 'Ouvre Sauvegarde.', act: 'open' };
   if (st.state === 'SYNCED' && !n) return { cls: 'live', icon: '☁️✓', text: 'À jour · ' + DRIVE_HM.format(B.syncedAt || Date.now()), hint: 'Dernière sauvegarde envoyée, relue et vérifiée.', act: 'open' };
-  return { cls: 'cache', icon: '⏳', text: 'Envoi en cours' + wait, hint: 'Envoi, relecture et vérification automatiques.', act: 'open' };
+  return { cls: 'cache', icon: '⏳', text: 'Envoi en cours', hint: 'Envoi, relecture et vérification automatiques.', act: 'open' };
 }
 function renderDriveBadge() {
   if (!DRIVE_UI.config) return;
