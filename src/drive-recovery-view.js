@@ -17,6 +17,11 @@
     $('recovery-install').disabled = busy || !ticket || !$('recovery-consent').checked;
     $('recovery-verify').disabled = busy || !recovery || !reader;
     $('recovery-pending-copy').disabled = busy || !recovery;
+    // Un bouton grisé dit toujours quelle étape le débloque (infobulle et lecteur d'écran).
+    const why = { 'recovery-confirm-account': 'Connecte-toi d’abord à Google.', 'recovery-dedicated': 'Confirme d’abord le compte Google.', 'recovery-folder': 'Confirme d’abord le compte Google.',
+      'recovery-preview': 'Choisis d’abord le dossier dédié.', 'recovery-export': 'Vérifie d’abord les versions chiffrées.',
+      'recovery-install': ticket ? 'Coche d’abord la confirmation ci-dessus.' : 'Vérifie d’abord les versions chiffrées.', 'recovery-verify': 'Version de l’app en cours de vérification.', 'recovery-pending-copy': 'Aucune opération en cours.' };
+    for (const [id, text] of Object.entries(why)) { const b = $(id); if (b.disabled && !busy) b.title = text; else b.removeAttribute('title'); }
   }
   const errors = { 'not-empty': 'Race Control contient déjà des données sur cet appareil : elles sont conservées et cette récupération est réservée à un appareil vierge. Ouvre l’app, puis Paramètres → Sauvegarde → choisis le même compte et le même dossier : Google Drive complète tes données sans rien remplacer sans ton choix.',
     'not-installed': 'Aucune copie installée sur cet appareil pour l’instant : connecte Google, vérifie la copie puis installe-la avant cette vérification.',
