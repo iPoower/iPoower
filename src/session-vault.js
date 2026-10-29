@@ -586,7 +586,7 @@ const SessionVault = (() => {
         expire(); if (st.mode !== 'vault' || st.error || st.mem.dirty.size) throw new Error('Enregistrement local à confirmer.');
         const epoch = st.epoch, mem = st.mem, guard = () => guardSession(epoch, mem);
         const data = await latest(guard); guard();
-        if (data.values[JournalArchive.KEY] == null) throw new Error('Exporte et vérifie une copie avant d’activer la synchronisation.');
+        if (data.values[JournalArchive.KEY] == null) throw Object.assign(new Error('Exporte et vérifie une copie avant d’activer la synchronisation.'), { code: 'export' });
         let descriptor; try { descriptor = JSON.parse(session.getItem(SESSION)); } catch { /* code requis */ }
         return { values: { ...data.values }, signal: raw.getItem(LOCK_SIGNAL), expiresAt: st.expiresAt,
           binding: descriptor && /^[0-9a-f]{32}$/.test(descriptor.id) ? 'tab:' + descriptor.id : null };

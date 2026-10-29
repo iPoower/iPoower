@@ -331,6 +331,27 @@ function drive() {
     assert(!JSON.stringify(dev.state).includes('synthetic-runtime-code'), 'aucun code dans l’état de synchronisation');
     console.log('✅ arrière-plan : envoi anticipé de la dernière saisie, délai de reprise après échec respecté');
   }
+  {
+    // Recette NOESIS 13.6 : chaque blocage affiche son vrai motif, jamais « stockage local non confirmé » par défaut.
+    const net = drive(), noSettings = owner(net, 1, 'sans-reglage');
+    noSettings.edit('twrc.settings.v1', undefined);
+    await noSettings.controller.run(true);
+    assert.equal(noSettings.controller.status.message, 'enregistre d’abord un réglage sur cet appareil, puis réessaie');
+    assert.equal(net.files.size, 0, 'aucun envoi sans réglage enregistré');
+    const notExported = owner(drive(), 1, 'sans-export');
+    notExported.vault.syncSnapshot = async () => { throw Object.assign(new Error('Exporte et vérifie une copie avant d’activer la synchronisation.'), { code: 'export' }); };
+    await notExported.controller.run(true);
+    assert.equal(notExported.controller.status.message, 'copie complète à exporter d’abord (Réglages → Sauvegarde → Exporter)');
+    const bug = owner(drive(), 1, 'imprevu');
+    bug.vault.syncSnapshot = async () => { throw new TypeError('imprévu'); };
+    await bug.controller.run(true);
+    assert.equal(bug.controller.status.message, 'erreur inattendue : données locales conservées, réessaie');
+    const disk = owner(drive(), 1, 'disque');
+    disk.vault.syncSnapshot = async () => { throw new Error('stockage'); };
+    await disk.controller.run(true);
+    assert.equal(disk.controller.status.message, 'stockage local non confirmé', 'un vrai échec IndexedDB garde son libellé');
+    console.log('✅ motifs de blocage explicites : export, réglage, erreur inattendue, stockage');
+  }
   await require('./lib/drive-recovery-checks')();
 
 })().catch(e => { console.error(e); process.exitCode = 1; });

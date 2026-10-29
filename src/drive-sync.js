@@ -8,7 +8,8 @@ const DriveSync = (() => {
   const id = crypt => [...crypt.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, '0')).join('');
   function projection(values) {
     const out = Object.fromEntries(Object.entries(values).filter(([k]) => !SyncMerge.device(k)));
-    if (!out[JournalArchive.KEY] || !out[SyncMerge.SETTINGS]) return fail('recovery');
+    if (!out[JournalArchive.KEY]) return fail('export');
+    if (!out[SyncMerge.SETTINGS]) return fail('settings');
     JournalArchive.read(out[JournalArchive.KEY]);
     if (out[JournalArchive.CONTEXT]) {
       const c = JSON.parse(out[JournalArchive.CONTEXT]), d = c.debrief || {};
@@ -246,8 +247,8 @@ const DriveSync = (() => {
       try { await locks.request(LOCK, { ifAvailable: true }, lock => lock ? runInside(force, flush) : undefined); }
       catch (e) {
         blocked = true;
-        const code = e.code || (e.conflict ? 'network' : 'stockage');
-        message = ({ auth: 'reconnexion', code: 'code requis', CODE_REQUIRED: 'code requis', AUTHENTICATION_FAILED: 'code requis', binding: 'autre compte ou dossier : envoi arrêté', conflict: 'conflit : versions conservées', quota: 'espace Drive insuffisant', integrity: 'intégrité à vérifier : envoi bloqué, identifiant conservé', recovery: 'copie de récupération à vérifier', stockage: 'stockage local non confirmé', PRODUCER_TOO_NEW: 'version plus récente : mets Race Control à jour', UNKNOWN_READER_VERSION: 'version chargée non confirmée : vérifie la mise à jour', FILE_TOO_LARGE: 'copie trop volumineuse : envoi arrêté sans troncature', CONSERVATION_BLOCKED: 'contenu à vérifier : copies conservées' })[code] || 'en attente · transfert non confirmé';
+        const code = e.code || (e.conflict ? 'network' : e.message === 'stockage' ? 'stockage' : 'unexpected');
+        message = ({ auth: 'reconnexion', code: 'code requis', CODE_REQUIRED: 'code requis', AUTHENTICATION_FAILED: 'code requis', binding: 'autre compte ou dossier : envoi arrêté', export: 'copie complète à exporter d’abord (Réglages → Sauvegarde → Exporter)', settings: 'enregistre d’abord un réglage sur cet appareil, puis réessaie', unexpected: 'erreur inattendue : données locales conservées, réessaie', conflict: 'conflit : versions conservées', quota: 'espace Drive insuffisant', integrity: 'intégrité à vérifier : envoi bloqué, identifiant conservé', recovery: 'copie de récupération à vérifier', stockage: 'stockage local non confirmé', PRODUCER_TOO_NEW: 'version plus récente : mets Race Control à jour', UNKNOWN_READER_VERSION: 'version chargée non confirmée : vérifie la mise à jour', FILE_TOO_LARGE: 'copie trop volumineuse : envoi arrêté sans troncature', CONSERVATION_BLOCKED: 'contenu à vérifier : copies conservées' })[code] || 'en attente · transfert non confirmé';
         try {
           await locks.request(LOCK, async () => {
             const s = await read(), kind = ['auth', 'quota', 'conflict'].includes(code) ? code : /code|CODE_REQUIRED|AUTHENTICATION/.test(code) ? 'code' :

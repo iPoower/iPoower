@@ -29,14 +29,22 @@
     limit: 'Historique trop volumineux pour cette récupération. Aucune version n’est tronquée ou supprimée.',
     integrity: 'Intégrité non confirmée. Les copies et les données locales sont conservées.',
     checkpoint: 'Référence saisie invalide, absente ou différente : récupération bloquée. Conserve les copies et retrouve les deux champs du reçu connu. Aucune donnée locale remplacée.',
-    'local-changed': 'Le coffre local diffère de la copie choisie. Aucune réussite annoncée ; conserve les deux copies.' };
+    'local-changed': 'Le coffre local diffère de la copie choisie. Aucune réussite annoncée ; conserve les deux copies.',
+    code: 'Code Race Control manquant : saisis-le avant de continuer.',
+    AUTHENTICATION_FAILED: 'Code refusé pour cette copie : saisis le code Race Control utilisé lors de la sauvegarde. Aucune donnée modifiée.',
+    CODE_REQUIRED: 'Code refusé pour cette copie : saisis le code Race Control utilisé lors de la sauvegarde. Aucune donnée modifiée.',
+    network: 'Réseau ou Google Drive indisponible : réessaie quand la connexion est rétablie. Aucune donnée modifiée.',
+    PRODUCER_TOO_NEW: 'Copie créée par une version plus récente de Race Control : recharge cette page pour obtenir la dernière version.',
+    UNKNOWN_READER_VERSION: 'Copie créée par une version plus récente de Race Control : recharge cette page pour obtenir la dernière version.',
+    unsupported: 'Navigateur à mettre à jour : la récupération exige le verrouillage entre onglets.',
+    busy: 'Une opération est déjà en cours : attends sa fin.' };
   async function action(work) {
     if (busy) return; busy = true; paint();
     try { await work(); }
-    catch (e) { ticket = null; say(errors[e.code] || 'Opération non confirmée : code, version, réseau ou stockage à vérifier. Aucune copie existante n’est supprimée. Si l’installation a commencé, ferme puis rouvre cette page pour vérifier le coffre.'); }
+    catch (e) { ticket = null; const motif = e && /^[A-Za-z0-9_-]{1,40}$/.test(e.code || e.message || '') ? e.code || e.message : 'inconnu'; say(errors[e.code] || 'Opération non confirmée (motif : ' + motif + '). Aucune copie existante n’est supprimée. Si l’installation a commencé, ferme puis rouvre cette page pour vérifier le coffre.'); }
     finally { busy = false; paint(); }
   }
-  const password = () => { const text = $('recovery-code').value; if (!text || text.length > 1024) throw new Error('code'); return text; };
+  const password = () => { const text = $('recovery-code').value; if (!text || text.length > 1024) throw Object.assign(new Error('code'), { code: 'code' }); return text; };
   const checkpoint = () => {
     const revision = $('recovery-known-revision').value.trim(), sha256 = $('recovery-known-sha').value.trim();
     return revision || sha256 ? { revision, sha256 } : null;
