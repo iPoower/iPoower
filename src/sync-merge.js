@@ -168,8 +168,13 @@ const SyncMerge = (() => {
     if (local.calib != null && !Array.isArray(local.calib) || remote.calib != null && !Array.isArray(remote.calib)) throw new Error('Retours incomplets : fusion refusée.');
     const calib = unionBy(local.calib, remote.calib, x => JSON.stringify(x));
     report.added.calib = calib.length - (Array.isArray(local.calib) ? local.calib.length : 0); out.calib = calib;
-    for (const k of Object.keys(remote.journal || {})) if (own(local.journal, k) && !same(local.journal[k], remote.journal[k])) report.conflicts.push('journal.' + k);
+    // Journal de saison : résumés météo DÉRIVÉS (minimum du matin calculé par chaque appareil), jamais une
+    // saisie. Un même matin enregistré différemment ne demande aucun arbitrage : choix déterministe, identique
+    // sur les deux appareils (le relevé le plus froid, prudent pour les repères pneus hiver). Aucun jour perdu.
     const days = { ...(obj(remote.journal) ? remote.journal : {}), ...(obj(local.journal) ? local.journal : {}) };
+    const cold = r => [obj(r) && Number.isFinite(r.T) ? r.T : Infinity, obj(r) && Number.isFinite(r.Tr) ? r.Tr : Infinity, JSON.stringify(r)];
+    const colder = (x, y) => { const a = cold(x), b = cold(y); for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] < b[i] ? x : y; return x; };
+    for (const k of Object.keys(obj(remote.journal) ? remote.journal : {})) if (own(local.journal, k) && !same(local.journal[k], remote.journal[k])) days[k] = clone(colder(local.journal[k], remote.journal[k]));
     report.added.days = Object.keys(days).length - Object.keys(obj(local.journal) ? local.journal : {}).length; out.journal = days;
     const stamps = { ...stampsLocal };
     Object.entries(stampsRemote).forEach(([p, t]) => { if (!blocked.has(p) && stamp(t) > stamp(stamps[p])) stamps[p] = t; });

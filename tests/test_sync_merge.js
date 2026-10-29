@@ -184,6 +184,21 @@ check('horodatage réel : tous les champs de réglage modifiés sont couverts, m
   const stamps = json(ctx.M.edits(before, after, {}, T));
   assert.equal(stamps['cars.0.photo'], T); assert.equal(stamps.work, T); assert(!Object.keys(stamps).some(k => k.includes('odo')));
 });
+check('journal de saison (résumés météo dérivés) : même matin différent → aucun conflit, choix identique des deux côtés, aucun jour perdu', () => {
+  const pc = settings({ journal: { '2026-10-27': { T: 7.1, Tr: 6, ice: 0, vis: 9000, lv: {} }, '2026-10-28': { T: 5.9, Tr: 4.4, ice: 0, vis: 3380, lv: { i20: 0 } }, '2026-10-29': { T: 8.5, Tr: 9.2, ice: 0, vis: 2280, lv: { i20: 0 } } } });
+  const tel = settings({ journal: { '2026-10-28': { T: 5.6, Tr: 4.5, ice: 0, vis: 3380, lv: { i20: 0 } }, '2026-10-29': { T: 6.1, Tr: 6.6, ice: 0, vis: 2280, lv: { i20: 0 } }, '2026-10-30': { T: 3, Tr: 2, ice: 1, vis: 800, lv: {} } } });
+  const a = M.settings(pc, tel, {}, {}), b = M.settings(tel, pc, {}, {});
+  assert.deepEqual(a.report.conflicts, [], 'aucun arbitrage manuel pour une valeur dérivée');
+  assert.deepEqual(b.report.conflicts, []);
+  assert.deepEqual(a.settings.journal, b.settings.journal, 'les deux appareils convergent vers le même journal');
+  assert.deepEqual(Object.keys(a.settings.journal).sort(), ['2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30'], 'union des jours');
+  assert.equal(a.settings.journal['2026-10-28'].T, 5.6); assert.equal(a.settings.journal['2026-10-29'].T, 6.1);
+  const again = M.settings(a.settings, b.settings, {}, {});
+  assert.deepEqual(again.settings.journal, a.settings.journal, 'stable : une seconde fusion ne change plus rien');
+  const tie = M.settings(settings({ journal: { d: { T: 1, Tr: 2, vis: 1 } } }), settings({ journal: { d: { T: 1, Tr: 2, vis: 2 } } }), {}, {});
+  const tie2 = M.settings(settings({ journal: { d: { T: 1, Tr: 2, vis: 2 } } }), settings({ journal: { d: { T: 1, Tr: 2, vis: 1 } } }), {}, {});
+  assert.deepEqual(tie.settings.journal, tie2.settings.journal, 'égalité de températures : départage canonique, indépendant du côté');
+});
 check('aucune mutation des entrées', () => {
   const pc = device({ entries: [trip('t1', 0)] }), tel = device({ entries: [trip('t2', 1)] }), a = json(pc), b = json(tel);
   M.values(pc, tel); assert.deepEqual(json(pc), a); assert.deepEqual(json(tel), b);
