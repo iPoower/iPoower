@@ -102,13 +102,15 @@ check('trajets clos : par identifiant, l’enregistrement le plus récent, aucun
   const d = out(M.values(pc, tel)).c.done;
   assert.deepEqual(Object.keys(d).sort(), ['a', 'b', 'c']); assert.equal(d.b.how, 'confirmé');
 });
-check('observations hors capacité : refus intégral, aucune suppression de la copie source', () => {
+check('observations : fusion à la capacité de l’appareil (30 / 200 plus récentes), copies sources intactes', () => {
   for (const [key, limit] of [['twrc.reports.v1', 30], ['twrc.shadow.v1', 200]]) {
     const rows = Array.from({ length: limit }, (_, i) => ({ at: T + i }));
     const pc = device({ extra: { [key]: JSON.stringify(rows) } });
     const tel = device({ extra: { [key]: JSON.stringify([{ at: T + limit }]) } });
     const before = JSON.stringify([pc, tel]);
-    assert.throws(() => M.values(pc, tel), /sans perte impossible/);
+    const merged = JSON.parse(M.values(pc, tel).values[key]);
+    assert.equal(merged.length, limit, key + ' : deux appareils pleins se synchronisent');
+    assert.deepEqual(merged, [...rows, { at: T + limit }].slice(-limit), key + ' : seules les plus anciennes sortent');
     assert.equal(JSON.stringify([pc, tel]), before);
     assert.equal(JSON.parse(M.values(pc, pc).values[key]).length, limit, 'doublons exacts à la capacité admis');
   }

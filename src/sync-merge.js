@@ -216,13 +216,13 @@ const SyncMerge = (() => {
     if (debrief) out[CONTEXT] = JSON.stringify({ ...base, debrief: { ...debrief, archive }, done: later(base.done, rc && rc.done) });
     if (mirror) out[JournalArchive.MIRROR] = JSON.stringify({ ...mirror, archive });
     for (const k of [DONE, CANCEL]) if (local[k] != null || remote[k] != null) out[k] = JSON.stringify(later(parse(local[k], k), parse(remote[k], k)));
-    // Refus intégral au-delà des capacités actuelles : aucune troncature silencieuse.
+    // Même fenêtre glissante que chaque appareil (weather-view : 30 signalements, 200 comparaisons).
+    // Deux appareils pleins doivent pouvoir se synchroniser ; les révisions Drive précédentes gardent l'historique complet.
     for (const [k, limit] of [[REPORTS, 30], [SHADOW, 200]]) if (local[k] != null || remote[k] != null) {
       const a = parse(local[k], k), b = parse(remote[k], k);
       if (a != null && !Array.isArray(a) || b != null && !Array.isArray(b)) throw new Error('Observations incomplètes : fusion refusée.');
       const rows = unionBy(a, b, x => JSON.stringify(x)).sort((a, b) => stamp(a && a.at) - stamp(b && b.at));
-      if (rows.length > limit) throw new Error('Fusion sans perte impossible : capacité des observations dépassée.');
-      out[k] = JSON.stringify(rows);
+      out[k] = JSON.stringify(rows.slice(-limit));
     }
     const handled = new Set([SETTINGS, STAMPS, CONTEXT, DONE, CANCEL, REPORTS, SHADOW, JournalArchive.KEY, JournalArchive.MIRROR]);
     Object.keys(remote).forEach(k => {
