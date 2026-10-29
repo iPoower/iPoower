@@ -52,14 +52,17 @@ const slug = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-
 async function shot(page, name) {
   try { await page.screenshot({ path: path.join(OUT, 'screenshots', String(++shotNo).padStart(3, '0') + '-' + slug(name) + '.png'), fullPage: false }); } catch { /* page fermée */ }
 }
+const T0 = Date.now(), BUDGET_MS = Number(process.env.RECETTE_BUDGET_MIN || 38) * 60000, left = () => BUDGET_MS - (Date.now() - T0);
+const persist = () => { try { fs.writeFileSync(path.join(OUT, 'parcours.json'), JSON.stringify(parcours, null, 2)); fs.writeFileSync(path.join(OUT, 'errors.json'), JSON.stringify(errors, null, 2)); fs.writeFileSync(path.join(OUT, 'findings.json'), JSON.stringify(findings, null, 2)); } catch { /* */ } };
 async function step(page, journey, name, fn) {
+  if (left() < 0) { parcours.push({ journey, step: name, ok: false, detail: 'NON EXÉCUTÉ : budget de temps de la recette épuisé', ms: 0, consoleErrors: 0 }); persist(); return false; }
   current = journey + ' · ' + name; const t0 = Date.now(), before = errors.length;
   let ok = true, detail = '';
   try { detail = (await fn()) || ''; } catch (e) { ok = false; detail = String(e && e.message || e).split('\n')[0].slice(0, 300); }
   const errs = errors.slice(before).filter(e => !e.explained).length;
   parcours.push({ journey, step: name, ok, detail: String(detail).slice(0, 300), ms: Date.now() - t0, consoleErrors: errs });
   console.log(`${ok ? '✅' : '❌'} [${journey}] ${name}${detail ? ' · ' + String(detail).slice(0, 160) : ''}`);
-  await shot(page, journey + '-' + name);
+  await shot(page, journey + '-' + name); persist();
   return ok;
 }
 const until = async (page, fn, arg, timeout = 20000) => page.waitForFunction(fn, arg, { timeout });
@@ -78,7 +81,8 @@ async function device(label, drive) {
   const iphone = BROWSER === 'webkit';
   const base = iphone ? { ...pw.devices['iPhone 13'] } : { viewport: { width: 1366, height: 900 } };
   const ctx = await browser.newContext({ ...base, locale: 'fr-FR', timezoneId: 'Europe/Paris', serviceWorkers: 'block', acceptDownloads: true });
-  await ctx.tracing.start({ screenshots: true, snapshots: true, title: label });
+  // Parcours : film et instantanés ; exploration et clics aléatoires : instantanés seuls (taille d'artefact maîtrisée).
+  await ctx.tracing.start({ screenshots: !/^[EM]-/.test(label), snapshots: true, title: label });
   await ctx.addInitScript(({ iphone }) => {
     if (iphone) {   // application ajoutée à l'écran d'accueil (affichage autonome)
       Object.defineProperty(navigator, 'standalone', { configurable: true, get: () => true });
@@ -163,10 +167,18 @@ async function unlock(page) {
   await until(page, () => typeof S === 'object' && !document.querySelector('#unlockPw'), null, 30000);
   return 'coffre déverrouillé avec le code fictif';
 }
+const findings = [];
 async function openSettings(page) {
   const open = await page.locator('#settings').evaluate(d => d.open).catch(() => false);
-  if (!open) await page.locator('#settings > summary').click();
-  await until(page, () => !!document.querySelector('#bkSec'));
+  if (!open) { await page.locator('#settings > summary').scrollIntoViewIfNeeded().catch(() => {}); await page.locator('#settings > summary').click(); }
+  try { await until(page, () => !!document.querySelector('#bkSec'), null, 4000); }
+  catch {
+    // Panneau ouvert mais vide : défaut noté une fois par navigateur, puis rendu explicite pour poursuivre la recette.
+    const state = await page.evaluate(() => ({ open: document.getElementById('settings').open, children: document.getElementById('settingsBody').childElementCount })).catch(() => ({}));
+    if (!findings.some(f => f.id === 'settings-vide')) findings.push({ id: 'settings-vide', text: 'Paramètres : clic sur le titre → panneau ' + (state.open ? 'ouvert mais vide' : 'resté fermé') + ' (' + state.children + ' élément) ; contenu rendu seulement par appel direct', step: current });
+    await page.evaluate(() => { const d = document.getElementById('settings'); d.open = true; renderSettings(true); });
+    await until(page, () => !!document.querySelector('#bkSec'));
+  }
 }
 const panel = page => page.locator('#driveSyncPanel');
 const panelButton = (page, name) => panel(page).getByRole('button', { name, exact: true });
@@ -393,8 +405,9 @@ async function badgeJourney() {
     G.offline = true; await G.ctx.setOffline(true); await g.waitForTimeout(500);
     await openSettings(g); await g.locator('#odo-0').fill('17700'); await g.locator('[data-act=odo][data-i="0"]').click(); await g.waitForTimeout(1200);
     for (const [id, v] of [['#f-cars-0-maint-ct-d', '2026-06-06'], ['#f-cars-0-maint-rev-d', '2026-04-04']]) { const f = g.locator(id); await f.fill(v); await f.dispatchEvent('change'); await g.waitForTimeout(1200); }
-    const off = await badgeText(g); if (!/Hors ligne · 3 modifs en attente/.test(off)) throw new Error('badge hors ligne : ' + off);
-    G.offline = false; await G.ctx.setOffline(false);
+    const off = await badgeText(g);
+    G.offline = false; await G.ctx.setOffline(false);   // toujours rétabli, même si le badge est absent (étape suivante non faussée)
+    if (!/Hors ligne · 3 modifs en attente/.test(off)) throw new Error('badge hors ligne : ' + (off || 'aucun badge'));
     const r = await watchBadge(g, /À jour/, 30000);
     const proof = await g.evaluate(async () => (await DriveStore.create('twrc.drive.sync.v1').read()).outbox.verified);
     const file = drive.files.get(proof.fileId), sha = require('node:crypto').createHash('sha256').update(file.bytes).digest('hex');
@@ -405,6 +418,7 @@ async function badgeJourney() {
     return off + ' → ' + r.seen.slice(-1)[0] + ' en ' + (r.ms / 1000).toFixed(1) + ' s · SHA-256 ' + sha.slice(0, 12) + '… identique · 3/3 reçues';
   });
   await step(g, J9, 'arrière-plan puis retour → synchro reprise sans geste', async () => {
+    if (G.offline) { G.offline = false; await G.ctx.setOffline(false); }
     await g.evaluate(() => { window.__hidden = true; document.dispatchEvent(new Event('visibilitychange')); });
     await openSettings(h); await h.locator('#odo-0').fill('18800'); await h.locator('[data-act=odo][data-i="0"]').click(); await h.waitForTimeout(600); await syncNow(h);
     await g.evaluate(() => { window.__hidden = false; document.dispatchEvent(new Event('visibilitychange')); });
@@ -476,6 +490,7 @@ async function explore() {
   ];
   for (const [screen, open] of screens.filter(([n]) => !process.env.SCREENS || process.env.SCREENS.split(',').some(x => n.startsWith(x)))) {
     current = 'exploration · ' + screen;
+    if (left() < 4 * 60000) { matrix.push({ screen, element: '(écran)', browser: BROWSER, result: 'NON EXÉCUTÉ', detail: 'budget de temps épuisé' }); continue; }
     try { await open().catch(async () => { await p.waitForTimeout(1500); await open(); }); } catch (e) { matrix.push({ screen, element: '(ouverture de l’écran)', browser: BROWSER, result: 'KO', detail: String(e.message).slice(0, 200) }); continue; }
     // Comme un utilisateur curieux : chaque section repliable est dépliée, puis les titres de section sont actionnés en dernier.
     const expand = () => p.evaluate(all => document.querySelectorAll('details:not([open])').forEach(d => { if (all || d.id !== 'settings') d.open = true; }), screen === 'Paramètres').catch(() => {});
@@ -554,20 +569,20 @@ const GREMLINS = async ({ ms, seed, origin }) => {
   }
   return n;
 };
-async function monkey() {
+async function monkey(budget = MONKEY_MS) {
   const drive = fakeDrive([ORIGIN]);
   const M = await device('M-clics-aleatoires', drive), p = M.page;
   p.removeAllListeners('dialog');
   p.on('dialog', async d => { dialogs.push({ device: M.label, step: current, type: d.type(), message: d.message().slice(0, 200), policy: 'aléatoire' }); try { if (Math.random() < 0.5) await d.accept(); else await d.dismiss(); } catch { /* */ } });
   const t0 = Date.now(); let actions = 0, restarts = 0, round = 0;
   current = 'monkey';
-  while (Date.now() - t0 < MONKEY_MS) {
+  while (Date.now() - t0 < budget) {
     try {
       if (!p.url().startsWith(ORIGIN + '/') || round === 0) await p.goto(ORIGIN + '/');
       if (await p.locator('#unlockPw').isVisible().catch(() => false)) await unlock(p).catch(() => {});
       current = 'monkey · série ' + (++round);
-      const left = MONKEY_MS - (Date.now() - t0);
-      actions += await p.evaluate(GREMLINS, { ms: Math.min(60000, left), seed: 20261029 + round, origin: ORIGIN });
+      const remaining = budget - (Date.now() - t0);
+      actions += await p.evaluate(GREMLINS, { ms: Math.min(60000, remaining), seed: 20261029 + round, origin: ORIGIN });
       await shot(p, 'monkey-serie-' + round);
     } catch (e) {
       // navigation (lien interne, verrouillage, rechargement) : la série s'interrompt, reprise sur l'accueil
@@ -596,11 +611,13 @@ function report(drive, monkeyStats) {
   fs.writeFileSync(path.join(OUT, 'matrix.json'), JSON.stringify({ summary, rows: matrix }, null, 2));
   fs.writeFileSync(path.join(OUT, 'errors.json'), JSON.stringify(errors, null, 2));
   fs.writeFileSync(path.join(OUT, 'dialogs.json'), JSON.stringify(dialogs, null, 2));
+  fs.writeFileSync(path.join(OUT, 'findings.json'), JSON.stringify(findings, null, 2));
   const md = s => String(s).replace(/\|/g, '\\|').replace(/\n/g, ' ');
   fs.writeFileSync(path.join(OUT, 'PARCOURS.md'), `# Parcours — ${summary.profile} (${BROWSER})\n\n${summary.journeys.ok}/${summary.journeys.total} étapes réussies · SHA ${summary.sha}\n\n| Parcours | Étape | Résultat | Détail | Erreurs console non expliquées |\n|---|---|---|---|---|\n` +
     parcours.map(s => `| ${md(s.journey)} | ${md(s.step)} | ${s.ok ? 'OK' : 'KO'} | ${md(s.detail)} | ${s.consoleErrors} |`).join('\n') + '\n');
   fs.writeFileSync(path.join(OUT, 'MATRICE.md'), `# Matrice de couverture — ${summary.profile} (${BROWSER})\n\nÉléments actionnés : **${tested}/${matrix.length}** (${summary.coverage.rate} %) · ` +
     Object.entries(byResult).map(([k, v]) => `${k} : ${v}`).join(' · ') + `\n\nErreurs console : ${errors.length} dont **${unexplained.length} non expliquée(s)** · clics aléatoires : ${monkeyStats ? monkeyStats.actions + ' actions en ' + monkeyStats.minutes + ' min' : 'non lancés'}\n\n` +
+    (findings.length ? '## Constats hors matrice\n\n' + findings.map(f => '- ' + f.text + ' (' + f.step + ')').join('\n') + '\n\n' : '') +
     `| Écran | Élément | Type | Navigateur | Résultat | Détail |\n|---|---|---|---|---|---|\n` + matrix.map(r => `| ${md(r.screen)} | ${md(r.element)} | ${r.kind || ''} | ${r.browser} | ${r.result} | ${md(r.detail)} |`).join('\n') + '\n');
   return summary;
 }
@@ -612,8 +629,9 @@ function report(drive, monkeyStats) {
   try {
     if (!process.env.ONLY || process.env.ONLY.includes('parcours')) drive = await journeys();
     else if (process.env.ONLY.includes('badge')) await badgeJourney();
-    if (!process.env.ONLY || process.env.ONLY.includes('exploration')) await explore();
-    if ((!process.env.ONLY || process.env.ONLY.includes('monkey')) && MONKEY_MS > 0) monkeyStats = await monkey();
+    const wantExplore = !process.env.ONLY || process.env.ONLY.includes('exploration');
+    if (wantExplore && left() > 8 * 60000) await explore(); else if (wantExplore) matrix.push({ screen: '(exploration)', element: '—', browser: BROWSER, result: 'NON EXÉCUTÉ', detail: 'budget de temps épuisé' });
+    if ((!process.env.ONLY || process.env.ONLY.includes('monkey')) && MONKEY_MS > 0 && left() > 90000) monkeyStats = await monkey(Math.min(MONKEY_MS, left() - 60000));
   } finally { await browser.close().catch(() => {}); }
   const s = report(drive, monkeyStats);
   console.log(`\nParcours ${s.journeys.ok}/${s.journeys.total} · couverture ${s.coverage.tested}/${s.coverage.found} (${s.coverage.rate} %) · erreurs non expliquées ${s.errors.unexplained} · monkey ${monkeyStats ? monkeyStats.actions : 0} actions`);
