@@ -66,6 +66,7 @@ const until = async (page, fn, arg, timeout = 20000) => page.waitForFunction(fn,
 
 // Erreurs « expliquées » : uniquement des causes établies par la recette elle-même.
 function classify(text, url) {
+  if (/ERR_INTERNET_DISCONNECTED/.test(text) && /hors ligne/.test(current)) return 'coupure réseau simulée par la recette (étape hors ligne)';
   if (/Failed to load resource/.test(text) && url && !url.startsWith(ORIGIN)) return 'requête externe non simulée, bloquée par la recette (' + new URL(url).hostname + ')';
   if (/Failed to load resource: the server responded with a status of 404/.test(text) && url && url.startsWith(ORIGIN + '/data/')) return 'donnée relais fictive absente du jeu de test (' + url.slice(ORIGIN.length) + ')';
   return null;
@@ -342,7 +343,7 @@ async function badgeJourney() {
   const drive = fakeDrive([ORIGIN]), J9 = 'P9 sauvegarde visible et automatique';
   const G = await device('G-badge', drive), g = G.page, H = await device('H-verification', drive), h = H.page;
   const badge = pg => pg.locator('#driveBadge');
-  const badgeText = pg => badge(pg).innerText().catch(() => '');
+  const badgeText = pg => badge(pg).evaluate(b => b.textContent + (/Action requise/.test(b.textContent) ? ' [' + b.title + ']' : '')).catch(() => '');
   const watchBadge = async (pg, re, timeout) => {   // relève la suite des états du badge jusqu'à l'état attendu
     const t0 = Date.now(), seen = [];
     while (Date.now() - t0 < timeout) { const t = await badgeText(pg); if (t && seen[seen.length - 1] !== t) seen.push(t); if (re.test(t)) return { ms: Date.now() - t0, seen }; await pg.waitForTimeout(200); }
