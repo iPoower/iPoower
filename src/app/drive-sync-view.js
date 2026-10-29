@@ -150,7 +150,12 @@ function driveBadgeTap() {
   // Même reprise que le bouton de Sauvegarde : fenêtre Google ouverte dans le geste, même compte et même dossier.
   d.sync.stop(); d.selected = false; d.busy = true; const promise = d.session.connect();
   (async () => {
-    try { await promise; const selected = await d.session.resume(d.hint); d.sync.select(selected); d.selected = true; d.text = 'Synchronisation reprise avec le même compte et le même dossier.'; await d.sync.run(true); }
+    try {
+      await promise; const selected = await d.session.resume(d.hint);
+      // Reprise juste après l'ouverture : la version chargée (version.json) doit être confirmée avant tout envoi.
+      if (!VER) await loadVersion();
+      d.sync.select(selected); d.selected = true; d.text = 'Synchronisation reprise avec le même compte et le même dossier.'; await d.sync.run(true);
+    }
     catch (e) { d.text = e && e.code === 'confirmation' ? 'Compte ou dossier différent de la liaison confirmée : confirme explicitement le compte, puis le dossier.' : 'Reprise non confirmée. Les copies et la file d’envoi sont conservées ; réessaie.'; driveOpenBackup(); }
     finally { d.busy = false; renderDriveSync(); }
   })();
@@ -187,6 +192,7 @@ async function initDriveSync() {
   try {
     const config = await GoogleDriveSession.load();
     if (location.origin !== config.raceOrigin) return;
+    if (!VER) loadVersion();   // identité de la version chargée, exigée par chaque envoi Drive (sans ouvrir Paramètres)
     const provider = new DriveTransport.OpaqueDrive([config.raceOrigin]);
     DRIVE_UI.config = config; window.TWRC_DRIVE_CONFIGURED = true;
     DRIVE_UI.session = GoogleDriveSession.create(config, provider);
@@ -223,7 +229,8 @@ async function initDriveSync() {
     // scellé sans attendre la fenêtre de calme (blocages et délais de reprise respectés, comme en arrière-plan).
     window.addEventListener('twrc-vault-change', e => {
       // Une saisie écrit souvent plusieurs clés (réglages + horodatages) : un enregistrement = une modification.
-      if (!(e && e.key && SyncMerge.device(e.key)) && Date.now() - (DRIVE_BADGE.lastAt || 0) > 800) { DRIVE_BADGE.pending++; DRIVE_BADGE.lastAt = Date.now(); renderDriveBadge(); }
+      // Les écritures faites pendant une synchronisation (fusion reçue de l'autre appareil) ne sont pas des saisies.
+      if (!(e && e.key && SyncMerge.device(e.key)) && !DRIVE_UI.sync.status.running && Date.now() - (DRIVE_BADGE.lastAt || 0) > 800) { DRIVE_BADGE.pending++; DRIVE_BADGE.lastAt = Date.now(); renderDriveBadge(); }
       driveSoon();
     });
     const stop = () => { DRIVE_UI.session.disconnect(); DRIVE_UI.sync.stop(); DRIVE_UI.selected = false; DRIVE_UI.dedicatedFolders = []; renderDriveSync(); };
