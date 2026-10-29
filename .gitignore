@@ -24,3 +24,5 @@ node_modules/
 .dev.vars
 
 !src/vendor/leaflet/images/*.png
+.recette/
+recette-output/
