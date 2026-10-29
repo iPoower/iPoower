@@ -2,6 +2,7 @@
 let DRIVE_UI = { config: null, session: null, sync: null, prepared: false, selected: false, busy: false,
   text: 'Google Drive : non activé sur cette version.', timer: null, dedicatedFolders: [] };
 function renderDriveSync() {
+  renderDriveBadge();
   const root = document.getElementById('driveSyncPanel'); if (!root) return;
   const d = DRIVE_UI, connected = d.session && d.session.connected;
   root.innerHTML = `<h4>Google Drive · PC ↔ iPhone</h4><p class="sub" role="status" aria-live="polite">${esc(d.text)}</p>
@@ -106,6 +107,54 @@ function renderDriveSync() {
   if (connected && d.selected) button('Sauvegarder maintenant (envoi, relecture, vérification)', () => d.sync.run(true));
   if (connected) button('Déconnecter', () => { d.session.disconnect(); d.sync.stop(); d.selected = false; d.dedicatedFolders = []; d.text = 'Déconnecté. Les copies locales et Drive sont conservées.'; renderDriveSync(); });
 }
+// Badge de sauvegarde, visible depuis tous les écrans (barre d'état) : projection de l'état DriveSync,
+// aucun nouveau stockage. Un appui ouvre Sauvegarde, ou reconnecte Google si la session a expiré.
+const DRIVE_BADGE = { pending: 0, syncedAt: 0, hidden: false, lastAt: 0 };
+const DRIVE_HM = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+function driveBadgeState() {
+  const d = DRIVE_UI, B = DRIVE_BADGE, st = d.status || {}, active = !!(d.session && d.session.connected && d.selected);
+  const n = B.pending, wait = n ? ' · ' + n + ' modif' + (n > 1 ? 's' : '') + ' en attente' : '';
+  if (!window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault') return { cls: '', icon: '🔒', text: 'Sauvegarde en pause', hint: 'Déverrouille l’app pour synchroniser.', act: 'open' };
+  // iOS suspend l'app fermée : aucune synchronisation possible en arrière-plan, le dire honnêtement.
+  if (B.hidden && n) return { cls: 'cache', icon: '⏳', text: 'Ouvre l’app pour synchroniser' + wait, hint: 'Aucune synchronisation quand l’app est fermée.', act: 'open' };
+  if (navigator.onLine === false) return { cls: 'nogo', icon: '⛔', text: 'Hors ligne' + wait, hint: 'Envoi automatique au retour du réseau, sans perte.', act: 'open' };
+  if (!active) return d.hint ? { cls: 'cache', icon: '⚠️', text: 'Reconnexion requise' + wait, hint: 'Un appui pour reconnecter Google Drive (Google exige ce geste).', act: 'reconnect' }
+    : { cls: '', icon: '☁️', text: 'Sauvegarde Drive à activer', hint: 'Ouvre Paramètres → Sauvegarde.', act: 'open' };
+  if (st.state === 'SYNC_BLOCKED' && /reconnexion/.test(st.message)) return { cls: 'cache', icon: '⚠️', text: 'Reconnexion requise' + wait, hint: 'Un appui pour reconnecter Google Drive.', act: 'reconnect' };
+  if (st.state === 'SYNC_BLOCKED' && /en attente/.test(st.message)) return { cls: 'cache', icon: '⏳', text: 'Envoi en attente' + wait, hint: 'Nouvel essai automatique.', act: 'open' };
+  if (st.state === 'CONFLICT' || st.state === 'SYNC_BLOCKED') return { cls: 'cache', icon: '⚠️', text: 'Action requise', hint: st.message || 'Ouvre Sauvegarde.', act: 'open' };
+  if (st.state === 'SYNCED' && !n) return { cls: 'live', icon: '☁️✓', text: 'À jour · ' + DRIVE_HM.format(B.syncedAt || Date.now()), hint: 'Dernière sauvegarde envoyée, relue et vérifiée.', act: 'open' };
+  return { cls: 'cache', icon: '⏳', text: 'Envoi en cours' + wait, hint: 'Envoi, relecture et vérification automatiques.', act: 'open' };
+}
+function renderDriveBadge() {
+  if (!DRIVE_UI.config) return;
+  const bar = document.querySelector('.statusbar'); if (!bar) return;
+  let b = document.getElementById('driveBadge');
+  if (!b) {
+    const row = document.createElement('div'); row.className = 'drive-badge-row'; bar.appendChild(row);
+    b = document.createElement('button'); b.type = 'button'; b.id = 'driveBadge'; b.addEventListener('click', driveBadgeTap); row.appendChild(b);
+  }
+  const s = driveBadgeState(), text = s.icon + ' ' + s.text;
+  b.className = 'badge drive-badge' + (s.cls ? ' ' + s.cls : ''); b.dataset.state = s.act === 'reconnect' ? 'reconnect' : s.cls || 'idle';
+  if (b.textContent !== text) b.textContent = text;
+  b.title = s.hint; b.setAttribute('aria-label', 'Sauvegarde Google Drive : ' + s.text + '. ' + s.hint);
+}
+function driveOpenBackup() {
+  const d = document.getElementById('settings'); if (!d) return;
+  d.open = true; renderSettings(true);
+  const sec = document.getElementById('bkSec'); if (sec) sec.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
+}
+function driveBadgeTap() {
+  const d = DRIVE_UI;
+  if (driveBadgeState().act !== 'reconnect' || !d.prepared || !d.hint || d.busy) { driveOpenBackup(); return; }
+  // Même reprise que le bouton de Sauvegarde : fenêtre Google ouverte dans le geste, même compte et même dossier.
+  d.sync.stop(); d.selected = false; d.busy = true; const promise = d.session.connect();
+  (async () => {
+    try { await promise; const selected = await d.session.resume(d.hint); d.sync.select(selected); d.selected = true; d.text = 'Synchronisation reprise avec le même compte et le même dossier.'; await d.sync.run(true); }
+    catch (e) { d.text = e && e.code === 'confirmation' ? 'Compte ou dossier différent de la liaison confirmée : confirme explicitement le compte, puis le dossier.' : 'Reprise non confirmée. Les copies et la file d’envoi sont conservées ; réessaie.'; driveOpenBackup(); }
+    finally { d.busy = false; renderDriveSync(); }
+  })();
+}
 async function backupDriveImport(bytes) {
   if (DEMO.on) { bkMsg('Quitte la démonstration avant une restauration.'); return; }
   try {
@@ -122,6 +171,16 @@ async function backupDriveImport(bytes) {
     bkMsg('Copie authentifiée et fusionnée. Copie avant fusion conservée. Redémarrage…'); reloadSafe(800);
   } catch { bkMsg('Import non appliqué : code, version, contenu ou réglages divergents à vérifier. Les copies et les données locales sont conservées.'); }
 }
+let DRIVE_SOON = null;
+function driveSoon() {
+  clearTimeout(DRIVE_SOON);
+  DRIVE_SOON = setTimeout(() => {
+    const d = DRIVE_UI; if (document.hidden || DEMO.on || navigator.onLine === false || !d.selected || !d.session || !d.session.connected) return;
+    // Saisie arrivée pendant un envoi : réessayer après celui-ci (aucun envoi concurrent).
+    if (d.sync.status.running) { driveSoon(); return; }
+    d.sync.run(false, true);
+  }, 4000);
+}
 async function initDriveSync() {
   // Ni requête de configuration ni script Google sur l'origine partagée.
   if (location.protocol !== 'https:' || /(^|\.)github\.io$/.test(location.hostname)) return;
@@ -133,7 +192,11 @@ async function initDriveSync() {
     DRIVE_UI.session = GoogleDriveSession.create(config, provider);
     DRIVE_UI.sync = DriveSync.create({ vault: window.TWRC_VAULT, provider,
       version: () => ControlVaultPacket.loadedVersion(window.TWRC_BUILD, VER),
-      onChange: state => { DRIVE_UI.text = state.message; DRIVE_UI.status = state; renderDriveSync(); },
+      onChange: state => {
+        DRIVE_UI.text = state.message; DRIVE_UI.status = state;
+        if (state.state === 'SYNCED') { DRIVE_BADGE.pending = 0; DRIVE_BADGE.syncedAt = Date.now(); }
+        renderDriveSync();
+      },
       onApplied: () => {
         S = loadSettings();
         const context = lsGet(USER_STORE.key); if (context) USER_STORE.receive(context);
@@ -141,17 +204,28 @@ async function initDriveSync() {
       } });
     DRIVE_UI.text = 'Prêt à connecter Google Drive. Exporte d’abord une copie complète et vérifiée de cet appareil.';
     try { DRIVE_UI.hint = await DriveSync.resumeHint(); } catch { DRIVE_UI.hint = null; }
+    // Liaison déjà confirmée : Google chargé d'avance pour qu'un seul appui suffise à la reconnexion.
+    if (DRIVE_UI.hint) DRIVE_UI.session.prepare().then(() => { DRIVE_UI.prepared = true; renderDriveSync(); }, () => {});
     const tick = () => {
       if (DRIVE_UI.selected && !DRIVE_UI.session.connected) { DRIVE_UI.sync.stop(); DRIVE_UI.selected = false; DRIVE_UI.text = 'Envoi Drive en pause : autorisation Google expirée ou révoquée. Les saisies restent enregistrées localement ; appuie sur Reprendre la synchronisation Drive.'; DriveSync.resumeHint().then(h => { DRIVE_UI.hint = h; renderDriveSync(); }, () => renderDriveSync()); return; }
       if (!document.hidden && !DEMO.on && DRIVE_UI.selected && DRIVE_UI.session.connected) DRIVE_UI.sync.run();
     };
     DRIVE_UI.timer = setInterval(tick, 30000);
+    // Session Google expirée : jamais d'arrêt silencieux, le badge passe à « Reconnexion requise » en quelques secondes.
+    setInterval(() => { if (DRIVE_UI.selected && !DRIVE_UI.session.connected) tick(); else renderDriveBadge(); }, 5000);
+    document.addEventListener('visibilitychange', () => { DRIVE_BADGE.hidden = document.hidden; renderDriveBadge(); });
     document.addEventListener('visibilitychange', tick); window.addEventListener('online', tick); window.addEventListener('focus', tick);
+    window.addEventListener('pageshow', tick); window.addEventListener('offline', renderDriveBadge); window.addEventListener('online', () => { renderDriveBadge(); driveSoon(); });
     // iPhone : l'app peut être suspendue dès son passage en arrière-plan ; envoyer la dernière saisie
     // sans attendre la fenêtre de calme (blocages et délais de reprise respectés).
     document.addEventListener('visibilitychange', () => { if (document.hidden && !DEMO.on && DRIVE_UI.selected && DRIVE_UI.session.connected) DRIVE_UI.sync.run(false, true); });
-    // Saisie locale : vérifier juste après la fenêtre de calme au lieu d'attendre le prochain cycle de 30 s.
-    let soon = null; window.addEventListener('twrc-vault-change', () => { clearTimeout(soon); soon = setTimeout(tick, SyncOutbox.QUIET_MS + 1000); });
+    // Toute saisie enregistrée, depuis n'importe quel écran : envoi automatique regroupé quelques secondes,
+    // scellé sans attendre la fenêtre de calme (blocages et délais de reprise respectés, comme en arrière-plan).
+    window.addEventListener('twrc-vault-change', e => {
+      // Une saisie écrit souvent plusieurs clés (réglages + horodatages) : un enregistrement = une modification.
+      if (!(e && e.key && SyncMerge.device(e.key)) && Date.now() - (DRIVE_BADGE.lastAt || 0) > 800) { DRIVE_BADGE.pending++; DRIVE_BADGE.lastAt = Date.now(); renderDriveBadge(); }
+      driveSoon();
+    });
     const stop = () => { DRIVE_UI.session.disconnect(); DRIVE_UI.sync.stop(); DRIVE_UI.selected = false; DRIVE_UI.dedicatedFolders = []; renderDriveSync(); };
     window.addEventListener('twrc-session-expired', stop); window.addEventListener('twrc-session-locked', stop);
     window.addEventListener('pagehide', stop); renderDriveSync();

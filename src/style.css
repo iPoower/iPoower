@@ -114,6 +114,11 @@ html::before { content: ''; position: fixed; inset: 0 0 auto 0; height: env(safe
 .badge.cache { color: var(--cau-t); border-color: var(--cau); }
 .badge.demo { color: #fff; background: var(--c-demo); border-color: var(--c-demo); }
 :root[data-theme="light"] .badge.demo { color: #fff; }
+/* Sauvegarde Drive : même badge que la météo, sur une ligne discrète sous le bandeau (tous les écrans). */
+.drive-badge-row { max-width: 1080px; margin: 4px auto 0; display: flex; justify-content: flex-end; min-width: 0; }
+.badge.drive-badge { background: none; color: var(--fg2); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; min-height: 0; }
+.badge.drive-badge.nogo { color: var(--nogo-t); border-color: var(--nogo); }
+@media (pointer: coarse) { .badge.drive-badge { min-height: 32px; } }
 .statusbar .upd { font-size: 12px; color: var(--fg2); min-width: 0; }
 .status-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; line-height: 1.5; }
 .live-clock-wrap { color: var(--fg); white-space: nowrap; }
@@ -1017,7 +1022,7 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
    Colonne principale (décision, trajet, analyse) et colonne de compléments (météo du lieu, radar, alertes…), côte à côte.
    Le tactile et les petites fenêtres gardent la colonne unique. */
 @media (min-width: 1200px) and (pointer: fine) {
-  .wrap, .statusbar .in { max-width: 1520px; }
+  .wrap, .statusbar .in, .drive-badge-row { max-width: 1520px; }
   .wrap { gap: 16px; }
   /* en-tête : titre et onglets sur une ligne ; la décision à gauche, le contexte (lieu, météo consultée, journée) à droite */
   .top { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(360px, 1fr); column-gap: 20px; row-gap: 10px; align-items: start; }
