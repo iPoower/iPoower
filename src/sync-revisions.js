@@ -125,5 +125,29 @@ const SyncRevisions = (() => {
     // Adopter une seule tête identique n'ajoute rien : pas de révision, sinon aller-retour sans fin.
     return { parents, integrated, conflicts, publish: changed || parents.length > 1 };
   }
-  return Object.freeze({ APP, MAX_PARENTS, meta, next, snapshot, content, confirm, properties, fromProperties, plan, settle });
+  // Ancêtre commun le plus récent de deux lignées (base de fusion à trois voies).
+  // null si l'histoire est incomplète, absente ou ambiguë (plusieurs ancêtres
+  // maximaux) : l'appelant doit alors signaler les écarts, jamais deviner.
+  function ancestor(confirmed, left, right) {
+    if (!Array.isArray(confirmed) || !Array.isArray(left) || !Array.isArray(right) || !left.length || !right.length) return null;
+    const by = new Map(confirmed.map(c => [c.id, c.parents]));
+    if ([...left, ...right].some(id => !by.has(id))) return null;
+    const lineage = ids => {
+      const seen = new Set(), stack = [...ids];
+      while (stack.length) {
+        const id = stack.pop(); if (seen.has(id)) continue;
+        if (!by.has(id)) return null;
+        seen.add(id); stack.push(...by.get(id));
+      }
+      return seen;
+    };
+    const a = lineage(left), b = lineage(right);
+    if (!a || !b) return null;
+    const common = [...a].filter(id => b.has(id));
+    const strict = id => { const s = lineage(by.get(id)); s.delete(id); return s; };
+    const below = new Set(common.flatMap(id => [...strict(id)]));
+    const best = common.filter(id => !below.has(id));
+    return best.length === 1 ? best[0] : null;
+  }
+  return Object.freeze({ APP, MAX_PARENTS, meta, next, snapshot, content, confirm, properties, fromProperties, plan, settle, ancestor });
 })();

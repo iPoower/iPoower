@@ -7,6 +7,12 @@ permissions:
 jobs:
   profile:
     runs-on: ubuntu-24.04
+    # Même image et version verrouillée que la matrice CI : aucun apt nécessaire.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    env:
+      CI_BROWSER_SYSTEM_DEPS: preinstalled
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -38,7 +44,7 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Navigateur borné
         working-directory: candidate
-        # Même reprise que la CI : attendre l'apt-get orphelin avant un nouvel essai.
+        # Le script conserve ses vérifications bornées ; les dépendances sont dans l'image.
         timeout-minutes: 24
         run: bash tools/ci-browser-install.sh ${{ matrix.browser }}
       - name: Mesures comparables et fictives seulement

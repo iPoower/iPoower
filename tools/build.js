@@ -54,9 +54,12 @@ const sealedV=PRIV?hash(preset):prevSealed.v;
 const sealed=(prevSealed&&prevSealed.v===sealedV&&(!PRIV||tryUnseal(prevSealed.sealed,PASS)))?prevSealed.sealed:seal(presetObj,PASS);
 w(ENC+'/preset.sealed.json',JSON.stringify({v:sealedV,sealed}));
 // Identité de l'application effectivement chargée : version.json peut être plus récent que le shell offline.
-const buildId=crypto.createHash('sha256').update(js).update(device).update(style).update(r('src/shell.html')).digest('hex').slice(0,12);
+const recoverySource=[device,...['debrief','sync-merge','sync-revisions','sync-outbox','sync-key','control-vault-packet','google-drive-session','drive-store','drive-transport','drive-sync','drive-recovery','drive-recovery-view'].map(n=>r('src/'+n+'.js'))].join('\n');
+if(/<\/script/i.test(recoverySource))throw new Error('Bloc de récupération invalide.');
+const buildId=crypto.createHash('sha256').update(js).update(device).update(style).update(r('src/shell.html')).update(recoverySource).digest('hex').slice(0,12);
+const recoveryScript='window.TWRC_RECOVERY_BUILD='+JSON.stringify(buildId)+';\n'+recoverySource;
 const DATA_BASE=process.env.RC_DATA_BASE||'';
-if(DATA_BASE&&!/^https:\/\/[a-z0-9.-]+\/[A-Za-z0-9._\/-]*\/$/.test(DATA_BASE))throw new Error('RC_DATA_BASE doit être une URL https terminée par « / »');
+if(DATA_BASE&&(!/^https:\/\/[a-z0-9.-]+\/[A-Za-z0-9._\/-]*$/.test(DATA_BASE)||!DATA_BASE.endsWith('/')))throw new Error('RC_DATA_BASE doit être une URL https terminée par « / »');
 const DRIVE=require('./drive-config').read(process.env.GOOGLE_DRIVE_CONFIG,!!DATA_BASE);
 w(OUT+'/drive-config.json',JSON.stringify(DRIVE));
 const boot=`<script>window.TWRC_BUILD=${JSON.stringify(buildId)};window.TWRC_DATA_BASE=${JSON.stringify(DATA_BASE)};window.TWRC_TIREDB=${tdb};window.TWRC_SEALED=${JSON.stringify(sealed)};window.TWRC_SEALED_V=${JSON.stringify(sealedV)};
@@ -69,16 +72,17 @@ const page=`<!doctype html>\n<html lang="fr" data-theme="dark"><head>${head}<lin
 // applicatif démarré après le coffre), aucun eval, aucune origine de script hors Leaflet (SRI). GitHub Pages ne permet pas
 // d'en-têtes HTTP : la politique est en <meta> ; frame-ancestors et les en-têtes sont prêts pour Cloudflare (_headers).
 const sha=t=>"'sha256-"+crypto.createHash('sha256').update(t,'utf8').digest('base64')+"'";
-const inline=[...page.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
+const inline=[...page.matchAll(/<script>([\s\S]*?)<\/script>/gi)].map(m=>m[1]);
 const deferred=(page.match(/<script type="text\/plain" id="twrc-app">([\s\S]*?)<\/script>/)||[])[1];
 if(deferred==null)throw new Error('Bloc applicatif différé introuvable');
 const CONNECT=["'self'",'https://api.open-meteo.com','https://ensemble-api.open-meteo.com','https://air-quality-api.open-meteo.com','https://geocoding-api.open-meteo.com',
   'https://public.opendatasoft.com','https://api.bigdatacloud.net','https://router.project-osrm.org','https://nominatim.openstreetmap.org','https://data.geopf.fr',
   'https://api.rainviewer.com','https://ntfy.sh',...(DATA_BASE?[new URL(DATA_BASE).origin]:[]),...(DRIVE?['https://www.googleapis.com','https://accounts.google.com/gsi/']:[])];
-const CSP=[`default-src 'self'`,`script-src ${[...inline,deferred].map(sha).join(' ')} '${webAssets.LEAFLET.js}'${DRIVE?' https://accounts.google.com/gsi/client https://apis.google.com':''}`,`script-src-attr 'none'`,`style-src 'self' 'unsafe-inline' https://fonts.googleapis.com${DRIVE?' https://accounts.google.com/gsi/style':''}`,
+const CSP=[`default-src 'self'`,`script-src ${[...inline,deferred,recoveryScript].map(sha).join(' ')} '${webAssets.LEAFLET.js}'${DRIVE?' https://accounts.google.com/gsi/client https://apis.google.com':''}`,`script-src-attr 'none'`,`style-src 'self' 'unsafe-inline' https://fonts.googleapis.com${DRIVE?' https://accounts.google.com/gsi/style':''}`,
   `font-src https://fonts.gstatic.com`,`img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://server.arcgisonline.com https://tilecache.rainviewer.com`,
   `connect-src ${CONNECT.join(' ')}`,`worker-src 'self'`,`manifest-src 'self'`,`object-src 'none'`,`base-uri 'none'`,`form-action 'self'`,`frame-src ${DRIVE?'https://accounts.google.com/gsi/ https://docs.google.com':"'none'"}`].join('; ');
 w(OUT+'/index.html',page.replace('<head>','<head><meta http-equiv="Content-Security-Policy" content="'+CSP+'">'));
+w(OUT+'/recovery.html',require('./drive-recovery-build')(recoveryScript,CSP));
 // en-têtes prêts pour une origine dédiée (Cloudflare Pages) : la même politique, plus frame-ancestors et les en-têtes impossibles en <meta>
 w(OUT+'/_headers',`/*\n  Content-Security-Policy: ${CSP}; frame-ancestors 'none'\n  X-Frame-Options: DENY\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Permissions-Policy: geolocation=(self), camera=(), microphone=(), payment=(), usb=()\n  Strict-Transport-Security: max-age=31536000; includeSubDomains\n  Cross-Origin-Opener-Policy: ${DRIVE?'same-origin-allow-popups':'same-origin'}\n  Cross-Origin-Resource-Policy: same-origin\n/sw.js\n  Cache-Control: no-cache\n/index.html\n  Cache-Control: no-cache\n/drive-config.json\n  Cache-Control: no-store\n`);
 webAssets.copy(ROOT,OUT);

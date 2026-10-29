@@ -64,7 +64,7 @@ try {
   });
   check('image Playwright de la version exacte du package-lock : aucune dépendance apt demandée', () => {
     const version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8')).packages['node_modules/playwright'].version;
-    for (const [f, jobs] of [['ci.yml', ['tests', 'tests-rollback']], ['weather-watch-qa.yml', ['station-browser']]]) {
+    for (const [f, jobs] of [['ci.yml', ['tests', 'tests-rollback']], ['weather-watch-qa.yml', ['station-browser']], ['performance.yml', ['profile']]]) {
       const wf = fs.readFileSync(path.join(ROOT, '.github/workflows', f), 'utf8');
       for (const job of jobs) {
         const start = wf.indexOf('  ' + job + ':\n'), rest = wf.slice(start + job.length + 4), next = rest.search(/^  [\w-]+:\s*$/m);

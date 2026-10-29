@@ -94,8 +94,8 @@ const SessionVault = (() => {
       get length() { return listOf().length; },
       key: i => { const l = listOf(); return i >= 0 && i < l.length ? l[i] : null; },
       getItem: k => { if (!access(false)) return null; k = String(k); if (k === PENDING) return vol.has(k) ? vol.get(k) : null; return secret(k) ? (m.has(k) ? m.get(k) : null) : META.has(k) ? null : raw.getItem(k); },
-      setItem: (k, v) => { access(true); k = String(k); v = String(v); if (k === PENDING) { vol.set(k, v); return; } if (META.has(k)) return; if (!secret(k)) { raw.setItem(k, v); return; } m.set(k, v); dirty.add(k); persist(); },
-      removeItem: k => { access(true); k = String(k); if (k === PENDING) { vol.delete(k); return; } if (META.has(k)) return; if (!secret(k)) { raw.removeItem(k); return; } if (m.delete(k)) { dirty.add(k); persist(); } },
+      setItem: (k, v) => { access(true); k = String(k); v = String(v); if (k === PENDING) { vol.set(k, v); return; } if (META.has(k)) return; if (!secret(k)) { raw.setItem(k, v); return; } m.set(k, v); dirty.add(k); persist(k); },
+      removeItem: k => { access(true); k = String(k); if (k === PENDING) { vol.delete(k); return; } if (META.has(k)) return; if (!secret(k)) { raw.removeItem(k); return; } if (m.delete(k)) { dirty.add(k); persist(k); } },
       clear: () => { access(true); [...m.keys()].forEach(k => dirty.add(k)); m.clear(); vol.clear(); persist(); }
     };
     // Présenté comme un vrai Storage : Object.keys(localStorage), localStorage[k], « k in localStorage » fonctionnent.
@@ -201,7 +201,12 @@ const SessionVault = (() => {
       sent.forEach((v, k) => { if ((mem.map.has(k) ? mem.map.get(k) : null) === v) mem.dirty.delete(k); });
       merge({ n: st.n, t: st.t, values: snap }); st.error = null;
     }
-    function persist() {
+    function persist(key) {
+      // Signal local sans valeur : le transport peut invalider son ancien statut
+      // avant sa prochaine vérification. Aucun transfert dans cet événement.
+      if (target && target.dispatchEvent && typeof Event === 'function') {
+        const event = new Event('twrc-vault-change'); event.key = key; target.dispatchEvent(event);
+      }
       if (st.mode !== 'vault' || st.timer) return;
       // microtâche (pas une minuterie) : part dès la fin du code en cours, jamais retardée par une horloge gelée ou un onglet en veille
       st.timer = true; Promise.resolve().then(() => { st.timer = null; flush(); });
@@ -581,7 +586,7 @@ const SessionVault = (() => {
         expire(); if (st.mode !== 'vault' || st.error || st.mem.dirty.size) throw new Error('Enregistrement local à confirmer.');
         const epoch = st.epoch, mem = st.mem, guard = () => guardSession(epoch, mem);
         const data = await latest(guard); guard();
-        if (data.values[JournalArchive.KEY] == null) throw new Error('Exporte et vérifie une copie avant d’activer la synchronisation.');
+        if (data.values[JournalArchive.KEY] == null) throw Object.assign(new Error('Exporte et vérifie une copie avant d’activer la synchronisation.'), { code: 'export' });
         let descriptor; try { descriptor = JSON.parse(session.getItem(SESSION)); } catch { /* code requis */ }
         return { values: { ...data.values }, signal: raw.getItem(LOCK_SIGNAL), expiresAt: st.expiresAt,
           binding: descriptor && /^[0-9a-f]{32}$/.test(descriptor.id) ? 'tab:' + descriptor.id : null };
@@ -610,8 +615,56 @@ const SessionVault = (() => {
         merge({ n: st.n, t: st.t, values: next }); st.error = null; return true;
       });
     }
+    // Récupération initiale uniquement. Ne jamais transformer un coffre ou une
+    // donnée locale préexistante en « profil vide », même si elle est illisible.
+    function syncVacant(ignoreOwnVault = false) {
+      return st.mode === 'plain' && !st.mem && !st.error && !session.getItem(SESSION) &&
+        !keysOf(raw).some(k => isApp(k) && !isPublic(k) && !(ignoreOwnVault && k === VAULT));
+    }
+    async function syncCanInitialize() { return exclusive(() => syncVacant()); }
+    async function syncInitialize(input, pass, keepRecovery, current = () => true) {
+      return exclusive(async () => {
+        if (!syncVacant() || typeof pass !== 'string' || !pass.length || pass.length > 1024 ||
+          !input || typeof input !== 'object' || Array.isArray(input) || Object.hasOwn(input, 'twrc.key') ||
+          !input['twrc.settings.v1'] || !input[JournalArchive.KEY] ||
+          Object.entries(input).some(([k, v]) => !secret(k) || typeof v !== 'string'))
+          throw new Error('Récupération initiale refusée : stockage local existant ou contenu incomplet.');
+        const next = { ...input, 'twrc.key': pass }, epoch = st.epoch;
+        JournalArchive.read(next[JournalArchive.KEY]);
+        const guard = () => {
+          if (st.epoch !== epoch || !syncVacant(true) || !current())
+            throw Object.assign(new Error('État local ou destination modifié : récupération arrêtée.'), { conflict: true });
+        };
+        guard(); await keepRecovery(); guard();
+        // writeVerified contrôle lui-même l'absence de changement du coffre,
+        // vérifie chaque valeur et rétablit ses propres octets en cas d'échec.
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const rawKey = await deriveRaw(pass, salt, crypto);
+        try {
+          guard(); await useKey(rawKey, salt); guard();
+          if (raw.getItem(VAULT) !== null) throw Object.assign(new Error('Un coffre est apparu pendant la préparation.'), { conflict: true });
+          await writeVerified(next, salt, guard, false);
+          st.mode = 'locked';
+        } finally { rawKey.fill(0); st.key = null; st.salt = null; }
+        // Ni session mémorisée, ni suppression du stockage, ni succès de
+        // restauration avant relecture dans un autre document.
+        return true;
+      });
+    }
+    async function syncVerifyInitialized(pass) {
+      return exclusive(async () => {
+        if (st.mem && st.mem.dirty.size) throw new Error('Écritures locales en attente.');
+        const before = raw.getItem(VAULT);
+        if (!before) throw new Error('Coffre récupéré absent.');
+        const data = await readRecovery(before, pass, crypto);
+        if (raw.getItem(VAULT) !== before || Object.keys(plainSnapshot(raw)).length || raw.getItem(V1) || raw.getItem(PENDING))
+          throw new Error('Stockage modifié pendant la vérification.');
+        return data;
+      });
+    }
     return {
       boot, unlock, lock, flush, onStorage, importConfig, recoverySnapshot, plainRecovery, activateJournal, syncSnapshot, syncApply,
+      syncCanInitialize, syncInitialize, syncVerifyInitialized,
       expired: () => expire(),
       get expiresAt() { return st.expiresAt; },
       get pendingRecovery() { return st.mode === 'expired' && !!st.mem && st.mem.dirty.size > 0; },

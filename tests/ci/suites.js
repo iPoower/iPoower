@@ -56,7 +56,9 @@ SUITE.push(['test_road_intelligence.js', 'route : géométrie, sens, progression
   ['test_road_providers.js', 'fournisseurs : pannes isolées, fraîcheur, quota, cache licite, annulation et flux', false],
   ['test_road_datex.js', 'DATEX serveur : snapshot, deltas, fin, validité, atomique et conservation au déploiement', false],
   ['e2e51-road.js', 'Live Road Intelligence : cockpit PC/iPhone, clics, OSRM, DATEX, fraîcheur, panne et confidentialité', true],
-  ['e2e52-road-sw.js', 'SW réel : migration v9/v11, DATEX, hors ligne, rétention et aucun faux LIVE', true, 'chromium']);
+  ['e2e52-road-sw.js', 'SW réel : migration v9/v11, DATEX, hors ligne, rétention et aucun faux LIVE', true, 'chromium'],
+  ['test_sw_cache_boundaries.js', 'SW : routes de récupération/config isolées du shell et alias hors ligne explicites', false],
+  ['test_path_guard.js', 'Réglages : pollution de prototype refusée et édition légitime préservée', false]);
 SUITE.push(['test_userctx.js', 'contexte global : migration, transactions, persistance, fraîcheur et fenêtres', false],
   ['e2e53-global-context.js', 'contexte global : cycle maison/travail/retour dans les quatre vues, profils, iPhone/PC et rechargement', true],
   ['e2e54-context-sw.js', 'contexte global et vrai SW : migration v10/v11, cache, cycle de trajet et réouverture PWA hors ligne', true, 'chromium']);
@@ -118,7 +120,10 @@ SUITE.push(['test_mission_control.js', 'Mission Control : projection canonique, 
 SUITE.push(['test_ux_mobile.js', 'UX mobile lot 1 : aucun texte sous 11 px, bandeau LIVE compact, cibles 44 pt et libellés', false]);
 SUITE.push(['test_live_route.js', 'Live Route : géométrie, progression, GPS périmé/imprécis, secteurs et prévisions ponctuelles', false],
   ['e2e81-live-route.js', 'Live Route premium PC/iPhone : vraie carte, simulation, GPS, reprise, focus, thèmes et nettoyage', true]);
-SUITE.push(['test_sync_merge.js', 'fusion PC ↔ iPhone (étape 1) : journal cumulatif, relevés additifs, réglage le plus récent par chemin, état de l’appareil jamais importé', false]);
+SUITE.push(['test_sync_merge.js', 'fusion PC ↔ iPhone (étape 1) : journal cumulatif, relevés additifs, réglages par chemin sans arbitrage d’horloge, état de l’appareil jamais importé', false]);
+SUITE.push(['test_key_recovery_matrix.js', 'clés : appareil vierge, perte des deux appareils, code préréglage ≠ coffre, mauvais code, ancienne copie, Control Vault sans clé', false]);
+SUITE.push(['test_data_coverage.js', 'couverture des données : chaque clé classée, export/Drive conformes au code, exclusions justifiées', false]);
+SUITE.push(['test_sync_three_way.js', 'fusion à trois voies : ancêtre commun, horloges décalées, conflits consultables et résolution explicite', false]);
 
 SUITE.push(['test_control_vault_packet.js', 'Control Vault : codec propriétaire V1, WebCrypto/AAD, archive intégrale et refus sans écriture', false],
   ['e2e82-control-vault-packet.js', 'Control Vault : chiffrement propriétaire Chromium/WebKit, profils PC/iPhone et fermeture des sessions', true]);
@@ -135,3 +140,6 @@ SUITE.push(['test_drive_sync.js', 'raccord Drive : propriétaire réel, deux app
  ['test_drive_build.js', 'Drive : profils de publication séparés, CSP et configuration publique approuvée', false]);
 
 SUITE.push(['e2e85-drive-runtime.js', 'Drive : deux vrais coffres, file IDB, HTTP opaque, fermeture, copie avant fusion et verrouillage', true]);
+SUITE.push(['e2e86-html-security.js', 'NOESIS : texte véhicule, attribut photo, stockage ancien et DOM réel Chromium/WebKit', true]);
+
+SUITE.push(['test_drive_store_reopen.js', 'NOESIS-RC-003 : IndexedDB réessayable après erreur, blocage, versionchange et fermeture sans purge', false]);

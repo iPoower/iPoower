@@ -1,0 +1,1463 @@
+{
+  "schema": 1,
+  "reviewedSource": "7149dc66306d34e19efbfb7c0cac79d06cd35ce9",
+  "scope": "Only exact test-file bytes and individual findings; never runtime code",
+  "findings": [
+    {
+      "rule": "js/bad-tag-filter",
+      "path": "tests/perf-compare.js",
+      "line": 23,
+      "fileSha256": "2d9c513613dc5c81a1da5ab00c802551604d69815daaf4ad23b0145af4511c04",
+      "messageSha256": "691e1e0a78fa857474ca92dfb8d6f6c41de11b8ac84aef0273bdf9d873ce738f",
+      "reason": "Extraction of script text from a locally generated synthetic build, not sanitization of external HTML."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e.js",
+      "line": 11,
+      "fileSha256": "9cec51bd99e0585a49d5203192b1cf03ddb7677e2afe4d29d2ab2a7019a92785",
+      "messageSha256": "dd536aac4eff37c5fe36673c0b1a3d04d0e67f7f884700ae2c63d1c2a71120d8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e10.js",
+      "line": 12,
+      "fileSha256": "1d6d423c9d465f7c868f8399cfa1f2928bace1f5efb407d8eeb8d97d122ede3d",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e10.js",
+      "line": 13,
+      "fileSha256": "1d6d423c9d465f7c868f8399cfa1f2928bace1f5efb407d8eeb8d97d122ede3d",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e10.js",
+      "line": 14,
+      "fileSha256": "1d6d423c9d465f7c868f8399cfa1f2928bace1f5efb407d8eeb8d97d122ede3d",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e10.js",
+      "line": 15,
+      "fileSha256": "1d6d423c9d465f7c868f8399cfa1f2928bace1f5efb407d8eeb8d97d122ede3d",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e10.js",
+      "line": 16,
+      "fileSha256": "1d6d423c9d465f7c868f8399cfa1f2928bace1f5efb407d8eeb8d97d122ede3d",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e11.js",
+      "line": 8,
+      "fileSha256": "a531c75d6ef1ca6f5baa57d87d84e226999bc83583d22c2c5e78f02a8959fbc4",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e12.js",
+      "line": 12,
+      "fileSha256": "4a5e5db2fdbd2f8d3b0a55714c6935c1d39672a99df0e9c7db890a1931592382",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e12.js",
+      "line": 13,
+      "fileSha256": "4a5e5db2fdbd2f8d3b0a55714c6935c1d39672a99df0e9c7db890a1931592382",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e12.js",
+      "line": 14,
+      "fileSha256": "4a5e5db2fdbd2f8d3b0a55714c6935c1d39672a99df0e9c7db890a1931592382",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e13.js",
+      "line": 13,
+      "fileSha256": "817b119b8eb6104ca8f621fcd58d9d15cedb01cd6983c0971d765a9a4f1a082e",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e12.js",
+      "line": 15,
+      "fileSha256": "4a5e5db2fdbd2f8d3b0a55714c6935c1d39672a99df0e9c7db890a1931592382",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e12.js",
+      "line": 16,
+      "fileSha256": "4a5e5db2fdbd2f8d3b0a55714c6935c1d39672a99df0e9c7db890a1931592382",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e13.js",
+      "line": 14,
+      "fileSha256": "817b119b8eb6104ca8f621fcd58d9d15cedb01cd6983c0971d765a9a4f1a082e",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e13.js",
+      "line": 15,
+      "fileSha256": "817b119b8eb6104ca8f621fcd58d9d15cedb01cd6983c0971d765a9a4f1a082e",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e13.js",
+      "line": 16,
+      "fileSha256": "817b119b8eb6104ca8f621fcd58d9d15cedb01cd6983c0971d765a9a4f1a082e",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e13.js",
+      "line": 17,
+      "fileSha256": "817b119b8eb6104ca8f621fcd58d9d15cedb01cd6983c0971d765a9a4f1a082e",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e15.js",
+      "line": 12,
+      "fileSha256": "89c9112b332a48ea1c6c661b58a1dfd49e946cfa1407f235b7af9f4689c5f9c7",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e15.js",
+      "line": 13,
+      "fileSha256": "89c9112b332a48ea1c6c661b58a1dfd49e946cfa1407f235b7af9f4689c5f9c7",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e15.js",
+      "line": 14,
+      "fileSha256": "89c9112b332a48ea1c6c661b58a1dfd49e946cfa1407f235b7af9f4689c5f9c7",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e15.js",
+      "line": 15,
+      "fileSha256": "89c9112b332a48ea1c6c661b58a1dfd49e946cfa1407f235b7af9f4689c5f9c7",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e15.js",
+      "line": 16,
+      "fileSha256": "89c9112b332a48ea1c6c661b58a1dfd49e946cfa1407f235b7af9f4689c5f9c7",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e14.js",
+      "line": 8,
+      "fileSha256": "cd034afa61ebf80346c1ce7d8e38e12754381d0438efd03351ccd64b0676b855",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e16.js",
+      "line": 8,
+      "fileSha256": "b481b02e4bc9b3761f3c4654be5f28fab484cc1c05d98edfbd0bef8ee481d3d2",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e17.js",
+      "line": 8,
+      "fileSha256": "c6ce5eb1480f4cbebb46a3e4bee5500cae8be0bda7e7cf652ae2506ed7e31dca",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e18.js",
+      "line": 12,
+      "fileSha256": "596a982783661bf126a0bb45ea93aceec023b52b78300d8877af0552650ddf2e",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e18.js",
+      "line": 13,
+      "fileSha256": "596a982783661bf126a0bb45ea93aceec023b52b78300d8877af0552650ddf2e",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e18.js",
+      "line": 14,
+      "fileSha256": "596a982783661bf126a0bb45ea93aceec023b52b78300d8877af0552650ddf2e",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e18.js",
+      "line": 15,
+      "fileSha256": "596a982783661bf126a0bb45ea93aceec023b52b78300d8877af0552650ddf2e",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e18.js",
+      "line": 16,
+      "fileSha256": "596a982783661bf126a0bb45ea93aceec023b52b78300d8877af0552650ddf2e",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e19.js",
+      "line": 12,
+      "fileSha256": "fd85d61c0b0cc972df250e10bcd9fc8d87a1ea4cd85852021ecc39203cfe9687",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e19.js",
+      "line": 13,
+      "fileSha256": "fd85d61c0b0cc972df250e10bcd9fc8d87a1ea4cd85852021ecc39203cfe9687",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e19.js",
+      "line": 14,
+      "fileSha256": "fd85d61c0b0cc972df250e10bcd9fc8d87a1ea4cd85852021ecc39203cfe9687",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e19.js",
+      "line": 15,
+      "fileSha256": "fd85d61c0b0cc972df250e10bcd9fc8d87a1ea4cd85852021ecc39203cfe9687",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e19.js",
+      "line": 16,
+      "fileSha256": "fd85d61c0b0cc972df250e10bcd9fc8d87a1ea4cd85852021ecc39203cfe9687",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e2.js",
+      "line": 11,
+      "fileSha256": "023a2cfab2bc98890238f1be0c03d9239cad4c125f68e13bbe6db7a932279bf9",
+      "messageSha256": "dd536aac4eff37c5fe36673c0b1a3d04d0e67f7f884700ae2c63d1c2a71120d8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e2.js",
+      "line": 45,
+      "fileSha256": "023a2cfab2bc98890238f1be0c03d9239cad4c125f68e13bbe6db7a932279bf9",
+      "messageSha256": "dd536aac4eff37c5fe36673c0b1a3d04d0e67f7f884700ae2c63d1c2a71120d8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e21.js",
+      "line": 12,
+      "fileSha256": "348620eeef899e38f28183b538b34d5a5d988a1f73885b3a62ba78b53211c5df",
+      "messageSha256": "dd536aac4eff37c5fe36673c0b1a3d04d0e67f7f884700ae2c63d1c2a71120d8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e21.js",
+      "line": 13,
+      "fileSha256": "348620eeef899e38f28183b538b34d5a5d988a1f73885b3a62ba78b53211c5df",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e21.js",
+      "line": 14,
+      "fileSha256": "348620eeef899e38f28183b538b34d5a5d988a1f73885b3a62ba78b53211c5df",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e21.js",
+      "line": 15,
+      "fileSha256": "348620eeef899e38f28183b538b34d5a5d988a1f73885b3a62ba78b53211c5df",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e21.js",
+      "line": 16,
+      "fileSha256": "348620eeef899e38f28183b538b34d5a5d988a1f73885b3a62ba78b53211c5df",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e21.js",
+      "line": 17,
+      "fileSha256": "348620eeef899e38f28183b538b34d5a5d988a1f73885b3a62ba78b53211c5df",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e22.js",
+      "line": 12,
+      "fileSha256": "2d057724cbd321c714006671062b2707de836fbb9df72e73205203af2795ad07",
+      "messageSha256": "dd536aac4eff37c5fe36673c0b1a3d04d0e67f7f884700ae2c63d1c2a71120d8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e22.js",
+      "line": 13,
+      "fileSha256": "2d057724cbd321c714006671062b2707de836fbb9df72e73205203af2795ad07",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e22.js",
+      "line": 14,
+      "fileSha256": "2d057724cbd321c714006671062b2707de836fbb9df72e73205203af2795ad07",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e20.js",
+      "line": 12,
+      "fileSha256": "2d2cd32e599ba3ac80649cae437b605b6942a78562ad6998c7ce1521d934179d",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e20.js",
+      "line": 13,
+      "fileSha256": "2d2cd32e599ba3ac80649cae437b605b6942a78562ad6998c7ce1521d934179d",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e22.js",
+      "line": 15,
+      "fileSha256": "2d057724cbd321c714006671062b2707de836fbb9df72e73205203af2795ad07",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e22.js",
+      "line": 16,
+      "fileSha256": "2d057724cbd321c714006671062b2707de836fbb9df72e73205203af2795ad07",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e20.js",
+      "line": 14,
+      "fileSha256": "2d2cd32e599ba3ac80649cae437b605b6942a78562ad6998c7ce1521d934179d",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e22.js",
+      "line": 17,
+      "fileSha256": "2d057724cbd321c714006671062b2707de836fbb9df72e73205203af2795ad07",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e20.js",
+      "line": 15,
+      "fileSha256": "2d2cd32e599ba3ac80649cae437b605b6942a78562ad6998c7ce1521d934179d",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e20.js",
+      "line": 16,
+      "fileSha256": "2d2cd32e599ba3ac80649cae437b605b6942a78562ad6998c7ce1521d934179d",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e23.js",
+      "line": 12,
+      "fileSha256": "b8dbdb105619300c45838774aea6fab1e9a1adf6138d36c06a94692f5b6acf43",
+      "messageSha256": "dd536aac4eff37c5fe36673c0b1a3d04d0e67f7f884700ae2c63d1c2a71120d8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e23.js",
+      "line": 13,
+      "fileSha256": "b8dbdb105619300c45838774aea6fab1e9a1adf6138d36c06a94692f5b6acf43",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e23.js",
+      "line": 14,
+      "fileSha256": "b8dbdb105619300c45838774aea6fab1e9a1adf6138d36c06a94692f5b6acf43",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e23.js",
+      "line": 15,
+      "fileSha256": "b8dbdb105619300c45838774aea6fab1e9a1adf6138d36c06a94692f5b6acf43",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e23.js",
+      "line": 16,
+      "fileSha256": "b8dbdb105619300c45838774aea6fab1e9a1adf6138d36c06a94692f5b6acf43",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e23.js",
+      "line": 17,
+      "fileSha256": "b8dbdb105619300c45838774aea6fab1e9a1adf6138d36c06a94692f5b6acf43",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e25.js",
+      "line": 27,
+      "fileSha256": "d4fa2be296e8a37fbe2be121386b8db6e72f5fcf9f1e3516816ac8748c6cff49",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e25.js",
+      "line": 28,
+      "fileSha256": "d4fa2be296e8a37fbe2be121386b8db6e72f5fcf9f1e3516816ac8748c6cff49",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e25.js",
+      "line": 29,
+      "fileSha256": "d4fa2be296e8a37fbe2be121386b8db6e72f5fcf9f1e3516816ac8748c6cff49",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e25.js",
+      "line": 30,
+      "fileSha256": "d4fa2be296e8a37fbe2be121386b8db6e72f5fcf9f1e3516816ac8748c6cff49",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e25.js",
+      "line": 31,
+      "fileSha256": "d4fa2be296e8a37fbe2be121386b8db6e72f5fcf9f1e3516816ac8748c6cff49",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e26.js",
+      "line": 12,
+      "fileSha256": "69e5350738f4974478a378b8b8c2edb65ab310f69cccbda975fe179861cb015b",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e26.js",
+      "line": 13,
+      "fileSha256": "69e5350738f4974478a378b8b8c2edb65ab310f69cccbda975fe179861cb015b",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e26.js",
+      "line": 14,
+      "fileSha256": "69e5350738f4974478a378b8b8c2edb65ab310f69cccbda975fe179861cb015b",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e26.js",
+      "line": 15,
+      "fileSha256": "69e5350738f4974478a378b8b8c2edb65ab310f69cccbda975fe179861cb015b",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e26.js",
+      "line": 16,
+      "fileSha256": "69e5350738f4974478a378b8b8c2edb65ab310f69cccbda975fe179861cb015b",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e24.js",
+      "line": 18,
+      "fileSha256": "c90e3dc030411e89c03b63d1262ffebba93bee043cb5c22cf6b1872b4f187f7a",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e24.js",
+      "line": 19,
+      "fileSha256": "c90e3dc030411e89c03b63d1262ffebba93bee043cb5c22cf6b1872b4f187f7a",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e24.js",
+      "line": 20,
+      "fileSha256": "c90e3dc030411e89c03b63d1262ffebba93bee043cb5c22cf6b1872b4f187f7a",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e24.js",
+      "line": 21,
+      "fileSha256": "c90e3dc030411e89c03b63d1262ffebba93bee043cb5c22cf6b1872b4f187f7a",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e24.js",
+      "line": 22,
+      "fileSha256": "c90e3dc030411e89c03b63d1262ffebba93bee043cb5c22cf6b1872b4f187f7a",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e27.js",
+      "line": 20,
+      "fileSha256": "8837c1f1f50e0236c9d2728e92c8190803427ace69606275bce0d8c671a9c353",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e27.js",
+      "line": 21,
+      "fileSha256": "8837c1f1f50e0236c9d2728e92c8190803427ace69606275bce0d8c671a9c353",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e27.js",
+      "line": 22,
+      "fileSha256": "8837c1f1f50e0236c9d2728e92c8190803427ace69606275bce0d8c671a9c353",
+      "messageSha256": "fb6fa7caf912c726bc657c18032e0c91534a809ed1740e104026ef584f747806",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e27.js",
+      "line": 23,
+      "fileSha256": "8837c1f1f50e0236c9d2728e92c8190803427ace69606275bce0d8c671a9c353",
+      "messageSha256": "54e4956d04322616630e478d91dda2bd96ccc496193a13a5d42b8487d3f089ce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e27.js",
+      "line": 24,
+      "fileSha256": "8837c1f1f50e0236c9d2728e92c8190803427ace69606275bce0d8c671a9c353",
+      "messageSha256": "f17e7898158ce9fddf8886ef55a732e9cd84163aeb1653cd7eb901f2166c0579",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e27.js",
+      "line": 29,
+      "fileSha256": "8837c1f1f50e0236c9d2728e92c8190803427ace69606275bce0d8c671a9c353",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e3.js",
+      "line": 8,
+      "fileSha256": "0cfcb4777bdfecfb604feae047c1a71cf516ed7d7c78e331df5eeb4a312a11da",
+      "messageSha256": "dd536aac4eff37c5fe36673c0b1a3d04d0e67f7f884700ae2c63d1c2a71120d8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e29.js",
+      "line": 44,
+      "fileSha256": "6d73a4ac323859f536b4d29382625af2ad4051f4f0e2463c0c787dbf30ebacc4",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e29.js",
+      "line": 54,
+      "fileSha256": "6d73a4ac323859f536b4d29382625af2ad4051f4f0e2463c0c787dbf30ebacc4",
+      "messageSha256": "f9cb0a8762eedd70be4c21ca3d5da36556b32fef0d11b4bf3835631121dce848",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e29.js",
+      "line": 56,
+      "fileSha256": "6d73a4ac323859f536b4d29382625af2ad4051f4f0e2463c0c787dbf30ebacc4",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e29.js",
+      "line": 64,
+      "fileSha256": "6d73a4ac323859f536b4d29382625af2ad4051f4f0e2463c0c787dbf30ebacc4",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e29.js",
+      "line": 105,
+      "fileSha256": "6d73a4ac323859f536b4d29382625af2ad4051f4f0e2463c0c787dbf30ebacc4",
+      "messageSha256": "63c4ee0706fb099ae1871b7703c341e775d54eed106a88d4babb6f16c31ed0fa",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e28.js",
+      "line": 42,
+      "fileSha256": "f9eb80421ff6f089096fcf7d252f0af7b5b2b395e070f48e2cb6ea7fb2d9d3ed",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e28.js",
+      "line": 51,
+      "fileSha256": "f9eb80421ff6f089096fcf7d252f0af7b5b2b395e070f48e2cb6ea7fb2d9d3ed",
+      "messageSha256": "f9cb0a8762eedd70be4c21ca3d5da36556b32fef0d11b4bf3835631121dce848",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e28.js",
+      "line": 53,
+      "fileSha256": "f9eb80421ff6f089096fcf7d252f0af7b5b2b395e070f48e2cb6ea7fb2d9d3ed",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e28.js",
+      "line": 61,
+      "fileSha256": "f9eb80421ff6f089096fcf7d252f0af7b5b2b395e070f48e2cb6ea7fb2d9d3ed",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e30.js",
+      "line": 42,
+      "fileSha256": "97eb72d258c46998a8671878df02ac889b49341497012b17414396f76195bff6",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e30.js",
+      "line": 51,
+      "fileSha256": "97eb72d258c46998a8671878df02ac889b49341497012b17414396f76195bff6",
+      "messageSha256": "f9cb0a8762eedd70be4c21ca3d5da36556b32fef0d11b4bf3835631121dce848",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e30.js",
+      "line": 53,
+      "fileSha256": "97eb72d258c46998a8671878df02ac889b49341497012b17414396f76195bff6",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e30.js",
+      "line": 61,
+      "fileSha256": "97eb72d258c46998a8671878df02ac889b49341497012b17414396f76195bff6",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e31.js",
+      "line": 19,
+      "fileSha256": "ce3c6fae2a277c4e868627a467e8782a55d9b542e3e250bc40f19cd51a635348",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e32.js",
+      "line": 37,
+      "fileSha256": "fbf98eb4aa1e45ef632e85c0a25ee6464d117f3d6928602076d242e5f96d4bb6",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e32.js",
+      "line": 173,
+      "fileSha256": "fbf98eb4aa1e45ef632e85c0a25ee6464d117f3d6928602076d242e5f96d4bb6",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e33.js",
+      "line": 46,
+      "fileSha256": "76d84dac01aecb2d2641f04a071dfff34db1d6674e54240442e6c3020adba711",
+      "messageSha256": "f9cb0a8762eedd70be4c21ca3d5da36556b32fef0d11b4bf3835631121dce848",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e33.js",
+      "line": 47,
+      "fileSha256": "76d84dac01aecb2d2641f04a071dfff34db1d6674e54240442e6c3020adba711",
+      "messageSha256": "f9cb0a8762eedd70be4c21ca3d5da36556b32fef0d11b4bf3835631121dce848",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e33.js",
+      "line": 48,
+      "fileSha256": "76d84dac01aecb2d2641f04a071dfff34db1d6674e54240442e6c3020adba711",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e33.js",
+      "line": 52,
+      "fileSha256": "76d84dac01aecb2d2641f04a071dfff34db1d6674e54240442e6c3020adba711",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e36.js",
+      "line": 14,
+      "fileSha256": "ea41f50fbdd4619c293124998be0a0c04b7110e3accfd72047f39eafa7a41489",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e36.js",
+      "line": 15,
+      "fileSha256": "ea41f50fbdd4619c293124998be0a0c04b7110e3accfd72047f39eafa7a41489",
+      "messageSha256": "f9cb0a8762eedd70be4c21ca3d5da36556b32fef0d11b4bf3835631121dce848",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e36.js",
+      "line": 15,
+      "fileSha256": "ea41f50fbdd4619c293124998be0a0c04b7110e3accfd72047f39eafa7a41489",
+      "messageSha256": "50dfc3b588c364c1401347da6e785bf41ec89e777cc2b6df0afc8a1fa18d94e0",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e36.js",
+      "line": 15,
+      "fileSha256": "ea41f50fbdd4619c293124998be0a0c04b7110e3accfd72047f39eafa7a41489",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e36.js",
+      "line": 15,
+      "fileSha256": "ea41f50fbdd4619c293124998be0a0c04b7110e3accfd72047f39eafa7a41489",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e36.js",
+      "line": 15,
+      "fileSha256": "ea41f50fbdd4619c293124998be0a0c04b7110e3accfd72047f39eafa7a41489",
+      "messageSha256": "f9cb0a8762eedd70be4c21ca3d5da36556b32fef0d11b4bf3835631121dce848",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e36.js",
+      "line": 15,
+      "fileSha256": "ea41f50fbdd4619c293124998be0a0c04b7110e3accfd72047f39eafa7a41489",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e34.js",
+      "line": 42,
+      "fileSha256": "573cb763dbf1f9c4c8f9053d8019e67036a324033c4de4edad94ba235e422fe4",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e34.js",
+      "line": 51,
+      "fileSha256": "573cb763dbf1f9c4c8f9053d8019e67036a324033c4de4edad94ba235e422fe4",
+      "messageSha256": "f9cb0a8762eedd70be4c21ca3d5da36556b32fef0d11b4bf3835631121dce848",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e34.js",
+      "line": 52,
+      "fileSha256": "573cb763dbf1f9c4c8f9053d8019e67036a324033c4de4edad94ba235e422fe4",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e34.js",
+      "line": 61,
+      "fileSha256": "573cb763dbf1f9c4c8f9053d8019e67036a324033c4de4edad94ba235e422fe4",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e34.js",
+      "line": 62,
+      "fileSha256": "573cb763dbf1f9c4c8f9053d8019e67036a324033c4de4edad94ba235e422fe4",
+      "messageSha256": "50dfc3b588c364c1401347da6e785bf41ec89e777cc2b6df0afc8a1fa18d94e0",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e35.js",
+      "line": 42,
+      "fileSha256": "252c6c593375ec635fc610616d2c532da0e9b695c523c948d40d0139fcbdec1d",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e35.js",
+      "line": 51,
+      "fileSha256": "252c6c593375ec635fc610616d2c532da0e9b695c523c948d40d0139fcbdec1d",
+      "messageSha256": "f9cb0a8762eedd70be4c21ca3d5da36556b32fef0d11b4bf3835631121dce848",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e35.js",
+      "line": 52,
+      "fileSha256": "252c6c593375ec635fc610616d2c532da0e9b695c523c948d40d0139fcbdec1d",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e35.js",
+      "line": 72,
+      "fileSha256": "252c6c593375ec635fc610616d2c532da0e9b695c523c948d40d0139fcbdec1d",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e35.js",
+      "line": 73,
+      "fileSha256": "252c6c593375ec635fc610616d2c532da0e9b695c523c948d40d0139fcbdec1d",
+      "messageSha256": "50dfc3b588c364c1401347da6e785bf41ec89e777cc2b6df0afc8a1fa18d94e0",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e37.js",
+      "line": 53,
+      "fileSha256": "05611bedbb7e8383afd03c176834c7f6dcbdb5af168517a3a8e4f6e33d007a45",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e37.js",
+      "line": 67,
+      "fileSha256": "05611bedbb7e8383afd03c176834c7f6dcbdb5af168517a3a8e4f6e33d007a45",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e37.js",
+      "line": 73,
+      "fileSha256": "05611bedbb7e8383afd03c176834c7f6dcbdb5af168517a3a8e4f6e33d007a45",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e37.js",
+      "line": 74,
+      "fileSha256": "05611bedbb7e8383afd03c176834c7f6dcbdb5af168517a3a8e4f6e33d007a45",
+      "messageSha256": "50dfc3b588c364c1401347da6e785bf41ec89e777cc2b6df0afc8a1fa18d94e0",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e37.js",
+      "line": 242,
+      "fileSha256": "05611bedbb7e8383afd03c176834c7f6dcbdb5af168517a3a8e4f6e33d007a45",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e4.js",
+      "line": 4,
+      "fileSha256": "ab6588ff0f71517b256a524dd70f8fbb66155cb0be2c35b122da14af466c4ba2",
+      "messageSha256": "dd536aac4eff37c5fe36673c0b1a3d04d0e67f7f884700ae2c63d1c2a71120d8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e38-resume.js",
+      "line": 19,
+      "fileSha256": "97bf0d4de6d776ea5c3189f3422250428a4a3f82ec11464b07f0084a2e5975b1",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e39-layout.js",
+      "line": 18,
+      "fileSha256": "f40adf31f14209c964185b1b15b604b4af7b6c582d7366df86daf2d92cecdee8",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e39-layout.js",
+      "line": 20,
+      "fileSha256": "f40adf31f14209c964185b1b15b604b4af7b6c582d7366df86daf2d92cecdee8",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e44-place.js",
+      "line": 35,
+      "fileSha256": "a9575dc650c9ac0b16e46243d47c3892695626bc9bee152ac63f15a30418686d",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e44-place.js",
+      "line": 45,
+      "fileSha256": "a9575dc650c9ac0b16e46243d47c3892695626bc9bee152ac63f15a30418686d",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e44-place.js",
+      "line": 46,
+      "fileSha256": "a9575dc650c9ac0b16e46243d47c3892695626bc9bee152ac63f15a30418686d",
+      "messageSha256": "f9cb0a8762eedd70be4c21ca3d5da36556b32fef0d11b4bf3835631121dce848",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e43-analyse.js",
+      "line": 30,
+      "fileSha256": "ccaf0d87e36104c9b8c33637290a3406e92554078471e5ba3ec7ee89c271d061",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e44-place.js",
+      "line": 47,
+      "fileSha256": "a9575dc650c9ac0b16e46243d47c3892695626bc9bee152ac63f15a30418686d",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e43-analyse.js",
+      "line": 40,
+      "fileSha256": "ccaf0d87e36104c9b8c33637290a3406e92554078471e5ba3ec7ee89c271d061",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e43-analyse.js",
+      "line": 41,
+      "fileSha256": "ccaf0d87e36104c9b8c33637290a3406e92554078471e5ba3ec7ee89c271d061",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e42-meteo.js",
+      "line": 27,
+      "fileSha256": "8b5dbaf713ebe6d1490084226afd17ead72caadebc4487e1035251ebfa6a501d",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e42-meteo.js",
+      "line": 37,
+      "fileSha256": "8b5dbaf713ebe6d1490084226afd17ead72caadebc4487e1035251ebfa6a501d",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e42-meteo.js",
+      "line": 38,
+      "fileSha256": "8b5dbaf713ebe6d1490084226afd17ead72caadebc4487e1035251ebfa6a501d",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e45-evidence.js",
+      "line": 28,
+      "fileSha256": "5c590d2f808930cab6cfa365e3267ed7a9b18f710c28751b58388354fc36534b",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e45-evidence.js",
+      "line": 38,
+      "fileSha256": "5c590d2f808930cab6cfa365e3267ed7a9b18f710c28751b58388354fc36534b",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e45-evidence.js",
+      "line": 39,
+      "fileSha256": "5c590d2f808930cab6cfa365e3267ed7a9b18f710c28751b58388354fc36534b",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e46-tyrelink.js",
+      "line": 25,
+      "fileSha256": "103952f6f1fe7a4e0a32aecd633adfd9cb27f3ee6d8272d8f5c7aed73f2703d3",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e46-tyrelink.js",
+      "line": 35,
+      "fileSha256": "103952f6f1fe7a4e0a32aecd633adfd9cb27f3ee6d8272d8f5c7aed73f2703d3",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e46-tyrelink.js",
+      "line": 36,
+      "fileSha256": "103952f6f1fe7a4e0a32aecd633adfd9cb27f3ee6d8272d8f5c7aed73f2703d3",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e47-autorefresh.js",
+      "line": 19,
+      "fileSha256": "e6f7585c27b54e915bdd3827eb0fbc59c3f3a49eef3d9fa23c29596b436f7960",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e48-tripstart.js",
+      "line": 19,
+      "fileSha256": "bcf4a3d37bcf7511ddcc526ccd70d8124bde3efe27b68254240592f3a42a6bcc",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e5.js",
+      "line": 9,
+      "fileSha256": "fff29c59ccfa12986cc193e48b90d550daecf9ceb23b2f17b1afcd81214d76a3",
+      "messageSha256": "dd536aac4eff37c5fe36673c0b1a3d04d0e67f7f884700ae2c63d1c2a71120d8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e54-context-sw.js",
+      "line": 49,
+      "fileSha256": "ecc81b95fbb6f1b5fde6d55f4fc6400a7ab2693ec7a8a88da0fe83b6836d295a",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e58-import-journal.js",
+      "line": 27,
+      "fileSha256": "bc18b9fb908b6d406d6f7760042a6e3030e827f1a57197accab38ef0abd5eb6f",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e59-brief-gum.js",
+      "line": 23,
+      "fileSha256": "f272ddd94df54071bfb769dd1dfe5670b7af8706de59896075706462e204ec8f",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e6.js",
+      "line": 9,
+      "fileSha256": "de994f31fbf7013c5580c26d4a88dd89f3d0866cdbd0e89364d6c39b858c1c98",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e59-brief-gum.js",
+      "line": 33,
+      "fileSha256": "f272ddd94df54071bfb769dd1dfe5670b7af8706de59896075706462e204ec8f",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e59-brief-gum.js",
+      "line": 34,
+      "fileSha256": "f272ddd94df54071bfb769dd1dfe5670b7af8706de59896075706462e204ec8f",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e7.js",
+      "line": 7,
+      "fileSha256": "bfc621f5f957282821b2f34aca2fadefcdc1c9fd0aeb9ee65607b26ab1fcca68",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e68-calendar-origin.js",
+      "line": 54,
+      "fileSha256": "22ebe7e67ba8642e6b58079b60675fb881743c03d8ec581430455a6dfb81cf7b",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e74-live-offline.js",
+      "line": 33,
+      "fileSha256": "13e9da3663fd30e101d037d055831f906b4a2943875cde11ee9e50f4cc83da72",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e75-fortress-web.js",
+      "line": 85,
+      "fileSha256": "dee51e2f5489af898a42804beed8ece67eb8f0123a726e56ac313c073f7b905a",
+      "messageSha256": "405e3150a2266db05b8bdff0406d79c84123bf417e5f90006525a9ba1c91b2f6",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e8.js",
+      "line": 10,
+      "fileSha256": "d53335c88c5550e0d7e75eabc69b7e0c4d9d54c3e1880b2d58f421cc5005bcb7",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/e2e9.js",
+      "line": 9,
+      "fileSha256": "8057f32d1eed06d29ba9149d1d42c225c138db5ded964f3da59b4ad6db120513",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/lib/context-session.js",
+      "line": 50,
+      "fileSha256": "a05df3bbba2499e5c1df794239709579b5dcecdb991ab6430a400167aa38be80",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/lib/context-session.js",
+      "line": 60,
+      "fileSha256": "a05df3bbba2499e5c1df794239709579b5dcecdb991ab6430a400167aa38be80",
+      "messageSha256": "cea1bbb9847805c44c985af8305c1e3ab1c728b41f8a9b8c499f31c5025f81a8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/lib/context-session.js",
+      "line": 61,
+      "fileSha256": "a05df3bbba2499e5c1df794239709579b5dcecdb991ab6430a400167aa38be80",
+      "messageSha256": "f9cb0a8762eedd70be4c21ca3d5da36556b32fef0d11b4bf3835631121dce848",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/lib/context-session.js",
+      "line": 62,
+      "fileSha256": "a05df3bbba2499e5c1df794239709579b5dcecdb991ab6430a400167aa38be80",
+      "messageSha256": "c7fd7a29fd1f4f7457fb1c59eaadad51b834221641d1d842c8aa5895d4f2dfce",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/lib/jarvis-session.js",
+      "line": 59,
+      "fileSha256": "3891b9d212dd3b3a3f189908e5774163d519f7072e718b5e355244de637d0945",
+      "messageSha256": "70186baf4fb93676f651326018412759598debcfdab4aae9022afef7555c2685",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/lib/jarvis-session.js",
+      "line": 60,
+      "fileSha256": "3891b9d212dd3b3a3f189908e5774163d519f7072e718b5e355244de637d0945",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/lib/jarvis-session.js",
+      "line": 68,
+      "fileSha256": "3891b9d212dd3b3a3f189908e5774163d519f7072e718b5e355244de637d0945",
+      "messageSha256": "ff62990294c0d2033cf58144e48992fc77df9677a6a370e6615b5f08b12325bb",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/lib/jarvis-session.js",
+      "line": 70,
+      "fileSha256": "3891b9d212dd3b3a3f189908e5774163d519f7072e718b5e355244de637d0945",
+      "messageSha256": "b127beaffb83ef6556afd287932e5129f33004fe5944d08658aedde6d785cb57",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/perf.js",
+      "line": 9,
+      "fileSha256": "1b4c851297c3c75ccf9830664ed88836122ff9ae0a829ba5579057ad42359146",
+      "messageSha256": "759278b9b53b73697429a5a09962a710d925672149e6023874ebafb6fe6c0fdd",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/shot2.js",
+      "line": 6,
+      "fileSha256": "c1dcb0a7ec2ea6b1d907d09d74f09c3021a05fc817c04c9e8ac90f3101151116",
+      "messageSha256": "dd536aac4eff37c5fe36673c0b1a3d04d0e67f7f884700ae2c63d1c2a71120d8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/shot_el.js",
+      "line": 6,
+      "fileSha256": "7aca3e423224e1867c830cb7f179c55e9628b57cd3c19800740553c0b12849e2",
+      "messageSha256": "dd536aac4eff37c5fe36673c0b1a3d04d0e67f7f884700ae2c63d1c2a71120d8",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/test_relay_clock.js",
+      "line": 66,
+      "fileSha256": "f065ae26bfa760075d2aa87df6190ef1fd0255bbf9711211a32da3eab0b7a16f",
+      "messageSha256": "028e935448b22362d28caa8d2df153c93f35a4048a07d10fe4387906d7a30b34",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/incomplete-url-substring-sanitization",
+      "path": "tests/test_relay_clock.js",
+      "line": 133,
+      "fileSha256": "f065ae26bfa760075d2aa87df6190ef1fd0255bbf9711211a32da3eab0b7a16f",
+      "messageSha256": "028e935448b22362d28caa8d2df153c93f35a4048a07d10fe4387906d7a30b34",
+      "reason": "Route dispatch to synthetic responses or assertion on fixture text; not an authorization boundary. Browser network is intercepted/aborted."
+    },
+    {
+      "rule": "js/file-system-race",
+      "path": "tests/e2e54-context-sw.js",
+      "line": 15,
+      "fileSha256": "ecc81b95fbb6f1b5fde6d55f4fc6400a7ab2693ec7a8a88da0fe83b6836d295a",
+      "messageSha256": "ad238cf21b19abc65b102c0cb4730679a473b48b35e6aa52ec39f39a1f25ffb3",
+      "reason": "Test-owned disposable fixture directory. No adversarial file or user profile is read."
+    },
+    {
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tests/e2e28.js",
+      "line": 289,
+      "fileSha256": "f9eb80421ff6f089096fcf7d252f0af7b5b2b395e070f48e2cb6ea7fb2d9d3ed",
+      "messageSha256": "ad81e61c59204d817a53386e2d3a0ed82a05bc4929a8f1f8d49ab7e03fed21f1",
+      "reason": "Assertion on fixture text, simulated-provider dispatch or known mocked route; not an authorization boundary."
+    },
+    {
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tests/e2e33.js",
+      "line": 46,
+      "fileSha256": "76d84dac01aecb2d2641f04a071dfff34db1d6674e54240442e6c3020adba711",
+      "messageSha256": "ad81e61c59204d817a53386e2d3a0ed82a05bc4929a8f1f8d49ab7e03fed21f1",
+      "reason": "Assertion on fixture text, simulated-provider dispatch or known mocked route; not an authorization boundary."
+    },
+    {
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tests/e2e6.js",
+      "line": 20,
+      "fileSha256": "de994f31fbf7013c5580c26d4a88dd89f3d0866cdbd0e89364d6c39b858c1c98",
+      "messageSha256": "da1e48be0b74e8a66e26645eee93a23ae5c5f0257b118f706f0498310b2f4862",
+      "reason": "Assertion on fixture text, simulated-provider dispatch or known mocked route; not an authorization boundary."
+    },
+    {
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tests/e2e74-weather-watch.js",
+      "line": 180,
+      "fileSha256": "688273aead00b90b151a497e8f3b30ee1a416e93cdf29f262995aed69599f670",
+      "messageSha256": "ad81e61c59204d817a53386e2d3a0ed82a05bc4929a8f1f8d49ab7e03fed21f1",
+      "reason": "Assertion on fixture text, simulated-provider dispatch or known mocked route; not an authorization boundary."
+    },
+    {
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tests/e2e74-weather-watch.js",
+      "line": 201,
+      "fileSha256": "688273aead00b90b151a497e8f3b30ee1a416e93cdf29f262995aed69599f670",
+      "messageSha256": "ad81e61c59204d817a53386e2d3a0ed82a05bc4929a8f1f8d49ab7e03fed21f1",
+      "reason": "Assertion on fixture text, simulated-provider dispatch or known mocked route; not an authorization boundary."
+    },
+    {
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tests/relay-smoke.js",
+      "line": 87,
+      "fileSha256": "d7801ebd174fcf16bf25444bd07086d7176f9cb670ecc8894ceef19742d180f3",
+      "messageSha256": "ad81e61c59204d817a53386e2d3a0ed82a05bc4929a8f1f8d49ab7e03fed21f1",
+      "reason": "Assertion on fixture text, simulated-provider dispatch or known mocked route; not an authorization boundary."
+    },
+    {
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tests/test_geosearch.js",
+      "line": 15,
+      "fileSha256": "d34efdf31e89745e86b6123a680a1fffbfbaf152378e223c78f3337cd2694f93",
+      "messageSha256": "ad81e61c59204d817a53386e2d3a0ed82a05bc4929a8f1f8d49ab7e03fed21f1",
+      "reason": "Assertion on fixture text, simulated-provider dispatch or known mocked route; not an authorization boundary."
+    },
+    {
+      "rule": "js/regex/missing-regexp-anchor",
+      "path": "tests/test_geosearch.js",
+      "line": 58,
+      "fileSha256": "d34efdf31e89745e86b6123a680a1fffbfbaf152378e223c78f3337cd2694f93",
+      "messageSha256": "ad81e61c59204d817a53386e2d3a0ed82a05bc4929a8f1f8d49ab7e03fed21f1",
+      "reason": "Assertion on fixture text, simulated-provider dispatch or known mocked route; not an authorization boundary."
+    }
+  ]
+}

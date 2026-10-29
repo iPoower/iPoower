@@ -1,0 +1,202 @@
+'use strict';
+// Exécute le vrai src/sw.js dans un Worker VM avec réseau et CacheStorage fictifs.
+const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
+const SOURCE = fs.readFileSync(path.resolve(__dirname, '../src/sw.js'), 'utf8');
+const SCOPE = 'https://fixture.invalid/race-control/';
+const STATIC = 'twrc-static-v12';
+let checks = 0;
+async function check(name, work) { await work(); checks++; console.log('✅ ' + name); }
+
+function harness(fetcher = async () => new Response('panne amont', { status: 503, headers: { 'Content-Type': 'text/plain' } }), options = {}) {
+  let cacheFault = '';
+  const listeners = new Map(), stores = new Map(), keyOf = (input, options = {}) => {
+    const raw = typeof input === 'string' ? input : input.url ?? input.href;
+    const url = new URL(raw, SCOPE); if (options.ignoreSearch) url.search = '';
+    return url.href;
+  };
+  // Les Response() synthétiques de Node n'ont pas d'URL réseau ; le harnais
+  // la conserve explicitement, y compris à travers clone() et CacheStorage.
+  function tagResponse(response, fallbackUrl) {
+    const finalUrl = response.url || fallbackUrl;
+    const redirected = response.redirected;
+    if (!response.url) Object.defineProperty(response, 'url', { value: finalUrl, configurable: true });
+    const originalClone = response.clone.bind(response);
+    response.clone = () => {
+      const copy = originalClone();
+      if (redirected) Object.defineProperty(copy, 'redirected', { value: true, configurable: true });
+      return tagResponse(copy, finalUrl);
+    };
+    return response;
+  }
+  const caches = {
+    async open(name) {
+      if (cacheFault === 'open') throw new Error('Cache indisponible (fixture)');
+      if (!stores.has(name)) stores.set(name, new Map());
+      const rows = stores.get(name);
+      return {
+        async addAll(urls) {
+          for (const item of urls) {
+            const key = keyOf(item);
+            if (key === SCOPE || key.endsWith('/index.html')) {
+              const response = new Response('<html>FIXTURE RACE SHELL</html>', { headers: { 'Content-Type': 'text/html' } });
+              if ((key === SCOPE && options.redirectRoot) || (key.endsWith('/index.html') && options.redirectIndex)) Object.defineProperty(response, 'redirected', { value: true, configurable: true });
+              rows.set(key, tagResponse(response, key.endsWith('/index.html') && options.redirectIndex ? SCOPE : key));
+            }
+          }
+        },
+        async match(input, options) { return rows.get(keyOf(input, options))?.clone(); },
+        async put(input, response) { if (cacheFault === 'put') throw new Error('Quota cache (fixture)'); rows.set(keyOf(input), tagResponse(response.clone(), response.url || keyOf(input))); },
+        async delete(input) { return rows.delete(keyOf(input)); },
+        async keys() { return [...rows.keys()].map(url => new Request(url)); },
+      };
+    },
+    async match(input, options) {
+      for (const rows of stores.values()) { const hit = rows.get(keyOf(input, options)); if (hit) return hit.clone(); }
+      return undefined;
+    },
+    async keys() { return [...stores.keys()]; },
+    async delete(name) { return stores.delete(name); },
+  };
+  const self = {
+    location: { origin: new URL(SCOPE).origin },
+    registration: { scope: SCOPE },
+    addEventListener(type, fn) { listeners.set(type, fn); },
+    skipWaiting() {}, clients: { claim: async () => {} },
+  };
+  const fetchFake = async (input, init) => {
+    const url = new URL(typeof input === 'string' ? input : input.url);
+    return tagResponse(await fetcher(url, init), url.href);
+  };
+  vm.runInNewContext(SOURCE, { self, caches, URL, Request, Response, Headers, fetch: fetchFake, setTimeout, clearTimeout });
+  return {
+    setCacheFault(value) { cacheFault = value; },
+    message(origin) {
+      const replies = [];
+      listeners.get('message')({ origin, data: { type: 'twrc-version' }, ports: [{ postMessage(value) { replies.push(value); } }] });
+      return replies;
+    },
+    async install() { let pending; listeners.get('install')({ waitUntil(p) { pending = p; } }); await pending; },
+    async dispatch(pathname, mode = 'navigate') {
+      const request = { url: new URL(pathname, SCOPE).href, method: 'GET', mode, headers: new Headers({ Accept: 'text/html,application/xhtml+xml,application/json' }) };
+      let responsePromise; const waits = [];
+      listeners.get('fetch')({ request, respondWith(p) { responsePromise = p; }, waitUntil(p) { waits.push(p); } });
+      if (!responsePromise) return { intercepted: false };
+      const response = await responsePromise;
+      await Promise.all(waits);
+      return { intercepted: true, response };
+    },
+    async cachedShell() { return (await (await caches.open(STATIC)).match(new URL('index.html', SCOPE)))?.text() ?? null; },
+    async cachedShellInfo() { const r = await (await caches.open(STATIC)).match(new URL('index.html', SCOPE)); return r && { url: r.url, redirected: r.redirected }; },
+    async seedShell(response) { await (await caches.open(STATIC)).put(new URL('index.html', SCOPE), response); },
+    async cachedUrls() { return [...stores.values()].flatMap(rows => [...rows.keys()]); },
+  };
+}
+
+(async () => {
+  await check('installation : le shell de repli provient de la racine sans redirection', async () => {
+    const h = harness(undefined, { redirectIndex: true }); await h.install();
+    const info = await h.cachedShellInfo();
+    assert.equal(info.url, SCOPE); assert.equal(info.redirected, false);
+  });
+  await check('installation : une racine elle-même redirigée est refusée', async () => {
+    const h = harness(undefined, { redirectRoot: true, redirectIndex: true });
+    await assert.rejects(h.install(), /shell|racine|redirect/i);
+  });
+  await check('un alias de navigation demande directement la racine au réseau', async () => {
+    let target = '';
+    const h = harness(async url => { target = url.href; return new Response('<html>OK</html>', {headers:{'Content-Type':'text/html'}}); });
+    await h.install(); await h.dispatch('index.html?fixture=1');
+    assert.equal(target, SCOPE + '?fixture=1');
+  });
+  await check('les chemins de récupération, config et manifeste ne sont jamais interceptés/cachés', async () => {
+    const h = harness(async url => new Response(url.pathname.endsWith('drive-config.json') ? '{"fixture":true}' : '<html>RECOVERY</html>', {
+      headers: { 'Content-Type': url.pathname.endsWith('.json') ? 'application/json' : 'text/html', 'Cache-Control': 'no-store' },
+    }));
+    await h.install();
+    const before = await h.cachedShell();
+    for (const path of ['recovery', 'recovery.html', 'drive-config.json', 'fixture-manifest.json']) {
+      const result = await h.dispatch(path);
+      assert.equal(result.intercepted, false, path + ' should pass straight through to network');
+    }
+    assert.equal(await h.cachedShell(), before, 'sensitive route must not overwrite index.html');
+    const cached = await h.cachedUrls();
+    for (const route of ['recovery', 'recovery.html', 'drive-config.json', 'fixture-manifest.json'])
+      assert.equal(cached.some(url => new URL(url).pathname.endsWith('/' + route)), false, route + ' must not be in CacheStorage');
+  });
+
+  await check('seuls root, /index et /index.html utilisent le shell hors ligne', async () => {
+    const h = harness(); await h.install();
+    for (const path of ['./', 'index', 'index.html']) {
+      const result = await h.dispatch(path);
+      assert.equal(result.intercepted, true, path);
+      assert.match(await result.response.text(), /FIXTURE RACE SHELL/, path);
+    }
+    for (const path of ['other', 'other.html', 'fixture-manifest.json', 'drive-config.json'])
+      assert.equal((await h.dispatch(path)).intercepted, false, path + ' must not receive the shell fallback');
+  });
+
+  await check('un autre document HTML reste réseau seul; jamais le shell', async () => {
+    const h = harness(); await h.install();
+    const result = await h.dispatch('other.html', 'cors');
+    assert.equal(result.intercepted, true);
+    assert.equal(result.response.status, 503);
+    assert.match(await result.response.text(), /panne amont/);
+  });
+
+  await check('une réponse JSON 200 à un alias shell ne remplace pas le HTML en cache', async () => {
+    const h = harness(async () => new Response('{"fixture":true}', { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }));
+    await h.install();
+    const result = await h.dispatch('index.html');
+    assert.match(await result.response.text(), /FIXTURE RACE SHELL/);
+    assert.match(await h.cachedShell(), /FIXTURE RACE SHELL/);
+  });
+
+  await check('un ancien cache index empoisonné par JSON ne sert plus de shell', async () => {
+    const h = harness(); await h.install();
+    await h.seedShell(new Response('{"approved":true}', { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }));
+    const result = await h.dispatch('index.html');
+    assert.equal(result.response.status, 503);
+    assert.match(await result.response.text(), /panne amont/);
+    assert.match(await h.cachedShell(), /approved/); // laissé en place, mais filtré de toute réponse de shell
+  });
+
+  await check('une réponse HTML légitime de l’accueil reste actualisable et disponible hors ligne', async () => {
+    const h = harness(async () => new Response('<html>COQUILLE VALIDÉE ACTUALISÉE</html>', { headers: { 'Content-Type': 'text/html' } }));
+    await h.install();
+    const result = await h.dispatch('index.html');
+    assert.equal(result.intercepted, true);
+    assert.match(await result.response.text(), /COQUILLE VALIDÉE ACTUALISÉE/);
+    assert.match(await h.cachedShell(), /COQUILLE VALIDÉE ACTUALISÉE/);
+  });
+
+  await check('une redirection HTML externe ou vers une autre page ne remplace jamais le shell hors ligne', async () => {
+    for (const finalUrl of ['https://outside.invalid/login', SCOPE + 'signin.html']) {
+      const h = harness(async () => {
+        const response = new Response('<html>PAGE NON AUTORISÉE</html>', { headers: { 'Content-Type': 'text/html' } });
+        Object.defineProperty(response, 'url', { value: finalUrl });
+        return response;
+      });
+      await h.install();
+      const result = await h.dispatch('index.html');
+      assert.equal(result.intercepted, true);
+      assert.match(await result.response.text(), /FIXTURE RACE SHELL/, finalUrl + ' must fall back to the known shell');
+      assert.match(await h.cachedShell(), /FIXTURE RACE SHELL/, finalUrl + ' must not poison CacheStorage');
+    }
+  });
+
+  await check('un quota ou un cache refusé ne masque jamais une réponse réseau valide', async () => {
+    for (const fault of ['put', 'open']) {
+      const h = harness(async () => new Response('<html>RÉSEAU VALIDE MALGRÉ CACHE REFUSÉ</html>', { headers: { 'Content-Type': 'text/html' } }));
+      await h.install();
+      h.setCacheFault(fault);
+      const result = await h.dispatch('index.html');
+      assert.match(await result.response.text(), /RÉSEAU VALIDE MALGRÉ CACHE REFUSÉ/, fault);
+    }
+  });
+  await check('le diagnostic SW répond uniquement aux messages de son origine', async () => {
+    const h = harness();
+    for (const origin of ['', 'https://outside.invalid']) assert.equal(h.message(origin).length, 0);
+    assert.deepEqual(h.message(new URL(SCOPE).origin).map(r => r.static), [STATIC]);
+  });
+  console.log(`${checks}/${checks} scénarios SW OK · CacheStorage et réseau simulés`);
+})().catch(error => { console.error(error); process.exitCode = 1; });

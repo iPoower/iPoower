@@ -198,7 +198,7 @@ window.addEventListener('online', networkChanged);
 /* ---------- démarrage ---------- */
 function registerSW() {
   try {
-    if ('serviceWorker' in navigator && location.protocol === 'https:' && /github\.io$/.test(location.hostname))
+    if ('serviceWorker' in navigator && location.protocol === 'https:')
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(e => { if (RUNTIME_RECORDER) RUNTIME_RECORDER.record('service-worker', e); });
   } catch (e) { if (RUNTIME_RECORDER) RUNTIME_RECORDER.record('service-worker', e); }
 }

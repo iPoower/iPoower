@@ -20,6 +20,20 @@ try {
   assert(!cspOrigins(fs.readFileSync(path.join(ROOT, OUT) + '/_headers', 'utf8')).has('https://accounts.google.com'));
   assert.equal(run(JSON.stringify(config)).status, 0);
   const headers = fs.readFileSync(path.join(ROOT, OUT) + '/_headers', 'utf8'), html = fs.readFileSync(path.join(ROOT, OUT) + '/index.html', 'utf8');
+  const recovery = fs.readFileSync(path.join(ROOT, OUT) + '/recovery.html', 'utf8');
+  // Assert our builder's exact serialization; this is not an HTML sanitizer.
+  // Extra tags, attributes or alternate delimiters must fail this byte check.
+  const lower = recovery.toLowerCase(), begin = lower.indexOf('<script'), end = lower.indexOf('</script');
+  assert.equal(lower.split('<script').length, 2, 'one recovery script only');
+  assert.equal(lower.split('</script').length, 2, 'one closing script tag only');
+  assert.equal(recovery.slice(begin, begin + 8), '<script>');
+  assert.equal(recovery.slice(end, end + 9), '</script>');
+  const recoveryCode = recovery.slice(begin + 8, end);
+  const codeHash = require('node:crypto').createHash('sha256').update(recoveryCode).digest('base64');
+  assert(headers.includes("'sha256-" + codeHash + "'"), 'the recovery document uses an exact authorized script hash');
+  assert(recovery.includes('id="recovery-consent"') && recovery.includes('id="recovery-verify"'));
+  assert(!recovery.includes('window.TWRC_SEALED=') && !recovery.includes(config.clientId) && !recovery.includes(config.apiKey));
+  assert(!recovery.includes('DeviceStorage.bootstrap(window,localStorage)') && !recovery.includes('function loadSettings()'));
   assert.equal(header(headers, 'Cross-Origin-Opener-Policy'), 'same-origin-allow-popups');
   assert(cspOrigins(headers, 'frame-src').has('https://docs.google.com'));
   for (const spoof of ['https://docs.google.com.example.org', 'https://docs.google.com@example.org', 'https://example.org/docs.google.com'])
@@ -30,4 +44,23 @@ try {
   assert.notEqual(run(JSON.stringify(config), false).status, 0, 'jamais de configuration sur le build historique');
   for (const extra of [{ secret: 'no' }, { token: 'no' }, { folderId: 'no' }, { approved: false }]) assert.notEqual(run(JSON.stringify({ ...config, ...extra })).status, 0);
   console.log('✅ deux profils CSP, configuration publique séparée, opt-in strict, aucune configuration Google sur github.io');
+  const profile = spawnSync(process.execPath, [path.join(ROOT, 'tools/build-drive-test.cjs')], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, BUILD_SHA: 'a'.repeat(40), GOOGLE_DRIVE_CONFIG: '' }, timeout: 180000 });
+  assert.equal(profile.status, 0, 'profil TEST complet construit et préréglage fictif déchiffré vérifié');
+  const result = JSON.parse(profile.stdout.trim());
+  const stamped = JSON.parse(fs.readFileSync(path.join(result.site, 'fixture-manifest.json'), 'utf8'));
+  assert.equal(stamped.fixtureOnly, true); assert.equal(stamped.sourceSha, 'a'.repeat(40)); assert.equal(stamped.googleEnabled, false);
+  assert.equal(fs.readFileSync(path.join(result.site, 'drive-config.json'), 'utf8'), 'null');
+  assert(fs.readFileSync(path.join(result.site, 'index.html'), 'utf8').includes('TEST — DONNÉES FICTIVES UNIQUEMENT'));
+  for (const name of ['index.html', 'recovery.html', 'widget.js']) {
+    const text = fs.readFileSync(path.join(result.site, name), 'utf8');
+    assert(!/https:\/\/(?:control-vault-ipoower\.pages\.dev|ipoower\.github\.io\/(?:iPoower|Reconversion-Control))\//.test(text), 'TEST ne doit proposer aucun accès aux applications de production : ' + name);
+  }
+  assert(fs.readFileSync(path.join(result.site, 'index.html'), 'utf8').includes('href="https://cv-drive-test-ipoower.pages.dev/"'));
+  assert(fs.readFileSync(path.join(result.site, 'widget.js'), 'utf8').includes("const SITE = 'https://rc-drive-test-ipoower.pages.dev/';"));
+  assert(fs.readFileSync(path.join(result.site, '_headers'), 'utf8').includes('geolocation=()'));
+  assert(!Object.keys(stamped.files).some(f => /(^|\/)(preset\.json|artifact\.html|relay-config\.sealed\.json|relay\.js)$/.test(f)));
+  for (const [name, expected] of Object.entries(stamped.files)) assert.equal(require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(result.site, name))).digest('hex'), expected);
+  const denied = spawnSync(process.execPath, [path.join(ROOT, 'tools/build-drive-test.cjs')], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, BUILD_SHA: 'a'.repeat(40), GOOGLE_DRIVE_CONFIG: JSON.stringify(config) } });
+  assert.notEqual(denied.status, 0, 'profil TEST refuse les autres origines avant tout build');
+  console.log('✅ profil TEST : fixture déchiffrée, fichiers limités, empreintes exactes, aucun Google implicite ni origine de production');
 } finally { fs.rmSync(path.join(ROOT, OUT), { recursive: true, force: true }); }
