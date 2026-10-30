@@ -21,8 +21,9 @@ function owner(network, count, label, crypt = webcrypto) {
     'twrc.context.v1': JSON.stringify({ v: 1, gps: { lat: 1, lon: 2 }, dayContext: { own: label }, debrief: { active: { key: 'active-' + label }, entries }, done: {} }) };
   values[A.JournalArchive.KEY] = JSON.stringify(A.JournalArchive.capture(values));
   const vault = { mode: 'vault', expiresAt: at + 7 * 864e5, expired: () => false,
-    async syncSnapshot() { return { values: { ...values }, binding: null, signal: null, expiresAt: this.expiresAt }; },
-    async syncApply(transform, keep, current) {
+    async syncSnapshot(deviceKey) { this.deviceKeys = [...(this.deviceKeys || []), deviceKey]; return { values: { ...values }, binding: null, signal: null, expiresAt: this.expiresAt }; },
+    async syncApply(transform, keep, current, deviceKey) {
+      this.deviceKeys = [...(this.deviceKeys || []), deviceKey];
       if (failure) throw new Error('quota');
       const next = transform({ ...values });
       if (JSON.stringify(next) !== JSON.stringify(values)) { await keep(new TextEncoder().encode('encrypted-local-copy')); if (!current()) throw new Error('locked'); values = next; applied++; }
@@ -351,6 +352,17 @@ function drive() {
     await disk.controller.run(true);
     assert.equal(disk.controller.status.message, 'stockage local non confirmé', 'un vrai échec IndexedDB garde son libellé');
     console.log('✅ motifs de blocage explicites : export, réglage, erreur inattendue, stockage');
+  }
+  // Constat C : la synchro désigne au coffre ses clés propres à l'appareil (SyncMerge.device), pour qu'une
+  // écriture de position, de cache ou d'agenda chiffré ne bloque ni l'instantané ni la fusion.
+  {
+    const net = drive(), a = owner(net, 2, 'predicat-a'), b = owner(net, 2, 'predicat-b');
+    await a.controller.run(true); await b.controller.run(true);
+    const keys = [...a.vault.deviceKeys, ...b.vault.deviceKeys];
+    assert(keys.length >= 4 && keys.every(k => typeof k === 'function'), 'chaque instantané et chaque fusion reçoivent le prédicat');
+    assert(keys.every(k => k('twrc.gps') && k('twrc.calendar.sealed.v1') && k('twrc.cache.home') && !k('twrc.settings.v1') && !k('twrc.context.v1')),
+      'position, agenda chiffré et caches seulement ; jamais les réglages ni le journal');
+    console.log('✅ constat C : instantanés et fusions reçoivent SyncMerge.device (' + keys.length + ' appels)');
   }
   await require('./lib/drive-recovery-checks')();
 

@@ -27,8 +27,8 @@ function profile() {
   const ctx = { console, indexedDB: require('./lib/indexeddb.fake')(), setTimeout, clearTimeout, TextEncoder, TextDecoder, atob, btoa, JSON, Proxy, Reflect, Map, Set, Object, Array, Uint8Array, Promise, Error,
     Event: class { constructor(t) { this.type = t; } } };
   vm.createContext(ctx);
-  vm.runInContext(src('journal-archive') + '\n' + src('device-storage') + '\n' + src('remember-device') + '\n' + src('session-vault') + ';this.SV=SessionVault;this.RD=RememberDevice;this.J=JournalArchive;', ctx);
-  const { SV, RD, J } = ctx, PASS = 'code-fictif-de-test-1234';
+  vm.runInContext(src('journal-archive') + '\n' + src('device-storage') + '\n' + src('remember-device') + '\n' + src('session-vault') + '\n' + src('sync-merge') + ';this.SV=SessionVault;this.RD=RememberDevice;this.J=JournalArchive;this.device=SyncMerge.device;', ctx);
+  const { SV, RD, J, device } = ctx, PASS = 'code-fictif-de-test-1234';
   async function vault() {
     const raw = fakeStorage(), L = locks();
     const vs = SV.create({ raw, session: session(), crypto: webcrypto, target: null, sessionKeys: RD.sessions, locks: L });
@@ -36,7 +36,7 @@ function profile() {
     await vs.unlock(PASS, profile(), true);
     assert.equal(vs.mode, 'vault'); await vs.flush(); assert.equal(vs.error, null, 'montage : coffre sain');
     await vs.syncSnapshot();   // montage : un instantané sans écriture concurrente doit réussir
-    return { vs, L };
+    return { vs, L, raw };
   }
 const withKm = values => { const st = JSON.parse(values['twrc.settings.v1']); st.cars[0].odo = [...st.cars[0].odo, { d: '2026-10-29', km: 45000 }]; return { ...values, 'twrc.settings.v1': JSON.stringify(st) }; };
   let fail = 0;
@@ -44,21 +44,37 @@ const withKm = values => { const st = JSON.parse(values['twrc.settings.v1']); st
   await check('instantané de synchro : une écriture GPS (hors synchro) juste avant la lecture ne l’empêche pas', async () => {
     const { vs, L } = await vault();
     L.arm(2, () => vs.store.setItem('twrc.gps', JSON.stringify({ lat: 1, lon: 2, ts: 2 })));
-    const snap = await vs.syncSnapshot();
+    const snap = await vs.syncSnapshot(device);   // même prédicat que la synchro (SyncMerge.device)
     assert.ok(snap.values['twrc.settings.v1'], 'instantané obtenu');
   });
   await check('fusion de synchro : une écriture GPS (hors synchro) pendant la fusion ne l’annule pas', async () => {
     const { vs } = await vault();
     const changed = await vs.syncApply(withKm,
-      async () => { vs.store.setItem('twrc.cache.home', JSON.stringify({ t: 2 })); });   // météo écrite pendant la copie avant fusion
+      async () => { vs.store.setItem('twrc.cache.home', JSON.stringify({ t: 2 })); }, () => true, device);   // météo écrite pendant la copie avant fusion
     assert.equal(changed, true, 'fusion appliquée');
     assert.match(vs.store.getItem('twrc.settings.v1'), /"km":45000/);
   });
   await check('contrôle (doit rester vrai) : une saisie SYNCHRONISÉE pendant la fusion l’annule toujours, rien n’est écrasé', async () => {
     const { vs } = await vault();
     await assert.rejects(vs.syncApply(withKm, async () => {
-      const st = JSON.parse(vs.store.getItem('twrc.settings.v1')); st.cars[0].short = 'Saisie locale'; vs.store.setItem('twrc.settings.v1', JSON.stringify(st)); }), e => e.conflict === true);
+      const st = JSON.parse(vs.store.getItem('twrc.settings.v1')); st.cars[0].short = 'Saisie locale'; vs.store.setItem('twrc.settings.v1', JSON.stringify(st)); }, () => true, device), e => e.conflict === true);
     assert.match(vs.store.getItem('twrc.settings.v1'), /Saisie locale/); assert.doesNotMatch(vs.store.getItem('twrc.settings.v1'), /"km":45000/);
+  });
+  await check('aucune perte : agenda chiffré et position écrits PENDANT la fusion sont conservés, en mémoire et après réouverture', async () => {
+    const { vs, raw } = await vault();
+    vs.store.setItem('twrc.calendar.sealed.v1', 'agenda-chiffre-ancien'); await vs.flush();
+    const changed = await vs.syncApply(withKm, async () => {
+      vs.store.setItem('twrc.calendar.sealed.v1', 'agenda-chiffre-nouveau');
+      vs.store.setItem('twrc.gps', JSON.stringify({ lat: 1, lon: 2, ts: 3 }));
+    }, () => true, device);
+    assert.equal(changed, true, 'fusion appliquée');
+    assert.equal(vs.store.getItem('twrc.calendar.sealed.v1'), 'agenda-chiffre-nouveau', 'en mémoire : la valeur écrite pendant la fusion');
+    await vs.flush(); assert.equal(vs.error, null); assert.equal(vs.pendingWrites, false, 'écriture terminée');
+    const again = SV.create({ raw, session: session(), crypto: webcrypto, target: null, sessionKeys: RD.sessions, locks: locks() });
+    await again.boot(); if (again.mode !== 'vault') assert.equal(await again.unlock(PASS), true);
+    assert.equal(again.store.getItem('twrc.calendar.sealed.v1'), 'agenda-chiffre-nouveau', 'après réouverture : agenda chiffré conservé');
+    assert.match(again.store.getItem('twrc.gps'), /"ts":3/, 'après réouverture : position conservée');
+    assert.match(again.store.getItem('twrc.settings.v1'), /"km":45000/, 'après réouverture : fusion conservée');
   });
   console.log(fail ? fail + ' scénario(s) en échec : défaut reproduit' : 'aucun échec');
   process.exitCode = fail ? 1 : 0;

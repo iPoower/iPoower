@@ -580,10 +580,14 @@ const SessionVault = (() => {
     }); }
     // Le transport ne reçoit jamais ces valeurs. Le propriétaire prend un
     // instantané après son commit local, sous le verrou du coffre.
-    async function syncSnapshot() {
+    // `deviceKey` (facultatif) : clés propres à l'appareil, exclues de la synchro (position, caches, agenda chiffré).
+    // Leur écriture en cours ne bloque ni l'instantané ni la fusion ; elle reste en attente et s'enregistre ensuite.
+    // Sans ce paramètre, toute écriture en cours bloque, comme avant (constat C du 30/10/2026).
+    const pendingSynced = (mem, deviceKey) => [...mem.dirty].some(k => !deviceKey(k));
+    async function syncSnapshot(deviceKey = () => false) {
       await flush();
       return exclusive(async () => {
-        expire(); if (st.mode !== 'vault' || st.error || st.mem.dirty.size) throw new Error('Enregistrement local à confirmer.');
+        expire(); if (st.mode !== 'vault' || st.error || pendingSynced(st.mem, deviceKey)) throw new Error('Enregistrement local à confirmer.');
         const epoch = st.epoch, mem = st.mem, guard = () => guardSession(epoch, mem);
         const data = await latest(guard); guard();
         if (data.values[JournalArchive.KEY] == null) throw Object.assign(new Error('Exporte et vérifie une copie avant d’activer la synchronisation.'), { code: 'export' });
@@ -592,13 +596,13 @@ const SessionVault = (() => {
           binding: descriptor && /^[0-9a-f]{32}$/.test(descriptor.id) ? 'tab:' + descriptor.id : null };
       });
     }
-    async function syncApply(transform, keepRecovery, current = () => true) {
+    async function syncApply(transform, keepRecovery, current = () => true, deviceKey = () => false) {
       await flush();
       return exclusive(async () => {
         expire(); if (st.mode !== 'vault' || st.error) throw new Error('Déverrouille et confirme le coffre local.');
         const epoch = st.epoch, mem = st.mem, guard = () => {
           guardSession(epoch, mem);
-          if (!current() || mem.dirty.size) throw Object.assign(new Error('Saisie locale en cours : fusion différée.'), { conflict: true });
+          if (!current() || pendingSynced(mem, deviceKey)) throw Object.assign(new Error('Saisie locale en cours : fusion différée.'), { conflict: true });
         };
         guard(); const data = await latest(guard), previous = raw.getItem(VAULT);
         const next = transform({ ...data.values }); guard();
