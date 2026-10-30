@@ -360,7 +360,37 @@ async function journeys() {
   });
   for (const dev of [A, B, C, D, F]) await finish(dev);
   await badgeJourney();
+  await carJourney();
   return drive;
+}
+
+// ---------- P10 voiture créée sur un appareil, retrouvée sur l'autre (Drive simulé) ----------
+async function carJourney() {
+  const drive = fakeDrive([ORIGIN]), J10 = 'P10 voiture créée sur un appareil';
+  const K = await device('K-PC', drive), k = K.page, L = await device('L-iPhone', drive), l = L.page;
+  for (const [pg, tag] of [[k, 'K'], [l, 'L']]) await step(pg, J10, tag + ' : premier lancement, copie complète, Drive', async () => { await pg.goto(ORIGIN + '/'); await unlock(pg); await exportCopy(pg, tag + '-export'); return driveConnect(pg, tag === 'K'); });
+  let added = null;
+  await step(k, J10, 'K : Paramètres → Ajouter une voiture', async () => {
+    await openSettings(k); const add = k.locator('[data-act=car-add]');
+    if (!await add.count()) throw new Error('FONCTION ABSENTE : aucun bouton « Ajouter une voiture »');
+    await k.locator('#carNewName').fill('Voiture recette C'); await add.click(); await k.waitForTimeout(800);
+    added = await k.evaluate(() => S.cars[S.cars.length - 1]); if (!added || added.name !== 'Voiture recette C') throw new Error('voiture non créée');
+    await k.locator('#odo-' + (await k.evaluate(() => S.cars.length - 1))).fill('4321'); await k.locator(`[data-act=odo][data-i="${await k.evaluate(() => S.cars.length - 1)}"]`).click(); await k.waitForTimeout(600);
+    return syncNow(k);
+  });
+  await step(l, J10, 'L : reçoit la voiture et son compteur, sans conflit', async () => {
+    const c = await syncNow(l); const got = await l.evaluate(id => { const c = S.cars.find(x => x.id === id); return c && { name: c.name, km: (c.odo || []).slice(-1)[0] && c.odo.slice(-1)[0].km }; }, added && added.id);
+    if (/conflit|CONFLIT/.test(c + await panel(l).innerText())) throw new Error('conflit affiché : ' + c);
+    if (!got || got.name !== 'Voiture recette C' || got.km !== 4321) throw new Error('reçu : ' + JSON.stringify(got)); return 'Voiture recette C · 4 321 km · ' + c;
+  });
+  await step(l, J10, 'L : renomme la voiture → K reçoit le nouveau nom', async () => {
+    const i = await l.evaluate(id => S.cars.findIndex(x => x.id === id), added.id);
+    await openSettings(l); const f = l.locator('#f-cars-' + i + '-name'); await f.fill('Voiture recette C+'); await f.dispatchEvent('change'); await l.waitForTimeout(600);
+    await syncNow(l); await syncNow(k);
+    const name = await k.evaluate(id => (S.cars.find(x => x.id === id) || {}).name, added.id);
+    if (name !== 'Voiture recette C+') throw new Error('nom sur K : ' + name); return 'nom synchronisé dans l’autre sens';
+  });
+  for (const dev of [K, L]) await finish(dev);
 }
 
 // ---------- P9 sauvegarde visible et automatique (badge de la barre d'état) ----------
@@ -644,6 +674,7 @@ function report(drive, monkeyStats) {
   try {
     if (!process.env.ONLY || process.env.ONLY.includes('parcours')) drive = await journeys();
     else if (process.env.ONLY.includes('badge')) await badgeJourney();
+    if (process.env.ONLY && process.env.ONLY.includes('voiture')) await carJourney();
     const wantExplore = !process.env.ONLY || process.env.ONLY.includes('exploration');
     if (wantExplore && left() > 8 * 60000) await explore(); else if (wantExplore) matrix.push({ screen: '(exploration)', element: '—', browser: BROWSER, result: 'NON EXÉCUTÉ', detail: 'budget de temps épuisé' });
     if ((!process.env.ONLY || process.env.ONLY.includes('monkey')) && MONKEY_MS > 0 && left() > 90000) monkeyStats = await monkey(Math.min(MONKEY_MS, left() - 60000));
