@@ -11,7 +11,7 @@ const F1Pure = (() => {
     { id: 'trackConditions', title: 'Track Conditions', view: 'meteo', description: 'Lecture météo du trajet par secteurs' },
     { id: 'tyreManagement', title: 'Tyre Management', view: 'pneus', description: 'État et actions pneus réellement renseignés' },
     { id: 'strategyAB', title: 'Strategy A/B', view: 'trajet', description: 'Comparer les voitures sur le même trajet' },
-    { id: 'theGarage', title: 'The Garage', view: 'garage', description: 'État technique des voitures enregistrées' },
+    { id: 'theGarage', title: 'Le garage', view: 'garage', description: 'État technique des voitures enregistrées' },
     { id: 'telemetryReplay', title: 'Telemetry Replay', view: 'analyse', description: 'Retour terrain, sans capteurs imaginaires' }
   ]);
   const finite = Number.isFinite, text = x => typeof x === 'string' ? x : '';

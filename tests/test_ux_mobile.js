@@ -29,4 +29,18 @@ test('libellés : tutoiement, onglet Trajet et risque explicite', () => {
   assert.match(fs.readFileSync(path.join(root, 'app.js'), 'utf8'), /🧭<\/span> Trajet<\/button>/);
   assert.match(fs.readFileSync(path.join(root, 'app', 'weather-view.js'), 'utf8'), /'\/100 · risque '/);
 });
+const F1_EN = /\b(twin garage|live route|next mission|the garage)\b/i;
+const visible = code => code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/.*$/gm, '$1');
+test('libellés : noms F1 traduits en français (Garage numérique, Trajet en direct, Prochaine mission, Le garage)', () => {
+  const files = [path.join(root, 'app.js'), path.join(root, 'f1-pure.js'), ...sources.filter(f => f.endsWith('.js'))];
+  const found = files.flatMap(f => visible(fs.readFileSync(f, 'utf8')).split('\n').filter(l => F1_EN.test(l)).map(l => path.relative(root, f) + ' : ' + l.trim().slice(0, 80)));
+  assert.deepEqual(found, []);
+  assert.match(fs.readFileSync(path.join(root, 'app', 'garage-view.js'), 'utf8'), /🛠️ GARAGE NUMÉRIQUE/);
+  assert.match(fs.readFileSync(path.join(root, 'app', 'live-route-view.js'), 'utf8'), /lr-title">TRAJET EN DIRECT</);
+  assert.match(fs.readFileSync(path.join(root, 'app', 'mission-control.js'), 'utf8'), /🏁 PROCHAINE MISSION/);
+});
+test('contre-test : le détecteur repère un nom anglais visible mais ignore les commentaires', () => {
+  assert.equal(F1_EN.test(visible("h('<b>LIVE ROUTE</b>')")), true);
+  assert.equal(F1_EN.test(visible('/* Twin Garage */ x(); // The Garage')), false);
+});
 console.log(n + '/' + n + ' contrôles UX mobile');

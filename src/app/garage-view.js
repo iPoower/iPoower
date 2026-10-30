@@ -107,8 +107,8 @@ function renderGarage() {
     .map(plan => plan.closest('[data-garage-car]').dataset.garageCar));
   const foldFocus = uxFocusKey(el);
   if (!el.querySelector('#twinGarageBody')) el.innerHTML = GARAGE_STYLE + LIVE_ROUTE_STYLE +
-    '<div class="mod-h"><h2>🛠️ TWIN GARAGE LIVE</h2><span class="src obs">THE GARAGE · données enregistrées</span></div>' +
-    '<div class="twin-intro"><p>Véhicules · prochain trajet · préparation explicable.</p><div class="mission-actions"><a class="btn sm twin-jump" href="#missionControl">NEXT MISSION ↓</a><a class="btn sm twin-jump" href="#garageTrip">Voir le trajet · LIVE ROUTE ↓</a></div></div>' +
+    '<div class="mod-h"><h2>🛠️ GARAGE NUMÉRIQUE</h2><span class="src obs">LE GARAGE · données enregistrées</span></div>' +
+    '<div class="twin-intro"><p>Véhicules · prochain trajet · préparation explicable.</p><div class="mission-actions"><a class="btn sm twin-jump" href="#missionControl">PROCHAINE MISSION ↓</a><a class="btn sm twin-jump" href="#garageTrip">Voir le trajet en direct ↓</a></div></div>' +
     '<div id="twinGarageBody" class="twin-body">' + Object.keys(parts).map(k=>'<div data-twin-part="' + k + '"></div>').join('') + '</div>' +
     '<p class="garage-note">Les profondeurs et contrôles sont saisis par toi. La pression affichée est une cible, pas une mesure en temps réel. Aucun capteur moteur, diagnostic OBD ou historique de réparations n’est disponible.</p>';
   for (const [key, content] of Object.entries(parts)) {

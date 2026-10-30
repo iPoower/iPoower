@@ -83,7 +83,7 @@ function f1StrategyHtml() {
 }
 function f1GarageHtml() {
   const x = F1Pure.theGarage(S.cars);
-  return f1Panel('theGarage', 'THE GARAGE', 'Suivi des véhicules enregistrés',
+  return f1Panel('theGarage', 'LE GARAGE', 'Suivi des véhicules enregistrés',
     '<ul class="lab-why">' + x.cars.map(c => '<li><b>' + esc(c.name) + '</b> · ' + esc(c.tyre) +
     (c.odo != null ? ' · compteur déclaré ' + c.odo.toLocaleString('fr-FR') + ' km' : ' · compteur non renseigné') +
     (c.mounted ? ' · monté le ' + esc(c.mounted) : '') + '</li>').join('') +

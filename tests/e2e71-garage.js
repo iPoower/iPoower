@@ -158,7 +158,7 @@ async function twinScenario(browser){
    assert(after.opened&&after.focused&&after.updated,JSON.stringify(after));
   });
   await check('Twin · scène schématique, effets documentés et aucun GPS simulé',async()=>{
-   const text=await p.locator('#secGarage').innerText();assert.match(text,/TWIN GARAGE LIVE/);assert.match(text,/SCHÉMA SANS ÉCHELLE/);assert.match(text,/sans suivi GPS/);
+   const text=await p.locator('#secGarage').innerText();assert.match(text,/GARAGE NUMÉRIQUE/);assert.match(text,/SCHÉMA SANS ÉCHELLE/);assert.match(text,/sans suivi GPS/);
    for(const cls of ['twin-rain','twin-snow','twin-fog','twin-wind','twin-moon','twin-sun'])assert(await p.locator('#secGarage .'+cls).count(),cls);
    assert.match(await p.locator('.twin-wind').evaluate(e=>e.parentElement.getAttribute('transform')),/^rotate\(0 /,'vent venant de l’ouest : mouvement vers l’est');
    assert.equal(await p.locator('.twin-samples li').count(),3);assert.equal(await p.locator('.twin-car-svg').count(),3);
@@ -296,7 +296,7 @@ async function twinScenario(browser){
      assert(await p.locator('#secGarage').isVisible());
      assert.equal(await p.locator('#secGarage .garage-car').count(),2);
      assert.equal(await p.locator('#secTenue').isVisible(),false);
-     assert.match(await p.locator('#secGarage').innerText(),/THE GARAGE/);
+     assert.match(await p.locator('#secGarage').innerText(),/LE GARAGE/);
      assert.equal(await p.locator('#secGarage button.garage-edit').count(),2);
     });
     const before=await p.evaluate(()=>JSON.stringify(S.cars));

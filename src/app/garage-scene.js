@@ -147,7 +147,7 @@ function garageWeatherSvg(s, n, count) {
   return '<svg x="' + n*w + '" y="0" width="' + w + '" height="210" viewBox="0 0 ' + w + ' 210" overflow="hidden">' + shapes + '</svg>';
 }
 function garageTripHtml(scene, active) {
-  if (!scene.available) return '<div id="garageTrip" class="twin-trip"><div class="mod-h"><h3>PROCHAIN TRAJET · LIVE ROUTE</h3><span class="src est">INDISPONIBLE</span></div><p class="garage-empty">Aucun prochain trajet connu. Les fiches restent consultables ; aucun parcours n’est créé pour animer le Garage.</p></div>';
+  if (!scene.available) return '<div id="garageTrip" class="twin-trip"><div class="mod-h"><h3>PROCHAIN TRAJET · EN DIRECT</h3><span class="src est">INDISPONIBLE</span></div><p class="garage-empty">Aucun prochain trajet connu. Les fiches restent consultables ; aucun parcours n’est créé pour animer le Garage.</p></div>';
   const samples = scene.samples;
   const times = (scene.departure ? scene.departure.slice(8,10) + '/' + scene.departure.slice(5,7) + ' · ' + scene.departure.slice(11,16) : 'Horaire à confirmer') +
     (scene.arrival ? ' → ' + scene.arrival.slice(11,16) : '');
@@ -161,7 +161,7 @@ function garageTripHtml(scene, active) {
       (scene.hasNight ? '<path class="twin-headlights" d="M247 61 L345 34 L345 92 L247 66 Z"/>' : '') +
       '<path class="twin-speed" d="M-70 30 H8 M-40 44 H14 M-90 58 H4 M-55 72 H18 M-80 86 H10"/>' +
       garageCarSvg(active.silhouette, true) + '</g>' : '') + '</g></svg>';
-  return '<div id="garageTrip" class="twin-trip"><div class="mod-h"><h3>PROCHAIN TRAJET · LIVE ROUTE</h3><span class="src est">' + esc(scene.status) + '</span></div>' +
+  return '<div id="garageTrip" class="twin-trip"><div class="mod-h"><h3>PROCHAIN TRAJET · EN DIRECT</h3><span class="src est">' + esc(scene.status) + '</span></div>' +
     '<div class="twin-route"><div><small>DÉPART</small><b>' + esc(scene.from) + '</b></div><span aria-hidden="true">→</span><div><small>DESTINATION</small><b>' + esc(scene.to) + '</b></div></div>' +
     '<div class="twin-caption"><span class="num">' + esc(times) + '</span><span>' + esc(active ? active.name + ' · voiture active' : 'Voiture active à choisir') + '</span></div>' +
     garageLiveHtml() +
