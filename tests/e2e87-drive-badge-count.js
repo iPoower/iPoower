@@ -19,22 +19,23 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     p.on('pageerror', e => errors.push(e.message));
     let weatherCalls = 0;
     await p.route('**/*', r => {
-      const u = r.request().url(), J = o => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
-      if (u.includes('open-meteo.com')) {
+      const u = r.request().url(), url = new URL(u), host = url.hostname, J = o => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
+      // Correspondance sur le nom d'hôte analysé (jamais une sous-chaîne de l'URL).
+      if (host === 'open-meteo.com' || host.endsWith('.open-meteo.com')) {
         weatherCalls++;
-        const q = new URL(u).searchParams, la = String(q.get('latitude')).split(','), lo = String(q.get('longitude')).split(','), one = i => ctx.mk('doux', { lat: +la[i], lon: +lo[i] }, 'Europe/Paris', 0);
+        const q = url.searchParams, la = String(q.get('latitude')).split(','), lo = String(q.get('longitude')).split(','), one = i => ctx.mk('doux', { lat: +la[i], lon: +lo[i] }, 'Europe/Paris', 0);
         if (la.length > 1) return J(la.map((_, i) => one(i)));
-        const x = one(0); return J(u.includes('ensemble') ? ctx.me(x) : q.get('minutely_15') ? ctx.mn(x) : u.includes('air-quality') ? {} : x);
+        const x = one(0); return J(host.startsWith('ensemble') || url.pathname.includes('ensemble') ? ctx.me(x) : q.get('minutely_15') ? ctx.mn(x) : host.startsWith('air-quality') ? {} : x);
       }
-      if (u === U + 'drive-config.json') return J(CONFIG);
-      if (u.endsWith('/calendar.sealed.json')) return r.fulfill({ status: 200, contentType: 'application/json', body: fs.readFileSync(SP + '/cal.fake.json', 'utf8') });
-      if (u.includes('api.rainviewer.com')) return J({ host: 'https://tilecache.rainviewer.com', radar: { past: [] } });
-      if (/tilecache\.rainviewer|arcgisonline|tile\.openstreetmap/.test(u)) return r.fulfill({ status: 200, contentType: 'image/png', body: PX });
-      if (u.includes('/vendor/leaflet/leaflet.js')) return r.fulfill({ status: 200, contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') });
-      if (u.includes('/vendor/leaflet/leaflet.css')) return r.fulfill({ status: 200, contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') });
-      if (u.endsWith('/obs.json')) return J({ stations: {} });
-      if (u.endsWith('/tiredb.json')) return r.fulfill({ status: 200, contentType: 'application/json', body: fs.readFileSync('site/tiredb.json', 'utf8') });
-      if (u.startsWith(U) && !/\.(js|json)$/.test(new URL(u).pathname)) return r.fulfill({ status: 200, contentType: 'text/html', body: html });
+      if (url.origin === O && url.pathname === '/drive-config.json') return J(CONFIG);
+      if (url.origin === O && url.pathname.endsWith('/calendar.sealed.json')) return r.fulfill({ status: 200, contentType: 'application/json', body: fs.readFileSync(SP + '/cal.fake.json', 'utf8') });
+      if (host === 'api.rainviewer.com') return J({ host: 'https://tilecache.rainviewer.com', radar: { past: [] } });
+      if (host === 'tilecache.rainviewer.com' || host.endsWith('.arcgisonline.com') || host.endsWith('tile.openstreetmap.org')) return r.fulfill({ status: 200, contentType: 'image/png', body: PX });
+      if (url.origin === O && url.pathname.endsWith('/vendor/leaflet/leaflet.js')) return r.fulfill({ status: 200, contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') });
+      if (url.origin === O && url.pathname.endsWith('/vendor/leaflet/leaflet.css')) return r.fulfill({ status: 200, contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') });
+      if (url.origin === O && url.pathname.endsWith('/obs.json')) return J({ stations: {} });
+      if (url.origin === O && url.pathname.endsWith('/tiredb.json')) return r.fulfill({ status: 200, contentType: 'application/json', body: fs.readFileSync('site/tiredb.json', 'utf8') });
+      if (url.origin === O && !/\.(js|json)$/.test(url.pathname)) return r.fulfill({ status: 200, contentType: 'text/html', body: html });
       return r.abort();
     });
     await p.goto(U); await p.fill('#unlockPw', PW);
