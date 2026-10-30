@@ -1,12 +1,12 @@
-# Bryan Fiarda
+# Bryan
 
-**Cloud · DevSecOps · Cybersecurity — learning by building, securing and testing real applications.**
+**Cybersecurity (GRC · SOC) · Cloud. Learning by building, securing and testing real applications.**
 
-🇫🇷 En reconversion vers les métiers du Cloud et de la cybersécurité, je transforme mon apprentissage en **projets concrets et vérifiables** : applications web, automatisation, CI/CD, tests navigateurs, confidentialité et résilience.
+🇫🇷 En reconversion vers la cybersécurité (gouvernance, risques et conformité, supervision de la sécurité) et le cloud. Fleet Front Office chez un grand industriel, je contrôle au quotidien des données sensibles et la conformité de contrats. Je transforme mon apprentissage en **projets concrets et vérifiables** : applications web, chiffrement, CI/CD, tests navigateurs, confidentialité et résilience.
 
-🇬🇧 Transitioning into Cloud and DevSecOps through **hands-on, evidence-driven projects**. My focus: secure engineering, test automation, reproducible delivery and clear documentation.
+🇬🇧 Career changer moving into cybersecurity (GRC and SOC) and cloud, with a background in data control and compliance. I learn through **hands-on, evidence-driven projects**: secure engineering, test automation, reproducible delivery and clear documentation.
 
-[LinkedIn](https://www.linkedin.com/in/bryan-fiarda-0x/) · [Case studies / Études de cas](docs/PORTFOLIO_CASE_STUDIES.md) · [Race Control — technical documentation](docs/RACE_CONTROL_TECHNICAL.md)
+[LinkedIn](https://www.linkedin.com/in/bryan-fiarda-0x3/) · [Case studies / Études de cas](docs/PORTFOLIO_CASE_STUDIES.md) · [Race Control — technical documentation](docs/RACE_CONTROL_TECHNICAL.md)
 
 ---
 
@@ -56,7 +56,7 @@
 
 **Hands-on:** JavaScript · TypeScript · Git & GitHub · GitHub Actions · Playwright · PWA / Service Workers · Web Crypto · browser storage · Cloudflare.
 
-**Currently learning:** Linux · networking · AWS & cloud fundamentals · IAM · containerization · DevSecOps · security architecture.
+**Currently learning:** networking · Linux · Python for security automation · ISO 27001 and risk analysis · SIEM, SQL and KQL · AWS & IAM · ISC2 Certified in Cybersecurity (exam targeted early 2027).
 
 *AI-assisted engineering is part of my workflow. The repositories document how features are specified, tested and reviewed; they are not presented as proof that every line was written unaided.*
 
@@ -69,8 +69,10 @@
 
 ## 🎯 Career direction · Objectif professionnel
 
-Building a foundation for **Cloud / DevSecOps / Cloud Security**, with a long-term interest in secure cloud architecture. I value engineering roles centered on systems, reliability and technical problem-solving.
+🇫🇷 Objectif : un premier poste de **consultant GRC junior** ou d'**analyste SOC** dans la région lilloise, après un parcours Jedha en cybersécurité et cloud prévu en 2027. Mon atout : une double compétence entre le terrain métier (contrôle, conformité, données) et la technique.
 
-**Contact / Échanger : [LinkedIn](https://www.linkedin.com/in/bryan-fiarda-0x/)**
+🇬🇧 Target: a first role as a **junior GRC consultant** or **SOC analyst** in the Lille area (France), after a cybersecurity and cloud program planned for 2027. My edge: business-side experience in controls, compliance and data quality, combined with hands-on technical work.
+
+**Contact / Échanger : [LinkedIn](https://www.linkedin.com/in/bryan-fiarda-0x3/)**
 
 <sub>These are independent learning projects. Demo screens, simulated tests and production integrations are deliberately distinguished; no private customer, vehicle or location data is published in this profile.</sub>
