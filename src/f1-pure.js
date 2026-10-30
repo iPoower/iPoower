@@ -7,12 +7,12 @@ const F1Pure = (() => {
   // Politique de fraîcheur (valeurs de Reliability.FRESHNESS, vérifiées par tests/test_reliability.js) : ≤ 15 min frais · ≤ 60 min à confirmer · au-delà périmé.
   const STALE_AFTER_MIN = 60;
   const FEATURES = Object.freeze([
-    { id: 'raceEngineer', title: 'Race Engineer', view: 'pneus', description: 'Briefing décisionnel, vocal sur demande' },
-    { id: 'trackConditions', title: 'Track Conditions', view: 'meteo', description: 'Lecture météo du trajet par secteurs' },
-    { id: 'tyreManagement', title: 'Tyre Management', view: 'pneus', description: 'État et actions pneus réellement renseignés' },
-    { id: 'strategyAB', title: 'Strategy A/B', view: 'trajet', description: 'Comparer les voitures sur le même trajet' },
+    { id: 'raceEngineer', title: 'Ingénieur de course', view: 'pneus', description: 'Briefing décisionnel, vocal sur demande' },
+    { id: 'trackConditions', title: 'État de la route', view: 'meteo', description: 'Lecture météo du trajet par secteurs' },
+    { id: 'tyreManagement', title: 'Gestion des pneus', view: 'pneus', description: 'État et actions pneus réellement renseignés' },
+    { id: 'strategyAB', title: 'Stratégie A/B', view: 'trajet', description: 'Comparer les voitures sur le même trajet' },
     { id: 'theGarage', title: 'Le garage', view: 'garage', description: 'État technique des voitures enregistrées' },
-    { id: 'telemetryReplay', title: 'Telemetry Replay', view: 'analyse', description: 'Retour terrain, sans capteurs imaginaires' }
+    { id: 'telemetryReplay', title: 'Relecture du trajet', view: 'analyse', description: 'Retour terrain, sans capteurs imaginaires' }
   ]);
   const finite = Number.isFinite, text = x => typeof x === 'string' ? x : '';
   const level = x => finite(x) ? Math.max(0, Math.min(3, Math.floor(x))) : null;

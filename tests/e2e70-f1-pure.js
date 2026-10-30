@@ -115,13 +115,13 @@ const active = p => p.evaluate(() => ({
           assert(await p.locator('#f1Dock a[href="#f1-panel-trackConditions"]').isVisible());
           assert.equal(await p.locator('#secWx > .wx-hero + .wx-hours + .f1-extension').count(), 1, 'verdict puis bande horaire puis module F1, toujours derrière les alertes');
           const text = await p.locator('#secWx [data-f1=trackConditions]').innerText();
-          assert(/TRACK CONDITIONS/.test(text)); assert(/Aucun découpage GPS précis/.test(text));
+          assert(/ÉTAT DE LA ROUTE/.test(text)); assert(/Aucun découpage GPS précis/.test(text));
           assert.equal(await p.locator('#decisionCore [data-f1=raceEngineer]').count(), 0);
         });
         await view('trajet');
         await check(dev + ' · Strategy A/B ne crée aucun itinéraire ni résultat inventé', async () => {
           const text = await p.locator('#secTrip [data-f1=strategyAB]').innerText();
-          assert(/STRATEGY A\/B/.test(text));
+          assert(/STRATÉGIE A\/B/.test(text));
           assert.equal(await p.locator('#secTrip [data-f1=strategyAB]').count(), 1);
         });
         await view('analyse');

@@ -29,9 +29,9 @@ test('libellés : tutoiement, onglet Trajet et risque explicite', () => {
   assert.match(fs.readFileSync(path.join(root, 'app.js'), 'utf8'), /🧭<\/span> Trajet<\/button>/);
   assert.match(fs.readFileSync(path.join(root, 'app', 'weather-view.js'), 'utf8'), /'\/100 · risque '/);
 });
-const F1_EN = /\b(twin garage|live route|next mission|the garage)\b/i;
+const F1_EN = /\b(twin garage|live route|next mission|the garage|race engineer|track conditions|tyre management|strategy a\/b|telemetry replay)\b/i;
 const visible = code => code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/.*$/gm, '$1');
-test('libellés : noms F1 traduits en français (Garage numérique, Trajet en direct, Prochaine mission, Le garage)', () => {
+test('libellés : noms F1 traduits en français (garage, trajet, mission et modules F1)', () => {
   const files = [path.join(root, 'app.js'), path.join(root, 'f1-pure.js'), ...sources.filter(f => f.endsWith('.js'))];
   const found = files.flatMap(f => visible(fs.readFileSync(f, 'utf8')).split('\n').filter(l => F1_EN.test(l)).map(l => path.relative(root, f) + ' : ' + l.trim().slice(0, 80)));
   assert.deepEqual(found, []);
