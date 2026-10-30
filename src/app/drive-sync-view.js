@@ -232,6 +232,9 @@ async function initDriveSync() {
         S = loadSettings();
         const context = lsGet(USER_STORE.key); if (context) USER_STORE.receive(context);
         TRIPCANCEL = TripCancel.load(APP_STORAGE, Date.now()); rebuild(); renderAll();
+        // Paramètres ouverts : afficher les données reçues (voiture ajoutée ailleurs, etc.), sauf saisie en cours.
+        const set = document.getElementById('settings');
+        if (!set || !set.open || !set.contains(document.activeElement) || document.activeElement === set.querySelector('summary')) renderSettings();
       } });
     DRIVE_UI.text = 'Prêt à connecter Google Drive. Exporte d’abord une copie complète et vérifiée de cet appareil.';
     try { DRIVE_UI.hint = await DriveSync.resumeHint(); } catch { DRIVE_UI.hint = null; }
