@@ -93,13 +93,13 @@ function missionControlHtml(m, navigationHtml = '') {
   const t = m.tyre, tyre = t ? [t.type, t.model, t.size].filter(Boolean).join(' · ') || 'Monte déclarée sans modèle' : 'Monte non confirmée';
   const wear = t && t.tread ? f1(t.tread.mm) + ' mm · ' + (t.tread.estimated ? 'estimation saisie' : 'mesure déclarée') +
     (t.tread.date ? ' · ' + t.tread.date.slice(8,10) + '/' + t.tread.date.slice(5,7) : ' · date non renseignée') : 'Profondeur non renseignée';
-  const detail = '<p class="sub">Voiture et pneus : mêmes données déclarées que les fiches Garage et Pneus. Trajet : même prochain trajet que le contexte global. Météo : mêmes points et réceptions que Twin Garage, jamais une observation de la route.</p>' +
+  const detail = '<p class="sub">Voiture et pneus : mêmes données déclarées que les fiches Garage et Pneus. Trajet : même prochain trajet que le contexte global. Météo : mêmes points et réceptions que le Garage numérique, jamais une observation de la route.</p>' +
     '<p class="sub">Couverture météo : ' + esc(m.weather.complete ? 'complète selon le moteur existant' : 'incomplète ou non démontrée') +
     ' · ' + esc(m.weather.status) + (m.offline ? ' · hors ligne' : '') + (m.weather.demo ? ' · simulation uniquement' : '') + '.</p>' +
     '<p class="sub">Profondeur : ' + esc(wear) + '. ' + (t && t.pressureChecked ? 'Dernier contrôle de pression déclaré le ' + esc(t.pressureChecked) + '.' : 'Aucun contrôle de pression daté.') +
     ' Les prévisions et règles existantes ne garantissent jamais la sécurité du trajet.</p>';
-  return MISSION_STYLE + '<article id="missionControl" class="mission-control" aria-label="Mission Control · briefing avant départ">' +
-    '<div class="mission-head"><h3>🏁 NEXT MISSION</h3><span class="src est">' + esc(title) + '</span></div>' +
+  return MISSION_STYLE + '<article id="missionControl" class="mission-control" aria-label="Prochaine mission · briefing avant départ">' +
+    '<div class="mission-head"><h3>🏁 PROCHAINE MISSION</h3><span class="src est">' + esc(title) + '</span></div>' +
     '<div class="mission-car" data-mission-car>' + esc(m.vehicle || 'Voiture active non choisie') + '</div>' + desc +
     '<div class="mission-grid"><div><small>MÉTÉO AU DÉPART · PRÉVISION</small>' + missionPointHtml(m.weather.departure) + '</div>' +
     '<div><small>MÉTÉO À L’ARRIVÉE · PRÉVISION</small>' + missionPointHtml(m.weather.arrival) + '</div>' +

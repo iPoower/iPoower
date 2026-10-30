@@ -29,7 +29,7 @@ function f1BriefingHtml() {
     confidence: confidence && { ...confidence, reason: (confidence.reasons || []).join(' · ') }, trip: snap && (snap.activeTrip || snap.nextTrip),
     car: appActiveCar() });
   const speak = x.state !== 'indisponible' ? '<button class="btn sm" data-act="race-speak">🔊 Écouter le briefing</button>' : '';
-  return f1Panel('raceEngineer', 'RACE ENGINEER', x.title, '<ul class="lab-why">' + x.lines.map(f1Line).join('') +
+  return f1Panel('raceEngineer', 'INGÉNIEUR DE COURSE', x.title, '<ul class="lab-why">' + x.lines.map(f1Line).join('') +
     '</ul><p class="sub">Conseil fondé sur la décision et la confiance existantes, pas sur une IA distante.</p>' + speak);
 }
 function f1WeatherSources(seq) {
@@ -51,14 +51,14 @@ function f1TrackHtml() {
     ' · ' + esc(s.label) + '</b> · ' + s.points + ' point(s) météo · ' +
     esc(s.notes.length ? s.notes.join(' / ') : 'aucun signal notable sur ces prévisions') + '</li>').join('') + '</ol>'
     : '<p class="sub">' + esc(x.reason) + '</p>';
-  return f1Panel('trackConditions', 'TRACK CONDITIONS', t ? t.name || 'Prochain trajet' : 'Aucun trajet', rows +
+  return f1Panel('trackConditions', 'ÉTAT DE LA ROUTE', t ? t.name || 'Prochain trajet' : 'Aucun trajet', rows +
     (sources.known ? '<p class="sub">PRÉVU' + (sources.cache ? ' · CACHE' : '') + ' · point le plus ancien reçu il y a ' + esc(ageTxt(age)) + '.</p>' : '') +
     '<p class="sub">Lecture ordonnée des points météo du trajet (maximum 3 secteurs). Aucun découpage GPS précis ni capteur de piste.</p>');
 }
 function f1TyreHtml() {
   const car = appActiveCar(), state = car ? tyreState(car) : null;
   const x = F1Pure.tyreManagement(state);
-  return f1Panel('tyreManagement', 'TYRE MANAGEMENT', car ? car.short || car.name : 'Voiture à choisir',
+  return f1Panel('tyreManagement', 'GESTION DES PNEUS', car ? car.short || car.name : 'Voiture à choisir',
     '<ul class="lab-why">' + x.lines.map(f1Line).join('') +
     '</ul><p class="sub">Données provenant uniquement de l’état pneus existant. Aucune usure ou pression mesurée automatiquement.</p>');
 }
@@ -78,12 +78,12 @@ function f1StrategyHtml() {
   const content = x.available ? '<ul class="lab-why">' + x.choices.map(c => '<li><b>STRATÉGIE ' +
     esc(c.scenario) + '</b> · ' + esc(c.car) + ' : ' + esc(c.risk) + '</li>').join('') + '</ul>'
     : '<p class="sub">' + esc(x.reason) + '</p>';
-  return f1Panel('strategyAB', 'STRATEGY A/B', 'Comparaison à données égales', content +
+  return f1Panel('strategyAB', 'STRATÉGIE A/B', 'Comparaison à données égales', content +
     '<p class="sub">' + esc(x.available ? x.reason : 'Aucune stratégie fictive n’est proposée.') + '</p>');
 }
 function f1GarageHtml() {
   const x = F1Pure.theGarage(S.cars);
-  return f1Panel('theGarage', 'THE GARAGE', 'Suivi des véhicules enregistrés',
+  return f1Panel('theGarage', 'LE GARAGE', 'Suivi des véhicules enregistrés',
     '<ul class="lab-why">' + x.cars.map(c => '<li><b>' + esc(c.name) + '</b> · ' + esc(c.tyre) +
     (c.odo != null ? ' · compteur déclaré ' + c.odo.toLocaleString('fr-FR') + ' km' : ' · compteur non renseigné') +
     (c.mounted ? ' · monté le ' + esc(c.mounted) : '') + '</li>').join('') +
@@ -91,7 +91,7 @@ function f1GarageHtml() {
 }
 function f1ReplayHtml() {
   const x = F1Pure.telemetryReplay(USER_STORE.state.debrief && USER_STORE.state.debrief.entries, Debrief.compare);
-  return f1Panel('telemetryReplay', 'TELEMETRY REPLAY', 'Dernier trajet clôturé',
+  return f1Panel('telemetryReplay', 'RELECTURE DU TRAJET', 'Dernier trajet clôturé',
     '<ul class="lab-why">' + (x.available ? x.lines : [x.reason]).map(f1Line).join('') +
     '</ul><p class="sub">' + esc(x.note || 'Aucun capteur embarqué ou suivi GPS enregistré dans le replay.') + '</p>');
 }

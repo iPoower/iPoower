@@ -7,8 +7,8 @@ const GARAGE_LIVE = { root: null, trip: null, car: null, context: null, route: n
   observer: null, visible: false, generation: 0, timer: null, raf: null, playing: false, frame: null,
   fraction: 0, mode: 'simulation', compact: false, lastGood: null, gps: null, resumeAfter: 0, suspended: false, media: null };
 function garageLiveHtml() {
-  return '<section id="garageLiveRoute" aria-label="LIVE ROUTE · cockpit du trajet" data-mode="simulation" data-live="false" data-compact="false">' +
-    '<div class="lr-top"><b class="lr-title">LIVE ROUTE</b><span class="lr-mode" role="status">SIMULATION · PRÉPARATION</span></div>' +
+  return '<section id="garageLiveRoute" aria-label="TRAJET EN DIRECT · cockpit du trajet" data-mode="simulation" data-live="false" data-compact="false">' +
+    '<div class="lr-top"><b class="lr-title">TRAJET EN DIRECT</b><span class="lr-mode" role="status">SIMULATION · PRÉPARATION</span></div>' +
     '<p class="lr-signal" data-lr-value="signal" role="status">SIMULATION · aucune position réelle suivie.</p>' +
     '<div class="lr-hud"><div><small>DISTANCE RESTANTE</small><b data-lr-value="distance">—</b><small>km · estimation du tracé</small></div>' +
     '<div><small data-lr-value="eta-label">ARRIVÉE PRÉVUE</small><b data-lr-value="eta">—</b><small>trafic non inclus</small></div>' +
