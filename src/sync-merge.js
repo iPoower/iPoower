@@ -31,6 +31,9 @@ const SyncMerge = (() => {
     if (same(a, b) || /^(edits|calib|journal)(\.|$)/.test(prefix) || /^cars\.\d+\.(odo|tire\.treads)(\.|$)/.test(prefix)) return [];
     if (prefix === 'cars' && Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((c, i) => c && b[i] && c.id === b[i].id))
       return a.flatMap((c, i) => differences(c, b[i], 'cars.' + i));
+    // Voiture ajoutée d'un seul côté (liste prolongée) : seules les voitures communes se comparent champ
+    // par champ ; l'ajout lui-même est une union par identifiant (carsAppended), jamais un horodatage de liste.
+    if (prefix === 'cars' && carsAppended(a, b)) return a.slice(0, Math.min(a.length, b.length)).flatMap((c, i) => differences(c, b[i], 'cars.' + i));
     if (obj(a) && obj(b)) return [...new Set([...Object.keys(a), ...Object.keys(b)])].sort().flatMap(k => differences(a[k], b[k], prefix ? prefix + '.' + k : k));
     return prefix ? [prefix] : [];
   }
@@ -85,6 +88,17 @@ const SyncMerge = (() => {
     if (parent != null && typeof parent === 'object' && !Array.isArray(parent) && own(parent, k)) delete parent[k];
   }
   // Les chemins « cars.N… » ne s'appliquent que si la voiture N est la même des deux côtés.
+  // Vrai si l'une des listes prolonge l'autre par des voitures créées dans l'app : mêmes identifiants aux mêmes
+  // places sur la partie commune, identifiants uniques. Seul cas fusionné automatiquement (ajout, jamais de suppression).
+  function carsAppended(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length === b.length) return false;
+    const ids = [...a, ...b].map(c => obj(c) && typeof c.id === 'string' && c.id ? c.id : null);
+    if (ids.includes(null) || new Set(a.map(c => c.id)).size !== a.length || new Set(b.map(c => c.id)).size !== b.length) return false;
+    const n = Math.min(a.length, b.length), tail = (a.length > b.length ? a : b).slice(n);
+    // Seule une voiture créée dans l'app (userAdded) prolonge la liste : une liste distante raccourcie
+    // ou vidée reste un conflit (suppression jamais déduite).
+    return a.slice(0, n).every((c, i) => c.id === b[i].id) && tail.every(c => c.userAdded === 1);
+  }
   function aligned(a, b, path) {
     const m = /^cars\.(\d+)(\.|$)/.exec(path); if (!m) return true;
     const x = a.cars && a.cars[+m[1]], y = b.cars && b.cars[+m[1]];
@@ -106,7 +120,7 @@ const SyncMerge = (() => {
     const resolutions = obj(options) && obj(options.resolutions) ? options.resolutions : {};
     if (base) validate(base);
     validate(resolutions);
-    const out = clone(local), report = { fromRemote: [], conflicts: [], resolved: [], added: { odo: 0, treads: 0, calib: 0, days: 0 } };
+    const out = clone(local), report = { fromRemote: [], conflicts: [], resolved: [], added: { odo: 0, treads: 0, calib: 0, days: 0, cars: 0 } };
     const chosen = {};
     if (!obj(remote)) return { settings: out, stamps: { ...stampsLocal }, report };
     if (!obj(stampsLocal) || !obj(stampsRemote) || !Array.isArray(local.cars) || !Array.isArray(remote.cars)) throw new Error('Réglages incomplets : fusion refusée.');
@@ -114,8 +128,12 @@ const SyncMerge = (() => {
     const blocked = new Set();
     const paths = [...new Set([...Object.keys(local.edits || {}), ...Object.keys(remote.edits || {}),
       ...Object.keys(stampsLocal), ...Object.keys(stampsRemote), ...differences(local, remote)])].sort();   // parent avant enfant
+    const appended = carsAppended(local.cars, remote.cars), shared = Math.min(local.cars.length, remote.cars.length);
     for (const p of paths) {
       parts(p);
+      // Voiture ajoutée d'un seul côté : reprise entière par l'union ci-dessous, ses champs ne se comparent pas encore.
+      const at = /^cars\.(\d+)(\.|$)/.exec(p);
+      if (appended && (p === 'cars' || at && +at[1] >= shared)) continue;
       // Une liste complète pourrait supprimer des véhicules et leurs historiques.
       if (p === 'cars' || /^cars\.\d+$/.test(p)) { report.conflicts.push(p); blocked.add(p); continue; }
       const lv = get(local, p), rv = get(remote, p), a = stampAt(stampsLocal, p), b = stampAt(stampsRemote, p);
@@ -142,7 +160,10 @@ const SyncMerge = (() => {
       }
     }
     out.edits = { ...(obj(remote.edits) ? remote.edits : {}), ...(obj(local.edits) ? local.edits : {}) };
-    for (const car of remote.cars) if (!car || !local.cars.some(c => c && c.id === car.id)) report.conflicts.push('cars');
+    // Ajout seulement : la voiture créée sur l'autre appareil est reprise entière à la fin de la liste.
+    // Toute autre divergence de liste (suppression, ajouts concurrents différents) reste un conflit, rien n'est perdu.
+    if (appended && remote.cars.length > local.cars.length) { out.cars = [...out.cars, ...clone(remote.cars.slice(local.cars.length))]; report.added.cars = remote.cars.length - local.cars.length; }
+    else for (const car of remote.cars) if (!car || !local.cars.some(c => c && c.id === car.id)) report.conflicts.push('cars');
     // Mesures additives, voiture par voiture (identité = id, jamais la position).
     (out.cars || []).forEach(car => {
       if (!obj(car) || !car.id) throw new Error('Véhicule incomplet : fusion refusée.');

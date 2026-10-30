@@ -11,6 +11,10 @@
     "suite": "e2e59-brief-gum.js",
     "result": "onglet Analyse ouvert depuis la ligne Gomme du briefing"
   },
+  "car-add": {
+    "suite": "e2e88-car-add.js",
+    "result": "voiture créée (fiche vierge), visible au Garage, conservée après rechargement ; nom vide ou en double refusé"
+  },
   "caldirect": {
     "suite": "e2e32.js",
     "result": "enchaînement agenda direct recalculé"

@@ -199,6 +199,37 @@ check('journal de saison (résumés météo dérivés) : même matin différent 
   const tie2 = M.settings(settings({ journal: { d: { T: 1, Tr: 2, vis: 2 } } }), settings({ journal: { d: { T: 1, Tr: 2, vis: 1 } } }), {}, {});
   assert.deepEqual(tie.settings.journal, tie2.settings.journal, 'égalité de températures : départage canonique, indépendant du côté');
 });
+check('voiture créée sur un appareil : reprise entière sur l’autre, sans conflit, dans les deux sens', () => {
+  const added = car('v-0123456789ab', { userAdded: 1, name: 'Voiture C', odo: [{ d: '2026-10-29', km: 1234 }] });
+  const pc = settings({ cars: [car('voitureA'), car('voitureB'), added] }), tel = settings();
+  const a = M.settings(tel, pc, {}, { 'cars.2.name': T }), b = M.settings(pc, tel, { 'cars.2.name': T }, {});
+  assert.deepEqual(a.report.conflicts, []); assert.deepEqual(b.report.conflicts, []);
+  assert.deepEqual(a.settings.cars.map(c => c.id), ['voitureA', 'voitureB', 'v-0123456789ab'], 'ajoutée à la fin chez l’appareil qui ne l’avait pas');
+  assert.deepEqual(b.settings.cars.map(c => c.id), ['voitureA', 'voitureB', 'v-0123456789ab'], 'gardée chez l’appareil qui l’a créée');
+  assert.deepEqual(a.settings.cars[2].odo, [{ d: '2026-10-29', km: 1234 }], 'fiche et relevés repris entiers');
+  assert.equal(a.report.added.cars, 1);
+});
+check('voiture créée : une modification d’une voiture commune se fusionne comme avant', () => {
+  const added = car('v-0123456789ab', { userAdded: 1 });
+  const pc = settings({ cars: [car('voitureA'), car('voitureB'), added] }), tel = settings();
+  tel.cars[0].short = 'A modifiée';
+  const r = M.settings(pc, tel, {}, { 'cars.0.short': T + 5 });
+  assert.deepEqual(r.report.conflicts, []); assert.equal(r.settings.cars[0].short, 'A modifiée'); assert.equal(r.settings.cars.length, 3);
+});
+check('création de voiture : aucun horodatage de liste (seuls les champs communs comparés)', () => {
+  const before = settings(), after = settings({ cars: [car('voitureA'), car('voitureB'), car('v-0123456789ab', { userAdded: 1 })] });
+  const stamps = ctx.M.edits(before, after, {}, T);
+  assert.deepEqual(Object.keys(stamps), []);
+});
+check('voitures ajoutées différentes des deux côtés, ou liste raccourcie : conflit conservé (rien supprimé ni deviné)', () => {
+  const pc = settings({ cars: [car('voitureA'), car('voitureB'), car('v-aaaaaaaaaaaa', { userAdded: 1 })] });
+  const tel = settings({ cars: [car('voitureA'), car('voitureB'), car('v-bbbbbbbbbbbb', { userAdded: 1 })] });
+  const r = M.settings(pc, tel, {}, {});
+  assert(r.report.conflicts.includes('cars')); assert.deepEqual(r.settings.cars.map(c => c.id), ['voitureA', 'voitureB', 'v-aaaaaaaaaaaa']);
+  const preset = M.settings(settings(), settings({ cars: [car('voitureA')] }), {}, {});
+  assert(preset.report.conflicts.includes('cars'), 'voiture du préréglage absente à distance : jamais une suppression déduite');
+  assert.equal(preset.settings.cars.length, 2);
+});
 check('aucune mutation des entrées', () => {
   const pc = device({ entries: [trip('t1', 0)] }), tel = device({ entries: [trip('t2', 1)] }), a = json(pc), b = json(tel);
   M.values(pc, tel); assert.deepEqual(json(pc), a); assert.deepEqual(json(tel), b);
