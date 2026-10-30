@@ -190,7 +190,11 @@ async function waitCloud(page, re, timeout = 30000) {
   throw new Error('CLOUD attendu ' + re + ' · obtenu « ' + last + ' »');
 }
 async function clickPanel(page, name, nextName) {
-  const b = panelButton(page, name); await b.scrollIntoViewIfNeeded(); await b.click();
+  // Paramètres peut être redessiné par une synchronisation reçue : bouton remplacé, nouvel essai.
+  for (let n = 0; ; n++) {
+    try { const b = panelButton(page, name); await b.scrollIntoViewIfNeeded(); await b.click(); break; }
+    catch (e) { if (n >= 2 || !/not attached/.test(e.message)) throw e; await page.waitForTimeout(300); }
+  }
   if (nextName) await panelButton(page, nextName).first().waitFor({ timeout: 20000 });
 }
 async function exportCopy(page, tag) {
