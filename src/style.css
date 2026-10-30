@@ -118,7 +118,7 @@ html::before { content: ''; position: fixed; inset: 0 0 auto 0; height: env(safe
 .drive-badge-row { max-width: 1080px; margin: 4px auto 0; display: flex; justify-content: flex-end; min-width: 0; }
 .badge.drive-badge { background: none; color: var(--fg2); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; min-height: 0; }
 .badge.drive-badge.nogo { color: var(--nogo-t); border-color: var(--nogo); }
-@media (pointer: coarse) { .badge.drive-badge { min-height: 32px; } }
+@media (pointer: coarse) { .badge.drive-badge { min-height: 44px; } }
 .statusbar .upd { font-size: 12px; color: var(--fg2); min-width: 0; }
 .status-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; line-height: 1.5; }
 .live-clock-wrap { color: var(--fg); white-space: nowrap; }
