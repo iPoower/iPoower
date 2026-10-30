@@ -106,6 +106,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* bandeau de statut */
 /* zone de l'horloge iOS (barre translucide, viewport-fit=cover) : le contenu défilé n'y passe jamais ; hauteur nulle hors iPhone */
 html::before { content: ''; position: fixed; inset: 0 0 auto 0; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 30; pointer-events: none; }
+/* Défilement vers une section (liens « aller à », raccourcis) : arrêt sous le bandeau collant, mesuré en direct (--bar-h). */
+html { scroll-padding-top: calc(env(safe-area-inset-top, 0px) + var(--bar-h, 54px)); }
 .statusbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; margin-inline: calc(-1 * var(--gut-l)) calc(-1 * var(--gut-r)); padding: 8px var(--gut-r) 8px var(--gut-l); background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
 .statusbar .in { max-width: 1080px; margin: 0 auto; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; min-width: 0; }
 .badge { font-family: var(--f-mono); font-size: 11px; letter-spacing: .08em; padding: 3px 8px; border: 1px solid var(--line2); border-radius: 3px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -114,9 +116,9 @@ html::before { content: ''; position: fixed; inset: 0 0 auto 0; height: env(safe
 .badge.cache { color: var(--cau-t); border-color: var(--cau); }
 .badge.demo { color: #fff; background: var(--c-demo); border-color: var(--c-demo); }
 :root[data-theme="light"] .badge.demo { color: #fff; }
-/* Sauvegarde Drive : même badge que la météo, sur une ligne discrète sous le bandeau (tous les écrans). */
-.drive-badge-row { max-width: 1080px; margin: 4px auto 0; display: flex; justify-content: flex-end; min-width: 0; }
-.badge.drive-badge { background: none; color: var(--fg2); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; min-height: 0; }
+/* Sauvegarde Drive : même badge que la météo, dans le bandeau même (dernière colonne), sans ligne en plus. */
+.statusbar .in:has(#driveBadge) { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.badge.drive-badge { background: none; color: var(--fg2); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; min-height: 0; justify-content: center; }
 .badge.drive-badge.nogo { color: var(--nogo-t); border-color: var(--nogo); }
 @media (pointer: coarse) { .badge.drive-badge { min-height: 44px; } }
 .statusbar .upd { font-size: 12px; color: var(--fg2); min-width: 0; }
@@ -138,6 +140,12 @@ html::before { content: ''; position: fixed; inset: 0 0 auto 0; height: env(safe
   .status-refresh .sh { display: none; }
   .weather-received { grid-column: 1 / -1; grid-row: 2; font-size: 12px; }
   .status-detail { grid-column: 1 / -1; grid-row: 3; }
+  /* Badge de sauvegarde : icône (+ nombre en attente) juste avant ⟳, sur la première ligne (déjà haute de 44 pt). */
+  .statusbar .in:has(#driveBadge) { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+  .statusbar .in:has(#driveBadge) .status-refresh { grid-column: 4; }
+  #driveBadge { grid-column: 3; grid-row: 1; align-self: center; min-width: 44px; padding-inline: 6px; letter-spacing: 0; }
+  #driveBadge .db-tx { display: none; }
+  #driveBadge:not([data-n=""])::after { content: attr(data-n); font-weight: 700; }
 }
 .btn { border: 1px solid var(--line2); background: var(--panel2); border-radius: 4px; padding: 7px 12px; font-size: 13px; font-weight: 500; min-height: 36px; }
 a.btn { display: inline-flex; align-items: center; justify-content: center; }
@@ -461,7 +469,7 @@ button, .chip, .seg button, label.thumb, summary, a.btn { touch-action: manipula
 .jump a { flex: none; font-size: 12.5px; color: var(--fg2); text-decoration: none; border: 1px solid var(--line); border-radius: 3px; padding: 7px 10px; min-height: 36px; display: inline-flex; align-items: center; background: var(--panel); }
 .jump a:active { border-color: var(--accent); color: var(--accent); }
 @media (pointer: coarse) { .jump a { min-height: 44px; } }
-.mod, .grid2, details.mod { scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 64px); }
+.mod, .grid2, details.mod { scroll-margin-top: 10px; }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
@@ -1022,7 +1030,7 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
    Colonne principale (décision, trajet, analyse) et colonne de compléments (météo du lieu, radar, alertes…), côte à côte.
    Le tactile et les petites fenêtres gardent la colonne unique. */
 @media (min-width: 1200px) and (pointer: fine) {
-  .wrap, .statusbar .in, .drive-badge-row { max-width: 1520px; }
+  .wrap, .statusbar .in { max-width: 1520px; }
   .wrap { gap: 16px; }
   /* en-tête : titre et onglets sur une ligne ; la décision à gauche, le contexte (lieu, météo consultée, journée) à droite */
   .top { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(360px, 1fr); column-gap: 20px; row-gap: 10px; align-items: start; }
@@ -1073,7 +1081,7 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .f1-extension {
   --lv: var(--accent); border-left: 3px solid var(--accent);
   background: color-mix(in srgb, var(--accent-soft) 20%, var(--panel));
-  margin: 7px 0; scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 70px);
+  margin: 7px 0; scroll-margin-top: 16px;
 }
 .f1-extension > summary .tt { color: var(--accent); font-weight: 700; }
 .f1-extension[open] > summary { border-bottom: 1px solid var(--line); }
@@ -1295,6 +1303,9 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
   .live-clock-wrap > span[aria-hidden="true"] { display: none; }
   .status-refresh { grid-column: 4; grid-row: 1; }
   .status-detail { grid-column: 1 / -1; grid-row: 2; }
+  .statusbar .in:has(#driveBadge) { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+  .statusbar .in:has(#driveBadge) .status-refresh { grid-column: 5; }
+  #driveBadge { grid-column: 4; }
 }
 /* Domaines sans aucune donnée : regroupés et repliés sous une seule ligne (audit des inconnus du 21/10/2026). */
 .ec-unmeasured{margin-top:8px;border:1px dashed var(--line2);border-radius:8px;background:var(--panel)}

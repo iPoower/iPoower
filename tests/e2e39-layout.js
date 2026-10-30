@@ -62,6 +62,24 @@ for(const [name,vp,mobile,inset] of VPS){
       await p.evaluate(()=>window.scrollTo(0,0));
     }
   }
+  if(name==='iPhone portrait'||name==='PC 1280'){
+    // liens « aller à » avec le badge de sauvegarde affiché : chaque section s'arrête sous le bandeau collant, titre visible
+    const h0=await p.evaluate(()=>{window.scrollTo(0,0);return document.querySelector('.statusbar').getBoundingClientRect().height;});
+    await p.evaluate(()=>{DRIVE_UI.config={};DRIVE_BADGE.pending=2;renderDriveBadge();});await p.waitForTimeout(150);
+    const h1=await p.evaluate(()=>document.querySelector('.statusbar').getBoundingClientRect().height);
+    check(`39 · ${name} : badge de sauvegarde dans le bandeau, sans ligne en plus`,h1-h0<=(mobile?10:1),`bandeau ${Math.round(h0)} → ${Math.round(h1)} px`);
+    const hidden=[];
+    for(const view of ['meteo','pneus','analyse']){
+      await p.evaluate(v=>{UI.view=v;renderAll();window.scrollTo(0,0);},view);await p.clock.runFor(500);await p.waitForTimeout(150);
+      for(const a of await p.locator('#jump a').all()){
+        const href=await a.getAttribute('href');await p.evaluate(()=>window.scrollTo(0,0));await a.click();await p.clock.runFor(800);await p.waitForTimeout(700);
+        const r=await p.evaluate(h=>{const bar=document.querySelector('.statusbar').getBoundingClientRect().bottom,t=document.querySelector(h).getBoundingClientRect().top,end=window.scrollY+innerHeight>=document.documentElement.scrollHeight-2;return {cache:Math.round(bar-t),end};},href);
+        if(r.cache>1&&!r.end)hidden.push(view+' '+href+' '+r.cache+' px');
+      }
+    }
+    check(`39 · ${name} : liens « aller à » : titre jamais masqué par le bandeau`,!hidden.length,hidden.join(', '));
+    await p.evaluate(()=>{UI.view='pneus';renderAll();window.scrollTo(0,0);});await p.clock.runFor(500);
+  }
   if(name==='iPhone portrait'){
     // badge de sauvegarde Drive (affiché seulement sur l'origine dédiée) : rendu ici avec une configuration fictive, sans réseau
     const h=await p.evaluate(()=>{DRIVE_UI.config={};renderDriveBadge();window.scrollTo(0,0);const e=document.getElementById('driveBadge');return e?e.getBoundingClientRect().height:0;});
