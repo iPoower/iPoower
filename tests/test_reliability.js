@@ -153,7 +153,7 @@ function agendaDiagnostic(options = {}, input = diagnosticSource) {
   const row = input.split('\n').find(line => line.includes("['Agenda',"));
   assert(row, 'la vraie ligne Agenda du diagnostic doit être testée');
   const expression = row.trim().replace(/^\['Agenda', /, '').replace(/\],$/, '');
-  const state = { console, Date, JSON, String, Reliability: R, CAL: null, CALDONE: false,
+  const state = { console, Date, JSON, String, Reliability: R, CAL: null, CALDONE: false, CALFAIL: null,
     location: { protocol: 'https:' }, crypto: { subtle: {} },
     lsGet: () => 'fixture-passphrase', hmLocal: () => '07:00', ...options };
   vm.createContext(state);
@@ -169,6 +169,7 @@ check('agenda verrouillé : aucun faux chargement sans code disponible', () => {
 check('agenda sécurisé : vraie lecture en cours et échec distingués', () => {
   assert.equal(agendaDiagnostic(), 'chargement…');
   assert.equal(agendaDiagnostic({ CALDONE: true }), 'indisponible');
+  assert.equal(agendaDiagnostic({ CALDONE: true, CALFAIL: { at: 0, kind: 'timeout' } }), 'indisponible · timeout à 07:00');
 });
 check('agenda non pris en charge : aucun chargement sur HTTP ou sans Web Crypto', () => {
   for (const options of [{ location: { protocol: 'http:' } }, { crypto: {} }, { crypto: { subtle: null } }]) {
@@ -186,7 +187,7 @@ check('diagnostic agenda : trois mutations de statut rejetées', () => {
   const mutations = [
     [diagnosticSource.replace("if (!lsGet('twrc.key'))", 'if (false)'), { lsGet: () => null }, /verrouillé/],
     [diagnosticSource.replace("if (location.protocol !== 'https:' || !crypto.subtle)", 'if (false)'), { crypto: {} }, /indisponible.*sécurisé/],
-    [diagnosticSource.replace("return CALDONE ? 'indisponible' : 'chargement…';", "return 'chargement…';"), { CALDONE: true }, /^indisponible$/]
+    [diagnosticSource.replace("return CALDONE ? 'indisponible' + (CALFAIL ? ' · ' + CALFAIL.kind + ' à ' + hmLocal(CALFAIL.at) : '') : 'chargement…';", "return 'chargement…';"), { CALDONE: true }, /^indisponible$/]
   ];
   for (const [mutant, options, expected] of mutations) {
     assert.notEqual(mutant, diagnosticSource, 'mutation appliquée');

@@ -168,6 +168,7 @@ function autoTick() {
   if (window.TWRC_VAULT && window.TWRC_VAULT.expired()) { checkSessionExpiry(); return; }
   tickLocalClock(); // horloge et prévisions locales progressent même hors ligne, pendant une requête ou un 429
   calendarOriginPurge();
+  calendarResume(60e3);   // lecture d'agenda trop longue ou en échec : relance au plus une fois par minute
   if (USER_STORE.durability().status === 'degraded') validateRecovery('retry périodique');
   if (navigator.onLine !== false && Reliability.isDue(VER_CHECK_AT, AUTO_MS)) loadVersion(true); else enforceVersionCoherence();
   if (!DEMO.on && expireLive()) tickLocalClock(true);   // reprise : requalification avant toute requête
@@ -194,6 +195,9 @@ function networkChanged() {
 window.addEventListener('offline', networkChanged);
 window.addEventListener('online', networkChanged);
 ['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => setTimeout(autoTick, 300)));
+// Retour au premier plan : l'horloge murale (pas un minuteur, gelé par iOS en veille) décide si la lecture d'agenda est à relancer.
+document.addEventListener('visibilitychange', () => calendarResume());
+['pageshow', 'focus'].forEach(ev => window.addEventListener(ev, () => calendarResume()));
 
 /* ---------- démarrage ---------- */
 function registerSW() {

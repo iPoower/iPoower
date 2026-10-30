@@ -339,6 +339,10 @@
     "suite": "e2e59-trip-tab.js",
     "result": "trajet manuel annulé et planning automatique restauré"
   },
+  "cal-retry": {
+    "suite": "e2e89-agenda-sablier.js",
+    "result": "nouvelle lecture de l’agenda après un échec, message retiré au succès"
+  },
   "cal-origin-open": {
     "suite": "e2e68-calendar-origin.js",
     "result": "sélecteur attaché à une occurrence et un sens"
