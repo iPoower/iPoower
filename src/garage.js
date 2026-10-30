@@ -159,5 +159,39 @@ const Garage = (() => {
       daysLeft: ctDays, status: status(ctDays, null) };
     return { revision, ct: control, odo };
   }
-  return { overview, silhouette, preview, comparison, daylight, maintenance };
+  // Kilométrage par semaine (lundi → dimanche), à partir des SEULS relevés compteur. Entre deux relevés, le
+  // kilométrage est réparti linéairement (signalé comme tel) ; hors de la plage des relevés : aucune valeur.
+  // Un compteur qui recule (faute de saisie) n'est jamais réparti : semaine marquée « à vérifier ».
+  function kmWeekly(car, { today, weeks = 8, minSpanDays = 7, everyDays = 7 } = {}) {
+    if (!validDate(today)) throw new Error('date du jour requise');
+    const byDay = new Map();
+    for (const x of (car && Array.isArray(car.odo) ? car.odo : [])) if (x && val(x.km) != null && validDate(x.d)) byDay.set(str(x.d), x.km);
+    const readings = [...byDay].sort((a, b) => a[0].localeCompare(b[0])).map(([d, km]) => ({ d, km }));
+    const first = readings[0] || null, last = readings[readings.length - 1] || null;
+    if (readings.length < 2 || dayDiff(first.d, last.d) < minSpanDays)
+      return { state: 'empty', readings: readings.length, last, next: last ? addDays(last.d, everyDays) : null, weeks: [], month: null };
+    const segments = readings.slice(1).map((r, i) => ({ from: readings[i].d, to: r.d, km: r.km - readings[i].km }));
+    // Kilomètres parcourus entre deux dates (fin exclue), par répartition linéaire sur chaque intervalle de relevés.
+    const between = (from, to) => {
+      let km = 0, anomaly = false, covered = 0;
+      for (const s of segments) {
+        const a = from > s.from ? from : s.from, b = to < s.to ? to : s.to, days = dayDiff(a, b);
+        if (days <= 0) continue;
+        covered += days;
+        if (s.km < 0) anomaly = true; else km += s.km * days / dayDiff(s.from, s.to);
+      }
+      return { km: anomaly || !covered ? null : Math.round(km), anomaly, covered };
+    };
+    const weekday = (Date.parse(today + 'T00:00:00Z') / 864e5 + 3) % 7;   // 0 = lundi
+    const monday = addDays(today, -Math.floor(weekday));
+    const list = [];
+    for (let i = weeks - 1; i >= 0; i--) {
+      const start = addDays(monday, -7 * i), end = addDays(start, 7), part = between(start, end);
+      list.push({ start, end: addDays(start, 6), km: part.km, anomaly: part.anomaly, partial: part.covered > 0 && part.covered < 7 });
+    }
+    const monthStart = today.slice(0, 8) + '01', month = between(monthStart, addDays(today, 1));
+    return { state: 'ok', readings: readings.length, first, last, next: addDays(last.d, everyDays), weeks: list, linear: true,
+      month: { start: monthStart, km: month.km, anomaly: month.anomaly, until: last.d < today ? last.d : today, from: first.d > monthStart ? first.d : monthStart } };
+  }
+  return { overview, silhouette, preview, comparison, daylight, maintenance, kmWeekly };
 })();

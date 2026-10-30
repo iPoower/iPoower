@@ -112,5 +112,19 @@ html[data-theme=light] #secGarage .twin-night{fill:var(--fg)}
 @keyframes twin-wind{to{transform:translateX(12px)}}
 @keyframes twin-spin{to{transform:rotate(360deg)}}
 @media(max-width:374px){#secGarage .twin-samples{grid-template-columns:minmax(0,1fr)}#secGarage .twin-samples li{display:grid;grid-template-columns:1fr 1fr}#secGarage .twin-samples span{grid-column:1/-1}}
+#secGarage .garage-km{display:grid;gap:8px;min-width:0}
+#secGarage .km-sum{margin:0;padding-left:18px;font-size:12px;line-height:1.6;color:var(--fg)}
+#secGarage .km-chart{width:100%;height:auto;max-height:220px;display:block}
+#secGarage .km-bar.km-car0{fill:var(--c-air)}#secGarage .km-bar.km-car1{fill:url(#kmHatch);stroke:var(--c-road);stroke-width:1.2}
+#secGarage .km-hatch{fill:var(--c-road)}#secGarage .km-partial{opacity:.5}
+#secGarage .km-base{stroke:var(--line2);stroke-width:1}
+#secGarage .km-axis,#secGarage .km-na{fill:var(--fg2);font:11px var(--f-mono)}#secGarage .km-val{fill:var(--fg);font:600 11px var(--f-mono)}
+#secGarage .km-legend{margin:0;font-size:11px;color:var(--fg2)}
+#secGarage .km-key{display:inline-block;width:12px;height:12px;margin-right:4px;vertical-align:-2px;border-radius:2px}
+#secGarage .km-key.km-car0{background:var(--c-air)}#secGarage .km-key.km-car1{background:repeating-linear-gradient(45deg,var(--c-road) 0 2px,transparent 2px 4px);outline:1px solid var(--c-road)}
+#secGarage .km-values summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:12px}
+#secGarage .km-values table{width:100%;border-collapse:collapse;font:12px var(--f-mono)}
+#secGarage .km-values th,#secGarage .km-values td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right}
+#secGarage .km-values th[scope=row],#secGarage .km-values thead th:first-child{text-align:left}
 @media(prefers-reduced-motion:reduce){#secGarage .twin-animated{animation:none!important}#secGarage .twin-motion{display:none}}
 </style>`;

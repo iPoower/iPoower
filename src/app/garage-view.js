@@ -30,6 +30,47 @@ function garageDate(d) {
   return /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? esc(d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4)) : 'date non renseignée';
 }
 function garageKm(km) { return Number.isFinite(km) ? Math.round(km).toLocaleString('fr-FR') + ' km' : 'non renseigné'; }
+// Kilométrage par semaine : relevés compteur uniquement, lecture seule. SVG natif, valeurs aussi en tableau.
+function garageKmHtml(rawCars, today) {
+  const dm = d => d.slice(8, 10) + '/' + d.slice(5, 7), fmt = km => Math.round(km).toLocaleString('fr-FR');
+  const cars = (rawCars || []).filter(c => c && c.id).slice(0, 2).map((c, i) => ({ id: c.id, name: c.short || c.name || 'Voiture ' + (i + 1), i,
+    k: Garage.kmWeekly(c, { today, everyDays: GARAGE_ODO_EVERY_DAYS }), perDay: kmPerDay(c) }));
+  if (!cars.length) return '';
+  const lines = cars.map(c => {
+    if (c.k.state === 'empty') return '<li><b>' + esc(c.name) + '</b> · ' + (c.k.readings ? c.k.readings + ' relevé' + (c.k.readings > 1 ? 's' : '') + (c.k.readings > 1 ? ' sur moins de 7 jours' : '') : 'aucun relevé') +
+      (c.k.next ? ', prochain attendu le ' + dm(c.k.next) : ' : relève le compteur pour commencer') + '</li>';
+    const m = c.k.month;
+    return '<li><b>' + esc(c.name) + '</b> · ce mois : ' + (m.km == null ? (m.anomaly ? 'compteur à vérifier (relevé en baisse)' : 'pas de relevé ce mois-ci') : fmt(m.km) + ' km du ' + dm(m.from) + ' au ' + dm(m.until)) +
+      (c.perDay != null ? ' · moyenne ' + fmt(c.perDay) + ' km/jour' : '') + '</li>';
+  }).join('');
+  const shown = cars.filter(c => c.k.state === 'ok');
+  let chart = '';
+  if (shown.length) {
+    const weeks = shown[0].k.weeks.map(w => w.start), max = Math.max(1, ...shown.flatMap(c => c.k.weeks.map(w => w.km || 0)));
+    const W = 320, H = 150, top = 18, base = 122, gw = W / weeks.length, bw = Math.min(14, (gw - 8) / shown.length);
+    const bars = weeks.map((start, wi) => shown.map((c, ci) => {
+      const w = c.k.weeks[wi], x = wi * gw + (gw - bw * shown.length) / 2 + ci * bw;
+      if (w.km == null) return w.anomaly ? '<text class="km-na" x="' + (x + bw / 2) + '" y="' + (base - 4) + '" text-anchor="middle">!</text>' : '';
+      const h = Math.max(1, (base - top) * w.km / max);
+      return '<rect class="km-bar km-car' + c.i + (w.partial ? ' km-partial' : '') + '" x="' + x.toFixed(1) + '" y="' + (base - h).toFixed(1) + '" width="' + (bw - 2).toFixed(1) + '" height="' + h.toFixed(1) + '"><title>' +
+        esc(c.name) + ' · semaine du ' + dm(start) + ' : ' + fmt(w.km) + ' km' + (w.partial ? ' (semaine partielle)' : '') + '</title></rect>' +
+        (shown.length === 1 ? '<text class="km-val" x="' + (x + bw / 2 - 1).toFixed(1) + '" y="' + (base - h - 4).toFixed(1) + '" text-anchor="middle">' + fmt(w.km) + '</text>' : '');
+    }).join('') + (wi % 2 === weeks.length % 2 ? '' : '<text class="km-axis" x="' + (wi * gw + gw / 2) + '" y="' + (H - 12) + '" text-anchor="middle">' + dm(start) + '</text>')).join('');
+    const rows = weeks.map((start, wi) => '<tr><th scope="row">' + dm(start) + '</th>' + shown.map(c => { const w = c.k.weeks[wi];
+      return '<td>' + (w.km == null ? (w.anomaly ? 'à vérifier' : '—') : fmt(w.km) + ' km' + (w.partial ? ' (partielle)' : '')) + '</td>'; }).join('') + '</tr>').join('');
+    chart = '<svg class="km-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-labelledby="kmChartTitle kmChartDesc" preserveAspectRatio="xMidYMid meet">' +
+      '<title id="kmChartTitle">Kilomètres par semaine, ' + shown.length + ' voiture' + (shown.length > 1 ? 's' : '') + '</title>' +
+      '<desc id="kmChartDesc">Barres par semaine du ' + dm(weeks[0]) + ' au ' + dm(weeks[weeks.length - 1]) + ', maximum ' + fmt(max) + ' km. Répartition linéaire entre relevés compteur.</desc>' +
+      '<defs><pattern id="kmHatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="4" class="km-hatch"/></pattern></defs>' +
+      '<line class="km-base" x1="0" y1="' + base + '" x2="' + W + '" y2="' + base + '"/>' + bars + '</svg>' +
+      '<p class="km-legend">' + shown.map(c => '<span class="km-key km-car' + c.i + '"></span>' + esc(c.name)).join(' · ') + ' · barre claire : semaine partielle</p>' +
+      '<details class="km-values"><summary>Voir les valeurs</summary><table><thead><tr><th scope="col">Semaine</th>' + shown.map(c => '<th scope="col">' + esc(c.name) + '</th>').join('') +
+      '</tr></thead><tbody>' + rows + '</tbody></table></details>';
+  }
+  return '<section id="garageKm" class="garage-km" aria-labelledby="garageKmTitle"><div class="mod-h"><h3 id="garageKmTitle">KILOMÈTRES PAR SEMAINE</h3><span class="src est">relevés compteur</span></div>' +
+    '<ul class="km-sum">' + lines + '</ul>' + chart +
+    '<p class="sub">Entre deux relevés, les kilomètres sont répartis de façon linéaire (estimation). Aucune valeur avant le premier relevé ni après le dernier.</p></section>';
+}
 function garageVehicleHtml(c) {
   const t = c.tyre, p = c.winterPlan;
   const active = c.active ? '<span class="garage-active">VOITURE ACTIVE</span>' :
@@ -93,6 +134,7 @@ function renderGarage() {
   // La fiche et sa commande d'édition historique restent au premier écran.
   // NEXT MISSION suit les fiches, accessible immédiatement par ancre dédiée.
   const parts = { records: cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>' : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>',
+    km: garageKmHtml(S.cars, today),
     mission: missionControlHtml(mission, navigation),
     trip: garageTripHtml(scene, selected),
     compare: garageCompareHtml(cars, trip, scene) };

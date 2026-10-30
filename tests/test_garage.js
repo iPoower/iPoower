@@ -175,4 +175,27 @@ test('compteur : relevé hebdomadaire dû à partir de 7 jours, relevé le plus 
  assert.equal(o('2026-10-15','2026-10-21').due,false);assert.equal(o('2026-10-14','2026-10-21').due,true);
  assert.equal(o('2026-10-14','2026-10-21').last.km,1000);assert.equal(o('2026-10-14','2026-10-21').ageDays,7);
 });
+const J=x=>JSON.parse(JSON.stringify(x));
+test('km par semaine : moins de 2 relevés espacés de 7 jours ⇒ état vide explicite, prochain relevé daté',()=>{
+ const one=G.kmWeekly({odo:[{d:'2026-10-20',km:12000}]},{today:'2026-10-21'});
+ assert.equal(one.state,'empty');assert.equal(one.readings,1);assert.equal(one.next,'2026-10-27');assert.equal(one.weeks.length,0);
+ const close=G.kmWeekly({odo:[{d:'2026-10-15',km:12000},{d:'2026-10-20',km:12300}]},{today:'2026-10-21'});
+ assert.equal(close.state,'empty');assert.equal(close.readings,2);
+ assert.equal(G.kmWeekly({},{today:'2026-10-21'}).state,'empty');
+});
+test('km par semaine : répartition linéaire entre relevés, aucune valeur hors relevés',()=>{
+ const car={odo:[{d:'2026-10-05',km:1000},{d:'2026-10-19',km:1700},{d:'bad',km:5}]},before=JSON.stringify(car);
+ const r=G.kmWeekly(car,{today:'2026-10-21',weeks:4});
+ assert.equal(r.state,'ok');assert.equal(r.linear,true);
+ assert.deepEqual(J(r.weeks.map(w=>w.start)),['2026-09-28','2026-10-05','2026-10-12','2026-10-19']);
+ assert.deepEqual(J(r.weeks.map(w=>w.km)),[null,350,350,null],'avant le premier et après le dernier relevé : rien d’inventé');
+ assert.equal(r.month.km,700);assert.equal(r.month.from,'2026-10-05');assert.equal(r.month.until,'2026-10-19');
+ assert.equal(JSON.stringify(car),before,'lecture seule');
+});
+test('km par semaine : semaine partielle signalée, compteur qui recule jamais réparti',()=>{
+ const r=G.kmWeekly({odo:[{d:'2026-10-01',km:100},{d:'2026-10-11',km:1100}]},{today:'2026-10-14',weeks:3});
+ assert.deepEqual(J(r.weeks.map(w=>[w.start,w.km,w.partial])),[['2026-09-28',400,true],['2026-10-05',600,true],['2026-10-12',null,false]]);
+ const bad=G.kmWeekly({odo:[{d:'2026-10-01',km:5000},{d:'2026-10-09',km:4000}]},{today:'2026-10-14',weeks:2});
+ assert.equal(bad.weeks[0].km,null);assert.equal(bad.weeks[0].anomaly,true);assert.equal(bad.month.km,null);assert.equal(bad.month.anomaly,true);
+});
 console.log(n+'/'+n+' scénarios Garage validés');
