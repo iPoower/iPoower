@@ -168,14 +168,32 @@ const DriveSync = (() => {
       const catalog = await provider.list(selected.folder); guard();
       await authenticate(s, snap, catalog); guard();
       if (s.outbox.job) { if (now() < s.outbox.retryAt && !force) return; message = 'envoi'; notify(); await send(s); return; }
-      const confirmed = [], opened = new Map();
+      // Copies immuables : les métadonnées déjà authentifiées d'un fichier (même identifiant, même empreinte)
+      // sont réutilisées ; seul le contenu nécessaire à la fusion est téléchargé (tête à intégrer, ancêtre commun).
+      const confirmed = [], opened = new Map(), refs = new Map(), known = {};
+      const previous = s.known && s.knownFolder === selected.folder ? s.known : {};
+      const load = async rid => {
+        if (opened.has(rid) || !refs.has(rid)) return opened.get(rid);
+        const ref = refs.get(rid), back = await provider.download(ref, undefined, selected.folder); guard();
+        const data = await codec.openWith(back.packet.copyBytes(), handle, version(), ref.fileSha256); guard();
+        SyncRevisions.confirm(ref.revision, data, ref.fileSha256, SyncMerge.device);
+        opened.set(rid, { ref, data, proof: back.proof }); return opened.get(rid);
+      };
       for (const ref of catalog) {
         if (!ref.revision) continue; // sauvegardes manuelles conservées, hors graphe A2
-        const back = await provider.download(ref, undefined, selected.folder); guard();
-        const data = await codec.openWith(back.packet.copyBytes(), handle, version(), ref.fileSha256); guard();
-        confirmed.push(SyncRevisions.confirm(ref.revision, data, ref.fileSha256, SyncMerge.device));
-        opened.set(ref.revision.id, { ref, data, proof: back.proof });
+        const memo = previous[ref.fileId];
+        let rev = null;
+        // Mémoire crue seulement si le catalogue annonce exactement le même fichier et la même révision.
+        if (memo && memo.sha === ref.fileSha256)
+          try { rev = SyncRevisions.confirm(ref.revision, { app: SyncRevisions.APP, v: 1, at: new Date(0).toISOString(), rev: memo.rev, values: {} }, ref.fileSha256); } catch { rev = null; }
+        if (!rev) {
+          refs.set(ref.revision.id, ref); await load(ref.revision.id);
+          rev = SyncRevisions.confirm(ref.revision, opened.get(ref.revision.id).data, ref.fileSha256, SyncMerge.device);
+        }
+        refs.set(rev.id, ref); confirmed.push(rev);
+        known[ref.fileId] = { sha: ref.fileSha256, rev: { id: rev.id, parents: [...rev.parents], device: rev.device, seq: rev.seq } };
       }
+      s.known = known; s.knownFolder = selected.folder;
       // Relire après les requêtes : aucun instantané pris avant le réseau ne
       // peut écraser une saisie locale arrivée pendant le téléchargement.
       snap = await vault.syncSnapshot(); guard();
@@ -190,7 +208,9 @@ const DriveSync = (() => {
       };
       let desired = { ...snap.values }; const merged = [], clean = [], details = [];
       for (const rid of planned.integrate) {
-        const remote = opened.get(rid).data, result = SyncMerge.values(desired, remote.values, optionsFor(rid, clean));
+        const lca = SyncRevisions.ancestor(confirmed, [...s.base, ...clean], [rid]);
+        if (lca) await load(lca);
+        const remote = (await load(rid)).data, result = SyncMerge.values(desired, remote.values, optionsFor(rid, clean));
         const open = SyncRevisions.settle(planned, [{ id: rid, report: result.report }], false).conflicts;
         merged.push({ id: rid, report: result.report });
         if (!open.length) { desired = result.values; clean.push(rid); continue; }
@@ -213,6 +233,7 @@ const DriveSync = (() => {
         for (const rid of settled.integrated) resolutions.delete(rid);
         guard(); s.base = settled.parents; s.seq = Math.max(s.seq, ...confirmed.filter(c => c.device === s.device).map(c => c.seq));
         await save(s); onApplied();
+        if (s.base.length === 1) await load(s.base[0]);
         snap = await vault.syncSnapshot(); guard();
         const after = projection(snap.values), remote = s.base.length === 1 && opened.get(s.base[0]);
         // Une tête identique se rejoint sans créer une révision vide.
