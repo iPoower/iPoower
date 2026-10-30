@@ -23,10 +23,10 @@ async function loadSwVersion() {
   renderDiag();
 }
 function calendarDiagText() {
-  if (CAL) return `${freshState(ageOf(CAL.updated))} · relais il y a ${ageTxt(ageOf(CAL.updated))} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}`;
+  if (CAL) return `${freshState(ageOf(CAL.updated))} · relais il y a ${ageTxt(ageOf(CAL.updated))} · ${CAL.events.length} événements${CAL.offline ? ' · copie locale du ' + hmLocal(CAL.cacheAt) : ''}${CALFAIL ? ' · dernière lecture en échec (' + CALFAIL.kind + ' à ' + hmLocal(CALFAIL.at) + ')' : ''}`;
   if (!lsGet('twrc.key')) return 'verrouillé · déverrouille la configuration pour lire l’agenda';
   if (location.protocol !== 'https:' || !crypto.subtle) return 'indisponible · contexte sécurisé nécessaire';
-  return CALDONE ? 'indisponible' : 'chargement…';
+  return CALDONE ? 'indisponible' + (CALFAIL ? ' · ' + CALFAIL.kind + ' à ' + hmLocal(CALFAIL.at) : '') : 'chargement…';
 }
 function diagRows(forCopy) {
   const r = RAW[UI.loc], wAge = r ? ageOf(r.t) : null, withData = allLocs().filter(l => RAW[l.id]).length;
