@@ -40,12 +40,12 @@ function owner(network, count, label, crypt = webcrypto) {
 }
 function drive() {
   const files = new Map(), profileFiles = new Map(); let n = 0;
-  const d = { files, profileFiles, loseReply: false, uploadAttempts: 0, disconnect() {},
+  const d = { files, profileFiles, loseReply: false, uploadAttempts: 0, downloads: 0, disconnect() {},
     async reserveId() { return 'file_' + ++n; },
     async profiles() { return [...profileFiles.values()].map(copy); },
     async uploadProfile(fileId, folder, bytes) { const p = { fileId, bytes: copy(bytes), sha256: sha(bytes) }; profileFiles.set(fileId, p); return copy(p); },
     async list() { return [...files.values()].map(f => copy(f.ref)); },
-    async download(ref) { const f = files.get(ref.fileId); return { packet: { copyBytes: () => copy(f.bytes) }, proof: { ...ref, state: 'verified-bytes', verifiedAt: at } }; },
+    async download(ref) { d.downloads++; const f = files.get(ref.fileId); return { packet: { copyBytes: () => copy(f.bytes) }, proof: { ...ref, state: 'verified-bytes', verifiedAt: at } }; },
     async uploadRevision(fileId, folder, packet, rev) {
       d.uploadAttempts++;
       if (d.beforeUpload) await d.beforeUpload();
@@ -315,6 +315,37 @@ function drive() {
     assert.equal(cars(pc)[0].tire.treads.length, 2); assert.equal(cars(pc)[0].odo.filter(r => r.d === '2026-10-28').length, 2);
     console.log('✅ relevés du même jour sur les deux appareils : tous conservés, ordre identique, convergence finie');
   }
+  // Phase A · PR 2 : les copies rc-<sha>.json sont immuables. Un passage ne télécharge que les révisions
+  // nouvelles (et l'ancêtre commun si la fusion l'exige), jamais tout le dossier (constat du 30/10/2026 : > 170 appels).
+  {
+    const net = drive(), pc = owner(net, 3, 'incr-pc'), phone = owner(net, 2, 'incr-iphone');
+    const stamped = (o, fn) => { const M = o.A.SyncMerge, prev = JSON.parse(o.values[M.SETTINGS]), next = structuredClone(prev); fn(next);
+      o.advance(1000); o.edit(M.STAMPS, JSON.stringify(M.edits(prev, next, JSON.parse(o.values[M.STAMPS] || '{}'), at + 864e5 + net.files.size * 1000))); o.edit(M.SETTINGS, JSON.stringify(next)); };
+    await pc.controller.run(true); await phone.controller.run(true);
+    for (let i = 0; i < 12; i++) {
+      const o = i % 2 ? phone : pc, other = i % 2 ? pc : phone;
+      stamped(o, x => { x.cars[0].short = 'v' + i; }); await o.controller.run(true); await other.controller.run(true);
+    }
+    await pc.controller.run(true); await phone.controller.run(true);
+    assert(net.files.size >= 12, 'historique de plus de 12 copies');
+    assert.equal(JSON.parse(pc.values['twrc.settings.v1']).cars[0].short, 'v11');
+    let before = net.downloads;
+    for (let i = 0; i < 5; i++) { pc.advance(31e3); await pc.controller.run(); }
+    assert.equal(net.downloads - before, 0, 'passage sans nouveauté : aucun téléchargement, quel que soit le nombre de copies');
+    assert.equal(pc.controller.status.message, 'synchronisé');
+    const restarted = pc.restart(); before = net.downloads; pc.advance(31e3); await restarted.run();
+    assert.equal(net.downloads - before, 0, 'mémoire des révisions vérifiées conservée après redémarrage');
+    stamped(phone, x => { x.cars[0].short = 'nouveau'; }); await phone.controller.run(true);
+    before = net.downloads; pc.advance(31e3); await restarted.run();
+    assert(net.downloads - before <= 2, 'nouvelle révision : la tête et au plus son ancêtre commun (' + (net.downloads - before) + ')');
+    assert.equal(JSON.parse(pc.values['twrc.settings.v1']).cars[0].short, 'nouveau', 'nouveauté intégrée');
+    // Une entrée mémorisée qui ne correspond plus au catalogue n'est jamais crue : nouveau téléchargement authentifié.
+    const st = pc.state, k = Object.keys(st.known)[0]; st.known[k].sha = 'f'.repeat(64); await pc.store.write(st);
+    before = net.downloads; pc.advance(31e3); await restarted.run();
+    assert.equal(net.downloads - before, 1, 'empreinte divergente : révision relue et authentifiée');
+    assert.equal(restarted.status.message, 'synchronisé');
+    console.log('✅ téléchargement incrémental : 0 téléchargement au repos (' + net.files.size + ' copies), nouveauté = tête + ancêtre au plus, mémoire non crue sans empreinte identique');
+  }
   // NOESIS 13.4 : passage en arrière-plan (iPhone) ⇒ envoi anticipé sans attendre la fenêtre de calme,
   // mais sans lever un blocage ni ignorer le délai de reprise après échec.
   {
@@ -363,6 +394,31 @@ function drive() {
     assert(keys.every(k => k('twrc.gps') && k('twrc.calendar.sealed.v1') && k('twrc.cache.home') && !k('twrc.settings.v1') && !k('twrc.context.v1')),
       'position, agenda chiffré et caches seulement ; jamais les réglages ni le journal');
     console.log('✅ constat C : instantanés et fusions reçoivent SyncMerge.device (' + keys.length + ' appels)');
+  }
+  // Constat du 30/10/2026 (PC + iPhone) : jamais « synchronisé », une copie à chaque cycle. Une écriture
+  // propre à l'appareil (cache météo, position) en cours d'enregistrement ne doit produire ni envoi ni copie.
+  {
+    const net = drive(), pc = owner(net, 3, 'boucle'), phone = owner(net, 2, 'boucle-iphone');
+    await pc.controller.run(true); await phone.controller.run(true); await pc.controller.run(true);
+    const before = net.files.size;
+    for (let i = 0; i < 10; i++) {
+      pc.edit('twrc.cache.home', JSON.stringify({ t: i })); pc.vault.pendingWrites = true;   // hors synchro, écriture en cours
+      pc.advance(31e3); await pc.controller.run();
+      phone.advance(31e3); await phone.controller.run();
+    }
+    assert.equal(net.files.size, before, '10 passages sans saisie synchronisée : aucune nouvelle copie');
+    // Contre-épreuve : une vraie saisie, même pendant une écriture en cours, part une fois et une seule.
+    // Saisie horodatée comme dans l'app (markEdit) : un écart sans date resterait un conflit à arbitrer.
+    const M = pc.A.SyncMerge, prev = JSON.parse(pc.values[M.SETTINGS]), s = structuredClone(prev); s.cars[0].short = 'saisie-reelle';
+    pc.edit(M.STAMPS, JSON.stringify(M.edits(prev, s, JSON.parse(pc.values[M.STAMPS] || '{}'), at + 3600e3))); pc.edit(M.SETTINGS, JSON.stringify(s));
+    for (let i = 0; i < 3; i++) { pc.advance(31e3); await pc.controller.run(); }
+    assert.equal(net.files.size, before + 1, 'la saisie synchronisée est envoyée une seule fois');
+    phone.advance(31e3); await phone.controller.run();
+    assert.equal(JSON.parse(phone.values['twrc.settings.v1']).cars[0].short, 'saisie-reelle', 'l’autre appareil la reçoit');
+    pc.vault.pendingWrites = false; pc.advance(31e3); await pc.controller.run();
+    assert.equal(pc.controller.status.message, 'synchronisé', 'statut vert une fois l’écriture locale terminée');
+    assert.equal(net.files.size, before + 1);
+    console.log('✅ écriture locale hors synchro en cours : 0 copie sur 10 passages, vraie saisie envoyée une fois, puis synchronisé');
   }
   await require('./lib/drive-recovery-checks')();
 
