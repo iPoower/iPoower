@@ -61,7 +61,7 @@ function garageVehicleHtml(c) {
     '<div class="garage-car-head"><div><span class="garage-index">VÉHICULE · ' + esc(c.short) + '</span><h3>' + esc(c.name) +
     '</h3>' + (c.spec ? '<p>' + esc(c.spec) + '</p>' : '') + '</div><div class="garage-choose">' + active + '</div></div>' +
     '<button type="button" class="btn pri garage-edit" data-act="goset-cfg">Modifier la fiche</button>' +
-    '<div class="garage-quick" aria-label="Relevés rapides de ' + esc(c.short) + '"><span>Relevés rapides · formulaire existant</span>' +
+    '<div class="garage-quick" aria-label="Relevés rapides de ' + esc(c.short) + '"><span>Relevés rapides</span>' +
       '<div class="chips">' + [['odo','Compteur km'],['tread','Profondeur mm'],['pressure','Pressions AV/AR']].map(([k,label]) =>
         '<button type="button" class="btn sm" data-act="garage-quick" data-car="' + esc(c.id) +
         '" data-garage-target="' + k + '">' + label + '</button>').join('') + '</div></div>' +

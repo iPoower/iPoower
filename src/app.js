@@ -692,7 +692,7 @@ function renderPlace() {
   } else {
     const arr = [work, home].filter(Boolean).map(p => ({ p, t: placeArrivalTrip(p.id) })).find(x => x.t);
     const btns = pl.filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
-    h = `<div class="place${arr ? ' arr' : ''}">${arr ? `<b>${c.source === 'trip' ? '🚗 EN ROUTE · destination' : 'ARRIVÉE'} · ${(K[arr.p.kind] || K.custom).icon} ${esc(arr.p.name)}</b>` : `<span class="pl-src"><b>${esc(c.title)}</b> · ${esc(c.trust)}${c.badge ? ' · ' + esc(c.badge) : ''}</span>`}<span class="pl-act">${btns}</span></div>`;
+    h = `<div class="place${arr ? ' arr' : ''}">${arr ? `<b>${c.source === 'trip' ? '🚗 EN ROUTE · destination' : 'ARRIVÉE'} · ${(K[arr.p.kind] || K.custom).icon} ${esc(arr.p.name)}</b>` : `<span class="pl-src"><b>${esc(c.title)}</b>${c.trust === 'Indisponible' && /indisponible/i.test(c.title) ? '' : ' · ' + esc(c.trust)}${c.badge ? ' · ' + esc(c.badge) : ''}</span>`}<span class="pl-act">${btns}</span></div>`;
   }
   if (el.innerHTML !== h) el.innerHTML = h;
 }
@@ -1696,7 +1696,11 @@ function renderRadar() {
   el.hidden = !CX;
   if (RADAR.state === 'ready') { radarCenter(false); if (Date.now() - RADAR.t > 10 * 60e3) radarRefresh(); }
 }
-function radarControls() { const ready = !!RADAR.map && RADAR.layers.length > 0; document.querySelectorAll('#secRadar [data-act], #rslide').forEach(b => { b.disabled = !ready; }); }
+function radarControls() {
+  const ready = !!RADAR.map && RADAR.layers.length > 0;
+  // Contrôle grisé : la raison est donnée au survol et aux lecteurs d'écran.
+  document.querySelectorAll('#secRadar [data-act], #rslide').forEach(b => { b.disabled = !ready; b.title = ready ? '' : 'Disponible dès que les images radar sont chargées'; });
+}
 async function initRadar() {
   if (RADAR.state === 'loading' || RADAR.state === 'ready') return;
   RADAR.wanted = true; RADAR.state = 'loading'; radarMsg('Chargement du radar…'); radarControls();
