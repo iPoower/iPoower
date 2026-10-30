@@ -62,6 +62,13 @@ for(const [name,vp,mobile,inset] of VPS){
       await p.evaluate(()=>window.scrollTo(0,0));
     }
   }
+  if(name==='iPhone portrait'){
+    // badge de sauvegarde Drive (affiché seulement sur l'origine dédiée) : rendu ici avec une configuration fictive, sans réseau
+    const h=await p.evaluate(()=>{DRIVE_UI.config={};renderDriveBadge();window.scrollTo(0,0);const e=document.getElementById('driveBadge');return e?e.getBoundingClientRect().height:0;});
+    check('39 · iPhone portrait : badge de sauvegarde ≥ 44 pt au doigt',h>=43.5,'hauteur '+h);
+    const W=await p.evaluate(()=>({sw:document.documentElement.scrollWidth,W:document.documentElement.clientWidth}));
+    check('39 · iPhone portrait : badge de sauvegarde sans défilement horizontal',W.sw<=W.W,JSON.stringify(W));
+  }
   if(name==='PC 1280'){
     // fenêtre réduite sous 1200 px puis agrandie : retour à la colonne unique sans perdre une section, puis retour au bureau
     const snap=()=>p.evaluate(()=>({cols:!!document.getElementById('deskCols'),n:document.querySelectorAll('main.wrap section[id], main.wrap .grid2[id]').length,

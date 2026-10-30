@@ -109,7 +109,32 @@ function renderDriveSync() {
 }
 // Badge de sauvegarde, visible depuis tous les écrans (barre d'état) : projection de l'état DriveSync,
 // aucun nouveau stockage. Un appui ouvre Sauvegarde, ou reconnecte Google si la session a expiré.
-const DRIVE_BADGE = { pending: 0, syncedAt: 0, hidden: false, lastAt: 0 };
+const DRIVE_BADGE = { pending: 0, syncedAt: 0, hidden: false, lastAt: 0, sig: {} };
+// Catégorie par clé, pour le seul compteur « N modifs en attente » : ce qui est envoyé, et quand, reste
+// décidé par DriveSync. Saisies de l'utilisateur : réglages (Garage, compteur, pneus, entretien, réglages ;
+// sauf le journal météo du matin, calculé) et débriefs (journal des trajets du contexte). Toute autre clé est
+// automatique : relevés et comparaisons météo, contexte du jour, horodatages techniques, caches.
+const DRIVE_USER_PART = {
+  'twrc.settings.v1': v => { if (v && typeof v === 'object') delete v.journal; return v; },
+  'twrc.context.v1': v => v && v.debrief ? v.debrief.entries : null,
+  'twrc.debrief.v1': v => v && v.entries ? v.entries : null
+};
+function driveUserPart(key) {
+  try { return JSON.stringify(DRIVE_USER_PART[key](JSON.parse(lsGet(key) || 'null'))); } catch { return ''; }
+}
+// Vrai si l'écriture change la partie saisie par l'utilisateur ; l'empreinte est tenue à jour à chaque écriture.
+function driveUserWrite(key) {
+  if (!Object.hasOwn(DRIVE_USER_PART, key)) return false;
+  const part = driveUserPart(key), changed = part !== DRIVE_BADGE.sig[key];
+  DRIVE_BADGE.sig[key] = part; return changed;
+}
+function driveNoteWrite(e) {
+  const user = !!(e && e.key) && driveUserWrite(e.key);
+  // Une saisie écrit souvent plusieurs clés : un enregistrement = une modification. Une fusion reçue
+  // pendant une synchronisation n'est pas une saisie.
+  if (!user || DRIVE_UI.sync && DRIVE_UI.sync.status.running || Date.now() - (DRIVE_BADGE.lastAt || 0) <= 800) return;
+  DRIVE_BADGE.pending++; DRIVE_BADGE.lastAt = Date.now(); renderDriveBadge();
+}
 const DRIVE_HM = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 function driveBadgeState() {
   const d = DRIVE_UI, B = DRIVE_BADGE, st = d.status || {}, active = !!(d.session && d.session.connected && d.selected);
@@ -227,12 +252,8 @@ async function initDriveSync() {
     document.addEventListener('visibilitychange', () => { if (document.hidden && !DEMO.on && DRIVE_UI.selected && DRIVE_UI.session.connected) DRIVE_UI.sync.run(false, true); });
     // Toute saisie enregistrée, depuis n'importe quel écran : envoi automatique regroupé quelques secondes,
     // scellé sans attendre la fenêtre de calme (blocages et délais de reprise respectés, comme en arrière-plan).
-    window.addEventListener('twrc-vault-change', e => {
-      // Une saisie écrit souvent plusieurs clés (réglages + horodatages) : un enregistrement = une modification.
-      // Les écritures faites pendant une synchronisation (fusion reçue de l'autre appareil) ne sont pas des saisies.
-      if (!(e && e.key && SyncMerge.device(e.key)) && !DRIVE_UI.sync.status.running && Date.now() - (DRIVE_BADGE.lastAt || 0) > 800) { DRIVE_BADGE.pending++; DRIVE_BADGE.lastAt = Date.now(); renderDriveBadge(); }
-      driveSoon();
-    });
+    for (const key of Object.keys(DRIVE_USER_PART)) DRIVE_BADGE.sig[key] = driveUserPart(key);
+    window.addEventListener('twrc-vault-change', e => { driveNoteWrite(e); driveSoon(); });
     const stop = () => { DRIVE_UI.session.disconnect(); DRIVE_UI.sync.stop(); DRIVE_UI.selected = false; DRIVE_UI.dedicatedFolders = []; renderDriveSync(); };
     window.addEventListener('twrc-session-expired', stop); window.addEventListener('twrc-session-locked', stop);
     window.addEventListener('pagehide', stop); renderDriveSync();
