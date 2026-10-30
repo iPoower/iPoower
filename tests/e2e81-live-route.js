@@ -78,6 +78,7 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
      await p.emulateMedia({reducedMotion:'reduce'});await p.waitForTimeout(150);await p.clock.runFor(1200);
      await p.waitForFunction(()=>document.querySelector('#garageLiveRoute [data-lr=play]').disabled,null,{timeout:5000});
      assert(await p.locator('[data-lr=play]').isDisabled());
+     assert.match(await p.locator('[data-lr=play]').getAttribute('title')||'',/Réduire les animations/,'bouton grisé sans explication');
      await p.emulateMedia({reducedMotion:'no-preference'});await p.waitForTimeout(150);await p.clock.runFor(1200);
      await p.waitForFunction(()=>!document.querySelector('#garageLiveRoute [data-lr=play]').disabled,null,{timeout:5000});
      await p.locator('[data-lr=play]').click();await p.clock.runFor(250);

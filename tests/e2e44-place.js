@@ -97,6 +97,7 @@ const locateAt = async (s, g) => { await s.p.evaluate(g => { window.__geo = g; }
     // 6. ouvert après l'arrivée, hors ligne, sans GPS : « Je suis déjà au travail », puis reconnexion avec une position approximative
     s = await session(b, { at: '2026-10-05T08:15:00+02:00', geo: null }); x = await st(s.p);
     check('6 · aucune position disponible : « Localisation physique indisponible »', /Localisation physique indisponible/.test(x.bar), x.bar);
+    check('6 · « indisponible » non répété', !/indisponible · Indisponible/i.test(x.bar), x.bar);
     await s.c.setOffline(true); await s.p.evaluate(() => window.dispatchEvent(new Event('offline'))); await s.settle(1);
     await s.p.locator('#placeBar [data-act=place-confirm][data-place=work]').click(); await s.settle(2); x = await st(s.p);
     check('6 · hors connexion : « Je suis déjà au travail » enregistré localement', /🏢 AU TRAVAIL/.test(x.bar) && /"how":"manual"/.test(x.stored || '') && x.loc === 'work', x.bar);

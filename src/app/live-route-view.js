@@ -135,6 +135,10 @@ function garageLiveRefresh() {
   play.disabled = !simulated || !r || !!(s.media && s.media.matches);
   garageLiveText('[data-lr=play]', s.playing ? 'Pause Ⅱ' : 'Lire ▶');
   const slider = s.root.querySelector('#garageRouteTime'); slider.disabled = !simulated || !r;
+  // Commande grisée : dire pourquoi (aucun trajet tracé, mode GPS, animations réduites par l'appareil).
+  const why = !r ? 'Aucun trajet tracé : disponible dès qu’un prochain trajet est connu' : !simulated ? 'Disponible en mode Simulation' : '';
+  play.title = play.disabled ? why || 'Animation désactivée : réglage « Réduire les animations » de l’appareil' : '';
+  slider.title = slider.disabled ? why : '';
   if (document.activeElement !== slider) slider.value = String(Math.round(s.fraction * 1000));
   s.root.querySelectorAll('.lr-sectors span').forEach((node, i) => {
     for (const [key, b] of Object.entries({ passed: m.sector != null && i + 1 < m.sector, current: i + 1 === m.sector }))

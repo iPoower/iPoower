@@ -95,6 +95,9 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         await click('[data-act=rplay]'); assert.equal(await p.evaluate(() => !!RADAR.play), true); await click('[data-act=rplay]'); assert.equal(await p.evaluate(() => !!RADAR.play), false);
         await click('[data-act=rcenter]'); assert.equal(await p.evaluate(() => RADAR.at), await p.evaluate(() => UI.loc));
         await p.locator('#rslide').press('ArrowLeft'); assert(await p.evaluate(() => RADAR.idx >= 0));
+        // radar pas encore chargé : contrôles grisés avec leur raison, puis raison retirée une fois prêts
+        const why = await p.evaluate(() => { const l = RADAR.layers; RADAR.layers = []; radarControls(); const g = ['rplay', 'rslide'].map(id => document.getElementById(id)).concat(document.querySelector('[data-act=rcenter]')).map(e => e.disabled && e.title); RADAR.layers = l; radarControls(); return { g, ready: document.getElementById('rplay').title }; });
+        assert(why.g.every(t => /images radar/.test(t || '')), JSON.stringify(why)); assert.equal(why.ready, '');
       });
       await check(tag + ' · graphique par pointeur et flèches clavier', async () => {
         await p.locator('#chartbox').click({ position: { x: 100, y: 100 } }); const before = await p.evaluate(() => UI.chartIdx);
