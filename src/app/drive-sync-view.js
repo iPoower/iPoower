@@ -153,15 +153,23 @@ function driveBadgeState() {
 }
 function renderDriveBadge() {
   if (!DRIVE_UI.config) return;
-  const bar = document.querySelector('.statusbar'); if (!bar) return;
+  // Dans le bandeau, sur une ligne existante : la barre collante ne grandit pas (titres jamais masqués).
+  const bar = document.getElementById('statusbar'); if (!bar) return;
+  if (!bar.querySelector('#liveClock')) renderLiveStatus();
   let b = document.getElementById('driveBadge');
-  if (!b) {
-    const row = document.createElement('div'); row.className = 'drive-badge-row'; bar.appendChild(row);
-    b = document.createElement('button'); b.type = 'button'; b.id = 'driveBadge'; b.addEventListener('click', driveBadgeTap); row.appendChild(b);
+  if (!b || b.parentNode !== bar) {
+    if (b) b.remove();
+    b = document.createElement('button'); b.type = 'button'; b.id = 'driveBadge'; b.addEventListener('click', driveBadgeTap); bar.appendChild(b);
   }
   const s = driveBadgeState(), text = s.icon + ' ' + s.text;
   b.className = 'badge drive-badge' + (s.cls ? ' ' + s.cls : ''); b.dataset.state = s.act === 'reconnect' ? 'reconnect' : s.cls || 'idle';
-  if (b.textContent !== text) b.textContent = text;
+  // Sur iPhone, seule l'icône (et le nombre de modifs en attente) reste affichée ; le texte complet est dans aria-label.
+  b.dataset.n = DRIVE_BADGE.pending ? String(DRIVE_BADGE.pending) : '';
+  if (b.textContent !== text) {
+    const ic = document.createElement('span'), tx = document.createElement('span');
+    ic.className = 'db-ic'; ic.textContent = s.icon; tx.className = 'db-tx'; tx.textContent = s.text;
+    b.replaceChildren(ic, ' ', tx);
+  }
   b.title = s.hint; b.setAttribute('aria-label', 'Sauvegarde Google Drive : ' + s.text + '. ' + s.hint);
 }
 function driveOpenBackup() {
