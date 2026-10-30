@@ -1,6 +1,6 @@
 # Récupération initiale A2 — 25 octobre 2026
 
-Auteur : Bryan Fiarda. Candidat sensible, non fusionné, non déployé.
+Auteur : Bryan. Candidat sensible, non fusionné, non déployé.
 
 Cette correction dépend de #235, qui inclut #234. Les correctifs indépendants
 #236 (XSS), #237 (IndexedDB), #238 (preuve V2) et #240 (SW Cloudflare) restent à
