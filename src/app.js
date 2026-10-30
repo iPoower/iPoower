@@ -36,6 +36,12 @@ const BASE = {
   ]
 };
 const clone = o => JSON.parse(JSON.stringify(o));
+// Fiche vierge d'une voiture créée dans l'app : mêmes champs que le préréglage, aucune valeur inventée.
+function newCar(id, name) {
+  return { id, name, short: String(name).slice(0, 16), spec: '', sporty: 0, userAdded: 1,
+    tire: { type: 'summer', brand: '', model: '', size: '', tread: null, treadAv: null, treadAr: null, treadEst: 0, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
+    plan: { on: 0, brand: '', model: '', size: '', ordered: '', etaFrom: '', etaTo: '', etaChecked: '', date: '', appointmentDate: '', appointmentConfirmed: 0 } };
+}
 function deepMerge(d, s) {
   if (s == null) return clone(d);
   if (Array.isArray(d) || typeof d !== 'object' || d === null) return s;
@@ -52,7 +58,9 @@ function normalize(saved, base) {
     for (const k of ['lat', 'lon']) if (p && p[k] === null) l[k] = null;
     return l;
   });
-  if (saved && Array.isArray(saved.cars)) S.cars = base.cars.map((d, i) => deepMerge(d, saved.cars[i]));
+  if (saved && Array.isArray(saved.cars)) S.cars = base.cars.map((d, i) => deepMerge(d, saved.cars[i]))
+    // Voitures créées dans l'app (« Ajouter une voiture ») : conservées après celles du préréglage.
+    .concat(saved.cars.slice(base.cars.length).filter(c => c && c.userAdded === 1 && typeof c.id === 'string' && c.id && !base.cars.some(d => d.id === c.id)).map(c => deepMerge(newCar(c.id, c.name), c)));
   // Entretien déclaré (fiche) : structure toujours présente pour la saisie, valeurs vides par défaut, rien d'inventé.
   (S.cars || []).forEach(c => { const m = c.maint || {}; c.maint = { rev: { d: '', km: null, everyKm: null, everyMonths: null, ...(m.rev || {}) }, ct: { d: '', next: '', ...(m.ct || {}) } }; });
   S.customs = saved && Array.isArray(saved.customs) ? saved.customs : clone(base.customs);
@@ -208,7 +216,10 @@ function loadSettings() {
       keep.forEach((k, i) => { const c = fresh.cars[i]; if (!k || !c) return; if (k.sets) c.sets = k.sets; if (k.photo) c.photo = k.photo; if (k.odo) c.odo = k.odo;
         if (k.tire) ['pchk', 'dot', 'tread', 'treadAv', 'treadAr', 'treadEst', 'treads', 'mountKm', 'lastRot'].forEach(f => { const v = k.tire[f]; if (v != null && v !== '' && !(f === 'pchk' && !v.date)) c.tire[f] = v; }); });
       const oldCalib = keep.calib;
-      saved = { ...fresh, configured: 1, calib: oldCalib || [], journal: keep.journal || {} }; reapplyEdits(saved, old); lsSet('twrc.settings.v1', JSON.stringify(saved));
+      saved = { ...fresh, configured: 1, calib: oldCalib || [], journal: keep.journal || {} };
+      // Les voitures créées dans l'app ne viennent pas du préréglage : elles le suivent, intactes.
+      (old && Array.isArray(old.cars) ? old.cars : []).filter(c => c && c.userAdded === 1 && !saved.cars.some(f => f.id === c.id)).forEach(c => saved.cars.push(c));
+      reapplyEdits(saved, old); lsSet('twrc.settings.v1', JSON.stringify(saved));
     }
   }
   if (repairVehicleIdentity(saved)) lsSet('twrc.settings.v1', JSON.stringify(saved));
@@ -3902,7 +3913,9 @@ function renderSettings(force) {
     </div><p class="sub">Intervalles : ceux de ton carnet d’entretien, aucun n’est deviné. Sans date limite déclarée, le prochain CT est calculé à 2 ans du dernier.</p></div>`).join('');
   const locSet = S.locs.map((l, i) => `<div class="frow">${bindIn(`locs.${i}.name`, l.name, { label: i === 0 ? 'Zone principale' : 'Lieu de travail / 2e zone', wide: 1 })}${bindIn(`locs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`locs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}</div>`).join('') +
     S.customs.map((l, i) => `<div class="frow">${bindIn(`customs.${i}.name`, l.name, { label: 'Destination', wide: 1 })}${bindIn(`customs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`customs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}<div class="fld"><span class="l">&nbsp;</span><button class="btn sm" data-act="loc-del" data-i="${i}">Retirer</button></div></div>`).join('');
-  el.innerHTML = `<div class="set-sec"><h3>🚗 Voitures et pneus</h3></div>${carSet}
+  const carAdd = `<div class="set-sec"><h3>➕ Ajouter une voiture</h3><p class="sub">Fiche vierge (pneus, compteur, entretien à renseigner ensuite). Elle est sauvegardée et synchronisée comme les autres.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="carNewName" maxlength="60" autocomplete="off" placeholder="nom de la voiture" aria-label="Nom de la nouvelle voiture" style="flex:1;min-width:160px"><button class="btn" data-act="car-add">Ajouter la voiture</button></div></div>`;
+  el.innerHTML = `<div class="set-sec"><h3>🚗 Voitures et pneus</h3></div>${carSet}${carAdd}
     <div class="set-sec"><h3>📍 Lieux</h3>${locSet}
       <div class="fld"><label for="geoQ">Ajouter une destination ou une adresse</label><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="search" id="geoQ" placeholder="Adresse, ville ou lieu" style="flex:1;min-width:140px"><button class="btn" data-act="geo-search">Rechercher</button></div><span class="sub">France : IGN / Base Adresse Nationale · monde : OpenStreetMap. Recherche uniquement quand tu appuies sur « Rechercher ».</span></div><div class="hits" id="geoHits"></div></div>
     <div class="set-sec"><h3>📚 Base pneus</h3><p class="sub">${TIRE_DB_META.count} modèles · ${TIRE_DB_META.version ? 'version ' + TIRE_DB_META.version + ' du ' + esc(TIRE_DB_META.updated || '') : 'base de secours'} (${esc(TIRE_DB_META.source)}). ${S.cars.map(c => `${esc(c.short)} : ${compatible(c).length} compatibles`).join(' · ')}. Mise à jour automatique chaque mois ; ★ = nouveauté de moins de 60 jours.</p></div>
@@ -4061,6 +4074,17 @@ document.addEventListener('click', async e => {
     const x = m.hs[m.nowI], raw = x.Tr != null ? Math.round((x.Tr - (m.roadBias || 0)) * 10) / 10 : null;
     S.calib = (S.calib || []).concat([{ t: m.nowStr, loc: UI.loc, kind: t.dataset.k, Tr: raw, T: x.T }]).slice(-30);
     saveSettings(); applyCalib(); rebuild(); renderAll();
+  }
+  else if (a === 'car-add') {
+    const input = $('#carNewName'), name = ((input || {}).value || '').trim().replace(/\s+/g, ' ');
+    if (LOCKED()) { commandFeedback(t, 'Déverrouille d’abord l’app'); return; }
+    if (!name || name.length > 60) { commandFeedback(t, 'Saisis un nom de 1 à 60 caractères', input); return; }
+    if (S.cars.length >= 12) { commandFeedback(t, 'Douze voitures au maximum', input); return; }
+    if (S.cars.some(c => (c.name || '').toLocaleLowerCase('fr') === name.toLocaleLowerCase('fr'))) { commandFeedback(t, 'Une voiture porte déjà ce nom', input); return; }
+    let id = ''; do { id = 'v-' + [...crypto.getRandomValues(new Uint8Array(6))].map(x => x.toString(16).padStart(2, '0')).join(''); } while (S.cars.some(c => c.id === id));
+    S.cars.push(normalize({ ...S, cars: [...S.cars, newCar(id, name)] }, DEFAULTS).cars.find(c => c.id === id));
+    saveSettings(); rebuild(); renderSettings(true); renderAll();
+    const done = document.querySelector('[data-act="car-add"]'); if (done) commandFeedback(done, 'Voiture ajoutée : ' + name);
   }
   else if (a === 'photo-del') { const c = S.cars[+t.dataset.i]; if (c) { delete c.photo; saveSettings(); renderSettings(); softRender(); } }
   else if (a === 'odo' || a === 'tread-add' || a === 'rot') {

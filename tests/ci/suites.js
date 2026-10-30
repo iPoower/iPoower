@@ -140,6 +140,7 @@ SUITE.push(['test_drive_sync.js', 'raccord Drive : propriétaire réel, deux app
  ['test_drive_build.js', 'Drive : profils de publication séparés, CSP et configuration publique approuvée', false]);
 
 SUITE.push(['e2e85-drive-runtime.js', 'Drive : deux vrais coffres, file IDB, HTTP opaque, fermeture, copie avant fusion et verrouillage', true]);
+SUITE.push(['e2e88-car-add.js', 'Ajouter une voiture : fiche vierge, refus nom vide ou en double, Garage, compteur et rechargement', true]);
 SUITE.push(['e2e87-drive-badge-count.js', 'badge de sauvegarde : seules les saisies de l’utilisateur comptent (écritures météo automatiques exclues)', true]);
 SUITE.push(['e2e86-html-security.js', 'NOESIS : texte véhicule, attribut photo, stockage ancien et DOM réel Chromium/WebKit', true]);
 
