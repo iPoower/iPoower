@@ -383,6 +383,31 @@ function drive() {
     assert.equal(disk.controller.status.message, 'stockage local non confirmé', 'un vrai échec IndexedDB garde son libellé');
     console.log('✅ motifs de blocage explicites : export, réglage, erreur inattendue, stockage');
   }
+  // Constat du 30/10/2026 (PC + iPhone) : jamais « synchronisé », une copie à chaque cycle. Une écriture
+  // propre à l'appareil (cache météo, position) en cours d'enregistrement ne doit produire ni envoi ni copie.
+  {
+    const net = drive(), pc = owner(net, 3, 'boucle'), phone = owner(net, 2, 'boucle-iphone');
+    await pc.controller.run(true); await phone.controller.run(true); await pc.controller.run(true);
+    const before = net.files.size;
+    for (let i = 0; i < 10; i++) {
+      pc.edit('twrc.cache.home', JSON.stringify({ t: i })); pc.vault.pendingWrites = true;   // hors synchro, écriture en cours
+      pc.advance(31e3); await pc.controller.run();
+      phone.advance(31e3); await phone.controller.run();
+    }
+    assert.equal(net.files.size, before, '10 passages sans saisie synchronisée : aucune nouvelle copie');
+    // Contre-épreuve : une vraie saisie, même pendant une écriture en cours, part une fois et une seule.
+    // Saisie horodatée comme dans l'app (markEdit) : un écart sans date resterait un conflit à arbitrer.
+    const M = pc.A.SyncMerge, prev = JSON.parse(pc.values[M.SETTINGS]), s = structuredClone(prev); s.cars[0].short = 'saisie-reelle';
+    pc.edit(M.STAMPS, JSON.stringify(M.edits(prev, s, JSON.parse(pc.values[M.STAMPS] || '{}'), at + 3600e3))); pc.edit(M.SETTINGS, JSON.stringify(s));
+    for (let i = 0; i < 3; i++) { pc.advance(31e3); await pc.controller.run(); }
+    assert.equal(net.files.size, before + 1, 'la saisie synchronisée est envoyée une seule fois');
+    phone.advance(31e3); await phone.controller.run();
+    assert.equal(JSON.parse(phone.values['twrc.settings.v1']).cars[0].short, 'saisie-reelle', 'l’autre appareil la reçoit');
+    pc.vault.pendingWrites = false; pc.advance(31e3); await pc.controller.run();
+    assert.equal(pc.controller.status.message, 'synchronisé', 'statut vert une fois l’écriture locale terminée');
+    assert.equal(net.files.size, before + 1);
+    console.log('✅ écriture locale hors synchro en cours : 0 copie sur 10 passages, vraie saisie envoyée une fois, puis synchronisé');
+  }
   await require('./lib/drive-recovery-checks')();
 
 })().catch(e => { console.error(e); process.exitCode = 1; });

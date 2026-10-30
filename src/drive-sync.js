@@ -130,8 +130,9 @@ const DriveSync = (() => {
       if (s.observed !== hash) {
         s.outbox = SyncOutbox.noteChange(s.outbox, now()); s.observed = hash;
       }
-      // Une écriture locale pas encore confirmée ne peut produire un statut vert.
-      if (vault.pendingWrites) s.outbox = SyncOutbox.noteChange(s.outbox, now());
+      // Une écriture locale pas encore confirmée ne peut produire un statut vert (voir state()), mais ce n'est
+      // pas une saisie à envoyer : l'instantané l'inclut déjà, et une écriture propre à l'appareil (cache météo,
+      // position) relançait sinon une copie identique à chaque passage (constat du 30/10/2026).
       observedVersion = version;
     }
     async function send(s) {
