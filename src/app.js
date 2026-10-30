@@ -390,7 +390,7 @@ async function fetchJSON(url, ms, group = 'shared', cacheMs = 0) {
   try {
     const r = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    return await r.json();
+    try { return await r.json(); } catch (e) { if (e && e.name !== 'AbortError') e.invalid = true; throw e; }   // réponse reçue mais illisible (type d'erreur variable selon le navigateur)
   } finally { clearTimeout(to); }
 }
 function loadCache() {
@@ -2925,7 +2925,7 @@ async function readCalendar(pass) {
   try {
     S0 = await fetchJSON(dataUrl('calendar.sealed.json') + '?t=' + Math.floor(Date.now() / 300e3), 8000);
   } catch (e) {
-    failure = offlineNow() || e.offline ? 'offline' : e && e.name === 'AbortError' ? 'timeout' : e instanceof SyntaxError ? 'invalid' : 'network';
+    failure = offlineNow() || e.offline ? 'offline' : e && e.name === 'AbortError' ? 'timeout' : e && (e.invalid || e instanceof SyntaxError) ? 'invalid' : 'network';
     fallback = calendarSealedCache(); S0 = fallback && fallback.sealed;
   }
   try {
