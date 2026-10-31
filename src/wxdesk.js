@@ -214,7 +214,8 @@ function wxDesk(input) {
   }
   if (nextChange && !(dominant && nextChange.m === dominant.start && nextChange.id === dominant.id)) lines.push(`Prochain changement : ${hmd(atMin(nextChange.m))} · ${nextChange.text}`);
   const ageMin = input && finite(input.ageMin) ? input.ageMin : null, stale = ageMin != null && ageMin > WXD_STALE_AFTER_MIN;
-  const hero = { level, emoji: EMO[level], title, lines: lines.slice(0, 4), dominant: dominant ? dominant.id : null, stale };
+  // inMin : délai avant le début du phénomène dominant (0 s'il est en cours) — permet de borner le verdict « ici, maintenant ».
+  const hero = { level, emoji: EMO[level], title, lines: lines.slice(0, 4), dominant: dominant ? dominant.id : null, inMin: dominant ? Math.max(0, dominant.start - nowM) : null, stale };
 
   /* ---------- timeline : moments clés (météo + trajets) et bande horaire ---------- */
   const moments = [];

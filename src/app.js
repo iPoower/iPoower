@@ -859,7 +859,7 @@ const relayAgeTxt = m => !Number.isFinite(m) ? 'inconnue' : m < 60 ? Math.max(1,
 const CARD = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
 const card = d => d == null ? '' : CARD[Math.round(d / 45) % 8];
 const wx = c => WMO[c] || (c == null ? '—' : 'Code ' + c);
-const RISKTXT = ['FAIBLE', 'MODÉRÉ', 'ÉLEVÉ', 'CRITIQUE'];
+const RISKTXT = LV.map(l => l.name);   // échelle unique de l'app
 const visTxt = v => v == null ? '—' : v >= 10000 ? '> 10 km' : v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + ' km' : Math.round(v) + ' m';
 function icon(code) {
   const cloud = '<path d="M7 16.5h10a3.4 3.4 0 0 0 .3-6.8A5 5 0 0 0 7.6 9 3.9 3.9 0 0 0 7 16.5z"/>';
@@ -940,8 +940,13 @@ function computeCtx() {
     return { car, w, nar: w ? narrate(car, w, sum, 'actuellement') : null, season: hasTires(car) ? seasonAnalysis(m, car) : null };
   });
   const sum24 = summarize(seqOf(m, m.nowI, 24));
-  const alerts = Object.assign(computeAlerts(m, TCARS(), S, Object.fromEntries(cars.filter(c => c.season).map(c => [c.car.id, c.season]))), extraAlerts(m, sum24));
-  return { m, seq, sum, cars, sum24, alerts };
+  const seasons = Object.fromEntries(cars.filter(c => c.season).map(c => [c.car.id, c.season])), extra = extraAlerts(m, sum24);
+  const alerts = Object.assign(computeAlerts(m, TCARS(), S, seasons), extra);
+  // Verdict « ici, maintenant » : phénomènes des NOW_HOURS prochaines heures au lieu consulté, plus l'état courant
+  // (vigilance du jour, pluie imminente, pneus). Le soleil rasant, la Loi Montagne et les scénarios 24 h relèvent du trajet.
+  const alertsNow = Object.assign(computeAlerts(m, TCARS(), S, seasons, NOW_HOURS),
+    Object.fromEntries(Object.entries(extra).filter(([id]) => NOW_EXTRA.includes(id))));
+  return { m, seq, sum, cars, sum24, alerts, alertsNow };
 }
 
 /* ---------- rendu : statut, lieux, bandeaux ---------- */
@@ -1046,7 +1051,7 @@ function renderBanners() {
   // moteur v2 actif : un brouillard / visibilité prouvé par observation s'affiche même quand le modèle reste clair (score pneus inclus)
   if (!h && EV_FLAG() === 'on') { const v = evNow(), w = v && v.r.worst; if (w && w.lv >= 2 && v.r.headline) h += `<div class="banner lv${w.lv}" role="alert" data-k="ev"><h3>⚠ ${esc(v.r.headline.text)}</h3><span style="font-size:13px">Preuve observée (moteur v2) : prudence quels que soient les pneus. Détail dans l’onglet Météo.</span></div>`; }
   const top = Object.values(alerts).filter(a => S.alerts[a.id] && a.sev >= 2 && a.id !== 'fog' && a.id !== 'vis' && !(UI.view === 'meteo' && TIRE_ALERTS.includes(a.id))).sort((a, b) => b.sev - a.sev).slice(0, 3);
-  if (top.length) h += '<div class="notes">' + top.map(a => `<div class="note lv${a.sev}"><b>${a.sev >= 3 ? 'DANGER' : 'ATTENTION'}</b><span>${esc(a.title)}</span></div>`).join('') + '</div>';
+  if (top.length) h += '<div class="notes">' + top.map(a => `<div class="note lv${a.sev}"><b>${LV[Math.min(3, a.sev)].name}</b><span>${esc(a.title)}</span></div>`).join('') + '</div>';
   el.innerHTML = h;
 }
 
@@ -1093,11 +1098,12 @@ function renderDecisionCore() {
     routeReady: !active || !!(LIVE.route && !LIVE.routeErr && Number.isFinite(LIVE.lastOk) && now - LIVE.lastOk <= 5 * 60e3),
     agendaRequired, agendaAvailable: !!CAL, agendaAgeMin: calAge
   });
-  const alerts = Object.values(CX.alerts || {}).filter(a => S.alerts[a.id] && Number.isFinite(a.sev) && (!car || !TIRE_ALERTS.includes(a.id)));
+  // « Ici, maintenant » : fenêtre de NOW_HOURS h ; le prochain trajet a son propre verdict (ligne Trajet ci-dessous).
+  const alerts = Object.values(CX.alertsNow || CX.alerts || {}).filter(a => S.alerts[a.id] && Number.isFinite(a.sev) && (!car || !TIRE_ALERTS.includes(a.id)));
   // Cockpit : le phénomène dominant du moteur Météo entre toujours dans la décision (un danger n'est jamais caché derrière
   // un score pneus rassurant, même si sa notification est désactivée dans les réglages).
   const cm = cockpitMatters(alerts);
-  if (cm.desk && cm.desk.level >= 1 && cm.desk.hero) alerts.push({ id: 'wxdesk', sev: cm.desk.level, title: cap1(String(cm.desk.hero.title).toLowerCase()) + (cm.desk.hero.lines[1] ? ' · ' + cm.desk.hero.lines[1] : '') });
+  if (cm.desk && cm.desk.level >= 1 && cm.desk.hero && !(Number.isFinite(cm.desk.hero.inMin) && cm.desk.hero.inMin > NOW_HOURS * 60)) alerts.push({ id: 'wxdesk', sev: cm.desk.level, title: cap1(String(cm.desk.hero.title).toLowerCase()) + (cm.desk.hero.lines[1] ? ' · ' + cm.desk.hero.lines[1] : '') });
   const decision = Decision.decide({ alerts, tyreLevel: carEval && carEval.w ? carEval.w.level : null,
     tyreReason: carEval && carEval.nar ? carEval.nar.head : '', confidence });
   const hour = CX.m && CX.m.hs[CX.m.nowI] || {}, tyre = car && car.tire || {};
@@ -1126,8 +1132,14 @@ function renderDecisionCore() {
   const departureText = departure && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(departure)
     ? (snap.activeTrip ? 'parti' : 'départ prévu') + ' ' + (departure.slice(0, 10) === snap.date ? 'aujourd’hui' : fmtDay(departure.slice(0, 10))) + ' à ' + departure.slice(11, 16)
     : 'horaire à confirmer';
+  // Verdict propre au trajet : sa fenêtre (départ → arrivée, points de la route), jamais celle du lieu actuel.
+  const tripGeneric = !!(trip && trip.res && trip.res.length && trip.res.every(r => carProfile(r.c).generic));
+  const tripWin = trip && /T\d{2}:\d{2}/.test(trip.dep || '') ? trip.dep.slice(11, 16) + (/T\d{2}:\d{2}/.test(trip.arr || '') ? ' → ' + trip.arr.slice(11, 16) : '') : '';
+  const tripVerdictHtml = !trip || tripGeneric ? '' : Number.isInteger(trip.worst) && LV[trip.worst]
+    ? '<span class="decision-trip-verdict lv' + trip.worst + '"><b>' + LV[trip.worst].emoji + ' ' + esc(LV[trip.worst].name) + '</b>' + (tripWin ? ' · fenêtre du trajet ' + esc(tripWin) : '') + '</span>'
+    : '<span class="decision-trip-verdict lvx">' + (trip.wait ? '⏳ verdict du trajet en cours de calcul' : 'Verdict du trajet indisponible') + '</span>';
   const destinationHtml = ['pneus', 'meteo'].includes(UI.view) && trip
-    ? '<span class="decision-trip"><span>' + (snap.activeTrip ? 'Trajet en cours' : 'Prochain trajet') + ' · <b>' + esc(tripFrom || 'Origine à confirmer') + ' → ' + esc(tripToName || 'Destination à confirmer') + '</b></span><span class="decision-departure">' + esc(departureText) + ' <a class="decision-change" href="' + (UI.view === 'meteo' ? '#wxNextTrip' : '#secBrf') + '">Départ ↗</a></span></span>'
+    ? '<span class="decision-trip"><span>' + (snap.activeTrip ? 'Trajet en cours' : 'Prochain trajet') + ' · <b>' + esc(tripFrom || 'Origine à confirmer') + ' → ' + esc(tripToName || 'Destination à confirmer') + '</b></span><span class="decision-departure">' + esc(departureText) + ' <a class="decision-change" href="' + (UI.view === 'meteo' ? '#wxNextTrip' : '#secBrf') + '">Départ ↗</a></span>' + tripVerdictHtml + '</span>'
     : '<span>Destination · <b>' + esc(destination) + '</b></span>';
   const carLabel = car ? (car.short || car.name || car.id) : 'À choisir';
   const wAge = raw ? ageMin(raw.t) : null, fresh = wAge == null ? 'météo —' : 'météo ' + (wAge < 1 ? 'moins de 1 min' : Math.round(wAge) + ' min');
@@ -1156,7 +1168,8 @@ function renderDecisionCore() {
   el.hidden = false;
   // À retenir : la conclusion déjà rédigée par le récit pneus de la voiture active (aucun conseil nouveau), dès qu'un signal existe.
   const advice = decision.riskLevel >= 1 && carEval && carEval.nar && Array.isArray(carEval.nar.advice) ? carEval.nar.advice : [];
-  const coreHtml = '<div class="decision-top"><div class="decision-main"><span class="decision-k">RACE CONTROL · MÉTÉO ET PNEUS</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
+  const nowEnd = CX.m && CX.m.hs[CX.m.nowI + NOW_HOURS] && String(CX.m.hs[CX.m.nowI + NOW_HOURS].t || '').slice(11, 16);
+  const coreHtml = '<div class="decision-top"><div class="decision-main"><span class="decision-k">ICI, MAINTENANT · MÉTÉO ET PNEUS' + (nowEnd ? ' · jusqu’à ' + esc(nowEnd) : '') + '</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
     confidenceHtml + '</div>' +
     // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
     (matters.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + matters.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
@@ -1248,6 +1261,7 @@ function renderCurrent() {
 // @include app/garage-view.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 const TIRE_ALERTS = ['press', 'age', 'mont'];
+const NOW_HOURS = 3, NOW_EXTRA = ['press', 'age', 'vigi', 'rain15'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
 const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 function chooseView(view) {
@@ -3902,7 +3916,7 @@ function renderAlerts() {
   el.innerHTML = `<div class="mod-h"><h2>🔔 Alertes</h2><span class="src">${act} active${act > 1 ? 's' : ''} · 24 h</span></div>
    ${vigiBlock()}<div>${items.map(({ d, a, on }) => `<div class="al${on ? '' : ' off'}"><div><label class="sw"><input type="checkbox" data-alert="${d.id}" ${on ? 'checked' : ''} aria-label="${esc(d.label)}"><i></i></label></div>
      <div style="display:flex;justify-content:space-between;gap:10px;align-items:start;min-width:0"><div style="min-width:0"><div class="t">${esc(a && on ? a.title : d.label)}</div><div class="d">${on ? (a ? esc(a.detail) : d.id === 'vigi' && VIGI.state !== 'ok' ? 'Vigilance indisponible : consulter la référence officielle.' : (d.id === 'pre' && S.cars.some(c => c.plan.on && c.tire.type !== 'winter' && !(c.plan.date || (c.plan.appointmentConfirmed && c.plan.appointmentDate))) ? 'Renseigne un montage estimé ou un rendez-vous confirmé (Saison pneus) pour activer cette alerte.' : 'Non déclenchée')) : 'Désactivée'}</div></div>
-     ${on && a ? `<span class="sev lv${a.sev}">${a.sev >= 3 ? 'DANGER' : a.sev === 2 ? 'ATTENTION' : 'INFO'}</span>` : `<span class="sev none">${on ? d.id === 'vigi' && VIGI.state !== 'ok' ? 'INCONNU' : 'RAS' : 'OFF'}</span>`}</div></div>`).join('')}</div>
+     ${on && a ? `<span class="sev lv${a.sev}">${LV[Math.max(0, Math.min(3, a.sev))].name}</span>` : `<span class="sev none">${on ? d.id === 'vigi' && VIGI.state !== 'ok' ? 'INCONNU' : 'RAS' : 'OFF'}</span>`}</div></div>`).join('')}</div>
    <p class="disc">Les alertes sont recalculées à chaque actualisation et visibles à l’ouverture de la page. Aucune notification n’est envoyée quand la page est fermée.</p>`;
 }
 

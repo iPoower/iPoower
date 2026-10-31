@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm'), assert = r
 const sourcePath = path.join(__dirname, '../src/engine.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = { Math, Date, Intl, Map, Set, JSON }; vm.createContext(ctx);
-  vm.runInContext(source + '\nthis.E = { buildHours, windowAssess, hourVerdict, iceRisk, LV, makeModel, nowIn, validForecast, mergeArome };', ctx);
+  vm.runInContext(source + '\nthis.E = { buildHours, windowAssess, hourVerdict, iceRisk, LV, makeModel, nowIn, validForecast, mergeArome, computeAlerts };', ctx);
   const E = ctx.E;
   const GO = 0, CAUTION = 1, RISK = 2, NOGO = 3;
   // 24 h d'historique (inertie de la chaussée) puis 12 h évaluées ; `at(h)` décrit l'heure h (négative = passé).
@@ -32,6 +32,23 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     count++; if (!options.quiet) console.log('✅ ' + name);
   };
 
+  // — fenêtre des alertes : le verdict « ici, maintenant » (3 h) ignore un brouillard qui commence dans 8 h ; le panneau 24 h le garde
+  test('fenêtre : brouillard dans 8 h absent des alertes à 3 h, présent dans celles à 24 h', () => {
+    const hs = hours(h => h >= 8 ? { vis: 150, RH: 100, code: 45 } : {}), model = { hs, nowI: 24 };
+    const S = { alerts: {} }, a24 = E.computeAlerts(model, [], S, {}), a3 = E.computeAlerts(model, [], S, {}, 3);
+    assert(a24.fog && a24.fog.sev === 3, JSON.stringify(a24.fog)); assert.equal(a3.fog, undefined);
+    const now = hours(h => h >= 1 ? { vis: 150, RH: 100, code: 45 } : {});
+    assert(E.computeAlerts({ hs: now, nowI: 24 }, [], S, {}, 3).fog, 'brouillard dans 1 h : bien présent à 3 h');
+  });
+  test('échelle unique : RAS / VIGILANCE / PRUDENCE / DANGER, en français, dans tous les modules', () => {
+    assert.deepEqual(E.LV.map(l => l.name), ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER']);
+    const src = f => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8');
+    assert.match(src('decision.js'), /const RISK = \['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'\]/);
+    assert.match(src('f1-pure.js'), /\['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'\]\[l\]/);
+    assert.match(src('garage.js'), /\['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'\]\[w\.level\]/);
+    const app = ['app.js', 'app/weather-view.js'].map(src).join('\n');
+    assert.doesNotMatch(app, /'(GO|NO GO|HIGH RISK|CAUTION|ATTENTION|CONDITIONS STABLES|AUCUN SIGNAL CRITIQUE CALCULÉ)'|\['FAIBLE', 'MODÉRÉ', 'ÉLEVÉ', 'CRITIQUE'\]|\['faible', 'modéré', 'élevé', 'critique'\]/);
+  });
   // — référence : aucune alerte inventée
   test('doux et sec : GO en pneus été et 4 saisons', () => {
     for (const type of ['summer', 'allseason']) assert.equal(level(type, () => ({})), GO, type);

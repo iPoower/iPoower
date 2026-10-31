@@ -30,13 +30,13 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
       await check(dev + ' · Pneus : « Aperçu générique » sur chaque voiture, ni GO ni score /100', async () => {
         const cars = await txt(p, '#secCars article.car');
         assert.match(cars, /APERÇU GÉNÉRIQUE — configure tes lieux et ta monte/); assert.match(cars, /appareil verrouillé/);
-        assert.doesNotMatch(cars, /\bGO\b|\bCAUTION\b|HIGH RISK|\d+\s*\/\s*100/); assert.equal(await p.locator('#secCars .strip').count(), 0);
+        assert.doesNotMatch(cars, /(?:🟢|🟡|🟠|🔴|·|—)\s*(?:RAS|VIGILANCE|PRUDENCE|DANGER)\b|\b(?:RAS|VIGILANCE|PRUDENCE|DANGER) —|[A-Za-z0-9] (?:RAS|VIGILANCE|PRUDENCE|DANGER)\b|\d+\s*\/\s*100/); assert.equal(await p.locator('#secCars .strip').count(), 0);
         const notes = await p.locator('#secCars [data-k=generic]').count(); assert(notes >= 1, String(notes));
       });
       await check(dev + ' · briefing départ et comparaison : aucun verdict personnel caché dans les paragraphes', async () => {
         const brief = await txt(p, '#secBrief'), compare = await txt(p, '#secCmp');
         assert.match(brief, /APERÇU GÉNÉRIQUE/); assert.match(brief, /Prévision de référence/);
-        assert.doesNotMatch(brief, /\bGO\b|\bCAUTION\b|HIGH RISK|\d+\s*\/\s*100|Score du trajet/);
+        assert.doesNotMatch(brief, /(?:🟢|🟡|🟠|🔴|·|—)\s*(?:RAS|VIGILANCE|PRUDENCE|DANGER)\b|\b(?:RAS|VIGILANCE|PRUDENCE|DANGER) —|[A-Za-z0-9] (?:RAS|VIGILANCE|PRUDENCE|DANGER)\b|\d+\s*\/\s*100|Score du trajet/);
         assert.match(compare, /Comparaison personnalisée en attente/);
         assert.doesNotMatch(compare, /\d+\s*\/\s*100|Écart d’indice|indice proche \(\d+/);
         assert.doesNotMatch(await txt(p, '#secBrf'), /🟢 Aucun risque identifié/);
@@ -51,7 +51,7 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
       await check(dev + ' · planning impossible injecté : contrôle de vitesse et chauffe suspendue conservés', async () => {
         const brf = await txt(p, '#secBrf');
         assert.match(brf, /PROCHAIN TRAJET/i, 'le trajet domicile-travail d’exemple est bien briefé'); assert.match(brf, /🧪 APERÇU/); assert.match(brf, /APERÇU GÉNÉRIQUE/);
-        assert.doesNotMatch(brf, /✓ Pneus actuels adaptés au trajet|🟢 GO|🟡 CAUTION|HIGH RISK|NO GO|\/ 100|\d+\/100/);
+        assert.doesNotMatch(brf, /✓ Pneus actuels adaptés au trajet|🟢 RAS|🟡 VIGILANCE|🟠 PRUDENCE|🔴 DANGER|\/ 100|\d+\/100/);
         assert.match(brf, /Gomme · estimation suspendue/); assert.match(brf, /≈ \d{3} km\/h de moyenne/); assert.doesNotMatch(brf, /Fenêtre favorable atteinte|N’atteint pas sa fenêtre/);
         assert.equal(await p.locator('#secBrf .gauge text.g-l').first().textContent(), 'aperçu');
       });
@@ -79,7 +79,7 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
         const r = await p.evaluate(() => ({ generic: PROFILE().generic, ok: PROFILE().commuteOk, car: carProfile(S.cars[0]).gaps.map(g => g.id) }));
         assert.equal(r.generic, false); assert.equal(r.ok, true); assert.deepEqual(r.car, ['monte']);
         await view(s, 'pneus');
-        assert.doesNotMatch(await txt(p, '#secCars, #secBrief, #secCmp'), /\bGO\b|\bCAUTION\b|HIGH RISK|\d+\s*\/\s*100|Écart d’indice|indice proche \(\d+/);
+        assert.doesNotMatch(await txt(p, '#secCars, #secBrief, #secCmp'), /(?:🟢|🟡|🟠|🔴|·|—)\s*(?:RAS|VIGILANCE|PRUDENCE|DANGER)\b|\b(?:RAS|VIGILANCE|PRUDENCE|DANGER) —|[A-Za-z0-9] (?:RAS|VIGILANCE|PRUDENCE|DANGER)\b|\d+\s*\/\s*100|Écart d’indice|indice proche \(\d+/);
       });
       await check(dev + ' · Agenda avec et sans étapes : météo et planning disponibles, verdict en aperçu', async () => {
         await p.evaluate(() => {
@@ -96,7 +96,7 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
           const card = p.locator(`#secCal [data-event-id="${id}"]`);
           assert(await card.isVisible()); const text = await card.innerText();
           assert.match(text, /Aperçu générique/); assert.match(text, /Route.*°C/);
-          assert.doesNotMatch(text, /\bGO\b|\bCAUTION\b|HIGH RISK|NO GO/);
+          assert.doesNotMatch(text, /(?:🟢|🟡|🟠|🔴|·|—)\s*(?:RAS|VIGILANCE|PRUDENCE|DANGER)\b|\b(?:RAS|VIGILANCE|PRUDENCE|DANGER) —|[A-Za-z0-9] (?:RAS|VIGILANCE|PRUDENCE|DANGER)\b/);
           assert.equal(await card.locator('.cal-v .pill:not(.lvx)').count(), 0);
         }
       });
@@ -105,7 +105,7 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
       await view(s, 'pneus');
       await check(dev + ' · monte renseignée : verdict personnel et score rétablis, plus aucun aperçu (contre-épreuve)', async () => {
         const cars = await txt(p, '#secCars article.car');
-        assert.doesNotMatch(cars, /APERÇU GÉNÉRIQUE/); assert.match(cars, /\d+\s*\/100/); assert.match(cars, /GO —|CAUTION —|HIGH RISK —|NO GO/);
+        assert.doesNotMatch(cars, /APERÇU GÉNÉRIQUE/); assert.match(cars, /\d+\s*\/100/); assert.match(cars, /RAS —|VIGILANCE —|PRUDENCE —|DANGER —/);
         assert.equal(await p.locator('#secCars [data-k=generic]').count(), 0);
         assert.match(await txt(p, '#secBrief'), /Score du trajet :\s*\d+\/100/);
         assert.match(await txt(p, '#secCmp'), /Écart d’indice|indice proche \(\d+/);
@@ -137,7 +137,7 @@ const txt = (p, sel) => p.evaluate(sel => [...document.querySelectorAll(sel)].ma
         assert.equal(r.latitude, null); assert.equal(r.generic, true); assert.equal(r.ok, false);
         assert.match(r.thermal, /estimation suspendue/); assert.match(r.thermal, /Réglages → Lieux/);
         const cars = await txt(p, '#secCars article.car'); assert.match(cars, /APERÇU GÉNÉRIQUE/);
-        assert.doesNotMatch(cars, /\bGO\b|\bCAUTION\b|HIGH RISK|\d+\s*\/\s*100/);
+        assert.doesNotMatch(cars, /(?:🟢|🟡|🟠|🔴|·|—)\s*(?:RAS|VIGILANCE|PRUDENCE|DANGER)\b|\b(?:RAS|VIGILANCE|PRUDENCE|DANGER) —|[A-Za-z0-9] (?:RAS|VIGILANCE|PRUDENCE|DANGER)\b|\d+\s*\/\s*100/);
       });
       await check(dev + ' · rechargement et hors ligne : un profil incomplet reste en aperçu', async () => {
         await p.evaluate(() => window.TWRC_VAULT.flush()); await p.reload(); await s.settle(8);

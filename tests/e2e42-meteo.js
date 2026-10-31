@@ -100,7 +100,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     check('1 · « ce qui compte » : 1 à 5 lignes', w.matters.length >= 1 && w.matters.length <= 5, w.matters.join(' | '));
     check('1 · sept cartes phénomènes compactes', w.phen.join(',') === 'rain,fog,wind,ice,temp,sun,road', w.phen.join(','));
     check('1 · conditions route : score sur 100 et facteurs expliqués', /^\d{1,3}$/.test(w.score) && w.factors.length >= 6 && w.factors.every(x => /−\d+|\b0$/.test(x)), w.factors.join(' | '));
-    check('1 · Pneus : synthèse courte et lien, aucune jauge ni verdict pneumatique copié', w.tireBtn === 1 && w.gauges === 0 && /Impact pneus/.test(w.road) && !/GO —|NO GO|HIGH RISK|CAUTION/.test(w.hero + w.road), w.road);
+    check('1 · Pneus : synthèse courte et lien, aucune jauge ni verdict pneumatique copié', w.tireBtn === 1 && w.gauges === 0 && /Impact pneus/.test(w.road) && !/RAS —|VIGILANCE —|PRUDENCE —|DANGER —/.test(w.hero + w.road), w.road);
     const L = await layout(s.p, true);
     check('1 · iPhone : aucun défilement horizontal de la page, rien ne dépasse', L.sw <= L.W && !L.wide.length, JSON.stringify(L));
     check('1 · iPhone : cibles tactiles ≥ 44 pt dans le poste météo', !L.small.length, L.small.join(', '));
