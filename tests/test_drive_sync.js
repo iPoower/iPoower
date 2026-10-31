@@ -6,14 +6,17 @@ const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:a
 const { webcrypto, createHash } = require('node:crypto');
 const files = ['journal-archive', 'debrief', 'sync-merge', 'sync-revisions', 'sync-outbox', 'sync-key', 'control-vault-packet', 'drive-transport', 'drive-sync'];
 const source = files.map(n => fs.readFileSync(path.resolve(__dirname, '../src/' + n + '.js'), 'utf8')).join('\n');
+// Appareil resté sur la version publiée prod-173 : même raccord, ancienne fusion (copie exacte de src/sync-merge.js à 9a682a2).
+const SYNC_MERGE = fs.readFileSync(path.resolve(__dirname, '../src/sync-merge.js'), 'utf8'), SYNC_MERGE_PROD_173 = fs.readFileSync(path.resolve(__dirname, 'fixtures/sync-merge.prod-173.js'), 'utf8');
+assert(source.includes(SYNC_MERGE) && SYNC_MERGE_PROD_173 !== SYNC_MERGE, 'ancienne fusion réellement injectable pour l’appareil prod-173');
 const copy = v => structuredClone(v), sha = v => createHash('sha256').update(v).digest('hex');
 const pass = 'synthetic-runtime-code', at = Date.parse('2026-10-23T08:00:00.000Z');
 function lock() { let chain = Promise.resolve(); return { request(name, options, fn) { if (typeof options === 'function') fn = options; const p = chain.then(() => fn({ name })); chain = p.catch(() => {}); return p; } }; }
-function owner(network, count, label, crypt = webcrypto) {
+function owner(network, count, label, crypt = webcrypto, mergeSource = null) {
   let time = at, state = null, values, applied = 0, failure = false; const recoveries = [];
   const c = { crypto: webcrypto, navigator: { locks: lock(), onLine: true }, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer,
     URL, btoa, atob, console };
-  vm.createContext(c); vm.runInContext(source + ';this.api={DriveSync,SyncMerge,SyncRevisions,JournalArchive,DriveTransport,ControlVaultPacket};', c);
+  vm.createContext(c); vm.runInContext((mergeSource ? source.replace(SYNC_MERGE, () => mergeSource) : source) + ';this.api={DriveSync,SyncMerge,SyncRevisions,JournalArchive,DriveTransport,ControlVaultPacket};', c);
   const A = c.api;
   const entries = Array.from({ length: count }, (_, i) => ({ key: label + '-' + i, at: at - (i % 2 ? 91 : 365) * 864e5 - i, how: 'confirmé', name: 'Trajet fictif', from: 'Lieu A', to: 'Lieu B', start: null, end: null, feedback: null, deferred: false }));
   if (entries.length) entries.push({ ...entries[0], feedback: { at, conditions: ['rain'], grip: 'normal' } });
@@ -466,6 +469,33 @@ function drive() {
       else console.log('✅ ' + name + ' : convergence finie (' + sizes.join(',') + '), état identique sur les deux appareils');
     }
     assert.deepEqual(diverge, [], 'PC et iPhone doivent converger : ' + diverge.join(' ; '));
+  }
+  // Horodatages de réglages : deux appareils modifient chacun un réglage DIFFÉRENT en parallèle (saisie par le vrai
+  // calcul d'horodatage SyncMerge.edits, comme saveSettings), puis 10 synchros au repos.
+  //  - prod-173 sur les deux appareils : défaut existant (ordre des clés d'horodatage propre à chaque appareil), copies
+  //    sans fin. Ce constat documente la LIMITE DE TRANSITION : un appareil resté sur prod-173 qui modifie en parallèle
+  //    continue à republier tant qu'il n'est pas mis à jour.
+  //  - version actuelle sur les deux appareils : horodatages identiques, 0 copie au repos.
+  for (const [label, mergeSource] of [['prod-173', SYNC_MERGE_PROD_173], ['actuelle', null]]) {
+    const net = drive(), pc = owner(net, 1, 'stamps-pc-' + label, webcrypto, mergeSource), tel = owner(net, 1, 'stamps-tel-' + label, webcrypto, mergeSource);
+    const setOf = o => JSON.parse(o.values['twrc.settings.v1']), stampsOf = o => o.values['twrc.editstamps.v1'] || '{}';
+    const app = (o, fn, t) => { const b = setOf(o), a = JSON.parse(JSON.stringify(b)); fn(a); o.edit('twrc.editstamps.v1', JSON.stringify(o.A.SyncMerge.edits(b, a, JSON.parse(stampsOf(o)), t))); o.edit('twrc.settings.v1', JSON.stringify(a)); };
+    const run = async o => { await o.controller.run(true); o.advance(31e3); };
+    for (const o of [pc, tel, pc, tel]) await run(o);
+    app(pc, s => { s.cars[0].short = 'Nom fictif'; }, at + 100e3); app(tel, s => { s.cars[0].tire.press = 2.4; }, at + 110e3);
+    pc.advance(60000); tel.advance(60000);
+    for (let i = 0; i < 3; i++) for (const o of [pc, tel]) await run(o);
+    assert.equal(setOf(pc).cars[0].short, 'Nom fictif'); assert.equal(setOf(tel).cars[0].short, 'Nom fictif'); assert.equal(setOf(pc).cars[0].tire.press, 2.4);
+    const before = net.files.size; for (let i = 0; i < 10; i++) for (const o of [pc, tel]) await run(o);
+    const grown = net.files.size - before, same = stampsOf(pc) === stampsOf(tel);
+    if (label === 'prod-173') {
+      assert(grown > 0 && !same, 'prod-173 : le défaut existant doit être reproduit (sinon ce test ne prouve plus rien)');
+      console.log('✅ horodatages · prod-173 (limite de transition documentée) : réglages identiques mais ' + grown + ' copies en 10 synchros au repos');
+    } else {
+      assert.equal(grown, 0, 'version actuelle : 10 synchros au repos = 0 copie (' + before + ' → ' + net.files.size + ')');
+      assert(same, 'version actuelle : horodatages identiques sur les deux appareils');
+      console.log('✅ horodatages · version actuelle : deux réglages différents modifiés en parallèle, 10 synchros au repos = 0 copie, horodatages identiques');
+    }
   }
   await require('./lib/drive-recovery-checks')();
 
