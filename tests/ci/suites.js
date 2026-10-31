@@ -140,6 +140,7 @@ SUITE.push(['test_drive_sync.js', 'raccord Drive : propriétaire réel, deux app
  ['test_drive_build.js', 'Drive : profils de publication séparés, CSP et configuration publique approuvée', false]);
 
 SUITE.push(['e2e85-drive-runtime.js', 'Drive : deux vrais coffres, file IDB, HTTP opaque, fermeture, copie avant fusion et verrouillage', true]);
+SUITE.push(['e2e91-export-horodatage.js', 'export : réglage en mémoire enregistré avec son horodatage de saisie (aucun faux conflit), PC/iPhone', true]);
 SUITE.push(['test_vault_sync_device_writes.js', 'constat C : écriture propre à l’appareil (GPS, cache, agenda chiffré) sans blocage ni perte pendant la synchro', false]);
 SUITE.push(['e2e89-agenda-sablier.js', 'agenda : jamais de sablier « Lecture de l’agenda… » infini (sans réponse, erreur, réponse invalide, affichage en échec)', true]);
 SUITE.push(['e2e88-car-add.js', 'Ajouter une voiture : fiche vierge, refus nom vide ou en double, Garage, compteur et rechargement', true]);
