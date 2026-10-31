@@ -74,7 +74,7 @@ function tyreState(car, opt = {}) {
     if (ageY > -0.1) dot = { raw: dm[0], week: +dm[1], year, ageY: Math.max(0, ageY), txt: `DOT ${dm[0]} · fabrication semaine ${+dm[1]} / ${year} · ≈ ${yrs(Math.max(0, ageY))}`, src: 'USER_ENTERED' };
   }
   // montage : âge d'usage et kilométrage depuis le montage (seulement si le compteur est connu)
-  const odo = (car.odo || []).filter(o => o && num(o.km) != null).sort((a, b) => String(a.d).localeCompare(String(b.d)));
+  const odo = Fuel.readings(car).filter(o => o && num(o.km) != null).sort((a, b) => String(a.d).localeCompare(String(b.d)));
   const lastOdo = odo[odo.length - 1] || null, mountKm = num(t.mountKm);
   const serviceD = days(t.mounted);
   const mount = { date: t.mounted || null, serviceY: serviceD != null && serviceD >= 0 ? serviceD / 365.25 : null, km: mountKm,
@@ -156,7 +156,7 @@ function confirmWinterMount(car, { date, km, today } = {}) {
   if (!validDate(date) || !validDate(today) || date > today) return { error: 'Choisis la date réelle du montage, aujourd’hui ou avant.' };
   const value = km == null || String(km).trim() === '' ? null : Number(km);
   if (value != null && (!Number.isSafeInteger(value) || value < 0)) return { error: 'Le compteur doit être un nombre entier positif ou nul.' };
-  const readings = (car.odo || []).filter(o => o && Number.isFinite(o.km));
+  const readings = Fuel.readings(car).filter(o => o && Number.isFinite(o.km));
   if (value != null && readings.some(o => o.d <= date && o.km > value || o.d > date && o.km < value)) return { error: 'Ce compteur ne correspond pas à la chronologie des relevés enregistrés.' };
   const next = JSON.parse(JSON.stringify(car));
   switchTire(next, 'winter');

@@ -6,14 +6,17 @@ const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:a
 const { webcrypto, createHash } = require('node:crypto');
 const files = ['journal-archive', 'debrief', 'sync-merge', 'sync-revisions', 'sync-outbox', 'sync-key', 'control-vault-packet', 'drive-transport', 'drive-sync'];
 const source = files.map(n => fs.readFileSync(path.resolve(__dirname, '../src/' + n + '.js'), 'utf8')).join('\n');
+// Appareil resté sur la version publiée prod-173 (avant le carnet de pleins) : même raccord, ancienne fusion.
+const SYNC_MERGE = fs.readFileSync(path.resolve(__dirname, '../src/sync-merge.js'), 'utf8'), SYNC_MERGE_PROD_173 = fs.readFileSync(path.resolve(__dirname, 'fixtures/sync-merge.prod-173.js'), 'utf8');
+assert(source.includes(SYNC_MERGE) && SYNC_MERGE_PROD_173 !== SYNC_MERGE && !SYNC_MERGE_PROD_173.includes('fuelUnion'), 'ancienne fusion réellement injectée pour l’appareil prod-173');
 const copy = v => structuredClone(v), sha = v => createHash('sha256').update(v).digest('hex');
 const pass = 'synthetic-runtime-code', at = Date.parse('2026-10-23T08:00:00.000Z');
 function lock() { let chain = Promise.resolve(); return { request(name, options, fn) { if (typeof options === 'function') fn = options; const p = chain.then(() => fn({ name })); chain = p.catch(() => {}); return p; } }; }
-function owner(network, count, label, crypt = webcrypto) {
+function owner(network, count, label, crypt = webcrypto, mergeSource = null) {
   let time = at, state = null, values, applied = 0, failure = false; const recoveries = [];
   const c = { crypto: webcrypto, navigator: { locks: lock(), onLine: true }, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer,
     URL, btoa, atob, console };
-  vm.createContext(c); vm.runInContext(source + ';this.api={DriveSync,SyncMerge,SyncRevisions,JournalArchive,DriveTransport,ControlVaultPacket};', c);
+  vm.createContext(c); vm.runInContext((mergeSource ? source.replace(SYNC_MERGE, () => mergeSource) : source) + ';this.api={DriveSync,SyncMerge,SyncRevisions,JournalArchive,DriveTransport,ControlVaultPacket};', c);
   const A = c.api;
   const entries = Array.from({ length: count }, (_, i) => ({ key: label + '-' + i, at: at - (i % 2 ? 91 : 365) * 864e5 - i, how: 'confirmé', name: 'Trajet fictif', from: 'Lieu A', to: 'Lieu B', start: null, end: null, feedback: null, deferred: false }));
   if (entries.length) entries.push({ ...entries[0], feedback: { at, conditions: ['rain'], grip: 'normal' } });
@@ -419,6 +422,75 @@ function drive() {
     assert.equal(pc.controller.status.message, 'synchronisé', 'statut vert une fois l’écriture locale terminée');
     assert.equal(net.files.size, before + 1);
     console.log('✅ écriture locale hors synchro en cours : 0 copie sur 10 passages, vraie saisie envoyée une fois, puis synchronisé');
+  }
+  // Carnet de pleins (PR 1a) — test BLOQUANT : un appareil resté sur prod-173 (ancienne fusion, qui ne connaît
+  // pas les pleins) synchronise avec un appareil à jour. Exigé : aucun conflit affiché, aucun plein effacé ni
+  // corrompu, suppression définitive, modifications sans rapport conservées, 10 synchros au repos = 0 copie.
+  {
+    const net = drive(), neu = owner(net, 1, 'fuelnew'), old = owner(net, 1, 'fuelold', webcrypto, SYNC_MERGE_PROD_173);
+    const setOf = o => JSON.parse(o.values['twrc.settings.v1']), stampsOf = o => JSON.parse(o.values['twrc.editstamps.v1'] || '{}');
+    const plein = (id, rev, d, km, extra = {}) => ({ id, rev, at: at + rev * 1000, d, km, cl: 4012, cents: 7202, ppl: 1795, full: true, calc: 'cents', ...extra });
+    const write = (o, fn, paths, t) => { const s = setOf(o); fn(s); o.edit('twrc.settings.v1', JSON.stringify(s)); const st = stampsOf(o); paths.forEach(p => { st[p] = t; }); o.edit('twrc.editstamps.v1', JSON.stringify(st)); };
+    const conflicts = [], seen = o => { const st = o.controller.status; if (st && (st.state === 'CONFLICT' || (st.conflicts || []).length)) conflicts.push(o === old ? 'ancienne version' : 'nouvelle version'); };
+    const round = async (n = 1) => { for (let i = 0; i < n; i++) { for (const o of [neu, old]) { await o.controller.run(true); seen(o); o.advance(31e3); } } };
+    await round(2);   // base commune, sans plein
+    write(neu, s => { s.cars[0].fuel = [plein('plein-0001-a', 1, '2026-10-20', 10500), plein('plein-0002-b', 1, '2026-10-22', 11120, { full: false, gauge: 70 })]; }, ['cars.0.fuel'], at + 60e3);
+    neu.advance(60000); await round(3);
+    assert.deepEqual(conflicts, [], 'aucun conflit : ' + conflicts.join(', '));
+    assert.deepEqual(setOf(old).cars[0].fuel, setOf(neu).cars[0].fuel, 'l’ancienne version reprend les pleins sans les modifier');
+    // Modifications simultanées : l'ancienne version change un réglage sans rapport ; la nouvelle ajoute un plein
+    // et supprime le premier (tombstone).
+    write(old, s => { s.cars[0].short = 'Nom fictif'; }, ['cars.0.short'], at + 200e3);
+    write(neu, s => { s.cars[0].fuel = [{ id: 'plein-0001-a', rev: 2, at: at + 210e3, del: at + 210e3 }, s.cars[0].fuel[1], plein('plein-0003-c', 1, '2026-10-29', 11900)]; }, ['cars.0.fuel'], at + 210e3);
+    old.advance(60000); neu.advance(60000); await round(4);
+    assert.deepEqual(conflicts, [], 'aucun conflit après modifications simultanées : ' + conflicts.join(', '));
+    const fuelNew = setOf(neu).cars[0].fuel;
+    assert.deepEqual(fuelNew.map(e => e.id), ['plein-0001-a', 'plein-0002-b', 'plein-0003-c'], 'aucun plein perdu');
+    assert.equal(fuelNew[0].del, at + 210e3, 'plein supprimé : tombstone conservé, jamais ressuscité');
+    assert.deepEqual(setOf(old).cars[0].fuel, fuelNew, 'ancienne version : pleins identiques, non corrompus');
+    assert.equal(setOf(neu).cars[0].short, 'Nom fictif', 'la modification faite sur l’ancienne version est reçue');
+    const before = net.files.size; await round(10);
+    assert.equal(net.files.size, before, '10 synchros au repos : aucune nouvelle copie (' + before + ' → ' + net.files.size + ')');
+    assert.deepEqual(conflicts, [], 'aucun conflit au repos');
+    console.log('✅ carnet de pleins · appareil resté sur prod-173 : aucun conflit, aucun plein perdu ni corrompu, suppression définitive, 10 synchros au repos = 0 copie');
+  }
+  // Deux appareils à jour saisissent chacun un plein (horloges différentes), puis un troisième resté sur prod-173
+  // synchronise : il doit adopter l'union sans conflit, quel que soit l'ordre des passages.
+  {
+    const net = drive(), a = owner(net, 1, 'fuela'), b = owner(net, 1, 'fuelb'), old = owner(net, 1, 'fuelold3', webcrypto, SYNC_MERGE_PROD_173);
+    const setOf = o => JSON.parse(o.values['twrc.settings.v1']), stampsOf = o => JSON.parse(o.values['twrc.editstamps.v1'] || '{}');
+    const plein = (id, d, km) => ({ id, rev: 1, at: at + 5000, d, km, cl: 3500, cents: 6300, ppl: 1800, full: true, calc: 'cents' });
+    const add = (o, e, t) => { const s = setOf(o); s.cars[0].fuel = [...(s.cars[0].fuel || []), e]; o.edit('twrc.settings.v1', JSON.stringify(s)); const st = stampsOf(o); st['cars.0.fuel'] = t; o.edit('twrc.editstamps.v1', JSON.stringify(st)); };
+    const conflicts = [], run = async o => { await o.controller.run(true); const st = o.controller.status; if (st && (st.state === 'CONFLICT' || (st.conflicts || []).length)) conflicts.push(o === old ? 'prod-173' : 'à jour'); o.advance(31e3); };
+    for (const o of [a, b, old, a, b, old]) await run(o);   // base commune
+    add(a, plein('plein-a-0001', '2026-10-25', 20100), at + 900e3);   // horloge de A en avance
+    for (const o of [a, old]) await run(o);                          // l'ancien appareil adopte la version de A
+    add(b, plein('plein-b-0001', '2026-10-26', 20400), at + 100e3);   // horloge de B en retard
+    for (let i = 0; i < 4; i++) for (const o of [a, b, old]) await run(o);
+    assert.deepEqual(conflicts, [], 'aucun conflit : ' + conflicts.join(', '));
+    for (const o of [a, b, old]) assert.deepEqual(setOf(o).cars[0].fuel.map(e => e.id), ['plein-a-0001', 'plein-b-0001'], 'union complète sur chaque appareil');
+    const before = net.files.size; for (let i = 0; i < 10; i++) for (const o of [a, b, old]) await run(o);
+    assert.equal(net.files.size, before, '10 synchros au repos : aucune nouvelle copie'); assert.deepEqual(conflicts, []);
+    console.log('✅ carnet de pleins · deux appareils à jour (horloges décalées) + un resté sur prod-173 : union sans conflit, 10 synchros au repos = 0 copie');
+  }
+  // Publications SIMULTANÉES de deux appareils à jour (aucun n'a vu le plein de l'autre), puis l'appareil
+  // resté sur prod-173 reçoit les deux têtes concurrentes.
+  {
+    const net = drive(), a = owner(net, 1, 'fuelc'), b = owner(net, 1, 'fueld'), old = owner(net, 1, 'fuelold4', webcrypto, SYNC_MERGE_PROD_173);
+    const setOf = o => JSON.parse(o.values['twrc.settings.v1']), stampsOf = o => JSON.parse(o.values['twrc.editstamps.v1'] || '{}');
+    const plein = (id, d, km) => ({ id, rev: 1, at: at + 5000, d, km, cl: 3500, cents: 6300, ppl: 1800, full: true, calc: 'cents' });
+    const add = (o, e, t) => { const s = setOf(o); s.cars[0].fuel = [...(s.cars[0].fuel || []), e]; o.edit('twrc.settings.v1', JSON.stringify(s)); const st = stampsOf(o); st['cars.0.fuel'] = t; o.edit('twrc.editstamps.v1', JSON.stringify(st)); };
+    const conflicts = [], check = o => { const st = o.controller.status; if (st && (st.state === 'CONFLICT' || (st.conflicts || []).length)) conflicts.push(o === old ? 'prod-173' : 'à jour'); };
+    const run = async o => { await o.controller.run(true); check(o); o.advance(31e3); };
+    for (const o of [a, b, old, a, b, old]) await run(o);
+    add(a, plein('plein-c-0001', '2026-10-25', 20100), at + 900e3); add(b, plein('plein-d-0001', '2026-10-26', 20400), at + 100e3);
+    a.advance(60000); b.advance(60000);
+    await Promise.all([a.controller.run(true), b.controller.run(true)]); [a, b].forEach(o => { check(o); o.advance(31e3); });
+    await run(old);
+    for (let i = 0; i < 4; i++) for (const o of [a, old, b, old]) await run(o);
+    assert.deepEqual(conflicts, [], 'aucun conflit (publications simultanées) : ' + conflicts.join(', '));
+    for (const o of [a, b, old]) assert.deepEqual(setOf(o).cars[0].fuel.map(e => e.id), ['plein-c-0001', 'plein-d-0001'], 'union complète sur chaque appareil');
+    console.log('✅ carnet de pleins · publications simultanées de deux appareils à jour, appareil resté sur prod-173 : union sans conflit');
   }
   await require('./lib/drive-recovery-checks')();
 

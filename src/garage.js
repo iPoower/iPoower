@@ -16,7 +16,7 @@ const Garage = (() => {
       used.add(key);
       const t = car.tire || {}, p = car.plan || {};
       const state = typeof stateFor === 'function' ? stateFor(car) : null;
-      const readings = (Array.isArray(car.odo) ? car.odo : [])
+      const all = Fuel.readings(car), readings = (Array.isArray(all) ? all : [])
         .filter(x => x && val(x.km) != null && validDate(x.d))
         .slice().sort((a, b) => String(a.d).localeCompare(String(b.d)));
       const last = readings.length ? readings[readings.length - 1] : null;
@@ -139,7 +139,7 @@ const Garage = (() => {
   function maintenance(car, { today, kmPerDay = null, odoEveryDays = 7 } = {}) {
     if (!validDate(today)) throw new Error('date du jour requise');
     const m = car && car.maint || {}, r = m.rev || {}, ct = m.ct || {};
-    const readings = (car && Array.isArray(car.odo) ? car.odo : []).filter(x => x && val(x.km) != null && validDate(x.d))
+    const all = Fuel.readings(car), readings = (Array.isArray(all) ? all : []).filter(x => x && val(x.km) != null && validDate(x.d))
       .slice().sort((a, b) => String(a.d).localeCompare(String(b.d)));
     const last = readings.length ? readings[readings.length - 1] : null, rate = pos(kmPerDay);
     const odoAge = last ? dayDiff(last.d, today) : null;

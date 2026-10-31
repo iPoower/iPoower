@@ -208,12 +208,14 @@ function loadSettings() {
   if (window.TWRC_PRESET && window.TWRC_PRESET_V && lsGet('twrc.presetv') !== window.TWRC_PRESET_V) {
     // on garde ce qui ne se trouve que sur le téléphone : contrôles de pression, DOT, profondeurs, jeux de pneus
     const old = saved;
-    const keep = saved && Array.isArray(saved.cars) ? Object.assign(saved.cars.map(c => c ? { tire: c.tire ? { pchk: c.tire.pchk, dot: c.tire.dot, tread: c.tire.tread, treadAv: c.tire.treadAv, treadAr: c.tire.treadAr, treadEst: c.tire.treadEst, treads: c.tire.treads, mountKm: c.tire.mountKm, lastRot: c.tire.lastRot } : null, sets: c.sets, photo: c.photo, odo: c.odo } : null), { calib: saved.calib, journal: saved.journal }) : null;
+    const keep = saved && Array.isArray(saved.cars) ? Object.assign(saved.cars.map(c => c ? { tire: c.tire ? { pchk: c.tire.pchk, dot: c.tire.dot, tread: c.tire.tread, treadAv: c.tire.treadAv, treadAr: c.tire.treadAr, treadEst: c.tire.treadEst, treads: c.tire.treads, mountKm: c.tire.mountKm, lastRot: c.tire.lastRot } : null, sets: c.sets, photo: c.photo, odo: c.odo, fuel: c.fuel, tank: c.tank } : null), { calib: saved.calib, journal: saved.journal }) : null;
     saved = null; lsSet('twrc.presetv', window.TWRC_PRESET_V);
     try { APP_STORAGE.removeItem('twrc.settings.v1'); } catch (e) { /* stockage indisponible */ }
     if (keep) {
       const fresh = normalize(null, DEFAULTS);
       keep.forEach((k, i) => { const c = fresh.cars[i]; if (!k || !c) return; if (k.sets) c.sets = k.sets; if (k.photo) c.photo = k.photo; if (k.odo) c.odo = k.odo;
+        // Carnet de pleins et réservoir : saisis sur l'appareil, jamais dans le préréglage (tombstones compris).
+        if (Array.isArray(k.fuel)) c.fuel = k.fuel; if (k.tank && typeof k.tank === 'object') c.tank = k.tank;
         if (k.tire) ['pchk', 'dot', 'tread', 'treadAv', 'treadAr', 'treadEst', 'treads', 'mountKm', 'lastRot'].forEach(f => { const v = k.tire[f]; if (v != null && v !== '' && !(f === 'pchk' && !v.date)) c.tire[f] = v; }); });
       const oldCalib = keep.calib;
       saved = { ...fresh, configured: 1, calib: oldCalib || [], journal: keep.journal || {} };
@@ -3325,7 +3327,7 @@ const tireTxt = car => {
   const t = car.tire, a = [t.brand, t.model].filter(Boolean).join(' ');
   return `${a ? esc(a) : '<span class="muted">marque / modèle non renseignés</span>'} · <span class="tt">${esc(t.size || '—')}</span>${t.tread != null ? ` · <span class="tt">${esc(treadTxt(treadAxles(t), treadAxles(t).worst))}${t.treadEst ? ' (estimée)' : ''}</span>` : ''}`;
 };
-const lastOdo = car => (car.odo || []).slice().sort((x, y) => x.km - y.km).slice(-1)[0] || null;
+const lastOdo = car => Fuel.readings(car).slice().sort((x, y) => x.km - y.km).slice(-1)[0] || null;
 // Une profondeur de la fiche rejoint l'historique du jour (remplace la saisie non localisée du même jour et du même essieu),
 // avec le compteur connu et l'indication estimée / mesurée. Plafond de 30 relevés : rien n'est effacé pour faire de la place.
 function datedFicheTread(car, axes) {
@@ -3344,7 +3346,7 @@ function datedFicheTread(car, axes) {
   return changed;
 }
 function kmPerDay(car) {
-  const o = (car.odo || []).slice().sort((x, y) => x.d < y.d ? -1 : 1); if (o.length < 2) return null;
+  const o = Fuel.readings(car).slice().sort((x, y) => x.d < y.d ? -1 : 1); if (o.length < 2) return null;
   const days = dayDiff(o[0].d, o[o.length - 1].d); return days >= 7 ? (o[o.length - 1].km - o[0].km) / days : null;
 }
 function wearInfo(car) {
@@ -3360,7 +3362,7 @@ function wearInfo(car) {
   return out;
 }
 function wearLine(car) {
-  const w = wearInfo(car), t = car.tire; if (!w.last && !(car.odo || []).length) return '';
+  const w = wearInfo(car), t = car.tire; if (!w.last && !Fuel.readings(car).length) return '';
   const parts = [];
   if (w.last) parts.push(`Profondeur <b>${f1(w.last.mm)} mm</b> (${fmtDay(w.last.d)})`);
   if (w.rate) parts.push(`${w.rate.toFixed(2).replace('.', ',')} mm / 1 000 km`, `${w.thr} mm vers ${(Math.round(w.kmThr / 100) * 100).toLocaleString('fr-FR')} km${w.dateThr ? ' (≈ ' + new Date(w.dateThr + 'T12:00:00Z').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) + ')' : ''}`);

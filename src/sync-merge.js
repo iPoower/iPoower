@@ -8,6 +8,8 @@
  *     Sans preuve de fraîcheur (horodatage absent ou égal), la valeur de cet appareil reste et le
  *     chemin est signalé comme conflit : jamais de gagnant deviné.
  *  3. L'état propre à l'appareil (lieu, GPS, trajet en cours, caches, clés de session) n'est jamais importé.
+ *  4. Carnet de pleins (cars.N.fuel) : union par identifiant de plein. Une suppression (tombstone) est
+ *     définitive ; sinon la révision la plus haute, puis la modification la plus récente, puis le texte.
  * Limite connue : une suppression (relevé effacé, réinitialisation) n'est pas propagée ; l'union la
  * ferait réapparaître. Le choix est volontaire : en cas de doute, conserver plutôt que perdre.
  */
@@ -28,7 +30,7 @@ const SyncMerge = (() => {
   // Couvrir aussi les anciens réglages sans `edits` et les champs saisis sans
   // markEdit (photo, fiche...). Un écart non horodaté ne doit jamais disparaître.
   function differences(a, b, prefix = '') {
-    if (same(a, b) || /^(edits|calib|journal)(\.|$)/.test(prefix) || /^cars\.\d+\.(odo|tire\.treads)(\.|$)/.test(prefix)) return [];
+    if (same(a, b) || /^(edits|calib|journal)(\.|$)/.test(prefix) || /^cars\.\d+\.(odo|tire\.treads|fuel)(\.|$)/.test(prefix)) return [];
     if (prefix === 'cars' && Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((c, i) => c && b[i] && c.id === b[i].id))
       return a.flatMap((c, i) => differences(c, b[i], 'cars.' + i));
     // Voiture ajoutée d'un seul côté (liste prolongée) : seules les voitures communes se comparent champ
@@ -104,6 +106,22 @@ const SyncMerge = (() => {
     const x = a.cars && a.cars[+m[1]], y = b.cars && b.cars[+m[1]];
     return !!x && !!y && x.id === y.id;
   }
+  // Pleins : l'enregistrement b remplace-t-il a ? Suppression d'abord (jamais de retour), puis révision,
+  // date de modification et texte canonique : même gagnant quel que soit l'appareil qui fusionne.
+  const fuelDead = e => Number.isSafeInteger(e.del) && e.del > 0, fuelRev = e => Number.isSafeInteger(e.rev) ? e.rev : 0;
+  // Comparaison binaire (jamais localeCompare, qui dépend de la langue du système).
+  const fuelCmp = (a, b) => a < b ? -1 : a > b ? 1 : 0, fuelText = (x, y) => fuelCmp(String(JSON.stringify(x)), String(JSON.stringify(y)));
+  function fuelWins(a, b) {
+    if (fuelDead(a) !== fuelDead(b)) return fuelDead(b);
+    return (fuelRev(b) - fuelRev(a) || stamp(b.at) - stamp(a.at) || fuelText(b, a)) > 0;
+  }
+  function fuelUnion(a, b) {
+    for (const list of [a, b]) if (list != null && (!Array.isArray(list) || list.some(e => !obj(e) || typeof e.id !== 'string' || !e.id || e.id.length > 64)))
+      throw new Error('Pleins incomplets : fusion refusée.');
+    const byId = new Map();
+    [...(a || []), ...(b || [])].forEach(e => { if (!byId.has(e.id) || fuelWins(byId.get(e.id), e)) byId.set(e.id, e); });
+    return [...byId.values()].sort((x, y) => fuelCmp(String(x.d || ''), String(y.d || '')) || fuelCmp(x.id, y.id)).map(clone);
+  }
   const unionBy = (a, b, key) => {
     const seen = new Map(); [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])].forEach(x => { const k = key(x); if (!seen.has(k)) seen.set(k, x); });
     return [...seen.values()];
@@ -120,7 +138,8 @@ const SyncMerge = (() => {
     const resolutions = obj(options) && obj(options.resolutions) ? options.resolutions : {};
     if (base) validate(base);
     validate(resolutions);
-    const out = clone(local), report = { fromRemote: [], conflicts: [], resolved: [], added: { odo: 0, treads: 0, calib: 0, days: 0, cars: 0 } };
+    const out = clone(local), report = { fromRemote: [], conflicts: [], resolved: [], added: { odo: 0, treads: 0, calib: 0, days: 0, cars: 0, fuel: 0 } };
+    const fuelStamps = {};
     const chosen = {};
     if (!obj(remote)) return { settings: out, stamps: { ...stampsLocal }, report };
     if (!obj(stampsLocal) || !obj(stampsRemote) || !Array.isArray(local.cars) || !Array.isArray(remote.cars)) throw new Error('Réglages incomplets : fusion refusée.');
@@ -134,6 +153,8 @@ const SyncMerge = (() => {
       // Voiture ajoutée d'un seul côté : reprise entière par l'union ci-dessous, ses champs ne se comparent pas encore.
       const at = /^cars\.(\d+)(\.|$)/.exec(p);
       if (appended && (p === 'cars' || at && +at[1] >= shared)) continue;
+      // Carnet de pleins : fusionné plein par plein ci-dessous, jamais arbitré comme un réglage.
+      if (/^cars\.\d+\.fuel(\.|$)/.test(p)) continue;
       // Une liste complète pourrait supprimer des véhicules et leurs historiques.
       if (p === 'cars' || /^cars\.\d+$/.test(p)) { report.conflicts.push(p); blocked.add(p); continue; }
       const lv = get(local, p), rv = get(remote, p), a = stampAt(stampsLocal, p), b = stampAt(stampsRemote, p);
@@ -185,6 +206,14 @@ const SyncMerge = (() => {
           car.tire = { ...(car.tire || {}), treads };
         }
       }
+      if ((l && l.fuel != null) || r.fuel != null) {
+        const fuel = fuelUnion(l && l.fuel, r.fuel), p = 'cars.' + out.cars.indexOf(car) + '.fuel';
+        report.added.fuel += fuel.length - (Array.isArray(l && l.fuel) ? l.fuel.length : 0); car.fuel = fuel;
+        // Résultat différent de la copie distante : horodatage strictement plus récent que les DEUX copies d'origine.
+        // Un appareil resté sur une version antérieure (qui ne connaît pas les pleins) voit alors une modification
+        // datée par rapport à n'importe quel ancêtre commun et l'adopte, sans conflit.
+        if (!same(fuel, Array.isArray(r.fuel) ? r.fuel : [])) fuelStamps[p] = Math.max(stamp(stampsLocal[p]), stamp(stampsRemote[p])) + 1;
+      }
     });
     if (local.calib != null && !Array.isArray(local.calib) || remote.calib != null && !Array.isArray(remote.calib)) throw new Error('Retours incomplets : fusion refusée.');
     const calib = unionBy(local.calib, remote.calib, x => JSON.stringify(x));
@@ -200,6 +229,7 @@ const SyncMerge = (() => {
     const stamps = { ...stampsLocal };
     Object.entries(stampsRemote).forEach(([p, t]) => { if (!blocked.has(p) && stamp(t) > stamp(stamps[p])) stamps[p] = t; });
     Object.assign(stamps, chosen);   // un choix explicite devient la modification la plus récente des deux côtés
+    Object.entries(fuelStamps).forEach(([p, t]) => { stamps[p] = Math.max(stamp(stamps[p]), t); });
     return { settings: out, stamps, report };
   }
 
