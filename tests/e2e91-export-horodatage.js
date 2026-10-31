@@ -16,7 +16,10 @@ const check = async (t, fn) => { await fn(); n++; console.log('✅ ' + t); };
         // Profil fictif : journal à activer. Le premier export l'active puis recharge la page (branche prévue).
         await noShare();
         if (await p.evaluate(() => TWRC_VAULT.journalNeedsRecovery)) {
-          await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.evaluate(() => { backupExport(); })]);
+          // WebKit interrompt waitForNavigation dès qu'un téléchargement commence : attendre le fichier, puis le rechargement.
+          const file = p.waitForEvent('download', { timeout: 30000 }).catch(() => null), loaded = p.waitForEvent('load', { timeout: 60000 });
+          await p.evaluate(() => { backupExport(); });
+          await file; await loaded;
           await s.settle(); await noShare();
         }
         assert.equal(await p.evaluate(() => TWRC_VAULT.journalNeedsRecovery), false, 'journal actif : branche d’export normale');
