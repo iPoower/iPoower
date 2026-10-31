@@ -1797,7 +1797,8 @@ async function backupExport() {
       bkMsg('Copie chiffrée exportée avec le code saisi. Rouvre le fichier enregistré pour vérifier et activer le journal.'); return;
     }
     if (!VS.journalNeedsRecovery) {
-      USER_STORE.flush(); localStorage.setItem('twrc.settings.v1', JSON.stringify(S));
+      // saveSettings : une valeur encore en mémoire part avec son horodatage de saisie (sinon faux conflit sur l'autre appareil).
+      USER_STORE.flush(); saveSettings();
       await VS.flush(); if (VS.error || VS.pendingWrites) throw new Error('Enregistrement en attente : copie refusée, garde cette page ouverte.');
     }
     const text = await VS.recoverySnapshot();
