@@ -76,14 +76,18 @@ const both = (...checks) => async (...a) => { for (const c of checks) { const r 
       act: async s => {
         await s.p.evaluate(() => { refreshAll(); });
         await s.p.clock.runFor(500);
-        // Veille iOS : 4 min passent à l'horloge murale, aucun minuteur ne sonne.
+        // Veille iOS : 4 min passent à l'horloge murale, aucun minuteur ne sonne (setSystemTime ne déclenche aucun minuteur).
+        // La relance doit partir PENDANT l'événement « visibilitychange », avant tout minuteur : elle est comptée dans la même
+        // évaluation, sans pause de l'horloge. Ancienne version : pauseAt(maintenant + 10 ms) échouait quand plus de 10 ms
+        // de temps réel s'écoulaient entre la lecture de l'heure et la pause (« Cannot fast-forward to the past »).
         const now = await s.p.evaluate(() => Date.now());
-        await s.p.clock.pauseAt(now + 10); await s.p.clock.setSystemTime(now + 4 * 60e3);
-        const before = s.calls;
-        await s.p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-        await s.p.waitForTimeout(500);
-        s.relaunched = s.calls > before;
-        await s.p.clock.resume();
+        await s.p.clock.setSystemTime(now + 4 * 60e3);
+        s.relaunched = await s.p.evaluate(() => {
+          const original = window.fetch; let calendar = 0;
+          window.fetch = function (url) { if (/calendar\.sealed\.json/.test(String(url))) calendar++; return original.apply(this, arguments); };
+          try { document.dispatchEvent(new Event('visibilitychange')); return calendar > 0; }
+          finally { window.fetch = original; }
+        });
       },
       seconds: 2,
       expect: async s => !s.relaunched ? 'aucune nouvelle lecture au retour au premier plan' : await s.p.evaluate(() => !!CAL && !CAL.offline && !CALFAIL) ? null : 'agenda non chargé après la relance' });
