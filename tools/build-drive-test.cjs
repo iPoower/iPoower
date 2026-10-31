@@ -10,6 +10,8 @@ const text = process.env.GOOGLE_DRIVE_CONFIG || '';
 const cfg = require('./drive-config').read(text, true);
 if (cfg && (cfg.raceOrigin !== RACE || cfg.vaultOrigin !== VAULT)) throw new Error('Origines TEST exactes requises.');
 const base = fs.mkdtempSync(path.join(ROOT, '.drive-test-profile-'));
+// Échec : aucun profil partiel laissé à la racine du dépôt. Succès : le site reste pour l'appelant (workflow FORTRESS).
+process.on('exit', code => { if (code !== 0) try { fs.rmSync(base, { recursive: true, force: true }); } catch { /* rien à nettoyer */ } });
 const local = name => path.join(base, name), rel = name => path.relative(ROOT, local(name));
 for (const name of ['fake', 'encrypted', 'built', 'site', 'harness']) fs.mkdirSync(local(name));
 const preset = JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/preset.fake.json'), 'utf8'));
