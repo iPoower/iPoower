@@ -420,6 +420,53 @@ function drive() {
     assert.equal(net.files.size, before + 1);
     console.log('✅ écriture locale hors synchro en cours : 0 copie sur 10 passages, vraie saisie envoyée une fois, puis synchronisé');
   }
+  // REL-1 : PC et iPhone actifs, chacun saisit ses propres données. Aucune hypothèse sur l'ordre
+  // d'insertion de l'app : listes locales volontairement non chronologiques, égalités d'horodatage.
+  // Attendu : convergence finie (plus aucune nouvelle copie) et état synchronisé identique.
+  {
+    const ctxOf = o => JSON.parse(o.values['twrc.context.v1']);
+    const setOf = o => JSON.parse(o.values['twrc.settings.v1']);
+    const cal = (t, kind, Tr) => ({ t, loc: 'lieuA', kind, Tr, T: Tr + 1 });
+    const scenarios = [
+      ['retours de calibration', (pc, tel) => {
+        const a = setOf(pc); a.calib.push(cal('2026-10-23T07:00', 'sec', 5)); pc.edit('twrc.settings.v1', JSON.stringify(a));
+        const b = setOf(tel); b.calib.push(cal('2026-10-23T07:40', 'humide', 4), cal('2026-10-23T06:30', 'givre', -1)); tel.edit('twrc.settings.v1', JSON.stringify(b));
+      }, o => setOf(o).calib, 3],
+      ['signalements météo de même heure', (pc, tel) => {
+        pc.edit('twrc.reports.v1', JSON.stringify([{ at: at + 5e3, kind: 'fog', loc: 'lieuA' }, { at: at + 1e3, kind: 'rain', loc: 'lieuA' }]));
+        tel.edit('twrc.reports.v1', JSON.stringify([{ at: at + 5e3, kind: 'wet', loc: 'lieuA' }]));
+      }, o => JSON.parse(o.values['twrc.reports.v1']), 3],
+      ['journal de preuves de même heure', (pc, tel) => {
+        pc.edit('twrc.shadow.v1', JSON.stringify([{ at: at + 9e3, loc: 'lieuA', v1: 1, v2: 1 }]));
+        tel.edit('twrc.shadow.v1', JSON.stringify([{ at: at + 9e3, loc: 'lieuA', v1: 0, v2: 2 }, { at: at + 2e3, loc: 'lieuB', v1: 0, v2: 0 }]));
+      }, o => JSON.parse(o.values['twrc.shadow.v1']), 3],
+      ['annulation du même trajet au même instant', (pc, tel) => {
+        pc.edit('twrc.tripcancel', JSON.stringify({ trajetX: { at: at + 3e3, exp: at + 864e5, by: 'pc' } }));
+        tel.edit('twrc.tripcancel', JSON.stringify({ trajetX: { at: at + 3e3, exp: at + 864e5, by: 'tel' } }));
+      }, o => JSON.parse(o.values['twrc.tripcancel'])],
+      ['trajet clos au même instant', (pc, tel) => {
+        const a = ctxOf(pc); a.done = { trajetY: { at: at + 4e3, how: 'auto' } }; pc.edit('twrc.context.v1', JSON.stringify(a));
+        const b = ctxOf(tel); b.done = { trajetY: { at: at + 4e3, how: 'confirmé' } }; tel.edit('twrc.context.v1', JSON.stringify(b));
+      }, o => ctxOf(o).done],
+      ['trajet clos sans horodatage', (pc, tel) => {
+        const a = ctxOf(pc); a.done = { trajetZ: true }; pc.edit('twrc.context.v1', JSON.stringify(a));
+        const b = ctxOf(tel); b.done = { trajetZ: 1 }; tel.edit('twrc.context.v1', JSON.stringify(b));
+      }, o => ctxOf(o).done]
+    ];
+    const diverge = [];
+    for (const [name, write, read, rows] of scenarios) {
+      const net = drive(), pc = owner(net, 1, 'rel1pc'), tel = owner(net, 1, 'rel1tel');
+      for (const o of [pc, tel, pc, tel]) await o.controller.run(true);   // base commune établie
+      write(pc, tel); pc.advance(60000); tel.advance(60000);
+      const sizes = [];
+      for (let i = 0; i < 8; i++) { await pc.controller.run(true); await tel.controller.run(true); sizes.push(net.files.size); pc.advance(31e3); tel.advance(31e3); }
+      const finite = sizes.at(-1) === sizes.at(-3), same = JSON.stringify(read(pc)) === JSON.stringify(read(tel));
+      if (rows) assert.equal(read(pc).length, rows, name + ' : aucune saisie perdue');
+      if (!finite || !same) diverge.push(name + ' (copies : ' + sizes.join(',') + (same ? '' : ' · états différents') + ')');
+      else console.log('✅ ' + name + ' : convergence finie (' + sizes.join(',') + '), état identique sur les deux appareils');
+    }
+    assert.deepEqual(diverge, [], 'PC et iPhone doivent converger : ' + diverge.join(' ; '));
+  }
   await require('./lib/drive-recovery-checks')();
 
 })().catch(e => { console.error(e); process.exitCode = 1; });
