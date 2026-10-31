@@ -176,6 +176,7 @@ function renderWx() {
 // (200 entrées max : heure, identifiant du lieu affiché, brouillard v1, brouillard v2 et confiance, observation éventuelle).
 const EV_FLAG = () => { const f = S.flags && S.flags.weatherEvidenceV2; return ['shadow', 'off'].includes(f) ? f : 'on'; };
 const REPORT_KEY = 'twrc.reports.v1', SHADOW_KEY = 'twrc.shadow.v1';
+const SHADOW_AUTO_EVERY_MS = 60 * 60e3;   // entrées automatiques du journal de preuves : une par heure et par lieu au plus
 const REPORT_KINDS = { fog: '🌫 Brouillard', lowvis: '👁 Visibilité très réduite', rain: '🌧 Pluie', wet: '💧 Route humide', snow: '❄️ Neige', ice: '🧊 Verglas', slippery: '⚠️ Route glissante' };
 let REPORTS = []; try { REPORTS = JSON.parse(lsGet(REPORT_KEY) || '[]') || []; } catch (e) { REPORTS = []; }
 const reportsLive = () => { const n = Date.now(); REPORTS = REPORTS.filter(r => r && Number.isFinite(r.at) && r.at <= n + 60000 && n - r.at < 6 * 3600e3); return REPORTS; };
@@ -225,8 +226,10 @@ function evNow() {
 }
 function evShadowTick(v) {
   if (!v || DEMO.on) return;
-  const L = shadowLoad(), last = L.filter(e => e.loc === UI.loc && e.obs == null).slice(-1)[0];
-  if (last && Date.now() - last.at < 15 * 60e3) return;
+  // Chaque ajout est synchronisé (une copie Drive) : une entrée AUTOMATIQUE par heure et par lieu au plus,
+  // avec ou sans observation de station. Les signalements « utilisateur » (reportAdd) ne passent pas ici.
+  const L = shadowLoad(), last = L.filter(e => e.loc === UI.loc && e.src !== 'utilisateur').slice(-1)[0];
+  if (last && Date.now() - last.at < SHADOW_AUTO_EVERY_MS) return;
   // observation proche et récente (≤ 25 km, ≤ 60 min) : sert de vérité terrain pour mesurer v1 et v2
   const o = v.r.worst.ev.find(e => e.layer === 'A' && e.w >= 0.6);
   shadowPush({ v1: v.v1, v2: v.r.worst.lv, trust: v.r.worst.trust, contra: !!v.r.contradiction, ...(o ? { obs: o.lv >= 2 ? 1 : 0, src: 'station' } : {}) });
