@@ -25,6 +25,13 @@ const SyncMerge = (() => {
   const obj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const clone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  // Ordre total indépendant de l'appareil qui fusionne : départage final sur le texte JSON (comparaison
+  // binaire, jamais localeCompare, qui dépend de la langue du système). Sans lui, chaque appareil garde
+  // « sa » version à égalité et republie sans fin une copie différente de l'autre (REL-1).
+  const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+  const byText = (x, y) => cmp(String(JSON.stringify(x)), String(JSON.stringify(y)));
+  // Même raison pour les objets fusionnés : l'ordre des clés part dans le texte chiffré et son empreinte.
+  const sorted = o => Object.fromEntries(Object.keys(o).sort(cmp).map(k => [k, o[k]]));
   // Couvrir aussi les anciens réglages sans `edits` et les champs saisis sans
   // markEdit (photo, fiche...). Un écart non horodaté ne doit jamais disparaître.
   function differences(a, b, prefix = '') {
@@ -159,7 +166,7 @@ const SyncMerge = (() => {
         if (verdict === 'conflict') { report.conflicts.push(p); blocked.add(p); }
       }
     }
-    out.edits = { ...(obj(remote.edits) ? remote.edits : {}), ...(obj(local.edits) ? local.edits : {}) };
+    out.edits = sorted({ ...(obj(remote.edits) ? remote.edits : {}), ...(obj(local.edits) ? local.edits : {}) });
     // Ajout seulement : la voiture créée sur l'autre appareil est reprise entière à la fin de la liste.
     // Toute autre divergence de liste (suppression, ajouts concurrents différents) reste un conflit, rien n'est perdu.
     if (appended && remote.cars.length > local.cars.length) { out.cars = [...out.cars, ...clone(remote.cars.slice(local.cars.length))]; report.added.cars = remote.cars.length - local.cars.length; }
@@ -187,7 +194,8 @@ const SyncMerge = (() => {
       }
     });
     if (local.calib != null && !Array.isArray(local.calib) || remote.calib != null && !Array.isArray(remote.calib)) throw new Error('Retours incomplets : fusion refusée.');
-    const calib = unionBy(local.calib, remote.calib, x => JSON.stringify(x));
+    // Ordre canonique (heure du retour, puis contenu) : l'ordre d'insertion de chaque appareil n'est pas une preuve.
+    const calib = unionBy(local.calib, remote.calib, x => JSON.stringify(x)).sort((x, y) => cmp(String(obj(x) ? x.t : ''), String(obj(y) ? y.t : '')) || byText(x, y));
     report.added.calib = calib.length - (Array.isArray(local.calib) ? local.calib.length : 0); out.calib = calib;
     // Journal de saison : résumés météo DÉRIVÉS (minimum du matin calculé par chaque appareil), jamais une
     // saisie. Un même matin enregistré différemment ne demande aucun arbitrage : choix déterministe, identique
@@ -196,18 +204,20 @@ const SyncMerge = (() => {
     const cold = r => [obj(r) && Number.isFinite(r.T) ? r.T : Infinity, obj(r) && Number.isFinite(r.Tr) ? r.Tr : Infinity, JSON.stringify(r)];
     const colder = (x, y) => { const a = cold(x), b = cold(y); for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] < b[i] ? x : y; return x; };
     for (const k of Object.keys(obj(remote.journal) ? remote.journal : {})) if (own(local.journal, k) && !same(local.journal[k], remote.journal[k])) days[k] = clone(colder(local.journal[k], remote.journal[k]));
-    report.added.days = Object.keys(days).length - Object.keys(obj(local.journal) ? local.journal : {}).length; out.journal = days;
+    report.added.days = Object.keys(days).length - Object.keys(obj(local.journal) ? local.journal : {}).length; out.journal = sorted(days);
     const stamps = { ...stampsLocal };
     Object.entries(stampsRemote).forEach(([p, t]) => { if (!blocked.has(p) && stamp(t) > stamp(stamps[p])) stamps[p] = t; });
     Object.assign(stamps, chosen);   // un choix explicite devient la modification la plus récente des deux côtés
-    return { settings: out, stamps, report };
+    return { settings: out, stamps: sorted(stamps), report };
   }
 
   // Trajets clos, annulations : par identifiant, l'enregistrement le plus récent l'emporte, aucun n'est perdu.
+  // Même horodatage (ou aucun) : départage par le contenu, identique quel que soit l'appareil qui fusionne.
   function later(a, b) {
     const out = { ...(obj(a) ? a : {}) };
-    Object.entries(obj(b) ? b : {}).forEach(([k, d]) => { if (!out[k] || (obj(d) && stamp(d.at) > stamp(out[k] && out[k].at))) out[k] = d; });
-    return out;
+    const at = d => stamp(obj(d) ? d.at : 0);
+    Object.entries(obj(b) ? b : {}).forEach(([k, d]) => { if (!own(out, k) || at(d) > at(out[k]) || (at(d) === at(out[k]) && byText(d, out[k]) > 0)) out[k] = d; });
+    return sorted(out);
   }
   function journal(local, remote) {
     if (local != null && !obj(local) || remote != null && !obj(remote)) throw new Error('Journal incomplet : fusion refusée.');
@@ -247,7 +257,7 @@ const SyncMerge = (() => {
     for (const [k, limit] of [[REPORTS, 30], [SHADOW, 200]]) if (local[k] != null || remote[k] != null) {
       const a = parse(local[k], k), b = parse(remote[k], k);
       if (a != null && !Array.isArray(a) || b != null && !Array.isArray(b)) throw new Error('Observations incomplètes : fusion refusée.');
-      const rows = unionBy(a, b, x => JSON.stringify(x)).sort((a, b) => stamp(a && a.at) - stamp(b && b.at));
+      const rows = unionBy(a, b, x => JSON.stringify(x)).sort((a, b) => stamp(a && a.at) - stamp(b && b.at) || byText(a, b));
       out[k] = JSON.stringify(rows.slice(-limit));
     }
     const handled = new Set([SETTINGS, STAMPS, CONTEXT, DONE, CANCEL, REPORTS, SHADOW, JournalArchive.KEY, JournalArchive.MIRROR]);

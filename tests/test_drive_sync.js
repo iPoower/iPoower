@@ -6,14 +6,17 @@ const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:a
 const { webcrypto, createHash } = require('node:crypto');
 const files = ['journal-archive', 'debrief', 'sync-merge', 'sync-revisions', 'sync-outbox', 'sync-key', 'control-vault-packet', 'drive-transport', 'drive-sync'];
 const source = files.map(n => fs.readFileSync(path.resolve(__dirname, '../src/' + n + '.js'), 'utf8')).join('\n');
+// Appareil resté sur la version publiée prod-173 : même raccord, ancienne fusion (copie exacte de src/sync-merge.js à 9a682a2).
+const SYNC_MERGE = fs.readFileSync(path.resolve(__dirname, '../src/sync-merge.js'), 'utf8'), SYNC_MERGE_PROD_173 = fs.readFileSync(path.resolve(__dirname, 'fixtures/sync-merge.prod-173.js'), 'utf8');
+assert(source.includes(SYNC_MERGE) && SYNC_MERGE_PROD_173 !== SYNC_MERGE, 'ancienne fusion réellement injectable pour l’appareil prod-173');
 const copy = v => structuredClone(v), sha = v => createHash('sha256').update(v).digest('hex');
 const pass = 'synthetic-runtime-code', at = Date.parse('2026-10-23T08:00:00.000Z');
 function lock() { let chain = Promise.resolve(); return { request(name, options, fn) { if (typeof options === 'function') fn = options; const p = chain.then(() => fn({ name })); chain = p.catch(() => {}); return p; } }; }
-function owner(network, count, label, crypt = webcrypto) {
+function owner(network, count, label, crypt = webcrypto, mergeSource = null) {
   let time = at, state = null, values, applied = 0, failure = false; const recoveries = [];
   const c = { crypto: webcrypto, navigator: { locks: lock(), onLine: true }, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer,
     URL, btoa, atob, console };
-  vm.createContext(c); vm.runInContext(source + ';this.api={DriveSync,SyncMerge,SyncRevisions,JournalArchive,DriveTransport,ControlVaultPacket};', c);
+  vm.createContext(c); vm.runInContext((mergeSource ? source.replace(SYNC_MERGE, () => mergeSource) : source) + ';this.api={DriveSync,SyncMerge,SyncRevisions,JournalArchive,DriveTransport,ControlVaultPacket};', c);
   const A = c.api;
   const entries = Array.from({ length: count }, (_, i) => ({ key: label + '-' + i, at: at - (i % 2 ? 91 : 365) * 864e5 - i, how: 'confirmé', name: 'Trajet fictif', from: 'Lieu A', to: 'Lieu B', start: null, end: null, feedback: null, deferred: false }));
   if (entries.length) entries.push({ ...entries[0], feedback: { at, conditions: ['rain'], grip: 'normal' } });
@@ -419,6 +422,80 @@ function drive() {
     assert.equal(pc.controller.status.message, 'synchronisé', 'statut vert une fois l’écriture locale terminée');
     assert.equal(net.files.size, before + 1);
     console.log('✅ écriture locale hors synchro en cours : 0 copie sur 10 passages, vraie saisie envoyée une fois, puis synchronisé');
+  }
+  // REL-1 : PC et iPhone actifs, chacun saisit ses propres données. Aucune hypothèse sur l'ordre
+  // d'insertion de l'app : listes locales volontairement non chronologiques, égalités d'horodatage.
+  // Attendu : convergence finie (plus aucune nouvelle copie) et état synchronisé identique.
+  {
+    const ctxOf = o => JSON.parse(o.values['twrc.context.v1']);
+    const setOf = o => JSON.parse(o.values['twrc.settings.v1']);
+    const cal = (t, kind, Tr) => ({ t, loc: 'lieuA', kind, Tr, T: Tr + 1 });
+    const scenarios = [
+      ['retours de calibration', (pc, tel) => {
+        const a = setOf(pc); a.calib.push(cal('2026-10-23T07:00', 'sec', 5)); pc.edit('twrc.settings.v1', JSON.stringify(a));
+        const b = setOf(tel); b.calib.push(cal('2026-10-23T07:40', 'humide', 4), cal('2026-10-23T06:30', 'givre', -1)); tel.edit('twrc.settings.v1', JSON.stringify(b));
+      }, o => setOf(o).calib, 3],
+      ['signalements météo de même heure', (pc, tel) => {
+        pc.edit('twrc.reports.v1', JSON.stringify([{ at: at + 5e3, kind: 'fog', loc: 'lieuA' }, { at: at + 1e3, kind: 'rain', loc: 'lieuA' }]));
+        tel.edit('twrc.reports.v1', JSON.stringify([{ at: at + 5e3, kind: 'wet', loc: 'lieuA' }]));
+      }, o => JSON.parse(o.values['twrc.reports.v1']), 3],
+      ['journal de preuves de même heure', (pc, tel) => {
+        pc.edit('twrc.shadow.v1', JSON.stringify([{ at: at + 9e3, loc: 'lieuA', v1: 1, v2: 1 }]));
+        tel.edit('twrc.shadow.v1', JSON.stringify([{ at: at + 9e3, loc: 'lieuA', v1: 0, v2: 2 }, { at: at + 2e3, loc: 'lieuB', v1: 0, v2: 0 }]));
+      }, o => JSON.parse(o.values['twrc.shadow.v1']), 3],
+      ['annulation du même trajet au même instant', (pc, tel) => {
+        pc.edit('twrc.tripcancel', JSON.stringify({ trajetX: { at: at + 3e3, exp: at + 864e5, by: 'pc' } }));
+        tel.edit('twrc.tripcancel', JSON.stringify({ trajetX: { at: at + 3e3, exp: at + 864e5, by: 'tel' } }));
+      }, o => JSON.parse(o.values['twrc.tripcancel'])],
+      ['trajet clos au même instant', (pc, tel) => {
+        const a = ctxOf(pc); a.done = { trajetY: { at: at + 4e3, how: 'auto' } }; pc.edit('twrc.context.v1', JSON.stringify(a));
+        const b = ctxOf(tel); b.done = { trajetY: { at: at + 4e3, how: 'confirmé' } }; tel.edit('twrc.context.v1', JSON.stringify(b));
+      }, o => ctxOf(o).done],
+      ['trajet clos sans horodatage', (pc, tel) => {
+        const a = ctxOf(pc); a.done = { trajetZ: true }; pc.edit('twrc.context.v1', JSON.stringify(a));
+        const b = ctxOf(tel); b.done = { trajetZ: 1 }; tel.edit('twrc.context.v1', JSON.stringify(b));
+      }, o => ctxOf(o).done]
+    ];
+    const diverge = [];
+    for (const [name, write, read, rows] of scenarios) {
+      const net = drive(), pc = owner(net, 1, 'rel1pc'), tel = owner(net, 1, 'rel1tel');
+      for (const o of [pc, tel, pc, tel]) await o.controller.run(true);   // base commune établie
+      write(pc, tel); pc.advance(60000); tel.advance(60000);
+      const sizes = [];
+      for (let i = 0; i < 8; i++) { await pc.controller.run(true); await tel.controller.run(true); sizes.push(net.files.size); pc.advance(31e3); tel.advance(31e3); }
+      const finite = sizes.at(-1) === sizes.at(-3), same = JSON.stringify(read(pc)) === JSON.stringify(read(tel));
+      if (rows) assert.equal(read(pc).length, rows, name + ' : aucune saisie perdue');
+      if (!finite || !same) diverge.push(name + ' (copies : ' + sizes.join(',') + (same ? '' : ' · états différents') + ')');
+      else console.log('✅ ' + name + ' : convergence finie (' + sizes.join(',') + '), état identique sur les deux appareils');
+    }
+    assert.deepEqual(diverge, [], 'PC et iPhone doivent converger : ' + diverge.join(' ; '));
+  }
+  // Horodatages de réglages : deux appareils modifient chacun un réglage DIFFÉRENT en parallèle (saisie par le vrai
+  // calcul d'horodatage SyncMerge.edits, comme saveSettings), puis 10 synchros au repos.
+  //  - prod-173 sur les deux appareils : défaut existant (ordre des clés d'horodatage propre à chaque appareil), copies
+  //    sans fin. Ce constat documente la LIMITE DE TRANSITION : un appareil resté sur prod-173 qui modifie en parallèle
+  //    continue à republier tant qu'il n'est pas mis à jour.
+  //  - version actuelle sur les deux appareils : horodatages identiques, 0 copie au repos.
+  for (const [label, mergeSource] of [['prod-173', SYNC_MERGE_PROD_173], ['actuelle', null]]) {
+    const net = drive(), pc = owner(net, 1, 'stamps-pc-' + label, webcrypto, mergeSource), tel = owner(net, 1, 'stamps-tel-' + label, webcrypto, mergeSource);
+    const setOf = o => JSON.parse(o.values['twrc.settings.v1']), stampsOf = o => o.values['twrc.editstamps.v1'] || '{}';
+    const app = (o, fn, t) => { const b = setOf(o), a = JSON.parse(JSON.stringify(b)); fn(a); o.edit('twrc.editstamps.v1', JSON.stringify(o.A.SyncMerge.edits(b, a, JSON.parse(stampsOf(o)), t))); o.edit('twrc.settings.v1', JSON.stringify(a)); };
+    const run = async o => { await o.controller.run(true); o.advance(31e3); };
+    for (const o of [pc, tel, pc, tel]) await run(o);
+    app(pc, s => { s.cars[0].short = 'Nom fictif'; }, at + 100e3); app(tel, s => { s.cars[0].tire.press = 2.4; }, at + 110e3);
+    pc.advance(60000); tel.advance(60000);
+    for (let i = 0; i < 3; i++) for (const o of [pc, tel]) await run(o);
+    assert.equal(setOf(pc).cars[0].short, 'Nom fictif'); assert.equal(setOf(tel).cars[0].short, 'Nom fictif'); assert.equal(setOf(pc).cars[0].tire.press, 2.4);
+    const before = net.files.size; for (let i = 0; i < 10; i++) for (const o of [pc, tel]) await run(o);
+    const grown = net.files.size - before, same = stampsOf(pc) === stampsOf(tel);
+    if (label === 'prod-173') {
+      assert(grown > 0 && !same, 'prod-173 : le défaut existant doit être reproduit (sinon ce test ne prouve plus rien)');
+      console.log('✅ horodatages · prod-173 (limite de transition documentée) : réglages identiques mais ' + grown + ' copies en 10 synchros au repos');
+    } else {
+      assert.equal(grown, 0, 'version actuelle : 10 synchros au repos = 0 copie (' + before + ' → ' + net.files.size + ')');
+      assert(same, 'version actuelle : horodatages identiques sur les deux appareils');
+      console.log('✅ horodatages · version actuelle : deux réglages différents modifiés en parallèle, 10 synchros au repos = 0 copie, horodatages identiques');
+    }
   }
   await require('./lib/drive-recovery-checks')();
 
