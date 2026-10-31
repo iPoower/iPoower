@@ -21,6 +21,7 @@ node_modules/
 .ci-keys/
 .ci-privacy/
 .wrangler/
+.drive-test-profile-*/
 .dev.vars
 
 !src/vendor/leaflet/images/*.png

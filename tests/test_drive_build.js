@@ -15,6 +15,8 @@ function cspOrigins(text, name = null) {
   }
   return origins;
 }
+// Profils TEST créés par CE test seulement (ceux d'une autre exécution en cours ne sont jamais touchés).
+const PROFILE = /^\.drive-test-profile-/, profiles = () => fs.readdirSync(ROOT).filter(n => PROFILE.test(n)), before = new Set(profiles());
 try {
   assert.equal(run('').status, 0); assert.equal(fs.readFileSync(path.join(ROOT, OUT) + '/drive-config.json', 'utf8'), 'null');
   assert(!cspOrigins(fs.readFileSync(path.join(ROOT, OUT) + '/_headers', 'utf8')).has('https://accounts.google.com'));
@@ -63,4 +65,9 @@ try {
   const denied = spawnSync(process.execPath, [path.join(ROOT, 'tools/build-drive-test.cjs')], { cwd: ROOT, encoding: 'utf8', env: { ...process.env, BUILD_SHA: 'a'.repeat(40), GOOGLE_DRIVE_CONFIG: JSON.stringify(config) } });
   assert.notEqual(denied.status, 0, 'profil TEST refuse les autres origines avant tout build');
   console.log('✅ profil TEST : fixture déchiffrée, fichiers limités, empreintes exactes, aucun Google implicite ni origine de production');
-} finally { fs.rmSync(path.join(ROOT, OUT), { recursive: true, force: true }); }
+} finally {
+  fs.rmSync(path.join(ROOT, OUT), { recursive: true, force: true });
+  for (const n of profiles()) if (!before.has(n)) fs.rmSync(path.join(ROOT, n), { recursive: true, force: true });
+}
+assert.deepEqual(profiles().filter(n => !before.has(n)), [], 'aucun profil TEST laissé à la racine du dépôt');
+console.log('✅ profil TEST nettoyé en sortie de test');
