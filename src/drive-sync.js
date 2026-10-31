@@ -125,7 +125,7 @@ const DriveSync = (() => {
     }
     async function observeCurrent(s) {
       const version = localVersion;
-      const latest = await vault.syncSnapshot(); guard();
+      const latest = await vault.syncSnapshot(SyncMerge.device); guard();
       const hash = await fingerprint(projection(latest.values)); guard();
       if (s.observed !== hash) {
         s.outbox = SyncOutbox.noteChange(s.outbox, now()); s.observed = hash;
@@ -159,7 +159,7 @@ const DriveSync = (() => {
       if (!selected) { message = 'reconnexion'; return; }
       if (s.binding && s.binding !== selected.binding) return fail('binding');
       s.binding = selected.binding; s.folder = selected.folder;   // indice de reprise : aucun jeton, aucun code
-      let snap = await vault.syncSnapshot(); guard();
+      let snap = await vault.syncSnapshot(SyncMerge.device); guard();
       const local = projection(snap.values), hash = await fingerprint(local); guard();
       if (s.observed !== hash) { s.outbox = SyncOutbox.noteChange(s.outbox, now()); s.observed = hash; await save(s); }
       if (s.outbox.blocked && !force) { blocked = true; message = SyncOutbox.status(s.outbox).label; return; }
@@ -196,7 +196,7 @@ const DriveSync = (() => {
       s.known = known; s.knownFolder = selected.folder;
       // Relire après les requêtes : aucun instantané pris avant le réseau ne
       // peut écraser une saisie locale arrivée pendant le téléchargement.
-      snap = await vault.syncSnapshot(); guard();
+      snap = await vault.syncSnapshot(SyncMerge.device); guard();
       const planned = SyncRevisions.plan(confirmed, { device: s.device, seq: s.seq, base: s.base, dirty: s.outbox.dirtySince !== null });
       if (planned.action === 'blocked' || planned.warnings.some(w => w.code === 'MISSING_PARENT' || w.code === 'BASE_UNAVAILABLE')) return fail('conflict');
       // Fusion à trois voies : base = ancêtre commun authentifié de cette lignée et de la tête
@@ -229,12 +229,12 @@ const DriveSync = (() => {
             next = result.values; done.push(rid);
           }
           return next;
-        }, async bytes => { s.recovery = await store.recovery(bytes, crypt); lastRecovery = s.recovery; }, current);
+        }, async bytes => { s.recovery = await store.recovery(bytes, crypt); lastRecovery = s.recovery; }, current, SyncMerge.device);
         for (const rid of settled.integrated) resolutions.delete(rid);
         guard(); s.base = settled.parents; s.seq = Math.max(s.seq, ...confirmed.filter(c => c.device === s.device).map(c => c.seq));
         await save(s); onApplied();
         if (s.base.length === 1) await load(s.base[0]);
-        snap = await vault.syncSnapshot(); guard();
+        snap = await vault.syncSnapshot(SyncMerge.device); guard();
         const after = projection(snap.values), remote = s.base.length === 1 && opened.get(s.base[0]);
         // Une tête identique se rejoint sans créer une révision vide.
         if (remote && await fingerprint(after) === await fingerprint(remote.data.values)) {
