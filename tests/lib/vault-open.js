@@ -27,6 +27,17 @@ async function openVault(sealed, pass) {
   const out = {}; for (let i = 0; i < vs.store.length; i++) { const k = vs.store.key(i); if (ctx.SV.secret(k)) out[k] = vs.store.getItem(k); }
   return out;
 }
+// Garde-fou du prédicat : les clés des données de l'utilisateur (réglages = voitures, pneus, compteur, profondeurs ;
+// contexte et journal ; débriefs ; horodatages ; trajets clos ou annulés ; signalements ; preuves) ne sont JAMAIS
+// des clés d'appareil. Un préfixe élargi dans SyncMerge.device rendrait sinon la comparaison aveugle.
+// Et la clé de l'échec CI est bien une clé d'appareil (sinon le test ne prouverait pas la bonne chose).
+const USER_KEYS = ['twrc.settings.v1', 'twrc.context.v1', 'twrc.debrief.v1', 'twrc.editstamps.v1', 'twrc.tripdone', 'twrc.tripcancel', 'twrc.reports.v1', 'twrc.shadow.v1', 'twrc.temoin.e2e73'];
+function assertPredicate(device = isDevice) {
+  const wrong = USER_KEYS.filter(k => device(k) !== false);
+  if (wrong.length) throw new Error('Prédicat SyncMerge.device trop large : clés utilisateur classées « appareil » · ' + wrong.join(', '));
+  if (device('twrc.weather.incidents.v1') !== true) throw new Error('Prédicat SyncMerge.device : twrc.weather.incidents.v1 doit rester une clé d’appareil.');
+  return USER_KEYS.length;
+}
 // Clés dont la valeur diffère, clés propres à l'appareil exclues (triées).
 const userDiff = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !isDevice(k) && a[k] !== b[k]).sort();
-module.exports = { openVault, userDiff, isDevice };
+module.exports = { openVault, userDiff, isDevice, assertPredicate, USER_KEYS };

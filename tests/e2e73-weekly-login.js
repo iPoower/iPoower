@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { setTimeout: wait } = require('node:timers/promises');
 const { BR, session, errors, U } = require('./lib/context-session');
 // Contenu déchiffré par le vrai module, hors page ; clés propres à l'appareil = SyncMerge.device (src/sync-merge.js).
-const { openVault, userDiff } = require('./lib/vault-open');
+const { openVault, userDiff, assertPredicate } = require('./lib/vault-open');
 const MARK = 'ECRITURE-FORCEE-INTERDITE';
 const DAY = 86400000;
 let n = 0, stage = '';
@@ -60,6 +60,7 @@ async function setFixedAfterDurable(p, date) {
 (async () => {
   const browser = await BR.launch();
   try {
+    await check('garde-fou : réglages (voitures comprises), contexte et journaux ne sont jamais des clés d’appareil', async () => { assertPredicate(); });
     for (const dev of ['iphone', 'pc']) {
       const s = await session(browser, { at: '2026-10-10T08:00:00+02:00', dev, remember: true }), p = s.p;
       const initial = await p.evaluate(() => ({ name: S.cars[0].name, locked: LOCKED(), vault: window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) }));
@@ -198,8 +199,10 @@ async function setFixedAfterDurable(p, date) {
         const res = await p.evaluate(m => { const r = {};
           for (const k of ['twrc.weather.incidents.v1', 'twrc.temoin.e2e73']) { try { localStorage.setItem(k, m); r[k] = 'acceptée en mémoire'; } catch (e) { r[k] = 'refusée'; } }
           return r; }, MARK);
-        await p.evaluate(async () => { try { await TWRC_VAULT.flush(); } catch (e) { /* refus attendu */ } });
+        await p.evaluate(async () => { try { await TWRC_VAULT.flush(); } catch (e) { /* refus attendu */ } window.__e2e73Tick = 0; setTimeout(() => { window.__e2e73Tick = 1; }, 50); });
         await wait(500);   // temps réel Node : une écriture asynchrone éventuelle aurait le temps d'aboutir
+        // L'attente ne prouve quelque chose que si les minuteries de la page tournent (horloge Playwright non suspendue).
+        assert.equal(await p.evaluate(() => window.__e2e73Tick), 1, 'minuteries de la page actives pendant l’attente');
         const after = await p.evaluate(m => { const raw = window.TWRC_RAW_STORAGE; let plain = false;
           for (let i = 0; i < raw.length; i++) if (String(raw.getItem(raw.key(i))).includes(m)) plain = true;
           return { mode: TWRC_VAULT.mode, sealed: raw.getItem(SessionVault.VAULT), plain }; }, MARK);
@@ -272,7 +275,9 @@ async function setFixedAfterDurable(p, date) {
         assert.equal(result.locked, true);
         assert.equal(result.refused, true);
         assert.equal(result.refusedDevice, true, 'clé propre à l’appareil refusée aussi après l’expiration');
+        await p.evaluate(() => { window.__e2e73Tick = 0; setTimeout(() => { window.__e2e73Tick = 1; }, 50); });
         await wait(500);
+        assert.equal(await p.evaluate(() => window.__e2e73Tick), 1, 'minuteries de la page actives pendant l’attente');
         assert.equal(await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), result.sealed, 'aucune écriture du coffre après l’expiration');
         assert.equal(result.oldValue, null);
         assert.equal(result.hidden, true);
