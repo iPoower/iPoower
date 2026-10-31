@@ -17,6 +17,10 @@ const check = async (t, fn) => { await fn(); n++; console.log('✅ ' + t); };
         const v = { v1: 0, r: { worst: { lv: 1, trust: 'fictif', ev: st ? [{ layer: 'A', w: 0.8, lv: 1 }] : [] }, contradiction: false } };
         const before = shadowLoad().length; evShadowTick(v); return shadowLoad().length - before;
       }, station));
+      // Onglet Météo : chaque rendu appelle aussi evShadowTick (evidenceHtml). Un rendu automatique tombant entre le
+      // changement d'heure et l'appel du test ajoutait l'entrée de l'heure avant lui (règle respectée, mesure du test
+      // faussée). Sur un autre onglet, seule la règle est exercée, par les appels du test.
+      await p.evaluate(() => { chooseView('pneus'); });
       try {
         await p.evaluate(() => { localStorage.setItem('twrc.shadow.v1', '[]'); });
         await check(dev + ' · entrées automatiques sans station : une par heure au plus', async () => {
