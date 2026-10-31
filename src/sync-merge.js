@@ -32,10 +32,14 @@ const SyncMerge = (() => {
   const byText = (x, y) => cmp(String(JSON.stringify(x)), String(JSON.stringify(y)));
   // Même raison pour les objets fusionnés : l'ordre des clés part dans le texte chiffré et son empreinte.
   const sorted = o => Object.fromEntries(Object.keys(o).sort(cmp).map(k => [k, o[k]]));
+  // Listes ADDITIVES : fusionnées par union plus bas (relevés compteur et profondeurs, retours de calibration, journal de
+  // saison, marques d'édition). Un seul prédicat pour differences() ET la boucle d'arbitrage : une marque d'édition posée
+  // sur l'un de ces chemins (ex. markEdit('cars.0.tire.treads')) ne doit jamais devenir un conflit (« conflit fantôme »).
+  const additive = p => /^(edits|calib|journal)(\.|$)/.test(p) || /^cars\.\d+\.(odo|tire\.treads)(\.|$)/.test(p);
   // Couvrir aussi les anciens réglages sans `edits` et les champs saisis sans
   // markEdit (photo, fiche...). Un écart non horodaté ne doit jamais disparaître.
   function differences(a, b, prefix = '') {
-    if (same(a, b) || /^(edits|calib|journal)(\.|$)/.test(prefix) || /^cars\.\d+\.(odo|tire\.treads)(\.|$)/.test(prefix)) return [];
+    if (same(a, b) || additive(prefix)) return [];
     if (prefix === 'cars' && Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((c, i) => c && b[i] && c.id === b[i].id))
       return a.flatMap((c, i) => differences(c, b[i], 'cars.' + i));
     // Voiture ajoutée d'un seul côté (liste prolongée) : seules les voitures communes se comparent champ
@@ -138,6 +142,8 @@ const SyncMerge = (() => {
     const appended = carsAppended(local.cars, remote.cars), shared = Math.min(local.cars.length, remote.cars.length);
     for (const p of paths) {
       parts(p);
+      // Liste additive : jamais arbitrée comme un réglage, l'union ci-dessous la fusionne sans perte.
+      if (additive(p)) continue;
       // Voiture ajoutée d'un seul côté : reprise entière par l'union ci-dessous, ses champs ne se comparent pas encore.
       const at = /^cars\.(\d+)(\.|$)/.exec(p);
       if (appended && (p === 'cars' || at && +at[1] >= shared)) continue;
