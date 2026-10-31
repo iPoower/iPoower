@@ -8,8 +8,9 @@
  *     Sans preuve de fraîcheur (horodatage absent ou égal), la valeur de cet appareil reste et le
  *     chemin est signalé comme conflit : jamais de gagnant deviné.
  *  3. L'état propre à l'appareil (lieu, GPS, trajet en cours, caches, clés de session) n'est jamais importé.
- *  4. Carnet de pleins (cars.N.fuel) : union par identifiant de plein. Une suppression (tombstone) est
- *     définitive ; sinon la révision la plus haute, puis la modification la plus récente, puis le texte.
+ *  4. Carnet de pleins (cars.N.fuel = { identifiant: plein }) : union par identifiant, un chemin horodaté par plein.
+ *     Une suppression (tombstone) est définitive ; sinon la révision la plus haute, puis la modification la plus
+ *     récente, puis le texte. Le carnet lui-même porte un horodatage constant (FUEL_BOOK) : identique partout.
  * Limite connue : une suppression (relevé effacé, réinitialisation) n'est pas propagée ; l'union la
  * ferait réapparaître. Le choix est volontaire : en cas de doute, conserver plutôt que perdre.
  */
@@ -43,6 +44,13 @@ const SyncMerge = (() => {
     validate(before); validate(after); validate(previous);
     const out = { ...previous };
     for (const path of differences(before, after)) { parts(path); out[path] = Math.max(stamp(at), stamp(out[path]) + 1); }
+    // Carnet de pleins : chaque plein modifié a son propre horodatage ; le carnet garde l'horodatage constant.
+    (obj(after) && Array.isArray(after.cars) ? after.cars : []).forEach((car, i) => {
+      if (!obj(car) || !obj(car.fuel)) return;
+      const book = 'cars.' + i + '.fuel', was = obj(before) && Array.isArray(before.cars) && obj(before.cars[i]) && before.cars[i].id === car.id && obj(before.cars[i].fuel) ? before.cars[i].fuel : {};
+      if (!stamp(out[book])) out[book] = FUEL_BOOK;
+      Object.keys(car.fuel).forEach(id => { if (FUEL_ID.test(id) && !same(was[id], car.fuel[id])) out[book + '.' + id] = Math.max(stamp(at), stamp(out[book + '.' + id]) + 1); });
+    });
     return out;
   }
   const stamp = v => Number.isFinite(v) && v > 0 ? v : 0;
@@ -106,8 +114,10 @@ const SyncMerge = (() => {
     const x = a.cars && a.cars[+m[1]], y = b.cars && b.cars[+m[1]];
     return !!x && !!y && x.id === y.id;
   }
-  // Pleins : l'enregistrement b remplace-t-il a ? Suppression d'abord (jamais de retour), puis révision,
-  // date de modification et texte canonique : même gagnant quel que soit l'appareil qui fusionne.
+  // Pleins : identifiant sûr pour un chemin de réglage (préfixe fixe, ni point ni caractère spécial, jamais numérique).
+  const FUEL_ID = /^f_[0-9a-z]{8,40}$/, FUEL_BOOK = 1;
+  // Le plein b remplace-t-il a ? Suppression d'abord (jamais de retour), puis révision, date de modification
+  // et texte canonique : même gagnant quel que soit l'appareil qui fusionne.
   const fuelDead = e => Number.isSafeInteger(e.del) && e.del > 0, fuelRev = e => Number.isSafeInteger(e.rev) ? e.rev : 0;
   // Comparaison binaire (jamais localeCompare, qui dépend de la langue du système).
   const fuelCmp = (a, b) => a < b ? -1 : a > b ? 1 : 0, fuelText = (x, y) => fuelCmp(String(JSON.stringify(x)), String(JSON.stringify(y)));
@@ -115,12 +125,13 @@ const SyncMerge = (() => {
     if (fuelDead(a) !== fuelDead(b)) return fuelDead(b);
     return (fuelRev(b) - fuelRev(a) || stamp(b.at) - stamp(a.at) || fuelText(b, a)) > 0;
   }
+  // Union par identifiant ; clés dans l'ordre canonique (le texte chiffré et son empreinte ne dépendent pas de l'appareil).
   function fuelUnion(a, b) {
-    for (const list of [a, b]) if (list != null && (!Array.isArray(list) || list.some(e => !obj(e) || typeof e.id !== 'string' || !e.id || e.id.length > 64)))
+    for (const book of [a, b]) if (book != null && (!obj(book) || Object.keys(book).some(id => !FUEL_ID.test(id) || !obj(book[id]))))
       throw new Error('Pleins incomplets : fusion refusée.');
-    const byId = new Map();
-    [...(a || []), ...(b || [])].forEach(e => { if (!byId.has(e.id) || fuelWins(byId.get(e.id), e)) byId.set(e.id, e); });
-    return [...byId.values()].sort((x, y) => fuelCmp(String(x.d || ''), String(y.d || '')) || fuelCmp(x.id, y.id)).map(clone);
+    const merged = { ...(a || {}) };
+    Object.keys(b || {}).forEach(id => { if (!own(merged, id) || fuelWins(merged[id], b[id])) merged[id] = b[id]; });
+    return Object.fromEntries(Object.keys(merged).sort(fuelCmp).map(id => [id, clone(merged[id])]));
   }
   const unionBy = (a, b, key) => {
     const seen = new Map(); [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])].forEach(x => { const k = key(x); if (!seen.has(k)) seen.set(k, x); });
@@ -207,12 +218,13 @@ const SyncMerge = (() => {
         }
       }
       if ((l && l.fuel != null) || r.fuel != null) {
-        const fuel = fuelUnion(l && l.fuel, r.fuel), p = 'cars.' + out.cars.indexOf(car) + '.fuel';
-        report.added.fuel += fuel.length - (Array.isArray(l && l.fuel) ? l.fuel.length : 0); car.fuel = fuel;
-        // Résultat différent de la copie distante : horodatage strictement plus récent que les DEUX copies d'origine.
+        const fuel = fuelUnion(l && l.fuel, r.fuel), book = 'cars.' + out.cars.indexOf(car) + '.fuel', rf = obj(r.fuel) ? r.fuel : {};
+        report.added.fuel += Object.keys(fuel).length - Object.keys(obj(l && l.fuel) ? l.fuel : {}).length; car.fuel = fuel;
+        fuelStamps[book] = FUEL_BOOK;
+        // Plein différent de la copie distante : horodatage strictement plus récent que les DEUX copies d'origine.
         // Un appareil resté sur une version antérieure (qui ne connaît pas les pleins) voit alors une modification
-        // datée par rapport à n'importe quel ancêtre commun et l'adopte, sans conflit.
-        if (!same(fuel, Array.isArray(r.fuel) ? r.fuel : [])) fuelStamps[p] = Math.max(stamp(stampsLocal[p]), stamp(stampsRemote[p])) + 1;
+        // datée de CE plein par rapport à n'importe quel ancêtre commun et l'adopte, sans conflit.
+        Object.keys(fuel).forEach(id => { const p = book + '.' + id; if (!same(fuel[id], rf[id])) fuelStamps[p] = Math.max(stamp(stampsLocal[p]), stamp(stampsRemote[p])) + 1; });
       }
     });
     if (local.calib != null && !Array.isArray(local.calib) || remote.calib != null && !Array.isArray(remote.calib)) throw new Error('Retours incomplets : fusion refusée.');

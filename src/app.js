@@ -215,7 +215,7 @@ function loadSettings() {
       const fresh = normalize(null, DEFAULTS);
       keep.forEach((k, i) => { const c = fresh.cars[i]; if (!k || !c) return; if (k.sets) c.sets = k.sets; if (k.photo) c.photo = k.photo; if (k.odo) c.odo = k.odo;
         // Carnet de pleins et réservoir : saisis sur l'appareil, jamais dans le préréglage (tombstones compris).
-        if (Array.isArray(k.fuel)) c.fuel = k.fuel; if (k.tank && typeof k.tank === 'object') c.tank = k.tank;
+        if (k.fuel && typeof k.fuel === 'object' && !Array.isArray(k.fuel)) c.fuel = k.fuel; if (k.tank && typeof k.tank === 'object') c.tank = k.tank;
         if (k.tire) ['pchk', 'dot', 'tread', 'treadAv', 'treadAr', 'treadEst', 'treads', 'mountKm', 'lastRot'].forEach(f => { const v = k.tire[f]; if (v != null && v !== '' && !(f === 'pchk' && !v.date)) c.tire[f] = v; }); });
       const oldCalib = keep.calib;
       saved = { ...fresh, configured: 1, calib: oldCalib || [], journal: keep.journal || {} };

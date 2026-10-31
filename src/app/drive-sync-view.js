@@ -228,6 +228,8 @@ async function initDriveSync() {
     if (!VER) loadVersion();   // identité de la version chargée, exigée par chaque envoi Drive (sans ouvrir Paramètres)
     const provider = new DriveTransport.OpaqueDrive([config.raceOrigin]);
     DRIVE_UI.config = config; window.TWRC_DRIVE_CONFIGURED = true;
+    // Migration carnet de pleins v1 : carnet vide horodaté avant la première synchro (identique sur tous les appareils).
+    if (!LOCKED() && Fuel.ensure(S)) saveSettings();
     DRIVE_UI.session = GoogleDriveSession.create(config, provider);
     DRIVE_UI.sync = DriveSync.create({ vault: window.TWRC_VAULT, provider,
       version: () => ControlVaultPacket.loadedVersion(window.TWRC_BUILD, VER),
