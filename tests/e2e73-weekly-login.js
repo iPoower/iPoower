@@ -4,6 +4,9 @@
 const assert = require('node:assert/strict');
 const { setTimeout: wait } = require('node:timers/promises');
 const { BR, session, errors, U } = require('./lib/context-session');
+// Contenu déchiffré par le vrai module, hors page ; clés propres à l'appareil = SyncMerge.device (src/sync-merge.js).
+const { openVault, userDiff, assertPredicate } = require('./lib/vault-open');
+const MARK = 'ECRITURE-FORCEE-INTERDITE';
 const DAY = 86400000;
 let n = 0, stage = '';
 const check = async (label, fn) => { stage = label; await fn(); n++; console.log('✅ ' + label); };
@@ -57,11 +60,12 @@ async function setFixedAfterDurable(p, date) {
 (async () => {
   const browser = await BR.launch();
   try {
+    await check('garde-fou : réglages (voitures comprises), contexte et journaux ne sont jamais des clés d’appareil', async () => { assertPredicate(); });
     for (const dev of ['iphone', 'pc']) {
       const s = await session(browser, { at: '2026-10-10T08:00:00+02:00', dev, remember: true }), p = s.p;
       const initial = await p.evaluate(() => ({ name: S.cars[0].name, locked: LOCKED(), vault: window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) }));
       assert.equal(initial.locked, false); assert(initial.vault);
-      let sealedBeforeExpiry;
+      let sealedBeforeExpiry, sealedAtExpiry;
       await check(dev + ' · case de maintien : clé AES-GCM non extractible dans IndexedDB, aucune donnée en clair', async () => {
         const state = await p.evaluate(async () => {
           const db = await new Promise((resolve, reject) => { const r = indexedDB.open('twrc.remember-device.v1'); r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
@@ -125,8 +129,8 @@ async function setFixedAfterDurable(p, date) {
           assert.equal(await q.evaluate(() => !!window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), true);
           // Rendre explicite le cas où le timer de l'ancien onglet a déjà expiré.
           // Le scénario suivant doit réauthentifier cet état, sans tenter de le sauvegarder.
-          await p.evaluate(() => checkSessionExpiry());
-          assert.equal(await p.evaluate(() => TWRC_VAULT.mode), 'expired');
+          const atExpiry = await p.evaluate(() => { checkSessionExpiry(); return { mode: TWRC_VAULT.mode, sealed: window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) }; });
+          assert.equal(atExpiry.mode, 'expired'); sealedAtExpiry = atExpiry.sealed;
         } finally { await q.close(); }
       });
       await check(dev + ' · huitième jour : réauthentification vérifiée puis verrouillage manuel', async () => {
@@ -152,7 +156,11 @@ async function setFixedAfterDurable(p, date) {
         await p.waitForFunction(() => !!window.TWRC_VAULT && window.TWRC_VAULT.mode === 'locked',
           null, { timeout: 15000 });
         await p.locator('#unlockPw').waitFor({ state: 'visible', timeout: 15000 });
-        assert.equal(await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), sealedBefore);
+        // Strict : aucune écriture du coffre après l'expiration (octets identiques à ceux relevés à l'expiration).
+        assert.equal(await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), sealedAtExpiry, 'aucune écriture du coffre après l’expiration');
+        // Entre la copie confirmée et l'expiration, la session était VALIDE : seules des clés propres à l'appareil
+        // (SyncMerge.device, ex. journal d'incidents météo d'une requête terminée en erreur) ont pu changer.
+        assert.deepEqual(userDiff(await openVault(sealedBefore, PW), await openVault(sealedAtExpiry, PW)), [], 'contenu utilisateur identique, clés de l’appareil exclues');
         const reauthTime = await p.evaluate(() => Date.now());
         assert(reauthTime >= s.T0 + 8 * DAY, 'la réauthentification reste après l’expiration');
         await p.clock.setFixedTime(reauthTime);
@@ -162,6 +170,19 @@ async function setFixedAfterDurable(p, date) {
         assert.equal(await p.evaluate(() => LOCKED()), false, 'le code a réellement rouvert le coffre après expiration');
         assert.equal(await p.evaluate(() => TWRC_VAULT.mode), 'vault');
         assert.equal(await p.evaluate(() => S.cars[0].name), initial.name, 'voiture récupérée sans perte');
+        // Témoin négatif (session valide) : une écriture hors clés de l'appareil DOIT faire échouer la comparaison ;
+        // une écriture sur une clé de l'appareil, non. L'exclusion n'est donc ni trop large ni trop étroite.
+        const seal = () => p.evaluate(async () => { await TWRC_VAULT.flush(); return window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT); });
+        const base = await seal();
+        await p.evaluate(() => localStorage.setItem('twrc.weather.incidents.v1', JSON.stringify([{ at: 1, kind: 'network', durationMs: 1 }])));
+        const deviceOnly = await seal();
+        assert.notEqual(deviceOnly, base, 'écriture réelle du coffre sur une clé de l’appareil');
+        assert(!userDiff(await openVault(base, PW), await openVault(deviceOnly, PW)).includes('twrc.weather.incidents.v1'), 'clé de l’appareil ignorée');
+        await p.evaluate(() => localStorage.setItem('twrc.temoin.e2e73', 'temoin-fictif'));
+        const userWrite = await seal(), diff = userDiff(await openVault(deviceOnly, PW), await openVault(userWrite, PW));
+        assert(diff.includes('twrc.temoin.e2e73'), 'témoin négatif : la comparaison doit échouer sur une clé hors appareil · ' + JSON.stringify(diff));
+        console.log('   témoin négatif : écart détecté comme attendu → ' + JSON.stringify(diff));
+        await p.evaluate(async () => { localStorage.removeItem('twrc.temoin.e2e73'); await TWRC_VAULT.flush(); });
         await p.evaluate(() => { const d = document.getElementById('settings'); d.open = true; renderSettings(true); });
         await p.locator('[data-act=lock]').waitFor({ state: 'visible', timeout: 5000 });
         await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.locator('[data-act=lock]').click()]);
@@ -171,6 +192,23 @@ async function setFixedAfterDurable(p, date) {
           assert.equal(await q.evaluate(() => LOCKED()), true);
           assert.equal(await q.locator('#unlockPw').count(), 1);
         } finally { await q.close(); }
+      });
+      await check(dev + ' · page verrouillée : écriture forcée sans effet sur le coffre', async () => {
+        const before = await p.evaluate(() => ({ mode: TWRC_VAULT.mode, locked: LOCKED(), sealed: window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT) }));
+        assert.equal(before.locked, true); assert.equal(before.mode, 'locked'); assert(before.sealed);
+        const res = await p.evaluate(m => { const r = {};
+          for (const k of ['twrc.weather.incidents.v1', 'twrc.temoin.e2e73']) { try { localStorage.setItem(k, m); r[k] = 'acceptée en mémoire'; } catch (e) { r[k] = 'refusée'; } }
+          return r; }, MARK);
+        await p.evaluate(async () => { try { await TWRC_VAULT.flush(); } catch (e) { /* refus attendu */ } window.__e2e73Tick = 0; setTimeout(() => { window.__e2e73Tick = 1; }, 50); });
+        await wait(500);   // temps réel Node : une écriture asynchrone éventuelle aurait le temps d'aboutir
+        // L'attente ne prouve quelque chose que si les minuteries de la page tournent (horloge Playwright non suspendue).
+        assert.equal(await p.evaluate(() => window.__e2e73Tick), 1, 'minuteries de la page actives pendant l’attente');
+        const after = await p.evaluate(m => { const raw = window.TWRC_RAW_STORAGE; let plain = false;
+          for (let i = 0; i < raw.length; i++) if (String(raw.getItem(raw.key(i))).includes(m)) plain = true;
+          return { mode: TWRC_VAULT.mode, sealed: raw.getItem(SessionVault.VAULT), plain }; }, MARK);
+        assert.equal(after.mode, 'locked'); assert.equal(after.sealed, before.sealed, 'coffre identique octet par octet');
+        assert.equal(after.plain, false, 'aucune valeur forcée en clair sur le disque');
+        console.log('   écritures forcées en page verrouillée : ' + JSON.stringify(res));
       });
       await check(dev + ' · case désactivée : ouverture suivante avec mot de passe', async () => {
         assert.equal(await p.locator('#rememberWeek').isChecked(), false, 'la conservation reste volontaire');
@@ -220,12 +258,14 @@ async function setFixedAfterDurable(p, date) {
         const result = await p.evaluate(() => {
           checkSessionExpiry();
           const v = window.TWRC_VAULT;
-          const oldValue = localStorage.getItem('twrc.settings.v1');
-          let refused = false;
+          const oldValue = localStorage.getItem('twrc.settings.v1'), sealed = window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT);
+          let refused = false, refusedDevice = false;
           try { localStorage.setItem('twrc.settings.v1', 'new-secret-after-expiration'); }
           catch (e) { refused = e.expired === true; }
+          try { localStorage.setItem('twrc.weather.incidents.v1', 'incident-after-expiration'); }
+          catch (e) { refusedDevice = e.expired === true; }
           return {
-            mode: v.mode, locked: LOCKED(), refused, oldValue,
+            mode: v.mode, locked: LOCKED(), refused, refusedDevice, oldValue, sealed,
             hidden: document.body.classList.contains('twrc-session-expired'),
             overlay: !!document.getElementById('twrcExpiryOverlay'),
             persisted: window.TWRC_RAW_STORAGE.getItem('twrc.settings.v1')
@@ -234,6 +274,11 @@ async function setFixedAfterDurable(p, date) {
         assert.equal(result.mode, 'expired');
         assert.equal(result.locked, true);
         assert.equal(result.refused, true);
+        assert.equal(result.refusedDevice, true, 'clé propre à l’appareil refusée aussi après l’expiration');
+        await p.evaluate(() => { window.__e2e73Tick = 0; setTimeout(() => { window.__e2e73Tick = 1; }, 50); });
+        await wait(500);
+        assert.equal(await p.evaluate(() => window.__e2e73Tick), 1, 'minuteries de la page actives pendant l’attente');
+        assert.equal(await p.evaluate(() => window.TWRC_RAW_STORAGE.getItem(SessionVault.VAULT)), result.sealed, 'aucune écriture du coffre après l’expiration');
         assert.equal(result.oldValue, null);
         assert.equal(result.hidden, true);
         assert.equal(result.overlay, true);
