@@ -472,6 +472,56 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     for (const [key, value] of Object.entries(L)) if (SV.secret(key)) assert.equal(restored.store.getItem(key), value, key);
     assert.deepEqual(leaks(destination), []); assert(origin.getItem(SV.VAULT), 'origine conservée pour retour arrière');
   });
+  // Écritures forcées dans chaque état du coffre (diagnostic e2e73) : le coffre n'est modifiable qu'en session valide.
+  // Preuve = octets du coffre identiques ET contenu déchiffré identique (relu sur une copie isolée) ET aucune marque en clair.
+  // Le témoin (session valide) prouve que ces contrôles détectent bien une écriture.
+  {
+    const MARK = 'ECRITURE-FORCEE-INTERDITE', KEYS = ['twrc.settings.v1', 'twrc.context.v1', 'twrc.weather.incidents.v1'];
+    const forced = (st, all) => { const r = {};
+      const writes = [['incidents', () => st.setItem('twrc.weather.incidents.v1', MARK)], ['settings', () => st.setItem('twrc.settings.v1', MARK)]];
+      // removeItem/clear toucheraient le journal en session valide (refus voulu de JournalArchive) : hors témoin.
+      if (all) writes.push(['remove', () => st.removeItem('twrc.context.v1')], ['clear', () => st.clear()]);
+      for (const [n, f] of writes) { try { f(); r[n] = 'acceptée'; } catch (e) { r[n] = 'refusée'; } }
+      return r; };
+    // Relecture sur une COPIE du stockage : déverrouiller l'original changerait l'état de l'onglet testé.
+    const readBack = async src => { const raw = fakeStorage(); fill(raw, src.dump()); const v = make(raw, session()).vs;
+      assert.equal(await v.boot(), 'locked'); await v.unlock(PASS); return JSON.stringify(KEYS.map(k => [k, v.store.getItem(k)])); };
+    const marked = raw => Object.values(raw.dump()).some(v => v.includes(MARK));
+    const states = [
+      ['témoin : session valide', async ({ A }) => A, false],
+      ['1 · verrouillage dans cet onglet', async ({ A }) => { await A.lock(); return A; }],
+      ['2 · verrou posé par un autre onglet, sans événement', async ({ A, raw }) => { raw.setItem(SV.LOCK_SIGNAL, 'autre-onglet'); return A; }],
+      ['3 · événement storage de verrou', async ({ A, raw }) => { raw.setItem(SV.LOCK_SIGNAL, 'evt'); await A.onStorage({ key: SV.LOCK_SIGNAL, newValue: 'evt' }); return A; }],
+      ['4 · expiration (7 jours + 1 ms)', async ({ A, at }) => { at(A.expiresAt + 1); assert.equal(A.expired(), true); return A; }],
+      ['5 · nouvelle page verrouillée', async ({ raw }) => { const B = make(raw, session()).vs; assert.equal(await B.boot(), 'locked'); return B; }],
+      ['6 · page rechargée après le délai', async ({ A, raw, ses }) => { const B = make(raw, ses, { now: () => A.expiresAt + 1 }).vs; assert.equal(await B.boot(), 'locked'); return B; }]
+    ];
+    for (const [name, enter, all = true] of states) await test('écritures forcées · ' + name, async () => {
+      const raw = fakeStorage(); fill(raw, LEGACY()); const ses = session(); let current = Date.now();
+      const A = make(raw, ses, { now: () => current }).vs; assert.equal(await A.boot(), 'vault');
+      const ref = await readBack(raw), sealed = raw.getItem(SV.VAULT);
+      const st = await enter({ A, raw, ses, at: t => { current = t; } });
+      const result = forced(st.store, all); try { await st.flush(); } catch (e) { /* refus attendu hors session valide */ } await tick(); await tick();
+      const same = raw.getItem(SV.VAULT) === sealed, content = await readBack(raw) === ref;
+      if (!all) {   // témoin : la même méthode DOIT voir l'écriture, sinon la preuve ne vaut rien
+        assert.deepEqual(result, { incidents: 'acceptée', settings: 'acceptée' });
+        assert.equal(same, false, 'témoin : coffre réécrit'); assert.equal(content, false, 'témoin : contenu déchiffré changé'); return;
+      }
+      if (/^[1-4] /.test(name)) assert(Object.values(result).every(x => x === 'refusée'), 'écriture refusée dès l’accès : ' + JSON.stringify(result));
+      assert.equal(same, true, 'coffre identique octet par octet'); assert.equal(content, true, 'contenu déchiffré identique');
+      assert.equal(marked(raw), false, 'aucune valeur forcée en clair sur le disque'); assert.deepEqual(leaks(raw), []);
+      assert.equal(st.mode === 'vault', false);
+    });
+    // 7 · DETTE connue (Zero Data Loss) : une saisie faite pendant que la page est verrouillée est abandonnée au
+    // déverrouillage, sans avertissement. Ce test fige seulement la garantie de sécurité : rien n'atteint le coffre.
+    await test('écritures forcées · 7 · page verrouillée puis déverrouillée : rien n’est reporté dans le coffre', async () => {
+      const raw = fakeStorage(); fill(raw, LEGACY()); assert.equal(await make(raw, session()).vs.boot(), 'vault');
+      const ref = await readBack(raw), B = make(raw, session()).vs; assert.equal(await B.boot(), 'locked');
+      forced(B.store, false); await B.unlock(PASS); await B.flush(); B.store.setItem('twrc.view', 'garage'); await B.flush(); await tick();
+      assert.equal(B.mode, 'vault'); assert.equal(await readBack(raw), ref, 'contenu déchiffré identique');
+      assert.equal(marked(raw), false); assert.notEqual(B.store.getItem('twrc.settings.v1'), MARK, 'page déverrouillée = contenu du coffre');
+    });
+  }
   return count;
 }
 module.exports = { runTests, sourcePath };
@@ -494,6 +544,8 @@ if (require.main === module) (async () => {
     { name: 'déverrouillage ignore les sauvegardes en attente', from: "while (st.mode === 'vault' && st.mem.dirty.size) await savePending();\n      return unlockInside(pass, extra, keepWeek);", to: "return unlockInside(pass, extra, keepWeek);" },
     { name: 'clé ancienne réutilisée après un verrouillage manqué', from: "(ses.l ?? null) === signal", to: "true" },
     { name: 'notification de verrou périmée acceptée', from: "if (st.mode === 'vault' && raw.getItem(LOCK_SIGNAL) === st.lockSignal) return null;", to: "" },
+    { name: 'écriture acceptée en session verrouillée ou expirée', from: "if (expire() || st.mode !== 'vault') {", to: "if (false) {" },
+    { name: 'saisies verrouillées reprises au déverrouillage', from: "st.mem = memStore(raw, vals, persist, allowStore);", to: "st.mem = memStore(raw, { ...vals, ...(st.mem ? Object.fromEntries(st.mem.map) : {}) }, persist, allowStore);" },
     { name: 'démarrage sans coffre retardé par un verrou', from: "if (!readVault(raw) && !raw.getItem('twrc.key') && !raw.getItem(V1))", to: "if (false)" }
   ];
   for (const m of mutations) {
