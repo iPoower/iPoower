@@ -19,6 +19,17 @@
 // `race-control-relay`, tout nouveau run restait derrière lui : 1 h 36 sans relais. Désormais, quand les données sont
 // dues, un run du relais encore actif après STUCK_MIN (le job a un timeout de 8 min) est annulé ; le relais est relancé
 // au tick suivant. Rien n'est annulé tant qu'obs.json est frais (aucun appel GitHub dans ce cas).
+//
+// Horodatages GitHub dans le futur (incident du 1er novembre 2026) : depuis ~08:00 UTC, l'API renvoyait created_at et
+// run_started_at décalés de +1 h ; un run « futur » restait « récent » pendant ~1 h et bloquait la garde. Toute heure de
+// run au-delà de maintenant + SKEW_TOLERANCE_MS est ramenée à maintenant (runTime) ; un run publié ainsi daté ne retient
+// l'horloge que COOLDOWN_MIN après le passage à « dû » (voir guard), jamais ~1 h. Et le refroidissement (attente de
+// GitHub Pages) ne compte plus que les runs qui ont réellement publié : un run réussi dont le job privilégié a été sauté
+// (relais différé ou refusé par le contrôle de confiance) ou dont l'étape « Publier » n'a pas tourné (données pas encore
+// dues) ne retient plus l'horloge. Ce n'est connaissable que par la liste des jobs : au plus MAX_JOB_LOOKUPS appels, et
+// seulement quand obs.json est en retard, sans run actif, avec un run réussi dans la fenêtre. Réponse illisible : le run
+// compte (comportement antérieur, prudent). Les runs terminés sans succès (échec, annulation) restent comptés : sans
+// cela, un relais en échec persistant (CI rouge) serait relancé à chaque minute (tempête et notifications d'échec).
 export const REPO = 'iPoower/iPoower';
 export const WORKFLOW = 'race-control.yml';
 export const RELAY_WORKFLOWS = ['race-control.yml', 'race-control-watchdog.yml'];
@@ -26,6 +37,9 @@ export const OBS_URL = 'https://ipoower.github.io/iPoower/race-control/obs.json'
 export const DUE_MIN = 8;        // même seuil que l'étape « Vérifier si une vraie synchronisation est due » du workflow
 export const COOLDOWN_MIN = 6;   // run récent après le passage à « dû » : on attend sa publication par GitHub Pages
 export const STUCK_MIN = 20;     // run du relais toujours actif après 20 min (timeout du job : 8 min) : bloqué
+export const SKEW_TOLERANCE_MS = 60e3;   // heure de run plus d'une minute dans le futur : ramenée à maintenant
+export const MAX_JOB_LOOKUPS = 3;        // appels « jobs » au plus par tick (seulement si obs.json est en retard)
+export const PRIVILEGED_JOBS = ['relay', 'watchdog'];   // job qui publie dans race-control.yml / race-control-watchdog.yml
 const ACTIVE = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
 const GH = 'https://api.github.com/repos/' + REPO + '/actions';
 
@@ -38,16 +52,42 @@ export function decide(obs, now) {
   return { decision: age >= DUE_MIN ? 'stale' : 'fresh', age, staleSince: t + DUE_MIN * 60e3 };
 }
 
+// Heure d'un run selon l'horloge du Worker : illisible = NaN ; plus de SKEW_TOLERANCE_MS dans le futur = maintenant. Pur.
+export function runTime(value, now) {
+  const t = Date.parse(value);
+  if (!Number.isFinite(t)) return NaN;
+  return t > now + SKEW_TOLERANCE_MS ? now : t;
+}
+// Début de la fenêtre de refroidissement : après le passage à « dû » et dans les COOLDOWN_MIN dernières minutes. Pur.
+export function cooldownSince(now, staleSince) {
+  return Math.max(staleSince == null ? -Infinity : staleSince - 60e3, now - COOLDOWN_MIN * 60e3);
+}
 // Runs bloqués : actifs (en file, en attente, en cours) depuis au moins STUCK_MIN. Pur.
 export function stuckRuns(runs, now) {
-  return runs.filter(r => ACTIVE.has(r.status) && Number.isFinite(Date.parse(r.created_at)) && now - Date.parse(r.created_at) >= STUCK_MIN * 60e3);
+  return runs.filter(r => ACTIVE.has(r.status) && Number.isFinite(runTime(r.created_at, now)) && now - runTime(r.created_at, now) >= STUCK_MIN * 60e3);
 }
-// Garde pure : runs = [{ status, created_at }] des workflows du relais. staleSince inconnu (obs illisible) : tout run récent compte.
+// Un run réussi qui aurait publié retiendrait-il l'horloge ? Heure fiable : dans la fenêtre de refroidissement. Heure dans
+// le futur (ramenée à maintenant, vraie heure inconnue) : seulement pendant les COOLDOWN_MIN qui suivent le passage à « dû »,
+// fenêtre maximale d'un run normal, jamais pendant toute la durée du décalage. Pur.
+export function inCooldown(r, now, staleSince) {
+  if (Date.parse(r.created_at) > now + SKEW_TOLERANCE_MS) return staleSince != null && now < staleSince + COOLDOWN_MIN * 60e3;
+  return runTime(r.created_at, now) >= cooldownSince(now, staleSince);
+}
+// Runs réussis dont il faut savoir s'ils ont publié : seulement ceux qui retiendraient l'horloge, les plus récents d'abord
+// (heure brute), au plus MAX_JOB_LOOKUPS ; les autres restent « inconnus » et comptent. Pur.
+export function publicationCandidates(runs, now, staleSince) {
+  return runs.filter(r => r.status === 'completed' && r.conclusion === 'success' && r.published == null && Number.isSafeInteger(r.id) &&
+    inCooldown(r, now, staleSince)).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)).slice(0, MAX_JOB_LOOKUPS);
+}
+// Garde pure : runs = [{ status, conclusion, created_at, published }] des workflows du relais. published : true (a publié),
+// false (job privilégié sauté ou étape « Publier » non exécutée : n'a rien publié), absent (inconnu : compte, par prudence).
+// staleSince inconnu (obs illisible) : tout run récent compte.
 export function guard(runs, now, staleSince) {
   if (runs.some(r => ACTIVE.has(r.status))) return { go: false, reason: 'relais déjà en cours' };
-  const since = Math.max(staleSince == null ? -Infinity : staleSince - 60e3, now - COOLDOWN_MIN * 60e3);
-  if (runs.some(r => Date.parse(r.created_at) >= since)) return { go: false, reason: 'cooldown : run récent en publication' };
-  return { go: true, reason: 'aucun run en cours ni récent' };
+  const since = cooldownSince(now, staleSince), recent = runs.filter(r => runTime(r.created_at, now) >= since);
+  if (runs.some(r => r.conclusion === 'success' && r.published !== false && inCooldown(r, now, staleSince))) return { go: false, reason: 'cooldown : run récent en publication' };
+  if (recent.some(r => r.conclusion !== 'success')) return { go: false, reason: 'espacement : run récent sans succès' };
+  return { go: true, reason: recent.length ? 'runs récents sans publication (différés, non dus ou datés du futur) ignorés' : 'aucun run en cours ni récent' };
 }
 
 export async function readObs(fetchImpl, now) {
@@ -65,9 +105,25 @@ async function relayRuns(env, fetchImpl) {
     // liste indisponible : erreur, et surtout aucun dispatch à l'aveugle (risque de tempête)
     if (!r.ok) throw new Error(`Liste des runs indisponible : HTTP ${r.status}`);
     const j = await r.json();
-    return (j && Array.isArray(j.workflow_runs) ? j.workflow_runs : []).map(x => ({ id: x.id, status: x.status, created_at: x.created_at }));
+    return (j && Array.isArray(j.workflow_runs) ? j.workflow_runs : []).map(x => ({ id: x.id, status: x.status, conclusion: x.conclusion ?? null,
+      created_at: x.created_at, run_started_at: x.run_started_at ?? null }));
   }));
   return lists.flat();
+}
+// A publié ? true · false (job privilégié sauté, ou étape « Publier » sautée) · null (inconnu : le run comptera). Ne lève jamais.
+export async function runPublished(env, fetchImpl, id) {
+  try {
+    const r = await fetchImpl(`${GH}/runs/${id}/jobs?per_page=10`, { headers: ghHeaders(env), signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return null;
+    const j = await r.json(), jobs = j && Array.isArray(j.jobs) ? j.jobs : [];
+    const priv = jobs.filter(x => x && PRIVILEGED_JOBS.includes(x.name));
+    if (priv.length !== 1) return null;
+    if (priv[0].status === 'completed' && priv[0].conclusion === 'skipped') return false;
+    if (priv[0].status !== 'completed' || priv[0].conclusion !== 'success' || !Array.isArray(priv[0].steps)) return null;
+    const pub = priv[0].steps.filter(st => st && typeof st.name === 'string' && st.name.startsWith('Publier'));
+    if (pub.length !== 1) return null;
+    return pub[0].conclusion === 'success' ? true : pub[0].conclusion === 'skipped' ? false : null;
+  } catch (e) { return null; }
 }
 
 // Une exécution du chien de garde. Retourne un résumé technique (sans donnée personnelle) et le journalise en une ligne JSON.
@@ -90,6 +146,9 @@ export async function tick(env, { fetchImpl = fetch, now = Date.now(), log = con
       const oldest = Math.max(...stuck.map(r => now - Date.parse(r.created_at)));
       out.action = 'cancelled'; out.reason = `${stuck.length} run${stuck.length > 1 ? 's' : ''} bloqué${stuck.length > 1 ? 's' : ''} depuis ${Math.round(oldest / 60e3)} min annulé${stuck.length > 1 ? 's' : ''}`;
       return out;
+    }
+    if (!runs.some(r => ACTIVE.has(r.status))) {
+      for (const r of publicationCandidates(runs, now, d.staleSince)) r.published = await runPublished(env, fetchImpl, r.id);
     }
     const g = guard(runs, now, d.staleSince);
     if (!g.go) { out.action = 'skipped'; out.reason = g.reason; return out; }

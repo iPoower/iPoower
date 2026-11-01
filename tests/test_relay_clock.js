@@ -12,17 +12,21 @@ const TOKEN = 'jeton-de-test-uniquement';
 
   // Monde : obs.updated réel, publié sur Pages 60 s après le commit ; un run met 30 s à démarrer et 90 s à finir.
   // Le relais ne rafraîchit obs.json que s'il le trouve dû (≥ 8 min), comme l'étape « Vérifier si une vraie synchronisation est due ».
-  function world({ updated = T0 - 20 * 60e3, relayWorks = true, obsMode = 'ok', dispatchStatus = 204, runsStatus = 200, cancelStatus = 202 } = {}) {
-    const S = { now: T0, updated, published: [{ at: -Infinity, updated }], runs: [], dispatches: 0, cancels: [], calls: [], logs: [], nextId: 1000 };
+  // skewMs : décalage des horodatages renvoyés par l'API (incident du 1er novembre 2026 : +1 h). deferUntil : runs créés avant
+  // cette heure différés par le contrôle de confiance (job privilégié sauté). relayWorks=false : le relais échoue (run rouge).
+  function world({ updated = T0 - 20 * 60e3, relayWorks = true, obsMode = 'ok', dispatchStatus = 204, runsStatus = 200, cancelStatus = 202, skewMs = 0, deferUntil = -Infinity, jobsStatus = 200 } = {}) {
+    const S = { now: T0, updated, published: [{ at: -Infinity, updated }], runs: [], dispatches: 0, cancels: [], calls: [], logs: [], nextId: 1000, jobCalls: 0 };
     const servedObs = () => { const p = S.published.filter(x => x.at <= S.now).pop(); return p && p.updated; };
     const advance = () => S.runs.forEach(r => {
       if (!r.id) r.id = S.nextId++;
       if (r.stuck && r.status !== 'completed') return;   // run coincé (environnement « waiting ») : ne finit jamais seul
       const age = S.now - r.created;
       if (r.status !== 'completed' && age >= 90e3) {
-        r.status = 'completed'; r.conclusion = 'success';
+        r.status = 'completed'; r.conclusion = relayWorks || r.created < deferUntil ? 'success' : 'failure';
         const startAt = r.created + 30e3;
-        if (relayWorks && startAt - S.updated >= 8 * 60e3) { S.updated = r.created + 90e3; S.published.push({ at: r.created + 150e3, updated: S.updated }); }
+        if (r.created < deferUntil) { r.deferred = true; r.pub = false; }
+        else if (relayWorks && startAt - S.updated >= 8 * 60e3) { r.pub = true; S.updated = r.created + 90e3; S.published.push({ at: r.created + 150e3, updated: S.updated }); }
+        else r.pub = false;
       } else if (r.status === 'queued' && age >= 30e3) r.status = 'in_progress';
     });
     const fetchImpl = async (url, init = {}) => {
@@ -37,8 +41,21 @@ const TOKEN = 'jeton-de-test-uniquement';
       const m = RUNS_RE.exec(url);
       if (m && (!init.method || init.method === 'GET')) {
         if (runsStatus !== 200) return { ok: false, status: runsStatus, json: async () => ({}) };
-        const list = S.runs.filter(r => r.wf === m[1]).slice().reverse().map(r => ({ id: r.id, status: r.status, conclusion: r.conclusion || null, created_at: new Date(r.created).toISOString(), event: r.event }));
+        const list = S.runs.filter(r => r.wf === m[1]).slice().reverse().map(r => ({ id: r.id, status: r.status, conclusion: r.conclusion || null,
+          created_at: new Date(r.created + skewMs).toISOString(), run_started_at: new Date(r.created + 30e3 + skewMs).toISOString(), event: r.event }));
         return { ok: true, status: 200, json: async () => ({ total_count: list.length, workflow_runs: list }) };
+      }
+      const jm = /\/actions\/runs\/(\d+)\/jobs\?per_page=10$/.exec(url);
+      if (jm && (!init.method || init.method === 'GET')) {
+        S.jobCalls++;
+        if (jobsStatus !== 200) return { ok: false, status: jobsStatus, json: async () => ({}) };
+        const r = S.runs.find(x => x.id === +jm[1]);
+        if (!r) return { ok: false, status: 404, json: async () => ({}) };
+        const name = r.wf === 'race-control.yml' ? 'relay' : 'watchdog', done = r.status === 'completed';
+        const priv = r.deferred ? { name, status: 'completed', conclusion: 'skipped', steps: [] }
+          : { name, status: r.status, conclusion: done ? r.conclusion : null, steps: [{ name: 'Vérifier la fraîcheur sans exécuter la production', conclusion: 'success' },
+            { name: 'Publier seulement les sorties JSON (aucun secret applicatif)', conclusion: done ? (r.pub === false ? 'skipped' : 'success') : null }] };
+        return { ok: true, status: 200, json: async () => ({ total_count: 2, jobs: [{ name: 'approved', status: 'completed', conclusion: 'success', steps: [] }, priv] }) };
       }
       const cm = /\/actions\/runs\/(\d+)\/cancel$/.exec(url);
       if (cm && init.method === 'POST') {
@@ -142,6 +159,88 @@ const TOKEN = 'jeton-de-test-uniquement';
     const w = world({ updated: T0 - 30 * 60e3, cancelStatus: 403 }); w.S.runs.push({ wf: 'race-control-watchdog.yml', created: T0 - 40 * 60e3, status: 'waiting', stuck: true });
     await assert.rejects(w.tick(), e => /HTTP 403/.test(e.message) && !e.message.includes(TOKEN)); assert.equal(w.S.dispatches, 0);
     const o = JSON.parse(w.S.logs[w.S.logs.length - 1]); assert.equal(o.action, 'error'); assert.equal(o.status, 403);
+  });
+
+  // — horodatages futurs et runs sans publication (incident du 1er novembre 2026)
+  // Scénarios rejouables sur un module donné (le vrai, puis des mutants) : renvoie le nom du premier scénario en défaut.
+  async function clockSafe(M) {
+    let failed = null;
+    const check = (name, ok) => { if (!ok && !failed) failed = name; };
+    const at = (wf, created, extra = {}) => ({ wf, created, status: 'completed', conclusion: 'success', event: 'workflow_dispatch', ...extra });
+    const run = async (opts, runs) => {
+      const w = world(opts); runs.forEach(r => w.S.runs.push(r));
+      const r = await M.tick({ GH_TOKEN: TOKEN }, { fetchImpl: w.fetchImpl, now: w.S.now, log: () => {} }).catch(e => ({ error: e.message }));
+      return { r, w };
+    };
+    check('runTime futur', M.runTime(new Date(T0 + 3600e3).toISOString(), T0) === T0 && M.runTime(new Date(T0 + 30e3).toISOString(), T0) === T0 + 30e3 &&
+      M.runTime(new Date(T0 - 60e3).toISOString(), T0) === T0 - 60e3 && Number.isNaN(M.runTime('pas une date', T0)));
+    // run différé (job relais sauté) daté +1 h : ne bloque pas
+    let x = await run({ updated: T0 - 12 * 60e3, skewMs: 3600e3 }, [at('race-control.yml', T0 - 2 * 60e3, { deferred: true })]);
+    check('différé futur', x.r.action === 'dispatched');
+    // run différé à l'heure : ne compte pas dans le refroidissement
+    x = await run({ updated: T0 - 12 * 60e3 }, [at('race-control-watchdog.yml', T0 - 2 * 60e3, { deferred: true })]);
+    check('différé', x.r.action === 'dispatched');
+    // run réussi mais données pas encore dues (étape Publier sautée) : ne compte pas
+    x = await run({ updated: T0 - 12 * 60e3 }, [at('race-control.yml', T0 - 2 * 60e3, { pub: false })]);
+    check('non dû', x.r.action === 'dispatched');
+    // run qui a publié il y a 2 min : refroidissement conservé
+    x = await run({ updated: T0 - 9 * 60e3 }, [at('race-control.yml', T0 - 60e3, { pub: true })]);
+    check('publié', x.r.action === 'skipped' && /cooldown/.test(x.r.reason));
+    // run publié daté +1 h : retient au plus COOLDOWN_MIN après le passage à « dû »
+    x = await run({ updated: T0 - 9 * 60e3, skewMs: 3600e3 }, [at('race-control.yml', T0 - 60e3, { pub: true })]);
+    check('publié futur récent', x.r.action === 'skipped');
+    x = await run({ updated: T0 - 20 * 60e3, skewMs: 3600e3 }, [at('race-control.yml', T0 - 60e3, { pub: true })]);
+    check('publié futur borné', x.r.action === 'dispatched');
+    // run rouge récent : espacement anti-tempête conservé
+    x = await run({ updated: T0 - 12 * 60e3 }, [at('race-control.yml', T0 - 2 * 60e3, { conclusion: 'failure', pub: false })]);
+    check('échec', x.r.action === 'skipped' && /espacement|cooldown/.test(x.r.reason));
+    // liste des jobs illisible : prudence, le run compte (comportement antérieur)
+    x = await run({ updated: T0 - 12 * 60e3, jobsStatus: 403 }, [at('race-control.yml', T0 - 2 * 60e3, { deferred: true })]);
+    check('jobs illisibles', x.r.action === 'skipped');
+    // budget : au plus MAX_JOB_LOOKUPS appels jobs ; aucun si un run est actif ou si obs.json est frais
+    x = await run({ updated: T0 - 12 * 60e3 }, Array.from({ length: 5 }, (_, i) => at(i % 2 ? 'race-control.yml' : 'race-control-watchdog.yml', T0 - (i + 1) * 30e3, { deferred: true })));
+    check('budget', x.w.S.jobCalls === 3 && x.r.action === 'skipped');
+    x = await run({ updated: T0 - 12 * 60e3 }, [at('race-control.yml', T0 - 2 * 60e3, { deferred: true }), at('race-control-watchdog.yml', T0 - 10e3, { status: 'in_progress', conclusion: null })]);
+    check('actif', x.w.S.jobCalls === 0 && x.r.action === 'skipped');
+    x = await run({ updated: T0 - 2 * 60e3 }, [at('race-control.yml', T0 - 60e3, { deferred: true })]);
+    check('frais', x.w.S.jobCalls === 0 && !x.w.S.calls.some(c => c.url.includes('api.github.com')));
+    return failed;
+  }
+  await test('horodatage futur, runs différés ou non dus : l’horloge n’est plus bloquée ; publiés, rouges et inconnus comptent', async () => {
+    assert.equal(await clockSafe(W), null);
+  });
+  await test('contre-tests (mutations de clock.mjs) : chaque protection retirée fait échouer un scénario', async () => {
+    const src = fs.readFileSync(path.join(__dirname, '../tools/relay-clock/clock.mjs'), 'utf8');
+    for (const [from, to] of [
+      ['return t > now + SKEW_TOLERANCE_MS ? now : t;', 'return t;'],
+      ["r.conclusion === 'success' && r.published !== false && inCooldown", "r.conclusion === 'success' && inCooldown"],
+      ['if (Date.parse(r.created_at) > now + SKEW_TOLERANCE_MS) return staleSince != null && now < staleSince + COOLDOWN_MIN * 60e3;', 'if (Date.parse(r.created_at) > now + SKEW_TOLERANCE_MS) return true;'],
+      ["if (recent.some(r => r.conclusion !== 'success')) return { go: false, reason: 'espacement : run récent sans succès' };", ''],
+      ['if (!r.ok) return null;', 'if (!r.ok) return false;'],
+      ['.slice(0, MAX_JOB_LOOKUPS);', ';'],
+      ["if (priv[0].status === 'completed' && priv[0].conclusion === 'skipped') return false;", ''],
+      ["return pub[0].conclusion === 'success' ? true : pub[0].conclusion === 'skipped' ? false : null;", 'return true;']]) {
+      assert.equal(src.split(from).length, 2, 'mutation introuvable : ' + from);
+      const M = await import('data:text/javascript;base64,' + Buffer.from(src.replace(from, to)).toString('base64'));
+      assert.notEqual(await clockSafe(M), null, 'mutation non détectée : ' + from);
+    }
+  });
+  await test('rejeu du 1er novembre : horodatages +1 h et CI en cours 20 min sans SHA vert → relais rétabli dès la fin de la CI', async () => {
+    const replay = async M => {
+      const w = world({ updated: T0 - 9 * 60e3, skewMs: 3600e3, deferUntil: T0 + 20 * 60e3 }), out = [];
+      for (let i = 0; i < 90; i++) { out.push(await M.tick({ GH_TOKEN: TOKEN }, { fetchImpl: w.fetchImpl, now: w.S.now, log: () => {} }).catch(e => ({ error: e.message }))); w.S.now += 60e3; }
+      return { maxAge: Math.max(...out.map(o => o.age || 0)), dispatches: w.S.dispatches, errors: out.filter(o => o.error).length, jobCalls: w.S.jobCalls };
+    };
+    const after = await replay(W);
+    assert.equal(after.errors, 0); assert(after.maxAge < 35, 'âge maximal ' + after.maxAge.toFixed(1) + ' min');
+    assert(after.dispatches <= 20, after.dispatches + ' dispatches en 90 min');
+    // Ancienne garde (tout run récent compte, sans borne pour les dates futures) : l'horloge restait bloquée ~1 h.
+    const src = fs.readFileSync(path.join(__dirname, '../tools/relay-clock/clock.mjs'), 'utf8');
+    const old = src.replace("r.conclusion === 'success' && r.published !== false && inCooldown", "r.conclusion === 'success' && inCooldown")
+      .replace('if (Date.parse(r.created_at) > now + SKEW_TOLERANCE_MS) return staleSince != null && now < staleSince + COOLDOWN_MIN * 60e3;', 'if (Date.parse(r.created_at) > now + SKEW_TOLERANCE_MS) return true;');
+    const before = await replay(await import('data:text/javascript;base64,' + Buffer.from(old).toString('base64')));
+    assert(before.maxAge > 60, 'ancienne garde : âge maximal ' + before.maxAge.toFixed(1) + ' min');
+    console.log(`   ↳ 1er novembre rejoué : âge max ${after.maxAge.toFixed(1)} min (ancienne garde ${before.maxAge.toFixed(1)} min), ${after.dispatches} dispatches, ${after.jobCalls} appels jobs en 90 min`);
   });
 
   // — pannes et sécurité
