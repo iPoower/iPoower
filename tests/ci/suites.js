@@ -158,3 +158,4 @@ SUITE.push(['e2e86-html-security.js', 'NOESIS : texte véhicule, attribut photo,
 SUITE.push(['test_drive_store_reopen.js', 'NOESIS-RC-003 : IndexedDB réessayable après erreur, blocage, versionchange et fermeture sans purge', false]);
 SUITE.push(['test_tread_wheels.js', 'profondeur par pneu : migration sans perte, minimum par essieu, usure irrégulière, relevé dépassé, fusion et contre-tests', false],
   ['e2e90-profondeur-par-pneu.js', 'profondeur par pneu : saisie 4 × 2 points, minimum par essieu, usure irrégulière, transition, rechargement et 320 px, PC/iPhone', true]);
+SUITE.push(['e2e101-profondeur-prod190.js', 'profondeur par pneu : compatibilité avec le vrai build en production 502852864dbd (fusion, lecture, saisie par essieu, changement de monte, rechargement), PC/iPhone', true]);

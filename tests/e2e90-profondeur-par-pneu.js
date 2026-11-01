@@ -48,24 +48,27 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     const i = 0, ready = await p.evaluate(() => ({ id: S.cars[0].id, type: S.cars[0].tire.type, n: Object.keys(S.treadWheels || {}).length }));
     check('monte été active, aucun relevé par pneu au départ', ready.type === 'summer' && ready.n === 0, JSON.stringify(ready));
     await p.locator('#trw-0').scrollIntoViewIfNeeded();
+    const carName = await p.evaluate(() => String(S.cars[0].short || S.cars[0].name || S.cars[0].id));
+    check('libellés : nom de la voiture sur chaque pneu, chaque champ et le bouton (accessibilité, mauvaise fiche évitée)', (await p.locator('#trw-0 legend').allInnerTexts()).every(t => t.startsWith(carName + ' · ')) &&
+      (await p.locator('#trw-0 input[type=number]').evaluateAll((els, n) => els.every(e => (e.getAttribute('aria-label') || '').startsWith(n + ' · ')), carName)) && (await p.locator('[data-act="tread-wheels"][data-i="0"]').innerText()).includes(carName));
     check('formulaire : 4 pneus × 2 points, date du jour et version de l’appareil', await p.locator('#trw-0 input[type=number]').count() === 8 &&
       /^\d{4}-\d{2}-\d{2}$/.test(await p.locator('#trw-0-d').inputValue()) && /Version de cet appareil/.test(await p.locator('#trw-0').innerText()));
     const fill = async v => { for (const [k, side, mid] of v) { await p.locator(`#trw-0-${k}-side`).fill(side); await p.locator(`#trw-0-${k}-mid`).fill(mid); } };
     const save = async () => { await p.locator('[data-act="tread-wheels"][data-i="0"]').click(); await p.waitForTimeout(600); };
     // Saisie invalide : refusée, rien d'écrit, aucune confirmation demandée avant la validation des valeurs ? (la confirmation précède : refusée ensuite)
-    await fill([['fl', '6,0', '6,2'], ['fr', '5,1', '6,4'], ['rl', '7', '7,1'], ['rr', '13', '6,9']]);
+    await fill([['fl', '6.0', '6.2'], ['fr', '5.1', '6.4'], ['rl', '7', '7.1'], ['rr', '13', '6.9']]);
     const before = await p.evaluate(() => JSON.stringify([S.cars[0].tire, S.treadWheels || null]));
     await save();
     check('valeur hors 0–12 mm refusée avec un message, aucune écriture', /AR droit · côté : saisis une profondeur de 0 à 12 mm/.test(await p.locator('[data-act="tread-wheels"][data-i="0"]').innerText()) &&
       await p.evaluate(() => JSON.stringify([S.cars[0].tire, S.treadWheels || null])) === before);
-    check('première saisie : confirmation de mise à jour du PC et de l’iPhone demandée', dialogs.length === 1 && /mis à jour/.test(dialogs[0]) && /Diagnostic/.test(dialogs[0]), JSON.stringify(dialogs));
+    check('saisie invalide : aucune question de transition posée', dialogs.length === 0, JSON.stringify(dialogs));
     // Saisie valide.
-    await p.locator('#trw-0-rr-side').fill('6,8'); await save();
+    await p.locator('#trw-0-rr-side').fill('6.8'); await save();
     const st = await p.evaluate(() => { const c = S.cars[0], r = treadWheelsRecord(S, c); return { av: c.tire.treadAv, ar: c.tire.treadAr, t: c.tire.tread, r, key: Object.keys(S.treadWheels || {}), inTire: 'treadWheels' in c.tire, hist: (c.tire.treads || []).map(x => x.ax + ':' + x.mm) }; });
     check('enregistré : minimum par essieu (AV 5,1 / AR 6,8), relevé séparé hors de la fiche pneu', st.av === 5.1 && st.ar === 6.8 && st.t === 5.1 && st.r && st.r.fr.side === 5.1 && st.r.fl.side === 6 &&
       st.key.length === 1 && st.key[0] === 'car-' + ready.id && !st.inTire, JSON.stringify(st));
     check('historique daté : une ligne par essieu (minimum)', st.hist.includes('av:5.1') && st.hist.includes('ar:6.8'), JSON.stringify(st.hist));
-    check('confirmation demandée une seule fois', dialogs.length === 1, JSON.stringify(dialogs));
+    check('première saisie valide : confirmation de mise à jour du PC et de l’iPhone demandée, une seule fois', dialogs.length === 1 && /mis à jour/.test(dialogs[0]) && /Diagnostic/.test(dialogs[0]), JSON.stringify(dialogs));
     await p.locator('#trw-0').scrollIntoViewIfNeeded();
     const form = await p.locator('#trw-0').innerText();
     check('usure irrégulière affichée : AV droit, géométrie conseillée, seuil indicatif non réglementaire', /Usure irrégulière AV droit : écart côté \/ milieu de 1,3 mm/.test(form) && /Contrôle de géométrie conseillé/.test(form) && /non réglementaire/.test(form), form.slice(0, 600));

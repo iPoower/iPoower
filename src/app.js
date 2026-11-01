@@ -3413,16 +3413,18 @@ function treadWheelsForm(car, i) {
   const rec = treadWheelsRecord(S, car), v = treadWheels(car.tire, rec), f = x => String(x).replace('.', ',');
   const val = (k, p) => v && v.wheels[k][p] != null ? String(v.wheels[k][p]) : '';
   const AX = { av: 'de l’essieu avant', ar: 'de l’essieu arrière' };
-  const inp = (k, p, lbl) => `<label for="trw-${i}-${k}-${p}" style="display:block">${lbl}</label><input type="number" id="trw-${i}-${k}-${p}" inputmode="decimal" min="0" max="12" step="0.1" value="${esc(val(k, p))}" style="width:100%;min-width:0;box-sizing:border-box">`;
-  const cell = k => `<fieldset style="min-width:0;margin:0;padding:6px;border:1px solid var(--line, #8884);border-radius:8px"><legend>${esc(TREAD_WHEEL_LABEL[k])}</legend>${inp(k, 'side', 'Côté (mm)')}${inp(k, 'mid', 'Milieu (mm)')}</fieldset>`;
+  // Nom de la voiture dans chaque libellé (lecteur d'écran et risque de saisie sur la mauvaise fiche).
+  const carName = String(car.short || car.name || car.id);
+  const inp = (k, p, lbl) => `<label for="trw-${i}-${k}-${p}" style="display:block">${lbl}</label><input type="number" id="trw-${i}-${k}-${p}" inputmode="decimal" min="0" max="12" step="0.1" value="${esc(val(k, p))}" aria-label="${esc(carName + ' · ' + TREAD_WHEEL_LABEL[k] + ' · ' + lbl)}" style="width:100%;min-width:0;box-sizing:border-box">`;
+  const cell = k => `<fieldset style="min-width:0;margin:0;padding:6px;border:1px solid var(--line, #8884);border-radius:8px"><legend>${esc(carName)} · ${esc(TREAD_WHEEL_LABEL[k])}</legend>${inp(k, 'side', 'Côté (mm)')}${inp(k, 'mid', 'Milieu (mm)')}</fieldset>`;
   const notes = [];
   if (v) v.stale.forEach(ax => notes.push(`<p class="sub trw-stale" role="status">⚠️ La profondeur ${AX[ax]} a été modifiée après ce relevé (saisie par essieu, peut-être depuis un appareil pas encore à jour) : son détail par pneu n’est plus appliqué. Le verdict utilise la valeur par essieu (${f(v.axles[ax].current)} mm). Refais le relevé par pneu pour le rétablir.</p>`));
   if (v) v.irregular.forEach(w => notes.push(`<p class="sub trw-gap" role="status">⚠️ Usure irrégulière ${esc(w.label)} : écart côté / milieu de ${f(w.gap)} mm. Contrôle de géométrie conseillé. Seuil indicatif de 1 mm, non réglementaire.</p>`));
-  return `<div class="fld wide trw" id="trw-${i}"><label for="trw-${i}-d">Profondeur par pneu · date du relevé</label><input type="date" id="trw-${i}-d" value="${esc((v && v.d) || treadToday())}" max="${esc(treadToday())}">
+  return `<div class="fld wide trw" id="trw-${i}"><label for="trw-${i}-d">${esc(String(car.short || car.name || car.id))} · profondeur par pneu · date du relevé</label><input type="date" id="trw-${i}-d" value="${esc((v && v.d) || treadToday())}" max="${esc(treadToday())}">
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:6px">${['fl', 'fr', 'rl', 'rr'].map(cell).join('')}</div>
     ${notes.join('')}<p class="sub">Deux points par pneu : côté (épaule) et milieu. Le verdict et l’alerte de profondeur utilisent la valeur la plus basse de chaque essieu. Un point laissé vide n’est pas inventé ; un essieu sans aucun point garde sa valeur actuelle.</p>
     <p class="sub">Version de cet appareil : ${esc(window.TWRC_BUILD ? 'build ' + window.TWRC_BUILD : 'version locale')}. Avant la première saisie par pneu, mets à jour le PC et l’iPhone (même build dans Diagnostic).</p>
-    <button class="btn sm" data-act="tread-wheels" data-i="${i}">Enregistrer le relevé par pneu</button></div>`;
+    <button class="btn sm" data-act="tread-wheels" data-i="${i}">Enregistrer le relevé par pneu · ${esc(String(car.short || car.name || car.id))}</button></div>`;
 }
 // Rythme : règle unique de Garage.kmPerDay (deux relevés réels, plausible), utilisée par le Garage, l'entretien et l'usure.
 function kmPerDay(car) { return Garage.kmPerDay(car && car.odo); }
@@ -4255,6 +4257,9 @@ document.addEventListener('click', async e => {
     const input = {}; for (const k of Object.keys(TREAD_WHEELS)) input[k] = { side: ($(`#trw-${i}-${k}-side`) || {}).value, mid: ($(`#trw-${i}-${k}-mid`) || {}).value };
     const dateEl = $(`#trw-${i}-d`), date = (dateEl || {}).value;
     if (typeof date === 'string' && date > today) { commandFeedback(t, 'La date du relevé ne peut pas être dans le futur.', dateEl); return; }
+    // Valeurs vérifiées d'abord (sur une copie) : une saisie invalide ne déclenche jamais la question de transition.
+    const probe = setTreadWheels(JSON.parse(JSON.stringify(c.tire)), input, { date });
+    if (probe.error) { commandFeedback(t, probe.error); return; }
     // Transition : aucun appareil ne publie sa version dans la synchronisation ; l'utilisateur confirme une fois que ses appareils sont à jour.
     if (!Object.keys(S.treadWheels || {}).length && !confirm('Première saisie par pneu.\n\nLe PC et l’iPhone doivent d’abord être mis à jour (même build dans Diagnostic). Un appareil encore sur l’ancienne version lit la bonne profondeur et n’efface pas ce relevé, mais une saisie par essieu faite depuis lui remplacera le détail par pneu de cet essieu (signalé ici).\n\nTes appareils sont-ils à jour ?')) { commandFeedback(t, 'Relevé non enregistré : mets d’abord tes appareils à jour'); return; }
     const r = setTreadWheels(c.tire, input, { date });
