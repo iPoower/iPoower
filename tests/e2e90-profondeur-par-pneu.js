@@ -53,6 +53,8 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
       (await p.locator('#trw-0 input[type=number]').evaluateAll((els, n) => els.every(e => (e.getAttribute('aria-label') || '').startsWith(n + ' · ')), carName)) && (await p.locator('[data-act="tread-wheels"][data-i="0"]').innerText()).includes(carName));
     check('formulaire : 4 pneus × 2 points, date du jour et version de l’appareil', await p.locator('#trw-0 input[type=number]').count() === 8 &&
       /^\d{4}-\d{2}-\d{2}$/.test(await p.locator('#trw-0-d').inputValue()) && /Version de cet appareil/.test(await p.locator('#trw-0').innerText()));
+    // Statut précédent : profondeur ESTIMÉE (treadEst = 1). Un relevé par pneu à la jauge doit le remplacer par « mesurée ».
+    await p.evaluate(() => { S.cars[0].tire.treadEst = 1; saveSettings(); renderSettings(true); }); await openSettings(); await p.locator('#trw-0').scrollIntoViewIfNeeded();
     const fill = async v => { for (const [k, side, mid] of v) { await p.locator(`#trw-0-${k}-side`).fill(side); await p.locator(`#trw-0-${k}-mid`).fill(mid); } };
     const save = async () => { await p.locator('[data-act="tread-wheels"][data-i="0"]').click(); await p.waitForTimeout(600); };
     // Saisie invalide : refusée, rien d'écrit, aucune confirmation demandée avant la validation des valeurs ? (la confirmation précède : refusée ensuite)
@@ -67,6 +69,8 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     const st = await p.evaluate(() => { const c = S.cars[0], r = treadWheelsRecord(S, c); return { av: c.tire.treadAv, ar: c.tire.treadAr, t: c.tire.tread, r, key: Object.keys(S.treadWheels || {}), inTire: 'treadWheels' in c.tire, hist: (c.tire.treads || []).map(x => x.ax + ':' + x.mm) }; });
     check('enregistré : minimum par essieu (AV 5,1 / AR 6,8), relevé séparé hors de la fiche pneu', st.av === 5.1 && st.ar === 6.8 && st.t === 5.1 && st.r && st.r.fr.side === 5.1 && st.r.fl.side === 6 &&
       st.key.length === 1 && st.key[0] === 'car-' + ready.id && !st.inTire, JSON.stringify(st));
+    const origin = await p.evaluate(() => ({ est: S.cars[0].tire.treadEst, rec: treadWheelsRecord(S, S.cars[0]) && treadWheelsRecord(S, S.cars[0]).est, hist: (S.cars[0].tire.treads || []).filter(x => x.d === treadToday()).map(x => !!x.est), guard: tyreStateOf(S.cars[0]).tread.est }));
+    check('mesure par pneu : remplace le statut « estimée » précédent (treadEst 0, historique du jour non estimé)', origin.est === 0 && origin.guard === false && origin.hist.length > 0 && origin.hist.every(e => e === false), JSON.stringify(origin));
     check('historique daté : une ligne par essieu (minimum)', st.hist.includes('av:5.1') && st.hist.includes('ar:6.8'), JSON.stringify(st.hist));
     check('première saisie valide : confirmation de mise à jour du PC et de l’iPhone demandée, une seule fois', dialogs.length === 1 && /mis à jour/.test(dialogs[0]) && /Diagnostic/.test(dialogs[0]), JSON.stringify(dialogs));
     await p.locator('#trw-0').scrollIntoViewIfNeeded();

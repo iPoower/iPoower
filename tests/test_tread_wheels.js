@@ -63,6 +63,20 @@ function runTests(src = SOURCES, options = {}) {
     const r = enter(t, { fl: { side: 5.5 } }); assert.deepEqual(r.record.fl, { side: 5.5, mid: null });
     const v = plain(X.treadWheels(t, r.record)); assert.equal(v.wheels.fl.gap, null); assert.equal(v.wheels.fr.min, null);
   });
+  // ——— Origine du relevé (mesure / estimation) : remplace correctement le statut précédent, y compris par essieu
+  test('origine · mesure complète : remplace un statut « estimé » antérieur ; estimation complète : le pose', () => {
+    const t = tire({ treadAv: 6, treadAr: 6, tread: 6, treadEst: 1 }), r = plain(X.setTreadWheels(t, FULL, { date: '2026-10-30', est: false }));
+    assert.equal(t.treadEst, 0); assert.equal(r.record.est, 0);
+    const u = tire({ treadAv: 6, treadAr: 6, tread: 6, treadEst: 0 }); X.setTreadWheels(u, FULL, { date: '2026-10-30', est: true }); assert.equal(u.treadEst, 1);
+  });
+  test('origine · relevé partiel par essieu : le statut suit l’essieu le plus usé', () => {
+    // AR estimé et le plus usé (3 mm) ; mesure de l'AV seul à 5 mm → l'AR reste le plus usé, toujours estimé.
+    const a = tire({ treadAv: 6, treadAr: 3, tread: 3, treadEst: 1, treads: [{ d: '2026-10-01', mm: 3, ax: 'ar', est: 1 }, { d: '2026-10-01', mm: 6, ax: 'av', est: 1 }] });
+    X.setTreadWheels(a, { fl: { side: 5 }, fr: { side: 5.2 } }, { date: '2026-10-30', est: false }); assert.deepEqual([a.treadAv, a.treadAr, a.treadEst], [5, 3, 1]);
+    // Mesure de l'AV seul à 2 mm → l'AV devient le plus usé, mesuré : statut « mesuré ».
+    const b = tire({ treadAv: 6, treadAr: 3, tread: 3, treadEst: 1, treads: [{ d: '2026-10-01', mm: 3, ax: 'ar', est: 1 }] });
+    X.setTreadWheels(b, { fl: { side: 2 } }, { date: '2026-10-30', est: false }); assert.deepEqual([b.treadAv, b.treadAr, b.treadEst], [2, 3, 0]);
+  });
   // ——— Usure irrégulière
   test('usure irrégulière : écart strictement supérieur à 1 mm (1,0 non, 1,1 oui, 1,3 oui)', () => {
     const t = tire(), r = enter(t, { fl: { side: 6.4, mid: 5.4 }, fr: { side: 5.0, mid: 6.1 }, rl: { side: 7, mid: 8.3 }, rr: { side: 7, mid: 7 } });
@@ -153,6 +167,8 @@ module.exports = { runTests, SOURCES };
 if (require.main === module) {
   const count = runTests();
   const mutations = [
+    { file: 'tyrestate.js', name: 'statut « estimé » conservé après une mesure complète', from: "if (typeof est === 'boolean') t.treadEst = est ? 1 : 0; }", to: '}' },
+    { file: 'tyrestate.js', name: 'origine ignorée pour un relevé partiel', from: "else setTreadAxle(t, axes[0], rec[axes[0]], typeof est === 'boolean' ? est : undefined);", to: 'else setTreadAxle(t, axes[0], rec[axes[0]]);' },
     { file: 'tyrestate.js', name: 'moyenne au lieu du minimum de l’essieu', from: 'rec[ax] = mins.length ? Math.min(...mins) : null;', to: 'rec[ax] = mins.length ? mins.reduce((a, b) => a + b, 0) / mins.length : null;' },
     { file: 'tyrestate.js', name: 'seuil d’usure irrégulière atteint à 1,0 mm (≥ au lieu de >)', from: 'wheels[k].gap > TREAD_GAP_MM', to: 'wheels[k].gap >= TREAD_GAP_MM' },
     { file: 'tyrestate.js', name: 'détail par pneu dépassé réappliqué', from: 'const stale = min != null && (', to: 'const stale = false && (' },

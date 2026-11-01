@@ -3424,6 +3424,7 @@ function treadWheelsForm(car, i) {
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:6px">${['fl', 'fr', 'rl', 'rr'].map(cell).join('')}</div>
     ${notes.join('')}<p class="sub">Deux points par pneu : côté (épaule) et milieu. Le verdict et l’alerte de profondeur utilisent la valeur la plus basse de chaque essieu. Un point laissé vide n’est pas inventé ; un essieu sans aucun point garde sa valeur actuelle.</p>
     <p class="sub">Version de cet appareil : ${esc(window.TWRC_BUILD ? 'build ' + window.TWRC_BUILD : 'version locale')}. Avant la première saisie par pneu, mets à jour le PC et l’iPhone (même build dans Diagnostic).</p>
+    <label for="trw-${i}-est">Origine du relevé</label><select id="trw-${i}-est" aria-label="${esc(String(car.short || car.name || car.id))} · origine du relevé par pneu"><option value="0" ${rec && rec.est ? '' : 'selected'}>Mesure (jauge)</option><option value="1" ${rec && rec.est ? 'selected' : ''}>Estimation</option></select>
     <button class="btn sm" data-act="tread-wheels" data-i="${i}">Enregistrer le relevé par pneu · ${esc(String(car.short || car.name || car.id))}</button></div>`;
 }
 // Rythme : règle unique de Garage.kmPerDay (deux relevés réels, plausible), utilisée par le Garage, l'entretien et l'usure.
@@ -4258,11 +4259,13 @@ document.addEventListener('click', async e => {
     const dateEl = $(`#trw-${i}-d`), date = (dateEl || {}).value;
     if (typeof date === 'string' && date > today) { commandFeedback(t, 'La date du relevé ne peut pas être dans le futur.', dateEl); return; }
     // Valeurs vérifiées d'abord (sur une copie) : une saisie invalide ne déclenche jamais la question de transition.
-    const probe = setTreadWheels(JSON.parse(JSON.stringify(c.tire)), input, { date });
+    // Origine explicite : une mesure à la jauge remplace un statut « estimé » antérieur (et inversement).
+    const est = (($(`#trw-${i}-est`) || {}).value || '0') === '1';
+    const probe = setTreadWheels(JSON.parse(JSON.stringify(c.tire)), input, { date, est });
     if (probe.error) { commandFeedback(t, probe.error); return; }
     // Transition : aucun appareil ne publie sa version dans la synchronisation ; l'utilisateur confirme une fois que ses appareils sont à jour.
     if (!Object.keys(S.treadWheels || {}).length && !confirm('Première saisie par pneu.\n\nLe PC et l’iPhone doivent d’abord être mis à jour (même build dans Diagnostic). Un appareil encore sur l’ancienne version lit la bonne profondeur et n’efface pas ce relevé, mais une saisie par essieu faite depuis lui remplacera le détail par pneu de cet essieu (signalé ici).\n\nTes appareils sont-ils à jour ?')) { commandFeedback(t, 'Relevé non enregistré : mets d’abord tes appareils à jour'); return; }
-    const r = setTreadWheels(c.tire, input, { date });
+    const r = setTreadWheels(c.tire, input, { date, est });
     if (r.error) { commandFeedback(t, r.error); return; }
     const path = putTreadWheelsRecord(S, c, r.record);
     if (!path) { commandFeedback(t, 'Véhicule non adressable : relevé non enregistré'); return; }

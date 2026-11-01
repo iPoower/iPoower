@@ -133,6 +133,7 @@ function setTreadWheels(t, input, { date, est } = {}) {
     if (mins.length) axes.push(ax);
   }
   if (!axes.length) return { error: 'Saisis au moins une profondeur.' };
+  if (typeof est === 'boolean') rec.est = est ? 1 : 0;   // origine du relevé : mesure à la jauge (0) ou estimation (1)
   // Essieu par essieu, par la règle existante : l'autre essieu garde l'ancienne profondeur commune s'il n'a jamais été saisi.
   if (axes.length === 2) { setTreadAxle(t, 'av', rec.av); setTreadAxle(t, 'ar', rec.ar); if (typeof est === 'boolean') t.treadEst = est ? 1 : 0; }
   else setTreadAxle(t, axes[0], rec[axes[0]], typeof est === 'boolean' ? est : undefined);
