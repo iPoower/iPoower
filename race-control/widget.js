@@ -526,8 +526,42 @@ const ALERT_DEFS = [
   { id: 'vis', label: 'Visibilité faible (< 1 000 m)' },
   { id: 'frost', label: 'Gel nocturne' },
   { id: 'drop', label: 'Baisse brutale de température' },
-  { id: 'pre', label: 'Météo dangereuse avant le montage hiver' }
+  { id: 'pre', label: 'Météo dangereuse avant le montage hiver' },
+  { id: 'tread', label: 'Profondeur de sculpture faible (minimum légal 1,6 mm ; repères indicatifs 3 et 4 mm)' }
 ];
+// Profondeur de sculpture : alerte dédiée, indépendante de la température.
+// Seul 1,6 mm est réglementaire : arrêté du 18 juillet 2019 relatif aux pneumatiques (NOR TRER1921975A, JORF du 30/08/2019),
+// art. 5 (véhicules M1, N1, O1, O2, rainures principales). 3 mm (été / 4 saisons, pluie ou saison froide) et 4 mm (hiver)
+// sont des REPÈRES INDICATIFS de l'app, sans source primaire : toujours affichés comme tels, jamais comme une obligation.
+const TREAD_HINT_MM = 3, TREAD_HINT_WINTER_MM = 4;
+function treadWorst(tire) {
+  if (!tire) return { mm: null, ax: null };
+  if (typeof treadAxles === 'function') { const x = treadAxles(tire); return { mm: x.worst, ax: x.ax }; }
+  const n = v => typeof v === 'number' && Number.isFinite(v) ? v : null, av = n(tire.treadAv), ar = n(tire.treadAr);
+  if (av == null && ar == null) return { mm: n(tire.tread), ax: null };
+  if (av != null && ar != null) return { mm: Math.min(av, ar), ax: av === ar ? null : av < ar ? 'av' : 'ar' };
+  return av != null ? { mm: av, ax: 'av' } : { mm: ar, ax: 'ar' };
+}
+function treadAlert(cars, sm, seq) {
+  const first = seq && seq[0] && seq[0].hs[seq[0].i], month = first && first.t ? +String(first.t).slice(5, 7) : null;
+  const cold = month != null && (month >= 11 || month <= 3), rain = sm && sm.Pmax != null && sm.Pmax >= 0.5;
+  const AX = { av: 'essieu avant', ar: 'essieu arrière' };
+  const rows = (cars || []).map(c => {
+    const t = c && c.tire; if (!t) return null;
+    const w = treadWorst(t); if (w.mm == null) return null;
+    const hist = (Array.isArray(t.treads) ? t.treads : []).filter(r => r && r.d && (!w.ax || !r.ax || r.ax === w.ax || r.ax === 'both'));
+    const last = hist.slice().sort((a, b) => String(a.d).localeCompare(String(b.d))).pop() || null;
+    const est = !!(last ? last.est : t.treadEst);
+    const where = (w.ax ? AX[w.ax] : 'pneus') + ' · ' + (last ? 'relevé du ' + fmtDay(last.d) : 'date du relevé inconnue') + (est ? ', estimation' : '');
+    const type = effType(c), mm = f1(w.mm);
+    if (w.mm < TREAD_LEGAL_MM) return { sev: 3, t: `${c.short} : ${mm} mm, sous le minimum légal de 1,6 mm`, d: `${where}. Minimum réglementaire : arrêté du 18 juillet 2019 relatif aux pneumatiques, art. 5.` };
+    if (type === 'winter' && w.mm < TREAD_HINT_WINTER_MM) return { sev: 1, t: `${c.short} : ${mm} mm, sous le repère indicatif de 4 mm (pneus hiver)`, d: `${where}. Repère indicatif, non réglementaire : efficacité réduite sur neige.` };
+    if (type !== 'winter' && w.mm < TREAD_HINT_MM && (cold || rain)) return { sev: rain ? 2 : 1, t: `${c.short} : ${mm} mm, sous le repère indicatif de 3 mm`, d: `${where}. Repère indicatif, non réglementaire${rain ? ' : pluie prévue, évacuation de l’eau réduite' : ' : saison froide et humide (novembre – mars)'}.` };
+    return null;
+  }).filter(Boolean);
+  if (!rows.length) return null;
+  return { sev: Math.max(...rows.map(r => r.sev)), title: rows.map(r => r.t).join(' · '), detail: rows.map(r => r.d).join(' ') };
+}
 function computeAlerts(model, cars, S, seasonByCar) {
   const res = {}; const seq = seqOf(model, model.nowI, 24); const sm = summarize(seq);
   const set = (id, sev, title, detail) => { res[id] = { id, sev, title, detail }; };
@@ -551,6 +585,8 @@ function computeAlerts(model, cars, S, seasonByCar) {
   for (let k = 0; k + 3 < seq.length; k++) { const a = seq[k].hs[seq[k].i], b = seq[k + 3].hs[seq[k + 3].i]; if (a.T != null && b.T != null && a.T - b.T >= 5 && (!drop || a.T - b.T > drop.d)) drop = { d: a.T - b.T, s: seq[k + 3], from: a.T, to: b.T }; }
   if (drop) set('drop', drop.d >= 8 ? 3 : 2, `Baisse brutale : −${f1(drop.d)} °C en 3 h`, `De ${f1(drop.from)} à ${f1(drop.to)} °C vers ${hhmm(drop.s)}.`);
   const pre = cars.map(c => ({ c, s: seasonByCar[c.id] })).filter(o => o.s && o.s.coldBefore && effType(o.c) === 'summer');
+  const tw = treadAlert(cars, sm, seq);
+  if (tw) set('tread', tw.sev, tw.title, tw.detail);
   if (pre.length) { const o = pre[0], when = o.s.countdown.kind === 'confirmed' ? 'rendez-vous confirmé' : 'montage estimé'; set('pre', 3, `Météo hivernale avant le montage hiver (${o.c.short})`, `Premier épisode : ${fmtDay(o.s.coldBefore.first.date)}, avant le ${when} du ${fmtDay(o.s.countdown.date)}.${o.s.coldBefore.partial ? ' La météo disponible ne couvre pas toute la période restante.' : ''}`); }
   return res;
 }
