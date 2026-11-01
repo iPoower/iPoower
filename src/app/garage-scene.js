@@ -181,6 +181,21 @@ function garageTripHtml(scene, active) {
 function garagePressure(p) {
   return !p ? 'Cible non renseignée' : p.axles ? 'AV ' + f1(p.axles.av) + ' / AR ' + f1(p.axles.ar) + ' bar' : f1(p.bar) + ' bar';
 }
+// « Données insuffisantes » : chaque donnée manquante porte SON action (ouvre et focalise le champ existant du panneau
+// Paramètres via « garage-quick » ; aucune valeur n'est saisie ici). Une ligne sans action reste une information.
+const GARAGE_TODO = [
+  [/^Monte non confirmée/, 'cfg', 'Compléter la fiche'], [/^Modèle exact absent/, 'model', 'Saisir le modèle'],
+  [/^Dimensions absentes/, 'size', 'Saisir les dimensions'], [/^Profondeur (absente|estimée)/, 'tread', 'Mesurer la profondeur'],
+  [/^Contrôle de pression/, 'pressure', 'Contrôler la pression']];
+function garageTodoHtml(missing, carId) {
+  if (!missing || !missing.length) return '';
+  return '<div class="garage-todo"><p class="garage-empty">À compléter :</p><ul>' + missing.map(text => {
+    const m = GARAGE_TODO.find(([re]) => re.test(text));
+    const btn = !m ? '' : m[1] === 'cfg' ? '<button type="button" class="btn sm" data-act="goset-cfg">' + m[2] + '</button>'
+      : '<button type="button" class="btn sm" data-act="garage-quick" data-car="' + esc(carId) + '" data-garage-target="' + m[1] + '">' + m[2] + '</button>';
+    return '<li><span>' + esc(text) + '</span>' + btn + '</li>';
+  }).join('') + '</ul></div>';
+}
 function garageCompareHtml(cars, trip, scene) {
   const rows = Garage.comparison(cars, trip, scene);
   const body = '<p class="sub">Même trajet, même météo. Diagnostics du moteur existant ; aucun classement de sécurité entre les véhicules.</p><div class="garage-grid">' + rows.map(r => {
@@ -190,7 +205,7 @@ function garageCompareHtml(cars, trip, scene) {
       '<dt>Usure</dt><dd>' + (t && t.tread ? f1(t.tread.mm) + ' mm · ' + (t.tread.estimated ? 'estimée, à mesurer' : 'mesure déclarée') + (t.tread.date ? ' · ' + garageDate(t.tread.date) : ' · date inconnue') : 'Aucune profondeur disponible') + '</dd>' +
       '<dt>Pression cible</dt><dd>' + esc(garagePressure(t && t.pressure)) + '</dd><dt>Contrôle déclaré</dt><dd>' + (t && t.pressure && t.pressure.checked ? garageDate(t.pressure.checked) + ' · aucune valeur mesurée enregistrée' : 'Aucun contrôle daté') + '</dd></dl>' +
       (r.reasons.length ? '<ul class="lab-why">' + r.reasons.map(x=>'<li>' + esc(x) + '</li>').join('') + '</ul>' : '<p class="sub">' + (r.level == null ? 'Vigilances du trajet non évaluables.' : 'Aucun signal critique calculé à partir de ces prévisions ; ce n’est pas une garantie de sécurité.') + '</p>') +
-      (r.missing.length ? '<p class="garage-empty">À compléter : ' + esc(r.missing.join(' · ')) + '.</p>' : '') + '</article>';
+      garageTodoHtml(r.missing, c.id) + '</article>';
   }).join('') + '</div>';
   return uxFold('garage-comparison','Préparer et comparer les véhicules',body,'Montes · contrôles · vigilances explicables');
 }

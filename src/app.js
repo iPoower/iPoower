@@ -25,7 +25,7 @@ const BASE = {
   work: { from: 'home', to: 'work', durMin: 180, dep: '07:30', ret: '17:30', days: [1, 2, 3, 4, 5] },
   horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on', f1RaceEngineer: 0, f1TrackConditions: 0, f1TyreManagement: 0,
     f1StrategyAB: 0, f1TheGarage: 0, f1TelemetryReplay: 0 }, road: { on: 1 },
-  alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
+  alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, tread: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
   cars: [
     { id: 'car1', name: 'Voiture 1', short: 'Voiture 1', spec: '', sporty: 0,
       tire: { type: 'summer', brand: '', model: '', size: '', tread: null, treadAv: null, treadAr: null, treadEst: 0, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
@@ -514,12 +514,14 @@ async function onPos(pos, focus) {
   const context = placeContext(placeInput());
   GEO.raw = raw; GEO.permission = 'autorisée'; GEO.error = null; GEO.status = placeFixClass(raw) === 'gps' ? 'position précise reçue' : 'position approximative reçue';
   const previous = FIX || (GPS ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null);
-  const observation = placeObserve({ fix: raw, previous, logical: PLACE_FIX || (GPS && GPS.placePending ? null : previous), context, pending: PLACE_PENDING, places: placeList(), now: Date.now() });
+  const observation = placeObserve({ fix: raw, previous, logical: PLACE_FIX || (GPS && GPS.placePending ? null : previous), context, pending: PLACE_PENDING, places: placeList(), now: Date.now(), forced: PLACE_FORCE });
   const refused = observation.accept ? placeGate(raw) : observation.reason;
+  PLACE_DOUBT = !observation.accept && observation.implausible ? { ...observation.implausible, fix: raw } : refused ? PLACE_DOUBT : null;
   GEO.reason = refused || observation.reason;
   if (refused) {
     PLACE_PENDING = null; PLACE_REJ = { source: 'navigateur', reason: refused };
-    if (focus) alertLoc(placeFixClass(raw) === 'coarse' ? `Localisation navigateur approximative · précision ~${Math.round(raw.acc / 1000)} km. Confirmation manuelle disponible.` : 'Position ignorée : ' + refused + '.');
+    if (focus && PLACE_DOUBT) alertLoc('Position non utilisée : ' + refused + '.');
+    else if (focus) alertLoc(placeFixClass(raw) === 'coarse' ? `Localisation navigateur approximative · précision ~${Math.round(raw.acc / 1000)} km. Confirmation manuelle disponible.` : 'Position ignorée : ' + refused + '.');
     renderAll(); if (typeof renderDiag === 'function') renderDiag(); return;
   }
   const tasks = []; let weatherMoved;
@@ -562,6 +564,9 @@ async function onPos(pos, focus) {
 // AUCUNE coordonnée. NETLOC est réservé à une éventuelle source réseau indépendante. Le navigateur ne le remplit jamais.
 const PLACE_KEY = 'twrc.place.v1';
 let NETLOC = null, PLACE_REJ = null;
+// Lot 1 · vraisemblance : relevé approximatif écarté (loin de tous les lieux, ou sans lieu pour le comparer) en attente d'un
+// choix explicite ; zone acceptée par « Utiliser quand même » (mémoire de la page uniquement, jamais persistée).
+let PLACE_DOUBT = null, PLACE_FORCE = null;
 const placeSave = () => USER_STORE.flush();
 const placeToday = () => nowIn('Europe/Paris').slice(0, 10);
 function placeList() {
@@ -574,7 +579,7 @@ function placeInput(extra) {
   if (USER_STORE.state.lastDeparture && Date.now() - USER_STORE.state.lastDeparture.at >= 20 * 3600e3) USER_STORE.state.lastDeparture = null;
   const precise = PLACE_HOLD || GPS && GPS.placePending ? PLACE_FIX : PLACE_FIX || (GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null) || GEO.raw;
   return { now: Date.now(), today: placeToday(), places: placeList(), conf: PLACE.conf, last: PLACE.last, fix: precise, net: NETLOC,
-    moving: LIVE.phase === 'active' || !!TRIPSTART || !!USER_STORE.state.lastDeparture, movingSince: TRIPSTART ? TRIPSTART.at : LIVE.startFix ? LIVE.startFix.ts : USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at, fmt: hmLocal, ...(extra || {}) };
+    forced: PLACE_FORCE, moving: LIVE.phase === 'active' || !!TRIPSTART || !!USER_STORE.state.lastDeparture, movingSince: TRIPSTART ? TRIPSTART.at : LIVE.startFix ? LIVE.startFix.ts : USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at, fmt: hmLocal, ...(extra || {}) };
 }
 // contexte courant ; une confirmation terminée (départ, GPS précis ailleurs, fin de journée) est effacée une seule fois
 function placeNow() {
@@ -608,7 +613,7 @@ function placeConfirm(placeId, how) {
   const now = Date.now();
   UI.placeExpanded = null;
   const previous = placeNow().place;
-  PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false;
+  PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false; PLACE_DOUBT = null;
   PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' };
   const activeTrip = APP_CONTEXT.snapshot.activeTrip;
   const intention = appDay().nextDestination;
@@ -694,7 +699,17 @@ function renderPlace() {
     const btns = pl.filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
     h = `<div class="place${arr ? ' arr' : ''}">${arr ? `<b>${c.source === 'trip' ? '🚗 EN ROUTE · destination' : 'ARRIVÉE'} · ${(K[arr.p.kind] || K.custom).icon} ${esc(arr.p.name)}</b>` : `<span class="pl-src"><b>${esc(c.title)}</b>${c.trust === 'Indisponible' && /indisponible/i.test(c.title) ? '' : ' · ' + esc(c.trust)}${c.badge ? ' · ' + esc(c.badge) : ''}</span>`}<span class="pl-act">${btns}</span></div>`;
   }
+  if (PLACE_DOUBT && !PLACE.conf) h = placeDoubtHtml(pl) + h;
   if (el.innerHTML !== h) el.innerHTML = h;
+}
+// Relevé approximatif invraisemblable : jamais utilisé en silence ; l'utilisateur choisit explicitement.
+function placeDoubtHtml(pl) {
+  const d = PLACE_DOUBT, main = pl.find(p => p.kind === 'home') || pl[0];
+  const text = d.code === 'unverifiable'
+    ? `Position approximative non vérifiable (précision annoncée ± ${d.acc} m) : aucun lieu enregistré pour la comparer. Elle n’est pas utilisée pour la météo.`
+    : `Position du navigateur à ≈ ${d.km} km de tes lieux enregistrés (précision annoncée ± ${d.acc} m). Elle n’est pas utilisée pour la météo.`;
+  return `<div class="note lv2 loc-doubt" data-k="loc-doubt" role="alert"><b>📍 POSITION À VÉRIFIER</b><span>${esc(text)}</span>
+    <span class="chips">${main ? `<button class="btn sm pri" data-act="loc-main">Utiliser mon lieu principal</button>` : ''}<button class="btn sm" data-act="loc-force">Utiliser quand même</button></span></div>`;
 }
 // diagnostic interne : brut navigateur, réseau, lieu logique, source gagnante et sources écartées (coordonnées arrondies à ~1 km)
 function placeDiagRows(forCopy) {
@@ -860,6 +875,9 @@ const CARD = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
 const card = d => d == null ? '' : CARD[Math.round(d / 45) % 8];
 const wx = c => WMO[c] || (c == null ? '—' : 'Code ' + c);
 const RISKTXT = LV.map(l => l.name);   // échelle unique de l'app
+// Température « actuelle » unique : celle de l'heure en cours corrigée par la station (applyObs) quand une correction existe,
+// sinon la donnée actuelle du modèle. Jamais deux valeurs différentes affichées pour le même instant.
+const curTemp = m => m && m.obs && m.hs && m.hs[m.nowI] && Number.isFinite(m.hs[m.nowI].T) ? m.hs[m.nowI].T : m && m.cur ? m.cur.T : null;
 const visTxt = v => v == null ? '—' : v >= 10000 ? '> 10 km' : v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + ' km' : Math.round(v) + ' m';
 function icon(code) {
   const cloud = '<path d="M7 16.5h10a3.4 3.4 0 0 0 .3-6.8A5 5 0 0 0 7.6 9 3.9 3.9 0 0 0 7 16.5z"/>';
@@ -1110,7 +1128,7 @@ function renderDecisionCore() {
   const state = Decision.snapshot({
     at: raw && raw.t || now, riskLevel: decision.riskLevel, confidenceKey: confidence.key,
     weatherMode: CX.m.mode, weatherAt: raw && raw.t,
-    temperature: CX.m && CX.m.cur && CX.m.cur.T, roadTemp: hour.Tr, visibility: hour.vis,
+    temperature: curTemp(CX.m), roadTemp: hour.Tr, visibility: hour.vis,
     destinationKey: snap.nextTrip && snap.nextTrip.key || snap.dayContext && snap.dayContext.nextDestination && snap.dayContext.nextDestination.tripKey,
     destinationId: snap.destination && snap.destination.id,
     carId: car && car.id,
@@ -1216,7 +1234,7 @@ function ncBlock(m) {
 /* ---------- rendu : météo actuelle ---------- */
 function renderCurrent() {
   const el = $('#secCur'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
-  const { m, sum24 } = CX, c = m.cur, hs = m.hs, n = m.nowI;
+  const { m, sum24 } = CX, c = m.cur, hs = m.hs, n = m.nowI, T0 = curTemp(m);
   const day = m.days.find(d => d.date === m.nowStr.slice(0, 10)) || {};
   const pAgo = hs[n - 3], trend = (pAgo && pAgo.pres != null && c.pres != null) ? c.pres - pAgo.pres : null;
   const snowTxt = sum24.snowSum > 0 || sum24.snowCode ? `Neige prévue${sum24.snowSum > 0 ? ' : ' + f1(sum24.snowSum) + ' cm' : ''}` : sum24.sleet ? 'Neige mouillée possible (estimé)' : 'Aucune prévue sur 24 h';
@@ -1224,11 +1242,11 @@ function renderCurrent() {
   const ev = [3, 6, 12].map(k => { const x = hs[n + k]; if (!x) return ''; return `<div><span>Dans ${k} h · ${x.t.slice(11, 16)}</span><b>${f1(x.T)} °C</b><span>${(x.Pl || 0) >= 0.1 ? f1(x.Pl) + ' mm/h' : 'sec'} · vis. ${visTxt(x.vis)}</span></div>`; }).join('');
   const l = allLocs().find(x => x.id === UI.loc);
   el.innerHTML = `<div class="mod-h"><h2>🌡️ Météo actuelle · ${esc(l ? l.name : '')}</h2><span class="src obs">${m.obs ? 'ESTIMÉ · modèle ajusté par station' : 'PRÉVU · modèle météo'}${m.mode === 'cache' || offlineNow() ? ' · CACHE' : ''}</span></div>
-  <div class="cur"><div class="bigT num">${c.T == null ? '—' : f1(c.T)}<sup>°C</sup></div>
+  <div class="cur"><div class="bigT num">${T0 == null ? '—' : f1(T0)}<sup>°C</sup></div>
     <div class="cond"><span class="lbl">${icon(c.code)}${esc(wx(c.code))}</span><span class="sub">Ressentie ${f1(c.Tapp)} °C · min ${f1(day.tmin)} / max ${f1(day.tmax)} °C aujourd’hui</span></div></div>
   <div class="metrics">
     ${mt('Humidité', f0(c.RH), '%')}
-    ${mt('Point de rosée', f1(c.Td), '°C', c.Td != null && c.T != null ? 'écart ' + f1(c.T - c.Td) + ' °C' : '')}
+    ${mt('Point de rosée', f1(c.Td), '°C', c.Td != null && T0 != null ? 'écart ' + f1(T0 - c.Td) + ' °C' : '')}
     ${mt('Précipitations', f1(c.P), 'mm', 'intensité ' + (cls || '—'))}
     ${mt('Prob. de pluie', f0(c.pp), '%')}
     ${mt('Neige', f1(c.snow), 'cm', esc(snowTxt), sum24.snowSum > 0)}
@@ -1260,7 +1278,7 @@ function renderCurrent() {
 // @include app/race-views.js
 // @include app/garage-view.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
-const TIRE_ALERTS = ['press', 'age', 'mont'];
+const TIRE_ALERTS = ['press', 'age', 'mont', 'tread'];
 const NOW_HOURS = 3, NOW_EXTRA = ['press', 'age', 'vigi', 'rain15'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
 const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
@@ -2980,7 +2998,8 @@ async function readCalendar(pass) {
     // une copie plus ancienne (cache CDN, réponse tardive) n'écrase jamais un agenda plus récent
     if (CAL && CAL.updated && d.updated && Date.parse(d.updated) < Date.parse(CAL.updated)) return fallback ? failure : 'ok';
     keep();
-    CAL = { ...d, c: S0.c, offline: cached, cacheAt: fallback ? fallback.t : Date.now() }; received();
+    // « [À réserver] » : réservation non confirmée, pas un trajet par défaut (#trajet dans le titre le rétablit).
+    CAL = { ...d, events: TripCancel.confirmedOnly(d.events), c: S0.c, offline: cached, cacheAt: fallback ? fallback.t : Date.now() }; received();
     CALDONE = true; renderCal(); renderBrf(); renderTenue();
     return fallback ? failure : 'ok';
   } catch (e) { return 'invalid'; }   // code différent ou cache illisible
@@ -3239,7 +3258,7 @@ function renderCal() {
   // Agenda · trajets : lieu reconnu (coordonnées ou lieu configuré) ou déplacement déclaré (#trajet, #direct, #maison).
   // Un « Lieu » rempli mais non reconnu (« Teams », faute de frappe) est masqué mais compté, sans titre : rien ne
   // disparaît sans bruit. Sans lieu reconnu, aucun itinéraire, météo, Waze ni Tenue n'est inventé (calendarSpatial).
-  const skip = fut.filter(e => e.mode === 'pasdetrajet'), relevant = fut.filter(calendarRelevant),
+  const skip = fut.filter(e => e.mode === 'pasdetrajet'), pending = skip.filter(e => e.unconfirmed), skipTag = skip.filter(e => !e.unconfirmed), relevant = fut.filter(calendarRelevant),
     hidden = fut.filter(e => e.mode !== 'pasdetrajet' && !calendarRelevant(e)),
     unknownPlace = hidden.filter(calendarHasDeclaredPlace), noPlace = hidden.filter(e => !calendarHasDeclaredPlace(e)),
     located = relevant.filter(calendarSpatial);
@@ -3296,7 +3315,7 @@ function renderCal() {
     return `<div class="cal-e" data-event-id="${esc(e.id || '')}"><div class="cal-h"><span class="cal-d">${dateLabel(e)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(calendarEventPlace(e, calendarPlaces())?.name || e.label || e.loc || 'Lieu inconnu')}</span></div>${body}</div>`;
   }).join('');
   el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calState}</span></div>${calWarn}${evs.length ? `<div class="cal-l">${rows}</div>` : '<p class="sub">Aucun déplacement à analyser sur les 8 prochains jours.</p>'}
-    <div class="disc">${CALFAIL ? calendarFailHtml() + ' ' : calCached ? '<b>Hors connexion : dernier agenda chiffré disponible.</b> ' : ''}${skip.length ? skip.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${noPlace.length ? noPlace.length + ' rappel' + (noPlace.length > 1 ? 's' : '') + ' sans lieu masqué' + (noPlace.length > 1 ? 's' : '') + '. ' : ''}${unknownPlace.length ? `<b>${unknownPlace.length} rendez-vous au lieu non reconnu masqué${unknownPlace.length > 1 ? 's' : ''}</b> : précise l’adresse, ou ajoute #trajet si c’est un déplacement. ` : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Race Control utilise les rendez-vous avec un lieu reconnu. Les rappels sans lieu et les éléments <b>#pasdetrajet</b> ou 📺 sont exclus. Pour signaler un vrai déplacement dont le lieu reste à préciser, ajoute <b>#trajet</b> dans le titre ou la description Google Agenda. <b>#direct</b> enchaîne les rendez-vous ; <b>#maison</b> prévoit un passage par chez toi. Agenda sur 8 jours, synchronisé le ${up} (chiffré avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, avec une marge totale plafonnée à 15 min pour un rendez-vous (dont 10 min d’arrivée anticipée), sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
+    <div class="disc">${CALFAIL ? calendarFailHtml() + ' ' : calCached ? '<b>Hors connexion : dernier agenda chiffré disponible.</b> ' : ''}${skipTag.length ? skipTag.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${pending.length ? pending.length + ' réservation' + (pending.length > 1 ? 's' : '') + ' non confirmée' + (pending.length > 1 ? 's' : '') + ' ([À réserver]) : pas un trajet. Ajoute #trajet au titre pour la traiter quand même. ' : ''}${noPlace.length ? noPlace.length + ' rappel' + (noPlace.length > 1 ? 's' : '') + ' sans lieu masqué' + (noPlace.length > 1 ? 's' : '') + '. ' : ''}${unknownPlace.length ? `<b>${unknownPlace.length} rendez-vous au lieu non reconnu masqué${unknownPlace.length > 1 ? 's' : ''}</b> : précise l’adresse, ou ajoute #trajet si c’est un déplacement. ` : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Race Control utilise les rendez-vous avec un lieu reconnu. Les rappels sans lieu et les éléments <b>#pasdetrajet</b> ou 📺 sont exclus. Pour signaler un vrai déplacement dont le lieu reste à préciser, ajoute <b>#trajet</b> dans le titre ou la description Google Agenda. <b>#direct</b> enchaîne les rendez-vous ; <b>#maison</b> prévoit un passage par chez toi. Agenda sur 8 jours, synchronisé le ${up} (chiffré avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, avec une marge totale plafonnée à 15 min pour un rendez-vous (dont 10 min d’arrivée anticipée), sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
 }
 
 
@@ -3381,10 +3400,8 @@ function datedFicheTread(car, axes) {
   if (changed) car.tire.treads = hist;
   return changed;
 }
-function kmPerDay(car) {
-  const o = (car.odo || []).slice().sort((x, y) => x.d < y.d ? -1 : 1); if (o.length < 2) return null;
-  const days = dayDiff(o[0].d, o[o.length - 1].d); return days >= 7 ? (o[o.length - 1].km - o[0].km) / days : null;
-}
+// Rythme : règle unique de Garage.kmPerDay (deux relevés réels, plausible), utilisée par le Garage, l'entretien et l'usure.
+function kmPerDay(car) { return Garage.kmPerDay(car && car.odo); }
 function wearInfo(car) {
   const t = car.tire, history = treadHistory(t), thr = t.type === 'winter' ? 4 : 3, out = { last: history.last, thr };
   if (history.rate != null) {
@@ -3823,7 +3840,7 @@ function renderWeatherLink() {
   const el = $('#secWeatherLink'); el.hidden = UI.view !== 'pneus';
   if (el.hidden) return;
   const c = CX && CX.m.cur, l = curLoc();
-  el.innerHTML = `<div><h3>🌦️ Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="weather-details">Détails météo →</button>`;
+  el.innerHTML = `<div><h3>🌦️ Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}${c.vis != null ? ' maintenant' : ''}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="weather-details">Détails météo →</button>`;
 }
 
 // @include app/season-actions.js
@@ -3951,7 +3968,7 @@ function renderSettings(force) {
   if (storeLocked() || window.TWRC_STORAGE_ERROR) { el.innerHTML = '<p>Déverrouille la configuration pour retrouver tes réglages et ton journal conservés sur cet appareil.</p>'; return; }
   const d = $('#settings'); if (!force && d && !d.open) { el.innerHTML = ''; el.dataset.stale = '1'; return; }
   el.dataset.stale = '';
-  const carSet = S.cars.map((c, i) => `<div class="set-sec"><h3>${esc(c.name)}</h3>${c.photo ? `<div class="chips"><button class="btn sm" data-act="photo-del" data-i="${i}">Retirer la photo</button></div>` : ''}
+  const carSet = S.cars.map((c, i) => `<div class="set-sec"><h3>${esc(c.name)}</h3>
     <div class="frow">${bindIn(`cars.${i}.name`, c.name, { label: 'Nom', wide: 1 })}${bindIn(`cars.${i}.short`, c.short, { label: 'Nom court' })}
       <div class="fld"><label for="f-cars-${i}-sporty">Usage sportif occasionnel</label><select id="f-cars-${i}-sporty" data-bind="cars.${i}.sporty" data-num="1"><option value="1" ${c.sporty ? 'selected' : ''}>Oui</option><option value="0" ${c.sporty ? '' : 'selected'}>Non</option></select></div>
       <div class="fld"><label for="f-cars-${i}-tire-type">Type de pneus montés</label><select id="f-cars-${i}-tire-type" data-bind="cars.${i}.tire.type"><option value="summer" ${c.tire.type === 'summer' ? 'selected' : ''}>Été</option><option value="winter" ${c.tire.type === 'winter' ? 'selected' : ''}>Hiver</option><option value="allseason" ${c.tire.type === 'allseason' ? 'selected' : ''}>4 saisons 3PMSF</option><option value="unknown" ${c.tire.type === 'unknown' ? 'selected' : ''}>Je ne sais pas</option><option value="none" ${c.tire.type === 'none' ? 'selected' : ''}>Aucun (en attente de pneus)</option></select></div>
@@ -3995,7 +4012,7 @@ function renderSettings(force) {
       ${bindIn(`cars.${i}.maint.rev.d`, c.maint.rev.d, { label: 'Dernière révision', type: 'date' })}${bindIn(`cars.${i}.maint.rev.km`, c.maint.rev.km, { label: 'Compteur à la révision (km)', type: 'number', num: 1, attrs: 'min="0" step="1" inputmode="numeric"' })}
       ${bindIn(`cars.${i}.maint.rev.everyKm`, c.maint.rev.everyKm, { label: 'Révision tous les (km)', type: 'number', num: 1, ph: 'carnet d’entretien', attrs: 'min="0" step="1000" inputmode="numeric"' })}${bindIn(`cars.${i}.maint.rev.everyMonths`, c.maint.rev.everyMonths, { label: 'ou tous les (mois)', type: 'number', num: 1, ph: 'carnet d’entretien', attrs: 'min="0" max="60" step="1" inputmode="numeric"' })}
       ${bindIn(`cars.${i}.maint.ct.d`, c.maint.ct.d, { label: 'Dernier contrôle technique', type: 'date' })}${bindIn(`cars.${i}.maint.ct.next`, c.maint.ct.next, { label: 'Prochain CT avant le (si indiqué)', type: 'date' })}
-    </div><p class="sub">Intervalles : ceux de ton carnet d’entretien, aucun n’est deviné. Sans date limite déclarée, le prochain CT est calculé à 2 ans du dernier.</p></div>`).join('');
+    </div><p class="sub">Intervalles : ceux de ton carnet d’entretien, aucun n’est deviné. Sans date limite déclarée, le prochain CT est calculé à 2 ans du dernier.</p>${c.photo ? `<div class="chips set-danger"><button class="btn sm" data-act="photo-del" data-i="${i}">Retirer la photo…</button></div>` : ''}</div>`).join('');
   const locSet = S.locs.map((l, i) => `<div class="frow">${bindIn(`locs.${i}.name`, l.name, { label: i === 0 ? 'Zone principale' : 'Lieu de travail / 2e zone', wide: 1 })}${bindIn(`locs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`locs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}</div>`).join('') +
     S.customs.map((l, i) => `<div class="frow">${bindIn(`customs.${i}.name`, l.name, { label: 'Destination', wide: 1 })}${bindIn(`customs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`customs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}<div class="fld"><span class="l">&nbsp;</span><button class="btn sm" data-act="loc-del" data-i="${i}">Retirer</button></div></div>`).join('');
   const carAdd = `<div class="set-sec"><h3>➕ Ajouter une voiture</h3><p class="sub">Fiche vierge (pneus, compteur, entretien à renseigner ensuite). Elle est sauvegardée et synchronisée comme les autres.</p>
@@ -4133,7 +4150,7 @@ document.addEventListener('click', async e => {
   else if (a === 'race-toggle') f1Toggle(t.dataset.f1);
   else if (a === 'cal-retry') { CALFAIL = null; CALDONE = false; renderBrf(); renderCal(); loadCalendar(true); }
   else if (a === 'race-speak') f1Speak(t);
-  else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; GEO.raw = null; GEO.error = null; GEO.reason = ''; GEO.status = 'suivi désactivé'; PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; alertLoc('Suivi de position désactivé.'); WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
+  else if (a === 'gps-forget') { stopGps(); PLACE_DOUBT = PLACE_FORCE = null; gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; GEO.raw = null; GEO.error = null; GEO.reason = ''; GEO.status = 'suivi désactivé'; PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; alertLoc('Suivi de position désactivé.'); WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
   else if (a === 'loc') { APP_CONTEXT.weatherPreview = t.dataset.id; UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false;
     // Après un choix météo depuis le GPS, retrouver le cockpit sans les raccourcis dépliés.
     if (placeNow().source === 'gps') UI.placeExpanded = null;
@@ -4172,7 +4189,10 @@ document.addEventListener('click', async e => {
     saveSettings(); rebuild(); renderSettings(true); renderAll();
     const done = document.querySelector('[data-act="car-add"]'); if (done) commandFeedback(done, 'Voiture ajoutée : ' + name);
   }
-  else if (a === 'photo-del') { const c = S.cars[+t.dataset.i]; if (c) { delete c.photo; saveSettings(); renderSettings(); softRender(); } }
+  // Action destructrice : en bas de la fiche, et jamais sans confirmation explicite (Zero Data Loss).
+  else if (a === 'photo-del') { const c = S.cars[+t.dataset.i]; if (!c || !c.photo) return;
+    if (!confirm(`Retirer la photo de « ${c.name} » ? Elle sera supprimée de la fiche sur cet appareil et des copies synchronisées.`)) { commandFeedback(t, 'Photo conservée'); return; }
+    delete c.photo; saveSettings(); renderSettings(); softRender(); }
   else if (a === 'odo' || a === 'tread-add' || a === 'rot') {
     const i = +t.dataset.i, c = S.cars[i], today = (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10);
     if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; }
@@ -4199,7 +4219,7 @@ document.addEventListener('click', async e => {
     if (!confirm('Effacer tous les retours de calibration et les corrections apprises ? Cette action est définitive.')) return;
     S.calib = []; saveSettings(); applyCalib(); rebuild(); renderSettings(); renderAll();
   }
-  else if (a === 'pchk') { const c = S.cars.find(x => x.id === t.dataset.car), m = M[UI.loc]; if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; } if (c.tire.pchk && [c.tire.pchk.av, c.tire.pchk.ar].some(Number.isFinite)) { commandFeedback(t, 'Les pressions chiffrées et leur date sont conservées : actualise les valeurs mesurées et la date dans Paramètres.'); return; } c.tire.pchk = { date: m ? m.nowStr.slice(0, 10) : new Date().toISOString().slice(0, 10), T: m && m.cur.T != null ? Math.round(m.cur.T * 10) / 10 : null }; saveSettings(); renderSettings(); softRender(); }
+  else if (a === 'pchk') { const c = S.cars.find(x => x.id === t.dataset.car), m = M[UI.loc]; if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; } if (c.tire.pchk && [c.tire.pchk.av, c.tire.pchk.ar].some(Number.isFinite)) { commandFeedback(t, 'Les pressions chiffrées et leur date sont conservées : actualise les valeurs mesurées et la date dans Paramètres.'); return; } c.tire.pchk = { date: m ? m.nowStr.slice(0, 10) : new Date().toISOString().slice(0, 10), T: m && curTemp(m) != null ? Math.round(curTemp(m) * 10) / 10 : null }; saveSettings(); renderSettings(); softRender(); }
   else if (a === 'ntfy-test') {
     try { const r = await fetch('https://ntfy.sh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: window.TWRC_NTFY, title: 'Race Control · test', message: 'Les notifications du matin arrivent bien sur ce téléphone.', tags: ['white_check_mark'], click: location.href.split('#')[0] }) });
       t.textContent = r.ok ? 'Test envoyé' : 'Échec (' + r.status + ')'; } catch (err) { t.textContent = 'Réseau indisponible'; }
@@ -4235,6 +4255,15 @@ document.addEventListener('click', async e => {
     renderLab.clearDriveDraft = true; renderAll();
   }
   else if (a === 'place-confirm') placeConfirm(t.dataset.place, t.dataset.how);
+  else if (a === 'loc-main') { const pl = placeList(), main = pl.find(p => p.kind === 'home') || pl[0]; if (main) { PLACE_DOUBT = null; alertLoc(''); placeConfirm(main.id, 'manual'); } }
+  else if (a === 'loc-force') {
+    const d = PLACE_DOUBT; if (!d) return;
+    PLACE_FORCE = { lat: d.fix.lat, lon: d.fix.lon, at: Date.now() }; PLACE_DOUBT = null; PLACE_REJ = null; alertLoc('');
+    // relevé encore frais : réutilisé tel quel ; sinon nouvelle position demandée (la zone choisie reste acceptée)
+    if (Date.now() - d.fix.ts <= PLACE_GPS_AGE) receivePosition({ coords: { latitude: d.fix.lat, longitude: d.fix.lon, accuracy: d.fix.acc, speed: null }, timestamp: d.fix.ts }, true);
+    else locate(true, true);
+    renderAll();
+  }
   else if (a === 'place-toggle') {
     const d = placeDisclosure(placeNow()), focused = document.activeElement === t;
     UI.placeExpanded = d.expanded ? null : d.key; renderPlace();
@@ -4263,10 +4292,11 @@ document.addEventListener('click', async e => {
     // par les champs historiques du panneau Paramètres.
     const i = S.cars.findIndex(c => c && c.id === t.dataset.car);
     const key = t.dataset.garageTarget;
-    if (i < 0 || !['odo', 'tread', 'pressure', 'maintenance'].includes(key) || LOCKED()) {
+    if (i < 0 || !['odo', 'tread', 'pressure', 'maintenance', 'model', 'size'].includes(key) || LOCKED()) {
       commandFeedback(t, 'Fiche indisponible'); return;
     }
-    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : key === 'maintenance' ? '#f-cars-' + i + '-maint-rev-d' : '#f-cars-' + i + '-tire-pchk-av';
+    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : key === 'maintenance' ? '#f-cars-' + i + '-maint-rev-d'
+      : key === 'model' ? '#f-cars-' + i + '-tire-model' : key === 'size' ? '#f-cars-' + i + '-tire-size' : '#f-cars-' + i + '-tire-pchk-av';
     const d = $('#settings'); if (!d) { commandFeedback(t, 'Paramètres indisponibles'); return; }
     d.open = true;
     // Réutiliser le formulaire déjà présent : un autre raccourci ne doit pas

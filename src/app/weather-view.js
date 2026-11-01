@@ -47,13 +47,14 @@ function wxInput() {
   const m = CX.m, now = DEMO.on ? m.nowStr.slice(0, 16) : nowIn(m.tz || 'Europe/Paris');
   const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Reliability.ageMin(raw.t);
   const day = m.days.find(d => d.date === now.slice(0, 10)) || {};
-  // valeurs « actuelles » d'une réponse ancienne : on préfère l'heure prévue pour maintenant
-  const cur = m.cur.source === 'current' ? { T: m.cur.T, Tapp: m.cur.Tapp } : {};
+  // valeurs « actuelles » d'une réponse ancienne : on préfère l'heure prévue pour maintenant.
+  // Correction par station (m.obs) : l'heure en cours, corrigée, fait foi — une seule température « actuelle » partout (curTemp).
+  const cur = m.cur.source === 'current' && !m.obs ? { T: m.cur.T, Tapp: m.cur.Tapp } : {};
   return { now, hours: m.hs.slice(Math.max(0, m.nowI - 4)), cur, trips: wxTrips(m), nowcast: ageMin != null && ageMin > 30 ? null : m.nc || null,
     sun: { sunrise: day.sunrise || null, sunset: day.sunset || null }, ageMin };
 }
 // Provenance de la correction par station : laquelle, à quelle distance, de quand, et de combien elle décale les prévisions horaires.
-// Le grand chiffre « actuel » est la donnée du modèle (source « current ») : seules les heures sont corrigées par la station.
+// Le grand chiffre « actuel » est l'heure en cours corrigée par la station quand elle existe (curTemp), sinon la donnée du modèle.
 function wxStationLine(o) {
   const a = Reliability.ageMin(o.t), dT = Number.isFinite(o.dT) ? o.dT : null;
   return `Station ${o.name || o.id || '?'}${Number.isFinite(o.dist) ? ' · ' + Math.round(o.dist) + ' km' : ''} · ${a == null ? 'heure inconnue' : 'relevé il y a ' + ageTxt(a)}${dT == null ? '' : ' · prévisions horaires corrigées de ' + (dT >= 0 ? '+' : '−') + f1(Math.abs(dT)) + ' °C'}`;
@@ -245,9 +246,9 @@ function evidenceHtml() {
   const lastObs = r.fog.flatMap(f => f.ev).filter(e => e.layer === 'A').sort((a, b) => b.w - a.w)[0];   // observation la plus pertinente, tous points confondus
   const off = offlineNow() ? `<p class="wx-stale">⚠ Hors connexion : conditions actuelles non vérifiables · ${lastObs ? 'dernière observation : ' + esc(lastObs.text) : 'aucune observation en cache'}</p>` : '';
   const head = h ? `<div class="ev-crit lv${r.worst.lv}"><b>${h.icon} ${esc(h.text)}</b><span>${esc(h.sub)}${h.window ? ` · ${esc(h.window[0])} → ${esc(h.window[1])}` : ''}${h.where ? ' · ' + esc(h.where) : ''}</span>
-    <span class="sub">Preuves : ${h.proofs.map(esc).join(' · ')}</span><span class="sub">Confiance : ${esc(h.trust)} · variabilité locale importante</span></div>` : '';
+    <span class="sub">Preuves : ${h.proofs.map(esc).join(' · ')}${h.window ? ` (${esc(h.window[0])} → ${esc(h.window[1])})` : ''}</span><span class="sub">Confiance : ${esc(h.trust)} · variabilité locale importante</span></div>` : '';
   const contra = r.contradiction ? `<p class="ev-contra">⚠ CONTRADICTION DÉTECTÉE · ${esc(r.contradiction)}</p>` : '';
-  const rows = r.phen.map(p => `<li class="lv${p.lv}"><span>${p.icon} ${esc(p.label)}</span><b>${esc(p.value)}</b><span class="ev-t ev-${p.trust}">${['🔴', '🟠', '🟢'][Math.max(0, Math.min(2, p.trust))]} ${esc(p.trustTxt)}</span></li>`).join('');
+  const rows = r.phen.map(p => `<li class="lv${p.lv}"><span>${p.icon} ${esc(p.label)}</span><b>${esc(p.value)}${(p.id === 'fog' || p.id === 'vis') && p.lv && h && h.window ? ` · ${esc(h.window[0])} → ${esc(h.window[1])}` : ''}</b><span class="ev-t ev-${p.trust}" aria-label="confiance ${esc(p.trustTxt)}">${['●○○', '●●○', '●●●'][Math.max(0, Math.min(2, p.trust))]} confiance ${esc(p.trustTxt)}</span></li>`).join('');
   const prov = r.worst.ev.map(e => `<li><span class="ev-l">${e.layer}</span> ${e.dir === '+' ? '▲' : '▽'} ${esc(e.source)} : ${esc(e.text)}</li>`).join('');
   const rep = Object.entries(REPORT_KINDS).map(([k, t]) => `<button class="btn sm" data-act="ev-report" data-k="${k}">${t}</button>`).join('');
   const mine = reportsLive().slice(-3).reverse().map(x => `${REPORT_KINDS[x.kind]} à ${hmLocal(x.at)}`).join(' · ');

@@ -115,7 +115,24 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
       await check(tag + ' · calibration effacée et photo dynamique retirée', async () => {
         p.once('dialog', dialog => dialog.accept());
         await click('[data-act=calib-reset]'); assert.equal(await p.evaluate(() => S.calib.length), 0);
-        await p.evaluate(() => { S.cars[0].photo = 'data:image/png;base64,iVBORw0KGgo='; renderSettings(true); }); await click('[data-act=photo-del][data-i="0"]'); assert.equal(await p.evaluate(() => S.cars[0].photo || null), null);
+        await p.evaluate(() => { S.cars[0].photo = 'data:image/png;base64,iVBORw0KGgo='; renderSettings(true); });
+        // Action destructrice : en bas de la fiche (après le dernier champ) et jamais sans confirmation explicite.
+        assert(await p.evaluate(() => { const b = document.querySelector('[data-act=photo-del][data-i="0"]'), sec = b && b.closest('.set-sec'), fields = sec ? [...sec.querySelectorAll('input, select, textarea')] : [];
+          return !!b && fields.length > 0 && fields.every(f => f.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); }), 'Retirer la photo : dernière action de la fiche');
+        let asked = '';
+        p.once('dialog', dialog => { asked = dialog.message(); dialog.dismiss(); });
+        await click('[data-act=photo-del][data-i="0"]'); assert.match(asked, /Retirer la photo/);
+        assert.equal(await p.evaluate(() => S.cars[0].photo || null), 'data:image/png;base64,iVBORw0KGgo=', 'refus : photo conservée');
+        p.once('dialog', dialog => dialog.accept());
+        await click('[data-act=photo-del][data-i="0"]'); assert.equal(await p.evaluate(() => S.cars[0].photo || null), null);
+      });
+      await check(tag + ' · « À compléter » : chaque bouton ouvre et focalise le champ existant de la fiche', async () => {
+        for (const [text, id] of [['Modèle exact absent', 'f-cars-0-tire-model'], ['Dimensions absentes', 'f-cars-0-tire-size'], ['Contrôle de pression non daté', 'f-cars-0-tire-pchk-av']]) {
+          await p.evaluate(t => { document.querySelectorAll('.e2e-todo').forEach(x => x.remove()); const d = document.createElement('div'); d.className = 'e2e-todo'; d.innerHTML = garageTodoHtml([t], S.cars[0].id); document.querySelector('main').prepend(d); }, text);
+          await p.locator('.e2e-todo [data-act=garage-quick]').click();
+          assert.equal(await p.evaluate(() => document.activeElement && document.activeElement.id), id, text);
+        }
+        await p.evaluate(() => document.querySelectorAll('.e2e-todo').forEach(x => x.remove()));
       });
       await check(tag + ' · diagnostic sépare application chargée et version serveur', async () => { assert.match(await p.locator('#diagBox').innerText(), /Application chargée/); assert.match(await p.locator('#diagBox').innerText(), /Version publiée/); assert.equal(await p.evaluate(() => window.TWRC_BUILD.length), 12); });
       await check(tag + ' · compteur vide puis compteur nul et valide', async () => {
