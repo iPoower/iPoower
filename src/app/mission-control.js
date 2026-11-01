@@ -96,7 +96,7 @@ function missionControlHtml(m, navigationHtml = '') {
   const detail = '<p class="sub">Voiture et pneus : mêmes données déclarées que les fiches Garage et Pneus. Trajet : même prochain trajet que le contexte global. Météo : mêmes points et réceptions que le Garage numérique, jamais une observation de la route.</p>' +
     '<p class="sub">Couverture météo : ' + esc(m.weather.complete ? 'complète selon le moteur existant' : 'incomplète ou non démontrée') +
     ' · ' + esc(m.weather.status) + (m.offline ? ' · hors ligne' : '') + (m.weather.demo ? ' · simulation uniquement' : '') + '.</p>' +
-    '<p class="sub">Profondeur : ' + esc(wear) + '. ' + (t && t.pressureChecked ? 'Dernier contrôle de pression déclaré le ' + esc(t.pressureChecked) + '.' : 'Aucun contrôle de pression daté.') +
+    '<p class="sub">Profondeur : ' + esc(wear) + '. ' + (t && t.pressureChecked ? 'Dernier contrôle de pression déclaré le ' + esc(/^\d{4}-\d{2}-\d{2}$/.test(t.pressureChecked) ? t.pressureChecked.slice(8, 10) + '/' + t.pressureChecked.slice(5, 7) + '/' + t.pressureChecked.slice(0, 4) : t.pressureChecked) + '.' : 'Aucun contrôle de pression daté.') +
     ' Les prévisions et règles existantes ne garantissent jamais la sécurité du trajet.</p>';
   return MISSION_STYLE + '<article id="missionControl" class="mission-control" aria-label="Prochaine mission · briefing avant départ">' +
     '<div class="mission-head"><h3>🏁 PROCHAINE MISSION</h3><span class="src est">' + esc(title) + '</span></div>' +

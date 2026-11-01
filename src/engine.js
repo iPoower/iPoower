@@ -3,12 +3,13 @@ const SNOW_CODES = new Set([71, 73, 75, 77, 85, 86]);
 const FZ_CODES = new Set([56, 57, 66, 67]);
 const FOG_CODES = new Set([45, 48]);
 const LV = [
-  { i: 0, key: 'go', emoji: '🟢', name: 'GO', label: 'GO — CONDITIONS ADAPTÉES' },
-  { i: 1, key: 'caution', emoji: '🟡', name: 'CAUTION', label: 'CAUTION — SURVEILLANCE' },
-  { i: 2, key: 'risk', emoji: '🟠', name: 'HIGH RISK', label: 'HIGH RISK — PRUDENCE RENFORCÉE' },
-  { i: 3, key: 'nogo', emoji: '🔴', name: 'NO GO', label: 'NO GO / CONDITIONS DÉFAVORABLES AUX PNEUS MONTÉS' }
+  // Échelle unique de l'app (4 niveaux, en français) : les clés (go/caution/risk/nogo) restent stables pour le style et les données.
+  { i: 0, key: 'go', emoji: '🟢', name: 'RAS', label: 'RAS — CONDITIONS ADAPTÉES' },
+  { i: 1, key: 'caution', emoji: '🟡', name: 'VIGILANCE', label: 'VIGILANCE — À SURVEILLER' },
+  { i: 2, key: 'risk', emoji: '🟠', name: 'PRUDENCE', label: 'PRUDENCE — RISQUE ÉLEVÉ' },
+  { i: 3, key: 'nogo', emoji: '🔴', name: 'DANGER', label: 'DANGER — CONDITIONS DÉFAVORABLES AUX PNEUS MONTÉS' }
 ];
-const TREAD_LEGAL_MM = 1.6;   // minimum légal de sculpture (France) : en dessous, NO GO quel que soit le score (même valeur que TL_LEGAL_MM de tyrelab.js, vérifiée par test)
+const TREAD_LEGAL_MM = 1.6;   // minimum légal de sculpture (France) : en dessous, DANGER quel que soit le score (même valeur que TL_LEGAL_MM de tyrelab.js, vérifiée par test)
 const ICE_LV = ['FAIBLE', 'MODÉRÉ', 'ÉLEVÉ', 'TRÈS ÉLEVÉ'];
 const TYPE_LABEL = { summer: 'été', winter: 'hiver', allseason: '4 saisons 3PMSF', unknown: 'non renseignés', none: 'aucun (en attente)' };
 const hasTires = car => car && car.tire && car.tire.type !== 'none';
@@ -278,7 +279,7 @@ function tireAssess(car, hs, i) {
   const ice = x.ice && x.ice.score != null ? x.ice.score : 0;
   const tread = typeof treadAxles === 'function' ? treadAxles(tire).worst : tire.tread;   // essieu le plus usé (page) ; relais : valeur effective
   // — météo seule (indépendant du type de pneu)
-  if (x.vis != null) add(`Visibilité ${Math.round(x.vis)} m`, x.vis < 200 ? 30 : x.vis < 500 ? 20 : x.vis < 1000 ? 10 : 0, 'hazard');
+  if (x.vis != null) add(`Visibilité ${Math.round(x.vis)} m${x.t ? ' vers ' + String(x.t).slice(11, 16) : ''}`, x.vis < 200 ? 30 : x.vis < 500 ? 20 : x.vis < 1000 ? 10 : 0, 'hazard');
   if (x.gust != null) add(`Rafales ${Math.round(x.gust)} km/h`, x.gust >= 90 ? 20 : x.gust >= 70 ? 12 : x.gust >= 55 ? 6 : 0, 'hazard');
   if (snow) add('Chutes de neige', 10 + ((x.snow || 0) >= 1 ? 6 : 0), 'hazard');
   if (fz) add('Pluie ou bruine verglaçante', 50, 'hazard');
@@ -510,10 +511,45 @@ const ALERT_DEFS = [
   { id: 'vis', label: 'Visibilité faible (< 1 000 m)' },
   { id: 'frost', label: 'Gel nocturne' },
   { id: 'drop', label: 'Baisse brutale de température' },
-  { id: 'pre', label: 'Météo dangereuse avant le montage hiver' }
+  { id: 'pre', label: 'Météo dangereuse avant le montage hiver' },
+  { id: 'tread', label: 'Profondeur de sculpture faible (minimum légal 1,6 mm ; repères indicatifs 3 et 4 mm)' }
 ];
-function computeAlerts(model, cars, S, seasonByCar) {
-  const res = {}; const seq = seqOf(model, model.nowI, 24); const sm = summarize(seq);
+// Profondeur de sculpture : alerte dédiée, indépendante de la température.
+// Seul 1,6 mm est réglementaire : arrêté du 18 juillet 2019 relatif aux pneumatiques (NOR TRER1921975A, JORF du 30/08/2019),
+// art. 5 (véhicules M1, N1, O1, O2, rainures principales). 3 mm (été / 4 saisons, pluie ou saison froide) et 4 mm (hiver)
+// sont des REPÈRES INDICATIFS de l'app, sans source primaire : toujours affichés comme tels, jamais comme une obligation.
+const TREAD_HINT_MM = 3, TREAD_HINT_WINTER_MM = 4;
+function treadWorst(tire) {
+  if (!tire) return { mm: null, ax: null };
+  if (typeof treadAxles === 'function') { const x = treadAxles(tire); return { mm: x.worst, ax: x.ax }; }
+  const n = v => typeof v === 'number' && Number.isFinite(v) ? v : null, av = n(tire.treadAv), ar = n(tire.treadAr);
+  if (av == null && ar == null) return { mm: n(tire.tread), ax: null };
+  if (av != null && ar != null) return { mm: Math.min(av, ar), ax: av === ar ? null : av < ar ? 'av' : 'ar' };
+  return av != null ? { mm: av, ax: 'av' } : { mm: ar, ax: 'ar' };
+}
+function treadAlert(cars, sm, seq) {
+  const first = seq && seq[0] && seq[0].hs[seq[0].i], month = first && first.t ? +String(first.t).slice(5, 7) : null;
+  const cold = month != null && (month >= 11 || month <= 3), rain = sm && sm.Pmax != null && sm.Pmax >= 0.5;
+  const AX = { av: 'essieu avant', ar: 'essieu arrière' };
+  const rows = (cars || []).map(c => {
+    const t = c && c.tire; if (!t) return null;
+    const w = treadWorst(t); if (w.mm == null) return null;
+    const hist = (Array.isArray(t.treads) ? t.treads : []).filter(r => r && r.d && (!w.ax || !r.ax || r.ax === w.ax || r.ax === 'both'));
+    const last = hist.slice().sort((a, b) => String(a.d).localeCompare(String(b.d))).pop() || null;
+    const est = !!(last ? last.est : t.treadEst);
+    const where = (w.ax ? AX[w.ax] : 'pneus') + ' · ' + (last ? 'relevé du ' + fmtDay(last.d) : 'date du relevé inconnue') + (est ? ', estimation' : '');
+    const type = effType(c), mm = f1(w.mm);
+    if (w.mm < TREAD_LEGAL_MM) return { sev: 3, t: `${c.short} : ${mm} mm, sous le minimum légal de 1,6 mm`, d: `${where}. Minimum réglementaire : arrêté du 18 juillet 2019 relatif aux pneumatiques, art. 5.` };
+    if (type === 'winter' && w.mm < TREAD_HINT_WINTER_MM) return { sev: 1, t: `${c.short} : ${mm} mm, sous le repère indicatif de 4 mm (pneus hiver)`, d: `${where}. Repère indicatif, non réglementaire : efficacité réduite sur neige.` };
+    if (type !== 'winter' && w.mm < TREAD_HINT_MM && (cold || rain)) return { sev: rain ? 2 : 1, t: `${c.short} : ${mm} mm, sous le repère indicatif de 3 mm`, d: `${where}. Repère indicatif, non réglementaire${rain ? ' : pluie prévue, évacuation de l’eau réduite' : ' : saison froide et humide (novembre – mars)'}.` };
+    return null;
+  }).filter(Boolean);
+  if (!rows.length) return null;
+  return { sev: Math.max(...rows.map(r => r.sev)), title: rows.map(r => r.t).join(' · '), detail: rows.map(r => r.d).join(' ') };
+}
+// hours : fenêtre des alertes (24 h pour le panneau Alertes ; 3 h pour le verdict « ici, maintenant »).
+function computeAlerts(model, cars, S, seasonByCar, hours = 24) {
+  const res = {}; const seq = seqOf(model, model.nowI, hours); const sm = summarize(seq);
   const set = (id, sev, title, detail) => { res[id] = { id, sev, title, detail }; };
   if (sm.Tmin != null && sm.Tmin < 7) set('t7', 1, `Minimum prévu ${f1(sm.Tmin)} °C`, `Vers ${hhmm(sm.iTmin)}. Le seuil de 7 °C est une règle pratique : les performances relatives hiver/été évoluent, ce n’est pas une bascule instantanée.`);
   const summerCars = cars.filter(c => effType(c) === 'summer');
@@ -525,8 +561,10 @@ function computeAlerts(model, cars, S, seasonByCar) {
   if (sm.snowSum > 0 || sm.snowCode) set('snow', summerCars.length ? 3 : 2, `Neige prévue${sm.snowSum > 0 ? ` (${f1(sm.snowSum)} cm)` : ''}`, `À partir de ${hhmm(sm.iSnow)}.`);
   const thr = S.rainThr || 5;
   if (sm.Pmax >= thr) set('rain', 2, `Forte pluie : ${f1(sm.Pmax)} mm/h`, `Vers ${hhmm(sm.iPmax)}. Seuil réglé à ${thr} mm/h.`);
-  if (sm.visMin != null && sm.visMin < 500) set('fog', sm.visMin < 200 ? 3 : 2, `Brouillard : visibilité ${f0(sm.visMin)} m`, `Vers ${hhmm(sm.iVis)}.`);
-  if (sm.visMin != null && sm.visMin < 1000) set('vis', 1, `Visibilité réduite : ${f0(sm.visMin)} m`, `Vers ${hhmm(sm.iVis)}.`);
+  // toute visibilité affichée porte son heure : « maintenant » pour l'heure en cours, sinon « minimum prévu vers HH:MM »
+  const visWhen = sm.iVis && sm.iVis === seq[0] ? 'maintenant' : `minimum prévu vers ${hhmm(sm.iVis)}`;
+  if (sm.visMin != null && sm.visMin < 500) set('fog', sm.visMin < 200 ? 3 : 2, `Brouillard : visibilité ${f0(sm.visMin)} m ${visWhen}`, `Vers ${hhmm(sm.iVis)}.`);
+  if (sm.visMin != null && sm.visMin < 1000) set('vis', 1, `Visibilité réduite : ${f0(sm.visMin)} m ${visWhen}`, `Vers ${hhmm(sm.iVis)}.`);
   // gel nocturne : 21h → 9h
   let frost = null;
   seq.forEach(s => { const x = s.hs[s.i]; if ((x.hh >= 21 || x.hh <= 9) && x.T != null && x.T <= 0 && (!frost || x.T < frost.T)) frost = { T: x.T, s }; });
@@ -535,6 +573,8 @@ function computeAlerts(model, cars, S, seasonByCar) {
   for (let k = 0; k + 3 < seq.length; k++) { const a = seq[k].hs[seq[k].i], b = seq[k + 3].hs[seq[k + 3].i]; if (a.T != null && b.T != null && a.T - b.T >= 5 && (!drop || a.T - b.T > drop.d)) drop = { d: a.T - b.T, s: seq[k + 3], from: a.T, to: b.T }; }
   if (drop) set('drop', drop.d >= 8 ? 3 : 2, `Baisse brutale : −${f1(drop.d)} °C en 3 h`, `De ${f1(drop.from)} à ${f1(drop.to)} °C vers ${hhmm(drop.s)}.`);
   const pre = cars.map(c => ({ c, s: seasonByCar[c.id] })).filter(o => o.s && o.s.coldBefore && effType(o.c) === 'summer');
+  const tw = treadAlert(cars, sm, seq);
+  if (tw) set('tread', tw.sev, tw.title, tw.detail);
   if (pre.length) { const o = pre[0], when = o.s.countdown.kind === 'confirmed' ? 'rendez-vous confirmé' : 'montage estimé'; set('pre', 3, `Météo hivernale avant le montage hiver (${o.c.short})`, `Premier épisode : ${fmtDay(o.s.coldBefore.first.date)}, avant le ${when} du ${fmtDay(o.s.countdown.date)}.${o.s.coldBefore.partial ? ' La météo disponible ne couvre pas toute la période restante.' : ''}`); }
   return res;
 }
@@ -627,19 +667,31 @@ function frAdmin(x) {
   const city = typeof x.city === 'string' ? x.city.trim().replace(/\s+/g, ' ').slice(0, 120) : '';
   return { deptCode: code || '', dept: code ? FR_DEPT[code] : '', city, cityCode: cc, postcode: pc };
 }
-// Loi Montagne : 34 départements où des communes sont soumises à l'obligation d'équipements hiver (1er novembre – 31 mars).
-// Le département et l'altitude sont des indicateurs de VIGILANCE : seule la liste de communes fixée par arrêté préfectoral fait foi.
+// Loi Montagne (indicatif) : départements dont certaines communes sont soumises à l'obligation d'équipements hiver
+// (1er novembre – 31 mars). Le département n'est qu'un indicateur de VIGILANCE : seule la liste de communes fixée par
+// arrêté préfectoral fait foi (carte officielle). Aucun nombre de départements affiché : les sources divergent.
+// Aucun seuil d'altitude : il n'en existe pas dans le décret ; l'altitude est montrée à titre d'information seulement.
 const MONT_CODES = new Set(['01', '03', '04', '05', '06', '07', '09', '11', '12', '15', '25', '26', '31', '38', '39', '42', '43', '48', '57', '63', '64', '65', '66', '67', '68', '69', '70', '73', '74', '81', '83', '84', '88', '90']);
 const MONT_DEPTS = [...MONT_CODES].map(c => FR_DEPT[c]);
-const MONT_SRC = { asOf: '2025-10-29', season: '2025-2026', text: 'décret n° 2020-1264 ; liste des 34 départements de la saison 2025-2026 (service-public.gouv.fr, 29/10/2025)',
-  url: 'https://www.service-public.gouv.fr/particuliers/actualites/A14389', communes: 'https://www.securite-routiere.gouv.fr/equipements-hivernaux-departements-et-communes' };
+const MONT_SRC = { asOf: '2025-10-29', season: '2025-2026', text: 'décret n° 2020-1264 du 16 octobre 2020 (NOR INTS2027076D) ; liste embarquée de la saison 2025-2026, indicative : la carte officielle fait foi',
+  url: 'https://www.service-public.gouv.fr/particuliers/actualites/A14389', communes: 'https://www.securite-routiere.gouv.fr/equipements-hivernaux-departements-et-communes',
+  legifrance: 'https://www.legifrance.gouv.fr/eli/decret/2020/10/16/INTS2027076D/jo/texte' };
 function montagneInfo(loc, dateStr, elev) {
   const a = frAdmin(loc), inDept = MONT_CODES.has(a.deptCode);
   const md = String(dateStr || '').slice(5, 10), season = md >= '11-01' || md <= '03-31';
-  const high = elev != null && elev >= 700;
-  return { inDept, season, elev, high, concerned: inDept || high, deptCode: a.deptCode, deptName: a.dept, src: MONT_SRC };
+  return { inDept, season, elev, high: false, concerned: inDept, deptCode: a.deptCode, deptName: a.dept, src: MONT_SRC };
 }
-// Saison hivernale d'une date (1er novembre – 31 mars) et réserve si la liste embarquée date d'une autre saison.
+// Trajet : départements TRAVERSÉS × période × monte déclarée. 'allseason' = 4 saisons 3PMSF (TYPE_LABEL).
+// Statut : 'alerte' (pneus été en période), 'conforme' (hiver ou 3PMSF, chaînes quand même exigées sous panneau B26),
+// 'a-verifier' (monte inconnue), 'hors-periode'. Indicatif : jamais « obligation » pour une commune non vérifiée.
+function montagneTrip(deptCodes, dateStr, tireType) {
+  const codes = [...new Set((deptCodes || []).filter(c => MONT_CODES.has(c)))];
+  if (!codes.length) return null;
+  const md = String(dateStr || '').slice(5, 10), season = md >= '11-01' || md <= '03-31';
+  const ok = tireType === 'winter' || tireType === 'allseason';
+  const status = !season ? 'hors-periode' : ok ? 'conforme' : tireType === 'summer' ? 'alerte' : 'a-verifier';
+  return { season, status, level: status === 'alerte' ? 2 : season ? 1 : 0, depts: codes.map(c => ({ code: c, name: FR_DEPT[c] })), src: MONT_SRC };
+}
 function montagneSeason(dateStr) {
   const y = +String(dateStr || '').slice(0, 4), m = +String(dateStr || '').slice(5, 7); if (!y || !m) return { season: '', listOk: false, note: '' };
   const season = m >= 7 ? `${y}-${y + 1}` : `${y - 1}-${y}`, listOk = season === MONT_SRC.season;
@@ -648,8 +700,7 @@ function montagneSeason(dateStr) {
 // Phrase courte et sourcée : jamais « obligation » pour un lieu dont la commune n'est pas vérifiée.
 function montagneWhy(mc, name) {
   const where = mc.deptName ? `${mc.deptName} (${mc.deptCode})` : '';
-  return mc.inDept ? `${name}${where ? ' · ' + where : ''} : département où certaines communes imposent les équipements hiver`
-    : `${name} est en altitude (${Math.round(mc.elev)} m)${where ? ' · ' + where : ''} : équipements hiver possibles selon la commune`;
+  return `${name}${where ? ' · ' + where : ''} : département où certaines communes imposent les équipements hiver (indicatif)`;
 }
 
 /* ===================== AJOUTS 2 : AROME, ensemble, pluie 15 min, calibration ===================== */
@@ -971,7 +1022,7 @@ function legSeq(models, pts, dep, min) {
   pts.forEach((p, k) => {
     const m = models[k]; if (!m) return;
     const t = addMin(dep, Math.round(p.f * (min || 0))), i = m.byTime.get(t.slice(0, 13) + ':00');
-    if (i != null) seq.push({ hs: m.hs, i, f: p.f, t, k, km: p.km, name: p.name, lat: p.lat, lon: p.lon });
+    if (i != null) seq.push({ hs: m.hs, i, f: p.f, t, k, km: p.km, name: p.name, lat: p.lat, lon: p.lon, elev: m.payload && Number.isFinite(m.payload.elevation) ? m.payload.elevation : null });
   });
   return seq;
 }

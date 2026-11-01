@@ -7,14 +7,14 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = { console, Math, Date, Intl, JSON, Map, Set }; vm.createContext(ctx);
   const geo = fs.readFileSync(path.join(__dirname, '../src/geosearch.js'), 'utf8');
   const day = fs.readFileSync(path.join(__dirname, '../src/userctx.js'), 'utf8');
-  vm.runInContext(source + '\n' + geo + '\n' + day + ';this.E={frAdmin,montagneInfo,montagneWhy,montagneSeason,FR_DEPT,MONT_CODES,MONT_DEPTS,MONT_SRC};this.G=GeoSearch;this.D=DayContext;', ctx);
+  vm.runInContext(source + '\n' + geo + '\n' + day + ';this.E={frAdmin,montagneInfo,montagneWhy,montagneSeason,montagneTrip,FR_DEPT,MONT_CODES,MONT_DEPTS,MONT_SRC};this.G=GeoSearch;this.D=DayContext;', ctx);
   const { E, G, D } = ctx, plain = v => JSON.parse(JSON.stringify(v));
   let count = 0;
   const test = (name, fn) => { try { fn(); } catch (error) { error.scenario = name; throw error; } count++; if (!options.quiet) console.log('✅ ' + name); };
 
-  test('référentiel : 101 départements, 34 en Loi Montagne, tous présents dans le référentiel', () => {
-    assert.equal(Object.keys(E.FR_DEPT).length, 101); assert.equal(E.MONT_CODES.size, 34);
-    assert([...E.MONT_CODES].every(c => E.FR_DEPT[c])); assert.equal(E.MONT_DEPTS.length, 34);
+  test('référentiel : 101 départements ; liste montagne embarquée (indicative), tous présents dans le référentiel', () => {
+    assert.equal(Object.keys(E.FR_DEPT).length, 101); assert(E.MONT_CODES.size > 0);
+    assert([...E.MONT_CODES].every(c => E.FR_DEPT[c])); assert.equal(E.MONT_DEPTS.length, E.MONT_CODES.size);
     for (const n of ['Haute-Savoie', 'Savoie', 'Isère', 'Hautes-Pyrénées', 'Vosges', 'Territoire de Belfort', 'Puy-de-Dôme']) assert(E.MONT_DEPTS.includes(n), n);
     for (const n of ['Paris', 'Somme', 'Gironde', 'Corrèze', 'Haute-Corse']) assert(!E.MONT_DEPTS.includes(n), n);
   });
@@ -47,18 +47,33 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const v = E.montagneInfo({ dept: '74, Haute-Savoie, Auvergne-Rhône-Alpes' }, '2026-11-03', 450);
     assert.equal(v.inDept, true); assert.equal(v.deptName, 'Haute-Savoie');
   });
-  test('hors département concerné : repli altitude ≥ 700 m, sinon aucune vigilance', () => {
+  test('hors département concerné : aucune vigilance, quelle que soit l’altitude (aucun seuil sans source)', () => {
     const low = E.montagneInfo({ deptCode: '80' }, '2026-12-01', 100), high = E.montagneInfo({ deptCode: '19' }, '2026-12-01', 820), none = E.montagneInfo({}, '2026-12-01', null);
-    assert.equal(low.concerned, false); assert.equal(high.concerned, true); assert.equal(high.inDept, false); assert.equal(none.concerned, false);
-    assert.match(E.montagneWhy(high, 'Lieu test'), /^Lieu test est en altitude \(820 m\) · Corrèze \(19\) : équipements hiver possibles selon la commune$/);
+    assert.equal(low.concerned, false); assert.equal(high.concerned, false); assert.equal(high.high, false); assert.equal(none.concerned, false);
+  });
+  test('trajet : départements TRAVERSÉS × période × monte (été = alerte, hiver/3PMSF = conforme, inconnue = à vérifier)', () => {
+    const crossed = ['75', '45', '38', '38', '73'];
+    const ete = E.montagneTrip(crossed, '2026-11-23T06:30', 'summer');
+    assert.equal(ete.status, 'alerte'); assert.equal(ete.level, 2); assert.equal(ete.season, true);
+    assert.deepEqual(plain(ete.depts), [{ code: '38', name: 'Isère' }, { code: '73', name: 'Savoie' }]);
+    assert.equal(E.montagneTrip(crossed, '2026-11-23', 'winter').status, 'conforme');
+    assert.equal(E.montagneTrip(crossed, '2026-11-23', 'allseason').status, 'conforme');
+    assert.equal(E.montagneTrip(crossed, '2026-11-23', 'unknown').status, 'a-verifier');
+    assert.equal(E.montagneTrip(crossed, '2026-10-20', 'summer').status, 'hors-periode');
+    assert.equal(E.montagneTrip(['75', '45'], '2026-11-23', 'summer'), null, 'aucun département concerné traversé');
   });
   test('période : 1er novembre – 31 mars inclus, rien d’autre', () => {
     for (const [d, s] of [['2026-10-31', false], ['2026-11-01', true], ['2027-01-15', true], ['2027-03-31', true], ['2027-04-01', false]]) assert.equal(E.montagneInfo({ deptCode: '73' }, d, null).season, s, d);
   });
   test('formulation : vigilance, jamais « obligation » pour un lieu dont la commune n’est pas vérifiée ; source datée', () => {
     const w = E.montagneWhy(E.montagneInfo({ deptCode: '74' }, '2026-11-03', null), 'Arrivée · Annecy');
-    assert.equal(w, 'Arrivée · Annecy · Haute-Savoie (74) : département où certaines communes imposent les équipements hiver'); assert.doesNotMatch(w, /obligatoire/);
+    assert.equal(w, 'Arrivée · Annecy · Haute-Savoie (74) : département où certaines communes imposent les équipements hiver (indicatif)'); assert.doesNotMatch(w, /obligatoire/);
     assert.match(E.MONT_SRC.text, /décret n° 2020-1264/); assert.match(E.MONT_SRC.text, /2025-2026/); assert.equal(E.MONT_SRC.asOf, '2025-10-29');
+    assert.match(E.MONT_SRC.text, /16 octobre 2020/); assert.match(E.MONT_SRC.text, /indicative/); assert.doesNotMatch(E.MONT_SRC.text, /\b\d{2} départements\b/);
+    assert.equal(E.MONT_SRC.legifrance, 'https://www.legifrance.gouv.fr/eli/decret/2020/10/16/INTS2027076D/jo/texte');
+    const app = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
+    assert.doesNotMatch(app, /\b34 départements\b/); assert.match(app, /Panneau <b>B58<\/b>/); assert.match(app, /Panneau <b>B26<\/b>/);
+    assert.match(fs.readFileSync(sourcePath, 'utf8').split('function montagneInfo')[1].split('\n}')[0], /^((?!700).)*$/s, 'aucun seuil de 700 m');
     assert.match(E.MONT_SRC.url, /^https:\/\/www\.service-public\.gouv\.fr\//); assert.match(E.MONT_SRC.communes, /^https:\/\/www\.securite-routiere\.gouv\.fr\//);
   });
   test('saison de la liste : 2025-2026 embarquée, 2026-2027 signalée « à confirmer »', () => {
@@ -74,6 +89,7 @@ if (require.main === module) {
     { name: 'retour à la comparaison du texte brut', from: 'const a = frAdmin(loc), inDept = MONT_CODES.has(a.deptCode);', to: 'const a = frAdmin(loc), inDept = !!(loc && MONT_DEPTS.includes(loc.dept));' },
     { name: 'département retiré de la liste montagne', from: "'73', '74', '81'", to: "'73', '81'" },
     { name: 'fin de période décalée au 30 mars', from: "md <= '03-31'", to: "md <= '03-30'" },
+    { name: 'pneus été jugés conformes en montagne', from: "const ok = tireType === 'winter' || tireType === 'allseason';", to: "const ok = tireType !== 'unknown';" },
     { name: 'réserve de saison supprimée', from: 'listOk = season === MONT_SRC.season', to: 'listOk = true' },
     { name: 'Corse mal découpée par code postal', from: "+z.slice(2, 3) <= 1 ? '2A' : '2B'", to: "'2B'" }
   ];

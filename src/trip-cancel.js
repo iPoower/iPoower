@@ -96,6 +96,12 @@ const TripCancel = (() => {
     // pas de coordonnées. Ses anciennes jambes ne prouvent pas ce nouveau lieu.
     return !point(e) && typeof resolvePlace === 'function' && point(resolvePlace(e));
   };
+  // Réservation non confirmée : un titre marqué « [À réserver] » (casse et accents indifférents, « ? » final toléré)
+  // n'est pas un trajet par défaut. Il reste listé, compté et annulable ; seul un choix explicite #trajet (mode posé
+  // par le relais) le rétablit comme trajet. Ses anciennes jambes sont alors écartées par rebuild (mode 'pasdetrajet').
+  const fold = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const unconfirmed = e => !!e && typeof e === 'object' && e.mode !== 'trajet' && /\[\s*a\s+reserver\s*\??\s*\]/.test(fold(e.t));
+  const confirmedOnly = events => Array.isArray(events) ? events.map(e => unconfirmed(e) ? { ...e, mode: 'pasdetrajet', unconfirmed: true } : e) : events;
   function rebuild(events, home, directSet, state, now, context = {}) {
     directSet = directSet || {};
     const relevant = e => e.mode !== 'pasdetrajet' && (typeof context.relevant !== 'function' || !!context.relevant(e));
@@ -181,5 +187,5 @@ const TripCancel = (() => {
     });
     return result;
   }
-  return { KEY, UNDO_MS, EVENT_MARGIN_MS, eventId, workId, identifiable, clean, save, load, has, cancel, undo, undoable, eventExpiration, workExpiration, localEpoch, rebuild, selectedLegs, nonSpatialNeedsRebuild };
+  return { KEY, UNDO_MS, EVENT_MARGIN_MS, eventId, workId, identifiable, clean, save, load, has, cancel, undo, undoable, eventExpiration, workExpiration, localEpoch, rebuild, selectedLegs, nonSpatialNeedsRebuild, unconfirmed, confirmedOnly };
 })();

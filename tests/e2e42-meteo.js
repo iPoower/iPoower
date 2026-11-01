@@ -100,7 +100,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     check('1 · « ce qui compte » : 1 à 5 lignes', w.matters.length >= 1 && w.matters.length <= 5, w.matters.join(' | '));
     check('1 · sept cartes phénomènes compactes', w.phen.join(',') === 'rain,fog,wind,ice,temp,sun,road', w.phen.join(','));
     check('1 · conditions route : score sur 100 et facteurs expliqués', /^\d{1,3}$/.test(w.score) && w.factors.length >= 6 && w.factors.every(x => /−\d+|\b0$/.test(x)), w.factors.join(' | '));
-    check('1 · Pneus : synthèse courte et lien, aucune jauge ni verdict pneumatique copié', w.tireBtn === 1 && w.gauges === 0 && /Impact pneus/.test(w.road) && !/GO —|NO GO|HIGH RISK|CAUTION/.test(w.hero + w.road), w.road);
+    check('1 · Pneus : synthèse courte et lien, aucune jauge ni verdict pneumatique copié', w.tireBtn === 1 && w.gauges === 0 && /Impact pneus/.test(w.road) && !/RAS —|VIGILANCE —|PRUDENCE —|DANGER —/.test(w.hero + w.road), w.road);
     const L = await layout(s.p, true);
     check('1 · iPhone : aucun défilement horizontal de la page, rien ne dépasse', L.sw <= L.W && !L.wide.length, JSON.stringify(L));
     check('1 · iPhone : cibles tactiles ≥ 44 pt dans le poste météo', !L.small.length, L.small.join(', '));
@@ -239,21 +239,27 @@ const layout = (p, mobile) => p.evaluate(mobile => {
       check(`${dev} · météo route inconnue : carte neutre et suivant indisponible, aucune rassurance inventée`, /lvx/.test(neutral.cls) && !neutral.green && !/🟢/.test(neutral.text) && /Ensuite : ⏳.*météo indisponible/.test(neutral.text) && !/Pas de pluie attendue sur les trajets/.test(neutral.matters), JSON.stringify(neutral));
       await s.c.close();
     }
-    // Provenance honnête du grand chiffre : la donnée « actuelle » du modèle n'est pas corrigée par la station, seules les heures le sont.
+    // Une seule température « actuelle » : avec une correction par station, l'heure en cours corrigée fait foi partout (bloc Météo et Détails),
+    // étiquetée « ESTIMÉ · modèle ajusté par station » ; sans station, la donnée du modèle reste « PRÉVU ».
     for (const dev of ['iphone', 'pc']) {
       s = await session(b, { at: '2026-10-03T05:40:00+02:00', scn: 'doux', dev });
       const prov = await s.p.evaluate(() => {
         const real = CX.m.obs, source = wxDesk(wxInput()).current.source, render = () => { renderWx.last = ''; renderWx(); };
         CX.m.obs = { id: 'LFXX', name: 'Station test', dist: 12.4, t: new Date(Date.now() - 10 * 60e3).toISOString(), T: 7.1, dT: -2 };
-        render(); const withObs = [...document.querySelectorAll('#secWx .wx-now-src')].map(e => e.innerText.trim()), hasK = !!document.querySelector('#secWx [data-k=station]');
+        const savedT = CX.m.hs[CX.m.nowI].T; CX.m.hs[CX.m.nowI].T = Math.round(((CX.m.cur.T ?? 10) - 2) * 10) / 10;   // heure corrigée (≠ donnée du modèle)
+        render(); renderCurrent(); const withObs = [...document.querySelectorAll('#secWx .wx-now-src')].map(e => e.innerText.trim()), hasK = !!document.querySelector('#secWx [data-k=station]');
+        const one = { hour: f1(CX.m.hs[CX.m.nowI].T), model: f1(CX.m.cur.T), hero: (document.querySelector('#secWx .wx-now-v') || {}).textContent, details: ((document.querySelector('#secCur .bigT') || {}).textContent || '').replace('°C', '').trim() };
+        CX.m.hs[CX.m.nowI].T = savedT;
         const diagWith = diagRows(true).find(r => r[0] === 'Correction par station')[1];
         CX.m.obs = null; render(); const without = [...document.querySelectorAll('#secWx .wx-now-src')].map(e => e.innerText.trim());
         const diagWithout = diagRows(true).find(r => r[0] === 'Correction par station')[1];
         CX.m.obs = real; render();
-        return { source, withObs, hasK, without, diagWith, diagWithout };
+        renderCurrent();
+        return { source, withObs, hasK, without, diagWith, diagWithout, one };
       });
-      const wantSrc = prov.source === 'current' ? /^PRÉVU · Donnée actuelle du modèle/ : /^ESTIMÉ · modèle ajusté par station/;
-      check(`${dev} · avec station : le grand chiffre ne prétend pas être ajusté quand il vient du modèle`, wantSrc.test(prov.withObs[0] || '') && (prov.source !== 'current' || !/ajusté par station/.test(prov.withObs[0])), JSON.stringify(prov));
+      check(`${dev} · avec station : une seule température actuelle (heure corrigée), identique dans Météo et Détails, étiquetée ESTIMÉ`,
+        /^ESTIMÉ · modèle ajusté par station/.test(prov.withObs[0] || '') && prov.one.hero === prov.one.hour && prov.one.details === prov.one.hour && prov.one.hour !== prov.one.model, JSON.stringify(prov));
+      check(`${dev} · sans station : la donnée du modèle reste « PRÉVU »`, /^PRÉVU · /.test(prov.without[0] || ''), JSON.stringify(prov.without));
       check(`${dev} · avec station : nom, distance, âge du relevé et correction des prévisions horaires affichés`, prov.hasK && /Station Station test · 12 km · relevé il y a 10 min · prévisions horaires corrigées de −2,0 °C/.test(prov.withObs[1] || ''), JSON.stringify(prov.withObs));
       check(`${dev} · diagnostic : la station utilisée est nommée, ou « aucune » sans relevé`, /^Station Station test · 12 km · relevé il y a 10 min · prévisions horaires corrigées de −2,0 °C$/.test(prov.diagWith) && /^aucune/.test(prov.diagWithout), JSON.stringify([prov.diagWith, prov.diagWithout]));
       check(`${dev} · sans station : aucune ligne de station inventée`, prov.without.length === 1 && !/Station/.test(prov.without[0]), JSON.stringify(prov.without));

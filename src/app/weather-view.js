@@ -47,13 +47,14 @@ function wxInput() {
   const m = CX.m, now = DEMO.on ? m.nowStr.slice(0, 16) : nowIn(m.tz || 'Europe/Paris');
   const raw = RAW[UI.loc], ageMin = DEMO.on || !raw || !raw.t ? null : Reliability.ageMin(raw.t);
   const day = m.days.find(d => d.date === now.slice(0, 10)) || {};
-  // valeurs « actuelles » d'une réponse ancienne : on préfère l'heure prévue pour maintenant
-  const cur = m.cur.source === 'current' ? { T: m.cur.T, Tapp: m.cur.Tapp } : {};
+  // valeurs « actuelles » d'une réponse ancienne : on préfère l'heure prévue pour maintenant.
+  // Correction par station (m.obs) : l'heure en cours, corrigée, fait foi — une seule température « actuelle » partout (curTemp).
+  const cur = m.cur.source === 'current' && !m.obs ? { T: m.cur.T, Tapp: m.cur.Tapp } : {};
   return { now, hours: m.hs.slice(Math.max(0, m.nowI - 4)), cur, trips: wxTrips(m), nowcast: ageMin != null && ageMin > 30 ? null : m.nc || null,
     sun: { sunrise: day.sunrise || null, sunset: day.sunset || null }, ageMin };
 }
 // Provenance de la correction par station : laquelle, à quelle distance, de quand, et de combien elle décale les prévisions horaires.
-// Le grand chiffre « actuel » est la donnée du modèle (source « current ») : seules les heures sont corrigées par la station.
+// Le grand chiffre « actuel » est l'heure en cours corrigée par la station quand elle existe (curTemp), sinon la donnée du modèle.
 function wxStationLine(o) {
   const a = Reliability.ageMin(o.t), dT = Number.isFinite(o.dT) ? o.dT : null;
   return `Station ${o.name || o.id || '?'}${Number.isFinite(o.dist) ? ' · ' + Math.round(o.dist) + ' km' : ''} · ${a == null ? 'heure inconnue' : 'relevé il y a ' + ageTxt(a)}${dT == null ? '' : ' · prévisions horaires corrigées de ' + (dT >= 0 ? '+' : '−') + f1(Math.abs(dT)) + ' °C'}`;
@@ -140,19 +141,19 @@ function renderWx() {
     <p class="sub">Barre bleue : pluie (pleine à 4 mm/h) · % : probabilité de pluie · 🚗 : heure de trajet.</p></div>`;
   const matters = `<div class="wx-blk wx-matb"><h3>🎯 Ce qui compte aujourd’hui</h3><ul class="wx-mat">${d.matters.map(x => `<li class="lv${x.lv}"><span aria-hidden="true">${E[x.lv]}</span><span>${esc(x.text)}</span></li>`).join('')}</ul></div>`;
   const open = new Set([...el.querySelectorAll('details[open][data-k]')].map(x => x.dataset.k));
-  const ph = `<div class="wx-blk"><h3>⚡ Phénomènes</h3><div class="wx-ph">${d.phen.map(p => `<details class="wx-pc lv${p.lv}" data-k="${p.id}"${open.has(p.id) ? ' open' : ''}><summary><span class="ic" aria-hidden="true">${p.icon}</span><span class="tt">${esc(p.title)}</span><span class="ln">${p.lv ? E[p.lv] + ' ' : ''}${esc(p.line)}</span></summary><ul>${p.detail.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`).join('')}</div></div>`;
+  const ph = `<div class="wx-blk"><h3>⚡ Phénomènes</h3><div class="wx-ph">${d.phen.map(p => `<details class="wx-pc lv${p.lv}" data-k="${p.id}"${open.has(p.id) ? ' open' : ''}><summary><span class="ic" aria-hidden="true">${p.icon}</span><span class="tt">${esc(p.title)}</span><span class="ln">${p.lv && !String(p.line).startsWith(E[p.lv]) ? E[p.lv] + ' ' : ''}${esc(p.line)}</span></summary><ul>${p.detail.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`).join('')}</div></div>`;
   // conditions route + lien court vers Pneus (aucune analyse pneumatique ici)
   const r = d.road, tires = (CX.cars || []).filter(c => hasTires(c.car) && c.w), tl2 = tires.length ? tires.reduce((a, c) => Math.max(a, c.w.level), 0) : null;
   const road = `<div class="wx-blk wx-road lv${r.score == null ? 'x' : r.level}"><h3>🛣️ Conditions route · ESTIMÉ</h3>
     <div class="wx-rs"><b class="num">${r.score == null ? '—' : r.score}</b><span>${r.score == null ? 'INDISPONIBLE · données insuffisantes' : '/ 100 ' + E[r.level]}</span><span class="sub">${esc(r.window.label)}</span></div>
     <ul class="wx-rf">${r.factors.map(f => `<li class="lv${f.lv}"><span aria-hidden="true">${E[f.lv]}</span><b>${esc(f.label)}</b><span class="sub">${esc(f.why)}</span><span class="num">${f.pen ? '−' + f.pen : '0'}</span></li>`).join('')}</ul>
     <details class="wx-how" data-k="how"${open.has('how') ? ' open' : ''}><summary>Comment ce score est calculé</summary><p class="sub">100 moins les points listés : gel jusqu’à −45 (verglas élevé ou pluie verglaçante), neige −35, visibilité −15 à −35 (sous 1 000, 500 et 200 m), pluie −5 à −30 (probabilité ≥ 60 %, 0,2, 2 et 7,6 mm/h), rafales −10 à −30 (55, 70 et 90 km/h), froid ou chaleur −5, air saturé −5, soleil rasant −5. La couleur n’est jamais plus douce que le pire facteur. Environnement seulement : l’adhérence des pneus est dans l’onglet Pneus.</p></details>
-    ${tl2 != null ? `<div class="wx-tire"><span>Impact pneus : <b>${['faible', 'modéré', 'élevé', 'critique'][tl2]}</b> ${E[tl2]}</span><button class="btn sm" data-act="view" data-v="pneus">Voir analyse Pneus →</button></div>` : ''}</div>`;
+    ${tl2 != null ? `<div class="wx-tire"><span>Impact pneus : <b>${LV[tl2].name}</b> ${E[tl2]}</span><button class="btn sm" data-act="view" data-v="pneus">Voir analyse Pneus →</button></div>` : ''}</div>`;
   const foot = `<p class="sub wx-foot">Détails techniques plus bas : <a href="#secCur">mesures</a> · <a href="#secChart">graphique 24 h</a> · <a href="#hdrMore">sources et fraîcheur</a>.</p>`;
   const evH = evidenceHtml(), evOn = EV_FLAG() === 'on' && /class="ev-crit/.test(evH) && d.level < 2;
   const html = (evOn ? evH + hero : hero) + hourlyHtml + (evOn ? '' : evH) + tripHtml +
     uxFold('wx-forecast', 'Prévisions détaillées', tl + matters + ph, 'Chronologie · phénomènes') +
-    uxFold('wx-road', 'Conditions route', road, r.score == null ? 'INDISPONIBLE · données insuffisantes' : r.score + '/100 · risque ' + ['faible', 'modéré', 'élevé', 'critique'][r.level]) + tyreIntelligenceHtml(appActiveCar(), 'meteo') + foot;
+    uxFold('wx-road', 'Conditions route', road, r.score == null ? 'INDISPONIBLE · données insuffisantes' : r.score + '/100 · ' + LV[r.level].name) + tyreIntelligenceHtml(appActiveCar(), 'meteo') + foot;
   if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
   const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
   const hourlyTrack = el.querySelector('.wx-hours-track'), hourlyLeft = hourlyTrack ? hourlyTrack.scrollLeft : 0;
@@ -245,9 +246,9 @@ function evidenceHtml() {
   const lastObs = r.fog.flatMap(f => f.ev).filter(e => e.layer === 'A').sort((a, b) => b.w - a.w)[0];   // observation la plus pertinente, tous points confondus
   const off = offlineNow() ? `<p class="wx-stale">⚠ Hors connexion : conditions actuelles non vérifiables · ${lastObs ? 'dernière observation : ' + esc(lastObs.text) : 'aucune observation en cache'}</p>` : '';
   const head = h ? `<div class="ev-crit lv${r.worst.lv}"><b>${h.icon} ${esc(h.text)}</b><span>${esc(h.sub)}${h.window ? ` · ${esc(h.window[0])} → ${esc(h.window[1])}` : ''}${h.where ? ' · ' + esc(h.where) : ''}</span>
-    <span class="sub">Preuves : ${h.proofs.map(esc).join(' · ')}</span><span class="sub">Confiance : ${esc(h.trust)} · variabilité locale importante</span></div>` : '';
+    <span class="sub">Preuves : ${h.proofs.map(esc).join(' · ')}${h.window ? ` (${esc(h.window[0])} → ${esc(h.window[1])})` : ''}</span><span class="sub">Confiance : ${esc(h.trust)} · variabilité locale importante</span></div>` : '';
   const contra = r.contradiction ? `<p class="ev-contra">⚠ CONTRADICTION DÉTECTÉE · ${esc(r.contradiction)}</p>` : '';
-  const rows = r.phen.map(p => `<li class="lv${p.lv}"><span>${p.icon} ${esc(p.label)}</span><b>${esc(p.value)}</b><span class="ev-t ev-${p.trust}">${['🔴', '🟠', '🟢'][Math.max(0, Math.min(2, p.trust))]} ${esc(p.trustTxt)}</span></li>`).join('');
+  const rows = r.phen.map(p => `<li class="lv${p.lv}"><span>${p.icon} ${esc(p.label)}</span><b>${esc(p.value)}${(p.id === 'fog' || p.id === 'vis') && p.lv && h && h.window ? ` · ${esc(h.window[0])} → ${esc(h.window[1])}` : ''}</b><span class="ev-t ev-${p.trust}" aria-label="confiance ${esc(p.trustTxt)}">${['●○○', '●●○', '●●●'][Math.max(0, Math.min(2, p.trust))]} confiance ${esc(p.trustTxt)}</span></li>`).join('');
   const prov = r.worst.ev.map(e => `<li><span class="ev-l">${e.layer}</span> ${e.dir === '+' ? '▲' : '▽'} ${esc(e.source)} : ${esc(e.text)}</li>`).join('');
   const rep = Object.entries(REPORT_KINDS).map(([k, t]) => `<button class="btn sm" data-act="ev-report" data-k="${k}">${t}</button>`).join('');
   const mine = reportsLive().slice(-3).reverse().map(x => `${REPORT_KINDS[x.kind]} à ${hmLocal(x.at)}`).join(' · ');

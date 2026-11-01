@@ -55,7 +55,7 @@ const layout = p => p.evaluate(() => {
       });
       await check(dev + ' · décision : verdict, confiance, âge des données, lieu, voiture et destination dans une seule carte', async () => {
         const c = await core(p); assert(c, 'carte de décision affichée');
-        assert.match(c.text, /CONDITIONS STABLES|SURVEILLANCE|PRUDENCE|DANGER|DONNÉES DÉGRADÉES/); assert.match(c.text, /Confiance · (SOLIDE|À CONFIRMER|DÉGRADÉ) · météo/);
+        assert.match(c.text, /\bRAS\b|VIGILANCE|PRUDENCE|DANGER|DONNÉES DÉGRADÉES/); assert.match(c.text, /Confiance · (SOLIDE|À CONFIRMER|DÉGRADÉ) · météo/);
         assert.match(c.text, /Lieu ·\s/); assert.match(c.text, /Voiture ·\s/); assert.match(c.text, /Destination ·\s|Prochain trajet ·\s|Trajet en cours ·\s/);
         if (!c.items.length) assert.match(c.text, /pas une garantie de sécurité/);
         assert(!/Lieu courant à confirmer/.test(c.text.replace(/Lieu · [^\n]*/, '')), 'pas de répétition du lieu');
@@ -220,9 +220,11 @@ const layout = p => p.evaluate(() => {
         await t.p.evaluate(() => { Object.keys(S.alerts).forEach(k => { S.alerts[k] = 0; }); saveSettings(); renderAll(); }); await t.settle(6);
         await t.p.locator('#viewSeg [data-act=view][data-v=pneus]').click(); await t.settle(3);   // cockpit (accueil)
         await check(`${dev} · scénario ${scn} : risque en tête de la décision, cohérent avec le moteur Météo, même alertes coupées`, async () => {
-          const c = await core(t.p), d = await t.p.evaluate(() => wxDesk(wxInput()).level);
-          assert(d >= min, 'moteur météo : niveau ' + d); assert(c.level >= Math.min(d, 3) || c.conf === 'degraded', JSON.stringify(c));
-          assert(c.items.length >= 1 && re.test(c.items[0] + ' ' + c.text), JSON.stringify(c)); assert.doesNotMatch(c.label, /CONDITIONS STABLES/);
+          // Le cockpit est « ici, maintenant » (3 h) : un phénomène qui commence plus tard relève du prochain trajet ou du panneau Alertes.
+          const c = await core(t.p), dk = await t.p.evaluate(() => { const r = wxDesk(wxInput()); return { level: r.level, inMin: r.hero && r.hero.inMin }; }), d = dk.level;
+          const dNow = dk.inMin == null || dk.inMin <= 180 ? d : 0;
+          assert(d >= min, 'moteur météo : niveau ' + d); assert(c.level >= Math.min(dNow, 3) || c.conf === 'degraded', JSON.stringify({ c, dk }));
+          assert(c.items.length >= 1 && re.test(c.items[0] + ' ' + c.text), JSON.stringify(c)); if (dNow >= 1) assert.doesNotMatch(c.label, /^RAS$/);
         });
         await t.c.close();
       }
