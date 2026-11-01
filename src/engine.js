@@ -629,19 +629,31 @@ function frAdmin(x) {
   const city = typeof x.city === 'string' ? x.city.trim().replace(/\s+/g, ' ').slice(0, 120) : '';
   return { deptCode: code || '', dept: code ? FR_DEPT[code] : '', city, cityCode: cc, postcode: pc };
 }
-// Loi Montagne : 34 départements où des communes sont soumises à l'obligation d'équipements hiver (1er novembre – 31 mars).
-// Le département et l'altitude sont des indicateurs de VIGILANCE : seule la liste de communes fixée par arrêté préfectoral fait foi.
+// Loi Montagne (indicatif) : départements dont certaines communes sont soumises à l'obligation d'équipements hiver
+// (1er novembre – 31 mars). Le département n'est qu'un indicateur de VIGILANCE : seule la liste de communes fixée par
+// arrêté préfectoral fait foi (carte officielle). Aucun nombre de départements affiché : les sources divergent.
+// Aucun seuil d'altitude : il n'en existe pas dans le décret ; l'altitude est montrée à titre d'information seulement.
 const MONT_CODES = new Set(['01', '03', '04', '05', '06', '07', '09', '11', '12', '15', '25', '26', '31', '38', '39', '42', '43', '48', '57', '63', '64', '65', '66', '67', '68', '69', '70', '73', '74', '81', '83', '84', '88', '90']);
 const MONT_DEPTS = [...MONT_CODES].map(c => FR_DEPT[c]);
-const MONT_SRC = { asOf: '2025-10-29', season: '2025-2026', text: 'décret n° 2020-1264 ; liste des 34 départements de la saison 2025-2026 (service-public.gouv.fr, 29/10/2025)',
-  url: 'https://www.service-public.gouv.fr/particuliers/actualites/A14389', communes: 'https://www.securite-routiere.gouv.fr/equipements-hivernaux-departements-et-communes' };
+const MONT_SRC = { asOf: '2025-10-29', season: '2025-2026', text: 'décret n° 2020-1264 du 16 octobre 2020 (NOR INTS2027076D) ; liste embarquée de la saison 2025-2026, indicative : la carte officielle fait foi',
+  url: 'https://www.service-public.gouv.fr/particuliers/actualites/A14389', communes: 'https://www.securite-routiere.gouv.fr/equipements-hivernaux-departements-et-communes',
+  legifrance: 'https://www.legifrance.gouv.fr/eli/decret/2020/10/16/INTS2027076D/jo/texte' };
 function montagneInfo(loc, dateStr, elev) {
   const a = frAdmin(loc), inDept = MONT_CODES.has(a.deptCode);
   const md = String(dateStr || '').slice(5, 10), season = md >= '11-01' || md <= '03-31';
-  const high = elev != null && elev >= 700;
-  return { inDept, season, elev, high, concerned: inDept || high, deptCode: a.deptCode, deptName: a.dept, src: MONT_SRC };
+  return { inDept, season, elev, high: false, concerned: inDept, deptCode: a.deptCode, deptName: a.dept, src: MONT_SRC };
 }
-// Saison hivernale d'une date (1er novembre – 31 mars) et réserve si la liste embarquée date d'une autre saison.
+// Trajet : départements TRAVERSÉS × période × monte déclarée. 'allseason' = 4 saisons 3PMSF (TYPE_LABEL).
+// Statut : 'alerte' (pneus été en période), 'conforme' (hiver ou 3PMSF, chaînes quand même exigées sous panneau B26),
+// 'a-verifier' (monte inconnue), 'hors-periode'. Indicatif : jamais « obligation » pour une commune non vérifiée.
+function montagneTrip(deptCodes, dateStr, tireType) {
+  const codes = [...new Set((deptCodes || []).filter(c => MONT_CODES.has(c)))];
+  if (!codes.length) return null;
+  const md = String(dateStr || '').slice(5, 10), season = md >= '11-01' || md <= '03-31';
+  const ok = tireType === 'winter' || tireType === 'allseason';
+  const status = !season ? 'hors-periode' : ok ? 'conforme' : tireType === 'summer' ? 'alerte' : 'a-verifier';
+  return { season, status, level: status === 'alerte' ? 2 : season ? 1 : 0, depts: codes.map(c => ({ code: c, name: FR_DEPT[c] })), src: MONT_SRC };
+}
 function montagneSeason(dateStr) {
   const y = +String(dateStr || '').slice(0, 4), m = +String(dateStr || '').slice(5, 7); if (!y || !m) return { season: '', listOk: false, note: '' };
   const season = m >= 7 ? `${y}-${y + 1}` : `${y - 1}-${y}`, listOk = season === MONT_SRC.season;
@@ -650,8 +662,7 @@ function montagneSeason(dateStr) {
 // Phrase courte et sourcée : jamais « obligation » pour un lieu dont la commune n'est pas vérifiée.
 function montagneWhy(mc, name) {
   const where = mc.deptName ? `${mc.deptName} (${mc.deptCode})` : '';
-  return mc.inDept ? `${name}${where ? ' · ' + where : ''} : département où certaines communes imposent les équipements hiver`
-    : `${name} est en altitude (${Math.round(mc.elev)} m)${where ? ' · ' + where : ''} : équipements hiver possibles selon la commune`;
+  return `${name}${where ? ' · ' + where : ''} : département où certaines communes imposent les équipements hiver (indicatif)`;
 }
 
 /* ===================== AJOUTS 2 : AROME, ensemble, pluie 15 min, calibration ===================== */

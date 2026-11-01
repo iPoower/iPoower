@@ -1931,7 +1931,7 @@ const TIPS = [
   { k: 'tyre', t: 'Voiture chargée (vacances, coffre plein) : applique la pression « charge » de l’étiquette, souvent 0,2 à 0,3 bar de plus.', src: 'Étiquette constructeur' },
   { k: 'tyre', t: 'Sous environ 7 °C, la gomme d’un pneu été durcit et accroche moins. Ce seuil est une règle pratique : la perte d’adhérence est progressive.', src: 'Règle pratique des manufacturiers', w: c => c.cold && c.summer },
   { k: 'tyre', t: 'Le symbole 3PMSF (montagne à 3 pics et flocon) prouve des tests sur neige. Le marquage M+S seul ne suffit plus pour la Loi Montagne.', src: 'Loi Montagne · décret 2020-1264', w: c => c.winter },
-  { k: 'law', t: 'Loi Montagne : du 1er novembre au 31 mars, dans les communes concernées de 34 départements, 4 pneus 3PMSF ou des chaînes / chaussettes dans le coffre sont obligatoires. Sinon 135 €.', src: 'Décret 2020-1264', w: c => c.winter },
+  { k: 'law', t: 'Loi Montagne : du 1er novembre au 31 mars, dans les communes désignées par arrêté préfectoral (carte officielle), 4 pneus 3PMSF ou des chaînes / chaussettes dans le coffre sont obligatoires. Sinon 135 €.', src: 'Décret 2020-1264', w: c => c.winter },
   { k: 'drive', t: 'Les chaînes et les chaussettes se montent sur les roues motrices. Sur une traction (la grande majorité des citadines et compactes), c’est l’avant.', src: 'Notices des équipementiers' },
   { k: 'tyre', t: 'Un pneu vieillit même s’il roule peu : fais-le contrôler à partir de 5 ans. Les manufacturiers conseillent de ne pas dépasser 10 ans.', src: 'Recommandation Michelin, Goodyear, Continental' },
   { k: 'tyre', t: 'Stocke les pneus hors saison au frais, au sec et à l’abri de la lumière. Sur jantes : empilés à plat. Sans jantes : debout, tournés de temps en temps.', src: 'Recommandation des manufacturiers' },
@@ -2777,7 +2777,26 @@ function montNoteHtml(list, dep, car) {
   if (!list.length) return '';
   const inSeason = list.some(o => o.mc.season), ss = montagneSeason(dep), effT = car ? effType(car) : null;
   const carTxt = !car ? '' : effT === 'summer' ? ` ${esc(car.short)} en pneus ${TYPE_LABEL[car.tire.type]} : prévois chaînes ou chaussettes.` : ` ${esc(car.short)} : conforme si le marquage 3PMSF est présent.`;
-  return `<div class="note lv${inSeason ? 2 : 1}" data-k="mont"><b>🏔️ LOI MONTAGNE · VIGILANCE</b><span>${list.map(o => esc(montagneWhy(o.mc, (o.role ? o.role + ' · ' : '') + o.name))).join(' ; ')}. Du 1er novembre au 31 mars, pneus 3PMSF ou chaînes / chaussettes obligatoires seulement dans les communes fixées par arrêté préfectoral : <a href="${MONT_SRC.communes}" target="_blank" rel="noopener noreferrer">vérifier la commune</a>${inSeason ? '' : ' (période pas encore commencée à cette date)'}.${carTxt}</span><span class="sub">Source : ${esc(MONT_SRC.text)} · <a href="${MONT_SRC.url}" target="_blank" rel="noopener noreferrer">service-public.gouv.fr</a>${ss.note ? ' · ' + esc(ss.note) : ''}</span></div>`;
+  return `<div class="note lv${inSeason ? 2 : 1}" data-k="mont"><b>🏔️ LOI MONTAGNE · VIGILANCE</b><span>${list.map(o => esc(montagneWhy(o.mc, (o.role ? o.role + ' · ' : '') + o.name))).join(' ; ')}. Du 1er novembre au 31 mars, pneus 3PMSF ou chaînes / chaussettes obligatoires seulement dans les communes fixées par arrêté préfectoral : <a href="${MONT_SRC.communes}" target="_blank" rel="noopener noreferrer">vérifier la commune</a>${inSeason ? '' : ' (période pas encore commencée à cette date)'}.${carTxt}</span><span class="sub">Panneau <b>B58</b> : entrée et sortie de zone où les équipements hiver sont exigés. Panneau <b>B26</b> : chaînes obligatoires ponctuellement sur une route, même avec des pneus hiver ou 3PMSF.</span><span class="sub">Indicatif · source : ${esc(MONT_SRC.text)} · <a href="${MONT_SRC.legifrance}" target="_blank" rel="noopener noreferrer">décret (Légifrance)</a> · <a href="${MONT_SRC.communes}" target="_blank" rel="noopener noreferrer">carte officielle</a>${ss.note ? ' · ' + esc(ss.note) : ''}</span></div>`;
+}
+// Départements des points intermédiaires du trajet : géocodage inverse BigDataCloud, DÉJÀ utilisé par l'app (aucune
+// nouvelle API), mis en cache par point arrondi (≈ 10 km), seulement en période (15 oct. – 31 mars) et 16 points au plus.
+const MONTDEPT = new Map(), MONTDEPT_BUSY = new Set();
+function montRouteDepts(t) {
+  const md = String(t && t.dep || '').slice(5, 10); if (!(md >= '10-15' || md <= '03-31')) return [];
+  const pts = (t && t.l && Array.isArray(t.l.pts) ? t.l.pts : []).slice(0, 16), out = [];
+  pts.forEach(p => {
+    if (!Number.isFinite(p.lat) || !Number.isFinite(p.lon)) return;
+    const k = p.lat.toFixed(1) + ',' + p.lon.toFixed(1);
+    if (MONTDEPT.has(k)) { if (MONTDEPT.get(k)) out.push(MONTDEPT.get(k)); return; }
+    if (MONTDEPT_BUSY.has(k) || offlineNow() || DEMO.on) return;
+    MONTDEPT_BUSY.add(k);
+    fetchJSON(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${p.lat}&longitude=${p.lon}&localityLanguage=fr`, 8000)
+      .then(j => { const a = ((j && j.localityInfo && j.localityInfo.administrative) || []).find(x => x && /^FR-(\d{2}|2[AB])$/i.test(x.isoCode || ''));
+        MONTDEPT.set(k, a ? a.isoCode.slice(3).toUpperCase() : null); softRender(); }, () => {})
+      .finally(() => MONTDEPT_BUSY.delete(k));
+  });
+  return out;
 }
 function tripMontagneHtml(t, car) {
   const ends = [['Départ', t.td ? t.td.LA : t.l && t.l.from, t.td ? t.fromName || t.td.fromName : t.l && t.l.from && t.l.from.name], ['Arrivée', tripTo(t), t.td ? t.td.toName : (tripTo(t) || {}).name]];
@@ -2787,6 +2806,11 @@ function tripMontagneHtml(t, car) {
     const mc = t.td && role === 'Arrivée' && t.td.mont ? t.td.mont : montagneInfo(p, t.dep || '', placeElev(p));
     if (mc.concerned) list.push({ role, name: name || p.name || 'lieu', mc });
   });
+  // Lot 3 : départements TRAVERSÉS (points du trajet), en plus du départ et de l'arrivée.
+  const known = new Set(list.map(o => o.mc.deptCode));
+  const crossed = montRouteDepts(t);
+  const trip = montagneTrip(crossed, t.dep || '', car && car.tire ? car.tire.type : null);
+  if (trip) trip.depts.filter(d => !known.has(d.code)).forEach(d => list.push({ role: 'Traversée', name: d.name, mc: { inDept: true, season: trip.season, deptCode: d.code, deptName: d.name, concerned: true } }));
   return montNoteHtml(list, t.dep || '', car);
 }
 // carte de briefing complète, identique pour un trajet domicile-travail et un trajet agenda
