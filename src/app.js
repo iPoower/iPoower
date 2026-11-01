@@ -713,7 +713,7 @@ function placeDoubtHtml(pl) {
 }
 // diagnostic interne : brut navigateur, réseau, lieu logique, source gagnante et sources écartées (coordonnées arrondies à ~1 km)
 function placeDiagRows(forCopy) {
-  const c = placeContext(placeInput()), rd = v => Number.isFinite(v) ? v.toFixed(forCopy ? 2 : 5) : '—', f = GEO.raw || FIX;
+  const c = placeContext(placeInput()), rd = v => Number.isFinite(v) ? v.toFixed(2) : '—'   /* ≈ 1 km, à l'écran comme dans la copie */, f = GEO.raw || FIX;
   const seconds = f ? Math.max(0, Math.round((Date.now() - f.ts) / 1000)) : null;
   const raw = f ? `${rd(f.lat)}, ${rd(f.lon)} · ±${Math.round(f.acc)} m · il y a ${seconds < 60 ? seconds + ' s' : ageTxt(seconds / 60)} · source : API navigateur` : 'aucun relevé';
   const net = NETLOC ? `${NETLOC.name || 'nom inconnu'} · ±${Math.round(NETLOC.acc / 1000)} km · il y a ${ageTxt(ageOf(NETLOC.ts))}` : 'aucune';
@@ -1108,7 +1108,8 @@ function renderDecisionCore() {
   const ageMin = value => {
     return Reliability.ageMin(value, now);
   };
-  const car = appActiveCar(), carEval = car && CX.cars.find(x => x.car.id === car.id);
+  // Voiture confirmée pour la confiance ; voiture AFFICHÉE pour le niveau pneus (même calcul que l'onglet Pneus), libellée non confirmée.
+  const car = appActiveCar(), shownCar = appDisplayedCar(), carEval = shownCar && CX.cars.find(x => x.car.id === shownCar.id);
   const active = !!snap.activeTrip, gpsAge = FIX && Number.isFinite(FIX.ts) ? ageMin(FIX.ts) : null;
   const agendaRequired = !!snap.agendaEvent, calAge = CAL ? ageMin(CAL.updated) : null;
   const confidence = Decision.confidence({
@@ -1163,7 +1164,7 @@ function renderDecisionCore() {
   const destinationHtml = ['pneus', 'meteo'].includes(UI.view) && trip
     ? '<span class="decision-trip"><span>' + (snap.activeTrip ? 'Trajet en cours' : 'Prochain trajet') + ' · <b>' + esc(tripFrom || 'Origine à confirmer') + ' → ' + esc(tripToName || 'Destination à confirmer') + '</b></span><span class="decision-departure">' + esc(departureText) + ' <a class="decision-change" href="' + (UI.view === 'meteo' ? '#wxNextTrip' : '#secBrf') + '">Départ ↗</a></span>' + tripVerdictHtml + '</span>'
     : '<span>Destination · <b>' + esc(destination) + '</b></span>';
-  const carLabel = car ? (car.short || car.name || car.id) : 'À choisir';
+  const carLabel = appCarLabel().car ? appCarLabel().text : 'À choisir';
   const wAge = raw ? ageMin(raw.t) : null, fresh = wAge == null ? 'météo —' : 'météo ' + (wAge < 1 ? 'moins de 1 min' : Math.round(wAge) + ' min');
   const sameText = (a, b) => String(a).toLowerCase().replace(/\s+/g, ' ').trim() === String(b).toLowerCase().replace(/\s+/g, ' ').trim();
   const whyLeft = confidence.reasons.filter(r => !['Lieu courant à confirmer', 'Voiture active à choisir'].includes(r) && !sameText(r, decision.reason));
@@ -1189,7 +1190,8 @@ function renderDecisionCore() {
   el.className = UI.view === 'analyse' ? 'decision-context' : 'decision-core lv' + decision.displayLevel;
   el.hidden = false;
   // À retenir : la conclusion déjà rédigée par le récit pneus de la voiture active (aucun conseil nouveau), dès qu'un signal existe.
-  const advice = decision.riskLevel >= 1 && carEval && carEval.nar && Array.isArray(carEval.nar.advice) ? carEval.nar.advice : [];
+  // Conseils propres à la voiture utilisée : seulement pour une voiture CONFIRMÉE (jamais pour une voiture seulement affichée).
+  const advice = decision.riskLevel >= 1 && car && carEval && carEval.nar && Array.isArray(carEval.nar.advice) ? carEval.nar.advice : [];
   const nowEnd = CX.m && CX.m.hs[CX.m.nowI + NOW_HOURS] && String(CX.m.hs[CX.m.nowI + NOW_HOURS].t || '').slice(11, 16);
   const coreHtml = '<div class="decision-top"><div class="decision-main"><span class="decision-k">ICI, MAINTENANT · MÉTÉO ET PNEUS' + (nowEnd ? ' · jusqu’à ' + esc(nowEnd) : '') + '</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
     confidenceHtml + '</div>' +
@@ -3641,7 +3643,7 @@ function renderBrief() {
     <div class="fld"><label for="quick-work-to">Vers</label><select id="quick-work-to" data-bind="work.to">${locOpts(w.to)}</select></div>
   </div>${realFrom ? `<p class="sub brf-real-from" role="status">Départ calculé depuis <b>${esc(realFrom.name)}</b> (lieu confirmé ou départ en cours), pas depuis le départ habituel ${esc((locById(dir === 'go' ? w.from : w.to) || {}).name || '')}.</p>` : ''}`;
   if (td.err) { paint(head + `<p class="muted">${esc(td.err)}</p>`); return; }
-  const car = appActiveCar() || TCARS().find(c => c.id === UI.bcar) || TCARS()[0];
+  const car = appDisplayedCar();
   if (!car) { paint(head + '<p class="muted">Aucune voiture équipée de pneus.</p>'); return; }
   if (!hasTires(car)) { paint(head + '<p class="muted">Pneus de la voiture active à renseigner.</p>'); return; }
   const wa = windowAssess(car, td.seq, 'trip'), sm = summarize(td.seq);
@@ -4063,7 +4065,7 @@ function renderSettings(force) {
       <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
       <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>
     <div class="set-sec"><h3>🏷️ Version</h3><p class="sub" id="verLine">${verLine()}</p></div>
-    <div class="set-sec"><h3>🩺 Diagnostic</h3><p class="sub">Sources et précision à l’écran ; positions arrondies à environ 1 km dans la copie, sans adresse ni titre de rendez-vous.</p>
+    <div class="set-sec"><h3>🩺 Diagnostic</h3><p class="sub">Sources et précision ; positions arrondies à environ 1 km à l’écran comme dans la copie, sans adresse ni titre de rendez-vous.</p>
       <dl class="diag" id="diagBox">${diagHtml()}</dl><div class="chips"><button class="btn" data-act="diag-copy">Copier le diagnostic</button></div></div>`;
   loadVersion(); loadSwVersion(); renderDriveSync();
 }

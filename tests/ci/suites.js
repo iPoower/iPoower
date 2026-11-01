@@ -156,3 +156,5 @@ SUITE.push(['e2e87-drive-badge-count.js', 'badge de sauvegarde : seules les sais
 SUITE.push(['e2e86-html-security.js', 'NOESIS : texte véhicule, attribut photo, stockage ancien et DOM réel Chromium/WebKit', true]);
 
 SUITE.push(['test_drive_store_reopen.js', 'NOESIS-RC-003 : IndexedDB réessayable après erreur, blocage, versionchange et fermeture sans purge', false]);
+SUITE.push(['e2e100-voitures-coherence.js', 'PR 2 cohérence des véhicules : voiture affichée, proposée et confirmée distinguées sur Pneus, Trajet, A/B et Garage ; aucune voiture déduite ; position du Diagnostic à ~1 km, PC/iPhone', true]);
+SUITE.push(['test_vehicle_coherence.js', 'PR 2 cohérence des véhicules : voiture confirmée, affichée et proposée, Prochaine mission, Trajet sans présélection, A/B, Diagnostic à ~1 km, contre-tests', false]);
