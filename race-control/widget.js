@@ -306,8 +306,10 @@ function tireAssess(car, hs, i) {
   add(`Pluie ${P.toFixed(1).replace('.', ',')} mm/h : aquaplaning`, rainPen, 'tyre');
   // — spécifique au pneu
   if (type === 'summer') {
-    let c = pw(Tc, SUMMER_COLD) * perf * (wet ? 1.25 : 0.75);
-    add(`Pneus été et froid (${Tc.toFixed(1).replace('.', ',')} °C air/chaussée${wet ? ', mouillé' : ', sec'})`, c, 'tyre');
+    // Présence de la règle décidée sur la météo seule (même heure, même météo → même règle pour TOUTES les voitures en pneus été) ;
+    // le facteur de performance de la voiture ne module que son poids, jamais son apparition.
+    const cBase = pw(Tc, SUMMER_COLD) * (wet ? 1.25 : 0.75);
+    if (cBase >= 0.5) add(`Pneus été et froid (${Tc.toFixed(1).replace('.', ',')} °C air/chaussée${wet ? ', mouillé' : ', sec'})`, Math.max(0.5, cBase * perf), 'tyre');
     if (snow) add('Pneus été sur neige', 45, 'tyre');
     if (ice >= 45) add('Pneus été et verglas probable', ice * 0.35, 'tyre');
     if (tread != null && tread < 3 && wet) add('Profondeur < 3 mm sur sol mouillé', 12, 'tyre');
@@ -328,6 +330,8 @@ function tireAssess(car, hs, i) {
     if (tread != null && tread < 3 && wet) add('Profondeur < 3 mm sur sol mouillé', 8, 'tyre');
   }
   if (tread != null && tread < TREAD_LEGAL_MM) add('Profondeur sous le minimum légal (1,6 mm)', 40, 'tyre');
+  // Estimation : même pénalité par précaution, sans affirmer une non-conformité légale non mesurée.
+  if (tread != null && tread < TREAD_LEGAL_MM && tire.treadEst) parts.forEach(p => { if (p.label === 'Profondeur sous le minimum légal (1,6 mm)') p.label = 'Profondeur : estimation sous le minimum réglementaire de 1,6 mm, mesure à confirmer'; });
   const age = dotAge(tire.dot, x.t);
   if (age != null && age >= 6 && Tc < 10) add(`Gomme âgée (${age.toFixed(1).replace('.', ',')} ans) : moins d’adhérence à froid`, age >= 10 ? 10 : 5, 'tyre');
   return { x, pen: Math.min(100, pen), parts, flags: { wet, snow, fz, ice, Tc, illegalTread: tread != null && tread < TREAD_LEGAL_MM } };
@@ -345,6 +349,24 @@ function flagLevel(car, a, k) {
   return L;
 }
 const scoreToLevel = s => s >= 80 ? 0 : s >= 60 ? 1 : s >= 40 ? 2 : 3;
+// Garde-fou de profondeur : PLAFONNE le verdict (niveau minimal imposé), ne modifie jamais le score physique.
+// Valeur lue : la plus basse des essieux (mesure ou estimation, mêmes seuils ; une estimation est signalée comme telle).
+// < 1,6 mm : minimum RÉGLEMENTAIRE (arrêté du 18 juillet 2019 relatif aux pneumatiques, art. 5) → DANGER, quelle que soit la météo.
+// 1,6 mm inclus à moins de 2 mm : REPÈRE DE SÉCURITÉ INTERNE (marge de mesure et usure irrégulière), non réglementaire →
+// PRUDENCE au minimum, même sur route sèche ; DANGER si la pluie prévue atteint au moins 0,5 mm/h PENDANT la fenêtre évaluée
+// (une pluie prévue ailleurs dans les 24 h ne compte pas). Météo indisponible (rain = null) : PRUDENCE, jamais DANGER par défaut.
+const TREAD_GUARD_MM = 2, TREAD_GUARD_RAIN_MMH = 0.5;
+const rainMmH = x => x && Number.isFinite(x.Pl) ? x.Pl : x && Number.isFinite(x.P) ? x.P : 0;
+function treadGuard(car, rain) {
+  const mm = car && car.tire ? treadWorst(car.tire).mm : null;
+  if (mm == null) return null;
+  const est = !!car.tire.treadEst, tag = est ? ' (estimation)' : '';
+  // Estimation : DANGER conservé par précaution, sans affirmer une non-conformité légale non mesurée.
+  if (mm < TREAD_LEGAL_MM) return { level: 3, mm, legal: !est, est, rain, text: est ? `Profondeur ${f1(mm)} mm : estimation sous le minimum réglementaire de 1,6 mm, mesure à confirmer` : `Profondeur ${f1(mm)} mm, sous le minimum légal de 1,6 mm (arrêté du 18 juillet 2019, art. 5)` };
+  if (mm < TREAD_GUARD_MM) return { level: rain === true ? 3 : 2, mm, legal: false, est, rain,
+    text: `Profondeur ${f1(mm)} mm${tag}, sous 2 mm${rain === true ? ' et pluie prévue (≥ 0,5 mm/h) pendant la fenêtre évaluée' : rain == null ? ' · météo indisponible' : ''} : repère de sécurité interne (marge de mesure et usure irrégulière), non réglementaire` };
+  return null;
+}
 function windowAssess(car, seq, mode) {
   if (!hasTires(car)) return null;
   const items = []; let pMax = -1, kMax = 0, lvl = 0;
@@ -363,15 +385,17 @@ function windowAssess(car, seq, mode) {
   const sl = scoreToLevel(score);
   const level = Math.max(sl, lvl);
   if (level > sl) score = Math.min(score, [100, 79, 59, 39][level]);
-  return { items, first, worst: items[kMax], kMax, pNow, pMax, P, score, level, scoreLevel: sl, flagLevel: lvl };
+  // Garde-fou de profondeur : relève le NIVEAU seulement ; le score ci-dessus reste le score physique.
+  const guard = treadGuard(car, valid.some(a => rainMmH(a.x) >= TREAD_GUARD_RAIN_MMH));
+  return { items, first, worst: items[kMax], kMax, pNow, pMax, P, score, level: guard ? Math.max(level, guard.level) : level, scoreLevel: sl, flagLevel: lvl, baseLevel: level, guard, depthUnknown: treadWorst(car.tire).mm == null };
 }
 function hourVerdict(car, hs, i) {
   if (!hasTires(car)) return null;
   const a = tireAssess(car, hs, i);
   if (!a) return null;
   const sc = Math.round(clamp(100 - a.pen, 0, 100));
-  const level = Math.max(scoreToLevel(sc), flagLevel(car, a, 0));
-  return { a, score: level > scoreToLevel(sc) ? Math.min(sc, [100, 79, 59, 39][level]) : sc, level };
+  const base = Math.max(scoreToLevel(sc), flagLevel(car, a, 0)), guard = treadGuard(car, rainMmH(a.x) >= TREAD_GUARD_RAIN_MMH);
+  return { a, score: base > scoreToLevel(sc) ? Math.min(sc, [100, 79, 59, 39][base]) : sc, level: guard ? Math.max(base, guard.level) : base, baseLevel: base, guard, depthUnknown: treadWorst(car.tire).mm == null };
 }
 
 /* ---------- résumé d'une séquence d'heures ---------- */
@@ -435,13 +459,15 @@ function narrate(car, w, sum, intro) {
   const advice = [], say = t => { s.push(t); advice.push(t); };
   if ((sum.visMin != null && sum.visMin < 500) || (sum.gustMax != null && sum.gustMax >= 90)) say('Indépendamment des pneus, la météo elle-même impose une prudence particulière.');
   // conclusion selon le pneu
-  const cold = sum.Tmin != null && sum.Tmin < 7;
+  const cold = sum.Tmin != null && sum.Tmin < 7, lv = Number.isInteger(w.baseLevel) ? w.baseLevel : w.level;
+  if (w.depthUnknown) s.push('Profondeur non renseignée : verdict établi sans la profondeur de sculpture.');
+  if (w.guard && w.guard.level > lv) say(`${w.guard.text} : verdict plafonné à ${LV[w.level].name}, score physique inchangé (${w.score}/100).${w.guard.legal ? ' Remplacement avant de circuler.' : ' Mesurer à la jauge sur plusieurs points ; remplacement à prévoir.'}`);
   if (type === 'summer') {
-    if (w.level >= 2) say(unk ? 'Si ce sont des pneus été, ils sont hors de leur plage de confiance : vérifie le flanc (marquage 3PMSF ou M+S) pour fixer le type.' : 'Les pneus été sont hors de leur plage de confiance : adhérence fortement réduite, freinages et relances à anticiper.');
-    else if (w.level === 1 && cold) say('Adhérence à surveiller, surtout au départ à froid et sur route humide.');
+    if (lv >= 2) say(unk ? 'Si ce sont des pneus été, ils sont hors de leur plage de confiance : vérifie le flanc (marquage 3PMSF ou M+S) pour fixer le type.' : 'Les pneus été sont hors de leur plage de confiance : adhérence fortement réduite, freinages et relances à anticiper.');
+    else if (lv === 1 && cold) say('Adhérence à surveiller, surtout au départ à froid et sur route humide.');
   } else if (type === 'winter') {
     if (sum.Tmax != null && sum.Tmax >= 18) say('Douceur : les pneus hiver restent sûrs mais s’usent plus vite et perdent en précision.');
-  } else if (cold && w.level >= 1) {
+  } else if (cold && lv >= 1) {
     say('Les 4 saisons 3PMSF sont polyvalents, sans égaler un excellent pneu hiver dans les conditions hivernales sévères.');
   }
   return { head, body: s.join(' '), advice };
@@ -546,6 +572,7 @@ function treadWorst(tire) {
 function treadAlert(cars, sm, seq) {
   const first = seq && seq[0] && seq[0].hs[seq[0].i], month = first && first.t ? +String(first.t).slice(5, 7) : null;
   const cold = month != null && (month >= 11 || month <= 3), rain = sm && sm.Pmax != null && sm.Pmax >= 0.5;
+  const wet = (seq || []).some(s => s && s.hs && rainMmH(s.hs[s.i]) >= TREAD_GUARD_RAIN_MMH);   // même critère que le garde-fou du verdict
   const AX = { av: 'essieu avant', ar: 'essieu arrière' };
   const rows = (cars || []).map(c => {
     const t = c && c.tire; if (!t) return null;
@@ -555,7 +582,8 @@ function treadAlert(cars, sm, seq) {
     const est = !!(last ? last.est : t.treadEst);
     const where = (w.ax ? AX[w.ax] : 'pneus') + ' · ' + (last ? 'relevé du ' + fmtDay(last.d) : 'date du relevé inconnue') + (est ? ', estimation' : '');
     const type = effType(c), mm = f1(w.mm);
-    if (w.mm < TREAD_LEGAL_MM) return { sev: 3, t: `${c.short} : ${mm} mm, sous le minimum légal de 1,6 mm`, d: `${where}. Minimum réglementaire : arrêté du 18 juillet 2019 relatif aux pneumatiques, art. 5.` };
+    if (w.mm < TREAD_LEGAL_MM) return { sev: 3, t: est ? `${c.short} : ${mm} mm, estimation sous le minimum réglementaire de 1,6 mm, mesure à confirmer` : `${c.short} : ${mm} mm, sous le minimum légal de 1,6 mm`, d: `${where}. Minimum réglementaire : arrêté du 18 juillet 2019 relatif aux pneumatiques, art. 5.` };
+    if (w.mm < TREAD_GUARD_MM) return { sev: wet ? 3 : 2, t: `${c.short} : ${mm} mm, sous le repère de sécurité de 2 mm${wet ? ' et pluie prévue' : ''}`, d: `${where}. Repère de sécurité interne (marge de mesure et usure irrégulière), non réglementaire : verdict plafonné à ${wet ? 'DANGER (pluie ≥ 0,5 mm/h prévue pendant la fenêtre évaluée)' : 'PRUDENCE'}.` };
     if (type === 'winter' && w.mm < TREAD_HINT_WINTER_MM) return { sev: 1, t: `${c.short} : ${mm} mm, sous le repère indicatif de 4 mm (pneus hiver)`, d: `${where}. Repère indicatif, non réglementaire : efficacité réduite sur neige.` };
     if (type !== 'winter' && w.mm < TREAD_HINT_MM && (cold || rain)) return { sev: rain ? 2 : 1, t: `${c.short} : ${mm} mm, sous le repère indicatif de 3 mm`, d: `${where}. Repère indicatif, non réglementaire${rain ? ' : pluie prévue, évacuation de l’eau réduite' : ' : saison froide et humide (novembre – mars)'}.` };
     return null;
