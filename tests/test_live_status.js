@@ -1,17 +1,19 @@
-// Horloge et échéances indépendantes du réseau : frontières temporelles, provenance et statuts prudents.
+// Fraîcheur météo et échéances indépendantes du réseau : frontières temporelles, provenance et statuts prudents.
+// Depuis le 1er novembre 2026, le bandeau n'affiche plus d'horloge à la seconde : les frontières (minuit, changements d'heure)
+// sont vérifiées sur l'heure de réception affichée, qui suit le même fuseau Europe/Paris.
 'use strict';
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const root = path.join(__dirname, '..'), scope = vm.createContext({ Intl, Date, Math });
-vm.runInContext(fs.readFileSync(path.join(root, 'src/reliability.js'), 'utf8') + '\n' + fs.readFileSync(path.join(root, 'src/app/live-status.js'), 'utf8') + '\nthis.api={weatherLiveState,weatherCheckAt,clock:t=>LIVE_TIME_FORMAT.format(t)};', scope);
-const { weatherLiveState: state, weatherCheckAt: next, clock } = scope.api;
+vm.runInContext(fs.readFileSync(path.join(root, 'src/reliability.js'), 'utf8') + '\n' + fs.readFileSync(path.join(root, 'src/app/live-status.js'), 'utf8') + '\nthis.api={weatherLiveState,weatherCheckAt,hasClock:typeof LIVE_TIME_FORMAT!=="undefined"||typeof updateLiveClock!=="undefined"};', scope);
+const { weatherLiveState: state, weatherCheckAt: next, hasClock } = scope.api;
 const now = Date.parse('2026-10-19T16:34:27Z'), receivedAt = now - 87000, interval = 300000;
 const input = { now, receivedAt, mode: 'live', offline: false, busy: false, demo: false, pauseUntil: 0, lastSuccess: receivedAt, lastAttempt: receivedAt, interval };
 let n = 0;
 function check(label, fn) { fn(); n++; console.log('✅ ' + label); }
-check('heure de Paris explicite, secondes et changement de minute', () => { assert.equal(clock(now), '18:34:27'); assert.equal(clock(now + 33000), '18:35:00'); });
-check('minuit : date de réception affichée sans rajeunissement', () => { const s = state({ ...input, now: Date.parse('2026-10-19T22:00:00Z'), receivedAt: Date.parse('2026-10-19T21:59:00Z') }); assert.match(s.receipt, /19\/10\/2026 à 23:59/); assert.match(s.detail, /il y a 1 min/); assert.equal(clock(Date.parse('2026-10-19T22:00:00Z')), '00:00:00'); });
-check('passage heure d’hiver : 02:59:59 puis 02:00:00, âge en temps absolu', () => { const t = Date.parse('2026-10-25T00:59:59Z'); assert.equal(clock(t), '02:59:59'); assert.equal(clock(t + 1000), '02:00:00'); assert.match(state({ ...input, now: t + 1000, receivedAt: t - 59000 }).detail, /il y a 1 min/); });
-check('passage heure d’été : 01:59:59 puis 03:00:00', () => { const t = Date.parse('2026-03-29T00:59:59Z'); assert.equal(clock(t), '01:59:59'); assert.equal(clock(t + 1000), '03:00:00'); });
+check('heure de Paris explicite pour la réception, sans horloge à la seconde', () => { assert.equal(hasClock, false); assert.match(state({ ...input, receivedAt: now }).receipt, /à 18:34$/); assert.match(state({ ...input, receivedAt: now + 33000, now: now + 33000 }).receipt, /à 18:35$/); });
+check('minuit : date de réception affichée sans rajeunissement', () => { const s = state({ ...input, now: Date.parse('2026-10-19T22:00:00Z'), receivedAt: Date.parse('2026-10-19T21:59:00Z') }); assert.match(s.receipt, /19\/10\/2026 à 23:59/); assert.match(s.detail, /il y a 1 min/); assert.match(state({ ...input, now: Date.parse('2026-10-19T22:00:00Z'), receivedAt: Date.parse('2026-10-19T22:00:00Z') }).receipt, /^Météo reçue à 00:00$/); });
+check('passage heure d’hiver : réception 02:59 puis 02:00, âge en temps absolu', () => { const t = Date.parse('2026-10-25T00:59:59Z'); assert.match(state({ ...input, now: t, receivedAt: t }).receipt, /à 02:59$/); assert.match(state({ ...input, now: t + 1000, receivedAt: t + 1000 }).receipt, /à 02:00$/); assert.match(state({ ...input, now: t + 1000, receivedAt: t - 59000 }).detail, /il y a 1 min/); });
+check('passage heure d’été : réception 01:59 puis 03:00, âge < 1 min', () => { const t = Date.parse('2026-03-29T00:59:59Z'); assert.match(state({ ...input, now: t, receivedAt: t }).receipt, /à 01:59$/); const s = state({ ...input, now: t + 1000, receivedAt: t }); assert.match(s.receipt, /à 01:59$/); assert.match(s.detail, /< 1 min/); assert.match(state({ ...input, now: t + 1000, receivedAt: t + 1000 }).receipt, /à 03:00$/); });
 check('réception indépendante de l’horloge et de tout succès sur un autre lieu', () => { const s = state({ ...input, lastSuccess: now }); assert.match(s.receipt, /18:33/); assert.match(s.detail, /il y a 1 min/); assert.equal(s.nextAt, now + interval); });
 check('les frontières d’âge progressent sans changer la réception', () => { assert.match(state({ ...input, receivedAt: now - 59999 }).detail, /< 1 min/); assert.match(state({ ...input, receivedAt: now - 60000 }).detail, /il y a 1 min/); assert.match(state({ ...input, receivedAt: now - 120000 }).detail, /il y a 2 min/); });
 check('LIVE réservé à la politique de fraîcheur connue et à un modèle live', () => { assert.equal(state({ ...input, receivedAt: now - 900000 }).label, 'LIVE'); assert.equal(state({ ...input, receivedAt: now - 900001 }).label, 'CACHE'); assert.equal(state({ ...input, mode: 'cache' }).label, 'CACHE'); assert.match(state({ ...input, mode: 'cache', pauseUntil: now + interval }).receipt, /CACHE/); });
