@@ -72,12 +72,25 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const r = desk({ now: '2026-10-06T10:05', hours: hs });
     assert.equal(r.level, 3); assert.equal(r.hero.dominant, 'ice');
   });
+  // acceptation #290 (cas réel, données fictives) : brouillard en cours jusqu'à 06:00 puis nouvel épisode plus dense 07:00–11:00
+  test('brouillard en cours puis nouvel épisode plus dense : en cours d’abord, jamais « début dans X h »', () => {
+    let hs = set(H(), '00', { vis: 220, code: 45 }, 6); hs = set(hs, '07', { vis: 400, code: 45 }, 1); hs = set(hs, '08', { vis: 160, code: 45 }, 1); hs = set(hs, '09', { vis: 300, code: 45 }, 2);
+    const r = desk({ now: '2026-10-06T03:33', hours: hs });
+    assert.equal(r.hero.title, 'BROUILLARD EN COURS', r.hero.title);
+    assert(r.hero.lines.includes('Maintenant 220 m · dissipation vers 06:00'), r.hero.lines.join(' | '));
+    assert(r.hero.lines.includes('Nouvel épisode 07:00–11:00 · minimum 160 m vers 08:00'), r.hero.lines.join(' | '));
+    assert(!r.hero.lines.some(l => /d[ée]but(?: estimé)? dans/i.test(l)), r.hero.lines.join(' | '));
+    assert(r.matters.some(m => m.text === 'Brouillard jusqu’à 06:00 · visibilité 220 m maintenant · nouvel épisode 07:00–11:00, minimum 160 m vers 08:00'), JSON.stringify(r.matters));
+    const fog = r.phen.find(p => p.id === 'fog');
+    assert.equal(fog.line, 'Visibilité 220 m maintenant · nouvel épisode 07:00–11:00, 160 m vers 08:00'); assert(!/🟢|🟡|🟠|🔴/.test(fog.line), 'pas de pictogramme en double');
+    assert.deepEqual(fog.detail.slice(0, 2), ['Épisode en cours jusqu’à 06:00 · 220 m maintenant', 'Épisode 07:00–11:00 · minimum 160 m vers 08:00']);
+  });
   test('brouillard en cours à 350 m : 🟠, fin probable, visibilité minimale', () => {
     const hs = set(H(), '05', { vis: 350, code: 45 }, 3);
     const r = desk({ now: '2026-10-06T05:30', hours: hs });
     assert.equal(r.level, 2); assert.equal(r.hero.title, 'BROUILLARD EN COURS');
     assert(r.hero.lines.includes('Fin probable vers 08:00')); assert(r.hero.lines.some(l => /Visibilité minimale 350 m/.test(l)));
-    assert(r.matters.some(m => /^Brouillard jusqu’à 08:00 · visibilité 350 m$/.test(m.text)), JSON.stringify(r.matters));
+    assert(r.matters.some(m => /^Brouillard jusqu’à 08:00 · visibilité 350 m maintenant$/.test(m.text)), JSON.stringify(r.matters));
     assert.equal(r.timeline.moments[0].t, 'maintenant'); assert(r.timeline.moments.some(m => m.t === '08:00' && /dissipation/.test(m.text)));
   });
   test('seuils de visibilité : 999 m 🟡, 499 m 🟠, 199 m 🔴, 1 000 m rien', () => {
