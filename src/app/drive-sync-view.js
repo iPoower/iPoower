@@ -66,7 +66,7 @@ function renderDriveSync() {
   const st = d.status || null, line = text => { const p = document.createElement('p'); p.className = 'sub'; p.textContent = text; root.appendChild(p); return p; };
   line('LOCAL · coffre chiffré sur cet appareil : ' + (window.TWRC_STORAGE_ERROR ? 'échec d’écriture locale, données en mémoire à vérifier' : window.TWRC_VAULT && window.TWRC_VAULT.pendingWrites ? 'écriture en attente' : 'enregistré'));
   line('CLOUD · ' + (!d.config ? 'Google Drive non activé sur cette version' : !connected ? 'connexion requise (aucune copie Drive envoyée depuis cet appareil tant qu’elle manque)' :
-    !st ? 'en attente' : ({ SYNCED: 'envoi confirmé et relu (intégrité vérifiée)', VERIFYING: 'envoi ou vérification en cours', PENDING: 'en attente d’envoi', CONFLICT: st.message, SYNC_BLOCKED: 'bloqué : ' + st.message, LOCAL: 'local seulement' })[st.state] || st.message));
+    !st ? 'en attente' : ({ SYNCED: 'envoi confirmé et relu (intégrité vérifiée)', VERIFYING: 'envoi ou vérification en cours', PENDING: 'en attente d’envoi', CONFLICT: st.message, PAUSED: 'en pause après réinitialisation : rien n’est envoyé avant ton choix (Données → Zone danger)', SYNC_BLOCKED: 'bloqué : ' + st.message, LOCAL: 'local seulement' })[st.state] || st.message));
   line('PÉRIMÈTRE · Drive exclut volontairement la position, le trajet en cours, les caches, le code et la mémoire thermique des pneus (estimation de quelques heures) ; la copie complète exportée les contient.');
   if (st && st.conflictDetails && st.conflictDetails.length) {
     line('CONFLIT · action requise. Les deux versions sont conservées ; rien n’est remplacé sans ton choix.').setAttribute('role', 'alert');
@@ -194,6 +194,7 @@ function driveBadgeState() {
   if (navigator.onLine === false) return { cls: 'nogo', icon: '⛔', text: 'Hors ligne' + wait, hint: 'Envoi automatique au retour du réseau, sans perte.', act: 'open' };
   if (!active) return d.hint ? { cls: 'cache', icon: '⚠️', text: 'Reconnexion requise' + wait, hint: 'Un appui pour reconnecter Google Drive (Google exige ce geste).', act: 'reconnect' }
     : { cls: '', icon: '☁️', text: 'Sauvegarde Drive à activer', hint: 'Ouvre Paramètres → Sauvegarde.', act: 'open' };
+  if (st.state === 'PAUSED') return { cls: 'cache', icon: '⏸', text: 'Drive en pause · choix requis', hint: 'Après réinitialisation : Remplacer aussi Drive, ou Récupérer mes données depuis Drive (Paramètres → Données).', act: 'open' };
   if (st.state === 'SYNC_BLOCKED' && /reconnexion/.test(st.message)) return { cls: 'cache', icon: '⚠️', text: 'Reconnexion requise' + wait, hint: 'Un appui pour reconnecter Google Drive.', act: 'reconnect' };
   if (st.state === 'SYNC_BLOCKED' && /en attente/.test(st.message)) return { cls: 'cache', icon: '⏳', text: 'Envoi en attente' + wait, hint: 'Nouvel essai automatique.', act: 'open' };
   if (st.state === 'CONFLICT' || st.state === 'SYNC_BLOCKED') return { cls: 'cache', icon: '⚠️', text: 'Action requise', hint: st.message || 'Ouvre Sauvegarde.', act: 'open' };
@@ -268,6 +269,17 @@ function driveSoon() {
     d.sync.run(false, true);
   }, 4000);
 }
+// Données reçues de Drive écrites dans le coffre (fusion ou récupération) : l'app relit réglages et contexte.
+function driveApplied() {
+  const cars = S.cars.map(c => c.id).join();
+  S = loadSettings();
+  const context = lsGet(USER_STORE.key); if (context) USER_STORE.receive(context);
+  TRIPCANCEL = TripCancel.load(APP_STORAGE, Date.now()); rebuild(); renderAll();
+  // Voiture ajoutée sur l'autre appareil : Paramètres ouverts la montrent, sauf saisie en cours.
+  // Seul ce cas redessine le panneau (un choix de conflit en cours n'est jamais effacé).
+  const set = document.getElementById('settings');
+  if (cars !== S.cars.map(c => c.id).join() && (!set || !set.open || !set.contains(document.activeElement) || document.activeElement === set.querySelector('summary'))) renderSettings();
+}
 async function initDriveSync() {
   // Ni requête de configuration ni script Google sur l'origine partagée.
   if (location.protocol !== 'https:' || /(^|\.)github\.io$/.test(location.hostname)) return;
@@ -285,16 +297,7 @@ async function initDriveSync() {
         if (state.state === 'SYNCED') { DRIVE_BADGE.pending = 0; DRIVE_BADGE.syncedAt = Date.now(); }
         renderDriveSync();
       },
-      onApplied: () => {
-        const cars = S.cars.map(c => c.id).join();
-        S = loadSettings();
-        const context = lsGet(USER_STORE.key); if (context) USER_STORE.receive(context);
-        TRIPCANCEL = TripCancel.load(APP_STORAGE, Date.now()); rebuild(); renderAll();
-        // Voiture ajoutée sur l'autre appareil : Paramètres ouverts la montrent, sauf saisie en cours.
-        // Seul ce cas redessine le panneau (un choix de conflit en cours n'est jamais effacé).
-        const set = document.getElementById('settings');
-        if (cars !== S.cars.map(c => c.id).join() && (!set || !set.open || !set.contains(document.activeElement) || document.activeElement === set.querySelector('summary'))) renderSettings();
-      } });
+      onApplied: driveApplied });
     DRIVE_UI.text = 'Prêt à connecter Google Drive. Exporte d’abord une copie complète et vérifiée de cet appareil.';
     try { DRIVE_UI.hint = await DriveSync.resumeHint(); } catch { DRIVE_UI.hint = null; }
     // Liaison déjà confirmée : Google chargé d'avance pour qu'un seul appui suffise à la reconnexion.

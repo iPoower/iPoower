@@ -207,7 +207,7 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         await click('[data-act=demo-sel]'); assert.equal(await p.evaluate(() => DEMO.on), true);
         await p.selectOption('#demoScn', 'pluie'); assert.equal(await p.evaluate(() => DEMO.scn), 'pluie');
         await click('[data-act=demo-off]'); await s.settle(8); assert.equal(await p.evaluate(() => DEMO.on), false);
-        await click('[data-act=reset]'); await s.settle(8); assert.equal(await p.evaluate(() => S.horizon), await p.evaluate(() => DEFAULTS.horizon));
+        await click('[data-act=reset]'); await p.locator('#resetWord').fill('RÉINITIALISER'); await click('[data-act=reset-go]'); await s.settle(8); assert.equal(await p.evaluate(() => S.horizon), await p.evaluate(() => DEFAULTS.horizon));
       });
       assert.deepEqual(s.errors, []); await s.c.close();
     }

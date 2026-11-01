@@ -164,8 +164,36 @@
     "result": "météo actualisée ou cache offline conservé"
   },
   "reset": {
-    "suite": "e2e49-interactions.js",
-    "result": "réglages par défaut rétablis"
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "zone danger ouverte : mot à saisir, aucune donnée modifiée"
+  },
+  "reset-cancel": {
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "réinitialisation abandonnée, réglages inchangés"
+  },
+  "reset-go": {
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "instantané chiffré confirmé puis réglages par défaut ; journal intact"
+  },
+  "reset-undo": {
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "réglages rétablis à l’octet, instantané retiré"
+  },
+  "sync-recover": {
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "dernière version Drive adoptée à l’octet, aucune écriture Drive, pause levée"
+  },
+  "sync-replace": {
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "saisie du mot REMPLACER demandée, rien envoyé"
+  },
+  "sync-replace-cancel": {
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "pause conservée, rien envoyé"
+  },
+  "sync-replace-go": {
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "pause levée après REMPLACER, envoi à Drive puis synchro normale"
   },
   "return-home": {
     "suite": "e2e35.js",
