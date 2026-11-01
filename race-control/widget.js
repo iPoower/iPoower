@@ -527,7 +527,7 @@ const ALERT_DEFS = [
   { id: 'vis', label: 'Visibilité faible (< 1 000 m)' },
   { id: 'frost', label: 'Gel nocturne' },
   { id: 'drop', label: 'Baisse brutale de température' },
-  { id: 'pre', label: 'Météo dangereuse avant le montage hiver' },
+  { id: 'pre', label: 'Montage hiver à prévoir (météo hivernale avant le montage)' },
   { id: 'tread', label: 'Profondeur de sculpture faible (minimum légal 1,6 mm ; repères indicatifs 3 et 4 mm)' }
 ];
 // Profondeur de sculpture : alerte dédiée, indépendante de la température.
@@ -591,7 +591,9 @@ function computeAlerts(model, cars, S, seasonByCar, hours = 24) {
   const pre = cars.map(c => ({ c, s: seasonByCar[c.id] })).filter(o => o.s && o.s.coldBefore && effType(o.c) === 'summer');
   const tw = treadAlert(cars, sm, seq);
   if (tw) set('tread', tw.sev, tw.title, tw.detail);
-  if (pre.length) { const o = pre[0], when = o.s.countdown.kind === 'confirmed' ? 'rendez-vous confirmé' : 'montage estimé'; set('pre', 3, `Météo hivernale avant le montage hiver (${o.c.short})`, `Premier épisode : ${fmtDay(o.s.coldBefore.first.date)}, avant le ${when} du ${fmtDay(o.s.countdown.date)}.${o.s.coldBefore.partial ? ' La météo disponible ne couvre pas toute la période restante.' : ''}`); }
+  // Montage hiver à prévoir : alerte de PLANIFICATION (VIGILANCE, Garage et Pneus), jamais un danger du verdict immédiat :
+  // absente de la fenêtre courte « ici, maintenant » (hours < 24), où elle désignerait une autre voiture que celle affichée.
+  if (pre.length && hours >= 24) { const o = pre[0], when = o.s.countdown.kind === 'confirmed' ? 'rendez-vous confirmé' : 'montage estimé'; set('pre', 1, `Montage hiver à prévoir (${o.c.short}) : météo hivernale avant le montage`, `Premier épisode : ${fmtDay(o.s.coldBefore.first.date)}, avant le ${when} du ${fmtDay(o.s.countdown.date)}.${o.s.coldBefore.partial ? ' La météo disponible ne couvre pas toute la période restante.' : ''}`); }
   return res;
 }
 
