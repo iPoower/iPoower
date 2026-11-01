@@ -40,7 +40,8 @@ let n = 0; const check = (label, ok, detail) => { assert(ok, label + ' · ' + St
       check(dev + ' · cas reproduit : l’autre voiture (pneus été) a bien une météo hivernale avant son montage', !!r.pre24, JSON.stringify(r));
       check(dev + ' · « montage hiver à prévoir » = planification VIGILANCE (alertes 24 h), jamais DANGER', r.pre24 && r.pre24.sev === 1 && /^Montage hiver à prévoir/.test(r.pre24.title), JSON.stringify(r.pre24));
       check(dev + ' · absente de la fenêtre « ici, maintenant »', r.preNow === false, JSON.stringify(r));
-      check(dev + ' · verdict de la voiture affichée : RAS ou VIGILANCE, jamais DANGER', r.active && /^\W*(RAS|VIGILANCE)\b/u.test(r.label.trim()) && !/DANGER/.test(r.label), r.label + ' | ' + r.text.slice(0, 400));
+      // Profil de test sans profondeur : depuis la PR sécurité pneumatique, un RAS devient « ANALYSE LIMITÉE » (profondeur non renseignée).
+      check(dev + ' · verdict de la voiture affichée : RAS, ANALYSE LIMITÉE ou VIGILANCE, jamais DANGER', r.active && /^\W*(RAS|ANALYSE LIMITÉE|VIGILANCE)\b/u.test(r.label.trim()) && !/DANGER/.test(r.label), r.label + ' | ' + r.text.slice(0, 400));
       check(dev + ' · le verdict immédiat ne cite pas l’autre voiture', !r.text.includes(setup.other) && !/montage hiver/i.test(r.text), r.text.slice(0, 600));
       await s.c.close();
     }
