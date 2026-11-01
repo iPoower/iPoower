@@ -736,6 +736,7 @@ async function refreshAll(force = true) {
   busy = true; DEMO.on = false; lastTry = Date.now(); renderStatus();
   // L'agenda chiffré ne dépend pas de la météo : lu tout de suite, en parallèle, jamais après elle.
   loadCalendar();
+  let received = 0;   // lieux dont une nouvelle météo valide vient d'arriver
   try {
     const locs = allLocs().map(l => ({ ...l })), gpsStart = gpsWeatherGen, generations = new Map();
     try {
@@ -761,9 +762,12 @@ async function refreshAll(force = true) {
       else { ERR[l.id] = (r.reason && r.reason.message) || 'réponse invalide'; if (RAW[l.id]) RAW[l.id].mode = 'cache'; }
     });
     if (ok) lastOk = Math.max(lastOk || 0, ...locs.map(l => (RAW[l.id] && RAW[l.id].mode === 'live' ? RAW[l.id].t : 0)));
+    received = ok;
   } finally { busy = false; }   // une exception ne laisse jamais l'actualisation « en cours » pour toujours
   const scrollY = window.scrollY;
   rebuild(); renderAll();
+  // Journal de preuves : écrit sur l'événement « nouvelle météo reçue », après le rendu, jamais pendant (dette D2).
+  if (received) { try { evWeatherReceived(); } catch (e) { if (RUNTIME_RECORDER) RUNTIME_RECORDER.record('evidence-journal', e); } }
   if (Number.isFinite(scrollY) && typeof window.scrollTo === 'function') window.scrollTo({ top: scrollY, behavior: 'instant' });
   fetchVigi(); refreshEns(); radarRefresh();
 }
