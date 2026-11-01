@@ -10,7 +10,7 @@ const Decision = (() => {
     { key: 'confirm', label: 'À CONFIRMER' },
     { key: 'degraded', label: 'DÉGRADÉ' }
   ];
-  const RISK = ['CONDITIONS STABLES', 'SURVEILLANCE', 'PRUDENCE', 'DANGER'];
+  const RISK = ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'];   // échelle unique de l'app (= LV de engine.js)
   const finite = Number.isFinite;
   const clone = v => v == null ? v : JSON.parse(JSON.stringify(v));
   const text = (v, max = 180) => typeof v === 'string' ? v.slice(0, max) : null;

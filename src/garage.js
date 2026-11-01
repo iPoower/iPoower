@@ -114,7 +114,7 @@ const Garage = (() => {
       const valid = evaluated && !!(t.model && t.size && t.tread && !t.tread.estimated && t.tread.date && t.pressure && t.pressure.checked);
       const parts = evaluated && w.worst && w.worst.parts || [];
       return { id: car.id, level: valid ? w.level : null,
-        label: !valid ? 'DONNÉES INSUFFISANTES' : ['AUCUN SIGNAL CRITIQUE CALCULÉ', 'SURVEILLANCE', 'PRUDENCE', 'DANGER'][w.level],
+        label: !valid ? 'DONNÉES INSUFFISANTES' : ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'][w.level],
         reasons: parts.filter(p => p && str(p.label)).slice(0, 3).map(p => str(p.label)),
         missing: [!car.tyre && 'Monte non confirmée', car.tyre && !car.tyre.model && 'Modèle exact absent', car.tyre && !car.tyre.size && 'Dimensions absentes',
           (!car.tyre || !car.tyre.tread) && 'Profondeur absente', car.tyre && car.tyre.tread && car.tyre.tread.estimated && 'Profondeur estimée à mesurer',

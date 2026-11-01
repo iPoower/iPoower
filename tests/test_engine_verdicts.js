@@ -32,6 +32,24 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     count++; if (!options.quiet) console.log('✅ ' + name);
   };
 
+  // — fenêtre des alertes : le verdict « ici, maintenant » (3 h) ignore un brouillard qui commence dans 8 h ; le panneau 24 h le garde
+  test('fenêtre : brouillard dans 8 h absent des alertes à 3 h, présent dans celles à 24 h', () => {
+    const hs = hours(h => h >= 8 ? { vis: 150, RH: 100, code: 45 } : {}), model = { hs, nowI: 24 };
+    const S = { alerts: {} }, a24 = E.computeAlerts(model, [], S, {}), a3 = E.computeAlerts(model, [], S, {}, 3);
+    assert(a24.fog && a24.fog.sev === 3, JSON.stringify(a24.fog)); assert.equal(a3.fog, undefined);
+    const now = hours(h => h >= 1 ? { vis: 150, RH: 100, code: 45 } : {});
+    assert(E.computeAlerts({ hs: now, nowI: 24 }, [], S, {}, 3).fog, 'brouillard dans 1 h : bien présent à 3 h');
+  });
+  test('échelle unique : RAS / VIGILANCE / PRUDENCE / DANGER, en français, dans tous les modules', () => {
+    assert.deepEqual(E.LV.map(l => l.name), ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER']);
+    const src = f => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8');
+    assert.match(src('decision.js'), /const RISK = \['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'\]/);
+    assert.match(src('f1-pure.js'), /\['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'\]\[l\]/);
+    assert.match(src('garage.js'), /\['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'\]\[w\.level\]/);
+    const app = ['app.js', 'app/weather-view.js'].map(src).join('\n');
+    assert.doesNotMatch(src('app/weather-station.js'), /Risque routier[^\n]*\['Faible', 'Modéré', 'Élevé', 'Critique'\]/, 'risque routier sur l’échelle unique');
+    assert.doesNotMatch(app, /'(GO|NO GO|HIGH RISK|CAUTION|ATTENTION|CONDITIONS STABLES|AUCUN SIGNAL CRITIQUE CALCULÉ)'|\['FAIBLE', 'MODÉRÉ', 'ÉLEVÉ', 'CRITIQUE'\]|\['faible', 'modéré', 'élevé', 'critique'\]/);
+  });
   // — profondeur de sculpture : alerte dédiée, distincte de la température (données fictives ; hours() = 15 janvier, saison froide)
   const treadAlerts = (tire, at = () => ({ T: 12 }), type = 'summer') => E.computeAlerts({ hs: hours(at), nowI: 24 }, [car(type, tire)], { alerts: {} }, {});
   test('profondeur 2,6 mm (pneus été, saison froide, sans pluie) : VIGILANCE indicative, essieu et date du relevé', () => {
