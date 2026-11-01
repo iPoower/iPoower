@@ -25,7 +25,7 @@ const BASE = {
   work: { from: 'home', to: 'work', durMin: 180, dep: '07:30', ret: '17:30', days: [1, 2, 3, 4, 5] },
   horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on', f1RaceEngineer: 0, f1TrackConditions: 0, f1TyreManagement: 0,
     f1StrategyAB: 0, f1TheGarage: 0, f1TelemetryReplay: 0 }, road: { on: 1 },
-  alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
+  alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, tread: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
   cars: [
     { id: 'car1', name: 'Voiture 1', short: 'Voiture 1', spec: '', sporty: 0,
       tire: { type: 'summer', brand: '', model: '', size: '', tread: null, treadAv: null, treadAr: null, treadEst: 0, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
@@ -1247,7 +1247,7 @@ function renderCurrent() {
 // @include app/race-views.js
 // @include app/garage-view.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
-const TIRE_ALERTS = ['press', 'age', 'mont'];
+const TIRE_ALERTS = ['press', 'age', 'mont', 'tread'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
 const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 function chooseView(view) {
