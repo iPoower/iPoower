@@ -144,6 +144,7 @@ SUITE.push(['e2e91-export-horodatage.js', 'export : réglage en mémoire enregis
 SUITE.push(['e2e92-preuves-espacement.js', 'journal du moteur de preuves : entrées automatiques espacées de 60 min par lieu, signalements immédiats, PC/iPhone', true]);
 SUITE.push(['e2e93-position-vraisemblance.js', 'lot 1 : position approximative lointaine jamais utilisée en silence (lieu principal, utiliser quand même), GPS précis lointain accepté, PC/iPhone', true]);
 SUITE.push(['e2e93-agenda-a-reserver.js', 'agenda : une réservation « [À réserver] » n’est pas un trajet par défaut, #trajet la rétablit, PC/iPhone', true]);
+SUITE.push(['e2e96-brouillard-deux-episodes.js', 'acceptation #290 : brouillard en cours puis nouvel épisode, cohérent sur Pneus, Météo, Chronologie et Trajet ; visibilité datée ; confiance distincte du risque, PC/iPhone', true]);
 SUITE.push(['test_vault_sync_device_writes.js', 'constat C : écriture propre à l’appareil (GPS, cache, agenda chiffré) sans blocage ni perte pendant la synchro', false]);
 SUITE.push(['e2e89-agenda-sablier.js', 'agenda : jamais de sablier « Lecture de l’agenda… » infini (sans réponse, erreur, réponse invalide, affichage en échec)', true]);
 SUITE.push(['e2e88-car-add.js', 'Ajouter une voiture : fiche vierge, refus nom vide ou en double, Garage, compteur et rechargement', true]);
