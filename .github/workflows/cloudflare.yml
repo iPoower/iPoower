@@ -121,3 +121,8 @@ jobs:
           done
           curl -fsSI -H "Origin: $url" "https://ipoower.github.io/iPoower/race-control/obs.json" | grep -qi '^access-control-allow-origin: \*' || { echo "::error::Données du relais non lisibles depuis l'origine dédiée (CORS)"; exit 1; }
           echo "✅ Origine dédiée : $LIVE_SHA servi (build de $SRC_SHA), octets identiques, en-têtes et CORS des données vérifiés"
+      - name: Données de l'origine dédiée (TWRC_DATA_BASE, flux routier en JSON et sa fraîcheur)
+        if: steps.build.outputs.go == '1'
+        env:
+          PROJECT: ${{ vars.CLOUDFLARE_RC_PROJECT }}
+        run: node tools/check-data-base.js "https://$PROJECT.pages.dev"

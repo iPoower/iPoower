@@ -2391,8 +2391,8 @@ function liveParse(j) {
   const hv = (p, q) => distKm({ lat: p[1], lon: p[0] }, { lat: q[1], lon: q[0] }), cumD = [0], cumT = [0];
   for (let i = 1; i < co.length; i++) { cumD.push(cumD[i - 1] + hv(co[i - 1], co[i])); cumT.push(cumT[i - 1] + (dur && dur[i - 1] != null ? dur[i - 1] : 0)); }
   const totT = cumT[cumT.length - 1], totD = cumD[cumD.length - 1] || 1, byTime = totT > 0;
-  const pts = [0.25, 0.5, 0.75].map(f => { let i = (byTime ? cumT : cumD).findIndex(c => c >= f * (byTime ? totT : totD)); if (i < 0) i = co.length - 1;
-    return { f, lat: +co[i][1].toFixed(3), lon: +co[i][0].toFixed(3), km: Math.round(cumD[i] * 10) / 10, name: null }; });
+  // Lot 2 : un point météo tous les ~65 km le long de la route (au moins 3), au lieu de 3 points fixes.
+  const pts = RouteRadar.samplePoints(co, dur);
   const g = [], step = totD / 80; let nxt = 0;
   for (let i = 0; i < co.length; i++) if (cumD[i] >= nxt || i === co.length - 1) { g.push([+co[i][1].toFixed(3), +co[i][0].toFixed(3)]); nxt = cumD[i] + step; }
   const km = r.distance != null ? r.distance / 1000 : totD, sec = r.duration != null ? r.duration : totT, rawMin = Math.max(1, sec / 60);
@@ -3106,7 +3106,7 @@ function manualRouteCacheWrite(leg, route) {
   let C = {}; try { C = JSON.parse(lsGet('twrc.croute') || '{}'); } catch (e) { C = {}; }
   const oldManual = Object.keys(C).filter(k => k.startsWith('manual|')).sort((a, b) => (C[b].at || 0) - (C[a].at || 0));
   oldManual.slice(7).forEach(k => delete C[k]);
-  C[key] = { at: Date.now(), km: route.km, min: route.min, pts: (route.pts || []).slice(0, 8), g: (route.g || []).slice(0, 100) };
+  C[key] = { at: Date.now(), km: route.km, min: route.min, pts: (route.pts || []).slice(0, 16), g: (route.g || []).slice(0, 100) };
   lsSet('twrc.croute', JSON.stringify(C));
 }
 function tripCancelReadyLeg(e, leg) {
