@@ -20,6 +20,22 @@ function tripRecommendedOrigin() {
   const home = S.locs && S.locs[0];
   return { mode: home && home.id || '', point: home || null };
 }
+// Une seule origine affichée partout (résumé du trajet et champ Départ), avec sa provenance :
+// choix manuel enregistré > origine du trajet prévu > lieu proposé par le contexte (lieu reconnu, GPS fiable, domicile).
+function tripSharedOrigin() {
+  const n = appDay().nextDestination;
+  if (n && n.source === 'manual' && (n.originPoint || n.originId)) {
+    const point = n.originPoint || locById(n.originId);
+    if (point) return { point, mode: n.originPoint ? (n.originPoint.provider === 'GPS navigateur' ? '__gps' : '__manual') : n.originId, source: 'choisi' };
+  }
+  const t = n ? APP_CONTEXT.trips.find(x => x.key === n.tripKey) : APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip;
+  const planned = t && !t.originPending && appTripPlace(t, 'from');
+  // Point prévu hors des lieux enregistrés : proposé comme adresse de départ, sans le remplacer par la position du moment.
+  if (planned && locHasCoords(planned)) return planned.id && locById(planned.id) ? { point: planned, mode: planned.id, source: 'trajet prévu' }
+    : { point: planned, mode: '__manual', hit: { ...planned }, source: 'trajet prévu' };
+  const rec = tripRecommendedOrigin();
+  return { point: rec.point, mode: rec.mode, source: 'proposé par le contexte', pending: !!(t && t.originPending) };
+}
 function tripDraftInit(force = false) {
   const d = appDay(), n = d.nextDestination, manual = n && n.source === 'manual' ? n : null;
   const token = manual ? manual.tripKey + '|' + manual.updatedAt : 'new';
@@ -35,7 +51,7 @@ function tripDraftInit(force = false) {
   // Un ancien résultat réseau ne doit pas réapparaître après rechargement du formulaire.
   TRIP_FORM.destGen++; TRIP_FORM.originGen++;
   TRIP_FORM.destSearching = TRIP_FORM.originSearching = null;
-  const now = localTs(Date.now()).slice(0, 16), dep = manual && manual.dep || now, rec = tripRecommendedOrigin();
+  const now = localTs(Date.now()).slice(0, 16), dep = manual && manual.dep || now, rec = tripSharedOrigin();
   TRIP_FORM.bound = token;
   TRIP_FORM.destinationId = manual && manual.placeId && !manual.destinationPoint ? manual.placeId : null;
   TRIP_FORM.destinationHit = manual && manual.destinationPoint ? { ...manual.destinationPoint } : null;
@@ -43,7 +59,7 @@ function tripDraftInit(force = false) {
   TRIP_FORM.destinationQuery = TRIP_FORM.destinationHit ? (TRIP_FORM.destinationHit.address || TRIP_FORM.destinationHit.name) : knownDest ? knownDest.name : '';
   TRIP_FORM.destinationResults = [];
   TRIP_FORM.originMode = manual && manual.originPoint ? (manual.originPoint.provider === 'GPS navigateur' ? '__gps' : '__manual') : manual && manual.originId || rec.mode;
-  TRIP_FORM.originHit = manual && manual.originPoint ? { ...manual.originPoint } : null;
+  TRIP_FORM.originHit = manual && manual.originPoint ? { ...manual.originPoint } : !manual && rec.hit ? { ...rec.hit } : null;
   TRIP_FORM.originQuery = TRIP_FORM.originHit && TRIP_FORM.originHit.provider !== 'GPS navigateur' ? (TRIP_FORM.originHit.address || TRIP_FORM.originHit.name) : '';
   TRIP_FORM.originResults = [];
   TRIP_FORM.when = manual ? dep.slice(0, 10) === now.slice(0, 10) ? (Math.abs(tsToDate(dep) - tsToDate(now)) <= 5 * 60000 ? 'now' : 'later') : 'date' : 'now';
@@ -131,7 +147,7 @@ function renderTripView() {
   el.hidden = UI.view !== 'trajet'; if (el.hidden) return;
   tripDraftInit();
   const current = appDay().nextDestination, existing = current && current.source === 'manual';
-  const rec = tripRecommendedOrigin(), origin = tripOriginValue(), dest = tripDestinationValue();
+  const rec = tripSharedOrigin(), origin = tripOriginValue(), dest = tripDestinationValue();
   const points = placeList().filter(p => !/^manual-(?:origin|destination)$/.test(p.id || ''));
   const opts = [];
   if (appCurrentGps() || TRIP_FORM.originMode === '__gps') opts.push(['__gps', '📍 Ma position']);
@@ -152,7 +168,7 @@ function renderTripView() {
   const intelligence = tyreIntelligenceHtml(S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar(), 'trajet', CX && wxTrips(CX.m).find(t => current && t.id === current.tripKey) || null);
   const html = `<div class="mod-h"><h2>🧭 TRAJET</h2><span class="src obs">contexte partagé Race Control</span></div>
     <div class="trip-form">
-      <div class="trip-field"><span class="trip-label">Départ</span><div class="trip-origin-head"><b>${origin ? esc(origin.name) : 'Origine à choisir'}</b><span>${TRIP_FORM.originMode === rec.mode ? 'proposé par le contexte' : 'choisi'}</span></div>
+      <div class="trip-field"><span class="trip-label">Départ</span><div class="trip-origin-head"><b>${origin ? esc(origin.name) : 'Origine à choisir'}</b><span>${TRIP_FORM.originMode === rec.mode ? esc(rec.source) : 'choisi'}</span></div>
         <label class="sr-only" for="tripOriginSel">Modifier le départ</label><select id="tripOriginSel" data-trip-field="origin">${opts.map(([v,t]) => `<option value="${esc(v)}" ${TRIP_FORM.originMode === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
         ${TRIP_FORM.originMode === '__manual' ? `<div class="trip-search"><input type="search" id="tripOriginQ" value="${esc(TRIP_FORM.originQuery)}" placeholder="Adresse de départ"><button class="btn" data-act="trip-origin-search">Rechercher</button></div><div class="trip-suggestions">${originButtons}</div>` : ''}
       </div>
@@ -204,12 +220,12 @@ function renderTripSummary() {
   const n = appDay().nextDestination;
   const t = n ? APP_CONTEXT.trips.find(x => x.key === n.tripKey) : UI.view === 'trajet' && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
   if (!['pneus', 'trajet'].includes(UI.view) || (!n && !t) || n && n.source === 'pending') { el.hidden = true; el.innerHTML = ''; return; }
-  const from = n && (n.originPoint || locById(n.originId)) || t && !t.originPending && appTripPlace(t, 'from'), to = n && (n.destinationPoint || locById(n.placeId)) || t && appTripPlace(t, 'to');
+  const shared = tripSharedOrigin(), from = shared.pending ? null : shared.point, to = n && (n.destinationPoint || locById(n.placeId)) || t && appTripPlace(t, 'to');
   const car = appActiveCar(), l = t && (t.l || t.planL), route = l && !l.originPending && Number.isFinite(l.km) ? `${f1(l.km)} km · ~${Math.round(l.min)} min` : offlineNow() ? 'route à recalculer au retour du réseau' : 'route en préparation';
   const address = to && (to.address || to.sub) || '';
   el.hidden = false;
   el.innerHTML = `<div class="trip-summary-head"><span class="trip-label">🧭 ${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc((n && n.dep || t && t.dep || '').slice(11,16) || '—')}</b></div>
-    <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}</div>
+    <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}${from ? `<small class="trip-origin-src">Départ : ${esc(shared.source)}</small>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(car && (car.short || car.name) || 'véhicule à choisir')}</span><span>${esc(route)}</span></div>
     ${UI.view === 'trajet' ? '<a class="btn pri" href="#secTrip">Modifier le trajet</a>' : '<div class="chips"><button class="btn sm" data-act="view" data-v="trajet">Voir / modifier le trajet</button></div>'}`;
 }

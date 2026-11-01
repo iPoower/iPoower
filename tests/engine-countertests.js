@@ -7,6 +7,8 @@ const count = runTests(original, { quiet: true });
 const mutations = [
   { name: 'fenêtre « ici, maintenant » ignorée (alertes toujours sur 24 h)', from: 'const seq = seqOf(model, model.nowI, hours);', to: 'const seq = seqOf(model, model.nowI, 24);' },
   { name: 'brouillard < 200 m rétrogradé en VIGILANCE', from: 'if (x.vis < 200) L = Math.max(L, 2);', to: 'if (x.vis < 200) L = Math.max(L, 1);' },
+  { name: 'alerte de profondeur sans seuil légal', from: 'if (w.mm < TREAD_LEGAL_MM) return { sev: 3,', to: 'if (false) return { sev: 3,' },
+  { name: 'repère indicatif présenté comme réglementaire', from: 'Repère indicatif, non réglementaire${rain', to: 'Seuil réglementaire${rain' },
   { name: 'rafales ≥ 90 km/h sans alerte', from: 'if (x.gust != null && x.gust >= 90) L = Math.max(L, 2);', to: '' },
   { name: 'drapeaux de danger ignorés par le niveau', from: 'const level = Math.max(sl, lvl);', to: 'const level = sl;' },
   { name: 'seuils de niveau trop indulgents', from: 'const scoreToLevel = s => s >= 80 ? 0 : s >= 60 ? 1 : s >= 40 ? 2 : 3;', to: 'const scoreToLevel = s => s >= 40 ? 0 : s >= 20 ? 1 : s >= 10 ? 2 : 3;' },
