@@ -724,7 +724,7 @@ function placeDiagRows(forCopy) {
     ['Géolocalisation navigateur (brute)', raw], ['Position navigateur retenue', FIX ? `±${Math.round(FIX.acc)} m · il y a ${ageTxt(ageOf(FIX.ts))}` : 'aucune'],
     ['Dernière erreur localisation', GEO.error ? GEO.error.code + ' · ' + GEO.error.message : 'aucune'], ['Position réseau / IP', net],
     ...distances,
-    ['Lieu logique Race Control', `${c.place ? c.place.name : c.title.replace(/^\S+ /, '')} · ${c.trust} · ${c.place ? c.place.kind === 'home' ? 'domicile' : c.place.kind === 'work' ? 'travail' : 'destination connue' : c.source === 'gps' ? 'autre' : 'indéterminé'}`], ['Source retenue', `${c.source} · ${source}${c.originLock ? ' · origine verrouillée : ' + c.originLock : ''}`],
+    ['Lieu logique Race Control', `${c.place ? c.place.name : c.title.replace(/^\S+ /, '')} · ${c.trust} · ${c.place ? c.place.kind === 'home' ? 'domicile' : c.place.kind === 'work' ? 'travail' : 'destination connue' : c.source === 'gps' ? 'autre' : 'indéterminé'}`], ['Source retenue', `${c.source === 'none' && !forCopy ? source : c.source + ' · ' + source}${c.originLock ? ' · origine verrouillée : ' + c.originLock : ''}`],
     ['Raison localisation', c.source === 'manual' ? 'confirmation utilisateur' : c.source === 'trip' ? 'déplacement confirmé · trajet en cours' : GEO.reason || (c.source === 'last' ? 'dernier lieu fiable · attente de position fraîche' : c.source === 'gps' ? 'position navigateur précise dans la géofence' : 'position insuffisante · confirmation manuelle disponible')],
     ['Sources écartées', rej.length ? rej.map(x => `${x.source} : ${x.reason}`).join(' | ') : 'aucune']];
 }

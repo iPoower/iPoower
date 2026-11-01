@@ -389,7 +389,7 @@ function tyreLab(input) {
     const notes = [`Cible saisie : ${r1(target)} bar à froid (pression enregistrée par l’utilisateur)`];
     if (Tchk == null) notes.push('Température du dernier contrôle inconnue : variation non estimée');
     else {
-      notes.push(`Dernier contrôle : ${pc.date || 'date inconnue'} à ${r1(Tchk)} °C`);
+      notes.push(`Dernier contrôle : ${/^\d{4}-\d{2}-\d{2}$/.test(pc.date || '') ? pc.date.slice(8, 10) + '/' + pc.date.slice(5, 7) + '/' + pc.date.slice(0, 4) : pc.date || 'date inconnue'} à ${r1(Tchk)} °C`);   // affichage JJ/MM/AAAA, donnée inchangée
       notes.push(`À froid maintenant (${r1(eNow.Tenv)} °C) : ≈ ${r1(cold - 0.05)}–${r1(cold + 0.05)} bar (estimation, loi des gaz : ≈ 0,1 bar par 10 °C)`);
       if (phase === 'driving') notes.push(`En roulage : ≈ ${r1(cold + 0.1)}–${r1(cold + 0.3)} bar (ordre de grandeur : +0,1 à +0,3 bar à chaud, aucun capteur) ; une hausse à chaud est normale, ne jamais dégonfler à chaud`);
       if (Tchk - eNow.Tenv >= 10) notes.push('Contrôlée par temps plus chaud : la pression baisse avec la saison, à revérifier à froid');
