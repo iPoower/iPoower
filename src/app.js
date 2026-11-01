@@ -896,7 +896,10 @@ function icon(code) {
   else b = cloud + '<path d="M8 19l-1 2.5M12 19l-1 2.5M16 19l-1 2.5"/>';
   return `<svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${b}</svg>`;
 }
-const verdictHtml = (l, sm) => `<div class="verdict lv${l}${sm ? ' sm' : ''}"><span class="em">${LV[l].emoji}</span><span>${LV[l].label}</span></div>`;
+// Profondeur inconnue : jamais « RAS — CONDITIONS ADAPTÉES » rassurant ; le niveau n'est pas relevé pour autant.
+// Un RAS devient « Analyse limitée » (libellé de #304) ; un niveau venant de la météo reste affiché, avec la même mention.
+const verdictHtml = (l, sm, w) => { const unk = !!(w && w.depthUnknown), lim = unk && l === 0;
+  return `<div class="verdict ${lim ? 'lvx' : 'lv' + l}${sm ? ' sm' : ''}"><span class="em">${lim ? '⚪' : LV[l].emoji}</span><span>${lim ? 'ANALYSE LIMITÉE' : LV[l].label}${unk ? ' · PROFONDEUR NON RENSEIGNÉE' : ''}</span></div>`; };
 // Profil générique (audit A06) : tant que les lieux et la monte ne sont pas renseignés (ou appareil verrouillé), les conclusions
 // sont un APERÇU : jamais GO ni un score /100 présenté comme un conseil personnel. Seuls les paramètres nécessaires comptent.
 const PROFILE = () => ProfileCheck.check({ locked: LOCKED(), locs: calendarPlaces(), work: S.work });
@@ -1126,7 +1129,7 @@ function renderDecisionCore() {
   // un score pneus rassurant, même si sa notification est désactivée dans les réglages).
   const cm = cockpitMatters(alerts);
   if (cm.desk && cm.desk.level >= 1 && cm.desk.hero && !(Number.isFinite(cm.desk.hero.inMin) && cm.desk.hero.inMin > NOW_HOURS * 60)) alerts.push({ id: 'wxdesk', sev: cm.desk.level, title: cap1(String(cm.desk.hero.title).toLowerCase()) + (cm.desk.hero.lines[1] ? ' · ' + cm.desk.hero.lines[1] : '') });
-  const decision = Decision.decide({ alerts, tyreLevel: carEval && carEval.w ? carEval.w.level : null,
+  const decision = Decision.decide({ alerts, tyreLevel: carEval && carEval.w ? carEval.w.level : null, depthUnknown: !!(carEval && carEval.w && carEval.w.depthUnknown),
     tyreReason: carEval && carEval.nar ? carEval.nar.head : '', confidence });
   const hour = CX.m && CX.m.hs[CX.m.nowI] || {}, tyre = car && car.tire || {};
   const state = Decision.snapshot({
@@ -1158,7 +1161,7 @@ function renderDecisionCore() {
   const tripGeneric = !!(trip && trip.res && trip.res.length && trip.res.every(r => carProfile(r.c).generic));
   const tripWin = trip && /T\d{2}:\d{2}/.test(trip.dep || '') ? trip.dep.slice(11, 16) + (/T\d{2}:\d{2}/.test(trip.arr || '') ? ' → ' + trip.arr.slice(11, 16) : '') : '';
   const tripVerdictHtml = !trip || tripGeneric ? '' : Number.isInteger(trip.worst) && LV[trip.worst]
-    ? '<span class="decision-trip-verdict lv' + trip.worst + '"><b>' + LV[trip.worst].emoji + ' ' + esc(LV[trip.worst].name) + '</b>' + (tripWin ? ' · fenêtre du trajet ' + esc(tripWin) : '') + '</span>'
+    ? '<span class="decision-trip-verdict lv' + trip.worst + '"><b>' + LV[trip.worst].emoji + ' ' + esc(lvTxt(trip.worst, trip.res)) + '</b>' + (tripWin ? ' · fenêtre du trajet ' + esc(tripWin) : '') + '</span>'
     : '<span class="decision-trip-verdict lvx">' + (trip.wait ? '⏳ verdict du trajet en cours de calcul' : 'Verdict du trajet indisponible') + '</span>';
   const destinationHtml = ['pneus', 'meteo'].includes(UI.view) && trip
     ? '<span class="decision-trip"><span>' + (snap.activeTrip ? 'Trajet en cours' : 'Prochain trajet') + ' · <b>' + esc(tripFrom || 'Origine à confirmer') + ' → ' + esc(tripToName || 'Destination à confirmer') + '</b></span><span class="decision-departure">' + esc(departureText) + ' <a class="decision-change" href="' + (UI.view === 'meteo' ? '#wxNextTrip' : '#secBrf') + '">Départ ↗</a></span>' + tripVerdictHtml + '</span>'
@@ -2868,7 +2871,7 @@ function briefCard(t, dayLbl) {
   return head + `
     ${genTop ? genericNote(genTop.gaps) : ''}
     <div class="brf-m hasmap">${genTop ? gaugeSvg(null, 'x') : gaugeSvg(top.w.score, indic ? 'x' : lv)}
-      <div class="brf-v"><span class="brf-lv">${genTop ? '🧪 APERÇU' : indic ? '◌ INDICATIF · ' + LV[lv].name : LV[lv].emoji + ' ' + LV[lv].name}</span>
+      <div class="brf-v"><span class="brf-lv">${genTop ? '🧪 APERÇU' : indic ? '◌ INDICATIF · ' + lvTxt(lv, t.res) : LV[lv].emoji + ' ' + lvTxt(lv, t.res)}</span>
         <span class="brf-car">${esc(top.c.short)} · ${esc(TYPE_LABEL[effType(top.c)] || '')}</span>
         <span class="brf-why">${indic ? `Données ${esc(confD.label.toLowerCase())} : ${esc(confD.reason)} · ` : ''}${parts.length ? 'Points d’attention : ' + parts.map(esc).join(' · ') : genTop ? 'Aucune pénalité dans cet exemple de calcul' : indic ? 'aucune pénalité calculée' : '✓ Pneus actuels adaptés au trajet'}</span>
         ${t.res.slice(1).map(r => carProfile(r.c).generic ? `<span class="brf-why">🧪 ${esc(r.c.short)} : aperçu</span>` : `<span class="brf-why">${LV[r.w.level].emoji} ${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}/100</span>`).join('')}</div>
@@ -3237,7 +3240,7 @@ function legHtml(leg, ev) {
       const seg = c.q.name && a.name && b.name && a.name !== b.name ? `${esc(a.name)} → ${esc(b.name)}` : `vers ${esc(nm(c.q))}`;
       crit = `<div class="leg-c lv${Math.max(1, c.lv)}">⚠️ Tronçon critique : <b>${seg}</b> · ${a.t.slice(11, 16)}–${b.t.slice(11, 16)} · ${esc(why)}${c.q.km != null ? ` <span class="muted">(km ${f0(c.q.km)})</span>` : ''}</div>`;
     }
-    body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : r.worst}">${gen ? '🧪 Aperçu générique' : LV[r.worst].emoji + ' ' + LV[r.worst].name + (r.res[0] ? ' ' + r.res[0].w.score : '')}</span>${nav}</div>
+    body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : r.worst}">${gen ? '🧪 Aperçu générique' : LV[r.worst].emoji + ' ' + lvTxt(r.worst, r.res) + (r.res[0] ? ' ' + r.res[0].w.score : '')}</span>${nav}</div>
       <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
       ${ev && !gen ? trendHtml(trendOf(calendarTripKey(ev, leg), leg.dep, snapOf(r.res, r.sum, r.seq))) : ''}
       ${crit}${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
@@ -3255,6 +3258,12 @@ function daySummary(evs, now) {
   const lbl = dd === 0 ? 'Aujourd’hui' : dd === 1 ? 'Demain' : fmtDay(day);
   return `<div class="cal-sum lv${worst ? worst.r.worst : 0}"><b>${lbl} · ${L.length} trajet${L.length > 1 ? 's' : ''} · ${f0(km)} km</b>
     <span>${worst && worst.r.worst >= 1 ? `${LV[worst.r.worst].emoji} ${worst.x.l.k === 'ret' ? 'retour' : 'aller'} ${esc(worst.x.e.t)} (${worst.x.l.dep.slice(11, 16)}) à surveiller` : ev.length === L.length ? '🟢 pneus adaptés à tous les trajets prévus' : 'analyse en cours…'}</span></div>`;
+}
+// Profondeur inconnue (même règle sur toutes les surfaces) : un RAS devient « ANALYSE LIMITÉE · profondeur non renseignée » ;
+// un niveau venant de la météo garde son nom, avec la même mention. Le niveau n'est jamais relevé ni abaissé.
+function lvTxt(l, res) {
+  const unk = (Array.isArray(res) ? res : [res]).some(r => r && (r.w || r).depthUnknown);
+  return l === 0 && unk ? 'ANALYSE LIMITÉE · profondeur non renseignée' : LV[l].name + (unk ? ' · profondeur non renseignée' : '');
 }
 const calendarHasDeclaredPlace = e => !!e && typeof e.loc === 'string' && e.loc.trim().length > 2;
 function renderCal() {
@@ -3312,7 +3321,7 @@ function renderCal() {
     }
     else {
       const fb = frostBand(tr.sum.TrMin), lvw = tr.worst, gen = tr.res.some(r => carProfile(r.c).generic);
-      body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : lvw}">${gen ? '🧪 Aperçu générique' : LV[lvw].emoji + ' ' + LV[lvw].name + (tr.res[0] ? ' ' + tr.res[0].w.score : '')}</span>
+      body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : lvw}">${gen ? '🧪 Aperçu générique' : LV[lvw].emoji + ' ' + lvTxt(lvw, tr.res) + (tr.res[0] ? ' ' + tr.res[0].w.score : '')}</span>
         <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span>${wazeBtn(e)}</div>
         <div class="cal-k"><span>Route <b>${f1(tr.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(tr.sum.Tmin)} °C</b></span><span>Pluie <b>${(tr.sum.Pmax || 0) >= 0.1 ? f1(tr.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(tr.sum.visMin)}</b></span></div>
         ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
@@ -3470,7 +3479,7 @@ function waitCard(car) {
 function renderCars() {
   const el = $('#secCars'); if (!CX) {
     const focus = uxFocusKey(el);
-    el.innerHTML = S.cars.map(car => `<article class="car"><div class="car-h"><h3>${esc(car.name)}</h3><p class="sub">Météo indisponible : mesures et essais conservés, aucune condition actuelle évaluée.</p></div>${tyreIntelligenceHtml(car, 'pneus')}</article>`).join('');
+    el.innerHTML = S.cars.map(car => `<article class="car"><div class="car-h"><h3>${esc(car.name)}</h3><p class="sub">Météo indisponible : mesures et essais conservés, aucune condition actuelle évaluée.</p></div>${(() => { const g = hasTires(car) ? treadGuard(car, null) : null; return g ? `${verdictHtml(g.level, true)}<p class="sub tread-cap">${esc(g.text)}</p>` : ''; })()}${tyreIntelligenceHtml(car, 'pneus')}</article>`).join('');
     renderCars.last = ''; uxRestoreFocus(el, focus); return;
   }
   const { m } = CX;
@@ -3486,7 +3495,7 @@ function renderCars() {
         ${appActiveCar() && car.id === appActiveCar().id ? '<span class="garage-active">VOITURE ACTIVE</span>' : ''}
         <div class="tirebox"><span><b>Pneus montés : ${TYPE_LABEL[car.tire.type]}</b></span><span>${tireTxt(car)}</span></div>
         ${uxFold('tyre-records-' + car.id, 'Mesures et historique', tireExtra(car, m), 'Pression · DOT · usure')}</div>
-      ${gen ? genericNote(pf.gaps) : verdictHtml(w.level)}
+      ${gen ? genericNote(pf.gaps) : verdictHtml(w.level, false, w)}
       <div class="car-b">
         <div class="scoreRow"><div><div class="lab">TYRE WEATHER SCORE</div><div class="score num">${gen ? '—' : w.score}<small>${gen ? 'aperçu' : '/100'}</small></div></div>
           <div style="display:flex;flex-direction:column;gap:6px"><div class="lab">Niveau de risque : <b style="color:var(--lv-t)">${gen ? 'aperçu (profil générique)' : RISKTXT[w.level]}</b></div><div class="bar"><i style="width:${gen ? 0 : w.score}%"></i></div>
@@ -3667,7 +3676,7 @@ function renderBrief() {
   const montTxt = mc.concerned ? montNoteHtml([{ name: td.toName, mc }], td.dep, car) : '';
   const routeTxt = `Cap ${capTxt(td.cap)} (${f0(td.cap)}°) · ${f0(td.dist)} km à vol d’oiseau${td.mids.length ? ` · ${td.midsLoaded}/${td.mids.length} points intermédiaires analysés (≈ tous les 50 km)` : ''}`;
   paint(head + `<div class="sub">${esc(td.fromName)} → ${esc(td.toName)} · départ <b class="mono">${td.dep.slice(11, 16)}</b> le ${fmtDay(td.dep.slice(0, 10))} · arrivée <b class="mono">${td.arr.slice(11, 16)}</b>${td.past ? ' · <b style="color:var(--risk-t)">horaire déjà passé</b>' : ''}</div>
-  ${gen ? genericNote(pf.gaps) : verdictHtml(wa.level)}
+  ${gen ? genericNote(pf.gaps) : verdictHtml(wa.level, false, wa)}
   <p class="expl">${gen ? '<b>Prévision de référence.</b> Renseigne tes lieux et ta monte pour évaluer ton départ.' : `<b>${esc(nar.head)}</b> ${esc(nar.body)}`}</p>
   ${gen ? '' : '<div class="sub">Réponse à « puis-je partir avec cette voiture et ces pneus ? » : un indice, pas une autorisation. La décision te revient.</div>'}
   <div class="scroll"><table class="tbl"><thead><tr><th></th><th>Départ · ${td.dep.slice(11, 16)}<br><span class="muted" style="text-transform:none;letter-spacing:0">${esc(td.fromName)}</span></th><th>Pendant le trajet</th><th>Arrivée · ${td.arr.slice(11, 16)}<br><span class="muted" style="text-transform:none;letter-spacing:0">${esc(td.toName)}</span></th></tr></thead><tbody>${rows}</tbody></table></div>

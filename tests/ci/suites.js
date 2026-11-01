@@ -156,3 +156,5 @@ SUITE.push(['e2e87-drive-badge-count.js', 'badge de sauvegarde : seules les sais
 SUITE.push(['e2e86-html-security.js', 'NOESIS : texte véhicule, attribut photo, stockage ancien et DOM réel Chromium/WebKit', true]);
 
 SUITE.push(['test_drive_store_reopen.js', 'NOESIS-RC-003 : IndexedDB réessayable après erreur, blocage, versionchange et fermeture sans purge', false]);
+SUITE.push(['test_tread_guard.js', 'PR 1 sécurité pneumatique : profondeur 1,59/1,60/1,99/2,00 mm, pluie dans la fenêtre, deux horizons, estimation, météo indisponible, profondeur inconnue, pneus été et froid, contre-tests', false]);
+SUITE.push(['e2e99-profondeur-garde-fou.js', 'PR 1 sécurité pneumatique : 1,8 mm plafonne le verdict sur Pneus, panneau Alertes, Intelligence, Cockpit, Trajet, agenda, briefing et Garage ; profondeur inconnue = Analyse limitée, PC/iPhone', true]);
