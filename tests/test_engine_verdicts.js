@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm'), assert = r
 const sourcePath = path.join(__dirname, '../src/engine.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = { Math, Date, Intl, Map, Set, JSON }; vm.createContext(ctx);
-  vm.runInContext(source + '\nthis.E = { buildHours, windowAssess, hourVerdict, iceRisk, LV, makeModel, nowIn, validForecast, mergeArome };', ctx);
+  vm.runInContext(source + '\nthis.E = { buildHours, windowAssess, hourVerdict, iceRisk, LV, makeModel, nowIn, validForecast, mergeArome, computeAlerts, ALERT_DEFS };', ctx);
   const E = ctx.E;
   const GO = 0, CAUTION = 1, RISK = 2, NOGO = 3;
   // 24 h d'historique (inertie de la chaussée) puis 12 h évaluées ; `at(h)` décrit l'heure h (négative = passé).
@@ -32,6 +32,33 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     count++; if (!options.quiet) console.log('✅ ' + name);
   };
 
+  // — profondeur de sculpture : alerte dédiée, distincte de la température (données fictives ; hours() = 15 janvier, saison froide)
+  const treadAlerts = (tire, at = () => ({ T: 12 }), type = 'summer') => E.computeAlerts({ hs: hours(at), nowI: 24 }, [car(type, tire)], { alerts: {} }, {});
+  test('profondeur 2,6 mm (pneus été, saison froide, sans pluie) : VIGILANCE indicative, essieu et date du relevé', () => {
+    const a = treadAlerts({ treadAv: 5.2, treadAr: 2.6, treads: [{ d: '2026-01-10', mm: 2.6, ax: 'ar' }, { d: '2026-01-10', mm: 5.2, ax: 'av' }] }).tread;
+    assert(a, 'alerte attendue'); assert.equal(a.sev, 1); assert.match(a.title, /2,6 mm/); assert.match(a.title, /indicatif de 3 mm/);
+    assert.match(a.detail, /essieu arrière/); assert.match(a.detail, /relevé du/); assert.match(a.detail, /non réglementaire/);
+  });
+  test('profondeur 2,6 mm et pluie prévue : PRUDENCE indicative', () => {
+    const a = treadAlerts({ tread: 2.6 }, h => h >= 2 ? { P: 2, T: 12 } : { T: 12 }).tread;
+    assert(a); assert.equal(a.sev, 2); assert.match(a.detail, /pluie prévue/);
+  });
+  test('profondeur 1,5 mm : DANGER, minimum légal cité (arrêté du 18 juillet 2019, art. 5)', () => {
+    const a = treadAlerts({ tread: 1.5, treadEst: true }).tread;
+    assert(a); assert.equal(a.sev, 3); assert.match(a.title, /minimum légal de 1,6 mm/); assert.match(a.detail, /arrêté du 18 juillet 2019 relatif aux pneumatiques, art\. 5/);
+    assert.match(a.detail, /estimation/);
+  });
+  test('profondeur 1,6 mm exactement : légal, mais sous le repère indicatif de 3 mm', () => {
+    const a = treadAlerts({ tread: 1.6 }).tread; assert(a); assert.equal(a.sev, 1);
+  });
+  test('profondeur 5 mm ou inconnue : aucune alerte de profondeur', () => {
+    assert.equal(treadAlerts({ tread: 5 }).tread, undefined); assert.equal(treadAlerts({}).tread, undefined);
+  });
+  test('pneus hiver 3,5 mm : VIGILANCE indicative 4 mm ; 4 saisons 3,5 mm : aucune alerte', () => {
+    const w = treadAlerts({ tread: 3.5 }, undefined, 'winter').tread; assert(w); assert.equal(w.sev, 1); assert.match(w.title, /4 mm/);
+    assert.equal(treadAlerts({ tread: 3.5 }, undefined, 'allseason').tread, undefined);
+  });
+  test('alerte de profondeur déclarée dans la liste des alertes', () => assert(E.ALERT_DEFS.some(d => d.id === 'tread')));
   // — référence : aucune alerte inventée
   test('doux et sec : GO en pneus été et 4 saisons', () => {
     for (const type of ['summer', 'allseason']) assert.equal(level(type, () => ({})), GO, type);

@@ -6,9 +6,10 @@ const domain = fs.readFileSync(path.join(root, 'src/tyrestate.js'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'src/app.js'), 'utf8');
 const view = app.slice(app.indexOf('const lastOdo = car'), app.indexOf('function tireExtra'));
 const engine = fs.readFileSync(path.join(root, 'src/engine.js'), 'utf8');
+const garage = fs.readFileSync(path.join(root, 'src/garage.js'), 'utf8');   // kmPerDay : règle unique Garage.kmPerDay
 function run(source = domain, quiet = false) {
   const ctx = { Intl, esc: String, f1: x => Number(x).toFixed(1).replace('.', ','), fmtDay: String };
-  vm.createContext(ctx); vm.runInContext(engine + '\n' + source + '\n' + view + '\nthis.state=tyreState;this.wear=wearInfo;this.line=wearLine;this.setAx=setTreadAxle;', ctx);
+  vm.createContext(ctx); vm.runInContext(engine + '\n' + garage + '\n' + source + '\n' + view + '\nthis.state=tyreState;this.wear=wearInfo;this.line=wearLine;this.setAx=setTreadAxle;', ctx);
   const start = app.indexOf("    if (a === 'tread-add') { const input ="), end = app.indexOf("    if (a === 'rot')", start);
   assert(start >= 0 && end > start, 'le vrai handler de profondeur doit être testé');
   vm.runInContext(`this.readDepth = (c, mm, ax, est, pos = 'unknown') => {
