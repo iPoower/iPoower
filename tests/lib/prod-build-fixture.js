@@ -7,7 +7,8 @@
 const fs = require('fs'), crypto = require('crypto');
 const sha = s => crypto.createHash('sha256').update(s).digest('hex');
 const SEALED = /window\.TWRC_SEALED=\{[^<]*?\};window\.TWRC_SEALED_V=/;
-const scripts = html => [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+// Toutes les casses et « </script > » : aucun bloc de code ne peut échapper aux empreintes (en plus de l'empreinte du fichier entier).
+const scripts = html => [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].map(m => m[1]);
 // Empreintes des blocs <script> identiques entre l'original et la copie (le bloc qui portait TWRC_SEALED est comparé sans elle).
 const codeHashes = html => scripts(html).map(s => sha(s.replace(SEALED, 'window.TWRC_SEALED=null;window.TWRC_SEALED_V=')));
 function make(original) {
