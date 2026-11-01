@@ -1,27 +1,24 @@
 // Copie figée du build EN PRODUCTION (gh-pages/race-control/index.html), utilisée comme « ancienne version » par les tests de
-// compatibilité. Seule la configuration scellée (TWRC_SEALED, chiffrée) est retirée : c'est une donnée, pas du code. Tout le
-// reste, en particulier chaque bloc <script> de l'application, est identique à l'octet près et vérifié par empreinte.
+// compatibilité. Seule la configuration scellée (TWRC_SEALED, chiffrée) est remplacée par null : c'est une donnée, pas du code.
+// Preuve d'identité sans analyser le HTML : la copie est EXACTEMENT l'original après ce seul remplacement. Le manifeste garde
+// l'empreinte de l'original (à comparer au fichier de gh-pages) et celle de la copie (contrôlée à chaque exécution des tests) ;
+// `verify` refait le remplacement depuis le build de gh-pages et compare les deux empreintes : tout le reste est identique à l'octet.
 //   node tests/lib/prod-build-fixture.js make   <index.html de gh-pages> <sortie.html> <manifeste.json>
 //   node tests/lib/prod-build-fixture.js verify <index.html de gh-pages> <manifeste.json>
 'use strict';
 const fs = require('fs'), crypto = require('crypto');
 const sha = s => crypto.createHash('sha256').update(s).digest('hex');
-const SEALED = /window\.TWRC_SEALED=\{[^<]*?\};window\.TWRC_SEALED_V=/;
-// Toutes les casses et « </script > » : aucun bloc de code ne peut échapper aux empreintes (en plus de l'empreinte du fichier entier).
-const scripts = html => [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script\s*>/gi)].map(m => m[1]);
-// Empreintes des blocs <script> identiques entre l'original et la copie (le bloc qui portait TWRC_SEALED est comparé sans elle).
-const codeHashes = html => scripts(html).map(s => sha(s.replace(SEALED, 'window.TWRC_SEALED=null;window.TWRC_SEALED_V=')));
+const SEALED = /window\.TWRC_SEALED=\{[^<]*?\};window\.TWRC_SEALED_V=/, NONE = 'window.TWRC_SEALED=null;window.TWRC_SEALED_V=';
 function make(original) {
   if (!SEALED.test(original)) throw new Error('TWRC_SEALED introuvable : build inattendu.');
-  const fixture = original.replace(SEALED, 'window.TWRC_SEALED=null;window.TWRC_SEALED_V=');
+  const fixture = original.replace(SEALED, NONE);
   const build = (/window\.TWRC_BUILD="([0-9a-f]+)"/.exec(original) || [])[1];
-  return { fixture, manifest: { build, originalSha256: sha(original), fixtureSha256: sha(fixture), scripts: codeHashes(original) } };
+  return { fixture, manifest: { build, originalSha256: sha(original), fixtureSha256: sha(fixture) } };
 }
 function check(fixture, manifest) {
   const problems = [];
   if (sha(fixture) !== manifest.fixtureSha256) problems.push('empreinte de la copie');
-  const now = codeHashes(fixture);
-  if (now.length !== manifest.scripts.length || now.some((h, i) => h !== manifest.scripts[i])) problems.push('blocs <script>');
+  if (SEALED.test(fixture) || !fixture.includes(NONE)) problems.push('configuration scellée présente ou remplacement absent');
   if (!fixture.includes(`window.TWRC_BUILD="${manifest.build}"`)) problems.push('build');
   return problems;
 }

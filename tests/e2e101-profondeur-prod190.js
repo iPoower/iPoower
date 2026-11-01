@@ -20,7 +20,7 @@ const O = 'https://race-control-ipoower.pages.dev', U = O + '/';
 let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ? '' : ' · ' + String(d).slice(0, 400))); if (!ok) fail++; };
 (async () => {
   const problems = checkFixture(html, manifest);
-  check(`copie figée = build de production ${manifest.build} (empreintes de chaque bloc <script>)`, !problems.length && manifest.build === '502852864dbd', problems.join(', '));
+  check(`copie figée = build de production ${manifest.build} (empreinte : original à l’octet près, seule la configuration scellée remplacée)`, !problems.length && manifest.build === '502852864dbd', problems.join(', '));
   const b = await BR.launch();
   try {
     const c = await b.newContext({ viewport: { width: 414, height: 896 }, timezoneId: 'Europe/Paris', locale: 'fr-FR' });
