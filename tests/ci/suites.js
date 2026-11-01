@@ -146,6 +146,7 @@ SUITE.push(['e2e92-preuves-espacement.js', 'journal du moteur de preuves : entr�
 SUITE.push(['e2e93-position-vraisemblance.js', 'lot 1 : position approximative lointaine jamais utilisée en silence (lieu principal, utiliser quand même), GPS précis lointain accepté, PC/iPhone', true]);
 SUITE.push(['e2e93-agenda-a-reserver.js', 'agenda : une réservation « [À réserver] » n’est pas un trajet par défaut, #trajet la rétablit, PC/iPhone', true]);
 SUITE.push(['e2e96-brouillard-deux-episodes.js', 'acceptation #290 : brouillard en cours puis nouvel épisode, cohérent sur Pneus, Météo, Chronologie et Trajet ; visibilité datée ; confiance distincte du risque, PC/iPhone', true]);
+SUITE.push(['e2e98-verdict-voiture-affichee.js', 'verdict « ici, maintenant » limité à la voiture affichée : montage hiver d’une autre voiture = planification VIGILANCE, jamais DANGER, PC/iPhone', true]);
 SUITE.push(['e2e94-proprete-affichage.js', 'propreté de l’affichage : aucun horodatage brut, aucun none/null/undefined, aucune icône doublée sur tous les onglets et Réglages, PC/iPhone', true]);
 SUITE.push(['test_vault_sync_device_writes.js', 'constat C : écriture propre à l’appareil (GPS, cache, agenda chiffré) sans blocage ni perte pendant la synchro', false]);
 SUITE.push(['e2e89-agenda-sablier.js', 'agenda : jamais de sablier « Lecture de l’agenda… » infini (sans réponse, erreur, réponse invalide, affichage en échec)', true]);
