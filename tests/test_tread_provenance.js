@@ -18,7 +18,7 @@ function runTests(src = SOURCES, options = {}) {
       // Séquence exacte de l'enregistrement de 63293a4 (avant correction).
       const r = setTreadWheels(car.tire, input, opt); if (r.error) return r; putTreadWheelsRecord(S, car, r.record); datedFicheTread(car, r.axes, opt.date); return r;
     };
-    this.X = { treadAxles, tyreState, reset: () => { S = {}; } };`, ctx);
+    this.X = { treadAxles, tyreState, reset: () => { S = {}; }, S: () => JSON.parse(JSON.stringify(S)) };`, ctx);
   const plain = v => JSON.parse(JSON.stringify(v));
   let count = 0;
   const test = (name, f) => { try { f(); } catch (e) { e.scenario = name; if (options.collect) { options.collect.push(name + ' · ' + String(e.message).split('\n')[0]); return; } throw e; } count++; if (!options.quiet) console.log('✅ ' + name); };
@@ -85,6 +85,57 @@ function runTests(src = SOURCES, options = {}) {
     assert.deepEqual(added.map(r => [r.d, r.ax, r.mm, r.est]), [['2026-10-30', 'av', 5, undefined], ['2026-10-30', 'ar', 4, undefined]]);
     assert.equal(c.tire.treadEst, 0);
   });
+  // ——— Égalité entre essieux : une dernière ligne estimée sur l'un des essieux à la profondeur minimale suffit (toutes dates)
+  test('égalité · AV 3,0 estimé (15/10), AR passé de 4,0 à 3,0 mesuré (01/11) : treadEst = 1', () => {
+    ctx.X.reset();
+    const c = car({ treadAv: 3, treadAr: 4, tread: 3, treadEst: 1, treads: [{ d: '2026-10-15', mm: 3, km: 11500, ax: 'av', est: 1 }, { d: '2026-10-15', mm: 4, km: 11500, ax: 'ar' }] });
+    ctx.save(c, { rl: { side: 3 }, rr: { side: 3.2 } }, { date: '2026-11-01', est: false });
+    assert.deepEqual([c.tire.treadAv, c.tire.treadAr], [3, 3]); assert.equal(c.tire.treadEst, 1);
+  });
+  test('égalité · même date, une ligne estimée et une mesurée : treadEst = 1', () => {
+    ctx.X.reset();
+    const c = car({ treadAv: 3, treadAr: 3, tread: 3, treadEst: 0, treads: [{ d: '2026-10-20', mm: 3, km: 11800, ax: 'av', est: 1 }, { d: '2026-10-20', mm: 3, km: 11800, ax: 'ar' }] });
+    ctx.save(c, { fl: { side: 6 } }, { date: '2026-10-20', est: false });   // AV remesuré à 6 le même jour : remplace la ligne AV du jour
+    assert.equal(c.tire.treadEst, 0, 'seul l’AR reste au minimum, mesuré');
+    ctx.X.reset();
+    const d = car({ treadAv: 6, treadAr: 3, tread: 3, treadEst: 0, treads: [{ d: '2026-10-20', mm: 3, km: 11800, ax: 'ar' }] });
+    ctx.save(d, { fl: { side: 3 } }, { date: '2026-10-20', est: true });
+    assert.deepEqual([d.tire.treadAv, d.tire.treadAr], [3, 3]); assert.equal(d.tire.treadEst, 1, 'AV estimé à égalité, même date');
+  });
+  test('égalité · deux mesures : treadEst = 0', () => {
+    ctx.X.reset();
+    const c = car({ treadAv: 3, treadAr: 4, tread: 3, treadEst: 0, treads: [{ d: '2026-10-15', mm: 3, km: 11500, ax: 'av' }] });
+    ctx.save(c, { rl: { side: 3 } }, { date: '2026-11-01', est: false });
+    assert.deepEqual([c.tire.treadAv, c.tire.treadAr], [3, 3]); assert.equal(c.tire.treadEst, 0);
+  });
+  // ——— Historique plein : limite de 200 lignes, aucune suppression automatique, saisie refusée en bloc si elle ne tient pas
+  const many = (n, start = 0) => Array.from({ length: n }, (_, k) => ({ d: new Date(Date.UTC(2024, 0, 1) + (start + k) * 864e5).toISOString().slice(0, 10), mm: 7, km: 1000 + k, ax: k % 2 ? 'ar' : 'av' }));
+  const snapshot = c => JSON.stringify([c.tire, ctx.X.S()]);
+  test('historique plein (200 lignes) avant la saisie : refus explicite, rien n’est modifié (profondeurs, origine, historique, relevé par pneu)', () => {
+    ctx.X.reset();
+    const c = car({ treadAv: 6, treadAr: 5, tread: 5, treadEst: 1, treads: many(200) }), before = snapshot(c);
+    const r = plain(ctx.save(c, { fl: { side: 4 } }, { date: '2026-11-01', est: false }));
+    assert(r.error && /Historique de profondeur plein/.test(r.error) && /200/.test(r.error), JSON.stringify(r));
+    assert.equal(snapshot(c), before, 'aucune modification');
+  });
+  test('199 lignes et une saisie qui en exige deux : refus en bloc ; 198 lignes : acceptée (200), historique ancien inchangé, treadEst correct', () => {
+    ctx.X.reset();
+    const c = car({ treadAv: 6, treadAr: 5, tread: 5, treadEst: 1, treads: many(199) }), before = snapshot(c);
+    const r = plain(ctx.save(c, { fl: { side: 4 }, rl: { side: 4.5 } }, { date: '2026-11-01', est: false }));
+    assert(r.error, 'refus attendu'); assert.equal(snapshot(c), before);
+    ctx.X.reset();
+    const old = many(198), d = car({ treadAv: 6, treadAr: 5, tread: 5, treadEst: 1, treads: plain(old) });
+    const ok = plain(ctx.save(d, { fl: { side: 4 }, rl: { side: 4.5 } }, { date: '2026-11-01', est: false }));
+    assert(!ok.error, ok.error); assert.equal(d.tire.treads.length, 200);
+    assert.deepEqual(plain(d.tire.treads.slice(0, 198)), old, 'historique ancien inchangé');
+    assert.deepEqual([d.tire.treadAv, d.tire.treadAr, d.tire.treadEst], [4, 4.5, 0]);
+  });
+  test('historique plein : la correction du même jour et du même essieu reste possible (aucune ligne supplémentaire)', () => {
+    ctx.X.reset();
+    const c = car({ treadAv: 6, treadAr: 5, tread: 5, treadEst: 0, treads: [...many(199), { d: '2026-11-01', mm: 6, km: 12000, ax: 'av' }] });
+    const r = plain(ctx.save(c, { fl: { side: 5.5 } }, { date: '2026-11-01', est: false }));
+    assert(!r.error, r.error); assert.equal(c.tire.treads.length, 200); assert.equal(c.tire.treads[199].mm, 5.5);
+  });
   return count;
 }
 module.exports = { runTests, SOURCES };
@@ -97,9 +148,13 @@ if (require.main === module) {
   const count = runTests();
   const mutations = [
     { file: 'app.js', name: 'origine de la ligne reprise de treadEst', from: '...((typeof est === \'boolean\' ? est : car.tire.treadEst) ? { est: 1 } : {})', to: '...(car.tire.treadEst ? { est: 1 } : {})' },
-    { file: 'app.js', name: 'origine choisie non transmise à l’historique', from: 'datedFicheTread(car, r.axes, date, est === true)', to: 'datedFicheTread(car, r.axes, date)' },
-    { file: 'app.js', name: 'treadEst non déduit de la dernière ligne de l’essieu le plus usé', from: 'const o = treadEstFromHistory(car.tire); if (o != null) car.tire.treadEst = o;', to: '' },
-    { file: 'tyrestate.js', name: 'treadEst déduit de la dernière ligne de n’importe quel essieu', from: "const axes = tx.ax ? [tx.ax] : ['av', 'ar'];", to: "const axes = ['av', 'ar'];" },
+    { file: 'app.js', name: 'origine choisie non transmise à l’historique', from: 'datedFicheTread(draft, r.axes, date, est === true)', to: 'datedFicheTread(draft, r.axes, date)' },
+    { file: 'app.js', name: 'treadEst non déduit de la dernière ligne de l’essieu le plus usé', from: 'const o = treadEstFromHistory(draft.tire); if (o != null) draft.tire.treadEst = o;', to: '' },
+    { file: 'tyrestate.js', name: 'treadEst déduit de la dernière ligne de n’importe quel essieu', from: "(tx.ax ? [tx.ax] : ['av', 'ar']).map(", to: "(['av', 'ar']).map(" },
+    { file: 'tyrestate.js', name: 'égalité : retour à la seule date la plus récente', from: "const groups = !tx.split ? [all] : (tx.ax ? [tx.ax] : ['av', 'ar']).map(ax => all.filter(r => r.ax === ax || r.ax === 'both'));", to: "const groups = [all.filter(r => !tx.split || r.ax === 'both' || (tx.ax ? r.ax === tx.ax : true))];" },
+    { file: 'tyrestate.js', name: 'limite de l’historique ramenée à 30 lignes', from: 'const TREAD_HISTORY_MAX = 200;', to: 'const TREAD_HISTORY_MAX = 30;' },
+    { file: 'app.js', name: 'saisie annoncée réussie malgré un historique plein', from: '  if (!complete) return { error:', to: '  if (false) return { error:' },
+    { file: 'app.js', name: 'modification directe (non atomique) avant le contrôle de place', from: "  const draft = JSON.parse(JSON.stringify(car));", to: "  const draft = car;" },
     { file: 'app.js', name: 'lignes anciennes du même essieu remplacées', from: 'r.d === today && r.ax === ax && !r.pos && !r.wheel', to: 'r.ax === ax && !r.pos && !r.wheel' }
   ];
   for (const m of mutations) {

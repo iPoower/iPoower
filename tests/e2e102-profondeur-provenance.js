@@ -73,6 +73,17 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     check('symétrique · AR mesuré seul : ligne AR « mesure », AV toujours estimé, verdict sur l’AV à 3,0 mm', ok2(s), JSON.stringify(s.today) + ' est=' + s.est + ' mm=' + s.mm);
     await reload(); s = await state();
     check('symétrique · après rechargement : identique, historique ancien intact', ok2(s) && JSON.stringify(s.all.slice(0, OLD.length)) === JSON.stringify(OLD), JSON.stringify(s.today) + ' est=' + s.est);
+    // Historique plein (200 lignes) : saisie refusée en bloc, message explicite, aucune valeur modifiée, y compris après rechargement.
+    const FULL = Array.from({ length: 200 }, (_, k) => ({ d: new Date(Date.UTC(2024, 0, 1) + k * 864e5).toISOString().slice(0, 10), mm: 7, km: 1000 + k, ax: k % 2 ? 'ar' : 'av' }));
+    await prime({ treadAv: 6, treadAr: 5, tread: 5, treadEst: 1, treads: FULL });
+    const snap = () => p.evaluate(() => JSON.stringify([S.cars[0].tire.treadAv, S.cars[0].tire.treadAr, S.cars[0].tire.treadEst, S.cars[0].tire.treads, treadWheelsRecord(S, S.cars[0])]));
+    const before = await snap();
+    await save({ fl: { side: 4 } }, false);
+    const msg = await p.locator('[data-act="tread-wheels"][data-i="0"]').innerText();
+    check('historique plein (200 lignes) : refus explicite, jamais « enregistré »', /Historique de profondeur plein \(200 lignes\)/.test(msg) && /non enregistré/.test(msg) && !/Relevé par pneu enregistré/.test(msg), msg);
+    check('historique plein : profondeurs, origine, historique et relevé par pneu inchangés', await snap() === before);
+    await reload();
+    check('historique plein : inchangé après rechargement', await snap() === before);
     check('aucune erreur JavaScript', !errors.length, errors.join(' / '));
     await c.close();
   } finally { await b.close(); }

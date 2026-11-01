@@ -3413,7 +3413,7 @@ function datedFicheTread(car, axes, day, est) {
     const mm = x[ax];
     if (typeof mm !== 'number' || !Number.isFinite(mm) || mm < 0 || mm > 12) continue;
     const kept = hist.filter(r => !(r && r.d === today && r.ax === ax && !r.pos && !r.wheel));
-    if (kept.length >= 30) continue;
+    if (kept.length >= TREAD_HISTORY_MAX) continue;
     hist = kept.concat([{ d: today, mm: Math.round(mm * 10) / 10, km: lo ? lo.km : null, ax, ...((typeof est === 'boolean' ? est : car.tire.treadEst) ? { est: 1 } : {}) }]);
     changed = true;
   }
@@ -3422,14 +3422,21 @@ function datedFicheTread(car, axes, day, est) {
 }
 // Enregistre un relevé par pneu : minima par essieu, relevé séparé, historique daté avec l'origine choisie, puis treadEst global =
 // origine de l'essieu le plus usé, déduite de SA dernière ligne d'historique. Rien n'est écrit si la voiture n'est pas adressable.
+// ATOMIQUE : tout est calculé sur une copie ; si l'historique ne peut pas recevoir TOUTES les lignes nécessaires, la saisie est refusée
+// sans rien modifier (profondeurs, origine, historique, relevé par pneu séparé). Sinon, la copie est appliquée en une fois.
 function applyTreadWheels(car, input, { date, est } = {}) {
   if (!car || !car.tire) return { error: 'Véhicule indisponible' };
   if (!putTreadWheelsRecord({}, car, {})) return { error: 'Véhicule non adressable : relevé non enregistré' };
-  const r = setTreadWheels(car.tire, input, { date, est });
+  const draft = JSON.parse(JSON.stringify(car));
+  const r = setTreadWheels(draft.tire, input, { date, est });
   if (r.error) return r;
+  const hist = datedFicheTread(draft, r.axes, date, est === true);
+  const x = treadAxles(draft.tire);
+  const complete = r.axes.every(ax => (draft.tire.treads || []).some(l => l && l.d === date && l.ax === ax && !l.pos && !l.wheel && l.mm === Math.round(x[ax] * 10) / 10));
+  if (!complete) return { error: `Historique de profondeur plein (${TREAD_HISTORY_MAX} lignes) : relevé non enregistré, aucune valeur modifiée. Archive l’historique avant une nouvelle saisie.` };
+  const o = treadEstFromHistory(draft.tire); if (o != null) draft.tire.treadEst = o;
+  Object.keys(draft.tire).forEach(k => { car.tire[k] = draft.tire[k]; });
   const path = putTreadWheelsRecord(S, car, r.record);
-  const hist = datedFicheTread(car, r.axes, date, est === true);
-  const o = treadEstFromHistory(car.tire); if (o != null) car.tire.treadEst = o;
   return { ...r, path, hist };
 }
 // Relevé PAR PNEU (enregistrement séparé settings.treadWheels, voir tyrestate.js) : 4 positions × 2 points (côté, milieu) + date.
@@ -4303,7 +4310,7 @@ document.addEventListener('click', async e => {
     if (a === 'odo') { const input = $('#odo-' + i), v = parseFloat((input || {}).value); if (!isFinite(v) || v < 0) { commandFeedback(t, 'Saisis un compteur positif ou nul', input); return; } c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).slice(-60); }
     if (a === 'tread-add') { const input = $('#trd-' + i), v = parseFloat(String((input || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) { commandFeedback(t, 'Saisis une profondeur de 0 à 12 mm', input); return; } const lo = lastOdo(c);
       const mm = Math.round(v * 10) / 10, ax = ($('#trdax-' + i) || {}).value || 'both', est = ($('#trdest-' + i) || {}).value === '1', pos = ($('#trdpos-' + i) || {}).value || 'unknown';
-      if ((c.tire.treads || []).length >= 30) { commandFeedback(t, 'Historique plein : aucun ancien relevé effacé. Conserve un export avant d’organiser les relevés.', input); return; }
+      if ((c.tire.treads || []).length >= TREAD_HISTORY_MAX) { commandFeedback(t, 'Historique plein : aucun ancien relevé effacé. Conserve un export avant d’organiser les relevés.', input); return; }
       if (pos !== 'unknown' && ax === 'both') { commandFeedback(t, 'Choisis avant ou arrière pour localiser ce point mesuré.', $('#trdax-' + i)); return; }
       const before = treadAxles(c.tire), previousMm = ax === 'av' ? before.av : ax === 'ar' ? before.ar : null;
       const prior = (c.tire.treads || []).filter(r => (r.ax === ax || r.ax === 'both') && Number(r.mm) === previousMm).slice(-1)[0];

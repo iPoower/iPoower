@@ -36,6 +36,8 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     const old = await p.evaluate(() => JSON.parse(JSON.stringify(S)));
     // La nouvelle version saisit un relevé par pneu (AV droit côté 1,4 mm, usure irrégulière) et le synchronise.
     const neu = plain(old), car = neu.cars[0];
+    // Historique de 45 lignes (au-delà de l'ancienne limite de 30) : l'ancienne version doit le conserver sans perte.
+    car.tire.treads = Array.from({ length: 45 }, (_, k) => ({ d: new Date(Date.UTC(2025, 0, 1) + k * 864e5).toISOString().slice(0, 10), mm: 7, km: 1000 + k, ax: k % 2 ? 'ar' : 'av' }));
     const r = plain(N.X.setTreadWheels(car.tire, { fl: { side: 6, mid: 6.2 }, fr: { side: 1.4, mid: 2.6 }, rl: { side: 7, mid: 7.1 }, rr: { side: 6.8, mid: 6.9 } }, { date: '2026-11-01' }));
     const recPath = N.X.putTreadWheelsRecord(neu, car, r.record);
     check('nouvelle version : minima par essieu écrits (AV 1,4 / AR 6,8) et relevé séparé', car.tire.treadAv === 1.4 && car.tire.treadAr === 6.8 && !!recPath && !('treadWheels' in car.tire), JSON.stringify({ av: car.tire.treadAv, ar: car.tire.treadAr, recPath }));
@@ -47,6 +49,8 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     await p.evaluate(s => { lsSet('twrc.settings.v1', JSON.stringify(s)); }, merged.settings); await boot();
     const read = await p.evaluate(() => ({ rec: S.treadWheels || null, worst: treadAxles(S.cars[0].tire).worst, alert: treadAlert([S.cars[0]], { Pmax: 0 }, []) }));
     check('ancienne version · rechargement : relevé par pneu conservé tel quel', JSON.stringify(read.rec) === JSON.stringify(neu.treadWheels), JSON.stringify(read.rec).slice(0, 200));
+    const hist = await p.evaluate(() => (S.cars[0].tire.treads || []).length);
+    check('ancienne version · historique de plus de 30 lignes (' + neu.cars[0].tire.treads.length + ') conservé sans perte', hist === neu.cars[0].tire.treads.length, String(hist));
     check('ancienne version · lit la bonne profondeur (minimum de l’essieu : 1,4 mm) et lève l’alerte légale', read.worst === 1.4 && read.alert && read.alert.sev === 3 && /1,4 mm/.test(read.alert.title), JSON.stringify(read));
     // (3) Saisie « Profondeur arrière » dans l'interface de l'ancienne version.
     await p.evaluate(() => { const d = document.getElementById('settings'); if (d && !d.open) d.open = true; renderSettings(true); });

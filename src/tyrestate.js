@@ -141,15 +141,22 @@ function setTreadWheels(t, input, { date, est } = {}) {
 }
 // Origine (0 mesure, 1 estimation) de l'essieu le plus usé, déduite de SA dernière ligne d'historique portant sa valeur actuelle
 // (même essieu ou « both ») ; à égalité des deux essieux, la plus prudente des dernières lignes. null si aucune ligne ne la justifie.
+// Égalité des deux essieux : chacun est examiné sur SA dernière ligne ; si l'une d'elles est estimée, l'ensemble est estimé (prudence),
+// quelles que soient les dates. Ancien format (profondeur commune) : toutes les lignes de cette valeur.
 function treadEstFromHistory(t) {
   const tx = treadAxles(t); if (!t || tx.worst == null) return null;
-  const axes = tx.ax ? [tx.ax] : ['av', 'ar'];
-  const rows = (Array.isArray(t.treads) ? t.treads : []).filter(r => r && typeof r.d === 'string' && treadMm(r.mm) === tx.worst &&
-    (r.ax === 'both' || axes.includes(r.ax) || (!r.ax && !tx.split)));
-  if (!rows.length) return null;
-  const day = rows.map(r => r.d).sort().pop();
-  return rows.some(r => r.d === day && r.est) ? 1 : 0;
+  const all = (Array.isArray(t.treads) ? t.treads : []).filter(r => r && typeof r.d === 'string' && treadMm(r.mm) === tx.worst);
+  const groups = !tx.split ? [all] : (tx.ax ? [tx.ax] : ['av', 'ar']).map(ax => all.filter(r => r.ax === ax || r.ax === 'both'));
+  let seen = false, est = false;
+  for (const rows of groups) {
+    if (!rows.length) continue;
+    const day = rows.map(r => r.d).sort().pop(); seen = true;
+    if (rows.some(r => r.d === day && r.est)) est = true;
+  }
+  return seen ? (est ? 1 : 0) : null;
 }
+// Historique de profondeur : 200 lignes au plus par monte, aucune suppression automatique (archivage manuel, hors de cette version).
+const TREAD_HISTORY_MAX = 200;
 // Usure irrégulière (écart côté / milieu > 1 mm) : lignes prêtes pour l'alerte et l'entretien. Seuil indicatif, non réglementaire.
 function treadGapRows(t, rec) {
   const v = treadWheels(t, rec); if (!v) return [];
