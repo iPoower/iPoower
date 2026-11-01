@@ -330,7 +330,7 @@ check('message de conflit lisible : date, valeur, unité et essieu en clair, jam
   const a = view.indexOf('/* conflit-lisible:début'), b = view.indexOf('/* conflit-lisible:fin */');
   assert(a >= 0 && b > a, 'bloc du formateur introuvable');
   const fctx = { Number, Object, Array, String, JSON, Math, RegExp }; vm.createContext(fctx);
-  vm.runInContext(view.slice(a, b) + ';this.T=driveConflictText;this.L=driveConflictLabel;', fctx);
+  vm.runInContext(view.slice(a, b) + ';this.T=driveConflictText;this.L=driveConflictLabel;this.B=driveConflictButton;', fctx);
   const noJson = t => assert(!/[{}\[\]"]/.test(t), 'aucun JSON à l’écran : ' + t);
   const tr = fctx.T('cars.0.tire.treads', [{ d: '2026-10-31', mm: 6.1, km: 1000, ax: 'av' }, { d: '2026-10-31', mm: 5.9, ax: 'ar', est: 1 }]);
   noJson(tr); assert.match(tr, /31\/10\/2026 · 6,1 mm · avant · 1\s000 km/); assert.match(tr, /5,9 mm · arrière \(estimation\)/);
@@ -340,6 +340,14 @@ check('message de conflit lisible : date, valeur, unité et essieu en clair, jam
   assert.equal(fctx.T('cars.0.tire.treads', []), 'aucun relevé');
   assert.equal(fctx.L('cars.0.tire.treads', [{ id: 'car-a', name: 'Voiture fictive' }]), 'Voiture fictive · profondeurs de pneus');
   assert.equal(fctx.L('cars.1.odo', []), 'Voiture 2 · relevés du compteur');
+  // Boutons : en clair, appareil nommé, dernières valeurs et date ; jamais la clé technique ni de JSON.
+  const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', pc = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+  const tv = [{ d: '2026-10-20', mm: 3.1, ax: 'av' }, { d: '2026-10-31', mm: 2.6, ax: 'av' }, { d: '2026-10-31', mm: 5.5, ax: 'ar' }];
+  const bl = fctx.B('local', 'cars.0.tire.treads', tv, [], iphone), br = fctx.B('remote', 'cars.0.tire.treads', [{ d: '2026-10-25', mm: 3, ax: 'both' }], [], iphone);
+  assert.equal(bl, 'Garder les profondeurs de pneus de cet iPhone (AV 2,6 / AR 5,5 mm, relevé du 31/10/2026)');
+  assert.equal(br, 'Prendre les profondeurs de pneus de l’autre appareil (AV 3,0 / AR 3,0 mm, relevé du 25/10/2026)');
+  assert.equal(fctx.B('local', 'cars.1.odo', [{ d: '2026-10-30', km: 252071 }], [], pc), 'Garder les relevés du compteur de ce PC (252\u202f071 km, relevé du 30/10/2026)'.replace('\u202f', (252071).toLocaleString('fr-FR').slice(3, 4)));
+  for (const t of [bl, br, fctx.B('remote', 'cars.0.tire', { type: 'summer', press: 2.3 }, [], pc)]) { noJson(t); assert.doesNotMatch(t, /cars\.\d|tire\.treads|\bodo\b/, 'aucune clé technique : ' + t); }
   const many = fctx.T('cars.0.odo', Array.from({ length: 7 }, (_, i) => ({ d: '2026-10-0' + (i + 1), km: 100 * (i + 1) }))); noJson(many); assert.match(many, /\+ 3 autres$/);
 });
 console.log(n + '/' + n + ' scénarios fusion PC ↔ iPhone OK');
