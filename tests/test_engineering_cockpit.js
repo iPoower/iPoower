@@ -69,7 +69,8 @@ console.log('✅ Engineering Cockpit : six domaines, provenance, inconnues, essa
 // Régression de contexte : vrai initialiseur du brouillon, aucune persistance.
 const tripSource = fs.readFileSync(path.join(__dirname, '../src/app/trip-view.js'), 'utf8');
 const day = { activeCarId: 'a', nextDestination: null }, tripCtx = { appDay: () => day, S: { cars: [{ id: 'a' }, { id: 'b' }] },
-  localTs: () => '2026-10-19T10:00', tripRecommendedOrigin: () => ({ mode: 'place-a', point: { id: 'place-a' } }) };
+  localTs: () => '2026-10-19T10:00', tripRecommendedOrigin: () => ({ mode: 'place-a', point: { id: 'place-a' } }),
+  tripSharedOrigin: () => ({ mode: 'place-a', point: { id: 'place-a' }, source: 'proposé par le contexte' }) };
 vm.createContext(tripCtx);
 vm.runInContext(tripSource.slice(tripSource.indexOf('const TRIP_FORM'), tripSource.indexOf('function tripPoint')) +
   tripSource.slice(tripSource.indexOf('function tripDraftInit'), tripSource.indexOf('function tripCaptureForm')) + ';this.init=tripDraftInit;this.form=TRIP_FORM;', tripCtx);

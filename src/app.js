@@ -514,12 +514,14 @@ async function onPos(pos, focus) {
   const context = placeContext(placeInput());
   GEO.raw = raw; GEO.permission = 'autorisée'; GEO.error = null; GEO.status = placeFixClass(raw) === 'gps' ? 'position précise reçue' : 'position approximative reçue';
   const previous = FIX || (GPS ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null);
-  const observation = placeObserve({ fix: raw, previous, logical: PLACE_FIX || (GPS && GPS.placePending ? null : previous), context, pending: PLACE_PENDING, places: placeList(), now: Date.now() });
+  const observation = placeObserve({ fix: raw, previous, logical: PLACE_FIX || (GPS && GPS.placePending ? null : previous), context, pending: PLACE_PENDING, places: placeList(), now: Date.now(), forced: PLACE_FORCE });
   const refused = observation.accept ? placeGate(raw) : observation.reason;
+  PLACE_DOUBT = !observation.accept && observation.implausible ? { ...observation.implausible, fix: raw } : refused ? PLACE_DOUBT : null;
   GEO.reason = refused || observation.reason;
   if (refused) {
     PLACE_PENDING = null; PLACE_REJ = { source: 'navigateur', reason: refused };
-    if (focus) alertLoc(placeFixClass(raw) === 'coarse' ? `Localisation navigateur approximative · précision ~${Math.round(raw.acc / 1000)} km. Confirmation manuelle disponible.` : 'Position ignorée : ' + refused + '.');
+    if (focus && PLACE_DOUBT) alertLoc('Position non utilisée : ' + refused + '.');
+    else if (focus) alertLoc(placeFixClass(raw) === 'coarse' ? `Localisation navigateur approximative · précision ~${Math.round(raw.acc / 1000)} km. Confirmation manuelle disponible.` : 'Position ignorée : ' + refused + '.');
     renderAll(); if (typeof renderDiag === 'function') renderDiag(); return;
   }
   const tasks = []; let weatherMoved;
@@ -562,6 +564,9 @@ async function onPos(pos, focus) {
 // AUCUNE coordonnée. NETLOC est réservé à une éventuelle source réseau indépendante. Le navigateur ne le remplit jamais.
 const PLACE_KEY = 'twrc.place.v1';
 let NETLOC = null, PLACE_REJ = null;
+// Lot 1 · vraisemblance : relevé approximatif écarté (loin de tous les lieux, ou sans lieu pour le comparer) en attente d'un
+// choix explicite ; zone acceptée par « Utiliser quand même » (mémoire de la page uniquement, jamais persistée).
+let PLACE_DOUBT = null, PLACE_FORCE = null;
 const placeSave = () => USER_STORE.flush();
 const placeToday = () => nowIn('Europe/Paris').slice(0, 10);
 function placeList() {
@@ -574,7 +579,7 @@ function placeInput(extra) {
   if (USER_STORE.state.lastDeparture && Date.now() - USER_STORE.state.lastDeparture.at >= 20 * 3600e3) USER_STORE.state.lastDeparture = null;
   const precise = PLACE_HOLD || GPS && GPS.placePending ? PLACE_FIX : PLACE_FIX || (GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null) || GEO.raw;
   return { now: Date.now(), today: placeToday(), places: placeList(), conf: PLACE.conf, last: PLACE.last, fix: precise, net: NETLOC,
-    moving: LIVE.phase === 'active' || !!TRIPSTART || !!USER_STORE.state.lastDeparture, movingSince: TRIPSTART ? TRIPSTART.at : LIVE.startFix ? LIVE.startFix.ts : USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at, fmt: hmLocal, ...(extra || {}) };
+    forced: PLACE_FORCE, moving: LIVE.phase === 'active' || !!TRIPSTART || !!USER_STORE.state.lastDeparture, movingSince: TRIPSTART ? TRIPSTART.at : LIVE.startFix ? LIVE.startFix.ts : USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at, fmt: hmLocal, ...(extra || {}) };
 }
 // contexte courant ; une confirmation terminée (départ, GPS précis ailleurs, fin de journée) est effacée une seule fois
 function placeNow() {
@@ -608,7 +613,7 @@ function placeConfirm(placeId, how) {
   const now = Date.now();
   UI.placeExpanded = null;
   const previous = placeNow().place;
-  PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false;
+  PLACE_PENDING = null; PLACE_FIX = null; PLACE_HOLD = false; PLACE_DOUBT = null;
   PLACE.conf = { placeId, at: now, how: how === 'arrival' ? 'arrival' : 'manual', day: placeToday() }; PLACE.last = { placeId, at: now, source: 'manual' };
   const activeTrip = APP_CONTEXT.snapshot.activeTrip;
   const intention = appDay().nextDestination;
@@ -694,7 +699,17 @@ function renderPlace() {
     const btns = pl.filter(Boolean).map(p => confirm(p, !!arr && arr.p.id === p.id)).join('');
     h = `<div class="place${arr ? ' arr' : ''}">${arr ? `<b>${c.source === 'trip' ? '🚗 EN ROUTE · destination' : 'ARRIVÉE'} · ${(K[arr.p.kind] || K.custom).icon} ${esc(arr.p.name)}</b>` : `<span class="pl-src"><b>${esc(c.title)}</b>${c.trust === 'Indisponible' && /indisponible/i.test(c.title) ? '' : ' · ' + esc(c.trust)}${c.badge ? ' · ' + esc(c.badge) : ''}</span>`}<span class="pl-act">${btns}</span></div>`;
   }
+  if (PLACE_DOUBT && !PLACE.conf) h = placeDoubtHtml(pl) + h;
   if (el.innerHTML !== h) el.innerHTML = h;
+}
+// Relevé approximatif invraisemblable : jamais utilisé en silence ; l'utilisateur choisit explicitement.
+function placeDoubtHtml(pl) {
+  const d = PLACE_DOUBT, main = pl.find(p => p.kind === 'home') || pl[0];
+  const text = d.code === 'unverifiable'
+    ? `Position approximative non vérifiable (précision annoncée ± ${d.acc} m) : aucun lieu enregistré pour la comparer. Elle n’est pas utilisée pour la météo.`
+    : `Position du navigateur à ≈ ${d.km} km de tes lieux enregistrés (précision annoncée ± ${d.acc} m). Elle n’est pas utilisée pour la météo.`;
+  return `<div class="note lv2 loc-doubt" data-k="loc-doubt" role="alert"><b>📍 POSITION À VÉRIFIER</b><span>${esc(text)}</span>
+    <span class="chips">${main ? `<button class="btn sm pri" data-act="loc-main">Utiliser mon lieu principal</button>` : ''}<button class="btn sm" data-act="loc-force">Utiliser quand même</button></span></div>`;
 }
 // diagnostic interne : brut navigateur, réseau, lieu logique, source gagnante et sources écartées (coordonnées arrondies à ~1 km)
 function placeDiagRows(forCopy) {
@@ -4097,7 +4112,7 @@ document.addEventListener('click', async e => {
   else if (a === 'race-toggle') f1Toggle(t.dataset.f1);
   else if (a === 'cal-retry') { CALFAIL = null; CALDONE = false; renderBrf(); renderCal(); loadCalendar(true); }
   else if (a === 'race-speak') f1Speak(t);
-  else if (a === 'gps-forget') { stopGps(); gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; GEO.raw = null; GEO.error = null; GEO.reason = ''; GEO.status = 'suivi désactivé'; PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; alertLoc('Suivi de position désactivé.'); WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
+  else if (a === 'gps-forget') { stopGps(); PLACE_DOUBT = PLACE_FORCE = null; gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; GEO.raw = null; GEO.error = null; GEO.reason = ''; GEO.status = 'suivi désactivé'; PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; alertLoc('Suivi de position désactivé.'); WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
   else if (a === 'loc') { APP_CONTEXT.weatherPreview = t.dataset.id; UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false;
     // Après un choix météo depuis le GPS, retrouver le cockpit sans les raccourcis dépliés.
     if (placeNow().source === 'gps') UI.placeExpanded = null;
@@ -4202,6 +4217,15 @@ document.addEventListener('click', async e => {
     renderLab.clearDriveDraft = true; renderAll();
   }
   else if (a === 'place-confirm') placeConfirm(t.dataset.place, t.dataset.how);
+  else if (a === 'loc-main') { const pl = placeList(), main = pl.find(p => p.kind === 'home') || pl[0]; if (main) { PLACE_DOUBT = null; alertLoc(''); placeConfirm(main.id, 'manual'); } }
+  else if (a === 'loc-force') {
+    const d = PLACE_DOUBT; if (!d) return;
+    PLACE_FORCE = { lat: d.fix.lat, lon: d.fix.lon, at: Date.now() }; PLACE_DOUBT = null; PLACE_REJ = null; alertLoc('');
+    // relevé encore frais : réutilisé tel quel ; sinon nouvelle position demandée (la zone choisie reste acceptée)
+    if (Date.now() - d.fix.ts <= PLACE_GPS_AGE) receivePosition({ coords: { latitude: d.fix.lat, longitude: d.fix.lon, accuracy: d.fix.acc, speed: null }, timestamp: d.fix.ts }, true);
+    else locate(true, true);
+    renderAll();
+  }
   else if (a === 'place-toggle') {
     const d = placeDisclosure(placeNow()), focused = document.activeElement === t;
     UI.placeExpanded = d.expanded ? null : d.key; renderPlace();
