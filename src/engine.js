@@ -279,7 +279,7 @@ function tireAssess(car, hs, i) {
   const ice = x.ice && x.ice.score != null ? x.ice.score : 0;
   const tread = typeof treadAxles === 'function' ? treadAxles(tire).worst : tire.tread;   // essieu le plus usé (page) ; relais : valeur effective
   // — météo seule (indépendant du type de pneu)
-  if (x.vis != null) add(`Visibilité ${Math.round(x.vis)} m`, x.vis < 200 ? 30 : x.vis < 500 ? 20 : x.vis < 1000 ? 10 : 0, 'hazard');
+  if (x.vis != null) add(`Visibilité ${Math.round(x.vis)} m${x.t ? ' vers ' + String(x.t).slice(11, 16) : ''}`, x.vis < 200 ? 30 : x.vis < 500 ? 20 : x.vis < 1000 ? 10 : 0, 'hazard');
   if (x.gust != null) add(`Rafales ${Math.round(x.gust)} km/h`, x.gust >= 90 ? 20 : x.gust >= 70 ? 12 : x.gust >= 55 ? 6 : 0, 'hazard');
   if (snow) add('Chutes de neige', 10 + ((x.snow || 0) >= 1 ? 6 : 0), 'hazard');
   if (fz) add('Pluie ou bruine verglaçante', 50, 'hazard');
@@ -561,8 +561,10 @@ function computeAlerts(model, cars, S, seasonByCar, hours = 24) {
   if (sm.snowSum > 0 || sm.snowCode) set('snow', summerCars.length ? 3 : 2, `Neige prévue${sm.snowSum > 0 ? ` (${f1(sm.snowSum)} cm)` : ''}`, `À partir de ${hhmm(sm.iSnow)}.`);
   const thr = S.rainThr || 5;
   if (sm.Pmax >= thr) set('rain', 2, `Forte pluie : ${f1(sm.Pmax)} mm/h`, `Vers ${hhmm(sm.iPmax)}. Seuil réglé à ${thr} mm/h.`);
-  if (sm.visMin != null && sm.visMin < 500) set('fog', sm.visMin < 200 ? 3 : 2, `Brouillard : visibilité ${f0(sm.visMin)} m`, `Vers ${hhmm(sm.iVis)}.`);
-  if (sm.visMin != null && sm.visMin < 1000) set('vis', 1, `Visibilité réduite : ${f0(sm.visMin)} m`, `Vers ${hhmm(sm.iVis)}.`);
+  // toute visibilité affichée porte son heure : « maintenant » pour l'heure en cours, sinon « minimum prévu vers HH:MM »
+  const visWhen = sm.iVis && sm.iVis === seq[0] ? 'maintenant' : `minimum prévu vers ${hhmm(sm.iVis)}`;
+  if (sm.visMin != null && sm.visMin < 500) set('fog', sm.visMin < 200 ? 3 : 2, `Brouillard : visibilité ${f0(sm.visMin)} m ${visWhen}`, `Vers ${hhmm(sm.iVis)}.`);
+  if (sm.visMin != null && sm.visMin < 1000) set('vis', 1, `Visibilité réduite : ${f0(sm.visMin)} m ${visWhen}`, `Vers ${hhmm(sm.iVis)}.`);
   // gel nocturne : 21h → 9h
   let frost = null;
   seq.forEach(s => { const x = s.hs[s.i]; if ((x.hh >= 21 || x.hh <= 9) && x.T != null && x.T <= 0 && (!frost || x.T < frost.T)) frost = { T: x.T, s }; });

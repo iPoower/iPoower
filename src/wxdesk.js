@@ -131,7 +131,7 @@ function wxDesk(input) {
     const h = haz(x), top = ORDER.filter(id => h[id] > 0).sort((a, b) => h[b] - h[a])[0];
     if (top === 'ice') return n(x.Tr) != null ? `chaussée ${r1(x.Tr)} °C (gel possible)` : 'gel possible';
     if (top === 'snow') return 'neige';
-    if (top === 'fog') return `brouillard (${visTxt(n(x.vis))})`;
+    if (top === 'fog') return `brouillard (${visTxt(n(x.vis))}${x.t ? ' vers ' + hm(x.t) : ''})`;
     if (top === 'rain') return rainTxt(x);
     if (top === 'wind') return `rafales ${r0(x.gust)} km/h`;
     if (maybeRain(x, h)) return `pluie possible${n(x.pp) != null && x.pp >= 50 ? ' · ' + r0(x.pp) + ' %' : ''}`;
@@ -202,10 +202,20 @@ function wxDesk(input) {
       title = 'SOLEIL RASANT'; lines.push(`Vers ${hmd(atMin(s.start))} pendant le ${s.trip.label || 'trajet'}`, tempLine);
     } else {
       const label = { rain: rainTxt(pk).toUpperCase(), snow: 'NEIGE', fog: 'BROUILLARD', wind: 'RAFALES', temp: n(pk.T) >= 35 ? 'FORTE CHALEUR' : 'FROID INTENSE' }[s.id];
-      title = now_ ? `${label} EN COURS` : `${label} À PARTIR DE ${hmd(atMin(s.start)).toUpperCase()}`;
-      if (now_) lines.push(s.end < endM ? `Fin probable vers ${hmd(atMin(s.end))}` : `Jusqu’à au moins ${hmd(endTs)}`);
-      else lines.push(`Début estimé ${inMin(s.start)}${s.precise ? '' : ' (prévision horaire)'}`);
-      if (s.id === 'fog') lines.push(`Visibilité minimale ${visTxt(n(pk.vis))} · ${span}`);
+      // un épisode du même phénomène déjà en cours : il est annoncé d'abord, le suivant (plus fort) ensuite ;
+      // jamais « début dans X h » pendant un épisode en cours (cas réel : brouillard jusqu'à 06:00 puis 07:00–11:00)
+      const curS = now_ ? null : real.find(a => active(a) && a.id === s.id), other = now_ || curS ? null : real.find(active);
+      title = now_ || curS ? `${label} EN COURS` : `${label} À PARTIR DE ${hmd(atMin(s.start)).toUpperCase()}`;
+      if (curS) {
+        const vNow = n(nowRow.x.vis);
+        lines.push(s.id === 'fog' ? `Maintenant ${visTxt(vNow != null ? vNow : n(curS.peakRow.x.vis))} · dissipation vers ${hmd(atMin(curS.end))}` : `En cours jusqu’à ${hmd(atMin(curS.end))}`);
+        lines.push(s.id === 'fog' ? `Nouvel épisode ${span} · minimum ${visTxt(n(pk.vis))} vers ${hmd(s.peakRow.t)}` : `Nouvel épisode ${span}, plus fort`);
+      } else {
+        if (now_) lines.push(s.end < endM ? `Fin probable vers ${hmd(atMin(s.end))}` : `Jusqu’à au moins ${hmd(endTs)}`);
+        else if (other) lines.push(`Début vers ${hmd(atMin(s.start))} · en cours : ${NAME[other.id]} jusqu’à ${hmd(atMin(other.end))}`);
+        else lines.push(`Début estimé ${inMin(s.start)}${s.precise ? '' : ' (prévision horaire)'}`);
+        if (s.id === 'fog') lines.push(`Visibilité minimale ${visTxt(n(pk.vis))} vers ${hmd(s.peakRow.t)} · ${span}`);
+      }
       if (s.id === 'wind') lines.push(`Rafales jusqu’à ${r0(pk.gust)} km/h`);
       lines.push(tempLine);
     }
@@ -247,10 +257,11 @@ function wxDesk(input) {
     phen.push({ id: 'rain', icon: s && s.id === 'snow' ? '🌨' : '🌧', title: s && s.id === 'snow' ? 'Neige' : 'Pluie', lv: s ? s.lv : mb ? mb.lv : 0, line,
       detail: [`Cumul ${r1(Psum)} mm jusqu’à ${hmd(endTs)}`, ppM != null ? `Probabilité maximale ${r0(ppM)} %` : null, ...(mb ? mb.explain : []), s ? `Intensité maximale ${r1(n(s.peakRow.x.Pl) ?? n(s.peakRow.x.P))} mm/h vers ${hm(s.peakRow.t)}` : null,
         nc ? (nc.nowWet ? `Au quart d’heure : ${nc.snow ? 'neige' : 'pluie'} en cours${nc.stopAt ? ', fin vers ' + nc.stopAt : ''}` : finite(nc.startIn) ? `Au quart d’heure : début dans ${nc.startIn} min` : 'Au quart d’heure : rien d’ici 2 h') : null].filter(Boolean) }); }
-  { const s = first('fog'), vmin = rowMax('vis', -1);
-    phen.push({ id: 'fog', icon: '🌫', title: 'Brouillard · visibilité', lv: s ? s.lv : 0,
-      line: s ? `${EMO[s.lv]} Visibilité ${visTxt(n(s.peakRow.x.vis))} · ${active(s) ? 'maintenant' : 'vers ' + hm(s.peakRow.t)}` : vmin ? `Visibilité ${visTxt(n(vmin.x.vis))} au plus bas` : 'Visibilité non fournie',
-      detail: [s ? `Épisode ${active(s) ? 'en cours' : 'de ' + hm(atMin(s.start))} jusqu’à ${hm(atMin(s.end))}` : null, vmin ? `Minimum ${visTxt(n(vmin.x.vis))} vers ${hm(vmin.t)}` : null, 'Visibilité : modèle de base (pas une mesure)'].filter(Boolean) }); }
+  { const eps = spans.filter(x => x.id === 'fog'), s = eps[0], vmin = rowMax('vis', -1), vNow = n(nowRow.x.vis), nxt = s && active(s) ? eps[1] : null;
+    const epTxt = e => active(e) ? `Épisode en cours jusqu’à ${hm(atMin(e.end))} · ${visTxt(vNow != null ? vNow : n(e.peakRow.x.vis))} maintenant` : `Épisode ${hm(atMin(e.start))}–${hm(atMin(e.end))} · minimum ${visTxt(n(e.peakRow.x.vis))} vers ${hm(e.peakRow.t)}`;
+    phen.push({ id: 'fog', icon: '🌫', title: 'Brouillard · visibilité', lv: eps.reduce((a, e) => Math.max(a, e.lv), 0),
+      line: s ? (active(s) ? `Visibilité ${visTxt(vNow != null ? vNow : n(s.peakRow.x.vis))} maintenant${nxt ? ` · nouvel épisode ${hm(atMin(nxt.start))}–${hm(atMin(nxt.end))}, ${visTxt(n(nxt.peakRow.x.vis))} vers ${hm(nxt.peakRow.t)}` : ''}` : `Visibilité ${visTxt(n(s.peakRow.x.vis))} vers ${hm(s.peakRow.t)}`) : vmin ? `Visibilité ${visTxt(n(vmin.x.vis))} au plus bas, vers ${hm(vmin.t)}` : 'Visibilité non fournie',
+      detail: [...eps.map(epTxt), !eps.length && vmin ? `Minimum ${visTxt(n(vmin.x.vis))} vers ${hm(vmin.t)}` : null, 'Visibilité : modèle de base (pas une mesure)'].filter(Boolean) }); }
   { const s = first('wind'), g = rowMax('gust'), w = maxOf('wind');
     phen.push({ id: 'wind', icon: '💨', title: 'Vent · rafales', lv: s ? s.lv : 0,
       line: g ? `Rafales ${r0(g.x.gust)} km/h${s ? ' · ' + (active(s) ? 'maintenant' : 'vers ' + hm(s.peakRow.t)) : ''}` : 'Vent non fourni',
@@ -360,7 +371,12 @@ function wxDesk(input) {
     const txt = {
       rain: active(s) ? `${cap(rainTxt(pk))} en cours ${s.end < endM ? 'jusqu’à ' + b : 'au moins jusqu’à ' + b}` : `${cap(rainTxt(pk))} probable ${s.end < endM ? `de ${a} à ${b}` : 'à partir de ' + a}`,
       snow: `Neige possible ${active(s) ? 'dès maintenant' : 'à partir de ' + a}`,
-      fog: active(s) || s.start - nowM <= 60 ? `Brouillard ${active(s) ? 'jusqu’à' : 'possible avant'} ${b} · visibilité ${visTxt(n(pk.vis))}` : `Brouillard possible ${a}–${b} · visibilité ${visTxt(n(pk.vis))}`,
+      fog: (() => {
+        const nx = active(s) ? real.find(e => e.id === 'fog' && e.start >= s.end) : null, vNow = n(nowRow.x.vis);
+        const more = nx ? ` · nouvel épisode ${hmd(atMin(nx.start))}–${hmd(atMin(nx.end))}, minimum ${visTxt(n(nx.peakRow.x.vis))} vers ${hmd(nx.peakRow.t)}` : '';
+        return active(s) ? `Brouillard jusqu’à ${b} · visibilité ${visTxt(vNow != null ? vNow : n(pk.vis))} maintenant${more}`
+          : s.start - nowM <= 60 ? `Brouillard possible avant ${b} · visibilité ${visTxt(n(pk.vis))} vers ${hmd(s.peakRow.t)}` : `Brouillard possible ${a}–${b} · minimum ${visTxt(n(pk.vis))} vers ${hmd(s.peakRow.t)}`;
+      })(),
       wind: `Rafales jusqu’à ${r0(pk.gust)} km/h (vers ${hm(s.peakRow.t)})`,
       ice: `${s.lv >= 3 ? 'Risque de verglas' : cap(ICE_TXT[s.lv])} ${a}–${b} · chaussée ${r1(pk.Tr)} °C`,
       temp: n(pk.T) >= 35 ? `Forte chaleur : jusqu’à ${r0(pk.T)} °C` : `Froid intense : ressenti ${r0(pk.Tapp)} °C`
