@@ -1335,3 +1335,8 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .app-links a, .app-links [aria-current] { display: inline-flex; align-items: center; min-height: 44px; padding: 6px 10px; border: 1px solid var(--line2); border-radius: 6px; color: var(--fg); text-decoration: none; overflow-wrap: anywhere; }
 .app-links [aria-current] { color: var(--accent); border-color: var(--accent); }
 .app-links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* « À compléter » : une ligne par donnée manquante, avec son action ; action destructrice isolée en bas de fiche */
+.garage-todo ul{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:6px}
+.garage-todo li{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--fg2)}
+.garage-todo .btn{min-height:44px}
+.set-danger{margin-top:14px;padding-top:10px;border-top:1px dashed var(--line2)}

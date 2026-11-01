@@ -175,4 +175,18 @@ test('compteur : relevé hebdomadaire dû à partir de 7 jours, relevé le plus 
  assert.equal(o('2026-10-15','2026-10-21').due,false);assert.equal(o('2026-10-14','2026-10-21').due,true);
  assert.equal(o('2026-10-14','2026-10-21').last.km,1000);assert.equal(o('2026-10-14','2026-10-21').ageDays,7);
 });
+test('données insuffisantes : chaque donnée manquante porte son action, aucune ligne orpheline',()=>{
+ const v={Number,Array,Object,String,Set,JSON,Date,Math,esc:x=>String(x).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))};
+ vm.createContext(v);vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/app/garage-scene.js'),'utf8')+';this.todo=garageTodoHtml;this.RULES=GARAGE_TODO;',v);
+ const rows=G.comparison([{id:'car-a',name:'Voiture A',tyre:{type:'summer',model:null,size:null,tread:{mm:3,estimated:true,date:null},pressure:{bar:2.3,checked:null}}},{id:'car-b',name:'Voiture B',tyre:null}],null,null);
+ const all=rows.flatMap(r=>r.missing);
+ // Couplage garage.js / vue : toute donnée manquante (hors évaluation du trajet) a une règle d'action
+ all.filter(t=>!/^Évaluation du trajet/.test(t)).forEach(t=>assert(v.RULES.some(([re])=>re.test(t)),'sans action : '+t));
+ const html=v.todo(rows[0].missing,'car-a');
+ for(const [target,label] of [['model','Saisir le modèle'],['size','Saisir les dimensions'],['tread','Mesurer la profondeur'],['pressure','Contrôler la pression']])
+  assert.match(html,new RegExp('data-act="garage-quick" data-car="car-a" data-garage-target="'+target+'">'+label));
+ assert.match(v.todo(rows[1].missing,'car-b'),/data-act="goset-cfg">Compléter la fiche/);
+ assert.match(html,/<li><span>Évaluation du trajet indisponible ou incomplète<\/span><\/li>/,'ligne informative sans bouton');
+ assert.equal(v.todo([],'car-a'),'');
+});
 console.log(n+'/'+n+' scénarios Garage validés');

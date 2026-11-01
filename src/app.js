@@ -3913,7 +3913,7 @@ function renderSettings(force) {
   if (storeLocked() || window.TWRC_STORAGE_ERROR) { el.innerHTML = '<p>Déverrouille la configuration pour retrouver tes réglages et ton journal conservés sur cet appareil.</p>'; return; }
   const d = $('#settings'); if (!force && d && !d.open) { el.innerHTML = ''; el.dataset.stale = '1'; return; }
   el.dataset.stale = '';
-  const carSet = S.cars.map((c, i) => `<div class="set-sec"><h3>${esc(c.name)}</h3>${c.photo ? `<div class="chips"><button class="btn sm" data-act="photo-del" data-i="${i}">Retirer la photo</button></div>` : ''}
+  const carSet = S.cars.map((c, i) => `<div class="set-sec"><h3>${esc(c.name)}</h3>
     <div class="frow">${bindIn(`cars.${i}.name`, c.name, { label: 'Nom', wide: 1 })}${bindIn(`cars.${i}.short`, c.short, { label: 'Nom court' })}
       <div class="fld"><label for="f-cars-${i}-sporty">Usage sportif occasionnel</label><select id="f-cars-${i}-sporty" data-bind="cars.${i}.sporty" data-num="1"><option value="1" ${c.sporty ? 'selected' : ''}>Oui</option><option value="0" ${c.sporty ? '' : 'selected'}>Non</option></select></div>
       <div class="fld"><label for="f-cars-${i}-tire-type">Type de pneus montés</label><select id="f-cars-${i}-tire-type" data-bind="cars.${i}.tire.type"><option value="summer" ${c.tire.type === 'summer' ? 'selected' : ''}>Été</option><option value="winter" ${c.tire.type === 'winter' ? 'selected' : ''}>Hiver</option><option value="allseason" ${c.tire.type === 'allseason' ? 'selected' : ''}>4 saisons 3PMSF</option><option value="unknown" ${c.tire.type === 'unknown' ? 'selected' : ''}>Je ne sais pas</option><option value="none" ${c.tire.type === 'none' ? 'selected' : ''}>Aucun (en attente de pneus)</option></select></div>
@@ -3957,7 +3957,7 @@ function renderSettings(force) {
       ${bindIn(`cars.${i}.maint.rev.d`, c.maint.rev.d, { label: 'Dernière révision', type: 'date' })}${bindIn(`cars.${i}.maint.rev.km`, c.maint.rev.km, { label: 'Compteur à la révision (km)', type: 'number', num: 1, attrs: 'min="0" step="1" inputmode="numeric"' })}
       ${bindIn(`cars.${i}.maint.rev.everyKm`, c.maint.rev.everyKm, { label: 'Révision tous les (km)', type: 'number', num: 1, ph: 'carnet d’entretien', attrs: 'min="0" step="1000" inputmode="numeric"' })}${bindIn(`cars.${i}.maint.rev.everyMonths`, c.maint.rev.everyMonths, { label: 'ou tous les (mois)', type: 'number', num: 1, ph: 'carnet d’entretien', attrs: 'min="0" max="60" step="1" inputmode="numeric"' })}
       ${bindIn(`cars.${i}.maint.ct.d`, c.maint.ct.d, { label: 'Dernier contrôle technique', type: 'date' })}${bindIn(`cars.${i}.maint.ct.next`, c.maint.ct.next, { label: 'Prochain CT avant le (si indiqué)', type: 'date' })}
-    </div><p class="sub">Intervalles : ceux de ton carnet d’entretien, aucun n’est deviné. Sans date limite déclarée, le prochain CT est calculé à 2 ans du dernier.</p></div>`).join('');
+    </div><p class="sub">Intervalles : ceux de ton carnet d’entretien, aucun n’est deviné. Sans date limite déclarée, le prochain CT est calculé à 2 ans du dernier.</p>${c.photo ? `<div class="chips set-danger"><button class="btn sm" data-act="photo-del" data-i="${i}">Retirer la photo…</button></div>` : ''}</div>`).join('');
   const locSet = S.locs.map((l, i) => `<div class="frow">${bindIn(`locs.${i}.name`, l.name, { label: i === 0 ? 'Zone principale' : 'Lieu de travail / 2e zone', wide: 1 })}${bindIn(`locs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`locs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}</div>`).join('') +
     S.customs.map((l, i) => `<div class="frow">${bindIn(`customs.${i}.name`, l.name, { label: 'Destination', wide: 1 })}${bindIn(`customs.${i}.lat`, l.lat, { label: 'Latitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}${bindIn(`customs.${i}.lon`, l.lon, { label: 'Longitude', type: 'number', num: 1, attrs: 'step="0.0001"' })}<div class="fld"><span class="l">&nbsp;</span><button class="btn sm" data-act="loc-del" data-i="${i}">Retirer</button></div></div>`).join('');
   const carAdd = `<div class="set-sec"><h3>➕ Ajouter une voiture</h3><p class="sub">Fiche vierge (pneus, compteur, entretien à renseigner ensuite). Elle est sauvegardée et synchronisée comme les autres.</p>
@@ -4134,7 +4134,10 @@ document.addEventListener('click', async e => {
     saveSettings(); rebuild(); renderSettings(true); renderAll();
     const done = document.querySelector('[data-act="car-add"]'); if (done) commandFeedback(done, 'Voiture ajoutée : ' + name);
   }
-  else if (a === 'photo-del') { const c = S.cars[+t.dataset.i]; if (c) { delete c.photo; saveSettings(); renderSettings(); softRender(); } }
+  // Action destructrice : en bas de la fiche, et jamais sans confirmation explicite (Zero Data Loss).
+  else if (a === 'photo-del') { const c = S.cars[+t.dataset.i]; if (!c || !c.photo) return;
+    if (!confirm(`Retirer la photo de « ${c.name} » ? Elle sera supprimée de la fiche sur cet appareil et des copies synchronisées.`)) { commandFeedback(t, 'Photo conservée'); return; }
+    delete c.photo; saveSettings(); renderSettings(); softRender(); }
   else if (a === 'odo' || a === 'tread-add' || a === 'rot') {
     const i = +t.dataset.i, c = S.cars[i], today = (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10);
     if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; }
@@ -4225,10 +4228,11 @@ document.addEventListener('click', async e => {
     // par les champs historiques du panneau Paramètres.
     const i = S.cars.findIndex(c => c && c.id === t.dataset.car);
     const key = t.dataset.garageTarget;
-    if (i < 0 || !['odo', 'tread', 'pressure', 'maintenance'].includes(key) || LOCKED()) {
+    if (i < 0 || !['odo', 'tread', 'pressure', 'maintenance', 'model', 'size'].includes(key) || LOCKED()) {
       commandFeedback(t, 'Fiche indisponible'); return;
     }
-    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : key === 'maintenance' ? '#f-cars-' + i + '-maint-rev-d' : '#f-cars-' + i + '-tire-pchk-av';
+    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : key === 'maintenance' ? '#f-cars-' + i + '-maint-rev-d'
+      : key === 'model' ? '#f-cars-' + i + '-tire-model' : key === 'size' ? '#f-cars-' + i + '-tire-size' : '#f-cars-' + i + '-tire-pchk-av';
     const d = $('#settings'); if (!d) { commandFeedback(t, 'Paramètres indisponibles'); return; }
     d.open = true;
     // Réutiliser le formulaire déjà présent : un autre raccourci ne doit pas
