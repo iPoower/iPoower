@@ -37,6 +37,19 @@ Vault. Libellés produits par `SyncOutbox.status` : `local`, `en attente`, `envo
 `espace`. « Opérationnel » est un indicateur séparé, faux tant que la restauration
 complète et l'essai sur iPhone physique ne sont pas enregistrés.
 
+## Convergence et limite de transition (REL-1)
+
+La fusion est déterministe : quel que soit l'appareil qui fusionne, le texte synchronisé est identique
+(listes en ordre canonique, égalités départagées par le contenu, clés des objets fusionnés triées, horodatages
+compris). Deux appareils à jour qui modifient chacun un réglage différent convergent : 10 synchros au repos
+ne créent aucune copie (`tests/test_drive_sync.js`, contrôle par mutation).
+
+**Limite de transition.** Un appareil resté sur prod-173 ou antérieure ne trie pas ses horodatages. S'il modifie
+un réglage pendant qu'un autre appareil en modifie un différent, les données convergent (aucun conflit, aucune
+perte), mais il continue à republier une copie à chaque passage tant qu'il n'est pas mis à jour. Ce défaut existe
+déjà entre deux appareils prod-173 ; il disparaît dès que tous les appareils ont la version corrigée.
+Les copies Drive ne sont jamais supprimées par l'app : mettre à jour chaque appareil sans tarder.
+
 ## Présentation des résultats
 
 Chaque compte rendu sépare : code développé, tests validés, fusion autorisée,

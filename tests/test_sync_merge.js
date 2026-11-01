@@ -234,4 +234,120 @@ check('aucune mutation des entrées', () => {
   const pc = device({ entries: [trip('t1', 0)] }), tel = device({ entries: [trip('t2', 1)] }), a = json(pc), b = json(tel);
   M.values(pc, tel); assert.deepEqual(json(pc), a); assert.deepEqual(json(tel), b);
 });
+// REL-1 : fusion déterministe quel que soit l'appareil qui fusionne. Propriétés sur 2 000 paires d'états
+// aléatoires (graine fixe) : listes dans un ordre quelconque, doublons partagés, horodatages égaux ou absents.
+check('propriétés : même résultat dans les deux sens, aucune saisie perdue, point fixe au tour suivant', () => {
+  let seed = 20261031; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648, pick = a => a[Math.floor(rnd() * a.length)];
+  const shuffle = a => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
+  const ats = [T, T + 1000, T + 1000, T + 2000, 0];   // égalités volontaires ; 0 = horodatage absent
+  const rows = (n, f) => Array.from({ length: n }, f);
+  const calibRow = () => ({ t: pick(['2026-10-20T07:00', '2026-10-20T07:00', '2026-10-21T06:30', '']), loc: pick(['lieuA', 'lieuB']), kind: pick(['sec', 'humide', 'givre']), Tr: pick([1, 2, 3]), T: 4 });
+  const obsRow = () => ({ at: pick(ats), loc: pick(['lieuA', 'lieuB']), kind: pick(['fog', 'rain', 'wet']) });
+  const mark = () => pick([{ at: pick(ats), how: pick(['auto', 'confirmé']) }, { at: pick(ats), by: pick(['pc', 'tel']) }, true, 1]);
+  const marks = () => Object.fromEntries(rows(1 + Math.floor(rnd() * 3), () => [pick(['k1', 'k2', 'k3']), mark()]));
+  // Texte exact synchronisé (réglages complets, horodatages, observations, trajets clos, annulations) : l'empreinte compare ce texte.
+  const synced = r => { const v = r.values, c = JSON.parse(v['twrc.context.v1']);
+    return JSON.stringify([v['twrc.settings.v1'], v['twrc.editstamps.v1'], v['twrc.reports.v1'], v['twrc.shadow.v1'], v['twrc.tripcancel'], v['twrc.tripdone'], c.done]); };
+  const day = () => ({ T: pick([-1, 2, 3]), Tr: pick([0, 1]) });
+  const days = () => Object.fromEntries(rows(Math.floor(rnd() * 4), () => [pick(['2026-10-18', '2026-10-19', '2026-10-20']), day()]));
+  const stamps = () => Object.fromEntries(rows(Math.floor(rnd() * 3), () => [pick(['rainThr', 'horizon', 'dept.code']), T]));
+  for (let i = 0; i < 2000; i++) {
+    const shared = { calib: rows(Math.floor(rnd() * 3), calibRow), obs: rows(Math.floor(rnd() * 3), obsRow) };
+    const side = () => device({ s: settings({ calib: shuffle([...shared.calib, ...rows(Math.floor(rnd() * 3), calibRow)]), journal: days() }), stamps: stamps(), done: marks(),
+      extra: { 'twrc.reports.v1': JSON.stringify(shuffle([...shared.obs, ...rows(Math.floor(rnd() * 3), obsRow)])),
+        'twrc.shadow.v1': JSON.stringify(shuffle([...shared.obs, ...rows(Math.floor(rnd() * 3), obsRow)])),
+        'twrc.tripcancel': JSON.stringify(marks()), 'twrc.tripdone': JSON.stringify(marks()) } });
+    const pc = side(), tel = side(), atPc = M.values(pc, tel), atTel = M.values(tel, pc);
+    assert.equal(synced(atPc), synced(atTel), 'cas ' + i + ' : le résultat dépend de l’appareil qui fusionne');
+    const all = [...JSON.parse(pc['twrc.settings.v1']).calib, ...JSON.parse(tel['twrc.settings.v1']).calib].map(x => JSON.stringify(x));
+    const kept = new Set(JSON.parse(atPc.values['twrc.settings.v1']).calib.map(x => JSON.stringify(x)));
+    assert(all.every(x => kept.has(x)), 'cas ' + i + ' : un retour de calibration est perdu');
+    for (const k of ['twrc.reports.v1', 'twrc.shadow.v1']) {
+      const got = new Set(JSON.parse(atPc.values[k]).map(x => JSON.stringify(x)));
+      assert([...JSON.parse(pc[k]), ...JSON.parse(tel[k])].every(x => got.has(JSON.stringify(x))), 'cas ' + i + ' : observation perdue (' + k + ')');
+    }
+    assert.equal(synced(M.values(atPc.values, atTel.values)), synced(atPc), 'cas ' + i + ' : le tour suivant modifie encore l’état (republication)');
+  }
+});
+
+// ===== Conflit fantôme : listes additives jamais arbitrées (relevés compteur, profondeurs) — données fictives =====
+// Constat : une marque d'édition (markEdit('cars.N.tire.treads') ou 'cars.N.odo') faisait arbitrer la liste entière comme un
+// réglage ; sans horodatage, la boucle concluait au conflit dès que les listes différaient, alors que l'union garde tout.
+const additiveCase = (merge, { marks = 'remote', base = null, path = 'treads' } = {}) => {
+  const R = path === 'treads' ? [{ d: '2026-01-15', mm: 6.1, km: 1000, ax: 'av' }, { d: '2026-01-15', mm: 5.9, km: 1000, ax: 'ar' }] : [{ d: '2026-01-20', km: 1200 }];
+  const L = path === 'treads' ? [{ d: '2026-01-10', mm: 6.3, km: 900, ax: 'both' }] : [{ d: '2026-01-15', km: 1000 }];
+  const key = path === 'treads' ? 'cars.0.tire.treads' : 'cars.0.odo';
+  const put = (rows, mark) => ({ v: 1, cars: [{ id: 'car-a', tire: { type: 'summer', press: 2.3, ...(path === 'treads' ? { treads: rows } : {}) }, odo: path === 'odo' ? rows : [] }],
+    edits: mark ? { [key]: 1 } : {} });
+  const local = put(L, marks === 'local' || marks === 'both'), remote = put(R, marks === 'remote' || marks === 'both');
+  const r = merge(local, remote, {}, {}, base ? { base } : {});
+  const got = path === 'treads' ? r.settings.cars[0].tire.treads : r.settings.cars[0].odo;
+  return { conflicts: r.report.conflicts, got, all: [...L, ...R] };
+};
+check('conflit fantôme : marque d’édition d’un côté, des deux côtés, avec et sans ancêtre → aucun conflit, union complète (profondeurs et compteur)', () => {
+  for (const path of ['treads', 'odo']) for (const marks of ['local', 'remote', 'both']) for (const base of [null, {}]) {
+    const r = additiveCase(M.settings, { marks, base, path }), tag = path + '/' + marks + '/' + (base ? 'ancêtre' : 'sans ancêtre');
+    assert.deepEqual(r.conflicts, [], 'aucun conflit attendu · ' + tag);
+    const kept = new Set(r.got.map(x => JSON.stringify(x)));
+    assert(r.all.every(x => kept.has(JSON.stringify(x))), 'aucun relevé perdu · ' + tag);
+  }
+});
+check('conflit fantôme : propriété sur 2 000 paires aléatoires (graine 20261101) — aucune liste additive en conflit, aucune perte, même résultat dans les deux sens', () => {
+  let seed = 20261101; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648, pick = a => a[Math.floor(rnd() * a.length)];
+  const days = ['2026-01-10', '2026-01-15', '2026-01-20'], keys = ['cars.0.tire.treads', 'cars.0.odo', 'calib', 'journal'];
+  const tread = () => ({ d: pick(days), mm: pick([5.2, 6.1, 7.4]), km: pick([900, 1000, null]), ax: pick(['av', 'ar', 'both']) });
+  const odo = () => ({ d: pick(days), km: pick([900, 1000, 1200]) });
+  const rows = (k, f) => Array.from({ length: Math.floor(rnd() * k) }, f);
+  const marks = () => Object.fromEntries(keys.filter(() => rnd() < 0.5).map(k => [k, 1]));
+  const stamps = () => Object.fromEntries(keys.filter(() => rnd() < 0.3).map(k => [k, pick([1, 2, T])]));
+  const side = shared => ({ v: 1, cars: [{ id: 'car-a', tire: { type: 'summer', treads: [...shared.t, ...rows(3, tread)] }, odo: [...shared.o, ...rows(3, odo)] }], edits: marks() });
+  for (let i = 0; i < 2000; i++) {
+    const shared = { t: rows(2, tread), o: rows(2, odo) }, a = side(shared), b = side(shared), sa = stamps(), sb = stamps();
+    const opt = rnd() < 0.5 ? { base: rnd() < 0.5 ? {} : stamps() } : {};
+    const ab = M.settings(a, b, sa, sb, opt), ba = M.settings(b, a, sb, sa, opt);
+    for (const r of [ab, ba]) assert(!r.report.conflicts.some(p => /^(edits|calib|journal)(\.|$)|^cars\.\d+\.(odo|tire\.treads)(\.|$)/.test(p)), 'cas ' + i + ' : liste additive en conflit · ' + r.report.conflicts.join(','));
+    const all = [...a.cars[0].tire.treads, ...b.cars[0].tire.treads].map(x => JSON.stringify(x)), keptT = new Set(ab.settings.cars[0].tire.treads.map(x => JSON.stringify(x)));
+    assert(all.every(x => keptT.has(x)), 'cas ' + i + ' : profondeur perdue');
+    const allO = [...a.cars[0].odo, ...b.cars[0].odo].map(x => JSON.stringify(x)), keptO = new Set(ab.settings.cars[0].odo.map(x => JSON.stringify(x)));
+    assert(allO.every(x => keptO.has(x)), 'cas ' + i + ' : relevé compteur perdu');
+    assert.deepEqual(ab.settings.cars[0].tire.treads, ba.settings.cars[0].tire.treads, 'cas ' + i + ' : profondeurs différentes selon l’appareil');
+    assert.deepEqual(ab.settings.cars[0].odo, ba.settings.cars[0].odo, 'cas ' + i + ' : compteur différent selon l’appareil');
+  }
+});
+check('contre-test (mutation) : sans le prédicat additif dans la boucle d’arbitrage, le conflit fantôme réapparaît', () => {
+  const src = read('sync-merge.js'), guard = '      if (additive(p)) continue;\n';
+  assert.equal(src.split(guard).length, 2, 'garde du prédicat introuvable dans la boucle');
+  const mctx = { Date, JSON, Math, Number, Object, Array, RegExp, Set, Map, String }; vm.createContext(mctx);
+  vm.runInContext(read('journal-archive.js') + read('debrief.js') + src.replace(guard, '') + ';this.M=SyncMerge;', mctx);
+  const mutated = (...a) => json(mctx.M.settings(...a));
+  const r = additiveCase(mutated, { marks: 'remote', base: {}, path: 'treads' });
+  assert.deepEqual(r.conflicts, ['cars.0.tire.treads'], 'la mutation doit être détectée : le test ci-dessus échouerait');
+  const o = additiveCase(mutated, { marks: 'both', base: null, path: 'odo' });
+  assert.deepEqual(o.conflicts, ['cars.0.odo'], 'mutation détectée aussi pour le compteur');
+});
+check('message de conflit lisible : date, valeur, unité et essieu en clair, jamais de JSON', () => {
+  const view = fs.readFileSync(path.resolve(__dirname, '../src/app/drive-sync-view.js'), 'utf8');
+  const a = view.indexOf('/* conflit-lisible:début'), b = view.indexOf('/* conflit-lisible:fin */');
+  assert(a >= 0 && b > a, 'bloc du formateur introuvable');
+  const fctx = { Number, Object, Array, String, JSON, Math, RegExp }; vm.createContext(fctx);
+  vm.runInContext(view.slice(a, b) + ';this.T=driveConflictText;this.L=driveConflictLabel;this.B=driveConflictButton;', fctx);
+  const noJson = t => assert(!/[{}\[\]"]/.test(t), 'aucun JSON à l’écran : ' + t);
+  const tr = fctx.T('cars.0.tire.treads', [{ d: '2026-10-31', mm: 6.1, km: 1000, ax: 'av' }, { d: '2026-10-31', mm: 5.9, ax: 'ar', est: 1 }]);
+  noJson(tr); assert.match(tr, /31\/10\/2026 · 6,1 mm · avant · 1\s000 km/); assert.match(tr, /5,9 mm · arrière \(estimation\)/);
+  const od = fctx.T('cars.1.odo', [{ d: '2026-10-30', km: 1200 }]); noJson(od); assert.match(od, /30\/10\/2026 · 1\s200 km/);
+  for (const [p, v] of [['cars.0.tire', { type: 'summer', press: 2.3, dot: '1825', sets: [1, 2] }], ['rainThr', 5], ['work.days', [1, 2, 3]], ['dept', { code: '00', name: 'Lieu A' }], ['x', true]]) noJson(fctx.T(p, v));
+  assert.equal(fctx.T('cars.0.odo', undefined), '(absent)');
+  assert.equal(fctx.T('cars.0.tire.treads', []), 'aucun relevé');
+  assert.equal(fctx.L('cars.0.tire.treads', [{ id: 'car-a', name: 'Voiture fictive' }]), 'Voiture fictive · profondeurs de pneus');
+  assert.equal(fctx.L('cars.1.odo', []), 'Voiture 2 · relevés du compteur');
+  // Boutons : en clair, appareil nommé, dernières valeurs et date ; jamais la clé technique ni de JSON.
+  const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', pc = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+  const tv = [{ d: '2026-10-20', mm: 3.1, ax: 'av' }, { d: '2026-10-31', mm: 2.6, ax: 'av' }, { d: '2026-10-31', mm: 5.5, ax: 'ar' }];
+  const bl = fctx.B('local', 'cars.0.tire.treads', tv, [], iphone), br = fctx.B('remote', 'cars.0.tire.treads', [{ d: '2026-10-25', mm: 3, ax: 'both' }], [], iphone);
+  assert.equal(bl, 'Garder les profondeurs de pneus de cet iPhone (AV 2,6 / AR 5,5 mm, relevé du 31/10/2026)');
+  assert.equal(br, 'Prendre les profondeurs de pneus de l’autre appareil (AV 3,0 / AR 3,0 mm, relevé du 25/10/2026)');
+  assert.equal(fctx.B('local', 'cars.1.odo', [{ d: '2026-10-30', km: 252071 }], [], pc), 'Garder les relevés du compteur de ce PC (252\u202f071 km, relevé du 30/10/2026)'.replace('\u202f', (252071).toLocaleString('fr-FR').slice(3, 4)));
+  for (const t of [bl, br, fctx.B('remote', 'cars.0.tire', { type: 'summer', press: 2.3 }, [], pc)]) { noJson(t); assert.doesNotMatch(t, /cars\.\d|tire\.treads|\bodo\b/, 'aucune clé technique : ' + t); }
+  const many = fctx.T('cars.0.odo', Array.from({ length: 7 }, (_, i) => ({ d: '2026-10-0' + (i + 1), km: 100 * (i + 1) }))); noJson(many); assert.match(many, /\+ 3 autres$/);
+});
 console.log(n + '/' + n + ' scénarios fusion PC ↔ iPhone OK');

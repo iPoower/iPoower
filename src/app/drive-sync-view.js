@@ -1,4 +1,53 @@
 /* Réglages → Sauvegarde. Aucun changement des écrans Twin Garage. */
+/* conflit-lisible:début — texte d'un écart de synchronisation, en clair (jamais de JSON à l'écran). Pur : testé hors navigateur. */
+const DRIVE_AXLE = { av: 'avant', ar: 'arrière', both: 'les deux essieux' };
+const DRIVE_FIELD = { 'tire.treads': 'profondeurs de pneus', odo: 'relevés du compteur', 'tire.type': 'type de pneus', 'tire.press': 'pression conseillée',
+  'tire.tread': 'profondeur', 'tire.treadAv': 'profondeur avant', 'tire.treadAr': 'profondeur arrière', 'tire.dot': 'DOT', 'tire.pchk': 'contrôle de pression',
+  tire: 'pneus montés', sets: 'trains de pneus', plan: 'monte prévue', name: 'nom', photo: 'photo' };
+function driveConflictDate(d) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : 'date inconnue'; }
+function driveConflictNum(v, digits = 0) { return Number.isFinite(v) ? v.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '?'; }
+function driveConflictLabel(path, cars) {
+  const m = /^cars\.(\d+)(?:\.(.+))?$/.exec(String(path || ''));
+  if (m) { const c = Array.isArray(cars) && cars[+m[1]], who = c && (c.name || c.short) ? String(c.name || c.short) : 'Voiture ' + (+m[1] + 1);
+    return who + (m[2] ? ' · ' + (DRIVE_FIELD[m[2]] || m[2].split('.').pop()) : ''); }
+  return String(path || 'réglage').split('.').join(' · ');
+}
+function driveConflictText(path, v) {
+  if (v === undefined) return '(absent)';
+  if (v === null || v === '') return '(vide)';
+  const list = (rows, one) => { const t = rows.slice(0, 4).map(one); return t.join(' ; ') + (rows.length > 4 ? ' ; + ' + (rows.length - 4) + ' autre' + (rows.length > 5 ? 's' : '') : ''); };
+  if (/^cars\.\d+\.tire\.treads$/.test(path) && Array.isArray(v)) return v.length ? list(v, r => r && typeof r === 'object'
+    ? driveConflictDate(r.d) + ' · ' + driveConflictNum(+r.mm, 1) + ' mm · ' + (DRIVE_AXLE[r.ax] || 'essieu non précisé') + (Number.isFinite(r.km) ? ' · ' + driveConflictNum(r.km) + ' km' : '') + (r.est ? ' (estimation)' : '')
+    : 'relevé illisible') : 'aucun relevé';
+  if (/^cars\.\d+\.odo$/.test(path) && Array.isArray(v)) return v.length ? list(v, r => r && typeof r === 'object' ? driveConflictDate(r.d) + ' · ' + driveConflictNum(+r.km) + ' km' : 'relevé illisible') : 'aucun relevé';
+  if (typeof v === 'boolean') return v ? 'oui' : 'non';
+  if (typeof v === 'number') return driveConflictNum(v, Number.isInteger(v) ? 0 : 1);
+  if (typeof v === 'string') return v.length > 80 ? v.slice(0, 77) + '…' : v;
+  if (Array.isArray(v)) return v.length + ' élément' + (v.length > 1 ? 's' : '');
+  const keys = Object.keys(v), flat = keys.filter(k => v[k] == null || ['string', 'number', 'boolean'].includes(typeof v[k]));
+  const t = flat.slice(0, 4).map(k => (DRIVE_FIELD[k] || k) + ' : ' + driveConflictText('', v[k])).join(' · ');
+  return (t || 'détails') + (keys.length > flat.slice(0, 4).length ? ' · + ' + (keys.length - flat.slice(0, 4).length) + ' champ(s)' : '');
+}
+// Appareil courant nommé en clair (« cet iPhone », « ce PC »…) ; l'autre appareil n'est connu que par un identifiant.
+function driveDeviceName(ua) { const u = String(ua || ''); return /iPhone/.test(u) ? 'cet iPhone' : /iPad/.test(u) ? 'cet iPad' : /Android/.test(u) ? 'ce téléphone' : /Macintosh|Mac OS X/.test(u) ? 'ce Mac' : 'ce PC'; }
+// Résumé court d'une version pour le BOUTON : dernières profondeurs par essieu, dernier compteur, sinon texte court.
+function driveConflictSummary(path, v) {
+  const last = rows => rows.filter(r => r && typeof r === 'object' && r.d).slice().sort((a, b) => String(a.d).localeCompare(String(b.d))).pop();
+  if (/^cars\.\d+\.tire\.treads$/.test(path) && Array.isArray(v) && v.length) {
+    const r = last(v), day = r ? r.d : null, at = ax => v.filter(x => x && x.d === day && (x.ax === ax || x.ax === 'both')).map(x => +x.mm).filter(Number.isFinite);
+    const av = at('av'), ar = at('ar'), mm = xs => xs.length ? driveConflictNum(Math.min(...xs), 1) : '—';
+    return (av.length || ar.length ? 'AV ' + mm(av) + ' / AR ' + mm(ar) + ' mm' : driveConflictNum(+r.mm, 1) + ' mm') + ', relevé du ' + driveConflictDate(day);
+  }
+  if (/^cars\.\d+\.odo$/.test(path) && Array.isArray(v) && v.length) { const r = last(v); return r ? driveConflictNum(+r.km) + ' km, relevé du ' + driveConflictDate(r.d) : 'relevé illisible'; }
+  const t = driveConflictText(path, v); return t.length > 60 ? t.slice(0, 57) + '…' : t;
+}
+// Libellé d'un bouton de conflit : jamais la clé technique (« cars.0.tire.treads »).
+function driveConflictButton(choice, path, v, cars, ua) {
+  const m = /^cars\.\d+\.(.+)$/.exec(String(path || '')), field = m ? (DRIVE_FIELD[m[1]] || m[1].split('.').pop()) : driveConflictLabel(path, cars);
+  const who = choice === 'local' ? driveDeviceName(ua) : 'l’autre appareil';
+  return (choice === 'local' ? 'Garder les ' : 'Prendre les ') + field + ' de ' + who + ' (' + driveConflictSummary(path, v) + ')';
+}
+/* conflit-lisible:fin */
 let DRIVE_UI = { config: null, session: null, sync: null, prepared: false, selected: false, busy: false,
   text: 'Google Drive : non activé sur cette version.', timer: null, dedicatedFolders: [] };
 function renderDriveSync() {
@@ -21,12 +70,12 @@ function renderDriveSync() {
   line('PÉRIMÈTRE · Drive exclut volontairement la position, le trajet en cours, les caches, le code et la mémoire thermique des pneus (estimation de quelques heures) ; la copie complète exportée les contient.');
   if (st && st.conflictDetails && st.conflictDetails.length) {
     line('CONFLIT · action requise. Les deux versions sont conservées ; rien n’est remplacé sans ton choix.').setAttribute('role', 'alert');
-    const show = v => { const t = v === undefined ? '(absent)' : JSON.stringify(v); return t.length > 120 ? t.slice(0, 117) + '…' : t; };
     for (const c of st.conflictDetails) {
-      line(c.path + ' · cet appareil : ' + show(c.local) + ' · autre appareil (…' + String(c.device).slice(-6) + ') : ' + show(c.remote));
+      const what = driveConflictLabel(c.path, typeof S === 'object' && S ? S.cars : null);
+      line(what + ' · cet appareil : ' + driveConflictText(c.path, c.local) + ' · autre appareil (…' + String(c.device).slice(-6) + ') : ' + driveConflictText(c.path, c.remote));
       if (!c.resolvable) { line('Résolution impossible dans l’app pour ce type d’écart (véhicule ajouté ou retiré d’un seul côté, ou donnée entière). Les deux versions restent conservées, mais les nouvelles saisies de l’autre appareil ne seront PAS intégrées ici tant que ce point n’est pas traité. Exporte une copie complète de chaque appareil.'); continue; }
-      for (const [label, choice] of [['Garder cet appareil', 'local'], ['Prendre l’autre appareil', 'remote']])
-        button(label + ' · ' + c.path, async () => {
+      for (const choice of ['local', 'remote'])
+        button(driveConflictButton(choice, c.path, choice === 'local' ? c.local : c.remote, typeof S === 'object' && S ? S.cars : null, navigator.userAgent), async () => {
           try { d.sync.resolve(c.id, c.path, choice); d.text = 'Choix enregistré : vérification et synchronisation…'; await d.sync.run(true); }
           catch { d.text = 'Choix non appliqué : conflit modifié entre-temps. Les deux versions restent conservées.'; }
           renderDriveSync();

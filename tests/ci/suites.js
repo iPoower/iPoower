@@ -146,7 +146,9 @@ SUITE.push(['e2e92-preuves-espacement.js', 'journal du moteur de preuves : entr�
 SUITE.push(['e2e93-position-vraisemblance.js', 'lot 1 : position approximative lointaine jamais utilisée en silence (lieu principal, utiliser quand même), GPS précis lointain accepté, PC/iPhone', true]);
 SUITE.push(['e2e93-agenda-a-reserver.js', 'agenda : une réservation « [À réserver] » n’est pas un trajet par défaut, #trajet la rétablit, PC/iPhone', true]);
 SUITE.push(['e2e96-brouillard-deux-episodes.js', 'acceptation #290 : brouillard en cours puis nouvel épisode, cohérent sur Pneus, Météo, Chronologie et Trajet ; visibilité datée ; confiance distincte du risque, PC/iPhone', true]);
+SUITE.push(['e2e98-verdict-voiture-affichee.js', 'verdict « ici, maintenant » limité à la voiture affichée : montage hiver d’une autre voiture = planification VIGILANCE, jamais DANGER, PC/iPhone', true]);
 SUITE.push(['e2e94-proprete-affichage.js', 'propreté de l’affichage : aucun horodatage brut, aucun none/null/undefined, aucune icône doublée sur tous les onglets et Réglages, PC/iPhone', true]);
+SUITE.push(['e2e95-saisie-verrouillee.js', 'D1 · page verrouillée : contrôles d’écriture désactivés avec message, saisie forcée refusée, coffre inchangé, PC/iPhone', true]);
 SUITE.push(['test_reset_guard.js', 'réinitialisation protégée : instantané puis restauration à l’octet, mot exigé, clé propre à l’appareil et contre-tests', false],
   ['test_sync_pause.js', 'pause Drive après réinitialisation : 0 écriture (rechargement, saisie, passage en cours), Récupérer à l’octet, Remplacer après le mot, contre-tests', false],
   ['e2e97-reinit-protegee.js', 'réinitialisation protégée : zone danger, mot RÉINITIALISER, instantané chiffré, annulation à l’octet, journal intact, pause Drive (0 écriture), Récupérer et Remplacer, PC/iPhone', true]);

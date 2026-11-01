@@ -77,6 +77,19 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.equal(treadAlerts({ tread: 3.5 }, undefined, 'allseason').tread, undefined);
   });
   test('alerte de profondeur déclarée dans la liste des alertes', () => assert(E.ALERT_DEFS.some(d => d.id === 'tread')));
+  // Constat du 01/11/2026 : « montage hiver à prévoir » d'une AUTRE voiture affiché en DANGER dans le verdict « ici, maintenant ».
+  const preSeason = { 'summer': { coldBefore: { first: { date: '2026-01-17' }, severe: false, cold2: 2 }, countdown: { kind: 'estimated', date: '2026-01-24' } } };
+  test('montage hiver à prévoir : VIGILANCE dans les alertes 24 h, absente de la fenêtre « ici, maintenant »', () => {
+    const model = { hs: hours(() => ({ T: 12 })), nowI: 24 }, S = { alerts: {} };
+    const a24 = E.computeAlerts(model, [car('summer')], S, preSeason), a3 = E.computeAlerts(model, [car('summer')], S, preSeason, 3);
+    assert(a24.pre, 'alerte de planification attendue sur 24 h'); assert.equal(a24.pre.sev, 1, 'planification = VIGILANCE, jamais DANGER');
+    assert.match(a24.pre.title, /^Montage hiver à prévoir \(summer\)/); assert.equal(a3.pre, undefined, 'jamais dans le verdict immédiat');
+    assert.match(E.ALERT_DEFS.find(d => d.id === 'pre').label, /^Montage hiver à prévoir/);
+  });
+  test('verdict « ici, maintenant » : la planification du montage hiver est une alerte pneus, filtrée pour la voiture affichée', () => {
+    const app = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8'), m = /const TIRE_ALERTS = (\[[^\]]*\]);/.exec(app);
+    assert(m, 'TIRE_ALERTS introuvable'); assert(JSON.parse(m[1].replace(/'/g, '"')).includes('pre'), 'pre doit être une alerte pneus');
+  });
   // — référence : aucune alerte inventée
   test('doux et sec : GO en pneus été et 4 saisons', () => {
     for (const type of ['summer', 'allseason']) assert.equal(level(type, () => ({})), GO, type);
