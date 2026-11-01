@@ -234,4 +234,39 @@ check('aucune mutation des entrées', () => {
   const pc = device({ entries: [trip('t1', 0)] }), tel = device({ entries: [trip('t2', 1)] }), a = json(pc), b = json(tel);
   M.values(pc, tel); assert.deepEqual(json(pc), a); assert.deepEqual(json(tel), b);
 });
+// REL-1 : fusion déterministe quel que soit l'appareil qui fusionne. Propriétés sur 2 000 paires d'états
+// aléatoires (graine fixe) : listes dans un ordre quelconque, doublons partagés, horodatages égaux ou absents.
+check('propriétés : même résultat dans les deux sens, aucune saisie perdue, point fixe au tour suivant', () => {
+  let seed = 20261031; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648, pick = a => a[Math.floor(rnd() * a.length)];
+  const shuffle = a => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
+  const ats = [T, T + 1000, T + 1000, T + 2000, 0];   // égalités volontaires ; 0 = horodatage absent
+  const rows = (n, f) => Array.from({ length: n }, f);
+  const calibRow = () => ({ t: pick(['2026-10-20T07:00', '2026-10-20T07:00', '2026-10-21T06:30', '']), loc: pick(['lieuA', 'lieuB']), kind: pick(['sec', 'humide', 'givre']), Tr: pick([1, 2, 3]), T: 4 });
+  const obsRow = () => ({ at: pick(ats), loc: pick(['lieuA', 'lieuB']), kind: pick(['fog', 'rain', 'wet']) });
+  const mark = () => pick([{ at: pick(ats), how: pick(['auto', 'confirmé']) }, { at: pick(ats), by: pick(['pc', 'tel']) }, true, 1]);
+  const marks = () => Object.fromEntries(rows(1 + Math.floor(rnd() * 3), () => [pick(['k1', 'k2', 'k3']), mark()]));
+  // Texte exact synchronisé (réglages complets, horodatages, observations, trajets clos, annulations) : l'empreinte compare ce texte.
+  const synced = r => { const v = r.values, c = JSON.parse(v['twrc.context.v1']);
+    return JSON.stringify([v['twrc.settings.v1'], v['twrc.editstamps.v1'], v['twrc.reports.v1'], v['twrc.shadow.v1'], v['twrc.tripcancel'], v['twrc.tripdone'], c.done]); };
+  const day = () => ({ T: pick([-1, 2, 3]), Tr: pick([0, 1]) });
+  const days = () => Object.fromEntries(rows(Math.floor(rnd() * 4), () => [pick(['2026-10-18', '2026-10-19', '2026-10-20']), day()]));
+  const stamps = () => Object.fromEntries(rows(Math.floor(rnd() * 3), () => [pick(['rainThr', 'horizon', 'dept.code']), T]));
+  for (let i = 0; i < 2000; i++) {
+    const shared = { calib: rows(Math.floor(rnd() * 3), calibRow), obs: rows(Math.floor(rnd() * 3), obsRow) };
+    const side = () => device({ s: settings({ calib: shuffle([...shared.calib, ...rows(Math.floor(rnd() * 3), calibRow)]), journal: days() }), stamps: stamps(), done: marks(),
+      extra: { 'twrc.reports.v1': JSON.stringify(shuffle([...shared.obs, ...rows(Math.floor(rnd() * 3), obsRow)])),
+        'twrc.shadow.v1': JSON.stringify(shuffle([...shared.obs, ...rows(Math.floor(rnd() * 3), obsRow)])),
+        'twrc.tripcancel': JSON.stringify(marks()), 'twrc.tripdone': JSON.stringify(marks()) } });
+    const pc = side(), tel = side(), atPc = M.values(pc, tel), atTel = M.values(tel, pc);
+    assert.equal(synced(atPc), synced(atTel), 'cas ' + i + ' : le résultat dépend de l’appareil qui fusionne');
+    const all = [...JSON.parse(pc['twrc.settings.v1']).calib, ...JSON.parse(tel['twrc.settings.v1']).calib].map(x => JSON.stringify(x));
+    const kept = new Set(JSON.parse(atPc.values['twrc.settings.v1']).calib.map(x => JSON.stringify(x)));
+    assert(all.every(x => kept.has(x)), 'cas ' + i + ' : un retour de calibration est perdu');
+    for (const k of ['twrc.reports.v1', 'twrc.shadow.v1']) {
+      const got = new Set(JSON.parse(atPc.values[k]).map(x => JSON.stringify(x)));
+      assert([...JSON.parse(pc[k]), ...JSON.parse(tel[k])].every(x => got.has(JSON.stringify(x))), 'cas ' + i + ' : observation perdue (' + k + ')');
+    }
+    assert.equal(synced(M.values(atPc.values, atTel.values)), synced(atPc), 'cas ' + i + ' : le tour suivant modifie encore l’état (republication)');
+  }
+});
 console.log(n + '/' + n + ' scénarios fusion PC ↔ iPhone OK');
