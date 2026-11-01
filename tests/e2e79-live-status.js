@@ -9,7 +9,7 @@ const U = 'https://ipoower.github.io/iPoower/race-control/', html = fs.readFileS
 let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.push((ok ? '✅ ' : '❌ ') + name); if (!ok) failures++; };
 (async () => {
   const browser = await require('./lib/browser').launch();
-  // Le fuseau du navigateur est volontairement différent : l’horloge doit rester celle de Paris.
+  // Le fuseau du navigateur est volontairement différent : la réception et le modèle temporel restent ceux de Paris.
   const context = await browser.newContext({ viewport: { width: 414, height: 896 }, isMobile: true, hasTouch: true, timezoneId: 'America/New_York' });
   await context.addInitScript(() => {
     window.__offline = false; window.__hidden = false;
@@ -41,7 +41,7 @@ let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.pus
     return route.abort();
   });
   const settle = async (n = 12) => { for (let i = 0; i < n; i++) { await page.clock.runFor(500); await page.waitForTimeout(60); } };
-  const status = () => page.evaluate(() => ({ clock: document.querySelector('#liveClock').textContent, receipt: document.querySelector('#weatherReceived').textContent,
+  const status = () => page.evaluate(() => ({ bar: document.querySelector('#statusbar').textContent, receipt: document.querySelector('#weatherReceived').textContent,
     detail: document.querySelector('#weatherFreshness').textContent, label: document.querySelector('#weatherState').textContent, at: dataAt(), now: Date.now(), modelNow: M[UI.loc] && M[UI.loc].nowStr }));
   await page.goto(U); await page.clock.runFor(2000); await page.fill('#unlockPw', pass);
   await Promise.all([page.waitForNavigation({ timeout: 60000 }), page.click('#unlockForm button[type="submit"]')]); await settle(20);
@@ -49,22 +49,21 @@ let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.pus
   await page.evaluate(() => {
     UI.view = 'meteo'; renderAll();
     window.__fullRenders = 0; const draw = renderAll; renderAll = function () { window.__fullRenders++; return draw(); };
-    window.__hiddenCar = document.querySelector('#secCars').firstElementChild; window.__clockNode = document.querySelector('#liveClock'); window.__refreshNode = document.querySelector('#statusbar [data-act="refresh"]');
+    window.__hiddenCar = document.querySelector('#secCars').firstElementChild; window.__badgeNode = document.querySelector('#weatherBadge'); window.__refreshNode = document.querySelector('#statusbar [data-act="refresh"]');
     const details = document.querySelector('#secWx details[data-ux]'); details.open = true; details.querySelector('summary').focus();
     window.__fold = details.dataset.ux;
   });
   await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 100);
   let before = await status(); const count = requests;
   await page.clock.runFor(3000); let after = await status();
-  check('secondes réelles de Paris, malgré le fuseau différent du navigateur', after.clock === new Date(after.now).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour12: false }));
-  check('trois secondes sans requête, sans rendu complet et sans remplacer les nœuds', after.now - before.now === 3000 && after.clock !== before.clock && count === requests && await page.evaluate(() => __fullRenders === 0 && __clockNode === document.querySelector('#liveClock') && __refreshNode === document.querySelector('#statusbar [data-act="refresh"]')));
-  check('horloge silencieuse pour le lecteur d’écran et réception indépendante', await page.locator('#liveClock').getAttribute('aria-live') === 'off' && after.receipt === before.receipt && after.at === before.at);
+  check('réception à l’heure de Paris, malgré le fuseau différent du navigateur', after.receipt.endsWith(new Date(after.at).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })));
+  check('trois secondes sans requête, sans rendu complet, sans remplacer les nœuds ni réécrire le bandeau (plus d’horloge à la seconde)', after.now - before.now === 3000 && after.bar === before.bar && count === requests && await page.evaluate(() => __fullRenders === 0 && !document.querySelector('#liveClock, #statusbar time') && __badgeNode === document.querySelector('#weatherBadge') && __refreshNode === document.querySelector('#statusbar [data-act="refresh"]')));
+  check('âge et prochaine vérification silencieux pour le lecteur d’écran et réception indépendante', await page.locator('#weatherFreshness').getAttribute('aria-live') === 'off' && after.receipt === before.receipt && after.at === before.at);
   check('bandeau compact sur iPhone 414 : moins de 100 px en fonctionnement normal', await page.evaluate(() => document.querySelector('#statusbar').closest('.statusbar').getBoundingClientRect().height <= 100));
-  check('lot 1 UX : à 414 pt, bandeau sur deux lignes (≤ 80 px), réception, horloge et bouton 44 pt sur la première', await page.evaluate(() => {
-    if (innerWidth < 380 || innerWidth > 560) return true;
+  check('lisibilité mobile : à 414 pt, bandeau sur une seule ligne (≤ 64 px), état, réception et bouton 44 pt alignés ; âge lu par le lecteur d’écran seulement', await page.evaluate(() => {
     const bar = document.querySelector('#statusbar').closest('.statusbar').getBoundingClientRect(), r = s => document.querySelector(s).getBoundingClientRect();
-    const row = [r('#weatherBadge'), r('#weatherReceived'), r('#liveClock'), r('#statusbar [data-act=refresh]')], mid = b => b.top + b.height / 2;
-    return bar.height <= 80 && row.every(b => Math.abs(mid(b) - mid(row[0])) < 12) && row[3].width >= 44 && row[3].height >= 44 && r('#weatherFreshness').top > row[0].bottom - 1;
+    const row = [r('#weatherBadge'), r('#weatherReceived'), r('#statusbar [data-act=refresh]')], mid = b => b.top + b.height / 2, detail = r('#weatherFreshness');
+    return bar.height <= 64 && row.every(b => Math.abs(mid(b) - mid(row[0])) < 12) && row[2].width >= 44 && row[2].height >= 44 && detail.width <= 1 && detail.height <= 1 && /Reçues il y a/.test(document.querySelector('#weatherFreshness').textContent);
   }));
   // Franchir une minute sans laisser le téléchargement vieillir artificiellement.
   const nextMinute = Math.ceil(after.now / 60000) * 60000;
@@ -93,11 +92,11 @@ let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.pus
   // Veille simulée : le minuteur de la seconde est réellement désarmé.
   await page.evaluate(() => { window.__hidden = true; document.dispatchEvent(new Event('visibilitychange')); });
   before = await status(); await page.clock.runFor(3000); after = await status();
-  check('page masquée : zéro minuteur d’horloge et aucune écriture de seconde', before.clock === after.clock && await page.evaluate(() => LIVE_CLOCK_TIMER === null));
+  check('page masquée : zéro minuteur de pulsation et aucune écriture dans le bandeau', before.bar === after.bar && await page.evaluate(() => LIVE_CLOCK_TIMER === null));
   await page.clock.setSystemTime(after.now + 6 * 3600000); hold = true;
   await page.evaluate(() => { window.__hidden = false; document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('pageshow')); window.dispatchEvent(new Event('focus')); });
   await page.clock.runFor(1000); after = await status();
-  check('reprise après six heures : heure resynchronisée, donnée ancienne jamais LIVE', after.label !== 'LIVE' && after.clock === new Date(after.now).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour12: false }));
+  check('reprise après six heures : pulsation relancée, âge resynchronisé, donnée ancienne jamais LIVE', after.label !== 'LIVE' && await page.evaluate(() => LIVE_CLOCK_TIMER !== null) && after.detail.includes('il y a ' + Math.floor((after.now - after.at) / 60000) + ' min'));
   hold = false; await Promise.all(pending.splice(0).map(([r, u]) => reply(r, u))); await settle();
   await page.evaluate(() => { window.__offline = true; window.dispatchEvent(new Event('offline')); }); await settle(2);
   check('hors ligne : cache daté et prochaine vérification au retour du réseau', (await status()).label === 'HORS LIGNE' && /retour du réseau/.test((await status()).detail));
@@ -108,7 +107,7 @@ let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.pus
   await page.evaluate(() => { window.scrollTo(0, 0); });
   for (const width of [414, 1440]) for (const theme of ['dark', 'light']) { await page.setViewportSize({ width, height: width === 1440 ? 900 : 896 }); await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme); await page.screenshot({ path: path.join(process.env.SP, `place-live-v13-fresh-${process.env.BROWSER || 'chromium'}-${width}-${theme}.png`) }); }
   limited = true; await page.evaluate(() => { void refreshAll(); }); await settle(); after = await status();
-  check('429 : LIMITÉ, cache conservé et reprise annoncée', after.label === 'LIMITÉ' && after.at !== null && /reprise automatique après/.test(after.detail));
+  check('429 : LIMITÉ, cache conservé et reprise annoncée (ligne de détail affichée pendant la limitation)', after.label === 'LIMITÉ' && after.at !== null && /reprise automatique après/.test(after.detail) && await page.evaluate(() => { const d = document.querySelector('#weatherFreshness'); return d.classList.contains('is-shown') && d.getBoundingClientRect().height > 1; }));
   const limitCount = requests; await page.clock.runFor(30000);
   check('429 : l’horloge ne contourne ni la pause ni les boutons désactivés', limitCount === requests && await page.locator('#statusbar [data-act="refresh"]').isDisabled());
   const relayBefore = observationReads; await page.clock.runFor(330000); await settle();
@@ -117,12 +116,12 @@ let failures = 0; const rows = [], errors = [], check = (name, ok) => { rows.pus
   for (const width of [414, 375, 320, 1440]) for (const theme of ['dark', 'light']) {
     await page.setViewportSize({ width, height: width === 1440 ? 900 : 896 });
     await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
-    const fit = await page.evaluate(() => { const root = document.querySelector('#statusbar'); return document.documentElement.scrollWidth <= innerWidth + 1 && root.getBoundingClientRect().right <= innerWidth + 1 && [...root.querySelectorAll('button,time,.live-clock-wrap,.weather-received,.status-detail')].every(x => x.getBoundingClientRect().right <= innerWidth + 1 && x.getBoundingClientRect().left >= -1); });
+    const fit = await page.evaluate(() => { const root = document.querySelector('#statusbar'); return document.documentElement.scrollWidth <= innerWidth + 1 && root.getBoundingClientRect().right <= innerWidth + 1 && [...root.querySelectorAll('button,.weather-received,.status-detail')].every(x => x.getBoundingClientRect().right <= innerWidth + 1 && x.getBoundingClientRect().left >= -1); });
     check(`bandeau ${width}px ${theme} : aucun débordement`, fit);
     if (width === 414 || width === 1440) await page.screenshot({ path: path.join(process.env.SP, `place-live-v13-${process.env.BROWSER || 'chromium'}-${width}-${theme}.png`), fullPage: false });
   }
   check('réglages et préférences conservés ; journal automatique enrichi sans disparition d’entrée', await page.evaluate(value => { const before = JSON.parse(value), current = { ...S }; const journal = before.journal || {}; delete before.journal; delete current.journal; return JSON.stringify(current) === JSON.stringify(before) && Object.keys(journal).every(k => Object.hasOwn(S.journal, k)); }, settings));
-  check('libellé accessible de l’horloge masqué visuellement et lisible sans annonce répétée', await page.evaluate(() => { const label = document.querySelector('.live-clock-wrap .sr-only'), r = label.getBoundingClientRect(); return getComputedStyle(label).position === 'absolute' && r.width <= 1 && r.height <= 1 && label.textContent.includes('Europe/Paris'); }));
+  check('aucune horloge à la seconde dans le bandeau, à toutes les largeurs', await page.evaluate(() => !document.querySelector('#liveClock, .live-clock-wrap, #statusbar time') && !/\b\d{2}:\d{2}:\d{2}\b/.test(document.querySelector('#statusbar').textContent)));
   check('aucune erreur JavaScript', errors.length === 0);
   console.log(rows.join('\n') + `\n\n${rows.length - failures}/${rows.length} scénarios OK · erreurs JS : ${errors.length ? 'présentes' : 'aucune'}`);
   await context.close(); await browser.close(); process.exit(failures || errors.length ? 1 : 0);

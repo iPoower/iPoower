@@ -134,7 +134,6 @@ function renderTemporalWeather() {
   if (Number.isFinite(y)) window.scrollTo({ top: y, behavior: 'instant' });
 }
 function tickLocalClock(force = false) {
-  updateLiveClock();
   if (!APP_CONTEXT.ready) return;
   const minute = Math.floor(Date.now() / 60000);
   if (!force && minute === LOCAL_CLOCK_MINUTE) { renderLiveStatus(); return; }
@@ -154,7 +153,7 @@ function startLiveClock() {
   const pulse = () => {
     LIVE_CLOCK_TIMER = null;
     if (document.hidden || checkSessionExpiry()) return;
-    updateLiveClock();
+    // Plus d'horloge à la seconde dans le bandeau : la pulsation ne fait que détecter le changement de minute (âge, modèle temporel).
     if (Math.floor(Date.now() / 60000) !== LOCAL_CLOCK_MINUTE) tickLocalClock();
     LIVE_CLOCK_TIMER = setTimeout(pulse, 1000 - Date.now() % 1000);
   };

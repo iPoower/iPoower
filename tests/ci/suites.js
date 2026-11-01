@@ -117,7 +117,7 @@ SUITE.push(['test_road_policy.js', 'chaussée mouillée/humide : une seule défi
 SUITE.push(['test_journey_replay.js', 'Journey Replay : prévisions archivées, déclaration conducteur, annulations, reprise et absence de télémétrie', false]);
 SUITE.push(['e2e80-journey-replay.js', 'Journey Replay : avant/après, pause, réduction du mouvement, annulations, DOM stable et iPhone/PC', true]);
 SUITE.push(['test_mission_control.js', 'Mission Control : projection canonique, provenance, absence, hors-ligne et absence de mutation', false]);
-SUITE.push(['test_ux_mobile.js', 'UX mobile lot 1 : aucun texte sous 11 px, bandeau LIVE compact, cibles 44 pt et libellés', false]);
+SUITE.push(['test_ux_mobile.js', 'UX mobile lot 1 : aucun texte sous 11 px, bandeau LIVE sur une ligne, champs 16 px, gris tertiaire AA, cibles 44 pt et libellés', false]);
 SUITE.push(['test_live_route.js', 'Live Route : géométrie, progression, GPS périmé/imprécis, secteurs et prévisions ponctuelles', false],
   ['e2e81-live-route.js', 'Live Route premium PC/iPhone : vraie carte, simulation, GPS, reprise, focus, thèmes et nettoyage', true]);
 SUITE.push(['test_sync_merge.js', 'fusion PC ↔ iPhone (étape 1) : journal cumulatif, relevés additifs, réglages par chemin sans arbitrage d’horloge, état de l’appareil jamais importé', false]);
@@ -145,6 +145,7 @@ SUITE.push(['e2e92-preuves-espacement.js', 'journal du moteur de preuves : entr�
 SUITE.push(['e2e93-position-vraisemblance.js', 'lot 1 : position approximative lointaine jamais utilisée en silence (lieu principal, utiliser quand même), GPS précis lointain accepté, PC/iPhone', true]);
 SUITE.push(['e2e93-agenda-a-reserver.js', 'agenda : une réservation « [À réserver] » n’est pas un trajet par défaut, #trajet la rétablit, PC/iPhone', true]);
 SUITE.push(['e2e96-brouillard-deux-episodes.js', 'acceptation #290 : brouillard en cours puis nouvel épisode, cohérent sur Pneus, Météo, Chronologie et Trajet ; visibilité datée ; confiance distincte du risque, PC/iPhone', true]);
+SUITE.push(['e2e94-lisibilite-mobile.js', 'lisibilité mobile : champs de saisie ≥ 16 px (zoom Safari), bandeau LIVE sur une ligne sans horloge à la seconde, gris tertiaire AA, iPhone/PC', true]);
 SUITE.push(['test_vault_sync_device_writes.js', 'constat C : écriture propre à l’appareil (GPS, cache, agenda chiffré) sans blocage ni perte pendant la synchro', false]);
 SUITE.push(['e2e89-agenda-sablier.js', 'agenda : jamais de sablier « Lecture de l’agenda… » infini (sans réponse, erreur, réponse invalide, affichage en échec)', true]);
 SUITE.push(['e2e88-car-add.js', 'Ajouter une voiture : fiche vierge, refus nom vide ou en double, Garage, compteur et rechargement', true]);

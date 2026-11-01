@@ -1,7 +1,7 @@
 /* Concept : mur de contrôle de course. Bandeau de télémétrie, puis modules empilés (1 colonne sur iPhone, 2 à partir de 900 px). */
 :root {
   --bg: #080c11; --panel: #0f151c; --panel2: #151d26; --line: #233040; --line2: #34475c;
-  --fg: #e9eff6; --fg2: #9aa9bb; --fg3: #75869a;
+  --fg: #e9eff6; --fg2: #9aa9bb; --fg3: #7d8ea2;   /* --fg3 : contraste AA ≥ 4,5:1 sur --bg, --panel et --panel2 (test_ux_mobile) */
   --accent: #62c7f0; --accent-soft: rgba(98, 199, 240, .13);
   --go: #2fcf7a; --on-go: #04210f; --go-soft: rgba(47, 207, 122, .14); --go-t: #4be08f;
   --cau: #f2c230; --on-cau: #2a2000; --cau-soft: rgba(242, 194, 48, .14); --cau-t: #f2c230;
@@ -68,7 +68,7 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     --bg: #e8edf3; --panel: #ffffff; --panel2: #f2f5f9; --line: #d3dce7; --line2: #b6c3d2;
-    --fg: #0d1520; --fg2: #46566a; --fg3: #66768c;
+    --fg: #0d1520; --fg2: #46566a; --fg3: #5a6a80;
     --accent: #0a6fa3; --accent-soft: rgba(10, 111, 163, .09);
     --go: #17894d; --on-go: #ffffff; --go-soft: #ddf4e7; --go-t: #0f6e3b;
     --cau: #f2c230; --on-cau: #2a2000; --cau-soft: #fff1c2; --cau-t: #7a5a00;
@@ -80,7 +80,7 @@
 }
 :root[data-theme="light"] {
   --bg: #e8edf3; --panel: #ffffff; --panel2: #f2f5f9; --line: #d3dce7; --line2: #b6c3d2;
-  --fg: #0d1520; --fg2: #46566a; --fg3: #66768c;
+  --fg: #0d1520; --fg2: #46566a; --fg3: #5a6a80;
   --accent: #0a6fa3; --accent-soft: rgba(10, 111, 163, .09);
   --go: #17894d; --on-go: #ffffff; --go-soft: #ddf4e7; --go-t: #0f6e3b;
   --cau: #f2c230; --on-cau: #2a2000; --cau-soft: #fff1c2; --cau-t: #7a5a00;
@@ -121,25 +121,22 @@ html { scroll-padding-top: calc(env(safe-area-inset-top, 0px) + var(--bar-h, 54p
 .badge.drive-badge { background: none; color: var(--fg2); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; min-height: 0; justify-content: center; }
 .badge.drive-badge.nogo { color: var(--nogo-t); border-color: var(--nogo); }
 @media (pointer: coarse) { .badge.drive-badge { min-height: 44px; } }
-.statusbar .upd { font-size: 12px; color: var(--fg2); min-width: 0; }
-.status-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; line-height: 1.5; }
-.live-clock-wrap { color: var(--fg); white-space: nowrap; }
-.live-clock-wrap .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
-#liveClock { display: inline-block; min-width: 8ch; font: 600 14px var(--f-mono); font-variant-numeric: tabular-nums; }
-.weather-received { color: var(--fg2); overflow-wrap: anywhere; }
-.status-detail { font-size: 11px; line-height: 1.5; color: var(--fg2); overflow-wrap: anywhere; }
-.status-refresh { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
-.refresh-icon { display: inline-block; }
+.statusbar .upd { font-size: 12px; line-height: 1.5; color: var(--fg2); min-width: 0; }
+/* Une seule ligne : réception météo tronquée proprement, jamais de deuxième ligne en fonctionnement normal. */
+.weather-received { display: block; color: var(--fg2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Âge et prochaine vérification : lus par les lecteurs d'écran ; affichés seulement pendant une limitation du fournisseur (heure de reprise). */
+.status-detail { font-size: 12px; line-height: 1.5; color: var(--fg2); overflow-wrap: anywhere; }
+.status-detail:not(.is-shown) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.status-refresh { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.refresh-icon { display: inline-block; font-size: 18px; line-height: 1; font-weight: 700; }
 @media (max-width: 560px) {
   .statusbar { padding-block: 6px; }
   .statusbar .in { grid-template-columns: auto minmax(0, 1fr) auto; gap: 3px 8px; }
-  .statusbar .upd, .status-main { display: contents; }
   #weatherBadge { grid-column: 1; grid-row: 1; font-size: 11px; letter-spacing: .03em; padding-inline: 6px; }
-  .live-clock-wrap { grid-column: 2; grid-row: 1; justify-self: end; }
+  .statusbar .upd { grid-column: 2; grid-row: 1; min-width: 0; }
   .status-refresh { grid-column: 3; grid-row: 1; min-width: 36px; min-height: 36px; padding: 4px 8px; }
   .status-refresh .sh { display: none; }
-  .weather-received { grid-column: 1 / -1; grid-row: 2; font-size: 12px; }
-  .status-detail { grid-column: 1 / -1; grid-row: 3; }
+  .refresh-icon { font-size: 22px; }
   /* Badge de sauvegarde : icône (+ nombre en attente) juste avant ⟳, sur la première ligne (déjà haute de 44 pt). */
   .statusbar .in:has(#driveBadge) { grid-template-columns: auto minmax(0, 1fr) auto auto; }
   .statusbar .in:has(#driveBadge) .status-refresh { grid-column: 4; }
@@ -1295,18 +1292,11 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
   .wx-foot a, .decision-trip a { display: inline-flex; align-items: center; min-height: 44px; }
   .srcline > details > summary, #hdrMore summary { min-height: 44px; display: flex; align-items: center; }
 }
-/* Bandeau LIVE sur deux lignes au lieu de trois quand la largeur le permet (iPhone 11 Pro Max : 414 pt). */
-@media (min-width: 380px) and (max-width: 560px) {
-  .statusbar .in { grid-template-columns: auto minmax(0, 1fr) auto auto; }
-  .weather-received { grid-column: 2; grid-row: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .live-clock-wrap { grid-column: 3; grid-row: 1; }
-  .live-clock-wrap > span[aria-hidden="true"] { display: none; }
-  .status-refresh { grid-column: 4; grid-row: 1; }
-  .status-detail { grid-column: 1 / -1; grid-row: 2; }
-  .statusbar .in:has(#driveBadge) { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
-  .statusbar .in:has(#driveBadge) .status-refresh { grid-column: 5; }
-  #driveBadge { grid-column: 4; }
-}
+/* Lisibilité mobile (1er novembre 2026) : bandeau LIVE sur une seule ligne à toutes les largeurs — état météo, réception,
+   sauvegarde, ⟳ — sans horloge à la seconde ni ligne « Reçues il y a… » (l'âge reste dans « Sources et fraîcheur »). */
+/* Champs de saisie à 16 px minimum sur tous les écrans : sous 16 px, Safari sur iPhone zoome la page à la mise au point.
+   Spécificité (0,2,1) / (0,1,1) placée en fin de feuille : l'emporte sur les tailles locales (sélecteur de station, etc.). */
+:root input:not([type=checkbox], [type=radio], [type=range], [type=color], [type=file], [type=hidden], [type=button], [type=submit], [type=reset], [type=image]), :root select, :root textarea { font-size: 16px; }
 /* Domaines sans aucune donnée : regroupés et repliés sous une seule ligne (audit des inconnus du 21/10/2026). */
 .ec-unmeasured{margin-top:8px;border:1px dashed var(--line2);border-radius:8px;background:var(--panel)}
 .ec-unmeasured>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:10px 12px;cursor:pointer;list-style:none}
