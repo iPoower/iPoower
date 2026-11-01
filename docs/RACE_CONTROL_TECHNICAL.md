@@ -340,7 +340,11 @@ auto-réparation : run du relais encore actif (en file, en attente, en cours) de
    ▼
 garde anti-tempête (API GitHub, runs de race-control.yml et race-control-watchdog.yml)
    │ run en file ou en cours             → skipped « relais déjà en cours »
-   │ run démarré après le passage à « dû », il y a < 6 min → skipped « cooldown » (publication Pages)
+   │ run qui a PUBLIÉ après le passage à « dû », il y a < 6 min → skipped « cooldown » (publication Pages)
+   │   (liste des jobs, ≤ 3 appels : job relais sauté = différé, étape « Publier » sautée = non dû → ignorés)
+   │ run récent terminé sans succès (échec, annulation) → skipped « espacement » (anti-tempête)
+   │ heure de run > maintenant + 60 s (API décalée, 1er novembre 2026) → ramenée à maintenant ;
+   │   un run publié ainsi daté ne retient l'horloge que 6 min après le passage à « dû »
    ▼
 workflow_dispatch race-control.yml (main, source=horloge)
    → le workflow refait son contrôle de fraîcheur (≥ 8 min), concurrency race-control-relay, puis relais
@@ -353,6 +357,7 @@ workflow_dispatch race-control.yml (main, source=horloge)
 | Pas de dispatch à l'aveugle | liste des runs indisponible → erreur, aucun dispatch | panne de l'API GitHub |
 | Panne GitHub visible | dispatch refusé (401/403/422/5xx) → invocation en échec | erreurs propres, sans secret |
 | Aucun blocage durable | run coincé ≥ 20 min annulé, seulement quand les données sont dues (incident du 7 octobre : watchdog « waiting » 1 h 36) | rejeu de l'incident : âge max 24 min ; run de moins de 20 min jamais annulé ; annulation refusée → erreur, aucun dispatch |
+| Horodatages GitHub dans le futur | heure ramenée à maintenant ; runs différés ou non dus ignorés ; run publié daté du futur borné à 6 min après « dû » | rejeu du 1er novembre (+1 h, CI en cours 20 min) : âge max 31 min au lieu de 78 ; contre-tests par mutation |
 | Aucune donnée personnelle | journal : `t`, `decision`, `age_min`, `action`, `reason`, `status` uniquement | contrôle des clés et du contenu des journaux |
 
 **Observabilité, sans donnée personnelle :**

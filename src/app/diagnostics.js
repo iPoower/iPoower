@@ -31,7 +31,7 @@ function calendarDiagText() {
 function diagRows(forCopy) {
   const r = RAW[UI.loc], wAge = r ? ageOf(r.t) : null, withData = allLocs().filter(l => RAW[l.id]).length;
   let n = 0, bytes = 0; try { for (let i = 0; i < APP_STORAGE.length; i++) { const k = APP_STORAGE.key(i); if (/^twrc\./.test(k)) { n++; bytes += k.length + (APP_STORAGE.getItem(k) || '').length; } } } catch (e) { /* stockage bloqué */ }
-  const relayAge = ageOf(RELAY_AT);
+  const relayAge = ageOf(RELAY_AT), relayDelay = Reliability.relayDelayReason({ age: relayAge, err: RELAY_ERR && noUrl(RELAY_ERR), readFailed: RELAY_READ_FAIL, offline: offlineNow() });
   return [
     ['Application chargée', window.TWRC_BUILD ? `build ${window.TWRC_BUILD} · shell HTML/JS/CSS autonome` : 'version locale'],
     ['Version publiée', VER ? `prod-${VER.run} · ${String(VER.sha).slice(0, 7)} · métadonnées du serveur` : 'indisponible'],
@@ -43,7 +43,7 @@ function diagRows(forCopy) {
     ['Lieux avec météo', `${withData}/${allLocs().length}`],
     ['API météo', (() => { const p = WEATHER_REQUESTS.state(); return p.until > Date.now() ? `HTTP 429 · pause jusqu’à ${hmLocal(p.until)} · ${p.kind}` : `file réseau · ${p.active}/2 requêtes actives · ${p.queued} en attente · état du fournisseur non vérifié`; })()],
     ['Derniers incidents météo', weatherIncidentText()],
-    ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
+    ['Relais (obs.json)', RELAY_AT ? `${freshState(relayAge)} · ${ageTxt(relayAge)}${relayDelay ? ' · RELAIS EN RETARD (> ' + Reliability.RELAY.warnMin + ' min) : ' + relayDelay : RELAY_ERR ? ' · erreur relais : ' + noUrl(RELAY_ERR) : ''}` : RELAY_SEEN ? 'UNAVAILABLE · obs.json sans horodatage' : 'non lu'],
     ['Correction par station', (() => { const o = CX && CX.m && CX.m.obs; return o ? wxStationLine(o) : 'aucune : pas de relevé de station récent à proximité, prévisions du modèle seules'; })()],
     ['Agenda', calendarDiagText()],
     ['Stockage local', (() => { const d = USER_STORE.durability(), valid = d.validatedAt ? ` · validé il y a ${ageTxt(ageOf(d.validatedAt))}` : ' · validation de reprise en attente'; return `${d.status === 'durable' && !(window.TWRC_VAULT && (window.TWRC_VAULT.error || window.TWRC_VAULT.pendingWrites)) ? 'DURABLE' : 'DEGRADED'}${valid} · ${n} clés · ${Math.round(bytes / 1024)} Ko${d.error ? ' · ' + noUrl(d.error) : ''}`; })()],

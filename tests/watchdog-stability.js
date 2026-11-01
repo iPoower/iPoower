@@ -169,11 +169,14 @@ test('aucun secret applicatif lu ni détail privé affiché, même en erreur API
 });
 test('dernier contrôle avant secrets : main et CI revalidés, SHA préalable obligatoire', async () => {
   assert.deepEqual(await recheckApproved({ env: { ...ENV, RELAY_APPROVED_SHA: SHA }, fetchImpl: api([ref(SHA), runs([GREEN]), ref(SHA)]).fetchImpl }), { ok: true });
-  for (const sha of [OTHER, undefined, 'main']) {
+  for (const sha of [undefined, 'main', 'short', OTHER + '\n', OTHER.toUpperCase()]) {
     const transport = api([]);
     assert.deepEqual(await recheckApproved({ env: { ...ENV, RELAY_APPROVED_SHA: sha }, fetchImpl: transport.fetchImpl }), { ok: false, reason: 'invalid_context' });
     assert.equal(transport.calls.length, 0);
   }
+  // SHA autorisé antérieur alors que la tête est verte : l'autorisation est périmée, jamais transférée.
+  assert.deepEqual(await recheckApproved({ env: { ...ENV, RELAY_APPROVED_SHA: OTHER }, fetchImpl: api([ref(SHA), runs([GREEN]), ref(SHA)]).fetchImpl }),
+    { ok: false, reason: 'approval_changed' });
   for (const response of [ref(OTHER), { http: 503 }]) {
     assert.equal((await recheckApproved({ env: { ...ENV, RELAY_APPROVED_SHA: SHA }, fetchImpl: api([response]).fetchImpl })).ok, false);
   }
@@ -299,4 +302,140 @@ test('la CI existante exécute réellement cette suite dans relay-smoke, sans ch
   assert.match(job(ci, 'relay-smoke'), /run: node --test tests\/watchdog-stability.js/);
   assert.match(job(ci, 'validation'), /needs: \[version, unit, tests, tests-rollback, relay-smoke, confidentialite\]/);
   assert.match(job(ci, 'deploy'), /needs\.relay-smoke\.result == 'success'/);
+});
+// — Protection du 1er novembre 2026 : CI de la tête en cours → dernier SHA vert ancêtre (approved_previous).
+// PREV : commit antérieur de main, vert ; SHA : tête de main, CI en cours. Réseau toujours simulé.
+const PREV = 'c'.repeat(40), OLDER = 'd'.repeat(40);
+const HEAD_PENDING = { ...GREEN, id: 200, status: 'in_progress', conclusion: null };
+const PREV_GREEN = { ...GREEN, id: 150, head_sha: PREV };
+const ahead = (base = PREV, extra = {}) => ({ status: 'ahead', ahead_by: 1, behind_by: 0, base_commit: { sha: base }, merge_base_commit: { sha: base }, ...extra });
+async function deferred(list, compare = ahead(), { tail = SHA, allowPrevious = true } = {}) {
+  const transport = api([ref(SHA), runs(list), compare, ref(tail)]);
+  return { result: await check({ env: ENV, fetchImpl: transport.fetchImpl, allowPrevious }), calls: transport.calls };
+}
+test('CI de main en cours : publication avec le dernier SHA vert ancêtre, jamais la tête', async () => {
+  const { result, calls } = await deferred([HEAD_PENDING, PREV_GREEN, { ...GREEN, id: 120, head_sha: OLDER }]);
+  assert.equal(result.state, 'approved'); assert.equal(result.reason, 'approved_previous');
+  assert.equal(result.sha, PREV); assert.notEqual(result.sha, SHA); assert.equal(result.run.id, 150);
+  assert.equal(result.head.sha, SHA); assert.equal(result.head.run.id, 200);
+  assert.equal(calls.length, 4, 'main, runs, compare, main : budget borné');
+  assert(calls[2].endsWith(`/compare/${PREV}...${SHA}?per_page=1`)); assert.equal(calls[0], calls[3]);
+});
+test('dernier vert = SHA dont la DERNIÈRE CI push main est verte ; PR, fork, autre branche ou relance rouge ignorés', async () => {
+  const list = [HEAD_PENDING, { ...PREV_GREEN, id: 190, head_sha: 'e'.repeat(40), event: 'pull_request' },
+    { ...PREV_GREEN, id: 185, head_sha: 'f'.repeat(40), head_repository: { full_name: 'attacker/fork' } },
+    { ...PREV_GREEN, id: 180, head_sha: '1'.repeat(40), head_branch: 'feature' },
+    { ...PREV_GREEN, id: 175, head_sha: '2'.repeat(40), path: '.github/workflows/other.yml' },
+    { ...PREV_GREEN, id: 170, conclusion: 'failure' }, PREV_GREEN, { ...GREEN, id: 120, head_sha: OLDER }];
+  const { result } = await deferred(list, ahead(OLDER));
+  assert.equal(result.reason, 'approved_previous'); assert.equal(result.sha, OLDER, 'PREV relancé en échec : on remonte au vert précédent');
+});
+test('aucun SHA vert antérieur dans la page : différé comme avant (ci_pending), aucun appel compare', async () => {
+  const transport = api([ref(SHA), runs([HEAD_PENDING, { ...PREV_GREEN, conclusion: 'failure' }])]);
+  const result = await check({ env: ENV, fetchImpl: transport.fetchImpl, allowPrevious: true });
+  assert.equal(result.state, 'pending'); assert.equal(result.reason, 'ci_pending'); assert.equal(result.sha, undefined); assert.equal(transport.calls.length, 2);
+});
+test('CI de la tête en échec ou annulée : pas de publication, même avec un ancêtre vert', async () => {
+  for (const conclusion of ['failure', 'cancelled', 'timed_out']) {
+    const transport = api([ref(SHA), runs([{ ...HEAD_PENDING, status: 'completed', conclusion }, PREV_GREEN])]);
+    const result = await check({ env: ENV, fetchImpl: transport.fetchImpl, allowPrevious: true });
+    assert.equal(result.state, 'rejected'); assert.equal(result.sha, undefined); assert.equal(transport.calls.length, 2, 'aucun compare');
+  }
+});
+test('SHA vert non ancêtre ou hors de main : refus, aucun SHA publié', async () => {
+  for (const compare of [ahead(PREV, { status: 'diverged', behind_by: 2 }), ahead(PREV, { status: 'behind', ahead_by: 0, behind_by: 1 }),
+    ahead(PREV, { status: 'identical', ahead_by: 0 }), ahead(PREV, { merge_base_commit: { sha: OLDER } }), ahead(PREV, { base_commit: { sha: OLDER } }),
+    ahead(PREV, { behind_by: 1 }), ahead(PREV, { ahead_by: '1' }), {}]) {
+    const transport = api([ref(SHA), runs([HEAD_PENDING, PREV_GREEN]), compare]);
+    const result = await check({ env: ENV, fetchImpl: transport.fetchImpl, allowPrevious: true });
+    assert.deepEqual(result, { state: 'rejected', reason: 'previous_not_ancestor' }, JSON.stringify(compare));
+  }
+  for (const failure of [{ http: 404 }, { http: 503 }, new Error('ERREUR_PRIVEE')]) {
+    const result = await check({ env: ENV, fetchImpl: api([ref(SHA), runs([HEAD_PENDING, PREV_GREEN]), failure]).fetchImpl, allowPrevious: true });
+    assert.equal(result.state, 'unavailable'); assert.equal(result.sha, undefined);
+  }
+  // main avance pendant la preuve d'ascendance : refus.
+  assert.deepEqual((await deferred([HEAD_PENDING, PREV_GREEN], ahead(), { tail: OTHER })).result, { state: 'rejected', reason: 'sha_changed' });
+});
+test('mode strict (sans --defer-pending) : la tête en cours reste refusée, jamais de SHA antérieur', async () => {
+  const transport = api([ref(SHA), runs([HEAD_PENDING, PREV_GREEN])]), logs = [];
+  assert.equal(await runCli({ argv: [], env: ENV, fetchImpl: transport.fetchImpl, log: s => logs.push(s) }), 1);
+  assert.equal(transport.calls.length, 2); assert(logs[0].startsWith('::error'));
+});
+test('CLI --defer-pending : output state=approved et sha = dernier vert ancêtre ; journal explicite approved_previous', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rc-watchdog-previous-'));
+  try {
+    const output = path.join(dir, 'output'), summary = path.join(dir, 'summary'), logs = [];
+    fs.writeFileSync(output, ''); fs.writeFileSync(summary, '');
+    const code = await runCli({ argv: ['--defer-pending'], env: { ...ENV, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary },
+      fetchImpl: api([ref(SHA), runs([HEAD_PENDING, PREV_GREEN]), ahead(), ref(SHA)]).fetchImpl, log: s => logs.push(s) });
+    assert.equal(code, 0); assert.equal(fs.readFileSync(output, 'utf8'), `state=approved\nsha=${PREV}\n`);
+    assert(!fs.readFileSync(output, 'utf8').includes(SHA), 'la tête non validée n’est jamais autorisée');
+    assert.match(logs[0], /^::notice title=Relais sur le dernier SHA vert::.*approved_previous/);
+    assert.match(fs.readFileSync(summary, 'utf8'), /\*\*approved\*\*.*approved_previous/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+test('contrôle final avant secrets avec un SHA antérieur : accepté seulement si tout est inchangé', async () => {
+  const env = { ...ENV, RELAY_APPROVED_SHA: PREV }, recheck = responses => recheckApproved({ env, fetchImpl: api(responses).fetchImpl });
+  assert.deepEqual(await recheck([ref(SHA), runs([HEAD_PENDING, PREV_GREEN]), ahead(), ref(SHA)]), { ok: true });
+  // Tête devenue verte entre les deux barrières : autorisation périmée (le prochain run prendra la tête).
+  assert.deepEqual(await recheck([ref(SHA), runs([{ ...HEAD_PENDING, status: 'completed', conclusion: 'success' }, PREV_GREEN]), ref(SHA)]), { ok: false, reason: 'approval_changed' });
+  // Tête devenue rouge : refus.
+  assert.deepEqual(await recheck([ref(SHA), runs([{ ...HEAD_PENDING, status: 'completed', conclusion: 'failure' }, PREV_GREEN])]), { ok: false, reason: 'ci_failed' });
+  // Nouveau vert intermédiaire : ce n'est plus le dernier vert.
+  const MID = '3'.repeat(40);
+  assert.deepEqual(await recheck([ref(SHA), runs([HEAD_PENDING, { ...PREV_GREEN, id: 160, head_sha: MID }, PREV_GREEN]), ahead(MID), ref(SHA)]), { ok: false, reason: 'approval_changed' });
+  // Le SHA antérieur a été relancé en échec, n'est plus ancêtre, ou main a avancé.
+  assert.equal((await recheck([ref(SHA), runs([HEAD_PENDING, { ...PREV_GREEN, id: 170, conclusion: 'failure' }, PREV_GREEN])])).ok, false);
+  assert.deepEqual(await recheck([ref(SHA), runs([HEAD_PENDING, PREV_GREEN]), ahead(PREV, { status: 'diverged' })]), { ok: false, reason: 'previous_not_ancestor' });
+  assert.deepEqual(await recheck([ref(OTHER)]), { ok: false, reason: 'sha_changed' });
+});
+test('aucun secret exposé à du code non approuvé : le checkout privilégié suit needs.approved.outputs.sha, jamais github.sha', () => {
+  for (const { source, name } of workflows) {
+    const privileged = job(source, name);
+    const checkouts = privileged.split(/(?=^      - )/m).filter(step => /uses: actions\/checkout/.test(step));
+    const trusted = checkouts.filter(step => /path: trusted/.test(step));
+    assert.equal(trusted.length, 1); assert.match(trusted[0], /ref: \$\{\{ needs\.approved\.outputs\.sha \}\}/);
+    assert(checkouts.every(step => /ref: (?:gh-pages|\$\{\{ needs\.approved\.outputs\.sha \}\})\n/.test(step) && /persist-credentials: false/.test(step)));
+    assert(!/github\.sha|github\.event\.after|github\.head_ref/.test(privileged), 'aucune référence à la tête non validée dans le job privilégié');
+    assert.throws(() => workflowBoundary(source.replace('ref: ${{ needs.approved.outputs.sha }}', 'ref: ${{ github.sha }}'), name));
+  }
+});
+// Contre-tests : chaque garde-fou de approved_previous est retiré tour à tour ; un scénario doit alors échouer.
+function mutant(from, to) {
+  const file = path.join(__dirname, '../tools/relay-trust.js'), src = fs.readFileSync(file, 'utf8');
+  assert.equal(src.split(from).length, 2, 'mutation introuvable ou ambiguë : ' + from);
+  const Module = require('node:module'), m = new Module(file, module); m.filename = file; m.paths = module.paths;
+  m._compile(src.replace(from, to), file); return m.exports;
+}
+async function previousSafe(trust) {
+  const run = async (responses, opts = {}) => trust.check({ env: ENV, fetchImpl: api(responses).fetchImpl, allowPrevious: true, ...opts }).catch(() => ({ state: 'error' }));
+  const ok = await run([ref(SHA), runs([HEAD_PENDING, PREV_GREEN]), ahead(), ref(SHA)]);
+  if (ok.state !== 'approved' || ok.sha !== PREV) return 'nominal';
+  if ((await run([ref(SHA), runs([HEAD_PENDING, PREV_GREEN]), ahead(PREV, { status: 'diverged' }), ref(SHA)])).state === 'approved') return 'ascendance';
+  if ((await run([ref(SHA), runs([HEAD_PENDING, PREV_GREEN]), ahead(PREV, { merge_base_commit: { sha: OLDER } }), ref(SHA)])).state === 'approved') return 'merge-base';
+  if ((await run([ref(SHA), runs([{ ...HEAD_PENDING, status: 'completed', conclusion: 'failure' }, PREV_GREEN]), ahead(), ref(SHA)])).state === 'approved') return 'tête rouge';
+  if ((await run([ref(SHA), runs([HEAD_PENDING, { ...PREV_GREEN, event: 'pull_request' }]), ahead(), ref(SHA)])).state === 'approved') return 'PR';
+  if ((await run([ref(SHA), runs([HEAD_PENDING, { ...PREV_GREEN, id: 170, conclusion: 'failure' }, PREV_GREEN]), ahead(), ref(SHA)])).state === 'approved') return 'relance rouge';
+  if ((await run([ref(SHA), runs([HEAD_PENDING, PREV_GREEN]), ahead(), ref(OTHER)])).state === 'approved') return 'main avancé';
+  const strict = await trust.runCli({ argv: [], env: ENV, fetchImpl: api([ref(SHA), runs([HEAD_PENDING, PREV_GREEN]), ahead(), ref(SHA)]).fetchImpl, log: () => {} }).catch(() => 1);
+  if (strict === 0) return 'mode strict';
+  const pinned = await trust.recheckApproved({ env: { ...ENV, RELAY_APPROVED_SHA: PREV }, fetchImpl: api([ref(SHA), runs([GREEN]), ref(SHA)]).fetchImpl }).catch(() => ({ ok: false }));
+  if (pinned.ok) return 'recheck';
+  return null;
+}
+test('contre-tests approved_previous : chaque mutation dangereuse est détectée', async () => {
+  assert.equal(await previousSafe(require('../tools/relay-trust')), null, 'le code réel passe tous les scénarios');
+  for (const [from, to] of [
+    ["      if (!(await isAncestor(ctx, previous.head_sha, ctx.sha, fetchImpl))) return { state: 'rejected', reason: 'previous_not_ancestor' };\n", ''],
+    ["return c?.status === 'ahead'", "return c?.status !== 'behind'"],
+    ['c.merge_base_commit?.sha === base && ', ''],
+    ['sha: previous.head_sha, head:', 'sha: ctx.sha, head:'],
+    ["if (result.state === 'pending' && allowPrevious)", "if (result.state !== 'approved' && allowPrevious)"],
+    ["    if (result.state === 'approved') return result.run;\n  }\n  return null;", "    if (r.conclusion === 'success') return r;\n  }\n  return null;"],
+    ["      if (await currentMain(ctx, fetchImpl) !== ctx.sha) return { state: 'rejected', reason: 'sha_changed' };\n      return { state: 'approved', reason: 'approved_previous'", "      return { state: 'approved', reason: 'approved_previous'"],
+    ["allowPrevious: argv[0] === '--defer-pending'", 'allowPrevious: true'],
+    ["return result.sha === pinned ? { ok: true } : { ok: false, reason: 'approval_changed' };", 'return { ok: true };']]) {
+    assert.notEqual(await previousSafe(mutant(from, to)), null, 'mutation non détectée : ' + to.slice(0, 60));
+  }
 });
