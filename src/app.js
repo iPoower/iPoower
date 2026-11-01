@@ -1282,7 +1282,9 @@ function renderCurrent() {
 // @include app/race-views.js
 // @include app/garage-view.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
-const TIRE_ALERTS = ['press', 'age', 'mont', 'tread'];
+// Alertes propres aux pneus d'une voiture (et la planification du montage hiver) : jamais dans le verdict « ici, maintenant »
+// d'une autre voiture que celle affichée, ni en tête de l'onglet Météo.
+const TIRE_ALERTS = ['press', 'age', 'mont', 'tread', 'pre'];
 const NOW_HOURS = 3, NOW_EXTRA = ['press', 'age', 'vigi', 'rain15'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
 const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
