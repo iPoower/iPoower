@@ -8,10 +8,10 @@
  * Le journal des trajets n'est ni lu ni écrit ici (clés protégées par JournalArchive).
  */
 const RESET_GUARD = (() => {
-  const KEY = 'twrc.restore.reset.v1', SETTINGS = 'twrc.settings.v1', WORD = 'RÉINITIALISER', MAX = 3;
+  const KEY = 'twrc.restore.reset.v1', SETTINGS = 'twrc.settings.v1', WORD = 'RÉINITIALISER', REPLACE = 'REMPLACER', MAX = 3;
   // Majuscules/minuscules et accent indifférents (clavier iPhone) ; le mot entier reste exigé.
-  const bare = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase();
-  const wordOk = s => bare(s) === bare(WORD);
+  const bare = s => String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+  const wordOk = (s, word = WORD) => bare(s) === bare(word);   // RÉINITIALISER, ou REMPLACER pour remplacer aussi Drive
   const valid = x => !!x && Number.isFinite(x.at) && (x.settings === null || typeof x.settings === 'string');
   function list(store) {
     let o = null; try { o = JSON.parse(store.getItem(KEY) || 'null'); } catch (e) { return []; }
@@ -37,5 +37,5 @@ const RESET_GUARD = (() => {
     write(store, l.slice(0, -1));
     return snap;
   }
-  return { KEY, SETTINGS, WORD, MAX, wordOk, list, read, take, restore };
+  return { KEY, SETTINGS, WORD, REPLACE, MAX, wordOk, list, read, take, restore };
 })();

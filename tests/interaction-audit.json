@@ -179,6 +179,22 @@
     "suite": "e2e97-reinit-protegee.js",
     "result": "réglages rétablis à l’octet, instantané retiré"
   },
+  "sync-recover": {
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "dernière version Drive adoptée à l’octet, aucune écriture Drive, pause levée"
+  },
+  "sync-replace": {
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "saisie du mot REMPLACER demandée, rien envoyé"
+  },
+  "sync-replace-cancel": {
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "pause conservée, rien envoyé"
+  },
+  "sync-replace-go": {
+    "suite": "e2e97-reinit-protegee.js",
+    "result": "pause levée après REMPLACER, envoi à Drive puis synchro normale"
+  },
   "return-home": {
     "suite": "e2e35.js",
     "result": "retour domicile ajouté à la chaîne"

@@ -4,6 +4,10 @@
  */
 const DriveSync = (() => {
   const LOCK = 'twrc.drive.sync.v1', DB = 'twrc.drive.sync.v1';
+  // Pause après réinitialisation : marqueur propre à l'appareil (préfixe twrc.sync. = SyncMerge.device), chiffré
+  // dans le coffre. Tant qu'il existe, rien n'est envoyé à Drive : ni révision, ni profil, ni réservation.
+  const PAUSE = 'twrc.sync.paused.v1', PAUSED_MESSAGE = 'en pause après réinitialisation : choisis Remplacer ou Récupérer';
+  const pausedIn = values => !!values && values[PAUSE] != null;
   const fail = code => { throw Object.assign(new Error(code), { code }); };
   const id = crypt => [...crypt.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, '0')).join('');
   function projection(values) {
@@ -58,14 +62,14 @@ const DriveSync = (() => {
     crypto: crypt = globalThis.crypto, now = () => Date.now(), version, onChange = () => {}, onApplied = () => {} }) {
     const codec = ControlVaultPacket.create({ validateBusiness, crypto: crypt });
     let conflictDetails = []; const resolutions = new Map();
-    let selected = null, handle = null, signal = null, running = false, message = 'local', conflicts = [], lastRecovery = null, stopped = false, localVersion = 0, observedVersion = 0, blocked = false, finishing = Promise.resolve(), finish = () => {};
+    let selected = null, handle = null, signal = null, running = false, message = 'local', conflicts = [], lastRecovery = null, stopped = false, localVersion = 0, observedVersion = 0, blocked = false, paused = false, finishing = Promise.resolve(), finish = () => {};
     const digest = async bytes => [...new Uint8Array(await crypt.subtle.digest('SHA-256', bytes))].map(x => x.toString(16).padStart(2, '0')).join('');
     const canonical = v => Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canonical(v[k])])) : v;
     const fingerprint = v => digest(new TextEncoder().encode(JSON.stringify(canonical(v))));
     function state() {
       if (message === 'synchronisé' && (localVersion !== observedVersion || vault.pendingWrites)) message = 'en attente';
       return { message, conflicts: [...conflicts], conflictDetails: conflictDetails.map(d => ({ ...d })), running, lastRecovery,
-        state: blocked ? 'SYNC_BLOCKED' : running ? 'VERIFYING' : conflicts.length ? 'CONFLICT' : message === 'synchronisé' ? 'SYNCED' : selected ? 'PENDING' : 'LOCAL' };
+        state: paused && !running ? 'PAUSED' : blocked ? 'SYNC_BLOCKED' : running ? 'VERIFYING' : conflicts.length ? 'CONFLICT' : message === 'synchronisé' ? 'SYNCED' : selected ? 'PENDING' : 'LOCAL' };
     }
     const notify = () => onChange(state());
     function changed(event) {
@@ -87,6 +91,16 @@ const DriveSync = (() => {
       return state;
     }
     async function save(s) { await store.write(s); }
+    // POINT D'ARRÊT UNIQUE de toute écriture Drive : le marqueur de pause est relu dans le coffre juste avant
+    // chaque réservation ou envoi (révision ou profil). Pause présente ⇒ aucun appel d'écriture au fournisseur.
+    async function writable() {
+      const snap = await vault.syncSnapshot(SyncMerge.device); guard();
+      if (pausedIn(snap.values)) { paused = true; return fail('paused'); }
+    }
+    const gated = Object.freeze({
+      reserveId: async () => { await writable(); return provider.reserveId(); },
+      uploadProfile: async (...a) => { await writable(); return provider.uploadProfile(...a); },
+      uploadRevision: async (...a) => { await writable(); return provider.uploadRevision(...a); } });
     async function authenticate(s, snap, catalog) {
       const profiles = await provider.profiles(selected.folder); guard();
       if (profiles.length > 1) return fail('conflict');
@@ -98,8 +112,8 @@ const DriveSync = (() => {
           s.profileJob = { bytes: new TextEncoder().encode(JSON.stringify(created.descriptor)), fileId: null }; handle = created.handle;
           await save(s);
         }
-        if (!s.profileJob.fileId) { s.profileJob.fileId = await provider.reserveId(); guard(); await save(s); }
-        const back = await provider.uploadProfile(s.profileJob.fileId, selected.folder, s.profileJob.bytes); guard();
+        if (!s.profileJob.fileId) { s.profileJob.fileId = await gated.reserveId(); guard(); await save(s); }
+        const back = await gated.uploadProfile(s.profileJob.fileId, selected.folder, s.profileJob.bytes); guard();
         s.profile = back.sha256; s.profileJob = null; await save(s);
         // Relecture du catalogue : un démarrage concurrent ne choisit jamais
         // arbitrairement un des deux sels de compte.
@@ -139,13 +153,13 @@ const DriveSync = (() => {
       const job = s.outbox.job;
       if (!job || !(s.bytes instanceof Uint8Array) || await digest(s.bytes) !== job.sha) return fail('stockage');
       guard();
-      if (job.phase === 'sealed') { s.outbox = SyncOutbox.reserved(s.outbox, await provider.reserveId()); guard(); await save(s); }
+      if (job.phase === 'sealed') { s.outbox = SyncOutbox.reserved(s.outbox, await gated.reserveId()); guard(); await save(s); }
       const packet = await DriveTransport.readRacePacket(s.bytes, job.sha); guard();
       const opened = await codec.openWith(s.bytes, handle, version(), job.sha); guard();
       try { SyncRevisions.confirm(job.rev, opened, job.sha, SyncMerge.device); }
       catch { return fail('integrity'); }
       guard();
-      const back = await provider.uploadRevision(s.outbox.job.fileId, selected.folder, packet, job.rev); guard();
+      const back = await gated.uploadRevision(s.outbox.job.fileId, selected.folder, packet, job.rev); guard();
       s.outbox = SyncOutbox.sent(s.outbox); await save(s);
       s.outbox = SyncOutbox.verified(s.outbox, back.proof.fileId, back.proof.fileSha256, now());
       s.base = [job.rev.id]; s.seq = Math.max(s.seq, job.rev.seq); s.bytes = null;
@@ -160,6 +174,9 @@ const DriveSync = (() => {
       if (s.binding && s.binding !== selected.binding) return fail('binding');
       s.binding = selected.binding; s.folder = selected.folder;   // indice de reprise : aucun jeton, aucun code
       let snap = await vault.syncSnapshot(SyncMerge.device); guard();
+      // Pause après réinitialisation : arrêt avant tout accès réseau, sans échec enregistré.
+      if (pausedIn(snap.values)) { paused = true; message = PAUSED_MESSAGE; return; }
+      paused = false;
       const local = projection(snap.values), hash = await fingerprint(local); guard();
       if (s.observed !== hash) { s.outbox = SyncOutbox.noteChange(s.outbox, now()); s.observed = hash; await save(s); }
       if (s.outbox.blocked && !force) { blocked = true; message = SyncOutbox.status(s.outbox).label; return; }
@@ -168,32 +185,7 @@ const DriveSync = (() => {
       const catalog = await provider.list(selected.folder); guard();
       await authenticate(s, snap, catalog); guard();
       if (s.outbox.job) { if (now() < s.outbox.retryAt && !force) return; message = 'envoi'; notify(); await send(s); return; }
-      // Copies immuables : les métadonnées déjà authentifiées d'un fichier (même identifiant, même empreinte)
-      // sont réutilisées ; seul le contenu nécessaire à la fusion est téléchargé (tête à intégrer, ancêtre commun).
-      const confirmed = [], opened = new Map(), refs = new Map(), known = {};
-      const previous = s.known && s.knownFolder === selected.folder ? s.known : {};
-      const load = async rid => {
-        if (opened.has(rid) || !refs.has(rid)) return opened.get(rid);
-        const ref = refs.get(rid), back = await provider.download(ref, undefined, selected.folder); guard();
-        const data = await codec.openWith(back.packet.copyBytes(), handle, version(), ref.fileSha256); guard();
-        SyncRevisions.confirm(ref.revision, data, ref.fileSha256, SyncMerge.device);
-        opened.set(rid, { ref, data, proof: back.proof }); return opened.get(rid);
-      };
-      for (const ref of catalog) {
-        if (!ref.revision) continue; // sauvegardes manuelles conservées, hors graphe A2
-        const memo = previous[ref.fileId];
-        let rev = null;
-        // Mémoire crue seulement si le catalogue annonce exactement le même fichier et la même révision.
-        if (memo && memo.sha === ref.fileSha256)
-          try { rev = SyncRevisions.confirm(ref.revision, { app: SyncRevisions.APP, v: 1, at: new Date(0).toISOString(), rev: memo.rev, values: {} }, ref.fileSha256); } catch { rev = null; }
-        if (!rev) {
-          refs.set(ref.revision.id, ref); await load(ref.revision.id);
-          rev = SyncRevisions.confirm(ref.revision, opened.get(ref.revision.id).data, ref.fileSha256, SyncMerge.device);
-        }
-        refs.set(rev.id, ref); confirmed.push(rev);
-        known[ref.fileId] = { sha: ref.fileSha256, rev: { id: rev.id, parents: [...rev.parents], device: rev.device, seq: rev.seq } };
-      }
-      s.known = known; s.knownFolder = selected.folder;
+      const { confirmed, opened, load } = await openCatalog(s, catalog);
       // Relire après les requêtes : aucun instantané pris avant le réseau ne
       // peut écraser une saisie locale arrivée pendant le téléchargement.
       snap = await vault.syncSnapshot(SyncMerge.device); guard();
@@ -244,6 +236,8 @@ const DriveSync = (() => {
       }
       if ((force || flush) && s.outbox.dirtySince !== null) s.outbox.lastChange = Math.max(0, now() - SyncOutbox.QUIET_MS);
       if (SyncOutbox.next(s.outbox, now()) === 'seal') {
+        // Réinitialisation survenue pendant ce passage : l'instantané à sceller la contient ⇒ jamais scellé.
+        if (pausedIn(snap.values)) { paused = true; message = PAUSED_MESSAGE; await save(s); return; }
         const rev = SyncRevisions.next({ device: s.device, seq: Math.max(s.seq, planned.nextSeq - 1), parents: s.base }, crypt);
         const snapshotAt = now(), data = SyncRevisions.snapshot(projection(snap.values), rev, SyncMerge.device, new Date(snapshotAt).toISOString());
         s.observed = await fingerprint(data.values); guard();
@@ -255,6 +249,76 @@ const DriveSync = (() => {
       // Jamais « envoyées » tant qu'une saisie attend la fenêtre de calme ou un envoi relu (A3).
       const waiting = s.outbox.dirtySince !== null || !!s.outbox.job;
       message = conflicts.length ? (waiting ? 'conflit : choix requis · saisies locales en attente d’envoi' : 'conflit : choix requis · saisies locales envoyées et relues') : SyncOutbox.status(s.outbox).label;
+    }
+    // Copies immuables : les métadonnées déjà authentifiées d'un fichier (même identifiant, même empreinte)
+    // sont réutilisées ; seul le contenu nécessaire à la fusion est téléchargé (tête à intégrer, ancêtre commun).
+    async function openCatalog(s, catalog) {
+      const confirmed = [], opened = new Map(), refs = new Map(), known = {};
+      const previous = s.known && s.knownFolder === selected.folder ? s.known : {};
+      const load = async rid => {
+        if (opened.has(rid) || !refs.has(rid)) return opened.get(rid);
+        const ref = refs.get(rid), back = await provider.download(ref, undefined, selected.folder); guard();
+        const data = await codec.openWith(back.packet.copyBytes(), handle, version(), ref.fileSha256); guard();
+        SyncRevisions.confirm(ref.revision, data, ref.fileSha256, SyncMerge.device);
+        opened.set(rid, { ref, data, proof: back.proof }); return opened.get(rid);
+      };
+      for (const ref of catalog) {
+        if (!ref.revision) continue; // sauvegardes manuelles conservées, hors graphe A2
+        const memo = previous[ref.fileId];
+        let rev = null;
+        // Mémoire crue seulement si le catalogue annonce exactement le même fichier et la même révision.
+        if (memo && memo.sha === ref.fileSha256)
+          try { rev = SyncRevisions.confirm(ref.revision, { app: SyncRevisions.APP, v: 1, at: new Date(0).toISOString(), rev: memo.rev, values: {} }, ref.fileSha256); } catch { rev = null; }
+        if (!rev) {
+          refs.set(ref.revision.id, ref); await load(ref.revision.id);
+          rev = SyncRevisions.confirm(ref.revision, opened.get(ref.revision.id).data, ref.fileSha256, SyncMerge.device);
+        }
+        refs.set(rev.id, ref); confirmed.push(rev);
+        known[ref.fileId] = { sha: ref.fileSha256, rev: { id: rev.id, parents: [...rev.parents], device: rev.device, seq: rev.seq } };
+      }
+      s.known = known; s.knownFolder = selected.folder;
+      return { confirmed, opened, load };
+    }
+    // « Récupérer mes données depuis Drive » (après réinitialisation, pendant la pause) : LECTURE seule sur Drive.
+    // La tête distante unique est adoptée par le chemin de fusion existant (coffre atomique, copie avant fusion) :
+    // réglages et horodatages identiques à l'octet à la version Drive ; journal et saisies additives par union
+    // (SyncMerge.values), jamais réduits. Plusieurs têtes : conflit, rien n'est choisi à la place de l'utilisateur.
+    async function adoptInside() {
+      guard(); const s = await read();
+      if (!selected) return fail('auth');
+      if (s.binding && s.binding !== selected.binding) return fail('binding');
+      if (navigator.onLine === false) return fail('network');
+      const snap = await vault.syncSnapshot(SyncMerge.device); guard();
+      const catalog = await provider.list(selected.folder); guard();
+      await authenticate(s, snap, catalog); guard();   // sans profil distant : création refusée (pause), rien à récupérer
+      const { confirmed, opened, load } = await openCatalog(s, catalog);
+      const planned = SyncRevisions.plan(confirmed, { device: s.device, seq: s.seq, base: s.base, dirty: false });
+      if (planned.action === 'blocked' || planned.heads.length !== 1) return fail('conflict');
+      const head = planned.heads[0], remote = (await load(head)).data;
+      await vault.syncApply(values => {
+        const out = { ...SyncMerge.values(values, remote.values).values, [SyncMerge.SETTINGS]: remote.values[SyncMerge.SETTINGS] };
+        // Horodatages de la version adoptée ; ceux saisis ici après la réinitialisation ne valent plus rien.
+        if (remote.values[SyncMerge.STAMPS] != null) out[SyncMerge.STAMPS] = remote.values[SyncMerge.STAMPS];
+        else if (out[SyncMerge.STAMPS] != null) out[SyncMerge.STAMPS] = '{}';
+        return out;
+      }, async bytes => { s.recovery = await store.recovery(bytes, crypt); lastRecovery = s.recovery; }, current, SyncMerge.device);
+      guard();
+      // Lignée reprise sur la tête adoptée ; un envoi scellé avant la réinitialisation est abandonné (données
+      // locales conservées dans le coffre, rescellées au besoin), jamais publié en tête concurrente.
+      s.base = [head]; s.seq = Math.max(s.seq, ...confirmed.filter(c => c.device === s.device).map(c => c.seq)); s.bytes = null;
+      const after = projection((await vault.syncSnapshot(SyncMerge.device)).values); guard();
+      s.outbox = SyncOutbox.initial();
+      if (await fingerprint(after) === await fingerprint(opened.get(head).data.values)) s.outbox.verified = { id: head, sha: opened.get(head).ref.fileSha256, fileId: opened.get(head).ref.fileId, at: now() };
+      else s.outbox = SyncOutbox.noteChange(s.outbox, now());
+      s.observed = await fingerprint(after); conflicts = []; conflictDetails = []; await save(s); onApplied();
+      return { head, settings: remote.values[SyncMerge.SETTINGS] };
+    }
+    async function adopt() {
+      if (running || stopped || !selected) return fail(running ? 'busy' : 'auth');
+      if (!locks || typeof locks.request !== 'function') return fail('unsupported');
+      running = true; finishing = new Promise(resolve => { finish = resolve; }); message = 'récupération depuis Drive'; notify();
+      try { const r = await locks.request(LOCK, () => adoptInside()); message = 'données récupérées depuis Drive'; return r; }
+      finally { running = false; finish(); notify(); }
     }
     // Choix explicite pour un chemin en conflit ; appliqué à la prochaine vérification.
     function resolve(rid, path, choice) {
@@ -268,6 +332,8 @@ const DriveSync = (() => {
       running = true; finishing = new Promise(resolve => { finish = resolve; }); blocked = false; message = 'vérification'; notify();
       try { await locks.request(LOCK, { ifAvailable: true }, lock => lock ? runInside(force, flush) : undefined); }
       catch (e) {
+        // Pause relue au moment d'écrire : ni échec enregistré, ni nouvelle tentative, aucun envoi.
+        if (e && e.code === 'paused') { paused = true; blocked = false; message = PAUSED_MESSAGE; return; }
         blocked = true;
         const code = e.code || (e.conflict ? 'network' : e.message === 'stockage' ? 'stockage' : 'unexpected');
         message = ({ auth: 'reconnexion', code: 'code requis', CODE_REQUIRED: 'code requis', AUTHENTICATION_FAILED: 'code requis', binding: 'autre compte ou dossier : envoi arrêté', export: 'copie complète à exporter d’abord (Réglages → Sauvegarde → Exporter)', settings: 'enregistre d’abord un réglage sur cet appareil, puis réessaie', unexpected: 'erreur inattendue : données locales conservées, réessaie', conflict: 'conflit : versions conservées', quota: 'espace Drive insuffisant', integrity: 'intégrité à vérifier : envoi bloqué, identifiant conservé', recovery: 'copie de récupération à vérifier', stockage: 'stockage local non confirmé', PRODUCER_TOO_NEW: 'version plus récente : mets Race Control à jour', UNKNOWN_READER_VERSION: 'version chargée non confirmée : vérifie la mise à jour', FILE_TOO_LARGE: 'copie trop volumineuse : envoi arrêté sans troncature', CONSERVATION_BLOCKED: 'contenu à vérifier : copies conservées' })[code] || 'en attente · transfert non confirmé';
@@ -280,11 +346,11 @@ const DriveSync = (() => {
         } catch { /* ne jamais afficher de succès après un échec IDB */ }
       } finally { running = false; finish(); notify(); }
     }
-    return Object.freeze({ run, resolve, select: value => { if (running) return fail('busy'); selected = { ...value }; handle = null; stopped = false; listen(); },
+    return Object.freeze({ run, adopt, resolve, select: value => { if (running) return fail('busy'); selected = { ...value }; handle = null; stopped = false; listen(); },
       pause: () => { stopped = true; handle = null; selected = null; blocked = false; message = 'local'; notify(); return finishing; },
       stop: () => { if (globalThis.removeEventListener) globalThis.removeEventListener('twrc-vault-change', changed); blocked = false; stopped = true; handle = null; selected = null; provider.disconnect(); message = 'local'; notify(); },
       recovery: () => premergeRecovery(store, crypt),
       get status() { return state(); } });
   }
-  return Object.freeze({ create, projection, validateBusiness, premergeRecovery, premergeRecoveries, resumeHint });
+  return Object.freeze({ PAUSE, create, projection, validateBusiness, premergeRecovery, premergeRecoveries, resumeHint });
 })();

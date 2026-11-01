@@ -28,6 +28,7 @@ const POLICY = {
   'twrc.gps': ['device', 'position courante'], 'twrc.place.v1': ['device', 'lieu courant'],
   'twrc.tripstart.v1': ['device', 'trajet en cours sur cet appareil'], 'twrc.tripend.v1': ['device', 'fin du trajet en cours'],
   'twrc.returnhome.v1': ['device', 'retour en cours'],
+  'twrc.sync.paused.v1': ['device', 'pause de la synchronisation après réinitialisation, propre à cet appareil (préfixe twrc.sync.) : jamais envoyée, sinon la pause voyagerait et bloquerait l’autre appareil'],
   'twrc.restore.reset.v1': ['device', 'instantané chiffré des réglages avant réinitialisation, annulable sur cet appareil seulement : il ne voyage jamais par Drive (préfixe twrc.restore.) et n’est jamais réécrit par un import'],
   'twrc.cache.gps': ['derived', 'cache'], 'twrc.croute': ['derived', 'cache d’itinéraire'], 'twrc.trend': ['derived', 'tendance recalculée'],
   'twrc.decision.latest.v1': ['derived', 'dernière décision recalculée'], 'twrc.runtime.v1': ['derived', 'diagnostic d’exécution'],

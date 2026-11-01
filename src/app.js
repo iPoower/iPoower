@@ -4065,58 +4065,106 @@ function renderSettings(force) {
 // @include app/drive-sync-view.js
 // @include app/reset-guard.js
 // Zone danger : réinitialisation séparée de la démo, mot à saisir, instantané chiffré et annulation en un toucher.
-// Drive configuré : les réglages réinitialisés partiraient au dossier Drive (nouvelle version) ; accord séparé exigé.
+// Drive configuré : la réinitialisation met la synchronisation en PAUSE (marqueur DriveSync.PAUSE, propre à
+// l'appareil, chiffré dans le coffre) : rien n'est envoyé avant le choix explicite « Remplacer aussi Drive »
+// (mot REMPLACER) ou « Récupérer mes données depuis Drive ». Le choix survit au rechargement.
 const resetDriveOn = () => !!window.TWRC_DRIVE_CONFIGURED;
-const resetReady = () => RESET_GUARD.wordOk(UI.resetWord) && (!resetDriveOn() || !!UI.resetDrive);
+const resetReady = () => RESET_GUARD.wordOk(UI.resetWord);
+const syncPaused = () => lsGet(DriveSync.PAUSE) != null;
+const driveReady = () => !!(DRIVE_UI.sync && DRIVE_UI.selected && DRIVE_UI.session && DRIVE_UI.session.connected);
+function syncPauseHtml() {
+  if (!syncPaused()) return '';
+  const replace = UI.replaceOpen ? `<div class="fld"><label for="replaceWord">Pour remplacer la sauvegarde Drive par ces réglages réinitialisés, saisis le mot <b>${RESET_GUARD.REPLACE}</b></label><input type="text" id="replaceWord" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(UI.replaceWord || '')}"></div>
+      <div class="chips"><button class="btn" data-act="sync-replace-go"${RESET_GUARD.wordOk(UI.replaceWord, RESET_GUARD.REPLACE) ? '' : ' disabled'}>Remplacer Drive maintenant</button><button class="btn" data-act="sync-replace-cancel">Ne pas remplacer</button></div>` : '';
+  return `<div id="syncPause" role="alert"><p class="sub"><b>⏸ Synchronisation Drive en pause.</b> Rien n’est envoyé à Drive tant que tu n’as pas choisi. L’autre appareil garde ses réglages.</p>
+    <div class="chips"><button class="btn pri" data-act="sync-recover">Récupérer mes données depuis Drive</button><button class="btn" data-act="sync-replace">Remplacer aussi Drive…</button></div>${replace}</div>`;
+}
 function resetZoneHtml() {
   const snap = RESET_GUARD.read(APP_STORAGE), vault = !!window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault';
   const when = snap ? new Date(snap.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   const undo = snap ? `<p class="sub" role="status">Instantané des réglages du ${esc(when)} conservé ${vault ? 'chiffré dans le coffre de' : 'sur'} cet appareil, jamais envoyé à Drive.</p><div class="chips"><button class="btn pri" data-act="reset-undo">Annuler la réinitialisation</button></div>` : '';
   const form = UI.resetOpen ? `<p class="sub">Véhicules, lieux, calibration, réglages et trajet en cours reviennent aux valeurs initiales. Le journal des trajets n’est jamais touché. Un instantané ${vault ? 'chiffré ' : ''}des réglages actuels est d’abord enregistré sur cet appareil : « Annuler la réinitialisation » les rétablit en un toucher.</p>
+      ${resetDriveOn() ? '<p class="sub"><b>Google Drive :</b> la synchronisation passe en pause après la réinitialisation. Rien n’est envoyé avant ton choix : « Remplacer aussi Drive » ou « Récupérer mes données depuis Drive ».</p>' : ''}
       <div class="fld"><label for="resetWord">Pour confirmer, saisis le mot <b>${RESET_GUARD.WORD}</b></label><input type="text" id="resetWord" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(UI.resetWord || '')}"></div>
-      ${resetDriveOn() ? `<p class="sub"><b>Synchronisation Drive :</b> les réglages réinitialisés seront envoyés au dossier Drive comme une nouvelle version. L’autre appareil ne les applique pas seul : il signale un conflit à trancher.</p><div class="fld"><label for="resetDrive"><input type="checkbox" id="resetDrive"${UI.resetDrive ? ' checked' : ''}> J’accepte l’envoi de cette réinitialisation à Drive</label></div>` : ''}
       <div class="chips"><button class="btn" data-act="reset-go"${resetReady() ? '' : ' disabled'}>Réinitialiser maintenant</button><button class="btn" data-act="reset-cancel">Ne pas réinitialiser</button></div>`
     : '<div class="chips"><button class="btn" data-act="reset">Réinitialiser les réglages…</button></div>';
-  return `<h4 id="resetTitle">⚠️ Zone danger</h4>${undo}${form}<p class="sub" id="resetMsg" aria-live="polite">${esc(UI.resetMsg || '')}</p>`;
+  return `<h4 id="resetTitle">⚠️ Zone danger</h4>${syncPauseHtml()}${undo}${form}<p class="sub" id="resetMsg" aria-live="polite">${esc(UI.resetMsg || '')}</p>`;
 }
 function renderResetZone(focus) {
   const z = $('#resetZone'); if (!z) return; z.innerHTML = resetZoneHtml();
-  const input = focus && $('#resetWord'); if (input) input.focus({ preventScroll: true });
+  const input = focus && $(focus); if (input) input.focus({ preventScroll: true });
 }
 function resetApply() {
   PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; USER_STORE.state.dayContext = {}; APP_CONTEXT.weatherPreview = null; DECISION_HISTORY.reset(); liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll();
 }
 async function resetRun() {
-  if (!resetReady()) { UI.resetMsg = RESET_GUARD.wordOk(UI.resetWord) ? 'Coche l’envoi à Drive pour continuer, ou choisis « Ne pas réinitialiser ».' : 'Saisis le mot ' + RESET_GUARD.WORD + ' pour confirmer.'; renderResetZone(); return; }
+  if (!resetReady()) { UI.resetMsg = 'Saisis le mot ' + RESET_GUARD.WORD + ' pour confirmer.'; renderResetZone(); return; }
   if (UI.resetBusy) return;   // double toucher : une seule réinitialisation, un seul instantané
-  const vault = window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault' ? window.TWRC_VAULT : null, before = lsGet(RESET_GUARD.KEY);
+  const vault = window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault' ? window.TWRC_VAULT : null, before = lsGet(RESET_GUARD.KEY), pausedBefore = lsGet(DriveSync.PAUSE);
   UI.resetBusy = true;
   try {
     RESET_GUARD.take(APP_STORAGE, Date.now());
-    // Coffre : l'instantané est chiffré et écrit AVANT toute remise à zéro ; sinon rien ne change.
+    // Pause Drive écrite AVANT les réglages réinitialisés : aucun instantané de synchro ne peut contenir l'un sans l'autre.
+    if (resetDriveOn()) { const mark = JSON.stringify({ v: 1, at: Date.now(), why: 'reset' }); APP_STORAGE.setItem(DriveSync.PAUSE, mark); if (lsGet(DriveSync.PAUSE) !== mark) throw new Error('Pause Drive non confirmée : réinitialisation refusée, réglages inchangés.'); }
+    // Coffre : l'instantané (et la pause) sont chiffrés et écrits AVANT toute remise à zéro ; sinon rien ne change.
     if (vault) { await vault.flush(); if (vault.error) throw new Error('Coffre indisponible (stockage plein ?) : réinitialisation refusée, réglages inchangés.'); }
   } catch (err) {
-    // Instantané refusé : la pile précédente est remise telle quelle, pour ne bloquer aucune autre écriture.
-    try { if (before == null) APP_STORAGE.removeItem(RESET_GUARD.KEY); else APP_STORAGE.setItem(RESET_GUARD.KEY, before); if (vault) await vault.flush(); } catch (e) { /* message ci-dessous */ }
+    // Instantané refusé : pile et pause précédentes remises telles quelles, pour ne bloquer aucune autre écriture.
+    try {
+      if (before == null) APP_STORAGE.removeItem(RESET_GUARD.KEY); else APP_STORAGE.setItem(RESET_GUARD.KEY, before);
+      if (pausedBefore == null) APP_STORAGE.removeItem(DriveSync.PAUSE); else APP_STORAGE.setItem(DriveSync.PAUSE, pausedBefore);
+      if (vault) await vault.flush();
+    } catch (e) { /* message ci-dessous */ }
     UI.resetBusy = false; UI.resetMsg = String(err && err.message || 'Instantané impossible : réinitialisation refusée, réglages inchangés.'); renderResetZone(); return;
   }
-  UI.resetBusy = false; UI.resetOpen = false; UI.resetWord = ''; UI.resetDrive = false; UI.resetMsg = 'Réglages réinitialisés. Le journal des trajets est intact. « Annuler la réinitialisation » rétablit les réglages précédents.';
+  UI.resetBusy = false; UI.resetOpen = false; UI.resetWord = ''; UI.resetMsg = 'Réglages réinitialisés. Le journal des trajets est intact. « Annuler la réinitialisation » rétablit les réglages précédents.' + (resetDriveOn() ? ' Synchronisation Drive en pause jusqu’à ton choix.' : '');
   resetApply();
+}
+async function syncResume() {
+  APP_STORAGE.removeItem(DriveSync.PAUSE);
+  const vault = window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault' ? window.TWRC_VAULT : null;
+  if (vault) await vault.flush();
 }
 function resetUndo() {
   try { RESET_GUARD.restore(APP_STORAGE); }
   catch (err) { UI.resetMsg = String(err && err.message || 'Restauration impossible.'); renderResetZone(); return; }
+  // Réglages d'avant la réinitialisation rétablis : plus rien de réinitialisé à envoyer, la pause est levée.
+  APP_STORAGE.removeItem(DriveSync.PAUSE); UI.replaceOpen = false; UI.replaceWord = '';
   S = loadSettings(); if (!allLocs().some(l => l.id === UI.loc)) UI.loc = S.locs[0].id; if (!S.cars.some(c => c.id === UI.bcar)) UI.bcar = S.cars[0].id;
   UI.resetMsg = 'Réinitialisation annulée : réglages précédents rétablis.';
   rebuild(); renderSettings(); renderAll(); refreshAll();
 }
+// « Récupérer mes données depuis Drive » : lecture seule de Drive, adoption de la dernière version distante
+// (DriveSync.adopt : fusion existante, copie avant fusion, journal par union). La pause n'est levée qu'après succès.
+async function syncRecover() {
+  if (!driveReady()) { UI.resetMsg = 'Connecte d’abord Google Drive (Paramètres → Sauvegarde), puis réessaie. La pause reste active : rien n’est envoyé.'; renderResetZone(); return; }
+  if (UI.syncBusy) return; UI.syncBusy = true; UI.resetMsg = 'Récupération depuis Drive…'; renderResetZone();
+  try {
+    await DRIVE_UI.sync.adopt(); await syncResume();
+    UI.replaceOpen = false; UI.replaceWord = '';
+    UI.resetMsg = 'Données récupérées depuis Drive : réglages identiques à la dernière version Drive, journal des trajets conservé. La synchronisation reprend normalement.';
+    driveApplied(); renderSettings();
+  } catch (e) {
+    const code = e && e.code;
+    UI.resetMsg = (code === 'conflict' ? 'Plusieurs versions sur Drive : règle d’abord le conflit sur l’autre appareil.' : code === 'paused' || code === 'code' ? 'Aucune version Drive récupérable avec ce code.' : 'Récupération impossible (réseau ou Drive).') + ' La pause reste active : rien n’est envoyé.';
+  } finally { UI.syncBusy = false; renderResetZone(); }
+}
+// « Remplacer aussi Drive » : envoi seulement après le mot REMPLACER ; la synchronisation reprend normalement.
+async function syncReplace() {
+  if (!RESET_GUARD.wordOk(UI.replaceWord, RESET_GUARD.REPLACE)) { UI.resetMsg = 'Saisis le mot ' + RESET_GUARD.REPLACE + ' pour remplacer Drive.'; renderResetZone(); return; }
+  if (UI.syncBusy) return; UI.syncBusy = true;
+  try {
+    await syncResume(); UI.replaceOpen = false; UI.replaceWord = '';
+    UI.resetMsg = driveReady() ? 'Pause levée : envoi des réglages réinitialisés à Drive…' : 'Pause levée : les réglages réinitialisés seront envoyés à la prochaine connexion Drive.';
+    renderResetZone();
+    if (driveReady()) { await DRIVE_UI.sync.run(true); UI.resetMsg = 'Drive remplacé : synchronisation reprise (' + DRIVE_UI.sync.status.message + ').'; }
+  } catch (e) { UI.resetMsg = 'Envoi non confirmé : réessaie depuis Paramètres → Sauvegarde.'; }
+  finally { UI.syncBusy = false; renderResetZone(); renderDriveSync(); }
+}
 document.addEventListener('input', e => {
-  const t = e.target; if (!t || t.id !== 'resetWord') return;
-  UI.resetWord = t.value; const go = $('[data-act="reset-go"]'); if (go) go.disabled = !resetReady();
-});
-document.addEventListener('change', e => {
-  const t = e.target; if (!t || t.id !== 'resetDrive') return;
-  UI.resetDrive = !!t.checked; const go = $('[data-act="reset-go"]'); if (go) go.disabled = !resetReady();
+  const t = e.target; if (!t) return;
+  if (t.id === 'resetWord') { UI.resetWord = t.value; const go = $('[data-act="reset-go"]'); if (go) go.disabled = !resetReady(); }
+  if (t.id === 'replaceWord') { UI.replaceWord = t.value; const go = $('[data-act="sync-replace-go"]'); if (go) go.disabled = !RESET_GUARD.wordOk(t.value, RESET_GUARD.REPLACE); }
 });
 // @include app/diagnostics.js
 /* ---------- orchestration du rendu ---------- */
@@ -4365,10 +4413,14 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); }
   else if (a === 'goset') { UI.locsOpen = false; renderLocChips(); const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
-  else if (a === 'reset') { UI.resetOpen = true; UI.resetWord = ''; UI.resetDrive = false; UI.resetMsg = ''; renderResetZone(true); }
-  else if (a === 'reset-cancel') { UI.resetOpen = false; UI.resetWord = ''; UI.resetDrive = false; UI.resetMsg = 'Réinitialisation abandonnée : rien n’a changé.'; renderResetZone(); }
+  else if (a === 'reset') { UI.resetOpen = true; UI.resetWord = ''; UI.resetMsg = ''; renderResetZone('#resetWord'); }
+  else if (a === 'reset-cancel') { UI.resetOpen = false; UI.resetWord = ''; UI.resetMsg = 'Réinitialisation abandonnée : rien n’a changé.'; renderResetZone(); }
   else if (a === 'reset-go') await resetRun();
   else if (a === 'reset-undo') resetUndo();
+  else if (a === 'sync-recover') await syncRecover();
+  else if (a === 'sync-replace') { UI.replaceOpen = true; UI.replaceWord = ''; UI.resetMsg = ''; renderResetZone('#replaceWord'); }
+  else if (a === 'sync-replace-cancel') { UI.replaceOpen = false; UI.replaceWord = ''; UI.resetMsg = 'Drive non remplacé : la pause reste active.'; renderResetZone(); }
+  else if (a === 'sync-replace-go') await syncReplace();
   else if (a === 'geo-search') {
     const input = $('#geoQ'), q = (input.value || '').trim(), box = $('#geoHits'), gen = ++geoSearchGen; window.__hits = [];
     if (q.length < 2) { box.innerHTML = '<span class="sub" role="status">Saisis au moins deux caractères.</span>'; input.focus(); return; }

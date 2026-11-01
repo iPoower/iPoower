@@ -64,14 +64,28 @@ check('clé chiffrée dans le coffre et propre à l’appareil (SyncMerge.device
   const ctx = vm.createContext({}); vm.runInContext(read('sync-merge.js') + ';globalThis.M=SyncMerge;', ctx);
   assert.equal(G.KEY, 'twrc.restore.reset.v1'); assert.equal(rules.secret(G.KEY), true, 'doit être chiffrée dans le coffre'); assert.equal(ctx.M.device(G.KEY), true, 'doit rester sur cet appareil');
 });
-// Ordre exigé dans l'app : mot + Drive vérifiés, instantané confirmé (et coffre écrit) AVANT la remise à zéro.
+// Ordre exigé dans l'app : mot vérifié, instantané confirmé, pause Drive posée, coffre écrit, PUIS remise à zéro.
 const resetRunOk = app => {
   const body = (app.match(/async function resetRun\(\) \{[\s\S]*?\n\}/) || [''])[0];
-  const ready = body.indexOf('if (!resetReady())'), take = body.indexOf('RESET_GUARD.take(APP_STORAGE'), flush = body.indexOf('if (vault) { await vault.flush(); if (vault.error) throw'), apply = body.indexOf('resetApply()');
+  const ready = body.indexOf('if (!resetReady())'), take = body.indexOf('RESET_GUARD.take(APP_STORAGE'), flush = body.indexOf('if (vault) { await vault.flush(); if (vault.error) throw'), apply = body.indexOf('resetApply()'), pause = body.indexOf('APP_STORAGE.setItem(DriveSync.PAUSE, mark)');
   const callers = (app.match(/resetApply\(\)/g) || []).length;   // définition + un seul appel (dans resetRun)
-  return ready >= 0 && take > ready && flush > take && apply > flush && callers === 2 && !/confirm\(['"]Réinitialiser/.test(app);
+  return ready >= 0 && take > ready && pause > take && flush > pause && apply > flush && callers === 2 && !/confirm\(['"]Réinitialiser/.test(app);
 };
-check('app : mot et accord Drive vérifiés, instantané confirmé et coffre écrit avant toute remise à zéro', () => assert.equal(resetRunOk(APP), true));
+check('app : mot vérifié, instantané confirmé, pause Drive posée et coffre écrit avant toute remise à zéro ; plus de case d’accord Drive', () => {
+  assert.equal(resetRunOk(APP), true); assert(!/id="resetDrive"|UI\.resetDrive|J’accepte l’envoi/.test(APP), 'case d’accord Drive encore présente');
+});
+// Choix après réinitialisation : « Remplacer » n'envoie qu'après le mot REMPLACER ; « Récupérer » lève la pause après succès seulement.
+const choiceOk = app => {
+  const rep = (app.match(/async function syncReplace\(\) \{[\s\S]*?\n\}/) || [''])[0], rec = (app.match(/async function syncRecover\(\) \{[\s\S]*?\n\}/) || [''])[0];
+  const word = rep.indexOf('if (!RESET_GUARD.wordOk(UI.replaceWord, RESET_GUARD.REPLACE)) {'), resume = rep.indexOf('await syncResume()'), run = rep.indexOf('DRIVE_UI.sync.run(true)');
+  const adopt = rec.indexOf('await DRIVE_UI.sync.adopt(); await syncResume();');
+  return word >= 0 && resume > word && run > resume && adopt >= 0 && (app.match(/await syncResume\(\)/g) || []).length === 2;
+};
+check('app : « Remplacer aussi Drive » exige REMPLACER avant de lever la pause ; « Récupérer » la lève après l’adoption', () => {
+  assert.equal(choiceOk(APP), true);
+  for (const ok of ['REMPLACER', 'remplacer', ' Remplacer ']) assert.equal(G.wordOk(ok, G.REPLACE), true, ok);
+  for (const ko of ['', 'RÉINITIALISER', 'REMPLACE', 'oui']) assert.equal(G.wordOk(ko, G.REPLACE), false, ko);
+});
 check('app : la commande « Réinitialiser » est dans la zone danger, séparée de « Lancer la démo »', () => {
   const chips = APP.match(/<button class="btn" data-act="demo-sel">[^\n]*/)[0]; assert(!/data-act="reset"/.test(chips), 'reset collé à la démo');
   assert(/class="set-danger" id="resetZone"/.test(APP)); assert(/data-act="reset">Réinitialiser les réglages…/.test(APP));
@@ -82,7 +96,7 @@ const mutations = [
   ['instantané normalisé (perte de l’octet exact)', GUARD, /settings: store\.getItem\(SETTINGS\) \}/, 'settings: JSON.stringify(JSON.parse(store.getItem(SETTINGS))) }'],
   ['restauration sans réécriture des réglages', GUARD, /else store\.setItem\(SETTINGS, snap\.settings\);/, ''],
   ['nouvel instantané écrasant le précédent', GUARD, /\[\.\.\.list\(store\), snap\]/, '[snap]'],
-  ['mot non vérifié', GUARD, /const wordOk = s => bare\(s\) === bare\(WORD\);/, 'const wordOk = s => true;'],
+  ['mot non vérifié', GUARD, /const wordOk = \(s, word = WORD\) => bare\(s\) === bare\(word\);/, 'const wordOk = (s, word = WORD) => true;'],
 ];
 let killed = 0;
 for (const [name, source, from, to] of mutations) {
@@ -95,10 +109,19 @@ const appMutations = [
   ['réinitialisation sans instantané (app)', /RESET_GUARD\.take\(APP_STORAGE, Date\.now\(\)\);/, ''],
   ['remise à zéro avant l’écriture du coffre', /if \(vault\) \{ await vault\.flush\(\);/, 'if (vault) { void 0;'],
   ['retour du simple confirm()', /if \(!resetReady\(\)\) \{/, "if (!confirm('Réinitialiser les réglages ?')) {"],
+  ['pause Drive non posée avant la réinitialisation', /APP_STORAGE\.setItem\(DriveSync\.PAUSE, mark\);/, ''],
 ];
 for (const [name, from, to] of appMutations) {
   const mutated = APP.replace(from, to); assert.notEqual(mutated, APP, 'mutation inapplicable : ' + name);
   assert.equal(resetRunOk(mutated), false, 'contre-test non détecté : ' + name); killed++;
 }
-console.log(`✅ ${killed}/${mutations.length + appMutations.length} mutations rejetées (contre-tests)`);
+const choiceMutations = [
+  ['Remplacer : envoi sans le mot REMPLACER', /if \(!RESET_GUARD\.wordOk\(UI\.replaceWord, RESET_GUARD\.REPLACE\)\) \{/, 'if (false) {'],
+  ['Récupérer : pause levée avant l’adoption', /await DRIVE_UI\.sync\.adopt\(\); await syncResume\(\);/, 'await syncResume(); await DRIVE_UI.sync.adopt();'],
+];
+for (const [name, from, to] of choiceMutations) {
+  const mutated = APP.replace(from, to); assert.notEqual(mutated, APP, 'mutation inapplicable : ' + name);
+  assert.equal(choiceOk(mutated), false, 'contre-test non détecté : ' + name); killed++;
+}
+console.log(`✅ ${killed}/${mutations.length + appMutations.length + choiceMutations.length} mutations rejetées (contre-tests)`);
 console.log(`\n✅ ${n} contrôles de réinitialisation protégée`);
