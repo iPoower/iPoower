@@ -47,6 +47,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.match(src('f1-pure.js'), /\['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'\]\[l\]/);
     assert.match(src('garage.js'), /\['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'\]\[w\.level\]/);
     const app = ['app.js', 'app/weather-view.js'].map(src).join('\n');
+    assert.doesNotMatch(src('app/weather-station.js'), /Risque routier[^\n]*\['Faible', 'Modéré', 'Élevé', 'Critique'\]/, 'risque routier sur l’échelle unique');
     assert.doesNotMatch(app, /'(GO|NO GO|HIGH RISK|CAUTION|ATTENTION|CONDITIONS STABLES|AUCUN SIGNAL CRITIQUE CALCULÉ)'|\['FAIBLE', 'MODÉRÉ', 'ÉLEVÉ', 'CRITIQUE'\]|\['faible', 'modéré', 'élevé', 'critique'\]/);
   });
   // — référence : aucune alerte inventée
