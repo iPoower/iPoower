@@ -14,6 +14,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const set = (hs, hh, patch, n = 1) => { const i = hs.findIndex(x => x.t.slice(11, 13) === hh); for (let k = 0; k < n; k++) Object.assign(hs[i + k], patch); return hs; };
   const trip = (dep, arr, extra = {}) => ({ id: 'go', label: 'trajet aller', from: 'Ville A', to: 'Ville B', dep: '2026-10-06T' + dep, arr: '2026-10-06T' + arr, ...extra });
   const pts = (hs, dep, list) => list.map(([hh, f, km, name]) => ({ t: '2026-10-06T' + hh, f, km, name, x: hs.find(x => x.t === '2026-10-06T' + hh.slice(0, 2) + ':00') }));
+  const ROAD_MAX_FOR = l => [100, 79, 59, 39][l];
   let count = 0;
   const test = (name, fn) => { try { fn(); } catch (error) { error.scenario = name; throw error; } count++; if (!options.quiet) console.log('✅ ' + name); };
 
@@ -71,12 +72,25 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const r = desk({ now: '2026-10-06T10:05', hours: hs });
     assert.equal(r.level, 3); assert.equal(r.hero.dominant, 'ice');
   });
+  // acceptation #290 (cas réel, données fictives) : brouillard en cours jusqu'à 06:00 puis nouvel épisode plus dense 07:00–11:00
+  test('brouillard en cours puis nouvel épisode plus dense : en cours d’abord, jamais « début dans X h »', () => {
+    let hs = set(H(), '00', { vis: 220, code: 45 }, 6); hs = set(hs, '07', { vis: 400, code: 45 }, 1); hs = set(hs, '08', { vis: 160, code: 45 }, 1); hs = set(hs, '09', { vis: 300, code: 45 }, 2);
+    const r = desk({ now: '2026-10-06T03:33', hours: hs });
+    assert.equal(r.hero.title, 'BROUILLARD EN COURS', r.hero.title);
+    assert(r.hero.lines.includes('Maintenant 220 m · dissipation vers 06:00'), r.hero.lines.join(' | '));
+    assert(r.hero.lines.includes('Nouvel épisode 07:00–11:00 · minimum 160 m vers 08:00'), r.hero.lines.join(' | '));
+    assert(!r.hero.lines.some(l => /d[ée]but(?: estimé)? dans/i.test(l)), r.hero.lines.join(' | '));
+    assert(r.matters.some(m => m.text === 'Brouillard jusqu’à 06:00 · visibilité 220 m maintenant · nouvel épisode 07:00–11:00, minimum 160 m vers 08:00'), JSON.stringify(r.matters));
+    const fog = r.phen.find(p => p.id === 'fog');
+    assert.equal(fog.line, 'Visibilité 220 m maintenant · nouvel épisode 07:00–11:00, 160 m vers 08:00'); assert(!/🟢|🟡|🟠|🔴/.test(fog.line), 'pas de pictogramme en double');
+    assert.deepEqual(fog.detail.slice(0, 2), ['Épisode en cours jusqu’à 06:00 · 220 m maintenant', 'Épisode 07:00–11:00 · minimum 160 m vers 08:00']);
+  });
   test('brouillard en cours à 350 m : 🟠, fin probable, visibilité minimale', () => {
     const hs = set(H(), '05', { vis: 350, code: 45 }, 3);
     const r = desk({ now: '2026-10-06T05:30', hours: hs });
     assert.equal(r.level, 2); assert.equal(r.hero.title, 'BROUILLARD EN COURS');
     assert(r.hero.lines.includes('Fin probable vers 08:00')); assert(r.hero.lines.some(l => /Visibilité minimale 350 m/.test(l)));
-    assert(r.matters.some(m => /^Brouillard jusqu’à 08:00 · visibilité 350 m$/.test(m.text)), JSON.stringify(r.matters));
+    assert(r.matters.some(m => /^Brouillard jusqu’à 08:00 · visibilité 350 m maintenant$/.test(m.text)), JSON.stringify(r.matters));
     assert.equal(r.timeline.moments[0].t, 'maintenant'); assert(r.timeline.moments.some(m => m.t === '08:00' && /dissipation/.test(m.text)));
   });
   test('seuils de visibilité : 999 m 🟡, 499 m 🟠, 199 m 🔴, 1 000 m rien', () => {
@@ -170,18 +184,24 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const hs = H();
     const r = desk({ now: '2026-10-06T07:00', hours: hs, trips: [{ ...trip('07:45', '08:25'), glare: { ts: '2026-10-06T08:05' }, points: pts(hs, '07:45', [['07:45', 0, 0], ['08:25', 1, 44]]) }] });
     const sun = r.phen.find(p => p.id === 'sun'); assert.equal(sun.lv, 1); assert.match(sun.line, /Vers 08:05/);
-    const f = r.road.factors.find(f => f.id === 'sun'); assert.equal(f.pen, 5); assert.equal(r.road.score, 95);
+    const f = r.road.factors.find(f => f.id === 'sun'); assert.equal(f.pen, 5); assert.equal(r.road.raw, 95);
+    // 🟡 soleil rasant : le score affiché reste dans la tranche du niveau (≤ 79), jamais « 95/100 » à côté d'une vigilance
+    assert.equal(r.road.level, 1); assert.equal(r.road.score, 79); assert.equal(r.road.capped, true);
     assert.equal(r.trip.crit.id, 'sun');
   });
-  test('conditions route : score = 100 − somme des pénalités, niveau jamais plus doux que le pire facteur', () => {
+  test('conditions route : brut = 100 − somme des pénalités, niveau = pire facteur, score affiché jamais plus optimiste que le niveau', () => {
     const hs = set(H(), '10', { vis: 180, P: 2.5, Pl: 2.5, gust: 72, T: 2, RH: 97 }, 2);
     const r = desk({ now: '2026-10-06T10:00', hours: hs });
     const sum = r.road.factors.reduce((a, f) => a + f.pen, 0);
-    assert.equal(r.road.score, Math.max(0, 100 - sum)); assert.equal(r.road.score, 100 - 35 - 20 - 20 - 5);
+    assert.equal(r.road.raw, Math.max(0, 100 - sum)); assert.equal(r.road.raw, 100 - 35 - 20 - 20 - 5); assert.equal(r.road.score, 20);
     assert.equal(r.road.level, 3); assert(r.road.factors.every(f => typeof f.why === 'string' && f.why.length));
     assert.deepEqual(r.road.factors.map(f => f.id), ['temp', 'wind', 'humid', 'rain', 'ice', 'fog']);
     const fog = desk({ now: '2026-10-06T10:00', hours: set(H(), '11', { vis: 150 }) }).road;
-    assert.equal(fog.score, 65); assert.equal(fog.level, 3);   // 65/100 seul serait 🟡 : le brouillard < 200 m impose 🔴
+    assert.equal(fog.raw, 65); assert.equal(fog.level, 3);   // 65/100 seul serait 🟡 : le brouillard < 200 m impose 🔴
+    assert.equal(fog.score, 39); assert.equal(fog.capped, true);   // jamais « 65/100 · critique » : le score affiché reste dans la tranche 🔴
+    assert(fog.factors.every(f => f.pen === 0 || f.lv >= 1), 'un critère qui retire des points n’est jamais vert');
+    const gust = desk({ now: '2026-10-06T10:00', hours: set(H(), '11', { gust: 60 }) }).road, wf = gust.factors.find(f => f.id === 'wind');
+    assert(wf.pen > 0 && wf.lv >= 1, 'rafales 60 km/h : points retirés, donc jamais en vert · ' + JSON.stringify(wf)); assert(gust.score <= ROAD_MAX_FOR(gust.level));
   });
   test('ce qui compte : 5 lignes au plus, la plus grave d’abord', () => {
     const hs = set(set(set(set(H(), '10', { vis: 180 }), '12', { gust: 72 }), '14', { P: 3, Pl: 3 }), '16', { Tr: -3, ice: { level: 3, score: 80 } });
@@ -229,7 +249,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert(noDryClaim(r), JSON.stringify({ m: r.matters, h: r.hero.lines }));
     const m = r.matters.find(x => /Pluie possible pendant le trajet aller \(07:30\)/.test(x.text));
     assert(m && m.lv === 1 && /probabilité 90 % \(modèle de base\)/.test(m.text) && /quantité négligeable selon AROME \(0,0 mm\/h\)/.test(m.text), JSON.stringify(r.matters));
-    assert.equal(r.road.score, 95, 'la prudence du score reste');   // pénalité « probabilité seule » conservée
+    assert.equal(r.road.raw, 95, 'la prudence du score reste'); assert(r.road.score <= 79 && r.road.level >= 1, 'pluie possible : 🟡 et score dans sa tranche');   // pénalité « probabilité seule » conservée
     const f = r.road.factors.find(x => x.id === 'rain'); assert.equal(f.lv, 1); assert.match(f.why, /^pluie possible : probabilité 90 %/);
     const rain = r.phen.find(p => p.id === 'rain'); assert.equal(rain.lv, f.lv); assert.equal(rain.line, 'Possible maintenant · peu d’eau prévue');
     assert(rain.detail.some(d => /Modèles en désaccord/.test(d)), rain.detail.join(' | '));
@@ -315,7 +335,8 @@ if (require.main === module) {
     { name: 'seuil de brouillard abaissé à 500 m', from: 'vis < 1000 ? 1 : 0', to: 'vis < 500 ? 1 : 0' },
     { name: 'verglas ÉLEVÉ rétrogradé en orange', from: 'iceLv >= 2 ? 3 : iceLv === 1 ? 2 : 0', to: 'iceLv >= 2 ? 2 : iceLv === 1 ? 2 : 0' },
     { name: 'pluie verglaçante ignorée', from: 'FZ.has(code) ? 3 :', to: '' },
-    { name: 'niveau route limité au score (pire facteur ignoré)', from: 'level: Math.max(sl, ...F.map(f => f.lv))', to: 'level: sl' },
+    { name: 'niveau route limité au score (pire facteur ignoré)', from: 'const level = Math.max(sl, ...F.map(f => f.lv))', to: 'const level = sl' },
+    { name: 'score affiché plus optimiste que le niveau (« 65/100 · critique »)', from: 'shown = Math.min(score, ROAD_BAND_MAX[level])', to: 'shown = score' },
     { name: 'neige comptée comme pluie', from: 'if (!snowy) o.rain', to: 'o.rain' },
     { name: 'trajet passé gardé dans la chronologie', from: 'mins(t.arr || t.dep) >= nowM - 1', to: 'true' },
     { name: 'rassurance « pas de gel » affichée par temps doux (remplissage)', from: 'tmin != null && tmin <= 5', to: 'tmin != null' },

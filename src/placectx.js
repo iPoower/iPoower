@@ -12,9 +12,13 @@
    Fin d'une confirmation, sans durée arbitraire tant que le contexte suffit : action « Je quitte », départ détecté (trajet
    vivant parti après la confirmation), relevé précis cohérent loin du lieu ; plafonds de sécurité : travail → fin de la
    journée de la confirmation, domicile ou autre lieu → 20 h.
-   Garde de cohérence : un relevé qui impliquerait plus de 200 km/h depuis le dernier état fiable est rejeté, même précis. */
+   Garde de cohérence : un relevé qui impliquerait plus de 200 km/h depuis le dernier état fiable est rejeté, même précis.
+   Garde de vraisemblance : un relevé NON précis (> 100 m) à plus de 50 km de tous les lieux enregistrés, ou sans aucun lieu
+   enregistré pour le comparer, n'est jamais utilisé en silence (une base Wi-Fi peut annoncer ± 200 m à des centaines de km).
+   Il reste en attente jusqu'au choix explicite de l'utilisateur (« Utiliser mon lieu principal » ou « Utiliser quand même »).
+   Un relevé précis (≤ 100 m) loin des lieux reste accepté : c'est un voyage. */
 const PLACE_ACC_GPS = 100, PLACE_ACC_APPROX = 1500, PLACE_GPS_AGE = 10 * 60e3, PLACE_APPROX_AGE = 30 * 60e3, PLACE_LAST_AGE = 12 * 3600e3;
-const PLACE_VMAX = 200, PLACE_HOME_CAP = 20 * 3600e3;
+const PLACE_VMAX = 200, PLACE_HOME_CAP = 20 * 3600e3, PLACE_PLAUSIBLE_KM = 50;
 const PLACE_KIND = { work: { icon: '🏢', at: 'AU TRAVAIL', arrive: 'Bien arrivé', already: 'Je suis déjà au travail', leave: 'Je quitte le travail' },
   home: { icon: '🏠', at: 'À LA MAISON', arrive: 'Bien rentré', already: 'Je suis déjà chez moi', leave: 'Je pars de chez moi' },
   custom: { icon: '📍', at: 'SUR PLACE', arrive: 'Bien arrivé', already: 'Je suis sur place', leave: 'Je pars' } };
@@ -26,9 +30,24 @@ function placeDistance(a, b) {
   const R = Math.PI / 180, h = Math.sin((b.lat - a.lat) * R / 2) ** 2 + Math.cos(a.lat * R) * Math.cos(b.lat * R) * Math.sin((b.lon - a.lon) * R / 2) ** 2;
   return 12742 * Math.asin(Math.sqrt(Math.min(1, h)));
 }
+// Vraisemblance d'un relevé non précis par rapport aux lieux enregistrés. `forced` : zone acceptée explicitement par
+// l'utilisateur (« Utiliser quand même ») ; un relevé à moins de 50 km de cette zone est alors accepté.
+function placePlausibility(fix, places, forced) {
+  if (!fix || placeFixClass(fix) === 'gps') return { ok: true };
+  const acc = Math.round(fix.acc);
+  if (forced && Number.isFinite(forced.lat) && Number.isFinite(forced.lon) && placeDistance(forced, fix) <= PLACE_PLAUSIBLE_KM) return { ok: true, forced: true };
+  const list = (places || []).filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lon));
+  if (!list.length) return { ok: false, code: 'unverifiable', km: null, acc, reason: `position approximative non vérifiable (± ${acc} m) : aucun lieu enregistré pour la comparer` };
+  const near = list.map(p => ({ p, d: placeDistance(p, fix) })).sort((a, b) => a.d - b.d)[0];
+  if (near.d > PLACE_PLAUSIBLE_KM) {
+    const km = Math.round(near.d);
+    return { ok: false, code: 'far', km, acc, placeId: near.p.id || null, reason: `position approximative à ≈ ${km} km de tes lieux enregistrés (précision annoncée ± ${acc} m) : à confirmer` };
+  }
+  return { ok: true, km: Math.round(near.d) };
+}
 // Entrée des observations : qualité physique et hystérésis du lieu sont distinctes. Un premier point de départ
 // reste disponible pour l'automate de mouvement, mais ne suffit pas à déplacer le lieu logique.
-function placeObserve({ fix, previous, logical, context, pending, places, now }) {
+function placeObserve({ fix, previous, logical, context, pending, places, now, forced }) {
   const no = reason => ({ accept: false, reason, pending: null, logical });
   if (!fix || !Number.isFinite(fix.lat) || !Number.isFinite(fix.lon) || Math.abs(fix.lat) > 90 || Math.abs(fix.lon) > 180 || !Number.isFinite(fix.acc) || fix.acc < 0 || !Number.isFinite(fix.ts)) return no('relevé navigateur invalide');
   if (fix.ts > now + 60e3) return no('horodatage futur');
@@ -42,7 +61,11 @@ function placeObserve({ fix, previous, logical, context, pending, places, now })
     const d = Math.max(0, placeDistance(previous, fix) - 2 * (previous.acc + fix.acc) / 1000);
     if (d / ((fix.ts - previous.ts) / 3600e3) > PLACE_VMAX) return no('saut GPS impossible entre deux observations');
   }
-  if (cls !== 'gps') return { accept: true, logical: fix, pending: null, reason: 'position navigateur approximative, lieu à confirmer' };
+  if (cls !== 'gps') {
+    const plausible = placePlausibility(fix, places, forced);
+    if (!plausible.ok) return { ...no(plausible.reason), implausible: plausible };
+    return { accept: true, logical: fix, pending: null, reason: plausible.forced ? 'position approximative acceptée par l’utilisateur' : 'position navigateur approximative, lieu à confirmer' };
+  }
   const current = context && context.place, close = (places || []).map(p => ({ p, d: placeDistance(p, fix) }))
     .filter(x => x.d <= Math.max(0.15, 2 * fix.acc / 1000)).sort((a, b) => a.d - b.d);
   // Deux géofences qui se recouvrent ne permettent pas de choisir silencieusement l'une des adresses.
@@ -96,8 +119,9 @@ function placeContext(input) {
   const snap = (f, r) => { const hits = places.map(p => ({ p, d: km(p, f) })).filter(x => x.d <= r).sort((a, b) => a.d - b.d); return r < 1.5 && hits.length !== 1 ? null : hits[0] || null; };
   if (fix && (cls === 'gps' && age <= PLACE_GPS_AGE || cls === 'approx' && age <= PLACE_APPROX_AGE)) {
     // garde de cohérence : un saut impossible depuis le dernier lieu fiable est écarté, même s'il paraît précis
-    const lp = lastOk && byId(lastOk.placeId);
-    if (lp && fix.ts > lastOk.at && speedFrom(lp, lastOk.at, fix) > PLACE_VMAX && km(lp, fix) > Math.max(0.5, 3 * fix.acc / 1000)) {
+    const lp = lastOk && byId(lastOk.placeId), plausible = cls === 'gps' ? { ok: true } : placePlausibility(fix, places, inp.forced);
+    if (!plausible.ok) rejected.push({ source: 'position approximative', acc: fix.acc, reason: plausible.reason, implausible: plausible });
+    else if (lp && fix.ts > lastOk.at && speedFrom(lp, lastOk.at, fix) > PLACE_VMAX && km(lp, fix) > Math.max(0.5, 3 * fix.acc / 1000)) {
       rejected.push({ source: cls === 'gps' ? 'GPS' : 'position approximative', acc: fix.acc, reason: `saut impossible depuis le dernier lieu fiable (${Math.round(km(lp, fix))} km)` });
     } else {
       const s = snap(fix, cls === 'gps' ? Math.max(0.15, 2 * fix.acc / 1000) : 1.5);

@@ -16,7 +16,7 @@ const F1Pure = (() => {
   ]);
   const finite = Number.isFinite, text = x => typeof x === 'string' ? x : '';
   const level = x => finite(x) ? Math.max(0, Math.min(3, Math.floor(x))) : null;
-  const label = l => ['STABLE', 'SURVEILLANCE', 'PRUDENCE', 'DANGER'][l] || 'INDISPONIBLE';
+  const label = l => ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'][l] || 'INDISPONIBLE';   // échelle unique de l'app
   const condition = key => ({ wet: 'Chaussée humide', rain: 'Pluie', fog: 'Brume / brouillard', snow: 'Neige', ice: 'Verglas' }[key] || text(key));
   function raceEngineer({ decision, confidence, trip, car } = {}) {
     if (!decision || !confidence) return { state: 'indisponible', title: 'Briefing indisponible', lines: ['En attente du cockpit décisionnel.'] };

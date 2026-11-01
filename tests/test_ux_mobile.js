@@ -27,7 +27,7 @@ test('mobile : bandeau LIVE sur deux lignes, cibles de 44 pt et titre réservé 
 test('libellés : tutoiement, onglet Trajet et risque explicite', () => {
   assert.match(fs.readFileSync(path.join(root, 'app', 'trip-view.js'), 'utf8'), /placeholder="Où vas-tu \?"/);
   assert.match(fs.readFileSync(path.join(root, 'app.js'), 'utf8'), /🧭<\/span> Trajet<\/button>/);
-  assert.match(fs.readFileSync(path.join(root, 'app', 'weather-view.js'), 'utf8'), /'\/100 · risque '/);
+  assert.match(fs.readFileSync(path.join(root, 'app', 'weather-view.js'), 'utf8'), /'\/100 · ' \+ LV\[r\.level\]\.name/);
 });
 const F1_EN = /\b(twin garage|live route|next mission|the garage|race engineer|track conditions|tyre management|strategy a\/b|telemetry replay)\b/i;
 const visible = code => code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/.*$/gm, '$1');

@@ -96,5 +96,21 @@ try {
       JSON.stringify({ run: 1, sha, build: 'x' }), JSON.stringify({ run: 1, sha: sha + '\ngo=1', build: '50988798eb7c' })])
       assert.deepEqual(run(bad), { go: '0' }, bad);
   });
+  check('contrôle de déploiement : TWRC_DATA_BASE non vide, flux routier en JSON, fraîcheur 30 min (lot 2)', () => {
+    const { verify, STALE_MIN } = require(path.join(ROOT, 'tools/check-data-base.js')), now = Date.parse('2026-11-23T05:00:00Z');
+    const page = b => '<script>window.TWRC_BUILD="x";window.TWRC_DATA_BASE=' + JSON.stringify(b) + ';</script>';
+    const feed = min => JSON.stringify({ checkedAt: new Date(now - min * 60000).toISOString() });
+    assert.equal(STALE_MIN, 30);
+    const ok = verify({ html: page(BASE), roadStatus: 200, roadType: 'application/json', roadText: feed(8), now });
+    assert(ok.ok && !ok.warnings.length && ok.ageMin === 8, JSON.stringify(ok));
+    const stale = verify({ html: page(BASE), roadStatus: 200, roadType: 'application/json', roadText: feed(45), now });
+    assert(stale.ok && stale.warnings.length === 1 && /45 min/.test(stale.warnings[0]), 'ancien : avertissement, pas de blocage');
+    assert.equal(verify({ html: page(''), roadStatus: 200, roadType: 'application/json', roadText: feed(1), now }).ok, false, 'base vide');
+    assert.equal(verify({ html: page(BASE), roadStatus: 200, roadType: 'text/html', roadText: '<!doctype html>', now }).ok, false, 'repli HTML');
+    assert.equal(verify({ html: page(BASE), roadStatus: 404, roadType: '', roadText: '', now }).ok, false, 'flux absent');
+    assert.equal(verify({ html: page('http://x.test/a/'), roadStatus: 200, roadType: 'application/json', roadText: feed(1), now }).ok, false, 'HTTP refusé');
+    const wf = fs.readFileSync(path.join(ROOT, '.github/workflows/cloudflare.yml'), 'utf8');
+    assert.match(wf, /node tools\/check-data-base\.js "https:\/\/\$PROJECT\.pages\.dev"/, 'contrôle branché dans le déploiement Cloudflare');
+  });
 } finally { fs.rmSync(path.join(ROOT, WORK), { recursive: true, force: true }); }
 console.log(n + '/' + n + ' scénarios OK · construction pour origine dédiée, aucune publication');

@@ -175,4 +175,29 @@ test('compteur : relevé hebdomadaire dû à partir de 7 jours, relevé le plus 
  assert.equal(o('2026-10-15','2026-10-21').due,false);assert.equal(o('2026-10-14','2026-10-21').due,true);
  assert.equal(o('2026-10-14','2026-10-21').last.km,1000);assert.equal(o('2026-10-14','2026-10-21').ageDays,7);
 });
+test('données insuffisantes : chaque donnée manquante porte son action, aucune ligne orpheline',()=>{
+ const v={Number,Array,Object,String,Set,JSON,Date,Math,esc:x=>String(x).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]))};
+ vm.createContext(v);vm.runInContext(fs.readFileSync(path.join(__dirname,'../src/app/garage-scene.js'),'utf8')+';this.todo=garageTodoHtml;this.RULES=GARAGE_TODO;',v);
+ const rows=G.comparison([{id:'car-a',name:'Voiture A',tyre:{type:'summer',model:null,size:null,tread:{mm:3,estimated:true,date:null},pressure:{bar:2.3,checked:null}}},{id:'car-b',name:'Voiture B',tyre:null}],null,null);
+ const all=rows.flatMap(r=>r.missing);
+ // Couplage garage.js / vue : toute donnée manquante (hors évaluation du trajet) a une règle d'action
+ all.filter(t=>!/^Évaluation du trajet/.test(t)).forEach(t=>assert(v.RULES.some(([re])=>re.test(t)),'sans action : '+t));
+ const html=v.todo(rows[0].missing,'car-a');
+ for(const [target,label] of [['model','Saisir le modèle'],['size','Saisir les dimensions'],['tread','Mesurer la profondeur'],['pressure','Contrôler la pression']])
+  assert.match(html,new RegExp('data-act="garage-quick" data-car="car-a" data-garage-target="'+target+'">'+label));
+ assert.match(v.todo(rows[1].missing,'car-b'),/data-act="goset-cfg">Compléter la fiche/);
+ assert.match(html,/<li><span>Évaluation du trajet indisponible ou incomplète<\/span><\/li>/,'ligne informative sans bouton');
+ assert.equal(v.todo([],'car-a'),'');
+});
 console.log(n+'/'+n+' scénarios Garage validés');
+test('rythme km/jour : seulement entre deux relevés réels, plausible, sinon « rythme inconnu »',()=>{
+ const R=G.kmPerDay;
+ assert.equal(R([{d:'2026-10-31',km:252071}]),null,'un seul relevé (voiture ajoutée avec un compteur élevé)');
+ assert.equal(R([{d:'2026-10-18',km:0},{d:'2026-10-31',km:252071}]),null,'relevé à 0 = non réel : jamais compteur total ÷ jours');
+ assert.equal(R([{d:'2026-10-18',km:2520},{d:'2026-10-31',km:252071}]),null,'saut impossible (> 1 500 km/j) : rythme inconnu');
+ assert.equal(R([{d:'2026-10-27',km:12000},{d:'2026-10-31',km:12300}]),null,'moins de 7 jours');
+ assert.equal(R([{d:'2026-10-21',km:12000},{d:'2026-10-31',km:12700}]),70);
+ assert.equal(R([{d:'2026-10-31',km:12700},{d:'2026-10-21',km:12000}]),70,'ordre de saisie indifférent');
+ const m=G.maintenance({odo:[{d:'2026-10-30',km:252071}],maint:{rev:{d:'2026-01-10',km:240000,everyKm:20000}}},{today:'2026-10-31',kmPerDay:R([{d:'2026-10-30',km:252071}])});
+ assert.equal(m.odo.kmPerDay,null,'entretien : aucune date estimée sans rythme réel');
+});
