@@ -3346,10 +3346,8 @@ function datedFicheTread(car, axes) {
   if (changed) car.tire.treads = hist;
   return changed;
 }
-function kmPerDay(car) {
-  const o = (car.odo || []).slice().sort((x, y) => x.d < y.d ? -1 : 1); if (o.length < 2) return null;
-  const days = dayDiff(o[0].d, o[o.length - 1].d); return days >= 7 ? (o[o.length - 1].km - o[0].km) / days : null;
-}
+// Rythme : règle unique de Garage.kmPerDay (deux relevés réels, plausible), utilisée par le Garage, l'entretien et l'usure.
+function kmPerDay(car) { return Garage.kmPerDay(car && car.odo); }
 function wearInfo(car) {
   const t = car.tire, history = treadHistory(t), thr = t.type === 'winter' ? 4 : 3, out = { last: history.last, thr };
   if (history.rate != null) {
