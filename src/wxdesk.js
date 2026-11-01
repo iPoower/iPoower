@@ -295,7 +295,8 @@ function wxDesk(input) {
     const iceLv = mx('ice'), fz = xs.some(x => FZ.has(n(x.code)) || (x.ice && x.ice.level >= 2)), iceMod = xs.some(x => x.ice && x.ice.level === 1);
     const humid = !mx('rain') && xs.some(wxdHumidAir);
     const F = [];
-    const add = (id, label, lv, pen, why) => F.push({ id, label, lv, pen, why });
+    // Cohérence couleur / points : un critère qui retire des points n'est jamais affiché en vert.
+    const add = (id, label, lv, pen, why) => F.push({ id, label, lv: Math.max(lv || 0, pen > 0 ? 1 : 0), pen, why });
     add('temp', 'Température', Tm != null && (Tm <= 3 || (TM != null && TM >= 35)) ? 1 : 0, Tm != null && (Tm <= 3 || (TM != null && TM >= 35)) ? ROAD_PEN.temp : 0,
       Tm == null ? 'non fournie' : Tm <= 3 ? `air jusqu’à ${r1(Tm)} °C : chaussée froide` : TM >= 35 ? `air jusqu’à ${r0(TM)} °C` : `air ${r0(Tm)} → ${r0(TM)} °C`);
     add('wind', 'Vent', mx('wind'), gm == null ? 0 : gm >= 90 ? ROAD_PEN.wind[0] : gm >= 70 ? ROAD_PEN.wind[1] : gm >= 55 ? ROAD_PEN.wind[2] : 0, gm == null ? 'non fourni' : `rafales ${r0(gm)} km/h`);
@@ -310,7 +311,11 @@ function wxDesk(input) {
     if (glare) add('sun', 'Soleil rasant', 1, ROAD_PEN.sun, 'soleil bas dans l’axe de la route');
     const score = Math.max(0, 100 - F.reduce((a, f) => a + f.pen, 0)), sl = score >= 80 ? 0 : score >= 60 ? 1 : score >= 40 ? 2 : 3;
     const missing = ['T', 'Tr', 'P', 'RH', 'vis', 'gust'].filter(k => !xs.length || xs.some(x => n(x[k]) == null));
-    return { score: missing.length ? null : score, level: Math.max(sl, ...F.map(f => f.lv)), factors: F, missing };
+    // Le niveau affiché retient le pire critère (un danger n'est jamais dilué dans la moyenne) ; le score n'est alors jamais
+    // plus optimiste que ce niveau (plafond de sa tranche), pour qu'un « 60/100 » ne côtoie jamais un niveau critique.
+    // raw = 100 − somme des pénalités (score explicable, toujours fourni) ; capped = vrai si le pire critère a plafonné le score.
+    const level = Math.max(sl, ...F.map(f => f.lv)), shown = Math.min(score, ROAD_BAND_MAX[level]);
+    return { score: missing.length ? null : shown, raw: missing.length ? null : score, capped: !missing.length && shown < score, level, factors: F, missing };
   }
 
   /* ---------- prochain trajet ---------- */
@@ -381,5 +386,7 @@ function wxDesk(input) {
 const WXD_ROAD = { rainMmH: 0.2, dampMmH: 0.1, soakMm: 0.3, soakHours: 3, humidRH: 95, humidSpreadC: 1 };
 // air saturé : HR ≥ 95 % et T − Td < 1 °C (ou HR seule quand le point de rosée est inconnu)
 const wxdHumidAir = x => typeof x.RH === 'number' && Number.isFinite(x.RH) && x.RH >= WXD_ROAD.humidRH && !(typeof x.Td === 'number' && Number.isFinite(x.Td) && typeof x.T === 'number' && x.T - x.Td >= WXD_ROAD.humidSpreadC);
+// Tranches du score route (≥ 80 · ≥ 60 · ≥ 40 · < 40) : score maximal compatible avec chaque niveau.
+const ROAD_BAND_MAX = [100, 79, 59, 39];
 const ROAD_PEN = { temp: 5, humid: 5, sun: 5, snow: 35, wind: [30, 20, 10], rain: [30, 20, 10, 5], ice: [45, 25, 15, 8], fog: [35, 25, 15] };
 const WXD_EMO = ['🟢', '🟡', '🟠', '🔴'];

@@ -136,6 +136,18 @@ const Garage = (() => {
   const status = (days, km) => days == null && km == null ? 'unknown'
     : (days != null && days < 0) || (km != null && km <= 0) ? 'late'
     : (days != null && days <= SOON_DAYS) || (km != null && km <= SOON_KM) ? 'soon' : 'ok';
+  // Rythme km/jour : seulement entre DEUX relevés réels (km > 0, dates valides) espacés d'au moins 7 jours, et
+  // physiquement plausible (≤ MAX_KM_PER_DAY). Sinon null = « rythme inconnu » : jamais compteur total ÷ jours.
+  const MAX_KM_PER_DAY = 1500;
+  function kmPerDay(odo) {
+    const o = (Array.isArray(odo) ? odo : []).filter(x => x && validDate(x.d) && Number.isFinite(x.km) && x.km > 0)
+      .slice().sort((a, b) => String(a.d).localeCompare(String(b.d)));
+    if (o.length < 2) return null;
+    const a = o[0], b = o[o.length - 1], days = dayDiff(a.d, b.d), km = b.km - a.km;
+    if (days < 7 || km < 0) return null;
+    const rate = km / days;
+    return rate <= MAX_KM_PER_DAY ? rate : null;
+  }
   function maintenance(car, { today, kmPerDay = null, odoEveryDays = 7 } = {}) {
     if (!validDate(today)) throw new Error('date du jour requise');
     const m = car && car.maint || {}, r = m.rev || {}, ct = m.ct || {};
@@ -159,5 +171,5 @@ const Garage = (() => {
       daysLeft: ctDays, status: status(ctDays, null) };
     return { revision, ct: control, odo };
   }
-  return { overview, silhouette, preview, comparison, daylight, maintenance };
+  return { overview, silhouette, preview, comparison, daylight, maintenance, kmPerDay, MAX_KM_PER_DAY };
 })();

@@ -408,6 +408,25 @@ function caught(name, text, proof) {
   try { proof(engine(text)); } catch (e) { if (e instanceof assert.AssertionError) rejected = true; else throw e; }
   assert(rejected, 'Mutation non détectée : ' + name); count++; console.log('✅ contre-test : ' + name);
 }
+// Réservation non confirmée « [À réserver] » : pas un trajet par défaut, aucune origine pour le suivant ; #trajet la rétablit.
+function unconfirmedBooking(a) {
+  const events = chain().map((e, i) => i === 1 ? { ...e, t: '[À RÉSERVER ?] Rendez-vous fictif' } : e), snapshot = JSON.stringify(events);
+  for (const t of ['[À réserver] Rendez-vous fictif', '[a reserver] x', '[ À Réserver ] x', '[À réserver ?] x']) assert.equal(a.unconfirmed({ t }), true, t);
+  for (const t of ['À réserver sans crochets', 'Réserver la table', '[Réservé] x', '']) assert.equal(a.unconfirmed({ t }), false, t);
+  assert.equal(a.unconfirmed({ t: '[À réserver] #trajet', mode: 'trajet' }), false, '#trajet explicite');
+  const out = a.confirmedOnly(events), booking = out[1], after = out[2];
+  assert.equal(booking.mode, 'pasdetrajet'); assert.equal(booking.unconfirmed, true);
+  assert.equal(out[0], events[0]); assert.equal(after, events[2]);   // les autres événements ne sont pas copiés
+  assert.equal(JSON.stringify(events), snapshot);                      // l'agenda déchiffré n'est jamais modifié en place
+  const map = a.rebuild(out, H, {}, {}, now, { relevant: spatialEvent });
+  assert.deepEqual(plain(map.get(booking)), []);
+  const go = map.get(after).find(l => l.k === 'go');
+  assert.notEqual(go.from.lat, B.lat, 'la réservation non confirmée ne peut pas devenir l’origine du suivant');
+  const kept = a.confirmedOnly([{ ...events[1], mode: 'trajet' }])[0];
+  assert.equal(kept.mode, 'trajet'); assert.equal(kept.unconfirmed, undefined);
+  assert.equal(a.confirmedOnly(null), null);
+}
+test('« [À réserver] » : pas un trajet par défaut, chaîne réparée, #trajet le rétablit', () => unconfirmedBooking(api));
 caught('une annulation ne peut être convertie en arrivée', source.replace('out[id] = { at: now, exp };', "out[id] = { at: now, exp, how: 'arrivé' };"), noArrival);
 caught('ancienne route d’un rendez-vous annulé interdite', source.replace('same(l.from, from) && same(l.to, to)', 'same(l.to, to)'), noOldOrigin);
 caught('la fenêtre Undo travail ne peut pas être coupée à minuit', source.replace('Math.max(midnight, now + UNDO_MS)', 'midnight'), workUndoWindow);
@@ -417,4 +436,6 @@ caught('un événement exclu ne peut conserver ses anciennes jambes', source.rep
 caught('trente rappels sains ne peuvent remplacer les ancres du relais', source.replace('dayEvents.some(e => cancelled(e) || nonSpatialNeedsRebuild(e, relevant, context.place))', 'dayEvents.some(e => cancelled(e) || !relevant(e))'), harmlessReminders);
 caught('une alternative exclue ne peut être réutilisée comme route', source.replace('dayEvents.filter(relevant).flatMap', 'dayEvents.flatMap'), noExcludedSpareRoute);
 caught('LOCATION configuré ne peut garder l’ancienne destination Beta', source.replace('nonSpatialNeedsRebuild(e, relevant, context.place)', 'nonSpatialNeedsRebuild(e, relevant)'), noWrongConfiguredDestination);
-console.log(count + '/' + count + ' scénarios OK (dont neuf mutations détectées)');
+caught('« [À réserver] » ne peut redevenir un trajet par défaut', source.replace("unconfirmed(e) ? { ...e, mode: 'pasdetrajet', unconfirmed: true } : e", 'e'), unconfirmedBooking);
+caught('#trajet explicite ne peut être ignoré', source.replace("e.mode !== 'trajet' && /", '/'), unconfirmedBooking);
+console.log(count + '/' + count + ' scénarios OK (dont onze mutations détectées)');

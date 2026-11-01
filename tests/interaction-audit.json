@@ -394,5 +394,13 @@
   "station-notifications": {
     "suite": "e2e74-weather-watch.js",
     "result": "permission Windows demandée après clic seulement ; refus et absence gérés"
+  },
+  "loc-main": {
+    "suite": "e2e93-position-vraisemblance.js",
+    "result": "lieu principal confirmé, position invraisemblable écartée"
+  },
+  "loc-force": {
+    "suite": "e2e93-position-vraisemblance.js",
+    "result": "zone acceptée pour la page, position utilisée"
   }
 }

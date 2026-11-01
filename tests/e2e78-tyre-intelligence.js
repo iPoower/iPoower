@@ -67,6 +67,9 @@ let count = 0;
       assert.equal(await panel.locator('img').count(), 0);
       const roveloText = await page.locator('#secCars .ti-panel').nth(1).textContent();
       assert.match(roveloText, /Données d’essais insuffisantes/);
+      assert.match(roveloText, /Des essais existent pour un modèle voisin \(RPX-998\) : ils ne sont pas utilisés pour ton pneu\./);
+      // Aucune heure UTC brute (ISO « …Z ») à l'écran : les horodatages sont affichés à l'heure de Paris.
+      assert.doesNotMatch(tyreText + roveloText, /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z/);
       assert.match(roveloText, /Essais indisponibles/);
       assert.match(roveloText, /Vigilance/); // pluie prévue : la vigilance garde sa priorité sur les données manquantes
       count++; console.log('✅ ' + device + ' · monte exacte, essais différents, mesures et projet non monté');
