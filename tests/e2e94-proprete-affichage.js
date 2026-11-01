@@ -44,6 +44,30 @@ async function run(browser, iphone) {
       }
     };
     await tour('données réseau');
+    // Analyse limitée · trois natures de manque (Rovelo RPX988 : aucun essai publié, contrôle de pression daté sans valeurs, montage sans compteur).
+    await s.p.locator('#viewSeg [data-act=view][data-v=analyse]').first().click(); await s.settle(4); await openAll(s);
+    const lab = await s.p.evaluate(() => document.querySelector('#secLab').innerText);
+    await check(tag + ' · Analyse : données à saisir en tête avec leur bouton, essais absents dits une fois, adhérence non mesurée dite une fois', async () => {
+      assert.match(lab, /Pression : dernière mesure il y a 13 j \(22\/09\/2026\) · valeurs AV\/AR à saisir/);
+      assert.doesNotMatch(lab, /Mesure de pression récente non documentée/);
+      assert(await s.p.locator('#secLab .ec-priorities .ti-todo [data-act=garage-quick][data-garage-target=pressure]').count() === 1);
+      const panel = await s.p.locator('#secLab .ti-panel').first().innerText();
+      assert.equal((panel.match(/Aucun essai indépendant publié pour ce modèle : analyse sur tes mesures et la météo seulement\./g) || []).length, 1);
+      assert.match(panel, /Des essais existent pour un modèle voisin \(RPX-998\) : ils ne sont pas utilisés pour ton pneu\./);
+      assert.doesNotMatch(lab, /Données d’essais insuffisantes|non mesurée?s?\b/);
+      assert.equal((lab.match(/L’app ne mesure pas l’adhérence : elle l’estime à partir de la météo, de la température et de tes relevés\./g) || []).length, 1);
+    });
+    await s.p.locator('#secLab .ec-priorities .ti-todo [data-garage-target=pressure]').click(); await s.settle(3);
+    await check(tag + ' · « Saisir la pression » ouvre le relevé rapide existant (pression AV)', async () => {
+      assert.equal(await s.p.evaluate(() => document.activeElement && document.activeElement.id), 'f-cars-0-tire-pchk-av');
+    });
+    await s.p.locator('#viewSeg [data-act=view][data-v=garage]').first().click(); await s.settle(4); await openAll(s);
+    await check(tag + ' · Garage : « Saisir le compteur au montage » au lieu de « Km depuis montage non calculables »', async () => {
+      const g = await s.p.evaluate(() => document.querySelector('#secGarage').innerText);
+      assert.doesNotMatch(g, /non calculables/); assert.match(g, /Compteur au montage à saisir/);
+      await s.p.locator('#secGarage [data-garage-target=mount]').first().click(); await s.settle(3);
+      assert.equal(await s.p.evaluate(() => document.activeElement && document.activeElement.id), 'f-cars-0-tire-mountKm');
+    });
     // Démonstrations simulées : brouillard et gel (froid), pluie, neige — phénomènes absents de la météo « douce » du réseau fictif.
     for (const scn of ['froid', 'pluie', 'neige']) { await s.p.evaluate(x => startDemo(x), scn); await s.settle(4); await tour('démo ' + scn); }
     // Veille de l’aube en démo « froid » : brouillard prévu dans la nuit, pastille de niveau déjà portée par la ligne (ancien « 🟠 🟠 Visibilité »).

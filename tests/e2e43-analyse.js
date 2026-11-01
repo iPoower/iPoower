@@ -96,9 +96,9 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     check('1 · cinq onglets (Météo · Pneus · TRAJET · Garage · Analyse), Analyse en dernier', a.tabs === 'meteo,pneus,trajet,garage,analyse', a.tabs);
     check('1 · Analyse : seule section visible avec les réglages, en tête', a.shown && a.first === 'secLab' && !a.others.length, JSON.stringify({ first: a.first, others: a.others }));
     check('1 · verdict : pneu réellement monté (modèle non renseigné → analyse générique été), dimension, état, plage estimée', /Modèle non renseigné · pneu été/.test(a.hero) && /215\/40 ZR18 89Y XL/.test(a.hero) && STATES.test(a.hero) && /Gomme estimée ≈ −?\d+ à −?\d+ °C/.test(a.hero), a.hero);
-    check('1 · verdict : freinage, virage, pluie, facteur limitant, confiance', /Freinage : \S+/.test(a.hero) && /Virage : \S+/.test(a.hero) && /(Si pluie|Pluie) : \S+/.test(a.hero) && /Facteur limitant : /.test(a.hero) && /Confiance : (faible|moyenne|élevée)/.test(a.hero), a.hero);
+    check('1 · verdict : facteur limitant, confiance, aucune ligne « non mesuré » (adhérence jamais mesurée, dite une fois)', !/non mesur/i.test(a.hero) && /Facteur limitant : /.test(a.hero) && /Confiance : (faible|moyenne|élevée)/.test(a.hero), a.hero);
     check('1 · fenêtre de fonctionnement avec repère et explication « Pourquoi ? »', a.marker && /Pourquoi « /.test(a.all) && /FROID EN CHAUFFE FAVORABLE CHAUD/.test(a.all), a.all.slice(0, 300));
-    check('1 · freinage non chiffré, 5 critères non mesurés, aquaplaning et intelligence sourcée', /🛑 FREINAGE/i.test(a.all) && a.bars === 5 && /AQUAPLANING/i.test(a.all) && a.cmp === 5 && /Intelligence pneumatique/.test(a.all), JSON.stringify({ bars: a.bars, cmp: a.cmp }));
+    check('1 · freinage non chiffré, aucun critère « non mesuré » listé, une seule phrase de limite, aquaplaning et intelligence sourcée', /🛑 FREINAGE/i.test(a.all) && a.bars === 0 && (a.all.match(/L’app ne mesure pas l’adhérence : elle l’estime à partir de la météo, de la température et de tes relevés\./g) || []).length === 1 && /AQUAPLANING/i.test(a.all) && a.cmp === 5 && /Intelligence pneumatique/.test(a.all), JSON.stringify({ bars: a.bars, cmp: a.cmp }));
     check('1 · trajet de l’agenda suivi point par point', /Analyse du trajet ·/i.test(a.trip) && a.tripRows >= 2, a.trip.slice(0, 200));
     check('1 · projection : distances approximatives et sources météo distinguées des positions GPS', /Progression estimée, sans mesure GPS\. Les lieux indiquent les sources météo\./.test(a.trip) && /≈ km \d+/.test(a.trip), a.trip.slice(0, 350));
     check('1 · pression : cible saisie et estimation, jamais « réelle »', /Cible saisie : 2,3 bar/.test(a.all) && /estimation/.test(a.all) && !/pression réelle/i.test(a.all));
@@ -168,8 +168,8 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     // 6. PC 1280 : même contenu, sans débordement
     s = await session(b, { at: '2026-10-03T14:00:00+02:00', scn: 'pluie', dev: 'pc' }); await toLab(s); a = await lab(s.p); const Lp = await layout(s.p, false);
     if (process.env.LAB_SHOT) await s.p.locator('#secLab').screenshot({ path: process.env.LAB_SHOT + '-pc.png' });
-    check('6 · PC : mêmes blocs que l’iPhone, sans débordement', a.shown && a.bars === 5 && a.cmp === 5 && Lp.sw <= Lp.W && !Lp.wide.length, JSON.stringify(Lp));
-    check('6 · pluie : aquaplaning et freinage pluie évalués', /AQUAPLANING/i.test(a.all) && /Pluie : \S+/.test(a.hero), a.hero);
+    check('6 · PC : mêmes blocs que l’iPhone, sans débordement', a.shown && a.bars === 0 && a.cmp === 5 && Lp.sw <= Lp.W && !Lp.wide.length, JSON.stringify(Lp));
+    check('6 · pluie : aquaplaning présenté, chaussée mouillée estimée, aucune ligne « non mesurée »', /AQUAPLANING/i.test(a.all) && /Chaussée estimée par le modèle : pluie/.test(a.hero) && !/non mesur/i.test(a.hero), a.hero);
     check('6 · PC : progression estimée et source météo explicites aussi sur grand écran', /Progression estimée, sans mesure GPS/.test(a.trip) && /sources météo/.test(a.trip) && /≈ km \d+/.test(a.trip), a.trip.slice(0, 350));
     await s.close();
 

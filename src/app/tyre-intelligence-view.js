@@ -34,6 +34,25 @@ const tiDate = v => {
 const tiTriggers = (o, prefix = '') => o === null || o === undefined ? 'non renseigné' : typeof o !== 'object' ? String(tiDate(o))
   : Object.entries(o).map(([k, v]) => v !== null && typeof v === 'object' && !Array.isArray(v) ? tiTriggers(v, prefix + k + '.')
     : prefix + k + ' : ' + (v === null || v === undefined ? 'non renseigné' : v === true ? 'oui' : v === false ? 'non' : Array.isArray(v) ? v.map(x => x === null || x === undefined ? 'non renseigné' : typeof x === 'object' ? '(' + tiTriggers(x) + ')' : tiDate(String(x))).join(', ') || 'aucun' : tiDate(String(v)))).join(' · ') || 'aucun';
+// Trois natures de manque, affichées différemment (affichage seulement, règles et verdict inchangés) :
+// 1. aucun essai publié pour le modèle : une seule mention par pneu (synthèse) ;
+// 2. donnée à saisir : une ligne en tête avec le bouton du relevé rapide existant (garage-quick) ;
+// 3. non mesurable sans capteur : aucune ligne, une seule phrase dans « Sources et limites » (cockpit).
+const TI_TODO_RULES = ['pressure-check', 'depth-missing', 'depth-age'], TI_EVIDENCE_GAP_RULES = ['evidence-coverage', 'rain-evidence-gap', 'cold-evidence-gap'];
+const TI_NO_EVIDENCE = 'Aucun essai indépendant publié pour ce modèle : analyse sur tes mesures et la météo seulement.';
+const tiNoEvidence = r => !!(r && r.active && !r.tests.length && !r.conflicts.length);
+// Note de catalogue conservée (ex. modèle voisin non utilisé), sans répéter « Données d’essais insuffisantes ».
+const tiGapNote = r => r.model && r.model.gap ? r.model.gap.split(/(?<=\.)\s+/).filter(x => !/^Données d’essais insuffisantes/.test(x)).join(' ') : '';
+const tiAge = d => d === null || d === undefined ? '' : d === 0 ? 'aujourd’hui' : d > 0 ? 'il y a ' + d + ' j' : '';
+function tiTodoHtml(car, r) {
+  if (!car || !r || !r.active) return '';
+  const has = id => r.rules.some(x => x.id === id), p = r.pressure, rows = [];
+  const btn = (target, label) => `<button type="button" class="btn sm" data-act="garage-quick" data-car="${esc(car.id)}" data-garage-target="${target}">${label}</button>`;
+  if (has('pressure-check')) rows.push([p.date ? `Pression : dernière mesure ${tiAge(p.ageDays) || 'datée'} (${tiDate(p.date)})${p.av === null || p.ar === null ? ' · valeurs AV/AR à saisir' : ' · à refaire à froid'}` : 'Pression : aucune mesure datée', btn('pressure', 'Saisir la pression')]);
+  if (has('depth-missing')) rows.push(['Profondeur : aucune mesure de la monte active', btn('tread', 'Saisir la profondeur')]);
+  if (has('depth-age')) rows.push(['Profondeur : date du relevé non vérifiable', btn('tread', 'Saisir la profondeur')]);
+  return rows.length ? `<div class="ti-todo" role="group" aria-label="Données à saisir"><p><b>À saisir</b></p><ul>${rows.map(([t, b]) => `<li>${esc(t)} ${b}</li>`).join('')}</ul></div>` : '';
+}
 function tyreIntelligenceHtml(car, mode = 'pneus', trip = null) {
   if (!car) return '';
   const input = tyreIntelligenceInput(car, trip);
@@ -54,7 +73,8 @@ function tyreIntelligenceHtml(car, mode = 'pneus', trip = null) {
       ${Object.entries(TyreIntelligence.FACETS).map(([id, [label]]) => { const values = t.metrics.filter(x => x.id === id && x.value !== null);
         return values.length ? values.map(x => `<tr><th>${esc(label)}</th><td>${n(x.value)} ${esc(x.unit)}${x.kind !== 'measured' ? '<br><small>' + esc(x.kind === 'projection' ? 'projection du protocole' : 'appréciation subjective') + '</small>' : ''}</td><td>${esc(x.protocol)}${x.temperatureC ? '<br>' + x.temperatureC.map(n).join('–') + ' °C (' + esc(x.temperatureKind === 'unspecified' ? 'air/chaussée non précisé' : x.temperatureKind) + ')' : ''}<br>${x.rank !== null ? x.rank + ' / ' + x.count + ' dans cet essai' : 'Classement non publié'} · eau ${x.waterMm === null ? 'non renseignée' : n(x.waterMm) + ' mm'}</td></tr>`).join('') : `<tr><th>${esc(label)}</th><td colspan="2" class="muted">${unknown}</td></tr>`;
       }).join('')}</tbody></table></div><ul class="sub">${t.limitations.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
-  const rules = r.rules.map(rule => `<details class="ti-rule" data-k="ti-rule-${esc(rule.id)}"><summary><b>${esc(rule.state)}</b> · ${esc(rule.text)}</summary>
+  const noEvidence = tiNoEvidence(r);
+  const rules = r.rules.filter(rule => !TI_TODO_RULES.includes(rule.id) && !(noEvidence && TI_EVIDENCE_GAP_RULES.includes(rule.id))).map(rule => `<details class="ti-rule" data-k="ti-rule-${esc(rule.id)}"><summary><b>${esc(rule.state)}</b> · ${esc(rule.text)}</summary>
     <p class="sub">Règle ${esc(rule.id)} · évaluation ${esc(tiDate(rule.date) || 'date inconnue')}</p><ul class="sub">${rule.sources.map(s => `<li>${esc(s.kind === 'user' ? 'Saisie utilisateur' : s.kind === 'weather' ? s.source || 'Source météo inconnue' : 'Essai publié')} · ${esc(tiDate(s.date) || 'date inconnue')}${s.url ? ' · ' + link({ url: s.url }, 'Source') : ''}</li>`).join('')}${rule.uncertainties.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
     <p class="sub">Déclencheurs : ${esc(tiTriggers(rule.triggers))}</p></details>`).join('');
   const weather = `<p class="sub">${esc(r.weather.scope || '')} · ${esc(r.weather.source || 'Source météo inconnue')} · ${r.weather.simulation ? 'SIMULÉ' : r.weather.offline ? 'hors ligne' : 'données réseau'} · fraîcheur ${r.weather.ageMin !== null && r.weather.ageMin !== undefined ? Math.round(r.weather.ageMin) + ' min' : 'inconnue'}${r.weather.fetchedAt ? ' · réception ' + esc(tiDate(r.weather.fetchedAt)) : ''}. Température de chaussée estimée, distincte de l’air.</p>`;
@@ -67,7 +87,7 @@ function tyreIntelligenceHtml(car, mode = 'pneus', trip = null) {
   // Les quatre axes sont indépendants ; aucun statut ne garantit la sécurité de la route.
   const synthesis = `<div class="ti-synthesis" role="group" aria-label="Synthèse des alertes et limites">
     <p class="sub"><b>Alertes de sécurité :</b> ${esc(r.overview.safety)}</p>
-    <p class="sub"><b>Essais disponibles :</b> ${esc(r.overview.evidence)}</p>
+    <p class="sub">${noEvidence ? `<b>Essais publiés :</b> ${esc(TI_NO_EVIDENCE)}${tiGapNote(r) ? ' ' + esc(tiGapNote(r)) : ''}` : `<b>Essais disponibles :</b> ${esc(r.overview.evidence)}`}</p>
     <p class="sub"><b>Mesures du véhicule :</b> ${esc(r.overview.measurements)}</p>
     <p class="sub"><b>Météo :</b> ${esc(r.overview.weather)}</p>
     <p class="sub">Absence d’alerte ne signifie pas absence de risque ; pression, usure et état de la chaussée ne sont pas mesurés en continu.</p>
@@ -75,9 +95,9 @@ function tyreIntelligenceHtml(car, mode = 'pneus', trip = null) {
   const full = mode === 'analyse' || mode === 'pneus';
   return `<details class="ti-panel" data-ux="ti-${esc(mode)}-${esc(car.id)}" data-ti-car="${esc(car.id)}" data-ti-mode="${esc(mode)}" aria-label="Intelligence pneumatique"><summary><strong>Intelligence pneumatique</strong> · ${esc(r.title)} · <span class="ti-state">${esc(r.status)}</span></summary><div class="ti-body">
     <p><b>${esc(r.title)}</b> · ${esc(r.size || 'dimension inconnue')} · ${r.active ? 'monte active déclarée' : 'aucune monte active'}</p>
-    ${synthesis}
-    <p class="sub">Qualité des preuves pour cette monte : <b>${esc(r.quality)}</b>. ${esc(r.qualityReasons.join(' '))}</p>
-    ${full ? `<ul class="ti-profile">${shortFacets}</ul>` : ''}${weather}${rules}
-    ${full ? facts + (r.tests.length ? `<details data-k="ti-evidence"${mode === 'analyse' ? ' open' : ''}><summary>Essais et protocoles · ${r.tests.length}</summary><p class="sub">Valeurs originales : aucune comparaison directe entre essais, aucune moyenne de classements. Les vitesses d’aquaplaning sont propres à l’essai et ne constituent pas des vitesses sûres de circulation.</p>${r.tests.map(testHtml).join('')}</details>` : '<p>Données d’essais insuffisantes.</p>') + planned : ''}
+    ${tiTodoHtml(car, r)}${synthesis}
+    ${noEvidence ? '' : `<p class="sub">Qualité des preuves pour cette monte : <b>${esc(r.quality)}</b>. ${esc(r.qualityReasons.join(' '))}</p>`}
+    ${full && !noEvidence ? `<ul class="ti-profile">${shortFacets}</ul>` : ''}${weather}${rules}
+    ${full ? facts + (r.tests.length ? `<details data-k="ti-evidence"${mode === 'analyse' ? ' open' : ''}><summary>Essais et protocoles · ${r.tests.length}</summary><p class="sub">Valeurs originales : aucune comparaison directe entre essais, aucune moyenne de classements. Les vitesses d’aquaplaning sont propres à l’essai et ne constituent pas des vitesses sûres de circulation.</p>${r.tests.map(testHtml).join('')}</details>` : noEvidence ? '' : '<p>Données d’essais insuffisantes.</p>') + planned : ''}
     <p class="sub ti-foot">Catalogue V${r.schemaVersion} · révision ${r.catalogRevision} · revue ${esc(tiDate(r.reviewedOn) || 'indisponible')}. Essais historiques, mesures saisies et météo actualisée restent distincts. Aucun score ne garantit la sécurité du véhicule.</p></div></details>`;
 }
