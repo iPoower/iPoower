@@ -74,12 +74,13 @@ function f1StrategyHtml() {
     ? TCARS().filter(c => hasTires(c) && !carProfile(c).generic).map(c => ({
       c, w: windowAssess(c, t.seq, 'trip')
     })).filter(r => r.w) : [];
-  const x = F1Pure.strategyAB(cars.length >= 2 ? { res: cars } : null, car && car.id);
+  const shown = car || appDisplayedCar(), x = F1Pure.strategyAB(cars.length >= 2 ? { res: cars } : null, shown && shown.id);
   const content = x.available ? '<ul class="lab-why">' + x.choices.map(c => '<li><b>STRATÉGIE ' +
     esc(c.scenario) + '</b> · ' + esc(c.car) + ' : ' + esc(c.risk) + '</li>').join('') + '</ul>'
     : '<p class="sub">' + esc(x.reason) + '</p>';
   return f1Panel('strategyAB', 'STRATÉGIE A/B', 'Comparaison à données égales', content +
-    '<p class="sub">' + esc(x.available ? x.reason : 'Aucune stratégie fictive n’est proposée.') + '</p>');
+    '<p class="sub">' + esc(x.available ? x.reason : 'Aucune stratégie fictive n’est proposée.') + '</p>' +
+    (x.available && !car ? '<p class="sub ab-unconfirmed">Stratégie A = voiture affichée (' + esc(appCarLabel().text) + ') : aucune voiture n’est encore confirmée pour ce trajet.</p>' : ''));
 }
 function f1GarageHtml() {
   const x = F1Pure.theGarage(S.cars);

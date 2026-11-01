@@ -156,6 +156,10 @@ SUITE.push(['e2e87-drive-badge-count.js', 'badge de sauvegarde : seules les sais
 SUITE.push(['e2e86-html-security.js', 'NOESIS : texte véhicule, attribut photo, stockage ancien et DOM réel Chromium/WebKit', true]);
 
 SUITE.push(['test_drive_store_reopen.js', 'NOESIS-RC-003 : IndexedDB réessayable après erreur, blocage, versionchange et fermeture sans purge', false]);
+SUITE.push(['test_tread_guard.js', 'PR 1 sécurité pneumatique : profondeur 1,59/1,60/1,99/2,00 mm, pluie dans la fenêtre, deux horizons, estimation, météo indisponible, profondeur inconnue, pneus été et froid, contre-tests', false]);
+SUITE.push(['e2e99-profondeur-garde-fou.js', 'PR 1 sécurité pneumatique : 1,8 mm plafonne le verdict sur Pneus, panneau Alertes, Intelligence, Cockpit, Trajet, agenda, briefing et Garage ; profondeur inconnue = Analyse limitée, PC/iPhone', true]);
+SUITE.push(['e2e100-voitures-coherence.js', 'PR 2 cohérence des véhicules : voiture affichée, proposée et confirmée distinguées sur Pneus, Trajet, A/B et Garage ; aucune voiture déduite ; position du Diagnostic à ~1 km, PC/iPhone', true]);
+SUITE.push(['test_vehicle_coherence.js', 'PR 2 cohérence des véhicules : voiture confirmée, affichée et proposée, Prochaine mission, Trajet sans présélection, A/B, Diagnostic à ~1 km, contre-tests', false]);
 SUITE.push(['test_tread_wheels.js', 'profondeur par pneu : migration sans perte, minimum par essieu, usure irrégulière, relevé dépassé, fusion et contre-tests', false],
   ['e2e90-profondeur-par-pneu.js', 'profondeur par pneu : saisie 4 × 2 points, minimum par essieu, usure irrégulière, transition, rechargement et 320 px, PC/iPhone', true]);
 SUITE.push(['e2e101-profondeur-prod190.js', 'profondeur par pneu : compatibilité avec le vrai build en production 502852864dbd (fusion, lecture, saisie par essieu, changement de monte, rechargement), PC/iPhone', true]);

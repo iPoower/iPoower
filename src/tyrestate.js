@@ -216,7 +216,7 @@ function tyreState(car, opt = {}) {
   const maint = [];
   if (dot && dot.ageY >= 10) maint.push({ k: 'dot', lv: 2, text: `Pneu fabriqué il y a plus de 10 ans (${dot.raw}) : remplacement recommandé (repère Michelin)` });
   if (mount.serviceY != null && mount.serviceY >= 5) maint.push({ k: 'service', lv: 1, text: 'Plus de 5 ans d’usage : contrôle professionnel annuel recommandé (repère Michelin)' });
-  if (mm != null && mm < (type === 'winter' ? 4 : 3)) maint.push({ k: 'tread', lv: mm < 1.6 ? 3 : 1, text: mm < 1.6 ? 'Profondeur sous le minimum légal (1,6 mm)' : `Profondeur ${String(mm).replace('.', ',')} mm : performances sur mouillé réduites, remplacement à prévoir` });
+  if (mm != null && mm < (type === 'winter' ? 4 : 3)) maint.push({ k: 'tread', lv: mm < 1.6 ? 3 : 1, text: mm < 1.6 ? (est ? 'Profondeur : estimation sous le minimum réglementaire de 1,6 mm, mesure à confirmer' : 'Profondeur sous le minimum légal (1,6 mm)') : `Profondeur ${String(mm).replace('.', ',')} mm : performances sur mouillé réduites, remplacement à prévoir` });
   if (target != null && (!pressure.check || pressure.check.fresh === 'stale')) maint.push({ k: 'pressure', lv: 1, text: 'Pression à contrôler à froid (dernier contrôle ancien ou non daté)' });
   if (tread.fresh === 'stale') maint.push({ k: 'tread-stale', lv: 1, text: 'Profondeur à remesurer (mesure de plus de 6 mois)' });
   if (gaps.length) maint.push({ k: 'tread-gap', lv: 1, text: `Usure irrégulière (${gaps.map(g => g.text).join(' ; ')}) : contrôle de géométrie conseillé. Seuil indicatif de 1 mm, non réglementaire.` });
