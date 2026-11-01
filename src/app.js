@@ -3402,7 +3402,10 @@ const tireTxt = car => {
 const lastOdo = car => (car.odo || []).slice().sort((x, y) => x.km - y.km).slice(-1)[0] || null;
 // Une profondeur de la fiche rejoint l'historique du jour (remplace la saisie non localisée du même jour et du même essieu),
 // avec le compteur connu et l'indication estimée / mesurée. Plafond de 30 relevés : rien n'est effacé pour faire de la place.
-function datedFicheTread(car, axes, day) {
+// Chaque ligne porte l'origine choisie À SA SAISIE (est : mesure à la jauge = false, estimation = true), jamais treadEst, qui décrit
+// l'essieu le plus usé. Sans origine explicite (champs AV / AR de la fiche), l'origine de la fiche s'applique, comme auparavant.
+// Seule la ligne non localisée du même essieu et du MÊME JOUR est remplacée (correction du jour) : aucune ligne plus ancienne n'est touchée.
+function datedFicheTread(car, axes, day, est) {
   if (!car || !car.tire) return false;
   const today = day || (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10), lo = lastOdo(car), x = treadAxles(car.tire);
   let hist = Array.isArray(car.tire.treads) ? car.tire.treads.slice() : [], changed = false;
@@ -3411,11 +3414,23 @@ function datedFicheTread(car, axes, day) {
     if (typeof mm !== 'number' || !Number.isFinite(mm) || mm < 0 || mm > 12) continue;
     const kept = hist.filter(r => !(r && r.d === today && r.ax === ax && !r.pos && !r.wheel));
     if (kept.length >= 30) continue;
-    hist = kept.concat([{ d: today, mm: Math.round(mm * 10) / 10, km: lo ? lo.km : null, ax, ...(car.tire.treadEst ? { est: 1 } : {}) }]);
+    hist = kept.concat([{ d: today, mm: Math.round(mm * 10) / 10, km: lo ? lo.km : null, ax, ...((typeof est === 'boolean' ? est : car.tire.treadEst) ? { est: 1 } : {}) }]);
     changed = true;
   }
   if (changed) car.tire.treads = hist;
   return changed;
+}
+// Enregistre un relevé par pneu : minima par essieu, relevé séparé, historique daté avec l'origine choisie, puis treadEst global =
+// origine de l'essieu le plus usé, déduite de SA dernière ligne d'historique. Rien n'est écrit si la voiture n'est pas adressable.
+function applyTreadWheels(car, input, { date, est } = {}) {
+  if (!car || !car.tire) return { error: 'Véhicule indisponible' };
+  if (!putTreadWheelsRecord({}, car, {})) return { error: 'Véhicule non adressable : relevé non enregistré' };
+  const r = setTreadWheels(car.tire, input, { date, est });
+  if (r.error) return r;
+  const path = putTreadWheelsRecord(S, car, r.record);
+  const hist = datedFicheTread(car, r.axes, date, est === true);
+  const o = treadEstFromHistory(car.tire); if (o != null) car.tire.treadEst = o;
+  return { ...r, path, hist };
 }
 // Relevé PAR PNEU (enregistrement séparé settings.treadWheels, voir tyrestate.js) : 4 positions × 2 points (côté, milieu) + date.
 // Pré-rempli avec le dernier relevé de la monte active. Le verdict lit toujours la valeur la plus basse de chaque essieu.
@@ -4276,12 +4291,10 @@ document.addEventListener('click', async e => {
     if (probe.error) { commandFeedback(t, probe.error); return; }
     // Transition : aucun appareil ne publie sa version dans la synchronisation ; l'utilisateur confirme une fois que ses appareils sont à jour.
     if (!Object.keys(S.treadWheels || {}).length && !confirm('Première saisie par pneu.\n\nLe PC et l’iPhone doivent d’abord être mis à jour (même build dans Diagnostic). Un appareil encore sur l’ancienne version lit la bonne profondeur et n’efface pas ce relevé, mais une saisie par essieu faite depuis lui remplacera le détail par pneu de cet essieu (signalé ici).\n\nTes appareils sont-ils à jour ?')) { commandFeedback(t, 'Relevé non enregistré : mets d’abord tes appareils à jour'); return; }
-    const r = setTreadWheels(c.tire, input, { date, est });
+    const r = applyTreadWheels(c, input, { date, est });
     if (r.error) { commandFeedback(t, r.error); return; }
-    const path = putTreadWheelsRecord(S, c, r.record);
-    if (!path) { commandFeedback(t, 'Véhicule non adressable : relevé non enregistré'); return; }
-    markEdit(path); ['tread', 'treadAv', 'treadAr', 'treadEst'].forEach(k => markEdit(`cars.${i}.tire.${k}`));
-    if (datedFicheTread(c, r.axes, date)) markEdit(`cars.${i}.tire.treads`);
+    markEdit(r.path); ['tread', 'treadAv', 'treadAr', 'treadEst'].forEach(k => markEdit(`cars.${i}.tire.${k}`));
+    if (r.hist) markEdit(`cars.${i}.tire.treads`);
     saveSettings(); renderSettings(); softRender(); commandFeedback($(`#settings [data-act="tread-wheels"][data-i="${i}"]`), 'Relevé par pneu enregistré');
   }
   else if (a === 'odo' || a === 'tread-add' || a === 'rot') {

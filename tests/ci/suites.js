@@ -163,3 +163,5 @@ SUITE.push(['test_vehicle_coherence.js', 'PR 2 cohérence des véhicules : voitu
 SUITE.push(['test_tread_wheels.js', 'profondeur par pneu : migration sans perte, minimum par essieu, usure irrégulière, relevé dépassé, fusion et contre-tests', false],
   ['e2e90-profondeur-par-pneu.js', 'profondeur par pneu : saisie 4 × 2 points, minimum par essieu, usure irrégulière, transition, rechargement et 320 px, PC/iPhone', true]);
 SUITE.push(['e2e101-profondeur-prod-compat.js', 'profondeur par pneu : compatibilité avec le vrai build en production 53315c242870 (run 192) (fusion, lecture, saisie par essieu, changement de monte, rechargement), PC/iPhone', true]);
+SUITE.push(['test_tread_provenance.js', 'profondeur par pneu : origine de chaque ligne d’historique, treadEst de l’essieu le plus usé, historique ancien intact, reproducteur et contre-tests', false],
+  ['e2e102-profondeur-provenance.js', 'profondeur par pneu : provenance de l’historique, scénario et symétrique, rechargement, historique ancien intact, PC/iPhone', true]);
