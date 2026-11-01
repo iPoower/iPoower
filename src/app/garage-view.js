@@ -60,11 +60,12 @@ function garageVehicleHtml(c) {
   return '<article class="garage-car" data-garage-car="' + esc(c.id) + '">' +
     '<div class="garage-car-head"><div><span class="garage-index">VÉHICULE · ' + esc(c.short) + '</span><h3>' + esc(c.name) +
     '</h3>' + (c.spec ? '<p>' + esc(c.spec) + '</p>' : '') + '</div><div class="garage-choose">' + active + '</div></div>' +
-    '<button type="button" class="btn pri garage-edit" data-act="goset-cfg">Modifier la fiche</button>' +
+    // Action principale : les relevés rapides (compteur, profondeur, pressions) ; « Modifier la fiche » passe en action secondaire.
     '<div class="garage-quick" aria-label="Relevés rapides de ' + esc(c.short) + '"><span>Relevés rapides</span>' +
       '<div class="chips">' + [['odo','Compteur km'],['tread','Profondeur mm'],['pressure','Pressions AV/AR']].map(([k,label]) =>
-        '<button type="button" class="btn sm" data-act="garage-quick" data-car="' + esc(c.id) +
+        '<button type="button" class="btn pri sm" data-act="garage-quick" data-car="' + esc(c.id) +
         '" data-garage-target="' + k + '">' + label + '</button>').join('') + '</div></div>' +
+    '<button type="button" class="btn garage-edit" data-act="goset-cfg">Modifier la fiche</button>' +
     '<div class="twin-vehicle-art"><span class="twin-plate" aria-hidden="true">' + esc(c.short) + '</span>' + garageCarSvg(c.silhouette) + '<small>SILHOUETTE STYLISÉE · TEINTE ILLUSTRATIVE</small></div>' +
     '<div class="garage-meter"><span>COMPTEUR ENREGISTRÉ</span><strong class="num">' + esc(current) + '</strong><small>' + currentNote + '</small></div>' +
     '<div class="twin-quality"><span class="src obs">' + (t ? 'MONTE DÉCLARÉE' : 'MONTE À CONFIRMER') + '</span><span class="src est">' +
