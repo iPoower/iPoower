@@ -1,5 +1,5 @@
-// Compatibilité avec le build EN PRODUCTION 502852864dbd (run 190), celui qui tournera sur le PC et l'iPhone pendant la transition.
-// Copie figée tests/fixtures/race-control.prod-190.html : code de l'app identique à l'octet près (empreintes vérifiées ci-dessous),
+// Compatibilité avec le build EN PRODUCTION 53315c242870 (run 192, après #307 et #308), celui qui tournera sur le PC et l'iPhone
+// pendant la transition. Copie figée tests/fixtures/race-control.prod-192.html : code de l'app identique à l'octet près (empreintes vérifiées ci-dessous),
 // seule la configuration scellée chiffrée est retirée. Données 100 % fictives.
 // Prouve, avec le vrai code de l'ancienne version : (1) sa fusion PC ↔ iPhone reçoit le nouveau format sans perte ; (2) elle lit la
 // bonne profondeur (minimum par essieu) et lève son alerte ; (3) ses saisies par essieu, changements de monte et rechargements
@@ -9,7 +9,7 @@
 const fs = require('fs'), path = require('path'), vm = require('vm'), BR = require('./lib/browser');
 const FIX = path.join(__dirname, 'fixtures');
 const { check: checkFixture } = require('./lib/prod-build-fixture');
-const html = fs.readFileSync(path.join(FIX, 'race-control.prod-190.html'), 'utf8'), manifest = JSON.parse(fs.readFileSync(path.join(FIX, 'race-control.prod-190.json'), 'utf8'));
+const html = fs.readFileSync(path.join(FIX, 'race-control.prod-192.html'), 'utf8'), manifest = JSON.parse(fs.readFileSync(path.join(FIX, 'race-control.prod-192.json'), 'utf8'));
 // Nouvelle version (sources de cette branche) exécutée hors navigateur pour produire et relire le nouveau format.
 const SRC = f => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8');
 const N = {}; vm.createContext(N);
@@ -20,7 +20,7 @@ const O = 'https://race-control-ipoower.pages.dev', U = O + '/';
 let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ? '' : ' · ' + String(d).slice(0, 400))); if (!ok) fail++; };
 (async () => {
   const problems = checkFixture(html, manifest);
-  check(`copie figée = build de production ${manifest.build} (empreinte : original à l’octet près, seule la configuration scellée remplacée)`, !problems.length && manifest.build === '502852864dbd', problems.join(', '));
+  check(`copie figée = build de production ${manifest.build} (empreinte : original à l’octet près, seule la configuration scellée remplacée)`, !problems.length && manifest.build === '53315c242870', problems.join(', '));
   const b = await BR.launch();
   try {
     const c = await b.newContext({ viewport: { width: 414, height: 896 }, timezoneId: 'Europe/Paris', locale: 'fr-FR' });
@@ -29,8 +29,8 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     await p.route('**/*', r => { const u = new URL(r.request().url()); return u.origin === O && !/\.(js|json|png|webmanifest)$/.test(u.pathname) ? r.fulfill({ status: 200, contentType: 'text/html', body: html }) : r.abort(); });
     const boot = async () => { await p.goto(U); await p.waitForFunction(() => typeof S === 'object' && Array.isArray(S.cars) && S.cars.length > 0, null, { timeout: 30000 }); await p.waitForTimeout(600); };
     await boot();
-    const loaded = await p.evaluate(() => ({ build: window.TWRC_BUILD, html: document.documentElement.outerHTML.includes('window.TWRC_BUILD="502852864dbd"') }));
-    check('ancienne version chargée : build 502852864dbd (' + JSON.stringify(loaded) + ')', loaded.build === '502852864dbd' || loaded.html, JSON.stringify(loaded));
+    const loaded = await p.evaluate(() => ({ build: window.TWRC_BUILD, html: document.documentElement.outerHTML.includes('window.TWRC_BUILD="53315c242870"') }));
+    check('ancienne version chargée : build 53315c242870 (' + JSON.stringify(loaded) + ')', loaded.build === '53315c242870' || loaded.html, JSON.stringify(loaded));
     // État fictif de l'ancien appareil, enregistré par l'ancienne version elle-même.
     await p.evaluate(() => { const t = S.cars[0].tire; Object.assign(t, { type: 'summer', brand: 'Marque test', model: 'Modèle test', size: '205/55 R16 91V', tread: 7, treadAv: 7, treadAr: 7, treadEst: 0 }); saveSettings(); });
     const old = await p.evaluate(() => JSON.parse(JSON.stringify(S)));
@@ -73,6 +73,6 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     check('ancienne version : aucune erreur JavaScript', !errors.length, errors.join(' / '));
     await c.close();
   } finally { await b.close(); }
-  console.log(rows.join('\n') + '\n\n' + (rows.length - fail) + '/' + rows.length + ' contrôles « compatibilité build 502852864dbd »');
+  console.log(rows.join('\n') + '\n\n' + (rows.length - fail) + '/' + rows.length + ' contrôles « compatibilité build 53315c242870 »');
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

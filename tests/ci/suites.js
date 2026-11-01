@@ -162,4 +162,4 @@ SUITE.push(['e2e100-voitures-coherence.js', 'PR 2 cohérence des véhicules : vo
 SUITE.push(['test_vehicle_coherence.js', 'PR 2 cohérence des véhicules : voiture confirmée, affichée et proposée, Prochaine mission, Trajet sans présélection, A/B, Diagnostic à ~1 km, contre-tests', false]);
 SUITE.push(['test_tread_wheels.js', 'profondeur par pneu : migration sans perte, minimum par essieu, usure irrégulière, relevé dépassé, fusion et contre-tests', false],
   ['e2e90-profondeur-par-pneu.js', 'profondeur par pneu : saisie 4 × 2 points, minimum par essieu, usure irrégulière, transition, rechargement et 320 px, PC/iPhone', true]);
-SUITE.push(['e2e101-profondeur-prod190.js', 'profondeur par pneu : compatibilité avec le vrai build en production 502852864dbd (fusion, lecture, saisie par essieu, changement de monte, rechargement), PC/iPhone', true]);
+SUITE.push(['e2e101-profondeur-prod-compat.js', 'profondeur par pneu : compatibilité avec le vrai build en production 53315c242870 (run 192) (fusion, lecture, saisie par essieu, changement de monte, rechargement), PC/iPhone', true]);

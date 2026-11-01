@@ -59,8 +59,8 @@ function treadHistory(t) {
 }
 /* Profondeur PAR PNEU : enregistrement SÉPARÉ des réglages, settings.treadWheels['car-<id>'][<type de monte>] = { d, fl, fr, rl, rr, av, ar }.
    fl / fr / rl / rr = AV gauche, AV droit, AR gauche, AR droit ; chaque pneu porte deux points : { side (côté), mid (milieu) } en mm.
-   Pourquoi hors de car.tire : la version précédente (build 502852864dbd) reconstruit car.tire avec une liste fermée de champs
-   au changement de monte (switchTire, confirmation du montage hiver) et effacerait un champ inconnu. Elle conserve en revanche
+   Pourquoi hors de car.tire : les versions en production avant cette fonctionnalité (builds 502852864dbd et 53315c242870, vérifiés par e2e101) reconstruisent car.tire avec une liste fermée de champs
+   au changement de monte (switchTire, confirmation du montage hiver) et effaceraient un champ inconnu. Elles conservent en revanche
    une clé de premier niveau inconnue des réglages (normalize, sauvegarde, fusion PC ↔ iPhone chemin par chemin).
    Compatibilité : tire.treadAv / tire.treadAr restent écrits avec le MINIMUM de chaque essieu (tread = essieu le plus usé) :
    ce sont les seules valeurs lues par le verdict, l'alerte de profondeur et les appareils encore sur l'ancienne version.
