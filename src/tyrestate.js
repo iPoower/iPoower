@@ -143,13 +143,15 @@ function setTreadWheels(t, input, { date, est } = {}) {
 // (même essieu ou « both ») ; à égalité des deux essieux, la plus prudente des dernières lignes. null si aucune ligne ne la justifie.
 // Égalité des deux essieux : chacun est examiné sur SA dernière ligne ; si l'une d'elles est estimée, l'ensemble est estimé (prudence),
 // quelles que soient les dates. Ancien format (profondeur commune) : toutes les lignes de cette valeur.
-function treadEstFromHistory(t) {
+// Essieu au minimum SANS ligne exploitable : il hérite de la provenance précédente (prev = treadEst avant la saisie) ;
+// jamais « mesuré » sans ligne qui le prouve. Aucune ligne d'historique n'est réécrite.
+function treadEstFromHistory(t, prev) {
   const tx = treadAxles(t); if (!t || tx.worst == null) return null;
   const all = (Array.isArray(t.treads) ? t.treads : []).filter(r => r && typeof r.d === 'string' && treadMm(r.mm) === tx.worst);
   const groups = !tx.split ? [all] : (tx.ax ? [tx.ax] : ['av', 'ar']).map(ax => all.filter(r => r.ax === ax || r.ax === 'both'));
   let seen = false, est = false;
   for (const rows of groups) {
-    if (!rows.length) continue;
+    if (!rows.length) { if (prev != null) { seen = true; if (prev) est = true; } continue; }
     const day = rows.map(r => r.d).sort().pop(); seen = true;
     if (rows.some(r => r.d === day && r.est)) est = true;
   }

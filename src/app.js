@@ -3434,7 +3434,7 @@ function applyTreadWheels(car, input, { date, est } = {}) {
   const x = treadAxles(draft.tire);
   const complete = r.axes.every(ax => (draft.tire.treads || []).some(l => l && l.d === date && l.ax === ax && !l.pos && !l.wheel && l.mm === Math.round(x[ax] * 10) / 10));
   if (!complete) return { error: `Historique de profondeur plein (${TREAD_HISTORY_MAX} lignes) : relevé non enregistré, aucune valeur modifiée. Archive l’historique avant une nouvelle saisie.` };
-  const o = treadEstFromHistory(draft.tire); if (o != null) draft.tire.treadEst = o;
+  const o = treadEstFromHistory(draft.tire, car.tire.treadEst); if (o != null) draft.tire.treadEst = o;   // provenance AVANT la saisie
   Object.keys(draft.tire).forEach(k => { car.tire[k] = draft.tire[k]; });
   const path = putTreadWheelsRecord(S, car, r.record);
   return { ...r, path, hist };
