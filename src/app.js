@@ -4020,10 +4020,40 @@ function renderAll() {
     renderWx(); renderLab(); renderDebrief(); renderGarage(); labThermTick(false); roadSync(); renderF1Pure(); renderWeatherStationButton(); renderWeatherStation();
   } finally {
     APP_CONTEXT.rendering = false; renderAll.view = UI.view;
+    lockedWriteControls();
     // La navigation garde son comportement ; une projection du même écran
     // conserve la position même quand ses blocs changent de hauteur.
     if (sameView && Number.isFinite(scrollY)) window.scrollTo({ top: scrollY, behavior: 'instant' });
   }
+}
+// D1 · app verrouillée (coffre ou stockage de l'appareil) : une saisie n'irait qu'en mémoire et serait perdue au
+// déverrouillage, sans avertissement. Les contrôles qui écrivent sont désactivés avec un message visible, et les
+// gestionnaires refusent l'écriture (défense en profondeur). Jamais de report d'une saisie verrouillée dans le coffre.
+// Le mode « sans code » n'est PAS verrouillé (stockage en clair durable) : storeLocked(), pas LOCKED().
+const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar']);
+const LOCKED_WRITE_MSG = 'Déverrouille l’app pour modifier : rien n’est enregistré tant que l’app est verrouillée';
+const LOCKED_WRITE_FREE = '#unlockForm, #twrcExpiryForm, #twrcExpiryOverlay';
+let lockedWriteObserver = null;
+function lockedWriteControls() {
+  if (!storeLocked()) return;
+  const sel = [...LOCKED_WRITE_ACTS].map(a => `[data-act="${a}"]`).join(',') + ',input:not([type=hidden]),select,textarea';
+  const boxes = new Set();
+  document.querySelectorAll(sel).forEach(e => {
+    if (e.closest(LOCKED_WRITE_FREE)) return;
+    if (!e.disabled) { e.disabled = true; e.setAttribute('aria-disabled', 'true'); e.dataset.lockedWrite = '1'; e.title = LOCKED_WRITE_MSG; }
+    const box = e.closest('[id]'); if (box && box !== document.body) boxes.add(box);
+  });
+  boxes.forEach(box => { if (!box.querySelector(':scope > .locked-write-msg')) box.insertAdjacentHTML('afterbegin', `<p class="sub locked-write-msg" role="status">🔒 ${esc(LOCKED_WRITE_MSG)}</p>`); });
+  // Les blocs se redessinent souvent : réappliquer après chaque changement du DOM (idempotent, aucune boucle).
+  if (!lockedWriteObserver && typeof MutationObserver === 'function') {
+    lockedWriteObserver = new MutationObserver(() => { if (storeLocked()) lockedWriteControls(); });
+    lockedWriteObserver.observe(document.body, { childList: true, subtree: true });
+  }
+}
+function lockedWriteRefused(t) {
+  if (!storeLocked()) return false;
+  commandFeedback(t, '🔒 Déverrouille l’app pour modifier');
+  return true;
 }
 function softRender() { renderAll(); } // paramètres inchangés ; mêmes sélecteurs de contexte
 
@@ -4045,6 +4075,7 @@ document.addEventListener('click', async e => {
   if (j) { e.preventDefault(); const el = document.querySelector(j.getAttribute('href')); if (el) { if (el.tagName === 'DETAILS') { el.open = true; renderSettings(true); } el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); } return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const a = t.dataset.act;
+  if (LOCKED_WRITE_ACTS.has(a) && lockedWriteRefused(t)) return;   // D1 : rien n'est écrit tant que l'app est verrouillée
   if (a.startsWith('station-') && await weatherStationAction(a, t)) return;
   if (a === 'cal-origin-open') { calendarOriginOpen(t.dataset.key); return; }
   if (a === 'cal-origin-close') { calendarOriginClose(); return; }
@@ -4293,6 +4324,7 @@ document.addEventListener('submit', async e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t && t.closest && !t.closest(LOCKED_WRITE_FREE) && storeLocked() && (t.dataset.bind || t.dataset.tripField || t.dataset.alert)) return;   // D1
   if (t && t.dataset && t.dataset.tripField) { tripFieldChanged(t); return; }
   if (t.id === 'journalCopy') { if (t.files && t.files[0]) journalVerifyCopy(t.files[0]); t.value = ''; return; }
   if (t.id === 'bkFile') { if (t.files && t.files[0]) backupImport(t.files[0]); t.value = ''; return; }

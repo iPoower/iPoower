@@ -1335,3 +1335,5 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .app-links a, .app-links [aria-current] { display: inline-flex; align-items: center; min-height: 44px; padding: 6px 10px; border: 1px solid var(--line2); border-radius: 6px; color: var(--fg); text-decoration: none; overflow-wrap: anywhere; }
 .app-links [aria-current] { color: var(--accent); border-color: var(--accent); }
 .app-links a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* D1 · app verrouillée : message visible au-dessus des contrôles désactivés */
+.locked-write-msg { margin: 0 0 6px; color: var(--cau-t, var(--fg2)); }
