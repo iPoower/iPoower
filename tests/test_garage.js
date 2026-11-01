@@ -190,3 +190,14 @@ test('données insuffisantes : chaque donnée manquante porte son action, aucune
  assert.equal(v.todo([],'car-a'),'');
 });
 console.log(n+'/'+n+' scénarios Garage validés');
+test('rythme km/jour : seulement entre deux relevés réels, plausible, sinon « rythme inconnu »',()=>{
+ const R=G.kmPerDay;
+ assert.equal(R([{d:'2026-10-31',km:252071}]),null,'un seul relevé (voiture ajoutée avec un compteur élevé)');
+ assert.equal(R([{d:'2026-10-18',km:0},{d:'2026-10-31',km:252071}]),null,'relevé à 0 = non réel : jamais compteur total ÷ jours');
+ assert.equal(R([{d:'2026-10-18',km:2520},{d:'2026-10-31',km:252071}]),null,'saut impossible (> 1 500 km/j) : rythme inconnu');
+ assert.equal(R([{d:'2026-10-27',km:12000},{d:'2026-10-31',km:12300}]),null,'moins de 7 jours');
+ assert.equal(R([{d:'2026-10-21',km:12000},{d:'2026-10-31',km:12700}]),70);
+ assert.equal(R([{d:'2026-10-31',km:12700},{d:'2026-10-21',km:12000}]),70,'ordre de saisie indifférent');
+ const m=G.maintenance({odo:[{d:'2026-10-30',km:252071}],maint:{rev:{d:'2026-01-10',km:240000,everyKm:20000}}},{today:'2026-10-31',kmPerDay:R([{d:'2026-10-30',km:252071}])});
+ assert.equal(m.odo.kmPerDay,null,'entretien : aucune date estimée sans rythme réel');
+});
