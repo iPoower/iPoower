@@ -4030,14 +4030,70 @@ function renderSettings(force) {
         : window.TWRC_VAULT && window.TWRC_VAULT.journalNeedsRecovery ? '<p class="sub" role="status"><b>Journal en lecture seule.</b> Appuie sur Exporter : la copie est enregistrée et le journal est réactivé dans la foulée. Les autres réglages restent utilisables.</p>' : ''}
       <p class="sub" id="bkMsg" aria-live="polite"></p><div id="driveSyncPanel"></div></div>
     <div class="set-sec"><h3>🗂️ Données</h3><div class="frow"><div class="fld"><label for="demoSel">Scénario de démonstration</label><select id="demoSel">${Object.keys(DEMO_SCN).map(k => `<option value="${k}">${esc(DEMO_SCN[k].name)}</option>`).join('')}</select></div></div>
-      <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button><button class="btn" data-act="reset">Réinitialiser les réglages</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
-      <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p></div>
+      <div class="chips"><button class="btn" data-act="demo-sel">Lancer la démo (données simulées)</button>${window.TWRC_SEALED && !LOCKED() ? '<button class="btn" data-act="lock">Verrouiller cet appareil</button>' : ''}${LOCKED() && lsGet('twrc.nocode') ? '<button class="btn" data-act="withcode">J’ai un code de déverrouillage</button>' : ''}</div>
+      <p class="disc">Les réglages sont enregistrés dans ce navigateur.</p>
+      <div class="set-danger" id="resetZone" role="group" aria-labelledby="resetTitle">${resetZoneHtml()}</div></div>
     <div class="set-sec"><h3>🏷️ Version</h3><p class="sub" id="verLine">${verLine()}</p></div>
     <div class="set-sec"><h3>🩺 Diagnostic</h3><p class="sub">Sources et précision à l’écran ; positions arrondies à environ 1 km dans la copie, sans adresse ni titre de rendez-vous.</p>
       <dl class="diag" id="diagBox">${diagHtml()}</dl><div class="chips"><button class="btn" data-act="diag-copy">Copier le diagnostic</button></div></div>`;
   loadVersion(); loadSwVersion(); renderDriveSync();
 }
 // @include app/drive-sync-view.js
+// @include app/reset-guard.js
+// Zone danger : réinitialisation séparée de la démo, mot à saisir, instantané chiffré et annulation en un toucher.
+// Drive configuré : les réglages réinitialisés partiraient au dossier Drive (nouvelle version) ; accord séparé exigé.
+const resetDriveOn = () => !!window.TWRC_DRIVE_CONFIGURED;
+const resetReady = () => RESET_GUARD.wordOk(UI.resetWord) && (!resetDriveOn() || !!UI.resetDrive);
+function resetZoneHtml() {
+  const snap = RESET_GUARD.read(APP_STORAGE), vault = !!window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault';
+  const when = snap ? new Date(snap.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  const undo = snap ? `<p class="sub" role="status">Instantané des réglages du ${esc(when)} conservé ${vault ? 'chiffré dans le coffre de' : 'sur'} cet appareil, jamais envoyé à Drive.</p><div class="chips"><button class="btn pri" data-act="reset-undo">Annuler la réinitialisation</button></div>` : '';
+  const form = UI.resetOpen ? `<p class="sub">Véhicules, lieux, calibration, réglages et trajet en cours reviennent aux valeurs initiales. Le journal des trajets n’est jamais touché. Un instantané ${vault ? 'chiffré ' : ''}des réglages actuels est d’abord enregistré sur cet appareil : « Annuler la réinitialisation » les rétablit en un toucher.</p>
+      <div class="fld"><label for="resetWord">Pour confirmer, saisis le mot <b>${RESET_GUARD.WORD}</b></label><input type="text" id="resetWord" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(UI.resetWord || '')}"></div>
+      ${resetDriveOn() ? `<p class="sub"><b>Synchronisation Drive :</b> les réglages réinitialisés seront envoyés au dossier Drive comme une nouvelle version. L’autre appareil ne les applique pas seul : il signale un conflit à trancher.</p><div class="fld"><label for="resetDrive"><input type="checkbox" id="resetDrive"${UI.resetDrive ? ' checked' : ''}> J’accepte l’envoi de cette réinitialisation à Drive</label></div>` : ''}
+      <div class="chips"><button class="btn" data-act="reset-go"${resetReady() ? '' : ' disabled'}>Réinitialiser maintenant</button><button class="btn" data-act="reset-cancel">Ne pas réinitialiser</button></div>`
+    : '<div class="chips"><button class="btn" data-act="reset">Réinitialiser les réglages…</button></div>';
+  return `<h4 id="resetTitle">⚠️ Zone danger</h4>${undo}${form}<p class="sub" id="resetMsg" aria-live="polite">${esc(UI.resetMsg || '')}</p>`;
+}
+function renderResetZone(focus) {
+  const z = $('#resetZone'); if (!z) return; z.innerHTML = resetZoneHtml();
+  const input = focus && $('#resetWord'); if (input) input.focus({ preventScroll: true });
+}
+function resetApply() {
+  PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; USER_STORE.state.dayContext = {}; APP_CONTEXT.weatherPreview = null; DECISION_HISTORY.reset(); liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll();
+}
+async function resetRun() {
+  if (!resetReady()) { UI.resetMsg = RESET_GUARD.wordOk(UI.resetWord) ? 'Coche l’envoi à Drive pour continuer, ou choisis « Ne pas réinitialiser ».' : 'Saisis le mot ' + RESET_GUARD.WORD + ' pour confirmer.'; renderResetZone(); return; }
+  if (UI.resetBusy) return;   // double toucher : une seule réinitialisation, un seul instantané
+  const vault = window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault' ? window.TWRC_VAULT : null, before = lsGet(RESET_GUARD.KEY);
+  UI.resetBusy = true;
+  try {
+    RESET_GUARD.take(APP_STORAGE, Date.now());
+    // Coffre : l'instantané est chiffré et écrit AVANT toute remise à zéro ; sinon rien ne change.
+    if (vault) { await vault.flush(); if (vault.error) throw new Error('Coffre indisponible (stockage plein ?) : réinitialisation refusée, réglages inchangés.'); }
+  } catch (err) {
+    // Instantané refusé : la pile précédente est remise telle quelle, pour ne bloquer aucune autre écriture.
+    try { if (before == null) APP_STORAGE.removeItem(RESET_GUARD.KEY); else APP_STORAGE.setItem(RESET_GUARD.KEY, before); if (vault) await vault.flush(); } catch (e) { /* message ci-dessous */ }
+    UI.resetBusy = false; UI.resetMsg = String(err && err.message || 'Instantané impossible : réinitialisation refusée, réglages inchangés.'); renderResetZone(); return;
+  }
+  UI.resetBusy = false; UI.resetOpen = false; UI.resetWord = ''; UI.resetDrive = false; UI.resetMsg = 'Réglages réinitialisés. Le journal des trajets est intact. « Annuler la réinitialisation » rétablit les réglages précédents.';
+  resetApply();
+}
+function resetUndo() {
+  try { RESET_GUARD.restore(APP_STORAGE); }
+  catch (err) { UI.resetMsg = String(err && err.message || 'Restauration impossible.'); renderResetZone(); return; }
+  S = loadSettings(); if (!allLocs().some(l => l.id === UI.loc)) UI.loc = S.locs[0].id; if (!S.cars.some(c => c.id === UI.bcar)) UI.bcar = S.cars[0].id;
+  UI.resetMsg = 'Réinitialisation annulée : réglages précédents rétablis.';
+  rebuild(); renderSettings(); renderAll(); refreshAll();
+}
+document.addEventListener('input', e => {
+  const t = e.target; if (!t || t.id !== 'resetWord') return;
+  UI.resetWord = t.value; const go = $('[data-act="reset-go"]'); if (go) go.disabled = !resetReady();
+});
+document.addEventListener('change', e => {
+  const t = e.target; if (!t || t.id !== 'resetDrive') return;
+  UI.resetDrive = !!t.checked; const go = $('[data-act="reset-go"]'); if (go) go.disabled = !resetReady();
+});
 // @include app/diagnostics.js
 /* ---------- orchestration du rendu ---------- */
 function renderAll() {
@@ -4285,10 +4341,10 @@ document.addEventListener('click', async e => {
   }
   else if (a === 'goset-cfg') { const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); }
   else if (a === 'goset') { UI.locsOpen = false; renderLocChips(); const d = $('#settings'); d.open = true; renderSettings(true); d.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); setTimeout(() => { const q = $('#geoQ'); q && q.focus(); }, 300); }
-  else if (a === 'reset') {
-    if (!confirm('Réinitialiser tous les réglages, les véhicules, les lieux et la calibration à leurs valeurs initiales ? Le trajet en cours sera aussi réinitialisé. Cette action est définitive.')) return;
-    PLACE = { conf: null, last: null, extra: null }; TRIPSTART = null; RETURNHOME = null; GPS = null; USER_STORE.state.lastDeparture = null; USER_STORE.state.dayContext = {}; APP_CONTEXT.weatherPreview = null; DECISION_HISTORY.reset(); liveReset(); S = clone(DEFAULTS); lsSet('twrc.settings.v1', JSON.stringify(S)); UI.loc = S.locs[0].id; UI.bcar = S.cars[0].id; rebuild(); renderSettings(); renderAll(); refreshAll();
-  }
+  else if (a === 'reset') { UI.resetOpen = true; UI.resetWord = ''; UI.resetDrive = false; UI.resetMsg = ''; renderResetZone(true); }
+  else if (a === 'reset-cancel') { UI.resetOpen = false; UI.resetWord = ''; UI.resetDrive = false; UI.resetMsg = 'Réinitialisation abandonnée : rien n’a changé.'; renderResetZone(); }
+  else if (a === 'reset-go') await resetRun();
+  else if (a === 'reset-undo') resetUndo();
   else if (a === 'geo-search') {
     const input = $('#geoQ'), q = (input.value || '').trim(), box = $('#geoHits'), gen = ++geoSearchGen; window.__hits = [];
     if (q.length < 2) { box.innerHTML = '<span class="sub" role="status">Saisis au moins deux caractères.</span>'; input.focus(); return; }

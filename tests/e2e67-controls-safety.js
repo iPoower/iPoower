@@ -86,10 +86,14 @@ const snapshot = p => p.evaluate(() => JSON.stringify({ settings: S, place: PLAC
       });
       await check(dev + ' · annuler Réinitialiser conserve réglages et contexte', async () => {
         await reveal(p, '#settings [data-act=reset]'); const before = await snapshot(p);
-        assert.match(await confirmClick(p, 'reset', false), /véhicules.*lieux.*trajet en cours/s); assert.equal(await snapshot(p), before);
+        await p.locator('#settings [data-act=reset]').click(); await s.settle(1);
+        assert.match(await p.locator('#resetZone').innerText(), /Véhicules, lieux, calibration.*trajet en cours/s);
+        await p.locator('#resetWord').fill('RÉINITIALISER'); await p.locator('#settings [data-act=reset-cancel]').click(); await s.settle(1);
+        assert.equal(await snapshot(p), before);
       });
-      await check(dev + ' · confirmer Réinitialiser restaure les valeurs initiales', async () => {
-        await confirmClick(p, 'reset', true);
+      await check(dev + ' · confirmer Réinitialiser (mot saisi) restaure les valeurs initiales', async () => {
+        await p.locator('#settings [data-act=reset]').click(); await s.settle(1);
+        await p.locator('#resetWord').fill('RÉINITIALISER'); await p.locator('#settings [data-act=reset-go]').click(); await s.settle(3);
         assert.deepEqual(await p.evaluate(() => S.work), await p.evaluate(() => DEFAULTS.work));
         assert.equal(await p.evaluate(() => S.cars[0].name), await p.evaluate(() => DEFAULTS.cars[0].name));
         assert.equal(await p.evaluate(() => TRIPSTART), null); assert.equal(await p.evaluate(() => RETURNHOME), null);
