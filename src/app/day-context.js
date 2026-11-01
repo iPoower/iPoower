@@ -173,7 +173,16 @@ function appCommuteOff(today, time, nowHm, days = S.work.days) {
   }
   return null;
 }
+// Voiture CONFIRMÉE : choisie explicitement (chips du jour, trajet programmé avec une voiture choisie). Seule elle est « utilisée ».
 function appActiveCar() { const id = appDay().activeCarId; return S.cars.find(c => c.id === id) || null; }
+// Voiture AFFICHÉE : celle avec laquelle les vues calculent quand aucune n'est confirmée (onglet Pneus, briefing, Garage).
+// Elle n'est JAMAIS présentée comme la voiture du trajet : chaque vue dit « affichée, non confirmée ».
+function appDisplayedCar() { return appActiveCar() || TCARS().find(c => c.id === UI.bcar) || TCARS()[0] || null; }
+// Libellé commun : confirmée, affichée (non confirmée) ou à choisir.
+function appCarLabel() {
+  const c = appActiveCar(), d = c ? null : appDisplayedCar(), n = x => x.short || x.name || x.id;
+  return c ? { car: c, confirmed: true, text: n(c) } : d ? { car: d, confirmed: false, text: n(d) + ' · affichée, non confirmée pour le trajet' } : { car: null, confirmed: false, text: 'voiture du trajet à choisir' };
+}
 function appTripCars() { const car = appActiveCar(); return car ? [car] : TCARS(); }
 function appSetDayType(value) {
   if (!['work', 'off'].includes(value)) return;

@@ -55,7 +55,8 @@ const layout = p => p.evaluate(() => {
       });
       await check(dev + ' · décision : verdict, confiance, âge des données, lieu, voiture et destination dans une seule carte', async () => {
         const c = await core(p); assert(c, 'carte de décision affichée');
-        assert.match(c.text, /\bRAS\b|VIGILANCE|PRUDENCE|DANGER|DONNÉES DÉGRADÉES/); assert.match(c.text, /Confiance · (SOLIDE|À CONFIRMER|DÉGRADÉ) · météo/);
+        // ANALYSE LIMITÉE : profondeur non renseignée (#307).
+        assert.match(c.text, /\bRAS\b|ANALYSE LIMITÉE|VIGILANCE|PRUDENCE|DANGER|DONNÉES DÉGRADÉES/); assert.match(c.text, /Confiance · (SOLIDE|À CONFIRMER|DÉGRADÉ) · météo/);
         assert.match(c.text, /Lieu ·\s/); assert.match(c.text, /Voiture ·\s/); assert.match(c.text, /Destination ·\s|Prochain trajet ·\s|Trajet en cours ·\s/);
         if (!c.items.length) assert.match(c.text, /pas une garantie de sécurité/);
         assert(!/Lieu courant à confirmer/.test(c.text.replace(/Lieu · [^\n]*/, '')), 'pas de répétition du lieu');
