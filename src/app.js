@@ -3816,7 +3816,7 @@ function renderWeatherLink() {
   const el = $('#secWeatherLink'); el.hidden = UI.view !== 'pneus';
   if (el.hidden) return;
   const c = CX && CX.m.cur, l = curLoc();
-  el.innerHTML = `<div><h3>🌦️ Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="weather-details">Détails météo →</button>`;
+  el.innerHTML = `<div><h3>🌦️ Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}${c.vis != null ? ' maintenant' : ''}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="weather-details">Détails météo →</button>`;
 }
 
 // @include app/season-actions.js
