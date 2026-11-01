@@ -19,12 +19,13 @@ const SNOW_CODES = new Set([71, 73, 75, 77, 85, 86]);
 const FZ_CODES = new Set([56, 57, 66, 67]);
 const FOG_CODES = new Set([45, 48]);
 const LV = [
-  { i: 0, key: 'go', emoji: '🟢', name: 'GO', label: 'GO — CONDITIONS ADAPTÉES' },
-  { i: 1, key: 'caution', emoji: '🟡', name: 'CAUTION', label: 'CAUTION — SURVEILLANCE' },
-  { i: 2, key: 'risk', emoji: '🟠', name: 'HIGH RISK', label: 'HIGH RISK — PRUDENCE RENFORCÉE' },
-  { i: 3, key: 'nogo', emoji: '🔴', name: 'NO GO', label: 'NO GO / CONDITIONS DÉFAVORABLES AUX PNEUS MONTÉS' }
+  // Échelle unique de l'app (4 niveaux, en français) : les clés (go/caution/risk/nogo) restent stables pour le style et les données.
+  { i: 0, key: 'go', emoji: '🟢', name: 'RAS', label: 'RAS — CONDITIONS ADAPTÉES' },
+  { i: 1, key: 'caution', emoji: '🟡', name: 'VIGILANCE', label: 'VIGILANCE — À SURVEILLER' },
+  { i: 2, key: 'risk', emoji: '🟠', name: 'PRUDENCE', label: 'PRUDENCE — RISQUE ÉLEVÉ' },
+  { i: 3, key: 'nogo', emoji: '🔴', name: 'DANGER', label: 'DANGER — CONDITIONS DÉFAVORABLES AUX PNEUS MONTÉS' }
 ];
-const TREAD_LEGAL_MM = 1.6;   // minimum légal de sculpture (France) : en dessous, NO GO quel que soit le score (même valeur que TL_LEGAL_MM de tyrelab.js, vérifiée par test)
+const TREAD_LEGAL_MM = 1.6;   // minimum légal de sculpture (France) : en dessous, DANGER quel que soit le score (même valeur que TL_LEGAL_MM de tyrelab.js, vérifiée par test)
 const ICE_LV = ['FAIBLE', 'MODÉRÉ', 'ÉLEVÉ', 'TRÈS ÉLEVÉ'];
 const TYPE_LABEL = { summer: 'été', winter: 'hiver', allseason: '4 saisons 3PMSF', unknown: 'non renseignés', none: 'aucun (en attente)' };
 const hasTires = car => car && car.tire && car.tire.type !== 'none';
@@ -562,8 +563,9 @@ function treadAlert(cars, sm, seq) {
   if (!rows.length) return null;
   return { sev: Math.max(...rows.map(r => r.sev)), title: rows.map(r => r.t).join(' · '), detail: rows.map(r => r.d).join(' ') };
 }
-function computeAlerts(model, cars, S, seasonByCar) {
-  const res = {}; const seq = seqOf(model, model.nowI, 24); const sm = summarize(seq);
+// hours : fenêtre des alertes (24 h pour le panneau Alertes ; 3 h pour le verdict « ici, maintenant »).
+function computeAlerts(model, cars, S, seasonByCar, hours = 24) {
+  const res = {}; const seq = seqOf(model, model.nowI, hours); const sm = summarize(seq);
   const set = (id, sev, title, detail) => { res[id] = { id, sev, title, detail }; };
   if (sm.Tmin != null && sm.Tmin < 7) set('t7', 1, `Minimum prévu ${f1(sm.Tmin)} °C`, `Vers ${hhmm(sm.iTmin)}. Le seuil de 7 °C est une règle pratique : les performances relatives hiver/été évoluent, ce n’est pas une bascule instantanée.`);
   const summerCars = cars.filter(c => effType(c) === 'summer');
