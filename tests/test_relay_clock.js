@@ -80,7 +80,7 @@ const TOKEN = 'jeton-de-test-uniquement';
   // — décisions de base
   await test('obs frais (< 8 min) : aucun dispatch, aucun appel à GitHub', async () => {
     const w = world({ updated: T0 - 3 * 60e3 }), r = await w.tick();
-    assert.equal(r.decision, 'fresh'); assert.equal(w.S.dispatches, 0); assert(!w.S.calls.some(c => c.url.includes('api.github.com')), 'aucun appel GitHub quand tout est frais');
+    assert.equal(r.decision, 'fresh'); assert.equal(w.S.dispatches, 0); assert(!w.S.calls.some(c => { try { return new URL(c.url).hostname === 'api.github.com'; } catch (e) { return false; } }), 'aucun appel GitHub quand tout est frais');
   });
   await test('obs vieux (≥ 8 min) : un seul dispatch de race-control.yml sur main, source=horloge', async () => {
     const w = world({ updated: T0 - 8 * 60e3 }), r = await w.tick();
@@ -147,7 +147,7 @@ const TOKEN = 'jeton-de-test-uniquement';
   });
   await test('données fraîches : un run bloqué n’est pas touché (aucun appel GitHub)', async () => {
     const w = world({ updated: T0 - 2 * 60e3 }); w.S.runs.push({ wf: 'race-control-watchdog.yml', created: T0 - 90 * 60e3, status: 'waiting', stuck: true });
-    await w.tick(); assert.equal(w.S.cancels.length, 0); assert(!w.S.calls.some(c => c.url.includes('api.github.com')));
+    await w.tick(); assert.equal(w.S.cancels.length, 0); assert(!w.S.calls.some(c => { try { return new URL(c.url).hostname === 'api.github.com'; } catch (e) { return false; } }));
   });
   await test('rejeu du 7 octobre : watchdog coincé juste après un relais → relais rétabli en moins de 25 min (au lieu de 1 h 36)', async () => {
     const w = world({ updated: T0 - 60e3 }); w.S.runs.push({ wf: 'race-control-watchdog.yml', created: T0, status: 'waiting', event: 'push', stuck: true });
@@ -203,7 +203,7 @@ const TOKEN = 'jeton-de-test-uniquement';
     x = await run({ updated: T0 - 12 * 60e3 }, [at('race-control.yml', T0 - 2 * 60e3, { deferred: true }), at('race-control-watchdog.yml', T0 - 10e3, { status: 'in_progress', conclusion: null })]);
     check('actif', x.w.S.jobCalls === 0 && x.r.action === 'skipped');
     x = await run({ updated: T0 - 2 * 60e3 }, [at('race-control.yml', T0 - 60e3, { deferred: true })]);
-    check('frais', x.w.S.jobCalls === 0 && !x.w.S.calls.some(c => c.url.includes('api.github.com')));
+    check('frais', x.w.S.jobCalls === 0 && !x.w.S.calls.some(c => { try { return new URL(c.url).hostname === 'api.github.com'; } catch (e) { return false; } }));
     return failed;
   }
   await test('horodatage futur, runs différés ou non dus : l’horloge n’est plus bloquée ; publiés, rouges et inconnus comptent', async () => {
