@@ -745,9 +745,9 @@ async function refreshAll(force = true) {
         // Les observations stations sont un enrichissement du modèle live : si le relais est trop vieux,
         // on les ignore plutôt que d'injecter une pseudo-observation périmée dans une météo fraîche.
         OBS = relayAgeMin(o && o.updated) <= RELAY_OBS_MAX_MIN ? o : null; if (o && o.stations) OBS_LAST = o;
-        RELAY_SEEN = true; RELAY_AT = o && o.updated ? o.updated : null; RELAY_ERR = o && o.relay && o.relay.err ? String(o.relay.err).slice(0, 120) : null;
+        RELAY_SEEN = true; RELAY_AT = o && o.updated ? o.updated : null; RELAY_ERR = o && o.relay && o.relay.err ? String(o.relay.err).slice(0, 120) : null; RELAY_READ_FAIL = false;
       }
-    } catch (e) { OBS = null; }
+    } catch (e) { OBS = null; RELAY_READ_FAIL = true; }
     const res = await Promise.allSettled(locs.map(l => {
       // Une position remplacée pendant la lecture des observations ne relance pas une ancienne météo.
       if (l.gps && !gpsSourceCurrent(l, gpsStart)) return Promise.resolve(null);
@@ -871,7 +871,7 @@ async function geocode(q) { return (await GeoSearch.search(q, fetchJSON)).map(h 
 /* ---------- formats ---------- */
 const hmLocal = ms => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 const RELAY_WARN_MIN = Reliability.RELAY.warnMin, RELAY_OBS_MAX_MIN = Reliability.RELAY.obsMaxMin;
-let RELAY_AT = null, RELAY_ERR = null, RELAY_SEEN = false;   // dernier obs.json lu (même trop vieux pour enrichir la météo) : diagnostic uniquement
+let RELAY_AT = null, RELAY_ERR = null, RELAY_SEEN = false, RELAY_READ_FAIL = false;   // dernier obs.json lu (même trop vieux pour enrichir la météo) : diagnostic uniquement
 // Âge inconnu (date absente, illisible ou dans le futur) = Infinity : jamais « 0 minute », donc jamais « tout frais ».
 const relayAgeMin = ts => { const a = Reliability.ageMin(ts); return a === null ? Infinity : a; };
 const relayAgeTxt = m => !Number.isFinite(m) ? 'inconnue' : m < 60 ? Math.max(1, Math.round(m)) + ' min' : Math.floor(m / 60) + ' h ' + Math.round(m % 60) + ' min';
