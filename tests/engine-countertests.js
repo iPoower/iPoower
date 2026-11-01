@@ -5,6 +5,8 @@ const { runTests, sourcePath } = require('./test_engine_verdicts.js');
 const original = fs.readFileSync(sourcePath, 'utf8');
 const count = runTests(original, { quiet: true });
 const mutations = [
+  { name: 'alerte de profondeur sans seuil légal', from: 'if (w.mm < TREAD_LEGAL_MM) return { sev: 3,', to: 'if (false) return { sev: 3,' },
+  { name: 'repère indicatif présenté comme réglementaire', from: 'Repère indicatif, non réglementaire${rain', to: 'Seuil réglementaire${rain' },
   { name: 'brouillard < 200 m rétrogradé en CAUTION', from: 'if (x.vis < 200) L = Math.max(L, 2);', to: 'if (x.vis < 200) L = Math.max(L, 1);' },
   { name: 'rafales ≥ 90 km/h sans alerte', from: 'if (x.gust != null && x.gust >= 90) L = Math.max(L, 2);', to: '' },
   { name: 'drapeaux de danger ignorés par le niveau', from: 'const level = Math.max(sl, lvl);', to: 'const level = sl;' },
