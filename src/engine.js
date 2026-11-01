@@ -512,7 +512,8 @@ const ALERT_DEFS = [
   { id: 'frost', label: 'Gel nocturne' },
   { id: 'drop', label: 'Baisse brutale de température' },
   { id: 'pre', label: 'Montage hiver à prévoir (météo hivernale avant le montage)' },
-  { id: 'tread', label: 'Profondeur de sculpture faible (minimum légal 1,6 mm ; repères indicatifs 3 et 4 mm)' }
+  { id: 'tread', label: 'Profondeur de sculpture faible (minimum légal 1,6 mm ; repères indicatifs 3 et 4 mm)' },
+  { id: 'treadgap', label: 'Usure irrégulière d’un pneu (écart côté / milieu supérieur à 1 mm, repère indicatif)' }
 ];
 // Profondeur de sculpture : alerte dédiée, indépendante de la température.
 // Seul 1,6 mm est réglementaire : arrêté du 18 juillet 2019 relatif aux pneumatiques (NOR TRER1921975A, JORF du 30/08/2019),
@@ -547,6 +548,18 @@ function treadAlert(cars, sm, seq) {
   if (!rows.length) return null;
   return { sev: Math.max(...rows.map(r => r.sev)), title: rows.map(r => r.t).join(' · '), detail: rows.map(r => r.d).join(' ') };
 }
+// Usure irrégulière : écart côté / milieu supérieur à 1 mm sur un pneu (relevé par pneu, tyrestate.js). Entretien, jamais un danger
+// du verdict : VIGILANCE (sev 1). Le seuil de 1 mm est un REPÈRE INDICATIF de l'app, non réglementaire, toujours présenté comme tel.
+// Sans tyrestate.js (relais), aucune alerte : le relais ne lit que les valeurs par essieu.
+function treadGapAlert(cars, S) {
+  if (typeof treadGapRows !== 'function' || typeof treadWheelsRecord !== 'function') return null;
+  const rows = (cars || []).map(c => {
+    const g = c && c.tire ? treadGapRows(c.tire, treadWheelsRecord(S, c)) : []; if (!g.length) return null;
+    return { t: `${c.short || c.name || 'Véhicule'} : usure irrégulière ${g.map(x => x.label).join(', ')}`,
+      d: `${g.map(x => x.text).join(' ; ')}${g[0].d ? ' · relevé du ' + fmtDay(g[0].d) : ''}. Contrôle de géométrie conseillé. Seuil indicatif de 1 mm, non réglementaire.` };
+  }).filter(Boolean);
+  return rows.length ? { sev: 1, title: rows.map(r => r.t).join(' · '), detail: rows.map(r => r.d).join(' ') } : null;
+}
 // hours : fenêtre des alertes (24 h pour le panneau Alertes ; 3 h pour le verdict « ici, maintenant »).
 function computeAlerts(model, cars, S, seasonByCar, hours = 24) {
   const res = {}; const seq = seqOf(model, model.nowI, hours); const sm = summarize(seq);
@@ -575,6 +588,8 @@ function computeAlerts(model, cars, S, seasonByCar, hours = 24) {
   const pre = cars.map(c => ({ c, s: seasonByCar[c.id] })).filter(o => o.s && o.s.coldBefore && effType(o.c) === 'summer');
   const tw = treadAlert(cars, sm, seq);
   if (tw) set('tread', tw.sev, tw.title, tw.detail);
+  const tg = treadGapAlert(cars, S);
+  if (tg) set('treadgap', tg.sev, tg.title, tg.detail);
   // Montage hiver à prévoir : alerte de PLANIFICATION (VIGILANCE, Garage et Pneus), jamais un danger du verdict immédiat :
   // absente de la fenêtre courte « ici, maintenant » (hours < 24), où elle désignerait une autre voiture que celle affichée.
   if (pre.length && hours >= 24) { const o = pre[0], when = o.s.countdown.kind === 'confirmed' ? 'rendez-vous confirmé' : 'montage estimé'; set('pre', 1, `Montage hiver à prévoir (${o.c.short}) : météo hivernale avant le montage`, `Premier épisode : ${fmtDay(o.s.coldBefore.first.date)}, avant le ${when} du ${fmtDay(o.s.countdown.date)}.${o.s.coldBefore.partial ? ' La météo disponible ne couvre pas toute la période restante.' : ''}`); }

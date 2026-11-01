@@ -195,6 +195,10 @@
     "suite": "e2e49-interactions.js",
     "result": "profondeur enregistrée ou erreur visible"
   },
+  "tread-wheels": {
+    "suite": "e2e90-profondeur-par-pneu.js",
+    "result": "relevé par pneu enregistré (minimum par essieu, usure irrégulière signalée) ou erreur visible"
+  },
   "trip-arrived": {
     "suite": "e2e30.js",
     "result": "arrivée confirmée, moteur terminé"
