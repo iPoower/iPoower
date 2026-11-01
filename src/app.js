@@ -724,7 +724,7 @@ function placeDiagRows(forCopy) {
     ['Géolocalisation navigateur (brute)', raw], ['Position navigateur retenue', FIX ? `±${Math.round(FIX.acc)} m · il y a ${ageTxt(ageOf(FIX.ts))}` : 'aucune'],
     ['Dernière erreur localisation', GEO.error ? GEO.error.code + ' · ' + GEO.error.message : 'aucune'], ['Position réseau / IP', net],
     ...distances,
-    ['Lieu logique Race Control', `${c.place ? c.place.name : c.title.replace(/^\S+ /, '')} · ${c.trust} · ${c.place ? c.place.kind === 'home' ? 'domicile' : c.place.kind === 'work' ? 'travail' : 'destination connue' : c.source === 'gps' ? 'autre' : 'indéterminé'}`], ['Source retenue', `${c.source} · ${source}${c.originLock ? ' · origine verrouillée : ' + c.originLock : ''}`],
+    ['Lieu logique Race Control', `${c.place ? c.place.name : c.title.replace(/^\S+ /, '')} · ${c.trust} · ${c.place ? c.place.kind === 'home' ? 'domicile' : c.place.kind === 'work' ? 'travail' : 'destination connue' : c.source === 'gps' ? 'autre' : 'indéterminé'}`], ['Source retenue', `${c.source === 'none' && !forCopy ? source : c.source + ' · ' + source}${c.originLock ? ' · origine verrouillée : ' + c.originLock : ''}`],
     ['Raison localisation', c.source === 'manual' ? 'confirmation utilisateur' : c.source === 'trip' ? 'déplacement confirmé · trajet en cours' : GEO.reason || (c.source === 'last' ? 'dernier lieu fiable · attente de position fraîche' : c.source === 'gps' ? 'position navigateur précise dans la géofence' : 'position insuffisante · confirmation manuelle disponible')],
     ['Sources écartées', rej.length ? rej.map(x => `${x.source} : ${x.reason}`).join(' | ') : 'aucune']];
 }
@@ -4292,11 +4292,11 @@ document.addEventListener('click', async e => {
     // par les champs historiques du panneau Paramètres.
     const i = S.cars.findIndex(c => c && c.id === t.dataset.car);
     const key = t.dataset.garageTarget;
-    if (i < 0 || !['odo', 'tread', 'pressure', 'maintenance', 'model', 'size'].includes(key) || LOCKED()) {
+    if (i < 0 || !['odo', 'tread', 'pressure', 'maintenance', 'model', 'size', 'mount'].includes(key) || LOCKED()) {
       commandFeedback(t, 'Fiche indisponible'); return;
     }
     const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : key === 'maintenance' ? '#f-cars-' + i + '-maint-rev-d'
-      : key === 'model' ? '#f-cars-' + i + '-tire-model' : key === 'size' ? '#f-cars-' + i + '-tire-size' : '#f-cars-' + i + '-tire-pchk-av';
+      : key === 'mount' ? '#f-cars-' + i + '-tire-mountKm' : key === 'model' ? '#f-cars-' + i + '-tire-model' : key === 'size' ? '#f-cars-' + i + '-tire-size' : '#f-cars-' + i + '-tire-pchk-av';
     const d = $('#settings'); if (!d) { commandFeedback(t, 'Paramètres indisponibles'); return; }
     d.open = true;
     // Réutiliser le formulaire déjà présent : un autre raccourci ne doit pas
