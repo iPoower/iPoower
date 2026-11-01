@@ -47,10 +47,34 @@ function run(code = source) {
   test('géofence bornée par la précision : 180 m admis à ±100 m', () => assert.equal(c.context({ now, places, fix: fix({ lat: 48.8516, lon: 2.35 }, 0, 100) }).place.id, 'home'));
   test('adresses qui se recouvrent : pas de choix automatique', () => assert.equal(c.context({ now, places: [home, { ...work, lat: home.lat, lon: home.lon }], fix: fix() }).place, null));
   test('override conservé pendant une seule observation extérieure', () => { const conf = { placeId: 'home', at: now, how: 'manual' }, context = c.context({ now, places, conf }); const r = O({ now: later, fix: target, context }); assert(r.hold); assert.equal(r.logical, null); assert.equal(c.context({ now: later, places, conf, fix: r.logical }).source, 'manual'); });
+  // Vraisemblance (lot 1) : coordonnées fictives ; ≈ 300 km au sud des lieux de test.
+  const far = { lat: 46.15, lon: 2.35 }, near10 = { lat: 48.94, lon: 2.35 };
+  test('approximatif à ≈ 300 km de tous les lieux : en attente, distance et précision dans la raison', () => {
+    const r = O({ fix: fix(far, 0, 178) });
+    assert.equal(r.accept, false); assert.equal(r.implausible.code, 'far'); assert(r.implausible.km >= 290 && r.implausible.km <= 310, String(r.implausible.km));
+    assert.match(r.reason, /≈ \d+ km/); assert.match(r.reason, /± 178 m/);
+    const p = c.context({ now, places, fix: fix(far, 0, 178) });
+    assert.equal(p.source, 'none'); assert.equal(p.coords, undefined); assert(p.rejected.some(x => x.implausible && x.implausible.code === 'far'));
+  });
+  test('GPS précis à ≈ 300 km : accepté (voyage)', () => { const r = O({ fix: fix(far, 0, 20) }); assert(r.accept); assert(!r.implausible); });
+  test('aucun lieu enregistré : approximatif non vérifiable, jamais accepté en silence', () => {
+    const r = O({ places: [], fix: fix(far, 0, 178) }); assert.equal(r.accept, false); assert.equal(r.implausible.code, 'unverifiable'); assert.match(r.reason, /non vérifiable/);
+    assert.equal(c.context({ now, places: [], fix: fix(far, 0, 178) }).source, 'none');
+  });
+  test('approximatif à ≈ 10 km : accepté', () => { const r = O({ fix: fix(near10, 0, 178) }); assert(r.accept); assert.equal(c.context({ now, places, fix: fix(near10, 0, 178) }).source, 'approx'); });
+  test('« Utiliser quand même » : la zone choisie est acceptée, une autre reste en attente', () => {
+    const forced = { lat: far.lat, lon: far.lon };
+    assert(O({ fix: fix(far, 0, 178), forced }).accept);
+    assert.equal(c.context({ now, places, fix: fix(far, 0, 178), forced }).source, 'approx');
+    assert.equal(O({ fix: fix({ lat: 44.0, lon: 2.35 }, 0, 178), forced }).accept, false);
+  });
   return n;
 }
 const count = run();
 for (const [from, to] of [["if (cls === 'coarse')", 'if (false)'], ["if (!coherent)", 'if (false)'], ['now - previous.ts <= PLACE_GPS_AGE', 'false'], ['const PLACE_VMAX = 200,', 'const PLACE_VMAX = 1e9,'], ['!current && target;', '!current && target && logical;']]) {
   assert(source.includes(from)); assert.throws(() => run(source.replace(from, to)));
 }
-console.log(`${count}/${count} scénarios OK · 5/5 mutations rejetées`);
+for (const [from, to] of [['if (!plausible.ok) return', 'if (false) return'], ['PLACE_PLAUSIBLE_KM = 50', 'PLACE_PLAUSIBLE_KM = 1e9']]) {
+  assert(source.includes(from)); assert.throws(() => run(source.replace(from, to)));
+}
+console.log(`${count}/${count} scénarios OK · 7/7 mutations rejetées`);

@@ -7,6 +7,7 @@ function roadManager() {
   }
   return ROAD.manager;
 }
+const ROAD_STALE_MS = 30 * 60000;   // seuil de fraîcheur du flux DATEX (cron ≈ 8 min, relais météo en secours)
 const roadAge = ms => ms == null ? 'âge inconnu' : ms < 60000 ? `${Math.floor(ms / 1000)} s` : `${Math.floor(ms / 60000)} min`;
 const roadDistance = m => m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1).replace('.', ',')} km`;
 function roadStatus(p) {
@@ -39,6 +40,7 @@ function renderRoad() {
   const card = e => `<li><b>${esc(e.title)} · ${esc(e.roadNumber)}</b><span class="road-distance">${roadDistance(e.distanceAhead)} devant${e.etaToEvent == null ? '' : ` · ~${Math.max(1, Math.ceil(e.etaToEvent / 60))} min (OSRM)`}</span>${e.laneInfo ? `<span>${esc(e.laneInfo)}</span>` : ''}${e.delaySeconds == null ? '' : `<span>Délai signalé : ${Math.ceil(e.delaySeconds / 60)} min · source</span>`}<small>${esc(e.producer || e.provider)} · mise à jour ${roadAge(Math.max(0, now - Date.parse(e.updatedAt)))}${!e.providerFresh ? ' · non LIVE' : ''}</small></li>`;
   el.innerHTML = `<div class="road-head"><h2>🚧 Sur le trajet</h2><span class="badge">${esc(roadStatus(p))}</span></div>
     <p class="sub road-source">${esc(p.label)} · ${roadAge(p.ageMs)}<br>${esc(p.coverage || 'Couverture non vérifiée')}</p>
+    ${p.ageMs != null && p.ageMs > ROAD_STALE_MS ? `<p class="sub road-stale" role="status">⚠ Données routières reçues il y a ${roadAge(p.ageMs)} : au-delà de ${ROAD_STALE_MS / 60000} min, elles peuvent être dépassées.</p>` : ''}
     ${ROAD.alert ? `<div class="road-alert" role="status">⚠️ ${esc(ROAD.alert.title)} · ${roadDistance(ROAD.alert.distanceAhead)} devant</div>` : ''}
     ${message ? `<p class="sub road-message">${message}</p>` : ''}
     ${v.events.length ? `<ul class="road-events">${v.events.slice(0, 3).map(card).join('')}</ul>` : ''}

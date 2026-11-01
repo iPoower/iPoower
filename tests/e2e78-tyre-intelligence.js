@@ -66,8 +66,12 @@ let count = 0;
       assert.match(tyreText, /Mesures du véhicule/);
       assert.equal(await panel.locator('img').count(), 0);
       const roveloText = await page.locator('#secCars .ti-panel').nth(1).textContent();
-      assert.match(roveloText, /Données d’essais insuffisantes/);
-      assert.match(roveloText, /Essais indisponibles/);
+      // Type 1 · aucun essai publié : une seule mention courte pour ce pneu, plus de répétition dans les autres blocs.
+      assert.equal((roveloText.match(/Aucun essai indépendant publié pour ce modèle : analyse sur tes mesures et la météo seulement\./g) || []).length, 1);
+      assert.doesNotMatch(roveloText, /Données d’essais insuffisantes|Données indisponibles|Essais indisponibles/);
+      assert.match(roveloText, /Des essais existent pour un modèle voisin \(RPX-998\) : ils ne sont pas utilisés pour ton pneu\./);
+      // Aucune heure UTC brute (ISO « …Z ») à l'écran : les horodatages sont affichés à l'heure de Paris.
+      assert.doesNotMatch(tyreText + roveloText, /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z/);
       assert.match(roveloText, /Vigilance/); // pluie prévue : la vigilance garde sa priorité sur les données manquantes
       count++; console.log('✅ ' + device + ' · monte exacte, essais différents, mesures et projet non monté');
       for (const [view, selector] of [['meteo', '#secWx'], ['analyse', '#secLab'], ['trajet', '#secTrip']]) {
@@ -78,23 +82,20 @@ let count = 0;
       }
       await tab('analyse');
       const cockpit = page.locator('#secLab .ec-panel');
-      assert.equal(await cockpit.locator('.ec-domain').count(), 6);
+      // Type 3 · non mesurable sans capteur : aucun domaine « INCONNUE » pour l'accélération ou la stabilité ; essais documentés conservés.
+      const domainIds = await cockpit.locator('[data-ec-domain]').evaluateAll(xs => xs.map(x => x.dataset.ecDomain));
+      assert(domainIds.includes('braking') && domainIds.includes('tyres') && !domainIds.includes('acceleration') && !domainIds.includes('stability'), JSON.stringify(domainIds));
       assert.match(await cockpit.textContent(), /Engineering Cockpit/);
       assert.match(await cockpit.textContent(), /MESURÉE/); assert.match(await cockpit.textContent(), /ESTIMÉE/);
-      assert.match(await cockpit.textContent(), /DOCUMENTÉE/); assert.match(await cockpit.textContent(), /INCONNUE/);
-      // Domaines sans aucune donnée (jamais mesurables sans capteur) : regroupés et repliés en une ligne.
-      const unmeasured = cockpit.locator('.ec-unmeasured');
-      assert.match(await unmeasured.locator(':scope > summary').innerText(), /Non mesurables sans capteur[\s\S]*Accélération[\s\S]*Stabilité/);
-      assert.equal(await unmeasured.evaluate(e => e.open), false);
-      assert.deepEqual(await unmeasured.locator('[data-ec-domain]').evaluateAll(xs => xs.map(x => x.dataset.ecDomain)).then(ids => ids.filter(id => ['acceleration', 'stability'].includes(id)).sort()), ['acceleration', 'stability']);
-      await unmeasured.locator(':scope > summary').click();
-      for (const id of ['acceleration', 'braking', 'cornering', 'stability', 'aquaplaning', 'tyres']) {
+      assert.match(await cockpit.textContent(), /DOCUMENTÉE/);
+      assert.equal(await cockpit.locator('.ec-unmeasured').count(), 0);
+      assert.match(await cockpit.locator('.ec-limits').innerText(), /Sources et limites : L’app ne mesure pas l’adhérence : elle l’estime à partir de la météo, de la température et de tes relevés\./);
+      for (const id of domainIds) {
         const domain = cockpit.locator(`[data-ec-domain="${id}"]`);
         await domain.locator(':scope > summary').click();
         assert(await domain.locator('.ec-data').isVisible());
       }
       assert.match(await cockpit.locator('[data-ec-domain="braking"]').innerText(), /historique, non transposable/);
-      assert.match(await cockpit.locator('[data-ec-domain="acceleration"]').innerText(), /Aucun 0–100/);
       const cockpitLayout = await cockpit.evaluate(el => ({ small: [...el.querySelectorAll('summary')].some(x => x.getBoundingClientRect().height < 44),
         wide: [...el.querySelectorAll('*')].some(x => x.getBoundingClientRect().right > document.documentElement.clientWidth + 1) }));
       assert.deepEqual(cockpitLayout, { small: false, wide: false });
@@ -109,12 +110,12 @@ let count = 0;
       assert.deepEqual(splitPriorityWords, [], 'Les mots des priorités restent lisibles sans coupure interne');
       const same = await page.evaluate(() => { const before = JSON.stringify(S); for (let i = 0; i < 10; i++) engineeringCockpitHtml(labCar()); return before === JSON.stringify(S); });
       assert(same);
-      const keySummary = cockpit.locator('[data-ec-domain="acceleration"] > summary');
+      const keySummary = cockpit.locator('[data-ec-domain="braking"] > summary');
       await keySummary.focus(); await page.keyboard.press('Space');
       assert.equal(await keySummary.evaluate(e => e.parentElement.open), false);
       await page.keyboard.press('Space');
       const focus = await page.evaluate(() => { renderLab.last = ''; renderLab(); const e = document.activeElement; return { domain: e?.parentElement?.dataset.ecDomain, open: e?.parentElement?.open }; });
-      assert.deepEqual(focus, { domain: 'acceleration', open: true });
+      assert.deepEqual(focus, { domain: 'braking', open: true });
       const safety = await page.evaluate(() => {
         const car = labCar(), saved = structuredClone(car.tire), wx = CX;
         try {

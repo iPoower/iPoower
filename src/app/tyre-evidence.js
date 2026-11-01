@@ -17,7 +17,7 @@ const TYRE_TEST_EVIDENCE = (() => {
     models: [
       { id: 'michelin-ps4s', brand: 'Michelin', model: 'Pilot Sport 4S', aliases: ['Pilot Sport 4 S'], type: 'summer', gap: null },
       { id: 'rovelo-rpx988', brand: 'Rovelo', model: 'RPX-988', aliases: ['RPX988', 'RPX 988'], type: 'summer',
-        gap: 'Données d’essais insuffisantes : publication primaire non vérifiée. Aucun résultat attribué au RPX-998.' },
+        gap: 'Données d’essais insuffisantes : publication primaire non vérifiée. Des essais existent pour un modèle voisin (RPX-998) : ils ne sont pas utilisés pour ton pneu.' },
       { id: 'goodyear-ugp3', brand: 'Goodyear', model: 'UltraGrip Performance 3', aliases: [], type: 'winter', gap: null }
     ],
     tests: [
