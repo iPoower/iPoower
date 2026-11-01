@@ -107,7 +107,7 @@ function tyreState(car, opt = {}) {
   const profile = spec ? { kind: 'manufacturer-specific', label: `${spec.b} ${spec.m} (fiche constructeur)`, conf: 'élevée' }
     : { kind: 'generic', label: `profil générique ${TS_TYPES[type] || 'inconnu'}${uhp ? ' haute performance' : ''}`, conf: t.brand && t.model ? 'moyenne' : 'faible' };
   // jeux stockés : connus, jamais analysés
-  const stored = Object.entries(car.sets || {}).filter(([k, v]) => k !== type && v && (v.brand || v.model || v.size)).map(([k, v]) => ({ type: k, label: TS_TYPES[k] || k, title: [v.brand, v.model].filter(Boolean).join(' ') || 'modèle non renseigné' }));
+  const stored = Object.entries(car.sets || {}).filter(([k, v]) => k !== type && v && (v.brand || v.model || v.size)).map(([k, v]) => ({ type: k, label: TS_TYPES[k] || 'saison non renseignée', title: [v.brand, v.model].filter(Boolean).join(' ') || 'modèle non renseigné' }));
   // qualité des données (qualité et fraîcheur, pas le nombre de champs remplis)
   const Q = (k, st, txt) => ({ k, st, txt });
   const quality = [
