@@ -56,7 +56,7 @@ function f1TrackHtml() {
     '<p class="sub">Lecture ordonnée des points météo du trajet (maximum 3 secteurs). Aucun découpage GPS précis ni capteur de piste.</p>');
 }
 function f1TyreHtml() {
-  const car = appActiveCar(), state = car ? tyreState(car) : null;
+  const car = appActiveCar(), state = car ? tyreState(car, { wheels: treadWheelsRecord(S, car) }) : null;
   const x = F1Pure.tyreManagement(state);
   return f1Panel('tyreManagement', 'GESTION DES PNEUS', car ? car.short || car.name : 'Voiture à choisir',
     '<ul class="lab-why">' + x.lines.map(f1Line).join('') +

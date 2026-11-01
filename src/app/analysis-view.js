@@ -31,7 +31,7 @@ function labLastDriveHtml(car, li) {
 // Les calculs gardent leurs seuils ; l'interface nomme un potentiel relatif estimé, jamais une garantie.
 const labBrakeText = word => word === 'Optimal' ? 'Favorable estimé' : word + ' estimé';
 // état pneumatique unique (onglet Pneus = source de vérité) : recalculé à chaque rendu, donc jamais périmé après une saisie
-const tyreStateOf = car => tyreState(car, { today: nowIn('Europe/Paris').slice(0, 10) });
+const tyreStateOf = car => tyreState(car, { today: nowIn('Europe/Paris').slice(0, 10), wheels: treadWheelsRecord(S, car) });
 const localTs = (ms, tz) => new Date(ms).toLocaleString('sv-SE', { timeZone: tz || 'Europe/Paris', hour12: false }).replace(' ', 'T').slice(0, 16);
 function labInput(car) {
   const m = CX && CX.m, tz = (m && m.tz) || 'Europe/Paris';

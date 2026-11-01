@@ -25,7 +25,7 @@ const BASE = {
   work: { from: 'home', to: 'work', durMin: 180, dep: '07:30', ret: '17:30', days: [1, 2, 3, 4, 5] },
   horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on', f1RaceEngineer: 0, f1TrackConditions: 0, f1TyreManagement: 0,
     f1StrategyAB: 0, f1TheGarage: 0, f1TelemetryReplay: 0 }, road: { on: 1 },
-  alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, tread: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
+  alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, tread: 1, treadgap: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
   cars: [
     { id: 'car1', name: 'Voiture 1', short: 'Voiture 1', spec: '', sporty: 0,
       tire: { type: 'summer', brand: '', model: '', size: '', tread: null, treadAv: null, treadAr: null, treadEst: 0, press: '', mounted: '', dot: '', info: '', pchk: { date: '', T: null } },
@@ -1289,7 +1289,7 @@ function renderCurrent() {
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 // Alertes propres aux pneus d'une voiture (et la planification du montage hiver) : jamais dans le verdict « ici, maintenant »
 // d'une autre voiture que celle affichée, ni en tête de l'onglet Météo.
-const TIRE_ALERTS = ['press', 'age', 'mont', 'tread', 'pre'];
+const TIRE_ALERTS = ['press', 'age', 'mont', 'tread', 'treadgap', 'pre'];
 const NOW_HOURS = 3, NOW_EXTRA = ['press', 'age', 'vigi', 'rain15'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
 const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
@@ -3402,20 +3402,63 @@ const tireTxt = car => {
 const lastOdo = car => (car.odo || []).slice().sort((x, y) => x.km - y.km).slice(-1)[0] || null;
 // Une profondeur de la fiche rejoint l'historique du jour (remplace la saisie non localisée du même jour et du même essieu),
 // avec le compteur connu et l'indication estimée / mesurée. Plafond de 30 relevés : rien n'est effacé pour faire de la place.
-function datedFicheTread(car, axes) {
+// Chaque ligne porte l'origine choisie À SA SAISIE (est : mesure à la jauge = false, estimation = true), jamais treadEst, qui décrit
+// l'essieu le plus usé. Sans origine explicite (champs AV / AR de la fiche), l'origine de la fiche s'applique, comme auparavant.
+// Seule la ligne non localisée du même essieu et du MÊME JOUR est remplacée (correction du jour) : aucune ligne plus ancienne n'est touchée.
+function datedFicheTread(car, axes, day, est) {
   if (!car || !car.tire) return false;
-  const today = (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10), lo = lastOdo(car), x = treadAxles(car.tire);
+  const today = day || (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10), lo = lastOdo(car), x = treadAxles(car.tire);
   let hist = Array.isArray(car.tire.treads) ? car.tire.treads.slice() : [], changed = false;
   for (const ax of axes) {
     const mm = x[ax];
     if (typeof mm !== 'number' || !Number.isFinite(mm) || mm < 0 || mm > 12) continue;
     const kept = hist.filter(r => !(r && r.d === today && r.ax === ax && !r.pos && !r.wheel));
-    if (kept.length >= 30) continue;
-    hist = kept.concat([{ d: today, mm: Math.round(mm * 10) / 10, km: lo ? lo.km : null, ax, ...(car.tire.treadEst ? { est: 1 } : {}) }]);
+    if (kept.length >= TREAD_HISTORY_MAX) continue;
+    hist = kept.concat([{ d: today, mm: Math.round(mm * 10) / 10, km: lo ? lo.km : null, ax, ...((typeof est === 'boolean' ? est : car.tire.treadEst) ? { est: 1 } : {}) }]);
     changed = true;
   }
   if (changed) car.tire.treads = hist;
   return changed;
+}
+// Enregistre un relevé par pneu : minima par essieu, relevé séparé, historique daté avec l'origine choisie, puis treadEst global =
+// origine de l'essieu le plus usé, déduite de SA dernière ligne d'historique. Rien n'est écrit si la voiture n'est pas adressable.
+// ATOMIQUE : tout est calculé sur une copie ; si l'historique ne peut pas recevoir TOUTES les lignes nécessaires, la saisie est refusée
+// sans rien modifier (profondeurs, origine, historique, relevé par pneu séparé). Sinon, la copie est appliquée en une fois.
+function applyTreadWheels(car, input, { date, est } = {}) {
+  if (!car || !car.tire) return { error: 'Véhicule indisponible' };
+  if (!putTreadWheelsRecord({}, car, {})) return { error: 'Véhicule non adressable : relevé non enregistré' };
+  const draft = JSON.parse(JSON.stringify(car));
+  const r = setTreadWheels(draft.tire, input, { date, est });
+  if (r.error) return r;
+  const hist = datedFicheTread(draft, r.axes, date, est === true);
+  const x = treadAxles(draft.tire);
+  const complete = r.axes.every(ax => (draft.tire.treads || []).some(l => l && l.d === date && l.ax === ax && !l.pos && !l.wheel && l.mm === Math.round(x[ax] * 10) / 10));
+  if (!complete) return { error: `Historique de profondeur plein (${TREAD_HISTORY_MAX} lignes) : relevé non enregistré, aucune valeur modifiée. Archive l’historique avant une nouvelle saisie.` };
+  const o = treadEstFromHistory(draft.tire, car.tire.treadEst); if (o != null) draft.tire.treadEst = o;   // provenance AVANT la saisie
+  Object.keys(draft.tire).forEach(k => { car.tire[k] = draft.tire[k]; });
+  const path = putTreadWheelsRecord(S, car, r.record);
+  return { ...r, path, hist };
+}
+// Relevé PAR PNEU (enregistrement séparé settings.treadWheels, voir tyrestate.js) : 4 positions × 2 points (côté, milieu) + date.
+// Pré-rempli avec le dernier relevé de la monte active. Le verdict lit toujours la valeur la plus basse de chaque essieu.
+const treadToday = () => (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10);
+function treadWheelsForm(car, i) {
+  const rec = treadWheelsRecord(S, car), v = treadWheels(car.tire, rec), f = x => String(x).replace('.', ',');
+  const val = (k, p) => v && v.wheels[k][p] != null ? String(v.wheels[k][p]) : '';
+  const AX = { av: 'de l’essieu avant', ar: 'de l’essieu arrière' };
+  // Nom de la voiture dans chaque libellé (lecteur d'écran et risque de saisie sur la mauvaise fiche).
+  const carName = String(car.short || car.name || car.id);
+  const inp = (k, p, lbl) => `<label for="trw-${i}-${k}-${p}" style="display:block">${lbl}</label><input type="number" id="trw-${i}-${k}-${p}" inputmode="decimal" min="0" max="12" step="0.1" value="${esc(val(k, p))}" aria-label="${esc(carName + ' · ' + TREAD_WHEEL_LABEL[k] + ' · ' + lbl)}" style="width:100%;min-width:0;box-sizing:border-box">`;
+  const cell = k => `<fieldset style="min-width:0;margin:0;padding:6px;border:1px solid var(--line, #8884);border-radius:8px"><legend>${esc(carName)} · ${esc(TREAD_WHEEL_LABEL[k])}</legend>${inp(k, 'side', 'Côté (mm)')}${inp(k, 'mid', 'Milieu (mm)')}</fieldset>`;
+  const notes = [];
+  if (v) v.stale.forEach(ax => notes.push(`<p class="sub trw-stale" role="status">⚠️ La profondeur ${AX[ax]} a été modifiée après ce relevé (saisie par essieu, peut-être depuis un appareil pas encore à jour) : son détail par pneu n’est plus appliqué. Le verdict utilise la valeur par essieu (${f(v.axles[ax].current)} mm). Refais le relevé par pneu pour le rétablir.</p>`));
+  if (v) v.irregular.forEach(w => notes.push(`<p class="sub trw-gap" role="status">⚠️ Usure irrégulière ${esc(w.label)} : écart côté / milieu de ${f(w.gap)} mm. Contrôle de géométrie conseillé. Seuil indicatif de 1 mm, non réglementaire.</p>`));
+  return `<div class="fld wide trw" id="trw-${i}"><label for="trw-${i}-d">${esc(String(car.short || car.name || car.id))} · profondeur par pneu · date du relevé</label><input type="date" id="trw-${i}-d" value="${esc((v && v.d) || treadToday())}" max="${esc(treadToday())}">
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:6px">${['fl', 'fr', 'rl', 'rr'].map(cell).join('')}</div>
+    ${notes.join('')}<p class="sub">Deux points par pneu : côté (épaule) et milieu. Le verdict et l’alerte de profondeur utilisent la valeur la plus basse de chaque essieu. Un point laissé vide n’est pas inventé ; un essieu sans aucun point garde sa valeur actuelle.</p>
+    <p class="sub">Version de cet appareil : ${esc(window.TWRC_BUILD ? 'build ' + window.TWRC_BUILD : 'version locale')}. Avant la première saisie par pneu, mets à jour le PC et l’iPhone (même build dans Diagnostic).</p>
+    <label for="trw-${i}-est">Origine du relevé</label><select id="trw-${i}-est" aria-label="${esc(String(car.short || car.name || car.id))} · origine du relevé par pneu"><option value="0" ${rec && rec.est ? '' : 'selected'}>Mesure (jauge)</option><option value="1" ${rec && rec.est ? 'selected' : ''}>Estimation</option></select>
+    <button class="btn sm" data-act="tread-wheels" data-i="${i}">Enregistrer le relevé par pneu · ${esc(String(car.short || car.name || car.id))}</button></div>`;
 }
 // Rythme : règle unique de Garage.kmPerDay (deux relevés réels, plausible), utilisée par le Garage, l'entretien et l'usure.
 function kmPerDay(car) { return Garage.kmPerDay(car && car.odo); }
@@ -3722,7 +3765,7 @@ function renderCompare() {
     if (sm.Pmax >= 4) L.push(['⚠️', `Pluie jusqu’à ${f1(sm.Pmax)} mm/h`]);
     if (sm.visMin != null && sm.visMin < 1000) L.push(['⚠️', `Brouillard (${f0(sm.visMin)} m) : prudence quel que soit le pneu`]);
     // Usure : mêmes constats que Garage (même source tyreState), la profondeur saisie entrant déjà dans l'indice
-    tyreStateOf(car).maint.filter(m => ['tread', 'tread-stale', 'tread-est'].includes(m.k)).forEach(m => L.push([m.lv >= 2 ? '⛔' : '⚠️', m.text]));
+    tyreStateOf(car).maint.filter(m => ['tread', 'tread-gap', 'tread-stale', 'tread-est'].includes(m.k)).forEach(m => L.push([m.lv >= 2 ? '⛔' : '⚠️', m.text]));
     if (!L.length) L.push(['✅', 'Aucune contrainte particulière détectée']);
     const gen = carProfile(car).generic;
     return `<div class="cmpc ${gen ? 'lvx' : 'lv' + w.level}"><div class="verdict sm ${gen ? 'lvx' : 'lv' + w.level}"><span class="em">${gen ? '🧪' : LV[w.level].emoji}</span><span>${esc(car.short)} · ${gen ? 'aperçu' : w.score + '/100'}</span></div>
@@ -4007,6 +4050,7 @@ function renderSettings(force) {
       <div class="fld wide"><label for="trd-${i}">Nouveau relevé de profondeur (mm)</label><div style="display:flex;gap:6px"><input type="number" id="trd-${i}" inputmode="decimal" min="0" max="12" step="0.1" placeholder="ex. 6,5" style="flex:1;min-width:0"><button class="btn sm" data-act="tread-add" data-i="${i}">Enregistrer</button></div>
         <div style="display:flex;gap:6px;margin-top:6px"><select id="trdax-${i}" aria-label="Essieu du relevé" style="flex:1;min-width:0"><option value="both">AV + AR</option><option value="av">Avant seul</option><option value="ar">Arrière seul</option></select><select id="trdest-${i}" aria-label="Origine du relevé" style="flex:1;min-width:0"><option value="0">Mesure (jauge)</option><option value="1">Estimation</option></select></div>
         <label for="trdpos-${i}">Point mesuré</label><select id="trdpos-${i}"><option value="unknown">Non précisé</option><option value="shoulders">Épaules</option><option value="centre">Centre</option><option value="inner">Intérieur</option><option value="outer">Extérieur</option></select><p class="sub">Un relevé concerne seulement les points mesurés. Pour une position précise, choisir un essieu ; les relevés restent conservés séparément.</p></div>
+      ${treadWheelsForm(c, i)}
       ${bindIn(`cars.${i}.tire.mountKm`, c.tire.mountKm, { label: 'Compteur au montage (km)', type: 'number', num: 1, attrs: 'step="1" inputmode="numeric"' })}
       ${bindIn(`cars.${i}.tire.pchk.av`, (c.tire.pchk || {}).av, { label: 'Pression AV réellement mesurée (bar)', type: 'number', num: 1, attrs: 'min="0" max="6" step="0.05" inputmode="decimal"' })}${bindIn(`cars.${i}.tire.pchk.ar`, (c.tire.pchk || {}).ar, { label: 'Pression AR réellement mesurée (bar)', type: 'number', num: 1, attrs: 'min="0" max="6" step="0.05" inputmode="decimal"' })}
       <div class="fld"><span class="l">Permutation AV/AR</span><button class="btn sm" data-act="rot" data-i="${i}">Permutation faite aujourd’hui</button></div>
@@ -4241,13 +4285,32 @@ document.addEventListener('click', async e => {
   else if (a === 'photo-del') { const c = S.cars[+t.dataset.i]; if (!c || !c.photo) return;
     if (!confirm(`Retirer la photo de « ${c.name} » ? Elle sera supprimée de la fiche sur cet appareil et des copies synchronisées.`)) { commandFeedback(t, 'Photo conservée'); return; }
     delete c.photo; saveSettings(); renderSettings(); softRender(); }
+  else if (a === 'tread-wheels') {
+    const i = +t.dataset.i, c = S.cars[i], today = treadToday();
+    if (!c || !c.tire) { commandFeedback(t, 'Véhicule indisponible'); return; }
+    const input = {}; for (const k of Object.keys(TREAD_WHEELS)) input[k] = { side: ($(`#trw-${i}-${k}-side`) || {}).value, mid: ($(`#trw-${i}-${k}-mid`) || {}).value };
+    const dateEl = $(`#trw-${i}-d`), date = (dateEl || {}).value;
+    if (typeof date === 'string' && date > today) { commandFeedback(t, 'La date du relevé ne peut pas être dans le futur.', dateEl); return; }
+    // Valeurs vérifiées d'abord (sur une copie) : une saisie invalide ne déclenche jamais la question de transition.
+    // Origine explicite : une mesure à la jauge remplace un statut « estimé » antérieur (et inversement).
+    const est = (($(`#trw-${i}-est`) || {}).value || '0') === '1';
+    const probe = setTreadWheels(JSON.parse(JSON.stringify(c.tire)), input, { date, est });
+    if (probe.error) { commandFeedback(t, probe.error); return; }
+    // Transition : aucun appareil ne publie sa version dans la synchronisation ; l'utilisateur confirme une fois que ses appareils sont à jour.
+    if (!Object.keys(S.treadWheels || {}).length && !confirm('Première saisie par pneu.\n\nLe PC et l’iPhone doivent d’abord être mis à jour (même build dans Diagnostic). Un appareil encore sur l’ancienne version lit la bonne profondeur et n’efface pas ce relevé, mais une saisie par essieu faite depuis lui remplacera le détail par pneu de cet essieu (signalé ici).\n\nTes appareils sont-ils à jour ?')) { commandFeedback(t, 'Relevé non enregistré : mets d’abord tes appareils à jour'); return; }
+    const r = applyTreadWheels(c, input, { date, est });
+    if (r.error) { commandFeedback(t, r.error); return; }
+    markEdit(r.path); ['tread', 'treadAv', 'treadAr', 'treadEst'].forEach(k => markEdit(`cars.${i}.tire.${k}`));
+    if (r.hist) markEdit(`cars.${i}.tire.treads`);
+    saveSettings(); renderSettings(); softRender(); commandFeedback($(`#settings [data-act="tread-wheels"][data-i="${i}"]`), 'Relevé par pneu enregistré');
+  }
   else if (a === 'odo' || a === 'tread-add' || a === 'rot') {
     const i = +t.dataset.i, c = S.cars[i], today = (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10);
     if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; }
     if (a === 'odo') { const input = $('#odo-' + i), v = parseFloat((input || {}).value); if (!isFinite(v) || v < 0) { commandFeedback(t, 'Saisis un compteur positif ou nul', input); return; } c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).slice(-60); }
     if (a === 'tread-add') { const input = $('#trd-' + i), v = parseFloat(String((input || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) { commandFeedback(t, 'Saisis une profondeur de 0 à 12 mm', input); return; } const lo = lastOdo(c);
       const mm = Math.round(v * 10) / 10, ax = ($('#trdax-' + i) || {}).value || 'both', est = ($('#trdest-' + i) || {}).value === '1', pos = ($('#trdpos-' + i) || {}).value || 'unknown';
-      if ((c.tire.treads || []).length >= 30) { commandFeedback(t, 'Historique plein : aucun ancien relevé effacé. Conserve un export avant d’organiser les relevés.', input); return; }
+      if ((c.tire.treads || []).length >= TREAD_HISTORY_MAX) { commandFeedback(t, 'Historique plein : aucun ancien relevé effacé. Conserve un export avant d’organiser les relevés.', input); return; }
       if (pos !== 'unknown' && ax === 'both') { commandFeedback(t, 'Choisis avant ou arrière pour localiser ce point mesuré.', $('#trdax-' + i)); return; }
       const before = treadAxles(c.tire), previousMm = ax === 'av' ? before.av : ax === 'ar' ? before.ar : null;
       const prior = (c.tire.treads || []).filter(r => (r.ax === ax || r.ax === 'both') && Number(r.mm) === previousMm).slice(-1)[0];
