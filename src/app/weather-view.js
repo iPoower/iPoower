@@ -235,13 +235,19 @@ function evShadowTick(v) {
   const o = v.r.worst.ev.find(e => e.layer === 'A' && e.w >= 0.6);
   shadowPush({ v1: v.v1, v2: v.r.worst.lv, trust: v.r.worst.trust, contra: !!v.r.contradiction, ...(o ? { obs: o.lv >= 2 ? 1 : 0, src: 'station' } : {}) });
 }
+// Seul déclencheur du journal AUTOMATIQUE : l'arrivée d'une nouvelle météo (refreshAll, src/app.js), après le rendu.
+// Un rendu (evidenceHtml) n'écrit jamais : afficher l'onglet Météo n'ajoute rien au stockage ni à la copie Drive.
+function evWeatherReceived() {
+  if (EV_FLAG() === 'off' || APP_CONTEXT.rendering) return;
+  evShadowTick(evNow());
+}
 function evidenceHtml() {
   const flag = EV_FLAG(); if (flag === 'off') return '';
   const v = evNow(); if (!v) {
     const i = evInput();
     return i && i.onTrip ? '<p class="wx-stale" role="status">Preuves météo du trajet indisponibles : points de passage non localisés.</p>' : '';
   }
-  evShadowTick(v);
+  // Lecture seule : aucune écriture pendant un rendu (le journal est tenu par evWeatherReceived).
   const r = v.r, E = WXD_EMO, h = r.headline, T = ['faible', 'moyenne', 'élevée'];
   const lastObs = r.fog.flatMap(f => f.ev).filter(e => e.layer === 'A').sort((a, b) => b.w - a.w)[0];   // observation la plus pertinente, tous points confondus
   const off = offlineNow() ? `<p class="wx-stale">⚠ Hors connexion : conditions actuelles non vérifiables · ${lastObs ? 'dernière observation : ' + esc(lastObs.text) : 'aucune observation en cache'}</p>` : '';
