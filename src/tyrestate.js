@@ -57,6 +57,115 @@ function treadHistory(t) {
   let rate = null; if (withKm.length >= 2) { const a = withKm[0], b = withKm[withKm.length - 1]; if (!mixedAxles && b.km - a.km >= 1000 && a.mm > b.mm) rate = (a.mm - b.mm) / (b.km - a.km) * 1000; }
   return { last, rate, measuredLast: withKm[withKm.length - 1] || null };
 }
+/* Profondeur PAR PNEU : enregistrement SÉPARÉ des réglages, settings.treadWheels['car-<id>'][<type de monte>] = { d, fl, fr, rl, rr, av, ar }.
+   fl / fr / rl / rr = AV gauche, AV droit, AR gauche, AR droit ; chaque pneu porte deux points : { side (côté), mid (milieu) } en mm.
+   Pourquoi hors de car.tire : les versions en production avant cette fonctionnalité (builds 502852864dbd et 53315c242870, vérifiés par e2e101) reconstruisent car.tire avec une liste fermée de champs
+   au changement de monte (switchTire, confirmation du montage hiver) et effaceraient un champ inconnu. Elles conservent en revanche
+   une clé de premier niveau inconnue des réglages (normalize, sauvegarde, fusion PC ↔ iPhone chemin par chemin).
+   Compatibilité : tire.treadAv / tire.treadAr restent écrits avec le MINIMUM de chaque essieu (tread = essieu le plus usé) :
+   ce sont les seules valeurs lues par le verdict, l'alerte de profondeur et les appareils encore sur l'ancienne version.
+   av / ar gardent les minima écrits avec ce relevé : si treadAv / treadAr changent ensuite (saisie par essieu plus récente,
+   par exemple sur un appareil pas encore à jour), la valeur par essieu fait foi et le détail par pneu de cet essieu est
+   signalé comme dépassé, jamais réappliqué. Un essieu sans aucun point saisi garde sa valeur : rien d'inventé ni d'effacé.
+   Clé 'car-' + id : jamais un segment purement numérique (la fusion créerait une liste au lieu d'un objet). */
+const TREAD_WHEELS = { fl: 'av', fr: 'av', rl: 'ar', rr: 'ar' };
+const TREAD_WHEEL_LABEL = { fl: 'AV gauche', fr: 'AV droit', rl: 'AR gauche', rr: 'AR droit' };
+// Écart côté / milieu au-delà duquel l'usure est jugée irrégulière : REPÈRE INDICATIF de l'app, non réglementaire.
+const TREAD_GAP_MM = 1;
+const treadMm = v => { const x = typeof v === 'string' ? (v.trim() === '' ? NaN : parseFloat(v.replace(',', '.'))) : v; return typeof x === 'number' && Number.isFinite(x) ? Math.round(x * 10) / 10 : null; };
+const treadDay = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d + 'T12:00:00Z')) && new Date(d + 'T12:00:00Z').toISOString().slice(0, 10) === d;
+const treadObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const treadWheelsKey = car => car && typeof car.id === 'string' && /^[A-Za-z0-9_-]{1,120}$/.test(car.id) ? 'car-' + car.id : null;
+// Relevé par pneu de la monte ACTIVE de cette voiture (null s'il n'existe pas).
+function treadWheelsRecord(settings, car) {
+  const k = treadWheelsKey(car), type = car && car.tire && car.tire.type, box = settings && settings.treadWheels;
+  const r = k && typeof type === 'string' && treadObj(box) && treadObj(box[k]) ? box[k][type] : null;
+  return treadObj(r) ? r : null;
+}
+// Range le relevé ; renvoie le chemin modifié (pour l'horodatage de synchronisation) ou null si la voiture n'est pas adressable.
+function putTreadWheelsRecord(settings, car, rec) {
+  const k = treadWheelsKey(car), type = car && car.tire && car.tire.type;
+  if (!settings || !k || typeof type !== 'string' || !/^[a-z]{1,20}$/.test(type) || !treadObj(rec)) return null;
+  if (!treadObj(settings.treadWheels)) settings.treadWheels = {};
+  if (!treadObj(settings.treadWheels[k])) settings.treadWheels[k] = {};
+  settings.treadWheels[k][type] = rec;
+  return `treadWheels.${k}.${type}`;
+}
+function treadWheels(t, rec) {
+  if (!t || !treadObj(rec)) return null;
+  const tx = treadAxles(t), wheels = {}, axles = {};
+  for (const k of Object.keys(TREAD_WHEELS)) {
+    const p = treadObj(rec[k]) ? rec[k] : {}, side = treadMm(p.side), mid = treadMm(p.mid), pts = [side, mid].filter(v => v != null);
+    wheels[k] = { k, label: TREAD_WHEEL_LABEL[k], ax: TREAD_WHEELS[k], side, mid, min: pts.length ? Math.min(...pts) : null,
+      gap: side != null && mid != null ? Math.round(Math.abs(side - mid) * 10) / 10 : null };
+  }
+  for (const ax of ['av', 'ar']) {
+    const ks = Object.keys(TREAD_WHEELS).filter(k => TREAD_WHEELS[k] === ax), mins = ks.map(k => wheels[k].min).filter(v => v != null);
+    const min = mins.length ? Math.min(...mins) : null, written = treadMm(rec[ax]), current = tx[ax];
+    // Dépassé : la valeur par essieu ne correspond plus au minimum écrit avec ce relevé.
+    const stale = min != null && (written == null || current == null || Math.abs(current - written) > 0.05 || Math.abs(min - written) > 0.05);
+    axles[ax] = { min, written, current, stale };
+    ks.forEach(k => { wheels[k].stale = stale; wheels[k].irregular = !stale && wheels[k].gap != null && wheels[k].gap > TREAD_GAP_MM; });
+  }
+  const list = Object.values(wheels);
+  return { d: treadDay(rec.d) ? rec.d : null, wheels, axles, any: list.some(x => x.min != null), irregular: list.filter(x => x.irregular),
+    stale: ['av', 'ar'].filter(ax => axles[ax].stale) };
+}
+// Saisie d'un relevé par pneu. Entrée : { fl: { side, mid }, ... } (nombres ou textes « 6,4 »).
+// Écrit seulement les valeurs par essieu de la monte (t) ; renvoie le relevé à ranger avec putTreadWheelsRecord.
+// En cas d'erreur, rien n'est écrit.
+function setTreadWheels(t, input, { date, est } = {}) {
+  if (!treadObj(t)) return { error: 'Monte indisponible.' };
+  if (!treadDay(date)) return { error: 'Choisis la date du relevé.' };
+  const rec = { d: date }, axes = [];
+  for (const k of Object.keys(TREAD_WHEELS)) {
+    const p = treadObj(input && input[k]) ? input[k] : {}, pt = {};
+    for (const f of ['side', 'mid']) {
+      const raw = p[f], empty = raw == null || String(raw).trim() === '', v = empty ? null : treadMm(raw);
+      if (!empty && (v == null || v < 0 || v > 12)) return { error: `${TREAD_WHEEL_LABEL[k]} · ${f === 'side' ? 'côté' : 'milieu'} : saisis une profondeur de 0 à 12 mm.` };
+      pt[f] = v;
+    }
+    rec[k] = pt;
+  }
+  for (const ax of ['av', 'ar']) {
+    const mins = Object.keys(TREAD_WHEELS).filter(k => TREAD_WHEELS[k] === ax).flatMap(k => [rec[k].side, rec[k].mid]).filter(v => v != null);
+    rec[ax] = mins.length ? Math.min(...mins) : null;
+    if (mins.length) axes.push(ax);
+  }
+  if (!axes.length) return { error: 'Saisis au moins une profondeur.' };
+  if (typeof est === 'boolean') rec.est = est ? 1 : 0;   // origine du relevé : mesure à la jauge (0) ou estimation (1)
+  // Essieu par essieu, par la règle existante : l'autre essieu garde l'ancienne profondeur commune s'il n'a jamais été saisi.
+  if (axes.length === 2) { setTreadAxle(t, 'av', rec.av); setTreadAxle(t, 'ar', rec.ar); if (typeof est === 'boolean') t.treadEst = est ? 1 : 0; }
+  else setTreadAxle(t, axes[0], rec[axes[0]], typeof est === 'boolean' ? est : undefined);
+  return { record: rec, axes, av: rec.av, ar: rec.ar };
+}
+// Origine (0 mesure, 1 estimation) de l'essieu le plus usé, déduite de SA dernière ligne d'historique portant sa valeur actuelle
+// (même essieu ou « both ») ; à égalité des deux essieux, la plus prudente des dernières lignes. null si aucune ligne ne la justifie.
+// Égalité des deux essieux : chacun est examiné sur SA dernière ligne ; si l'une d'elles est estimée, l'ensemble est estimé (prudence),
+// quelles que soient les dates. Ancien format (profondeur commune) : toutes les lignes de cette valeur.
+// Essieu au minimum SANS ligne exploitable : il hérite de la provenance précédente (prev = treadEst avant la saisie) ;
+// jamais « mesuré » sans ligne qui le prouve. Aucune ligne d'historique n'est réécrite.
+function treadEstFromHistory(t, prev) {
+  const tx = treadAxles(t); if (!t || tx.worst == null) return null;
+  const all = (Array.isArray(t.treads) ? t.treads : []).filter(r => r && typeof r.d === 'string' && treadMm(r.mm) === tx.worst);
+  const groups = !tx.split ? [all] : (tx.ax ? [tx.ax] : ['av', 'ar']).map(ax => all.filter(r => r.ax === ax || r.ax === 'both'));
+  let seen = false, est = false;
+  for (const rows of groups) {
+    if (!rows.length) { if (prev != null) { seen = true; if (prev) est = true; } continue; }
+    const day = rows.map(r => r.d).sort().pop(); seen = true;
+    if (rows.some(r => r.d === day && r.est)) est = true;
+  }
+  return seen ? (est ? 1 : 0) : null;
+}
+// Historique de profondeur : 200 lignes au plus par monte, aucune suppression automatique (archivage manuel, hors de cette version).
+const TREAD_HISTORY_MAX = 200;
+// Usure irrégulière (écart côté / milieu > 1 mm) : lignes prêtes pour l'alerte et l'entretien. Seuil indicatif, non réglementaire.
+function treadGapRows(t, rec) {
+  const v = treadWheels(t, rec); if (!v) return [];
+  const f = x => String(x).replace('.', ',');
+  return v.irregular.map(w => ({ k: w.k, label: w.label, gap: w.gap, side: w.side, mid: w.mid, d: v.d,
+    text: `${w.label} : écart côté / milieu de ${f(w.gap)} mm (côté ${f(w.side)}, milieu ${f(w.mid)} mm)` }));
+}
 function tyreState(car, opt = {}) {
   if (!car || !car.tire) return null;
   const t = car.tire, type = t.type, today = opt.today || null;
@@ -86,8 +195,10 @@ function tyreState(car, opt = {}) {
   const history = treadHistory(t), last = history.last, mm = tx.split ? tx.worst : num(t.tread) ?? (last ? num(last.mm) : null);
   const rate = history.rate;
   const treadAge = last ? days(last.d) : null;
+  const wheels = treadWheels(t, opt.wheels), gaps = treadGapRows(t, opt.wheels);
   const tread = { mm, av: tx.av, ar: tx.ar, worstAxle: tx.ax, split: tx.split, est: mm != null && est,
-    src: mm != null ? (est ? 'USER_ESTIMATED' : 'USER_MEASURED') : null, date: last ? last.d : null, ageD: treadAge, fresh: mm == null ? 'unknown' : fresh(treadAge, TS_TREAD), n: hist.length, rate };
+    src: mm != null ? (est ? 'USER_ESTIMATED' : 'USER_MEASURED') : null, date: last ? last.d : null, ageD: treadAge, fresh: mm == null ? 'unknown' : fresh(treadAge, TS_TREAD), n: hist.length, rate,
+    wheels, irregular: gaps };
   // pression : cible saisie (plaque constructeur du véhicule), éventuellement par essieu ; dernier contrôle daté
   const pz = String(t.press || ''), N = '(\\d+(?:[.,]\\d+)?)';
   const ax = new RegExp(N + '\\s*(?:bar\\s*)?AV\\b[^]*?' + N + '\\s*(?:bar\\s*)?AR\\b', 'i').exec(pz) || new RegExp('AV\\D{0,3}' + N + '[^]*?AR\\D{0,3}' + N, 'i').exec(pz);
@@ -128,6 +239,7 @@ function tyreState(car, opt = {}) {
   if (mm != null && mm < (type === 'winter' ? 4 : 3)) maint.push({ k: 'tread', lv: mm < 1.6 ? 3 : 1, text: mm < 1.6 ? (est ? 'Profondeur : estimation sous le minimum réglementaire de 1,6 mm, mesure à confirmer' : 'Profondeur sous le minimum légal (1,6 mm)') : `Profondeur ${String(mm).replace('.', ',')} mm : performances sur mouillé réduites, remplacement à prévoir` });
   if (target != null && (!pressure.check || pressure.check.fresh === 'stale')) maint.push({ k: 'pressure', lv: 1, text: 'Pression à contrôler à froid (dernier contrôle ancien ou non daté)' });
   if (tread.fresh === 'stale') maint.push({ k: 'tread-stale', lv: 1, text: 'Profondeur à remesurer (mesure de plus de 6 mois)' });
+  if (gaps.length) maint.push({ k: 'tread-gap', lv: 1, text: `Usure irrégulière (${gaps.map(g => g.text).join(' ; ')}) : contrôle de géométrie conseillé. Seuil indicatif de 1 mm, non réglementaire.` });
   if (tread.est && tread.fresh !== 'stale') maint.push({ k: 'tread-est', lv: 1, text: 'Profondeur estimée : à confirmer avec une jauge (témoins d’usure à 1,6 mm)' });
   const sig = [type, t.brand || '', t.model || '', t.size || ''].join('|');   // identité de la monte : change seulement avec un autre jeu
   return { vehicle: { id: car.id, name: car.name || car.short || car.id }, known, active: known ? { type, label: TS_TYPES[type] } : null, stored,

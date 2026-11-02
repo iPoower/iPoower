@@ -10,6 +10,9 @@ function driveConflictLabel(path, cars) {
   const m = /^cars\.(\d+)(?:\.(.+))?$/.exec(String(path || ''));
   if (m) { const c = Array.isArray(cars) && cars[+m[1]], who = c && (c.name || c.short) ? String(c.name || c.short) : 'Voiture ' + (+m[1] + 1);
     return who + (m[2] ? ' · ' + (DRIVE_FIELD[m[2]] || m[2].split('.').pop()) : ''); }
+  // Relevé par pneu (enregistrement séparé, clé « car-<id> ») : nommé comme les autres champs d'une voiture.
+  const w = /^treadWheels\.car-([A-Za-z0-9_-]+)(?:\.([a-z]+))?/.exec(String(path || ''));
+  if (w) { const c = Array.isArray(cars) && cars.find(x => x && x.id === w[1]); return (c && (c.name || c.short) ? String(c.name || c.short) : 'Voiture') + ' · profondeur par pneu'; }
   return String(path || 'réglage').split('.').join(' · ');
 }
 function driveConflictText(path, v) {
