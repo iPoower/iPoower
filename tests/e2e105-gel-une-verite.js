@@ -38,7 +38,7 @@ const text = (p, sel) => p.evaluate(sel => { const e = document.querySelector(se
       if (setup.error) throw new Error(setup.error);
       await p.evaluate(() => { UI.view = 'pneus'; renderAll(); }); await s.settle(10);
       // Fenêtre du trajet domicile-travail, telle que calculée par l'app.
-      const ctx = await p.evaluate(() => { const t = T.find(x => x.src === 'work' && x.sum); if (!t) return null;
+      const ctx = await p.evaluate(() => { const t = APP_CONTEXT.snapshot.trips.find(x => x.src === 'work' && x.sum); if (!t) return null;
         return { dep: t.dep, airMin: t.sum.Tmin, roadMin: t.sum.TrMin, fr: typeof frostRisk === 'function' ? frostRisk(t.sum) : null, band: frostBand(t.sum.TrMin) }; });
       const lo = ctx && ctx.roadMin != null ? ctx.roadMin - 2 : null;
       expect(`${dev} · contexte : trajet domicile-travail ${ctx && ctx.dep} avec chaussée estimée dans la marge du gel (chaussée − 2 °C < 0) et air au-dessus de 1 °C`,
@@ -64,13 +64,13 @@ const text = (p, sel) => p.evaluate(sel => { const e = document.querySelector(se
       expect(`${dev} · bandeau : ligne du trajet = fenêtre du trajet (${want})`, !!want && coreTrip.includes(want), coreTrip.slice(0, 300));
       expect(`${dev} · cartes pneus : prochain trajet = même fenêtre et mêmes minimums sur chaque voiture`, !!want && cardTrip.length >= 2 && cardTrip.every(x => x.includes(want)), JSON.stringify(cardTrip).slice(0, 400));
       // Alertes (fenêtre des 24 h) : même règle ; une alerte plus sévère que le trajet nomme une heure hors du trajet.
-      const al = await p.evaluate(() => { const a = CX.alerts && CX.alerts.t0, sm = summarize(CX.seq), fr = frostRisk(sm); const t = T.find(x => x.src === 'work' && x.sum);
-        return { t0: a ? { sev: a.sev, title: a.title } : null, horizon: { key: fr.key, level: fr.level, roadMin: fr.roadMin }, at: sm.iTrMin ? sm.iTrMin.hs[sm.iTrMin.i].t : null, trip: t ? { dep: t.dep, arr: t.arr, level: frostRisk(t.sum).level } : null }; });
+      const al = await p.evaluate(() => { const a = CX.alerts && CX.alerts.t0, sm = summarize(CX.seq), fr = typeof frostRisk === 'function' ? frostRisk(sm) : { key: 'absente', level: -1, roadMin: sm.TrMin }; const t = APP_CONTEXT.snapshot.trips.find(x => x.src === 'work' && x.sum);
+        return { t0: a ? { sev: a.sev, title: a.title } : null, horizon: { key: fr.key, level: fr.level, roadMin: fr.roadMin }, at: sm.iTrMin ? sm.iTrMin.hs[sm.iTrMin.i].t : null, trip: t ? { dep: t.dep, arr: t.arr, level: typeof frostRisk === 'function' ? frostRisk(t.sum).level : -1 } : null }; });
       const inTrip = al.at && al.trip && al.at.slice(0, 13) >= String(al.trip.dep).slice(0, 13) && al.at.slice(0, 13) <= String(al.trip.arr || al.trip.dep).slice(0, 13);
       expect(`${dev} · alertes : niveau de l’alerte de gel = frostRisk de sa fenêtre ; plus sévère que le trajet seulement à une heure hors du trajet, nommée`,
-        (al.horizon.level >= 2 ? !!al.t0 && al.t0.sev === al.horizon.level : !al.t0) && (!al.t0 || !al.trip || al.t0.sev <= al.trip.level || (!inTrip && /vers \d\d:\d\d/.test(al.t0.title))), JSON.stringify(al));
+        al.horizon.level >= 0 && (al.horizon.level >= 2 ? !!al.t0 && al.t0.sev === al.horizon.level : !al.t0) && (!al.t0 || !al.trip || al.t0.sev <= al.trip.level || (!inTrip && /vers \d\d:\d\d/.test(al.t0.title))), JSON.stringify(al));
       // Minimums affichés par chaque surface (constat « minimums contradictoires ») : relevés pour le rapport.
-      const mins = await p.evaluate(() => { const t = T.find(x => x.src === 'work' && x.sum);
+      const mins = await p.evaluate(() => { const t = APP_CONTEXT.snapshot.trips.find(x => x.src === 'work' && x.sum);
         return { trajet: t && { air: t.sum.Tmin, chaussee: t.sum.TrMin }, maintenant: CX && CX.m && CX.m.hs[CX.m.nowI] ? { air: CX.m.hs[CX.m.nowI].T, chaussee: CX.m.hs[CX.m.nowI].Tr } : null,
           horizon: CX && CX.seq ? (() => { const sm = summarize(CX.seq); return { air: sm.Tmin, chaussee: sm.TrMin }; })() : null }; });
       console.log('MINIMUMS ' + dev + ' ' + JSON.stringify(mins));
