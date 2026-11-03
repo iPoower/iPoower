@@ -1118,7 +1118,7 @@ function renderDecisionCore() {
   const confidence = Decision.confidence({
     weather: { available: !!raw && !!CX.m && CX.m.nowI >= 0 && ['T', 'Tr', 'P', 'RH', 'vis', 'gust'].every(k => Number.isFinite(CX.m.hs[CX.m.nowI][k])), ageMin: raw ? ageMin(raw.t) : null, mode: CX.m.mode },
     online: !offlineNow(), contextKnown: snap.status !== 'unknown',
-    storageDurable: USER_STORE.durability().status === 'durable',
+    storageDurable: USER_STORE.durability().status === 'durable', backup: driveBackupSummary(),
     tyresRequired: true, carChosen: !!car, tyresKnown: !!(car && hasTires(car) && carEval && carEval.w && !carProfile(car).generic),
     activeTrip: active, gpsAgeMin: gpsAge,
     routeReady: !active || !!(LIVE.route && !LIVE.routeErr && Number.isFinite(LIVE.lastOk) && now - LIVE.lastOk <= 5 * 60e3),
@@ -4123,6 +4123,7 @@ function renderSettings(force) {
   loadVersion(); loadSwVersion(); renderDriveSync();
 }
 // @include app/drive-sync-view.js
+// @include app/storage-persist.js
 // @include app/diagnostics.js
 /* ---------- orchestration du rendu ---------- */
 function renderAll() {

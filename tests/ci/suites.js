@@ -165,3 +165,5 @@ SUITE.push(['test_tread_wheels.js', 'profondeur par pneu : migration sans perte,
 SUITE.push(['e2e101-profondeur-prod-compat.js', 'profondeur par pneu : compatibilité avec le vrai build en production 53315c242870 (run 192) (fusion, lecture, saisie par essieu, changement de monte, rechargement), PC/iPhone', true]);
 SUITE.push(['test_tread_provenance.js', 'profondeur par pneu : origine de chaque ligne d’historique, treadEst de l’essieu le plus usé, historique ancien intact, reproducteur et contre-tests', false],
   ['e2e102-profondeur-provenance.js', 'profondeur par pneu : provenance de l’historique, scénario et symétrique, rechargement, historique ancien intact, PC/iPhone', true]);
+SUITE.push(['test_backup_visible.js', 'Lot S : sauvegarde visible, un libellé par état, dernière copie, âge des modifications, synthèse, persistance du stockage, contre-tests', false],
+  ['e2e104-sauvegarde-visible.js', 'Lot S : sauvegarde visible, dernière copie, libellé unique par état, persistance du stockage demandée et affichée, PC/iPhone', true]);

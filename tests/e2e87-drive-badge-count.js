@@ -50,7 +50,7 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     });
     const state = () => p.evaluate(() => ({ n: DRIVE_BADGE.pending, text: document.getElementById('driveBadge').textContent, keys: window.__keys.slice() }));
     const s0 = await state();
-    check('badge rendu, aucune modification en attente au départ', s0.n === 0 && /Reconnexion requise$/.test(s0.text), JSON.stringify(s0));
+    check('badge rendu, aucune modification en attente au départ', s0.n === 0 && /Reconnexion requise · aucune copie Drive vérifiée sur cet appareil$/.test(s0.text), JSON.stringify(s0));
 
     // 1. Écritures météo automatiques : actualisation réelle (relevés, comparaisons, journal du matin, contexte).
     await p.evaluate(() => {
@@ -74,7 +74,7 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     await p.locator('#odo-0').fill('24680'); await p.locator('[data-act=odo][data-i="0"]').click(); await p.waitForTimeout(1200);
     const s2 = await state();
     check('saisie au Garage : compteur augmenté de 1', s2.n === before.n + 1, JSON.stringify({ avant: before.n, apres: s2.n }));
-    check('badge : « Reconnexion requise · 1 modif en attente »', /Reconnexion requise · 1 modif en attente/.test(s2.text), s2.text);
+    check('badge : « Reconnexion requise · … · 1 modif non sauvegardée depuis … »', /Reconnexion requise · aucune copie Drive vérifiée sur cet appareil · 1 modif non sauvegardée depuis (moins de 1 min|\d+ min)$/.test(s2.text), s2.text);
 
     // 3. Nouvelle écriture automatique après la saisie : toujours 1.
     await p.evaluate(() => { const r = JSON.parse(lsGet('twrc.reports.v1') || '[]'); lsSet('twrc.reports.v1', JSON.stringify(r.concat([{ at: Date.now(), kind: 'fictif-2' }]))); });
