@@ -2700,15 +2700,15 @@ function renderBrfCore() {
   // trajet plus risqué que le prochain : mis en évidence même s'il vient après
   const crit = rest.filter(t => t.worst != null && t.worst >= 2 && t.worst > (main && main.worst != null ? main.worst : 0)).sort((a, b) => b.worst - a.worst)[0];
   // prochain risque : cherché sur les trajets réellement prévus (boulot + agenda), pas sur un lieu fixe
-  const riskOf = t => { if (!t.res) return null; const s = t.sum, fb = frostBand(s), top = t.res.reduce((a, r) => !a || r.w.level > a.w.level ? r : a, null);
-    if (t.worst >= 2 && top && !carProfile(top.c).generic) { const pt = ((top.w.worst && top.w.worst.parts) || []).slice().sort((a, b) => b.v - a.v)[0]; return { lv: t.worst, why: `${top.c.short} ${LV[t.worst].name}${pt ? ' (' + pt.label + ')' : ''}` }; }
-    if ((s.iceLevel || 0) >= 1) return { lv: Math.min(3, s.iceLevel + 1), why: `verglas ${ICE_LV[s.iceLevel].toLowerCase()}` };
-    if (s.visMin != null && s.visMin < 1000) return { lv: s.visMin < 200 ? 3 : 2, why: `brouillard ${f0(s.visMin)} m` };
-    if (fb && fb.lv >= 2) return { lv: fb.lv, why: `chaussée ${f1(s.TrMin)} °C (${fb.t.toLowerCase()})` };
-    if (t.worst === 1 && top && !carProfile(top.c).generic) return { lv: 1, why: `${top.c.short} ${LV[1].name}` };
-    // Incertitude gel sans humidité (VIGILANCE) : la synthèse n'est jamais verte.
-    if (fb && fb.lv >= 1) return { lv: fb.lv, why: `chaussée ${f1(s.TrMin)} °C (${fb.t.toLowerCase()})` };
-    return null; };
+  // Pire cause du trajet : pneus, verglas, brouillard, gel — le MAXIMUM, jamais la première trouvée (constat e2e105 : un gel en
+  // DANGER était masqué par un risque pneus en PRUDENCE). À niveau égal, l'ordre ci-dessous départage.
+  const riskOf = t => { if (!t.res) return null; const s = t.sum, fb = frostBand(s), top = t.res.reduce((a, r) => !a || r.w.level > a.w.level ? r : a, null), c = [];
+    if (t.worst >= 1 && top && !carProfile(top.c).generic) { const pt = ((top.w.worst && top.w.worst.parts) || []).slice().sort((a, b) => b.v - a.v)[0]; c.push({ lv: t.worst, why: `${top.c.short} ${LV[t.worst].name}${pt && t.worst >= 2 ? ' (' + pt.label + ')' : ''}` }); }
+    if ((s.iceLevel || 0) >= 1) c.push({ lv: Math.min(3, s.iceLevel + 1), why: `verglas ${ICE_LV[s.iceLevel].toLowerCase()}` });
+    if (s.visMin != null && s.visMin < 1000) c.push({ lv: s.visMin < 200 ? 3 : 2, why: `brouillard ${f0(s.visMin)} m` });
+    // Gel, y compris l'incertitude en VIGILANCE sans humidité : la synthèse n'est jamais verte.
+    if (fb && fb.lv >= 1) c.push({ lv: fb.lv, why: `chaussée ${f1(s.TrMin)} °C (${fb.t.toLowerCase()})` });
+    return c.reduce((a, x) => !a || x.lv > a.lv ? x : a, null); };
   // Pire risque de TOUS les trajets prévus, domicile-travail et prochain trajet compris (constat : la synthèse restait verte
   // alors que la carte du trajet domicile-travail indiquait « INCERTITUDE GEL ») ; à niveau égal, le plus proche.
   const rk = T.map(t => ({ t, r: riskOf(t) })).filter(o => o.r).sort((a, b) => b.r.lv - a.r.lv || String(a.t.dep).localeCompare(String(b.t.dep)))[0];

@@ -166,4 +166,5 @@ SUITE.push(['e2e101-profondeur-prod-compat.js', 'profondeur par pneu : compatibi
 SUITE.push(['test_tread_provenance.js', 'profondeur par pneu : origine de chaque ligne d’historique, treadEst de l’essieu le plus usé, historique ancien intact, reproducteur et contre-tests', false],
   ['e2e102-profondeur-provenance.js', 'profondeur par pneu : provenance de l’historique, scénario et symétrique, rechargement, historique ancien intact, PC/iPhone', true]);
 SUITE.push(['test_frost_truth.js', 'Lot G : une seule vérité pour le gel (frostRisk), seuil sur la chaussée estimée avec sa marge, limites 0,9/1,0/1,1 °C, synthèse, A/B, contre-tests', false],
+  ['test_frost_chain.js', 'Lot G : chaîne réelle des heures pour le gel (buildHours, P3, poste Météo, trajet, recalage, ensemble), heure sans P3 explicite, contre-tests', false],
   ['e2e105-gel-une-verite.js', 'Lot G : gel sur la fenêtre du trajet, synthèse jamais verte avec une incertitude gel, Gestion des pneus, A/B garde-fou, Ingénieur de course, PC/iPhone', true]);

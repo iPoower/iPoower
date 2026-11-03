@@ -130,6 +130,15 @@ function wxDesk(input) {
   const NAME = { rain: 'pluie', snow: 'neige', fog: 'brouillard', wind: 'rafales', ice: 'verglas', temp: 'température', sun: 'soleil rasant' };
   // gel : 🟡 chaussée proche de 0 °C (marge faible) · 🟠 gel de surface probable ou verglas modéré · 🔴 verglas possible
   const ICE_TXT = ['', 'chaussée proche du gel', 'gel de surface probable', 'verglas possible'];
+  // Libellé du gel d'une heure : quand le niveau vient de la règle de gel (chaussée et humidité de la MÊME heure) et non du
+  // verglas calculé ou d'une pluie verglaçante, l'humidité est nommée — présente, absente ou INCONNUE. Jamais « verglas » quand
+  // seule une humidité inconnue fait monter le niveau : l'incertitude est affichée, pas présentée comme une certitude.
+  function iceText(lv, x, strong) {
+    const icy = !!x && ((x.ice && finite(x.ice.level) && x.ice.level >= 1) || FZ.has(n(x.code)));
+    const fh = x && !icy && n(x.Tr) != null && typeof frostHour === 'function' ? frostHour([x], 0) : null;
+    if (!fh || fh.level !== lv) return strong && lv >= 3 ? 'risque de verglas' : ICE_TXT[lv];
+    return (lv >= 2 ? 'gel possible' : 'chaussée proche du gel') + ' · ' + (fh.humid === true ? 'chaussée humide' : fh.humid === false ? 'chaussée sèche' : 'humidité inconnue');
+  }
   function condTxt(x) {   // conditions d'un point : le phénomène le plus marquant, sinon le ciel
     const h = haz(x), top = ORDER.filter(id => h[id] > 0).sort((a, b) => h[b] - h[a])[0];
     if (top === 'ice') return n(x.Tr) != null ? `chaussée ${r1(x.Tr)} °C (gel possible)` : 'gel possible';
@@ -169,7 +178,7 @@ function wxDesk(input) {
   spans.forEach(s => {
     if (s.id === 'sun') { changes.push({ m: s.start, id: 'sun', lv: 1, text: 'soleil rasant' }); return; }
     const pk = s.peakRow.x;
-    const txt = { rain: rainTxt(pk), snow: 'neige', fog: `brouillard · ${visTxt(n(pk.vis))}`, wind: `rafales ${r0(pk.gust)} km/h`, ice: ICE_TXT[s.lv], temp: n(pk.T) >= 35 ? 'forte chaleur' : 'froid intense' }[s.id];
+    const txt = { rain: rainTxt(pk), snow: 'neige', fog: `brouillard · ${visTxt(n(pk.vis))}`, wind: `rafales ${r0(pk.gust)} km/h`, ice: iceText(s.lv, pk), temp: n(pk.T) >= 35 ? 'forte chaleur' : 'froid intense' }[s.id];
     if (s.start > nowM) changes.push({ m: s.start, id: s.id, lv: s.lv, text: txt });
     if (s.end < endM) changes.push({ m: s.end, id: s.id, lv: 0, text: { rain: 'fin de la pluie', snow: 'fin de la neige', fog: 'dissipation du brouillard', wind: 'vent en baisse', ice: 'fin du risque de gel', temp: 'température plus douce' }[s.id], end: true });
   });
@@ -232,7 +241,7 @@ function wxDesk(input) {
 
   /* ---------- timeline : moments clés (météo + trajets) et bande horaire ---------- */
   const moments = [];
-  real.filter(active).forEach(s => moments.push({ m: nowM, kind: 'wx', id: s.id, lv: s.lv, text: s.id === 'ice' ? ICE_TXT[s.lv] : `${NAME[s.id]} en cours`, now: true }));
+  real.filter(active).forEach(s => moments.push({ m: nowM, kind: 'wx', id: s.id, lv: s.lv, text: s.id === 'ice' ? iceText(s.lv, s.peakRow && s.peakRow.x) : `${NAME[s.id]} en cours`, now: true }));
   changes.forEach(c => moments.push({ m: c.m, kind: 'wx', id: c.id, lv: c.lv, text: c.text }));
   tripList.forEach(t => {
     if (t.pending) return; // L'ancien départ n'est qu'une ancre de tri, jamais un conseil/timeline.
@@ -271,7 +280,7 @@ function wxDesk(input) {
       detail: [w != null ? `Vent moyen jusqu’à ${r0(w)} km/h` : null, g ? `Pic de rafales vers ${hm(g.t)}` : null, s ? `Au-dessus de 55 km/h de ${hm(atMin(s.start))} à ${hm(atMin(s.end))}` : null].filter(Boolean) }); }
   { const s = first('ice'), tr = rowMax('Tr', -1), ta = minOf('T');
     phen.push({ id: 'ice', icon: '❄️', title: 'Gel · verglas', lv: s ? s.lv : 0,
-      line: s ? `${cap(ICE_TXT[s.lv])} · ${active(s) ? 'maintenant' : hm(atMin(s.start))}–${hm(atMin(s.end))}` : 'Aucun risque estimé',
+      line: s ? `${cap(iceText(s.lv, s.peakRow && s.peakRow.x))} · ${active(s) ? 'maintenant' : hm(atMin(s.start))}–${hm(atMin(s.end))}` : 'Aucun risque estimé',
       detail: [tr ? `Chaussée estimée minimale ${r1(tr.x.Tr)} °C ± 2 vers ${hm(tr.t)}` : null, ta != null ? `Air minimal ${r1(ta)} °C` : null, 'Estimation sans capteur routier : ponts et zones d’ombre d’abord'].filter(Boolean) }); }
   { const tmin = minOf('T'), tmax = maxOf('T'), s = first('temp'), z = changes.find(c => c.id === 'zero');
     phen.push({ id: 'temp', icon: '🌡', title: 'Température', lv: s ? s.lv : 0, line: `${T == null ? '—' : r0(T)} °C · min ${r0(tmin)} / max ${r0(tmax)}`,
@@ -343,7 +352,7 @@ function wxDesk(input) {
     if (worst && worst.lv > 0) {
       const id = ORDER.filter(k => worst.h[k] === worst.lv)[0], i = P.indexOf(worst), firstIdx = P.findIndex(p => p.h[id] > 0), fp = P[firstIdx], prev = firstIdx > 0 ? P[firstIdx - 1] : null;
       const kmTxt = fp && finite(fp.km) && fp.km > 0 ? (prev && finite(prev.km) && prev.km < fp.km ? ` après environ ${r0(prev.km)}–${r0(fp.km)} km` : ` vers le km ${r0(fp.km)}`) : firstIdx === 0 ? ' dès le départ' : fp ? ` vers ${hm(fp.t)}` : '';
-      crit = { lv: worst.lv, id, text: `${cap(id === 'rain' ? (worst.lv >= 2 ? rainTxt(worst.x) : 'pluie probable') : id === 'ice' ? ICE_TXT[worst.lv] : id === 'fog' ? 'brouillard ' + visTxt(n(worst.x.vis)) : id === 'wind' ? 'rafales ' + r0(worst.x.gust) + ' km/h' : NAME[id])}${kmTxt}`, at: hm(P[i].t) };
+      crit = { lv: worst.lv, id, text: `${cap(id === 'rain' ? (worst.lv >= 2 ? rainTxt(worst.x) : 'pluie probable') : id === 'ice' ? iceText(worst.lv, worst.x) : id === 'fog' ? 'brouillard ' + visTxt(n(worst.x.vis)) : id === 'wind' ? 'rafales ' + r0(worst.x.gust) + ' km/h' : NAME[id])}${kmTxt}`, at: hm(P[i].t) };
     }
     if (!crit && tt.glare) crit = { lv: 1, id: 'sun', text: `Soleil rasant vers ${hmd(tt.glare.ts)}`, at: hm(tt.glare.ts) };
     const tmb = !tt.pending && !crit && maybeOf(tripRows(tt));
@@ -361,7 +370,7 @@ function wxDesk(input) {
   const push = (lv, text, m, key) => { if (!items.some(i => i.key === key)) items.push({ lv, text, m, key }); };
   tripList.forEach(t => {
     const w = t.pts.reduce((b, p) => !b || p.lv > b.lv ? p : b, null); if (!w || !w.lv) return;
-    const id = ORDER.filter(k => w.h[k] === w.lv)[0], what = { rain: w.lv >= 2 ? cap(rainTxt(w.x)) : 'Pluie probable', snow: 'Neige', fog: 'Brouillard', wind: 'Rafales', ice: cap(ICE_TXT[w.lv]), temp: 'Température extrême' }[id];
+    const id = ORDER.filter(k => w.h[k] === w.lv)[0], what = { rain: w.lv >= 2 ? cap(rainTxt(w.x)) : 'Pluie probable', snow: 'Neige', fog: 'Brouillard', wind: 'Rafales', ice: cap(iceText(w.lv, w.x)), temp: 'Température extrême' }[id];
     push(w.lv, `${what} pendant le ${t.label || 'trajet'} (${hmd(t.dep)})`, t.depM, id + '@trip');
   });
   const tripMaybe = tripList.map(t => ({ t, mb: maybeOf(tripRows(t)) })).filter(o => o.mb);
@@ -381,7 +390,7 @@ function wxDesk(input) {
           : s.start - nowM <= 60 ? `Brouillard possible avant ${b} · visibilité ${visTxt(n(pk.vis))} vers ${hmd(s.peakRow.t)}` : `Brouillard possible ${a}–${b} · minimum ${visTxt(n(pk.vis))} vers ${hmd(s.peakRow.t)}`;
       })(),
       wind: `Rafales jusqu’à ${r0(pk.gust)} km/h (vers ${hm(s.peakRow.t)})`,
-      ice: `${s.lv >= 3 ? 'Risque de verglas' : cap(ICE_TXT[s.lv])} ${a}–${b} · chaussée ${r1(pk.Tr)} °C`,
+      ice: `${cap(iceText(s.lv, pk, true))} ${a}–${b} · chaussée ${r1(pk.Tr)} °C`,
       temp: n(pk.T) >= 35 ? `Forte chaleur : jusqu’à ${r0(pk.T)} °C` : `Froid intense : ressenti ${r0(pk.Tapp)} °C`
     }[s.id];
     push(s.lv, txt, s.start, s.id);

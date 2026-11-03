@@ -93,7 +93,8 @@ function appChecks(src, collect) {
   t('carte trajet (frostBand) : même règle que le moteur (frostRisk), aucun seuil propre', /frostRisk\(x\)/.test(fb) && /frostRisk\(\{ TrMin: x \}\)/.test(fb) && !/if \((lo|hi|Tr) *[<>]/.test(fb));
   t('Gestion des pneus (colStats) : gel lu dans frostRisk, jamais un seuil sur l’air', /frost: frostRisk\(s\)/.test(cs) && !/s\.Tmin <= 1/.test(cs));
   t('synthèse « Prochain risque » : pire risque de TOUS les trajets, domicile-travail compris', /const rk = T\.map\(t => \(\{ t, r: riskOf\(t\) \}\)\)\.filter\(o => o\.r\)\.sort\(\(a, b\) => b\.r\.lv - a\.r\.lv/.test(nt) && !/T\.filter\(t => t !== main && t !== crit\)/.test(nt));
-  t('synthèse : une incertitude gel en VIGILANCE n’est jamais verte', /if \(fb && fb\.lv >= 1\) return \{ lv: fb\.lv,/.test(nt));
+  t('synthèse : une incertitude gel en VIGILANCE n’est jamais verte', /if \(fb && fb\.lv >= 1\) c\.push\(\{ lv: fb\.lv,/.test(nt));
+  t('synthèse : pire cause du trajet (maximum), jamais la première trouvée', /return c\.reduce\(\(a, x\) => !a \|\| x\.lv > a\.lv \? x : a, null\); \};/.test(nt));
   t('« Quelle voiture prendre ? » : niveaux différents ou garde-fou ⇒ jamais « ne les distinguent pas »', /a\.w\.level !== b\.w\.level \|\| a\.w\.guard \|\| b\.w\.guard \?/.test(cmp));
   t('bandeau (décision) : ligne du trajet = fenêtre du trajet (tripFrost)', /const tf = tripFrost\(trip\);/.test(core) && /decision-trip-frost/.test(core));
   t('cartes pneus : prochain trajet lu dans tripFrost (même donnée)', /tripFrost\(\)/.test(cars) && /car-trip-frost/.test(cars));
@@ -158,7 +159,8 @@ const MUT = [
   ['alerte : seuil sur l’air seul', 'engine', /const fr = frostRisk\(sm\);\n    if \(fr\.level >= 1\) \{/, "const fr = frostRisk(sm);\n    if (sm.Tmin <= 1.5) { fr.level = 3;"],
   ['Gestion des pneus : seuil sur l’air', 'app', /frost: frostRisk\(s\),/, 'frost: s.Tmin != null && s.Tmin <= 1,'],
   ['synthèse : trajet principal exclu', 'app', /const rk = T\.map\(t => \(\{ t, r: riskOf\(t\) \}\)\)/, 'const rk = T.filter(t => t !== main && t !== crit).map(t => ({ t, r: riskOf(t) }))'],
-  ['synthèse verte avec une incertitude gel sèche', 'app', /if \(fb && fb\.lv >= 1\) return \{ lv: fb\.lv,/, 'if (fb && fb.lv >= 2) return { lv: fb.lv,'],
+  ['synthèse verte avec une incertitude gel sèche', 'app', /if \(fb && fb\.lv >= 1\) c\.push\(\{ lv: fb\.lv,/, 'if (fb && fb.lv >= 2) c.push({ lv: fb.lv,'],
+  ['synthèse : première cause au lieu du maximum (gel DANGER masqué)', 'app', /return c\.reduce\(\(a, x\) => !a \|\| x\.lv > a\.lv \? x : a, null\); \};/, 'return c[0] || null; };'],
   ['A/B : garde-fou ignoré', 'app', /a\.w\.level !== b\.w\.level \|\| a\.w\.guard \|\| b\.w\.guard \?/, 'false ?'],
   ['carte trajet : seuil propre à l’affichage', 'app', /if \(fr\.key === 'sous0'\) return/, 'if (hi < 0) return'],
   ['bandeau : température « maintenant » au lieu du trajet', 'app', /const tf = tripFrost\(trip\);/, 'const tf = null;'],
