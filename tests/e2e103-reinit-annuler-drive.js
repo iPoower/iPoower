@@ -22,6 +22,7 @@ async function reveal(p, selector) {
 }
 const rawOf = async c => Object.fromEntries(((await c.storageState()).origins.find(o => o.origin === ORIGIN) || { localStorage: [] }).localStorage.map(x => [x.name, x.value]));
 const settingsText = p => p.evaluate(() => localStorage.getItem('twrc.settings.v1'));
+const stampsText = p => p.evaluate(() => localStorage.getItem('twrc.editstamps.v1'));
 const journal = p => p.evaluate(() => JSON.stringify({ archive: localStorage.getItem('twrc.debrief.archive.v1'),
   entries: (USER_STORE.state.debrief.entries || []).map(e => [e.key, e.feedback && e.feedback.grip]) }));
 // Drive simulé partagé entre les deux appareils : état tenu côté Node, lu/écrit par fonctions exposées.
@@ -86,6 +87,7 @@ const expect = (label, ok, detail) => { if (ok) { n++; console.log('✅ ' + labe
     // ---------- A : une seule modification locale à republier (non encore envoyée) ----------
     await pa.evaluate(async () => { S.horizon = 12; saveSettings(); await TWRC_VAULT.flush(); });
     const O2 = await settingsText(pa);   // réglages d'origine à restaurer : rev1 + la modification locale
+    const T2 = await stampsText(pa);     // horodatages d'édition d'origine (dont celui de la modification locale)
     const w1 = DRIVE.writes;
     // ---------- A : réinitialisation → pause ----------
     await reveal(pa, '#resetZone [data-act=reset]'); await pa.locator('[data-act=reset]').click(); await sa.settle(1);
@@ -105,6 +107,8 @@ const expect = (label, ok, detail) => { if (ok) { n++; console.log('✅ ' + labe
     const afterUndo = await settingsText(pa);
     expect('A · « Annuler la réinitialisation » : réglages d’origine à l’octet (modification locale, relevé par pneu et historique inclus)', afterUndo === O2,
       'diff : ' + JSON.stringify(Object.keys(JSON.parse(O2)).filter(k => JSON.stringify(JSON.parse(O2)[k]) !== JSON.stringify(JSON.parse(afterUndo)[k]))));
+    const stampsUndo = await stampsText(pa);
+    expect('A · « Annuler » : horodatages d’édition d’origine restaurés à l’octet (jamais l’heure de la restauration)', stampsUndo === T2, 'avant ' + String(T2).slice(0, 200) + ' · après ' + String(stampsUndo).slice(0, 200));
     await stabilize(pa, sa);
     const all = revs(), news = all.filter(r => r.id !== rev1[0].id);
     expect('A · après stabilisation : une seule nouvelle révision Drive', news.length === 1, JSON.stringify(all));
@@ -117,11 +121,19 @@ const expect = (label, ok, detail) => { if (ok) { n++; console.log('✅ ' + labe
     expect('B · contenu de la nouvelle révision = données restaurées (horizon 12, relevé par pneu conservé), aucun conflit, aucune perte',
       bHorizon === 12 && bConf === 0 && bRec === JSON.stringify(JSON.parse(O2).treadWheels || null) && JSON.stringify(JSON.parse(bAfter).cars[0].tire.treads) === JSON.stringify(JSON.parse(O2).cars[0].tire.treads),
       'horizon ' + bHorizon + ' · conflits ' + bConf + ' · relevé ' + (bRec === JSON.stringify(JSON.parse(O2).treadWheels || null)));
+    const deep = (a, c, p = '') => { if (JSON.stringify(a) === JSON.stringify(c)) return []; if (a && c && typeof a === 'object' && typeof c === 'object') return [...new Set([...Object.keys(a), ...Object.keys(c)])].flatMap(k => deep(a[k], c[k], p ? p + '.' + k : k)); return [p + ' : ' + JSON.stringify(a) + ' → ' + JSON.stringify(c)]; };
+    const diffKeys = (x, y) => deep(JSON.parse(x), JSON.parse(y)).map(t => t.slice(0, 300));
+    console.log('DIAG B réglages ≠ O2 : ' + JSON.stringify(diffKeys(O2, bAfter)));
     expect('aucune publication intermédiaire de réglages réinitialisés (toutes les révisions viennent de rev1 ou de la restauration)', revs().length === 2, JSON.stringify(revs()));
     // ---------- A : rechargement ----------
     await pa.reload(); await sa.settle(14); await installDrive(pa, 'A'); await stabilize(pa, sa);
-    const afterReload = await settingsText(pa);
-    expect('A · après rechargement : réglages restaurés persistés, aucune nouvelle révision', afterReload === O2 && revs().length === 2, 'identique : ' + (afterReload === O2) + ' · révisions ' + revs().length);
+    const afterReload = await settingsText(pa), stampsReload = await stampsText(pa);
+    console.log('DIAG A rechargé ≠ O2 : ' + JSON.stringify(diffKeys(O2, afterReload)));
+    console.log('DIAG révisions après rechargement : ' + JSON.stringify(revs().map(r => r.device + ':' + r.id.slice(0, 8) + '<' + r.parents.map(x => x.slice(0, 8)).join(','))));
+    await stabilize(pb, sb); await stabilize(pa, sa); await stabilize(pb, sb);
+    console.log('DIAG révisions après 3 cycles de plus : ' + revs().length + ' · A=B ' + ((await settingsText(pa)) === (await settingsText(pb))));
+    expect('A · après rechargement : réglages et horodatages restaurés persistés, aucune nouvelle révision', afterReload === O2 && stampsReload === T2 && revs().length === 2, 'identique : ' + (afterReload === O2) + ' · horodatages : ' + (stampsReload === T2) + ' · révisions ' + revs().length);
+    expect('A · après rechargement : pause levée, instantané retiré, aucun conflit', await pa.evaluate(() => lsGet(DriveSync.PAUSE) == null && !RESET_GUARD.read(APP_STORAGE) && DRIVE_UI.sync.status.conflicts.length === 0), await pa.evaluate(() => JSON.stringify({ pause: lsGet(DriveSync.PAUSE) != null, snap: !!RESET_GUARD.read(APP_STORAGE), conflicts: DRIVE_UI.sync.status.conflicts })));
     await sb.c.close(); await sa.c.close();
     // ---------- Variante : échec de la persistance locale avant la reprise de la synchro ----------
     for (const k of Object.keys(DRIVE)) delete DRIVE[k]; Object.assign(DRIVE, { files: {}, profiles: {}, n: 0, writes: 0 });
@@ -133,7 +145,7 @@ const expect = (label, ok, detail) => { if (ok) { n++; console.log('✅ ' + labe
     await pc.locator('#resetWord').fill('RÉINITIALISER'); await pc.locator('[data-act=reset-go]').click(); await sc.settle(6);
     const wC = DRIVE.writes;
     // Le disque refuse désormais toute écriture (quota plein simulé sur le stockage réel du coffre).
-    await pc.evaluate(() => { const raw = window.TWRC_RAW_STORAGE || localStorage, orig = Storage.prototype.setItem;
+    await pc.evaluate(() => { const raw = window.TWRC_RAW_STORAGE || localStorage, orig = Storage.prototype.setItem; window.fxNativeSetItem = orig;
       Storage.prototype.setItem = function (k, v) { if (this === raw) { const e = new Error('Quota simulé'); e.name = 'QuotaExceededError'; throw e; } return orig.call(this, k, v); }; });
     await reveal(pc, '#resetZone [data-act=reset-undo]'); await pc.locator('[data-act=reset-undo]').click(); await sc.settle(6);
     await pc.evaluate(async () => { try { await DRIVE_UI.sync.run(true); await DRIVE_UI.sync.run(false, true); } catch (e) {} }); await sc.settle(2);
@@ -141,8 +153,44 @@ const expect = (label, ok, detail) => { if (ok) { n++; console.log('✅ ' + labe
     expect('échec de persistance · pause Drive toujours active', st.pause, JSON.stringify(st).slice(0, 300));
     expect('échec de persistance · aucune écriture Drive', DRIVE.writes === wC, 'écritures ' + (DRIVE.writes - wC));
     expect('échec de persistance · instantané conservé', st.snap, JSON.stringify(st).slice(0, 300));
-    expect('échec de persistance · erreur visible', /impossible|échec|non enregistr|non confirm|stockage/i.test(st.msg), st.msg.slice(0, 300));
+    expect('échec de persistance · erreur visible, aucun message de succès', /non enregistr/i.test(st.msg) && /stockage/i.test(st.msg) && !/Réinitialisation annulée/.test(st.msg), st.msg.slice(0, 300));
+    expect('échec de persistance · réglages affichés = réglages réellement écrits (réinitialisés)', await pc.evaluate(() => S.cars[0].name !== 'Voiture fictive test'), await pc.evaluate(() => S.cars[0].name));
+    // Disque de nouveau disponible : un nouvel essai aboutit (état récupérable), puis rechargement = état écrit.
+    await pc.evaluate(() => { Storage.prototype.setItem = window.fxNativeSetItem; });
+    await reveal(pc, '#resetZone [data-act=reset-undo]'); await pc.locator('[data-act=reset-undo]').click(); await sc.settle(6);
+    const retry = await pc.evaluate(() => ({ pause: lsGet(DriveSync.PAUSE) != null, snap: !!RESET_GUARD.read(APP_STORAGE), name: S.cars[0].name, msg: (document.getElementById('resetMsg') || {}).textContent || '', err: TWRC_VAULT.error }));
+    expect('échec de persistance · nouvel essai après libération du stockage : annulation aboutie', !retry.pause && !retry.snap && retry.name === 'Voiture fictive test' && /^Réinitialisation annulée/.test(retry.msg) && !retry.err, JSON.stringify(retry).slice(0, 300));
+    await pc.reload(); await sc.settle(14);
+    const reloaded = await pc.evaluate(() => ({ pause: lsGet(DriveSync.PAUSE) != null, snap: !!RESET_GUARD.read(APP_STORAGE), name: S.cars[0].name }));
+    expect('échec de persistance · après rechargement : état écrit = annulation aboutie', !reloaded.pause && !reloaded.snap && reloaded.name === 'Voiture fictive test', JSON.stringify(reloaded));
     await sc.c.close();
+    // ---------- Écriture concurrente : B modifie un AUTRE réglage pendant la pause de A ----------
+    // Après « Annuler » (directement, ou après « Récupérer »), la modification de B doit survivre sur les deux appareils.
+    for (const recover of [false, true]) {
+      const tag = recover ? 'concurrent · Récupérer puis Annuler' : 'concurrent · Annuler directement';
+      for (const k of Object.keys(DRIVE)) delete DRIVE[k]; Object.assign(DRIVE, { files: {}, profiles: {}, n: 0, writes: 0 });
+      const xa = await session(b, { at: '2026-10-07T15:00:00+02:00', dev: 'pc' }), qa = xa.p;
+      await exposeDrive(qa); await activateJournal(qa);
+      await qa.evaluate(async () => { S.work.dep = '07:10'; S.horizon = 24; S.cars[0].name = 'Voiture fictive test'; saveSettings(); await TWRC_VAULT.flush(); });
+      await installDrive(qa, 'A'); await stabilize(qa, xa);
+      const xb = await session(b, { at: '2026-10-07T15:00:00+02:00', dev: 'iphone' }), qb = xb.p;
+      await exposeDrive(qb); await activateJournal(qb); await installDrive(qb, 'B');
+      await qb.evaluate(async () => { await DRIVE_UI.sync.adopt(); await TWRC_VAULT.flush(); }); await xb.settle(3);
+      await qa.evaluate(async () => { S.horizon = 12; saveSettings(); await TWRC_VAULT.flush(); });   // modification locale de A, non envoyée
+      await reveal(qa, '#resetZone [data-act=reset]'); await qa.locator('[data-act=reset]').click(); await xa.settle(1);
+      await qa.locator('#resetWord').fill('RÉINITIALISER'); await qa.locator('[data-act=reset-go]').click(); await xa.settle(6);
+      await qb.evaluate(async () => { S.work.dep = '08:20'; saveSettings(); await TWRC_VAULT.flush(); }); await stabilize(qb, xb);   // B publie pendant la pause de A
+      if (recover) { await reveal(qa, '#syncPause [data-act=sync-recover]'); await qa.locator('#syncPause [data-act=sync-recover]').click();
+        await qa.waitForFunction(() => !UI.syncBusy && !DRIVE_UI.sync.status.running, null, { timeout: 60000 }); await xa.settle(2); }
+      await reveal(qa, '#resetZone [data-act=reset-undo]'); await qa.locator('[data-act=reset-undo]').click(); await xa.settle(6);
+      await stabilize(qa, xa); await stabilize(qb, xb); await stabilize(qa, xa);
+      const va = await qa.evaluate(() => ({ dep: S.work.dep, horizon: S.horizon, conflicts: DRIVE_UI.sync.status.conflictDetails.map(d => [d.path, d.local, d.remote]) }));
+      const vb = await qb.evaluate(() => ({ dep: S.work.dep, horizon: S.horizon, conflicts: DRIVE_UI.sync.status.conflictDetails.map(d => [d.path, d.local, d.remote]) }));
+      expect(`${tag} · modification de B (départ 08:20) conservée sur A et B`, va.dep === '08:20' && vb.dep === '08:20', 'A ' + JSON.stringify(va) + ' · B ' + JSON.stringify(vb));
+      expect(`${tag} · modification de A restaurée (horizon 12) sur A et B`, va.horizon === 12 && vb.horizon === 12, 'A ' + JSON.stringify(va) + ' · B ' + JSON.stringify(vb));
+      expect(`${tag} · aucun conflit`, !va.conflicts.length && !vb.conflicts.length, 'A ' + JSON.stringify(va.conflicts) + ' · B ' + JSON.stringify(vb.conflicts) + ' · révisions ' + JSON.stringify(revs()));
+      await xb.c.close(); await xa.c.close();
+    }
   } finally { await b.close(); }
   console.log(`\n${n} contrôle(s) conforme(s) · ${findings.length} écart(s)`);
   if (findings.length) { console.log('ÉCARTS :\n- ' + findings.join('\n- ')); process.exit(1); }

@@ -4186,13 +4186,45 @@ async function syncResume() {
   const vault = window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault' ? window.TWRC_VAULT : null;
   if (vault) await vault.flush();
 }
-function resetUndo() {
-  try { RESET_GUARD.restore(APP_STORAGE); }
-  catch (err) { UI.resetMsg = String(err && err.message || 'Restauration impossible.'); renderResetZone(); return; }
-  // Réglages d'avant la réinitialisation rétablis : plus rien de réinitialisé à envoyer, la pause est levée.
-  APP_STORAGE.removeItem(DriveSync.PAUSE); UI.replaceOpen = false; UI.replaceWord = '';
-  S = loadSettings(); if (!allLocs().some(l => l.id === UI.loc)) UI.loc = S.locs[0].id; if (!S.cars.some(c => c.id === UI.bcar)) UI.bcar = S.cars[0].id;
-  UI.resetMsg = 'Réinitialisation annulée : réglages précédents rétablis.';
+// « Annuler la réinitialisation » : une seule correction, cinq étapes dans cet ordre, chacune confirmée avant la suivante :
+//  1. réglages ET horodatages d'édition d'origine réécrits et relus (RESET_GUARD.restore, instantané conservé) ;
+//  2-3. coffre écrit (vault.flush) puis vault.error vérifié : sinon les réglages en mémoire reviennent à l'état écrit ;
+//  4. pause Drive levée, écrite et vérifiée : sinon elle est reposée ;
+//  5. instantané retiré EN DERNIER (RESET_GUARD.release), écrit et vérifié : sinon il est remis.
+// Tout échec : pause maintenue (sauf si sa levée est déjà enregistrée), instantané conservé, nouvelle annulation
+// possible, erreur visible et aucun message de succès.
+async function resetUndo() {
+  if (UI.resetBusy) return;   // double toucher : une seule annulation à la fois
+  const vault = window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault' ? window.TWRC_VAULT : null;
+  const saved = async () => { if (vault) { await vault.flush(); if (vault.error) throw new Error('vault'); } };
+  const put = (k, v) => { try { if (v == null) APP_STORAGE.removeItem(k); else APP_STORAGE.setItem(k, v); } catch (e) { /* état écrit inchangé */ } };
+  const before = { settings: lsGet(RESET_GUARD.SETTINGS), stamps: lsGet(RESET_GUARD.STAMPS), pause: lsGet(DriveSync.PAUSE), stack: lsGet(RESET_GUARD.KEY) };
+  let stage = 'restore', snap = null;
+  UI.resetBusy = true; UI.resetMsg = 'Annulation en cours : enregistrement des réglages précédents…'; renderResetZone();
+  try {
+    snap = RESET_GUARD.restore(APP_STORAGE); await saved();
+    stage = 'pause';
+    if (before.pause != null) { APP_STORAGE.removeItem(DriveSync.PAUSE); if (lsGet(DriveSync.PAUSE) != null) throw new Error('pause'); await saved(); }
+    stage = 'release';
+    RESET_GUARD.release(APP_STORAGE, snap); await saved();
+    stage = 'done';
+  } catch (err) {
+    // Mémoire ramenée à ce qui est réellement écrit : rien n'est perdu, l'annulation reste proposée.
+    if (stage === 'restore') { put(RESET_GUARD.SETTINGS, before.settings); put(RESET_GUARD.STAMPS, before.stamps); }
+    if (stage === 'restore' || stage === 'pause') put(DriveSync.PAUSE, before.pause);
+    put(RESET_GUARD.KEY, before.stack);
+    const disk = err && err.message !== 'vault' && err.message !== 'pause' ? String(err.message) : 'stockage plein, refusé ou modifié';
+    UI.resetMsg = stage === 'restore'
+      ? `Annulation NON enregistrée (${disk}) : réglages réinitialisés conservés, synchronisation Drive toujours en pause, instantané conservé. Libère de l’espace puis touche à nouveau « Annuler la réinitialisation ».`
+      : stage === 'pause'
+        ? `Réglages précédents rétablis et enregistrés, mais la fin de la pause n’est pas enregistrée (${disk}) : synchronisation Drive toujours en pause, instantané conservé. Réessaie « Annuler la réinitialisation ».`
+        : `Réglages précédents rétablis et enregistrés, synchronisation reprise, mais l’instantané n’a pas pu être retiré (${disk}) : il reste proposé.`;
+  } finally { UI.resetBusy = false; }
+  UI.replaceOpen = false; UI.replaceWord = '';
+  if (stage !== 'restore') {
+    S = loadSettings(); if (!allLocs().some(l => l.id === UI.loc)) UI.loc = S.locs[0].id; if (!S.cars.some(c => c.id === UI.bcar)) UI.bcar = S.cars[0].id;
+  }
+  if (stage === 'done') UI.resetMsg = 'Réinitialisation annulée : réglages précédents rétablis et enregistrés.';
   rebuild(); renderSettings(); renderAll(); refreshAll();
 }
 // « Récupérer mes données depuis Drive » : lecture seule de Drive, adoption de la dernière version distante
