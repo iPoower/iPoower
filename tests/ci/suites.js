@@ -168,3 +168,4 @@ SUITE.push(['test_tread_wheels.js', 'profondeur par pneu : migration sans perte,
 SUITE.push(['e2e101-profondeur-prod-compat.js', 'profondeur par pneu : compatibilité avec le vrai build en production 53315c242870 (run 192) (fusion, lecture, saisie par essieu, changement de monte, rechargement), PC/iPhone', true]);
 SUITE.push(['test_tread_provenance.js', 'profondeur par pneu : origine de chaque ligne d’historique, treadEst de l’essieu le plus usé, historique ancien intact, reproducteur et contre-tests', false],
   ['e2e102-profondeur-provenance.js', 'profondeur par pneu : provenance de l’historique, scénario et symétrique, rechargement, historique ancien intact, PC/iPhone', true]);
+SUITE.push(['e2e103-reinit-annuler-drive.js', '#303 scénario C : Récupérer puis Annuler la réinitialisation, Drive partagé à deux appareils, rechargement, échec de persistance', true]);
