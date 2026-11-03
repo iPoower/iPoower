@@ -210,6 +210,9 @@ function buildHours(p) {
   });
   hs.forEach((x, i) => { x.Tr = estRoad(hs, i); });
   hs.forEach((x, i) => { x.ice = iceRisk(hs, i); });
+  // Cumul de pluie sur 3 h (complet ou non) attaché à chaque heure : le gel heure par heure reste juste quand l'heure est
+  // lue seule (poste Météo, points d'un trajet). Une heure du cumul sans valeur le rend incomplet, jamais nul.
+  hs.forEach((x, i) => { x.P3 = precipWindow(hs, i); });
   return hs;
 }
 function makeModel(payload, mode, loc) {
@@ -418,42 +421,53 @@ function summarize(seq) {
    biais par lieu est appris des retours terrain, setRoadBias) ; ce n'est pas une incertitude validée. Sans chaussée estimée,
    l'air sert de repli, signalé (basis = 'air').
    Calcul HEURE PAR HEURE (frostHour) : chaussée et humidité de la MÊME heure ; une fenêtre garde le maximum (summarize).
-   Bornes et niveaux (0 RAS · 1 VIGILANCE · 2 PRUDENCE · 3 DANGER) :
-     sous0       chaussée < −2 °C (chaussée + marge < 0)        → DANGER (3)      [inchangé]
-     possible    −2 °C ≤ chaussée ≤ 1,0 °C (1,0 inclus)         → PRUDENCE (2)    [inchangé, humidité sans effet]
-     incertitude 1,0 °C < chaussée < 2,0 °C (bornes exclues)    → VIGILANCE (1) ; PRUDENCE (2) si humidité à la même heure ;
-                                                                   humidité inconnue ⇒ VIGILANCE
-     marge       2,0 °C ≤ chaussée < 4,0 °C                      → RAS (0), simple mention, jamais une alerte
-     aucun       chaussée ≥ 4,0 °C                               → RAS (0)
-   Humidité d'une heure (frostHumid) : vrai si l'un des signaux est présent, faux si tous sont mesurés et absents, inconnu sinon.
-     précipitations : chaussée humide selon ROAD_POLICY (≥ 0,1 mm/h, ou ≥ 0,3 mm cumulés sur 3 h) ;
-     air saturé : HR ≥ 95 % et écart air − point de rosée < 1 °C (ROAD_POLICY.humidRH, humidSpreadC) ;
-     dépôt (rosée, givre) : point de rosée ≥ chaussée estimée (Magnus, a = 17,62, b = 243,12 °C).
+   Bornes et niveaux (0 RAS · 1 VIGILANCE · 2 PRUDENCE · 3 DANGER) — décision du propriétaire du 03/11/2026, option A :
+     sous0       chaussée < −2 °C                         → DANGER
+     possible    −2 °C ≤ chaussée ≤ 1,0 °C (bornes incluses) → DANGER si humide ou humidité INCONNUE ; PRUDENCE si sèche
+     incertitude 1,0 °C < chaussée < 2,0 °C (bornes exclues) → PRUDENCE si humide ; VIGILANCE si sèche ou inconnue
+     marge       2,0 °C ≤ chaussée < 4,0 °C                → RAS (simple mention, jamais une alerte)
+     aucun       chaussée ≥ 4,0 °C                         → RAS
+   Humidité d'une heure (frostHumid) : VRAIE si un signal est présent, FAUSSE seulement si tous sont MESURÉS et absents,
+   INCONNUE sinon — une donnée absente ne devient jamais « sec » :
+     précipitations : ROAD_POLICY (≥ 0,1 mm/h à l'heure même, ou ≥ 0,3 mm cumulés sur 3 h) ; une heure du cumul sans valeur
+                      rend le cumul incomplet (inconnu), jamais 0 mm ;
+     air saturé : HR ≥ 95 % et air − point de rosée < 1 °C (ROAD_POLICY.humidRH, humidSpreadC) ;
+     dépôt (rosée, givre) : point de rosée ≥ chaussée estimée.
+   Point de rosée : x.Td (API, ou dewMagnus en repli dans buildHours), la même valeur que iceRisk.
    Le verglas, la neige et la pluie verglaçante restent évalués à part (iceLevel, alertes dédiées) et gardent leur priorité. */
 const FROST_ROAD_MAX = 1, FROST_ROAD_MARGIN = 2;
-const dewPoint = (T, RH) => { if (!Number.isFinite(T) || !Number.isFinite(RH) || RH <= 0) return null; const g = Math.log(Math.min(RH, 100) / 100) + 17.62 * T / (243.12 + T); return 243.12 * g / (17.62 - g); };
+const frostNum = v => typeof v === 'number' && Number.isFinite(v) ? v : null;
+// Cumul de précipitations sur ROAD_POLICY.soakHours heures (heure courante comprise) : { mm, complete }.
+function precipWindow(hs, i) {
+  let mm = 0, complete = true;
+  for (let k = 0; k < ROAD_POLICY.soakHours; k++) { const y = hs[i - k], P = y ? frostNum(y.P) : null; if (P == null) complete = false; else mm += P; }
+  return { mm, complete };
+}
 function frostHumid(hs, i) {
   const x = hs && hs[i]; if (!x) return null;
-  const P = Number.isFinite(x.P) ? x.P : Number.isFinite(x.Pl) ? x.Pl : null, RH = Number.isFinite(x.RH) ? x.RH : null;
-  const Td = dewPoint(x.T, RH), Tr = Number.isFinite(x.Tr) ? x.Tr : null;
-  const wet = P != null && roadWet(hs, i), sat = RH != null && Td != null && RH >= ROAD_POLICY.humidRH && x.T - Td < ROAD_POLICY.humidSpreadC, dep = Td != null && Tr != null && Td >= Tr;
-  if (wet || sat || dep) return true;
-  return P != null && RH != null && Td != null ? false : null;
+  const P = frostNum(x.P), RH = frostNum(x.RH), T = frostNum(x.T), Tr = frostNum(x.Tr);
+  const Td = frostNum(x.Td) != null ? x.Td : T != null && RH != null ? dewMagnus(T, RH) : null;
+  const win = x.P3 && typeof x.P3 === 'object' ? x.P3 : precipWindow(hs, i);   // cumul attaché par buildHours si présent
+  const rainNow = P != null && P >= ROAD_POLICY.dampMmH, soak = win.mm >= ROAD_POLICY.soakMm;
+  const sat = RH != null && Td != null && T != null && RH >= ROAD_POLICY.humidRH && T - Td < ROAD_POLICY.humidSpreadC;
+  const dep = Td != null && Tr != null && Td >= Tr;
+  if (rainNow || soak || sat || dep) return true;
+  const precipKnown = P != null && win.complete, satKnown = RH != null && Td != null && T != null, depKnown = Td != null && Tr != null;
+  return precipKnown && satKnown && depKnown ? false : null;
 }
 function frostKey(ref) {
   return ref < -FROST_ROAD_MARGIN ? 'sous0' : ref <= FROST_ROAD_MAX ? 'possible' : ref < FROST_ROAD_MARGIN ? 'incertitude' : ref < 2 * FROST_ROAD_MARGIN ? 'marge' : 'aucun';
 }
-const frostLevel = (key, humid) => ({ sous0: 3, possible: 2, incertitude: humid === true ? 2 : 1, marge: 0, aucun: 0 })[key];
+const frostLevel = (key, humid) => key === 'sous0' ? 3 : key === 'possible' ? (humid === false ? 2 : 3) : key === 'incertitude' ? (humid === true ? 2 : 1) : 0;
 function frostHour(hs, i) {
   const x = hs && hs[i]; if (!x) return null;
-  const road = Number.isFinite(x.Tr), ref = road ? x.Tr : Number.isFinite(x.T) ? x.T : null; if (ref == null) return null;
+  const road = frostNum(x.Tr) != null, ref = road ? x.Tr : frostNum(x.T); if (ref == null) return null;
   const humid = frostHumid(hs, i), key = frostKey(ref);
   return { key, level: frostLevel(key, humid), humid, ref, basis: road ? 'road' : 'air' };
 }
 // Synthèse d'une fenêtre (summarize : sum.frost = pire heure) ou valeur seule ({ TrMin, humid }) : même règle.
 function frostRisk(sum) {
-  const num = v => typeof v === 'number' && Number.isFinite(v) ? v : null;
-  const airMin = num(sum && sum.Tmin), roadMin = num(sum && sum.TrMin);
+  const airMin = frostNum(sum && sum.Tmin), roadMin = frostNum(sum && sum.TrMin);
   const base = { airMin, roadMin, margin: FROST_ROAD_MARGIN };
   const h = sum && sum.frost;
   if (h) return { ...base, key: h.key, level: h.level, humid: h.humid, ref: h.ref, basis: h.basis, s: h.s || null, possible: h.level >= 1 && h.key !== 'marge' };
@@ -491,7 +505,7 @@ function narrate(car, w, sum, intro) {
   else {
     const fr = frostRisk(sum), where = fr.basis === 'road' ? `chaussée estimée jusqu’à ${f1(fr.roadMin)} °C` : `air jusqu’à ${f1(fr.airMin)} °C (chaussée non estimée)`;
     if (fr.key === 'aucun') s.push('Aucun risque de gel détecté.');
-    else if (fr.key === 'sous0' || fr.key === 'possible') s.push(`Gel possible : ${where}${fr.basis === 'road' && fr.airMin != null ? `, air ${f1(fr.airMin)} °C` : ''}.`);
+    else if (fr.key === 'sous0' || fr.key === 'possible') s.push(`Gel possible : ${where}${fr.basis === 'road' && fr.airMin != null ? `, air ${f1(fr.airMin)} °C` : ''}${fr.key === 'possible' ? (fr.humid === true ? ', humidité présente' : fr.humid === false ? ', chaussée sèche' : ', humidité inconnue') : ''}.`);
     else if (fr.key === 'incertitude') s.push(`Gel possible dans la marge de prudence (± ${fr.margin} °C) : ${where}${fr.humid === true ? ', humidité présente' : fr.humid === false ? ', chaussée sèche' : ', humidité inconnue'}.`);
     else if (fr.key === 'marge') s.push(`Pas de gel attendu : ${where}, marge faible (± ${fr.margin} °C).`);
     else s.push('Pas de risque de verglas notable (estimé).');

@@ -2088,14 +2088,15 @@ function frostBand(x) {
   if (!fr || fr.key === 'inconnu') return null;
   const Tr = fr.ref, lo = Tr - fr.margin, hi = Tr + fr.margin, rng = `marge de prudence ± ${fr.margin} °C, non mesurée : ${f1(lo)} → ${f1(hi)} °C`;
   if (fr.key === 'sous0') return { lv: 3, t: 'SURFACE SOUS 0 °C — ESTIMATION', d: `Chaussée estimée ${f1(Tr)} °C ± 2 · ${rng}. Toute humidité présente au sol peut geler (risque de glace : voir Verglas).` };
-  if (fr.key === 'possible') return { lv: fr.level, t: 'INCERTITUDE GEL', d: `Chaussée estimée ${f1(Tr)} °C · ${rng}. Le gel est possible : ponts, ombres et creux d’abord.` };
-  if (fr.key === 'incertitude') return { lv: fr.level, t: fr.humid === true ? 'INCERTITUDE GEL · HUMIDITÉ' : 'INCERTITUDE GEL', d: `Chaussée estimée ${f1(Tr)} °C · ${rng} · ${fr.humid === true ? 'humidité présente à la même heure' : fr.humid === false ? 'chaussée sèche' : 'humidité inconnue'}. Ponts, ombres et creux d’abord.` };
+  const hum = fr.humid === true ? ' · CHAUSSÉE HUMIDE' : fr.humid === null ? ' · HUMIDITÉ INCONNUE' : '';
+  if (fr.key === 'possible') return { lv: fr.level, t: 'INCERTITUDE GEL' + hum, d: `Chaussée estimée ${f1(Tr)} °C · ${rng} · ${fr.humid === true ? 'humidité présente à la même heure' : fr.humid === false ? 'chaussée sèche' : 'humidité inconnue (traitée comme humide)'}. Le gel est possible : ponts, ombres et creux d’abord.` };
+  if (fr.key === 'incertitude') return { lv: fr.level, t: 'INCERTITUDE GEL' + hum, d: `Chaussée estimée ${f1(Tr)} °C · ${rng} · ${fr.humid === true ? 'humidité présente à la même heure' : fr.humid === false ? 'chaussée sèche' : 'humidité inconnue'}. Ponts, ombres et creux d’abord.` };
   return null;
 }
 // Fenêtre d'un trajet (actif ou prochain) : UNE donnée de référence (la synthèse t.sum du trajet analysé) et UNE règle
 // (frostRisk) pour le bandeau, les cartes pneus, la synthèse, l'Ingénieur de course et l'A/B (constat : 4,8 / 1,9 / 1,3 °C).
 const FROST_WORD = { sous0: 'chaussée sous 0 °C possible', possible: 'gel possible', incertitude: 'gel possible (marge de prudence)', marge: 'pas de gel attendu (marge faible)', aucun: 'aucun risque de gel' };
-const frostText = fr => `air min ${f1(fr.airMin)} °C · chaussée estimée min ${f1(fr.roadMin)} °C (marge de prudence ± ${fr.margin} °C) · ${FROST_WORD[fr.key] || 'gel non évalué'}${fr.key === 'incertitude' ? (fr.humid === true ? ', humidité présente' : fr.humid === false ? ', sec' : ', humidité inconnue') : ''}`;
+const frostText = fr => `air min ${f1(fr.airMin)} °C · chaussée estimée min ${f1(fr.roadMin)} °C (marge de prudence ± ${fr.margin} °C) · ${FROST_WORD[fr.key] || 'gel non évalué'}${fr.key === 'incertitude' || fr.key === 'possible' ? (fr.humid === true ? ', humidité présente' : fr.humid === false ? ', sec' : ', humidité inconnue') : ''}`;
 function tripFrost(t) {
   const snap = APP_CONTEXT && APP_CONTEXT.snapshot, trip = t || (snap && (snap.activeTrip || snap.nextTrip));
   if (!trip || !trip.sum) return null;
@@ -3730,7 +3731,8 @@ function renderBrief() {
     R('Pluie', (c, d) => `${f1(c.P)} mm/h${c.pp != null ? ` · ${f0(c.pp)} %` : ''}`),
     R('Visibilité', c => visTxt(c.vis)),
     R('Brouillard (< 1 000 m)', c => yn(c.fog, 'oui')),
-    R('Risque de gel (chaussée ≤ 1 °C, marge ± 2)', c => ({ sous0: yn(1, 'oui · sous 0 °C'), possible: yn(1, 'possible'), incertitude: yn(1, 'possible · marge de prudence'), marge: 'non · marge faible', aucun: 'non' })[c.frost.key] || '—'),
+    R('Risque de gel (chaussée ≤ 1 °C, marge ± 2)', c => { const h = c.frost.humid === true ? ' · humide' : c.frost.humid === false ? ' · sec' : ' · humidité inconnue';
+      return ({ sous0: yn(1, 'oui · sous 0 °C'), possible: yn(1, 'possible' + h), incertitude: yn(1, 'possible · marge de prudence' + h), marge: 'non · marge faible', aucun: 'non' })[c.frost.key] || '—'; }),
     R('Risque verglas (estimé)', c => ice(c.ice)),
     R('Risque neige', c => c.snow ? yn(1, 'prévue') : c.sleet ? 'neige mouillée (est.)' : 'non'),
     R('Vent / rafales', c => `${f0(c.wind)} / ${f0(c.gust)} km/h`)
