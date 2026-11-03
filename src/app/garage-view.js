@@ -86,11 +86,12 @@ function renderGarage() {
     .map(c => { const raw = S.cars.find(x => x && x.id === c.id); return { ...c, maintenance: Garage.maintenance(raw, { today, kmPerDay: raw ? kmPerDay(raw) : null, odoEveryDays: GARAGE_ODO_EVERY_DAYS }) }; });
   const trip = APP_CONTEXT.snapshot && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
   const scene = Garage.preview(trip, { sourceFor: garageWeatherSources(), offline: offlineNow(), now: Date.now(), freshness: Reliability.freshState });
-  const selected = cars.find(c => c.active) || null;
+  // Voiture confirmée, sinon voiture affichée (données réelles de sa fiche), signalée comme non confirmée pour le trajet.
+  const shown = appDisplayedCar(), selected = cars.find(c => c.active) || (shown && cars.find(c => c.id === shown.id)) || null;
   const compared = selected ? Garage.comparison([selected], trip, scene)[0] : null;
   // Le même Waze que dans le briefing historique, uniquement sur geste explicite.
   const navigation = !DEMO.on && trip && !trip.destinationPending && !(trip.l && trip.l.originPending) ? wazeBtn(tripTo(trip)) : '';
-  const mission = MissionControl.project({ car: selected, trip, scene, comparison: compared,
+  const mission = MissionControl.project({ car: selected, carConfirmed: !!(selected && selected.active), trip, scene, comparison: compared,
     offline: offlineNow(), navigationAvailable: !!navigation, agendaUnavailable: APP_CONTEXT.agendaSelectionUnavailable });
   // La fiche et sa commande d'édition historique restent au premier écran.
   // NEXT MISSION suit les fiches, accessible immédiatement par ancre dédiée.

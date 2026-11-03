@@ -41,7 +41,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-      - name: Révision exacte de main et état CI (aucun secret, attente contrôlée)
+      - name: Révision de main et état CI (aucun secret ; CI de la tête en cours = dernier SHA vert ancêtre)
         id: trust
         env:
           GH_TOKEN: ${{ github.token }}
@@ -58,7 +58,7 @@ jobs:
       contents: write
       actions: read
     steps:
-      - name: Code de confiance (main exact, jamais gh-pages)
+      - name: Code de confiance (SHA de main à CI verte autorisé ci-dessus, jamais la tête non validée ni gh-pages)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.approved.outputs.sha }}

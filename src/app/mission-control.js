@@ -12,7 +12,7 @@ const MissionControl = (() => {
       fresh: str(s.fresh) || 'UNKNOWN', received: Number.isFinite(s.received) ? s.received : null,
       cache: !!s.cache };
   }
-  function project({ car = null, trip = null, scene = null, comparison = null, offline = false,
+  function project({ car = null, carConfirmed = true, trip = null, scene = null, comparison = null, offline = false,
     navigationAvailable = false, agendaUnavailable = false } = {}) {
     const usable = !!trip && !trip.destinationPending && !(trip.l && trip.l.originPending);
     const tyre = car && car.tyre || null;
@@ -30,6 +30,7 @@ const MissionControl = (() => {
     const endpointsAligned = usable && Array.isArray(trip.seq) && count > 0 && count === trip.seq.length;
     return {
       vehicle: car ? str(car.name) || str(car.short) : null,
+      carConfirmed: !!car && carConfirmed !== false,
       carId: car && car.id || null,
       tyre: tyre ? { type: str(tyre.type), model: str(tyre.model), size: str(tyre.size),
         tread: tyre.tread && Number.isFinite(tyre.tread.mm) ? { mm: tyre.tread.mm,
@@ -100,7 +101,7 @@ function missionControlHtml(m, navigationHtml = '') {
     ' Les prévisions et règles existantes ne garantissent jamais la sécurité du trajet.</p>';
   return MISSION_STYLE + '<article id="missionControl" class="mission-control" aria-label="Prochaine mission · briefing avant départ">' +
     '<div class="mission-head"><h3>🏁 PROCHAINE MISSION</h3><span class="src est">' + esc(title) + '</span></div>' +
-    '<div class="mission-car" data-mission-car>' + esc(m.vehicle || 'Voiture active non choisie') + '</div>' + desc +
+    '<div class="mission-car" data-mission-car>' + esc(m.vehicle ? m.vehicle + (m.carConfirmed === false ? ' · affichée, non confirmée pour le trajet' : '') : 'Voiture du trajet à choisir') + '</div>' + desc +
     '<div class="mission-grid"><div><small>MÉTÉO AU DÉPART · PRÉVISION</small>' + missionPointHtml(m.weather.departure) + '</div>' +
     '<div><small>MÉTÉO À L’ARRIVÉE · PRÉVISION</small>' + missionPointHtml(m.weather.arrival) + '</div>' +
     '<div><small>PNEUS RÉELLEMENT DÉCLARÉS</small><b data-mission-tyres>' + esc(tyre) + '</b><span>' + esc(wear) + '</span></div>' +

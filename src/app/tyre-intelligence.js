@@ -144,8 +144,17 @@ const TyreIntelligence = (() => {
       { pressure }, [{ kind: 'user', date: pressure.date }]);
     if (active && facts.min !== null && facts.current.some(x => !x.estimated && x.mm < 1.6)) rule('critical-depth', 'Risque documenté', 'Sculpture mesurée sous 1,6 mm : faire remplacer les pneus concernés avant de circuler.',
       { readings: facts.current.filter(x => !x.estimated && x.mm < 1.6), thresholdMm: 1.6 }, [{ kind: 'user', date: facts.current.find(x => !x.estimated && x.mm < 1.6).date }], ['Portée limitée aux points mesurés ; les autres points peuvent être plus usés.']);
-    if (active && facts.current.some(x => x.estimated && x.mm < 1.6)) rule('estimated-critical-depth', 'Vigilance', 'Sculpture estimée sous 1,6 mm : vérifier à la jauge avant de circuler ; une estimation ne prouve pas la conformité.',
+    if (active && facts.current.some(x => x.estimated && x.mm < 1.6)) rule('estimated-critical-depth', 'Vigilance', 'Profondeur : estimation sous le minimum réglementaire de 1,6 mm, mesure à confirmer. Verdict DANGER par précaution ; vérifier à la jauge avant de circuler, une estimation ne prouve ni la conformité ni la non-conformité.',
       { readings: facts.current.filter(x => x.estimated && x.mm < 1.6), thresholdMm: 1.6 }, [{ kind: 'user', date: facts.current.find(x => x.estimated && x.mm < 1.6).date }], ['Estimation utilisateur, sans diagnostic de non-conformité mesuré.', 'Le seuil de 3 mm reste un repère interne distinct du minimum réglementaire.']);
+    // Garde-fou du verdict (engine.js treadGuard) : 1,6 mm à moins de 2 mm = REPÈRE INDICATIF (marge de mesure et usure irrégulière),
+    // non réglementaire. PRUDENCE sur sec, DANGER si la pluie est prévue. Le seul seuil légal reste 1,6 mm (règles ci-dessus).
+    const shallow = active && !facts.current.some(x => x.mm < 1.6) ? facts.current.filter(x => x.mm >= 1.6 && x.mm < 2) : [];
+    const critical = active ? facts.current.filter(x => x.mm < 1.6) : [];
+    // Pluie : au moins 0,5 mm/h dans les échantillons fournis (la fenêtre évaluée) ; météo indisponible → PRUDENCE, jamais DANGER par défaut.
+    const guardRain = fresh && wet.some(x => (num(x.Pl) ? x.Pl : num(x.P) ? x.P : 0) >= 0.5), guard = shallow.length ? (guardRain ? 'DANGER' : 'PRUDENCE') : null;
+    const shallowTxt = shallow.map(x => String(x.mm).replace('.', ',') + ' mm' + (x.estimated ? ' (estimation)' : '')).join(', ');
+    if (guard) rule('guard-depth', guardRain ? 'Risque documenté' : 'Vigilance', `Sculpture sous 2 mm (${shallowTxt})${guardRain ? ' et pluie prévue (≥ 0,5 mm/h)' : !valid.length || !fresh ? ' · météo indisponible' : ''} : verdict plafonné à ${guard}. Repère de sécurité interne (marge de mesure et usure irrégulière), non réglementaire ; le seul seuil légal est 1,6 mm.`,
+      { readings: shallow, thresholdMm: 2, rainPossible: guardRain, policy: 'Plafond du verdict ; aucun score physique modifié' }, [{ kind: 'user', date: shallow[0].date }], ['Mesurer à la jauge sur plusieurs points : la valeur saisie peut ne pas représenter le point le plus usé.']);
     const facets = Object.entries(FACETS).map(([id, [label]]) => ({ id, label, results: rows.flatMap(({ test, comparison }) => test.metrics.filter(x => x.id === id && x.value !== null).map(metric => ({ test, metric, comparison }))) }));
     // La météo sélectionne les disciplines pertinentes DU modèle, sans extrapoler leurs valeurs au véhicule.
     if (active && fresh && wet.length) {
@@ -185,7 +194,11 @@ const TyreIntelligence = (() => {
     const weatherMissing = rules.some(x => x.id === 'weather-missing');
     const risk = rules.some(x => x.state === 'Risque documenté'), caution = rules.some(x => x.state === 'Vigilance');
     const overview = {
-      safety: risk ? 'Risque documenté' : caution ? 'Vigilance' : weatherMissing || !active ? 'Évaluation limitée' : 'Aucune alerte déclenchée',
+      safety: (risk ? 'Risque documenté' : caution ? 'Vigilance' : weatherMissing || !active ? 'Évaluation limitée' : 'Aucune alerte déclenchée'),
+      // Plafond du verdict (même règle que le moteur), distinct de l'état documentaire des règles.
+      verdictCap: critical.length ? { level: 3, text: critical.some(x => !x.estimated) ? 'DANGER · sous le minimum légal de 1,6 mm' : 'DANGER · estimation sous le minimum réglementaire de 1,6 mm, mesure à confirmer' }
+        : guard ? { level: guard === 'DANGER' ? 3 : 2, text: `${guard} · profondeur sous 2 mm, repère de sécurité interne non réglementaire${guardRain ? ' · pluie prévue (≥ 0,5 mm/h)' : !valid.length || !fresh ? ' · météo indisponible' : ''}` }
+        : !facts.current.length && active ? { level: null, text: 'Analyse limitée · profondeur non renseignée' } : null,
       evidence: !active ? 'Monte active non confirmée' : conflicts.length ? 'Essais contradictoires' : !rows.length ? 'Essais indisponibles' :
         rows.some(x => x.comparison.kind === 'exact') ? 'Preuves directes pour la monte' : 'Essais du même modèle, non directement transposables',
       measurements: measurementRuleIds.length ? `À vérifier (${measurementRuleIds.length})` : 'Aucune lacune détectée',

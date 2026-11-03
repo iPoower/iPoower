@@ -194,4 +194,57 @@ check('diagnostic agenda : trois mutations de statut rejetées', () => {
     assert.throws(() => assert.match(agendaDiagnostic(options, mutant), expected), assert.AssertionError);
   }
 });
+// Retard du relais (> 20 min) dans le Diagnostic : raison exacte connue, sinon retard sans cause visible, jamais d'appel GitHub.
+check('relais en retard > 20 min : raison exacte connue, sinon « relais en retard, aucune raison publiée »', () => {
+  for (const age of [null, undefined, NaN, -1, '40', 0, 20]) assert.equal(R.relayDelayReason({ age }), null, String(age));
+  assert.match(R.relayDelayReason({ age: 20.01 }), /^relais en retard, aucune raison publiée ; exécutions GitHub non visibles depuis l’app/);
+  assert.match(R.relayDelayReason({ age: 45, err: 'Verdict impossible' }), /^erreur publiée par le relais : Verdict impossible$/);
+  assert.match(R.relayDelayReason({ age: 45, err: 'x', readFailed: true }), /lecture d’obs\.json en échec/);
+  assert.match(R.relayDelayReason({ age: 45, err: 'x', readFailed: true, offline: true }), /hors ligne/);
+  assert(R.relayDelayReason({ age: 45, err: 'e'.repeat(500) }).length < 200, 'texte borné');
+});
+function relayDiagnostic(options = {}, input = diagnosticSource) {
+  const row = input.split('\n').find(line => line.includes("['Relais (obs.json)',"));
+  assert(row, 'la vraie ligne Relais du diagnostic doit être testée');
+  const decl = input.split('\n').find(line => line.includes('const relayAge = ageOf(RELAY_AT)'));
+  assert(decl, 'la vraie déclaration du retard doit être testée');
+  const expression = row.trim().replace(/^\['Relais \(obs\.json\)', /, '').replace(/\],$/, '');
+  const state = { console, Date, JSON, String, Reliability: R, RELAY_AT: null, RELAY_ERR: null, RELAY_SEEN: true, RELAY_READ_FAIL: false,
+    offlineNow: () => false, fetch: () => { throw new Error('aucun appel réseau dans le diagnostic'); }, ...options };
+  vm.createContext(state);
+  vm.runInContext(input + ';' + decl.trim().replace(/^const /, 'var ') + ';this.status=(' + expression + ');', state);
+  return state.status;
+}
+const minutesAgo = m => new Date(Date.now() - m * 60000).toISOString();
+check('diagnostic relais : frais sans alerte ; > 20 min avec raison exacte ou retard sans cause visible', () => {
+  assert.doesNotMatch(relayDiagnostic({ RELAY_AT: minutesAgo(5) }), /RETARD/);
+  assert.match(relayDiagnostic({ RELAY_AT: minutesAgo(5), RELAY_ERR: 'Verdict impossible' }), /erreur relais : Verdict impossible/);
+  assert.match(relayDiagnostic({ RELAY_AT: minutesAgo(25) }), /AGING · 25 min · RELAIS EN RETARD \(> 20 min\) : relais en retard, aucune raison publiée/);
+  assert.match(relayDiagnostic({ RELAY_AT: minutesAgo(25), RELAY_ERR: 'Verdict impossible https://exemple.test/x' }), /RELAIS EN RETARD \(> 20 min\) : erreur publiée par le relais : Verdict impossible url$/);
+  assert.match(relayDiagnostic({ RELAY_AT: minutesAgo(25), RELAY_READ_FAIL: true }), /lecture d’obs\.json en échec/);
+  assert.match(relayDiagnostic({ RELAY_AT: minutesAgo(25), offlineNow: () => true }), /hors ligne/);
+  assert.equal(relayDiagnostic({ RELAY_AT: null, RELAY_SEEN: false }), 'non lu');
+});
+check('contre-tests diagnostic relais : seuil, raison ou alerte retirés sont détectés', () => {
+  const rel = fs.readFileSync(path.join(__dirname, '../src/reliability.js'), 'utf8');
+  const loadR = src => { const c = { console, Date, JSON, String }; vm.createContext(c); vm.runInContext(src + ';this.R=Reliability;', c); return c.R; };
+  const relMutants = [rel.replace('age <= RELAY.warnMin) return null;', 'age <= RELAY.obsMaxMin) return null;'),
+    rel.replace("if (err) return 'erreur publiée par le relais : ' + clip(err, 120);", ''),
+    rel.replace("if (readFailed) return", "if (false) return")];
+  for (const m of relMutants) {
+    assert.notEqual(m, rel, 'mutation appliquée'); const M = loadR(m);
+    assert.throws(() => { assert.equal(M.relayDelayReason({ age: 21 }) != null, true); assert.match(M.relayDelayReason({ age: 45, err: 'E' }), /erreur publiée/);
+      assert.match(M.relayDelayReason({ age: 45, err: 'E', readFailed: true }), /échec/); }, assert.AssertionError);
+  }
+  const diagMutants = [diagnosticSource.replace("relayDelay ? ' · RELAIS EN RETARD", "false ? ' · RELAIS EN RETARD"),
+    diagnosticSource.replace('readFailed: RELAY_READ_FAIL', 'readFailed: false')];
+  for (const m of diagMutants) {
+    assert.notEqual(m, diagnosticSource, 'mutation appliquée');
+    assert.throws(() => { assert.match(relayDiagnostic({ RELAY_AT: minutesAgo(25) }, m), /RELAIS EN RETARD/); assert.match(relayDiagnostic({ RELAY_AT: minutesAgo(25), RELAY_READ_FAIL: true }, m), /échec/); }, assert.AssertionError);
+  }
+  const app = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
+  assert.match(app, /catch \(e\) \{ OBS = null; RELAY_READ_FAIL = true; \}/, 'échec de lecture d’obs.json mémorisé');
+  assert.match(app, /RELAY_ERR = [^\n]*; RELAY_READ_FAIL = false;/, 'lecture réussie : échec effacé');
+  assert(!/api\.github\.com/.test(app + diagnosticSource), 'l’app n’appelle jamais l’API GitHub');
+});
 console.log(n + '/' + n + ' scénarios OK');

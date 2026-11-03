@@ -63,6 +63,11 @@ const Decision = (() => {
       displayLevel = 2;
       reason = conf.reason;
     }
+    // Profondeur inconnue : un RAS devient « ANALYSE LIMITÉE » ; un niveau venant de la météo reste affiché, avec la mention.
+    if (input.depthUnknown && label === RISK[riskLevel]) {
+      if (riskLevel === 0) { label = 'ANALYSE LIMITÉE'; reason = 'Profondeur non renseignée'; }
+      else reason = (reason || 'Conditions à surveiller') + ' · profondeur non renseignée';
+    }
     return { riskLevel, displayLevel, label, reason: reason || (riskLevel ? 'Conditions à surveiller' : 'Aucun signal critique détecté') };
   }
 

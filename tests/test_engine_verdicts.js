@@ -62,12 +62,15 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert(a); assert.equal(a.sev, 2); assert.match(a.detail, /pluie prévue/);
   });
   test('profondeur 1,5 mm : DANGER, minimum légal cité (arrêté du 18 juillet 2019, art. 5)', () => {
+    const m = treadAlerts({ tread: 1.5 }).tread;
+    assert(m); assert.equal(m.sev, 3); assert.match(m.title, /minimum légal de 1,6 mm/); assert.match(m.detail, /arrêté du 18 juillet 2019 relatif aux pneumatiques, art\. 5/);
+    // Estimation : DANGER conservé par précaution, sans affirmer une non-conformité légale (règle du 01/11/2026).
     const a = treadAlerts({ tread: 1.5, treadEst: true }).tread;
-    assert(a); assert.equal(a.sev, 3); assert.match(a.title, /minimum légal de 1,6 mm/); assert.match(a.detail, /arrêté du 18 juillet 2019 relatif aux pneumatiques, art\. 5/);
+    assert(a); assert.equal(a.sev, 3); assert.match(a.title, /estimation sous le minimum réglementaire de 1,6 mm, mesure à confirmer/); assert.doesNotMatch(a.title, /minimum légal/);
     assert.match(a.detail, /estimation/);
   });
-  test('profondeur 1,6 mm exactement : légal, mais sous le repère indicatif de 3 mm', () => {
-    const a = treadAlerts({ tread: 1.6 }).tread; assert(a); assert.equal(a.sev, 1);
+  test('profondeur 1,6 mm exactement : légale, mais sous le repère de sécurité interne de 2 mm → PRUDENCE (règle du 01/11/2026, plus stricte que l’ancien niveau VIGILANCE)', () => {
+    const a = treadAlerts({ tread: 1.6 }).tread; assert(a); assert.equal(a.sev, 2); assert.match(a.detail, /non réglementaire/); assert.doesNotMatch(a.title, /légal/);
   });
   test('profondeur 5 mm ou inconnue : aucune alerte de profondeur', () => {
     assert.equal(treadAlerts({ tread: 5 }).tread, undefined); assert.equal(treadAlerts({}).tread, undefined);

@@ -78,6 +78,16 @@ const Reliability = (() => {
   const RELAY = Object.freeze({ warnMin: 20, obsMaxMin: 35, outageMin: 90 });
   const relayState = age => typeof age !== 'number' || !Number.isFinite(age) || age < 0 ? 'unknown'
     : age <= RELAY.obsMaxMin ? 'ok' : age <= RELAY.outageMin ? 'late' : 'down';
-  return { clip, runtimeRecorder, versionDecision, ageMin, liveExpired, isDue, FRESHNESS, freshState, RELAY, relayState };
+  // Diagnostic : obs.json a plus de warnMin (20 min). Raison exacte connue de l'app, sinon retard sans cause visible.
+  // L'app n'interroge pas l'API GitHub (aucun jeton côté appareil) : elle ne peut pas savoir si une exécution du relais
+  // est active ; elle le dit au lieu de le deviner. null = pas de retard à signaler (frais, ou âge illisible/futur).
+  const relayDelayReason = ({ age, err, readFailed, offline } = {}) => {
+    if (typeof age !== 'number' || !Number.isFinite(age) || age < 0 || age <= RELAY.warnMin) return null;
+    if (offline) return 'appareil hors ligne : obs.json non relu, le relais peut être à jour';
+    if (readFailed) return 'dernière lecture d’obs.json en échec sur cet appareil : retard peut-être local';
+    if (err) return 'erreur publiée par le relais : ' + clip(err, 120);
+    return 'relais en retard, aucune raison publiée ; exécutions GitHub non visibles depuis l’app (relais différé, refusé ou horloge bloquée possibles)';
+  };
+  return { clip, runtimeRecorder, versionDecision, ageMin, liveExpired, isDue, FRESHNESS, freshState, RELAY, relayState, relayDelayReason };
 })();
 const RUNTIME_RECORDER = typeof window !== 'undefined' ? Reliability.runtimeRecorder() : null;

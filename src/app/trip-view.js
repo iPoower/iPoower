@@ -43,7 +43,7 @@ function tripDraftInit(force = false) {
     // Un changement du véhicule global actualise le brouillon sans effacer
     // départ, destination ou horaire. Un choix local reste tant que le global ne change pas.
     if (TRIP_FORM.activeCarSeed !== (d.activeCarId || null)) {
-      TRIP_FORM.carId = d.activeCarId || S.cars[0] && S.cars[0].id || null;
+      TRIP_FORM.carId = d.activeCarId || null;   // aucune présélection : une voiture n'est jamais déduite
       TRIP_FORM.activeCarSeed = d.activeCarId || null;
     }
     return;
@@ -64,7 +64,7 @@ function tripDraftInit(force = false) {
   TRIP_FORM.originResults = [];
   TRIP_FORM.when = manual ? dep.slice(0, 10) === now.slice(0, 10) ? (Math.abs(tsToDate(dep) - tsToDate(now)) <= 5 * 60000 ? 'now' : 'later') : 'date' : 'now';
   TRIP_FORM.date = dep.slice(0, 10); TRIP_FORM.time = dep.slice(11, 16);
-  TRIP_FORM.carId = d.activeCarId || S.cars[0] && S.cars[0].id || null; TRIP_FORM.message = '';
+  TRIP_FORM.carId = d.activeCarId || null; TRIP_FORM.message = '';   // aucune présélection : une voiture n'est jamais déduite
   TRIP_FORM.activeCarSeed = d.activeCarId || null;
 }
 function tripCaptureForm() {
@@ -156,7 +156,7 @@ function renderTripView() {
   const resultButtons = (TRIP_FORM.destinationResults || []).map((h, i) => `<button class="trip-suggestion" data-act="trip-dest-pick" data-i="${i}"><b>${esc(h.name)}</b><span>${esc(h.sub || h.address || '')}</span><small>${esc(h.provider || '')}${h.precision ? ' · ' + esc(h.precision) : ''}</small></button>`).join('');
   const originButtons = (TRIP_FORM.originResults || []).map((h, i) => `<button class="trip-suggestion" data-act="trip-origin-pick" data-i="${i}"><b>${esc(h.name)}</b><span>${esc(h.sub || h.address || '')}</span><small>${esc(h.provider || '')}</small></button>`).join('');
   const quick = tripKnownDestinations().slice(0, 5).map(p => `<button class="chip" data-act="trip-dest-known" data-id="${esc(p.id)}" aria-pressed="${TRIP_FORM.destinationId === p.id}">${p.kind === 'work' ? '🏢' : p.kind === 'home' ? '🏠' : '📌'} ${esc(p.name)}</button>`).join('');
-  const carOptions = S.cars.map(c => `<option value="${esc(c.id)}" ${TRIP_FORM.carId === c.id ? 'selected' : ''}>${esc(c.name || c.short || c.id)}</option>`).join('');
+  const carOptions = `<option value="" ${TRIP_FORM.carId ? '' : 'selected'}>— Voiture du trajet à choisir —</option>` + S.cars.map(c => `<option value="${esc(c.id)}" ${TRIP_FORM.carId === c.id ? 'selected' : ''}>${esc(c.name || c.short || c.id)}</option>`).join('');
   const route = tripRouteState(), routeLine = route ? route.ready
     ? `<div class="trip-route-state ${route.offline ? 'old' : ''}"><b>${route.offline ? 'Hors connexion · dernière route connue' : 'Itinéraire prêt'}</b><span>${f1(route.l.km)} km · ~${Math.round(route.l.min)} min${route.t && route.t.wait ? ' · météo de route en attente' : ''}</span></div>`
     : `<div class="trip-route-state old"><b>${route.offline ? 'Hors connexion' : 'Calcul en cours'}</b><span>${route.offline ? 'Départ, destination, véhicule et horaire sont conservés. La route sera recalculée au retour du réseau.' : 'OSRM et la météo de route se préparent.'}</span></div>` : '';
@@ -226,7 +226,7 @@ function renderTripSummary() {
   el.hidden = false;
   el.innerHTML = `<div class="trip-summary-head"><span class="trip-label">🧭 ${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc((n && n.dep || t && t.dep || '').slice(11,16) || '—')}</b></div>
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}${from ? `<small class="trip-origin-src">Départ : ${esc(shared.source)}</small>` : ''}</div>
-    <div class="trip-summary-meta"><span>🚗 ${esc(car && (car.short || car.name) || 'véhicule à choisir')}</span><span>${esc(route)}</span></div>
+    <div class="trip-summary-meta"><span>🚗 ${esc(appCarLabel().text)}</span><span>${esc(route)}</span></div>
     ${UI.view === 'trajet' ? '<a class="btn pri" href="#secTrip">Modifier le trajet</a>' : '<div class="chips"><button class="btn sm" data-act="view" data-v="trajet">Voir / modifier le trajet</button></div>'}`;
 }
 async function tripSearch(kind, button) {

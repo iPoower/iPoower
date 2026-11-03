@@ -86,7 +86,7 @@ function tyreIntelligenceHtml(car, mode = 'pneus', trip = null) {
   const planned = r.planned ? `<details class="ti-planned" data-k="ti-plan"><summary>Prévu · ${esc(r.planned.model.brand + ' ' + r.planned.model.model)} · NON MONTÉ</summary><p>${esc(r.planned.size || 'dimension inconnue')} · ce projet ne participe pas aux recommandations de la monte active.</p>${r.planned.tests.map(testHtml).join('')}</details>` : '';
   // Les quatre axes sont indépendants ; aucun statut ne garantit la sécurité de la route.
   const synthesis = `<div class="ti-synthesis" role="group" aria-label="Synthèse des alertes et limites">
-    <p class="sub"><b>Alertes de sécurité :</b> ${esc(r.overview.safety)}</p>
+    <p class="sub"><b>Alertes de sécurité :</b> ${esc(r.overview.safety)}</p>${r.overview.verdictCap ? `<p class="sub tread-cap"><b>Verdict plafonné par la profondeur :</b> ${esc(r.overview.verdictCap.text)}</p>` : ''}
     <p class="sub">${noEvidence ? `<b>Essais publiés :</b> ${esc(TI_NO_EVIDENCE)}${tiGapNote(r) ? ' ' + esc(tiGapNote(r)) : ''}` : `<b>Essais disponibles :</b> ${esc(r.overview.evidence)}`}</p>
     <p class="sub"><b>Mesures du véhicule :</b> ${esc(r.overview.measurements)}</p>
     <p class="sub"><b>Météo :</b> ${esc(r.overview.weather)}</p>
