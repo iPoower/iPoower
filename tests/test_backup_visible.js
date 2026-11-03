@@ -8,28 +8,36 @@ const SRC = { css: read('style.css'), view: read('app/drive-sync-view.js'), pers
 let n = 0; const check = (name, fn) => { fn(); n++; console.log('✅ ' + name); };
 const T0 = new Date(2026, 10, 3, 18, 0).getTime();   // 03/11/2026 18:00, heure locale de l'appareil (comme l'app)
 const HM = t => new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(t);
-function loadView(source, { status = null, connected = false, selected = false, hint = null, pending = 0, since = 0, syncedAt = 0, vault = 'vault', online = true, now = T0 } = {}) {
+function loadView(source, { status = null, connected = false, selected = false, hint = null, prepared = true, prep = 'ready', pending = 0, since = 0, syncedAt = 0, vault = 'vault', online = true, now = T0 } = {}) {
   class D extends Date { constructor(...a) { super(...(a.length ? a : [now])); } static now() { return now; } }
   const store = new Map(), events = [];
   const ctx = vm.createContext({ Intl, JSON, Math, Number, String, Object, Array, Error, Date: D, Promise,
     navigator: { onLine: online }, document: { getElementById: () => null }, window: { TWRC_VAULT: { mode: vault } },
     lsGet: k => store.has(k) ? store.get(k) : null, lsSet: (k, v) => { store.set(k, v); events.push(k); }, esc: s => String(s), S: null });
   vm.runInContext(source + `;this.api={ state: driveBadgeState, copy: driveCopyText, summary: driveBackupSummary, age: driveAge, when: driveWhen, note: driveNoteWrite,
-    change: driveOnChange, vaultChange: driveVaultChange, LABEL: DRIVE_LABEL, KEY: DRIVE_BADGE_KEY, RECONNECT: DRIVE_RECONNECT, B: DRIVE_BADGE, UI: DRIVE_UI };`, ctx);
-  const api = ctx.api; Object.assign(api.UI, { config: {}, status, hint, selected, session: { connected } });
+    change: driveOnChange, vaultChange: driveVaultChange, tap: driveBadgeTap, ensure: driveEnsurePrepared, load: driveBadgeLoad, short: driveCopyShort,
+    LABEL: DRIVE_LABEL, KEY: DRIVE_BADGE_KEY, RECONNECT: DRIVE_RECONNECT, B: DRIVE_BADGE, UI: DRIVE_UI };`, ctx);
+  const api = ctx.api; Object.assign(api.UI, { config: {}, status, hint, selected, prepared, prep, session: { connected } });
   Object.assign(api.B, { pending, pendingSince: since, syncedAt, loaded: true });
   return { api, ctx, store, events };
 }
 // ---------- Libellés : un par état, partagés par le badge, le panneau et les boutons ----------
 function labelsOk(source) {
   const { api } = loadView(source, { hint: { folder: 'f' } });
-  const s = api.state(); assert.equal(s.key, 'reconnect'); assert.equal(s.label, 'Reconnexion requise'); assert(s.text.startsWith('Reconnexion requise'));
+  const s = api.state(); assert.equal(s.key, 'reconnect'); assert.equal(s.act, 'reconnect');
+  // Google pas encore prêt : jamais annoncé comme une reconnexion immédiate ; heure de la dernière copie toujours là.
+  const p = loadView(source, { hint: { folder: 'f' }, prepared: false, prep: 'preparing', syncedAt: T0 - 60e3 }).api.state();
+  assert.equal(p.key, 'preparing'); assert.equal(p.label, 'Préparation de Google…'); assert.equal(p.act, 'wait'); assert.equal(p.at, HM(T0 - 60e3), 'heure de la copie absente pendant la préparation');
+  const f = loadView(source, { hint: { folder: 'f' }, prepared: false, prep: 'failed' }).api.state(); assert.equal(f.key, 'prepfail'); assert.equal(f.act, 'prepare'); assert.equal(s.label, 'Reconnexion requise'); assert(s.text.startsWith('Reconnexion requise'));
   const blocked = loadView(source, { connected: true, selected: true, status: { state: 'SYNC_BLOCKED', message: 'reconnexion' } }).api.state();
   assert.equal(blocked.label, s.label, 'deux libellés pour la reconnexion');
   const values = Object.values(api.LABEL); assert.equal(new Set(values).size, values.length, 'deux états partagent un libellé');
   // Panneau : la ligne CLOUD reprend le libellé du badge ; le bouton de reprise a un libellé unique ; plus d'anciens libellés.
   assert(/!connected \? driveBadgeState\(\)\.label/.test(source), 'ligne CLOUD sans le libellé du badge');
-  assert(/button\(DRIVE_RECONNECT, async/.test(source), 'bouton de reprise sans le libellé unique');
+  assert(/button\(DRIVE_RECONNECT, \(\) => \{ driveReconnect\(\);/.test(source), 'bouton de reprise sans le libellé unique ou sans reconnexion directe');
+  assert(!/appuie encore sur/.test(source), 'le bouton annonce encore deux gestes');
+  assert(/button\('Réessayer la préparation de Google'/.test(source) && /button\(DRIVE_LABEL\.preparing, \(\) => \{\}, true\)/.test(source), 'préparation : bouton désactivé ou nouvel essai absents');
+  assert(!/session\.prepare\(\)\.then\([^\n]*\(\) => \{\}\)/.test(source) && /driveEnsurePrepared\(\);\n/.test(source), 'échec de préparation encore ignoré en silence');
   assert(!/Prêt à connecter Google Drive|Reprendre la synchronisation Drive|Préparer la reprise Drive|'connexion requise \(/.test(source), 'ancien libellé encore présent');
   assert(/d\.hint \? 'Utiliser un autre compte Google'/.test(source), '« Se connecter à Google » proposé alors qu’une liaison existe');
   return true;
@@ -41,21 +49,61 @@ function copyOk(source) {
   const s = api.state();
   assert.equal(s.text, 'Reconnexion requise · copie ' + HM(synced) + ' · 1 modif · 14 min', 'badge (forme courte, une ligne) : ' + s.text);
   assert(s.hint.includes('dernière copie ' + HM(synced) + ' · 1 modif non sauvegardée depuis 14 min'), 'info-bulle et lecteur d’écran sans la phrase complète : ' + s.hint);
-  assert.equal(loadView(source, { hint: { folder: 'f' } }).api.copy(), 'aucune copie Drive vérifiée sur cet appareil');
+  assert.equal(loadView(source, { hint: { folder: 'f' } }).api.copy(), 'copie non vérifiée sur cet appareil');
   assert.equal(api.when(T0 - 24 * 3600e3), 'hier 18:00'); assert.equal(api.when(T0 - 3 * 24 * 3600e3), '31/10 18:00');
+  assert.equal(api.age(NaN), null); assert.equal(api.age(-1), null);
   for (const [ms, txt] of [[0, 'moins de 1 min'], [59e3, 'moins de 1 min'], [60e3, '1 min'], [59 * 60e3, '59 min'], [60 * 60e3, '1 h 00'], [125 * 60e3, '2 h 05'], [48 * 3600e3, '2 j']]) assert.equal(api.age(ms), txt, 'âge ' + ms);
   return true;
 }
 check('badge : « copie 17:55 · 1 modif · 14 min » sur une ligne ; info-bulle « dernière copie 17:55 · 1 modif non sauvegardée depuis 14 min » ; « hier 18:00 », « 31/10 18:00 »', () => assert.equal(copyOk(SRC.view), true));
+// ---------- Aucune heure ni durée fabriquée ----------
+function unknownOk(source) {
+  // 1. « À jour » sans date connue : « copie non vérifiée », jamais l'heure courante.
+  const a = loadView(source, { connected: true, selected: true, status: { state: 'SYNCED', message: 'synchronisé' }, syncedAt: 0 }).api.state();
+  assert.equal(a.text, 'À jour · copie non vérifiée', 'heure fabriquée dans « À jour » : ' + a.text); assert(!a.hint.includes(HM(T0)), 'heure fabriquée dans l’info-bulle');
+  // 2. Mémoire relue sans date de début : âge inconnu (jamais « maintenant »).
+  const b = loadView(source, { hint: { folder: 'f' } }); b.api.B.loaded = false; b.api.B.pendingSince = 0;
+  b.store.set(b.api.KEY, JSON.stringify({ v: 1, lastOkAt: null, pending: 2, pendingSince: null }));
+  b.api.load(); assert.equal(b.api.B.pending, 2); assert.equal(b.api.B.pendingSince, 0, 'date de début fabriquée au chargement');
+  // 3. Textes : âge inconnu ⇒ absent (forme courte) ou « durée inconnue » (phrase), jamais « moins de 1 min ».
+  assert.equal(b.api.short(), 'copie non vérifiée · 2 modifs', 'forme courte : ' + b.api.short());
+  assert.equal(b.api.copy(), 'copie non vérifiée sur cet appareil · 2 modifs non sauvegardées (durée inconnue)', 'phrase : ' + b.api.copy());
+  assert(!/moins de 1 min/.test(b.api.short() + b.api.copy() + b.api.state().hint));
+  return true;
+}
+check('aucune heure ni durée fabriquée : « À jour · copie non vérifiée », date de début inconnue conservée inconnue, « durée inconnue »', () => assert.equal(unknownOk(SRC.view), true));
+// ---------- Reconnexion : appuis avant, pendant et après la préparation de Google ----------
+async function tapOk(source) {
+  const v = loadView(source, { hint: { folder: 'f', binding: 'b' }, prepared: false, prep: 'idle' }), U = v.api.UI, calls = { prepare: 0, connect: 0, panel: 0 };
+  let release, fail; const gate = () => new Promise((res, rej) => { release = res; fail = rej; });
+  U.session = { connected: false, prepare: () => { calls.prepare++; return gate(); }, connect: () => { calls.connect++; return new Promise(() => {}); }, resume: async () => ({}) };
+  U.sync = { stop() {}, select() {}, run: async () => {} };
+  Object.assign(v.ctx, { renderDriveSync() {}, renderDriveBadge() {}, driveOpenBackup() { calls.panel++; }, VER: 1, loadVersion: async () => {} });
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  v.api.ensure(); await tick(); assert.equal(calls.prepare, 1, 'Google non préparé dès que la reconnexion est nécessaire');
+  v.api.tap(); assert.equal(calls.connect, 0, 'fenêtre ouverte avant la fin de la préparation'); assert.equal(calls.panel, 0, 'appui pendant la préparation : panneau ouvert au lieu d’un message');
+  assert(/Préparation de Google…/.test(U.text), 'appui pendant la préparation : aucun message visible');
+  release(); await tick(); await tick(); assert.equal(U.prepared, true); assert.equal(v.api.state().act, 'reconnect');
+  v.api.tap(); assert.equal(calls.connect, 1, 'un appui après la préparation doit ouvrir la fenêtre DANS le geste (appel synchrone)');
+  // Échec de préparation : visible, nouvel essai à l'appui suivant.
+  const w = loadView(source, { hint: { folder: 'f', binding: 'b' }, prepared: false, prep: 'idle' }), W = w.api.UI; let n2 = 0;
+  W.session = { connected: false, prepare: () => { n2++; return Promise.reject(Object.assign(new Error('network'), { code: 'network' })); }, connect() { throw new Error('jamais'); } };
+  Object.assign(w.ctx, { renderDriveSync() {}, renderDriveBadge() {}, driveOpenBackup() {} });
+  w.api.ensure(); await tick(); await tick();
+  assert.equal(W.prep, 'failed'); assert.equal(w.api.state().key, 'prepfail'); assert(/Préparation de Google impossible/.test(W.text), 'échec de préparation silencieux');
+  w.api.tap(); await tick(); assert.equal(n2, 2, 'appui après un échec : la préparation doit être relancée');
+  return true;
+}
 // ---------- Mémoire propre à l'appareil, persistée, sans boucle de synchronisation ----------
 function memoryOk(source, mergeSource) {
   const v = loadView(source, { connected: true, selected: true, status: { state: 'PENDING', message: 'en attente' } });
   v.api.B.loaded = false; v.api.B.sig = {};
   v.api.note({ key: 'twrc.settings.v1' }); assert.equal(v.api.B.pending, 1); assert.equal(v.api.B.pendingSince, T0);
   const saved = JSON.parse(v.store.get(v.api.KEY)); assert.equal(saved.pending, 1); assert.equal(saved.pendingSince, T0);
+  assert.deepEqual(saved.list, [{ at: T0, part: 'réglages' }], 'liste des modifications en attente non conservée (heure et nature seulement)');
   const renders = []; v.ctx.renderDriveSync = () => renders.push(1); v.ctx.renderDriveBadge = () => {};
   v.api.change({ state: 'SYNCED', message: 'synchronisé' });
-  const after = JSON.parse(v.store.get(v.api.KEY)); assert.equal(after.pending, 0); assert.equal(after.lastOkAt, T0); assert.equal(v.api.B.pending, 0);
+  const after = JSON.parse(v.store.get(v.api.KEY)); assert.equal(after.pending, 0); assert.equal(after.lastOkAt, T0); assert.equal(v.api.B.pending, 0); assert.deepEqual(after.list, []);
   const mctx = vm.createContext({}); vm.runInContext(mergeSource + ';this.M=SyncMerge;', mctx);
   assert.equal(mctx.M.device(v.api.KEY), true, 'mémoire du badge envoyée à Drive (clé non propre à l’appareil)');
   let soon = 0; v.ctx.driveSoon = () => { soon++; }; v.api.vaultChange({ key: v.api.KEY }); assert.equal(soon, 0, 'mémoire du badge relance une synchronisation');
@@ -111,17 +159,26 @@ async function persistOk(source, diagSource) {
   return true;
 }
 const mutationsSync = [
+  ['« À jour » avec l’heure courante (repli)', 'view', /text: DRIVE_LABEL\.synced \+ ' · ' \+ \(at \|\| 'copie non vérifiée'\)/, "text: DRIVE_LABEL.synced + ' · ' + (at || DRIVE_HM.format(Date.now()))", unknownOk],
+  ['date de début fabriquée au chargement', 'view', /DRIVE_BADGE\.pendingSince = driveTime\(m\.pendingSince\) \|\| driveTime\(DRIVE_BADGE\.pendingSince\);/, 'DRIVE_BADGE.pendingSince = driveTime(m.pendingSince) || Date.now();', unknownOk],
+  ['âge fabriqué (« moins de 1 min »)', 'view', /const drivePendingAge = \(\) => DRIVE_BADGE\.pendingSince \? driveAge\(Date\.now\(\) - DRIVE_BADGE\.pendingSince\) : null;/, 'const drivePendingAge = () => driveAge(Date.now() - (DRIVE_BADGE.pendingSince || Date.now()));', unknownOk],
   ['libellé de reconnexion différent dans le panneau', 'view', /!connected \? driveBadgeState\(\)\.label \+/, "!connected ? 'connexion requise' +", labelsOk],
-  ['ancien bouton « Reprendre la synchronisation Drive »', 'view', /button\(DRIVE_RECONNECT, async/, "button('Reprendre la synchronisation Drive', async", labelsOk],
+  ['ancien bouton « Reprendre la synchronisation Drive »', 'view', /button\(DRIVE_RECONNECT, \(\) => \{ driveReconnect\(\);/, "button('Reprendre la synchronisation Drive', () => { driveReconnect();", labelsOk],
   ['dernière copie absente du badge', 'view', /text: DRIVE_LABEL\[key\] \+ \(withCopy \? ' · ' \+ driveCopyShort\(\) : ''\)/, 'text: DRIVE_LABEL[key]', copyOk],
   ['phrase complète absente de l’info-bulle', 'view', /hint: hint \+ \(withCopy \? ' État : ' \+ copy \+ '\.' : ''\)/, 'hint: hint', copyOk],
   ['retour à la ligne dans le bandeau', 'css', /text-overflow: ellipsis; white-space: nowrap;/, 'text-overflow: ellipsis;', s => { assert(/text-overflow: ellipsis; white-space: nowrap;/.test(s), 'badge sur plusieurs lignes'); return true; }],
-  ['âge des modifications absent', 'view', / depuis ' \+ driveAge\(Date\.now\(\) - \(B\.pendingSince \|\| Date\.now\(\)\)\)/, "'", copyOk],
-  ['mémoire du badge envoyée à Drive', 'view', /const DRIVE_BADGE_KEY = 'twrc\.sync\.badge\.v1';/, "const DRIVE_BADGE_KEY = 'twrc.badge.v1';", s => memoryOk(s, SRC.merge)],
+  ['âge des modifications absent', 'view', /\(age \? ' depuis ' \+ age : ' \(durée inconnue\)'\)/, "''", copyOk],
+  ['mémoire du badge envoyée à Drive', 'view', /const DRIVE_BADGE_KEY = 'twrc\.sync\.badge\.v1',/, "const DRIVE_BADGE_KEY = 'twrc.badge.v1',", s => memoryOk(s, SRC.merge)],
   ['mémoire du badge relance la synchronisation', 'view', /if \(e && e\.key === DRIVE_BADGE_KEY\) return; /, '', s => memoryOk(s, SRC.merge)],
   ['« À jour » non mémorisé', 'view', /DRIVE_BADGE\.syncedAt = Date\.now\(\); driveBadgeSave\(had\);/, 'DRIVE_BADGE.syncedAt = Date.now();', s => memoryOk(s, SRC.merge)],
   ['synthèse rassurante malgré la coupure', 'decision', /reason: reasons\[0\] \|\| backup \|\| 'Données critiques fraîches'/, "reason: reasons[0] || 'Données critiques fraîches'", s => decisionOk(s, SRC.view)],
   ['Drive coupé compté comme sauvegardé', 'view', /ok: s\.key === 'synced' \|\| s\.key === 'sending'/, "ok: s.key !== 'action'", s => decisionOk(SRC.decision, s)],
+];
+const tapMutations = [
+  ['appui pendant la préparation : panneau ouvert', /if \(act === 'wait'\) \{ d\.text = /, "if (act === 'wait') { driveOpenBackup(); return; d.text = "],
+  ['fenêtre ouverte après une attente (hors du geste)', /const promise = d\.session\.connect\(\);   \/\/ appel synchrone dans le geste/, 'const promise = Promise.resolve().then(() => d.session.connect());'],
+  ['échec de préparation ignoré en silence', /e => \{ d\.prepared = false; d\.prep = 'failed';/, "e => { d.prepared = false; d.prep = 'idle'; return;"],
+  ['préparation non relancée après un échec', /if \(act === 'prepare'\) \{ driveEnsurePrepared\(\); return; \}/, "if (act === 'prepare') { return; }"],
 ];
 const mutationsAsync = [
   ['persist() jamais demandé', 'persist', /window\.addEventListener\('twrc-vault-change', storagePersistAsk\); /, ''],
@@ -143,6 +200,12 @@ const mutationsAsync = [
     let failed = false; try { await persistOk(file === 'persist' ? mutated : SRC.persist, file === 'diag' ? mutated : SRC.diag); } catch (e) { failed = true; if (process.env.WHY) console.log('   ↳ ' + name + ' : ' + e.message.slice(0, 140)); }
     assert.equal(failed, true, 'contre-test non détecté : ' + name); killed++;
   }
-  console.log(`✅ ${killed}/${mutationsSync.length + mutationsAsync.length} mutations rejetées (contre-tests)`);
+  assert.equal(await tapOk(SRC.view), true); n++; console.log('✅ reconnexion : Google préparé dès que nécessaire ; appui pendant la préparation = message, jamais la fenêtre ni le panneau ; après : fenêtre ouverte dans le geste ; échec visible puis nouvel essai');
+  for (const [name, from, to] of tapMutations) {
+    const mutated = SRC.view.replace(from, to); assert.notEqual(mutated, SRC.view, 'mutation inapplicable : ' + name);
+    let failed = false; try { await tapOk(mutated); } catch (e) { failed = true; if (process.env.WHY) console.log('   ↳ ' + name + ' : ' + e.message.slice(0, 140)); }
+    assert.equal(failed, true, 'contre-test non détecté : ' + name); killed++;
+  }
+  console.log(`✅ ${killed}/${mutationsSync.length + mutationsAsync.length + tapMutations.length} mutations rejetées (contre-tests)`);
   console.log(`\n✅ ${n} contrôles de sauvegarde visible`);
 })().catch(e => { console.error('❌ ' + e.message); process.exit(1); });

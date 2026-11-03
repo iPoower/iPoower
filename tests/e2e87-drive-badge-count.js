@@ -46,11 +46,12 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     await p.waitForFunction(() => DRIVE_UI.config && document.getElementById('driveBadge'), null, { timeout: 20000 });
     await p.evaluate(() => {
       window.__keys = []; window.addEventListener('twrc-vault-change', e => window.__keys.push(e.key));
-      DRIVE_UI.hint = { folder: 'dossier-fictif', binding: 'a'.repeat(64) }; DRIVE_BADGE.pending = 0; renderDriveBadge();
+      // Liaison fictive et Google déjà préparé (le badge annonce alors la reconnexion) ; iPhone : forme courte « Reconnecter ».
+      DRIVE_UI.hint = { folder: 'dossier-fictif', binding: 'a'.repeat(64) }; DRIVE_UI.prepared = true; DRIVE_UI.prep = 'ready'; DRIVE_BADGE.pending = 0; renderDriveBadge();
     });
     const state = () => p.evaluate(() => ({ n: DRIVE_BADGE.pending, text: document.getElementById('driveBadge').textContent, keys: window.__keys.slice() }));
     const s0 = await state();
-    check('badge rendu, aucune modification en attente au départ', s0.n === 0 && /Reconnexion requise · aucune copie$/.test(s0.text), JSON.stringify(s0));
+    check('badge rendu, aucune modification en attente au départ', s0.n === 0 && /Reconnecter · non vérifiée$/.test(s0.text), JSON.stringify(s0));
 
     // 1. Écritures météo automatiques : actualisation réelle (relevés, comparaisons, journal du matin, contexte).
     await p.evaluate(() => {
@@ -74,7 +75,7 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     await p.locator('#odo-0').fill('24680'); await p.locator('[data-act=odo][data-i="0"]').click(); await p.waitForTimeout(1200);
     const s2 = await state();
     check('saisie au Garage : compteur augmenté de 1', s2.n === before.n + 1, JSON.stringify({ avant: before.n, apres: s2.n }));
-    check('badge : « Reconnexion requise · aucune copie · 1 modif · âge »', /Reconnexion requise · aucune copie · 1 modif · (moins de 1 min|\d+ min)$/.test(s2.text), s2.text);
+    check('badge (iPhone) : « Reconnecter · non vérifiée · 1 »', /Reconnecter · non vérifiée · 1$/.test(s2.text), s2.text);
 
     // 3. Nouvelle écriture automatique après la saisie : toujours 1.
     await p.evaluate(() => { const r = JSON.parse(lsGet('twrc.reports.v1') || '[]'); lsSet('twrc.reports.v1', JSON.stringify(r.concat([{ at: Date.now(), kind: 'fictif-2' }]))); });

@@ -79,7 +79,8 @@ const view = p => p.evaluate(() => {
       await cut(p); await s.settle(2);
       const v1 = await view(p);
       expect(`${dev} · badge Drive coupé : date et heure de la dernière copie réussie (${hm})`, v1.aria.includes('dernière copie') && v1.aria.includes(hm), v1.aria);
-      expect(`${dev} · même libellé « Reconnexion requise » dans le badge et le panneau Sauvegarde`, /Reconnexion requise/.test(v1.badge) && (v1.panel.match(/Reconnexion requise/g) || []).length >= 1, 'badge « ' + v1.badge + ' » · panneau « ' + v1.panel.slice(0, 300) + ' »');
+      // Badge : libellé complet dans l'aria-label (le texte visible sur iPhone est la forme courte « Reconnecter »).
+      expect(`${dev} · même libellé « Reconnexion requise » dans le badge et le panneau Sauvegarde`, /Reconnexion requise/.test(v1.aria) && (dev === 'pc' ? /Reconnexion requise/.test(v1.badge) : /Reconnecter/.test(v1.badge)) && (v1.panel.match(/Reconnexion requise/g) || []).length >= 1, 'badge « ' + v1.badge + ' » · panneau « ' + v1.panel.slice(0, 300) + ' »');
       expect(`${dev} · aucun autre libellé pour cet état (« Prêt à connecter Google Drive », « Se connecter à Google », « connexion requise »)`,
         !/Prêt à connecter Google Drive|Se connecter à Google|CLOUD · connexion requise/.test(v1.panel) && !v1.buttons.includes('Se connecter à Google'), v1.panel.slice(0, 400) + ' · boutons ' + JSON.stringify(v1.buttons));
       // ---------- Modification non sauvegardée : âge visible ----------
