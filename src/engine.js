@@ -384,12 +384,12 @@ function hourVerdict(car, hs, i) {
 
 /* ---------- résumé d'une séquence d'heures ---------- */
 function summarize(seq) {
-  const r = { n: 0, Tmin: null, Tmax: null, iTmin: null, TrMin: null, Pmax: 0, iPmax: null, Psum: 0, visMin: null, iVis: null,
+  const r = { n: 0, Tmin: null, Tmax: null, iTmin: null, TrMin: null, iTrMin: null, Pmax: 0, iPmax: null, Psum: 0, visMin: null, iVis: null,
     snowSum: 0, snowCode: false, iSnow: null, iceMax: 0, iceI: null, gustMax: null, iGust: null, windMax: null, fz: false, fog: false, ppMax: null };
   seq.forEach(s => {
     const x = s.hs[s.i]; if (!x) return; r.n++;
     if (x.T != null) { if (r.Tmin == null || x.T < r.Tmin) { r.Tmin = x.T; r.iTmin = s; } if (r.Tmax == null || x.T > r.Tmax) r.Tmax = x.T; }
-    if (x.Tr != null && (r.TrMin == null || x.Tr < r.TrMin)) r.TrMin = x.Tr;
+    if (x.Tr != null && (r.TrMin == null || x.Tr < r.TrMin)) { r.TrMin = x.Tr; r.iTrMin = s; }
     if ((x.Pl || 0) > r.Pmax) { r.Pmax = x.Pl; r.iPmax = s; }
     r.Psum += x.Pl || 0;
     if (x.vis != null && (r.visMin == null || x.vis < r.visMin)) { r.visMin = x.vis; r.iVis = s; }
@@ -408,6 +408,29 @@ function summarize(seq) {
   r.sleet = false;
   seq.forEach(s => { const x = s.hs[s.i]; if (x && (x.P || 0) >= 0.2 && !(x.snow > 0.05)) { const tw = wetBulb(x.T, x.RH); if (tw != null && tw <= 1 && x.T <= 3) r.sleet = true; } });
   return r;
+}
+/* Risque de gel d'une fenêtre (trajet, heure ou horizon) : UNE seule règle, lue par toutes les surfaces (Gestion des pneus,
+   carte trajet, synthèse, récit, A/B). Le seuil (≤ 1 °C) s'applique à la CHAUSSÉE ESTIMÉE, avec sa marge d'incertitude
+   (± 2 °C) : l'air seul ne suffit jamais à écarter le gel (constat : chaussée 0,9 °C, air 1,9 °C, « Risque de gel : non »).
+   La marge de ± 2 °C est une MARGE DE PRUDENCE : l'erreur du modèle de chaussée (estRoad) n'a jamais été mesurée contre un
+   capteur routier ; seul un biais par lieu est appris des retours terrain (setRoadBias). Ce n'est pas une incertitude validée.
+   Sans chaussée estimée, l'air sert de repli, signalé (basis = 'air').
+   Clés et niveaux (0 RAS · 1 VIGILANCE · 2 PRUDENCE · 3 DANGER) :
+     sous0       chaussée + marge < 0          → DANGER (3)
+     possible    chaussée ≤ 1 °C               → PRUDENCE (2)
+     incertitude chaussée − marge < 0 (< 2 °C) → PRUDENCE (2)
+     marge       chaussée − marge < 2 (< 4 °C) → RAS (0) : simple mention, jamais une alerte (matins frais de novembre)
+     aucun       sinon                          → RAS (0)
+   Le verglas (humidité gelée) reste évalué à part par iceLevel. */
+const FROST_ROAD_MAX = 1, FROST_ROAD_MARGIN = 2;
+function frostRisk(sum) {
+  const num = v => typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const airMin = num(sum && sum.Tmin), roadMin = num(sum && sum.TrMin), ref = roadMin != null ? roadMin : airMin;
+  const base = { airMin, roadMin, margin: FROST_ROAD_MARGIN, basis: roadMin != null ? 'road' : airMin != null ? 'air' : null };
+  if (ref == null) return { ...base, key: 'inconnu', level: null, possible: null };
+  const lo = ref - FROST_ROAD_MARGIN, hi = ref + FROST_ROAD_MARGIN;
+  const key = hi < 0 ? 'sous0' : ref <= FROST_ROAD_MAX ? 'possible' : lo < 0 ? 'incertitude' : lo < 2 ? 'marge' : 'aucun';
+  return { ...base, key, level: { sous0: 3, possible: 2, incertitude: 2, marge: 0, aucun: 0 }[key], possible: key === 'sous0' || key === 'possible' || key === 'incertitude' };
 }
 const hhmm = s => s ? s.hs[s.i].t.slice(11, 16) : '';
 const f1 = v => v == null ? '—' : (Math.round(v * 10) / 10).toFixed(1).replace('.', ',');
@@ -435,8 +458,14 @@ function narrate(car, w, sum, intro) {
   else if (sum.sleet) s.push('Pas de neige annoncée, mais neige mouillée possible (estimé).');
   else s.push('Pas de neige prévue.');
   if (sum.iceLevel >= 1) s.push(`Risque de verglas ${ICE_LV[sum.iceLevel].toLowerCase()} (estimé) vers ${hhmm(sum.iceI)}.`);
-  else if (sum.Tmin != null && sum.Tmin > 1.5) s.push('Aucun risque de gel détecté.');
-  else s.push('Pas de risque de verglas notable (estimé).');
+  else {
+    const fr = frostRisk(sum), where = fr.basis === 'road' ? `chaussée estimée jusqu’à ${f1(fr.roadMin)} °C` : `air jusqu’à ${f1(fr.airMin)} °C (chaussée non estimée)`;
+    if (fr.key === 'aucun') s.push('Aucun risque de gel détecté.');
+    else if (fr.key === 'sous0' || fr.key === 'possible') s.push(`Gel possible : ${where}${fr.basis === 'road' && fr.airMin != null ? `, air ${f1(fr.airMin)} °C` : ''}.`);
+    else if (fr.key === 'incertitude') s.push(`Gel possible dans la marge de prudence (± ${fr.margin} °C) : ${where}.`);
+    else if (fr.key === 'marge') s.push(`Pas de gel attendu : ${where}, marge faible (± ${fr.margin} °C).`);
+    else s.push('Pas de risque de verglas notable (estimé).');
+  }
   if (sum.visMin != null && sum.visMin < 1000) s.push(`Brouillard : visibilité jusqu’à ${f0(sum.visMin)} m vers ${hhmm(sum.iVis)}.`);
   if (sum.gustMax != null && sum.gustMax >= 55) s.push(`Rafales jusqu’à ${f0(sum.gustMax)} km/h.`);
   // advice : les seules phrases de conseil du récit (même texte), reprises telles quelles par la carte de décision
@@ -596,8 +625,12 @@ function computeAlerts(model, cars, S, seasonByCar, hours = 24) {
   const summerCars = cars.filter(c => effType(c) === 'summer');
   if (sm.Tmin != null && sm.Tmin < 5 && summerCars.length) set('t5s', 2, `${f1(sm.Tmin)} °C avec pneus été (${summerCars.map(c => c.short + (c.tire.type === 'unknown' ? ' : type inconnu' : '')).join(', ')})`, `Vers ${hhmm(sm.iTmin)}. Adhérence réduite, surtout sur chaussée humide.`);
   // Le titre dit qu'il s'agit du MINIMUM prévu et quand : la température actuelle affichée à côté peut être bien plus haute.
-  if (sm.Tmin != null && sm.Tmin <= 1.5) { const at = hhmm(sm.iTmin);
-    set('t0', 3, `Proche de 0 °C : minimum prévu ${f1(sm.Tmin)} °C${at ? ' vers ' + at : ''}`, `Minimum de l’air sur les prochaines heures. Chaussée estimée jusqu’à ${f1(sm.TrMin)} °C.`); }
+  // Gel : même règle que toutes les surfaces (frostRisk, chaussée estimée et marge de prudence), niveau identique ; le titre
+  // nomme la valeur de référence (chaussée, ou air en repli) et son heure. Fenêtre : les `hours` prochaines heures.
+  { const fr = frostRisk(sm);
+    if (fr.level >= 2) { const road = fr.basis === 'road', at = hhmm(road ? sm.iTrMin : sm.iTmin);
+      set('t0', fr.level, `${fr.key === 'sous0' ? 'Chaussée sous 0 °C possible' : 'Gel possible'} : ${road ? 'chaussée estimée' : 'air'} ${f1(road ? fr.roadMin : fr.airMin)} °C${at ? ' vers ' + at : ''}`,
+        `Sur les ${hours} prochaines heures. ${road ? `Air minimal ${f1(fr.airMin)} °C. ` : 'Chaussée non estimée. '}Marge de prudence ± ${fr.margin} °C (erreur du modèle non mesurée). Estimation sans capteur routier.`); } }
   if (sm.iceLevel >= 1) set('ice', sm.iceLevel >= 2 ? 3 : 2, `Risque de verglas ${ICE_LV[sm.iceLevel]} (estimé)`, `Pic vers ${hhmm(sm.iceI)}. Risque calculé, non observé sur la route.`);
   if (sm.snowSum > 0 || sm.snowCode) set('snow', summerCars.length ? 3 : 2, `Neige prévue${sm.snowSum > 0 ? ` (${f1(sm.snowSum)} cm)` : ''}`, `À partir de ${hhmm(sm.iSnow)}.`);
   const thr = S.rainThr || 5;

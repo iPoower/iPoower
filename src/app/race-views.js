@@ -27,7 +27,7 @@ function f1BriefingHtml() {
   const confidence = DECISION_LAST && DECISION_LAST.confidence;
   const x = F1Pure.raceEngineer({ decision: DECISION_LAST && DECISION_LAST.decision,
     confidence: confidence && { ...confidence, reason: (confidence.reasons || []).join(' · ') }, trip: snap && (snap.activeTrip || snap.nextTrip),
-    car: appActiveCar() });
+    car: appActiveCar(), frost: (() => { const tf = tripFrost(); return tf && tf.fr; })() });
   const speak = x.state !== 'indisponible' ? '<button class="btn sm" data-act="race-speak">🔊 Écouter le briefing</button>' : '';
   return f1Panel('raceEngineer', 'INGÉNIEUR DE COURSE', x.title, '<ul class="lab-why">' + x.lines.map(f1Line).join('') +
     '</ul><p class="sub">Conseil fondé sur la décision et la confiance existantes, pas sur une IA distante.</p>' + speak);

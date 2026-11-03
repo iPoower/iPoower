@@ -61,7 +61,9 @@ function wxDesk(input) {
     if (snowy) o.snow = 2;
     o.fog = vis != null ? (vis < 200 ? 3 : vis < 500 ? 2 : vis < 1000 ? 1 : 0) : FOG.has(code) ? 1 : 0;
     o.wind = gust == null ? 0 : gust >= 90 ? 3 : gust >= 70 ? 2 : gust >= 55 ? 1 : 0;
-    const frost = Tr == null ? 0 : Tr + 2 < 0 ? 2 : Tr - 2 < 0 ? 1 : 0;
+    // Même règle que le moteur (frostRisk, chargé avant ce fichier dans l'app) ; repli identique si le poste est chargé seul.
+    const fk = Tr == null ? null : typeof frostRisk === 'function' ? frostRisk({ TrMin: Tr }).key : Tr + 2 < 0 ? 'sous0' : Tr - 2 < 0 ? 'incertitude' : 'aucun';
+    const frost = fk === 'sous0' ? 2 : fk === 'possible' || fk === 'incertitude' ? 1 : 0;
     o.ice = Math.max(FZ.has(code) ? 3 : iceLv >= 2 ? 3 : iceLv === 1 ? 2 : 0, frost);
     const T = n(x.T), Ta = n(x.Tapp);
     o.temp = (T != null && T >= 35) || (Ta != null && Ta <= -10) ? 1 : 0;
