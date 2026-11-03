@@ -4,7 +4,7 @@
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
 const read = f => fs.readFileSync(path.resolve(__dirname, '../src', f), 'utf8');
-const SRC = { view: read('app/drive-sync-view.js'), persist: read('app/storage-persist.js'), decision: read('decision.js'), diag: read('app/diagnostics.js'), merge: read('sync-merge.js'), app: read('app.js') };
+const SRC = { css: read('style.css'), view: read('app/drive-sync-view.js'), persist: read('app/storage-persist.js'), decision: read('decision.js'), diag: read('app/diagnostics.js'), merge: read('sync-merge.js'), app: read('app.js') };
 let n = 0; const check = (name, fn) => { fn(); n++; console.log('✅ ' + name); };
 const T0 = new Date(2026, 10, 3, 18, 0).getTime();   // 03/11/2026 18:00, heure locale de l'appareil (comme l'app)
 const HM = t => new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(t);
@@ -39,15 +39,14 @@ check('un libellé par état : « Reconnexion requise » partout (badge, ligne C
 function copyOk(source) {
   const synced = T0 - 5 * 60e3, { api } = loadView(source, { hint: { folder: 'f' }, pending: 1, since: T0 - 14 * 60e3, syncedAt: synced });
   const s = api.state();
-  assert(s.text.includes('dernière copie ' + HM(synced)), 'date de dernière copie absente : ' + s.text);
-  assert(/1 modif non sauvegardée depuis 14 min/.test(s.text), 'âge des modifications absent : ' + s.text);
-  assert(s.hint.includes('Dernière copie ' + HM(synced)), 'aria/hint sans la dernière copie');
+  assert.equal(s.text, 'Reconnexion requise · copie ' + HM(synced) + ' · 1 modif · 14 min', 'badge (forme courte, une ligne) : ' + s.text);
+  assert(s.hint.includes('dernière copie ' + HM(synced) + ' · 1 modif non sauvegardée depuis 14 min'), 'info-bulle et lecteur d’écran sans la phrase complète : ' + s.hint);
   assert.equal(loadView(source, { hint: { folder: 'f' } }).api.copy(), 'aucune copie Drive vérifiée sur cet appareil');
   assert.equal(api.when(T0 - 24 * 3600e3), 'hier 18:00'); assert.equal(api.when(T0 - 3 * 24 * 3600e3), '31/10 18:00');
   for (const [ms, txt] of [[0, 'moins de 1 min'], [59e3, 'moins de 1 min'], [60e3, '1 min'], [59 * 60e3, '59 min'], [60 * 60e3, '1 h 00'], [125 * 60e3, '2 h 05'], [48 * 3600e3, '2 j']]) assert.equal(api.age(ms), txt, 'âge ' + ms);
   return true;
 }
-check('badge : dernière copie (« 17:55 », « hier 18:00 », « 31/10 18:00 ») et « 1 modif non sauvegardée depuis 14 min »', () => assert.equal(copyOk(SRC.view), true));
+check('badge : « copie 17:55 · 1 modif · 14 min » sur une ligne ; info-bulle « dernière copie 17:55 · 1 modif non sauvegardée depuis 14 min » ; « hier 18:00 », « 31/10 18:00 »', () => assert.equal(copyOk(SRC.view), true));
 // ---------- Mémoire propre à l'appareil, persistée, sans boucle de synchronisation ----------
 function memoryOk(source, mergeSource) {
   const v = loadView(source, { connected: true, selected: true, status: { state: 'PENDING', message: 'en attente' } });
@@ -63,7 +62,7 @@ function memoryOk(source, mergeSource) {
   v.api.vaultChange({ key: 'twrc.settings.v1' }); assert.equal(soon, 1);
   // Rechargement : la mémoire est relue.
   const r = loadView(source, { hint: { folder: 'f' } }); r.api.B.loaded = false; r.store.set(r.api.KEY, JSON.stringify({ v: 1, lastOkAt: T0 - 60e3, pending: 2, pendingSince: T0 - 30 * 60e3 }));
-  assert(r.api.state().text.includes('dernière copie ' + HM(T0 - 60e3) + ' · 2 modifs non sauvegardées depuis 30 min'), r.api.state().text);
+  assert(r.api.state().hint.includes('dernière copie ' + HM(T0 - 60e3) + ' · 2 modifs non sauvegardées depuis 30 min'), r.api.state().hint);
   return true;
 }
 check('mémoire du badge : propre à l’appareil (jamais sur Drive), relue après rechargement, sans relancer de synchronisation', () => assert.equal(memoryOk(SRC.view, SRC.merge), true));
@@ -114,7 +113,9 @@ async function persistOk(source, diagSource) {
 const mutationsSync = [
   ['libellé de reconnexion différent dans le panneau', 'view', /!connected \? driveBadgeState\(\)\.label \+/, "!connected ? 'connexion requise' +", labelsOk],
   ['ancien bouton « Reprendre la synchronisation Drive »', 'view', /button\(DRIVE_RECONNECT, async/, "button('Reprendre la synchronisation Drive', async", labelsOk],
-  ['dernière copie absente du badge', 'view', /text: DRIVE_LABEL\[key\] \+ \(withCopy \? ' · ' \+ copy : ''\)/, 'text: DRIVE_LABEL[key]', copyOk],
+  ['dernière copie absente du badge', 'view', /text: DRIVE_LABEL\[key\] \+ \(withCopy \? ' · ' \+ driveCopyShort\(\) : ''\)/, 'text: DRIVE_LABEL[key]', copyOk],
+  ['phrase complète absente de l’info-bulle', 'view', /hint: hint \+ \(withCopy \? ' État : ' \+ copy \+ '\.' : ''\)/, 'hint: hint', copyOk],
+  ['retour à la ligne dans le bandeau', 'css', /text-overflow: ellipsis; white-space: nowrap;/, 'text-overflow: ellipsis;', s => { assert(/text-overflow: ellipsis; white-space: nowrap;/.test(s), 'badge sur plusieurs lignes'); return true; }],
   ['âge des modifications absent', 'view', / depuis ' \+ driveAge\(Date\.now\(\) - \(B\.pendingSince \|\| Date\.now\(\)\)\)/, "'", copyOk],
   ['mémoire du badge envoyée à Drive', 'view', /const DRIVE_BADGE_KEY = 'twrc\.sync\.badge\.v1';/, "const DRIVE_BADGE_KEY = 'twrc.badge.v1';", s => memoryOk(s, SRC.merge)],
   ['mémoire du badge relance la synchronisation', 'view', /if \(e && e\.key === DRIVE_BADGE_KEY\) return; /, '', s => memoryOk(s, SRC.merge)],

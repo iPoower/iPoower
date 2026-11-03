@@ -202,6 +202,11 @@ function driveAge(ms) {
   const m = Math.max(0, Math.floor(ms / 60e3));
   return m < 1 ? 'moins de 1 min' : m < 60 ? m + ' min' : m < 48 * 60 ? Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') : Math.floor(m / 1440) + ' j';
 }
+// Forme courte, pour le badge (une seule ligne dans le bandeau) : « copie 18:05 · 2 modifs · 14 min ».
+function driveCopyShort() {
+  const B = DRIVE_BADGE;
+  return (B.syncedAt ? 'copie ' + driveWhen(B.syncedAt) : 'aucune copie') + (B.pending ? ' · ' + B.pending + ' modif' + (B.pending > 1 ? 's' : '') + ' · ' + driveAge(Date.now() - (B.pendingSince || Date.now())) : '');
+}
 function driveCopyText() {
   const B = DRIVE_BADGE;
   return (B.syncedAt ? 'dernière copie ' + driveWhen(B.syncedAt) : 'aucune copie Drive vérifiée sur cet appareil') +
@@ -244,8 +249,9 @@ const DRIVE_HM = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-
 function driveBadgeState() {
   driveBadgeLoad();
   const d = DRIVE_UI, B = DRIVE_BADGE, st = d.status || {}, active = !!(d.session && d.session.connected && d.selected);
-  const n = B.pending, copy = driveCopyText(), cap = t => t ? t[0].toUpperCase() + t.slice(1) : t;
-  const out = (key, cls, icon, hint, act, withCopy = true) => ({ key, cls, icon, label: DRIVE_LABEL[key], text: DRIVE_LABEL[key] + (withCopy ? ' · ' + copy : ''), hint: hint + (withCopy ? ' ' + cap(copy) + '.' : ''), act });
+  // Badge : libellé + forme courte (une ligne) ; info-bulle et lecteur d'écran : la phrase complète.
+  const n = B.pending, copy = driveCopyText();
+  const out = (key, cls, icon, hint, act, withCopy = true) => ({ key, cls, icon, label: DRIVE_LABEL[key], text: DRIVE_LABEL[key] + (withCopy ? ' · ' + driveCopyShort() : ''), hint: hint + (withCopy ? ' État : ' + copy + '.' : ''), act });
   if (!window.TWRC_VAULT || window.TWRC_VAULT.mode !== 'vault') return out('locked', '', '🔒', 'Déverrouille l’app pour synchroniser.', 'open', false);
   // iOS suspend l'app fermée : aucune synchronisation possible en arrière-plan, le dire honnêtement.
   if (B.hidden && n) return out('hidden', 'cache', '⏳', 'Aucune synchronisation quand l’app est fermée.', 'open');
