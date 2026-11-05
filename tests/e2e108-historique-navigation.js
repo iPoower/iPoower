@@ -15,7 +15,13 @@ const tapView = async (p, v) => { await p.evaluate(() => scrollTo(0, 0)); await 
     for (const dev of ['pc', 'iphone']) {
       const s = await session(b, { at: AT, dev }), p = s.p; await s.settle(6);
       const w0 = await where(p);
-      expect(`${dev} · arrivée : URL = identifiant de vue seul (${w0.search})`, /^\?vue=(pneus|meteo|trajet|garage|analyse)$/.test(w0.search) && w0.search === '?vue=' + w0.view, JSON.stringify(w0));
+      // Arrivée : l'URL chargée n'est JAMAIS réécrite (un rechargement vise exactement la même adresse) ; seul l'état est posé.
+      expect(`${dev} · arrivée : URL inchangée (aucune réécriture au chargement), état d’historique posé`, w0.search === '' && w0.state && w0.state.rc === 1 && w0.state.vue === w0.view, JSON.stringify(w0));
+      // Changement de vue AUTOMATIQUE (affectation sans geste, comme au démarrage) : replaceState, aucune entrée, URL inchangée.
+      const auto = w0.view === 'meteo' ? 'pneus' : 'meteo';
+      await p.evaluate(v => { UI.view = v; renderAll(); }, auto); await s.settle(2); const wa = await where(p);
+      expect(`${dev} · changement de vue automatique : aucune entrée d’historique, URL inchangée, état corrigé (replaceState)`, wa.len === w0.len && wa.search === '' && wa.state && wa.state.vue === auto, JSON.stringify(wa));
+      await p.evaluate(v => { UI.view = v; renderAll(); }, w0.view); await s.settle(2);
       const home = w0.view, len0 = w0.len;
       const a = home === 'garage' ? 'meteo' : 'garage', c = 'trajet';
       await tapView(p, a); const w1 = await where(p);
@@ -29,7 +35,7 @@ const tapView = async (p, v) => { await p.evaluate(() => scrollTo(0, 0)); await 
       await p.goBack(); await p.waitForTimeout(300); const b2 = await where(p);
       expect(`${dev} · Retour : vue précédente (${a})`, b2.view === a && b2.search === '?vue=' + a, JSON.stringify(b2));
       await p.goBack(); await p.waitForTimeout(300); const b3 = await where(p);
-      expect(`${dev} · Retour : vue d’arrivée (${home})`, b3.view === home && b3.search === '?vue=' + home, JSON.stringify(b3));
+      expect(`${dev} · Retour : vue d’arrivée (${home}), URL d’arrivée retrouvée`, b3.view === home && b3.search === '', JSON.stringify(b3));
       // Depuis la vue d'arrivée : Retour quitte l'app (page précédente), aucune entrée ajoutée, pas de boucle.
       await p.goBack().catch(() => {}); await p.waitForTimeout(500);
       const left = await p.evaluate(() => location.href);
@@ -47,9 +53,13 @@ const tapView = async (p, v) => { await p.evaluate(() => scrollTo(0, 0)); await 
       await tapView(p, 'garage'); const before = errors.length;
       await p.reload(); await s.settle(12); const r1 = await where(p);
       expect(`${dev} · rechargement sur ?vue=garage : vue Garage, aucune erreur`, r1.view === 'garage' && r1.search === '?vue=garage' && errors.length === before, JSON.stringify(r1) + ' · erreurs ' + errors.slice(before).join(' | '));
-      // URL : jamais d'autre paramètre, jamais de donnée (lieu, voiture, coordonnées).
+      // URL : l'app n'ajoute que « vue », jamais une donnée (lieu, voiture, coordonnées).
       const url = await p.evaluate(() => location.href);
-      expect(`${dev} · URL : seul le paramètre vue`, [...new URL(url).searchParams.keys()].join(',') === 'vue' && !/lat|lon|car|lieu|\d{2}\.\d{3}/.test(new URL(url).search), url);
+      expect(`${dev} · URL : seul le paramètre vue ajouté par l’app`, [...new URL(url).searchParams.keys()].join(',') === 'vue' && !/lat|lon|car|lieu|\d{2}\.\d{3}/.test(new URL(url).search), url);
+      // Paramètres étrangers et hash conservés tels quels (contrat de l'import de configuration : ?keep=1, #section=…).
+      await p.evaluate(() => history.replaceState(history.state, '', location.pathname + '?keep=1#section=secSeason')); await tapView(p, 'trajet');
+      const kept = await p.evaluate(() => ({ search: location.search, hash: location.hash }));
+      expect(`${dev} · paramètres étrangers et hash conservés au changement de vue`, new URLSearchParams(kept.search).get('keep') === '1' && new URLSearchParams(kept.search).get('vue') === 'trajet' && kept.hash === '#section=secSeason', JSON.stringify(kept));
       await s.c.close();
     }
   } finally { await b.close(); }
