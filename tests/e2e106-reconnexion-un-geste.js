@@ -10,13 +10,34 @@ const fs = require('fs'), vm = require('vm'), BR = require('./lib/browser'), act
 const ctx = { console, Math, Date, Intl, Map, Set, JSON }; vm.createContext(ctx);
 vm.runInContext(fs.readFileSync('engine.js', 'utf8') + fs.readFileSync('demo.js', 'utf8') + ';this.mk=makeDemoPayload;this.me=makeDemoEnsemble;this.mn=makeDemoNowcast;', ctx);
 const PW = fs.readFileSync('.passphrase', 'utf8').trim(), SP = process.env.SP, built = fs.readFileSync('site/index.html', 'utf8');
-// CSP du build AVEC Drive reproduite (tools/build.js ajoute ces deux origines à script-src quand une configuration Drive
-// existe) : la page de test est construite sans configuration Drive. Aucune autre directive n'est modifiée.
-const html = built.replace(/(script-src [^;]*)/, '$1 https://accounts.google.com/gsi/client https://apis.google.com');
-const gsiCount = t => (t.match(/accounts\.google\.com\/gsi\/client/g) || []).length;
-if (html === built || gsiCount(html) !== gsiCount(built) + 1) throw new Error('CSP de test : script-src introuvable');
 const O = 'https://rc-geste.example', U = O + '/';
 const CONFIG = { approved: true, clientId: '123456789012-gestefictif.apps.googleusercontent.com', apiKey: 'AIza' + 'C'.repeat(35), appId: '123456789012', raceOrigin: O, vaultOrigin: 'https://cv-geste.example' };
+// CSP du VRAI build avec Drive : tools/build.js est exécuté ici avec la configuration publique FICTIVE ci-dessus (origine dédiée
+// fictive, sans fichiers privés, chiffrés copiés dans un dossier temporaire : rien n'est écrit dans le dépôt). Toutes ses directives
+// et origines sont reprises telles quelles ; seules les empreintes des scripts (sha256/sha384) sont celles de la page de test, dont
+// le contenu inline (préréglage fictif, identifiant de build) diffère par construction. Aucune copie figée de la politique.
+const html = (() => {
+  const { spawnSync } = require('child_process'), path = require('path'), ROOT = path.resolve(__dirname, '..');
+  const tmp = fs.mkdtempSync(path.resolve('drive-csp-')), rel = path.relative(ROOT, tmp);
+  try {
+    fs.cpSync(path.join(ROOT, 'encrypted'), path.join(tmp, 'enc'), { recursive: true });
+    const b = spawnSync(process.execPath, [path.join(ROOT, 'tools/build.js')], { cwd: ROOT, encoding: 'utf8', timeout: 120000,
+      env: { ...process.env, RC_OUT: rel + '/out', RC_PRIVATE: rel + '/aucun', RC_ENCRYPTED: rel + '/enc', GOOGLE_DRIVE_CONFIG: JSON.stringify(CONFIG), RC_DATA_BASE: 'https://data-geste.example/d/' } });
+    if (b.status !== 0) throw new Error('Build Drive fictif en échec : ' + String(b.stderr).slice(0, 300));
+    const META = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/, drive = fs.readFileSync(path.join(tmp, 'out/index.html'), 'utf8').match(META), own = built.match(META);
+    if (!drive || !own) throw new Error('CSP introuvable dans un des deux builds');
+    const parse = csp => new Map(csp.split(';').map(d => d.trim().split(/\s+/)).map(([k, ...v]) => [k, v])), isHash = t => /^'sha(256|384|512)-/.test(t);
+    const D = parse(drive[1]), S = parse(own[1]);
+    if (!D.get('script-src').includes('https://accounts.google.com/gsi/client') || !D.get('frame-src').includes('https://docs.google.com')) throw new Error('Le build Drive ne porte pas les origines Google attendues');
+    D.set('script-src', [...S.get('script-src').filter(isHash), ...D.get('script-src').filter(t => !isHash(t))]);
+    const csp = [...D].map(([k, v]) => [k, ...v].join(' ')).join('; ');
+    // Contre-contrôle : hors empreintes, chaque directive est identique, jeton pour jeton, à celle du build Drive.
+    const P = parse(csp), strip = m => JSON.stringify([...m].map(([k, v]) => [k, v.filter(t => !isHash(t))]));
+    if (strip(P) !== strip(parse(drive[1]))) throw new Error('CSP de test différente du build Drive hors empreintes');
+    console.log(`CSP extraite du build Drive réel : ${P.size} directives, ${[...P].filter(([, v]) => v.some(t => /google/.test(t))).map(([k]) => k).join(', ')} avec origines Google`);
+    return built.replace(own[0], `<meta http-equiv="Content-Security-Policy" content="${csp}">`);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+})();
 const PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAAABJRU5ErkJggg==', 'base64');
 // Bibliothèque d'identité simulée : chaque demande d'autorisation est comptée, avec l'événement en cours (geste ou non) ; la
 // fenêtre est refusée par le navigateur simulé (popup_failed_to_open), comme un bloqueur de fenêtres.
