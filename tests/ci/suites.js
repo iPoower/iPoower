@@ -169,4 +169,5 @@ SUITE.push(['test_backup_visible.js', 'Lot S : sauvegarde visible, un libellé p
   ['e2e106-reconnexion-un-geste.js', 'Lot S : reconnexion Google Drive en un geste après rechargement à froid, Google simulé (avant, pendant, après la préparation ; fenêtre bloquée ; échec puis nouvel essai), PC/iPhone', true],
   ['e2e107-file-envoi-sans-drive.js', 'Lot S : file d’envoi au rechargement (un seul envoi complet), données visibles sans Drive, badge lisible à 375/414/1280 px', true],
   ['e2e108-historique-navigation.js', 'Lot S : historique de navigation (Retour PC, geste retour iPhone simulé), vues et panneau Paramètres, sans boucle, URL sans donnée', true],
+  ['e2e109-hors-ligne-vue.js', 'Lot S : rechargement hors ligne sur ?vue=garage (hors ligne applicatif Chromium/WebKit ; vrai Service Worker sous Chromium), URL et paramètres intacts, replaceState sans URL', true],
   ['e2e104-sauvegarde-visible.js', 'Lot S : sauvegarde visible, dernière copie, libellé unique par état, persistance du stockage demandée et affichée, PC/iPhone', true]);
