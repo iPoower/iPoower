@@ -82,6 +82,18 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
     await p.waitForTimeout(1200);
     const s3 = await state();
     check('écriture automatique après la saisie : compteur toujours à 1', s3.n === 1, String(s3.n));
+
+    // 4. Google PAS encore préparé (rechargement à froid) : le badge annonce la préparation, jamais la reconnexion, et garde
+    //    le compteur ; une saisie pendant la préparation l'augmente ; préparation échouée : « Réessayer », compteur conservé.
+    await p.evaluate(() => { DRIVE_UI.prepared = false; DRIVE_UI.prep = 'preparing'; renderDriveBadge(); });
+    const s4 = await state();
+    check('Google non préparé : badge « Google… » (préparation), jamais « Reconnecter », compteur conservé à 1', s4.n === 1 && /Google…/.test(s4.text) && !/Reconnecter/.test(s4.text) && /· 1$/.test(s4.text), s4.text);
+    await p.locator('#odo-0').fill('24690'); await p.locator('[data-act=odo][data-i="0"]').click(); await p.waitForTimeout(1200);
+    const s5 = await state();
+    check('saisie pendant la préparation de Google : compteur augmenté (2), badge toujours « Google… »', s5.n === 2 && /Google…/.test(s5.text) && !/Reconnecter/.test(s5.text) && /· 2$/.test(s5.text), JSON.stringify(s5));
+    await p.evaluate(() => { DRIVE_UI.prep = 'failed'; renderDriveBadge(); });
+    const s6 = await state();
+    check('préparation échouée : badge « Réessayer », compteur conservé (2)', s6.n === 2 && /Réessayer/.test(s6.text) && !/Reconnecter/.test(s6.text) && /· 2$/.test(s6.text), s6.text);
     check('aucune erreur JavaScript', !errors.length, errors.join(' / '));
     await c.close();
   } finally { await b.close(); }
