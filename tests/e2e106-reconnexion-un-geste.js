@@ -28,7 +28,8 @@ const html = (() => {
     if (!drive || !own) throw new Error('CSP introuvable dans un des deux builds');
     const parse = csp => new Map(csp.split(';').map(d => d.trim().split(/\s+/)).map(([k, ...v]) => [k, v])), isHash = t => /^'sha(256|384|512)-/.test(t);
     const D = parse(drive[1]), S = parse(own[1]);
-    if (!D.get('script-src').includes('https://accounts.google.com/gsi/client') || !D.get('frame-src').includes('https://docs.google.com')) throw new Error('Le build Drive ne porte pas les origines Google attendues');
+    const has = (k, token) => (D.get(k) || []).some(t => t === token);   // jeton CSP exact, jamais une sous-chaîne
+    if (!has('script-src', 'https://accounts.google.com/gsi/client') || !has('frame-src', 'https://docs.google.com')) throw new Error('Le build Drive ne porte pas les origines Google attendues');
     D.set('script-src', [...S.get('script-src').filter(isHash), ...D.get('script-src').filter(t => !isHash(t))]);
     const csp = [...D].map(([k, v]) => [k, ...v].join(' ')).join('; ');
     // Contre-contrôle : hors empreintes, chaque directive est identique, jeton pour jeton, à celle du build Drive.
@@ -71,7 +72,7 @@ const expect = (label, ok, detail) => { if (ok) { n++; console.log('✅ ' + labe
         if (url.origin === O && url.pathname === '/drive-config.json') return J(CONFIG);
         if (url.origin === O && url.pathname.endsWith('/calendar.sealed.json')) return r.fulfill({ status: 200, contentType: 'application/json', body: fs.readFileSync(SP + '/cal.fake.json', 'utf8') });
         if (host === 'api.rainviewer.com') return J({ host: 'https://tilecache.rainviewer.com', radar: { past: [] } });
-        if (host === 'tilecache.rainviewer.com' || host.endsWith('.arcgisonline.com') || host.endsWith('tile.openstreetmap.org')) return r.fulfill({ status: 200, contentType: 'image/png', body: PX });
+        if (host === 'tilecache.rainviewer.com' || host.endsWith('.arcgisonline.com') || host === 'tile.openstreetmap.org' || host.endsWith('.tile.openstreetmap.org')) return r.fulfill({ status: 200, contentType: 'image/png', body: PX });
         if (url.origin === O && url.pathname.endsWith('/vendor/leaflet/leaflet.js')) return r.fulfill({ status: 200, contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') });
         if (url.origin === O && url.pathname.endsWith('/vendor/leaflet/leaflet.css')) return r.fulfill({ status: 200, contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') });
         if (url.origin === O && url.pathname.endsWith('/obs.json')) return J({ stations: {} });
