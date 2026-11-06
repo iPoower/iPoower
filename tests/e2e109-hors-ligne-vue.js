@@ -1,7 +1,10 @@
 // Lot S · rechargement HORS LIGNE sur une vue demandée par l'URL (?vue=garage). Données fictives, aucun appel externe réel.
+// Convention : la vue est gardée dans l'état de l'historique (history.state), l'URL n'est jamais modifiée par l'app ; un lien
+// direct ?vue=garage est lu à l'ouverture, sans être réécrit.
 // A. Hors ligne applicatif (Chromium ET WebKit, comme e2e36) : navigator.onLine forcé, appels externes coupés, page servie par
-//    le banc. Rechargement et ouverture directe sur ?vue=garage : vue Garage affichée, URL intacte (paramètres étrangers
-//    conservés), HORS LIGNE et données en cache, jamais LIVE ; au chargement, replaceState sans URL et aucun pushState.
+//    le banc. Rechargement après un geste, ouverture directe et rechargement sur ?vue=garage : bonne vue, URL intacte
+//    (paramètres étrangers et fragment conservés), HORS LIGNE et données en cache, jamais LIVE ; au chargement, replaceState
+//    sans URL et aucun pushState ; un geste = pushState SANS URL.
 // B. VRAI Service Worker, profil persistant, réseau coupé (Chromium seulement : Playwright ne pilote les Service Workers que
 //    sous Chromium, comme e2e41) : navigateur fermé puis rouvert hors ligne directement sur ?vue=garage → shell servi par le SW
 //    malgré le paramètre, déverrouillage hors ligne, vue Garage, URL intacte.
@@ -43,15 +46,16 @@ async function partA() {
   await p.goto(U); await p.clock.runFor(2500); await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]); await settle(14);
   const cached = await p.evaluate(() => Object.keys(localStorage).some(k => k.startsWith('twrc.cache.')));
   check(`A.0 [${NAME}] · en ligne : app déverrouillée, météo fictive en cache`, cached);
-  // Geste réel vers Garage : une entrée ?vue=garage (pushState), puis coupure réseau.
+  // Geste réel vers Garage : une entrée d'historique (pushState sans URL, état seul), puis coupure réseau.
   await p.evaluate(() => scrollTo(0, 0)); await p.locator('#viewSeg [data-act=view][data-v=garage]').first().click(); await settle(2);
   const g = await view(p);
-  check(`A.1 [${NAME}] · geste vers Garage : ?vue=garage dans l’URL`, g.view === 'garage' && g.search === '?vue=garage', JSON.stringify({ view: g.view, search: g.search }));
+  const gp = g.hist.filter(x => x.k === 'pushState');
+  check(`A.1 [${NAME}] · geste vers Garage : une entrée (pushState sans URL), état vue=garage, URL inchangée`, g.view === 'garage' && g.search === '' && g.state && g.state.vue === 'garage' && gp.length === 1 && gp[0].url === null, JSON.stringify({ view: g.view, search: g.search, hist: g.hist }));
   cut = true; await p.evaluate(() => window.__setOffline(true)); await settle(3); const before = external;
-  // Rechargement hors ligne sur ?vue=garage.
+  // Rechargement hors ligne après le geste : la vue vient de l'état de l'entrée courante.
   await p.evaluate(() => window.__histReset()); await p.reload(); await settle(10);
   const r1 = await view(p), h1 = loadHist(r1.hist);
-  check(`A.2 [${NAME}] · rechargement hors ligne sur ?vue=garage : vue Garage affichée, URL intacte`, r1.view === 'garage' && r1.pressed === 'true' && r1.search === '?vue=garage' && r1.state && r1.state.vue === 'garage', JSON.stringify({ view: r1.view, pressed: r1.pressed, search: r1.search, state: r1.state }));
+  check(`A.2 [${NAME}] · rechargement hors ligne après le geste : vue Garage restaurée (état), URL intacte`, r1.view === 'garage' && r1.pressed === 'true' && r1.search === '' && r1.state && r1.state.vue === 'garage', JSON.stringify({ view: r1.view, pressed: r1.pressed, search: r1.search, state: r1.state }));
   check(`A.3 [${NAME}] · rechargement : HORS LIGNE + données en cache, jamais LIVE, aucun appel externe`, /HORS LIGNE/.test(r1.bar) && /cache/i.test(r1.bar) && !/\bLIVE\b/.test(r1.bar) && external === before, r1.bar.slice(0, 160) + ' · appels ' + (external - before));
   check(`A.4 [${NAME}] · chargement : replaceState sans URL (état seul), aucun pushState, aucune réécriture`, h1.rep && h1.urls === 0 && h1.push === 0, JSON.stringify(r1.hist));
   // Ouverture directe hors ligne d'une adresse portant un paramètre étranger et un fragment.
@@ -59,6 +63,13 @@ async function partA() {
   const r2 = await view(p), h2 = loadHist(r2.hist);
   check(`A.5 [${NAME}] · ouverture directe hors ligne ?vue=garage&source=test#… : Garage, paramètre et fragment conservés`, r2.view === 'garage' && r2.pressed === 'true' && r2.search === '?vue=garage&source=test' && r2.hash === '#section=secSeason', JSON.stringify({ view: r2.view, search: r2.search, hash: r2.hash }));
   check(`A.6 [${NAME}] · ouverture directe : replaceState sans URL, aucun pushState ; HORS LIGNE, jamais LIVE`, h2.rep && h2.urls === 0 && h2.push === 0 && /HORS LIGNE/.test(r2.bar) && !/\bLIVE\b/.test(r2.bar), JSON.stringify(r2.hist) + ' · ' + r2.bar.slice(0, 100));
+  // Sur ce lien direct : geste vers Météo puis rechargement hors ligne → Météo (l'état de l'entrée prime sur ?vue=), adresse
+  // intacte ; Retour → Garage (entrée du lien).
+  await p.evaluate(() => { window.__histReset(); scrollTo(0, 0); }); await p.locator('#viewSeg [data-act=view][data-v=meteo]').first().click(); await settle(2);
+  await p.reload(); await settle(10); const r4 = await view(p);
+  check(`A.8 [${NAME}] · rechargement hors ligne sur ?vue=garage après un geste vers Météo : Météo (état), adresse et fragment intacts`, r4.view === 'meteo' && r4.search === '?vue=garage&source=test' && r4.hash === '#section=secSeason' && r4.state && r4.state.vue === 'meteo' && r4.hist.filter(x => x.url !== null).length === 0, JSON.stringify({ view: r4.view, search: r4.search, hash: r4.hash, hist: r4.hist }));
+  await p.goBack(); await settle(4); const r5 = await view(p);
+  check(`A.9 [${NAME}] · Retour hors ligne : Garage (entrée du lien direct), adresse intacte`, r5.view === 'garage' && r5.search === '?vue=garage&source=test' && r5.hash === '#section=secSeason', JSON.stringify({ view: r5.view, search: r5.search, hash: r5.hash }));
   // Vue inconnue dans l'URL : ignorée (vue de session), URL laissée telle quelle.
   await p.goto(U + '?vue=inconnue'); await settle(8); const r3 = await view(p);
   check(`A.7 [${NAME}] · ?vue=inconnue : ignorée sans erreur, URL laissée intacte`, ['pneus', 'meteo', 'trajet', 'garage', 'analyse', 'tenue'].includes(r3.view) && r3.search === '?vue=inconnue', JSON.stringify({ view: r3.view, search: r3.search }));
