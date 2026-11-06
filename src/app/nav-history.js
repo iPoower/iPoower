@@ -1,31 +1,28 @@
 // Historique de navigation (bouton Retour du navigateur sur PC, geste retour sur iPhone) entre les vues de l'app et le
 // panneau Paramètres. Chaque changement de vue ou ouverture du panneau crée UNE entrée ; Retour revient à la vue
 // précédente ou ferme le panneau ; depuis la vue d'arrivée, Retour quitte l'app (aucune entrée ajoutée : pas de boucle).
-// L'app n'ajoute à l'URL que l'identifiant de la vue (?vue=garage), jamais une donnée, et seulement quand l'utilisateur change
-// de vue : au chargement et lors d'une correction d'état (navSync), l'URL n'est JAMAIS réécrite. Les paramètres et le hash
-// déjà présents (paramètres étrangers, #cfg=… de l'import de configuration) sont conservés tels quels. Le panneau ouvert reste
-// dans l'état de l'historique. Rechargement sur une vue choisie : même vue.
+// La vue et le panneau sont gardés dans l'ÉTAT de l'historique (history.state), jamais dans l'URL : l'app ne modifie
+// l'adresse ni au chargement, ni lors d'un changement de vue, ni lors d'une correction d'état (navSync). Les paramètres et
+// le hash présents (paramètres étrangers, #cfg=… de l'import de configuration) restent donc tels quels, et un rechargement
+// vise exactement l'adresse chargée. Rechargement : seule la vue CHOISIE par l'utilisateur sur cette entrée (pick, posé par un
+// geste, comme rc.tab) est restaurée, jamais une vue affichée automatiquement (même règle que main). Un lien direct
+// ?vue=garage reste lu à l'ouverture (voir UI.view dans app.js), sans être réécrit.
 const NAV = { ready: false, applying: false };
 const NAV_VIEWS = ['pneus', 'meteo', 'trajet', 'garage', 'analyse'];
-function navViewFromUrl() {
-  try { const v = new URLSearchParams(location.search).get('vue'); return NAV_VIEWS.includes(v) ? v : null; } catch { return null; }
-}
-function navUrl(view) {
-  const u = new URL(location.href);
-  u.searchParams.set('vue', view);   // seul paramètre posé par l'app ; les autres restent tels quels
-  return u.pathname + u.search + u.hash;
-}
 const navPanelOpen = () => { const s = document.getElementById('settings'); return !!(s && s.open); };
 function navInit() {
   if (NAV.ready) return;
   // État seul, URL inchangée (un rechargement vise exactement l'adresse chargée).
-  try { history.replaceState({ rc: 1, vue: UI.view, panel: navPanelOpen() ? 'settings' : null }, ''); NAV.ready = true; } catch { /* historique indisponible */ }
+  const cur = history.state && history.state.rc === 1 ? history.state : null;   // rechargement : choix de l'entrée conservé
+  try { history.replaceState({ rc: 1, vue: UI.view, panel: navPanelOpen() ? 'settings' : null, pick: cur && cur.pick || null }, ''); NAV.ready = true; } catch { /* historique indisponible */ }
 }
 function navPush(vue, panel) {
   if (!NAV.ready || NAV.applying) return;
   const cur = history.state || {};
   if (cur.rc && cur.vue === vue && (cur.panel || null) === (panel || null)) return;
-  try { history.pushState({ rc: 1, vue, panel: panel || null }, '', navUrl(vue)); } catch { /* historique indisponible */ }
+  // État seul : l'URL n'est jamais modifiée (paramètres étrangers et fragment conservés).
+  // pick : vue choisie par un geste (chooseView) ; l'ouverture du panneau garde le choix de l'entrée précédente.
+  try { history.pushState({ rc: 1, vue, panel: panel || null, pick: vue !== cur.vue || !cur.rc ? vue : cur.pick || null }, ''); } catch { /* historique indisponible */ }
 }
 // Vue changée sans chooseView (démarrage, affectation directe) : l'état de l'entrée COURANTE est corrigé, aucune entrée
 // ajoutée, URL inchangée.

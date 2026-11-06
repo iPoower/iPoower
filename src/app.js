@@ -367,8 +367,10 @@ applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
   // dernier onglet ouvert restauré, TRAJET compris (reprise hors connexion)
   // Cockpit : chaque ouverture de l'app commence sur Pneus ; un simple rechargement garde l'onglet choisi (mémoire de l'onglet).
-  // Vue demandée par l'URL (?vue=…, historique de navigation, rechargement) d'abord, sinon celle de la session.
-  view: (() => { let v = null; try { const q = new URLSearchParams(location.search).get('vue'); v = ['pneus', 'meteo', 'trajet', 'garage', 'analyse'].includes(q) ? q : sessionStorage.getItem('rc.tab'); } catch (e) { /* session indisponible */ } return v === 'tenue' ? 'garage' : ['meteo', 'trajet', 'garage', 'analyse'].includes(v) ? v : 'pneus'; })(), outfitDay: 0, labCar: null,
+  // Vue CHOISIE par l'utilisateur sur l'entrée d'historique courante (history.state.pick : rechargement) d'abord, puis lien
+  // direct ?vue=… (lu, jamais réécrit), sinon celle de la session.
+  view: (() => { let v = null; try { const V = ['pneus', 'meteo', 'trajet', 'garage', 'analyse'], st = history.state, q = new URLSearchParams(location.search).get('vue');
+    v = st && st.rc === 1 && V.includes(st.pick) ? st.pick : V.includes(q) ? q : sessionStorage.getItem('rc.tab'); } catch (e) { /* session indisponible */ } return v === 'tenue' ? 'garage' : ['meteo', 'trajet', 'garage', 'analyse'].includes(v) ? v : 'pneus'; })(), outfitDay: 0, labCar: null,
   outfitOccasion: 'outing', placeExpanded: null };
 const DECISION_HISTORY = Decision.history(APP_STORAGE);
 let DECISION_LAST = null;
