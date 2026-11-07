@@ -128,8 +128,26 @@ function table(X) {
   }
   console.log(`COMPARE · baisses de niveau : ${downs}`);
 }
+// Cohérence des surfaces (demande du propriétaire, 05/11) : de −3 à 4 °C par pas de 0,1 °C, humidité sèche, humide et
+// inconnue, à heure et contexte identiques : alerte (t0), carte du trajet (frostBand) et bandeau « gel » du poste Météo donnent
+// le niveau de la règle (option A) ; jamais RAS ou VIGILANCE sur une surface quand une autre est en DANGER.
+function coherence(X, collect) {
+  let ok = 0; const t = (name, cond, detail) => { if (cond) { ok++; console.log('✅ ' + name); } else { collect.push(name + ' · ' + detail); console.log('❌ ' + name + ' · ' + detail); } };
+  let mixed = [];
+  for (const hum of ['sec', 'humide', 'inconnue']) {
+    const bad = [];
+    for (let k = -30; k <= 40; k++) {
+      const Tr = k / 10, l = levels(X, Tr, hum), want = EXPECT(Tr, hum)[1], v = [l.alerte, l.carte, l.bandeau];
+      if (v.some(x => x !== want)) bad.push(`${Tr} °C : alerte ${LV_NAME[l.alerte]}, carte ${LV_NAME[l.carte]}, bandeau ${LV_NAME[l.bandeau]} (règle ${LV_NAME[want]})`);
+      if (Math.max(...v) === 3 && Math.min(...v) <= 1) mixed.push(`${Tr} °C ${hum}`);
+    }
+    t(`cohérence ${hum} (−3 à 4 °C, pas 0,1 °C, 71 cas) : alerte, carte et bandeau au niveau de la règle`, !bad.length, bad.slice(0, 3).join(' | '));
+  }
+  t('cohérence : jamais RAS ou VIGILANCE sur une surface quand une autre est en DANGER (213 cas)', !mixed.length, mixed.slice(0, 5).join(', '));
+  return ok;
+}
 const findings = [], X = load();
-let ok = scenarios(X, findings); ok += appChecks(SRC, findings);
+let ok = scenarios(X, findings); ok += appChecks(SRC, findings); ok += coherence(X, findings);
 console.log(`\n${ok} contrôle(s) conforme(s) · ${findings.length} écart(s)${process.env.REPRO === 'main' ? ' (reproducteur sur main)' : ''}`);
 if (process.env.TABLE && !findings.length) table(X);
 if (findings.length) process.exit(1);
@@ -170,7 +188,7 @@ let killed = 0;
 for (const [name, file, from, to] of MUT) {
   const mutated = { ...SRC, [file]: SRC[file].replace(from, to) }; assert.notStrictEqual(mutated[file], SRC[file], 'mutation inapplicable : ' + name);
   const f = []; const log = console.log; console.log = () => {};
-  try { scenarios(load(mutated), f); appChecks(mutated, f); } catch (e) { f.push(e.message); } finally { console.log = log; }
+  try { const Y = load(mutated); scenarios(Y, f); appChecks(mutated, f); coherence(Y, f); } catch (e) { f.push(e.message); } finally { console.log = log; }
   assert(f.length > 0, 'contre-test non détecté : ' + name); killed++;
   if (process.env.WHY) console.log('   ↳ ' + name + ' : ' + f[0].slice(0, 130));
 }
