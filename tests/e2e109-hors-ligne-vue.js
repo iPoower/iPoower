@@ -4,7 +4,7 @@
 // A. Hors ligne applicatif (Chromium ET WebKit, comme e2e36) : navigator.onLine forcé, appels externes coupés, page servie par
 //    le banc. Rechargement après un geste, ouverture directe et rechargement sur ?vue=garage : bonne vue, URL intacte
 //    (paramètres étrangers et fragment conservés), HORS LIGNE et données en cache, jamais LIVE ; au chargement, replaceState
-//    sans URL et aucun pushState ; un geste = pushState SANS URL.
+//    aucune écriture d'historique au chargement ; un geste = pushState SANS URL (précédé de l'étiquetage de l'entrée courante).
 // B. VRAI Service Worker, profil persistant, réseau coupé (Chromium seulement : Playwright ne pilote les Service Workers que
 //    sous Chromium, comme e2e41) : navigateur fermé puis rouvert hors ligne directement sur ?vue=garage → shell servi par le SW
 //    malgré le paramètre, déverrouillage hors ligne, vue Garage, URL intacte.
@@ -57,12 +57,12 @@ async function partA() {
   const r1 = await view(p), h1 = loadHist(r1.hist);
   check(`A.2 [${NAME}] · rechargement hors ligne après le geste : vue Garage restaurée (état), URL intacte`, r1.view === 'garage' && r1.pressed === 'true' && r1.search === '' && r1.state && r1.state.vue === 'garage', JSON.stringify({ view: r1.view, pressed: r1.pressed, search: r1.search, state: r1.state }));
   check(`A.3 [${NAME}] · rechargement : HORS LIGNE + données en cache, jamais LIVE, aucun appel externe`, /HORS LIGNE/.test(r1.bar) && /cache/i.test(r1.bar) && !/\bLIVE\b/.test(r1.bar) && external === before, r1.bar.slice(0, 160) + ' · appels ' + (external - before));
-  check(`A.4 [${NAME}] · chargement : replaceState sans URL (état seul), aucun pushState, aucune réécriture`, h1.rep && h1.urls === 0 && h1.push === 0, JSON.stringify(r1.hist));
+  check(`A.4 [${NAME}] · chargement : aucune écriture d’historique (ni état, ni entrée, ni URL), comme main`, r1.hist.length === 0, JSON.stringify(r1.hist));
   // Ouverture directe hors ligne d'une adresse portant un paramètre étranger et un fragment.
   await p.evaluate(() => window.__histReset()); await p.goto(U + '?vue=garage&source=test#section=secSeason'); await settle(10);
   const r2 = await view(p), h2 = loadHist(r2.hist);
   check(`A.5 [${NAME}] · ouverture directe hors ligne ?vue=garage&source=test#… : Garage, paramètre et fragment conservés`, r2.view === 'garage' && r2.pressed === 'true' && r2.search === '?vue=garage&source=test' && r2.hash === '#section=secSeason', JSON.stringify({ view: r2.view, search: r2.search, hash: r2.hash }));
-  check(`A.6 [${NAME}] · ouverture directe : replaceState sans URL, aucun pushState ; HORS LIGNE, jamais LIVE`, h2.rep && h2.urls === 0 && h2.push === 0 && /HORS LIGNE/.test(r2.bar) && !/\bLIVE\b/.test(r2.bar), JSON.stringify(r2.hist) + ' · ' + r2.bar.slice(0, 100));
+  check(`A.6 [${NAME}] · ouverture directe : aucune écriture d’historique ; HORS LIGNE, jamais LIVE`, r2.hist.length === 0 && /HORS LIGNE/.test(r2.bar) && !/\bLIVE\b/.test(r2.bar), JSON.stringify(r2.hist) + ' · ' + r2.bar.slice(0, 100));
   // Sur ce lien direct : geste vers Météo puis rechargement hors ligne → Météo (l'état de l'entrée prime sur ?vue=), adresse
   // intacte ; Retour → Garage (entrée du lien).
   await p.evaluate(() => { window.__histReset(); scrollTo(0, 0); }); await p.locator('#viewSeg [data-act=view][data-v=meteo]').first().click(); await settle(2);
@@ -110,7 +110,7 @@ async function partB() {
     await p.waitForSelector('#viewSeg [data-v=garage]', { timeout: 15000 }).catch(() => null); await p.waitForTimeout(800);
     const s = await view(p), h = loadHist(s.hist.filter(x => x.at.endsWith('?vue=garage')));
     check('B.2 [chromium] · déverrouillée hors ligne : vue Garage, URL ?vue=garage intacte après le rechargement de déverrouillage', s.view === 'garage' && s.pressed === 'true' && s.search === '?vue=garage', JSON.stringify({ view: s.view, pressed: s.pressed, search: s.search }));
-    check('B.3 [chromium] · HORS LIGNE + données en cache, jamais LIVE ; aucun pushState, aucune URL réécrite', /HORS LIGNE/.test(s.bar) && /cache/i.test(s.bar) && !/\bLIVE\b/.test(s.bar) && h.push === 0 && h.urls === 0, s.bar.slice(0, 140) + ' · ' + JSON.stringify(s.hist));
+    check('B.3 [chromium] · HORS LIGNE + données en cache, jamais LIVE ; aucune écriture d’historique au chargement', /HORS LIGNE/.test(s.bar) && /cache/i.test(s.bar) && !/\bLIVE\b/.test(s.bar) && h.push === 0 && h.urls === 0 && !h.rep, s.bar.slice(0, 140) + ' · ' + JSON.stringify(s.hist));
     await c.close();
   } finally { fs.rmSync(dir, { recursive: true, force: true }); await new Promise(r => server.close(r)); }
 }
