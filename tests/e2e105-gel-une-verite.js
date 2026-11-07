@@ -1,0 +1,97 @@
+// Lot G · une seule vérité pour le risque de gel, vraie app (PC et iPhone), données fictives. Constats terrain (même lieu,
+// même trajet, même heure) : Gestion des pneus « Risque de gel : non » et « Aucun risque de gel détecté » avec une chaussée
+// estimée sous 1 °C (seuil appliqué à l'air) ; synthèse « Prochain risque sur mes trajets » verte alors que la carte du trajet
+// domicile-travail indiquait « INCERTITUDE GEL » ; « Quelle voiture prendre ? » : pneus « indistincts » alors qu'une voiture
+// est à 1,8 mm à l'avant (garde-fou #307) et l'autre à 4,6 mm. Ce test CONSTATE : chaque écart est listé.
+'use strict';
+const { session, BR, errors } = require('./lib/context-session');
+const AT = '2026-11-15T20:00:00+01:00';           // dimanche soir ; départ domicile-travail lundi 06:30
+const COLD = h => h >= 4 && h <= 9;               // lundi matin : nuit claire et calme (chaussée plus froide que l'air), sec
+// Deux matins fictifs : chaussée ≤ 1 °C (PRUDENCE) et chaussée entre 1 et 2 °C sans humidité (VIGILANCE, décision du 03/11).
+// Option A (03/11) : matin 1 = nuit claire et humide, chaussée sous le point de rosée (givre) ⇒ DANGER ; matin 2 = air sec,
+// chaussée entre 1 et 2 °C, point de rosée nettement sous la chaussée ⇒ VIGILANCE.
+const FIXES = (process.env.AIRS ? process.env.AIRS.split(',').map(a => ({ id: 'sonde ' + a, air: +a.split(':')[0], rh: +(a.split(':')[1] || 85), lv: null })) : [{ id: 'chaussée ≤ 1 °C, givre', air: 1.8, rh: 97, lv: 3, key: 'possible', humid: true }, { id: 'chaussée ≤ 1 °C sèche', air: 1.8, rh: 85, lv: 2, key: 'possible', humid: false },
+  { id: 'chaussée 1–2 °C sèche', air: 3.4, rh: 55, lv: 1, key: 'incertitude', humid: false }]);
+let AIRBASE = 1.8, RHBASE = 85;
+const wx = (o, kind) => {
+  if (kind === 'now') return o;
+  const H = o.hourly || {};
+  if (Array.isArray(H.time) && Array.isArray(H.temperature_2m)) {
+    const cold = i => String(H.time[i]).startsWith('2026-11-16') && COLD(+String(H.time[i]).slice(11, 13));
+    H.temperature_2m = H.time.map((t, i) => cold(i) ? AIRBASE + (+String(t).slice(11, 13) - 6) * 0.15 : H.temperature_2m[i]);
+    for (const [k, v] of [['cloud_cover', 5], ['wind_speed_10m', 3], ['wind_gusts_10m', 6], ['precipitation', 0], ['relative_humidity_2m', RHBASE], ['weather_code', 0], ['dew_point_2m', null]])
+      if (Array.isArray(H[k])) H[k] = H[k].map((x, i) => cold(i) ? v : x);
+  }
+  return o;
+};
+let n = 0; const findings = [];
+const expect = (label, ok, detail) => { if (ok) { n++; console.log('✅ ' + label); } else { findings.push(label + ' · ' + String(detail || '').slice(0, 500)); console.log('❌ ' + label + ' · ' + String(detail || '').slice(0, 500)); } };
+const text = (p, sel) => p.evaluate(sel => { const e = document.querySelector(sel); return e ? e.textContent.replace(/\s+/g, ' ') : '(absent)'; }, sel);
+(async () => {
+  const b = await BR.launch();
+  try {
+    for (const fx of FIXES) for (const dev of ['pc', 'iphone']) {
+      AIRBASE = fx.air; RHBASE = fx.rh; const tag = `${fx.id} · ${dev}`;
+      const s = await session(b, { at: AT, dev, wx }), p = s.p; await s.settle(4);
+      const setup = await p.evaluate(() => {
+        if (S.cars.length < 2) return { error: 'profil de test : deux voitures attendues' };
+        S.work.dep = '06:30'; S.flags = S.flags || {}; S.flags.f1RaceEngineer = 1;
+        const day = '2026-11-15';
+        S.cars.forEach((c, i) => Object.assign(c.tire, { type: 'summer', brand: 'Marque ' + i, model: 'Modèle test', size: '205/55 R16 91V', treadEst: 0, dot: '1224',
+          tread: i ? 4.6 : 1.8, treadAv: i ? 4.6 : 1.8, treadAr: i ? 4.6 : 5.0, treads: [{ d: day, mm: i ? 4.6 : 1.8, km: null, ax: 'av' }, { d: day, mm: i ? 4.6 : 5.0, km: null, ax: 'ar' }] }));
+        saveSettings(); appSetCar(S.cars[0].id); rebuild(); renderAll();
+        return { cars: S.cars.map(c => c.short) };
+      });
+      if (setup.error) throw new Error(setup.error);
+      await p.evaluate(() => { UI.view = 'pneus'; renderAll(); }); await s.settle(10);
+      // Fenêtre du trajet domicile-travail, telle que calculée par l'app.
+      const ctx = await p.evaluate(() => { const t = APP_CONTEXT.snapshot.trips.find(x => x.src === 'work' && x.sum); if (!t) return null;
+        return { dep: t.dep, airMin: t.sum.Tmin, roadMin: t.sum.TrMin, fr: typeof frostRisk === 'function' ? frostRisk(t.sum) : null, band: frostBand(t.sum) }; });
+      if (fx.lv == null) { console.log('SONDE ' + fx.air + ' ' + JSON.stringify(ctx)); await s.c.close(); continue; }
+      const lo = ctx && ctx.roadMin != null ? ctx.roadMin - 2 : null;
+      expect(`${tag} · contexte : trajet domicile-travail ${ctx && ctx.dep}, air au-dessus de 1 °C, règle de gel : ${fx.key}, humidité ${fx.humid ? 'présente' : 'absente'}, niveau ${fx.lv}`,
+        !!ctx && lo < 0 && ctx.airMin > 1 && !!ctx.fr && ctx.fr.key === fx.key && ctx.fr.humid === fx.humid && ctx.fr.level === fx.lv, JSON.stringify(ctx && { ...ctx, fr: ctx.fr && { key: ctx.fr.key, level: ctx.fr.level, humid: ctx.fr.humid } }));
+      // Synthèse : pire risque de tous les trajets, domicile-travail compris ; jamais verte avec une incertitude gel.
+      const brf = await text(p, '#secBrf'), line = (brf.match(/Prochain risque sur mes trajets[^]*?(?=Ensuite|Trajet le plus risqué|$)/) || [''])[0].slice(0, 300);
+      expect(`${tag} · synthèse « Prochain risque sur mes trajets » : jamais verte ; ${['', '🟡 (VIGILANCE)', '🟠 (PRUDENCE)', '🔴 (DANGER)'][fx.lv]} ou plus haut pour une cause indépendante`, !/🟢/.test(line) && (fx.lv === 3 ? /🔴/.test(line) : fx.lv === 2 ? /🟠|🔴/.test(line) : /🟡/.test(line) || /🟠/.test(line) && /Pneus|garde-fou|mm/.test(line) && !/chaussée [\d,]+ °C \(incertitude gel\)/i.test(line)) && /chaussée|gel|DANGER|PRUDENCE|VIGILANCE/i.test(line), line);
+      // Niveau PROPRE au gel (même fonction que la carte trajet) : VIGILANCE sans humidité, PRUDENCE sous 1 °C ; un niveau
+      // supérieur dans la synthèse ne peut venir que d'un autre danger indépendant (pneus été et froid, garde-fou de profondeur).
+      const band = await p.evaluate(() => { const t = APP_CONTEXT.snapshot.trips.find(x => x.src === 'work' && x.sum); const fb = t && frostBand(t.sum); return fb && { lv: fb.lv, t: fb.t }; });
+      expect(`${tag} · carte trajet : bandeau de gel ${['', 'VIGILANCE', 'PRUDENCE', 'DANGER'][fx.lv]} (niveau ${fx.lv})`, !!band && band.lv === fx.lv && /INCERTITUDE GEL/.test(band.t), JSON.stringify(band));
+      // Gestion des pneus (trajet) : le seuil de gel s'applique à la chaussée estimée.
+      const brief = await text(p, '#secBrief');
+      // Colonne « Pendant le trajet » (fenêtre du trajet) ; Départ et Arrivée sont des heures seules.
+      const row = await p.evaluate(() => { const tr = [...document.querySelectorAll('#secBrief tr')].find(r => /Risque de gel/.test(r.cells[0] && r.cells[0].textContent)); return tr && tr.cells[2] ? tr.cells[2].textContent.replace(/\s+/g, ' ') : ''; });
+      expect(`${tag} · Gestion des pneus : « Risque de gel » jamais « non » sur le trajet (chaussée ${ctx && ctx.roadMin} °C, air ${ctx && ctx.airMin} °C)`, !!row && (fx.key === 'possible' ? /possible · (humide|sec)/.test(row) : /possible · marge de prudence/.test(row)) && !/: non|non ·/.test(row), row.slice(0, 200));
+      expect(`${tag} · récit : jamais « Aucun risque de gel détecté » avec une chaussée dans la marge du gel`, !/Aucun risque de gel détecté/.test(brief), (brief.match(/[^.]*gel[^.]*\./g) || []).join(' ').slice(0, 300));
+      // A/B : le garde-fou de profondeur (#307) distingue les deux voitures.
+      const cmp = await text(p, '#secCmp');
+      expect(`${tag} · « Quelle voiture prendre ? » : 1,8 mm à l’avant contre 4,6 mm, jamais « les pneus ne les distinguent pas »`, !/ne les distinguent pas/.test(cmp) && /garde-fou|sous 2 mm|Niveaux/.test(cmp), cmp.slice(0, 600));
+      // Ingénieur de course : la fenêtre DU TRAJET (même frostRisk), jamais la température « maintenant ».
+      const eng = await text(p, '#f1-panel-raceEngineer'), f1c = v => v == null ? '—' : (Math.round(v * 10) / 10).toFixed(1).replace('.', ',');
+      expect(`${tag} · Ingénieur de course : chaussée et air minimum de la fenêtre du trajet (${f1c(ctx && ctx.roadMin)} / ${f1c(ctx && ctx.airMin)} °C)`,
+        !!ctx && eng.includes('Fenêtre du trajet : air min ' + f1c(ctx.airMin) + ' °C · chaussée estimée min ' + f1c(ctx.roadMin) + ' °C'), eng.slice(0, 500));
+      // Même donnée de référence (t.sum du trajet) et même règle (frostRisk) : bandeau de décision et cartes pneus.
+      const want = ctx && 'air min ' + f1c(ctx.airMin) + ' °C · chaussée estimée min ' + f1c(ctx.roadMin) + ' °C';
+      const coreTrip = await text(p, '#decisionCore .decision-trip-frost'), cardTrip = await p.evaluate(() => [...document.querySelectorAll('.car-trip-frost')].map(e => e.textContent.replace(/\s+/g, ' ')));
+      expect(`${tag} · bandeau : ligne du trajet = fenêtre du trajet (${want})`, !!want && coreTrip.includes(want), coreTrip.slice(0, 300));
+      expect(`${tag} · cartes pneus : prochain trajet = même fenêtre et mêmes minimums sur chaque voiture`, !!want && cardTrip.length >= 2 && cardTrip.every(x => x.includes(want)), JSON.stringify(cardTrip).slice(0, 400));
+      // Alertes (fenêtre des 24 h) : même règle ; une alerte plus sévère que le trajet nomme une heure hors du trajet.
+      const al = await p.evaluate(() => { const a = CX.alerts && CX.alerts.t0, sm = summarize(seqOf(CX.m, CX.m.nowI, 24)),   // même fenêtre que computeAlerts (24 h)
+        fr = typeof frostRisk === 'function' ? frostRisk(sm) : { key: 'absente', level: -1, roadMin: sm.TrMin }; const t = APP_CONTEXT.snapshot.trips.find(x => x.src === 'work' && x.sum);
+        return { t0: a ? { sev: a.sev, title: a.title } : null, horizon: { key: fr.key, level: fr.level, roadMin: fr.roadMin }, at: sm.iTrMin ? sm.iTrMin.hs[sm.iTrMin.i].t : null, trip: t ? { dep: t.dep, arr: t.arr, level: typeof frostRisk === 'function' ? frostRisk(t.sum).level : -1 } : null }; });
+      const inTrip = al.at && al.trip && al.at.slice(0, 13) >= String(al.trip.dep).slice(0, 13) && al.at.slice(0, 13) <= String(al.trip.arr || al.trip.dep).slice(0, 13);
+      expect(`${tag} · alertes : niveau de l’alerte de gel = frostRisk de sa fenêtre ; plus sévère que le trajet seulement à une heure hors du trajet, nommée`,
+        al.horizon.level >= 0 && (al.horizon.level >= 1 ? !!al.t0 && al.t0.sev === al.horizon.level : !al.t0) && (!al.t0 || !al.trip || al.t0.sev <= al.trip.level || (!inTrip && /vers \d\d:\d\d/.test(al.t0.title))), JSON.stringify(al));
+      // Minimums affichés par chaque surface (constat « minimums contradictoires ») : relevés pour le rapport.
+      const mins = await p.evaluate(() => { const t = APP_CONTEXT.snapshot.trips.find(x => x.src === 'work' && x.sum);
+        return { trajet: t && { air: t.sum.Tmin, chaussee: t.sum.TrMin }, maintenant: CX && CX.m && CX.m.hs[CX.m.nowI] ? { air: CX.m.hs[CX.m.nowI].T, chaussee: CX.m.hs[CX.m.nowI].Tr } : null,
+          horizon: CX && CX.seq ? (() => { const sm = summarize(CX.seq); return { air: sm.Tmin, chaussee: sm.TrMin }; })() : null }; });
+      console.log('MINIMUMS ' + tag + ' ' + JSON.stringify(mins));
+      await s.c.close();
+    }
+  } finally { await b.close(); }
+  if (errors.length) findings.push('erreurs de page : ' + errors.join(' | ').slice(0, 600));
+  console.log(`\n${n} contrôle(s) conforme(s) · ${findings.length} écart(s)`);
+  if (findings.length) { console.log('ÉCARTS :\n- ' + findings.join('\n- ')); process.exit(1); }
+})().catch(e => { console.error('❌ ' + e.message); if (findings.length) console.log('ÉCARTS :\n- ' + findings.join('\n- ')); process.exit(1); });

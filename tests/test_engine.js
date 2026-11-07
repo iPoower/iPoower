@@ -5,7 +5,7 @@ const src=fs.readFileSync(path.join(__dirname,'../src/engine.js'),'utf8')+fs.rea
 const scenarioTime=Date.parse('2026-10-10T22:00:00+02:00');
 const ScenarioDate=class extends Date{constructor(...a){super(...(a.length?a:[scenarioTime]));}static now(){return scenarioTime;}};
 const ctx={console,Math,Date:ScenarioDate,Intl,Map,Set};vm.createContext(ctx);vm.runInContext(src+`
-this.api={makeDemoPayload,makeModel,windowAssess,summarize,seqOf,narrate,seasonAnalysis,computeAlerts,LV,ICE_LV,hourVerdict,estRoad,iceRisk,calendarEventRelevant,calendarEventPlace};`,ctx);
+this.api={makeDemoPayload,makeModel,windowAssess,summarize,seqOf,narrate,seasonAnalysis,computeAlerts,frostRisk,LV,ICE_LV,hourVerdict,estRoad,iceRisk,calendarEventRelevant,calendarEventPlace};`,ctx);
 const A=ctx.api;
 // Comparaison exacte au comportement antérieur : formateur caché, pas d'heure ni de décalage UTC cachés.
 {
@@ -116,11 +116,12 @@ for(const k of ['froid','pluie','neige','doux']){
 {
   const p=A.makeDemoPayload('froid',loc),m=A.makeModel(p,'demo',loc),seq=A.seqOf(m,m.nowI,24),sm=A.summarize(seq);
   const al=A.computeAlerts(m,cars,{rainThr:5},{});
-  assert(sm.Tmin<=1.5&&al.t0,'scénario froid : alerte proche de 0 °C attendue');
-  assert.match(al.t0.title,/^Proche de 0 °C : minimum prévu -?\d+(,\d)? °C vers \d\d:\d\d$/,'le titre nomme le minimum et son heure');
+  assert(sm.TrMin<=1&&al.t0,'scénario froid : alerte de gel attendue (chaussée estimée ≤ 1 °C)');
+  assert.match(al.t0.title,/^(Gel possible|Chaussée sous 0 °C possible) : chaussée estimée -?\d+(,\d)? °C vers \d\d:\d\d$/,'le titre nomme la chaussée minimale et son heure (lot G : même règle que toutes les surfaces)');
+  assert.equal(al.t0.sev,A.frostRisk(sm).level,'niveau de l’alerte = niveau de frostRisk');
   assert(!/\(-?\d/.test(al.t0.title),'plus de valeur entre parenthèses ambiguë');
-  assert.match(al.t0.detail,/Chaussée estimée jusqu’à/);
-  console.log('✅ alerte proche de 0 °C : minimum prévu et heure explicites');
+  assert.match(al.t0.detail,/Air minimal -?\d+(,\d)? °C\. Marge de prudence ± 2 °C/);
+  console.log('✅ alerte de gel : chaussée estimée minimale et heure explicites, niveau de frostRisk');
 }
 const plusDays=(date,n)=>{const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 {

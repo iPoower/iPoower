@@ -18,7 +18,7 @@ const F1Pure = (() => {
   const level = x => finite(x) ? Math.max(0, Math.min(3, Math.floor(x))) : null;
   const label = l => ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'][l] || 'INDISPONIBLE';   // échelle unique de l'app
   const condition = key => ({ wet: 'Chaussée humide', rain: 'Pluie', fog: 'Brume / brouillard', snow: 'Neige', ice: 'Verglas' }[key] || text(key));
-  function raceEngineer({ decision, confidence, trip, car } = {}) {
+  function raceEngineer({ decision, confidence, trip, car, frost } = {}) {
     if (!decision || !confidence) return { state: 'indisponible', title: 'Briefing indisponible', lines: ['En attente du cockpit décisionnel.'] };
     const risk = level(decision.displayLevel);
     let action;
@@ -28,10 +28,15 @@ const F1Pure = (() => {
     else if (risk >= 1) action = 'Vérifier le point de vigilance avant le départ et adapter la conduite.';
     else action = 'Aucune alerte critique identifiée ; respecter les conditions réelles.';
     const route = trip && trip.to ? 'Prochain trajet : ' + text(trip.to) + (trip.dep ? ' · départ prévu ' + text(trip.dep).slice(11, 16) : '') : 'Aucun trajet immédiat identifié.';
+    // Fenêtre DU TRAJET (frostRisk du moteur) : jamais la température « maintenant » pour un départ plus tard (constat : 4,8 °C
+    // retenus pour un départ à 06:30 dont la chaussée estimée était proche du gel).
+    const num = v => typeof v === 'number' && Number.isFinite(v) ? (Math.round(v * 10) / 10).toFixed(1).replace('.', ',') : '—';
+    const frostTxt = { sous0: 'chaussée sous 0 °C possible', possible: 'gel possible', incertitude: 'gel possible (marge de prudence)', marge: 'pas de gel attendu (marge faible)', aucun: 'aucun risque de gel' };
+    const frostLine = frost && frostTxt[frost.key] ? 'Fenêtre du trajet : air min ' + num(frost.airMin) + ' °C · chaussée estimée min ' + num(frost.roadMin) + ' °C (marge de prudence ± ' + (frost.margin) + ' °C) · ' + frostTxt[frost.key] : null;
     const confidenceLine = 'Confiance : ' + text(confidence.label || 'à confirmer') + (confidence.reason ? ' · ' + text(confidence.reason) : '');
     return { state: risk >= 2 || confidence.level >= 2 ? 'prudence' : 'information',
       title: risk == null ? 'Analyse en attente' : label(risk),
-      lines: [route, car ? 'Voiture : ' + text(car.short || car.name || car.id) : 'Voiture active à confirmer.', confidenceLine,
+      lines: [route, ...(frostLine ? [frostLine] : []), car ? 'Voiture : ' + text(car.short || car.name || car.id) : 'Voiture active à confirmer.', confidenceLine,
         'Priorité : ' + text(decision.reason || 'Conditions à vérifier.'), action],
       action };
   }
