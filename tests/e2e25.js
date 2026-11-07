@@ -13,7 +13,11 @@ const SC=[
  ['Sam. 16:10, créneau prévu sans mouvement confirmé','2026-10-03T16:10:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*16:50.*Aller · Assurance/i]],
  ['Sam. 16:51, 1 min après arrivée','2026-10-03T16:51:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*23:25.*Retour · Concert/i],['Trajet en cours','Assurance']],
  ['Dim. 10:00, rien aujourd’hui','2026-10-04T10:00:00+02:00',[/Aucun trajet prévu aujourd’hui/i,/Prochain trajet domicile-travail.*demain · 06:30/i]],
- ['Dim. 21:00, veille du lundi, froid','2026-10-04T21:00:00+02:00',[/^🏁 PROCHAIN TRAJET · DOMICILE-TRAVAIL.*Aller domicile-travail/i,/Prochain risque sur mes trajets.*demain \d\d:\d\d.*Journée Lille/i],[],'froid'],
+ // Prochain risque : pire risque, puis le plus proche à niveau égal. Veille du lundi (froid) : domicile-travail 06:30 et
+ // « Journée Lille » 06:52 sont tous deux à DANGER → le plus proche, le domicile-travail, est nommé. Cas jumeau (samedi soir,
+ // froid) : le trajet d'AGENDA porte le pire risque et c'est lui qui est nommé.
+ ['Dim. 21:00, veille du lundi, froid','2026-10-04T21:00:00+02:00',[/^🏁 PROCHAIN TRAJET · DOMICILE-TRAVAIL.*Aller domicile-travail/i,/Prochain risque sur mes trajets ⏎ 🔴 demain 06:30 · 🏁 Aller domicile-travail/i],[],'froid'],
+ ['Sam. 21:00, trajet d’agenda le plus risqué, froid','2026-10-03T21:00:00+02:00',[/Prochain risque sur mes trajets ⏎ 🔴 aujourd.hui 23:25 · 📅 Retour · Concert/i],[],'froid'],
  ['Lun. 06:31, aller prévu sans départ confirmé','2026-10-05T06:31:00+02:00',[/^🏁 PROCHAIN TRAJET · DOMICILE-TRAVAIL.*06:30.*07:10/i,/Ensuite.*16:00 · 🏁 Retour domicile-travail/i]],
  ['Lun. 07:11, agenda conservé sans arrivée inventée','2026-10-05T07:11:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*Journée Lille/i,/Ensuite.*16:00 · 🏁 Retour domicile-travail/i],['en cours · domicile-travail']],
  ['Mar. 10:00, boulot + agenda le même jour','2026-10-06T10:00:00+02:00',[/^🏁 PROCHAIN TRAJET · AGENDA.*Aller · Sport.*Ensuite.*16:00 · 🏁 Retour domicile-travail.*17:10 · 📅 Retour · Sport/i]]];
