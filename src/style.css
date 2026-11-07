@@ -118,7 +118,12 @@ html { scroll-padding-top: calc(env(safe-area-inset-top, 0px) + var(--bar-h, 54p
 :root[data-theme="light"] .badge.demo { color: #fff; }
 /* Sauvegarde Drive : même badge que la météo, dans le bandeau même (dernière colonne), sans ligne en plus. */
 .statusbar .in:has(#driveBadge) { grid-template-columns: auto minmax(0, 1fr) auto auto; }
-.badge.drive-badge { background: none; color: var(--fg2); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; min-height: 0; justify-content: center; }
+/* Badge de sauvegarde : libellé et modifications en attente réductibles ; heure de la dernière copie (db-at) jamais coupée. */
+#driveBadge { gap: 0; }
+#driveBadge .db-ic { flex: none; margin-right: 4px; }
+#driveBadge .db-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#driveBadge .db-at, #driveBadge .db-tail { flex: none; }
+.badge.drive-badge { background: none; color: var(--fg2); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 0; justify-content: center; }
 .badge.drive-badge.nogo { color: var(--nogo-t); border-color: var(--nogo); }
 @media (pointer: coarse) { .badge.drive-badge { min-height: 44px; } }
 .statusbar .upd { font-size: 12px; color: var(--fg2); min-width: 0; }
@@ -140,12 +145,11 @@ html { scroll-padding-top: calc(env(safe-area-inset-top, 0px) + var(--bar-h, 54p
   .status-refresh .sh { display: none; }
   .weather-received { grid-column: 1 / -1; grid-row: 2; font-size: 12px; }
   .status-detail { grid-column: 1 / -1; grid-row: 3; }
-  /* Badge de sauvegarde : icône (+ nombre en attente) juste avant ⟳, sur la première ligne (déjà haute de 44 pt). */
-  .statusbar .in:has(#driveBadge) { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+  /* Badge de sauvegarde juste avant ⟳, sur la première ligne (déjà haute de 44 pt). L'horloge garde toujours sa largeur ;
+     le badge se réduit (son libellé seul, jamais l'heure de la dernière copie). */
+  .statusbar .in:has(#driveBadge) { grid-template-columns: auto max-content minmax(0, 1fr) auto; }
   .statusbar .in:has(#driveBadge) .status-refresh { grid-column: 4; }
-  #driveBadge { grid-column: 3; grid-row: 1; align-self: center; min-width: 44px; padding-inline: 6px; letter-spacing: 0; }
-  #driveBadge .db-tx { display: none; }
-  #driveBadge:not([data-n=""])::after { content: attr(data-n); font-weight: 700; }
+  #driveBadge { grid-column: 3; grid-row: 1; align-self: center; justify-self: end; max-width: 100%; min-width: 44px; padding-inline: 6px; letter-spacing: 0; }
 }
 .btn { border: 1px solid var(--line2); background: var(--panel2); border-radius: 4px; padding: 7px 12px; font-size: 13px; font-weight: 500; min-height: 36px; }
 a.btn { display: inline-flex; align-items: center; justify-content: center; }
@@ -1305,7 +1309,7 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
   .live-clock-wrap > span[aria-hidden="true"] { display: none; }
   .status-refresh { grid-column: 4; grid-row: 1; }
   .status-detail { grid-column: 1 / -1; grid-row: 2; }
-  .statusbar .in:has(#driveBadge) { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+  .statusbar .in:has(#driveBadge) { grid-template-columns: auto minmax(0, 1fr) max-content fit-content(35vw) auto; }
   .statusbar .in:has(#driveBadge) .status-refresh { grid-column: 5; }
   #driveBadge { grid-column: 4; }
 }

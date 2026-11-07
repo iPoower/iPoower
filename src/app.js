@@ -367,7 +367,10 @@ applyCalib();
 const UI = { loc: S.locs[0].id, dir: 'go', dayOff: null, bcar: S.cars[0].id, chartIdx: null,
   // dernier onglet ouvert restauré, TRAJET compris (reprise hors connexion)
   // Cockpit : chaque ouverture de l'app commence sur Pneus ; un simple rechargement garde l'onglet choisi (mémoire de l'onglet).
-  view: (() => { let v = null; try { v = sessionStorage.getItem('rc.tab'); } catch (e) { /* session indisponible */ } return v === 'tenue' ? 'garage' : ['meteo', 'trajet', 'garage', 'analyse'].includes(v) ? v : 'pneus'; })(), outfitDay: 0, labCar: null,
+  // Vue CHOISIE par l'utilisateur sur l'entrée d'historique courante (history.state.pick : rechargement) d'abord, puis lien
+  // direct ?vue=… (lu, jamais réécrit), sinon celle de la session.
+  view: (() => { let v = null; try { const V = ['pneus', 'meteo', 'trajet', 'garage', 'analyse'], st = history.state, q = new URLSearchParams(location.search).get('vue');
+    v = st && st.rc === 1 && V.includes(st.pick) ? st.pick : V.includes(q) ? q : sessionStorage.getItem('rc.tab'); } catch (e) { /* session indisponible */ } return v === 'tenue' ? 'garage' : ['meteo', 'trajet', 'garage', 'analyse'].includes(v) ? v : 'pneus'; })(), outfitDay: 0, labCar: null,
   outfitOccasion: 'outing', placeExpanded: null };
 const DECISION_HISTORY = Decision.history(APP_STORAGE);
 let DECISION_LAST = null;
@@ -1118,7 +1121,7 @@ function renderDecisionCore() {
   const confidence = Decision.confidence({
     weather: { available: !!raw && !!CX.m && CX.m.nowI >= 0 && ['T', 'Tr', 'P', 'RH', 'vis', 'gust'].every(k => Number.isFinite(CX.m.hs[CX.m.nowI][k])), ageMin: raw ? ageMin(raw.t) : null, mode: CX.m.mode },
     online: !offlineNow(), contextKnown: snap.status !== 'unknown',
-    storageDurable: USER_STORE.durability().status === 'durable',
+    storageDurable: USER_STORE.durability().status === 'durable', backup: driveBackupSummary(),
     tyresRequired: true, carChosen: !!car, tyresKnown: !!(car && hasTires(car) && carEval && carEval.w && !carProfile(car).generic),
     activeTrip: active, gpsAgeMin: gpsAge,
     routeReady: !active || !!(LIVE.route && !LIVE.routeErr && Number.isFinite(LIVE.lastOk) && now - LIVE.lastOk <= 5 * 60e3),
@@ -1296,6 +1299,7 @@ const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(pr
 function chooseView(view) {
   UI.view = ['pneus', 'meteo', 'trajet', 'garage', 'analyse'].includes(view) ? view : 'pneus';
   lsSet('twrc.view', UI.view); try { sessionStorage.setItem('rc.tab', UI.view); } catch (e) { /* session indisponible */ }
+  if (typeof navPush === 'function') navPush(UI.view, navPanelOpen() ? 'settings' : null);   // une entrée d'historique par vue
   renderAll(); window.scrollTo({ top: 0, behavior: scrollBehavior() });
 }
 /* ---------- bureau (≥ 1200 px, souris) : colonne principale + colonne de compléments, côte à côte ----------
@@ -4123,10 +4127,13 @@ function renderSettings(force) {
   loadVersion(); loadSwVersion(); renderDriveSync();
 }
 // @include app/drive-sync-view.js
+// @include app/storage-persist.js
+// @include app/nav-history.js
 // @include app/diagnostics.js
 /* ---------- orchestration du rendu ---------- */
 function renderAll() {
   if (APP_CONTEXT.rendering) return;
+  if (typeof navSync === 'function') navSync();   // entrée d'historique courante = vue affichée (jamais une entrée de plus)
   const scrollY = window.scrollY, sameView = renderAll.view === UI.view;
   APP_CONTEXT.rendering = true;
   APP_CONTEXT.calendarLegs = null;

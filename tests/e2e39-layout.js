@@ -1,4 +1,4 @@
-// Une seule Race Control sur iPhone 11 Pro Max (414×896 @3x, portrait et paysage) et sur PC (1280, 1920) :
+// Une seule Race Control sur iPhone 11 Pro Max (414×896 @3x, portrait et paysage), iPhone 375 pt (375×667) et sur PC (1280, 1920) :
 // aucun défilement horizontal, cibles tactiles ≥ 44 pt au doigt, encoche et horloge iOS respectées, mêmes sections partout.
 // Les zones de sécurité (encoche) sont émulées par Chromium (CDP) ; sur WebKit, ces deux contrôles sont signalés non applicables.
 const fs=require('fs'),vm=require('vm');
@@ -8,7 +8,7 @@ const ctx={console,Math,Date:FD,Intl,Map,Set,JSON};vm.createContext(ctx);vm.runI
 const PW=fs.readFileSync('.passphrase','utf8').trim(),SP=process.env.SP,html=fs.readFileSync('site/index.html','utf8');
 const U='https://ipoower.github.io/iPoower/race-control/',BR=require('./lib/browser'),PX=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==','base64');
 let fail=0;const rows=[],check=(n,ok,d)=>{rows.push((ok?'✅':'❌')+' '+n+(ok||!d?'':' · '+d));if(!ok)fail++};
-const VPS=[['iPhone portrait',{width:414,height:896},true,{top:44,bottom:34,left:0,right:0}],['iPhone paysage',{width:896,height:414},true,{top:0,bottom:21,left:44,right:44}],
+const VPS=[['iPhone portrait',{width:414,height:896},true,{top:44,bottom:34,left:0,right:0}],['iPhone 375 portrait',{width:375,height:667},true,{top:20,bottom:0,left:0,right:0}],['iPhone paysage',{width:896,height:414},true,{top:0,bottom:21,left:44,right:44}],
   ['PC 1280',{width:1280,height:800},false,null],['PC 1920',{width:1920,height:1080},false,null]];
 (async()=>{const b=await BR.launch();const sections={};
 for(const [name,vp,mobile,inset] of VPS){

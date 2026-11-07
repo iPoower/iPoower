@@ -30,7 +30,7 @@ const POLICY = {
   'twrc.returnhome.v1': ['device', 'retour en cours'],
   'twrc.cache.gps': ['derived', 'cache'], 'twrc.croute': ['derived', 'cache d’itinéraire'], 'twrc.trend': ['derived', 'tendance recalculée'],
   'twrc.decision.latest.v1': ['derived', 'dernière décision recalculée'], 'twrc.runtime.v1': ['derived', 'diagnostic d’exécution'],
-  'twrc.lastbackup': ['derived', 'date du dernier export de cet appareil'], 'twrc.cfghash': ['derived', 'empreinte du lien de configuration importé'],
+  'twrc.lastbackup': ['derived', 'date du dernier export de cet appareil'], 'twrc.sync.badge.v1': ['derived', 'badge Drive de cet appareil : dernière copie vérifiée et modifications non sauvegardées, recalculé à la prochaine copie'], 'twrc.cfghash': ['derived', 'empreinte du lien de configuration importé'],
   'twrc.calendar.sealed.v1': ['derived', 'agenda chiffré re-téléchargé depuis la publication'],
   'twrc.key': ['secret', 'code de l’app : jamais sur Drive'], 'twrc.plain': ['secret', 'préréglage déchiffré, re-déchiffrable depuis la publication'],
   'twrc.plain.v': ['secret', 'version du préréglage'],
