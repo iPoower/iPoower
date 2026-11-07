@@ -99,7 +99,9 @@ async function allViews(s, stage, expected, home, work) {
       // Le préréglage fictif ne travaille que lundi/mardi/mercredi ; ce cycle porte sur un jeudi travaillé.
       await workday(p);
       const tag = dev + ' · ' + profile, home = profile === 'configure' ? 'Maison test' : 'Lieu principal', work = profile === 'configure' ? 'Travail test' : 'Lieu de travail';
-      let navigations = 0; const onNav = f => { if (f === p.mainFrame()) navigations++; }; p.on('framenavigated', onNav);
+      // Vrais rechargements seulement : l'événement « load » d'un nouveau document. Les entrées d'historique ajoutées par un
+      // changement de vue (pushState, même document) émettent « framenavigated » sans recharger la page : elles ne comptent pas.
+      let navigations = 0; const onNav = () => { navigations++; }; p.on('load', onNav);
       await action(p, '#placeBar [data-act=place-confirm][data-place=home]', 'confirmation au domicile');
       await allViews(s, tag + ' · maison', { status: 'home', location: 'home', origin: 'home', confirmation: 'home', active: null, nextDir: 'go', weather: 'home' }, home, work);
       await tab(p, 'pneus'); await action(p, '#secBrf [data-act=trip-start]', 'départ de l’aller');
@@ -109,7 +111,10 @@ async function allViews(s, stage, expected, home, work) {
       await tab(p, 'meteo'); await action(p, '#placeBar [data-act=place-confirm][data-place=work]', 'confirmation au travail');
       await allViews(s, tag + ' · déjà au travail', { status: 'work', location: 'work', origin: 'work', destination: 'home', confirmation: 'work', active: null, nextDir: 'ret', weather: 'work' }, home, work);
       await check(tag + ' · l’aller est clôturé et aucun clic n’a rechargé la page', async () => { assert((await state(p)).done.some(k => /^commute\|.*\|go$/.test(k))); assert.equal(navigations, 0); });
-      p.off('framenavigated', onNav); await p.reload(); await s.settle(8);
+      // Contre-contrôle : le compteur détecte bien un VRAI rechargement de page.
+      await p.reload(); await s.settle(8);
+      await check(tag + ' · contre-contrôle : un vrai rechargement est détecté par le compteur', async () => { assert.equal(navigations, 1); });
+      p.off('load', onNav);
       await allViews(s, tag + ' · reload au travail', { status: 'work', location: 'work', confirmation: 'work', active: null, nextDir: 'ret', weather: 'work' }, home, work);
       let other = null;
       if (dev === 'pc' && profile === 'configure') {

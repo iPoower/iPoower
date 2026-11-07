@@ -168,3 +168,9 @@ SUITE.push(['test_tread_provenance.js', 'profondeur par pneu : origine de chaque
 SUITE.push(['test_frost_truth.js', 'Lot G : une seule vérité pour le gel (frostRisk), seuil sur la chaussée estimée avec sa marge, limites 0,9/1,0/1,1 °C, synthèse, A/B, contre-tests', false],
   ['test_frost_chain.js', 'Lot G : chaîne réelle des heures pour le gel (buildHours, P3, poste Météo, trajet, recalage, ensemble), heure sans P3 explicite, contre-tests', false],
   ['e2e105-gel-une-verite.js', 'Lot G : gel sur la fenêtre du trajet, synthèse jamais verte avec une incertitude gel, Gestion des pneus, A/B garde-fou, Ingénieur de course, PC/iPhone', true]);
+SUITE.push(['test_backup_visible.js', 'Lot S : sauvegarde visible, un libellé par état, dernière copie, âge des modifications, synthèse, persistance du stockage, contre-tests', false],
+  ['e2e106-reconnexion-un-geste.js', 'Lot S : reconnexion Google Drive en un geste après rechargement à froid, Google simulé (avant, pendant, après la préparation ; fenêtre bloquée ; échec puis nouvel essai), PC/iPhone', true],
+  ['e2e107-file-envoi-sans-drive.js', 'Lot S : file d’envoi au rechargement (un seul envoi complet), données visibles sans Drive, badge lisible à 375/414/1280 px', true],
+  ['e2e108-historique-navigation.js', 'Lot S : historique de navigation (Retour PC, geste retour iPhone simulé), vues et panneau Paramètres, sans boucle, URL sans donnée', true],
+  ['e2e109-hors-ligne-vue.js', 'Lot S : rechargement hors ligne sur ?vue=garage (hors ligne applicatif Chromium/WebKit ; vrai Service Worker sous Chromium), URL et paramètres intacts, replaceState sans URL', true],
+  ['e2e104-sauvegarde-visible.js', 'Lot S : sauvegarde visible, dernière copie, libellé unique par état, persistance du stockage demandée et affichée, PC/iPhone', true]);

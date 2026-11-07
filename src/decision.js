@@ -46,7 +46,10 @@ const Decision = (() => {
       else if (finite(input.agendaAgeMin) && input.agendaAgeMin > 60) add(1, 'Agenda ancien');
     }
     const meta = CONF[Math.min(2, level)];
-    return { level, key: meta.key, label: meta.label, reason: reasons[0] || 'Données critiques fraîches', reasons: reasons.slice(0, 3) };
+    // Sauvegarde : ne change pas la fiabilité météo et pneus (niveau inchangé), mais tant que Drive n'est pas à jour, la
+    // synthèse ne dit jamais « Données critiques fraîches » et nomme la coupure (constat : Drive coupé, synthèse rassurante).
+    const backup = input.backup && input.backup.ok === false ? text(input.backup.text, 220) || 'Sauvegarde Drive non à jour' : null;
+    return { level, key: meta.key, label: meta.label, reason: reasons[0] || backup || 'Données critiques fraîches', reasons: reasons.slice(0, 3), backup };
   }
 
   function decide(input = {}) {
