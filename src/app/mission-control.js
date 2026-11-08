@@ -8,18 +8,22 @@ const MissionControl = (() => {
     const s = scene && Array.isArray(scene.samples) && scene.samples.find(x => x && x.index === index);
     if (!s) return null;
     return { temperature: Number.isFinite(s.temperature) ? s.temperature : null,
-      rain: !!s.rain, snow: !!s.snow, fog: !!s.fog,
+      rain: !!s.rain, snow: !!s.snow, fog: !!s.fog, frost: s.frost && Number.isInteger(s.frost.level) ? { level: s.frost.level, key: s.frost.key || null, road: Number.isFinite(s.frost.road) ? s.frost.road : null } : null,
       fresh: str(s.fresh) || 'UNKNOWN', received: Number.isFinite(s.received) ? s.received : null,
       cache: !!s.cache };
   }
   function project({ car = null, carConfirmed = true, trip = null, scene = null, comparison = null, offline = false,
-    navigationAvailable = false, agendaUnavailable = false } = {}) {
+    navigationAvailable = false, agendaUnavailable = false, risk = null } = {}) {
     const usable = !!trip && !trip.destinationPending && !(trip.l && trip.l.originPending);
     const tyre = car && car.tyre || null;
     const notices = car && Array.isArray(car.notices) ? car.notices.filter(n => n && str(n.text)) : [];
     const ordered = notices.slice().sort((a,b) => (Number.isInteger(b.level) ? b.level : -1) - (Number.isInteger(a.level) ? a.level : -1));
     let vigilance = null, vigilanceSource = null;
-    if (usable && scene && scene.complete && !scene.demo && comparison && comparison.level != null && comparison.reasons && comparison.reasons.length) {
+    // Risque global du trajet (même synthèse que le briefing et la synthèse) : un danger établi n'est jamais remplacé ici par
+    // une vigilance moindre ni par « aucun phénomène ».
+    const global = usable && risk && Number.isInteger(risk.lv) ? { lv: risk.lv, why: str(risk.why) } : null;
+    if (global && global.lv >= 1 && global.why) { vigilance = global.why.charAt(0).toUpperCase() + global.why.slice(1); vigilanceSource = 'Risque global du trajet · même synthèse que le briefing'; }
+    else if (usable && scene && scene.complete && !scene.demo && comparison && comparison.level != null && comparison.reasons && comparison.reasons.length) {
       vigilance = str(comparison.reasons[0]); vigilanceSource = 'Moteur du trajet · prévisions et monte documentées';
     } else if (ordered.length) {
       vigilance = str(ordered[0].text); vigilanceSource = 'Suivi pneumatique existant · donnée déclarée';
@@ -43,7 +47,7 @@ const MissionControl = (() => {
         complete: !!usable && !!scene && !!scene.complete, demo: !!scene && !!scene.demo,
         departure: endpointsAligned ? point(scene,1) : null,
         arrival: endpointsAligned && count >= 2 ? point(scene,count) : null },
-      vigilance, vigilanceSource, offline: !!offline,
+      vigilance, vigilanceSource, risk: global, offline: !!offline,
       navigationAvailable: usable && !!navigationAvailable,
       agendaUnavailable: usable && !!agendaUnavailable && trip.src === 'cal'
     };
@@ -77,7 +81,8 @@ const MISSION_STYLE = '<style>' +
 
 function missionPointHtml(p) {
   if (!p) return '<b>Données indisponibles</b><span>Pas de prévision au point de passage.</span>';
-  const phenomena = [p.rain && 'pluie prévue', p.snow && 'neige prévue', p.fog && 'brouillard prévu'].filter(Boolean);
+  const fr = p.frost, frostTxt = fr ? (fr.key === 'sous0' ? 'chaussée sous 0 °C possible' : 'gel possible') + (fr.road != null ? ' (chaussée estimée ' + f1(fr.road) + ' °C)' : ' (air, chaussée non estimée)') : null;
+  const phenomena = [frostTxt, p.rain && 'pluie prévue', p.snow && 'neige prévue', p.fog && 'brouillard prévu'].filter(Boolean);
   const state = ({ FRESH:'réception récente', AGING:'fraîcheur à confirmer', STALE:'donnée ancienne', UNKNOWN:'âge inconnu' })[p.fresh] || 'âge inconnu';
   return '<b>' + (p.temperature == null ? 'Température indisponible' : esc(f1(p.temperature)) + ' °C · air prévu') + '</b>' +
     '<span>' + esc(phenomena.join(' · ') || 'Aucun phénomène signalé par ces valeurs') + '</span>' +
@@ -102,6 +107,7 @@ function missionControlHtml(m, navigationHtml = '') {
   return MISSION_STYLE + '<article id="missionControl" class="mission-control" aria-label="Prochaine mission · briefing avant départ">' +
     '<div class="mission-head"><h3>🏁 PROCHAINE MISSION</h3><span class="src est">' + esc(title) + '</span></div>' +
     '<div class="mission-car" data-mission-car>' + esc(m.vehicle ? m.vehicle + (m.carConfirmed === false ? ' · affichée, non confirmée pour le trajet' : '') : 'Voiture du trajet à choisir') + '</div>' + desc +
+    (m.risk ? '<p class="mission-global lv' + m.risk.lv + '" data-global-risk="' + m.risk.lv + '" role="status"><b>' + ['🟢', '🟡', '🟠', '🔴'][m.risk.lv] + ' RISQUE GLOBAL DU TRAJET : ' + ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'][m.risk.lv] + '</b>' + (m.risk.why ? ' · ' + esc(m.risk.why) : '') + '</p>' : '') +
     '<div class="mission-grid"><div><small>MÉTÉO AU DÉPART · PRÉVISION</small>' + missionPointHtml(m.weather.departure) + '</div>' +
     '<div><small>MÉTÉO À L’ARRIVÉE · PRÉVISION</small>' + missionPointHtml(m.weather.arrival) + '</div>' +
     '<div><small>PNEUS RÉELLEMENT DÉCLARÉS</small><b data-mission-tyres>' + esc(tyre) + '</b><span>' + esc(wear) + '</span></div>' +

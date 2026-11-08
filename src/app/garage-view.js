@@ -85,14 +85,14 @@ function renderGarage() {
   const active = appActiveCar(), today = nowIn('Europe/Paris').slice(0, 10), cars = Garage.overview(S.cars, active && active.id, tyreStateOf)
     .map(c => { const raw = S.cars.find(x => x && x.id === c.id); return { ...c, maintenance: Garage.maintenance(raw, { today, kmPerDay: raw ? kmPerDay(raw) : null, odoEveryDays: GARAGE_ODO_EVERY_DAYS }) }; });
   const trip = APP_CONTEXT.snapshot && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
-  const scene = Garage.preview(trip, { sourceFor: garageWeatherSources(), offline: offlineNow(), now: Date.now(), freshness: Reliability.freshState });
+  const scene = Garage.preview(trip, { sourceFor: garageWeatherSources(), offline: offlineNow(), now: Date.now(), freshness: Reliability.freshState, frostFor: q => q && q.hs ? frostHour(q.hs, q.i) : null });
   // Voiture confirmée, sinon voiture affichée (données réelles de sa fiche), signalée comme non confirmée pour le trajet.
   const shown = appDisplayedCar(), selected = cars.find(c => c.active) || (shown && cars.find(c => c.id === shown.id)) || null;
   const compared = selected ? Garage.comparison([selected], trip, scene)[0] : null;
   // Le même Waze que dans le briefing historique, uniquement sur geste explicite.
   const navigation = !DEMO.on && trip && !trip.destinationPending && !(trip.l && trip.l.originPending) ? wazeBtn(tripTo(trip)) : '';
   const mission = MissionControl.project({ car: selected, carConfirmed: !!(selected && selected.active), trip, scene, comparison: compared,
-    offline: offlineNow(), navigationAvailable: !!navigation, agendaUnavailable: APP_CONTEXT.agendaSelectionUnavailable });
+    offline: offlineNow(), navigationAvailable: !!navigation, agendaUnavailable: APP_CONTEXT.agendaSelectionUnavailable, risk: trip ? tripRisk(trip) : null });
   // La fiche et sa commande d'édition historique restent au premier écran.
   // NEXT MISSION suit les fiches, accessible immédiatement par ancre dédiée.
   const parts = { records: cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>' : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>',

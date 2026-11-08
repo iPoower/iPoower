@@ -69,7 +69,7 @@ const Garage = (() => {
   }
   // Projection de la séquence canonique. Les positions dans le dessin ne sont
   // jamais des coordonnées, des distances, ni une progression GPS.
-  function preview(trip, { sourceFor = () => null, offline = false, now = Date.now(), freshness = () => 'STALE' } = {}) {
+  function preview(trip, { sourceFor = () => null, offline = false, now = Date.now(), freshness = () => 'STALE', frostFor = null } = {}) {
     if (!trip) return { available: false, samples: [], status: 'INDISPONIBLE', complete: false };
     const seq = Array.isArray(trip.seq) ? trip.seq : [];
     const points = seq.map(q => {
@@ -87,9 +87,12 @@ const Garage = (() => {
       const wind = Number.isFinite(h.wind) && h.wind > 0 || Number.isFinite(h.gust) && h.gust > 0;
       const direction = Number.isFinite(h.dir) && h.dir >= 0 && h.dir <= 360 ? h.dir : null;
       const place = str(q.name) || str(q.loc);
+      // Gel au point de passage : règle unique de l'app (frostHour, option A) injectée par l'appelant ; jamais un seuil propre.
+      const fh = typeof frostFor === 'function' ? frostFor(q) : null;
+      const frost = fh && Number.isInteger(fh.level) && fh.level >= 1 ? { level: fh.level, key: str(fh.key), road: fh.basis === 'road' ? val(fh.ref) : null } : null;
       const passage = stamp(q.t) || (place === str(trip.from) ? stamp(trip.dep) : place === str(trip.to) ? stamp(trip.arr) : null);
       return { at, place, temperature: Number.isFinite(h.T) ? h.T : null,
-        rain: !!rain, snow: !!snow, fog: !!fog, visibility: val(h.vis), sun: h.code === 0 || h.code === 1,
+        rain: !!rain, snow: !!snow, fog: !!fog, frost, visibility: val(h.vis), sun: h.code === 0 || h.code === 1,
         wind: !!wind, windDirection: direction, windSpeed: val(h.wind), gust: val(h.gust),
         phase: daylight(passage, source && source.days), received: known ? received : null,
         fresh, demo: !!source && source.mode === 'demo', cache: offline || !!source && source.mode === 'cache',
