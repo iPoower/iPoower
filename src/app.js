@@ -2132,6 +2132,9 @@ function tripRisk(t) {
 const tripRiskLv = t => { const r = tripRisk(t); return r ? r.lv : null; };
 const RISK_DOT = l => l >= 3 ? '🔴' : l >= 2 ? '🟠' : l >= 1 ? '🟡' : '🟢';
 // Ligne « Risque global du trajet » (même texte partout) ; l'indice pneus est nommé séparément.
+// Pastille d'un trajet (agenda) : texte historique quand le risque global ÉGALE l'indice pneus ; quand une autre cause l'emporte
+// (gel, verglas, brouillard), le risque global, sa cause et l'indice pneus nommé à part.
+const tripPillTxt = (rg, tyreLv, res) => rg && rg.lv > tyreLv ? `${LV[rg.lv].emoji} ${LV[rg.lv].name}${rg.why ? ' · ' + esc(rg.why) : ''} · indice pneus ${lvTxt(tyreLv, res)}` : `${LV[tyreLv].emoji} ${lvTxt(tyreLv, res)}`;
 const tripRiskHtml = (r, cls = 'trip-global') => r ? `<div class="${cls} lv${r.lv}" data-global-risk="${r.lv}" role="status"><b>${RISK_DOT(r.lv)} Risque global du trajet${r.tyreGeneric ? ' (aperçu générique)' : ''} : ${LV[r.lv].name}</b>${r.why ? ` · ${esc(r.why)}` : ' · aucune cause identifiée sur la fenêtre du trajet'}</div>` : '';
 function nextTrip() {
   const m = M[S.work.from] || M[S.locs[0].id];
@@ -3290,8 +3293,8 @@ function legHtml(leg, ev) {
       const seg = c.q.name && a.name && b.name && a.name !== b.name ? `${esc(a.name)} → ${esc(b.name)}` : `vers ${esc(nm(c.q))}`;
       crit = `<div class="leg-c lv${Math.max(1, c.lv)}">⚠️ Tronçon critique : <b>${seg}</b> · ${a.t.slice(11, 16)}–${b.t.slice(11, 16)} · ${esc(why)}${c.q.km != null ? ` <span class="muted">(km ${f0(c.q.km)})</span>` : ''}</div>`;
     }
-    const rg = tripRisk(r);   // pastille = risque global du trajet ; l'indice pneus est nommé à part
-    body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : rg.lv}" data-global-risk="${gen ? '' : rg.lv}">${gen ? '🧪 Aperçu générique' : LV[rg.lv].emoji + ' ' + LV[rg.lv].name + (rg.why ? ' · ' + esc(rg.why) : '') + ' · indice pneus ' + lvTxt(r.worst, r.res) + (r.res[0] ? ' ' + r.res[0].w.score : '')}</span>${nav}</div>
+    const rg = gen ? null : tripRisk(r);   // pastille = risque global du trajet ; l'indice pneus est nommé à part
+    body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : rg.lv}" data-global-risk="${gen ? '' : rg.lv}">${gen ? '🧪 Aperçu générique' : tripPillTxt(rg, r.worst, r.res) + (r.res[0] ? ' ' + r.res[0].w.score : '')}</span>${nav}</div>
       <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
       ${ev && !gen ? trendHtml(trendOf(calendarTripKey(ev, leg), leg.dep, snapOf(r.res, r.sum, r.seq))) : ''}
       ${crit}${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
@@ -3371,8 +3374,8 @@ function renderCal() {
         ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}`;
     }
     else {
-      const fb = frostBand(tr.sum), lvw = tr.worst, gen = tr.res.some(r => carProfile(r.c).generic), rg = tripRisk(tr);   // pastille = risque global
-      body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : rg.lv}" data-global-risk="${gen ? '' : rg.lv}">${gen ? '🧪 Aperçu générique' : LV[rg.lv].emoji + ' ' + LV[rg.lv].name + (rg.why ? ' · ' + esc(rg.why) : '') + ' · indice pneus ' + lvTxt(lvw, tr.res) + (tr.res[0] ? ' ' + tr.res[0].w.score : '')}</span>
+      const fb = frostBand(tr.sum), lvw = tr.worst, gen = tr.res.some(r => carProfile(r.c).generic), rg = gen ? null : tripRisk(tr);   // pastille = risque global
+      body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : rg.lv}" data-global-risk="${gen ? '' : rg.lv}">${gen ? '🧪 Aperçu générique' : tripPillTxt(rg, lvw, tr.res) + (tr.res[0] ? ' ' + tr.res[0].w.score : '')}</span>
         <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span>${wazeBtn(e)}</div>
         <div class="cal-k"><span>Route <b>${f1(tr.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(tr.sum.Tmin)} °C</b></span><span>Pluie <b>${(tr.sum.Pmax || 0) >= 0.1 ? f1(tr.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(tr.sum.visMin)}</b></span></div>
         ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
