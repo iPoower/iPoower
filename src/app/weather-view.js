@@ -94,7 +94,7 @@ function renderWx() {
     <div class="wx-hk"><span>${esc(l ? l.name : '')} · MÉTÉO</span><span class="wx-age">${mode}${age}</span></div>
     ${currentCard}
     <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.title)}</h2>
-    <p class="wx-scope sub">Phénomènes météo jusqu’à ${esc(d.window.to)}</p>
+    <p class="wx-scope sub">Phénomènes météo jusqu’à ${esc(d.window.toLabel || d.window.to)}</p>
     ${heroLines.map((x, i) => `<p class="${i ? 'wx-hl' : 'wx-hl wx-h1'}">${esc(x)}</p>`).join('')}
     ${h.stale ? `<p class="wx-stale">⚠ Prévisions reçues il y a ${esc(ageTxt(input.ageMin))} : verdict indicatif, actualise dès que possible.</p>` : ''}</div>`;
   // Prévisions visibles sans ouvrir « Prévisions détaillées ». Réutilise exactement
@@ -136,7 +136,7 @@ function renderWx() {
     const bar = x.P == null ? 0 : Math.min(100, Math.round(x.P / 4 * 100));
     return `<li class="lv${x.lv}${x.trip ? ' trip' : ''}${x.now ? ' now' : ''}"><span class="hh num">${x.now ? 'maint.' : x.t.slice(0, 10) !== today && x.hh === '00:00' ? 'dem.' : esc(x.hh)}</span><span class="ic" aria-hidden="true">${x.ic ? WX_IC[x.ic] : skyIc(x)}</span><b class="num">${x.T == null ? '—' : f0(x.T) + '°'}</b><span class="rb" title="${x.P == null ? '' : f1(x.P) + ' mm/h'}"><i style="height:${bar}%"></i></span><span class="pp num">${x.pp != null && x.pp >= 20 ? f0(x.pp) + '%' : ''}</span>${x.trip ? '<span class="tm" aria-label="trajet">🚗</span>' : ''}</li>`;
   }).join('');
-  const tl = `<div class="wx-blk wx-tlb"><h3>🕒 Chronologie · jusqu’à ${esc(d.window.to)}</h3><ol class="wx-tl">${mom || '<li class="lv0"><time>—</time><span></span><span>Aucun changement notable</span></li>'}</ol>
+  const tl = `<div class="wx-blk wx-tlb"><h3>🕒 Chronologie · jusqu’à ${esc(d.window.toLabel || d.window.to)}</h3><ol class="wx-tl">${mom || '<li class="lv0"><time>—</time><span></span><span>Aucun changement notable</span></li>'}</ol>
     <ol class="wx-strip" aria-label="Heure par heure : température, pluie, phénomènes, trajets">${strip}</ol>
     <p class="sub">Barre bleue : pluie (pleine à 4 mm/h) · % : probabilité de pluie · 🚗 : heure de trajet.</p></div>`;
   const matters = `<div class="wx-blk wx-matb"><h3>🎯 Ce qui compte aujourd’hui</h3><ul class="wx-mat">${d.matters.map(x => `<li class="lv${x.lv}"><span aria-hidden="true">${E[x.lv]}</span><span>${esc(x.text)}</span></li>`).join('')}</ul></div>`;

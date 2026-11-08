@@ -1165,8 +1165,10 @@ function renderDecisionCore() {
   const tripGeneric = !!(trip && trip.res && trip.res.length && trip.res.every(r => carProfile(r.c).generic));
   const tripWin = trip && /T\d{2}:\d{2}/.test(trip.dep || '') ? trip.dep.slice(11, 16) + (/T\d{2}:\d{2}/.test(trip.arr || '') ? ' → ' + trip.arr.slice(11, 16) : '') : '';
   const tf = tripFrost(trip);
-  const tripVerdictHtml = !trip || tripGeneric ? '' : Number.isInteger(trip.worst) && LV[trip.worst]
-    ? '<span class="decision-trip-verdict lv' + trip.worst + '"><b>' + LV[trip.worst].emoji + ' ' + esc(lvTxt(trip.worst, trip.res)) + '</b>' + (tripWin ? ' · fenêtre du trajet ' + esc(tripWin) : '') + (tf ? '<span class="decision-trip-frost" data-frost="' + tf.fr.key + '"> · ' + esc(tf.text) + '</span>' : '') + '</span>'
+  // Verdict du trajet = risque GLOBAL de sa fenêtre (tripRisk : pneus, verglas, brouillard, gel), l'indice pneus nommé à part.
+  const tr = trip && !tripGeneric ? tripRisk(trip) : null;
+  const tripVerdictHtml = !trip || tripGeneric ? '' : tr && Number.isInteger(trip.worst) && LV[trip.worst]
+    ? '<span class="decision-trip-verdict lv' + tr.lv + '" data-global-risk="' + tr.lv + '"><b>' + LV[tr.lv].emoji + ' ' + LV[tr.lv].name + ' · risque global du trajet</b>' + (tr.why ? ' (' + esc(tr.why) + ')' : '') + ' · indice pneus ' + esc(lvTxt(trip.worst, trip.res)) + (tripWin ? ' · fenêtre du trajet ' + esc(tripWin) : '') + (tf ? '<span class="decision-trip-frost" data-frost="' + tf.fr.key + '"> · ' + esc(tf.text) + '</span>' : '') + '</span>'
     : '<span class="decision-trip-verdict lvx">' + (trip.wait ? '⏳ verdict du trajet en cours de calcul' : 'Verdict du trajet indisponible') + '</span>';
   const destinationHtml = ['pneus', 'meteo'].includes(UI.view) && trip
     ? '<span class="decision-trip"><span>' + (snap.activeTrip ? 'Trajet en cours' : 'Prochain trajet') + ' · <b>' + esc(tripFrom || 'Origine à confirmer') + ' → ' + esc(tripToName || 'Destination à confirmer') + '</b></span><span class="decision-departure">' + esc(departureText) + ' <a class="decision-change" href="' + (UI.view === 'meteo' ? '#wxNextTrip' : '#secBrf') + '">Départ ↗</a></span>' + tripVerdictHtml + '</span>'
@@ -1199,7 +1201,9 @@ function renderDecisionCore() {
   // À retenir : la conclusion déjà rédigée par le récit pneus de la voiture active (aucun conseil nouveau), dès qu'un signal existe.
   // Conseils propres à la voiture utilisée : seulement pour une voiture CONFIRMÉE (jamais pour une voiture seulement affichée).
   const advice = decision.riskLevel >= 1 && car && carEval && carEval.nar && Array.isArray(carEval.nar.advice) ? carEval.nar.advice : [];
-  const nowEnd = CX.m && CX.m.hs[CX.m.nowI + NOW_HOURS] && String(CX.m.hs[CX.m.nowI + NOW_HOURS].t || '').slice(11, 16);
+  // Fin de la fenêtre « ici, maintenant » : « demain 01:00 » quand elle traverse minuit (jamais une heure sans son jour).
+  const endT = CX.m && CX.m.hs[CX.m.nowI + NOW_HOURS] && String(CX.m.hs[CX.m.nowI + NOW_HOURS].t || ''), nowT = CX.m && String(CX.m.nowStr || '');
+  const nowEnd = endT ? (endT.slice(0, 10) !== nowT.slice(0, 10) && nowT ? (dayDiff(nowT.slice(0, 10), endT.slice(0, 10)) === 1 ? 'demain ' : fmtDay(endT.slice(0, 10)) + ' ') : '') + endT.slice(11, 16) : '';
   const coreHtml = '<div class="decision-top"><div class="decision-main"><span class="decision-k">ICI, MAINTENANT · MÉTÉO ET PNEUS' + (nowEnd ? ' · jusqu’à ' + esc(nowEnd) : '') + '</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
     confidenceHtml + '</div>' +
     // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
@@ -2035,7 +2039,8 @@ function liveTips() {
   const g = nx.reduce((a, x) => x.gust != null && x.gust >= 60 && (!a || x.gust > a.gust) ? x : a, null);
   if (g) add(`Rafales jusqu’à ${f0(g.gust)} km/h vers ${at(g)}. Tiens fermement le volant en sortie de forêt, sur les ponts et en doublant un camion.`, 'prévision de vent', g.gust >= 80 ? 2 : 1);
   // chute de température
-  const T0 = hs[n] && hs[n].T, tmin = nx.reduce((a, x) => x.T != null && (!a || x.T < a.T) ? x : a, null);
+  // Température de départ = la température « actuelle » unique de l'app (curTemp : corrigée par la station si elle existe).
+  const T0 = curTemp(m) ?? (hs[n] && hs[n].T), tmin = nx.reduce((a, x) => x.T != null && (!a || x.T < a.T) ? x : a, null);
   if (T0 != null && tmin && T0 - tmin.T >= 5 && tmin.T <= 7) add(`La température va chuter de ${f0(T0 - tmin.T)} °C d’ici ${at(tmin)} (${f1(tmin.T)} °C). ${tmin.T <= 3 ? 'Si tu pars à ce moment-là, prévois de quoi dégivrer.' : 'Les pneus été passent sous leur zone de confort et la pression baisse avec le froid.'}`, 'prévision horaire');
   // UV
   const pk = uvToday(m); if (pk && pk.uv >= 3 && pk.t >= m.nowStr.slice(0, 13)) add(`Indice UV maximal de ${f0(pk.uv)} vers ${at(pk)} aujourd’hui. Lunettes de soleil dans la voiture, surtout avec le soleil bas.`, 'indice UV (OMS)');
@@ -2106,6 +2111,32 @@ function tripFrost(t) {
   if (!trip || !trip.sum) return null;
   const fr = frostRisk(trip.sum); return fr.key === 'inconnu' ? null : { trip, fr, text: frostText(fr) };
 }
+// RISQUE GLOBAL d'un trajet : UNE synthèse pour la même fenêtre (t.sum, t.res), lue par toutes les surfaces qui présentent le
+// risque du trajet (Prochain risque, briefing, synthèse, onglet Trajet, agenda, Garage). Pire des causes, jamais la première :
+// indice pneus de la voiture la plus exposée (hors aperçu générique), verglas, brouillard, gel (règle de l'option A, frostBand
+// = frostRisk, seuils inchangés). L'indice pneus reste disponible à part (tyreLv) et doit être nommé comme tel à l'écran.
+// Un danger établi sur le trajet ne disparaît donc jamais d'un autre écran présentant le risque global de ce trajet.
+function tripRisk(t) {
+  if (!t || !t.res || !t.res.length || !t.sum) return null;
+  const s = t.sum, fb = frostBand(s), top = t.res.reduce((a, r) => !a || r.w.level > a.w.level ? r : a, null), c = [];
+  const tyreLv = Number.isInteger(t.worst) ? t.worst : top ? top.w.level : null, tyreGeneric = t.res.every(r => carProfile(r.c).generic);
+  if (tyreLv >= 1 && top && !carProfile(top.c).generic) { const pt = ((top.w.worst && top.w.worst.parts) || []).slice().sort((a, b) => b.v - a.v)[0]; c.push({ k: 'tyre', lv: tyreLv, why: `${top.c.short} ${LV[tyreLv].name}${pt && tyreLv >= 2 ? ' (' + pt.label + ')' : ''}` }); }
+  if ((s.iceLevel || 0) >= 1) c.push({ k: 'ice', lv: Math.min(3, s.iceLevel + 1), why: `verglas ${ICE_LV[s.iceLevel].toLowerCase()}` });
+  const at = ref => ref && ref.hs && ref.hs[ref.i] ? ' vers ' + hhmm(ref) : '';   // heure de la valeur citée (jamais une valeur sans heure)
+  if (s.visMin != null && s.visMin < 1000) c.push({ k: 'fog', lv: s.visMin < 200 ? 3 : 2, why: `brouillard ${f0(s.visMin)} m${at(s.iVis)}` });
+  // Gel, y compris l'incertitude en VIGILANCE sans humidité : le risque global n'est jamais vert.
+  if (fb && fb.lv >= 1) c.push({ k: 'frost', lv: fb.lv, why: `chaussée ${f1(s.TrMin)} °C${at(s.iTrMin)} (${fb.t.toLowerCase()})` });
+  const worst = c.reduce((a, x) => !a || x.lv > a.lv ? x : a, null);
+  return { lv: worst ? worst.lv : 0, why: worst ? worst.why : null, k: worst ? worst.k : null, causes: c.slice().sort((a, b) => b.lv - a.lv), tyreLv, tyreGeneric };
+}
+// Niveau global d'un trajet analysé (0 si aucune cause) ; null tant que le trajet n'est pas analysé.
+const tripRiskLv = t => { const r = tripRisk(t); return r ? r.lv : null; };
+const RISK_DOT = l => l >= 3 ? '🔴' : l >= 2 ? '🟠' : l >= 1 ? '🟡' : '🟢';
+// Ligne « Risque global du trajet » (même texte partout) ; l'indice pneus est nommé séparément.
+// Pastille d'un trajet (agenda) : texte historique quand le risque global ÉGALE l'indice pneus ; quand une autre cause l'emporte
+// (gel, verglas, brouillard), le risque global, sa cause et l'indice pneus nommé à part.
+const tripPillTxt = (rg, tyreLv, res) => rg && rg.lv > tyreLv ? `${LV[rg.lv].emoji} ${LV[rg.lv].name}${rg.why ? ' · ' + esc(rg.why) : ''} · indice pneus ${lvTxt(tyreLv, res)}` : `${LV[tyreLv].emoji} ${lvTxt(tyreLv, res)}`;
+const tripRiskHtml = (r, cls = 'trip-global') => r ? `<div class="${cls} lv${r.lv}" data-global-risk="${r.lv}" role="status"><b>${RISK_DOT(r.lv)} Risque global du trajet${r.tyreGeneric ? ' (aperçu générique)' : ''} : ${LV[r.lv].name}</b>${r.why ? ` · ${esc(r.why)}` : ' · aucune cause identifiée sur la fenêtre du trajet'}</div>` : '';
 function nextTrip() {
   const m = M[S.work.from] || M[S.locs[0].id];
   const clock = DEMO.on && m ? m.nowStr : nowIn(m && m.tz || 'Europe/Paris');
@@ -2698,28 +2729,25 @@ function renderBrfCore() {
   const dayLbl = d => { const n = dayDiff(today, d.slice(0, 10)); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(d.slice(0, 10)); };
   const full = T.filter(t => fullFor(t.dep)), main = full[0], rest = full.slice(1);
   const wk = T.find(t => t.src === 'work'), ag = T.find(t => t.src === 'cal');
-  const emo = t => t.res && t.res.every(r => carProfile(r.c).generic) ? '🧪' : t.worst == null ? (t.wait ? '⏳' : '·') : LV[t.worst].emoji;
+  // Pastille d'un trajet = son risque GLOBAL (même synthèse que « Prochain risque »), jamais le seul indice pneus.
+  const emo = t => t.res && t.res.every(r => carProfile(r.c).generic) ? '🧪' : tripRiskLv(t) == null ? (t.wait ? '⏳' : '·') : LV[tripRiskLv(t)].emoji;
   const tLine = t => `${emo(t)} <b>${dayDiff(today, t.dep) === 0 ? '' : dayLbl(t.dep) + ' · '}${t.originPending ? 'horaire à confirmer' : t.dep.slice(11, 16)}</b> · ${t.src === 'work' ? '🏁' : '📅'} ${esc(t.name)}`;
   const line = (k, v) => `<div class="brf-n"><span class="k">${k}</span><span>${v}</span></div>`;
   // trajet plus risqué que le prochain : mis en évidence même s'il vient après
-  const crit = rest.filter(t => t.worst != null && t.worst >= 2 && t.worst > (main && main.worst != null ? main.worst : 0)).sort((a, b) => b.worst - a.worst)[0];
+  const gl = t => { const v = tripRiskLv(t); return v == null ? null : v; }, mainLv = main ? gl(main) || 0 : 0;
+  const crit = rest.filter(t => gl(t) != null && gl(t) >= 2 && gl(t) > mainLv).sort((a, b) => gl(b) - gl(a))[0];
   // prochain risque : cherché sur les trajets réellement prévus (boulot + agenda), pas sur un lieu fixe
   // Pire cause du trajet : pneus, verglas, brouillard, gel — le MAXIMUM, jamais la première trouvée (constat e2e105 : un gel en
   // DANGER était masqué par un risque pneus en PRUDENCE). À niveau égal, l'ordre ci-dessous départage.
-  const riskOf = t => { if (!t.res) return null; const s = t.sum, fb = frostBand(s), top = t.res.reduce((a, r) => !a || r.w.level > a.w.level ? r : a, null), c = [];
-    if (t.worst >= 1 && top && !carProfile(top.c).generic) { const pt = ((top.w.worst && top.w.worst.parts) || []).slice().sort((a, b) => b.v - a.v)[0]; c.push({ lv: t.worst, why: `${top.c.short} ${LV[t.worst].name}${pt && t.worst >= 2 ? ' (' + pt.label + ')' : ''}` }); }
-    if ((s.iceLevel || 0) >= 1) c.push({ lv: Math.min(3, s.iceLevel + 1), why: `verglas ${ICE_LV[s.iceLevel].toLowerCase()}` });
-    if (s.visMin != null && s.visMin < 1000) c.push({ lv: s.visMin < 200 ? 3 : 2, why: `brouillard ${f0(s.visMin)} m` });
-    // Gel, y compris l'incertitude en VIGILANCE sans humidité : la synthèse n'est jamais verte.
-    if (fb && fb.lv >= 1) c.push({ lv: fb.lv, why: `chaussée ${f1(s.TrMin)} °C (${fb.t.toLowerCase()})` });
-    return c.reduce((a, x) => !a || x.lv > a.lv ? x : a, null); };
+  // Gel, y compris l'incertitude en VIGILANCE sans humidité : la synthèse n'est jamais verte (tripRisk, même règle partout).
+  const riskOf = t => { const r = tripRisk(t); return r && r.causes.length ? r : null; };
   // Pire risque de TOUS les trajets prévus, domicile-travail et prochain trajet compris (constat : la synthèse restait verte
   // alors que la carte du trajet domicile-travail indiquait « INCERTITUDE GEL ») ; à niveau égal, le plus proche.
   const rk = T.map(t => ({ t, r: riskOf(t) })).filter(o => o.r).sort((a, b) => b.r.lv - a.r.lv || String(a.t.dep).localeCompare(String(b.t.dep)))[0];
   const riskPending = PROFILE().generic || cars.some(car => carProfile(car).generic) ? '🧪 Aperçu générique · configure tes lieux et ta monte pour analyser tes trajets.'
     : !T.length ? 'Aucun trajet prévu à analyser.' : T.some(t => !t.res || !t.res.length || !t.sum) ? 'Données météo en attente pour analyser les trajets.' : '🟢 Aucun risque identifié sur les trajets prévus';
   const nrLine = line('Prochain risque sur mes trajets', rk ? `<span class="lv${rk.r.lv}"><b style="color:var(--lv-t)">${rk.r.lv >= 3 ? '🔴' : rk.r.lv >= 2 ? '🟠' : '🟡'} ${dayLbl(rk.t.dep)} ${rk.t.dep.slice(11, 16)}</b> · ${rk.t.src === 'work' ? '🏁' : '📅'} ${esc(rk.t.name)} · ${esc(rk.r.why)}</span>` : T.some(t => t.originPending) ? 'Analyse en attente pour les trajets recalculés.' : riskPending);
-  const tail = `${crit ? `<div class="frost lv${crit.worst}"><b>${LV[crit.worst].emoji} Trajet le plus risqué : ${crit.dep.slice(11, 16)} · ${esc(crit.name)}</b><span>${crit.res.map(r => carProfile(r.c).generic ? `${esc(r.c.short)} : aperçu générique` : `${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}/100`).join(' · ')}</span></div>` : ''}
+  const tail = `${crit ? `<div class="frost lv${gl(crit)}"><b>${LV[gl(crit)].emoji} Trajet le plus risqué : ${crit.dep.slice(11, 16)} · ${esc(crit.name)}</b><span>${tripRisk(crit).why ? esc(tripRisk(crit).why) + ' · ' : ''}${crit.res.map(r => carProfile(r.c).generic ? `${esc(r.c.short)} : aperçu générique` : `${esc(r.c.short)} : indice pneus ${LV[r.w.level].name} ${r.w.score}/100`).join(' · ')}</span></div>` : ''}
     ${rest.length ? line('Ensuite', rest.map(tLine).join('<br>')) : ''}
     ${wk && !full.includes(wk) ? line('Prochain trajet domicile-travail', `🏁 <b>${dayLbl(wk.dep)} · ${wk.dep.slice(11, 16)}</b> · ${cdSpan(wk.dep)}`) : ''}
     ${ag && !full.includes(ag) ? line('Prochain trajet agenda', `📅 <b>${dayLbl(ag.dep)} · ${ag.dep.slice(11, 16)}</b> · ${esc(ag.name)}`) : ''}
@@ -2730,7 +2758,7 @@ function renderBrfCore() {
     el.innerHTML = `${liveUndoHtml()}${tripCancelUndoHtml()}<div class="brf-h"><span class="brf-k">${APP_CONTEXT.agendaSelectionUnavailable && !CALFAIL ? '⏳ Prochain départ en attente de vérification' : msg}</span></div>${appAgendaConflictHtml()}${tail}`;
     return;
   }
-  el.className = 'mod brf lv' + (main.res ? main.res[0].w.level : 0);
+  el.className = 'mod brf lv' + (main.res ? tripRiskLv(main) || 0 : 0);   // couleur = risque global du trajet
   el.innerHTML = liveUndoHtml() + tripCancelUndoHtml() + appAgendaConflictHtml() + briefCard(main, dayLbl) + tail;
   if (main.res && !(LOCKED() && !lsGet('twrc.nocode'))) tripMapMount(main);   // pas de carte (ni d'appel externe) avant le déverrouillage
 }
@@ -2895,9 +2923,10 @@ function briefCard(t, dayLbl) {
   const mOpen = lsGet('twrc.tripmap') === '1';
   return head + `
     ${genTop ? genericNote(genTop.gaps) : ''}
+    ${tripRiskHtml(tripRisk(t), 'brf-global')}
     <div class="brf-m hasmap">${genTop ? gaugeSvg(null, 'x') : gaugeSvg(top.w.score, indic ? 'x' : lv)}
       <div class="brf-v"><span class="brf-lv">${genTop ? '🧪 APERÇU' : indic ? '◌ INDICATIF · ' + lvTxt(lv, t.res) : LV[lv].emoji + ' ' + lvTxt(lv, t.res)}</span>
-        <span class="brf-car">${esc(top.c.short)} · ${esc(TYPE_LABEL[effType(top.c)] || '')}</span>
+        <span class="brf-car">Indice pneus · ${esc(top.c.short)} · ${esc(TYPE_LABEL[effType(top.c)] || '')}</span>
         <span class="brf-why">${indic ? `Données ${esc(confD.label.toLowerCase())} : ${esc(confD.reason)} · ` : ''}${parts.length ? 'Points d’attention : ' + parts.map(esc).join(' · ') : genTop ? 'Aucune pénalité dans cet exemple de calcul' : indic ? 'aucune pénalité calculée' : '✓ Pneus actuels adaptés au trajet'}</span>
         ${t.res.slice(1).map(r => carProfile(r.c).generic ? `<span class="brf-why">🧪 ${esc(r.c.short)} : aperçu</span>` : `<span class="brf-why">${LV[r.w.level].emoji} ${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}/100</span>`).join('')}</div>
       <div class="brf-map" id="tmapW"></div></div>
@@ -2943,7 +2972,7 @@ async function tripGeo(t) {
 function tripMapMount(t) {
   const wide = wideScreen(), slot = wide ? $('#tmapW') : lsGet('twrc.tripmap') === '1' ? $('#tmapM') : null;
   if (!slot) return;
-  const key = `${t.key}|${t.worst}|${t.live ? 'L' + t.liveGen : t.manualPreview ? 'P' + t.previewGen : ''}|${wide ? 'w' : 'm'}`;
+  const key = `${t.key}|${tripRiskLv(t)}|${t.live ? 'L' + t.liveGen : t.manualPreview ? 'P' + t.previewGen : ''}|${wide ? 'w' : 'm'}`;
   if (TMAP.node && TMAP.key === key) { slot.appendChild(TMAP.node); if (TMAP.map) { const map = TMAP.map; setTimeout(() => { if (TMAP.map === map) map.invalidateSize(); }, 0); } return; }
   if (TMAP.map) { try { TMAP.map.remove(); } catch (e) { /* déjà retirée */ } TMAP.map = null; }
   const node = document.createElement('div'); node.className = 'tmap'; node.setAttribute('role', 'img'); node.setAttribute('aria-label', `Carte du trajet ${t.from} → ${t.to}`);
@@ -2969,7 +2998,7 @@ function drawTripMap(node, t, geo) {
     L.circleMarker(geo.crit.at, { radius: 8, color: cc, weight: 3, fillColor: cc, fillOpacity: .35 }).addTo(map).bindTooltip('Point le plus délicat vers ' + esc(geo.crit.t.slice(11, 16)));
   }
   map.fitBounds(line.getBounds(), { padding: [16, 16] });
-  node.insertAdjacentHTML('beforeend', `<div class="tmap-b">${t.worst != null ? LV[t.worst].emoji : '·'}${geo.est ? ' tracé estimé' : ''}</div>`);
+  node.insertAdjacentHTML('beforeend', `<div class="tmap-b">${tripRiskLv(t) != null ? LV[tripRiskLv(t)].emoji : '·'}${geo.est ? ' tracé estimé' : ''}</div>`);
   TMAP.map = map;
 }
 
@@ -3265,13 +3294,14 @@ function legHtml(leg, ev) {
       const seg = c.q.name && a.name && b.name && a.name !== b.name ? `${esc(a.name)} → ${esc(b.name)}` : `vers ${esc(nm(c.q))}`;
       crit = `<div class="leg-c lv${Math.max(1, c.lv)}">⚠️ Tronçon critique : <b>${seg}</b> · ${a.t.slice(11, 16)}–${b.t.slice(11, 16)} · ${esc(why)}${c.q.km != null ? ` <span class="muted">(km ${f0(c.q.km)})</span>` : ''}</div>`;
     }
-    body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : r.worst}">${gen ? '🧪 Aperçu générique' : LV[r.worst].emoji + ' ' + lvTxt(r.worst, r.res) + (r.res[0] ? ' ' + r.res[0].w.score : '')}</span>${nav}</div>
+    const rg = gen ? null : tripRisk(r);   // pastille = risque global du trajet ; l'indice pneus est nommé à part
+    body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : rg.lv}" data-global-risk="${gen ? '' : rg.lv}">${gen ? '🧪 Aperçu générique' : tripPillTxt(rg, r.worst, r.res) + (r.res[0] ? ' ' + r.res[0].w.score : '')}</span>${nav}</div>
       <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
       ${ev && !gen ? trendHtml(trendOf(calendarTripKey(ev, leg), leg.dep, snapOf(r.res, r.sum, r.seq))) : ''}
       ${crit}${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
       ${r.res.length > 1 ? `<span class="sub">${r.res.map(x => `${esc(x.c.short)} : ${carProfile(x.c).generic ? 'aperçu générique' : LV[x.w.level].name + ' ' + x.w.score}`).join(' · ')}</span>` : ''}`;
   }
-  return `<div class="leg lv${!gen && r.worst != null ? r.worst : 'x'}">${head}${body}${cancel}</div>`;
+  return `<div class="leg lv${!gen && r.res && r.sum ? tripRiskLv(r) : !gen && r.worst != null ? r.worst : 'x'}">${head}${body}${cancel}</div>`;
 }
 // résumé de la journée : nombre de déplacements, kilomètres, trajet à surveiller
 function daySummary(evs, now) {
@@ -3279,10 +3309,10 @@ function daySummary(evs, now) {
   if (!legs.length) return '';
   const day = legs.map(x => x.l.dep.slice(0, 10)).sort()[0], L = legs.filter(x => x.l.dep.slice(0, 10) === day);
   const km = L.reduce((a, x) => a + (x.l.km || 0), 0), ev = L.map(x => ({ x, r: legEval(x.l) })).filter(o => o.r && o.r.res);
-  const worst = ev.reduce((a, o) => !a || o.r.worst > a.r.worst ? o : a, null), dd = dayDiff(now.slice(0, 10), day);
+  const G = o => tripRiskLv(o.r) || 0, worst = ev.reduce((a, o) => !a || G(o) > G(a) ? o : a, null), dd = dayDiff(now.slice(0, 10), day);
   const lbl = dd === 0 ? 'Aujourd’hui' : dd === 1 ? 'Demain' : fmtDay(day);
-  return `<div class="cal-sum lv${worst ? worst.r.worst : 0}"><b>${lbl} · ${L.length} trajet${L.length > 1 ? 's' : ''} · ${f0(km)} km</b>
-    <span>${worst && worst.r.worst >= 1 ? `${LV[worst.r.worst].emoji} ${worst.x.l.k === 'ret' ? 'retour' : 'aller'} ${esc(worst.x.e.t)} (${worst.x.l.dep.slice(11, 16)}) à surveiller` : ev.length === L.length ? '🟢 pneus adaptés à tous les trajets prévus' : 'analyse en cours…'}</span></div>`;
+  return `<div class="cal-sum lv${worst ? G(worst) : 0}"><b>${lbl} · ${L.length} trajet${L.length > 1 ? 's' : ''} · ${f0(km)} km</b>
+    <span>${worst && G(worst) >= 1 ? `${LV[G(worst)].emoji} ${worst.x.l.k === 'ret' ? 'retour' : 'aller'} ${esc(worst.x.e.t)} (${worst.x.l.dep.slice(11, 16)}) à surveiller` : ev.length === L.length ? '🟢 aucun risque identifié sur les trajets prévus' : 'analyse en cours…'}</span></div>`;
 }
 // Profondeur inconnue (même règle sur toutes les surfaces) : un RAS devient « ANALYSE LIMITÉE · profondeur non renseignée » ;
 // un niveau venant de la météo garde son nom, avec la même mention. Le niveau n'est jamais relevé ni abaissé.
@@ -3345,8 +3375,8 @@ function renderCal() {
         ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}`;
     }
     else {
-      const fb = frostBand(tr.sum), lvw = tr.worst, gen = tr.res.some(r => carProfile(r.c).generic);
-      body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : lvw}">${gen ? '🧪 Aperçu générique' : LV[lvw].emoji + ' ' + lvTxt(lvw, tr.res) + (tr.res[0] ? ' ' + tr.res[0].w.score : '')}</span>
+      const fb = frostBand(tr.sum), lvw = tr.worst, gen = tr.res.some(r => carProfile(r.c).generic), rg = gen ? null : tripRisk(tr);   // pastille = risque global
+      body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : rg.lv}" data-global-risk="${gen ? '' : rg.lv}">${gen ? '🧪 Aperçu générique' : tripPillTxt(rg, lvw, tr.res) + (tr.res[0] ? ' ' + tr.res[0].w.score : '')}</span>
         <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span>${wazeBtn(e)}</div>
         <div class="cal-k"><span>Route <b>${f1(tr.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(tr.sum.Tmin)} °C</b></span><span>Pluie <b>${(tr.sum.Pmax || 0) >= 0.1 ? f1(tr.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(tr.sum.visMin)}</b></span></div>
         ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
@@ -3401,18 +3431,20 @@ function dayBriefHtml(td, tdLv) {
   if (!legs.length) return '';
   const day = legs.map(x => x.l.dep.slice(0, 10)).sort()[0], L = legs.filter(x => x.l.dep.slice(0, 10) === day).sort((a, b) => a.l.dep < b.l.dep ? -1 : 1);
   const R = L.map(x => ({ ...x, r: legEval(x.l) })), ready = R.filter(x => x.r && x.r.res);
-  const worst = ready.reduce((a, x) => !a || x.r.worst > a.r.worst ? x : a, null);
+  // Trajet critique = pire risque GLOBAL (tripRisk : pneus, verglas, brouillard, gel), pas le seul indice pneus.
+  const G = x => tripRiskLv(x.r) || 0;
+  const worst = ready.reduce((a, x) => !a || G(x) > G(a) ? x : a, null);
   const km = L.reduce((a, x) => a + (x.l.km || 0), 0), dd = dayDiff(now.slice(0, 10), day), lbl = dd === 0 ? 'Aujourd’hui' : dd === 1 ? 'Demain' : fmtDay(day);
   const nx = R[0], nm = x => `${x.l.k === 'ret' ? 'retour' : 'aller'} ${esc(x.e.t)}`;
   const tr = x => { if (!x.r || !x.r.res) return null; return trendOf(calendarTripKey(x.e, x.l), x.l.dep, snapOf(x.r.res, x.r.sum, x.r.seq)); };
   // tendance affichée seulement quand elle change quelque chose ; sinon une seule ligne « stable »
   const T = R.slice(0, 4).map(x => ({ x, t: tr(x) })), anyCh = T.some(o => o.t && !o.t.first && o.t.ch.length), ref = (T.find(o => o.t) || {}).t;
-  const lines = T.map(o => `<div class="db-l"><span>${o.x.r && o.x.r.res ? LV[o.x.r.worst].emoji : '⏳'} ${o.x.l.dep.slice(11, 16)} · ${nm(o.x)}</span>${o.t && !o.t.first && o.t.ch.length ? trendHtml(o.t) : ''}</div>`).join('')
+  const lines = T.map(o => `<div class="db-l"><span>${o.x.r && o.x.r.res ? LV[G(o.x)].emoji : '⏳'} ${o.x.l.dep.slice(11, 16)} · ${nm(o.x)}</span>${o.t && !o.t.first && o.t.ch.length ? trendHtml(o.t) : ''}</div>`).join('')
     + (!anyCh && ref ? `<div class="db-n">${trendHtml(ref.first ? ref : { ...ref, ch: [] })}</div>` : '');
   const car = TCARS()[0];
-  dayBriefHtml.day = day; dayBriefHtml.first = nx.l.dep; dayBriefHtml.next = nm(nx); dayBriefHtml.lv = worst ? worst.r.worst : 0;
-  return `<div class="db lv${worst ? worst.r.worst : 0}"><div class="db-h"><b>${lbl} · ${L.length} trajet${L.length > 1 ? 's' : ''} agenda · ${f0(km)} km</b></div>
-    ${worst && worst.r.worst >= 1 ? `<div class="db-w">${LV[worst.r.worst].emoji} <b>${nm(worst)} (${worst.l.dep.slice(11, 16)})</b> = trajet critique</div>` : ready.length === L.length ? '<div class="db-w">🟢 aucun trajet à risque</div>' : ''}
+  dayBriefHtml.day = day; dayBriefHtml.first = nx.l.dep; dayBriefHtml.next = nm(nx); dayBriefHtml.lv = worst ? G(worst) : 0;
+  return `<div class="db lv${worst ? G(worst) : 0}"><div class="db-h"><b>${lbl} · ${L.length} trajet${L.length > 1 ? 's' : ''} agenda · ${f0(km)} km</b></div>
+    ${worst && G(worst) >= 1 ? `<div class="db-w">${LV[G(worst)].emoji} <b>${nm(worst)} (${worst.l.dep.slice(11, 16)})</b> = trajet critique${tripRisk(worst.r).why ? ' · ' + esc(tripRisk(worst.r).why) : ''}</div>` : ready.length === L.length ? '<div class="db-w">🟢 aucun trajet à risque</div>' : ''}
     <div class="db-n">⏱ Prochain départ agenda : <b>${nx.l.dep.slice(11, 16)}</b> · ${cdSpan(nx.l.dep)} · ${nm(nx)}</div>
     ${lines}${car ? `<div class="db-c">🚗 ${esc(car.short)} · ${esc(TYPE_LABEL[effType(car)] || '')}</div>` : ''}</div>`;
 }
@@ -3724,6 +3756,10 @@ function renderBrief() {
   const wa = windowAssess(car, td.seq, 'trip'), sm = summarize(td.seq);
   if (!wa) { paint(head + '<p class="muted">Données insuffisantes.</p>'); return; }
   const nar = narrate(car, wa, sm, 'au départ'), pf = carProfile(car), gen = pf.generic;
+  // Risque global de la MÊME fenêtre que les autres surfaces (mêmes voitures du trajet, tripRisk) ; l'indice pneus de la voiture
+  // affichée reste présenté à part et nommé comme tel.
+  const gRes = appTripCars().map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w);
+  const gRisk = gRes.length ? tripRisk({ res: gRes, sum: sm, worst: gRes.reduce((m, r) => Math.max(m, r.w.level), 0) }) : null;
   const xD = td.A.hs[td.iDep], xA = td.B.hs[td.iArr];
   const cD = xD ? colStats([{ hs: td.A.hs, i: td.iDep }]) : null, cA = xA ? colStats([{ hs: td.B.hs, i: td.iArr }]) : null, cT = colStats(td.seq);
   const yn = (v, t) => v ? `<b style="color:var(--risk-t)">${t || 'oui'}</b>` : 'non';
@@ -3745,7 +3781,8 @@ function renderBrief() {
   const montTxt = mc.concerned ? montNoteHtml([{ name: td.toName, mc }], td.dep, car) : '';
   const routeTxt = `Cap ${capTxt(td.cap)} (${f0(td.cap)}°) · ${f0(td.dist)} km à vol d’oiseau${td.mids.length ? ` · ${td.midsLoaded}/${td.mids.length} points intermédiaires analysés (≈ tous les 50 km)` : ''}`;
   paint(head + `<div class="sub">${esc(td.fromName)} → ${esc(td.toName)} · départ <b class="mono">${td.dep.slice(11, 16)}</b> le ${fmtDay(td.dep.slice(0, 10))} · arrivée <b class="mono">${td.arr.slice(11, 16)}</b>${td.past ? ' · <b style="color:var(--risk-t)">horaire déjà passé</b>' : ''}</div>
-  ${gen ? genericNote(pf.gaps) : verdictHtml(wa.level, false, wa)}
+  ${tripRiskHtml(gRisk, 'brief-global')}
+  ${gen ? genericNote(pf.gaps) : `<div class="sub verdict-label">Indice pneus · ${esc(car.short)}</div>` + verdictHtml(wa.level, false, wa)}
   <p class="expl">${gen ? '<b>Prévision de référence.</b> Renseigne tes lieux et ta monte pour évaluer ton départ.' : `<b>${esc(nar.head)}</b> ${esc(nar.body)}`}</p>
   ${gen ? '' : '<div class="sub">Réponse à « puis-je partir avec cette voiture et ces pneus ? » : un indice, pas une autorisation. La décision te revient.</div>'}
   <div class="scroll"><table class="tbl"><thead><tr><th></th><th>Départ · ${td.dep.slice(11, 16)}<br><span class="muted" style="text-transform:none;letter-spacing:0">${esc(td.fromName)}</span></th><th>Pendant le trajet</th><th>Arrivée · ${td.arr.slice(11, 16)}<br><span class="muted" style="text-transform:none;letter-spacing:0">${esc(td.toName)}</span></th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -4034,6 +4071,27 @@ function renderJournal() {
 }
 
 /* ---------- alertes ---------- */
+// Alerte NON déclenchée : « évaluée, sans alerte » (RAS) seulement si les mesures nécessaires existent. Sinon : non évaluable
+// (mesure manquante), évaluée en partie (une voiture sur deux), non applicable (aucune voiture concernée) ; « désactivée »
+// reste l'interrupteur. Aucune mesure inventée ; les garde-fous existants (profondeur inconnue = analyse limitée) inchangés.
+function alertNoTrigger(id) {
+  const cars = TCARS().filter(hasTires), names = l => l.map(c => c.short).join(', ');
+  if (['tread', 'treadgap', 'press', 'age'].includes(id) && !cars.length) return { k: 'na', label: 'NON APPLICABLE', detail: 'Aucune voiture équipée de pneus renseignés.' };
+  const miss = (ok, what) => { const m = cars.filter(c => !ok(c)); if (!m.length) return null;
+    return m.length === cars.length ? { k: 'unk', label: 'NON ÉVALUABLE', detail: `${what} : non renseigné pour ${names(m)}. Aucune conclusion possible sans cette mesure.` }
+      : { k: 'part', label: 'ÉVALUÉE EN PARTIE', detail: `Sans alerte pour ${names(cars.filter(ok))} ; non évaluable pour ${names(m)} (${what.toLowerCase()} non renseigné).` }; };
+  if (id === 'tread') return miss(c => treadWorst(c.tire).mm != null, 'Profondeur de sculpture');
+  if (id === 'treadgap') return miss(c => !!treadWheels(c.tire, treadWheelsRecord(S, c)), 'Relevé côté / milieu par roue');
+  if (id === 'press') { const r = miss(c => !!(c.tire.pchk && c.tire.pchk.date), 'Contrôle de pression daté'); if (r) return r;
+    const noT = cars.filter(c => !(c.tire.pchk && Number.isFinite(c.tire.pchk.T)));
+    return noT.length ? { k: 'part', label: 'ÉVALUÉE EN PARTIE', detail: `Contrôle récent sans alerte ; baisse de pression à froid non évaluable pour ${names(noT)} (température du contrôle non renseignée).` } : null; }
+  if (id === 'age') return miss(c => CX && CX.m && dotAge(c.tire.dot, CX.m.nowStr) != null, 'Code DOT');
+  if (id === 't5s' && !cars.some(c => effType(c) === 'summer')) return { k: 'na', label: 'NON APPLICABLE', detail: 'Aucune voiture en pneus été.' };
+  if (id === 'pre' && !cars.some(c => effType(c) === 'summer' && c.plan && c.plan.on)) return { k: 'na', label: 'NON APPLICABLE', detail: 'Aucun montage hiver prévu pour une voiture en pneus été.' };
+  if (id === 'pre') { const nd = cars.filter(c => effType(c) === 'summer' && c.plan && c.plan.on && !(c.plan.date || (c.plan.appointmentConfirmed && c.plan.appointmentDate)));
+    if (nd.length) return { k: 'unk', label: 'NON ÉVALUABLE', detail: `Date de montage ou rendez-vous confirmé non renseigné pour ${names(nd)} (Saison pneus).` }; }
+  return null;
+}
 function renderAlerts() {
   const el = $('#secAlerts'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
   const items = ALERT_DEFS.map(d => ({ d, a: CX.alerts[d.id], on: !!S.alerts[d.id] }));
@@ -4042,8 +4100,8 @@ function renderAlerts() {
   const act = items.filter(i => i.on && i.a).length;
   el.innerHTML = `<div class="mod-h"><h2>🔔 Alertes</h2><span class="src">${act} active${act > 1 ? 's' : ''} · 24 h</span></div>
    ${vigiBlock()}<div>${items.map(({ d, a, on }) => `<div class="al${on ? '' : ' off'}"><div><label class="sw"><input type="checkbox" data-alert="${d.id}" ${on ? 'checked' : ''} aria-label="${esc(d.label)}"><i></i></label></div>
-     <div style="display:flex;justify-content:space-between;gap:10px;align-items:start;min-width:0"><div style="min-width:0"><div class="t">${esc(a && on ? a.title : d.label)}</div><div class="d">${on ? (a ? esc(a.detail) : d.id === 'vigi' && VIGI.state !== 'ok' ? 'Vigilance indisponible : consulter la référence officielle.' : (d.id === 'pre' && S.cars.some(c => c.plan.on && c.tire.type !== 'winter' && !(c.plan.date || (c.plan.appointmentConfirmed && c.plan.appointmentDate))) ? 'Renseigne un montage estimé ou un rendez-vous confirmé (Saison pneus) pour activer cette alerte.' : 'Non déclenchée')) : 'Désactivée'}</div></div>
-     ${on && a ? `<span class="sev lv${a.sev}">${LV[Math.max(0, Math.min(3, a.sev))].name}</span>` : `<span class="sev none">${on ? d.id === 'vigi' && VIGI.state !== 'ok' ? 'INCONNU' : 'RAS' : 'OFF'}</span>`}</div></div>`).join('')}</div>
+     <div style="display:flex;justify-content:space-between;gap:10px;align-items:start;min-width:0"><div style="min-width:0"><div class="t">${esc(a && on ? a.title : d.label)}</div><div class="d">${on ? (a ? esc(a.detail) : d.id === 'vigi' && VIGI.state !== 'ok' ? 'Vigilance indisponible : consulter la référence officielle.' : (d.id === 'pre' && S.cars.some(c => c.plan.on && c.tire.type !== 'winter' && !(c.plan.date || (c.plan.appointmentConfirmed && c.plan.appointmentDate))) ? 'Renseigne un montage estimé ou un rendez-vous confirmé (Saison pneus) pour activer cette alerte.' : alertNoTrigger(d.id) ? esc(alertNoTrigger(d.id).detail) : 'Évaluée, non déclenchée')) : 'Désactivée'}</div></div>
+     ${on && a ? `<span class="sev lv${a.sev}">${LV[Math.max(0, Math.min(3, a.sev))].name}</span>` : `<span class="sev none" data-alert-state="${on ? d.id === 'vigi' && VIGI.state !== 'ok' ? 'unk' : (alertNoTrigger(d.id) || { k: 'ok' }).k : 'off'}">${on ? d.id === 'vigi' && VIGI.state !== 'ok' ? 'INCONNU' : alertNoTrigger(d.id) ? alertNoTrigger(d.id).label : 'RAS' : 'OFF'}</span>`}</div></div>`).join('')}</div>
    <p class="disc">Les alertes sont recalculées à chaque actualisation et visibles à l’ouverture de la page. Aucune notification n’est envoyée quand la page est fermée.</p>`;
 }
 

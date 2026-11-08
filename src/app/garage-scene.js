@@ -163,7 +163,7 @@ function garageTripHtml(scene, active) {
       garageCarSvg(active.silhouette, true) + '</g>' : '') + '</g></svg>';
   return '<div id="garageTrip" class="twin-trip"><div class="mod-h"><h3>PROCHAIN TRAJET · EN DIRECT</h3><span class="src est">' + esc(scene.status) + '</span></div>' +
     '<div class="twin-route"><div><small>DÉPART</small><b>' + esc(scene.from) + '</b></div><span aria-hidden="true">→</span><div><small>DESTINATION</small><b>' + esc(scene.to) + '</b></div></div>' +
-    '<div class="twin-caption"><span class="num">' + esc(times) + '</span><span>' + esc(active ? active.name + ' · voiture active' : 'Voiture active à choisir') + '</span></div>' +
+    '<div class="twin-caption"><span class="num">' + esc(times) + '</span><span>' + esc(active ? active.name + (active.active ? ' · voiture active' : ' · affichée, non confirmée pour le trajet') : 'Voiture du trajet à choisir') + '</span></div>' +
     garageLiveHtml() +
     '<figure class="twin-scene" data-animate="' + (scene.animate && !!active) + '" data-running="false">' + svg +
     '<figcaption>PRÉVISUALISATION ILLUSTRATIVE · SCHÉMA SANS ÉCHELLE<br>Animation en boucle, sans suivi GPS.</figcaption></figure>' +

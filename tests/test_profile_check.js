@@ -142,6 +142,9 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     returnHomeButtonForTrip: () => '', legNavTo: () => null, wazeBtn: () => 'Waze', cdSpan: () => '', visTxt: String,
     frostBand: () => null, trendHtml: () => '', trendOf: () => null, snapOf: () => null,
     effLegs: () => [leg] });
+  // Lot V : legHtml lit le risque global partagé ; le banc charge le VRAI code (tripRisk et ses aides), aucune doublure.
+  const grabFn = re => (re.exec(app) || [''])[0];
+  vm.runInContext([grabFn(/^function tripRisk\(t\) \{[\s\S]*?\n\}/m), grabFn(/^const tripRiskLv = [^\n]*/m), grabFn(/^const tripPillTxt = [^\n]*/m)].join('\n'), ctx);
   vm.runInContext(app.slice(app.indexOf('function legHtml('), app.indexOf('const calendarHasDeclaredPlace')), ctx);
   const renderAgenda = locked => {
     renderForecasts(locked);
