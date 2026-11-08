@@ -2122,9 +2122,10 @@ function tripRisk(t) {
   const tyreLv = Number.isInteger(t.worst) ? t.worst : top ? top.w.level : null, tyreGeneric = t.res.every(r => carProfile(r.c).generic);
   if (tyreLv >= 1 && top && !carProfile(top.c).generic) { const pt = ((top.w.worst && top.w.worst.parts) || []).slice().sort((a, b) => b.v - a.v)[0]; c.push({ k: 'tyre', lv: tyreLv, why: `${top.c.short} ${LV[tyreLv].name}${pt && tyreLv >= 2 ? ' (' + pt.label + ')' : ''}` }); }
   if ((s.iceLevel || 0) >= 1) c.push({ k: 'ice', lv: Math.min(3, s.iceLevel + 1), why: `verglas ${ICE_LV[s.iceLevel].toLowerCase()}` });
-  if (s.visMin != null && s.visMin < 1000) c.push({ k: 'fog', lv: s.visMin < 200 ? 3 : 2, why: `brouillard ${f0(s.visMin)} m` });
+  const at = ref => ref && ref.hs && ref.hs[ref.i] ? ' vers ' + hhmm(ref) : '';   // heure de la valeur citée (jamais une valeur sans heure)
+  if (s.visMin != null && s.visMin < 1000) c.push({ k: 'fog', lv: s.visMin < 200 ? 3 : 2, why: `brouillard ${f0(s.visMin)} m${at(s.iVis)}` });
   // Gel, y compris l'incertitude en VIGILANCE sans humidité : le risque global n'est jamais vert.
-  if (fb && fb.lv >= 1) c.push({ k: 'frost', lv: fb.lv, why: `chaussée ${f1(s.TrMin)} °C (${fb.t.toLowerCase()})` });
+  if (fb && fb.lv >= 1) c.push({ k: 'frost', lv: fb.lv, why: `chaussée ${f1(s.TrMin)} °C${at(s.iTrMin)} (${fb.t.toLowerCase()})` });
   const worst = c.reduce((a, x) => !a || x.lv > a.lv ? x : a, null);
   return { lv: worst ? worst.lv : 0, why: worst ? worst.why : null, k: worst ? worst.k : null, causes: c.slice().sort((a, b) => b.lv - a.lv), tyreLv, tyreGeneric };
 }
