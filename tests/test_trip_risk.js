@@ -52,7 +52,7 @@ function wiring(S, collect) {
   t('briefing : ligne « Risque global du trajet » et indice pneus nommé', /tripRiskHtml\(tripRisk\(t\), 'brf-global'\)/.test(card) && /Indice pneus · \$\{esc\(top\.c\.short\)\}/.test(card));
   t('synthèse : verdict du trajet = risque global, indice pneus nommé', /const tr = trip && !tripGeneric \? tripRisk\(trip\) : null;/.test(core) && /' · risque global du trajet<\/b>'/.test(core) && /' · indice pneus '/.test(core));
   t('onglet Trajet : risque global des voitures du trajet + indice pneus de la voiture affichée', /const gRisk = gRes\.length \? tripRisk\(/.test(brief) && /tripRiskHtml\(gRisk, 'brief-global'\)/.test(brief) && /Indice pneus · \$\{esc\(car\.short\)\}/.test(brief));
-  t('agenda : pastilles, résumé du jour et trajet critique au risque global', /const rg = tripRisk\(r\);/.test(S.app) && /const G = o => tripRiskLv\(o\.r\) \|\| 0/.test(S.app) && /const G = x => tripRiskLv\(x\.r\) \|\| 0;/.test(S.app));
+  t('agenda : pastilles, résumé du jour et trajet critique au risque global', /const rg = gen \? null : tripRisk\(r\);/.test(S.app) && /tripPillTxt\(rg, r\.worst, r\.res\)/.test(S.app) && /const tripPillTxt = \(rg, tyreLv, res\) => rg && rg\.lv > tyreLv \?/.test(S.app) && /const G = o => tripRiskLv\(o\.r\) \|\| 0/.test(S.app) && /const G = x => tripRiskLv\(x\.r\) \|\| 0;/.test(S.app));
   t('Garage : risque global transmis, gel par point via la règle unique (frostHour)', /risk: trip \? tripRisk\(trip\) : null/.test(S.garageView) && /frostFor: q => q && q\.hs \? frostHour\(q\.hs, q\.i\) : null/.test(S.garageView) && /mission-global/.test(S.mission) && /gel possible/.test(S.mission) && /frostFor/.test(S.garage));
   t('Garage : « voiture active » seulement pour une voiture confirmée', /active\.active \? ' · voiture active' : ' · affichée, non confirmée pour le trajet'/.test(S.scene));
   t('alertes : non évaluable / évaluée en partie / non applicable, jamais RAS par défaut', /function alertNoTrigger\(id\)/.test(S.app) && /if \(id === 'tread'\) return miss\(c => treadWorst\(c\.tire\)\.mm != null/.test(S.app) && /if \(id === 'treadgap'\) return miss\(c => !!treadWheels\(/.test(S.app) && /if \(id === 'press'\)/.test(S.app) && /alertNoTrigger\(d\.id\) \? alertNoTrigger\(d\.id\)\.label : 'RAS'/.test(S.app));
@@ -76,6 +76,7 @@ const MUT = [
   ['Garage : gel non transmis', 'garageView', /, frostFor: q => q && q\.hs \? frostHour\(q\.hs, q\.i\) : null/, ''],
   ['alertes : retour du RAS par défaut', 'app', /alertNoTrigger\(d\.id\) \? alertNoTrigger\(d\.id\)\.label : 'RAS'/, "'RAS'"],
   ['alerte profondeur jugée évaluable sans mesure', 'app', /if \(id === 'tread'\) return miss\(c => treadWorst\(c\.tire\)\.mm != null/, "if (id === 'tread') return miss(c => true"],
+  ['agenda : pastille revenue à l’indice pneus seul', 'app', /const tripPillTxt = \(rg, tyreLv, res\) => rg && rg\.lv > tyreLv \?/, 'const tripPillTxt = (rg, tyreLv, res) => false ?'],
   ['minuit : jour omis', 'wx', /d\.window\.toLabel \|\| d\.window\.to\)\}<\/p>/, 'd.window.to)}</p>'],
 ];
 let killed = 0;
