@@ -193,5 +193,124 @@ class Datex(unittest.TestCase):
             out.write_text(json.dumps({'checkedAt': '2026-10-06T14:30:00+00:00', 'events': []}))
             self.assertEqual(D.cli(argv, down, now), 1)                     # plus d'une heure : l'échec redevient visible
 
+    def test_rush_hour_gap_is_ingested_but_stays_bounded(self):
+        # Pics des 04/11 et 05/11 : ~12 deltas/min, snapshot horaire ; 700 deltas doivent passer, 769 non.
+        def feed(gap):
+            data = {'index.txt': str(100 + gap).encode(), 'content.xml': publication(situation())}
+            return lambda name: data[name] if name in data else publication('', int(name[:-4]), 'allElementUpdate')
+        result = D.sync(feed(700), None, NOW)
+        self.assertEqual((result['cursor'], len(result['events'])), (800, 1))
+        with self.assertRaises(ValueError): D.sync(feed(D.MAX_GAP + 1), None, NOW)
+        self.assertEqual(D.MAX_GAP, 768)
+
+    def test_announced_delta_still_404_is_retried_briefly(self):
+        # Mesure du 09/11 : index.txt avance avant que le dernier delta annoncé soit servi (404 pendant 0 à 7 s).
+        import urllib.error
+        calls, sleeps = [], []
+        class Response:
+            status = 200
+            def __init__(self, name): self.url = D.BASE + name
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n): return b'<x/>'
+        def late(request, timeout):
+            calls.append(request.full_url)
+            if len(calls) < 3: raise urllib.error.HTTPError(request.full_url, 404, 'Not Found', None, None)
+            return Response('3655011.xml')
+        old_open, old_sleep = D.urllib.request.urlopen, D.time.sleep
+        D.urllib.request.urlopen, D.time.sleep = late, sleeps.append
+        try:
+            self.assertEqual(D.download('3655011.xml'), b'<x/>'); self.assertEqual((len(calls), sleeps), (3, [3, 8]))
+            calls.clear(); sleeps.clear()
+            def gone(request, timeout):
+                calls.append(1); raise urllib.error.HTTPError(request.full_url, 404, 'Not Found', None, None)
+            D.urllib.request.urlopen = gone
+            with self.assertRaises(urllib.error.HTTPError) as caught: D.download('3655011.xml')
+            self.assertEqual((len(calls), sleeps, caught.exception.source_name), (3, [3, 8], '3655011.xml'))   # borné puis visible
+            calls.clear(); sleeps.clear()
+            for name in ('index.txt', 'content.xml'):                                                 # jamais retenté hors delta
+                with self.assertRaises(urllib.error.HTTPError): D.download(name)
+            self.assertEqual((len(calls), sleeps), (2, []))
+            def forbidden(request, timeout):
+                calls.append(1); raise urllib.error.HTTPError(request.full_url, 403, 'Forbidden', None, None)
+            calls.clear(); D.urllib.request.urlopen = forbidden
+            with self.assertRaises(urllib.error.HTTPError): D.download('3655011.xml')
+            self.assertEqual((len(calls), sleeps), (1, []))                                            # autre 4xx : définitif
+        finally:
+            D.urllib.request.urlopen, D.time.sleep = old_open, old_sleep
+
+    def test_truncated_xml_is_refetched_once_then_fails_visibly(self):
+        # Run du 09/11 03:24 UTC : « DATEX sync failed: ParseError » (XML tronqué côté source).
+        full = publication(situation())
+        calls, sleeps = [], []
+        old_sleep = D.time.sleep; D.time.sleep = sleeps.append
+        try:
+            def once(name):
+                calls.append(name)
+                if name == 'index.txt': return b'100'
+                return full[:200] if calls.count(name) == 1 else full
+            self.assertEqual(len(D.sync(once, None, NOW)['events']), 1)      # tronqué puis complet : succès réel
+            self.assertEqual((calls.count('content.xml'), sleeps), (2, [3]))
+            calls.clear(); sleeps.clear()
+            def always(name):
+                calls.append(name)
+                return b'100' if name == 'index.txt' else full[:200]
+            with self.assertRaises(D.ET.ParseError) as caught: D.sync(always, None, NOW)
+            self.assertEqual(calls.count('content.xml'), 2)                    # une seule nouvelle tentative
+            self.assertEqual(caught.exception.source_name, 'content.xml')
+            calls.clear()
+            def delta(name):
+                calls.append(name)
+                data = {'index.txt': b'101', 'content.xml': full}
+                return data.get(name, publication(situation(), 100, 'allElementUpdate')[:150])
+            with self.assertRaises(D.ET.ParseError) as caught: D.sync(delta, None, NOW)
+            self.assertEqual((calls.count('100.xml'), caught.exception.source_name), (2, '100.xml'))
+        finally:
+            D.time.sleep = old_sleep
+
+    def test_invalid_publication_is_never_refetched(self):
+        calls = []
+        def invalid(name):
+            calls.append(name)
+            return b'100' if name == 'index.txt' else b'<d2LogicalModel><x/></d2LogicalModel>'
+        with self.assertRaises(ValueError) as caught: D.sync(invalid, None, NOW)
+        self.assertEqual((calls.count('content.xml'), caught.exception.source_name), (1, 'content.xml'))
+
+    def test_failure_log_names_code_file_and_reason(self):
+        import contextlib, io, urllib.error
+        full = publication(situation())
+        def gone(name):
+            if name == 'index.txt': return b'102'
+            if name == 'content.xml': return full
+            if name == '101.xml': raise D.tag(urllib.error.HTTPError(D.BASE + name, 404, 'Not Found', None, None), name)
+            return publication(situation(), int(name[:-4]), 'allElementUpdate')
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder) / 'road.json'; out.write_text('previous valid file')
+            err, std = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stderr(err), contextlib.redirect_stdout(std):
+                self.assertEqual(D.cli(['--output', str(out)], gone, NOW), 1)
+            self.assertIn('DATEX sync failed: HTTPError · HTTP 404 · 101.xml', err.getvalue())
+            self.assertEqual(out.read_text(), 'previous valid file')
+            def far(name): return {'index.txt': b'900', 'content.xml': full}[name]
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err): self.assertEqual(D.cli(['--output', str(out)], far, NOW), 1)
+            self.assertIn('ValueError · content.xml · Incremental gap exceeds bounded ingestion (snapshot 100, index 900)', err.getvalue())
+            for secretish in ('token', 'Authorization', '@'):
+                self.assertNotIn(secretish, err.getvalue())
+
+    def test_kept_publication_is_announced_as_warning_not_silent(self):
+        import contextlib, io, urllib.error
+        now = D.timestamp('2026-10-06T16:00:00Z')
+        def down(name): raise D.tag(urllib.error.HTTPError(D.BASE + name, 503, 'Unavailable', None, None), name)
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder) / 'road.json'
+            recent = json.dumps({'checkedAt': '2026-10-06T15:50:00+00:00', 'events': []}); out.write_text(recent)
+            std, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(std), contextlib.redirect_stderr(err):
+                self.assertEqual(D.cli(['--output', str(out)], down, now), 0)
+            self.assertIn('::warning title=DATEX non actualisé::', std.getvalue())
+            self.assertIn('HTTP 503 · index.txt', std.getvalue())
+            self.assertEqual(out.read_text(), recent)
+
 if __name__ == '__main__':
     unittest.main()
