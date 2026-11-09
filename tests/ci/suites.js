@@ -176,3 +176,4 @@ SUITE.push(['test_backup_visible.js', 'Lot S : sauvegarde visible, un libellé p
   ['e2e109-hors-ligne-vue.js', 'Lot S : rechargement hors ligne sur ?vue=garage (hors ligne applicatif Chromium/WebKit ; vrai Service Worker sous Chromium), URL et paramètres intacts, replaceState sans URL', true],
   ['e2e110-verdict-global.js', 'Lot V : risque global du trajet partagé (briefing, synthèse, Trajet, Garage), indice pneus nommé, alertes non évaluables, voiture confirmée, minuit, aperçu verrouillé', true],
   ['e2e104-sauvegarde-visible.js', 'Lot S : sauvegarde visible, dernière copie, libellé unique par état, persistance du stockage demandée et affichée, PC/iPhone', true]);
+SUITE.push(['test_relay_publish.js', 'relais météo et watchdog, publication : refus GitHub passagers espacés, échec persistant visible, DATEX concurrent, liste blanche, jamais d’écrasement par plus ancien', false]);
