@@ -110,8 +110,16 @@ jobs:
           export GIT_CONFIG_COUNT=1
           export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
           export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          # Refus passagers de GitHub au push (observés sur DATEX les 04/11 et 09/11, même mécanique ici) :
+          # 5 essais espacés (5, 10, 20, 40 s) au lieu de 5 essais immédiats. Un refus persistant reste
+          # un échec visible ; la dernière publication valide reste servie, avec son âge réel.
           for i in 1 2 3 4 5; do
             git push -q && exit 0
+            [ "$i" -eq 5 ] && break
+            pause=$((5 * (1 << (i - 1))))
+            echo "Push gh-pages refusé (essai $i/5) : nouvel essai dans ${pause} s"
+            sleep "$pause"
             git -c core.hooksPath=/dev/null pull -q --rebase || exit 1
           done
+          echo "::error title=Relais non publié::push gh-pages refusé 5 fois ; dernière publication valide conservée"
           exit 1
