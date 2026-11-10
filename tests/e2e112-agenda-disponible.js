@@ -31,8 +31,11 @@ const state = (p, id) => p.evaluate(id => {
 }, id);
 // Message #direct et ligne « ALLER » du même rendez-vous, tels qu'affichés.
 const directText = (p, id) => p.evaluate(id => {
-  const e = CAL.events.find(x => x.id === id), go = effLegs(e).find(l => l.k === 'go'), alt = altHtml(e).replace(/<[^>]+>/g, ''), leg = go ? legHtml(go, e).replace(/<[^>]+>/g, ' ') : '';
-  const aller = (/(?:🏠|📍) (depuis [^\n]+?)\s{2,}/.exec(leg + '  ') || [])[1] || null, msg = (/aller calculé (depuis [^.]+)\./.exec(alt) || [])[1] || null;
+  // Texte lu par le DOM (gabarit inerte), jamais en retirant les balises par expression régulière.
+  const dom = h => { const t = document.createElement('template'); t.innerHTML = h; return t.content; };
+  const e = CAL.events.find(x => x.id === id), go = effLegs(e).find(l => l.k === 'go'), alt = dom(altHtml(e)).textContent;
+  const o = go ? dom(legHtml(go, e)).querySelector('.leg-o') : null, line = o ? o.textContent.trim() : '';
+  const aller = (/^(?:🏠|📍) (depuis .+)$/.exec(line) || [])[1] || null, msg = (/aller calculé (depuis [^.]+)\./.exec(alt) || [])[1] || null;
   return { alt, aller, msg, pending: !!(go && go.originPending), from: go && go.fromKind };
 }, id);
 (async () => {
