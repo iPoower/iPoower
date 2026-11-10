@@ -68,4 +68,29 @@ for (const v of [1, 2]) test('import V' + v + ' sans carte conserve les choix va
 test('import ancien ne ressuscite pas un départ annulé par Départ automatique', () => { const a = update(), b = update(a, null, 'go', now + 1), plan = B.restorePlan({ app: 'twrc', v: 2, settings: { ...settings, calOrigins: a } }, now + 1, { calOrigins: b }); assert.equal(JSON.parse(plan.writes['twrc.settings.v1']).calOrigins[id].go.choice, null); });
 test('import du choix récent est compatible dans les deux sens', () => { const a = update(), b = update(a, { kind: 'home' }, 'go', now + 1); assert.deepEqual(json(O.merge(a, b, now)), json(O.merge(b, a, now))); });
 test('après expiration et changement de jour, une vieille sauvegarde ne restaure rien', () => { const plan = B.restorePlan({ app: 'twrc', v: 2, settings: { ...settings, calOrigins: update() } }, exp + 1, { calOrigins: update() }); assert.deepEqual(JSON.parse(plan.writes['twrc.settings.v1']).calOrigins, {}); });
+// Message du mot-clé #direct : il décrit le trajet réellement calculé par le relais (données fictives).
+const appSource = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8'), altBegin = appSource.indexOf('function altHtml(e) {'), altEnd = appSource.indexOf('function legHtml(leg, ev) {', altBegin);
+assert(altBegin >= 0 && altEnd > altBegin);
+const altOf = (event, { local = null, source = appSource.slice(altBegin, altEnd) } = {}) => {
+  const ctx = { local }; vm.createContext(ctx);
+  vm.runInContext(`const cancelAffectedDay = () => false, S = { calOrigins: {} }, CalendarOrigin = { get: () => local }, TripCancel = { eventId: e => e.id }, calDirectSet = () => ({}), f0 = x => String(x), esc = x => String(x);
+${source}
+this.alt = altHtml;`, ctx);
+  return ctx.alt(event);
+};
+const goFrom = fromKind => ({ ...leg('go', home, D, '11:10', '11:50'), fromKind });
+test('#direct sans rendez-vous précédent : l’aller part du domicile et le message le dit, sans annoncer un enchaînement', () => {
+  const html = altOf({ id: 'opaque-gamma', mode: 'direct', legs: [goFrom('home')] });
+  assert.match(html, /aller calculé <b>depuis le domicile<\/b>/); assert.match(html, /aucun rendez-vous avec trajet ne le précède/); assert.doesNotMatch(html, /enchaîné directement depuis le rendez-vous précédent/);
+  assert.match(altOf({ id: 'opaque-gamma', mode: 'direct', legs: [goFrom('home')] }, { local: { choice: { kind: 'work' } } }), /Départ choisi dans l’app/);
+});
+test('#direct réellement enchaîné, même lieu sans trajet, et #maison : messages inchangés', () => {
+  assert.match(altOf({ id: 'opaque-beta', mode: 'direct', legs: [goFrom('prev')] }), /Selon ton agenda \(<b>#direct<\/b>\) : enchaîné directement depuis le rendez-vous précédent/);
+  assert.match(altOf({ id: 'opaque-beta', mode: 'direct', legs: [] }), /enchaîné directement depuis le rendez-vous précédent/);
+  assert.match(altOf({ id: 'opaque-beta', mode: 'maison', legs: [goFrom('home')] }), /retour maison avant ce rendez-vous/);
+});
+test('contre-épreuve : sans la garde, l’ancien message annonce un enchaînement qui n’existe pas', () => {
+  const block = appSource.slice(altBegin, altEnd), mutant = block.replace("if (e.mode === 'direct' && plannedGo && plannedGo.fromKind === 'home') return", "if (false) return");
+  assert.notEqual(mutant, block); assert.match(altOf({ id: 'opaque-gamma', mode: 'direct', legs: [goFrom('home')] }, { source: mutant }), /enchaîné directement depuis le rendez-vous précédent/);
+});
 console.log(`${n}/${n} scénarios OK`);
