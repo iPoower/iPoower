@@ -71,11 +71,16 @@ test('après expiration et changement de jour, une vieille sauvegarde ne restaur
 // Message du mot-clé #direct : il décrit le trajet réellement calculé par le relais (données fictives).
 const appSource = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8'), altBegin = appSource.indexOf('function altHtml(e) {'), altEnd = appSource.indexOf('function legHtml(leg, ev) {', altBegin);
 assert(altBegin >= 0 && altEnd > altBegin);
-const altOf = (event, { local = null, source = appSource.slice(altBegin, altEnd) } = {}) => {
-  const ctx = { local }; vm.createContext(ctx);
+// R2-04 : le message cite le départ du trajet EFFECTIF (effLegs), avec le même texte que la ligne « ALLER » (legOriginTxt).
+const originBegin = appSource.indexOf('function legOriginTxt(leg) {'), originEnd = appSource.indexOf('\n}\n', originBegin) + 3, originSrc = appSource.slice(originBegin, originEnd);
+assert(originBegin >= 0 && originEnd > originBegin);
+const altOf = (event, { local = null, eff = null, source = appSource.slice(altBegin, altEnd) } = {}) => {
+  const ctx = { local, eff }; vm.createContext(ctx);
   vm.runInContext(`const cancelAffectedDay = () => false, S = { calOrigins: {} }, CalendarOrigin = { get: () => local }, TripCancel = { eventId: e => e.id }, calDirectSet = () => ({}), f0 = x => String(x), esc = x => String(x);
+const effLegs = e => eff || e.legs || [];
+${originSrc}
 ${source}
-this.alt = altHtml;`, ctx);
+this.alt = altHtml; this.origin = legOriginTxt;`, ctx);
   return ctx.alt(event);
 };
 const goFrom = fromKind => ({ ...leg('go', home, D, '11:10', '11:50'), fromKind });
@@ -90,7 +95,23 @@ test('#direct réellement enchaîné, même lieu sans trajet, et #maison : messa
   assert.match(altOf({ id: 'opaque-beta', mode: 'maison', legs: [goFrom('home')] }), /retour maison avant ce rendez-vous/);
 });
 test('contre-épreuve : sans la garde, l’ancien message annonce un enchaînement qui n’existe pas', () => {
-  const block = appSource.slice(altBegin, altEnd), mutant = block.replace("if (e.mode === 'direct' && plannedGo && plannedGo.fromKind === 'home') return", "if (false) return");
+  const block = appSource.slice(altBegin, altEnd), mutant = block.replace("if (e.mode === 'direct' && plannedGo && plannedGo.fromKind === 'home' && effGo && effGo.fromKind !== 'prev') return", "if (false) return");
   assert.notEqual(mutant, block); assert.match(altOf({ id: 'opaque-gamma', mode: 'direct', legs: [goFrom('home')] }, { source: mutant }), /enchaîné directement depuis le rendez-vous précédent/);
+});
+test('R2-04 · #direct : le message cite le départ effectif (travail), pas le plan du relais (domicile)', () => {
+  const effWork = [{ ...goFrom('work'), from: { lat: 1, lon: 1, label: 'Travail test', city: 'Travail test' } }];
+  const html = altOf({ id: 'opaque-gamma', mode: 'direct', legs: [goFrom('home')] }, { eff: effWork });
+  assert.match(html, /aller calculé <b>depuis Travail test<\/b>/); assert.doesNotMatch(html, /depuis le domicile/);
+  // même texte que la ligne « ALLER » (legHtml lit aussi legOriginTxt)
+  assert.ok(appSource.includes("(leg.fromKind === 'home' ? '🏠 ' : '📍 ') + legOriginTxt(leg)"));
+  assert.match(altOf({ id: 'opaque-gamma', mode: 'direct', legs: [goFrom('home')] }, { eff: [goFrom('home')] }), /aller calculé <b>depuis le domicile<\/b>/);
+  assert.match(altOf({ id: 'opaque-gamma', mode: 'direct', legs: [goFrom('home')] }, { eff: [{ k: 'go', from: null, originPending: true }] }), /départ de l’aller en cours de confirmation/);
+  assert.match(altOf({ id: 'opaque-gamma', mode: 'direct', legs: [goFrom('home')] }, { eff: [goFrom('prev')] }), /enchaîné directement depuis le rendez-vous précédent/);
+});
+test('R2-04 · contre-épreuve : lire le plan du relais rétablit le message faux « depuis le domicile »', () => {
+  const block = appSource.slice(altBegin, altEnd), mutant = block.replace("'aller calculé <b>' + legOriginTxt(effGo) + '</b>'", "'aller calculé <b>' + legOriginTxt(plannedGo) + '</b>'");
+  assert.notEqual(mutant, block);
+  const effWork = [{ ...goFrom('work'), from: { lat: 1, lon: 1, label: 'Travail test', city: 'Travail test' } }];
+  assert.match(altOf({ id: 'opaque-gamma', mode: 'direct', legs: [goFrom('home')] }, { eff: effWork, source: mutant }), /depuis le domicile/);
 });
 console.log(`${n}/${n} scénarios OK`);

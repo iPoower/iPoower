@@ -27,7 +27,9 @@ const denseBefore = Array.from({ length: 30 }, (_, i) => denseEvent('dense-local
   '06' + String(i * 2).padStart(2, '0'), '06' + String(i * 2 + 1).padStart(2, '0'), densePrefix + ' local ' + i,
   i % 2 ? noTripLocation : '', i % 2 ? '#pasdetrajet' : ''));
 const denseRoutable = Array.from({ length: 27 }, (_, i) => denseEvent('dense-trip-' + String(i).padStart(2, '0'),
-  '2026100' + (5 + Math.floor(i / 9)), String(10 + i % 9) + '00', String(10 + i % 9) + '30', densePrefix + ' trajet ' + i, i % 2 ? 'Amiens' : 'Lille'));
+  '2026100' + (5 + Math.floor(i / 9)), String(10 + i % 9) + '00', String(10 + i % 9) + '30', densePrefix + ' trajet ' + i, i % 2 ? 'Amiens' : 'Lille')
+  // R2-03 : statut de disponibilité de l'agenda (« Disponible » = TRANSPARENT, « Occupé » = OPAQUE), sans changer le reste.
+  .replace('END:VEVENT', i === 3 ? 'TRANSP:TRANSPARENT\r\nEND:VEVENT' : i === 4 ? 'TRANSP:OPAQUE\r\nEND:VEVENT' : 'END:VEVENT'));
 fs.writeFileSync(path.join(H, 'dense-calendar.ics'), ['BEGIN:VCALENDAR',
   denseEvent('dense-out-before', '20261004', '1000', '1030', densePrefix + ' hors fenêtre avant', 'Lille'),
   ...denseBefore, ...denseRoutable,
@@ -126,6 +128,8 @@ const denseS = readJ(path.join(H, 'calendar.sealed.json')), denseCal = tryUnseal
 const denseLocal = denseEvents.filter(ev => ev.t.startsWith(densePrefix + ' local ')), denseTrips = denseEvents.filter(ev => ev.t.startsWith(densePrefix + ' trajet '));
 check('agenda dense : rappels sans lieu éliminés, #pasdetrajet conservés', dense.code === 0 && denseEvents.length === 42 && denseLocal.length === 15 && dense.obs.relay.calN === 42 && dense.obs.relay.calSkip === 15 && dense.obs.relay.calNoPlace === 15);
 check('agenda dense : 27 rendez-vous localisés après le rang 25 restent tous routés', denseTrips.length === 27 && denseTrips.every(ev => ev.lat !== null && (ev.legs || []).some(l => l.k === 'go' && l.routed)) && dense.obs.relay.calGeo === 27);
+check('R2-03 · « Disponible » publié free: true, « Occupé » et statut absent sans champ', denseTrips.filter(ev => ev.free === true).map(ev => ev.t).join() === densePrefix + ' trajet 3'
+  && denseTrips.every(ev => ev.free === undefined || ev.free === true) && Object.prototype.hasOwnProperty.call(denseTrips.find(ev => ev.t === densePrefix + ' trajet 3') || {}, 'free'));
 const denseFirst = denseTrips.find(ev => ev.t === densePrefix + ' trajet 0'), denseSecond = denseTrips.find(ev => ev.t === densePrefix + ' trajet 1');
 const denseFirstGo = denseFirst && (denseFirst.legs || []).find(l => l.k === 'go'), denseSecondGo = denseSecond && (denseSecond.legs || []).find(l => l.k === 'go');
 check('agenda dense : premier déplacement depuis domicile puis chaîne depuis le vrai lieu précédent', !!denseFirstGo && denseFirstGo.fromKind === 'home' && denseFirstGo.from.lat === 48.85 && denseFirstGo.from.lon === 2.35 &&
