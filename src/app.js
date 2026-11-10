@@ -290,8 +290,6 @@ const urlFor = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&current=${Q_CUR
 // Météo-France AROME (via Open-Meteo) : haute résolution sur 0–48 h. Pas de visibilité ni de probabilité de pluie : elles restent issues du modèle de base.
 const Q_AR = 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,showers,snowfall,weather_code,pressure_msl,cloud_cover,wind_speed_10m,wind_gusts_10m,shortwave_radiation';
 const urlArome = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&current=${Q_CUR}&hourly=${Q_AR}&models=meteofrance_seamless&timezone=auto&past_days=1&forecast_days=3`;
-// Durée de réutilisation d'une réponse AROME : une seule valeur, pour la requête ET pour la règle de fraîcheur (R2-01).
-const AROME_TTL = 35 * 60e3;
 
 let M = {};            // modèles par lieu
 const RAW = {};        // charges utiles + mode
@@ -418,12 +416,14 @@ async function loadLoc(l, force = false) {
   WEATHER_LOAD_GEN.set(l.id, loadGen);
   if (l.gps) { WEATHER_REQUESTS.cancelGroup('gps'); gpsWeatherOrigin = origin; }
   const group = l.gps ? 'gps' : 'shared';
-  // Modèle du lieu affiché : 5 min ; autres lieux : 20 min ; AROME : 35 min ; nowcast : 15 min.
+  // Modèle du lieu affiché : 5 min ; autres lieux : 20 min ; nowcast : 15 min. AROME suit EXACTEMENT la durée de la base
+  // (R2-01) : redemandés ensemble, ils ont la même fraîcheur et la garde ci-dessous ne les sépare plus à chaque cycle.
   // Un rafraîchissement manuel (force) interroge toujours le fournisseur. Un trajet/lieu nouveau a une URL neuve.
   const baseUrl = urlFor(l), arUrl = urlArome(l), ncUrl = urlNow(l);
+  const baseTtl = force ? 0 : l.id === UI.loc ? 4 * 60e3 : 18 * 60e3;
   const [b, ar, nc] = await Promise.allSettled([
-    fetchJSON(baseUrl, 12000, group, force ? 0 : l.id === UI.loc ? 4 * 60e3 : 18 * 60e3),
-    fetchJSON(arUrl, 12000, group, force ? 0 : AROME_TTL),
+    fetchJSON(baseUrl, 12000, group, baseTtl),
+    fetchJSON(arUrl, 12000, group, baseTtl),
     fetchJSON(ncUrl, 12000, group, force ? 0 : 14 * 60e3)
   ]);
   if (!weatherLoadCurrent(l, loadGen) || l.gps && (gen !== gpsWeatherGen || !GPS || distKm(origin, GPS) > 3)) return null;
@@ -436,11 +436,8 @@ async function loadLoc(l, force = false) {
   if (incoming && previous && incoming < previous && prior.lat === origin.lat && prior.lon === origin.lon) throw new Error('réponse météo plus ancienne que les données conservées');
   // Ne jamais laisser un ancien AROME en cache écraser une prévision de base reçue plus récemment :
   // en cas de décalage de fraîcheur, le modèle de base fait foi jusqu'au prochain vrai relevé AROME.
-  // R2-01 : la base du lieu affiché est redemandée toutes les 4 min, AROME toutes les 35 min. Une réponse AROME encore
-  // dans sa durée de réutilisation est la dernière sortie AROME connue : elle reste fusionnée après une actualisation
-  // automatique. Seul un AROME à la fois plus vieux que sa durée de réutilisation et antérieur à la base est écarté.
-  const arValid = ar.status === 'fulfilled' && !!ar.value && !validForecast(ar.value), arAt = WEATHER_REQUESTS.fetchedAt(arUrl) || 0;
-  const arFresh = arValid && (arAt >= (WEATHER_REQUESTS.fetchedAt(baseUrl) || 0) - 60e3 || (arAt <= Date.now() && Date.now() - arAt < AROME_TTL + 60e3));
+  const arValid = ar.status === 'fulfilled' && !!ar.value && !validForecast(ar.value);
+  const arFresh = arValid && (WEATHER_REQUESTS.fetchedAt(arUrl) || 0) >= (WEATHER_REQUESTS.fetchedAt(baseUrl) || 0) - 60e3;
   const p = mergeArome(b.value, arFresh ? ar.value : null);
   // Provenance d'AROME, pour ne jamais annoncer « AROME indisponible » quand il a été reçu (ok/hors couverture) ou écarté (ancien).
   if (p && p.__arome) p.__arome.status = p.__arome.hours ? 'ok' : !arValid ? 'failed' : !arFresh ? 'stale' : 'empty';
@@ -787,6 +784,8 @@ function startDemo(scn) {
 }
 function rebuild() {
   M = {}; MIDM = {}; expireLive();
+  // Modèles « trajet » des lieux (R2-02) : reconstruits plus bas à partir des mêmes réponses, jamais conservés d'un rendu à l'autre.
+  Object.keys(LEGM).forEach(k => { if (k.startsWith('place:')) delete LEGM[k]; });
   // Les prévisions secondaires ont la même horloge et la même règle de
   // fraîcheur que les lieux du cockpit. Aucune écriture persistante ici.
   for (const c of Object.values(CALM)) if (c && c.m && c.m.payload) {
@@ -818,6 +817,14 @@ function rebuild() {
       if (NOWRAW[l.id] && r.mode === 'live') m.nc = nowcast(NOWRAW[l.id], m.nowStr);
       if (OBS && r.mode === 'live') m.obs = applyObs(m, OBS.stations, 35);
       m.roadBias = cb.bias; M[l.id] = m;
+      // R2-02 · La correction de chaussée apprise à un lieu ne s'applique qu'à ce lieu, jamais aux trajets : un départ ou une
+      // arrivée sur ce lieu lit un modèle aux mêmes heures (AROME, station) mais calculé SANS cette correction. Il est rangé
+      // dans LEGM avec la vraie heure de réception du lieu : les vues qui datent les points de trajet le retrouvent.
+      if (cb.bias) {
+        setRoadBias(0); const t = makeModel(r.p, r.mode, l);
+        if (OBS && r.mode === 'live') t.obs = applyObs(t, OBS.stations, 35);
+        t.roadBias = 0; LEGM['place:' + l.id] = { t: r.t, models: [t], place: l.id };
+      }
     } catch (e) { ERR[l.id] = 'données illisibles'; } finally { setRoadBias(0); }
   });
 }
@@ -3189,6 +3196,9 @@ function legEval(leg) {
   if (!c.models) return { err: true };
   const pts = legPoints(leg), last = pts.length - 1, place = c.models.map((m, j) => j === 0 || j === last ? legPlaceModel(pts[j], m) : null);
   const seq = legSeq(c.models.map((m, j) => place[j] || m), pts, leg.dep, leg.min); if (!seq.length) return { beyond: true };
+  // Moteur de preuves (C) : il compare une PRÉVISION aux observations. Un point lu sur le modèle du lieu (déjà recalé par
+  // la station) garde aussi l'heure brute de la requête de parcours, pour ne pas présenter une mesure comme une prévision.
+  seq.forEach(q => { const raw = place[q.k] && c.models[q.k], i = raw && raw.byTime.get(q.t.slice(0, 13) + ':00'); if (i != null) q.raw = raw.hs[i]; });
   const res = appTripCars().map(car => ({ c: car, w: windowAssess(car, seq, 'trip') })).filter(r => r.w);
   return { seq, sum: summarize(seq), res: res.length ? res : null, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, crit: legCritical(seq, appTripCars()),
     depSrc: legDepSource(seq, place[0]) };
@@ -3201,7 +3211,8 @@ function legPlaceModel(pt, fallback) {
   if (!fallback || !pt || !Number.isFinite(pt.lat) || !Number.isFinite(pt.lon) || DEMO.on) return null;
   let best = null;
   for (const l of allLocs()) {
-    const m = M[l.id]; if (!m || !m.hs || !locHasCoords(l) || m.tz !== fallback.tz) continue;
+    const own = LEGM['place:' + l.id], m = own && own.models[0] || M[l.id];   // jamais la correction de chaussée du lieu
+    if (!m || !m.hs || !locHasCoords(l) || m.tz !== fallback.tz) continue;
     const d = distKm(pt, l); if (d <= LEG_PLACE_KM && (!best || d < best.d)) best = { m, d };
   }
   return best && best.m;

@@ -48,7 +48,7 @@ check('111.0 · état initial : AROME fusionné et station appliquée sur le lie
 // R2-01 : laisser passer un cycle automatique (5 min) sans clic. La base du lieu affiché est redemandée ; AROME (35 min) vient du cache.
 TNOW=T0+6*60e3;await p.clock.fastForward(6*60e3);await settle(12);
 const s1=await state();
-check('111.1 · R2-01 · le cycle automatique a bien redemandé la base, pas AROME (cache 35 min)',n.base>n0.base&&n.arome===n0.arome,`base ${n0.base}→${n.base} · AROME ${n0.arome}→${n.arome}`);
+check('111.1 · R2-01 · le cycle automatique redemande la base ET AROME ensemble (même durée de cache)',n.base>n0.base&&n.arome-n0.arome===n.base-n0.base,`base ${n0.base}→${n.base} · AROME ${n0.arome}→${n.arome}`);
 check('111.2 · R2-01 · même nombre d’heures AROME avant et après le cycle automatique',s1.hours===s0.hours&&s1.arFlags===s0.arFlags&&s1.status==='ok',`avant ${s0.hours} h (${s0.arFlags} drapeaux) · après ${s1.hours} h (${s1.arFlags} drapeaux) · ${s1.status}`);
 check('111.3 · R2-01 · même prévision à '+FIX.slice(11)+' avant et après (air et chaussée)',s1.T===s0.T&&s1.Tr===s0.Tr,`air ${s0.T} → ${s1.T} °C · chaussée ${s0.Tr} → ${s1.Tr} °C`);
 check('111.4 · R2-01 · « AROME indisponible » absent tant qu’AROME est reçu',!/AROME indisponible/.test(s1.src)&&/Météo-France AROME/.test(s1.src),s1.src.slice(0,200));
@@ -68,6 +68,19 @@ const tr=await p.evaluate(([a,z])=>{const out=l=>{const r=legEval(l),q=r.seq&&r.
 check('111.7 · R2-02 · requête de parcours groupée envoyée (points intermédiaires)',n.multi>0,'requêtes multi-points : '+n.multi);
 check('111.8 · R2-02 · départ d’un lieu enregistré dans l’horizon AROME : même température que Météo (≤ 0,5 °C)',tr.near.dep!=null&&tr.near.meteo!=null&&Math.abs(tr.near.dep-tr.near.meteo)<=0.5&&tr.near.src&&tr.near.src.kind==='arome'&&/AROME/.test(tr.near.tag),JSON.stringify(tr.near));
 check('111.9 · R2-02 · au-delà de l’horizon AROME : modèle de base, et c’est écrit',tr.far.src&&tr.far.src.kind==='base'&&/au-delà de l’horizon AROME/.test(tr.far.tag)&&Math.abs(tr.far.dep-tr.far.meteo)<=0.5,JSON.stringify(tr.far));
+// R2-02 · preuve : la correction de chaussée apprise au domicile n'entre pas dans les trajets ; l'air reste celui de Météo.
+// Cinq retours « givre » fictifs au domicile avec une chaussée estimée à 5 °C : correction appliquée de −3 °C (plafond).
+const cal=await p.evaluate(l=>{S.calib=Array.from({length:5},(_,k)=>({t:'2026-10-03T13:0'+k,loc:'home',kind:'ice',Tr:5,T:20}));rebuild();
+  const m=M.home,r=legEval(l),q=r.seq[0],i=m.byTime.get(q.t.slice(0,13)+':00');
+  setRoadBias(0);const ref=makeModel(RAW.home.p,RAW.home.mode,m.loc);if(OBS)ref.obs=applyObs(ref,OBS.stations,35);const j=ref.byTime.get(q.t.slice(0,13)+':00');
+  const src=f1WeatherSources(r.seq),x=q.hs[q.i];S.calib=[];rebuild();
+  return {bias:m.roadBias,meteoT:m.hs[i].T,meteoTr:m.hs[i].Tr,depT:x.T,depTr:x.Tr,refTr:ref.hs[j].Tr,refIce:ref.hs[j].ice&&ref.hs[j].ice.level,depIce:x.ice&&x.ice.level,dated:src.known,rawT:q.raw?q.raw.T:null};},near);
+check('111.11 · R2-02 · correction de chaussée du lieu active (−3 °C) dans l’onglet Météo',cal.bias===-3&&cal.meteoTr!==cal.depTr,JSON.stringify(cal));
+check('111.12 · R2-02 · départ du trajet : air = Météo, chaussée et verglas = modèle SANS correction du lieu',cal.depT===cal.meteoT&&cal.depTr===cal.refTr&&cal.depIce===cal.refIce,JSON.stringify(cal));
+check('111.13 · R2-02 · points du trajet toujours datés (vraie heure de réception du lieu)',cal.dated===true,JSON.stringify(cal));
+const ev=await p.evaluate(l=>{const r=legEval(l),q=r.seq[0],lm=LEGM[legKey(l)].models[0],i=lm.byTime.get(q.t.slice(0,13)+':00');
+  return {raw:q.raw?q.raw.T:null,leg:lm.hs[i].T,shown:q.hs[q.i].T};},near);
+check('111.14 · C · moteur de preuves : le départ garde la prévision brute du parcours ; affichage et verdict lisent la valeur du lieu',ev.raw!=null&&ev.raw===ev.leg&&ev.shown!==ev.raw,JSON.stringify(ev));
 // R2-01 (seconde moitié) : AROME demandé et en échec → « AROME indisponible », et seulement dans ce cas.
 arFail=true;await p.evaluate(()=>refreshAll(true));await settle(12);
 const s2=await state();
