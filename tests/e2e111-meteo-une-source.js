@@ -26,9 +26,10 @@ const arome=pl=>{const h=pl.hourly,cut=96;   // veille + 3 jours (past_days=1, f
 const station=()=>{const pl=one(48.85,2.35),i=pl.hourly.time.indexOf(new FD(TNOW).toLocaleString('sv-SE',{timeZone:'Europe/Paris'}).slice(0,13).replace(' ','T')+':00');
   const at=new FD(TNOW).toISOString();return {updated:at,stations:{ST1:{id:'ST1',name:'Station test',lat:48.86,lon:2.36,last:{T:+(pl.hourly.temperature_2m[i]+AR_DT+ST_DT).toFixed(1),t:at}}}};};
 await p.route('**/*',r=>{const u=r.request().url();
- if(u.includes('open-meteo.com')){const q=new URL(u).searchParams,lats=String(q.get('latitude')).split(','),lons=String(q.get('longitude')).split(',');
-   if(u.includes('ensemble'))return J(r,ctx.me(one(lats[0],lons[0])));if(q.get('minutely_15'))return J(r,ctx.mn(one(lats[0],lons[0])));
-   if(u.includes('air-quality'))return r.abort();
+ const host=new URL(u).hostname;   // nom d'hôte exact (convention e2e109), jamais une sous-chaîne de l'URL
+ if(host==='open-meteo.com'||host.endsWith('.open-meteo.com')){const q=new URL(u).searchParams,lats=String(q.get('latitude')).split(','),lons=String(q.get('longitude')).split(',');
+   if(host==='ensemble-api.open-meteo.com')return J(r,ctx.me(one(lats[0],lons[0])));if(q.get('minutely_15'))return J(r,ctx.mn(one(lats[0],lons[0])));
+   if(host==='air-quality-api.open-meteo.com')return r.abort();
    if(lats.length>1){n.multi++;return J(r,lats.map((_,i)=>one(lats[i],lons[i])));}
    if(q.get('models')==='meteofrance_seamless'){n.arome++;return arFail?J(r,{error:true,reason:'test'},500):J(r,arome(one(lats[0],lons[0])));}
    n.base++;return J(r,one(lats[0],lons[0]));}
