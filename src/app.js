@@ -3256,6 +3256,9 @@ function altHtml(e) {
   if (cancelAffectedDay(e)) return '';
   const localOrigin = CalendarOrigin.get(S.calOrigins, TripCancel.eventId(e), 'go');
   if (e.mode === 'conflit') return '<div class="alt"><span class="sub">⚠️ <b>#maison</b> et <b>#direct</b> sont tous les deux dans ce rendez-vous : règle par défaut appliquée. Garde un seul mot-clé.</span></div>';
+  // #direct sans rendez-vous précédent ce jour-là : le relais calcule l'aller depuis le domicile. Le dire, au lieu d'annoncer un enchaînement.
+  const plannedGo = (e.legs || []).find(l => l.k === 'go');
+  if (e.mode === 'direct' && plannedGo && plannedGo.fromKind === 'home') return `<div class="alt"><span class="sub">📌 <b>#direct</b> est dans ton agenda, mais aucun rendez-vous avec trajet ne le précède ce jour-là : aller calculé <b>depuis le domicile</b>. ${localOrigin ? 'Départ choisi dans l’app pour ce rendez-vous ; les notifications cloud suivent toujours l’agenda.' : 'Si tu pars d’ailleurs (du travail, par exemple), change le départ de ce rendez-vous : horaire et itinéraire seront recalculés.'}</span></div>`;
   if (e.mode === 'direct' || e.mode === 'maison') return `<div class="alt"><span class="sub">📌 Selon ton agenda (<b>#${e.mode}</b>) : ${e.mode === 'direct' ? 'enchaîné directement depuis le rendez-vous précédent' : 'retour maison avant ce rendez-vous'}. ${localOrigin ? 'Départ choisi dans l’app pour ce rendez-vous ; les notifications cloud suivent toujours l’agenda.' : 'Appli et notifications suivent ce choix.'}</span></div>`;
   if (!e.alt || !e.alt.direct) return '';
   const on = !!calDirectSet()[e.alt.key], d = e.alt.direct, v = e.alt.viaHome, dk = v.km - d.km, dm = v.min - d.min;
