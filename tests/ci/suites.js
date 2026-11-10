@@ -55,6 +55,7 @@ SUITE.sort((a, b) => (FIRST.includes(a[0]) ? FIRST.indexOf(a[0]) : FIRST.length)
 SUITE.push(['test_road_intelligence.js', 'route : géométrie, sens, progression, validité, dédoublonnage et alertes', false],
   ['test_road_providers.js', 'fournisseurs : pannes isolées, fraîcheur, quota, cache licite, annulation et flux', false],
   ['test_road_datex.js', 'DATEX serveur : snapshot, deltas, fin, validité, atomique et conservation au déploiement', false],
+  ['test_datex_publish.js', 'DATEX publication : refus GitHub passagers espacés, échec persistant visible, relais concurrent, jamais d’écrasement par plus ancien', false],
   ['e2e51-road.js', 'Live Road Intelligence : cockpit PC/iPhone, clics, OSRM, DATEX, fraîcheur, panne et confidentialité', true],
   ['e2e52-road-sw.js', 'SW réel : migration v9/v11, DATEX, hors ligne, rétention et aucun faux LIVE', true, 'chromium'],
   ['test_sw_cache_boundaries.js', 'SW : routes de récupération/config isolées du shell et alias hors ligne explicites', false],
