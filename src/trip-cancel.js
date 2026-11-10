@@ -101,9 +101,10 @@ const TripCancel = (() => {
   // par le relais) le rétablit comme trajet. Ses anciennes jambes sont alors écartées par rebuild (mode 'pasdetrajet').
   const fold = v => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const unconfirmed = e => !!e && typeof e === 'object' && e.mode !== 'trajet' && /\[\s*a\s+reserver\s*\??\s*\]/.test(fold(e.t));
-  // R2-03 : un rendez-vous « Disponible » (ICS TRANSP:TRANSPARENT, publié par le relais en free: true) n'est pas un
-  // déplacement : aucun trajet, sauf choix explicite #trajet. Même traitement et même comptage que « [À réserver] ».
-  const available = e => !!e && typeof e === 'object' && e.free === true && e.mode !== 'trajet';
+  // R2-03 : un rendez-vous HORAIRE « Disponible » (ICS TRANSP:TRANSPARENT, publié par le relais en free: true) n'est pas un
+  // déplacement : aucun trajet, sauf choix explicite #trajet. Un événement « toute la journée » n'est pas concerné (l'agenda
+  // le marque « Disponible » par défaut). #pasdetrajet reste compté sous son propre motif.
+  const available = e => !!e && typeof e === 'object' && e.free === true && !e.allDay && e.mode !== 'trajet' && e.mode !== 'pasdetrajet';
   const confirmedOnly = events => Array.isArray(events) ? events.map(e => unconfirmed(e) ? { ...e, mode: 'pasdetrajet', unconfirmed: true } : e)
     .map(e => !e.unconfirmed && available(e) ? { ...e, mode: 'pasdetrajet', available: true } : e) : events;   // un seul motif compté
   function rebuild(events, home, directSet, state, now, context = {}) {

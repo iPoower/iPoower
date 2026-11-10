@@ -12,10 +12,11 @@ fs.cpSync(SRC, SP, { recursive: true });
 const base = tryUnseal(JSON.parse(fs.readFileSync(path.join(SRC, 'cal.fake.json'), 'utf8')), PW.toLowerCase());
 assert(base && Array.isArray(base.events), 'agenda fictif lisible avec la clé de test');
 const routable = base.events.filter(e => e.lat != null && (e.legs || []).some(l => l.k === 'go') && e.mode !== 'pasdetrajet' && e.s >= '2026-10-03');
-const target = routable[0], direct = routable.find(e => e !== target && e.s.slice(0, 10) !== target.s.slice(0, 10) && e.legs.find(l => l.k === 'go').fromKind === 'home');
-assert(target && direct, 'deux rendez-vous fictifs localisés avec trajet existent');
+const allDay = base.events.find(e => e.allDay && e.lat != null && (e.legs || []).length && e.mode !== 'pasdetrajet');
+const target = routable.filter(e => !e.allDay)[0], direct = routable.find(e => e !== target && e.s.slice(0, 10) !== target.s.slice(0, 10) && e.legs.find(l => l.k === 'go').fromKind === 'home');
+assert(target && direct && allDay, 'rendez-vous fictifs localisés avec trajet (horaires et toute la journée) existent');
 const write = (patch, patchDirect = {}) => fs.writeFileSync(path.join(SP, 'cal.fake.json'), JSON.stringify(seal({ ...base,
-  events: base.events.map(e => e.id === target.id ? { ...e, ...patch } : e.id === direct.id ? { ...e, ...patchDirect } : e) }, PW.toLowerCase())));
+  events: base.events.map(e => e.id === target.id ? { ...e, ...patch } : e.id === direct.id ? { ...e, ...patchDirect } : e.id === allDay.id ? { ...e, free: true } : e) }, PW.toLowerCase())));
 process.env.SP = SP;
 const { BR, session, errors } = require('./lib/context-session');
 let n = 0, stage = '';
@@ -44,6 +45,10 @@ const directText = (p, id) => p.evaluate(id => {
         assert.equal(r.listed, false, 'aucune carte trajet'); assert.equal(r.legs, 0, 'ni aller ni retour'); assert.equal(r.trips, 0, 'aucun trajet construit');
         assert.match(r.note, /1 rendez-vous « Disponible » : pas un trajet\. Ajoute #trajet au titre pour en faire un\./);
         assert.doesNotMatch(r.note, /rendez-vous ignorés \(#pasdetrajet/, 'compté sous son propre motif');
+      });
+      await check(dev + ' · R2-03 · « toute la journée » marqué Disponible : trajet conservé, non compté', async () => {
+        const r = await state(s.p, allDay.id);
+        assert.notEqual(r.mode, 'pasdetrajet'); assert.equal(r.available, false); assert.ok(r.legs > 0, 'aller/retour conservés');
       });
       await check(dev + ' · R2-04 · #direct sans rendez-vous précédent : même départ que la ligne « ALLER »', async () => {
         const d = await directText(s.p, direct.id);

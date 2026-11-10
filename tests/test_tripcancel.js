@@ -431,7 +431,10 @@ test('« [À réserver] » : pas un trajet par défaut, chaîne réparée, #traj
 function availableEvent(a) {
   const events = chain().map((e, i) => i === 1 ? { ...e, t: 'Rendez-vous fictif', free: true } : e), snapshot = JSON.stringify(events);
   assert.equal(a.available({ t: 'x', free: true }), true);
-  for (const e of [{ t: 'x' }, { t: 'x', free: false }, { t: 'x', free: 'true' }, { t: 'x', free: true, mode: 'trajet' }, null]) assert.equal(a.available(e), false, JSON.stringify(e));
+  for (const e of [{ t: 'x' }, { t: 'x', free: false }, { t: 'x', free: 'true' }, { t: 'x', free: true, mode: 'trajet' }, { t: 'x', free: true, allDay: true },
+    { t: 'x', free: true, mode: 'pasdetrajet' }, null]) assert.equal(a.available(e), false, JSON.stringify(e));
+  const day = a.confirmedOnly([{ ...events[1], free: true, allDay: true }])[0];
+  assert.equal(day.available, undefined, '« toute la journée » + Disponible : trajet conservé'); assert.notEqual(day.mode, 'pasdetrajet');
   const out = a.confirmedOnly(events), free = out[1], after = out[2];
   assert.equal(free.mode, 'pasdetrajet'); assert.equal(free.available, true); assert.equal(free.unconfirmed, undefined);
   assert.equal(out[0], events[0]); assert.equal(after, events[2]);   // « Occupé » : même objet, comportement inchangé
@@ -440,7 +443,8 @@ function availableEvent(a) {
   assert.deepEqual(plain(map.get(free)), []);
   const go = map.get(after).find(l => l.k === 'go');
   assert.notEqual(go.from.lat, B.lat, 'un rendez-vous « Disponible » ne peut pas devenir l’origine du suivant');
-  for (const mode of ['direct', 'maison', 'pasdetrajet']) assert.equal(a.confirmedOnly([{ ...events[1], mode }])[0].mode, 'pasdetrajet', 'Disponible + #' + mode);
+  for (const mode of ['direct', 'maison']) assert.equal(a.confirmedOnly([{ ...events[1], mode }])[0].mode, 'pasdetrajet', 'Disponible + #' + mode);
+  const tag = a.confirmedOnly([{ ...events[1], mode: 'pasdetrajet' }])[0]; assert.equal(tag.available, undefined, '#pasdetrajet garde son motif');
   const kept = a.confirmedOnly([{ ...events[1], mode: 'trajet' }])[0];
   assert.equal(kept.mode, 'trajet'); assert.equal(kept.available, undefined);
   const both = a.confirmedOnly([{ ...events[1], t: '[À réserver] x' }])[0];
@@ -459,5 +463,6 @@ caught('LOCATION configuré ne peut garder l’ancienne destination Beta', sourc
 caught('« [À réserver] » ne peut redevenir un trajet par défaut', source.replace("unconfirmed(e) ? { ...e, mode: 'pasdetrajet', unconfirmed: true } : e", 'e'), unconfirmedBooking);
 caught('#trajet explicite ne peut être ignoré', source.replace("e.mode !== 'trajet' && /", '/'), unconfirmedBooking);
 caught('« Disponible » ne peut redevenir un trajet par défaut', source.replace("available(e) ? { ...e, mode: 'pasdetrajet', available: true } : e", 'e'), availableEvent);
-caught('« Disponible » + #trajet explicite ne peut être ignoré', source.replace("e.free === true && e.mode !== 'trajet'", 'e.free === true'), availableEvent);
-console.log(count + '/' + count + ' scénarios OK (dont treize mutations détectées)');
+caught('« Disponible » + #trajet explicite ne peut être ignoré', source.replace("e.mode !== 'trajet' && e.mode !== 'pasdetrajet'", "e.mode !== 'pasdetrajet'"), availableEvent);
+caught('« toute la journée » ne peut perdre son trajet', source.replace('e.free === true && !e.allDay &&', 'e.free === true &&'), availableEvent);
+console.log(count + '/' + count + ' scénarios OK (dont quatorze mutations détectées)');
