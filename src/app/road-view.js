@@ -7,7 +7,7 @@ function roadManager() {
   }
   return ROAD.manager;
 }
-const ROAD_STALE_MS = 30 * 60000;   // seuil de fraîcheur du flux DATEX (cron ≈ 8 min, relais météo en secours)
+const ROAD_STALE_MS = 30 * 60000;   // avertissement d'ancienneté ; les signalements sont masqués dès 25 min (RoadProviders.MAX_AGE_MS)
 const roadAge = ms => ms == null ? 'âge inconnu' : ms < 60000 ? `${Math.floor(ms / 1000)} s` : `${Math.floor(ms / 60000)} min`;
 const roadDistance = m => m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1).replace('.', ',')} km`;
 function roadStatus(p) {

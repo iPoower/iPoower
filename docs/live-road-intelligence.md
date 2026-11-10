@@ -47,10 +47,10 @@ Une carte compacte dans Pneus affiche la source, sa couverture partielle, son â
 | Situation | Comportement |
 |---|---|
 | Réponse complète confirmée, vérification **et** publication ≤ 2 min | `LIVE` ; alertes visuelles possibles pour un événement sévère récent devant soi, en trajet actif. |
-| Réponse confirmée entre 2 et 12 min | `Récent`, âge visible ; aucune alerte nouvelle. |
+| Réponse confirmée entre 2 et 25 min | `Récent`, âge visible ; aucune alerte nouvelle. |
 | Panne, copie SW ou cache local | Cache/non vérifié ou panne visible ; jamais `LIVE`. |
-| Hors ligne | Cache daté éventuellement affiché jusqu’à 12 min ; aucune alerte LIVE. |
-| Flux > 12 min | Événements masqués, source périmée. |
+| Hors ligne | Cache daté éventuellement affiché jusqu’à 25 min ; aucune alerte LIVE. |
+| Flux > 25 min | Événements masqués, source périmée. Le seuil couvre un cycle d’ingestion perdu (21 min au plus), pas deux. |
 | Cache > 24 h | Copie supprimée. |
 | GPS incertain, route périmée, dérive ou axe/sens inconnu | Signalements masqués ; repli GPS/OSRM/météo habituel. |
 | Arrivée, annulation, changement de trajet ou de route | Réponses anciennes invalidées, anciennes alertes retirées, contexte recalculé. |

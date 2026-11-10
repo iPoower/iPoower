@@ -838,10 +838,31 @@ function parseVigi(js, code, name, now = Date.now()) {
       if (/couleur|color|niveau|level/i.test(k) && /^[1-4]$/.test(String(v).trim()) && lvl == null) lvl = +String(v).trim();
       if (/ph[eé]nom/i.test(k) && typeof v === 'string') ph = v; else if (!ph && typeof v === 'string' && PH.test(v) && v.length < 40) ph = v;
     });
-    if (lvl) out.push({ lvl, ph: ph || 'phénomène non précisé' });
+    const b = Date.parse(f.begin_time || ''), e = Date.parse(f.end_time || '');
+    if (lvl) out.push({ lvl, ph: ph || 'phénomène non précisé', per: f.echeance === 'J' || f.echeance === 'J1' ? f.echeance : null, b: Number.isFinite(b) ? b : null, e: Number.isFinite(e) ? e : null });
   });
   const issued = mine.map(f => Date.parse(f.product_datetime || '')).filter(Number.isFinite);
   return { items: out, matched: mine.length, issuedAt: issued.length ? Math.max(...issued) : null, periods: [...new Set(mine.map(f => f.echeance).filter(p => p === 'J' || p === 'J1'))] };
+}
+// Jour réel d'un élément : sa période de validité fait foi. L'échéance « J1 » d'un bulletin de la veille désigne aujourd'hui
+// après minuit ; sans date de début, l'échéance est rapportée au jour du bulletin. Un élément échu n'est plus affiché.
+const VIGI_DAY = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' });
+function vigiTop(now = Date.now()) {
+  const today = VIGI_DAY.format(new Date(now)), live = (VIGI.items || []).filter(i => !(Number.isFinite(i.e) && i.e <= now));
+  if (!live.length) return null;
+  const lvl = Math.max(...live.map(i => i.lvl)), groups = new Map();
+  live.filter(i => i.lvl === lvl).forEach(i => {
+    let day = null;
+    if (Number.isFinite(i.b)) day = i.b <= now ? today : VIGI_DAY.format(new Date(i.b));
+    else if (Number.isFinite(VIGI.issuedAt) && i.per) { const base = VIGI_DAY.format(new Date(VIGI.issuedAt)); day = i.per === 'J' ? base : new Date(Date.parse(base + 'T12:00:00Z') + 86400000).toISOString().slice(0, 10); }
+    const n = day ? dayDiff(today, day) : -1, key = n < 0 ? '' : day;
+    if (!groups.has(key)) groups.set(key, { n, label: n < 0 ? '' : n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(day), phs: [] });
+    if (!groups.get(key).phs.includes(i.ph)) groups.get(key).phs.push(i.ph);
+  });
+  const parts = [...groups.values()].sort((a, b) => (a.n < 0 ? 99 : a.n) - (b.n < 0 ? 99 : b.n)), days = parts.filter(g => g.label).map(g => g.label);
+  // Vert : aucun phénomène n'est signalé, n'en nommer aucun. Sinon, chaque phénomène est rattaché à son jour.
+  const text = lvl === 1 ? days.join(' et ') : parts.length === 1 ? parts[0].phs.join(', ') + (parts[0].label ? ' · ' + parts[0].label : '') : parts.map(g => (g.label ? g.label + ' : ' : '') + g.phs.join(', ')).join(' · ');
+  return { lvl, parts, text };
 }
 async function fetchVigi() {
   const code = String(S.dept.code || '').trim(); if (!code || DEMO.on) { VIGI = { state: 'none', items: [], t: null }; return; }
@@ -861,8 +882,8 @@ function vigiBlock() {
   const link = `<a href="${esc(vigiLink())}" target="_blank" rel="noopener" style="color:var(--accent)">vigilance.meteofrance.fr ↗</a>`;
   let body;
   if (VIGI.state === 'ok') {
-    const top = VIGI.items.length ? VIGI.items.reduce((a, b) => b.lvl > a.lvl ? b : a) : null;
-    body = top ? `<span class="pill lv${Math.max(0, top.lvl - 1)}">${['', 'VERTE', 'JAUNE', 'ORANGE', 'ROUGE'][top.lvl]}</span> ${esc(top.ph)}${VIGI.periods && VIGI.periods.length ? ' · ' + VIGI.periods.map(p => p === 'J' ? 'aujourd’hui' : 'demain').join(' et ') : ''}${VIGI.issuedAt ? ' · bulletin du ' + esc(new Date(VIGI.issuedAt).toLocaleDateString('fr-FR')) + ' à ' + hmLocal(VIGI.issuedAt) : ''}` : 'Vigilance non disponible.';
+    const top = vigiTop();
+    body = top ? `<span class="pill lv${Math.max(0, top.lvl - 1)}">${['', 'VERTE', 'JAUNE', 'ORANGE', 'ROUGE'][top.lvl]}</span>${top.text ? ' ' + esc(top.text) : ''}${VIGI.issuedAt ? ' · bulletin du ' + esc(new Date(VIGI.issuedAt).toLocaleDateString('fr-FR')) + ' à ' + hmLocal(VIGI.issuedAt) : ''}` : 'Vigilance non disponible.';
   } else if (VIGI.state === 'unread') body = 'Aucune donnée de vigilance valide pour ce département.';
   else if (VIGI.state === 'err') body = 'Relais indisponible.';
   else body = 'Chargement…';
@@ -953,8 +974,8 @@ function extraAlerts(m, sum24) {
   if (m.nc && !m.nc.nowWet && m.nc.startIn != null && m.nc.startIn <= 45) out.rain15 = { id: 'rain15', sev: 1, title: `${m.nc.snow ? 'Neige' : 'Pluie'} dans ${m.nc.startIn} min`, detail: `Prévision au quart d’heure, ${f1(m.nc.total)} mm sur 2 h.` };
   // vigilance
   if (VIGI.state === 'ok' && VIGI.items.length) {
-    const top = VIGI.items.reduce((a, b) => b.lvl > a.lvl ? b : a);
-    if (top.lvl >= 2) out.vigi = { id: 'vigi', sev: top.lvl - 1, title: `Vigilance ${['', 'verte', 'jaune', 'orange', 'rouge'][top.lvl]} : ${top.ph}`, detail: `${S.dept.name || S.dept.code}. Source : Météo-France, relayée par Opendatasoft. Confirme sur le site officiel.` };
+    const top = vigiTop();
+    if (top && top.lvl >= 2) out.vigi = { id: 'vigi', sev: top.lvl - 1, title: `Vigilance ${['', 'verte', 'jaune', 'orange', 'rouge'][top.lvl]} : ${top.text}`, detail: `${S.dept.name || S.dept.code}. Source : Météo-France, relayée par Opendatasoft. Confirme sur le site officiel.` };
   }
   return out;
 }
