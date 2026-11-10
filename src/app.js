@@ -290,6 +290,8 @@ const urlFor = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&current=${Q_CUR
 // Météo-France AROME (via Open-Meteo) : haute résolution sur 0–48 h. Pas de visibilité ni de probabilité de pluie : elles restent issues du modèle de base.
 const Q_AR = 'temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,precipitation,rain,showers,snowfall,weather_code,pressure_msl,cloud_cover,wind_speed_10m,wind_gusts_10m,shortwave_radiation';
 const urlArome = l => `${API}?latitude=${l.lat}&longitude=${l.lon}&current=${Q_CUR}&hourly=${Q_AR}&models=meteofrance_seamless&timezone=auto&past_days=1&forecast_days=3`;
+// Durée de réutilisation d'une réponse AROME : une seule valeur, pour la requête ET pour la règle de fraîcheur (R2-01).
+const AROME_TTL = 35 * 60e3;
 
 let M = {};            // modèles par lieu
 const RAW = {};        // charges utiles + mode
@@ -421,7 +423,7 @@ async function loadLoc(l, force = false) {
   const baseUrl = urlFor(l), arUrl = urlArome(l), ncUrl = urlNow(l);
   const [b, ar, nc] = await Promise.allSettled([
     fetchJSON(baseUrl, 12000, group, force ? 0 : l.id === UI.loc ? 4 * 60e3 : 18 * 60e3),
-    fetchJSON(arUrl, 12000, group, force ? 0 : 35 * 60e3),
+    fetchJSON(arUrl, 12000, group, force ? 0 : AROME_TTL),
     fetchJSON(ncUrl, 12000, group, force ? 0 : 14 * 60e3)
   ]);
   if (!weatherLoadCurrent(l, loadGen) || l.gps && (gen !== gpsWeatherGen || !GPS || distKm(origin, GPS) > 3)) return null;
@@ -434,9 +436,14 @@ async function loadLoc(l, force = false) {
   if (incoming && previous && incoming < previous && prior.lat === origin.lat && prior.lon === origin.lon) throw new Error('réponse météo plus ancienne que les données conservées');
   // Ne jamais laisser un ancien AROME en cache écraser une prévision de base reçue plus récemment :
   // en cas de décalage de fraîcheur, le modèle de base fait foi jusqu'au prochain vrai relevé AROME.
-  const arFresh = ar.status === 'fulfilled' && !!ar.value
-    && !validForecast(ar.value) && (WEATHER_REQUESTS.fetchedAt(arUrl) || 0) >= (WEATHER_REQUESTS.fetchedAt(baseUrl) || 0) - 60e3;
+  // R2-01 : la base du lieu affiché est redemandée toutes les 4 min, AROME toutes les 35 min. Une réponse AROME encore
+  // dans sa durée de réutilisation est la dernière sortie AROME connue : elle reste fusionnée après une actualisation
+  // automatique. Seul un AROME à la fois plus vieux que sa durée de réutilisation et antérieur à la base est écarté.
+  const arValid = ar.status === 'fulfilled' && !!ar.value && !validForecast(ar.value), arAt = WEATHER_REQUESTS.fetchedAt(arUrl) || 0;
+  const arFresh = arValid && (arAt >= (WEATHER_REQUESTS.fetchedAt(baseUrl) || 0) - 60e3 || (arAt <= Date.now() && Date.now() - arAt < AROME_TTL + 60e3));
   const p = mergeArome(b.value, arFresh ? ar.value : null);
+  // Provenance d'AROME, pour ne jamais annoncer « AROME indisponible » quand il a été reçu (ok/hors couverture) ou écarté (ancien).
+  if (p && p.__arome) p.__arome.status = p.__arome.hours ? 'ok' : !arValid ? 'failed' : !arFresh ? 'stale' : 'empty';
   // Un ancien lieu GPS ne remplace jamais la météo d'une position plus récente, ni un GPS oublié.
   if (l.gps && (gen !== gpsWeatherGen || !GPS || distKm(origin, GPS) > 3)) return p;
   if (nc.status === 'fulfilled' && nc.value && nc.value.minutely_15) NOWRAW[l.id] = nc.value; else delete NOWRAW[l.id];
@@ -906,6 +913,12 @@ const RISKTXT = LV.map(l => l.name);   // échelle unique de l'app
 // Température « actuelle » unique : celle de l'heure en cours corrigée par la station (applyObs) quand une correction existe,
 // sinon la donnée actuelle du modèle. Jamais deux valeurs différentes affichées pour le même instant.
 const curTemp = m => m && m.obs && m.hs && m.hs[m.nowI] && Number.isFinite(m.hs[m.nowI].T) ? m.hs[m.nowI].T : m && m.cur ? m.cur.T : null;
+// Conditions « actuelles » affichées (R2-07) : avec une station, l'heure en cours recalée (température, temps, précipitations,
+// visibilité, chaussée) comme dans l'onglet Météo ; sinon la donnée actuelle du modèle. La valeur brute n'apparaît jamais seule.
+const curNow = m => {
+  const x = m && m.obs && m.hs && m.hs[m.nowI];
+  return x && Number.isFinite(x.T) ? { ...m.cur, T: x.T, code: x.code ?? m.cur.code, P: x.P ?? m.cur.P, vis: x.vis ?? m.cur.vis, Tr: x.Tr ?? m.cur.Tr } : m && m.cur;
+};
 const visTxt = v => v == null ? '—' : v >= 10000 ? '> 10 km' : v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + ' km' : Math.round(v) + ' m';
 function icon(code) {
   const cloud = '<path d="M7 16.5h10a3.4 3.4 0 0 0 .3-6.8A5 5 0 0 0 7.6 9 3.9 3.9 0 0 0 7 16.5z"/>';
@@ -1020,6 +1033,10 @@ function renderLocChips() {
     `<div id="locChoices" class="locs-more" ${UI.locsOpen ? '' : 'hidden'}><div class="loc-grid">${chips}</div><button class="chip loc-manage" data-act="goset">Gérer mes lieux</button></div><span class="sub" id="locMsg" ${GEO.error ? '' : 'hidden'}>${GEO.error ? esc(GEO.error.message) : ''}</span>`;
   renderPlace();
 }
+// « AROME indisponible » seulement si AROME a été demandé et a échoué ; un ancien cache sans provenance ne l'affirme pas.
+const aromeMissingTxt = ar => ar && ar.status === 'failed' ? ' (modèle de base, AROME indisponible)'
+  : ar && ar.status === 'empty' ? ' (modèle de base : lieu ou horaires hors couverture AROME)'
+  : ar && ar.status === 'stale' ? ' (modèle de base : AROME en attente de mise à jour)' : ' (modèle de base)';
 function renderSrc() {
   const m = M[UI.loc], l = allLocs().find(x => x.id === UI.loc) || allLocs()[0];
   if (!locHasCoords(l)) { $('#srcline').innerHTML = 'Lieu sans coordonnées · météo locale non calculée.'; return; }
@@ -1027,7 +1044,7 @@ function renderSrc() {
   const modelTime = m.cur.time ? m.cur.time.replace('T', ' ') : 'inconnue';
   const srcHtml = DEMO.on
     ? `Source : <b>scénario simulé « ${esc(DEMO_SCN[DEMO.scn].name)} »</b>. Les valeurs ne viennent d’aucun capteur ni d’aucun service météo.`
-    : `${dataAt() ? 'Réception météo : <b>' + LIVE_DAY_FORMAT.format(dataAt()) + ' ' + LIVE_RECEIPT_FORMAT.format(dataAt()) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : ' (modèle de base, AROME indisponible)'} · modèles météo, pas une station · validité du modèle : <b>${esc(modelTime)}</b> (${esc(m.tz || 'Europe/Paris')}) · ${m.obs ? 'observation réelle : <b>' + esc(m.obs.t || 'heure inconnue') + '</b> · ' + esc(wxStationLine(m.obs)) : 'aucune observation réelle de station disponible'} · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
+    : `${dataAt() ? 'Réception météo : <b>' + LIVE_DAY_FORMAT.format(dataAt()) + ' ' + LIVE_RECEIPT_FORMAT.format(dataAt()) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : aromeMissingTxt(m.payload.__arome)} · modèles météo, pas une station · validité du modèle : <b>${esc(modelTime)}</b> (${esc(m.tz || 'Europe/Paris')}) · ${m.obs ? 'observation réelle : <b>' + esc(m.obs.t || 'heure inconnue') + '</b> · ' + esc(wxStationLine(m.obs)) : 'aucune observation réelle de station disponible'} · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
   const el = $('#srcline'), open = el.querySelector('details') && el.querySelector('details').open;
   const html = `<details${open ? ' open' : ''}><summary>ⓘ Sources et fraîcheur des données${dataAt() ? ' · reçue à ' + LIVE_RECEIPT_FORMAT.format(dataAt()) : ''}</summary><div>${srcHtml}</div></details>`;
   if (el.innerHTML !== html) {
@@ -1272,7 +1289,7 @@ function ncBlock(m) {
 /* ---------- rendu : météo actuelle ---------- */
 function renderCurrent() {
   const el = $('#secCur'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
-  const { m, sum24 } = CX, c = m.cur, hs = m.hs, n = m.nowI, T0 = curTemp(m);
+  const { m, sum24 } = CX, c = curNow(m), hs = m.hs, n = m.nowI, T0 = curTemp(m);
   const day = m.days.find(d => d.date === m.nowStr.slice(0, 10)) || {};
   const pAgo = hs[n - 3], trend = (pAgo && pAgo.pres != null && c.pres != null) ? c.pres - pAgo.pres : null;
   const snowTxt = sum24.snowSum > 0 || sum24.snowCode ? `Neige prévue${sum24.snowSum > 0 ? ' : ' + f1(sum24.snowSum) + ' cm' : ''}` : sum24.sleet ? 'Neige mouillée possible (estimé)' : 'Aucune prévue sur 24 h';
@@ -3170,9 +3187,31 @@ function legEval(leg) {
   const k = legKey(leg), c = LEGM[k];
   if (!c || Date.now() - c.t > PT_TTL) { fetchLeg(leg); if (!c) return { loading: true }; }
   if (!c.models) return { err: true };
-  const seq = legSeq(c.models, legPoints(leg), leg.dep, leg.min); if (!seq.length) return { beyond: true };
+  const pts = legPoints(leg), last = pts.length - 1, place = c.models.map((m, j) => j === 0 || j === last ? legPlaceModel(pts[j], m) : null);
+  const seq = legSeq(c.models.map((m, j) => place[j] || m), pts, leg.dep, leg.min); if (!seq.length) return { beyond: true };
   const res = appTripCars().map(car => ({ c: car, w: windowAssess(car, seq, 'trip') })).filter(r => r.w);
-  return { seq, sum: summarize(seq), res: res.length ? res : null, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, crit: legCritical(seq, appTripCars()) };
+  return { seq, sum: summarize(seq), res: res.length ? res : null, worst: res.length ? res.reduce((m, r) => Math.max(m, r.w.level), 0) : null, crit: legCritical(seq, appTripCars()),
+    depSrc: legDepSource(seq, place[0]) };
+}
+// R2-02 : un départ ou une arrivée situé sur un lieu chargé (≤ 1 km) lit le modèle de CE lieu (AROME, recalage station,
+// calibration de chaussée), exactement celui de l'onglet Météo : une seule température par lieu et par heure.
+// Les points intermédiaires gardent la requête groupée (modèle de base). Même fuseau exigé : mêmes heures, mêmes index.
+const LEG_PLACE_KM = 1;
+function legPlaceModel(pt, fallback) {
+  if (!fallback || !pt || !Number.isFinite(pt.lat) || !Number.isFinite(pt.lon) || DEMO.on) return null;
+  let best = null;
+  for (const l of allLocs()) {
+    const m = M[l.id]; if (!m || !m.hs || !locHasCoords(l) || m.tz !== fallback.tz) continue;
+    const d = distKm(pt, l); if (d <= LEG_PLACE_KM && (!best || d < best.d)) best = { m, d };
+  }
+  return best && best.m;
+}
+// Provenance du point de départ : lieu enregistré dans l'horizon AROME, au-delà (modèle de base), ou point de route.
+function legDepSource(seq, placeModel) {
+  const q = seq[0]; if (!q || q.k !== 0) return null;
+  if (!placeModel) return { kind: 'route' };
+  const ar = placeModel.payload && placeModel.payload.__arome, x = q.hs[q.i] || {};
+  return { kind: ar && ar.hours && ar.until && x.t <= ar.until ? 'arome' : 'base', station: !!placeModel.obs };
 }
 function calDirectSet() { return S.calDirect || {}; }
 const CANCELROUTES = new Map(); let CANCELROUTEGEN = 0;
@@ -3295,7 +3334,7 @@ function legHtml(leg, ev) {
   if (leg.originPending) return `<div class="leg lvx"><div class="leg-h"><b>${leg.k === 'go' ? 'ALLER' : 'RETOUR'}</b></div><p class="sub" role="status">${leg.originRecalc ? '📍 Départ confirmé : ' + esc(leg.originName) + ' · nouvel itinéraire et météo en cours de calcul' : 'Origine à confirmer après annulation du trajet précédent'}</p>${cancel}</div>`;
   const r = legEval(leg), go = leg.k === 'go', gen = (r.res || []).some(x => carProfile(x.c).generic);
   const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${leg.dep.slice(11, 16)}</b> → ${leg.arr.slice(11, 16)} · ${f0(leg.km)} km · ${leg.min} min${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''} · ${cdSpan(leg.dep)}</div>
-    <div class="leg-src">${leg.routed ? '<i class="tag prev">🛣 route · OSRM</i>' : '<i class="tag est">≈ route estimée</i>'}</div>
+    <div class="leg-src">${leg.routed ? '<i class="tag prev">🛣 route · OSRM</i>' : '<i class="tag est">≈ route estimée</i>'}${r.seq ? ' ' + legDepSrcTag(r.depSrc) : ''}</div>
     <div class="leg-o">${go ? (leg.fromKind === 'prev' ? '↪ depuis ' + esc(leg.from.label || 'le rendez-vous précédent') + (leg.chosen ? ' (enchaînement choisi)' : ' (rendez-vous précédent)') : leg.fromKind === 'home' ? '🏠 depuis le domicile' : '📍 depuis ' + esc(leg.from.city || leg.from.label || 'le lieu connu')) : '🏠 vers le domicile'}</div>`;
   const nav = wazeBtn(legNavTo(leg));
   let body;
@@ -3326,6 +3365,12 @@ function legHtml(leg, ev) {
       ${r.res.length > 1 ? `<span class="sub">${r.res.map(x => `${esc(x.c.short)} : ${carProfile(x.c).generic ? 'aperçu générique' : LV[x.w.level].name + ' ' + x.w.score}`).join(' · ')}</span>` : ''}`;
   }
   return `<div class="leg lv${!gen && r.res && r.sum ? tripRiskLv(r) : !gen && r.worst != null ? r.worst : 'x'}">${head}${body}${cancel}</div>`;
+}
+// Provenance affichée du point de départ (R2-02) : jamais un modèle de base présenté comme la météo du lieu.
+function legDepSrcTag(s) {
+  return !s ? '' : s.kind === 'arome' ? `<i class="tag prev" data-dep-src="arome">départ : AROME${s.station ? ' + station' : ''} · comme l’onglet Météo</i>`
+    : s.kind === 'base' ? '<i class="tag est" data-dep-src="base">départ : modèle de base (au-delà de l’horizon AROME)</i>'
+    : '<i class="tag est" data-dep-src="route">départ : modèle de base</i>';
 }
 // résumé de la journée : nombre de déplacements, kilomètres, trajet à surveiller
 function daySummary(evs, now) {
@@ -3610,7 +3655,7 @@ function renderCars() {
   const html = CX.cars.map(({ car, w, nar }) => {
     if (!hasTires(car)) return waitCard(car);
     if (!w) return `<article class="car"><div class="car-h"><h3>${esc(car.name)}</h3></div><div class="car-b"><p class="muted">Données insuffisantes pour évaluer cette voiture.</p></div></article>`;
-    const c = m.cur, i = m.nowI;
+    const c = curNow(m), i = m.nowI;
     const strip = []; for (let k = 0; k <= 24; k++) { const v = hourVerdict(car, m.hs, i + k); strip.push(v ? `<i class="lv${v.level}" title="${m.hs[i + k].t.slice(11, 16)} · ${LV[v.level].name} · ${v.score}/100"></i>` : ''); }
     const labels = [0, 6, 12, 18, 24].map(k => `<span>${m.hs[i + k] ? m.hs[i + k].t.slice(11, 16) : ''}</span>`).join('');
     const wi = w.worst, pf = carProfile(car), gen = pf.generic;
@@ -3986,7 +4031,7 @@ function dayInfosOne(m, car, date) {
 function renderWeatherLink() {
   const el = $('#secWeatherLink'); el.hidden = UI.view !== 'pneus';
   if (el.hidden) return;
-  const c = CX && CX.m.cur, l = curLoc();
+  const c = CX && curNow(CX.m), l = curLoc();
   el.innerHTML = `<div><h3>🌦️ Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}${c.vis != null ? ' maintenant' : ''}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="weather-details">Détails météo →</button>`;
 }
 
