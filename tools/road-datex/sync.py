@@ -18,12 +18,18 @@ BASE = "https://tipi.bison-fute.gouv.fr/bison-fute-ouvert/publicationsDIR/Evenem
 SOURCE = "https://www.bison-fute.gouv.fr/donnees-sur-la-circulation-du.html"
 LICENSE = "https://www.etalab.gouv.fr/wp-content/uploads/2017/04/ETALAB-Licence-Ouverte-v2.0.pdf"
 MAX_XML = 12_000_000
-MAX_GAP = 256
+# Écart maximal snapshot → index rejoué. Pics mesurés aux heures de trajet (04/11 et 05/11) :
+# ~12 deltas/min avec un snapshot régénéré environ toutes les heures, soit plus de 256 deltas en
+# ~21 min (runs rouges 20 à 30 min, DATEX périmé). 768 couvre 62 min à ce débit ; mesuré à
+# ~11 fichiers/s, l'ingestion reste sous le budget de 180 s. Au-delà, l'échec reste visible.
+MAX_GAP = 768
 # Le serveur public DIR ne répond pas toujours : une erreur réseau est retentée
 # deux fois. Si elle persiste, la dernière publication reste servie telle quelle
 # (avec ses horodatages d'origine) tant qu'elle a moins d'une heure.
 NETWORK_ERRORS = (urllib.error.URLError, TimeoutError, ConnectionError)
 RETRY_PAUSES = (3, 8)
+PARSE_RETRIES = 1
+DELTA_NAME = re.compile(r"\d{1,10}\.xml")
 KEEP_LAST_MAX_AGE = 3600
 XSI = "{http://www.w3.org/2001/XMLSchema-instance}type"
 TYPES = {
@@ -198,8 +204,30 @@ def publication(data, now):
         changes[ident] = situation
     return changes, updated, value(root, "feedType"), value(root, "updateMethod")
 
+def tag(error, name):
+    """Attache le fichier public en cause à l'erreur (diagnostic du run, aucune donnée privée)."""
+    if getattr(error, "source_name", None) is None:
+        try:
+            error.source_name = name
+        except AttributeError:
+            pass
+    return error
+
+def describe(error):
+    """Résumé d'échec lisible dans le journal du run : type, code HTTP, fichier public et motif."""
+    parts = [type(error).__name__]
+    code = getattr(error, "code", None)
+    if isinstance(error, urllib.error.HTTPError) and isinstance(code, int):
+        parts.append("HTTP " + str(code))
+    name = getattr(error, "source_name", None)
+    if name:
+        parts.append(name)
+    if isinstance(error, (ValueError, ET.ParseError, TimeoutError)) and str(error):
+        parts.append(re.sub(r"[^\w .:,'()/-]", "?", str(error))[:120])
+    return " · ".join(parts)
+
 def download(name):
-    if name not in {"content.xml", "index.txt"} and not re.fullmatch(r"\d{1,10}\.xml", name):
+    if name not in {"content.xml", "index.txt"} and not DELTA_NAME.fullmatch(name):
         raise ValueError("Invalid source path")
     request = urllib.request.Request(BASE + name, headers={"User-Agent": "RaceControl-DATEX-open-data/1.0", "Cache-Control": "no-cache"})
     for attempt in range(len(RETRY_PAUSES) + 1):
@@ -212,12 +240,16 @@ def download(name):
                     raise ValueError("Source too large")
                 return data
         except urllib.error.HTTPError as error:
-            # 4xx : réponse définitive, jamais retentée ; 5xx : panne passagère possible
-            if error.code < 500 or attempt == len(RETRY_PAUSES):
-                raise
-        except NETWORK_ERRORS:
+            # 4xx : réponse définitive, jamais retentée ; 5xx : panne passagère possible.
+            # Exception mesurée le 09/11 : la source publie index.txt avant le dernier delta
+            # annoncé, qui répond 404 pendant 0 à 7 s. Un 404 sur un delta est donc retenté
+            # (3 s puis 8 s) ; s'il persiste, l'échec reste visible.
+            late_delta = error.code == 404 and DELTA_NAME.fullmatch(name) is not None
+            if (error.code < 500 and not late_delta) or attempt == len(RETRY_PAUSES):
+                raise tag(error, name)
+        except NETWORK_ERRORS as error:
             if attempt == len(RETRY_PAUSES):
-                raise
+                raise tag(error, name)
         time.sleep(RETRY_PAUSES[attempt])
 
 def sync(fetch=download, previous=None, now=None):
@@ -232,35 +264,53 @@ def sync(fetch=download, previous=None, now=None):
             raise TimeoutError("Ingestion budget exceeded")
         return data
     def index():
-        raw = bounded_fetch("index.txt").decode("ascii").strip()
+        try:
+            raw = bounded_fetch("index.txt").decode("ascii").strip()
+        except UnicodeDecodeError as error:
+            raise tag(ValueError("Invalid update index"), "index.txt") from error
         if not re.fullmatch(r"\d{1,10}", raw):
-            raise ValueError("Invalid update index")
+            raise tag(ValueError("Invalid update index"), "index.txt")
         return int(raw)
+    def fetch_publication(name):
+        # Un XML illisible (réponse tronquée pendant l'écriture côté serveur, run du 09/11 03:24 UTC)
+        # est retéléchargé une seule fois après une pause. S'il reste illisible, l'échec est
+        # rendu visible et la dernière publication valide n'est pas touchée.
+        for attempt in range(PARSE_RETRIES + 1):
+            try:
+                data = bounded_fetch(name)
+                return publication(data, clock())
+            except ET.ParseError as error:
+                if attempt == PARSE_RETRIES:
+                    raise tag(error, name)
+                time.sleep(RETRY_PAUSES[0])
+            except (ValueError, urllib.error.URLError, TimeoutError, ConnectionError) as error:
+                raise tag(error, name)
     target = index()
     # Reconstruire depuis le snapshot public à chaque passage. Ne jamais utiliser
     # le JSON filtré comme état DATEX : il omet les situations futures/suspendues.
     # Le téléphone ne télécharge que le résultat compact, jamais cet XML.
-    situations, updated, sequence, method = publication(bounded_fetch("content.xml"), clock())
+    situations, updated, sequence, method = fetch_publication("content.xml")
     if method != "snapshot" or not sequence or not re.fullmatch(r"\d{1,10}", sequence):
         raise ValueError("Snapshot cursor absent")
     cursor = int(sequence)
     if cursor > target:
         target = index()
     if cursor > target or target - cursor > MAX_GAP:
-        raise ValueError("Incremental gap exceeds bounded ingestion")
+        raise tag(ValueError("Incremental gap exceeds bounded ingestion (snapshot "
+                             + str(cursor) + ", index " + str(target) + ")"), "content.xml")
     # Les curseurs DIR désignent le prochain delta : celui du snapshot est
     # publié après le snapshot, et index.txt dépasse le dernier fichier listé.
     # Rejouer le premier curseur inclus jusqu'à l'index exclu.
     names = [str(i) + ".xml" for i in range(cursor, target)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
-        for expected_cursor, data in enumerate(pool.map(bounded_fetch, names), cursor):
-            changes, date, sequence, method = publication(data, clock())
+        for expected_cursor, parsed in enumerate(pool.map(fetch_publication, names), cursor):
+            changes, date, sequence, method = parsed
             if method != "allElementUpdate":
-                raise ValueError("Unsupported or partial update method")
+                raise tag(ValueError("Unsupported or partial update method"), str(expected_cursor) + ".xml")
             # Le flux réel réserve feedType au snapshot. Contrôler le curseur
             # lorsqu'un delta le fournit, sans inventer ce champ s'il est absent.
             if sequence is not None and (not re.fullmatch(r"\d{1,10}", sequence) or int(sequence) != expected_cursor):
-                raise ValueError("Incremental cursor does not match requested update")
+                raise tag(ValueError("Incremental cursor does not match requested update"), str(expected_cursor) + ".xml")
             situations.update(changes)
             if timestamp(date) > timestamp(updated):
                 updated = date
@@ -323,10 +373,13 @@ def cli(argv=None, fetch=None, now=None):
         if isinstance(error, NETWORK_ERRORS) and not (isinstance(error, urllib.error.HTTPError) and error.code < 500):
             age = published_age(arguments(argv).output, now)
             if age is not None and age <= KEEP_LAST_MAX_AGE:
-                print("DATEX source unreachable (" + type(error).__name__ + "): last publication kept, "
-                      + str(round(age / 60)) + " min old", file=sys.stderr)
+                message = ("DATEX source unreachable (" + describe(error) + "): last publication kept, "
+                           + str(round(age / 60)) + " min old")
+                print(message, file=sys.stderr)
+                # Aucune donnée n'a été actualisée : avertissement visible sur le run, jamais un succès silencieux.
+                print("::warning title=DATEX non actualisé::" + message)
                 return 0
-        print("DATEX sync failed: " + type(error).__name__, file=sys.stderr)
+        print("DATEX sync failed: " + describe(error), file=sys.stderr)
         return 1
 
 if __name__ == "__main__":

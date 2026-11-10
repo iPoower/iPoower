@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), os = require('node:os'), cp = require('node:child_process'), assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const out = cp.spawnSync('python3', [path.join(__dirname, 'road_datex_test.py')], { encoding: 'utf8', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } });
-assert.equal(out.status, 0, out.stdout + out.stderr); assert(/Ran 18 tests/.test(out.stderr)); console.log('✅ DATEX : 18 scénarios snapshot, deltas, curseurs, fin, validité et exclusions, confidentialité, erreurs, nouvelles tentatives réseau et écriture atomique');
+assert.equal(out.status, 0, out.stdout + out.stderr); assert(/Ran 24 tests/.test(out.stderr)); console.log('✅ DATEX : 24 scénarios snapshot, deltas, curseurs, fin, validité et exclusions, confidentialité, erreurs, nouvelles tentatives réseau, delta annoncé encore en 404 retenté brièvement, pic de 700 deltas ingéré (borne 768), XML tronqué retéléchargé une fois, journal code/fichier/motif, avertissement de conservation et écriture atomique');
 const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'road-deploy-'));
 try {
   const src = path.join(folder, 'src'), dst = path.join(folder, 'dst'); fs.mkdirSync(src); fs.mkdirSync(dst);
@@ -13,4 +13,4 @@ try {
   for (const f of ['road-datex.json', 'obs.json', 'calendar.sealed.json']) assert.equal(fs.readFileSync(path.join(dst, f), 'utf8'), 'flux serveur fictif');
   console.log('✅ déploiement et rollback : flux DATEX, météo et agenda conservés');
 } finally { fs.rmSync(folder, { recursive: true, force: true }); }
-console.log('19/19 scénarios OK');
+console.log('25/25 scénarios OK');
