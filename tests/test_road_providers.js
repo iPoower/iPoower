@@ -61,9 +61,14 @@ await check('cache interdit pour un fournisseur commercial ; cache et quota refu
   const m = manager([provider(() => response(), { cacheAllowed: true })], { storage }); await m.refresh(); assert(m.snapshot().fresh);
   let wrote = false; const commercial = manager([provider(() => response(F.feed('paid')), { id: 'paid' })], { storage: { getItem: () => null, setItem: () => { wrote = true; } } }); await commercial.refresh(); assert(!wrote);
 });
-await check('âge et expiration : récent sans LIVE après 2 min ; masqué après 12 min', async () => {
+await check('âge et expiration : récent sans LIVE après 2 min ; visible et daté après un cycle perdu (21 min) ; masqué après 25 min', async () => {
   const m = manager([provider(() => response(), { cacheAllowed: true })]); await m.refresh(); now += 150000; assert(!m.snapshot().fresh); assert(m.snapshot().providers[0].confirmed); assert.equal(m.nextAlert(), null);
-  now += 720000; assert.equal(m.snapshot().events.length, 0); assert.equal(m.snapshot().providers[0].state, 'stale');
+  assert.equal(P.MAX_AGE_MS, 25 * 60000);
+  // Un cycle d'ingestion perdu : 21 min. Toujours affiché avec son âge réel, jamais LIVE, aucune alerte nouvelle.
+  const gps = () => m.setContext({ ...context, fix: { ...F.fix, ts: now } });   // position fictive récente : seul l'âge du flux varie
+  now += 21 * 60000 - 150000; gps(); let v = m.snapshot(); assert(v.providers[0].confirmed); assert(!v.fresh); assert.equal(v.providers[0].state, 'ready'); const age = v.providers[0].ageMs; assert(age >= 21 * 60000 && age < 22 * 60000, 'âge réel affiché : ' + age); assert(v.events.length > 0); assert.equal(m.nextAlert(), null);
+  now += P.MAX_AGE_MS - age; gps(); v = m.snapshot(); assert.equal(v.providers[0].ageMs, P.MAX_AGE_MS); assert(v.providers[0].confirmed, '25 min pile : encore affiché'); assert(v.events.length > 0);
+  now += 1000; gps(); v = m.snapshot(); assert.equal(v.events.length, 0); assert.equal(v.providers[0].state, 'stale'); assert(!v.providers[0].confirmed);
 });
 await check('retries et circuit temporisés, cadence sans rafale, nouveau fournisseur indépendant', async () => {
   let calls = 0; const m = manager([provider(() => { calls++; return response({}, 503); })]);

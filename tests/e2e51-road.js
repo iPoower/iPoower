@@ -11,7 +11,7 @@ let n = 0; const check = (label, ok) => { assert(ok, label); n++; console.log('â
       await p.route('**/road-datex.json', r => {
         requests.push(r.request().url());
         if (mode === 'error') return r.fulfill({ status: 503, body: 'unavailable' });
-        const feed = F.feed('datex', mode === 'empty' ? { events: [] } : mode === 'stale' ? { publicationTime: new Date(F.NOW - 20 * 60000).toISOString() } : {});
+        const feed = F.feed('datex', mode === 'empty' ? { events: [] } : mode === 'stale' ? { publicationTime: new Date(F.NOW - 26 * 60000).toISOString() } : {});
         if (mode === 'xss') feed.events[0].title = '<img src=x onerror="window.__roadXss=1">';
         return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(feed) });
       });

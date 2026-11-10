@@ -6,9 +6,12 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (Road) {
   'use strict';
   const FRESH_MS = 120000, CACHE_MS = 24 * 3600000;
+  // Masquage au-delà de 25 min : l'ingestion publie toutes les 9 min environ ; un seul cycle perdu donne un flux âgé de
+  // 21 min au plus (mesuré : 19,9 min entre deux publications, plus 1,5 min de mise en ligne). Deux cycles perdus restent masqués.
+  const MAX_AGE_MS = 25 * 60000;
   class RoadProvider {
     constructor(options) {
-      Object.assign(this, { enabled: true, cacheAllowed: false, minIntervalMs: 30000, maxAgeMs: 720000, timeoutMs: 8000 }, options);
+      Object.assign(this, { enabled: true, cacheAllowed: false, minIntervalMs: 30000, maxAgeMs: MAX_AGE_MS, timeoutMs: 8000 }, options);
       if (!/^[a-z][a-z0-9-]{0,39}$/.test(this.id) || typeof this.load !== 'function') throw new Error('Provider incomplet');
     }
   }
@@ -124,5 +127,5 @@
       }));
     }
   }
-  return { RoadProvider, DatexRoadProvider, publicDatex: fetchImpl => new DatexRoadProvider(fetchImpl), Manager, FRESH_MS, CACHE_MS };
+  return { RoadProvider, DatexRoadProvider, publicDatex: fetchImpl => new DatexRoadProvider(fetchImpl), Manager, FRESH_MS, CACHE_MS, MAX_AGE_MS };
 });
