@@ -17,6 +17,9 @@ const target = routable.filter(e => !e.allDay)[0], direct = routable.find(e => e
 assert(target && direct && allDay, 'rendez-vous fictifs localisés avec trajet (horaires et toute la journée) existent');
 const write = (patch, patchDirect = {}) => fs.writeFileSync(path.join(SP, 'cal.fake.json'), JSON.stringify(seal({ ...base,
   events: base.events.map(e => e.id === target.id ? { ...e, ...patch } : e.id === direct.id ? { ...e, ...patchDirect } : e.id === allDay.id ? { ...e, free: true } : e) }, PW.toLowerCase())));
+// Agenda fictif NON modifié : sert de référence au compteur #pasdetrajet du pied de l'agenda.
+const writeRaw = () => fs.writeFileSync(path.join(SP, 'cal.fake.json'), JSON.stringify(seal(base, PW.toLowerCase())));
+const tagCount = note => { const m = /(\d+) rendez-vous ignorés \(#pasdetrajet ou 📺\)/.exec(note || ''); return m ? +m[1] : 0; };
 process.env.SP = SP;
 const { BR, session, errors } = require('./lib/context-session');
 let n = 0, stage = '';
@@ -36,15 +39,20 @@ const directText = (p, id) => p.evaluate(id => {
   const browser = await BR.launch();
   try {
     for (const dev of ['iphone', 'pc']) {
-      write({ free: true }, { mode: 'direct' });
+      writeRaw();
       let s = await session(browser, { at: '2026-10-02T18:00:00+02:00', dev });
+      await s.p.evaluate(() => { UI.view = 'pneus'; renderAll(); }); await s.settle(4);
+      const tagsBefore = tagCount((await state(s.p, target.id)).note);   // mesuré, jamais figé
+      await s.c.close();
+      write({ free: true }, { mode: 'direct' });
+      s = await session(browser, { at: '2026-10-02T18:00:00+02:00', dev });
       await check(dev + ' · R2-03 · « Disponible » : aucun trajet, compté dans le pied de l’agenda', async () => {
         await s.p.evaluate(() => { UI.view = 'pneus'; renderAll(); }); await s.settle(4);
         const r = await state(s.p, target.id);
         assert.equal(r.mode, 'pasdetrajet'); assert.equal(r.available, true);
         assert.equal(r.listed, false, 'aucune carte trajet'); assert.equal(r.legs, 0, 'ni aller ni retour'); assert.equal(r.trips, 0, 'aucun trajet construit');
         assert.match(r.note, /1 rendez-vous « Disponible » : pas un trajet\. Ajoute #trajet au titre pour en faire un\./);
-        assert.doesNotMatch(r.note, /rendez-vous ignorés \(#pasdetrajet/, 'compté sous son propre motif');
+        assert.equal(tagCount(r.note), tagsBefore, `compteur #pasdetrajet inchangé (${tagsBefore} sur l’agenda non modifié) : « Disponible » compté sous son propre motif`);
       });
       await check(dev + ' · R2-03 · « toute la journée » marqué Disponible : trajet conservé, non compté', async () => {
         const r = await state(s.p, allDay.id);
@@ -62,6 +70,7 @@ const directText = (p, id) => p.evaluate(id => {
         assert.notEqual(d.from, 'home', JSON.stringify(d));
         assert.doesNotMatch(d.alt, /depuis le domicile/, 'le plan du relais (domicile) n’est plus cité');
         if (d.msg || d.aller) assert.equal(d.msg, d.aller, JSON.stringify(d)); else assert.match(d.alt, /en cours de confirmation/);
+        console.log('   ↪ ' + dev + ' · départ effectif : ' + d.from + (d.pending ? ' (en cours de confirmation)' : '') + ' · message : ' + (d.msg || '—') + ' · ALLER : ' + (d.aller || '—'));
       });
       await s.c.close();
       write({ free: true, mode: 'trajet' });
