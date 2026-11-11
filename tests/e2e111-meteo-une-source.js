@@ -68,7 +68,7 @@ const tr=await p.evaluate(([a,z])=>{const out=l=>{const r=legEval(l),q=r.seq&&r.
   return {dep:q?q.hs[q.i].T:null,meteo:i!=null?m.hs[i].T:null,src:r.depSrc,tag:(/data-dep-src="(\w+)"[^>]*>([^<]*)/.exec(legHtml(l))||[]).slice(1).join(' : ')};};return {near:out(a),far:out(z)};},[near,far]);
 check('111.7 · R2-02 · requête de parcours groupée envoyée (points intermédiaires)',n.multi>0,'requêtes multi-points : '+n.multi);
 check('111.8 · R2-02 · départ d’un lieu enregistré dans l’horizon AROME : même température que Météo (≤ 0,5 °C)',tr.near.dep!=null&&tr.near.meteo!=null&&Math.abs(tr.near.dep-tr.near.meteo)<=0.5&&tr.near.src&&tr.near.src.kind==='arome'&&/AROME/.test(tr.near.tag),JSON.stringify(tr.near));
-check('111.9 · R2-02 · au-delà de l’horizon AROME : modèle de base, et c’est écrit',tr.far.src&&tr.far.src.kind==='base'&&/au-delà de l’horizon AROME/.test(tr.far.tag)&&Math.abs(tr.far.dep-tr.far.meteo)<=0.5,JSON.stringify(tr.far));
+check('111.9 · R2-02 · au-delà de l’horizon AROME : modèle de base, et c’est écrit',tr.far.src&&tr.far.src.kind==='horizon'&&/au-delà de l’horizon AROME/.test(tr.far.tag)&&Math.abs(tr.far.dep-tr.far.meteo)<=0.5,JSON.stringify(tr.far));
 // R2-02 · preuve : la correction de chaussée apprise au domicile n'entre pas dans les trajets ; l'air reste celui de Météo.
 // Cinq retours « givre » fictifs au domicile avec une chaussée estimée à 5 °C : correction appliquée de −3 °C (plafond).
 const cal=await p.evaluate(l=>{S.calib=Array.from({length:5},(_,k)=>({t:'2026-10-03T13:0'+k,loc:'home',kind:'ice',Tr:5,T:20}));rebuild();

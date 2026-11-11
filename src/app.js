@@ -1041,9 +1041,11 @@ function renderLocChips() {
   renderPlace();
 }
 // « AROME indisponible » seulement si AROME a été demandé et a échoué ; un ancien cache sans provenance ne l'affirme pas.
-const aromeMissingTxt = ar => ar && ar.status === 'failed' ? ' (modèle de base, AROME indisponible)'
-  : ar && ar.status === 'empty' ? ' (modèle de base : lieu ou horaires hors couverture AROME)'
-  : ar && ar.status === 'stale' ? ' (modèle de base : AROME en attente de mise à jour)' : ' (modèle de base)';
+// Quatre raisons distinctes, jamais confondues (même vocabulaire pour la ligne des sources et pour les trajets) :
+//  failed = panne (erreur, délai dépassé, fournisseur limité) · stale = AROME reçu mais plus ancien que la base, écarté ·
+//  empty = AROME reçu sans aucune heure pour ce lieu (hors couverture) · absent = ancien cache sans provenance.
+const AROME_WHY = { failed: 'AROME indisponible', stale: 'AROME plus ancien que la base, écarté', empty: 'lieu hors couverture AROME' };
+const aromeMissingTxt = ar => { const why = ar && AROME_WHY[ar.status]; return why ? ` (modèle de base${ar.status === 'failed' ? ', ' : ' : '}${why})` : ' (modèle de base)'; };
 function renderSrc() {
   const m = M[UI.loc], l = allLocs().find(x => x.id === UI.loc) || allLocs()[0];
   if (!locHasCoords(l)) { $('#srcline').innerHTML = 'Lieu sans coordonnées · météo locale non calculée.'; return; }
@@ -3217,12 +3219,15 @@ function legPlaceModel(pt, fallback) {
   }
   return best && best.m;
 }
-// Provenance du point de départ : lieu enregistré dans l'horizon AROME, au-delà (modèle de base), ou point de route.
+// Provenance du point de départ. Lieu enregistré : AROME (dans l'horizon), ou modèle de base avec SA raison : dépassement
+// d'horizon seulement si AROME est bien présent sur ce lieu ; sinon panne, données anciennes ou absence de couverture
+// (jamais « au-delà de l'horizon » pour un départ proche quand AROME a échoué). Sinon : point de route.
 function legDepSource(seq, placeModel) {
   const q = seq[0]; if (!q || q.k !== 0) return null;
   if (!placeModel) return { kind: 'route' };
-  const ar = placeModel.payload && placeModel.payload.__arome, x = q.hs[q.i] || {};
-  return { kind: ar && ar.hours && ar.until && x.t <= ar.until ? 'arome' : 'base', station: !!placeModel.obs };
+  const ar = placeModel.payload && placeModel.payload.__arome, x = q.hs[q.i] || {}, station = !!placeModel.obs;
+  if (ar && ar.hours && ar.until) return { kind: x.t <= ar.until ? 'arome' : 'horizon', station };
+  return { kind: ar && AROME_WHY[ar.status] ? ar.status : 'base', station };
 }
 function calDirectSet() { return S.calDirect || {}; }
 const CANCELROUTES = new Map(); let CANCELROUTEGEN = 0;
@@ -3380,8 +3385,9 @@ function legHtml(leg, ev) {
 // Provenance affichée du point de départ (R2-02) : jamais un modèle de base présenté comme la météo du lieu.
 function legDepSrcTag(s) {
   return !s ? '' : s.kind === 'arome' ? `<i class="tag prev" data-dep-src="arome">départ : AROME${s.station ? ' + station' : ''} · comme l’onglet Météo</i>`
-    : s.kind === 'base' ? '<i class="tag est" data-dep-src="base">départ : modèle de base (au-delà de l’horizon AROME)</i>'
-    : '<i class="tag est" data-dep-src="route">départ : modèle de base</i>';
+    : s.kind === 'horizon' ? '<i class="tag est" data-dep-src="horizon">départ : modèle de base (au-delà de l’horizon AROME)</i>'
+    : AROME_WHY[s.kind] ? `<i class="tag est" data-dep-src="${s.kind}">départ : modèle de base (${AROME_WHY[s.kind]})</i>`
+    : `<i class="tag est" data-dep-src="${s.kind === 'route' ? 'route' : 'base'}">départ : modèle de base</i>`;
 }
 // résumé de la journée : nombre de déplacements, kilomètres, trajet à surveiller
 function daySummary(evs, now) {
