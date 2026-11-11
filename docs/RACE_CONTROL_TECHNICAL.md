@@ -359,6 +359,7 @@ workflow_dispatch race-control.yml (main, source=horloge)
 | Aucun blocage durable | run coincé ≥ 20 min annulé, seulement quand les données sont dues (incident du 7 octobre : watchdog « waiting » 1 h 36) | rejeu de l'incident : âge max 24 min ; run de moins de 20 min jamais annulé ; annulation refusée → erreur, aucun dispatch |
 | Horodatages GitHub dans le futur | heure ramenée à maintenant ; runs différés ou non dus ignorés ; run publié daté du futur borné à 6 min après « dû » | rejeu du 1er novembre (+1 h, CI en cours 20 min) : âge max 31 min au lieu de 78 ; contre-tests par mutation |
 | Aucune donnée personnelle | journal : `t`, `decision`, `age_min`, `action`, `reason`, `status` uniquement | contrôle des clés et du contenu des journaux |
+| Panne du relais signalée sans GitHub | alerte ntfy à 30 min, rappels le matin (voir « Alerte de secours ») | rejeu du 11 novembre : une alerte à 21h40 |
 
 **Observabilité, sans donnée personnelle :**
 - Cloudflare → Workers → `race-control-relay-clock` → **Logs** (Workers Logs, offre gratuite) : une ligne JSON par minute,
@@ -382,6 +383,30 @@ Mise en service (faite le 5 octobre 2026) : Cloudflare **Workers Builds** relié
 ⚠️ `GH_TOKEN` se place dans **Paramètres → Variables et secrets du Worker** (type Secret), **pas** dans les variables du build :
 celles-ci ne sont visibles que pendant la compilation. Symptôme : journal `"reason":"GH_TOKEN absent (secret du Worker)"`.
 Premier déclenchement réel : run « Relais · horloge » 37253059962 (5 octobre 2026, 01:51 UTC, obs.json alors vieux de 2 h 32).
+
+### Alerte de secours (relais en panne)
+
+Les alertes verglas et brouillard sont envoyées par le relais lui-même, donc par GitHub Actions. Le 11 novembre 2026, GitHub
+Actions a refusé de démarrer les runs de 21:10 à 22:04 (heure de Paris) : l'horloge relançait le relais dans le vide et personne
+n'était prévenu. `tools/relay-clock/outage-alert.mjs` ajoute au Worker une alerte **indépendante de GitHub Actions** :
+
+| Situation | Message ntfy | Priorité |
+|---|---|---|
+| obs.json vieux de 30 min (une seule fois par panne) | « relais en panne depuis HHhMM » | basse (2) hors fenêtre, haute (4) dans la fenêtre |
+| Panne qui dure pendant la fenêtre du matin (semaine 05:00–09:30, Paris) | rappel à 05:00, 06:30, 08:00 | haute (4) |
+| obs.json illisible ou inaccessible (Pages en panne) | « données météo inaccessibles », aux minutes de rappel, après une seconde lecture | haute (4) |
+
+- **Sans stockage**, comme la garde : décision tirée de l'âge d'obs.json et de l'heure planifiée du tick. Aucun message de retour
+  à la normale (l'application affiche l'âge réel des données).
+- **Indépendance** : une seule lecture d'obs.json par minute, partagée ; une panne de l'API GitHub fait échouer le chien de garde,
+  jamais l'alerte (`Promise.allSettled`). Un refus de ntfy met l'invocation en échec (visible dans Workers Logs).
+- **Confidentialité** : ntfy.sh est public ; le message ne contient ni lieu, ni trajet, ni rendez-vous. Journal :
+  `t`, `alert`, `priority`, `status`, `reason` ; le sujet ntfy n'est jamais journalisé (masqué même dans une erreur).
+- **Mise en service** (propriétaire) : Worker → Paramètres → Variables et secrets → **Secret** `NTFY_TOPIC` = le même sujet que
+  celui du relais. Sans ce secret, l'alerte est désactivée et rien ne change. Réglages facultatifs (variables) : `ALERT_WINDOW`
+  (`HH:MM-HH:MM`, défaut `05:00-09:30`), `ALERT_DAYS` (`semaine` par défaut, ou `tous`), `ALERT_CLICK` (lien https).
+- Tests : `tests/test_relay_clock.js` (rejeu du 11 novembre, panne de nuit, heure d'été, week-end, incident passager de Pages,
+  confidentialité, panne de l'API GitHub pendant l'envoi) ; contre-tests par mutation.
 
 ## Rotation de `RC_KEY`
 
