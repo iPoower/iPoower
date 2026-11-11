@@ -49,7 +49,7 @@ async function run(b, label, view) {
   const car = await p.evaluate(() => [S.cars[0].tire.brand, S.cars[0].tire.model, S.cars[0].tire.type]);
   const st = await p.locator('#tp-stats-0').innerText();
   check(`${label} · choix enregistré sur la voiture (marque, modèle, saison)`, JSON.stringify(car) === JSON.stringify(['Michelin', 'Pilot Sport 4S', 'summer']), JSON.stringify(car));
-  check(`${label} · statistiques : position du pneu monté et répartition par classe`, /Michelin Pilot Sport 4S/.test(st) && /mieux classé que \d+ %/.test(st) && /modèles été en 215\/40 R18/.test(st) && /registre européen EPREL/.test(st), st.slice(0, 200));
+  check(`${label} · statistiques : position du pneu monté et répartition par classe`, /Michelin Pilot Sport 4S/.test(st) && /mieux classé que \d+ %/.test(st) && /modèles été en 215\/40 R18/i.test(st) && /registre européen EPREL/.test(st), st.slice(0, 200));
   const link = await p.locator('#tp-stats-0 a[href^="https://eprel.ec.europa.eu/screen/product/tyres/"]').count();
   check(`${label} · variantes du pneu monté avec lien vers la fiche officielle`, link >= 1, String(link));
   const sheet = await p.evaluate(() => tireSheet(S.cars[0].tire, '2026-11-11').lines.join(' / '));
