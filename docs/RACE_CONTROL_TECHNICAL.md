@@ -383,6 +383,21 @@ Mise en service (faite le 5 octobre 2026) : Cloudflare **Workers Builds** relié
 celles-ci ne sont visibles que pendant la compilation. Symptôme : journal `"reason":"GH_TOKEN absent (secret du Worker)"`.
 Premier déclenchement réel : run « Relais · horloge » 37253059962 (5 octobre 2026, 01:51 UTC, obs.json alors vieux de 2 h 32).
 
+## Base pneus et étiquette UE (registre EPREL)
+
+`src/tiredb.json` réunit les modèles vérifiés (catalogue, fiche ou gamme du fabricant) et **tous les pneus de tourisme (C1)
+publiés au registre européen EPREL, vendus en France et encore commercialisés** dans les dimensions de la base. Pour chaque
+modèle et dimension, le champ `e` liste les variantes : `indices|conso A–E|mouillé A–E|bruit dB|classe bruit|3PMSF|glace|n° EPREL`.
+
+- **Saison** : EPREL ne la donne pas. Les modèles vérifiés gardent la leur. Les autres (`q: 1`) : sans 3PMSF = été ;
+  3PMSF avec un nom clairement hivernal = hiver ; sinon 4 saisons, signalé « à confirmer » dans l'application.
+- **Même pneu, autre nom** : correspondances vérifiées une à une (`MODEL_ALIAS`) ; un cas douteux reste séparé.
+- **Application** (Paramètres → voiture) : filtres saison, mouillé, consommation, indices au moins égaux à la monte, recherche
+  et tri ; statistiques de la dimension (répartition par classe, bruit médian) et position du pneu monté ; variantes avec lien
+  vers la fiche EPREL officielle. La fiche du pneu n'affiche que l'étiquette de la **variante exacte** (jamais une autre).
+- **Mise à jour** (manuelle) : `node tools/tire-catalog/fetch-eprel.js /tmp/eprel` puis
+  `node tools/tire-catalog/merge-eprel.js /tmp/eprel` (version +1). Tests : `tests/test_tire_catalog.js`, `tests/e2e115-pneus-etiquette-ue.js`.
+
 ## Rotation de `RC_KEY`
 
 Effectuée le 2 octobre 2026 sans coupure du relais (PR #8 et #9) : nouvelle clé générée par le propriétaire, jamais vue hors de GitHub ;

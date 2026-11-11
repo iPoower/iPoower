@@ -4196,6 +4196,111 @@ function renderAlerts() {
    <p class="disc">Les alertes sont recalculées à chaque actualisation et visibles à l’ouverture de la page. Aucune notification n’est envoyée quand la page est fermée.</p>`;
 }
 
+/* ---------- choix des pneus : étiquette UE (registre EPREL), filtres et statistiques ----------
+   Filtres d'écran par voiture, non enregistrés. Population d'un modèle = sa meilleure variante dans la dimension, aux
+   indices de charge et de vitesse au moins égaux à la monte actuelle quand ils sont connus (filtre « Indices »). */
+const SI_ORDER = 'LMNPQRSTUHVWY';
+const siRank = s => s === '(Y)' ? SI_ORDER.length : SI_ORDER.indexOf(s);
+const TP = {};
+const tpState = i => TP[i] || (TP[i] = { season: 'all', wet: '', energy: '', idx: '1', q: '', sort: 'wet' });
+const tpSize = c => c.tire.size || (c.sets && c.sets.summer && c.sets.summer.size) || '';
+const tpNorm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9*+]/g, '');
+const TP_SEASON = { summer: 'été', winter: 'hiver', allseason: '4 saisons' };
+const TP_MAX = 250;
+function tpNeed(c, i) {
+  const d = decodeSize(tpSize(c));
+  return tpState(i).idx === '1' && d && (d.li != null || d.si) ? { li: d.li, si: d.si } : null;
+}
+const tpFits = (l, need) => !need || ((need.li == null || (l.li != null && l.li >= need.li)) && (!need.si || siRank(l.si) >= siRank(need.si)));
+function tpBest(d, k, need) { return tireLabels(d, k).find(l => tpFits(l, need)) || null; }
+// Étiquette du pneu monté : variante aux indices exacts, sinon la meilleure compatible.
+function tpMine(c, d, k) {
+  const s = decodeSize(tpSize(c)), L = tireLabels(d, k);
+  return (s && L.find(l => l.li === s.li && l.si === s.si && (!s.xl || l.xl))) || tpBest(d, k, s && (s.li != null || s.si) ? { li: s.li, si: s.si } : null);
+}
+const tpCmp = {
+  wet: (a, b) => a.wet.localeCompare(b.wet) || a.energy.localeCompare(b.energy) || (a.db == null ? 99 : a.db) - (b.db == null ? 99 : b.db),
+  energy: (a, b) => a.energy.localeCompare(b.energy) || a.wet.localeCompare(b.wet) || (a.db == null ? 99 : a.db) - (b.db == null ? 99 : b.db),
+  noise: (a, b) => (a.db == null ? 99 : a.db) - (b.db == null ? 99 : b.db) || a.wet.localeCompare(b.wet) || a.energy.localeCompare(b.energy)
+};
+function tpList(c, i) {
+  const f = tpState(i), k = sizeKey(tpSize(c)), need = tpNeed(c, i), q = tpNorm(f.q);
+  const name = d => d.brand + ' ' + d.model;
+  const rows = compatible(c).map(d => ({ d, l: tpBest(d, k, need), labelled: tireLabels(d, k).length > 0 }))
+    .filter(r => (f.season === 'all' || r.d.type === f.season) && (!q || tpNorm(name(r.d)).includes(q))
+      && (!need || !r.labelled || r.l)
+      && (!f.wet || (r.l && r.l.wet <= f.wet)) && (!f.energy || (r.l && r.l.energy <= f.energy)));
+  rows.sort((a, b) => (f.sort === 'brand' || (!a.l && !b.l)) ? name(a.d).localeCompare(name(b.d))
+    : !a.l ? 1 : !b.l ? -1 : tpCmp[f.sort](a.l, b.l) || name(a.d).localeCompare(name(b.d)));
+  return { rows, k };
+}
+const tpTxt = l => l ? `☔${l.wet} ⛽${l.energy}${l.db != null ? ' 🔊' + l.db + ' dB' : ''}${l.snow ? ' ❄' : ''}` : 'étiquette non relevée';
+function tpOptions(c, i) {
+  const { rows } = tpList(c, i), cur = findTire(c.tire.brand, c.tire.model), f = tpState(i), shown = rows.slice(0, TP_MAX);
+  const opt = r => `<option value="${TIRE_DB.indexOf(r.d)}" ${cur === r.d ? 'selected' : ''}>${esc(r.d.brand + ' ' + r.d.model)} · ${tpTxt(r.l)}${f.season === 'all' ? ' · ' + TP_SEASON[r.d.type] : ''}</option>`;
+  const head = cur && !shown.some(r => r.d === cur) ? `<option value="${TIRE_DB.indexOf(cur)}" selected>${esc(cur.brand + ' ' + cur.model)} · monté actuellement</option>` : '';
+  return { html: `<option value="">—</option>${head}${shown.map(opt).join('')}`, n: rows.length, shown: shown.length };
+}
+function tpCountTxt(c, i) {
+  const o = tpOptions(c, i), k = sizeKey(tpSize(c));
+  return `Choisir dans la base · ${o.n} modèle${o.n > 1 ? 's' : ''} en ${esc(k || 'dimension inconnue')}${o.n > o.shown ? ` (${o.shown} premiers affichés : affine les filtres)` : ''}`;
+}
+function tpFilters(c, i) {
+  const f = tpState(i), d = decodeSize(tpSize(c)), hasIdx = d && (d.li != null || d.si);
+  const sel = (name, lbl, opts) => `<select data-tp="${name}" data-i="${i}" aria-label="${lbl}">${opts.map(([v, t]) => `<option value="${v}" ${String(f[name]) === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
+  return `<div class="fld wide tp-filters"><span class="l">Filtrer et trier (étiquette UE officielle)</span><div class="tp-row">
+    <input type="search" data-tp="q" data-i="${i}" value="${esc(f.q)}" placeholder="Marque ou modèle" aria-label="Rechercher une marque ou un modèle" autocomplete="off">
+    ${sel('season', 'Saison', [['all', 'Toutes saisons'], ['summer', 'Été'], ['winter', 'Hiver'], ['allseason', '4 saisons']])}
+    ${sel('wet', 'Adhérence sur mouillé minimale', [['', '☔ Mouillé : tous'], ['A', '☔ Mouillé A'], ['B', '☔ Mouillé A ou B'], ['C', '☔ Mouillé A à C']])}
+    ${sel('energy', 'Classe de consommation minimale', [['', '⛽ Conso : toutes'], ['A', '⛽ Conso A'], ['B', '⛽ Conso A ou B'], ['C', '⛽ Conso A à C']])}
+    ${sel('sort', 'Tri', [['wet', 'Tri : mouillé'], ['energy', 'Tri : consommation'], ['noise', 'Tri : bruit'], ['brand', 'Tri : marque']])}
+    ${hasIdx ? sel('idx', 'Indices de charge et de vitesse', [['1', `Indices ≥ ${esc(String(d.li == null ? '' : d.li) + (d.si || ''))}`], ['0', 'Tous indices']]) : ''}</div>
+    <span class="sub">☔ adhérence sur mouillé · ⛽ consommation (A = meilleur, E = moins bon) · 🔊 bruit extérieur · ❄ 3PMSF. Hiver : une vitesse inférieure à la monte été est tolérée avec l’autocollant de vitesse maximale.</span></div>`;
+}
+// Statistiques de la dimension (même saison que le pneu monté) et position du pneu monté.
+function tpStats(c, i) {
+  const k = sizeKey(tpSize(c)); if (!k) return '';
+  const cur = findTire(c.tire.brand, c.tire.model), f = tpState(i), s = decodeSize(tpSize(c));
+  const season = cur ? cur.type : f.season !== 'all' ? f.season : null;
+  const need = s && (s.li != null || s.si) ? { li: s.li, si: s.si } : null;
+  const pop = compatible(c).filter(d => !season || d.type === season).map(d => tpBest(d, k, need)).filter(Boolean);
+  if (!pop.length) return '';
+  const dist = key => 'ABCDE'.split('').map(x => [x, pop.filter(l => l[key] === x).length]).filter(([, n]) => n);
+  const bar = (key, lbl) => `<div class="tp-bar" role="img" aria-label="${lbl} : ${dist(key).map(([x, n]) => `${n} en ${x}`).join(', ')}">${dist(key).map(([x, n]) => `<span class="tp-c tp-${x}" style="flex:${n}">${x}<small>${n}</small></span>`).join('')}</div>`;
+  const dbs = pop.map(l => l.db).filter(x => x != null).sort((a, b) => a - b), med = dbs.length ? dbs[Math.floor(dbs.length / 2)] : null;
+  const pct = (n, of) => of ? Math.round(100 * n / of) : 0;
+  let mine = '';
+  const ml = cur && tpMine(c, cur, k);
+  if (ml) {
+    const better = key => pct(pop.filter(l => l[key] > ml[key]).length, pop.length);
+    mine = `<p class="tp-mine"><b>${esc(cur.brand + ' ' + cur.model)}</b> (${esc(ml.idx)}) : ☔ mouillé <b>${ml.wet}</b>, mieux classé que ${better('wet')} % · ⛽ consommation <b>${ml.energy}</b>, mieux classé que ${better('energy')} %${ml.db != null ? ` · 🔊 <b>${ml.db} dB</b>, plus silencieux que ${pct(dbs.filter(x => x > ml.db).length, dbs.length)} %` : ''}.</p>`;
+  } else if (cur) mine = `<p class="sub">${esc(cur.brand + ' ' + cur.model)} : étiquette non relevée au registre européen pour ${esc(k)} (modèle non vendu en France dans cette dimension, ou nom différent).</p>`;
+  const vars = cur ? tireLabels(cur, k) : [];
+  const varList = vars.length ? `<details class="tp-vars"><summary>Variantes de ${esc(cur.model)} en ${esc(k)} (${vars.length})</summary><ul>${vars.map(l => `<li><span class="mono">${esc(l.idx)}</span> · ${tpTxt(l)}${l.noise ? ' (' + l.noise + ')' : ''}${l.ice ? ' · glace' : ''}${l.eprel ? ` · <a href="https://eprel.ec.europa.eu/screen/product/tyres/${encodeURIComponent(l.eprel)}" target="_blank" rel="noopener noreferrer">fiche EPREL ${esc(l.eprel)}</a>` : ''}</li>`).join('')}</ul></details>` : '';
+  const guess = cur && cur.guessed ? `<p class="sub">Saison de ce modèle déduite du registre (3PMSF) et du nom : à confirmer sur la fiche du fabricant.</p>` : '';
+  return `<div class="fld wide tp-stats" id="tp-stats-${i}"><span class="l">Statistiques · ${pop.length} modèles ${season ? TP_SEASON[season] : 'toutes saisons'} en ${esc(k)}</span>
+    ${mine}${guess}<span class="sub">☔ Adhérence sur mouillé</span>${bar('wet', 'Adhérence sur mouillé')}<span class="sub">⛽ Consommation</span>${bar('energy', 'Consommation')}
+    ${med != null ? `<p class="sub">🔊 Bruit : médiane ${med} dB, de ${dbs[0]} à ${dbs[dbs.length - 1]} dB (3 dB de plus ≈ deux fois plus de bruit).</p>` : ''}
+    ${varList}<p class="sub">Source : registre européen EPREL, étiquette UE officielle${TIRE_DB_META.labels && TIRE_DB_META.labels.fetched ? ' relevée le ' + esc(String(TIRE_DB_META.labels.fetched).slice(0, 10)) : ''}. Une seule variante par modèle (la meilleure aux indices compatibles). L’étiquette ne mesure ni le sec, ni la neige au-delà du 3PMSF, ni l’usure.</p></div>`;
+}
+// Rafraîchit la liste et les statistiques sans reconstruire l'écran (garde le focus de la recherche).
+function tpRefresh(i) {
+  const c = S.cars[i]; if (!c) return;
+  const sel = document.getElementById('f-db-' + i), lab = document.getElementById('tp-n-' + i), st = document.getElementById('tp-stats-' + i);
+  if (sel) sel.innerHTML = tpOptions(c, i).html;
+  if (lab) lab.innerHTML = tpCountTxt(c, i);
+  if (st) st.outerHTML = tpStats(c, i) || `<div id="tp-stats-${i}"></div>`;
+}
+let tpTimer = null;
+document.addEventListener('input', e => {
+  const t = e.target; if (!t || !t.dataset || t.dataset.tp !== 'q') return;
+  tpState(+t.dataset.i).q = t.value; clearTimeout(tpTimer); tpTimer = setTimeout(() => tpRefresh(+t.dataset.i), 200);
+});
+document.addEventListener('change', e => {
+  const t = e.target; if (!t || !t.dataset || !t.dataset.tp || t.dataset.tp === 'q') return;
+  tpState(+t.dataset.i)[t.dataset.tp] = t.value; tpRefresh(+t.dataset.i);
+});
+
 /* ---------- paramètres ---------- */
 const bindIn = (path, val, o = {}) => `<div class="fld${o.wide ? ' wide' : ''}"><label for="f-${path.replace(/\./g, '-')}">${o.label}</label><input type="${o.type || 'text'}" id="f-${path.replace(/\./g, '-')}" data-bind="${path}" ${o.num ? 'data-num="1"' : ''} ${o.attrs || ''} value="${esc(val == null ? '' : val)}" ${o.ph ? `placeholder="${esc(o.ph)}"` : ''}></div>`;
 function renderSettings(force) {
@@ -4207,14 +4312,7 @@ function renderSettings(force) {
     <div class="frow">${bindIn(`cars.${i}.name`, c.name, { label: 'Nom', wide: 1 })}${bindIn(`cars.${i}.short`, c.short, { label: 'Nom court' })}
       <div class="fld"><label for="f-cars-${i}-sporty">Usage sportif occasionnel</label><select id="f-cars-${i}-sporty" data-bind="cars.${i}.sporty" data-num="1"><option value="1" ${c.sporty ? 'selected' : ''}>Oui</option><option value="0" ${c.sporty ? '' : 'selected'}>Non</option></select></div>
       <div class="fld"><label for="f-cars-${i}-tire-type">Type de pneus montés</label><select id="f-cars-${i}-tire-type" data-bind="cars.${i}.tire.type"><option value="summer" ${c.tire.type === 'summer' ? 'selected' : ''}>Été</option><option value="winter" ${c.tire.type === 'winter' ? 'selected' : ''}>Hiver</option><option value="allseason" ${c.tire.type === 'allseason' ? 'selected' : ''}>4 saisons 3PMSF</option><option value="unknown" ${c.tire.type === 'unknown' ? 'selected' : ''}>Je ne sais pas</option><option value="none" ${c.tire.type === 'none' ? 'selected' : ''}>Aucun (en attente de pneus)</option></select></div>
-      ${(() => { const comp = compatible(c), k = sizeKey(c.tire.size || (c.sets && c.sets.summer && c.sets.summer.size) || ''), cur = findTire(c.tire.brand, c.tire.model);
-        const recent = d => d.added && dayDiff(d.added, new Date().toISOString().slice(0, 10)) <= 60;
-        const opt = d => `<option value="${TIRE_DB.indexOf(d)}" ${cur === d ? 'selected' : ''}>${recent(d) ? '★ ' : ''}${esc(d.brand + ' ' + d.model)}${d.sizes && k && d.sizes[k] ? ' · ' + esc(d.sizes[k]) : ''}</option>`;
-        const grp = (list, lbl) => list.length ? `<optgroup label="${lbl}">${list.map(opt).join('')}</optgroup>` : '';
-        const by = ty => comp.filter(d => d.type === ty);
-        const others = TIRE_DB.filter(d => !comp.includes(d));
-        return `<div class="fld wide"><label for="f-db-${i}">Choisir dans la base · ${comp.length} modèles en ${esc(k || 'dimension inconnue')}</label><select id="f-db-${i}" data-db="${i}"><option value="">—</option>
-          ${grp(by('summer'), 'Été · ' + (k || ''))}${grp(by('winter'), 'Hiver · ' + (k || ''))}${grp(by('allseason'), '4 saisons · ' + (k || ''))}${grp(others, 'Autres dimensions')}</select></div>`; })()}
+      ${tpFilters(c, i)}<div class="fld wide"><label for="f-db-${i}" id="tp-n-${i}">${tpCountTxt(c, i)}</label><select id="f-db-${i}" data-db="${i}">${tpOptions(c, i).html}</select></div>${tpStats(c, i) || `<div id="tp-stats-${i}"></div>`}
       ${bindIn(`cars.${i}.tire.brand`, c.tire.brand, { label: 'Marque du pneu', ph: 'ex. Michelin' })}${bindIn(`cars.${i}.tire.model`, c.tire.model, { label: 'Modèle exact', ph: 'ex. Pilot Sport 4' })}
       ${bindIn(`cars.${i}.tire.size`, c.tire.size, { label: 'Dimensions / indices' })}${(() => { const x = treadAxles(c.tire); return bindIn(`cars.${i}.tire.treadAv`, x.av, { label: 'Profondeur avant (mm)', type: 'number', num: 1, attrs: 'min="0" max="12" step="0.1" inputmode="decimal"' }) + bindIn(`cars.${i}.tire.treadAr`, x.ar, { label: 'Profondeur arrière (mm)', type: 'number', num: 1, attrs: 'min="0" max="12" step="0.1" inputmode="decimal"' }); })()}
       <div class="fld"><label for="f-cars-${i}-tire-treadEst">Origine des profondeurs</label><select id="f-cars-${i}-tire-treadEst" data-bind="cars.${i}.tire.treadEst" data-num="1"><option value="0" ${c.tire.treadEst ? '' : 'selected'}>Mesurées (jauge)</option><option value="1" ${c.tire.treadEst ? 'selected' : ''}>Estimées</option></select></div>
@@ -4256,7 +4354,7 @@ function renderSettings(force) {
   el.innerHTML = `<div class="set-sec"><h3>🚗 Voitures et pneus</h3></div>${carSet}${carAdd}
     <div class="set-sec"><h3>📍 Lieux</h3>${locSet}
       <div class="fld"><label for="geoQ">Ajouter une destination ou une adresse</label><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="search" id="geoQ" placeholder="Adresse, ville ou lieu" style="flex:1;min-width:140px"><button class="btn" data-act="geo-search">Rechercher</button></div><span class="sub">France : IGN / Base Adresse Nationale · monde : OpenStreetMap. Recherche uniquement quand tu appuies sur « Rechercher ».</span></div><div class="hits" id="geoHits"></div></div>
-    <div class="set-sec"><h3>📚 Base pneus</h3><p class="sub">${TIRE_DB_META.count} modèles · ${TIRE_DB_META.version ? 'version ' + TIRE_DB_META.version + ' du ' + esc(TIRE_DB_META.updated || '') : 'base de secours'} (${esc(TIRE_DB_META.source)}). ${S.cars.map(c => `${esc(c.short)} : ${compatible(c).length} compatibles`).join(' · ')}. Mise à jour automatique chaque mois ; ★ = nouveauté de moins de 60 jours.</p></div>
+    <div class="set-sec"><h3>📚 Base pneus</h3><p class="sub">${TIRE_DB_META.count} modèles · ${TIRE_DB_META.version ? 'version ' + TIRE_DB_META.version + ' du ' + esc(TIRE_DB_META.updated || '') : 'base de secours'} (${esc(TIRE_DB_META.source)}). ${S.cars.map(c => `${esc(c.short)} : ${compatible(c).length} compatibles`).join(' · ')}. Étiquettes UE : ${TIRE_DB.filter(d => d.labels && Object.keys(d.labels).length).length} modèles (registre européen EPREL${TIRE_DB_META.labels && TIRE_DB_META.labels.fetched ? ', relevé le ' + esc(String(TIRE_DB_META.labels.fetched).slice(0, 10)) : ''}).</p></div>
     <div class="set-sec"><h3>🎯 Calibration terrain</h3><p class="sub">Corrections apprises de tes retours, lieu par lieu : <b class="mono">${(() => { const xs = allLocs().map(l => ({ l, c: calibFor(l.id) })).filter(x => x.c.n); return xs.length ? xs.map(x => esc(x.l.name) + ' ' + (x.c.applied ? (x.c.bias > 0 ? '+' : '') + f1(x.c.bias) + ' °C' : 'aucune (' + x.c.n + '/' + CALIB_MIN + ')')).join(' · ') : 'aucune'; })()}</b>. Un retour isolé est une observation : une correction n’est appliquée qu’à partir de ${CALIB_MIN} retours cohérents au même lieu, et seulement à ce lieu.</p><div class="chips"><button class="btn sm" data-act="calib-reset">Effacer la calibration</button></div></div>
     <div class="set-sec"><h3>📡 Ma position</h3><p class="sub">${GPS ? `Dernière position : <b>${esc(GPS.name)}</b>${GPS.sub ? ', ' + esc(GPS.sub) : ''} (±${GPS.acc || '?'} m, ${new Date(GPS.t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}). L’app s’ouvre sur ta position et se recale quand tu te déplaces de plus de 3 km. La position reste sur ce téléphone.` : 'Touche « 📍 Ma position » en haut pour suivre la météo de l’endroit où tu es.'}</p>
       ${GPS ? '<div class="chips"><button class="btn sm" data-act="locate">Actualiser ma position</button><button class="btn sm" data-act="gps-forget">Oublier ma position</button></div>' : ''}</div>
