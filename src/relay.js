@@ -113,6 +113,7 @@ function parseIcs(txt) {
     else if (name === 'DESCRIPTION') cur.mode = modeOf(unesc(val), cur.mode);
     else if (name === 'UID') cur.uid = val;
     else if (name === 'STATUS') cur.status = val;
+    else if (name === 'TRANSP') cur.transp = val.trim().toUpperCase();   // « Disponible » dans l'agenda = TRANSPARENT
     else if (name === 'RRULE') cur.rrule = Object.fromEntries(val.split(';').map(x => x.split('=')));
     else if (name === 'EXDATE') val.split(',').forEach(v => { const d = icsDate(v, params); if (d) cur.exdate.push(d.s); });
     else if (name === 'RECURRENCE-ID') cur.recId = icsDate(val, params);
@@ -298,8 +299,11 @@ async function calendarSync(out) {
       // devenir un rendez-vous de déplacement ni perturber l'alerte de fraîcheur de l'Agenda.
       if (loc.length <= 2) { calNoPlace++; continue; }
       // #pasdetrajet peut garder son lieu dans le programme chiffré, mais ne déclenche ni géocodage ni route.
-      const g = e.mode === 'pasdetrajet' ? null : geo[loc] !== undefined ? geo[loc] : (geo[loc] = await geocodeLoc(loc));
-      events.push({ id: calendarEventId(e), t: e.title || 'Rendez-vous', s: e.s, e: e.e, allDay: !!e.start.allDay, loc, lat: g ? g.lat : null, lon: g ? g.lon : null, label: g ? g.label : null, mode: e.mode || null });
+      // R2-03 · Un rendez-vous HORAIRE « Disponible » (TRANSP:TRANSPARENT) non plus, sauf #trajet : ni route, ni alerte,
+      // jamais l'origine du suivant. « Toute la journée » n'est pas concerné (l'agenda le marque « Disponible » par défaut).
+      const free = e.transp === 'TRANSPARENT', noTrip = e.mode === 'pasdetrajet' || free && !e.start.allDay && e.mode !== 'trajet';
+      const g = noTrip ? null : geo[loc] !== undefined ? geo[loc] : (geo[loc] = await geocodeLoc(loc));
+      events.push({ id: calendarEventId(e), t: e.title || 'Rendez-vous', s: e.s, e: e.e, allDay: !!e.start.allDay, loc, lat: g ? g.lat : null, lon: g ? g.lon : null, label: g ? g.label : null, mode: e.mode || null, ...(free ? { free: true } : {}) });
     }
     out.relay.calNoPlace = calNoPlace;
     out.relay.calSkip = events.filter(x => x.mode === 'pasdetrajet').length;

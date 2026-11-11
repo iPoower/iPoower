@@ -34,6 +34,13 @@ test('réordonnancement de l’agenda ne réattribue aucune identité', () => {
 test('occurrences récurrentes d’un même UID restent distinctes', () => {
   assert.notEqual(ctx.id(event), ctx.id({ ...event, s: '2026-10-11T10:00', e: '2026-10-11T11:00' }));
 });
+test('R2-03 · TRANSP lu par le parseur : « Disponible » = TRANSPARENT, « Occupé » = OPAQUE, absent = inconnu', () => {
+  const ics = t => ['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'UID:u@agenda.test', 'DTSTART:20261004T100000Z', 'SUMMARY:Rendez-vous fictif', ...(t ? ['TRANSP:' + t] : []), 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+  assert.equal(ctx.parse(ics('TRANSPARENT'))[0].transp, 'TRANSPARENT');
+  assert.equal(ctx.parse(ics('transparent '))[0].transp, 'TRANSPARENT');
+  assert.equal(ctx.parse(ics('OPAQUE'))[0].transp, 'OPAQUE');
+  assert.equal(ctx.parse(ics(''))[0].transp, undefined);
+});
 test('UID absent ou vide conserve le repli legacy du client', () => {
   for (const uid of [undefined, null, '', '   ']) assert.equal(ctx.id({ ...event, uid }), null);
   assert.equal(ctx.id(null), null);

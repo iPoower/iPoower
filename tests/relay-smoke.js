@@ -27,10 +27,17 @@ const denseBefore = Array.from({ length: 30 }, (_, i) => denseEvent('dense-local
   '06' + String(i * 2).padStart(2, '0'), '06' + String(i * 2 + 1).padStart(2, '0'), densePrefix + ' local ' + i,
   i % 2 ? noTripLocation : '', i % 2 ? '#pasdetrajet' : ''));
 const denseRoutable = Array.from({ length: 27 }, (_, i) => denseEvent('dense-trip-' + String(i).padStart(2, '0'),
-  '2026100' + (5 + Math.floor(i / 9)), String(10 + i % 9) + '00', String(10 + i % 9) + '30', densePrefix + ' trajet ' + i, i % 2 ? 'Amiens' : 'Lille'));
+  '2026100' + (5 + Math.floor(i / 9)), String(10 + i % 9) + '00', String(10 + i % 9) + '30', densePrefix + ' trajet ' + i, i % 2 ? 'Amiens' : 'Lille')
+  // R2-03 : « Occupé » explicite (OPAQUE) sur un trajet existant : rien ne change.
+  .replace('END:VEVENT', i === 4 ? 'TRANSP:OPAQUE\r\nEND:VEVENT' : 'END:VEVENT'));
+// R2-03 : « Disponible » (TRANSPARENT) horaire sans #trajet, horaire avec #trajet, et toute la journée (lieux déjà géocodés).
+const transparent = ev => ev.replace('END:VEVENT', 'TRANSP:TRANSPARENT\r\nEND:VEVENT');
+const denseFree = [transparent(denseEvent('dense-free', '20261008', '1000', '1030', densePrefix + ' disponible horaire', 'Lille')),
+  transparent(denseEvent('dense-free-trip', '20261008', '1200', '1230', densePrefix + ' disponible trajet', 'Amiens', '#trajet')),
+  transparent(['BEGIN:VEVENT', 'UID:dense-free-day', 'DTSTART;VALUE=DATE:20261009', 'SUMMARY:' + densePrefix + ' disponible journée', 'LOCATION:Lille', 'END:VEVENT'].join('\r\n'))];
 fs.writeFileSync(path.join(H, 'dense-calendar.ics'), ['BEGIN:VCALENDAR',
   denseEvent('dense-out-before', '20261004', '1000', '1030', densePrefix + ' hors fenêtre avant', 'Lille'),
-  ...denseBefore, ...denseRoutable,
+  ...denseBefore, ...denseRoutable, ...denseFree,
   denseEvent('dense-out-after', '20261014', '1000', '1030', densePrefix + ' hors fenêtre après', 'Amiens'), 'END:VCALENDAR'].join('\r\n'));
 // Observer uniquement les appels fictifs de géocodage, sans modifier le harnais partagé.
 fs.appendFileSync(path.join(H, 'mock_tt.js'), `
@@ -124,8 +131,13 @@ fs.rmSync(path.join(H, 'obs.json'), { force: true });
 const dense = run('2026-10-05T05:35:00+02:00', 'doux', KEYS, true);
 const denseS = readJ(path.join(H, 'calendar.sealed.json')), denseCal = tryUnseal(denseS, APP_KEY_TEST), denseEvents = denseCal && denseCal.events || [];
 const denseLocal = denseEvents.filter(ev => ev.t.startsWith(densePrefix + ' local ')), denseTrips = denseEvents.filter(ev => ev.t.startsWith(densePrefix + ' trajet '));
-check('agenda dense : rappels sans lieu éliminés, #pasdetrajet conservés', dense.code === 0 && denseEvents.length === 42 && denseLocal.length === 15 && dense.obs.relay.calN === 42 && dense.obs.relay.calSkip === 15 && dense.obs.relay.calNoPlace === 15);
-check('agenda dense : 27 rendez-vous localisés après le rang 25 restent tous routés', denseTrips.length === 27 && denseTrips.every(ev => ev.lat !== null && (ev.legs || []).some(l => l.k === 'go' && l.routed)) && dense.obs.relay.calGeo === 27);
+check('agenda dense : rappels sans lieu éliminés, #pasdetrajet conservés', dense.code === 0 && denseEvents.length === 45 && denseLocal.length === 15 && dense.obs.relay.calN === 45 && dense.obs.relay.calSkip === 15 && dense.obs.relay.calNoPlace === 15);
+check('agenda dense : 27 rendez-vous localisés après le rang 25 restent tous routés', denseTrips.length === 27 && denseTrips.every(ev => ev.lat !== null && (ev.legs || []).some(l => l.k === 'go' && l.routed)) && dense.obs.relay.calGeo === 29);
+const freeOf = name => denseEvents.find(ev => ev.t === densePrefix + ' disponible ' + name) || {};
+check('R2-03 · « Disponible » horaire : publié free: true, lieu gardé, ni géocodage ni route', freeOf('horaire').free === true && freeOf('horaire').loc === 'Lille' && freeOf('horaire').lat === null && !(freeOf('horaire').legs || []).length);
+check('R2-03 · « Disponible » + #trajet : routé comme un trajet', freeOf('trajet').free === true && freeOf('trajet').mode === 'trajet' && (freeOf('trajet').legs || []).some(l => l.k === 'go' && l.routed));
+check('R2-03 · « Disponible » toute la journée : trajet conservé', freeOf('journée').free === true && freeOf('journée').allDay === true && (freeOf('journée').legs || []).some(l => l.k === 'go'));
+check('R2-03 · « Occupé » (OPAQUE) et statut absent : aucun champ free', denseTrips.every(ev => !Object.prototype.hasOwnProperty.call(ev, 'free')));
 const denseFirst = denseTrips.find(ev => ev.t === densePrefix + ' trajet 0'), denseSecond = denseTrips.find(ev => ev.t === densePrefix + ' trajet 1');
 const denseFirstGo = denseFirst && (denseFirst.legs || []).find(l => l.k === 'go'), denseSecondGo = denseSecond && (denseSecond.legs || []).find(l => l.k === 'go');
 check('agenda dense : premier déplacement depuis domicile puis chaîne depuis le vrai lieu précédent', !!denseFirstGo && denseFirstGo.fromKind === 'home' && denseFirstGo.from.lat === 48.85 && denseFirstGo.from.lon === 2.35 &&
@@ -135,7 +147,7 @@ check('agenda dense : inconnus sans route, aucun géocodage #pasdetrajet, lieux 
   Array.isArray(denseGeocodes) && denseGeocodes.length === 4 && denseGeocodes.every(url => !url.includes(noTripLocation)));
 check('agenda dense : ordre chronologique, événements hors fenêtre/sans lieu exclus et identifiants opaques distincts', denseEvents.every((ev, i) => !i || denseEvents[i - 1].s <= ev.s) &&
   !denseEvents.some(ev => ev.t.includes('hors fenêtre')) && !denseEvents.some(ev => ev.t.endsWith(' local 0') || ev.t.endsWith(' local 2')) &&
-  denseEvents.every(ev => /^event-[0-9a-f]{32}$/.test(ev.id)) && new Set(denseEvents.map(ev => ev.id)).size === 42);
+  denseEvents.every(ev => /^event-[0-9a-f]{32}$/.test(ev.id)) && new Set(denseEvents.map(ev => ev.id)).size === 45);
 check('agenda dense : aucun titre, UID ou trajet ajouté aux sorties publiques', !JSON.stringify(denseS).includes(densePrefix) && !JSON.stringify(dense.obs).includes(densePrefix) && !dense.out.includes(densePrefix) &&
   !JSON.stringify(dense.obs).includes('dense-trip-') && denseEvents.every(ev => !Object.prototype.hasOwnProperty.call(ev, 'uid')) && !JSON.stringify(dense.obs).includes('"g":'));
 const relaySource = fs.readFileSync(path.join(ROOT, 'src/relay.js'), 'utf8');
