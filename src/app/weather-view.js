@@ -25,7 +25,7 @@ function tripPassagePoints(t) {
     const at = q.t || (Number.isFinite(duration) && duration >= 0 ? addMin(t.dep, duration * f) : null);
     if (!at) return null;
     const located = Number.isFinite(q.lat) && Number.isFinite(q.lon) && Math.abs(q.lat) <= 90 && Math.abs(q.lon) <= 180;
-    return { t: at, f, km: q.km != null ? q.km : null, name: q.name || q.loc || null, x, hs: q.hs,
+    return { t: at, f, km: q.km != null ? q.km : null, name: q.name || q.loc || null, x, hs: q.hs, raw: q.raw || null,
       lat: located ? q.lat : null, lon: located ? q.lon : null };
   }).filter(Boolean);
 }
@@ -212,7 +212,8 @@ function evInput() {
   // points : prochain trajet dans les 3 h (départ, passages, arrivée), sinon le lieu affiché pour les 3 prochaines heures
   const trip = wxTrips(m).find(t => t.points.length && t.arr > nowL && msOf(t.dep) - now <= 3 * 3600e3);
   const labels = ['départ', '25 %', '50 %', '75 %', 'arrivée'];
-  const points = trip ? trip.points.map((p, k, a) => ({ lat: p.lat, lon: p.lon, t: p.t, ms: msOf(p.t), x: p.x, label: a.length === 5 ? labels[k] : k === 0 ? 'départ' : k === a.length - 1 ? 'arrivée' : `point ${k}` }))
+  // Affichage et verdict lisent p.x (modèle du lieu) ; le moteur de preuves lit la prévision brute quand elle existe (R2-02).
+  const points = trip ? trip.points.map((p, k, a) => ({ lat: p.lat, lon: p.lon, t: p.t, ms: msOf(p.t), x: p.raw || p.x, label: a.length === 5 ? labels[k] : k === 0 ? 'départ' : k === a.length - 1 ? 'arrivée' : `point ${k}` }))
     : [0, 1, 2, 3].map(k => m.hs[m.nowI + k]).filter(Boolean).map((x, k) => ({ lat: l.lat, lon: l.lon, t: x.t, ms: msOf(x.t), x, label: k ? '+' + k + ' h' : 'maintenant' }));
   const raw = RAW[UI.loc];
   const located = points.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
