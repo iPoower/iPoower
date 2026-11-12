@@ -1368,3 +1368,11 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 
 /* Agenda : la pastille de verdict d'un trajet peut dépasser 390 px (« ANALYSE LIMITÉE · profondeur non renseignée 80 ») : retour à la ligne. */
 .cal-v .pill { white-space: normal; max-width: 100%; overflow-wrap: anywhere; }
+
+/* Lisibilité (12/11/2026) : voiture sans pneus repliée en une ligne ; raccourci de saisie de la profondeur sous un verdict plafonné. */
+.car.wait.wait-fold { padding: 0; align-self: start; }   /* grille à deux colonnes (PC) : ne pas s'étirer à la hauteur de la carte voisine */
+.car.wait.wait-fold > .ux-fold { margin: 0; border: 0; }
+.car.wait.wait-fold .waitbox { display: block; padding: 0 14px 14px; }
+.car.wait.wait-fold .waitbox .wt { font-size: 18px; }
+.tread-todo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.tread-todo .sub { flex: 1 1 180px; }
