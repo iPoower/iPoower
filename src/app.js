@@ -3658,15 +3658,14 @@ function carThumb(car) {
     <input type="file" accept="image/*" id="photo-${i}" data-photo="${i}" hidden></label>`;
 }
 function waitCard(car) {
+  // Lisibilité (12/11/2026) : une voiture sans pneus n'a ni verdict ni alerte ; sa carte tient en une ligne repliée,
+  // le détail (photo, dimension, raccourci vers la fiche) reste à un geste.
   const sz = car.tire.size || (car.sets && car.sets.unknown && car.sets.unknown.size) || '';
-  return `<article class="car wait"><div class="car-h"><div class="car-top"><div><h3>${esc(car.name)}</h3><span class="spec">${esc(car.spec)}</span></div>${carThumb(car)}</div></div>
-    <div class="waitbox">
-      <svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="44" fill="none" stroke="currentColor" stroke-width="14" stroke-dasharray="7 6" opacity=".55"/>
-        <circle cx="60" cy="60" r="27" fill="none" stroke="currentColor" stroke-width="3" opacity=".8"/>
-        <g class="hg"><path d="M49 45h22M49 75h22M52 45v5l8 10-8 10v5M68 45v5l-8 10 8 10v5" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M55 70l5-6 5 6z" fill="var(--accent)"/></g></svg>
-      <div><div class="wt">En attente de pneus</div>
+  const body = `<div class="car-h"><div class="car-top"><div><span class="spec">${esc(car.spec)}</span></div>${carThumb(car)}</div></div>
+    <div class="waitbox"><div><div class="wt">En attente de pneus</div>
         <p class="sub">Aucun pneu monté : pas de verdict, de score ni d’alerte pour cette voiture.${sz ? ` Dimension : <b class="mono">${esc(sz)}</b>.` : ''}</p>
-        <button class="btn sm" data-act="goset-cfg">Pneus montés ? Les renseigner</button></div></div></article>`;
+        <button class="btn sm" data-act="goset-cfg">Pneus montés ? Les renseigner</button></div></div>`;
+  return `<article class="car wait wait-fold">${uxFold('car-wait-' + car.id, car.name, body, 'En attente de pneus · aucun verdict')}</article>`;
 }
 function renderCars() {
   const el = $('#secCars'); if (!CX) {
@@ -3688,6 +3687,7 @@ function renderCars() {
         <div class="tirebox"><span><b>Pneus montés : ${TYPE_LABEL[car.tire.type]}</b></span><span>${tireTxt(car)}</span></div>
         ${uxFold('tyre-records-' + car.id, 'Mesures et historique', tireExtra(car, m), 'Pression · DOT · usure')}</div>
       ${gen ? genericNote(pf.gaps) : verdictHtml(w.level, false, w)}
+      ${!gen && w.depthUnknown ? `<p class="tread-todo"><button type="button" class="btn sm pri" data-act="garage-quick" data-car="${esc(car.id)}" data-garage-target="tread-wheels">Saisir la profondeur des pneus</button><span class="sub">Deux minutes à la jauge : l’analyse n’est plus limitée, sur tous les écrans.</span></p>` : ''}
       <div class="car-b">
         <div class="scoreRow"><div><div class="lab">TYRE WEATHER SCORE</div><div class="score num">${gen ? '—' : w.score}<small>${gen ? 'aperçu' : '/100'}</small></div></div>
           <div style="display:flex;flex-direction:column;gap:6px"><div class="lab">Niveau de risque : <b style="color:var(--lv-t)">${gen ? 'aperçu (profil générique)' : RISKTXT[w.level]}</b></div><div class="bar"><i style="width:${gen ? 0 : w.score}%"></i></div>
@@ -4680,10 +4680,10 @@ document.addEventListener('click', async e => {
     // par les champs historiques du panneau Paramètres.
     const i = S.cars.findIndex(c => c && c.id === t.dataset.car);
     const key = t.dataset.garageTarget;
-    if (i < 0 || !['odo', 'tread', 'pressure', 'maintenance', 'model', 'size', 'mount'].includes(key) || LOCKED()) {
+    if (i < 0 || !['odo', 'tread', 'tread-wheels', 'pressure', 'maintenance', 'model', 'size', 'mount'].includes(key) || LOCKED()) {
       commandFeedback(t, 'Fiche indisponible'); return;
     }
-    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : key === 'maintenance' ? '#f-cars-' + i + '-maint-rev-d'
+    const selector = key === 'odo' ? '#odo-' + i : key === 'tread' ? '#trd-' + i : key === 'tread-wheels' ? '#trw-' + i + '-fl-side' : key === 'maintenance' ? '#f-cars-' + i + '-maint-rev-d'
       : key === 'mount' ? '#f-cars-' + i + '-tire-mountKm' : key === 'model' ? '#f-cars-' + i + '-tire-model' : key === 'size' ? '#f-cars-' + i + '-tire-size' : '#f-cars-' + i + '-tire-pchk-av';
     const d = $('#settings'); if (!d) { commandFeedback(t, 'Paramètres indisponibles'); return; }
     d.open = true;
