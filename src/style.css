@@ -1350,3 +1350,18 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .set-danger{margin-top:14px;padding-top:10px;border-top:1px dashed var(--line2)}
 /* D1 · app verrouillée : message visible au-dessus des contrôles désactivés */
 .locked-write-msg { margin: 0 0 6px; color: var(--cau-t, var(--fg2)); }
+
+/* Choix des pneus : filtres, étiquette UE et statistiques (paramètres) */
+.tp-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); gap: 6px; }
+.tp-row input[type=search] { grid-column: 1 / -1; }
+.tp-stats p { margin: 4px 0; }
+.tp-bar { display: flex; gap: 2px; min-height: 24px; border-radius: 6px; overflow: hidden; margin: 2px 0 6px; }
+.tp-c { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 28px; font: 600 12px var(--f-mono); color: var(--fg); }
+.tp-c small { font-weight: 400; opacity: .8; }
+.tp-A { background: var(--go-soft); color: var(--go-t); }
+.tp-B { background: var(--accent-soft); color: var(--accent); }
+.tp-C { background: var(--cau-soft); color: var(--cau-t); }
+.tp-D { background: var(--risk-soft); color: var(--risk-t); }
+.tp-E { background: var(--nogo-soft); color: var(--nogo-t); }
+.tp-vars ul { margin: 6px 0 0; padding-left: 18px; }
+.tp-vars li { margin: 2px 0; font-size: 13px; }
