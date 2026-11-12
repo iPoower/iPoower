@@ -586,11 +586,14 @@ function placeInput(extra) {
   if (USER_STORE.state.lastDeparture && Date.now() - USER_STORE.state.lastDeparture.at >= 20 * 3600e3) USER_STORE.state.lastDeparture = null;
   const precise = PLACE_HOLD || GPS && GPS.placePending ? PLACE_FIX : PLACE_FIX || (GPS && Number.isFinite(GPS.t) && Number.isFinite(GPS.acc) ? { lat: GPS.lat, lon: GPS.lon, acc: GPS.acc, ts: GPS.t } : null) || GEO.raw;
   return { now: Date.now(), today: placeToday(), places: placeList(), conf: PLACE.conf, last: PLACE.last, fix: precise, net: NETLOC,
-    forced: PLACE_FORCE, moving: LIVE.phase === 'active' || !!TRIPSTART || !!USER_STORE.state.lastDeparture, movingSince: TRIPSTART ? TRIPSTART.at : LIVE.startFix ? LIVE.startFix.ts : USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at, fmt: hmLocal, ...(extra || {}) };
+    forced: PLACE_FORCE, moving: LIVE.phase === 'active' || !!TRIPSTART || !!USER_STORE.state.lastDeparture,
+    departure: LIVE.phase !== 'active' && !TRIPSTART ? USER_STORE.state.lastDeparture || null : null, movingSince: TRIPSTART ? TRIPSTART.at : LIVE.startFix ? LIVE.startFix.ts : USER_STORE.state.lastDeparture && USER_STORE.state.lastDeparture.at, fmt: hmLocal, ...(extra || {}) };
 }
 // contexte courant ; une confirmation terminée (départ, GPS précis ailleurs, fin de journée) est effacée une seule fois
 function placeNow() {
   const c = placeContext(placeInput());
+  // « Je pars » annoncé mais GPS précis toujours au lieu quitté : départ annulé une seule fois, le lieu GPS reprend la main.
+  if (c.departureEnded && USER_STORE.state.lastDeparture) { USER_STORE.state.lastDeparture = null; placeSave(); return placeNow(); }
   if (c.ended && PLACE.conf) { PLACE.last = { placeId: PLACE.conf.placeId, at: PLACE.conf.at, source: 'fin : ' + c.ended.reason }; PLACE.conf = null; placeSave(); }
   if (!PLACE.conf && c.source === 'gps' && c.place && (!PLACE.last || PLACE.last.placeId !== c.place.id || Date.now() - PLACE.last.at > 10 * 60e3)) { PLACE.last = { placeId: c.place.id, at: Date.now(), source: 'gps' }; placeSave(); }
   return c;

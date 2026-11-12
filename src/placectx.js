@@ -16,9 +16,12 @@
    Garde de vraisemblance : un relevé NON précis (> 100 m) à plus de 50 km de tous les lieux enregistrés, ou sans aucun lieu
    enregistré pour le comparer, n'est jamais utilisé en silence (une base Wi-Fi peut annoncer ± 200 m à des centaines de km).
    Il reste en attente jusqu'au choix explicite de l'utilisateur (« Utiliser mon lieu principal » ou « Utiliser quand même »).
-   Un relevé précis (≤ 100 m) loin des lieux reste accepté : c'est un voyage. */
+   Un relevé précis (≤ 100 m) loin des lieux reste accepté : c'est un voyage.
+   Départ annoncé sans trajet suivi (« Je pars de chez moi », `departure`) : ce n'est qu'une déclaration, jamais « Fiable ».
+   Il se termine (`departureEnded`) quand un relevé précis et frais, pris au moins 15 min après l'annonce, place l'utilisateur
+   dans la géofence du lieu quitté : il n'est pas parti, ou il est revenu. */
 const PLACE_ACC_GPS = 100, PLACE_ACC_APPROX = 1500, PLACE_GPS_AGE = 10 * 60e3, PLACE_APPROX_AGE = 30 * 60e3, PLACE_LAST_AGE = 12 * 3600e3;
-const PLACE_VMAX = 200, PLACE_HOME_CAP = 20 * 3600e3, PLACE_PLAUSIBLE_KM = 50;
+const PLACE_VMAX = 200, PLACE_HOME_CAP = 20 * 3600e3, PLACE_PLAUSIBLE_KM = 50, PLACE_DEPART_STAY = 15 * 60e3;
 const PLACE_KIND = { work: { icon: '🏢', at: 'AU TRAVAIL', arrive: 'Bien arrivé', already: 'Je suis déjà au travail', leave: 'Je quitte le travail' },
   home: { icon: '🏠', at: 'À LA MAISON', arrive: 'Bien rentré', already: 'Je suis déjà chez moi', leave: 'Je pars de chez moi' },
   custom: { icon: '📍', at: 'SUR PLACE', arrive: 'Bien arrivé', already: 'Je suis sur place', leave: 'Je pars' } };
@@ -107,13 +110,21 @@ function placeContext(input) {
     }
     if (ended) conf = null;
   }
-  const out = (o) => ({ rejected, ended, fixClass: cls, ...o });
+  // Départ annoncé sans trajet suivi : un GPS précis, frais et pris 15 min après l'annonce au lieu quitté le termine.
+  const departure = inp.departure && byId(inp.departure.placeId) && Number.isFinite(inp.departure.at) ? inp.departure : null;
+  let departureEnded = null;
+  if (departure && fix && cls === 'gps' && age <= PLACE_GPS_AGE && fix.ts - departure.at >= PLACE_DEPART_STAY
+    && km(byId(departure.placeId), fix) <= Math.max(0.15, 2 * fix.acc / 1000)) departureEnded = { reason: 'toujours au lieu du départ annoncé (GPS précis)' };
+  const moving = inp.moving && !departureEnded;
+  const out = (o) => ({ rejected, ended, departureEnded, fixClass: cls, ...o });
   if (conf) {
     const p = byId(conf.placeId), k = PLACE_KIND[p.kind] || PLACE_KIND.custom;
     return out({ place: p, source: 'manual', trust: 'Confirmée', confirmed: conf, originLock: p.id,
       title: `${k.icon} ${k.at}`, badge: `Confirmé à ${hm(conf.at)} · source : confirmation utilisateur`, net: rejected.length ? 'Position approximative ignorée pour le lieu confirmé' : null });
   }
-  if (inp.moving) return out({ place: null, source: 'trip', trust: 'Fiable', originLock: null, title: '🚗 EN ROUTE', badge: 'Trajet en cours · GPS' });
+  if (moving && departure) return out({ place: null, source: 'trip', trust: 'Estimée', originLock: null, title: '🚗 EN ROUTE',
+    badge: `Départ annoncé à ${hm(departure.at)} · trajet non suivi` });
+  if (moving) return out({ place: null, source: 'trip', trust: 'Fiable', originLock: null, title: '🚗 EN ROUTE', badge: 'Trajet en cours · GPS' });
   const last = inp.last && byId(inp.last.placeId) && Number.isFinite(inp.last.at) ? inp.last : null;
   const lastOk = last && now - last.at <= PLACE_LAST_AGE ? last : null;
   const snap = (f, r) => { const hits = places.map(p => ({ p, d: km(p, f) })).filter(x => x.d <= r).sort((a, b) => a.d - b.d); return r < 1.5 && hits.length !== 1 ? null : hits[0] || null; };
