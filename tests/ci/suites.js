@@ -183,4 +183,5 @@ SUITE.push(['e2e113-arome-degrade.js', 'Lot 1 R2 : AROME en échec pendant un cy
 SUITE.push(['e2e111-meteo-une-source.js', 'Lot 1 R2 : une seule température par lieu et par heure (AROME conservé par le cycle automatique, « AROME indisponible » seulement sur échec, départ de trajet = onglet Météo, Maintenant = valeur recalée)', true]);
 SUITE.push(['test_tire_catalog.js', 'pneus : registre européen EPREL (étiquette UE par variante), saisons vérifiées conservées, saison déduite signalée, intégrité de la base', false],
   ['e2e115-pneus-etiquette-ue.js', 'paramètres · choix des pneus : étiquette UE, filtres saison/mouillé/conso/indices, recherche, tri, statistiques et lien EPREL, iPhone et PC', true]);
+SUITE.push(['test_audit_20261112.js', 'audit de l’app réelle du 12/11 : bandeaux 24 h « demain », pastille d’agenda sans débordement, contrôle Trajet sans voiture', false]);
 SUITE.push(['test_relay_publish.js', 'relais météo et watchdog, publication : refus GitHub passagers espacés, échec persistant visible, DATEX concurrent, liste blanche, jamais d’écrasement par plus ancien', false]);

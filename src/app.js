@@ -1126,7 +1126,8 @@ function renderBanners() {
   // moteur v2 actif : un brouillard / visibilité prouvé par observation s'affiche même quand le modèle reste clair (score pneus inclus)
   if (!h && EV_FLAG() === 'on') { const v = evNow(), w = v && v.r.worst; if (w && w.lv >= 2 && v.r.headline) h += `<div class="banner lv${w.lv}" role="alert" data-k="ev"><h3>⚠ ${esc(v.r.headline.text)}</h3><span style="font-size:13px">Preuve observée (moteur v2) : prudence quels que soient les pneus. Détail dans l’onglet Météo.</span></div>`; }
   const top = Object.values(alerts).filter(a => S.alerts[a.id] && a.sev >= 2 && a.id !== 'fog' && a.id !== 'vis' && !(UI.view === 'meteo' && TIRE_ALERTS.includes(a.id))).sort((a, b) => b.sev - a.sev).slice(0, 3);
-  if (top.length) h += '<div class="notes">' + top.map(a => `<div class="note lv${a.sev}"><b>${LV[Math.min(3, a.sev)].name}</b><span>${esc(a.title)}</span></div>`).join('') + '</div>';
+  const nowHHMM = hs[n] && hs[n].t ? hs[n].t.slice(11, 16) : '';
+  if (top.length) h += '<div class="notes">' + top.map(a => `<div class="note lv${a.sev}"><b>${LV[Math.min(3, a.sev)].name}</b><span>${esc(alertWhen(a.title, nowHHMM))}</span></div>`).join('') + '</div>';
   el.innerHTML = h;
 }
 
