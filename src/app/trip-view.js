@@ -129,8 +129,10 @@ function tripPreflightHtml(route, car, origin, dest, departure) {
       : offlineNow() ? 'Hors connexion · conditions à actualiser dès que possible'
         : minutes == null ? 'Réception météo locale non vérifiée'
           : 'Dernière météo locale reçue il y a ' + Math.max(0, Math.floor(minutes)) + ' min'],
-    ['pneus', tyreKnown ? 'déclarés' : 'à compléter', tyreKnown
-      ? 'Monte déclarée pour ' + (car.short || car.name || 'le véhicule') + ' · pression et état à vérifier physiquement'
+    // Aucune voiture choisie : ne pas accuser une fiche incomplète (audit du 12/11/2026, monte pourtant renseignée).
+    ['pneus', !car ? 'voiture à choisir' : tyreKnown ? 'déclarés' : 'à compléter', !car
+      ? 'Choisis la voiture du trajet ci-dessus : sa monte sera contrôlée'
+      : tyreKnown ? 'Monte déclarée pour ' + (car.short || car.name || 'le véhicule') + ' · pression et état à vérifier physiquement'
       : 'Monte ou modèle non renseigné · compléter la fiche du véhicule']
   ];
   const later = departure && departure > localTs(Date.now()).slice(0, 16);

@@ -1365,3 +1365,6 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .tp-E { background: var(--nogo-soft); color: var(--nogo-t); }
 .tp-vars ul { margin: 6px 0 0; padding-left: 18px; }
 .tp-vars li { margin: 2px 0; font-size: 13px; }
+
+/* Agenda : la pastille de verdict d'un trajet peut dépasser 390 px (« ANALYSE LIMITÉE · profondeur non renseignée 80 ») : retour à la ligne. */
+.cal-v .pill { white-space: normal; max-width: 100%; overflow-wrap: anywhere; }

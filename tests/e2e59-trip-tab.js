@@ -88,6 +88,12 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
     assert.match(await panel.locator('[data-preflight=meteo]').innerText(),/Météo locale/);
     assert.match(await panel.locator('[data-preflight=pneus]').innerText(),/Pneus.*déclarés/);
     assert.doesNotMatch(await panel.innerText(),/BON POUR ROULER|GO SÉCURITÉ/);
+    // audit du 12/11 : sans voiture choisie, demander la voiture au lieu d'accuser une fiche incomplète
+    const prevCar=await p.locator('#tripCar').inputValue();await p.selectOption('#tripCar','');await s.settle(1);
+    const noCar=await p.locator('#secTrip .trip-preflight [data-preflight=pneus]').innerText();
+    assert.match(noCar,/Pneus.*voiture à choisir/s);assert.doesNotMatch(noCar,/non renseigné/);
+    if(prevCar){await p.selectOption('#tripCar',prevCar);await s.settle(1);}
+    assert.match(await p.locator('#secTrip .trip-preflight [data-preflight=pneus]').innerText(),/Pneus.*déclarés/);
     await p.evaluate(()=>renderTripView());
     assert.equal(await panel.locator('[data-preflight]').count(),3);
   });
