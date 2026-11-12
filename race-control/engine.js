@@ -477,6 +477,12 @@ function frostRisk(sum) {
   return { ...base, key, level, humid, ref, basis: roadMin != null ? 'road' : 'air', s: null, possible: level >= 1 };
 }
 const hhmm = s => s ? s.hs[s.i].t.slice(11, 16) : '';
+// Bandeaux d'alerte (fenêtre de 24 h à partir de l'heure courante nowHHMM) : une heure « vers HH:MM » antérieure à l'heure
+// courante est forcément demain. Sans ce mot, « Gel possible … vers 03:00 » se lisait comme cette nuit passée (audit du 12/11/2026).
+function alertWhen(title, nowHHMM) {
+  if (!/^\d{2}:\d{2}$/.test(String(nowHHMM || ''))) return String(title || '');
+  return String(title || '').replace(/\bvers (\d{2}:\d{2})(?! demain)/g, (m, t) => t < nowHHMM ? `vers ${t} demain` : m);
+}
 const f1 = v => v == null ? '—' : (Math.round(v * 10) / 10).toFixed(1).replace('.', ',');
 const f0 = v => v == null ? '—' : String(Math.round(v));
 const rainClass = P => P == null ? null : P < 0.1 ? 'aucune' : P < 2.5 ? 'faible' : P < 7.6 ? 'modérée' : 'forte';
