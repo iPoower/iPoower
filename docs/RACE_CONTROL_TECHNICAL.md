@@ -407,6 +407,7 @@ n'était prévenu. `tools/relay-clock/outage-alert.mjs` ajoute au Worker une ale
   (`HH:MM-HH:MM`, défaut `05:00-09:30`), `ALERT_DAYS` (`semaine` par défaut, ou `tous`), `ALERT_CLICK` (lien https).
 - Tests : `tests/test_relay_clock.js` (rejeu du 11 novembre, panne de nuit, heure d'été, week-end, incident passager de Pages,
   confidentialité, panne de l'API GitHub pendant l'envoi) ; contre-tests par mutation.
+
 ## Base pneus et étiquette UE (registre EPREL)
 
 `src/tiredb.json` réunit les modèles vérifiés (catalogue, fiche ou gamme du fabricant) et **tous les pneus de tourisme (C1)
