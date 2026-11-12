@@ -1,4 +1,4 @@
-// Horloge externe du relais (tools/relay-clock) et mesure de fraîcheur (tools/relay-freshness.js) : réseau simulé, aucun secret réel.
+// Horloge externe du relais (tools/relay-clock), alerte de secours et mesure de fraîcheur (tools/relay-freshness.js) : réseau simulé, aucun secret réel.
 // Un monde simulé déterministe : horloge, GitHub Pages (obs.json, délai de propagation) et GitHub Actions (cycle de vie des runs).
 const fs = require('fs'), path = require('path'), assert = require('assert');
 const { freshness, parisMinute } = require('../tools/relay-freshness.js');
@@ -303,6 +303,125 @@ const TOKEN = 'jeton-de-test-uniquement';
     } finally { fs.rmSync(d, { recursive: true, force: true }); }
     assert.match(wf, /github\.event\.inputs\.source != 'horloge'/);
     assert.match(wf, /^run-name: .*inputs\.source/m); assert.match(wf, /concurrency:\s*\n\s*group: race-control-relay/);
+  });
+
+  // — alerte de secours (outage-alert.mjs) : indépendante de GitHub Actions, sans stockage, sans donnée personnelle
+  const A = await import(path.join(__dirname, '../tools/relay-clock/outage-alert.mjs'));
+  const TOPIC = 'sujet-ntfy-de-test-uniquement';
+  // Rejoue une suite de ticks (une par minute, heure planifiée) contre un obs.json figé à `updated` ; renvoie les alertes envoyées.
+  async function replay({ updated, from, to, env = {}, obsMode = 'ok', ntfyStatus = 200, rereadMode }) {
+    const sent = [], logs = [];
+    const obsFor = mode => mode === 'down' ? undefined : mode === 'invalid' ? null : { updated: new Date(updated).toISOString(), stations: { LFAQ: { lat: 49.9715, lon: 2.6976 } } };
+    const fetchImpl = async (url, init = {}) => {
+      assert.equal(url, A.NTFY_URL); assert.equal(init.method, 'POST');
+      sent.push(JSON.parse(init.body)); return { ok: ntfyStatus < 300, status: ntfyStatus };
+    };
+    let rereads = 0;
+    for (let now = from; now <= to; now += 60e3) {
+      await A.outageAlert({ NTFY_TOPIC: TOPIC, ...env }, { obs: obsFor(obsMode), now, fetchImpl, log: l => logs.push({ now, l }),
+        reread: async () => { rereads++; return obsFor(rereadMode || obsMode); } }).catch(e => logs.push({ now, error: e.message }));
+    }
+    return { sent, logs, rereads };
+  }
+  const at = s => Date.parse(s);
+  await test('alerte : réglages par défaut (semaine 05:00–09:30), valeurs invalides ramenées au défaut, lien https seulement', async () => {
+    assert.deepEqual(A.alertConfig({}), { start: 300, end: 570, everyDay: false, click: null });
+    assert.deepEqual(A.alertConfig({ ALERT_WINDOW: '06:15-08:00', ALERT_DAYS: 'Tous', ALERT_CLICK: 'https://exemple.test/rc/' }),
+      { start: 375, end: 480, everyDay: true, click: 'https://exemple.test/rc/' });
+    for (const w of ['9:30-05:00', '25:00-26:00', '05h00-09h30', '', 'n importe quoi']) assert.deepEqual(A.alertConfig({ ALERT_WINDOW: w }).start, 300, w);
+    assert.equal(A.alertConfig({ ALERT_CLICK: 'http://exemple.test/' }).click, null);
+    assert.equal(A.alertConfig({ ALERT_CLICK: 'javascript:alert(1)' }).click, null);
+  });
+  await test('alerte : heure de Paris, hiver comme été', async () => {
+    assert.deepEqual(A.parisClock(at('2026-11-11T20:10:00Z')), { weekday: true, min: 21 * 60 + 10, hhmm: '21h10' });
+    assert.deepEqual(A.parisClock(at('2026-07-06T03:00:00Z')), { weekday: true, min: 5 * 60, hhmm: '05h00' });
+    assert.equal(A.parisClock(at('2026-11-14T06:00:00Z')).weekday, false);
+  });
+  await test('alerte : rejeu du 11 novembre (relais figé à 21h09, panne GitHub 54 min) → une seule alerte, discrète, à 21h40', async () => {
+    const r = await replay({ updated: at('2026-11-11T20:09:03Z'), from: at('2026-11-11T20:10:00Z'), to: at('2026-11-11T21:04:00Z') });
+    assert.equal(r.sent.length, 1);
+    const m = r.sent[0];
+    assert.equal(m.topic, TOPIC); assert.equal(m.priority, 2);
+    assert.equal(m.title, '⚠️ Race Control : relais en panne depuis 21h09');
+    assert.match(m.message, /depuis 30 min\./); assert.match(m.message, /verglas et brouillard ne partent plus/);
+    const sentAt = r.logs.find(x => x.l && JSON.parse(x.l).alert).now; assert.equal(sentAt, at('2026-11-11T20:40:00Z'));
+  });
+  await test('alerte : panne commencée la nuit → message discret puis 3 rappels prioritaires avant le départ (05h00, 06h30, 08h00)', async () => {
+    const r = await replay({ updated: at('2026-11-12T01:00:00Z'), from: at('2026-11-12T01:01:00Z'), to: at('2026-11-12T09:00:00Z') });
+    assert.deepEqual(r.sent.map(m => m.priority), [2, 4, 4, 4]);
+    const times = r.logs.filter(x => x.l && JSON.parse(x.l).alert).map(x => A.parisClock(x.now).hhmm);
+    assert.deepEqual(times, ['02h30', '05h00', '06h30', '08h00']);
+    assert.match(r.sent[3].message, /depuis 6 h 00\./);
+  });
+  await test('alerte : panne pendant la fenêtre → priorité haute dès 30 min ; heure d\'été respectée', async () => {
+    const r = await replay({ updated: at('2026-07-06T04:12:00Z'), from: at('2026-07-06T04:13:00Z'), to: at('2026-07-06T08:00:00Z') });
+    const times = r.logs.filter(x => x.l && JSON.parse(x.l).alert).map(x => A.parisClock(x.now).hhmm);
+    assert.deepEqual(times, ['06h42', '08h00']); assert.deepEqual(r.sent.map(m => m.priority), [4, 4]);
+  });
+  await test('alerte : week-end → pas de rappel par défaut ; ALERT_DAYS=tous les active', async () => {
+    const base = { updated: at('2026-11-14T01:00:00Z'), from: at('2026-11-14T01:01:00Z'), to: at('2026-11-14T09:00:00Z') };
+    assert.equal((await replay(base)).sent.length, 1);
+    assert.equal((await replay({ ...base, env: { ALERT_DAYS: 'tous' } })).sent.length, 4);
+  });
+  await test('alerte : relais en bonne santé (publication toutes les 10 min) → aucun message, même pendant la fenêtre', async () => {
+    let n = 0;
+    for (let now = at('2026-11-12T03:00:00Z'); now <= at('2026-11-12T09:00:00Z'); now += 60e3) {
+      const updated = now - (now % 600e3) - 30e3;
+      const r = await A.outageAlert({ NTFY_TOPIC: TOPIC }, { obs: { updated: new Date(updated).toISOString() }, now, fetchImpl: async () => { n++; return { status: 200 }; }, log: () => {} });
+      assert.equal(r.alert, null);
+    }
+    assert.equal(n, 0);
+  });
+  await test('alerte : obs.json inaccessible → seulement aux minutes de rappel, après une seconde lecture qui confirme', async () => {
+    const win = { updated: 0, from: at('2026-11-12T03:30:00Z'), to: at('2026-11-12T08:59:00Z') };
+    const down = await replay({ ...win, obsMode: 'down' });
+    assert.equal(down.sent.length, 3); assert.equal(down.rereads, 3);
+    assert(down.sent.every(m => m.title === '⚠️ Race Control : données météo inaccessibles' && m.priority === 4));
+    const blip = await replay({ updated: at('2026-11-12T03:55:00Z'), from: at('2026-11-12T03:56:00Z'), to: at('2026-11-12T04:20:00Z'), obsMode: 'down', rereadMode: 'ok' });
+    assert.equal(blip.rereads, 1); assert.equal(blip.sent.length, 0, 'incident passager de Pages à 05h00, données fraîches : aucune fausse alerte');
+    const night = await replay({ updated: 0, from: at('2026-11-12T00:00:00Z'), to: at('2026-11-12T03:59:00Z'), obsMode: 'invalid' });
+    assert.equal(night.sent.length, 0); assert.equal(night.rereads, 0);
+  });
+  await test('alerte : sans NTFY_TOPIC → désactivée, aucun appel réseau', async () => {
+    let n = 0;
+    const r = await A.outageAlert({}, { obs: { updated: new Date(at('2026-11-12T04:30:00Z')).toISOString() }, now: at('2026-11-12T05:00:00Z'),
+      fetchImpl: async () => { n++; return { status: 200 }; }, log: () => {} });
+    assert.equal(n, 0); assert.match(r.reason, /désactivée/);
+  });
+  await test('alerte : confidentialité — ni lieu ni coordonnée dans le message, sujet jamais journalisé, refus ntfy visible', async () => {
+    const r = await replay({ updated: at('2026-11-12T01:00:00Z'), from: at('2026-11-12T01:01:00Z'), to: at('2026-11-12T09:00:00Z'), env: { ALERT_CLICK: 'https://exemple.test/rc/' } });
+    for (const m of r.sent) {
+      assert.deepEqual(Object.keys(m).sort(), ['click', 'message', 'priority', 'tags', 'title', 'topic']);
+      assert(!/LFAQ|49\.97|2\.69|lat|lon/.test(m.title + m.message), 'aucune donnée de lieu');
+    }
+    const ko = await replay({ updated: at('2026-11-11T20:09:03Z'), from: at('2026-11-11T20:40:00Z'), to: at('2026-11-11T20:40:00Z'), ntfyStatus: 500 });
+    assert(ko.logs.some(x => /ntfy : HTTP 500/.test(x.error || '')), 'refus ntfy : invocation en échec');
+    const leak = []; await A.outageAlert({ NTFY_TOPIC: TOPIC }, { obs: { updated: '2026-11-11T20:09:03Z' }, now: at('2026-11-11T20:40:00Z'), log: l => leak.push(l),
+      fetchImpl: async () => { throw new Error('réseau coupé pendant l envoi vers ' + TOPIC); } }).catch(() => {});
+    assert.equal(leak.length, 1); assert(!leak[0].includes(TOPIC) && leak[0].includes('***'), 'sujet masqué même dans une erreur réseau');
+    for (const x of [...r.logs, ...ko.logs]) {
+      const s = x.l || x.error; assert(!s.includes(TOPIC), 'sujet ntfy absent des journaux');
+      if (x.l) assert.deepEqual(Object.keys(JSON.parse(x.l)), ['t', 'alert', 'priority', 'status', 'reason']);
+    }
+  });
+  await test('worker : API GitHub en panne → le chien de garde échoue, l\'alerte de secours part quand même (une seule lecture d\'obs.json)', async () => {
+    const realFetch = globalThis.fetch, realLog = console.log, calls = [];
+    const now = at('2026-11-11T20:40:00Z');
+    globalThis.fetch = async (url, init = {}) => {
+      calls.push(String(url).split('?')[0]);
+      if (String(url).startsWith(W.OBS_URL)) return { ok: true, status: 200, json: async () => ({ updated: '2026-11-11T20:09:03.024Z' }) };
+      if (String(url).startsWith('https://api.github.com/')) return { ok: false, status: 503, json: async () => ({}) };
+      if (url === A.NTFY_URL) return { ok: true, status: 200 };
+      return { ok: false, status: 404, json: async () => ({}) };
+    };
+    console.log = () => {};
+    const realNow = Date.now; Date.now = () => now + 2e3;
+    try {
+      const worker = (await import(path.join(__dirname, '../tools/relay-clock/worker.mjs'))).default;
+      await assert.rejects(worker.scheduled({ scheduledTime: now }, { GH_TOKEN: TOKEN, NTFY_TOPIC: TOPIC }, {}), /Liste des runs indisponible/);
+    } finally { globalThis.fetch = realFetch; console.log = realLog; Date.now = realNow; }
+    assert.equal(calls.filter(u => u === W.OBS_URL).length, 1, 'obs.json lu une seule fois');
+    assert.equal(calls.filter(u => u === A.NTFY_URL).length, 1, 'alerte envoyée malgré la panne GitHub');
   });
 
   // — mesure de fraîcheur
