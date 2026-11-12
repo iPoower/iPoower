@@ -1014,10 +1014,12 @@ const sizeKey = s => { const d = decodeSize(s); return d ? `${d.w}/${d.ar} R${d.
 function loadTireDB(js, source) {
   if (!js || !Array.isArray(js.tires) || js.tires.length < 5) return false;
   const list = js.tires.filter(x => x && x.b && x.m && ['summer', 'winter', 'allseason'].includes(x.t))
-    .map(x => ({ brand: x.b, model: x.m, type: x.t, pmsf: x.p == null ? null : !!x.p, cat: x.c || '', sizes: x.s || {}, variants: x.v && typeof x.v === 'object' && !Array.isArray(x.v) ? x.v : {}, tier: x.tier || '', added: x.a || null, year: x.y || null }));
+    .map(x => ({ brand: x.b, model: x.m, type: x.t, pmsf: x.p == null ? null : !!x.p, cat: x.c || '', sizes: x.s || {}, variants: x.v && typeof x.v === 'object' && !Array.isArray(x.v) ? x.v : {}, tier: x.tier || '', added: x.a || null, year: x.y || null,
+      labels: x.e && typeof x.e === 'object' && !Array.isArray(x.e) ? x.e : {}, guessed: !!x.q }));
   if (list.length < 5) return false;
   TIRE_DB.length = 0; list.forEach(x => TIRE_DB.push(x));
-  TIRE_DB_META = { version: js.version || 0, updated: js.updated || null, sizes: js.sizes || {}, count: list.length, source: source || 'fichier', note: js.note || '' };
+  TIRE_DB_META = { version: js.version || 0, updated: js.updated || null, sizes: js.sizes || {}, count: list.length, source: source || 'fichier', note: js.note || '',
+    labels: js.labels && typeof js.labels === 'object' ? { source: String(js.labels.source || ''), fetched: js.labels.fetched || null } : null };
   return true;
 }
 function findTire(brand, model) {
@@ -1036,7 +1038,16 @@ function tirePlanVariant(car, plan) {
   const k = sizeKey(plan.size || (car && car.tire && car.tire.size) || '');
   return db && db.type === 'winter' && k && db.variants ? db.variants[k] || null : null;
 }
-const SRC_TXT = { 'vérifié': 'dimension vérifiée', catalogue: 'vu au catalogue pour ce véhicule', gamme: 'gamme du fabricant, à confirmer à l’achat' };
+const SRC_TXT = { 'vérifié': 'dimension vérifiée', catalogue: 'vu au catalogue pour ce véhicule', gamme: 'gamme du fabricant, à confirmer à l’achat', eprel: 'registre européen EPREL (étiquette officielle)' };
+// Étiquette UE d'une variante (registre EPREL, champ e de tiredb.json) : « indices|conso|mouillé|dB|classe bruit|3PMSF|glace|n° EPREL ».
+function tireLabel(v) {
+  const p = String(v || '').split('|'); if (p.length < 8 || !/^[A-E]$/.test(p[1]) || !/^[A-E]$/.test(p[2])) return null;
+  const d = decodeSize('000/00 R00 ' + p[0].replace(/[()]/g, ''));
+  return { idx: p[0], li: d ? d.li : null, si: d ? d.si : null, xl: /\b(XL|RF)\b/.test(p[0]), energy: p[1], wet: p[2], db: p[3] === '' ? null : +p[3], noise: p[4] || null,
+    snow: p[5] === '1', ice: p[6] === '1', eprel: p[7] || null };
+}
+// Étiquettes d'un modèle dans une dimension, meilleures d'abord (mouillé, puis consommation).
+function tireLabels(db, k) { return db && db.labels && k && Array.isArray(db.labels[k]) ? db.labels[k].map(tireLabel).filter(Boolean) : []; }
 function compatible(car) {
   const k = sizeKey(car.tire.size || (car.sets && car.sets.summer && car.sets.summer.size) || '');
   return k ? TIRE_DB.filter(t => t.sizes && t.sizes[k]) : [];
@@ -1061,6 +1072,10 @@ function tireSheet(tire, nowStr) {
   const out = [], d = decodeSize(tire.size), db = findTire(tire.brand, tire.model);
   if (db) { const k = sizeKey(tire.size), src = k && db.sizes ? db.sizes[k] : null;
     out.push(`${db.brand} ${db.model} : ${db.cat}${db.pmsf === true ? ' · marquage 3PMSF (flocon)' : db.pmsf === false ? ' · sans 3PMSF' : ' · 3PMSF à vérifier sur le flanc'}${db.tier ? ' · gamme ' + db.tier : ''}${src ? ' · ' + (SRC_TXT[src] || src) : ''}`); }
+  if (db && d) {   // étiquette UE de la variante exacte (registre EPREL), sinon rien : jamais une autre variante présentée comme la sienne
+    const L = tireLabels(db, sizeKey(tire.size)).find(l => l.li === d.li && l.si === d.si && (!d.xl || l.xl));
+    if (L) out.push(`Étiquette UE (EPREL${L.eprel ? ' ' + L.eprel : ''}) : adhérence sur mouillé ${L.wet} · consommation ${L.energy}${L.db != null ? ` · bruit ${L.db} dB${L.noise ? ' (' + L.noise + ')' : ''}` : ''}${L.snow ? ' · 3PMSF' : ''}${L.ice ? ' · glace' : ''}`);
+  }
   if (d) {
     out.push(`Largeur ${d.w} mm · flanc ${d.side} mm (${d.ar} %) · jante ${d.rim}" · diamètre ≈ ${d.dia} mm`);
     const idx = [];
