@@ -336,13 +336,18 @@ async function refreshEns(force) {
 const TCARS = () => S.cars.filter(hasTires);
 // base pneus : version intégrée à la page, puis fichier publié (mis à jour chaque mois)
 if (window.TWRC_TIREDB) loadTireDB(window.TWRC_TIREDB, 'intégrée');
+// Le fichier publié (≈ 405 Ko depuis l'étiquette UE) n'est demandé qu'à l'ouverture des Paramètres, seul endroit où une base
+// plus récente change l'affichage (choix des pneus), et au plus une fois par heure : plus rien au démarrage, où il était
+// téléchargé deux fois (page verrouillée puis déverrouillée) pour être presque toujours identique à la version intégrée.
+let TIRE_DB_CHECKED = 0;
 async function refreshTireDB() {
-  if (location.protocol !== 'https:') return;
+  if (location.protocol !== 'https:' || Date.now() - TIRE_DB_CHECKED < 3600e3) return;
+  TIRE_DB_CHECKED = Date.now();
   try {
     const js = await fetchJSON('tiredb.json?t=' + Math.floor(Date.now() / 3600e3), 10000);
     const cur = TIRE_DB_META;
     if (js && (js.version > cur.version || (js.updated && (!cur.updated || js.updated > cur.updated)))) { if (loadTireDB(js, 'en ligne')) { renderSettings(); softRender(); } }
-  } catch (e) { /* hors ligne : base intégrée */ }
+  } catch (e) { TIRE_DB_CHECKED = 0; /* hors ligne ou erreur : base intégrée, nouvelle vérification à la prochaine ouverture */ }
 }
 // La correction de chaussée est propre à chaque lieu (calibBias) : appliquée seulement pendant la construction du modèle de CE lieu.
 // Hors de cette fenêtre (points de trajet, agenda, démo), aucune correction.
