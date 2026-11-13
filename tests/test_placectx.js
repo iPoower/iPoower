@@ -55,6 +55,29 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     assert.match(P(base({ now: min(21 * 60), conf: c })).ended.reason, /plus de 20 h/);
     assert.equal(P(base({ conf: c })).title, '🏠 À LA MAISON');
   });
+  test('« Je pars de chez moi » sans trajet suivi : en route déclaré (Estimée), jamais « Trajet en cours · GPS · Fiable »', () => {
+    const dep = { placeId: 'home', at: T0 }, r = P(base({ now: min(5), moving: true, movingSince: T0, departure: dep }));
+    assert.equal(r.source, 'trip'); assert.equal(r.trust, 'Estimée'); assert.equal(r.title, '🚗 EN ROUTE');
+    assert.equal(r.badge, 'Départ annoncé à 05:42 · trajet non suivi'); assert.equal(r.departureEnded, null);
+    const live = P(base({ now: min(5), moving: true, movingSince: T0 }));
+    assert.equal(live.trust, 'Fiable'); assert.equal(live.badge, 'Trajet en cours · GPS');   // trajet vivant inchangé
+  });
+  test('départ annoncé puis GPS précis toujours à la maison 15 min plus tard : départ terminé, lieu GPS « Maison test »', () => {
+    const dep = { placeId: 'home', at: T0 }, at = m => base({ now: min(m), moving: true, movingSince: T0, departure: dep, fix: fix(places[0], m, 15) });
+    const early = P(at(10));   // encore en train de partir : l'annonce est respectée
+    assert.equal(early.source, 'trip'); assert.equal(early.departureEnded, null);
+    const r = P(at(16));
+    assert.equal(r.departureEnded.reason, 'toujours au lieu du départ annoncé (GPS précis)');
+    assert.equal(r.source, 'gps'); assert.equal(r.place.id, 'home'); assert.equal(r.trust, 'Fiable');
+  });
+  test('départ annoncé : un GPS approximatif, périmé ou ailleurs ne l’annule pas', () => {
+    const dep = { placeId: 'home', at: T0 }, run = f => P(base({ now: min(30), moving: true, movingSince: T0, departure: dep, fix: f }));
+    for (const f of [fix(places[0], 30, 800), fix(places[0], 15, 15), fix(places[1], 30, 15), { ...fix(places[0], 30, 15), lat: places[0].lat + 0.01 }]) {
+      const r = run(f); assert.equal(r.departureEnded, null, JSON.stringify(f)); assert.equal(r.source, 'trip');
+    }
+    const tracked = P(base({ now: min(30), moving: true, movingSince: T0, fix: fix(places[0], 30, 15) }));
+    assert.equal(tracked.source, 'trip');   // trajet vivant ou départ déclaré par trajet : jamais annulé par ce chemin
+  });
   test('aucune géolocalisation et aucune confirmation : « Localisation physique indisponible »', () => {
     const r = P(base({})); assert.equal(r.place, null); assert.equal(r.source, 'none'); assert.equal(r.trust, 'Indisponible'); assert.equal(r.title, '📍 Localisation physique indisponible');
   });
@@ -108,6 +131,9 @@ if (require.main === module) {
     { name: 'garde de vitesse supprimée', from: 'const PLACE_VMAX = 200,', to: 'const PLACE_VMAX = 1e9,' },
     { name: 'départ détecté ignoré', from: "else if (inp.moving && Number.isFinite(inp.movingSince) && inp.movingSince > conf.at)", to: 'else if (false)' },
     { name: 'confirmation du travail éternelle', from: "if (kind === 'work' && inp.today && conf.day && conf.day !== inp.today)", to: 'if (false)' },
+    { name: 'départ annoncé éternel malgré le GPS à la maison', from: '&& km(byId(departure.placeId), fix) <= Math.max(0.15, 2 * fix.acc / 1000)) departureEnded', to: '&& false) departureEnded' },
+    { name: 'départ annoncé annulé dès l’annonce', from: 'PLACE_DEPART_STAY = 15 * 60e3', to: 'PLACE_DEPART_STAY = 0' },
+    { name: 'départ annoncé affiché « Fiable · Trajet en cours · GPS »', from: "if (moving && departure) return", to: "if (false) return" },
     { name: 'position réseau devenue lieu métier', from: "if (net) return out({ place: null, source: 'network'", to: "if (net) return out({ place: places[0] || null, source: 'network'" }
   ];
   for (const m of mutations) {
