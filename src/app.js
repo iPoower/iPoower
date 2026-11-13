@@ -3354,7 +3354,8 @@ function legHtml(leg, ev) {
   const cancel = action || homeAction ? `<div class="cal-v">${action}${homeAction}</div>` : '';
   if (leg.originPending) return `<div class="leg lvx"><div class="leg-h"><b>${leg.k === 'go' ? 'ALLER' : 'RETOUR'}</b></div><p class="sub" role="status">${leg.originRecalc ? '📍 Départ confirmé : ' + esc(leg.originName) + ' · nouvel itinéraire et météo en cours de calcul' : 'Origine à confirmer après annulation du trajet précédent'}</p>${cancel}</div>`;
   const r = legEval(leg), go = leg.k === 'go', gen = (r.res || []).some(x => carProfile(x.c).generic);
-  const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${leg.dep.slice(11, 16)}</b> → ${leg.arr.slice(11, 16)} · ${f0(leg.km)} km · ${leg.min} min${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''} · ${cdSpan(leg.dep)}</div>
+  const refDay = (ev && ev.s ? ev.s : leg.dep).slice(0, 10);
+  const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${legWhen(leg.dep, refDay)}</b> → ${legWhen(leg.arr, leg.dep.slice(0, 10))} · ${f0(leg.km)} km · ${leg.min} min${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''} · ${cdSpan(leg.dep)}</div>
     <div class="leg-src">${leg.routed ? '<i class="tag prev">🛣 route · OSRM</i>' : '<i class="tag est">≈ route estimée</i>'}${r.seq ? ' ' + legDepSrcTag(r.depSrc) : ''}</div>
     <div class="leg-o">${go ? (leg.fromKind === 'prev' ? '↪ depuis ' + esc(leg.from.label || 'le rendez-vous précédent') + (leg.chosen ? ' (enchaînement choisi)' : ' (rendez-vous précédent)') : (leg.fromKind === 'home' ? '🏠 ' : '📍 ') + legOriginTxt(leg)) : '🏠 vers le domicile'}</div>`;
   const nav = wazeBtn(legNavTo(leg));
@@ -3386,6 +3387,11 @@ function legHtml(leg, ev) {
       ${r.res.length > 1 ? `<span class="sub">${r.res.map(x => `${esc(x.c.short)} : ${carProfile(x.c).generic ? 'aperçu générique' : LV[x.w.level].name + ' ' + x.w.score}`).join(' · ')}</span>` : ''}`;
   }
   return `<div class="leg lv${!gen && r.res && r.sum ? tripRiskLv(r) : !gen && r.worst != null ? r.worst : 'x'}">${head}${body}${cancel}</div>`;
+}
+// Horaire d'un trajet : la date est écrite dès qu'il ne tombe pas le jour de référence (départ la veille d'un rendez-vous,
+// retour d'un rendez-vous de plusieurs jours, arrivée après minuit). Sinon l'heure seule, comme avant.
+function legWhen(t, refDay) {
+  return !t ? '—' : t.slice(0, 10) === refDay ? t.slice(11, 16) : fmtDay(t.slice(0, 10)) + ' ' + t.slice(11, 16);
 }
 // Point de départ d'un aller (hors enchaînement), même texte pour la ligne « ALLER » et le message #direct (R2-04).
 function legOriginTxt(leg) {
@@ -3431,7 +3437,9 @@ function renderCal() {
   const evs = located.filter(e => !near.includes(e)).slice(0, 8).concat(relevant.filter(e => !calendarSpatial(e)).slice(0, 8));
   const dateLabel = e => {
     const d = new Date(e.s.slice(0, 10) + 'T12:00:00Z'), dd = dayDiff(now.slice(0, 10), e.s.slice(0, 10));
-    return `${dd === 0 ? 'auj.' : dd === 1 ? 'demain' : DAYN[d.getUTCDay()] + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1)} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}`;
+    // Rendez-vous de plusieurs jours : la fin est écrite (jour de fin inclus pour « toute la journée », dont la fin ICS est exclusive).
+    const endDay = e.e ? (e.allDay ? addMin(e.e.slice(0, 16), -1) : e.e).slice(0, 10) : null, multi = endDay && endDay > e.s.slice(0, 10);
+    return `${dd === 0 ? 'auj.' : dd === 1 ? 'demain' : DAYN[d.getUTCDay()] + ' ' + pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1)} · ${e.allDay ? 'journée' : e.s.slice(11, 16)}${multi ? ' → ' + fmtDay(endDay) + (e.allDay ? '' : ' ' + e.e.slice(11, 16)) : ''}`;
   };
   el.hidden = false;
   const up = new Date(CAL.updated).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }), calCached = !!CAL.offline,
