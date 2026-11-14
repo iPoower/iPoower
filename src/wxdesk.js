@@ -65,8 +65,9 @@ function wxDesk(input) {
     // même niveau : DANGER 🔴, PRUDENCE 🟠, VIGILANCE 🟡. Repli sur l'ancienne règle si le poste est chargé seul (tests isolés).
     // Le niveau « gel » du poste EST le niveau de la règle (constat du 14/11 : verglas estimé promu en « gel de surface
     // probable » au-dessus de la règle) ; seule une pluie verglaçante annoncée l'élève. Le verglas estimé reste un indicateur.
-    const fh = Tr == null ? null : typeof frostHour === 'function' ? frostHour([x], 0) : null;
-    const frost = Tr == null ? 0 : fh ? fh.level : Tr + 2 < 0 ? 2 : Tr - 2 < 0 ? 1 : 0;
+    // Sans chaussée estimée, l'air sert de repli (frostHour, basis 'air') ; ni l'un ni l'autre : gel INDÉTERMINÉ (compté à part).
+    const fh = typeof frostHour === 'function' ? frostHour([x], 0) : null;
+    const frost = fh ? fh.level : Tr == null ? 0 : Tr + 2 < 0 ? 2 : Tr - 2 < 0 ? 1 : 0;
     o.ice = Math.max(FZ.has(code) ? 3 : fh ? 0 : iceLv >= 2 ? 3 : iceLv === 1 ? 2 : 0, frost);
     const T = n(x.T), Ta = n(x.Tapp);
     o.temp = (T != null && T >= 35) || (Ta != null && Ta <= -10) ? 1 : 0;
@@ -141,6 +142,8 @@ function wxDesk(input) {
     return fh && fh.level >= 1 && typeof frostWords === 'function' ? frostWords(fh).label : ICE_TXT[lv];
   }
   // UN minimum de chaussée pour l'horizon du poste (toutes ses heures), avec son heure et l'horizon écrit.
+  // Heures du poste sans chaussée ni air exploitables : gel INDÉTERMINÉ, jamais « aucun risque » (amendement C du 14/11).
+  const frostUnknown = typeof frostHour === 'function' ? H.filter(r => !frostHour([r.x], 0)).length : 0;
   const trMinRow = () => H.reduce((b, r) => n(r.x.Tr) != null && (!b || r.x.Tr < b.x.Tr) ? r : b, null);
   const trMinTxt = () => { const r = trMinRow(); return r ? `Chaussée estimée min ${r1(r.x.Tr)} °C ± 2 vers ${hmd(r.t)} (jusqu’à ${hmd(endTs)})` : 'Chaussée non estimée'; };
   function condTxt(x) {   // conditions d'un point : le phénomène le plus marquant, sinon le ciel
@@ -208,7 +211,7 @@ function wxDesk(input) {
   const inMin = m => { const d = Math.max(0, Math.round(m - nowM)); return d < 60 ? `dans ${d} min` : `dans ${Math.floor(d / 60)} h${d % 60 ? ' ' + String(d % 60).padStart(2, '0') : ''}`; };
   if (!dominant) {
     title = 'CONDITIONS NORMALES';
-    lines.push(tempLine, mbH ? `Pluie possible ${whenM(mbH)} · peu d’eau prévue (${r1(mbH.Pl)} mm/h)` : `Aucun phénomène notable jusqu’à ${hmd(endTs)}`);
+    lines.push(tempLine, mbH ? `Pluie possible ${whenM(mbH)} · peu d’eau prévue (${r1(mbH.Pl)} mm/h)` : frostUnknown ? `Gel INDÉTERMINÉ : chaussée et air non fournis pour ${frostUnknown} h` : `Aucun phénomène notable jusqu’à ${hmd(endTs)}`);
   } else {
     const s = dominant, now_ = active(s), pk = s.peakRow ? s.peakRow.x : null, span = `${hmd(atMin(s.start))}–${hmd(atMin(s.end))}`;
     if (s.id === 'ice') {
@@ -284,7 +287,7 @@ function wxDesk(input) {
       detail: [w != null ? `Vent moyen jusqu’à ${r0(w)} km/h` : null, g ? `Pic de rafales vers ${hm(g.t)}` : null, s ? `Au-dessus de 55 km/h de ${hm(atMin(s.start))} à ${hm(atMin(s.end))}` : null].filter(Boolean) }); }
   { const s = first('ice'), tr = rowMax('Tr', -1), ta = minOf('T');
     phen.push({ id: 'ice', icon: '❄️', title: 'Gel · verglas', lv: s ? s.lv : 0,
-      line: s ? `${cap(iceText(s.lv, s.peakRow && s.peakRow.x))} · ${active(s) ? 'maintenant' : hm(atMin(s.start))}–${hm(atMin(s.end))}` : 'Aucun risque estimé',
+      line: s ? `${cap(iceText(s.lv, s.peakRow && s.peakRow.x))} · ${active(s) ? 'maintenant' : hm(atMin(s.start))}–${hm(atMin(s.end))}${frostUnknown ? ` · ${frostUnknown} h indéterminée${frostUnknown > 1 ? 's' : ''}` : ''}` : frostUnknown ? `Gel INDÉTERMINÉ : chaussée et air non fournis pour ${frostUnknown} h` : 'Aucun risque estimé',
       detail: [tr ? trMinTxt() : null, ta != null ? `Air minimal ${r1(ta)} °C` : null, 'Estimation sans capteur routier : ponts et zones d’ombre d’abord'].filter(Boolean) }); }
   { const tmin = minOf('T'), tmax = maxOf('T'), s = first('temp'), z = changes.find(c => c.id === 'zero');
     phen.push({ id: 'temp', icon: '🌡', title: 'Température', lv: s ? s.lv : 0, line: `${T == null ? '—' : r0(T)} °C · min ${r0(tmin)} / max ${r0(tmax)}`,

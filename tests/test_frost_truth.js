@@ -36,7 +36,8 @@ const seqOf = (rows, startH = 4) => {
 };
 const LV_NAME = { 0: 'RAS', 1: 'VIGILANCE', 2: 'PRUDENCE', 3: 'DANGER' };
 const HUM = { sec: false, humide: true, inconnue: null };
-const EXPECT = (Tr, hum) => Tr < -2 ? ['sous0', 3] : Tr <= 1 ? ['possible', hum === 'sec' ? 2 : 3] : Tr < 2 ? ['incertitude', hum === 'humide' ? 2 : 1] : Tr < 4 ? ['marge', 0] : ['aucun', 0];
+// Bornes amendées le 14/11/2026 (côté prudent, chaque égalité dans la classe la plus grave).
+const EXPECT = (Tr, hum) => Tr <= -2 ? ['sous0', 3] : Tr <= 1 ? ['possible', hum === 'sec' ? 2 : 3] : Tr <= 2 ? ['incertitude', hum === 'humide' ? 2 : 1] : Tr <= 4 ? ['marge', 0] : ['aucun', 0];
 const CASES = [];
 for (const Tr of [-2.1, -2.0, 0.5, 0.9, 1.0, 1.1, 1.5, 2.0, 2.1]) for (const hum of ['sec', 'humide', 'inconnue']) {
   // Heure retenue : le pire niveau, puis, à niveau égal, la PLUS PROCHE (décision du 03/11, option A ; mission du 14/11).
@@ -174,8 +175,8 @@ const MUT = [
   ['case 2 à 4 °C : marge faible devenue une alerte', 'engine', LEVEL_FN, CELL('marge', null, 1)],
   ['case ≥ 4 °C : alerte inventée', 'engine', LEVEL_FN, CELL('aucun', null, 1)],
   ['borne 1,0 °C exclue', 'engine', /ref <= FROST_ROAD_MAX \? 'possible'/, "ref < FROST_ROAD_MAX ? 'possible'"],
-  ['borne 2,0 °C incluse dans l’incertitude', 'engine', /ref < FROST_ROAD_MARGIN \? 'incertitude'/, "ref <= FROST_ROAD_MARGIN ? 'incertitude'"],
-  ['borne −2 °C : DANGER dès −2,0 °C', 'engine', /ref < -FROST_ROAD_MARGIN \? 'sous0'/, "ref <= -FROST_ROAD_MARGIN ? 'sous0'"],
+  ['borne 2,0 °C sortie de l’incertitude (amendement du 14/11 : 2,0 °C incluse)', 'engine', /ref <= FROST_ROAD_MARGIN \? 'incertitude'/, "ref < FROST_ROAD_MARGIN ? 'incertitude'"],
+  ['borne −2,0 °C sortie du DANGER (amendement du 14/11 : −2,0 °C incluse)', 'engine', /ref <= -FROST_ROAD_MARGIN \? 'sous0'/, "ref < -FROST_ROAD_MARGIN ? 'sous0'"],
   ['seuil appliqué à l’air (constat terrain)', 'engine', /const road = frostNum\(x\.Tr\) != null, ref = road \? x\.Tr : frostNum\(x\.T\);/, 'const road = frostNum(x.Tr) != null, ref = frostNum(x.T) != null ? x.T : x.Tr;'],
   ['cumul de pluie : heure manquante comptée 0 mm', 'engine', /if \(P == null\) complete = false; else mm \+= P;/, 'mm += P || 0;'],
   ['humidité d’une autre heure (audit temporel)', 'engine', /const humid = frostHumid\(hs, i\), key = frostKey\(ref\);/, 'const humid = hs.some((_, k) => frostHumid(hs, k) === true) ? true : frostHumid(hs, i), key = frostKey(ref);'],

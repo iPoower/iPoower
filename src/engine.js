@@ -325,11 +325,14 @@ function tireAssess(car, hs, i) {
   if (tread != null && tread < TREAD_LEGAL_MM && tire.treadEst) parts.forEach(p => { if (p.label === 'Profondeur sous le minimum légal (1,6 mm)') p.label = 'Profondeur : estimation sous le minimum réglementaire de 1,6 mm, mesure à confirmer'; });
   const age = dotAge(tire.dot, x.t);
   if (age != null && age >= 6 && Tc < 10) add(`Gomme âgée (${age.toFixed(1).replace('.', ',')} ans) : moins d’adhérence à froid`, age >= 10 ? 10 : 5, 'tyre');
-  // penEff : pénalité hors famille « gel » dans la zone de la règle (sinon la pénalité entière) ; frostLv : niveau de la règle.
-  // frostCap : contribution du gel au niveau. Pneus été (ou type inconnu) : le niveau de la règle, tel quel. Pneus hiver et
-  // 4 saisons 3PMSF : leur propre évaluation du froid, jamais au-dessus du niveau de la règle (pneus conçus pour le froid).
+  // Note /100 dans la zone de la règle gel (chaussée ≤ 2 °C) — amendement D du 14/11 : le froid est porté par le NIVEAU de la
+  // règle, pas par une pénalité concurrente. frostCap = contribution du gel : pneus été (ou type inconnu) = niveau de la règle ;
+  // pneus hiver et 4 saisons 3PMSF = leur propre évaluation du froid, jamais au-dessus de la règle (pneus conçus pour le froid).
+  // Pénalité effective : la note part du PLAFOND de la tranche de ce niveau (RAS 100, VIGILANCE 79, PRUDENCE 59, DANGER 39) et
+  // les AUTRES facteurs (pluie, aquaplaning, profondeur, visibilité, rafales, neige…) s'y soustraient : ils peuvent l'aggraver
+  // jusqu'au niveau supérieur ; la note n'est jamais plafonnée au seul niveau gel. Hors zone : pénalité entière, inchangée.
   const frostCap = !frostZone ? 0 : type === 'summer' ? fr.level : Math.min(scoreToLevel(Math.round(clamp(100 - Math.min(100, pen), 0, 100))), fr.level);
-  return { x, pen: Math.min(100, pen), penEff: Math.min(100, frostZone ? Math.max(0, pen - penCold) : pen), frost: fr, frostZone, frostLv: frostZone ? fr.level : 0, frostCap,
+  return { x, pen: Math.min(100, pen), penEff: Math.min(100, frostZone ? 100 - LV_CEIL[frostCap] + Math.max(0, pen - penCold) : pen), frost: fr, frostZone, frostLv: frostZone ? fr.level : 0, frostCap,
     parts, flags: { wet, snow, fz, ice, Tc, illegalTread: tread != null && tread < TREAD_LEGAL_MM } };
 }
 function flagLevel(car, a, k) {
@@ -346,10 +349,10 @@ function flagLevel(car, a, k) {
   return Math.max(L, a.frostCap || 0);   // niveau de la règle gel de la même heure (option A), selon le type de pneu
 }
 const scoreToLevel = s => s >= 80 ? 0 : s >= 60 ? 1 : s >= 40 ? 2 : 3;
-// Score affiché dans la tranche du niveau retenu (RAS 80–100, VIGILANCE 60–79, PRUDENCE 40–59, DANGER 0–39) : jamais
-// « DANGER 39/100 » quand la règle gel dit PRUDENCE, ni « RAS 96/100 » une heure de gel. Le score physique reste dans scoreRaw.
-const LV_FLOOR = [80, 60, 40, 0], LV_CEIL = [100, 79, 59, 39];
-const scoreInBand = (sc, lv) => clamp(sc, LV_FLOOR[lv], LV_CEIL[lv]);
+// Note affichée = 100 − pénalité effective (voir tireAssess) ; un niveau relevé par une alerte ponctuelle (profondeur, pluie
+// verglaçante, neige, brouillard…) plafonne la note au haut de sa tranche ; la note physique d'origine reste dans scoreRaw.
+// Correspondance documentée note /100 → niveau (scoreToLevel) : 80–100 RAS · 60–79 VIGILANCE · 40–59 PRUDENCE · 0–39 DANGER.
+const LV_CEIL = [100, 79, 59, 39];
 // Garde-fou de profondeur : PLAFONNE le verdict (niveau minimal imposé), ne modifie jamais le score physique.
 // Valeur lue : la plus basse des essieux (mesure ou estimation, mêmes seuils ; une estimation est signalée comme telle).
 // < 1,6 mm : minimum RÉGLEMENTAIRE (arrêté du 18 juillet 2019 relatif aux pneumatiques, art. 5) → DANGER, quelle que soit la météo.
@@ -384,10 +387,11 @@ function windowAssess(car, seq, mode) {
   const first = valid[0], pNow = first.pen;
   const P = mode === 'trip' ? pMax : (pNow + pMax) / 2, Peff = mode === 'trip' ? eMax : (first.penEff + eMax) / 2;
   const scoreRaw = Math.round(clamp(100 - P, 0, 100));
-  // Niveau : causes hors gel (pénalité effective), alertes ponctuelles et niveau de la règle gel ; jamais le froid au-delà de la règle.
-  const sl = scoreToLevel(Math.round(clamp(100 - Peff, 0, 100)));
+  // Note et niveau sur la pénalité effective (règle gel + autres facteurs), puis alertes ponctuelles (flagLevel).
+  let score = Math.round(clamp(100 - Peff, 0, 100));
+  const sl = scoreToLevel(score);
   const level = Math.max(sl, lvl);
-  let score = scoreInBand(scoreRaw, level);
+  if (level > sl) score = Math.min(score, LV_CEIL[level]);
   // Garde-fou de profondeur : relève le NIVEAU seulement ; le score ci-dessus reste le score physique.
   const guard = treadGuard(car, valid.some(a => rainMmH(a.x) >= TREAD_GUARD_RAIN_MMH));
   const frostLv = Math.max(...valid.map(a => a.frostLv || 0));
@@ -399,12 +403,12 @@ function hourVerdict(car, hs, i) {
   if (!a) return null;
   const sc = Math.round(clamp(100 - a.pen, 0, 100)), se = Math.round(clamp(100 - a.penEff, 0, 100));
   const base = Math.max(scoreToLevel(se), flagLevel(car, a, 0)), guard = treadGuard(car, rainMmH(a.x) >= TREAD_GUARD_RAIN_MMH);
-  return { a, score: scoreInBand(sc, base), scoreRaw: sc, level: guard ? Math.max(base, guard.level) : base, baseLevel: base, frostLv: a.frostLv, guard, depthUnknown: treadWorst(car.tire).mm == null };
+  return { a, score: base > scoreToLevel(se) ? Math.min(se, LV_CEIL[base]) : se, scoreRaw: sc, level: guard ? Math.max(base, guard.level) : base, baseLevel: base, frostLv: a.frostLv, guard, depthUnknown: treadWorst(car.tire).mm == null };
 }
 
 /* ---------- résumé d'une séquence d'heures ---------- */
 function summarize(seq) {
-  const r = { n: 0, Tmin: null, Tmax: null, iTmin: null, TrMin: null, iTrMin: null, frost: null, Pmax: 0, iPmax: null, Psum: 0, visMin: null, iVis: null,
+  const r = { n: 0, Tmin: null, Tmax: null, iTmin: null, TrMin: null, iTrMin: null, frost: null, frostUnknown: 0, iFrostUnknown: null, Pmax: 0, iPmax: null, Psum: 0, visMin: null, iVis: null,
     snowSum: 0, snowCode: false, iSnow: null, iceMax: 0, iceI: null, gustMax: null, iGust: null, windMax: null, fz: false, fog: false, ppMax: null };
   seq.forEach(s => {
     const x = s.hs[s.i]; if (!x) return; r.n++;
@@ -412,7 +416,7 @@ function summarize(seq) {
     if (x.Tr != null && (r.TrMin == null || x.Tr < r.TrMin)) { r.TrMin = x.Tr; r.iTrMin = s; }
     // Gel HEURE PAR HEURE : chaussée et humidité de la MÊME heure ; la fenêtre garde le pire niveau, puis, à niveau égal, l'heure
     // la PLUS PROCHE (décision du 03/11, option A) ; jamais la chaussée d'une heure combinée à l'humidité d'une autre.
-    { const h = frostHour(s.hs, s.i); if (h && (!r.frost || h.level > r.frost.level)) r.frost = { ...h, s }; }
+    { const h = frostHour(s.hs, s.i); if (!h) { r.frostUnknown++; if (!r.iFrostUnknown) r.iFrostUnknown = s; } else if (!r.frost || h.level > r.frost.level) r.frost = { ...h, s }; }
     if ((x.Pl || 0) > r.Pmax) { r.Pmax = x.Pl; r.iPmax = s; }
     r.Psum += x.Pl || 0;
     if (x.vis != null && (r.visMin == null || x.vis < r.visMin)) { r.visMin = x.vis; r.iVis = s; }
@@ -438,12 +442,14 @@ function summarize(seq) {
    biais par lieu est appris des retours terrain, setRoadBias) ; ce n'est pas une incertitude validée. Sans chaussée estimée,
    l'air sert de repli, signalé (basis = 'air').
    Calcul HEURE PAR HEURE (frostHour) : chaussée et humidité de la MÊME heure ; une fenêtre garde le maximum (summarize).
-   Bornes et niveaux (0 RAS · 1 VIGILANCE · 2 PRUDENCE · 3 DANGER) — décision du propriétaire du 03/11/2026, option A :
-     sous0       chaussée < −2 °C                         → DANGER
-     possible    −2 °C ≤ chaussée ≤ 1,0 °C (bornes incluses) → DANGER si humide ou humidité INCONNUE ; PRUDENCE si sèche
-     incertitude 1,0 °C < chaussée < 2,0 °C (bornes exclues) → PRUDENCE si humide ; VIGILANCE si sèche ou inconnue
-     marge       2,0 °C ≤ chaussée < 4,0 °C                → RAS (simple mention, jamais une alerte)
-     aucun       chaussée ≥ 4,0 °C                         → RAS
+   Bornes et niveaux (0 RAS · 1 VIGILANCE · 2 PRUDENCE · 3 DANGER) — option A du 03/11/2026, bornes amendées le 14/11/2026
+   (côté prudent : chaque égalité tombe dans la classe la plus grave ; intervalles sans chevauchement) :
+     sous0       chaussée ≤ −2,0 °C              → DANGER
+     possible    −2,0 °C < chaussée ≤ 1,0 °C     → DANGER si humide ou humidité INCONNUE ; PRUDENCE si sèche
+     incertitude 1,0 °C < chaussée ≤ 2,0 °C      → PRUDENCE si humide ; VIGILANCE si sèche ou inconnue
+     marge       2,0 °C < chaussée ≤ 4,0 °C      → RAS (marge faible : simple mention, jamais une alerte)
+     aucun       chaussée > 4,0 °C               → RAS
+     inconnu     ni chaussée ni air exploitables → INDÉTERMINÉ (niveau null, cause nommée) : jamais converti en RAS
    Humidité d'une heure (frostHumid) : VRAIE si un signal est présent, FAUSSE seulement si tous sont MESURÉS et absents,
    INCONNUE sinon — une donnée absente ne devient jamais « sec » :
      précipitations : ROAD_POLICY (≥ 0,1 mm/h à l'heure même, ou ≥ 0,3 mm cumulés sur 3 h) ; une heure du cumul sans valeur
@@ -473,30 +479,47 @@ function frostHumid(hs, i) {
   return precipKnown && satKnown && depKnown ? false : null;
 }
 function frostKey(ref) {
-  return ref < -FROST_ROAD_MARGIN ? 'sous0' : ref <= FROST_ROAD_MAX ? 'possible' : ref < FROST_ROAD_MARGIN ? 'incertitude' : ref < 2 * FROST_ROAD_MARGIN ? 'marge' : 'aucun';
+  return ref <= -FROST_ROAD_MARGIN ? 'sous0' : ref <= FROST_ROAD_MAX ? 'possible' : ref <= FROST_ROAD_MARGIN ? 'incertitude' : ref <= 2 * FROST_ROAD_MARGIN ? 'marge' : 'aucun';
+}
+// Provenance de l'humidité retenue pour une heure (contrat canonique) : le premier signal présent, sinon « mesuré absent »
+// (tous les signaux mesurés et absents), sinon « inconnu » (au moins un signal non fourni). Même logique que frostHumid.
+function frostHumidSource(hs, i) {
+  const x = hs && hs[i]; if (!x) return 'inconnu';
+  const P = frostNum(x.P), RH = frostNum(x.RH), T = frostNum(x.T), Tr = frostNum(x.Tr);
+  const Td = frostNum(x.Td) != null ? x.Td : T != null && RH != null ? dewMagnus(T, RH) : null;
+  const win = x.P3 && typeof x.P3 === 'object' ? x.P3 : precipWindow(hs, i);
+  if (P != null && P >= ROAD_POLICY.dampMmH) return 'pluie à cette heure';
+  if (win.mm >= ROAD_POLICY.soakMm) return 'pluie cumulée sur 3 h';
+  if (RH != null && Td != null && T != null && RH >= ROAD_POLICY.humidRH && T - Td < ROAD_POLICY.humidSpreadC) return 'air saturé';
+  if (Td != null && Tr != null && Td >= Tr) return 'dépôt (rosée ou givre)';
+  return frostHumid(hs, i) === false ? 'mesuré absent' : 'inconnu';
 }
 const frostLevel = (key, humid) => key === 'sous0' ? 3 : key === 'possible' ? (humid === false ? 2 : 3) : key === 'incertitude' ? (humid === true ? 2 : 1) : 0;
 function frostHour(hs, i) {
   const x = hs && hs[i]; if (!x) return null;
   const road = frostNum(x.Tr) != null, ref = road ? x.Tr : frostNum(x.T); if (ref == null) return null;
   const humid = frostHumid(hs, i), key = frostKey(ref);
-  return { key, level: frostLevel(key, humid), humid, ref, basis: road ? 'road' : 'air' };
+  return { key, level: frostLevel(key, humid), humid, humidSrc: frostHumidSource(hs, i), ref, basis: road ? 'road' : 'air' };
 }
 // Synthèse d'une fenêtre (summarize : sum.frost = pire heure) ou valeur seule ({ TrMin, humid }) : même règle.
 function frostRisk(sum) {
   const airMin = frostNum(sum && sum.Tmin), roadMin = frostNum(sum && sum.TrMin);
   const base = { airMin, roadMin, margin: FROST_ROAD_MARGIN };
-  const h = sum && sum.frost, sMin = sum && sum.iTrMin || null;
-  if (h) return { ...base, sMin, key: h.key, level: h.level, humid: h.humid, ref: h.ref, basis: h.basis, s: h.s || null, possible: h.level >= 1 && h.key !== 'marge' };
+  const h = sum && sum.frost, sMin = sum && sum.iTrMin || null, unknown = sum && sum.frostUnknown || 0;
+  // INDÉTERMINÉ (amendement C du 14/11) : des heures de la fenêtre sans chaussée ni air exploitables ne deviennent jamais RAS.
+  // Un niveau ≥ VIGILANCE établi sur les autres heures l'emporte (le pire), l'incomplétude restant signalée (unknownHours).
+  const cause = unknown ? `chaussée et air non fournis pour ${unknown} heure${unknown > 1 ? 's' : ''} de la fenêtre${sum.iFrostUnknown ? ' (dès ' + hhmm(sum.iFrostUnknown) + ')' : ''}` : null;
+  if (h && (h.level >= 1 || !unknown)) return { ...base, sMin, key: h.key, level: h.level, humid: h.humid, humidSrc: h.humidSrc || null, ref: h.ref, basis: h.basis, s: h.s || null, possible: h.level >= 1 && h.key !== 'marge', unknownHours: unknown, cause };
+  if (h) return { ...base, sMin, key: 'inconnu', level: null, indeterminate: true, cause, humid: null, ref: null, basis: null, s: null, possible: null, unknownHours: unknown };
   const ref = roadMin != null ? roadMin : airMin, humid = sum && (sum.humid === true || sum.humid === false) ? sum.humid : null;
-  if (ref == null) return { ...base, sMin, key: 'inconnu', level: null, humid, ref: null, basis: null, s: null, possible: null };
+  if (ref == null) return { ...base, sMin, key: 'inconnu', level: null, indeterminate: true, cause: cause || 'chaussée et air non fournis', humid, ref: null, basis: null, s: null, possible: null, unknownHours: unknown };
   const key = frostKey(ref), level = frostLevel(key, humid);
   return { ...base, sMin, key, level, humid, ref, basis: roadMin != null ? 'road' : 'air', s: null, possible: level >= 1 };
 }
 /* Vocabulaire UNIQUE du gel (constat du 14/11 : « gel de surface probable », « risque de verglas », « gel possible » et
    « incertitude gel » pour la même nuit). Le mot dépend de la clé de la règle, jamais du bloc qui l'affiche ; jamais
    « probable » : la chaussée est estimée, sans capteur routier. L'humidité est celle de la MÊME heure (frostHumid). */
-const FROST_WORDS = { sous0: 'gel · chaussée sous 0 °C possible', possible: 'gel possible', incertitude: 'gel possible (marge de prudence)', marge: 'pas de gel attendu (marge faible)', aucun: 'aucun risque de gel', inconnu: 'gel non évalué' };
+const FROST_WORDS = { sous0: 'gel · chaussée sous 0 °C possible', possible: 'gel possible', incertitude: 'gel possible (marge de prudence)', marge: 'pas de gel attendu (marge faible)', aucun: 'aucun risque de gel', inconnu: 'gel indéterminé' };
 const frostHumidWord = h => h === true ? 'chaussée humide' : h === false ? 'chaussée sèche' : 'humidité inconnue';
 function frostWords(fr) {
   if (!fr) return { word: FROST_WORDS.inconnu, humid: null, label: FROST_WORDS.inconnu, level: null };
@@ -506,7 +529,7 @@ function frostWords(fr) {
 // Phrase complète du verdict gel d'une fenêtre NOMMÉE (horizon : « nuit », « 12 h », « 24 h », « fenêtre du trajet ») :
 // niveau, heure retenue (pire niveau, puis la plus proche) et UN SEUL minimum de chaussée pour cet horizon, avec son heure.
 function frostSentence(fr, horizon) {
-  if (!fr || fr.key === 'inconnu') return 'Gel non évalué (chaussée et air indisponibles).';
+  if (!fr || fr.key === 'inconnu') return `Gel INDÉTERMINÉ : ${fr && fr.cause || 'chaussée et air non fournis'}.`;
   const fw = frostWords(fr), road = fr.basis === 'road', hz = horizon ? ` (${horizon})` : '';
   const minTxt = road ? `chaussée estimée min ${f1(fr.roadMin)} °C${fr.sMin ? ' vers ' + hhmm(fr.sMin) : ''}${hz}` : `air min ${f1(fr.airMin)} °C${hz}, chaussée non estimée`;
   if (fr.level >= 1) {
@@ -518,6 +541,18 @@ function frostSentence(fr, horizon) {
   return `${cap1(fw.word)} · ${minTxt}.`;
 }
 const hhmm = s => s ? s.hs[s.i].t.slice(11, 16) : '';
+/* CONTRAT CANONIQUE du gel (mission du 14/11) : UN résultat métier par lieu × horizon, construit depuis la synthèse de la
+   fenêtre (summarize) et la règle (frostRisk). Tout bloc qui présente le gel d'un même lieu, d'une même heure et d'un même
+   horizon lit CE résultat (verdict, minimum, humidité et provenance), jamais un calcul propre. Fuseau : Europe/Paris (heures
+   locales du modèle). Deux horizons différents peuvent avoir deux minimums différents : l'horizon est toujours nommé. */
+function frostTruth(sum, ctx = {}) {
+  const fr = frostRisk(sum), at = s => s && s.hs && s.hs[s.i] ? s.hs[s.i].t : null;
+  const state = fr.level == null ? 'INDÉTERMINÉ' : LV[fr.level].name;
+  return { tz: 'Europe/Paris', place: ctx.place || null, horizon: { label: ctx.horizon || sum && sum.horizon || null, from: ctx.from || null, to: ctx.to || null },
+    verdict: { state, level: fr.level, key: fr.key, words: frostWords(fr).label, at: at(fr.s), roadC: fr.ref, basis: fr.basis, humid: fr.humid, humidSrc: fr.humidSrc || null, cause: fr.cause || null },
+    roadMin: { value: fr.roadMin, at: at(fr.sMin) }, airMin: { value: fr.airMin, at: at(sum && sum.iTmin) }, unknownHours: fr.unknownHours || 0,
+    freshness: ctx.freshness || null, margin: fr.margin, sentence: frostSentence(fr, ctx.horizon || sum && sum.horizon), risk: fr };
+}
 // Bandeaux d'alerte (fenêtre de 24 h à partir de l'heure courante nowHHMM) : une heure « vers HH:MM » antérieure à l'heure
 // courante est forcément demain. Sans ce mot, « Gel possible … vers 03:00 » se lisait comme cette nuit passée (audit du 12/11/2026).
 function alertWhen(title, nowHHMM) {

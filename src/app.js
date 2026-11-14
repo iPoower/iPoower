@@ -1334,7 +1334,7 @@ function renderCurrent() {
     <div class="mt lv${c.ice && c.ice.level != null ? c.ice.level : 'x'}"><span class="k">❄️ Indicateur verglas · complémentaire</span><span class="v" style="color:var(--lv-t)">${iceName(c.ice ? c.ice.level : null)}</span><span class="n">pic sur 24 h : ${iceName(sum24.iceLevel)} vers ${hhmm(sum24.iceI)}</span></div>
     <div class="mt"><span class="k">Risque de neige</span><span class="v" style="font-size:14px">${esc(snowTxt)}</span><span class="n">${sum24.sleet && !(sum24.snowSum > 0) ? 'estimé (thermomètre mouillé ≤ 1 °C)' : 'prévision météo'}</span></div>
   </div>
-  ${(() => { const fb = frostBand(summarize([{ hs: CX.m.hs, i: CX.m.nowI }])); return fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t} · maintenant</b><span>${fb.d}</span></div>` : ''; })()}
+  ${(() => { const fb = frostBand(summarize([{ hs: CX.m.hs, i: CX.m.nowI }])); return fb ? `<div class="frost lv${fb.lv == null ? 'x' : fb.lv}"><b>${fb.lv == null ? '⚪' : fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t} · maintenant</b><span>${fb.d}</span></div>` : ''; })()}
   ${obsBlock(m)}
   ${ncBlock(m)}
   <div><div class="sub" style="margin-bottom:6px">ÉVOLUTION · PRÉVISIONS</div><div class="evo">${ev}</div></div>`;
@@ -2146,7 +2146,9 @@ setInterval(() => { if (!document.hidden && renderTip.slot !== tipSlot()) render
 // chaussée seule (humidité inconnue ⇒ VIGILANCE entre 1 et 2 °C). Niveau du bandeau = niveau de frostRisk.
 function frostBand(x) {
   const fr = x && typeof x === 'object' ? frostRisk(x) : x == null ? null : frostRisk({ TrMin: x });
-  if (!fr || fr.key === 'inconnu') return null;
+  if (!fr) return null;
+  // INDÉTERMINÉ (amendement C) : bandeau neutre avec sa cause, jamais absent (absent = lu comme RAS).
+  if (fr.key === 'inconnu') return { lv: null, indeterminate: true, t: 'GEL INDÉTERMINÉ', d: `${fr.cause || 'chaussée et air non fournis'} : verdict gel impossible sur cette fenêtre, aucune absence de risque n'est affirmée.` };
   const Tr = fr.ref, lo = Tr - fr.margin, hi = Tr + fr.margin, rng = `marge de prudence ± ${fr.margin} °C, non mesurée : ${f1(lo)} → ${f1(hi)} °C`;
   if (fr.key === 'sous0') return { lv: 3, t: frostWords(fr).label.toUpperCase(), d: `Chaussée estimée ${f1(Tr)} °C ± 2 · ${rng}. Toute humidité présente au sol peut geler (risque de glace : voir Verglas).` };
   const T = frostWords(fr).label.toUpperCase();   // vocabulaire unique (engine.js), même mot que tous les blocs
@@ -2984,13 +2986,13 @@ function briefCard(t, dayLbl) {
         ${t.res.slice(1).map(r => carProfile(r.c).generic ? `<span class="brf-why">🧪 ${esc(r.c.short)} : aperçu</span>` : `<span class="brf-why">${LV[r.w.level].emoji} ${esc(r.c.short)} : ${LV[r.w.level].name} ${r.w.score}/100</span>`).join('')}</div>
       <div class="brf-map" id="tmapW"></div></div>
     <div class="kpis">
-      ${k('Route', deg(sum.TrMin), '±2', 'est', fb ? 'lv' + fb.lv : '')}
+      ${k('Route', deg(sum.TrMin), '±2', 'est', fb ? 'lv' + (fb.lv == null ? 'x' : fb.lv) : '')}
       ${k('Air', deg(sum.Tmin), '', 'prev')}
       ${k('Pluie', Pmax >= 0.1 ? f1(Pmax) : f0(ppMax), Pmax >= 0.1 ? 'mm' : '%', 'prev', Pmax >= 2 ? 'lv2' : '')}
       ${k('Verglas (ind.)', iceS[Math.min(3, sum.iceLevel || 0)], '', 'est', 'wd')}
       ${k('Visib.', visV(sum.visMin), visU(sum.visMin), 'prev', (sum.visMin != null && sum.visMin < 1000 ? 'lv2' : ''))}
     </div>
-    ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
+    ${fb ? `<div class="frost lv${fb.lv == null ? 'x' : fb.lv}"><b>${fb.lv == null ? '⚪' : fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
     ${briefThermalHtml(t, top.c)}
     ${tripMontagneHtml(t, top.c)}
     ${cr && cr.q.f > 0 && cr.q.f < 1 && cr.sc >= 20 ? `<div class="brf-why">📍 Point le plus délicat : km ${f0(cr.q.f * t.l.km)}${cr.q.name ? ' (' + esc(cr.q.name) + ')' : ''} vers ${cr.q.t.slice(11, 16)}</div>` : ''}
@@ -3368,7 +3370,7 @@ function legHtml(leg, ev) {
     const fb = frostBand(r.sum);
     body = `<div class="cal-v"><span class="sub">Pneus de la voiture active à renseigner · météo du trajet conservée.</span>${nav}</div>
       <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
-      ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}`;
+      ${fb ? `<div class="frost lv${fb.lv == null ? 'x' : fb.lv}"><b>${fb.lv == null ? '⚪' : fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}`;
   }
   else {
     const fb = frostBand(r.sum), c = r.crit;
@@ -3384,7 +3386,7 @@ function legHtml(leg, ev) {
     body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : rg.lv}" data-global-risk="${gen ? '' : rg.lv}">${gen ? '🧪 Aperçu générique' : tripPillTxt(rg, r.worst, r.res) + (r.res[0] ? ' ' + r.res[0].w.score : '')}</span>${nav}</div>
       <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
       ${ev && !gen ? trendHtml(trendOf(calendarTripKey(ev, leg), leg.dep, snapOf(r.res, r.sum, r.seq))) : ''}
-      ${crit}${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
+      ${crit}${fb ? `<div class="frost lv${fb.lv == null ? 'x' : fb.lv}"><b>${fb.lv == null ? '⚪' : fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
       ${r.res.length > 1 ? `<span class="sub">${r.res.map(x => `${esc(x.c.short)} : ${carProfile(x.c).generic ? 'aperçu générique' : LV[x.w.level].name + ' ' + x.w.score}`).join(' · ')}</span>` : ''}`;
   }
   return `<div class="leg lv${!gen && r.res && r.sum ? tripRiskLv(r) : !gen && r.worst != null ? r.worst : 'x'}">${head}${body}${cancel}</div>`;
@@ -3469,14 +3471,14 @@ function renderCal() {
       body = `<div class="cal-v"><span class="sub">Pneus de la voiture active à renseigner · météo du trajet conservée.</span>
         <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span>${wazeBtn(e)}</div>
         <div class="cal-k"><span>Route <b>${f1(tr.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(tr.sum.Tmin)} °C</b></span><span>Pluie <b>${(tr.sum.Pmax || 0) >= 0.1 ? f1(tr.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(tr.sum.visMin)}</b></span></div>
-        ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}`;
+        ${fb ? `<div class="frost lv${fb.lv == null ? 'x' : fb.lv}"><b>${fb.lv == null ? '⚪' : fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}`;
     }
     else {
       const fb = frostBand(tr.sum), lvw = tr.worst, gen = tr.res.some(r => carProfile(r.c).generic), rg = gen ? null : tripRisk(tr);   // pastille = risque global
       body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : rg.lv}" data-global-risk="${gen ? '' : rg.lv}">${gen ? '🧪 Aperçu générique' : tripPillTxt(rg, lvw, tr.res) + (tr.res[0] ? ' ' + tr.res[0].w.score : '')}</span>
         <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span>${wazeBtn(e)}</div>
         <div class="cal-k"><span>Route <b>${f1(tr.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(tr.sum.Tmin)} °C</b></span><span>Pluie <b>${(tr.sum.Pmax || 0) >= 0.1 ? f1(tr.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(tr.sum.visMin)}</b></span></div>
-        ${fb ? `<div class="frost lv${fb.lv}"><b>${fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
+        ${fb ? `<div class="frost lv${fb.lv == null ? 'x' : fb.lv}"><b>${fb.lv == null ? '⚪' : fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
         ${tr.res.length > 1 ? `<span class="sub">${tr.res.map(r => `${esc(r.c.short)} : ${carProfile(r.c).generic ? 'aperçu générique' : LV[r.w.level].name + ' ' + r.w.score}`).join(' · ')}</span>` : ''}`;
     }
     return `<div class="cal-e" data-event-id="${esc(e.id || '')}"><div class="cal-h"><span class="cal-d">${dateLabel(e)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(calendarEventPlace(e, calendarPlaces())?.name || e.label || e.loc || 'Lieu inconnu')}</span></div>${body}</div>`;
@@ -3955,7 +3957,7 @@ function renderIce() {
   // sont des indicateurs complémentaires, libellés comme tels et expliqués quand ils paraissent plus bas que le verdict.
   const fr24 = frostRisk(sum24), frLv = fr24.level != null ? fr24.level : 'x';
   el.innerHTML = `<div class="mod-h"><h2>❄️ Gel et verglas</h2><span class="src est">estimé</span></div>
-    <div class="frost frost-verdict lv${frLv}" data-frost-level="${fr24.level == null ? '' : fr24.level}"><b>${fr24.level != null ? LV[fr24.level].emoji + ' Verdict gel (règle unique) : ' + LV[fr24.level].name : 'Verdict gel indisponible'}</b><span>${esc(frostSentence(fr24, '24 h'))}</span></div>
+    <div class="frost frost-verdict lv${frLv}" data-frost-level="${fr24.level == null ? '' : fr24.level}"><b>${fr24.level != null ? LV[fr24.level].emoji + ' Verdict gel (règle unique) : ' + LV[fr24.level].name : '⚪ Verdict gel (règle unique) : INDÉTERMINÉ'}</b><span>${esc(frostSentence(fr24, '24 h'))}</span></div>
     <div class="sub" style="margin-top:6px"><b>Indicateur verglas (complémentaire)</b> : probabilité d’une couche de glace (humidité × froid). Un indicateur plus bas que le verdict ne le contredit pas : le verdict gel applique une marge de prudence de ± 2 °C à la chaussée estimée.</div>
     <div class="iceHead"><div><div class="sub">Maintenant</div><div class="iceLvl lv${lvN == null ? 'x' : lvN}">${iceName(lvN)}</div></div>
     <div><div class="sub">Pic de l’indicateur sur 24 h${peakX ? ' · ' + peakX.t.slice(11, 16) + ' · chaussée à cette heure ' + f1(peakX.Tr) + ' °C' : ''}</div><div class="iceLvl lv${lvP == null ? 'x' : lvP}">${iceName(lvP)}</div></div></div>
