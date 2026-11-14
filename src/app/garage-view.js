@@ -3,6 +3,8 @@
 // @include app/mission-control.js
 // @include app/garage-economics-core.js
 // @include app/garage-economics-view.js
+// @include app/inbox-core.js
+// @include app/inbox-view.js
 /* Onglet Garage : consultation des fiches existantes et de l'entretien déclaré dans ces fiches.
  * Aucune nouvelle table, aucun journal d'entretien inventé, aucune connexion OBD.
  */
@@ -100,6 +102,7 @@ function renderGarage() {
   // NEXT MISSION suit les fiches, accessible immédiatement par ancre dédiée.
   const parts = { records: cars.length ? '<div class="garage-grid">' + cars.map(garageVehicleHtml).join('') + '</div>' : '<p class="garage-empty">Aucune voiture enregistrée dans Race Control.</p>',
     budget: garageEconomicsCompareHtml(S.cars),
+    inbox: inboxHtml(),
     mission: missionControlHtml(mission, navigation),
     trip: garageTripHtml(scene, selected),
     compare: garageCompareHtml(cars, trip, scene) };
@@ -115,7 +118,7 @@ function renderGarage() {
   // Volet « Coût & rentabilité » : resté ouvert après un enregistrement (le rendu remplace la fiche).
   const budgetOpen = new Set([...el.querySelectorAll('.garage-economics[open]')].map(d => d.dataset.garageEconomics));
   const foldFocus = uxFocusKey(el);
-  if (!el.querySelector('#twinGarageBody')) el.innerHTML = GARAGE_STYLE + LIVE_ROUTE_STYLE + ECON_STYLE +
+  if (!el.querySelector('#twinGarageBody')) el.innerHTML = GARAGE_STYLE + LIVE_ROUTE_STYLE + ECON_STYLE + INBOX_STYLE +
     '<div class="mod-h"><h2>🛠️ GARAGE NUMÉRIQUE</h2><span class="src obs">LE GARAGE · données enregistrées</span></div>' +
     '<div class="twin-intro"><p>Véhicules · prochain trajet · préparation explicable.</p><div class="mission-actions"><a class="btn sm twin-jump" href="#missionControl">PROCHAINE MISSION ↓</a><a class="btn sm twin-jump" href="#garageTrip">Voir le trajet en direct ↓</a></div></div>' +
     '<div id="twinGarageBody" class="twin-body">' + Object.keys(parts).map(k=>'<div data-twin-part="' + k + '"></div>').join('') + '</div>' +

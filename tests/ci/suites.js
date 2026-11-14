@@ -186,6 +186,8 @@ SUITE.push(['test_tire_catalog.js', 'pneus : registre européen EPREL (étiquett
 SUITE.push(['test_audit_20261112.js', 'audit de l’app réelle du 12/11 : bandeaux 24 h « demain », pastille d’agenda sans débordement, contrôle Trajet sans voiture', false]);
 SUITE.push(['test_garage_economics.js', 'Garage · coûts et pleins : saisie à la française, journal sans perte, amortissement, prix au litre, consommation entre pleins, fusion PC ↔ iPhone sans résurrection', false],
   ['e2e119-garage-couts.js', 'Garage · coûts et pleins : références, pleins et dépenses saisis, chiffres affichés, saisie invalide refusée, rechargement, coffre chiffré, retrait, comparatif, PC/iPhone', true]);
+SUITE.push(['test_inbox.js', 'boîte de dépôt : bloc rc-depot-v1 non fiable lu strictement (champs inconnus, pièges, tailles, HTML), application sur copie, doublons, chronologie', false],
+  ['e2e120-boite-depot.js', 'boîte de dépôt : saisies de Claude collées, relues (avant → après), validées ou rejetées une par une, coffre, synchro, aucun HTML interprété, journal intact, PC/iPhone', true]);
 SUITE.push(['e2e116-lisibilite-accueil.js', 'lisibilité de l’accueil : voiture sans pneus repliée en une ligne, raccourci « Saisir la profondeur » jusqu’au relevé par pneu, iPhone 11 Pro Max et PC', true]);
 SUITE.push(['e2e117-depart-annonce-reste.js', 'départ annoncé puis resté à la maison : bandeau honnête (Estimée, trajet non suivi), fin du départ par deux relevés GPS précis au lieu quitté après 15 min, iPhone et PC', true]);
 SUITE.push(['test_relay_publish.js', 'relais météo et watchdog, publication : refus GitHub passagers espacés, échec persistant visible, DATEX concurrent, liste blanche, jamais d’écrasement par plus ancien', false]);
