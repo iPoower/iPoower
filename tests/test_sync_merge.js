@@ -350,4 +350,96 @@ check('message de conflit lisible : date, valeur, unité et essieu en clair, jam
   for (const t of [bl, br, fctx.B('remote', 'cars.0.tire', { type: 'summer', press: 2.3 }, [], pc)]) { noJson(t); assert.doesNotMatch(t, /cars\.\d|tire\.treads|\bodo\b/, 'aucune clé technique : ' + t); }
   const many = fctx.T('cars.0.odo', Array.from({ length: 7 }, (_, i) => ({ d: '2026-10-0' + (i + 1), km: 100 * (i + 1) }))); noJson(many); assert.match(many, /\+ 3 autres$/);
 });
+// ===== Coûts et pleins (reprise de #231) : journal des dépenses fusionné sans perte ni résurrection — données fictives =====
+const spend = (id, date, amountCents, extra = {}) => ({ id: 'test-' + id, date, category: 'fuel', amountCents, ...extra });
+const budgetCar = (economics, extra = {}) => car('voitureA', economics === undefined ? extra : { economics, ...extra });
+const ref = { purchasePriceCents: 400000, purchaseDate: '2026-01-10', purchaseOdometerKm: 100000, annualDistanceKm: 12000, estimatedResaleCents: 200000 };
+const econMarks = { 'cars.0.economics.entries': 1, 'cars.0.economics.removed': 1 };
+check('budget ouvert sur un seul appareil : repris en entier (références et dépenses), aucun conflit', () => {
+  const pc = settings({ cars: [budgetCar(undefined), car('voitureB')] });
+  const tel = settings({ cars: [budgetCar({ ref, entries: [spend('aa01', '2026-02-01', 6000)], removed: [] }), car('voitureB')], edits: { 'cars.0.economics.ref.purchasePriceCents': T, ...econMarks } });
+  const stamps = { 'cars.0.economics.ref.purchasePriceCents': T, 'cars.0.economics.entries': T };
+  for (const base of [null, {}]) {
+    const r = M.settings(pc, tel, {}, stamps, base ? { base } : {});
+    assert.deepEqual(r.report.conflicts, [], base ? 'avec ancêtre' : 'sans ancêtre');
+    assert.deepEqual(r.settings.cars[0].economics.ref, ref); assert.equal(r.settings.cars[0].economics.entries.length, 1); assert.equal(r.report.added.budget, 1);
+    const back = M.settings(tel, pc, stamps, {}, base ? { base } : {});
+    assert.deepEqual(back.report.conflicts, []); assert.deepEqual(back.settings.cars[0].economics, tel.cars[0].economics, 'l’appareil qui a le budget le garde');
+  }
+});
+check('budget : pleins saisis sur chaque appareil et retrait sur l’un → tout est gardé sauf le retrait, même résultat dans les deux sens', () => {
+  const shared = [spend('aa01', '2026-02-01', 6000), spend('aa02', '2026-02-10', 3000)];
+  const pc = settings({ cars: [budgetCar({ ref, entries: [...shared, spend('pc01', '2026-03-10', 850, { category: 'tolls' })], removed: [] }), car('voitureB')], edits: econMarks });
+  const tel = settings({ cars: [budgetCar({ ref, entries: [shared[0], spend('ip01', '2026-03-11', 4000)], removed: ['test-aa02'] }), car('voitureB')], edits: econMarks });
+  for (const base of [null, {}]) {
+    const ab = M.settings(pc, tel, econMarks, econMarks, base ? { base } : {}), ba = M.settings(tel, pc, econMarks, econMarks, base ? { base } : {});
+    for (const r of [ab, ba]) assert.deepEqual(r.report.conflicts, [], 'aucun conflit · ' + (base ? 'ancêtre' : 'sans ancêtre'));
+    const e = ab.settings.cars[0].economics;
+    assert.deepEqual(e.entries.map(x => x.id), ['test-aa01', 'test-pc01', 'test-ip01'], 'ordre canonique date puis identifiant');
+    assert.deepEqual(e.removed, ['test-aa02']); assert.deepEqual(e.ref, ref);
+    assert.deepEqual(ba.settings.cars[0].economics, e, 'même journal sur les deux appareils');
+    assert.equal(ab.report.added.budget, 1); assert.equal(ba.report.added.budget, 1);
+    // Idempotente, et une copie plus ancienne (avant le retrait) ne ressuscite rien.
+    const again = M.settings(ab.settings, ab.settings, econMarks, econMarks).settings.cars[0].economics, old = M.settings(ab.settings, pc, econMarks, econMarks).settings.cars[0].economics;
+    assert.deepEqual(again, e); assert.deepEqual(old, e);
+  }
+});
+check('budget : références modifiées sur chaque appareil (champs différents) → les deux gardées ; même champ → conflit, rien n’est écrasé', () => {
+  const pc = settings({ cars: [budgetCar({ ref: { ...ref, purchasePriceCents: 410000 }, entries: [], removed: [] }), car('voitureB')] });
+  const tel = settings({ cars: [budgetCar({ ref: { ...ref, estimatedResaleCents: 150000 }, entries: [], removed: [] }), car('voitureB')] });
+  const sp = { 'cars.0.economics.ref.purchasePriceCents': T }, st = { 'cars.0.economics.ref.estimatedResaleCents': T };
+  const r = M.settings(pc, tel, sp, st);
+  assert.deepEqual(r.report.conflicts, []); assert.equal(r.settings.cars[0].economics.ref.purchasePriceCents, 410000); assert.equal(r.settings.cars[0].economics.ref.estimatedResaleCents, 150000);
+  const tel2 = settings({ cars: [budgetCar({ ref: { ...ref, purchasePriceCents: 390000 }, entries: [], removed: [] }), car('voitureB')] });
+  const c = M.settings(pc, tel2, sp, { 'cars.0.economics.ref.purchasePriceCents': T + 1 });
+  assert.deepEqual(c.report.conflicts, ['cars.0.economics.ref.purchasePriceCents']); assert.equal(c.settings.cars[0].economics.ref.purchasePriceCents, 410000, 'valeur locale conservée');
+});
+check('budget illisible (liste remplacée, ligne sans identifiant, retrait invalide) : fusion refusée, rien n’est perdu', () => {
+  const ok = settings({ cars: [budgetCar({ ref, entries: [spend('aa01', '2026-02-01', 6000)], removed: [] }), car('voitureB')] });
+  for (const economics of ['texte', { entries: {} }, { entries: [null] }, { entries: [{ date: '2026-02-01', amountCents: 1 }] }, { entries: [], removed: [5] }, { entries: [], removed: {} }]) {
+    const bad = settings({ cars: [budgetCar(economics), car('voitureB')] });
+    assert.throws(() => M.settings(ok, bad, {}, {}), /fusion refusée/, JSON.stringify(economics));
+    assert.throws(() => M.settings(bad, ok, {}, {}), /fusion refusée/, 'dans l’autre sens · ' + JSON.stringify(economics));
+  }
+});
+check('budget : propriété sur 1 000 paires aléatoires (graine 20261114) — aucune dépense perdue, aucun retrait ressuscité, même résultat dans les deux sens', () => {
+  let seed = 20261114; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648, pick = a => a[Math.floor(rnd() * a.length)];
+  const days = ['2026-02-01', '2026-02-10', '2026-03-01'];
+  let k = 0; const row = () => spend('r' + String(k++).padStart(4, '0'), pick(days), pick([850, 3000, 6000]));
+  const side = sharedRows => { const entries = [...sharedRows.filter(() => rnd() < 0.8), ...Array.from({ length: Math.floor(rnd() * 3) }, row)];
+    const removed = entries.filter(() => rnd() < 0.2).map(x => x.id);
+    return settings({ cars: [budgetCar({ ref, entries: entries.filter(x => !removed.includes(x.id)), removed }), car('voitureB')], edits: rnd() < 0.5 ? econMarks : {} }); };
+  for (let i = 0; i < 1000; i++) {
+    const sharedRows = Array.from({ length: Math.floor(rnd() * 3) }, row), a = side(sharedRows), b = side(sharedRows);
+    const opt = rnd() < 0.5 ? { base: {} } : {}, ab = M.settings(a, b, {}, {}, opt), ba = M.settings(b, a, {}, {}, opt);
+    for (const r of [ab, ba]) assert(!r.report.conflicts.some(p => /economics/.test(p)), 'cas ' + i + ' : budget en conflit · ' + r.report.conflicts.join(','));
+    const ea = a.cars[0].economics, eb = b.cars[0].economics, gone = new Set([...ea.removed, ...eb.removed]), got = ab.settings.cars[0].economics;
+    const ids = new Set(got.entries.map(x => x.id));
+    for (const x of [...ea.entries, ...eb.entries]) assert.equal(ids.has(x.id), !gone.has(x.id), 'cas ' + i + ' : ' + x.id);
+    assert.deepEqual(got, ba.settings.cars[0].economics, 'cas ' + i + ' : journal différent selon l’appareil');
+  }
+});
+check('budget : un conflit sur une référence s’affiche en clair (libellé et euros), jamais en clé technique ni en centimes', () => {
+  const view = fs.readFileSync(path.resolve(__dirname, '../src/app/drive-sync-view.js'), 'utf8');
+  const a = view.indexOf('/* conflit-lisible:début'), b = view.indexOf('/* conflit-lisible:fin */');
+  const fctx = { Number, Object, Array, String, JSON, Math, RegExp }; vm.createContext(fctx);
+  vm.runInContext(view.slice(a, b) + ';this.T=driveConflictText;this.L=driveConflictLabel;', fctx);
+  const cars = [{ id: 'voitureA', short: 'Voiture test A' }];
+  assert.equal(fctx.L('cars.0.economics.ref.purchasePriceCents', cars), 'Voiture test A · prix d’achat');
+  assert.equal(fctx.L('cars.0.economics.ref.estimatedResaleCents', cars), 'Voiture test A · revente estimée');
+  assert.equal(fctx.L('cars.0.economics.ref.annualDistanceKm', cars), 'Voiture test A · kilométrage annuel prévu');
+  assert.equal(fctx.T('cars.0.economics.ref.purchasePriceCents', 410000).replace(/\s/g, ' '), '4 100 €');
+  assert.equal(fctx.T('cars.0.economics.ref.estimatedResaleCents', 150050).replace(/\s/g, ' '), '1 500,50 €');
+  assert.equal(fctx.T('cars.0.economics.ref.purchaseOdometerKm', 100000).replace(/\s/g, ' '), '100 000', 'un kilométrage reste un nombre');
+});
+check('contre-test (mutation) : sans les dépenses dans le prédicat additif, une saisie concurrente devient un conflit', () => {
+  const src = read('sync-merge.js'), guard = '|economics\\.(entries|removed)';
+  assert.equal(src.split(guard).length, 2, 'prédicat du budget introuvable');
+  const mctx = { Date, JSON, Math, Number, Object, Array, RegExp, Set, Map, String }; vm.createContext(mctx);
+  vm.runInContext(read('journal-archive.js') + read('debrief.js') + src.replace(guard, '') + ';this.M=SyncMerge;', mctx);
+  const pc = settings({ cars: [budgetCar({ ref, entries: [spend('pc01', '2026-03-10', 850)], removed: [] }), car('voitureB')], edits: econMarks });
+  const tel = settings({ cars: [budgetCar({ ref, entries: [spend('ip01', '2026-03-11', 4000)], removed: [] }), car('voitureB')], edits: econMarks });
+  const r = json(mctx.M.settings(pc, tel, econMarks, econMarks));
+  assert(r.report.conflicts.includes('cars.0.economics.entries'), 'la mutation doit être détectée · ' + r.report.conflicts.join(','));
+});
 console.log(n + '/' + n + ' scénarios fusion PC ↔ iPhone OK');
