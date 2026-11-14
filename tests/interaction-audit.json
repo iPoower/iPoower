@@ -55,6 +55,14 @@
     "suite": "e2e49-interactions.js",
     "result": "sens du trajet modifié"
   },
+  "econ-delete": {
+    "suite": "e2e119-garage-couts.js",
+    "result": "dépense retirée après confirmation, identifiant mémorisé, conservée au rechargement"
+  },
+  "econ-open": {
+    "suite": "e2e119-garage-couts.js",
+    "result": "volet « Coût & rentabilité » de la voiture choisie ouvert depuis le comparatif"
+  },
   "ev-flag": {
     "suite": "e2e49-interactions.js",
     "result": "mode du moteur de preuves enregistré"
