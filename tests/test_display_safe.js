@@ -52,7 +52,7 @@ function scenarios(X, collect) {
   t('B3 · Garage : chaque point porte son lieu et son rôle, dans l’ordre du parcours', pv.samples.map(s => s.role + ':' + s.place + ':' + String(s.at).slice(11, 16)).join() === 'from:Lieu A:06:00,from:Lieu A:07:00,to:Lieu B:06:00,to:Lieu B:07:00', JSON.stringify(pv.samples.map(s => [s.role, s.place, s.at])));
   t('B3 · Garage : Lieu B à 06:00 = lecture de prudence, jamais « arrivée à 06:00 » ; Lieu A 06:00 et Lieu B 07:00 = vrais passages', pv.samples.map(s => s.prudence).join() === 'false,true,true,false', JSON.stringify(pv.samples.map(s => s.prudence)));
   // B5
-  t('B5 · « #direct » masqué dans un titre, texte intact sinon', X.calTitle('Réunion #direct') === 'Réunion' && X.calTitle('#maison Dîner') === 'Dîner' && X.calTitle('Projet #directeur') === 'Projet #directeur' && X.calTitle('#trajet') === 'Rendez-vous', [X.calTitle('Réunion #direct'), X.calTitle('Projet #directeur')].join('|'));
+  t('B5 · « #direct » masqué dans un titre (seul), autres mots-clés et texte intacts', X.calTitle('Réunion #direct') === 'Réunion' && X.calTitle('#direct Dîner') === 'Dîner' && X.calTitle('Projet #directeur') === 'Projet #directeur' && X.calTitle('#direct') === 'Rendez-vous' && X.calTitle('Déplacement #trajet') === 'Déplacement #trajet', [X.calTitle('Réunion #direct'), X.calTitle('Projet #directeur')].join('|'));
   t('B5 · horodatage ISO en français (heure de Paris)', X.tsFr('2026-11-14T20:30') === 'sam. 14/11 · 20:30' && X.tsFr('2026-11-14T19:30:12Z') === 'sam. 14/11 · 20:30', X.tsFr('2026-11-14T19:30:12Z'));
   t('B5 · virgule décimale dans les facteurs du verglas', X.decFr('Précipitations (0.1 mm) sur chaussée estimée à 1.5 °C') === 'Précipitations (0,1 mm) sur chaussée estimée à 1,5 °C', X.decFr('0.1 mm'));
   return ok;

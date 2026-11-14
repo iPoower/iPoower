@@ -922,9 +922,10 @@ const wx = c => WMO[c] || (c == null ? '—' : 'Code ' + c);
 const RISKTXT = LV.map(l => l.name);   // échelle unique de l'app
 // Température « actuelle » unique : celle de l'heure en cours corrigée par la station (applyObs) quand une correction existe,
 // sinon la donnée actuelle du modèle. Jamais deux valeurs différentes affichées pour le même instant.
-// B5 (constat du 14/11 : « #direct » visible dans les titres de trajet) : les mots-clés de pilotage de l'agenda sont retirés
-// À L'AFFICHAGE seulement ; le titre stocké reste intact (le relais et l'app y lisent encore #trajet, #direct, #maison).
-const CAL_TAG_RE = /(^|\s)#(?:direct|maison|trajet|pasdetrajet)(?=$|[\s,.;:!?)])/giu;
+// B5 (constat du 14/11 : « #direct » visible dans les titres de trajet) : ce mot-clé de pilotage est retiré À L'AFFICHAGE
+// seulement ; le titre stocké reste intact (le relais et l'app y lisent les mots-clés). Les autres (#trajet, #maison,
+// #pasdetrajet) restent affichés comme avant : périmètre B5 strict, comportement existant vérifié par e2e37.
+const CAL_TAG_RE = /(^|\s)#direct(?=$|[\s,.;:!?)])/giu;
 const calTitle = t => String(t || '').replace(CAL_TAG_RE, '$1').replace(/\s{2,}/g, ' ').trim() || 'Rendez-vous';
 // B5 (constat du 14/11 : horodatages ISO bruts dans Sources) : « sam. 14/11 · 20:30 », heure de Paris. Accepte l'heure locale
 // du modèle (« 2026-11-14T20:30 ») et un instant ISO (« …Z » ou décalage) ; une valeur illisible est rendue telle quelle.
