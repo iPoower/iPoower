@@ -1220,7 +1220,7 @@ function renderDecisionCore() {
   // Verdict du trajet = risque GLOBAL de sa fenêtre (tripRisk : pneus, verglas, brouillard, gel), l'indice pneus nommé à part.
   const tr = trip && !tripGeneric ? tripRisk(trip) : null;
   const tripVerdictHtml = !trip || tripGeneric ? '' : tr && Number.isInteger(trip.worst) && LV[trip.worst]
-    ? '<span class="decision-trip-verdict lv' + tr.lv + '" data-global-risk="' + tr.lv + '"><b>' + LV[tr.lv].emoji + ' ' + LV[tr.lv].name + ' · risque global du trajet</b>' + (tr.why ? ' (' + esc(tr.why) + ')' : '') + ' · indice pneus ' + esc(lvTxt(trip.worst, trip.res)) + (tripWin ? ' · fenêtre du trajet ' + esc(tripWin) : '') + (tf ? '<span class="decision-trip-frost" data-frost="' + tf.fr.key + '"> · ' + esc(tf.text) + '</span>' : '') + '</span>'
+    ? '<span class="decision-trip-verdict lv' + riskCls(tr) + '" data-global-risk="' + (tr.indet ? 'indetermine' : tr.lv) + '"><b>' + riskDot(tr) + ' ' + riskName(tr) + ' · risque global du trajet</b>' + (tr.why ? ' (' + esc(tr.why) + ')' : '') + ' · indice pneus ' + esc(lvTxt(trip.worst, trip.res)) + (tripWin ? ' · fenêtre du trajet ' + esc(tripWin) : '') + (tf ? '<span class="decision-trip-frost" data-frost="' + tf.fr.key + '"> · ' + esc(tf.text) + '</span>' : '') + '</span>'
     : '<span class="decision-trip-verdict lvx">' + (trip.wait ? '⏳ verdict du trajet en cours de calcul' : 'Verdict du trajet indisponible') + '</span>';
   const destinationHtml = ['pneus', 'meteo'].includes(UI.view) && trip
     ? '<span class="decision-trip"><span>' + (snap.activeTrip ? 'Trajet en cours' : 'Prochain trajet') + ' · <b>' + esc(tripFrom || 'Origine à confirmer') + ' → ' + esc(tripToName || 'Destination à confirmer') + '</b></span><span class="decision-departure">' + esc(departureText) + ' <a class="decision-change" href="' + (UI.view === 'meteo' ? '#wxNextTrip' : '#secBrf') + '">Départ ↗</a></span>' + tripVerdictHtml + '</span>'
@@ -2197,7 +2197,11 @@ function tripRisk(t) {
   // Gel, y compris l'incertitude en VIGILANCE sans humidité : le risque global n'est jamais vert.
   if (fb && fb.lv >= 1) c.push({ k: 'frost', lv: fb.lv, why: `chaussée ${f1(s.TrMin)} °C${at(s.iTrMin)} (${fb.t.toLowerCase()})` });
   const worst = c.reduce((a, x) => !a || x.lv > a.lv ? x : a, null);
-  return { lv: worst ? worst.lv : 0, why: worst ? worst.why : null, k: worst ? worst.k : null, causes: c.slice().sort((a, b) => b.lv - a.lv), tyreLv, tyreGeneric };
+  // Composante INDÉTERMINÉE (amendement C du 14/11) : jamais convertie en RAS. Sans autre cause ≥ VIGILANCE, le risque global
+  // est INDÉTERMINÉ (indet) avec sa cause ; sinon la pire cause l'emporte et l'incomplétude reste nommée dans le motif.
+  const indet = fb && fb.indeterminate ? { k: 'frost', why: 'gel indéterminé : ' + fb.d.split(' : ')[0] } : null;
+  const lv = worst ? worst.lv : 0, why = worst ? worst.why + (indet ? ' · ' + indet.why : '') : indet ? indet.why : null;
+  return { lv, why, k: worst ? worst.k : indet ? 'frost' : null, causes: c.slice().sort((a, b) => b.lv - a.lv), tyreLv, tyreGeneric, indet: !!indet && lv === 0, indeterminate: indet ? [indet] : [] };
 }
 // Niveau global d'un trajet analysé (0 si aucune cause) ; null tant que le trajet n'est pas analysé.
 const tripRiskLv = t => { const r = tripRisk(t); return r ? r.lv : null; };
@@ -2205,8 +2209,11 @@ const RISK_DOT = l => l >= 3 ? '🔴' : l >= 2 ? '🟠' : l >= 1 ? '🟡' : '�
 // Ligne « Risque global du trajet » (même texte partout) ; l'indice pneus est nommé séparément.
 // Pastille d'un trajet (agenda) : texte historique quand le risque global ÉGALE l'indice pneus ; quand une autre cause l'emporte
 // (gel, verglas, brouillard), le risque global, sa cause et l'indice pneus nommé à part.
-const tripPillTxt = (rg, tyreLv, res) => rg && rg.lv > tyreLv ? `${LV[rg.lv].emoji} ${LV[rg.lv].name}${rg.why ? ' · ' + esc(rg.why) : ''} · indice pneus ${lvTxt(tyreLv, res)}` : `${LV[tyreLv].emoji} ${lvTxt(tyreLv, res)}`;
-const tripRiskHtml = (r, cls = 'trip-global') => r ? `<div class="${cls} lv${r.lv}" data-global-risk="${r.lv}" role="status"><b>${RISK_DOT(r.lv)} Risque global du trajet${r.tyreGeneric ? ' (aperçu générique)' : ''} : ${LV[r.lv].name}</b>${r.why ? ` · ${esc(r.why)}` : ' · aucune cause identifiée sur la fenêtre du trajet'}</div>` : '';
+// Nom, pastille et classe d'un risque global : INDÉTERMINÉ (⚪, neutre) quand aucune cause n'est établie et qu'une composante
+// manque — jamais « RAS ».
+const riskName = r => r && r.indet ? 'INDÉTERMINÉ' : LV[r ? r.lv : 0].name, riskDot = r => r && r.indet ? '⚪' : RISK_DOT(r ? r.lv : 0), riskCls = r => r && r.indet ? 'x' : r ? r.lv : 'x';
+const tripPillTxt = (rg, tyreLv, res) => rg && rg.indet ? `⚪ INDÉTERMINÉ · ${esc(rg.why)} · indice pneus ${lvTxt(tyreLv, res)}` : rg && rg.lv > tyreLv ? `${LV[rg.lv].emoji} ${LV[rg.lv].name}${rg.why ? ' · ' + esc(rg.why) : ''} · indice pneus ${lvTxt(tyreLv, res)}` : `${LV[tyreLv].emoji} ${lvTxt(tyreLv, res)}`;
+const tripRiskHtml = (r, cls = 'trip-global') => r ? `<div class="${cls} lv${riskCls(r)}" data-global-risk="${r.indet ? 'indetermine' : r.lv}" role="status"><b>${riskDot(r)} Risque global du trajet${r.tyreGeneric ? ' (aperçu générique)' : ''} : ${riskName(r)}</b>${r.why ? ` · ${esc(r.why)}` : ' · aucune cause identifiée sur la fenêtre du trajet'}</div>` : '';
 function nextTrip() {
   const m = M[S.work.from] || M[S.locs[0].id];
   const clock = DEMO.on && m ? m.nowStr : nowIn(m && m.tz || 'Europe/Paris');
@@ -2800,7 +2807,7 @@ function renderBrfCore() {
   const full = T.filter(t => fullFor(t.dep)), main = full[0], rest = full.slice(1);
   const wk = T.find(t => t.src === 'work'), ag = T.find(t => t.src === 'cal');
   // Pastille d'un trajet = son risque GLOBAL (même synthèse que « Prochain risque »), jamais le seul indice pneus.
-  const emo = t => t.res && t.res.every(r => carProfile(r.c).generic) ? '🧪' : tripRiskLv(t) == null ? (t.wait ? '⏳' : '·') : LV[tripRiskLv(t)].emoji;
+  const emo = t => t.res && t.res.every(r => carProfile(r.c).generic) ? '🧪' : tripRiskLv(t) == null ? (t.wait ? '⏳' : '·') : (tripRisk(t) || {}).indet ? '⚪' : LV[tripRiskLv(t)].emoji;
   const tLine = t => `${emo(t)} <b>${dayDiff(today, t.dep) === 0 ? '' : dayLbl(t.dep) + ' · '}${t.originPending ? 'horaire à confirmer' : t.dep.slice(11, 16)}</b> · ${t.src === 'work' ? '🏁' : '📅'} ${esc(t.name)}`;
   const line = (k, v) => `<div class="brf-n"><span class="k">${k}</span><span>${v}</span></div>`;
   // trajet plus risqué que le prochain : mis en évidence même s'il vient après
@@ -2810,13 +2817,13 @@ function renderBrfCore() {
   // Pire cause du trajet : pneus, verglas, brouillard, gel — le MAXIMUM, jamais la première trouvée (constat e2e105 : un gel en
   // DANGER était masqué par un risque pneus en PRUDENCE). À niveau égal, l'ordre ci-dessous départage.
   // Gel, y compris l'incertitude en VIGILANCE sans humidité : la synthèse n'est jamais verte (tripRisk, même règle partout).
-  const riskOf = t => { const r = tripRisk(t); return r && r.causes.length ? r : null; };
+  const riskOf = t => { const r = tripRisk(t); return r && (r.causes.length || r.indet) ? r : null; };   // INDÉTERMINÉ : jamais « aucun risque »
   // Pire risque de TOUS les trajets prévus, domicile-travail et prochain trajet compris (constat : la synthèse restait verte
   // alors que la carte du trajet domicile-travail indiquait « INCERTITUDE GEL ») ; à niveau égal, le plus proche.
-  const rk = T.map(t => ({ t, r: riskOf(t) })).filter(o => o.r).sort((a, b) => b.r.lv - a.r.lv || String(a.t.dep).localeCompare(String(b.t.dep)))[0];
+  const rk = T.map(t => ({ t, r: riskOf(t) })).filter(o => o.r).sort((a, b) => b.r.lv - a.r.lv || (a.r.indet ? 1 : 0) - (b.r.indet ? 1 : 0) || String(a.t.dep).localeCompare(String(b.t.dep)))[0];
   const riskPending = PROFILE().generic || cars.some(car => carProfile(car).generic) ? '🧪 Aperçu générique · configure tes lieux et ta monte pour analyser tes trajets.'
     : !T.length ? 'Aucun trajet prévu à analyser.' : T.some(t => !t.res || !t.res.length || !t.sum) ? 'Données météo en attente pour analyser les trajets.' : '🟢 Aucun risque identifié sur les trajets prévus';
-  const nrLine = line('Prochain risque sur mes trajets', rk ? `<span class="lv${rk.r.lv}"><b style="color:var(--lv-t)">${rk.r.lv >= 3 ? '🔴' : rk.r.lv >= 2 ? '🟠' : '🟡'} ${dayLbl(rk.t.dep)} ${rk.t.dep.slice(11, 16)}</b> · ${rk.t.src === 'work' ? '🏁' : '📅'} ${esc(rk.t.name)} · ${esc(rk.r.why)}</span>` : T.some(t => t.originPending) ? 'Analyse en attente pour les trajets recalculés.' : riskPending);
+  const nrLine = line('Prochain risque sur mes trajets', rk ? `<span class="lv${riskCls(rk.r)}"><b style="color:var(--lv-t)">${rk.r.indet ? '⚪ INDÉTERMINÉ ·' : rk.r.lv >= 3 ? '🔴' : rk.r.lv >= 2 ? '🟠' : '🟡'} ${dayLbl(rk.t.dep)} ${rk.t.dep.slice(11, 16)}</b> · ${rk.t.src === 'work' ? '🏁' : '📅'} ${esc(rk.t.name)} · ${esc(rk.r.why)}</span>` : T.some(t => t.originPending) ? 'Analyse en attente pour les trajets recalculés.' : riskPending);
   const tail = `${crit ? `<div class="frost lv${gl(crit)}"><b>${LV[gl(crit)].emoji} Trajet le plus risqué : ${crit.dep.slice(11, 16)} · ${esc(crit.name)}</b><span>${tripRisk(crit).why ? esc(tripRisk(crit).why) + ' · ' : ''}${crit.res.map(r => carProfile(r.c).generic ? `${esc(r.c.short)} : aperçu générique` : `${esc(r.c.short)} : indice pneus ${LV[r.w.level].name} ${r.w.score}/100`).join(' · ')}</span></div>` : ''}
     ${rest.length ? line('Ensuite', rest.map(tLine).join('<br>')) : ''}
     ${wk && !full.includes(wk) ? line('Prochain trajet domicile-travail', `🏁 <b>${dayLbl(wk.dep)} · ${wk.dep.slice(11, 16)}</b> · ${cdSpan(wk.dep)}`) : ''}
@@ -3398,7 +3405,7 @@ function legHtml(leg, ev) {
       crit = `<div class="leg-c lv${Math.max(1, c.lv)}">⚠️ Tronçon critique : <b>${seg}</b> · ${a.t.slice(11, 16)}–${b.t.slice(11, 16)} · ${esc(why)}${c.q.km != null ? ` <span class="muted">(km ${f0(c.q.km)})</span>` : ''}</div>`;
     }
     const rg = gen ? null : tripRisk(r);   // pastille = risque global du trajet ; l'indice pneus est nommé à part
-    body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : rg.lv}" data-global-risk="${gen ? '' : rg.lv}">${gen ? '🧪 Aperçu générique' : tripPillTxt(rg, r.worst, r.res) + (r.res[0] ? ' ' + r.res[0].w.score : '')}</span>${nav}</div>
+    body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : riskCls(rg)}" data-global-risk="${gen ? '' : rg.indet ? 'indetermine' : rg.lv}">${gen ? '🧪 Aperçu générique' : tripPillTxt(rg, r.worst, r.res) + (r.res[0] ? ' ' + r.res[0].w.score : '')}</span>${nav}</div>
       <div class="cal-k"><span>Route <b>${f1(r.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(r.sum.Tmin)} °C</b></span><span>Pluie <b>${(r.sum.Pmax || 0) >= 0.1 ? f1(r.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(r.sum.visMin)}</b></span></div>
       ${ev && !gen ? trendHtml(trendOf(calendarTripKey(ev, leg), leg.dep, snapOf(r.res, r.sum, r.seq))) : ''}
       ${crit}${fb ? `<div class="frost lv${fb.lv == null ? 'x' : fb.lv}"><b>${fb.lv == null ? '⚪' : fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
@@ -3490,7 +3497,7 @@ function renderCal() {
     }
     else {
       const fb = frostBand(tr.sum), lvw = tr.worst, gen = tr.res.some(r => carProfile(r.c).generic), rg = gen ? null : tripRisk(tr);   // pastille = risque global
-      body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : rg.lv}" data-global-risk="${gen ? '' : rg.lv}">${gen ? '🧪 Aperçu générique' : tripPillTxt(rg, lvw, tr.res) + (tr.res[0] ? ' ' + tr.res[0].w.score : '')}</span>
+      body = `<div class="cal-v"><span class="pill lv${gen ? 'x' : riskCls(rg)}" data-global-risk="${gen ? '' : rg.indet ? 'indetermine' : rg.lv}">${gen ? '🧪 Aperçu générique' : tripPillTxt(rg, lvw, tr.res) + (tr.res[0] ? ' ' + tr.res[0].w.score : '')}</span>
         <span class="sub">départ conseillé ≈ <b>${tr.dep.slice(11, 16)}</b> · ${f0(tr.km)} km · ~${tr.dur} min</span>${wazeBtn(e)}</div>
         <div class="cal-k"><span>Route <b>${f1(tr.sum.TrMin)} °C</b> <i class="tag est">estimé</i></span><span>Air <b>${f1(tr.sum.Tmin)} °C</b></span><span>Pluie <b>${(tr.sum.Pmax || 0) >= 0.1 ? f1(tr.sum.Pmax) + ' mm/h' : 'sec'}</b></span><span>Visib. <b>${visTxt(tr.sum.visMin)}</b></span></div>
         ${fb ? `<div class="frost lv${fb.lv == null ? 'x' : fb.lv}"><b>${fb.lv == null ? '⚪' : fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}

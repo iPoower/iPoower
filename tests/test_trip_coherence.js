@@ -24,6 +24,12 @@ function scenarios(X, collect) {
   }
   { const { seq, t: trip } = tripOf(X, hours(0.4, 0.5)), lvTrack = Math.max(...X.F1Pure.trackConditions(seq).sectors.map(s => s.level)), r = X.tripRisk(trip);
     t('neige pendant le trajet : État de la route = risque global = PRUDENCE', lvTrack === 2 && r.lv === 2 && /neige/.test(r.why), JSON.stringify({ lvTrack, r })); }
+  // INDÉTERMINÉ (amendement C) : une heure du trajet sans chaussée ni air ⇒ risque global INDÉTERMINÉ (jamais RAS), cause nommée ;
+  // avec une autre cause établie (pluie VIGILANCE), le pire l'emporte et l'incomplétude reste dans le motif.
+  { const hs = hours(0); hs[1].T = hs[1].Tr = null; const { t: trip } = tripOf(X, hs), r = X.tripRisk(trip);
+    t('gel indéterminé sur le trajet, aucune autre cause ⇒ risque global INDÉTERMINÉ avec sa cause', r.indet === true && r.lv === 0 && /gel indéterminé/.test(r.why), JSON.stringify(r)); }
+  { const hs = hours(0.5); hs[1].T = hs[1].Tr = null; const { t: trip } = tripOf(X, hs), r = X.tripRisk(trip);
+    t('pluie VIGILANCE + gel indéterminé ⇒ VIGILANCE, incomplétude nommée', r.indet === false && r.lv === 1 && /pluie/.test(r.why) && /gel indéterminé/.test(r.why), JSON.stringify(r)); }
   { const e = X.F1Pure.raceEngineer({ decision: { displayLevel: 0, reason: 'Conditions calmes' }, confidence: { level: 0, label: 'élevée' }, trip: { to: 'Lieu B', dep: '2026-11-16T06:30' }, when: 'lun. 16/11 · 06:30',
       frost: { key: 'aucun', airMin: 9, roadMin: 8.5, margin: 2 } });
     t('Ingénieur de course : départ daté et « aucun risque de gel » borné à la fenêtre', e.lines.some(l => l === 'Prochain trajet : Lieu B · départ prévu lun. 16/11 · 06:30') && e.lines.some(l => /· aucun risque de gel sur cette fenêtre$/.test(l)), JSON.stringify(e.lines)); }
@@ -35,6 +41,7 @@ if (findings.length) { console.log('ÉCARTS :\n- ' + findings.join('\n- ')); pro
 const MUT = [
   ['risque global sans la pluie (constat A5)', 'app', "if (rl >= 1) c.push({ k: 'rain'", "if (false) c.push({ k: 'rain'"],
   ['État de la route : ancien seuil de 0,5 mm/h', 'f1', 'const RAIN_MMH = 0.2,', 'const RAIN_MMH = 0.5,'],
+  ['INDÉTERMINÉ converti en RAS dans le risque global', 'app', "const indet = fb && fb.indeterminate ?", "const indet = false ?"],
   ['risque global sans la neige', 'app', "c.push({ k: 'snow', lv: 2,", "c.push({ k: 'snow', lv: 0,"],
   ['Ingénieur de course : heure seule', 'f1', "(text(when) || text(trip.dep).slice(11, 16))", "text(trip.dep).slice(11, 16)"],
   ['gel non borné à la fenêtre', 'f1', "frostTxt[k] + ' sur cette fenêtre'", 'frostTxt[k]'],
