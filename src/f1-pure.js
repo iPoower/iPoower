@@ -32,7 +32,7 @@ const F1Pure = (() => {
     // retenus pour un départ à 06:30 dont la chaussée estimée était proche du gel).
     const num = v => typeof v === 'number' && Number.isFinite(v) ? (Math.round(v * 10) / 10).toFixed(1).replace('.', ',') : '—';
     // Vocabulaire unique du moteur (FROST_WORDS) ; copie de repli identique quand f1-pure est chargé seul (tests isolés).
-    const frostTxt = typeof FROST_WORDS !== 'undefined' ? FROST_WORDS : { sous0: 'chaussée sous 0 °C possible', possible: 'gel possible', incertitude: 'gel possible (marge de prudence)', marge: 'pas de gel attendu (marge faible)', aucun: 'aucun risque de gel' };
+    const frostTxt = typeof FROST_WORDS !== 'undefined' ? FROST_WORDS : { sous0: 'gel · chaussée sous 0 °C possible', possible: 'gel possible', incertitude: 'gel possible (marge de prudence)', marge: 'pas de gel attendu (marge faible)', aucun: 'aucun risque de gel' };
     const frostLine = frost && frostTxt[frost.key] ? 'Fenêtre du trajet : air min ' + num(frost.airMin) + ' °C · chaussée estimée min ' + num(frost.roadMin) + ' °C (marge de prudence ± ' + (frost.margin) + ' °C) · ' + frostTxt[frost.key] : null;
     const confidenceLine = 'Confiance : ' + text(confidence.label || 'à confirmer') + (confidence.reason ? ' · ' + text(confidence.reason) : '');
     return { state: risk >= 2 || confidence.level >= 2 ? 'prudence' : 'information',

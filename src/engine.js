@@ -496,7 +496,7 @@ function frostRisk(sum) {
 /* Vocabulaire UNIQUE du gel (constat du 14/11 : « gel de surface probable », « risque de verglas », « gel possible » et
    « incertitude gel » pour la même nuit). Le mot dépend de la clé de la règle, jamais du bloc qui l'affiche ; jamais
    « probable » : la chaussée est estimée, sans capteur routier. L'humidité est celle de la MÊME heure (frostHumid). */
-const FROST_WORDS = { sous0: 'chaussée sous 0 °C possible', possible: 'gel possible', incertitude: 'gel possible (marge de prudence)', marge: 'pas de gel attendu (marge faible)', aucun: 'aucun risque de gel', inconnu: 'gel non évalué' };
+const FROST_WORDS = { sous0: 'gel · chaussée sous 0 °C possible', possible: 'gel possible', incertitude: 'gel possible (marge de prudence)', marge: 'pas de gel attendu (marge faible)', aucun: 'aucun risque de gel', inconnu: 'gel non évalué' };
 const frostHumidWord = h => h === true ? 'chaussée humide' : h === false ? 'chaussée sèche' : 'humidité inconnue';
 function frostWords(fr) {
   if (!fr) return { word: FROST_WORDS.inconnu, humid: null, label: FROST_WORDS.inconnu, level: null };

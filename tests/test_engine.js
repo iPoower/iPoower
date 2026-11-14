@@ -117,7 +117,7 @@ for(const k of ['froid','pluie','neige','doux']){
   const p=A.makeDemoPayload('froid',loc),m=A.makeModel(p,'demo',loc),seq=A.seqOf(m,m.nowI,24),sm=A.summarize(seq);
   const al=A.computeAlerts(m,cars,{rainThr:5},{});
   assert(sm.TrMin<=1&&al.t0,'scénario froid : alerte de gel attendue (chaussée estimée ≤ 1 °C)');
-  assert.match(al.t0.title,/^(Gel possible|Gel possible \(marge de prudence\)|Chaussée sous 0 °C possible) : chaussée estimée -?\d+(,\d)? °C vers \d\d:\d\d · (chaussée humide|chaussée sèche|humidité inconnue)$/,'le titre nomme la chaussée de l’heure retenue, son heure et l’humidité de la même heure (vocabulaire unique, mission du 14/11)');
+  assert.match(al.t0.title,/^(Gel possible|Gel possible \(marge de prudence\)|Gel · chaussée sous 0 °C possible) : chaussée estimée -?\d+(,\d)? °C vers \d\d:\d\d · (chaussée humide|chaussée sèche|humidité inconnue)$/,'le titre nomme la chaussée de l’heure retenue, son heure et l’humidité de la même heure (vocabulaire unique, mission du 14/11)');
   assert.equal(al.t0.sev,A.frostRisk(sm).level,'niveau de l’alerte = niveau de frostRisk');
   assert(!/\(-?\d/.test(al.t0.title),'plus de valeur entre parenthèses ambiguë');
   assert.match(al.t0.detail,/chaussée estimée min -?\d+(,\d)? °C vers \d\d:\d\d, air min -?\d+(,\d)? °C\. Marge de prudence ± 2 °C/);
