@@ -35,7 +35,7 @@ const SyncMerge = (() => {
   // Listes ADDITIVES : fusionnées par union plus bas (relevés compteur et profondeurs, retours de calibration, journal de
   // saison, marques d'édition). Un seul prédicat pour differences() ET la boucle d'arbitrage : une marque d'édition posée
   // sur l'un de ces chemins (ex. markEdit('cars.0.tire.treads')) ne doit jamais devenir un conflit (« conflit fantôme »).
-  const additive = p => /^(edits|calib|journal)(\.|$)/.test(p) || /^cars\.\d+\.(odo|tire\.treads)(\.|$)/.test(p);
+  const additive = p => /^(edits|calib|journal)(\.|$)/.test(p) || /^cars\.\d+\.(odo|tire\.treads|economics\.(entries|removed))(\.|$)/.test(p);
   // Couvrir aussi les anciens réglages sans `edits` et les champs saisis sans
   // markEdit (photo, fiche...). Un écart non horodaté ne doit jamais disparaître.
   function differences(a, b, prefix = '') {
@@ -131,7 +131,7 @@ const SyncMerge = (() => {
     const resolutions = obj(options) && obj(options.resolutions) ? options.resolutions : {};
     if (base) validate(base);
     validate(resolutions);
-    const out = clone(local), report = { fromRemote: [], conflicts: [], resolved: [], added: { odo: 0, treads: 0, calib: 0, days: 0, cars: 0 } };
+    const out = clone(local), report = { fromRemote: [], conflicts: [], resolved: [], added: { odo: 0, treads: 0, calib: 0, days: 0, cars: 0, budget: 0 } };
     const chosen = {};
     if (!obj(remote)) return { settings: out, stamps: { ...stampsLocal }, report };
     if (!obj(stampsLocal) || !obj(stampsRemote) || !Array.isArray(local.cars) || !Array.isArray(remote.cars)) throw new Error('Réglages incomplets : fusion refusée.');
@@ -152,6 +152,12 @@ const SyncMerge = (() => {
       const lv = get(local, p), rv = get(remote, p), a = stampAt(stampsLocal, p), b = stampAt(stampsRemote, p);
       if (!aligned(local, remote, p)) { report.conflicts.push(p); blocked.add(p); continue; }
       if (same(lv, rv)) continue;
+      // Budget (coûts et pleins) ouvert sur un seul appareil : c'est un ajout, jamais un arbitrage. Les dépenses
+      // s'unissent plus bas ; les références horodatées (cars.N.economics.ref.*) restent arbitrées champ par champ.
+      if (/^cars\.\d+\.economics$/.test(p) && (lv === undefined || rv === undefined) && obj(lv === undefined ? rv : lv)) {
+        if (lv === undefined) { set(out, p, clone(rv)); report.fromRemote.push(p); }
+        continue;
+      }
       // Objet des deux côtés et jamais remplacé en tant que tel : l'écart vient de chemins enfants,
       // énumérés séparément (differences) ; ce sont eux qui décident, pas le parent.
       if (obj(lv) && obj(rv) && (base ? !changedSince(stampsLocal, base, p) && !changedSince(stampsRemote, base, p) : a === b)) continue;
@@ -197,6 +203,22 @@ const SyncMerge = (() => {
           report.added.treads += treads.length - (Array.isArray(lt) ? lt.length : 0);
           car.tire = { ...(car.tire || {}), treads };
         }
+      }
+      // Coûts et pleins : union par identifiant d'écriture, moins les retraits mémorisés des deux appareils.
+      // Un ajout n'est jamais perdu, un retrait n'est jamais ressuscité par une copie plus ancienne.
+      const le = l && l.economics, re = r.economics;
+      if (le != null || re != null) {
+        if (le != null && !obj(le) || re != null && !obj(re)) throw new Error('Budget incomplet : fusion refusée.');
+        const rows = e => obj(e) && e.entries != null ? e.entries : [], gone = e => obj(e) && e.removed != null ? e.removed : [];
+        for (const e of [le, re]) if (!Array.isArray(rows(e)) || !Array.isArray(gone(e))) throw new Error('Dépenses incomplètes : fusion refusée.');
+        if ([...rows(le), ...rows(re)].some(x => !obj(x) || typeof x.id !== 'string' || !x.id) || [...gone(le), ...gone(re)].some(x => typeof x !== 'string' || !x))
+          throw new Error('Dépense invalide : fusion refusée.');
+        const removed = [...new Set([...gone(le), ...gone(re)])].sort(), dropped = new Set(removed), byId = new Map();
+        // Même identifiant, contenus différents (jamais attendu) : choix par le contenu, identique sur les deux appareils.
+        for (const x of [...rows(le), ...rows(re)]) if (!dropped.has(x.id) && (!byId.has(x.id) || byText(x, byId.get(x.id)) > 0)) byId.set(x.id, x);
+        const entries = clone([...byId.values()]).sort((x, y) => cmp(String(x.date), String(y.date)) || cmp(x.id, y.id));
+        const mine = new Set(rows(le).map(x => x.id)); report.added.budget += entries.filter(x => !mine.has(x.id)).length;
+        car.economics = { ...(obj(car.economics) ? car.economics : {}), entries, removed };
       }
     });
     if (local.calib != null && !Array.isArray(local.calib) || remote.calib != null && !Array.isArray(remote.calib)) throw new Error('Retours incomplets : fusion refusée.');

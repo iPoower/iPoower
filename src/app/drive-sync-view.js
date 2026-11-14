@@ -3,7 +3,9 @@
 const DRIVE_AXLE = { av: 'avant', ar: 'arrière', both: 'les deux essieux' };
 const DRIVE_FIELD = { 'tire.treads': 'profondeurs de pneus', odo: 'relevés du compteur', 'tire.type': 'type de pneus', 'tire.press': 'pression conseillée',
   'tire.tread': 'profondeur', 'tire.treadAv': 'profondeur avant', 'tire.treadAr': 'profondeur arrière', 'tire.dot': 'DOT', 'tire.pchk': 'contrôle de pression',
-  tire: 'pneus montés', sets: 'trains de pneus', plan: 'monte prévue', name: 'nom', photo: 'photo' };
+  tire: 'pneus montés', sets: 'trains de pneus', plan: 'monte prévue', name: 'nom', photo: 'photo',
+  'economics.ref.purchasePriceCents': 'prix d’achat', 'economics.ref.purchaseDate': 'date d’achat', 'economics.ref.purchaseOdometerKm': 'compteur à l’achat',
+  'economics.ref.annualDistanceKm': 'kilométrage annuel prévu', 'economics.ref.estimatedResaleCents': 'revente estimée', 'economics.ref': 'références du budget', economics: 'budget' };
 function driveConflictDate(d) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : 'date inconnue'; }
 function driveConflictNum(v, digits = 0) { return Number.isFinite(v) ? v.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '?'; }
 function driveConflictLabel(path, cars) {
@@ -23,6 +25,8 @@ function driveConflictText(path, v) {
     ? driveConflictDate(r.d) + ' · ' + driveConflictNum(+r.mm, 1) + ' mm · ' + (DRIVE_AXLE[r.ax] || 'essieu non précisé') + (Number.isFinite(r.km) ? ' · ' + driveConflictNum(r.km) + ' km' : '') + (r.est ? ' (estimation)' : '')
     : 'relevé illisible') : 'aucun relevé';
   if (/^cars\.\d+\.odo$/.test(path) && Array.isArray(v)) return v.length ? list(v, r => r && typeof r === 'object' ? driveConflictDate(r.d) + ' · ' + driveConflictNum(+r.km) + ' km' : 'relevé illisible') : 'aucun relevé';
+  // Montants du budget stockés en centimes : affichés en euros, jamais en centimes bruts.
+  if (/^cars\.\d+\.economics\.ref\.\w+Cents$/.test(path) && Number.isFinite(v)) return driveConflictNum(v / 100, Number.isInteger(v / 100) ? 0 : 2) + ' €';
   if (typeof v === 'boolean') return v ? 'oui' : 'non';
   if (typeof v === 'number') return driveConflictNum(v, Number.isInteger(v) ? 0 : 1);
   if (typeof v === 'string') return v.length > 80 ? v.slice(0, 77) + '…' : v;
