@@ -169,8 +169,8 @@ function garageTripHtml(scene, active) {
     '<figcaption>PRÉVISUALISATION ILLUSTRATIVE · SCHÉMA SANS ÉCHELLE<br>Animation en boucle, sans suivi GPS.</figcaption></figure>' +
     '<div class="twin-tools"><label class="btn sm twin-motion"><input id="garageMotion" type="checkbox" checked> Animations</label><span class="sub">' +
     (scene.animate && active ? 'Pause automatique hors écran.' : 'Vue statique · données à confirmer ou cache.') + '</span></div>' +
-    (samples.length ? '<ol class="twin-samples">' + samples.map(s => '<li><small>POINT ' + s.index + ' / ' + scene.count + (s.at ? ' · ' + esc(s.at.slice(11,16)) : '') + '</small><b>' +
-      (s.temperature == null ? 'Température indisponible' : f1(s.temperature) + ' °C') + '</b>' + (s.place ? '<span>' + esc(s.place) + '</span>' : '') +
+    (samples.length ? '<ol class="twin-samples">' + samples.map(s => '<li data-role="' + esc(s.role || 'mid') + '"' + (s.prudence ? ' data-prudence="1"' : '') + '><small>POINT ' + s.index + ' / ' + scene.count + ' · ' + ({ from: 'DÉPART', to: 'ARRIVÉE', mid: 'PASSAGE' }[s.role] || 'PASSAGE') + (s.at ? ' · ' + (s.prudence ? 'MÉTÉO DE ' : '') + esc(s.at.slice(11,16)) : '') + '</small><b>' +
+      (s.temperature == null ? 'Température indisponible' : f1(s.temperature) + ' °C') + '</b>' + (s.place ? '<span>' + esc(s.place) + (s.prudence ? ' · lecture de prudence : même heure évaluée aux deux extrémités' : '') + '</span>' : '') +
       '<span>' + esc(garageWeatherText(s).join(' · ')) + '</span></li>').join('') + '</ol>' : '<p class="garage-empty">Prévisions de ce trajet absentes. Aucun effet météo représenté.</p>') +
     uxFold('garage-sources', 'Sources et confiance', '<p class="sub">Planning : contexte partagé du prochain trajet. Météo : ' + (scene.demo ? 'simulation du mode démonstration, pas une prévision réelle.' : 'prévisions Open-Meteo du parcours déjà chargées lorsqu’elles sont disponibles, pas une observation terrain.') + '</p>' +
       '<p class="sub">' + esc(scene.complete ? 'Couverture des paramètres du moteur disponible.' : 'DONNÉES INSUFFISANTES · couverture météo ou provenance incomplète.') + '</p>' +

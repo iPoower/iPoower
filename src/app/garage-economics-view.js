@@ -44,7 +44,7 @@ function garageEconomicsHtml(car) {
       '<button type="button" class="btn sm" data-act="econ-delete" data-car="' + id + '" data-entry="' + esc(e.id) + '" aria-label="Retirer la dépense du ' + garageDate(e.date) + '">Retirer</button></li>').join('');
   const cats = GarageEconomics.CATEGORIES.map(([v, l]) => '<option value="' + v + '">' + esc(l) + '</option>').join('');
   const fuels = GarageEconomics.FUELS.map(([v, l]) => '<option value="' + v + '">' + esc(l) + '</option>').join('');
-  return '<details class="garage-economics" data-garage-economics="' + id + '"><summary>💶 Coût & rentabilité <small>Budget privé de cette voiture · chiffré dans le coffre</small></summary><div class="econ-content">' +
+  return '<details class="garage-economics" data-garage-economics="' + id + '"><summary>💶 Coût & rentabilité<span class="sr-sep"> · </span><small>Budget privé de cette voiture · chiffré dans le coffre</small></summary><div class="econ-content">' +
     stats +
     '<form class="econ-form" data-econ-ref="' + id + '"><h4>Références de la voiture</h4><div class="econ-fields">' +
       econField('Prix d’achat payé (€)', 'price', econInputEuro(ref.purchasePriceCents), 'text', 'inputmode="decimal" autocomplete="off"') +

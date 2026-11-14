@@ -91,14 +91,23 @@ const Garage = (() => {
       const fh = typeof frostFor === 'function' ? frostFor(q) : null;
       const frost = fh && Number.isInteger(fh.level) && fh.level >= 1 ? { level: fh.level, key: str(fh.key), road: fh.basis === 'road' ? val(fh.ref) : null } : null;
       const passage = stamp(q.t) || (place === str(trip.from) ? stamp(trip.dep) : place === str(trip.to) ? stamp(trip.arr) : null);
-      return { at, place, temperature: Number.isFinite(h.T) ? h.T : null,
+      // B3 (constat du 14/11) : rôle du point dans le trajet. Un trajet court évalue chaque heure aux DEUX extrémités : le lieu
+      // d'arrivée à l'heure du départ (ou l'inverse) est une lecture de prudence, nommée comme telle, jamais « l'arrivée à 06:00 ».
+      const role = place && place === str(trip.from) ? 'from' : place && place === str(trip.to) ? 'to' : 'mid';
+      const hourOf = v => v ? String(v).slice(0, 13) : null, hAt = hourOf(at);
+      const prudence = !!hAt && (role === 'to' && trip.arr && hAt < hourOf(trip.arr) || role === 'from' && trip.dep && hAt > hourOf(trip.dep));
+      return { at, place, role, prudence, f: Number.isFinite(q.f) ? q.f : null, temperature: Number.isFinite(h.T) ? h.T : null,
         rain: !!rain, snow: !!snow, fog: !!fog, frost, visibility: val(h.vis), sun: h.code === 0 || h.code === 1,
         wind: !!wind, windDirection: direction, windSpeed: val(h.wind), gust: val(h.gust),
         phase: daylight(passage, source && source.days), received: known ? received : null,
         fresh, demo: !!source && source.mode === 'demo', cache: offline || !!source && source.mode === 'cache',
         complete: known && source.mode !== 'demo' && fresh !== 'STALE' && ['T', 'Tr', 'P', 'RH', 'vis', 'gust'].every(k => Number.isFinite(h[k])) };
     });
-    const rows = points.filter(Boolean), indexes = [...new Set([0, Math.floor((rows.length - 1) / 2), rows.length - 1])].filter(i => i >= 0 && i < rows.length);
+    // Ordre du parcours : départ, points de passage, arrivée, puis l'heure. Jusqu'à 6 points, TOUS sont affichés (B3 : le point
+    // 3/4 manquait, seuls [premier, milieu, dernier] étaient retenus) ; au-delà, premier, milieu et dernier.
+    const RANK = { from: 0, mid: 1, to: 2 };
+    const rows = points.filter(Boolean).map((p, k) => ({ p, k })).sort((a, b) => RANK[a.p.role] - RANK[b.p.role] || (a.p.f ?? 0) - (b.p.f ?? 0) || String(a.p.at).localeCompare(String(b.p.at)) || a.k - b.k).map(x => x.p);
+    const indexes = rows.length <= 6 ? rows.map((_, i) => i) : [...new Set([0, Math.floor((rows.length - 1) / 2), rows.length - 1])];
     const complete = !!points.length && points.every(p => p && p.complete);
     const cached = rows.some(p => p.cache), stale = rows.some(p => p.fresh === 'STALE'), aging = rows.some(p => p.fresh === 'AGING'), demo = rows.some(p => p.demo);
     return { available: true, from: str(trip.from) || 'Départ à confirmer', to: str(trip.to) || 'Destination à confirmer',

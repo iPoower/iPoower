@@ -43,11 +43,18 @@ function treadTxt(x, mm) {
   const f = v => v == null ? '?' : String(Math.round(v * 10) / 10).replace('.', ',');
   return x && x.split && x.av !== x.ar ? `AV ${f(x.av)} / AR ${f(x.ar)} mm` : `${f(mm)} mm`;
 }
+// Relevés de la MONTE ACTUELLE (B2, constat du 14/11) : ceux datés avant tire.mounted appartiennent à une autre monte ;
+// ils restent dans tire.treads (aucune suppression, aucune réécriture) mais n'entrent ni dans l'historique affiché ni dans la
+// tendance d'usure de cette monte. Sans date de montage valide : tous les relevés, comme avant.
+function mountTreads(t) {
+  const rows = Array.isArray(t && t.treads) ? t.treads : [], since = t && typeof t.mounted === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.mounted) ? t.mounted : null;
+  return since ? rows.filter(r => !r || typeof r.d !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(r.d) || r.d.slice(0, 10) >= since) : rows;
+}
 // Historique et tendance communs au domaine et aux cartes. Aucune mutation ni donnée persistée.
 function treadHistory(t) {
   const tx = treadAxles(t);
   const num = v => { const x = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v; return typeof x === 'number' && Number.isFinite(x) ? x : null; };
-  const hist = ((t && t.treads) || []).filter(x => x && num(x.mm) != null && (!x.ax || x.ax === 'both' || !tx.ax || x.ax === tx.ax))
+  const hist = mountTreads(t).filter(x => x && num(x.mm) != null && (!x.ax || x.ax === 'both' || !tx.ax || x.ax === tx.ax))
     .map(x => ({ ...x, mm: num(x.mm), km: num(x.km) }));
   const positioned = hist.some(x => x.pos && x.pos !== 'unknown' || x.wheel);
   const last = positioned ? hist.filter(x => x.mm === tx.worst).slice(-1)[0] || null : hist[hist.length - 1] || null;
@@ -191,7 +198,7 @@ function tyreState(car, opt = {}) {
   // profondeur : dernière mesure de l'utilisateur, date, tendance seulement avec au moins deux mesures et du kilométrage
   // par essieu (treadAv / treadAr) : la valeur effective est l'essieu le plus usé ; estimation ≠ mesure (treadEst)
   const tx = treadAxles(t), est = !!t.treadEst;
-  const hist = (t.treads || []).filter(x => x && num(x.mm) != null);
+  const hist = mountTreads(t).filter(x => x && num(x.mm) != null);
   const history = treadHistory(t), last = history.last, mm = tx.split ? tx.worst : num(t.tread) ?? (last ? num(last.mm) : null);
   const rate = history.rate;
   const treadAge = last ? days(last.d) : null;

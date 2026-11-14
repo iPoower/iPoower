@@ -113,9 +113,9 @@ function missionControlHtml(m, navigationHtml = '') {
     '<div><small>PNEUS RÉELLEMENT DÉCLARÉS</small><b data-mission-tyres>' + esc(tyre) + '</b><span>' + esc(wear) + '</span></div>' +
     '<div><small>SOURCE ET FRAÎCHEUR</small><b>' + esc(m.weather.status) + (m.offline ? ' · HORS LIGNE' : '') + '</b>' +
     '<span>' + esc(m.weather.demo ? 'Mode démonstration · pas de météo réelle' : m.weather.complete ? 'Paramètres du trajet couverts' : 'Données incomplètes ou non datées') + '</span></div></div>' +
-    '<p class="mission-watch" role="status"><b>⚠️ VIGILANCE PRINCIPALE</b>' +
+    '<p class="mission-watch" role="status"><b>⚠️ VIGILANCE PRINCIPALE</b><span class="sr-sep"> · </span>' +
       esc(m.vigilance || 'Aucune vigilance étayée disponible avec les données actuelles.') +
-      '<span class="sub">' + esc(m.vigilanceSource || 'Diagnostic non conclu') + '</span></p>' +
+      '<span class="sr-sep"> · </span><span class="sub">' + esc(m.vigilanceSource || 'Diagnostic non conclu') + '</span></p>' +
     (m.agendaUnavailable ? '<p class="garage-empty">Agenda indisponible : vérifier le prochain départ avant de partir.</p>' : '') +
     '<div class="mission-actions"><button type="button" class="btn pri sm" data-act="view" data-v="trajet">Voir le trajet</button>' +
       (m.navigationAvailable ? navigationHtml : '') + '</div>' +

@@ -80,9 +80,10 @@ const F1Pure = (() => {
     const lines = [ 'Monte active : ' + text(state.active.label) ];
     if (state.tread && finite(state.tread.mm)) lines.push('Profondeur la plus faible : ' + state.tread.mm.toFixed(1).replace('.', ',') + ' mm · ' + (state.tread.est ? 'estimée par utilisateur' : 'déclarée mesurée'));
     else lines.push('Profondeur non mesurée.');
-    if (state.pressure && finite(state.pressure.target)) lines.push('Pression cible enregistrée : ' + state.pressure.target + ' bar (pas une mesure actuelle).');
+    const fr = (v, d) => v.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });   // B5 : « 2,4 bar », « 49 100 km »
+    if (state.pressure && finite(state.pressure.target)) lines.push('Pression cible enregistrée : ' + fr(state.pressure.target, 1) + ' bar (pas une mesure actuelle).');
     else lines.push('Pression cible non renseignée.');
-    if (state.mount && finite(state.mount.kmSince)) lines.push('Depuis le montage : ' + state.mount.kmSince + ' km calculés sur les relevés disponibles.');
+    if (state.mount && finite(state.mount.kmSince)) lines.push('Depuis le montage : ' + fr(state.mount.kmSince, 0) + ' km calculés sur les relevés disponibles.');
     if (Array.isArray(state.maint) && state.maint.length) lines.push(...state.maint.slice(0, 3).map(x => text(x.text)));
     return { available: true, lines };
   }

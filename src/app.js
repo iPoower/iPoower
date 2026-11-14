@@ -922,12 +922,31 @@ const wx = c => WMO[c] || (c == null ? '—' : 'Code ' + c);
 const RISKTXT = LV.map(l => l.name);   // échelle unique de l'app
 // Température « actuelle » unique : celle de l'heure en cours corrigée par la station (applyObs) quand une correction existe,
 // sinon la donnée actuelle du modèle. Jamais deux valeurs différentes affichées pour le même instant.
+// B5 (constat du 14/11 : « #direct » visible dans les titres de trajet) : les mots-clés de pilotage de l'agenda sont retirés
+// À L'AFFICHAGE seulement ; le titre stocké reste intact (le relais et l'app y lisent encore #trajet, #direct, #maison).
+const CAL_TAG_RE = /(^|\s)#(?:direct|maison|trajet|pasdetrajet)(?=$|[\s,.;:!?)])/giu;
+const calTitle = t => String(t || '').replace(CAL_TAG_RE, '$1').replace(/\s{2,}/g, ' ').trim() || 'Rendez-vous';
+// B5 (constat du 14/11 : horodatages ISO bruts dans Sources) : « sam. 14/11 · 20:30 », heure de Paris. Accepte l'heure locale
+// du modèle (« 2026-11-14T20:30 ») et un instant ISO (« …Z » ou décalage) ; une valeur illisible est rendue telle quelle.
+// B5 : virgule décimale à l'affichage pour un texte produit ailleurs (facteurs du verglas estimé : « 0.1 mm », « 1.5 °C »).
+const decFr = s => String(s == null ? '' : s).replace(/(\d)\.(\d)/g, '$1,$2');
+function tsFr(ts) {
+  const v = String(ts || '');
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(v)) return fmtDay(v.slice(0, 10)) + ' · ' + v.slice(11, 16);
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*(?:Z|[+-]\d{2}:?\d{2})$/.test(v) && Number.isFinite(Date.parse(v))) {
+    const d = new Date(v), p = Object.fromEntries(new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d).map(x => [x.type, x.value]));
+    return `${p.weekday} ${p.day}/${p.month} · ${p.hour}:${p.minute}`;
+  }
+  return v;
+}
 const curTemp = m => m && m.obs && m.hs && m.hs[m.nowI] && Number.isFinite(m.hs[m.nowI].T) ? m.hs[m.nowI].T : m && m.cur ? m.cur.T : null;
 // Conditions « actuelles » affichées (R2-07) : avec une station, l'heure en cours recalée (température, temps, précipitations,
 // visibilité, chaussée) comme dans l'onglet Météo ; sinon la donnée actuelle du modèle. La valeur brute n'apparaît jamais seule.
 const curNow = m => {
   const x = m && m.obs && m.hs && m.hs[m.nowI];
-  return x && Number.isFinite(x.T) ? { ...m.cur, T: x.T, code: x.code ?? m.cur.code, P: x.P ?? m.cur.P, vis: x.vis ?? m.cur.vis, Tr: x.Tr ?? m.cur.Tr } : m && m.cur;
+  // B4 (constat du 14/11 : ressenti −0,8 °C dans l'en-tête, −1,0 °C dans Météo actuelle) : le ressenti suit la MÊME heure recalée
+  // que la température, comme l'en-tête du poste Météo (wxInput : heure en cours quand une station recale le modèle).
+  return x && Number.isFinite(x.T) ? { ...m.cur, T: x.T, Tapp: x.Tapp ?? m.cur.Tapp, code: x.code ?? m.cur.code, P: x.P ?? m.cur.P, vis: x.vis ?? m.cur.vis, Tr: x.Tr ?? m.cur.Tr } : m && m.cur;
 };
 const visTxt = v => v == null ? '—' : v >= 10000 ? '> 10 km' : v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + ' km' : Math.round(v) + ' m';
 function icon(code) {
@@ -1054,10 +1073,10 @@ function renderSrc() {
   const m = M[UI.loc], l = allLocs().find(x => x.id === UI.loc) || allLocs()[0];
   if (!locHasCoords(l)) { $('#srcline').innerHTML = 'Lieu sans coordonnées · météo locale non calculée.'; return; }
   if (!m) { $('#srcline').innerHTML = 'Source : Open-Meteo (aucune donnée chargée).'; return; }
-  const modelTime = m.cur.time ? m.cur.time.replace('T', ' ') : 'inconnue';
+  const modelTime = m.cur.time ? tsFr(m.cur.time) : 'inconnue';
   const srcHtml = DEMO.on
     ? `Source : <b>scénario simulé « ${esc(DEMO_SCN[DEMO.scn].name)} »</b>. Les valeurs ne viennent d’aucun capteur ni d’aucun service météo.`
-    : `${dataAt() ? 'Réception météo : <b>' + LIVE_DAY_FORMAT.format(dataAt()) + ' ' + LIVE_RECEIPT_FORMAT.format(dataAt()) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : aromeMissingTxt(m.payload.__arome)} · modèles météo, pas une station · validité du modèle : <b>${esc(modelTime)}</b> (${esc(m.tz || 'Europe/Paris')}) · ${m.obs ? 'observation réelle : <b>' + esc(m.obs.t || 'heure inconnue') + '</b> · ' + esc(wxStationLine(m.obs)) : 'aucune observation réelle de station disponible'} · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
+    : `${dataAt() ? 'Réception météo : <b>' + LIVE_DAY_FORMAT.format(dataAt()) + ' ' + LIVE_RECEIPT_FORMAT.format(dataAt()) + '</b> · ' : ''}Source : <b>Open-Meteo</b>${m.payload.__arome && m.payload.__arome.hours ? ' · <b>Météo-France AROME</b> jusqu’au ' + fmtDay(m.payload.__arome.until.slice(0, 10)) + ' ' + m.payload.__arome.until.slice(11, 16) + ' (visibilité et probabilité de pluie : modèle de base)' : aromeMissingTxt(m.payload.__arome)} · modèles météo, pas une station · validité du modèle : <b>${esc(modelTime)}</b> (${esc(m.tz || 'Europe/Paris')}) · ${m.obs ? 'observation réelle : <b>' + esc(m.obs.t ? tsFr(m.obs.t) : 'heure inconnue') + '</b> · ' + esc(wxStationLine(m.obs)) : 'aucune observation réelle de station disponible'} · ${l.gps ? 'position GPS' + (l.acc ? ' ±' + l.acc + ' m' : '') + (l.sub ? ' · ' + esc(l.sub) : '') : 'position'} ${l.lat.toFixed(2).replace('.', ',')} N, ${l.lon.toFixed(2).replace('.', ',')} E · prévisions horaires sur 14 jours.${m.mode === 'cache' ? ' <b>Données en cache : peuvent être obsolètes.</b>' : ''}`;
   const el = $('#srcline'), open = el.querySelector('details') && el.querySelector('details').open;
   const html = `<details${open ? ' open' : ''}><summary>ⓘ Sources et fraîcheur des données${dataAt() ? ' · reçue à ' + LIVE_RECEIPT_FORMAT.format(dataAt()) : ''}</summary><div>${srcHtml}</div></details>`;
   if (el.innerHTML !== html) {
@@ -1554,8 +1573,8 @@ function buildTenueDay(options = {}) {
     const finish = agendaTime(e.allDay ? e.s.slice(0, 10) + 'T18:00' : e.e || addMin(e.s, 60));
     const p = resolveEvent(e);
     if (finish > midnight && begin < end && finish > begin) {
-      segments.push({ start: begin, end: finish, kind: 'event', priority: 30, to: p, title: e.t || 'Rendez-vous',
-        location: p ? `${e.t || 'Rendez-vous'} · ${p.name}` : 'Lieu inconnu · météo locale non calculée', unknown: !p });
+      segments.push({ start: begin, end: finish, kind: 'event', priority: 30, to: p, title: calTitle(e.t),
+        location: p ? `${calTitle(e.t)} · ${p.name}` : 'Lieu inconnu · météo locale non calculée', unknown: !p });
       if (e.allDay) warnings.push('Événement sur la journée entière : créneau 09:00–18:00 supposé, à confirmer.');
     }
     const legs = p ? effective.get(e) || [] : [];
@@ -2775,7 +2794,7 @@ function appBuildTrips() {
       l = { ...l, dep, arr: addMin(dep, dur) };
     }
     const r = legEval(l);
-    T.push({ src: 'cal', carId: appDay().activeCarId, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: false, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${e.t}`, from: l.originRecalc && l.originName ? l.originName : l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
+    T.push({ src: 'cal', carId: appDay().activeCarId, dep: l.dep, planDep: planned.dep, planL: planned, arr: l.arr, running: false, name: `${l.k === 'ret' ? 'Retour' : 'Aller'} · ${calTitle(e.t)}`, from: l.originRecalc && l.originName ? l.originName : l.from ? l.from.city || l.from.label : 'Origine à confirmer', to: l.to ? l.to.city || l.to.label : 'Destination à confirmer', l, e, originPending: !!l.originPending,
       res: r.res, sum: r.sum, seq: r.seq, crit: r.crit, worst: r.res ? r.worst : null, wait: !!r.loading, key });
   }));
   // Un départ déclaré reste restorable après l'heure d'arrivée prévue.
@@ -3433,7 +3452,7 @@ function daySummary(evs, now) {
   const G = o => tripRiskLv(o.r) || 0, worst = ev.reduce((a, o) => !a || G(o) > G(a) ? o : a, null), dd = dayDiff(now.slice(0, 10), day);
   const lbl = dd === 0 ? 'Aujourd’hui' : dd === 1 ? 'Demain' : fmtDay(day);
   return `<div class="cal-sum lv${worst ? G(worst) : 0}"><b>${lbl} · ${L.length} trajet${L.length > 1 ? 's' : ''} · ${f0(km)} km</b>
-    <span>${worst && G(worst) >= 1 ? `${LV[G(worst)].emoji} ${worst.x.l.k === 'ret' ? 'retour' : 'aller'} ${esc(worst.x.e.t)} (${worst.x.l.dep.slice(11, 16)}) à surveiller` : ev.length === L.length ? '🟢 aucun risque identifié sur les trajets prévus' : 'analyse en cours…'}</span></div>`;
+    <span>${worst && G(worst) >= 1 ? `${LV[G(worst)].emoji} ${worst.x.l.k === 'ret' ? 'retour' : 'aller'} ${esc(calTitle(worst.x.e.t))} (${worst.x.l.dep.slice(11, 16)}) à surveiller` : ev.length === L.length ? '🟢 aucun risque identifié sur les trajets prévus' : 'analyse en cours…'}</span></div>`;
 }
 // Profondeur inconnue (même règle sur toutes les surfaces) : un RAS devient « ANALYSE LIMITÉE · profondeur non renseignée » ;
 // un niveau venant de la météo garde son nom, avec la même mention. Le niveau n'est jamais relevé ni abaissé.
@@ -3503,7 +3522,7 @@ function renderCal() {
         ${fb ? `<div class="frost lv${fb.lv == null ? 'x' : fb.lv}"><b>${fb.lv == null ? '⚪' : fb.lv >= 3 ? '🔴' : fb.lv >= 2 ? '🟠' : '🟡'} ${fb.t}</b><span>${fb.d}</span></div>` : ''}
         ${tr.res.length > 1 ? `<span class="sub">${tr.res.map(r => `${esc(r.c.short)} : ${carProfile(r.c).generic ? 'aperçu générique' : LV[r.w.level].name + ' ' + r.w.score}`).join(' · ')}</span>` : ''}`;
     }
-    return `<div class="cal-e" data-event-id="${esc(e.id || '')}"><div class="cal-h"><span class="cal-d">${dateLabel(e)}</span><b class="cal-t">${esc(e.t)}</b><span class="sub">📍 ${esc(calendarEventPlace(e, calendarPlaces())?.name || e.label || e.loc || 'Lieu inconnu')}</span></div>${body}</div>`;
+    return `<div class="cal-e" data-event-id="${esc(e.id || '')}"><div class="cal-h"><span class="cal-d">${dateLabel(e)}</span><b class="cal-t">${esc(calTitle(e.t))}</b><span class="sub">📍 ${esc(calendarEventPlace(e, calendarPlaces())?.name || e.label || e.loc || 'Lieu inconnu')}</span></div>${body}</div>`;
   }).join('');
   el.innerHTML = `<div class="mod-h"><h2>📅 Agenda · trajets</h2><span class="src obs">Google Agenda · ${calState}</span></div>${calWarn}${evs.length ? `<div class="cal-l">${rows}</div>` : '<p class="sub">Aucun déplacement à analyser sur les 8 prochains jours.</p>'}
     <div class="disc">${CALFAIL ? calendarFailHtml() + ' ' : calCached ? '<b>Hors connexion : dernier agenda chiffré disponible.</b> ' : ''}${skipTag.length ? skipTag.length + ' rendez-vous ignorés (#pasdetrajet ou 📺). ' : ''}${pending.length ? pending.length + ' réservation' + (pending.length > 1 ? 's' : '') + ' non confirmée' + (pending.length > 1 ? 's' : '') + ' ([À réserver]) : pas un trajet. Ajoute #trajet au titre pour la traiter quand même. ' : ''}${free.length ? free.length + ' rendez-vous « Disponible » : pas un trajet. Ajoute #trajet au titre pour en faire un. ' : ''}${noPlace.length ? noPlace.length + ' rappel' + (noPlace.length > 1 ? 's' : '') + ' sans lieu masqué' + (noPlace.length > 1 ? 's' : '') + '. ' : ''}${unknownPlace.length ? `<b>${unknownPlace.length} rendez-vous au lieu non reconnu masqué${unknownPlace.length > 1 ? 's' : ''}</b> : précise l’adresse, ou ajoute #trajet si c’est un déplacement. ` : ''}${near.length ? near.length + ' rendez-vous à moins de 3 km de chez toi masqués. ' : ''}Race Control utilise les rendez-vous avec un lieu reconnu. Les rappels sans lieu et les éléments <b>#pasdetrajet</b> ou 📺 sont exclus. Pour signaler un vrai déplacement dont le lieu reste à préciser, ajoute <b>#trajet</b> dans le titre ou la description Google Agenda. <b>#direct</b> enchaîne les rendez-vous ; <b>#maison</b> prévoit un passage par chez toi. Agenda sur 8 jours, synchronisé le ${up} (chiffré avec ton code). Itinéraires © contributeurs OpenStreetMap · OSRM, avec une marge totale plafonnée à 15 min pour un rendez-vous (dont 10 min d’arrivée anticipée), sans trafic : touche 🚙 Waze pour le trafic réel. Départ du domicile arrondi à ~1 km pour la confidentialité (le tout début du tracé peut légèrement différer). Météo prise au départ, à ¼, ½ et ¾ du temps de parcours et à l’arrivée, à l’heure de passage. Moins de 3 h entre deux rendez-vous : enchaînés ; plus de 3 h : retour maison supposé, modifiable en un tap. Les notifications suivent le plan par défaut. « Journée entière » : arrivée 09:00, retour 18:00 supposés.</div>`;
@@ -3556,7 +3575,7 @@ function dayBriefHtml(td, tdLv) {
   const G = x => tripRiskLv(x.r) || 0;
   const worst = ready.reduce((a, x) => !a || G(x) > G(a) ? x : a, null);
   const km = L.reduce((a, x) => a + (x.l.km || 0), 0), dd = dayDiff(now.slice(0, 10), day), lbl = dd === 0 ? 'Aujourd’hui' : dd === 1 ? 'Demain' : fmtDay(day);
-  const nx = R[0], nm = x => `${x.l.k === 'ret' ? 'retour' : 'aller'} ${esc(x.e.t)}`;
+  const nx = R[0], nm = x => `${x.l.k === 'ret' ? 'retour' : 'aller'} ${esc(calTitle(x.e.t))}`;
   const tr = x => { if (!x.r || !x.r.res) return null; return trendOf(calendarTripKey(x.e, x.l), x.l.dep, snapOf(x.r.res, x.r.sum, x.r.seq)); };
   // tendance affichée seulement quand elle change quelque chose ; sinon une seule ligne « stable »
   const T = R.slice(0, 4).map(x => ({ x, t: tr(x) })), anyCh = T.some(o => o.t && !o.t.first && o.t.ch.length), ref = (T.find(o => o.t) || {}).t;
@@ -3665,7 +3684,7 @@ function tireExtra(car, m) {
   const pTxt = pc.date ? `contrôlée le ${fmtDay(pc.date)} à ${f1(pc.T)} °C` : 'contrôle non enregistré';
   const loss = pc.T != null && CX && CX.sum24.Tmin != null && pc.T - CX.sum24.Tmin >= 3 ? ` · ≈ −${f1(pressLoss(pressTarget(t.press), pc.T, CX.sum24.Tmin))} bar au plus froid des 24 h` : '';
   const ageTxt = age != null ? `<span class="${age >= 6 ? 'pill lv' + (age >= 10 ? 3 : 2) : 'tt'}">DOT ${esc(t.dot)} · ${f1(age)} ans</span>` : `<span class="tt">DOT non renseigné</span>`;
-  return `<div class="tirebox"><span>Pression ${t.press ? '<b>' + esc(/bar/i.test(t.press) ? t.press : t.press + ' bar') + '</b>' : '<span class="muted">cible non renseignée</span>'} · ${pTxt}${loss}</span>
+  return `<div class="tirebox"><span>Pression ${t.press ? '<b>' + esc(decFr(/bar/i.test(t.press) ? t.press : t.press + ' bar')) + '</b>' : '<span class="muted">cible non renseignée</span>'} · ${pTxt}${loss}</span>
     <button class="btn sm" data-act="pchk" data-car="${esc(car.id)}">Pression vérifiée maintenant</button>${ageTxt}</div>${wearLine(car)}${(() => { const sh = tireSheet(t, m.nowStr); const ls = sh.lines.concat(t.info ? [t.info] : []); return ls.length ? `<details class="tinfo"><summary>Fiche du pneu${sh.db ? ' · reconnu dans la base' : ''}</summary><ul class="parts">${ls.map(l => `<li><span>${esc(l)}</span></li>`).join('')}</ul></details>` : ''; })()}`;
 }
 function carSilhouette(noTires) {
@@ -3866,7 +3885,14 @@ function renderBrief() {
     <div class="fld"><span class="l">Jour</span><div class="seg">${dOffs.map(k => `<button data-act="day" data-off="${k}" aria-pressed="${UI.dayOff === k}">${dayLbl(k)}</button>`).join('')}</div></div>
     <div class="fld"><label for="quick-work-${dir === 'go' ? 'dep' : 'ret'}">Heure de départ</label><input type="time" id="quick-work-${dir === 'go' ? 'dep' : 'ret'}" data-bind="work.${dir === 'go' ? 'dep' : 'ret'}" value="${esc(time)}"></div>
     <div class="fld"><label for="quick-work-durMin">Durée (min)</label><input type="number" id="quick-work-durMin" data-bind="work.durMin" data-num="1" min="5" max="1200" step="5" value="${esc(w.durMin)}" style="width:92px"></div>
-    <div class="fld"><span class="l">${realFrom ? 'Départ habituel' : 'Départ depuis'}</span><div class="seg">${allLocs().filter(l => l.id !== (dir === 'go' ? w.to : w.from)).slice(0, 4).map(l => `<button data-act="from" data-id="${esc(l.id)}" aria-pressed="${(dir === 'go' ? w.from : w.to) === l.id}">${esc(l.name.split(' / ')[0])}</button>`).join('')}</div></div>
+    <div class="fld"><span class="l">${realFrom ? 'Départ habituel' : 'Départ depuis'}</span><div class="seg">${(() => {
+      // B5 (constat du 14/11 : le même lieu affiché deux fois) : la position GPS qui porte le nom d'un lieu enregistré listé est nommée
+      // « 📍 Ma position (GPS) » ; deux boutons ne portent jamais le même libellé. Aucun lieu n'est fusionné ni modifié.
+      const list = allLocs().filter(l => l.id !== (dir === 'go' ? w.to : w.from)).slice(0, 4), short = l => String(l.name || '').split(' / ')[0];
+      const key = v => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      const label = l => l.gps && list.some(o => o !== l && !o.gps && key(short(o)) === key(short(l))) ? '📍 Ma position (GPS)' : short(l);
+      return list.map(l => `<button data-act="from" data-id="${esc(l.id)}" aria-pressed="${(dir === 'go' ? w.from : w.to) === l.id}">${esc(label(l))}</button>`).join('');
+    })()}</div></div>
     <div class="fld"><label for="quick-work-from">${realFrom ? 'De (habituel)' : 'De'}</label><select id="quick-work-from" data-bind="work.from">${locOpts(w.from)}</select></div>
     <div class="fld"><label for="quick-work-to">Vers</label><select id="quick-work-to" data-bind="work.to">${locOpts(w.to)}</select></div>
   </div>${realFrom ? `<p class="sub brf-real-from" role="status">Départ calculé depuis <b>${esc(realFrom.name)}</b> (lieu confirmé ou départ en cours), pas depuis le départ habituel ${esc((locById(dir === 'go' ? w.from : w.to) || {}).name || '')}.</p>` : ''}`;
@@ -3986,7 +4012,7 @@ function renderIce() {
     <div><div class="scale lv${lvP == null ? 'x' : lvP}">${[0, 1, 2, 3].map(k => `<span class="${lvP != null && k <= lvP ? 'on' : ''}"></span>`).join('')}</div><div class="scale-l"><span>FAIBLE</span><span>MODÉRÉ</span><span>ÉLEVÉ</span><span>TRÈS ÉLEVÉ</span></div></div>
     <div><div class="sub" style="margin-bottom:4px">Heure par heure · 24 h</div><div class="strip" style="height:16px">${cells.join('')}</div><div class="strip-l"><span>${m.hs[n].t.slice(11, 16)}</span><span>${m.hs[n + 12] ? m.hs[n + 12].t.slice(11, 16) : ''}</span><span>${m.hs[n + 24] ? m.hs[n + 24].t.slice(11, 16) : ''}</span></div></div>
     ${(() => { const w = ensWindow(m.ens, m.hs.slice(n, n + 25).map(x => x.t)); return w ? `<div class="note${fr24.level >= 1 && pLv(w.pRoad0) < fr24.level ? '' : ' lv' + pLv(w.pRoad0)}"><b>PROBABILITÉ · INDICATEUR COMPLÉMENTAIRE</b><span>Chaussée sous 0 °C dans ${pct(w.pRoad0)} des scénarios ${esc(ENS_LABEL[m.ensModel] || '')} sur 24 h${w.tRoad0 ? ' (pic vers ' + w.tRoad0.slice(11, 16) + ')' : ''} · verglas élevé ${pct(w.pIce)}.${fr24.level >= 1 && pLv(w.pRoad0) < fr24.level ? ` Seuil strict de 0 °C sans marge : ne contredit pas le verdict gel ${LV[fr24.level].name} (gel possible à partir de 1 °C sur chaussée humide, 2 °C dans la marge).` : ''}</span></div>` : ''; })()}
-    ${f.length ? `<div><div class="sub" style="margin-bottom:4px">Facteurs au pic</div><ul class="factors">${f.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : '<p class="sub">Aucun facteur de gel significatif sur 24 h.</p>'}
+    ${f.length ? `<div><div class="sub" style="margin-bottom:4px">Facteurs au pic</div><ul class="factors">${f.map(t => `<li>${esc(decFr(t))}</li>`).join('')}</ul></div>` : '<p class="sub">Aucun facteur de gel significatif sur 24 h.</p>'}
     <p class="disc">Risque calculé à partir de la température de l’air, du point de rosée, de l’humidité, de la pluie récente, des précipitations, de la chaussée estimée et du passage sous 0 °C. Ce n’est pas une observation routière : un pont ou une zone ombragée peut geler avant.</p>`;
 }
 

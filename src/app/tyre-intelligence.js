@@ -90,7 +90,12 @@ const TyreIntelligence = (() => {
   const age = (d, now) => date(d) && date(now) ? Math.floor((Date.parse(now) - Date.parse(d)) / 864e5) : null;
   function readings(tire, today) {
     const mm = v => num(v) ? v : typeof v === 'string' && /^\d+(?:[.,]\d+)?$/.test(v.trim()) ? Number(v.trim().replace(',', '.')) : NaN;
-    const history = (Array.isArray(tire.treads) ? tire.treads : []).filter(r => obj(r) && range(mm(r.mm), 0, 20)).map((r, i) => ({
+    // B2 (constat du 14/11) : les relevés datés AVANT le montage de la monte actuelle (tire.mounted) appartiennent à une
+    // autre monte : ils ne s'affichent plus ici et n'entrent dans aucune projection. Ils restent dans l'historique (aucune
+    // suppression) ; leur nombre est indiqué.
+    const since = date(tire.mounted) ? tire.mounted : null, all = (Array.isArray(tire.treads) ? tire.treads : []).filter(r => obj(r) && range(mm(r.mm), 0, 20));
+    const beforeMount = since ? all.filter(r => date(r.d) && r.d < since).length : 0;
+    const history = all.filter(r => !since || !date(r.d) || r.d >= since).map((r, i) => ({
       id: 'history-' + i, mm: mm(r.mm), date: date(r.d) ? r.d : null, ageDays: age(r.d, today), axle: r.ax || 'unknown',
       position: r.pos || 'unknown', wheel: r.wheel || null, estimated: !!r.est, source: r.est ? 'USER_ESTIMATED' : 'USER_MEASURED', km: num(r.km) ? r.km : null
     }));
@@ -102,7 +107,7 @@ const TyreIntelligence = (() => {
       const match = history.filter(h => (h.axle === c.axle || h.axle === 'both') && h.mm === c.mm && h.estimated === !!tire.treadEst && h.ageDays !== null && h.ageDays >= 0).sort((a, b) => b.date.localeCompare(a.date))[0];
       Object.assign(c, { date: match ? match.date : null, ageDays: match ? match.ageDays : null, estimated: !!tire.treadEst, position: 'unknown', source: tire.treadEst ? 'USER_ESTIMATED' : 'USER_MEASURED' });
     }
-    return { schemaVersion: 1, current, history, min: current.length ? Math.min(...current.map(x => x.mm)) : null,
+    return { schemaVersion: 1, current, history, beforeMount, mountedOn: since, min: current.length ? Math.min(...current.map(x => x.mm)) : null,
       coverage: 'Valeurs limitées aux points renseignés : aucune couverture de toutes les rainures ou des deux roues déduite.', notes: typeof tire.info === 'string' ? tire.info : null };
   }
   function analyse(input, supplied = TYRE_TEST_EVIDENCE) {
@@ -185,7 +190,9 @@ const TyreIntelligence = (() => {
       const a = groups.get(key) || []; a.push(r); groups.set(key, a); }
       for (const a of groups.values()) if (new Set(a.map(x => x.metric.value)).size > 1) conflicts.push({ facet: f.id, tests: a.map(x => x.test.id) }); }
     if (conflicts.length) rule('source-conflict', 'Données insuffisantes', 'Sources contradictoires pour un même protocole : résultats conservés séparément, conclusion suspendue.', { conflicts }, evidenceSources);
-    const planModel = car.plan && car.plan.on ? model(c, car.plan) : null;
+    // B1 (constat du 14/11) : une monte hiver enregistrée (par la confirmation ou par les réglages) n'est plus « prévue » :
+    // même condition que le moteur et les cartes (plan.on et monte actuelle non hiver). Affichage seul : plan.on n'est pas modifié.
+    const planModel = car.plan && car.plan.on && t.type !== 'winter' ? model(c, car.plan) : null;
     const planned = planModel ? { model: planModel, size: car.plan.size || null, status: 'planned', tests: c.tests.filter(x => x.modelId === planModel.id).map(test => ({ test, comparison: comparable(car.plan, test, c) })) } : null;
     const qualities = rows.map(x => x.comparison.quality), quality = conflicts.length ? 'faible' : qualities.includes('élevée') ? 'élevée' : qualities.includes('moyenne') ? 'moyenne' : qualities.length ? 'faible' : 'indisponible';
     // Synthèse indépendante : une mesure manquante ne transforme pas un essai publié en essai absent.

@@ -66,7 +66,7 @@ function appAgendaTarget(t) {
   // Une adresse de rendez-vous n'est pas remplacée par un lieu situé à proximité.
   const known = [...(S.locs || []), ...(S.customs || [])].find(x => x.lat === p.lat && x.lon === p.lon);
   const where = t.to || p.city || p.label || 'Rendez-vous';
-  const title = t.e && t.e.t && t.e.t !== where ? t.e.t + ' · ' + where : (t.e && t.e.t) || where;
+  const et = t.e && t.e.t ? (typeof calTitle === 'function' ? calTitle(t.e.t) : t.e.t) : '', title = et && et !== where ? et + ' · ' + where : et || where;
   return DayContext.cleanPoint({ ...p, id: known && known.id || 'agenda-' + TripCancel.eventId(t.e), name: title,
     address: p.address || t.e && t.e.loc || where, provider: 'calendar', precision: 'event' }, 'agenda-next');
 }
@@ -250,7 +250,7 @@ function renderDayContext() {
   const choices = placeList().map(p => `<button class="chip" data-act="day-destination" data-id="${esc(p.id)}" aria-pressed="${!!n && n.placeId === p.id}">${esc(p.name)}</button>`).join('');
   const agendaTrips = appAgendaDestinationTrips(), agendaChoices = agendaTrips.map(t => {
     const selected = !!(n && n.source === 'calendar' && n.tripKey === t.key);
-    const title = t.e && t.e.t || 'Rendez-vous', where = t.to && t.to !== title ? ' · ' + t.to : '';
+    const title = typeof calTitle === 'function' ? calTitle(t.e && t.e.t) : t.e && t.e.t || 'Rendez-vous', where = t.to && t.to !== title ? ' · ' + t.to : '';
     return `<button class="chip" data-act="day-destination" data-agenda-key="${esc(t.key)}" aria-pressed="${selected}">📅 ${esc(t.dep.slice(11, 16))} · ${esc(title + where)}</button>`;
   }).join('');
   const work = appWorkOn(placeToday()), dayButtons = [['work', 'Travail'], ['off', 'Congé / Pas de travail']].map(([v, title]) => `<button data-act="day-type" data-v="${v}" aria-pressed="${work === (v === 'work')}">${title}</button>`).join('');

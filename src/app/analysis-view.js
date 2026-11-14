@@ -115,7 +115,7 @@ function labTripState(r, li) {
   if (r.trip && r.trip.rows.length) {
     const rain = r.trip.rows.find(x => x.events.some(ev => ev.ic === '🌧')), last = r.trip.rows[r.trip.rows.length - 1];
     return `<div class="wx-blk lab-live" data-k="pre"><h3>⏳ Avant départ · ${esc(r.trip.label)} ${esc(r.trip.dep)}</h3><ul class="lab-why"><li><b>${esc(TL_STATES[r.trip.startS])}</b> probable au départ${r.hero.warm && !r.warm.reached ? ' · ' + esc(r.hero.warm) + ' avant plage favorable' : ''}</li>
-      ${rain ? `<li>Pluie prévue ${rain.km != null ? 'après ≈ ' + rain.km + ' km' : 'vers ' + esc(rain.t)}</li>` : ''}<li>État thermique estimé à l’arrivée : <b>${esc(last.state.toLowerCase())}</b> · ≈ ${rg(last.range)}</li></ul></div>`;
+      ${rain ? `<li>Pluie prévue ${rain.km != null ? 'après ≈ ' + Math.round(rain.km).toLocaleString('fr-FR') + ' km' : 'vers ' + esc(rain.t)}</li>` : ''}<li>État thermique estimé à l’arrivée : <b>${esc(last.state.toLowerCase())}</b> · ≈ ${rg(last.range)}</li></ul></div>`;
   }
   return '';
 }
