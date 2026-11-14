@@ -63,6 +63,18 @@
     "suite": "e2e119-garage-couts.js",
     "result": "volet « Coût & rentabilité » de la voiture choisie ouvert depuis le comparatif"
   },
+  "inbox-accept": {
+    "suite": "e2e120-boite-depot.js",
+    "result": "saisie de Claude enregistrée dans la fiche après relecture (avant → après), coffre à jour, retirée de la liste"
+  },
+  "inbox-read": {
+    "suite": "e2e120-boite-depot.js",
+    "result": "bloc collé lu strictement : saisies à relire listées, bloc invalide refusé sans rien modifier"
+  },
+  "inbox-reject": {
+    "suite": "e2e120-boite-depot.js",
+    "result": "saisie retirée de la liste sans aucune modification de la fiche"
+  },
   "ev-flag": {
     "suite": "e2e49-interactions.js",
     "result": "mode du moteur de preuves enregistré"
