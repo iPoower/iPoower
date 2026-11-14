@@ -37,6 +37,11 @@ function scenarios(X, collect) {
   const worn = winterCar(); worn.tire.treads.push({ d: '2026-11-14', mm: 7.6, km: 50300, ax: 'av' }); worn.tire.treadAv = worn.tire.tread = 7.6;   // essieu avant le plus usé
   const hw = X.treadHistory(worn.tire);
   t('B2 · projection d’usure calculée sur la monte actuelle seulement (7,8 → 7,6 mm sur 1 200 km)', hw.rate != null && Math.abs(hw.rate - 0.2 / 1.2) < 0.01, JSON.stringify(hw.rate));
+  // Relevé sans date : « non rattaché », conservé ; aucun relevé valide depuis le montage : « profondeur non renseignée ».
+  const und = winterCar(); und.tire.treads = [{ d: '2026-06-01', mm: 6.4, km: 41000, ax: 'av' }, { mm: 7.8, ax: 'av' }];
+  const ru = copy(X.TI.analyse(copy({ today: '2026-11-14', car: und, weather: { ageMin: 5, samples: [] } })));
+  t('B2 · relevé sans date : non rattaché (compté, conservé) ; aucun relevé de la monte ⇒ profondeur non renseignée', ru.facts.history.length === 0 && ru.facts.unattached === 1 && ru.facts.beforeMount === 1 && ru.facts.noneSinceMount === true && ru.facts.current.length === 0 && und.tire.treads.length === 2, JSON.stringify(ru.facts));
+  t('B2 · tendance : le relevé sans date n’entre pas dans la monte', X.mountTreads(und.tire).length === 0, X.mountTreads(und.tire).length);
   const old = winterCar(); delete old.tire.mounted;
   t('B2 · sans date de montage : tous les relevés, comme avant', X.treadHistory(old.tire).last && X.mountTreads(old.tire).length === 4, 'filtré');
   // B3 : trajet court évalué aux deux extrémités (06:00 et 07:00 à A et B).
@@ -57,7 +62,9 @@ console.log(`${ok} contrôle(s) conforme(s) · ${findings.length} écart(s)`);
 if (findings.length) { console.log('ÉCARTS :\n- ' + findings.join('\n- ')); process.exit(1); }
 const MUT = [
   ['B1 : projet affiché malgré la monte hiver', 'ti', "car.plan.on && t.type !== 'winter' ? model(c, car.plan)", 'car.plan.on ? model(c, car.plan)'],
-  ['B2 : relevés antérieurs au montage affichés', 'ti', 'const history = all.filter(r => !since || !date(r.d) || r.d >= since)', 'const history = all.filter(r => true)'],
+  ['B2 : relevés antérieurs au montage affichés', 'ti', 'const history = all.filter(r => !since || date(r.d) && r.d >= since)', 'const history = all.filter(r => true)'],
+  ['B2 : relevé sans date rattaché à la monte', 'ts', 'rows.filter(r => treadDated(r) && r.d.slice(0, 10) >= since)', 'rows.filter(r => !treadDated(r) || r.d.slice(0, 10) >= since)'],
+  ['B2 : valeur d’une autre monte affichée comme profondeur actuelle', 'ti', 'if (noneSinceMount) current.length = 0;', ''],
   ['B2 : tendance d’usure sur les relevés d’une autre monte', 'ts', 'const hist = mountTreads(t).filter(x => x && num(x.mm) != null && (!x.ax', 'const hist = ((t && t.treads) || []).filter(x => x && num(x.mm) != null && (!x.ax'],
   ['B3 : retour aux trois échantillons', 'garage', 'const indexes = rows.length <= 6 ? rows.map((_, i) => i) :', 'const indexes = false ? 0 :'],
   ['B3 : lecture de prudence non signalée', 'garage', "const prudence = !!hAt &&", 'const prudence = false &&'],

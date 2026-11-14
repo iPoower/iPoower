@@ -43,12 +43,23 @@ function treadTxt(x, mm) {
   const f = v => v == null ? '?' : String(Math.round(v * 10) / 10).replace('.', ',');
   return x && x.split && x.av !== x.ar ? `AV ${f(x.av)} / AR ${f(x.ar)} mm` : `${f(mm)} mm`;
 }
-// Relevés de la MONTE ACTUELLE (B2, constat du 14/11) : ceux datés avant tire.mounted appartiennent à une autre monte ;
-// ils restent dans tire.treads (aucune suppression, aucune réécriture) mais n'entrent ni dans l'historique affiché ni dans la
-// tendance d'usure de cette monte. Sans date de montage valide : tous les relevés, comme avant.
+// Rattachement des relevés à la MONTE ACTUELLE (B2, constat du 14/11), CALCULÉ À LA LECTURE d'après la date de montage
+// confirmée (tire.mounted) : aucune écriture, aucune suppression ni réécriture de tire.treads.
+//   daté ≥ montage → rattaché (historique, tendance et projection de cette monte) ;
+//   daté < montage → monte précédente (conservé, hors de cette monte) ;
+//   sans date lisible → « non rattaché » (conservé, jamais attribué à une monte).
+// Sans date de montage valide : tous les relevés, comme avant (profils anciens).
+const mountSince = t => t && typeof t.mounted === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.mounted) ? t.mounted : null;
+const treadDated = r => !!r && typeof r.d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(r.d);
 function mountTreads(t) {
-  const rows = Array.isArray(t && t.treads) ? t.treads : [], since = t && typeof t.mounted === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.mounted) ? t.mounted : null;
-  return since ? rows.filter(r => !r || typeof r.d !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(r.d) || r.d.slice(0, 10) >= since) : rows;
+  const rows = Array.isArray(t && t.treads) ? t.treads : [], since = mountSince(t);
+  return since ? rows.filter(r => treadDated(r) && r.d.slice(0, 10) >= since) : rows;
+}
+function treadAttachment(t) {
+  const rows = (Array.isArray(t && t.treads) ? t.treads : []).filter(Boolean), since = mountSince(t);
+  if (!since) return { since: null, attached: rows.length, before: 0, unattached: 0 };
+  const before = rows.filter(r => treadDated(r) && r.d.slice(0, 10) < since).length, unattached = rows.filter(r => !treadDated(r)).length;
+  return { since, attached: rows.length - before - unattached, before, unattached };
 }
 // Historique et tendance communs au domaine et aux cartes. Aucune mutation ni donnée persistée.
 function treadHistory(t) {
@@ -198,13 +209,16 @@ function tyreState(car, opt = {}) {
   // profondeur : dernière mesure de l'utilisateur, date, tendance seulement avec au moins deux mesures et du kilométrage
   // par essieu (treadAv / treadAr) : la valeur effective est l'essieu le plus usé ; estimation ≠ mesure (treadEst)
   const tx = treadAxles(t), est = !!t.treadEst;
-  const hist = mountTreads(t).filter(x => x && num(x.mm) != null);
-  const history = treadHistory(t), last = history.last, mm = tx.split ? tx.worst : num(t.tread) ?? (last ? num(last.mm) : null);
+  const hist = mountTreads(t).filter(x => x && num(x.mm) != null), att = treadAttachment(t);
+  // Aucun relevé valide pour la monte actuelle alors que des relevés existent (tous antérieurs au montage ou non datés) : la
+  // valeur saisie appartient à une autre monte ⇒ « profondeur non renseignée » (affichage seul ; rien n'est réécrit).
+  const noneSinceMount = !!att.since && hist.length === 0 && (att.before + att.unattached) > 0;
+  const history = treadHistory(t), last = history.last, mm = noneSinceMount ? null : tx.split ? tx.worst : num(t.tread) ?? (last ? num(last.mm) : null);
   const rate = history.rate;
   const treadAge = last ? days(last.d) : null;
   const wheels = treadWheels(t, opt.wheels), gaps = treadGapRows(t, opt.wheels);
   const tread = { mm, av: tx.av, ar: tx.ar, worstAxle: tx.ax, split: tx.split, est: mm != null && est,
-    src: mm != null ? (est ? 'USER_ESTIMATED' : 'USER_MEASURED') : null, date: last ? last.d : null, ageD: treadAge, fresh: mm == null ? 'unknown' : fresh(treadAge, TS_TREAD), n: hist.length, rate,
+    src: mm != null ? (est ? 'USER_ESTIMATED' : 'USER_MEASURED') : null, date: last ? last.d : null, ageD: treadAge, fresh: mm == null ? 'unknown' : fresh(treadAge, TS_TREAD), n: hist.length, rate, attachment: att, noneSinceMount,
     wheels, irregular: gaps };
   // pression : cible saisie (plaque constructeur du véhicule), éventuellement par essieu ; dernier contrôle daté
   const pz = String(t.press || ''), N = '(\\d+(?:[.,]\\d+)?)';

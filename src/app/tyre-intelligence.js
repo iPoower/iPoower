@@ -94,8 +94,8 @@ const TyreIntelligence = (() => {
     // autre monte : ils ne s'affichent plus ici et n'entrent dans aucune projection. Ils restent dans l'historique (aucune
     // suppression) ; leur nombre est indiqué.
     const since = date(tire.mounted) ? tire.mounted : null, all = (Array.isArray(tire.treads) ? tire.treads : []).filter(r => obj(r) && range(mm(r.mm), 0, 20));
-    const beforeMount = since ? all.filter(r => date(r.d) && r.d < since).length : 0;
-    const history = all.filter(r => !since || !date(r.d) || r.d >= since).map((r, i) => ({
+    const beforeMount = since ? all.filter(r => date(r.d) && r.d < since).length : 0, unattached = since ? all.filter(r => !date(r.d)).length : 0;
+    const history = all.filter(r => !since || date(r.d) && r.d >= since).map((r, i) => ({
       id: 'history-' + i, mm: mm(r.mm), date: date(r.d) ? r.d : null, ageDays: age(r.d, today), axle: r.ax || 'unknown',
       position: r.pos || 'unknown', wheel: r.wheel || null, estimated: !!r.est, source: r.est ? 'USER_ESTIMATED' : 'USER_MEASURED', km: num(r.km) ? r.km : null
     }));
@@ -107,7 +107,10 @@ const TyreIntelligence = (() => {
       const match = history.filter(h => (h.axle === c.axle || h.axle === 'both') && h.mm === c.mm && h.estimated === !!tire.treadEst && h.ageDays !== null && h.ageDays >= 0).sort((a, b) => b.date.localeCompare(a.date))[0];
       Object.assign(c, { date: match ? match.date : null, ageDays: match ? match.ageDays : null, estimated: !!tire.treadEst, position: 'unknown', source: tire.treadEst ? 'USER_ESTIMATED' : 'USER_MEASURED' });
     }
-    return { schemaVersion: 1, current, history, beforeMount, mountedOn: since, min: current.length ? Math.min(...current.map(x => x.mm)) : null,
+    // Aucun relevé valide pour la monte actuelle alors que d'autres existent : profondeur non renseignée (valeur d'une autre monte).
+    const noneSinceMount = !!since && !history.length && (beforeMount + unattached) > 0;
+    if (noneSinceMount) current.length = 0;
+    return { schemaVersion: 1, current, history, beforeMount, unattached, noneSinceMount, mountedOn: since, min: current.length ? Math.min(...current.map(x => x.mm)) : null,
       coverage: 'Valeurs limitées aux points renseignés : aucune couverture de toutes les rainures ou des deux roues déduite.', notes: typeof tire.info === 'string' ? tire.info : null };
   }
   function analyse(input, supplied = TYRE_TEST_EVIDENCE) {

@@ -80,8 +80,15 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const st = TS(car({ press: '2,3 AV / 2,6 AR' }), { today });
     assert.equal(st.axles.front.press, 2.3); assert.equal(st.axles.rear.press, 2.6); assert.equal(st.axles.differ, true); assert.equal(st.axles.front.tread, st.axles.rear.tread);
   });
+  test('B2 : aucun relevé depuis le montage ⇒ profondeur non renseignée, relevés conservés et comptés', () => {
+    const c = car({ mounted: '2026-04-01', tread: 6.4, treadAv: 6.4, treadAr: 6.4, treads: [{ d: '2025-12-01', mm: 6.4, km: 20000 }, { mm: 6.0 }] }), before = JSON.stringify(c);
+    const st = TS(c, { today });
+    assert.equal(st.tread.mm, null); assert.equal(st.tread.fresh, 'unknown'); assert.equal(st.tread.noneSinceMount, true);
+    assert.deepEqual({ ...st.tread.attachment }, { since: '2026-04-01', attached: 0, before: 1, unattached: 1 }); assert.equal(JSON.stringify(c), before);
+  });
   test('fraîcheur par type : pression vieillit vite, profondeur lentement, DOT permanent', () => {
-    const old = TS(car({ pchk: { date: '2026-08-01', T: 20 }, treads: [{ d: '2025-12-01', mm: 6.4, km: 20000 }] }), { today });
+    // Montage antérieur au relevé (B2 : un relevé n'appartient à la monte que s'il est daté après son montage).
+    const old = TS(car({ pchk: { date: '2026-08-01', T: 20 }, mounted: '2025-11-01', treads: [{ d: '2025-12-01', mm: 6.4, km: 20000 }] }), { today });
     assert.equal(old.pressure.check.fresh, 'stale'); assert.equal(old.tread.fresh, 'stale'); assert(old.maint.some(m => /Pression à contrôler/.test(m.text)));
     const r = analyse(car({ pchk: { date: '2026-08-01', T: 20 } }));
     assert(r.confidence.reasons.some(x => /Pression contrôlée il y a 66 j/.test(x)));

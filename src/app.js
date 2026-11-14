@@ -3886,11 +3886,15 @@ function renderBrief() {
     <div class="fld"><label for="quick-work-${dir === 'go' ? 'dep' : 'ret'}">Heure de départ</label><input type="time" id="quick-work-${dir === 'go' ? 'dep' : 'ret'}" data-bind="work.${dir === 'go' ? 'dep' : 'ret'}" value="${esc(time)}"></div>
     <div class="fld"><label for="quick-work-durMin">Durée (min)</label><input type="number" id="quick-work-durMin" data-bind="work.durMin" data-num="1" min="5" max="1200" step="5" value="${esc(w.durMin)}" style="width:92px"></div>
     <div class="fld"><span class="l">${realFrom ? 'Départ habituel' : 'Départ depuis'}</span><div class="seg">${(() => {
-      // B5 (constat du 14/11 : le même lieu affiché deux fois) : la position GPS qui porte le nom d'un lieu enregistré listé est nommée
-      // « 📍 Ma position (GPS) » ; deux boutons ne portent jamais le même libellé. Aucun lieu n'est fusionné ni modifié.
-      const list = allLocs().filter(l => l.id !== (dir === 'go' ? w.to : w.from)).slice(0, 4), short = l => String(l.name || '').split(' / ')[0];
-      const key = v => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-      const label = l => l.gps && list.some(o => o !== l && !o.gps && key(short(o)) === key(short(l))) ? '📍 Ma position (GPS)' : short(l);
+      // B5 (constat du 14/11 : le même lieu affiché deux fois) : la position GPS homonyme d'un lieu enregistré À MOINS D'1 KM est le
+      // même lieu ⇒ un seul bouton (le lieu enregistré) ; homonyme mais ailleurs ⇒ « 📍 Ma position (GPS) ». Deux boutons ne portent
+      // jamais le même libellé. Aucun lieu n'est fusionné, modifié ni supprimé des réglages (affichage seul).
+      const short = l => String(l.name || '').split(' / ')[0], key = v => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      const twin = (l, all) => all.find(o => o !== l && !o.gps && key(short(o)) === key(short(l)));
+      const near = (a, b) => [a.lat, a.lon, b.lat, b.lon].every(Number.isFinite) && distKm(a, b) <= 1;
+      const pool = allLocs().filter(l => l.id !== (dir === 'go' ? w.to : w.from));
+      const list = pool.filter(l => !(l.gps && twin(l, pool) && near(l, twin(l, pool)))).slice(0, 4);
+      const label = l => l.gps && twin(l, list) ? '📍 Ma position (GPS)' : short(l);
       return list.map(l => `<button data-act="from" data-id="${esc(l.id)}" aria-pressed="${(dir === 'go' ? w.from : w.to) === l.id}">${esc(label(l))}</button>`).join('');
     })()}</div></div>
     <div class="fld"><label for="quick-work-from">${realFrom ? 'De (habituel)' : 'De'}</label><select id="quick-work-from" data-bind="work.from">${locOpts(w.from)}</select></div>
