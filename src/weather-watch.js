@@ -38,6 +38,8 @@ const WeatherWatch = (() => {
       fetchedAt: raw && value(raw.t), currentTime: current.source === 'current' ? model.cur.time || h.t || null : h.t || null,
       current, hourTime: hour && hour.t, forecastNow: value(h.T), roadT: value(h.Tr),
       ice: h.ice && finite(h.ice.level) ? h.ice.level : null,
+      // Gel : verdict de la règle unique sur la période du poste Météo (même niveau et même texte que Météo).
+      frost: (() => { const p = desk.phen.find(x => x.id === 'ice'); return p ? { lv: p.lv, line: p.line } : null; })(),
       wind: value(h.wind), gust: value(h.gust), vis: value(h.vis), pp: value(h.pp), rain: value(h.Pl) ?? value(h.P), snow: value(h.snow),
       fog: (desk.phen.find(x => x.id === 'fog') || {}).line || 'Donnée indisponible',
       timeline, nextChange: desk.nextChange, road: desk.road, hero: desk.hero, modelSource,
@@ -102,7 +104,7 @@ const WeatherWatch = (() => {
           else if (v >= t.below + t.hysteresis) st.latches[t.id] = false;
         }
         if (!baseline) {
-          if (s.ice != null && prev.ice != null && s.ice > prev.ice && s.ice >= 1) alert('ice', 'Risque de gel / verglas en hausse · estimation', Math.min(3, s.ice + 1));
+          if (s.frost && prev.frost && s.frost.lv > prev.frost.lv && s.frost.lv >= 1) alert('ice', 'Risque de gel en hausse (règle unique) · estimation', s.frost.lv);
           if (finite(s.gust) && finite(prev.gust) && s.gust >= 55 && s.gust - prev.gust >= 15) alert('gust', 'Rafales en hausse d’au moins 15 km/h, à 55 km/h ou plus', s.gust >= 70 ? 2 : 1);
           if (s.road && prev.road && finite(s.road.score) && finite(prev.road.score) && s.road.level > prev.road.level)
             alert('road', 'Risque routier en hausse · période du moteur Météo', s.road.level);

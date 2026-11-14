@@ -57,15 +57,16 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   test('verglas : 🔴, fenêtre critique, chaussée estimée', () => {
     const hs = set(set(H(), '05', { T: 1, Tr: -1.2, ice: { level: 2, score: 55 }, RH: 96 }, 2), '00', { T: 4, Tr: 3 }, 5);
     const r = desk({ now: '2026-10-06T04:30', hours: hs });
-    assert.equal(r.level, 3); assert.equal(r.hero.title, 'RISQUE DE VERGLAS'); assert.equal(r.hero.emoji, '🔴');
-    assert(r.hero.lines.includes('Fenêtre critique 05:00–07:00')); assert(r.hero.lines.includes('Chaussée estimée −1,2 °C ± 2'));
+    assert.equal(r.level, 3); assert.equal(r.hero.title, 'GEL POSSIBLE · DANGER'); assert.equal(r.hero.emoji, '🔴');
+    assert(r.hero.lines.includes('Fenêtre critique 05:00–07:00')); assert(r.hero.lines.some(l => /^Chaussée estimée min −1,2 °C ± 2 vers 05:00 \(jusqu’à /.test(l)), JSON.stringify(r.hero.lines));
     const ice = r.road.factors.find(f => f.id === 'ice'); assert.equal(ice.pen, 45); assert.equal(ice.lv, 3);
   });
-  test('gel gradué : chaussée proche du gel 🟡, gel de surface probable 🟠, jamais « verglas » sans humidité', () => {
+  // Vocabulaire unique (mission du 14/11) : jamais « probable », même mot que le moteur (FROST_WORDS) pour le même niveau.
+  test('gel gradué : gel possible (marge de prudence) 🟡, gel possible 🟠, jamais « verglas » ni « probable »', () => {
     const a = desk({ now: '2026-10-06T05:10', hours: set(H(), '05', { T: 3, Tr: 1 }, 2) });
-    assert.equal(a.level, 1); assert.equal(a.hero.title, 'CHAUSSÉE PROCHE DU GEL'); assert.equal(a.timeline.moments[0].text, 'chaussée proche du gel');
+    assert.equal(a.level, 1); assert.equal(a.hero.title, 'GEL POSSIBLE (MARGE DE PRUDENCE) · VIGILANCE'); assert.equal(a.timeline.moments[0].text, 'gel possible (marge de prudence)');
     const b = desk({ now: '2026-10-06T05:10', hours: set(H(), '05', { T: 0, Tr: -2.5 }, 2) });
-    assert.equal(b.level, 2); assert.equal(b.hero.title, 'GEL DE SURFACE PROBABLE'); assert(!/verglas/i.test(JSON.stringify(b.matters)));
+    assert.equal(b.level, 2); assert.equal(b.hero.title, 'GEL POSSIBLE · PRUDENCE'); assert(!/verglas|probable/i.test(JSON.stringify(b.matters) + b.hero.title));
   });
   test('pluie verglaçante annoncée : 🔴 même si la chaussée estimée est positive', () => {
     const hs = set(H(), '10', { code: 66, P: 0.5, Pl: 0.5, Tr: 1.5 }, 1);

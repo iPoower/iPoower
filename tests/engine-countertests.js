@@ -15,7 +15,8 @@ const mutations = [
   { name: 'pneu inconnu analysé comme un 4 saisons', from: "const effType = car => car.tire.type === 'unknown' ? 'summer' : car.tire.type;", to: "const effType = car => car.tire.type === 'unknown' ? 'allseason' : car.tire.type;" },
   { name: 'plancher « pluie sur chaussée négative » supprimé', from: 'score = Math.max(score, 75); f.push', to: 'score = score; f.push' },
   { name: 'pire heure du trajet ignorée', from: 'if (a.pen > pMax) { pMax = a.pen; kMax = k; }', to: 'if (k === 0) { pMax = a.pen; kMax = k; }' },
-  { name: 'courbe froid des pneus été non monotone', from: '[0, 60], [1, 48]', to: '[0, 20], [1, 48]' },
+  // Point hors de la zone de la règle gel (chaussée < 2 °C), où le froid des pneus été reste évalué par la courbe (mission du 14/11).
+  { name: 'courbe froid des pneus été non monotone', from: '[1, 48], [3, 36], [5, 24]', to: '[1, 48], [3, 10], [5, 24]' },
   { name: 'profondeur illégale oubliée', from: "if (tread != null && tread < TREAD_LEGAL_MM) add('Profondeur sous le minimum légal (1,6 mm)', 40, 'tyre');", to: '' },
   { name: 'pneu hors minimum légal soumis au score (plus d’état critique prioritaire)', from: 'if (f.illegalTread) L = 3;', to: '' },
   { name: 'minimum légal abaissé à 1,0 mm', from: 'const TREAD_LEGAL_MM = 1.6;', to: 'const TREAD_LEGAL_MM = 1.0;' },

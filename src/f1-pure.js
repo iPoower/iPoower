@@ -31,7 +31,8 @@ const F1Pure = (() => {
     // Fenêtre DU TRAJET (frostRisk du moteur) : jamais la température « maintenant » pour un départ plus tard (constat : 4,8 °C
     // retenus pour un départ à 06:30 dont la chaussée estimée était proche du gel).
     const num = v => typeof v === 'number' && Number.isFinite(v) ? (Math.round(v * 10) / 10).toFixed(1).replace('.', ',') : '—';
-    const frostTxt = { sous0: 'chaussée sous 0 °C possible', possible: 'gel possible', incertitude: 'gel possible (marge de prudence)', marge: 'pas de gel attendu (marge faible)', aucun: 'aucun risque de gel' };
+    // Vocabulaire unique du moteur (FROST_WORDS) ; copie de repli identique quand f1-pure est chargé seul (tests isolés).
+    const frostTxt = typeof FROST_WORDS !== 'undefined' ? FROST_WORDS : { sous0: 'chaussée sous 0 °C possible', possible: 'gel possible', incertitude: 'gel possible (marge de prudence)', marge: 'pas de gel attendu (marge faible)', aucun: 'aucun risque de gel' };
     const frostLine = frost && frostTxt[frost.key] ? 'Fenêtre du trajet : air min ' + num(frost.airMin) + ' °C · chaussée estimée min ' + num(frost.roadMin) + ' °C (marge de prudence ± ' + (frost.margin) + ' °C) · ' + frostTxt[frost.key] : null;
     const confidenceLine = 'Confiance : ' + text(confidence.label || 'à confirmer') + (confidence.reason ? ' · ' + text(confidence.reason) : '');
     return { state: risk >= 2 || confidence.level >= 2 ? 'prudence' : 'information',
@@ -42,6 +43,7 @@ const F1Pure = (() => {
   }
   // La segmentation ne prétend jamais représenter des frontières géographiques
   // précises : uniquement les points météo réellement disponibles du trajet.
+  const FZ_F1 = new Set([56, 57, 66, 67]);
   function trackConditions(seq, { ageMin = null } = {}) {
     const rows = Array.isArray(seq) ? seq.map(q => q && q.hs && q.hs[q.i]).filter(Boolean) : [];
     if (!rows.length || ageMin != null && (!finite(ageMin) || ageMin > STALE_AFTER_MIN))
@@ -51,11 +53,15 @@ const F1Pure = (() => {
       const a = Math.floor(n * rows.length / count), b = Math.floor((n + 1) * rows.length / count), points = rows.slice(a, b);
       let worst = 0; const signals = new Set();
       points.forEach(x => {
-        if (x.ice && finite(x.ice.level) && x.ice.level >= 1) { worst = Math.max(worst, Math.min(3, x.ice.level + 1)); signals.add('Verglas · risque estimé'); }
+        // Gel : niveau de la règle unique (frostHour) quand le moteur est chargé ; le verglas estimé n'en fixe plus le niveau.
+        const fh = typeof frostHour === 'function' && finite(x.Tr) ? frostHour([x], 0) : null;
+        if (fh) { if (fh.level >= 1) { worst = Math.max(worst, fh.level); signals.add((fh.level >= 2 ? 'Gel possible' : 'Gel possible (marge de prudence)') + ' · estimation'); } }
+        else if (x.ice && finite(x.ice.level) && x.ice.level >= 1) { worst = Math.max(worst, Math.min(3, x.ice.level + 1)); signals.add('Verglas · risque estimé'); }
+        if (FZ_F1.has(x.code)) { worst = 3; signals.add('Pluie verglaçante annoncée'); }
         if (finite(x.vis) && x.vis < 1000) { worst = Math.max(worst, x.vis < 200 ? 3 : 2); signals.add('Visibilité réduite'); }
         if (finite(x.P) && x.P >= 0.5 || finite(x.Pl) && x.Pl >= 0.5) { worst = Math.max(worst, 1); signals.add('Pluie prévue'); }
         if (finite(x.snow) && x.snow > 0) { worst = Math.max(worst, 2); signals.add('Neige prévue'); }
-        if (finite(x.Tr) && x.Tr <= 0) { worst = Math.max(worst, 1); signals.add('Chaussée estimée à 0 °C ou moins'); }
+        if (!fh && finite(x.Tr) && x.Tr <= 0) { worst = Math.max(worst, 1); signals.add('Chaussée estimée à 0 °C ou moins'); }
       });
       sectors.push({ index: n + 1, points: points.length, level: worst, label: label(worst), notes: [...signals].slice(0, 3),
         estimated: true });

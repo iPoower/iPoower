@@ -25,7 +25,11 @@ function scenarios(X, collect) {
   const b = X.tripRisk(trip(sum(1.5, false), [2]));
   t('indice pneus PRUDENCE et gel VIGILANCE ⇒ PRUDENCE (pire cause, pas la première), gel listé', b.lv === 2 && b.k === 'tyre' && b.causes.some(c => c.k === 'frost' && c.lv === 1), JSON.stringify(b));
   const c = X.tripRisk(trip(sum(6, false, { iceLevel: 2 }), [1]));
-  t('verglas élevé ⇒ DANGER', c.lv === 3 && c.k === 'ice', JSON.stringify(c));
+  // Mission du 14/11 : le verglas estimé est un indicateur complémentaire, sans niveau propre au-dessus de la règle gel ;
+  // une pluie verglaçante annoncée (sum.fz) reste une cause DANGER à part entière.
+  t('verglas élevé seul (chaussée 6 °C, règle gel RAS) ⇒ indicateur complémentaire, pas une cause du risque global', c.lv === 1 && c.k === 'tyre' && !c.causes.some(x => x.k === 'ice'), JSON.stringify(c));
+  const cf = X.tripRisk(trip(sum(6, false, { iceLevel: 3, fz: true }), [1]));
+  t('pluie verglaçante annoncée ⇒ DANGER, cause nommée', cf.lv === 3 && cf.k === 'ice' && /pluie verglaçante/.test(cf.why), JSON.stringify(cf));
   const d = X.tripRisk(trip(sum(6, false, { visMin: 150 }), [0])), e = X.tripRisk(trip(sum(6, false, { visMin: 600 }), [0]));
   t('brouillard < 200 m ⇒ DANGER ; < 1 000 m ⇒ PRUDENCE', d.lv === 3 && e.lv === 2, JSON.stringify([d.lv, e.lv]));
   const g = X.tripRisk(trip(sum(6, false), [3], true));

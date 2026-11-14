@@ -33,7 +33,9 @@ function chain(X, collect) {
   t(`poste Météo : bandeau « gel » au niveau de la règle (${top})`, ice.lv >= top, JSON.stringify({ lv: ice.lv, line: ice.line }));
   // « Verglas » seulement si une heure de la fenêtre porte un verglas calculé (iceRisk) : sinon l'humidité est nommée.
   const icy = hs.slice(i, i + 12).some(x => x.ice && x.ice.level >= 1);
-  t('poste Météo : l’humidité est nommée dans le libellé du gel, « verglas » seulement si un verglas est calculé', icy ? /verglas/i.test(ice.line) : /chaussée humide|chaussée sèche|humidité inconnue/.test(ice.line), JSON.stringify({ icy, line: ice.line }));
+  // Mission du 14/11 : le libellé du gel est TOUJOURS celui de la règle (humidité de la même heure nommée) ; le verglas estimé
+  // n'est qu'un indicateur complémentaire, jamais le libellé du verdict (constat : « gel de surface probable » / « verglas »).
+  t('poste Météo : l’humidité est nommée dans le libellé du gel, jamais « verglas » ni « probable » à la place de la règle', /chaussée humide|chaussée sèche|humidité inconnue/.test(ice.line) && !/verglas|probable/i.test(ice.line), JSON.stringify({ icy, line: ice.line }));
   // Trajet : séquence sur deux modèles (deux points) ; frostRisk de la fenêtre = pire heure, humidité de la même heure.
   const seq = X.legSeq([ma, mb], [{ f: 0, km: 0, name: 'Lieu A' }, { f: 1, km: 18, name: 'Lieu B' }], '2026-11-16T05:00', 60);
   const fr = X.frostRisk(X.summarize(seq)), worst = Math.max(...seq.map(q => X.frostHour(q.hs, q.i).level));
@@ -64,7 +66,7 @@ const MUT = [
   ['P3 non attaché par buildHours', 'engine', /  hs\.forEach\(\(x, i\) => \{ x\.P3 = precipWindow\(hs, i\); \}\);/, ''],
   ['P3 ignoré (heure seule)', 'engine', /const win = x\.P3 && typeof x\.P3 === 'object' \? x\.P3 : precipWindow\(hs, i\);/, 'const win = precipWindow(hs, i);'],
   ['heure seule sans P3 traitée comme sèche', 'engine', /return precipKnown && satKnown && depKnown \? false : null;/, 'return false;'],
-  ['poste Météo : « verglas » sur humidité inconnue', 'wxdesk', /if \(!fh \|\| fh\.level !== lv\) return strong/, 'if (true) return strong'],
+  ['poste Météo : libellé de repli (« verglas », humidité non nommée) au lieu du vocabulaire unique', 'wxdesk', /return fh && fh\.level >= 1 && typeof frostWords === 'function' \? frostWords\(fh\)\.label : ICE_TXT\[lv\];/, "return 'verglas possible';"],
   ['poste Météo : règle propre', 'wxdesk', /typeof frostHour === 'function' \? frostHour\(\[x\], 0\) : null;\n    const frost/, "false ? 0 : null;\n    const frost"],
 ];
 let killed = 0;
