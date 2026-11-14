@@ -1215,7 +1215,7 @@ function renderDecisionCore() {
     : 'horaire à confirmer';
   // Verdict propre au trajet : sa fenêtre (départ → arrivée, points de la route), jamais celle du lieu actuel.
   const tripGeneric = !!(trip && trip.res && trip.res.length && trip.res.every(r => carProfile(r.c).generic));
-  const tripWin = trip && /T\d{2}:\d{2}/.test(trip.dep || '') ? trip.dep.slice(11, 16) + (/T\d{2}:\d{2}/.test(trip.arr || '') ? ' → ' + trip.arr.slice(11, 16) : '') : '';
+  const tripWin = trip && /T\d{2}:\d{2}/.test(trip.dep || '') ? tripSpan(trip) : '';
   const tf = tripFrost(trip);
   // Verdict du trajet = risque GLOBAL de sa fenêtre (tripRisk : pneus, verglas, brouillard, gel), l'indice pneus nommé à part.
   const tr = trip && !tripGeneric ? tripRisk(trip) : null;
@@ -2158,7 +2158,17 @@ function frostBand(x) {
 }
 // Fenêtre d'un trajet (actif ou prochain) : UNE donnée de référence (la synthèse t.sum du trajet analysé) et UNE règle
 // (frostRisk) pour le bandeau, les cartes pneus, la synthèse, l'Ingénieur de course et l'A/B (constat : 4,8 / 1,9 / 1,3 °C).
-const frostText = fr => `air min ${f1(fr.airMin)} °C · chaussée estimée min ${f1(fr.roadMin)} °C (marge de prudence ± ${fr.margin} °C) · ${frostWords(fr).label}${fr.level >= 1 ? ' · ' + LV[fr.level].name : ''}`;
+const frostText = fr => `air min ${f1(fr.airMin)} °C · chaussée estimée min ${f1(fr.roadMin)} °C (marge de prudence ± ${fr.margin} °C) · ${frostWords(fr).label}${fr.level >= 1 ? ' · ' + LV[fr.level].name : ' sur la fenêtre du trajet'}`;
+// Heure d'un trajet telle qu'affichée partout (A4, constat du 14/11 : « Prochain trajet 06:30 » pour le lundi 16/11) :
+// l'heure seule aujourd'hui, sinon « lun. 16/11 · 06:30 ». Aujourd'hui = date du contexte (même horloge que la synthèse).
+function tripWhen(ts) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(ts || ''))) return '';
+  const snap = APP_CONTEXT && APP_CONTEXT.snapshot, m = M[UI.loc] || M[S.locs[0].id];
+  const today = snap && snap.date || (m && m.nowStr ? m.nowStr.slice(0, 10) : nowIn('Europe/Paris').slice(0, 10));
+  return ts.slice(0, 10) === today ? ts.slice(11, 16) : fmtDay(ts.slice(0, 10)) + ' · ' + ts.slice(11, 16);
+}
+// Fenêtre d'un trajet écrite : « lun. 16/11 · 06:30 → 07:10 » (arrivée le même jour : heure seule).
+const tripSpan = t => t && t.dep ? tripWhen(t.dep) + (/T\d{2}:\d{2}/.test(t.arr || '') ? ' → ' + (t.arr.slice(0, 10) === t.dep.slice(0, 10) ? t.arr.slice(11, 16) : tripWhen(t.arr)) : '') : '';
 function tripFrost(t) {
   const snap = APP_CONTEXT && APP_CONTEXT.snapshot, trip = t || (snap && (snap.activeTrip || snap.nextTrip));
   if (!trip || !trip.sum) return null;
@@ -2179,6 +2189,11 @@ function tripRisk(t) {
   if (s.fz) c.push({ k: 'ice', lv: 3, why: 'pluie verglaçante annoncée' });
   const at = ref => ref && ref.hs && ref.hs[ref.i] ? ' vers ' + hhmm(ref) : '';   // heure de la valeur citée (jamais une valeur sans heure)
   if (s.visMin != null && s.visMin < 1000) c.push({ k: 'fog', lv: s.visMin < 200 ? 3 : 2, why: `brouillard ${f0(s.visMin)} m${at(s.iVis)}` });
+  // Pluie et neige (A5, mission du 14/11) : mêmes seuils et même fenêtre que « État de la route » (F1Pure.rainLevel, seuils du
+  // poste Météo) ; constat : état de la route en VIGILANCE (pluie prévue) et risque global « RAS · aucune cause identifiée ».
+  { const rl = typeof F1Pure !== 'undefined' && F1Pure.rainLevel ? F1Pure.rainLevel(s.Pmax) : 0;
+    if (rl >= 1) c.push({ k: 'rain', lv: rl, why: `pluie ${f1(s.Pmax)} mm/h${at(s.iPmax)}` }); }
+  if ((s.snowSum || 0) > 0 || s.snowCode) c.push({ k: 'snow', lv: 2, why: `neige prévue${at(s.iSnow)}` });
   // Gel, y compris l'incertitude en VIGILANCE sans humidité : le risque global n'est jamais vert.
   if (fb && fb.lv >= 1) c.push({ k: 'frost', lv: fb.lv, why: `chaussée ${f1(s.TrMin)} °C${at(s.iTrMin)} (${fb.t.toLowerCase()})` });
   const worst = c.reduce((a, x) => !a || x.lv > a.lv ? x : a, null);
@@ -3698,7 +3713,7 @@ function renderCars() {
       <div class="car-b">
         <div class="scoreRow"><div><div class="lab">TYRE WEATHER SCORE</div><div class="score num">${gen ? '—' : w.score}<small>${gen ? 'aperçu' : '/100'}</small></div></div>
           <div style="display:flex;flex-direction:column;gap:6px"><div class="lab">Niveau de risque : <b style="color:var(--lv-t)">${gen ? 'aperçu (profil générique)' : RISKTXT[w.level]}</b></div><div class="bar"><i style="width:${gen ? 0 : w.score}%"></i></div>
-          <div class="sub">Maintenant : ${f1(c.T)} °C · ${esc(wx(c.code))} · chaussée est. ${f1(c.Tr)} °C</div>${(() => { const tf = tripFrost(); return tf ? `<div class="sub car-trip-frost" data-frost="${tf.fr.key}">Prochain trajet ${esc(String(tf.trip.dep || '').slice(11, 16))} : ${esc(tf.text)}</div>` : ''; })()}</div></div>
+          <div class="sub">Maintenant : ${f1(c.T)} °C · ${esc(wx(c.code))} · chaussée est. ${f1(c.Tr)} °C</div>${(() => { const tf = tripFrost(); return tf ? `<div class="sub car-trip-frost" data-frost="${tf.fr.key}">Prochain trajet ${esc(tripSpan(tf.trip))} : ${esc(tf.text)}</div>` : ''; })()}</div></div>
         <p class="expl">${gen ? '<b>Météo de référence.</b> Renseigne tes lieux et ta monte pour évaluer cette voiture.' : `<b>${esc(nar.head)}</b> ${esc(nar.body)}`}</p>
         ${gen ? '' : `<div><div class="sub" style="margin-bottom:4px">Évolution heure par heure · 24 h</div><div class="strip" role="img" aria-label="Verdict heure par heure sur 24 heures">${strip.join('')}</div><div class="strip-l">${labels}</div></div>`}
         ${gen ? '' : `<details><summary>Détail du calcul · pire heure ${hhmm({ hs: wi.x ? m.hs : m.hs, i: m.hs.indexOf(wi.x) })}</summary>
@@ -3898,7 +3913,7 @@ function renderBrief() {
 function renderCompare() {
   const el = $('#secCmp'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
   const td = tripData(); let seq, label;
-  if (td.err) { seq = CX.seq; label = `les ${S.horizon} prochaines heures`; } else { seq = td.seq; label = `le trajet ${td.fromName} → ${td.toName} (${td.dep.slice(11, 16)}–${td.arr.slice(11, 16)})`; }
+  if (td.err) { seq = CX.seq; label = `les ${S.horizon} prochaines heures`; } else { seq = td.seq; label = `le trajet ${td.fromName} → ${td.toName} (${tripSpan(td)})`; }
   const mode = td.err ? 'card' : 'trip', sm = summarize(seq);
   const res = TCARS().map(car => ({ car, w: windowAssess(car, seq, mode) })).filter(r => r.w);
   if (res.length < 2) { const wait = S.cars.filter(c => !hasTires(c)).map(c => c.short); el.hidden = false;
@@ -3934,7 +3949,7 @@ function renderCompare() {
   const [a, b] = res, sporty = res.find(r => r.car.sporty && effType(r.car) === 'summer');
   const why = [
     `Pneus : ${res.map(r => `${esc(r.car.short)} en ${TYPE_LABEL[r.car.tire.type]} (${esc(r.car.tire.size)})`).join(' ; ')}.`,
-    `Conditions sur ${esc(label)} : ${f1(sm.Tmin)} à ${f1(sm.Tmax)} °C, chaussée estimée jusqu’à ${f1(sm.TrMin)} °C, pluie max ${f1(sm.Pmax)} mm/h, visibilité min ${visTxt(sm.visMin)}, ${sm.snowSum > 0 || sm.snowCode ? 'neige prévue' : 'pas de neige prévue'}, gel (règle) : ${frostWords(frostRisk(sm)).label}, indicateur verglas ${ICE_LV[sm.iceLevel].toLowerCase()} (complémentaire).`,
+    `Conditions sur ${esc(label)} : ${f1(sm.Tmin)} à ${f1(sm.Tmax)} °C, chaussée estimée jusqu’à ${f1(sm.TrMin)} °C, pluie max ${f1(sm.Pmax)} mm/h, visibilité min ${visTxt(sm.visMin)}, ${sm.snowSum > 0 || sm.snowCode ? 'neige prévue' : 'pas de neige prévue'}, gel (règle) : ${frostWords(frostRisk(sm)).label}${td.err || frostRisk(sm).level >= 1 ? '' : ' sur la fenêtre du trajet'}, indicateur verglas ${ICE_LV[sm.iceLevel].toLowerCase()} (complémentaire).`,
     genericCompare ? 'Comparaison personnalisée en attente : renseigne les lieux et la monte de chaque voiture.' :
       // Garde-fou de profondeur (#307) : il relève le NIVEAU, pas le score ; deux niveaux différents ne sont jamais « indistincts ».
       a.w.level !== b.w.level || a.w.guard || b.w.guard ? `Niveaux : ${esc(a.car.short)} ${LV[a.w.level].name}, ${esc(b.car.short)} ${LV[b.w.level].name} (indices physiques ${a.w.score} et ${b.w.score})${[a, b].filter(r => r.w.guard).map(r => ` · ${esc(r.car.short)} : ${esc(r.w.guard.text)}`).join('')}.` : gap < 5 ? `Les deux configurations obtiennent un indice proche (${a.w.score} et ${b.w.score}) : les pneus ne les distinguent pas nettement dans ces conditions.` : `Écart d’indice : ${gap} points en faveur de ${esc(best.car.short)} pour l’adéquation pneus/météo.`,

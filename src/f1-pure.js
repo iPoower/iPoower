@@ -18,7 +18,7 @@ const F1Pure = (() => {
   const level = x => finite(x) ? Math.max(0, Math.min(3, Math.floor(x))) : null;
   const label = l => ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'][l] || 'INDISPONIBLE';   // échelle unique de l'app
   const condition = key => ({ wet: 'Chaussée humide', rain: 'Pluie', fog: 'Brume / brouillard', snow: 'Neige', ice: 'Verglas' }[key] || text(key));
-  function raceEngineer({ decision, confidence, trip, car, frost } = {}) {
+  function raceEngineer({ decision, confidence, trip, car, frost, when } = {}) {
     if (!decision || !confidence) return { state: 'indisponible', title: 'Briefing indisponible', lines: ['En attente du cockpit décisionnel.'] };
     const risk = level(decision.displayLevel);
     let action;
@@ -27,13 +27,15 @@ const F1Pure = (() => {
     else if (risk >= 2) action = 'Prudence renforcée : vérifier les conditions réelles avant de partir.';
     else if (risk >= 1) action = 'Vérifier le point de vigilance avant le départ et adapter la conduite.';
     else action = 'Aucune alerte critique identifiée ; respecter les conditions réelles.';
-    const route = trip && trip.to ? 'Prochain trajet : ' + text(trip.to) + (trip.dep ? ' · départ prévu ' + text(trip.dep).slice(11, 16) : '') : 'Aucun trajet immédiat identifié.';
+    const route = trip && trip.to ? 'Prochain trajet : ' + text(trip.to) + (trip.dep ? ' · départ prévu ' + (text(when) || text(trip.dep).slice(11, 16)) : '') : 'Aucun trajet immédiat identifié.';
     // Fenêtre DU TRAJET (frostRisk du moteur) : jamais la température « maintenant » pour un départ plus tard (constat : 4,8 °C
     // retenus pour un départ à 06:30 dont la chaussée estimée était proche du gel).
     const num = v => typeof v === 'number' && Number.isFinite(v) ? (Math.round(v * 10) / 10).toFixed(1).replace('.', ',') : '—';
     // Vocabulaire unique du moteur (FROST_WORDS) ; copie de repli identique quand f1-pure est chargé seul (tests isolés).
     const frostTxt = typeof FROST_WORDS !== 'undefined' ? FROST_WORDS : { sous0: 'gel · chaussée sous 0 °C possible', possible: 'gel possible', incertitude: 'gel possible (marge de prudence)', marge: 'pas de gel attendu (marge faible)', aucun: 'aucun risque de gel' };
-    const frostLine = frost && frostTxt[frost.key] ? 'Fenêtre du trajet : air min ' + num(frost.airMin) + ' °C · chaussée estimée min ' + num(frost.roadMin) + ' °C (marge de prudence ± ' + (frost.margin) + ' °C) · ' + frostTxt[frost.key] : null;
+    // « aucun risque de gel » : limité à la fenêtre du trajet, écrit (A4, mission du 14/11).
+    const frostWord = k => k === 'aucun' || k === 'marge' ? frostTxt[k] + ' sur cette fenêtre' : frostTxt[k];
+    const frostLine = frost && frostTxt[frost.key] ? 'Fenêtre du trajet : air min ' + num(frost.airMin) + ' °C · chaussée estimée min ' + num(frost.roadMin) + ' °C (marge de prudence ± ' + (frost.margin) + ' °C) · ' + frostWord(frost.key) : null;
     const confidenceLine = 'Confiance : ' + text(confidence.label || 'à confirmer') + (confidence.reason ? ' · ' + text(confidence.reason) : '');
     return { state: risk >= 2 || confidence.level >= 2 ? 'prudence' : 'information',
       title: risk == null ? 'Analyse en attente' : label(risk),
@@ -44,6 +46,11 @@ const F1Pure = (() => {
   // La segmentation ne prétend jamais représenter des frontières géographiques
   // précises : uniquement les points météo réellement disponibles du trajet.
   const FZ_F1 = new Set([56, 57, 66, 67]);
+  // Pluie d'une heure ou d'une fenêtre (A5, mission du 14/11) : MÊMES seuils que le poste Météo (wxdesk, ROAD_POLICY.rainMmH) :
+  // ≥ 0,2 mm/h VIGILANCE, ≥ 2 mm/h PRUDENCE. Lue par « État de la route » ET par le risque global du trajet (tripRisk).
+  const RAIN_MMH = 0.2, RAIN_STRONG_MMH = 2;
+  const rainLevel = mm => finite(mm) ? (mm >= RAIN_STRONG_MMH ? 2 : mm >= RAIN_MMH ? 1 : 0) : 0;
+  const rainOf = x => finite(x.Pl) ? x.Pl : finite(x.P) && !(finite(x.snow) && x.snow > 0.05) ? x.P : null;
   function trackConditions(seq, { ageMin = null } = {}) {
     const rows = Array.isArray(seq) ? seq.map(q => q && q.hs && q.hs[q.i]).filter(Boolean) : [];
     if (!rows.length || ageMin != null && (!finite(ageMin) || ageMin > STALE_AFTER_MIN))
@@ -59,8 +66,8 @@ const F1Pure = (() => {
         else if (x.ice && finite(x.ice.level) && x.ice.level >= 1) { worst = Math.max(worst, Math.min(3, x.ice.level + 1)); signals.add('Verglas · risque estimé'); }
         if (FZ_F1.has(x.code)) { worst = 3; signals.add('Pluie verglaçante annoncée'); }
         if (finite(x.vis) && x.vis < 1000) { worst = Math.max(worst, x.vis < 200 ? 3 : 2); signals.add('Visibilité réduite'); }
-        if (finite(x.P) && x.P >= 0.5 || finite(x.Pl) && x.Pl >= 0.5) { worst = Math.max(worst, 1); signals.add('Pluie prévue'); }
-        if (finite(x.snow) && x.snow > 0) { worst = Math.max(worst, 2); signals.add('Neige prévue'); }
+        { const rl = rainLevel(rainOf(x)); if (rl) { worst = Math.max(worst, rl); signals.add(rl >= 2 ? 'Pluie modérée ou forte prévue' : 'Pluie prévue'); } }
+        if (finite(x.snow) && x.snow > 0.05) { worst = Math.max(worst, 2); signals.add('Neige prévue'); }   // même seuil que la synthèse (summarize)
         if (!fh && finite(x.Tr) && x.Tr <= 0) { worst = Math.max(worst, 1); signals.add('Chaussée estimée à 0 °C ou moins'); }
       });
       sectors.push({ index: n + 1, points: points.length, level: worst, label: label(worst), notes: [...signals].slice(0, 3),
@@ -109,5 +116,5 @@ const F1Pure = (() => {
     ];
     return { available: true, lines, note: 'Relecture du journal local : aucune télémétrie de vitesse, freinage, GPS ou capteur ajoutée.' };
   }
-  return { FEATURES, raceEngineer, trackConditions, tyreManagement, strategyAB, theGarage, telemetryReplay };
+  return { FEATURES, raceEngineer, trackConditions, tyreManagement, strategyAB, theGarage, telemetryReplay, rainLevel };
 })();

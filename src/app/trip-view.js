@@ -226,7 +226,7 @@ function renderTripSummary() {
   const car = appActiveCar(), l = t && (t.l || t.planL), route = l && !l.originPending && Number.isFinite(l.km) ? `${f1(l.km)} km · ~${Math.round(l.min)} min` : offlineNow() ? 'route à recalculer au retour du réseau' : 'route en préparation';
   const address = to && (to.address || to.sub) || '';
   el.hidden = false;
-  el.innerHTML = `<div class="trip-summary-head"><span class="trip-label">🧭 ${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc((n && n.dep || t && t.dep || '').slice(11,16) || '—')}</b></div>
+  el.innerHTML = `<div class="trip-summary-head"><span class="trip-label">🧭 ${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(n && n.dep || t && t.dep || '') || '—')}</b></div>
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}${from ? `<small class="trip-origin-src">Départ : ${esc(shared.source)}</small>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(appCarLabel().text)}</span><span>${esc(route)}</span></div>
     ${UI.view === 'trajet' ? '<a class="btn pri" href="#secTrip">Modifier le trajet</a>' : '<div class="chips"><button class="btn sm" data-act="view" data-v="trajet">Voir / modifier le trajet</button></div>'}`;
