@@ -54,7 +54,7 @@ check('Tyre Management : aucun calcul de kilométrage ou usure en absence de rel
 check('Tyre Management : étiquette mesuré vs estimé conservée', () => {
   const state = { active: { label: 'Hiver' }, tread: { mm: 3.2, est: true }, pressure: { target: 2.4 }, mount: { kmSince: 1200 }, maint: [] };
   const x = F.tyreManagement(state); assert.match(x.lines.join(' '), /estimée/);
-  assert.match(x.lines.join(' '), /1 200|1200/);
+  assert.match(x.lines.join(' '), /1[ \u202f\u00a0]200 km/);   // format français (B5, 14/11) : espace des milliers, fine insécable comprise
 });
 check('Strategy A/B : deux voitures évaluées sur le même trajet, aucune route inventée', () => {
   const trip = { res: [{ c: { id: 'x', name: 'Voiture X' }, w: { level: 2 } }, { c: { id: 'y', name: 'Voiture Y' }, w: { level: 0 } }] };

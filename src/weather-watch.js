@@ -68,7 +68,7 @@ const WeatherWatch = (() => {
       if (!prev || prev.mode !== s.mode) record('statut', 'Données : ' + s.mode + (s.mode === 'LIVE' ? ' · modèles actualisés' : ' · fraîcheur à vérifier'));
       const ob = s.observation, po = prev && prev.observation;
       if (ob && (!po || ob.id !== po.id || ob.t !== po.t))
-        record('observation', `Station ${ob.name || ob.id} · relevé ${ob.t}${ob.T != null ? ' · ' + ob.T.toFixed(1) + ' °C' : ''}${ob.vis != null ? ' · visibilité ' + Math.round(ob.vis) + ' m' : ''}`);
+        record('observation', `Station ${ob.name || ob.id} · relevé ${typeof tsFr === 'function' ? tsFr(ob.t) : ob.t}${ob.T != null ? ' · ' + ob.T.toFixed(1).replace('.', ',') + ' °C' : ''}${ob.vis != null ? ' · visibilité ' + Math.round(ob.vis) + ' m' : ''}`);
       // Comparer la même échéance, pas la température de deux heures successives.
       // Un téléchargement identique et l'écoulement du temps ne sont pas des révisions.
       if (prev && s.fetchedAt > prev.fetchedAt) {
@@ -81,7 +81,7 @@ const WeatherWatch = (() => {
         });
         if (changed) {
           const p = old.get(changed.t), delta = finite(changed.T) && finite(p.T) && Math.abs(changed.T - p.T) >= .3
-            ? `température prévue ${p.T.toFixed(1)} → ${changed.T.toFixed(1)} °C`
+            ? `température prévue ${p.T.toFixed(1).replace('.', ',')} → ${changed.T.toFixed(1).replace('.', ',')} °C`
             : finite(changed.vis) && finite(p.vis) && Math.abs(changed.vis - p.vis) >= 250
               ? `visibilité prévue ${Math.round(p.vis)} → ${Math.round(changed.vis)} m`
               : finite(changed.pp) && finite(p.pp) && Math.abs(changed.pp - p.pp) >= 15
@@ -91,7 +91,7 @@ const WeatherWatch = (() => {
       }
       if (prev && prev.hourTime === s.hourTime && finite(prev.roadT) && finite(s.roadT)
           && (Math.abs(s.roadT - prev.roadT) >= .4 || s.ice !== prev.ice))
-        record('estimation', `Chaussée estimée ${prev.roadT.toFixed(1)} → ${s.roadT.toFixed(1)} °C · moteur Race Control`);
+        record('estimation', `Chaussée estimée ${prev.roadT.toFixed(1).replace('.', ',')} → ${s.roadT.toFixed(1).replace('.', ',')} °C · moteur Race Control`);
       // Les seuils ne sont réarmés que par une donnée fraîche. Après une interruption,
       // une nouvelle base est établie : pas de notification rétroactive sur un cache.
       if (s.fresh) {

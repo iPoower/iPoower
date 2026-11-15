@@ -26,7 +26,7 @@ function inboxItemHtml(item) {
 function inboxHtml() {
   const n = INBOX.items.length;
   return '<details class="rc-inbox" id="rcInbox"' + (n ? ' open' : '') + '><summary>📥 Saisies préparées par Claude' + (n ? ' · ' + n + ' en attente' : '') +
-    '<small>Pleins, compteur, pressions, profondeurs, montage, entretien · rien n’est enregistré sans ton clic</small></summary><div class="inbox-content">' +
+    '<span class="sr-sep"> · </span><small>Pleins, compteur, pressions, profondeurs, montage, entretien · rien n’est enregistré sans ton clic</small></summary><div class="inbox-content">' +
     (n ? '<ol class="inbox-list">' + INBOX.items.map(inboxItemHtml).join('') + '</ol>'
       : '<label class="econ-field">Bloc « rc-depot-v1 » copié depuis Claude<textarea id="rcInboxText" rows="5" maxlength="' + RcInbox.MAX_TEXT + '" autocomplete="off" spellcheck="false"></textarea></label>' +
         '<p class="inbox-actions"><button type="button" class="btn sm" data-act="inbox-read">Lire les saisies</button></p>') +

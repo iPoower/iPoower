@@ -98,7 +98,7 @@ const diag = p => p.evaluate(() => { document.getElementById('settings').open = 
     await s.c.setOffline(false);
     // K · essieux distingués
     dg = await diag(s.p);
-    check('K · diagnostic : avant et arrière distingués (2,4 / 2,6 bar), profil et qualité des données', /2\.4 bar/.test(dg['Avant'] || '') && /2\.6 bar/.test(dg['Arrière'] || '') && /generic|manufacturer/.test(dg['Profil pneu'] || '') && /Modèle exact/.test(dg['Données pneu'] || ''), JSON.stringify([dg['Avant'], dg['Arrière']]));
+    check('K · diagnostic : avant et arrière distingués (2,4 / 2,6 bar), profil et qualité des données', /2,4 bar/.test(dg['Avant'] || '') && /2,6 bar/.test(dg['Arrière'] || '') && /generic|manufacturer/.test(dg['Profil pneu'] || '') && /Modèle exact/.test(dg['Données pneu'] || ''), JSON.stringify([dg['Avant'], dg['Arrière']]));
     // E · un véhicule sans monte : aucune donnée inventée
     await s.p.evaluate(() => { UI.labCar = 'carB'; }); t = await labTxt(s.p);
     check('E · voiture sans monte : « Monte active inconnue », rien d’inventé', /Monte active inconnue/i.test(t), t.slice(0, 200));

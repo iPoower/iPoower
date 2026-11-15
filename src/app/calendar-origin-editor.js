@@ -16,7 +16,7 @@ function calendarOriginOpen(key) {
   if (!calendarOriginEditable(t)) return;
   const k = (t.planL || t.l).k, id = TripCancel.eventId(t.e), c = CalendarOrigin.get(S.calOrigins, id, k);
   CAL_ORIGIN_NOTICE = null;
-  CAL_ORIGIN_FORM = { id, k, key, title: t.e.t || 'Rendez-vous', mode: c ? c.kind === 'saved' ? 'saved:' + c.placeId : c.kind : 'auto',
+  CAL_ORIGIN_FORM = { id, k, key, title: typeof calTitle === 'function' ? calTitle(t.e.t) : t.e.t || 'Rendez-vous', mode: c ? c.kind === 'saved' ? 'saved:' + c.placeId : c.kind : 'auto',
     query: c && c.kind === 'address' ? c.point.address || c.point.name : '', hit: c && c.point || null, results: [], gen: 0, saving: false, busy: false, message: '' };
   renderAll(); $('#wxOriginMode')?.focus();
 }
