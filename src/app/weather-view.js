@@ -153,7 +153,7 @@ function renderWx() {
   const evH = evidenceHtml(), evOn = EV_FLAG() === 'on' && /class="ev-crit/.test(evH) && d.level < 2;
   const html = (evOn ? evH + hero : hero) + hourlyHtml + (evOn ? '' : evH) + tripHtml +
     uxFold('wx-forecast', 'Prévisions détaillées', tl + matters + ph, 'Chronologie · phénomènes') +
-    uxFold('wx-road', 'Conditions route', road, r.score == null ? 'INDISPONIBLE · données insuffisantes' : r.score + '/100 · ' + LV[r.level].name) + tyreIntelligenceHtml(appActiveCar(), 'meteo') + foot;
+    uxFold('wx-road', 'Conditions route', road, r.score == null ? 'INDISPONIBLE · données insuffisantes' : r.score + '/100 · ' + LV[r.level].name + (r.window && r.window.label ? ' · ' + r.window.label : '')) + tyreIntelligenceHtml(appActiveCar(), 'meteo') + foot;
   if (html === renderWx.last) return;   // rafraîchissement sans changement : rien ne bouge (détails ouverts, défilement)
   const sl = el.querySelector('.wx-strip'), left = sl ? sl.scrollLeft : 0;
   const hourlyTrack = el.querySelector('.wx-hours-track'), hourlyLeft = hourlyTrack ? hourlyTrack.scrollLeft : 0;
@@ -242,6 +242,12 @@ function evWeatherReceived() {
   if (EV_FLAG() === 'off' || APP_CONTEXT.rendering) return;
   evShadowTick(evNow());
 }
+// « Aucun phénomène prouvé » ne contredit pas le verdict gel : les preuves v2 ne retiennent que les phénomènes appuyés par des
+// observations ; le gel est une ESTIMATION de chaussée (règle option A). Le résumé le dit quand le verdict gel est en alerte.
+function evNoProof() {
+  const fr = typeof CX !== 'undefined' && CX && CX.sum24 && typeof frostRisk === 'function' ? frostRisk(CX.sum24) : null;
+  return fr && fr.level >= 1 ? `aucun phénomène critique prouvé par une observation · ne contredit pas le verdict gel ${LV[fr.level].name} (estimation de chaussée, 24 h)` : 'aucun phénomène critique prouvé';
+}
 function evidenceHtml() {
   const flag = EV_FLAG(); if (flag === 'off') return '';
   const v = evNow(); if (!v) {
@@ -259,7 +265,7 @@ function evidenceHtml() {
   const prov = r.worst.ev.map(e => `<li><span class="ev-l">${e.layer}</span> ${e.dir === '+' ? '▲' : '▽'} ${esc(e.source)} : ${esc(e.text)}</li>`).join('');
   const rep = Object.entries(REPORT_KINDS).map(([k, t]) => `<button class="btn sm" data-act="ev-report" data-k="${k}">${t}</button>`).join('');
   const mine = reportsLive().slice(-3).reverse().map(x => `${REPORT_KINDS[x.kind]} à ${hmLocal(x.at)}`).join(' · ');
-  return `<details class="wx-pc ev" data-k="ev"${UI.evOpen || (flag === 'on' && h) ? ' open' : ''}><summary><span class="ic" aria-hidden="true">🧪</span><span class="tt">Preuves météo · moteur v2${flag === 'shadow' ? ' (mode observation)' : ''}</span><span class="ln">${h ? E[r.worst.lv] + ' ' + esc(h.text.toLowerCase()) : 'aucun phénomène critique prouvé'}${r.contradiction ? ' · contradiction' : ''}</span></summary>
+  return `<details class="wx-pc ev" data-k="ev"${UI.evOpen || (flag === 'on' && h) ? ' open' : ''}><summary><span class="ic" aria-hidden="true">🧪</span><span class="tt">Preuves météo · moteur v2 · indicateur complémentaire${flag === 'shadow' ? ' (mode observation)' : ''}</span><span class="ln">${h ? E[r.worst.lv] + ' ' + esc(h.text.toLowerCase()) : evNoProof()}${r.contradiction ? ' · contradiction' : ''}</span></summary>
     <div class="ev-b">${off}${v.coverage && v.coverage.located < v.coverage.expected ? `<p class="wx-stale">Couverture partielle : ${v.coverage.located} point(s) localisé(s) sur ${v.coverage.expected}. Les autres portions ne sont pas vérifiées.</p>` : ''}${head}${contra}<ul class="ev-ph">${rows}</ul>
     <p class="sub">Axes : données ${esc(r.axes.data)} · modèles ${esc(r.axes.models)} · localisation ${esc(r.axes.location)} · ${esc(r.axes.observations)} · ${esc(r.axes.freshness)} · communauté ${esc(r.community)}.</p>
     <details class="wx-how" data-k="evprov"><summary>Provenance du verdict brouillard${r.worst.label ? ' (' + esc(r.worst.label) + ')' : ''}</summary><ul class="lab-why">${prov}</ul><p class="sub">A observation · C modèle · D terrain · E physique. Une observation pèse selon sa distance, son âge et l’échéance ; l’absence de signalement ne prouve rien.</p></details>

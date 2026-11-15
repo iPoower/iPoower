@@ -63,7 +63,8 @@ check('permission indépendante : alertes OFF, cache et reconnexion ne notifient
 });
 check('gel, rafales, pluie imminente et risque routier proviennent des données existantes', () => {
   const m = c.W.monitor(), s = base(); m.ingest(s, { enabled: true });
-  const t = { ...s, nowMs: NOW + 60000, ice: 1, gust: 60, road: { score: 50, level: 2 }, timeline: s.timeline.map((x, i) => i === 1 ? { ...x, pp: 65 } : x) };
+  // Gel : hausse du niveau de la RÈGLE (frost, même période que Météo), plus du seul verglas estimé (mission du 14/11).
+  const t = { ...s, nowMs: NOW + 60000, ice: 1, frost: { lv: 2, line: 'Gel possible · chaussée humide · 05:00–09:00' }, gust: 60, road: { score: 50, level: 2 }, timeline: s.timeline.map((x, i) => i === 1 ? { ...x, pp: 65 } : x) };
   const ids = m.ingest(t, { enabled: true }).emitted.map(x => x.id).sort(); assert.deepEqual(Array.from(ids), ['gust', 'ice', 'rain', 'road']);
 });
 check('l’écoulement du temps ou un téléchargement identique ne crée pas d’observation ni de révision', () => {

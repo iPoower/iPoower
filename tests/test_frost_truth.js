@@ -36,11 +36,15 @@ const seqOf = (rows, startH = 4) => {
 };
 const LV_NAME = { 0: 'RAS', 1: 'VIGILANCE', 2: 'PRUDENCE', 3: 'DANGER' };
 const HUM = { sec: false, humide: true, inconnue: null };
-const EXPECT = (Tr, hum) => Tr < -2 ? ['sous0', 3] : Tr <= 1 ? ['possible', hum === 'sec' ? 2 : 3] : Tr < 2 ? ['incertitude', hum === 'humide' ? 2 : 1] : Tr < 4 ? ['marge', 0] : ['aucun', 0];
+// Bornes amendées le 14/11/2026 (côté prudent, chaque égalité dans la classe la plus grave).
+const EXPECT = (Tr, hum) => Tr <= -2 ? ['sous0', 3] : Tr <= 1 ? ['possible', hum === 'sec' ? 2 : 3] : Tr <= 2 ? ['incertitude', hum === 'humide' ? 2 : 1] : Tr <= 4 ? ['marge', 0] : ['aucun', 0];
 const CASES = [];
 for (const Tr of [-2.1, -2.0, 0.5, 0.9, 1.0, 1.1, 1.5, 2.0, 2.1]) for (const hum of ['sec', 'humide', 'inconnue']) {
-  const [key, level] = EXPECT(Tr, hum);
-  CASES.push([`chaussée ${String(Tr).replace('.', ',')} °C, air ${String(Math.round((Tr + 1) * 10) / 10).replace('.', ',')} °C, ${hum === 'inconnue' ? 'humidité inconnue' : hum}`, [[Tr + 1.5, Tr + 0.6, hum], [Tr + 1, Tr, hum], [Tr + 1.2, Tr + 0.4, hum]], key, level, HUM[hum]]);
+  // Heure retenue : le pire niveau, puis, à niveau égal, la PLUS PROCHE (décision du 03/11, option A ; mission du 14/11).
+  // Exemple : −1,5 °C humide (DANGER, 1re heure) l'emporte sur −2,1 °C (DANGER, 2e heure) : même niveau, plus proche.
+  const rows = [[Tr + 1.5, Tr + 0.6, hum], [Tr + 1, Tr, hum], [Tr + 1.2, Tr + 0.4, hum]];
+  const [key, level] = rows.map(r => EXPECT(Math.round(r[1] * 10) / 10, hum)).reduce((b, e) => !b || e[1] > b[1] ? e : b, null);
+  CASES.push([`chaussée ${String(Tr).replace('.', ',')} °C, air ${String(Math.round((Tr + 1) * 10) / 10).replace('.', ',')} °C, ${hum === 'inconnue' ? 'humidité inconnue' : hum}`, rows, key, level, HUM[hum]]);
 }
 CASES.push(['constat terrain : chaussée 0,6 °C, air 1,6 °C, sec', [[2.0, 1.2], [1.6, 0.6], [1.8, 0.9]], 'possible', 2, false]);
 CASES.push(['cas courant : air 5 °C, chaussée 3 °C, sec', [[5.5, 3.6], [5.0, 3.0], [5.2, 3.3]], 'marge', 0, false]);
@@ -67,7 +71,9 @@ function scenarios(X, collect) {
     if (want !== 'aucun' && want !== 'marge') t(`${name} · récit : jamais « Aucun risque de gel détecté »`, !/Aucun risque de gel détecté/.test(body), body.slice(0, 200));
     if (fr) t(`${name} · frostRisk : ${want}, humidité ${humid === null ? 'inconnue' : humid ? 'présente' : 'absente'}, ${LV_NAME[level]}`, fr.key === want && fr.level === level && (level === 0 || fr.humid === humid), JSON.stringify({ key: fr.key, level: fr.level, humid: fr.humid, ref: fr.ref }));
     const al = alerts3(X, seq), t0 = al.t0;
-    if (level >= 1) t(`${name} · alerte gel : ${LV_NAME[level]}, chaussée et heure nommées`, !!t0 && t0.sev === level && t0.title.includes(String(sum.TrMin).replace('.', ',')) && /vers \d\d:\d\d/.test(t0.title), JSON.stringify(t0));
+    // Titre : chaussée de l'heure retenue et son heure ; détail : UN minimum de chaussée pour l'horizon, avec son heure.
+    const fc = v => (Math.round(v * 10) / 10).toFixed(1).replace('.', ',');
+    if (level >= 1) t(`${name} · alerte gel : ${LV_NAME[level]}, chaussée et heure nommées, minimum de l’horizon dans le détail`, !!t0 && !!fr && t0.sev === level && t0.title.includes(fc(fr.ref)) && /vers \d\d:\d\d/.test(t0.title) && t0.detail.includes('chaussée estimée min ' + fc(sum.TrMin)), JSON.stringify(t0));
     else t(`${name} · aucune alerte de gel (RAS)`, !t0 && !al.frost, JSON.stringify(t0 || al.frost));
     const fb = X.frostBand(sum);
     t(`${name} · carte trajet : ${level >= 1 ? 'bandeau ' + LV_NAME[level] : 'aucun bandeau'}`, level >= 1 ? !!fb && fb.lv === level : !fb, JSON.stringify(fb));
@@ -169,14 +175,14 @@ const MUT = [
   ['case 2 à 4 °C : marge faible devenue une alerte', 'engine', LEVEL_FN, CELL('marge', null, 1)],
   ['case ≥ 4 °C : alerte inventée', 'engine', LEVEL_FN, CELL('aucun', null, 1)],
   ['borne 1,0 °C exclue', 'engine', /ref <= FROST_ROAD_MAX \? 'possible'/, "ref < FROST_ROAD_MAX ? 'possible'"],
-  ['borne 2,0 °C incluse dans l’incertitude', 'engine', /ref < FROST_ROAD_MARGIN \? 'incertitude'/, "ref <= FROST_ROAD_MARGIN ? 'incertitude'"],
-  ['borne −2 °C : DANGER dès −2,0 °C', 'engine', /ref < -FROST_ROAD_MARGIN \? 'sous0'/, "ref <= -FROST_ROAD_MARGIN ? 'sous0'"],
+  ['borne 2,0 °C sortie de l’incertitude (amendement du 14/11 : 2,0 °C incluse)', 'engine', /ref <= FROST_ROAD_MARGIN \? 'incertitude'/, "ref < FROST_ROAD_MARGIN ? 'incertitude'"],
+  ['borne −2,0 °C sortie du DANGER (amendement du 14/11 : −2,0 °C incluse)', 'engine', /ref <= -FROST_ROAD_MARGIN \? 'sous0'/, "ref < -FROST_ROAD_MARGIN ? 'sous0'"],
   ['seuil appliqué à l’air (constat terrain)', 'engine', /const road = frostNum\(x\.Tr\) != null, ref = road \? x\.Tr : frostNum\(x\.T\);/, 'const road = frostNum(x.Tr) != null, ref = frostNum(x.T) != null ? x.T : x.Tr;'],
   ['cumul de pluie : heure manquante comptée 0 mm', 'engine', /if \(P == null\) complete = false; else mm \+= P;/, 'mm += P || 0;'],
   ['humidité d’une autre heure (audit temporel)', 'engine', /const humid = frostHumid\(hs, i\), key = frostKey\(ref\);/, 'const humid = hs.some((_, k) => frostHumid(hs, k) === true) ? true : frostHumid(hs, i), key = frostKey(ref);'],
   ['givre ignoré (point de rosée ≥ chaussée)', 'engine', /const dep = Td != null && Tr != null && Td >= Tr;/, 'const dep = false;'],
-  ['récit : retour de « Aucun risque de gel » sur l’air', 'engine', /if \(fr\.key === 'aucun'\) s\.push\('Aucun risque de gel détecté\.'\);/, "if (sum.Tmin > 1.5) s.push('Aucun risque de gel détecté.');"],
-  ['alerte : seuil sur l’air seul', 'engine', /const fr = frostRisk\(sm\);\n    if \(fr\.level >= 1\) \{/, "const fr = frostRisk(sm);\n    if (sm.Tmin <= 1.5) { fr.level = 3;"],
+  ['récit : retour de « Aucun risque de gel » sur l’air', 'engine', /s\.push\(fr\.key === 'aucun' \? `Aucun risque de gel détecté/, "s.push(sum.Tmin > 1.5 ? `Aucun risque de gel détecté"],
+  ['alerte : seuil sur l’air seul', 'engine', /\{ const fr = frAl;\n    if \(fr\.level >= 1\) \{/, "{ const fr = frAl;\n    if (sm.Tmin <= 1.5) { fr.level = 3;"],
   ['Gestion des pneus : seuil sur l’air', 'app', /frost: frostRisk\(s\),/, 'frost: s.Tmin != null && s.Tmin <= 1,'],
   ['synthèse : trajet principal exclu', 'app', /const rk = T\.map\(t => \(\{ t, r: riskOf\(t\) \}\)\)/, 'const rk = T.filter(t => t !== main && t !== crit).map(t => ({ t, r: riskOf(t) }))'],
   ['synthèse verte avec une incertitude gel sèche', 'app', /if \(fb && fb\.lv >= 1\) c\.push\(\{ k: 'frost', lv: fb\.lv,/, "if (fb && fb.lv >= 2) c.push({ k: 'frost', lv: fb.lv,"],

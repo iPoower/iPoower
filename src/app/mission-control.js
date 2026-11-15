@@ -81,7 +81,7 @@ const MISSION_STYLE = '<style>' +
 
 function missionPointHtml(p) {
   if (!p) return '<b>Données indisponibles</b><span>Pas de prévision au point de passage.</span>';
-  const fr = p.frost, frostTxt = fr ? (fr.key === 'sous0' ? 'chaussée sous 0 °C possible' : 'gel possible') + (fr.road != null ? ' (chaussée estimée ' + f1(fr.road) + ' °C)' : ' (air, chaussée non estimée)') : null;
+  const fr = p.frost, frostTxt = fr ? (typeof FROST_WORDS !== 'undefined' && FROST_WORDS[fr.key] || 'gel possible') + (Number.isInteger(fr.level) && fr.level >= 1 ? ' · ' + ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'][fr.level] : '') + (fr.road != null ? ' (chaussée estimée ' + f1(fr.road) + ' °C)' : ' (air, chaussée non estimée)') : null;
   const phenomena = [frostTxt, p.rain && 'pluie prévue', p.snow && 'neige prévue', p.fog && 'brouillard prévu'].filter(Boolean);
   const state = ({ FRESH:'réception récente', AGING:'fraîcheur à confirmer', STALE:'donnée ancienne', UNKNOWN:'âge inconnu' })[p.fresh] || 'âge inconnu';
   return '<b>' + (p.temperature == null ? 'Température indisponible' : esc(f1(p.temperature)) + ' °C · air prévu') + '</b>' +

@@ -57,7 +57,8 @@ const text = (p, sel) => p.evaluate(sel => { const e = document.querySelector(se
       // Niveau PROPRE au gel (même fonction que la carte trajet) : VIGILANCE sans humidité, PRUDENCE sous 1 °C ; un niveau
       // supérieur dans la synthèse ne peut venir que d'un autre danger indépendant (pneus été et froid, garde-fou de profondeur).
       const band = await p.evaluate(() => { const t = APP_CONTEXT.snapshot.trips.find(x => x.src === 'work' && x.sum); const fb = t && frostBand(t.sum); return fb && { lv: fb.lv, t: fb.t }; });
-      expect(`${tag} · carte trajet : bandeau de gel ${['', 'VIGILANCE', 'PRUDENCE', 'DANGER'][fx.lv]} (niveau ${fx.lv})`, !!band && band.lv === fx.lv && /INCERTITUDE GEL/.test(band.t), JSON.stringify(band));
+      // Vocabulaire unique (mission du 14/11) : « GEL POSSIBLE … » comme tous les blocs, plus « INCERTITUDE GEL ».
+      expect(`${tag} · carte trajet : bandeau de gel ${['', 'VIGILANCE', 'PRUDENCE', 'DANGER'][fx.lv]} (niveau ${fx.lv})`, !!band && band.lv === fx.lv && /^GEL POSSIBLE/.test(band.t) && !/INCERTITUDE GEL|PROBABLE/.test(band.t), JSON.stringify(band));
       // Gestion des pneus (trajet) : le seuil de gel s'applique à la chaussée estimée.
       const brief = await text(p, '#secBrief');
       // Colonne « Pendant le trajet » (fenêtre du trajet) ; Départ et Arrivée sont des heures seules.
