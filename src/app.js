@@ -1180,7 +1180,7 @@ function renderDecisionCore() {
   const el = $('#decisionCore');
   if (!el) return;
   if (!CX || !APP_CONTEXT.snapshot || DEMO.on || LOCKED()) {
-    el.hidden = true; el.innerHTML = ''; renderDecisionCore.last = null; DECISION_LAST = null; return;
+    el.hidden = true; el.innerHTML = ''; renderDecisionCore.last = null; DECISION_LAST = null; deskPresence(null); return;
   }
   const snap = APP_CONTEXT.snapshot, now = Date.now(), raw = RAW[UI.loc];
   const ageMin = value => {
@@ -1235,6 +1235,9 @@ function renderDecisionCore() {
   const departureText = departure && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(departure)
     ? (snap.activeTrip ? 'parti' : 'départ prévu') + ' ' + (departure.slice(0, 10) === snap.date ? 'aujourd’hui' : fmtDay(departure.slice(0, 10))) + ' à ' + departure.slice(11, 16)
     : 'horaire à confirmer';
+  // Onglet en arrière-plan (ordinateur) : même verdict, heure de départ seulement (jamais de lieu dans le titre).
+  deskPresence({ level: decision.displayLevel, limited, label: decision.label,
+    dep: !snap.activeTrip && departure && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(departure) ? (departure.slice(0, 10) === snap.date ? '' : fmtDay(departure.slice(0, 10)) + ' ') + departure.slice(11, 16) : null });
   // Verdict propre au trajet : sa fenêtre (départ → arrivée, points de la route), jamais celle du lieu actuel.
   const tripGeneric = !!(trip && trip.res && trip.res.length && trip.res.every(r => carProfile(r.c).generic));
   const tripWin = trip && /T\d{2}:\d{2}/.test(trip.dep || '') ? tripSpan(trip) : '';
@@ -1368,6 +1371,7 @@ function renderCurrent() {
 // @include app/debrief-view.js
 // @include app/race-views.js
 // @include app/garage-view.js
+// @include app/desk-presence.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 // Alertes propres aux pneus d'une voiture (et la planification du montage hiver) : jamais dans le verdict « ici, maintenant »
 // d'une autre voiture que celle affichée, ni en tête de l'onglet Météo.
@@ -1422,7 +1426,7 @@ function renderView() {
   document.body.classList.toggle('vt', vt);
   document.body.classList.toggle('vg', vg);
   document.body.classList.toggle('va', va);
-  const nav = $('#viewSeg'), navHtml = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-pressed="${vm}"><span class="tab-ic" aria-hidden="true">🌦️</span> Météo</button><button data-act="view" data-v="pneus" aria-pressed="${vp}"><span class="tab-ic" aria-hidden="true">🛞</span> Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-pressed="${vtr}"><span class="tab-ic" aria-hidden="true">🧭</span> Trajet</button><button data-act="view" data-v="garage" aria-pressed="${vg}"><span class="tab-ic" aria-hidden="true">🛠️</span> Garage</button><button data-act="view" data-v="analyse" aria-pressed="${va}"><span class="tab-ic" aria-hidden="true">🔬</span> Analyse</button></div>`;
+  const nav = $('#viewSeg'), navHtml = `<div class="seg view" role="group" aria-label="Affichage"><button data-act="view" data-v="meteo" aria-keyshortcuts="1" title="Raccourci clavier : 1" aria-pressed="${vm}"><span class="tab-ic" aria-hidden="true">🌦️</span> Météo</button><button data-act="view" data-v="pneus" aria-keyshortcuts="2" title="Raccourci clavier : 2" aria-pressed="${vp}"><span class="tab-ic" aria-hidden="true">🛞</span> Pneus</button><button class="trip-tab" data-act="view" data-v="trajet" aria-keyshortcuts="3" title="Raccourci clavier : 3" aria-pressed="${vtr}"><span class="tab-ic" aria-hidden="true">🧭</span> Trajet</button><button data-act="view" data-v="garage" aria-keyshortcuts="4" title="Raccourci clavier : 4" aria-pressed="${vg}"><span class="tab-ic" aria-hidden="true">🛠️</span> Garage</button><button data-act="view" data-v="analyse" aria-keyshortcuts="5" title="Raccourci clavier : 5" aria-pressed="${va}"><span class="tab-ic" aria-hidden="true">🔬</span> Analyse</button></div>`;
   // Un rendu identique conserve les boutons, leur focus et les liens ; les changements restent calculés à chaque appel.
   if (nav.innerHTML !== navHtml) nav.innerHTML = navHtml;
   const links = vtr ? [['secTrip', 'Planifier'], ['settings', 'Réglages']] : va ? [['secLab', 'Analyse'], ['secSeason', 'Saison pneus'], ['secJournal', 'Journal de saison'], ['settings', 'Réglages']] : vg ? [['secGarage', 'Mes véhicules'], ['settings', 'Réglages']] : vt ? [['secTenue', 'Ma tenue'], ['settings', 'Réglages']] : vm
