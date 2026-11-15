@@ -331,7 +331,7 @@ if (require.main === module) {
   const original = fs.readFileSync(sourcePath, 'utf8'), count = runTests(original);
   // contre-tests : chaque régression métier doit être rejetée par au moins un scénario
   const mutations = [
-    { name: 'jour omis : « Vers 08:32 » pour un trajet de demain', from: "if (!day || !today || day === today) return hm(ts);", to: 'return hm(ts);' },
+    { name: 'jour omis : « Vers 08:32 » pour un trajet de demain', from: 'const hmd = ts => relHmFr(ts, now);', to: 'const hmd = ts => hm(ts);' },
     { name: 'fenêtre « jusqu’à » sans le jour', from: 'toLabel: hmd(endTs)', to: 'toLabel: hm(endTs)' },
     { name: 'seuil de brouillard abaissé à 500 m', from: 'vis < 1000 ? 1 : 0', to: 'vis < 500 ? 1 : 0' },
     { name: 'verglas ÉLEVÉ rétrogradé en orange', from: 'iceLv >= 2 ? 3 : iceLv === 1 ? 2 : 0', to: 'iceLv >= 2 ? 2 : iceLv === 1 ? 2 : 0' },
@@ -344,7 +344,7 @@ if (require.main === module) {
     { name: 'verdict choisi par ordre d’apparition au lieu de la gravité', from: 'b.lv - a.lv || (active(b) - active(a)) ||', to: '' },
     { name: 'pluie possible ignorée (retour du « pas de pluie » contradictoire)', from: 'return (pp != null && pp >= 50) ||', to: 'return false && (pp != null && pp >= 50) ||' },
     { name: 'rassurance trajet affichée malgré une pluie possible sur le trajet', from: "!first('snow') && !tripMaybe.length && tripList.length", to: "!first('snow') && tripList.length" },
-    { name: 'prudence du score supprimée pour aligner les textes', from: 'ppm != null && ppm >= 60 ? ROAD_PEN.rain[3] : 0', to: '0' },
+    { name: 'prudence du score supprimée pour aligner les textes', from: '(ppm != null && ppm >= 60) || (mb && mb.split) ? ROAD_PEN.rain[3] : 0', to: '0' },
     { name: 'source AROME de la quantité tue', from: "${ar ? ' selon AROME' : ''}", to: '' },
     { name: 'désaccord de modèles non expliqué', from: "ar && sig.some(x => /base/.test(x)) ? 'Modèles en désaccord", to: "false ? 'Modèles en désaccord" }
   ];

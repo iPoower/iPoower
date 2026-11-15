@@ -50,8 +50,13 @@ function wxInput() {
   // valeurs « actuelles » d'une réponse ancienne : on préfère l'heure prévue pour maintenant.
   // Correction par station (m.obs) : l'heure en cours, corrigée, fait foi — une seule température « actuelle » partout (curTemp).
   const cur = m.cur.source === 'current' && !m.obs ? { T: m.cur.T, Tapp: m.cur.Tapp } : {};
-  return { now, hours: m.hs.slice(Math.max(0, m.nowI - 4)), cur, trips: wxTrips(m), nowcast: ageMin != null && ageMin > 30 ? null : m.nc || null,
-    sun: { sunrise: day.sunrise || null, sunset: day.sunset || null }, ageMin };
+  // Ressenti de l'heure en cours recalé comme la température (tappNow, C3) ; copie locale, le modèle n'est jamais modifié.
+  const xNow = m.hs[m.nowI], tNow = m.obs && xNow ? tappNow(m) : null;
+  const hours = m.hs.slice(Math.max(0, m.nowI - 4)).map(x => x === xNow && tNow != null && tNow !== x.Tapp ? { ...x, Tapp: tNow } : x);
+  return { now, hours, cur, trips: wxTrips(m), nowcast: ageMin != null && ageMin > 30 ? null : m.nc || null,
+    sun: { sunrise: day.sunrise || null, sunset: day.sunset || null }, ageMin,
+    // Précipitation observée à la station (P6) : seulement si fraîche, proche et sur la station (obsPrecip) ; jamais en démo.
+    obs: DEMO.on || typeof obsPrecip !== 'function' ? null : obsPrecip(m.obs) };
 }
 // Provenance de la correction par station : laquelle, à quelle distance, de quand, et de combien elle décale les prévisions horaires.
 // Le grand chiffre « actuel » est l'heure en cours corrigée par la station quand elle existe (curTemp), sinon la donnée du modèle.
@@ -74,7 +79,7 @@ function renderWx() {
   }
   el.hidden = false;
   const m = CX.m, l = curLoc(), today = input.now.slice(0, 10), E = WXD_EMO;
-  const dayLbl = day => { const n = dayDiff(today, day); return n === 0 ? 'aujourd’hui' : n === 1 ? 'demain' : fmtDay(day); };
+  const dayLbl = day => relDayFr(day, today) || 'aujourd’hui';   // formateur unique du jour relatif (wxdesk.js, P7)
   const mode = DEMO.on ? 'DÉMO · simulé' : offlineNow() ? 'HORS LIGNE' : m.mode === 'live' ? 'LIVE' : 'CACHE';
   const age = input.ageMin == null ? '' : ` · ${freshState(input.ageMin)} · ${ageTxt(input.ageMin)}`;
   const h = d.hero, nowWx = d.current || {}, hasNowTemp = Number.isFinite(nowWx.T);
@@ -104,11 +109,10 @@ function renderWx() {
   const hourlyHtml = hourlyRows.length ? `<section class="wx-blk wx-hours" aria-label="Prévisions de température heure par heure">
     <div class="wx-hours-head"><h3>🌡️ Heure par heure</h3><span class="wx-hours-state">${esc(mode)}</span></div>
     <ol class="wx-hours-track" aria-label="Températures prévues pour les 12 prochaines heures">${hourlyRows.map(x => {
-      const tomorrow = x.t.slice(0, 10) !== today;
       const hh = x.hh || x.t.slice(11, 16), icon = x.ic ? (WX_IC[x.ic] || '·') : skyIc(x);
       const rain = x.pp == null ? '' : `<small class="wx-hours-rain">${f0(x.pp)} % pluie</small>`;
       return `<li class="wx-hours-card lv${x.lv}${x.now ? ' now' : ''}" data-hour="${esc(x.t)}">
-        <time datetime="${esc(x.t)}">${tomorrow ? 'dem. ' : ''}${esc(hh)}</time>
+        <time datetime="${esc(x.t)}">${esc(relDayFr(x.t, today, true) ? relDayFr(x.t, today, true) + ' ' : '')}${esc(hh)}</time>
         <span class="wx-hours-icon" aria-hidden="true">${icon}</span>
         <b class="num">${Number.isFinite(x.T) ? f1(x.T) + '°' : '—'}</b>
         ${rain || '<small class="wx-hours-rain">—</small>'}
@@ -129,12 +133,12 @@ function renderWx() {
       ${t.crit ? `<p class="wx-crit lv${t.crit.lv}">${E[t.crit.lv]} ${esc(t.crit.text)}</p>` : t.waiting ? '' : '<p class="wx-crit lv0">🟢 Aucun phénomène critique sur le trajet</p>'}
       ${t.later.length ? `<p class="sub">Ensuite : ${t.later.map(x => `${x.lv == null ? '⏳' : E[x.lv]} ${x.day !== today ? esc(dayLbl(x.day)) + ' ' : ''}${esc(x.dep)} ${esc(x.label)}${x.lv == null ? ' · météo indisponible' : ''}`).join(' · ')}</p>` : ''}${calendarOriginEditorHtml()}</div>`;
   // chronologie : moments clés, puis bande horaire défilante
-  const tday = x => x.ts.slice(0, 10) !== today && x.t !== 'maintenant' ? (dayDiff(today, x.ts) === 1 ? 'dem. ' : fmtDay(x.ts.slice(0, 10)) + ' ') : '';
-  const mom = d.timeline.moments.map(x => `<li class="lv${x.lv}${x.kind !== 'wx' ? ' trip' : ''}" data-ts="${esc(x.ts)}"><time class="num">${esc(tday(x) + x.t)}</time><span aria-hidden="true">${WX_IC[x.kind === 'wx' ? x.id : x.kind] || '•'}</span><span>${esc(x.text)}</span></li>`).join('');
+  // x.t vient déjà du poste avec son jour (« demain 02:00 ») : aucun préfixe ajouté ici (P7 : « dem. demain 02:00 »).
+  const mom = d.timeline.moments.map(x => `<li class="lv${x.lv}${x.kind !== 'wx' ? ' trip' : ''}" data-ts="${esc(x.ts)}"><time class="num">${esc(x.t)}</time><span aria-hidden="true">${WX_IC[x.kind === 'wx' ? x.id : x.kind] || '•'}</span><span>${esc(x.text)}</span></li>`).join('');
 
   const strip = d.timeline.strip.map(x => {
     const bar = x.P == null ? 0 : Math.min(100, Math.round(x.P / 4 * 100));
-    return `<li class="lv${x.lv}${x.trip ? ' trip' : ''}${x.now ? ' now' : ''}"><span class="hh num">${x.now ? 'maint.' : x.t.slice(0, 10) !== today && x.hh === '00:00' ? 'dem.' : esc(x.hh)}</span><span class="ic" aria-hidden="true">${x.ic ? WX_IC[x.ic] : skyIc(x)}</span><b class="num">${x.T == null ? '—' : f0(x.T) + '°'}</b><span class="rb" title="${x.P == null ? '' : f1(x.P) + ' mm/h'}"><i style="height:${bar}%"></i></span><span class="pp num">${x.pp != null && x.pp >= 20 ? f0(x.pp) + '%' : ''}</span>${x.trip ? '<span class="tm" aria-label="trajet">🚗</span>' : ''}</li>`;
+    return `<li class="lv${x.lv}${x.trip ? ' trip' : ''}${x.now ? ' now' : ''}"><span class="hh num">${x.now ? 'maint.' : x.hh === '00:00' && relDayFr(x.t, today, true) ? esc(relDayFr(x.t, today, true)) : esc(x.hh)}</span><span class="ic" aria-hidden="true">${x.ic ? WX_IC[x.ic] : skyIc(x)}</span><b class="num">${x.T == null ? '—' : f0(x.T) + '°'}</b><span class="rb" title="${x.P == null ? '' : f1(x.P) + ' mm/h'}"><i style="height:${bar}%"></i></span><span class="pp num">${x.pp != null && x.pp >= 20 ? f0(x.pp) + '%' : ''}</span>${x.trip ? '<span class="tm" aria-label="trajet">🚗</span>' : ''}</li>`;
   }).join('');
   const tl = `<div class="wx-blk wx-tlb"><h3>🕒 Chronologie · jusqu’à ${esc(d.window.toLabel || d.window.to)}</h3><ol class="wx-tl">${mom || '<li class="lv0"><time>—</time><span></span><span>Aucun changement notable</span></li>'}</ol>
     <ol class="wx-strip" aria-label="Heure par heure : température, pluie, phénomènes, trajets">${strip}</ol>

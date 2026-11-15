@@ -20,12 +20,15 @@ const F1Pure = (() => {
   const condition = key => ({ wet: 'Chaussée humide', rain: 'Pluie', fog: 'Brume / brouillard', snow: 'Neige', ice: 'Verglas' }[key] || text(key));
   function raceEngineer({ decision, confidence, trip, car, frost, when } = {}) {
     if (!decision || !confidence) return { state: 'indisponible', title: 'Briefing indisponible', lines: ['En attente du cockpit décisionnel.'] };
-    const risk = level(decision.displayLevel);
+    // decision.scope : 'trip' = risque global du trajet (sa fenêtre, sa voiture) ; sinon verdict « ici, maintenant ». Un trajet
+    // INDÉTERMINÉ (decision.indet) n'est jamais lu comme RAS (amendement C du 14/11).
+    const risk = level(decision.displayLevel), indet = !!decision.indet && !(risk >= 1);
     let action;
     if (confidence.level >= 2) action = 'Ne pas déduire de feu vert : actualiser les données et confirmer les pneus ou le trajet.';
     else if (risk >= 3) action = 'Danger identifié : reconsidérer le départ ou le parcours ; privilégier la sécurité.';
     else if (risk >= 2) action = 'Prudence renforcée : vérifier les conditions réelles avant de partir.';
     else if (risk >= 1) action = 'Vérifier le point de vigilance avant le départ et adapter la conduite.';
+    else if (indet) action = 'Composante indéterminée : vérifier les conditions réelles avant de partir, sans conclure à un feu vert.';
     else action = 'Aucune alerte critique identifiée ; respecter les conditions réelles.';
     const route = trip && trip.to ? 'Prochain trajet : ' + text(trip.to) + (trip.dep ? ' · départ prévu ' + (text(when) || text(trip.dep).slice(11, 16)) : '') : 'Aucun trajet immédiat identifié.';
     // Fenêtre DU TRAJET (frostRisk du moteur) : jamais la température « maintenant » pour un départ plus tard (constat : 4,8 °C
@@ -37,9 +40,10 @@ const F1Pure = (() => {
     const frostWord = k => k === 'aucun' || k === 'marge' ? frostTxt[k] + ' sur cette fenêtre' : frostTxt[k];
     const frostLine = frost && frostTxt[frost.key] ? 'Fenêtre du trajet : air min ' + num(frost.airMin) + ' °C · chaussée estimée min ' + num(frost.roadMin) + ' °C (marge de prudence ± ' + (frost.margin) + ' °C) · ' + frostWord(frost.key) : null;
     const confidenceLine = 'Confiance : ' + text(confidence.label || 'à confirmer') + (confidence.reason ? ' · ' + text(confidence.reason) : '');
-    return { state: risk >= 2 || confidence.level >= 2 ? 'prudence' : 'information',
-      title: risk == null ? 'Analyse en attente' : label(risk),
-      lines: [route, ...(frostLine ? [frostLine] : []), car ? 'Voiture : ' + text(car.short || car.name || car.id) : 'Voiture active à confirmer.', confidenceLine,
+    const scope = decision.scope === 'trip' ? 'Verdict : risque global du trajet' + (car ? ' avec ' + text(car.short || car.name || car.id) : '') : decision.scope === 'now' ? 'Verdict : ici, maintenant (aucun trajet analysé)' : null;
+    return { state: risk >= 2 || confidence.level >= 2 || indet ? 'prudence' : 'information',
+      title: indet ? 'INDÉTERMINÉ' : risk == null ? 'Analyse en attente' : label(risk), scope: decision.scope || null,
+      lines: [...(scope ? [scope] : []), route, ...(frostLine ? [frostLine] : []), car ? 'Voiture : ' + text(car.short || car.name || car.id) : 'Voiture active à confirmer.', confidenceLine,
         'Priorité : ' + text(decision.reason || 'Conditions à vérifier.'), action],
       action };
   }
@@ -51,6 +55,13 @@ const F1Pure = (() => {
   const RAIN_MMH = 0.2, RAIN_STRONG_MMH = 2;
   const rainLevel = mm => finite(mm) ? (mm >= RAIN_STRONG_MMH ? 2 : mm >= RAIN_MMH ? 1 : 0) : 0;
   const rainOf = x => finite(x.Pl) ? x.Pl : finite(x.P) && !(finite(x.snow) && x.snow > 0.05) ? x.P : null;
+  // Modèles en désaccord (P5, constat du 15/11 : « modèle de base 2,3 mm/h · quantité négligeable selon AROME (0,0 mm/h) »
+  // affiché en vert, trajet RAS). MÊME heure, MÊME point (x.Pb : modèle de base conservé à la fusion AROME, engine.js
+  // mergeArome ; x.ar : heure réellement couverte par un AROME frais, un AROME périmé étant écarté avant la fusion).
+  // Matérialité : le scénario pluvieux atteint le seuil PRUDENCE (≥ 2 mm/h) quand AROME reste sec (< 0,2 mm/h) ⇒ VIGILANCE
+  // « modèles en désaccord », jamais le modèle le plus rassurant par défaut. Un désaccord mineur (ex. 0,5 contre 0,0 mm/h)
+  // ne change pas le niveau et reste expliqué en clair.
+  const rainDisagree = x => !!x && x.ar === true && finite(x.Pb) && x.Pb >= RAIN_STRONG_MMH && (rainOf(x) ?? 0) < RAIN_MMH;
   function trackConditions(seq, { ageMin = null } = {}) {
     const rows = Array.isArray(seq) ? seq.map(q => q && q.hs && q.hs[q.i]).filter(Boolean) : [];
     if (!rows.length || ageMin != null && (!finite(ageMin) || ageMin > STALE_AFTER_MIN))
@@ -66,7 +77,8 @@ const F1Pure = (() => {
         else if (x.ice && finite(x.ice.level) && x.ice.level >= 1) { worst = Math.max(worst, Math.min(3, x.ice.level + 1)); signals.add('Verglas · risque estimé'); }
         if (FZ_F1.has(x.code)) { worst = 3; signals.add('Pluie verglaçante annoncée'); }
         if (finite(x.vis) && x.vis < 1000) { worst = Math.max(worst, x.vis < 200 ? 3 : 2); signals.add('Visibilité réduite'); }
-        { const rl = rainLevel(rainOf(x)); if (rl) { worst = Math.max(worst, rl); signals.add(rl >= 2 ? 'Pluie modérée ou forte prévue' : 'Pluie prévue'); } }
+        { const rl = rainLevel(rainOf(x)); if (rl) { worst = Math.max(worst, rl); signals.add(rl >= 2 ? 'Pluie modérée ou forte prévue' : 'Pluie prévue'); }
+          else if (rainDisagree(x)) { worst = Math.max(worst, 1); signals.add('Pluie : modèles en désaccord'); } }
         if (finite(x.snow) && x.snow > 0.05) { worst = Math.max(worst, 2); signals.add('Neige prévue'); }   // même seuil que la synthèse (summarize)
         if (!fh && finite(x.Tr) && x.Tr <= 0) { worst = Math.max(worst, 1); signals.add('Chaussée estimée à 0 °C ou moins'); }
       });
@@ -117,5 +129,5 @@ const F1Pure = (() => {
     ];
     return { available: true, lines, note: 'Relecture du journal local : aucune télémétrie de vitesse, freinage, GPS ou capteur ajoutée.' };
   }
-  return { FEATURES, raceEngineer, trackConditions, tyreManagement, strategyAB, theGarage, telemetryReplay, rainLevel };
+  return { FEATURES, raceEngineer, trackConditions, tyreManagement, strategyAB, theGarage, telemetryReplay, rainLevel, rainDisagree };
 })();

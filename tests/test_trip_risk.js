@@ -4,7 +4,7 @@
 // statuts d'alerte, puis contre-tests par mutation. Données fictives.
 const fs = require('fs'), path = require('path'), vm = require('vm'), assert = require('assert');
 const src = f => fs.readFileSync(path.join(__dirname, '../src', f), 'utf8');
-const SRC = { engine: src('engine.js'), app: src('app.js'), garageView: src('app/garage-view.js'), mission: src('app/mission-control.js'), scene: src('app/garage-scene.js'), garage: src('garage.js'), wx: src('app/weather-view.js') };
+const SRC = { engine: src('engine.js'), app: src('app.js'), garageView: src('app/garage-view.js'), mission: src('app/mission-control.js'), scene: src('app/garage-scene.js'), garage: src('garage.js'), wx: src('app/weather-view.js'), desk: src('wxdesk.js') };
 const grab = (s, re) => (re.exec(s) || [''])[0];
 function load(S = SRC) {
   const ctx = { Math, JSON, Date, Intl, Map, Set, Number, String, Array, Object, RegExp, console }; vm.createContext(ctx);
@@ -60,7 +60,9 @@ function wiring(S, collect) {
   t('Garage : risque global transmis, gel par point via la règle unique (frostHour)', /risk: trip \? tripRisk\(trip\) : null/.test(S.garageView) && /frostFor: q => q && q\.hs \? frostHour\(q\.hs, q\.i\) : null/.test(S.garageView) && /mission-global/.test(S.mission) && /gel possible/.test(S.mission) && /frostFor/.test(S.garage));
   t('Garage : « voiture active » seulement pour une voiture confirmée', /active\.active \? ' · voiture active' : ' · affichée, non confirmée pour le trajet'/.test(S.scene));
   t('alertes : non évaluable / évaluée en partie / non applicable, jamais RAS par défaut', /function alertNoTrigger\(id\)/.test(S.app) && /if \(id === 'tread'\) return miss\(c => treadWorst\(c\.tire\)\.mm != null/.test(S.app) && /if \(id === 'treadgap'\) return miss\(c => !!treadWheels\(/.test(S.app) && /if \(id === 'press'\)/.test(S.app) && /alertNoTrigger\(d\.id\) \? alertNoTrigger\(d\.id\)\.label : 'RAS'/.test(S.app));
-  t('fenêtres traversant minuit : jour nommé (synthèse et poste Météo)', /'demain '/.test(core) && (S.wx.match(/d\.window\.toLabel \|\| d\.window\.to\)/g) || []).length === 2);
+  // Post-prod 15/11 (P7) : le jour relatif vient du formateur unique relHmFr / relDayFr (wxdesk.js), qui écrit « demain » ;
+  // la synthèse « ici, maintenant » l'utilise pour la fin de fenêtre (comportement vérifié par test_postprod_1511.js).
+  t('fenêtres traversant minuit : jour nommé (synthèse et poste Météo)', /relHmFr\(endT, nowT\)/.test(core) && /\? 'dem\.' : 'demain'/.test(S.desk) && (S.wx.match(/d\.window\.toLabel \|\| d\.window\.to\)/g) || []).length === 2);
   t('option A intacte : frostBand lit frostRisk, aucun seuil propre', /const fr = x && typeof x === 'object' \? frostRisk\(x\)/.test(S.app) && /const FROST_ROAD_MAX = 1, FROST_ROAD_MARGIN = 2;/.test(S.engine));
   return ok;
 }

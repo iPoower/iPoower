@@ -167,6 +167,7 @@ function renderLab() {
         ${h.critical ? `<p class="wx-hl wx-h1" role="alert"><b>⛔ ${esc(h.critical)}</b></p>` : ''}
         <h2 class="wx-ht"><span aria-hidden="true">${h.emoji}</span> ${esc(h.state.toUpperCase())}</h2>
         <p class="wx-hl wx-h1">Gomme estimée ≈ ${rg(th.range)}${h.warm ? ' · ' + esc(h.warm) : ''}</p>
+        ${r.phase === 'unknown' && r.env && Number.isFinite(r.env.Tenv) ? `<p class="sub" data-gum-band>Plage d’incertitude prudente, pas une mesure : centrée sur l’air/chaussée ≈ ${esc(f1(r.env.Tenv))} °C (air ${esc(f1(r.env.Ta))} °C, chaussée estimée ${esc(f1(r.env.Tr))} °C) et élargie car l’historique de roulage est inconnu ; le bas de plage sert à juger le froid.</p>` : ''}
         <p class="wx-hl">Facteur limitant : <b>${esc(h.critical ? st && st.tread.est ? 'profondeur estimée à vérifier avant de circuler' : 'sculpture sous le minimum légal' : 'conditions météo et données saisies')}</b> · Confiance : <b>${esc(cf.level)}</b></p><p class="sub">Chaussée estimée par le modèle : ${esc(r.env.surfTxt)} · à confirmer sur place.</p>${pf.generic ? genericLine(pf.gaps) : ''}</div>`;
       const pct = x => Math.round(x * 1000) / 10;
       const warmTxt = r.warm.reached ? (r.warm.sinceMin != null ? `Zone favorable atteinte depuis ~${r.warm.sinceMin} min` : 'Zone favorable : gomme estimée dans la plage') : r.warm.never ? 'Zone favorable non atteinte dans ces conditions' : `Avant la zone favorable : ${esc(h.warm)}`;

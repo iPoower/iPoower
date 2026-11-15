@@ -7,7 +7,8 @@
      pluie      : ≥ 0,2 mm/h (ou probabilité ≥ 60 % avec ≥ 0,1 mm/h) 🟡 · ≥ 2 mm/h ou orage 🟠
      pluie possible (signal sans quantité significative, même règle que la Tenue) : probabilité ≥ 50 %, 0,1 mm/h,
                   code bruine/pluie/averses, ou modèle de base ≥ 0,2 mm/h quand AROME calcule moins. Jamais « pas de pluie » :
-                  🟡 si probabilité ≥ 60 % (seuil de la pénalité du score route), sinon 🟢 ; la source de chaque valeur est citée.
+                  🟡 si probabilité ≥ 60 % (seuil de la pénalité du score route) ou si les modèles sont en désaccord matériel
+                  (base ≥ 2 mm/h, AROME < 0,2 mm/h à la même heure), sinon 🟢 ; la source de chaque valeur est citée.
      neige      : chute de neige > 0,05 cm/h ou code neige 🟠
      brouillard : visibilité < 1 000 m 🟡 · < 500 m 🟠 · < 200 m 🔴 (code brouillard sans visibilité : 🟡)
      vent       : rafales ≥ 55 km/h 🟡 · ≥ 70 km/h 🟠 · ≥ 90 km/h 🔴
@@ -18,6 +19,20 @@
    que le pire facteur. Aucune note opaque : chaque point retiré est expliqué. */
 // Politique de fraîcheur (valeurs de Reliability.FRESHNESS, vérifiées par tests/test_reliability.js) : ≤ 15 min frais · ≤ 60 min à confirmer · au-delà périmé.
 const WXD_STALE_AFTER_MIN = 60;
+// Jour relatif (P7, constat du 15/11 : « dem. demain 02:00 ») : SEUL formateur du jour relatif des vues Météo (poste, bande
+// horaire, chronologie, station, verdict « ici, maintenant »). Entrées : dates calendaires LOCALES Europe/Paris « AAAA-MM-JJ…»
+// (les horodatages du modèle sont déjà en heure locale) ; écart calculé à midi UTC, donc insensible aux changements d'heure.
+// Aujourd'hui : '' (heure seule) ; lendemain : « demain » (forme courte « dem. ») ; autre jour : « lun. 16/11 ».
+const REL_DAYN = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+function relDayFr(ts, today, short) {
+  const d = String(ts || '').slice(0, 10), t = String(today || '').slice(0, 10), ok = x => /^\d{4}-\d{2}-\d{2}$/.test(x);
+  if (!ok(d) || !ok(t) || d === t) return '';
+  const a = Date.parse(d + 'T12:00:00Z');
+  if (Math.round((a - Date.parse(t + 'T12:00:00Z')) / 864e5) === 1) return short ? 'dem.' : 'demain';
+  return REL_DAYN[new Date(a).getUTCDay()] + ' ' + d.slice(8, 10) + '/' + d.slice(5, 7);
+}
+// Heure avec son jour relatif : « 08:32 », « demain 08:32 », « lun. 16/11 08:32 » (court : « dem. 08:32 »).
+function relHmFr(ts, today, short) { const r = relDayFr(ts, today, short); return (r ? r + ' ' : '') + String(ts || '').slice(11, 16); }
 function wxDesk(input) {
   const finite = v => typeof v === 'number' && Number.isFinite(v);
   const n = v => finite(v) ? v : null;
@@ -30,14 +45,11 @@ function wxDesk(input) {
   const ORDER = ['ice', 'snow', 'fog', 'rain', 'wind', 'temp', 'sun'];
   const SNOW = new Set([71, 73, 75, 77, 85, 86]), FZ = new Set([56, 57, 66, 67]), FOG = new Set([45, 48]), RAINY = new Set([51, 53, 55, 61, 63, 65, 80, 81, 82]);
   const now = input && input.now, nowM = mins(now);
+  // Précipitation observée à la station (fournie déjà filtrée par l'app : obsPrecip) ; texte seulement, aucun niveau inventé ici.
+  const obsP = input && input.obs && typeof input.obs.text === 'string' ? input.obs : null;
   // Heure avec son jour quand ce n'est pas aujourd'hui : « demain 08:32 », « 07/10 08:32 ». Une heure nue se lit comme « aujourd'hui »,
   // donc comme déjà passée à 20 h pour un trajet de demain matin. Aujourd'hui : « 08:32 », comme avant.
-  const hmd = ts => {
-    const day = String(ts || '').slice(0, 10), today = String(now || '').slice(0, 10);
-    if (!day || !today || day === today) return hm(ts);
-    const tomorrow = new Date(Date.parse(today + 'T12:00:00Z') + 864e5).toISOString().slice(0, 10);
-    return (day === tomorrow ? 'demain ' : day.slice(8, 10) + '/' + day.slice(5, 7) + ' ') + hm(ts);
-  };
+  const hmd = ts => relHmFr(ts, now);
   const all = ((input && input.hours) || []).filter(x => x && Number.isFinite(mins(x.t))).slice().sort((a, b) => mins(a.t) - mins(b.t));
   if (!Number.isFinite(nowM) || !all.length) return null;
   const hour0 = Math.floor(nowM / 60) * 60;
@@ -146,6 +158,15 @@ function wxDesk(input) {
   const frostUnknown = typeof frostHour === 'function' ? H.filter(r => !frostHour([r.x], 0)).length : 0;
   const trMinRow = () => H.reduce((b, r) => n(r.x.Tr) != null && (!b || r.x.Tr < b.x.Tr) ? r : b, null);
   const trMinTxt = () => { const r = trMinRow(); return r ? `Chaussée estimée min ${r1(r.x.Tr)} °C ± 2 vers ${hmd(r.t)} (jusqu’à ${hmd(endTs)})` : 'Chaussée non estimée'; };
+  // Gel sans épisode (niveau 0 sur tout l'horizon) : le verdict de la RÈGLE à l'heure de référence la plus froide (chaussée,
+  // sinon air), avec son vocabulaire (« pas de gel attendu (marge faible) » ≠ « aucun risque de gel »). Constat du 15/11 :
+  // « Aucun risque estimé » sur la tuile alors que la règle disait « marge faible » partout ailleurs.
+  const quietFrostTxt = () => {
+    if (typeof frostHour !== 'function' || typeof frostWords !== 'function') return null;
+    const r = H.reduce((b, q) => { const v = n(q.x.Tr) ?? n(q.x.T); return v != null && (!b || v < b.v) ? { r: q, v } : b; }, null);
+    const fh = r && frostHour([r.r.x], 0); if (!fh) return null;
+    return `${cap(frostWords(fh).word)} · ${fh.basis === 'road' ? 'chaussée estimée' : 'air'} min ${r1(fh.ref)} °C vers ${hmd(r.r.t)}`;
+  };
   function condTxt(x) {   // conditions d'un point : le phénomène le plus marquant, sinon le ciel
     const h = haz(x), top = ORDER.filter(id => h[id] > 0).sort((a, b) => h[b] - h[a])[0];
     if (top === 'ice') return n(x.Tr) != null ? `chaussée ${r1(x.Tr)} °C (gel possible)` : 'gel possible';
@@ -176,7 +197,11 @@ function wxDesk(input) {
     const explain = [cap(qty) + (sig.length ? ' ; pluie possible selon ' + sig.join(', ') : ''),
       ar && sig.some(x => /base/.test(x)) ? 'Modèles en désaccord : ce n’est ni une pluie certaine ni un temps sec garanti' : null,
       code != null && Pl < 0.1 ? 'Code pluvieux avec quantité arrondie à 0 : averse brève ou locale possible' : null].filter(Boolean);
-    return { lv: pp != null && pp >= 60 ? 1 : 0, m: R[0].m, t: R[0].t, pp, Pl, Pb, ar, code, text: [sig.join(', '), qty].filter(Boolean).join(' · '), explain };
+    // Désaccord matériel (P5, 15/11) : modèle de base ≥ 2 mm/h et AROME < 0,2 mm/h à la même heure ⇒ VIGILANCE, « modèles en
+    // désaccord » (même règle que F1Pure.rainDisagree, recopiée ici : le poste se charge aussi sans F1Pure).
+    const split = R.some(r => r.x.ar === true && n(r.x.Pb) != null && r.x.Pb >= 2 && (n(r.x.Pl) ?? n(r.x.P) ?? 0) < 0.2);
+    return { lv: (pp != null && pp >= 60) || split ? 1 : 0, split, m: R[0].m, t: R[0].t, pp, Pl, Pb, ar, code,
+      text: [split ? 'modèles en désaccord' : null, sig.join(', '), qty].filter(Boolean).join(' · '), explain };
   }
   const mbH = maybeOf(H.filter(r => r.m + 60 > nowM)), whenM = mb => mb.m <= nowM ? 'maintenant' : 'vers ' + hmd(mb.t);
 
@@ -210,7 +235,7 @@ function wxDesk(input) {
   let title, lines = [];
   const inMin = m => { const d = Math.max(0, Math.round(m - nowM)); return d < 60 ? `dans ${d} min` : `dans ${Math.floor(d / 60)} h${d % 60 ? ' ' + String(d % 60).padStart(2, '0') : ''}`; };
   if (!dominant) {
-    title = 'CONDITIONS NORMALES';
+    title = obsP ? 'CONDITIONS NORMALES PRÉVUES' : 'CONDITIONS NORMALES';
     lines.push(tempLine, mbH ? `Pluie possible ${whenM(mbH)} · peu d’eau prévue (${r1(mbH.Pl)} mm/h)` : frostUnknown ? `Gel INDÉTERMINÉ : chaussée et air non fournis pour ${frostUnknown} h` : `Aucun phénomène notable jusqu’à ${hmd(endTs)}`);
   } else {
     const s = dominant, now_ = active(s), pk = s.peakRow ? s.peakRow.x : null, span = `${hmd(atMin(s.start))}–${hmd(atMin(s.end))}`;
@@ -242,6 +267,9 @@ function wxDesk(input) {
     if (w) lines.splice(1, 0, `${w[0].toUpperCase() + w.slice(1)} potentiellement concerné${tripsOf(s).length > 1 ? 's' : ''}`);
   }
   if (nextChange && !(dominant && nextChange.m === dominant.start && nextChange.id === dominant.id)) lines.push(`Prochain changement : ${hmd(atMin(nextChange.m))} · ${nextChange.text}`);
+  // Observation (P6, 15/11) : précipitation mesurée à la station (obsPrecip côté app : fraîche, ≤ 25 km, sur la station). Elle passe
+  // AVANT la prévision pour décrire « maintenant » ; écrite comme une mesure de la station, jamais comme une mesure au lieu consulté.
+  if (obsP) lines.unshift(`${obsP.text} · mesure de la station, pas au lieu consulté`);
   const ageMin = input && finite(input.ageMin) ? input.ageMin : null, stale = ageMin != null && ageMin > WXD_STALE_AFTER_MIN;
   // inMin : délai avant le début du phénomène dominant (0 s'il est en cours) — permet de borner le verdict « ici, maintenant ».
   const hero = { level, emoji: EMO[level], title, lines: lines.slice(0, 4), dominant: dominant ? dominant.id : null, inMin: dominant ? Math.max(0, dominant.start - nowM) : null, stale };
@@ -273,7 +301,8 @@ function wxDesk(input) {
   { const s = first('rain') || first('snow'), Psum = H.reduce((a, r) => a + (n(r.x.Pl) ?? n(r.x.P) ?? 0), 0), ppM = maxOf('pp');
     const mb = !s ? mbH : null;
     const line = mb ? `Possible ${whenM(mb)} · peu d’eau prévue` : !s ? `Aucune avant ${hmd(endTs)}` : active(s) ? `${s.id === 'snow' ? 'Neige' : cap(rainTxt(s.peakRow.x))} en cours${s.end < endM ? ' · fin vers ' + hm(atMin(s.end)) : ' · au moins jusqu’à ' + hm(endTs)}` : `${s.id === 'snow' ? 'Neige' : cap(rainTxt(s.peakRow.x))} à partir de ${hm(atMin(s.start))}`;
-    phen.push({ id: 'rain', icon: s && s.id === 'snow' ? '🌨' : '🌧', title: s && s.id === 'snow' ? 'Neige' : 'Pluie', lv: s ? s.lv : mb ? mb.lv : 0, line,
+    phen.push({ id: 'rain', icon: s && s.id === 'snow' ? '🌨' : '🌧', title: s && s.id === 'snow' ? 'Neige' : 'Pluie', lv: s ? s.lv : mb ? mb.lv : 0,
+      line: obsP ? `${obsP.text} · prévision : ${line.charAt(0).toLowerCase() + line.slice(1)}` : line,
       detail: [`Cumul ${r1(Psum)} mm jusqu’à ${hmd(endTs)}`, ppM != null ? `Probabilité maximale ${r0(ppM)} %` : null, ...(mb ? mb.explain : []), s ? `Intensité maximale ${r1(n(s.peakRow.x.Pl) ?? n(s.peakRow.x.P))} mm/h vers ${hm(s.peakRow.t)}` : null,
         nc ? (nc.nowWet ? `Au quart d’heure : ${nc.snow ? 'neige' : 'pluie'} en cours${nc.stopAt ? ', fin vers ' + nc.stopAt : ''}` : finite(nc.startIn) ? `Au quart d’heure : début dans ${nc.startIn} min` : 'Au quart d’heure : rien d’ici 2 h') : null].filter(Boolean) }); }
   { const eps = spans.filter(x => x.id === 'fog'), s = eps[0], vmin = rowMax('vis', -1), vNow = n(nowRow.x.vis), nxt = s && active(s) ? eps[1] : null;
@@ -287,10 +316,10 @@ function wxDesk(input) {
       detail: [w != null ? `Vent moyen jusqu’à ${r0(w)} km/h` : null, g ? `Pic de rafales vers ${hm(g.t)}` : null, s ? `Au-dessus de 55 km/h de ${hm(atMin(s.start))} à ${hm(atMin(s.end))}` : null].filter(Boolean) }); }
   { const s = first('ice'), tr = rowMax('Tr', -1), ta = minOf('T');
     phen.push({ id: 'ice', icon: '❄️', title: 'Gel · verglas', lv: s ? s.lv : 0,
-      line: s ? `${cap(iceText(s.lv, s.peakRow && s.peakRow.x))} · ${active(s) ? 'maintenant' : hm(atMin(s.start))}–${hm(atMin(s.end))}${frostUnknown ? ` · ${frostUnknown} h indéterminée${frostUnknown > 1 ? 's' : ''}` : ''}` : frostUnknown ? `Gel INDÉTERMINÉ : chaussée et air non fournis pour ${frostUnknown} h` : 'Aucun risque estimé',
+      line: s ? `${cap(iceText(s.lv, s.peakRow && s.peakRow.x))} · ${active(s) ? 'maintenant' : hm(atMin(s.start))}–${hm(atMin(s.end))}${frostUnknown ? ` · ${frostUnknown} h indéterminée${frostUnknown > 1 ? 's' : ''}` : ''}` : frostUnknown ? `Gel INDÉTERMINÉ : chaussée et air non fournis pour ${frostUnknown} h` : quietFrostTxt() || 'Gel INDÉTERMINÉ : chaussée et air non fournis',
       detail: [tr ? trMinTxt() : null, ta != null ? `Air minimal ${r1(ta)} °C` : null, 'Estimation sans capteur routier : ponts et zones d’ombre d’abord'].filter(Boolean) }); }
   { const tmin = minOf('T'), tmax = maxOf('T'), s = first('temp'), z = changes.find(c => c.id === 'zero');
-    phen.push({ id: 'temp', icon: '🌡', title: 'Température', lv: s ? s.lv : 0, line: `${T == null ? '—' : r0(T)} °C · min ${r0(tmin)} / max ${r0(tmax)}`,
+    phen.push({ id: 'temp', icon: '🌡', title: 'Température', lv: s ? s.lv : 0, line: `${T == null ? '—' : r0(T)} °C · min ${r0(tmin)} / max ${r0(tmax)} d’ici ${hmd(endTs)}`,   // C4 : période écrite (horizon restant du poste)
       detail: [`Ressenti ${Tapp == null ? '—' : r1(Tapp)} °C maintenant`, z ? `${cap(z.text)} vers ${hm(atMin(z.m))}` : null].filter(Boolean) }); }
   { const g = glareTrips[0], sun = (input && input.sun) || {};
     phen.push({ id: 'sun', icon: '🌅', title: 'Soleil rasant', lv: g ? 1 : 0,
@@ -330,8 +359,9 @@ function wxDesk(input) {
       Tm == null ? 'non fournie' : Tm <= 3 ? `air jusqu’à ${r1(Tm)} °C : chaussée froide` : TM >= 35 ? `air jusqu’à ${r0(TM)} °C` : `air ${r0(Tm)} → ${r0(TM)} °C`);
     add('wind', 'Vent', mx('wind'), gm == null ? 0 : gm >= 90 ? ROAD_PEN.wind[0] : gm >= 70 ? ROAD_PEN.wind[1] : gm >= 55 ? ROAD_PEN.wind[2] : 0, gm == null ? 'non fourni' : `rafales ${r0(gm)} km/h`);
     add('humid', 'Humidité', humid ? 1 : 0, humid ? ROAD_PEN.humid : 0, xs.some(x => n(x.RH) == null) ? 'non fournie' : humid ? 'air saturé : chaussée humide possible' : 'pas d’humidité notable sans pluie');
-    const rp = mx('snow') ? 0 : Pm >= 7.6 ? ROAD_PEN.rain[0] : Pm >= 2 ? ROAD_PEN.rain[1] : Pm >= 0.2 ? ROAD_PEN.rain[2] : ppm != null && ppm >= 60 ? ROAD_PEN.rain[3] : 0;
     const mb = Pm >= 0.2 ? null : maybeOf(rows);   // la pénalité « probabilité seule » reste : seule l'explication change
+    // Modèles en désaccord (P5) : même pénalité que la probabilité seule (VIGILANCE), jamais le modèle sec retenu en silence.
+    const rp = mx('snow') ? 0 : Pm >= 7.6 ? ROAD_PEN.rain[0] : Pm >= 2 ? ROAD_PEN.rain[1] : Pm >= 0.2 ? ROAD_PEN.rain[2] : (ppm != null && ppm >= 60) || (mb && mb.split) ? ROAD_PEN.rain[3] : 0;
     add('rain', 'Pluie', mx('rain') || (rp ? 1 : 0), rp, xs.some(x => n(x.P) == null) ? 'quantité non fournie' : Pm >= 0.2 ? `jusqu’à ${r1(Pm)} mm/h` : mb ? `pluie possible : ${mb.text}` : ppm != null && ppm >= 60 ? `probabilité ${r0(ppm)} %` : 'sec');
     if (mx('snow')) add('snow', 'Neige', 2, ROAD_PEN.snow, 'chute de neige prévue');
     const gp = fz ? ROAD_PEN.ice[0] : iceMod ? ROAD_PEN.ice[1] : iceLv >= 2 ? ROAD_PEN.ice[2] : iceLv === 1 ? ROAD_PEN.ice[3] : 0;

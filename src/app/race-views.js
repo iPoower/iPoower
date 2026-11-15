@@ -22,10 +22,22 @@ function f1Panel(id, title, desc, body) {
     '><summary><span class="ic" aria-hidden="true">🏎️</span><span class="tt">' + esc(title) + '</span><span class="ln">' + esc(desc) +
     '</span></summary><div class="lab-sp">' + body + '</div></details>';
 }
+// Décision du briefing : celle du TRAJET (risque global de sa fenêtre et de sa voiture : tripRisk, même verdict que la carte
+// « Prochain trajet ») dès qu'un trajet est analysé ; sinon celle d'« ici, maintenant », nommée comme telle.
+// Constat du 15/11 : « PRUDENCE » (niveau du bandeau « maintenant ») au-dessus des lignes d'un trajet RAS avec une autre voiture.
+function f1BriefDecision(trip) {
+  const now = DECISION_LAST && DECISION_LAST.decision;
+  const gen = !!(trip && trip.res && trip.res.length && trip.res.every(r => carProfile(r.c).generic));
+  const tr = trip && !gen ? tripRisk(trip) : null;
+  if (!tr) return now ? { ...now, scope: 'now' } : null;
+  const pneus = Number.isInteger(trip.worst) ? ' · indice pneus ' + lvTxt(trip.worst, trip.res) : '';
+  return { displayLevel: tr.lv, indet: tr.indet, scope: 'trip',
+    reason: (tr.indet ? tr.why : tr.why ? 'risque global du trajet : ' + tr.why : 'risque global du trajet : aucune cause identifiée') + pneus };
+}
 function f1BriefingHtml() {
   const snap = APP_CONTEXT.snapshot;
   const confidence = DECISION_LAST && DECISION_LAST.confidence;
-  const x = F1Pure.raceEngineer({ decision: DECISION_LAST && DECISION_LAST.decision,
+  const x = F1Pure.raceEngineer({ decision: f1BriefDecision(snap && (snap.activeTrip || snap.nextTrip)),
     confidence: confidence && { ...confidence, reason: (confidence.reasons || []).join(' · ') }, trip: snap && (snap.activeTrip || snap.nextTrip),
     car: appActiveCar(), frost: (() => { const tf = tripFrost(); return tf && tf.fr; })(),
     when: (() => { const t = snap && (snap.activeTrip || snap.nextTrip); return t ? tripWhen(t.dep) : ''; })() });
@@ -166,8 +178,10 @@ function f1Speak(button) {
     commandFeedback(button, 'Lecture vocale indisponible'); return;
   }
   const snap = APP_CONTEXT.snapshot;
-  const lines = F1Pure.raceEngineer({ decision: DECISION_LAST && DECISION_LAST.decision,
-    confidence: DECISION_LAST && DECISION_LAST.confidence, trip: snap && (snap.activeTrip || snap.nextTrip), car: appActiveCar() }).lines;
+  const trip = snap && (snap.activeTrip || snap.nextTrip), cf = DECISION_LAST && DECISION_LAST.confidence;
+  const lines = F1Pure.raceEngineer({ decision: f1BriefDecision(trip),
+    confidence: cf && { ...cf, reason: (cf.reasons || []).join(' · ') }, trip, car: appActiveCar(),
+    frost: (() => { const tf = tripFrost(); return tf && tf.fr; })(), when: trip ? tripWhen(trip.dep) : '' }).lines;
   synth.cancel();
   const voice = new SpeechSynthesisUtterance(lines.join('. '));
   voice.lang = 'fr-FR'; voice.rate = 0.95;
