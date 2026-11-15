@@ -943,11 +943,19 @@ function tsFr(ts) {
 const curTemp = m => m && m.obs && m.hs && m.hs[m.nowI] && Number.isFinite(m.hs[m.nowI].T) ? m.hs[m.nowI].T : m && m.cur ? m.cur.T : null;
 // Conditions « actuelles » affichées (R2-07) : avec une station, l'heure en cours recalée (température, temps, précipitations,
 // visibilité, chaussée) comme dans l'onglet Météo ; sinon la donnée actuelle du modèle. La valeur brute n'apparaît jamais seule.
+// C3 (15/11) : le ressenti est la température APPARENTE du modèle (Open-Meteo apparent_temperature, type Steadman : air, humidité
+// et vent à 10 m), pas un refroidissement éolien ; il n'est jamais remplacé par une autre formule. Quand une station recale l'heure
+// en cours (applyObs : +dT avec un poids 1 à cette heure), le MÊME décalage s'applique au ressenti de cette heure (à vent et humidité
+// donnés, la température apparente varie comme l'air), pour qu'il ne contredise pas la température recalée affichée à côté.
+const tappNow = m => {
+  const x = m && m.hs && m.hs[m.nowI], t = x && Number.isFinite(x.Tapp) ? x.Tapp : m && m.cur && Number.isFinite(m.cur.Tapp) ? m.cur.Tapp : null;
+  return t != null && m.obs && Number.isFinite(m.obs.dT) ? Math.round((t + m.obs.dT) * 10) / 10 : t;
+};
 const curNow = m => {
   const x = m && m.obs && m.hs && m.hs[m.nowI];
   // B4 (constat du 14/11 : ressenti −0,8 °C dans l'en-tête, −1,0 °C dans Météo actuelle) : le ressenti suit la MÊME heure recalée
   // que la température, comme l'en-tête du poste Météo (wxInput : heure en cours quand une station recale le modèle).
-  return x && Number.isFinite(x.T) ? { ...m.cur, T: x.T, Tapp: x.Tapp ?? m.cur.Tapp, code: x.code ?? m.cur.code, P: x.P ?? m.cur.P, vis: x.vis ?? m.cur.vis, Tr: x.Tr ?? m.cur.Tr } : m && m.cur;
+  return x && Number.isFinite(x.T) ? { ...m.cur, T: x.T, Tapp: tappNow(m), code: x.code ?? m.cur.code, P: x.P ?? m.cur.P, vis: x.vis ?? m.cur.vis, Tr: x.Tr ?? m.cur.Tr } : m && m.cur;
 };
 const visTxt = v => v == null ? '—' : v >= 10000 ? '> 10 km' : v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + ' km' : Math.round(v) + ' m';
 function icon(code) {
@@ -1015,6 +1023,10 @@ function extraAlerts(m, sum24) {
   if (ew && ew.pRoad0 >= 0.3) out.ens = { id: 'ens', sev: ew.pRoad0 >= 0.6 ? 3 : 2, title: `Chaussée sous 0 °C : ${pct(ew.pRoad0)} des scénarios`, detail: `Pic vers ${ew.tRoad0 ? ew.tRoad0.slice(11, 16) : '—'}. Verglas élevé dans ${pct(ew.pIce)} des scénarios ${ENS_LABEL[m.ensModel] || ''}. Estimation, pas une observation.` };
   // pluie imminente
   if (m.nc && !m.nc.nowWet && m.nc.startIn != null && m.nc.startIn <= 45) out.rain15 = { id: 'rain15', sev: 1, title: `${m.nc.snow ? 'Neige' : 'Pluie'} dans ${m.nc.startIn} min`, detail: `Prévision au quart d’heure, ${f1(m.nc.total)} mm sur 2 h.` };
+  // Précipitation OBSERVÉE à la station (P6, 15/11) : jamais masquée par une prévision sèche ; nommée comme mesure de la station.
+  { const op = obsPrecip(m.obs);
+    if (op && (!out.rain15 || op.sev > out.rain15.sev)) out.rain15 = { id: 'rain15', sev: op.sev, obs: true, title: op.text,
+      detail: `Mesure METAR de la station ${op.name} à ${op.km} km, relevé de ${op.at} : elle décrit la station, pas une mesure au lieu consulté.${m.nc ? (m.nc.nowWet ? ' Prévision au quart d’heure : pluie en cours.' : m.nc.startIn != null ? ` Prévision au quart d’heure : début dans ${m.nc.startIn} min.` : ' Prévision au quart d’heure : sec sur 2 h.') : ''}` }; }
   // vigilance
   if (VIGI.state === 'ok' && VIGI.items.length) {
     const top = vigiTop();
@@ -1039,7 +1051,11 @@ function computeCtx() {
   // (vigilance du jour, pluie imminente, pneus). Le soleil rasant, la Loi Montagne et les scénarios 24 h relèvent du trajet.
   const alertsNow = Object.assign(computeAlerts(m, TCARS(), S, seasons, NOW_HOURS),
     Object.fromEntries(Object.entries(extra).filter(([id]) => NOW_EXTRA.includes(id))));
-  return { m, seq, sum, cars, sum24, alerts, alertsNow };
+  // Alertes dont le niveau dépend du type de pneus (CAR_TYPE_ALERTS) : aussi calculées voiture par voiture, avec le même moteur
+  // (computeAlerts). Constat du 15/11 : « PRUDENCE · 4,0 °C avec pneus été (voiture A) » en tête alors que la voiture B, en hiver, était
+  // choisie. Le verdict d'une voiture ne reprend plus le niveau d'une autre voiture du garage ; l'autre reste signalée à part.
+  const byCar = hours => Object.fromEntries(TCARS().map(c => [c.id, computeAlerts(m, [c], S, seasons, hours)]));
+  return { m, seq, sum, cars, sum24, alerts, alertsNow, alertsByCar: byCar(24), alertsNowByCar: byCar(NOW_HOURS) };
 }
 
 /* ---------- rendu : statut, lieux, bandeaux ---------- */
@@ -1149,9 +1165,13 @@ function renderBanners() {
   }
   // moteur v2 actif : un brouillard / visibilité prouvé par observation s'affiche même quand le modèle reste clair (score pneus inclus)
   if (!h && EV_FLAG() === 'on') { const v = evNow(), w = v && v.r.worst; if (w && w.lv >= 2 && v.r.headline) h += `<div class="banner lv${w.lv}" role="alert" data-k="ev"><h3>⚠ ${esc(v.r.headline.text)}</h3><span style="font-size:13px">Preuve observée (moteur v2) : prudence quels que soient les pneus. Détail dans l’onglet Météo.</span></div>`; }
-  const top = Object.values(alerts).filter(a => S.alerts[a.id] && a.sev >= 2 && a.id !== 'fog' && a.id !== 'vis' && !(UI.view === 'meteo' && TIRE_ALERTS.includes(a.id))).sort((a, b) => b.sev - a.sev).slice(0, 3);
+  // Alertes « voiture » de la voiture affichée seulement (même règle que le verdict) ; une autre voiture plus exposée est nommée.
+  const sc = carScopedAlerts(Object.values(alerts), CX.alertsByCar, appDisplayedCar());
+  const top = sc.alerts.filter(a => S.alerts[a.id] && a.sev >= 2 && a.id !== 'fog' && a.id !== 'vis' && !(UI.view === 'meteo' && TIRE_ALERTS.includes(a.id))).sort((a, b) => b.sev - a.sev).slice(0, 3);
+  const others = sc.others.filter(o => o.sev >= 2);
   const nowHHMM = hs[n] && hs[n].t ? hs[n].t.slice(11, 16) : '';
-  if (top.length) h += '<div class="notes">' + top.map(a => `<div class="note lv${a.sev}"><b>${LV[Math.min(3, a.sev)].name}</b><span>${esc(alertWhen(a.title, nowHHMM))}</span></div>`).join('') + '</div>';
+  if (top.length || others.length) h += '<div class="notes">' + top.map(a => `<div class="note lv${a.sev}"><b>${LV[Math.min(3, a.sev)].name}</b><span>${esc(alertWhen(a.title, nowHHMM))}</span></div>`).join('') +
+    others.map(o => `<div class="note lv${o.sev}" data-other-car><b>${LV[Math.min(3, o.sev)].name}</b><span>${esc(alertWhen(`Si tu prends ${carArt(o.car)} : ${o.title}`, nowHHMM))}</span></div>`).join('') + '</div>';
   el.innerHTML = h;
 }
 
@@ -1200,7 +1220,9 @@ function renderDecisionCore() {
     agendaRequired, agendaAvailable: !!CAL, agendaAgeMin: calAge
   });
   // « Ici, maintenant » : fenêtre de NOW_HOURS h ; le prochain trajet a son propre verdict (ligne Trajet ci-dessous).
-  const alerts = Object.values(CX.alertsNow || CX.alerts || {}).filter(a => S.alerts[a.id] && Number.isFinite(a.sev) && (!car || !TIRE_ALERTS.includes(a.id)));
+  // Alertes « voiture » (t5s, neige) : celles de la voiture évaluée seulement ; une autre voiture plus exposée est nommée à part.
+  const scoped = carScopedAlerts(Object.values(CX.alertsNow || CX.alerts || {}), CX.alertsNowByCar, shownCar);
+  const alerts = scoped.alerts.filter(a => S.alerts[a.id] && Number.isFinite(a.sev) && (!car || !TIRE_ALERTS.includes(a.id)));
   // Cockpit : le phénomène dominant du moteur Météo entre toujours dans la décision (un danger n'est jamais caché derrière
   // un score pneus rassurant, même si sa notification est désactivée dans les réglages).
   const cm = cockpitMatters(alerts);
@@ -1275,8 +1297,9 @@ function renderDecisionCore() {
   const advice = decision.riskLevel >= 1 && car && carEval && carEval.nar && Array.isArray(carEval.nar.advice) ? carEval.nar.advice : [];
   // Fin de la fenêtre « ici, maintenant » : « demain 01:00 » quand elle traverse minuit (jamais une heure sans son jour).
   const endT = CX.m && CX.m.hs[CX.m.nowI + NOW_HOURS] && String(CX.m.hs[CX.m.nowI + NOW_HOURS].t || ''), nowT = CX.m && String(CX.m.nowStr || '');
-  const nowEnd = endT ? (endT.slice(0, 10) !== nowT.slice(0, 10) && nowT ? (dayDiff(nowT.slice(0, 10), endT.slice(0, 10)) === 1 ? 'demain ' : fmtDay(endT.slice(0, 10)) + ' ') : '') + endT.slice(11, 16) : '';
-  const coreHtml = '<div class="decision-top"><div class="decision-main"><span class="decision-k">ICI, MAINTENANT · MÉTÉO ET PNEUS' + (nowEnd ? ' · jusqu’à ' + esc(nowEnd) : '') + '</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p></div>' +
+  const nowEnd = endT ? relHmFr(endT, nowT) : '';   // formateur unique du jour relatif (wxdesk.js, P7)
+  const coreHtml = '<div class="decision-top"><div class="decision-main"><span class="decision-k">ICI, MAINTENANT · MÉTÉO ET PNEUS' + (nowEnd ? ' · jusqu’à ' + esc(nowEnd) : '') + '</span><h2>' + icon + ' ' + esc(decision.label) + '</h2><p>' + esc(decision.reason) + (matters.length ? '' : ' · pas une garantie de sécurité') + '</p>' +
+    (scoped.others.length ? '<p class="decision-other" data-other-car>' + scoped.others.map(o => esc(otherCarText(o))).join('<br>') + '</p>' : '') + '</div>' +
     confidenceHtml + '</div>' +
     // « Ce qui compte » sur le cockpit (Pneus, accueil) ; les autres onglets gardent la carte compacte au-dessus de leur verdict
     (matters.length && UI.view === 'pneus' ? '<ul class="decision-matters" aria-label="Ce qui compte">' + matters.map(x => '<li class="lv' + x.lv + '"><span aria-hidden="true">' + WXD_EMO[x.lv] + '</span><span>' + esc(x.text) + '</span></li>').join('') + '</ul>'
@@ -1305,6 +1328,25 @@ function probBars(w, label) {
   if (!w) return '';
   const row = (k, p) => `<div class="pb lv${pLv(p)}"><span class="k">${k}</span><span class="bar"><i style="width:${Math.round(p * 100)}%"></i></span><b class="num">${pct(p)}</b></div>`;
   return `<div class="probs"><div class="sub">${label} · ${w.n} scénarios</div>${row('Chaussée ≤ 0 °C (est.)', w.pRoad0)}${row('Air ≤ 0 °C', w.pAir0)}${row('Verglas élevé ou plus (est.)', w.pIce)}${row('Air sous 5 °C', w.pT5)}${row('Pluie ≥ 0,5 mm/h', w.pRain)}</div>`;
+}
+// Précipitation OBSERVÉE par la station METAR retenue (m.obs : applyObs, station la plus proche ≤ 35 km). P6, constat du 15/11 :
+// « faible bruine » mesurée à 6 km à 07:00 pendant que l'app affichait « pluie à partir de 14:00 » et « Pluie imminente : RAS ».
+// Représentativité exigée : relevé ≤ 60 min (Reliability.FRESHNESS.agingMaxMin), station ≤ 25 km, phénomène SUR la station (les
+// codes VC, « au voisinage », sont exclus). Toujours écrite comme une mesure DE LA STATION, jamais comme une mesure au lieu consulté.
+// Niveau : pluie verglaçante DANGER ; neige, grésil, grêle ou pluie modérée/forte PRUDENCE ; pluie faible ou bruine VIGILANCE
+// (mêmes paliers que la pluie prévue : F1Pure.rainLevel, pluie verglaçante annoncée en DANGER).
+const OBS_PRECIP_KM = 25;
+function obsPrecip(o, now = Date.now()) {
+  if (!o || !o.wx || !o.t || !(Number.isFinite(o.dist) && o.dist <= OBS_PRECIP_KM)) return null;
+  const age = Reliability.ageMin(o.t, now);
+  if (age == null || age > Reliability.FRESHNESS.agingMaxMin) return null;
+  const toks = String(o.wx).split(/\s+/).filter(t => t && !/^VC/.test(t) && /(DZ|RA|SN|SG|PL|GR|GS|UP)/.test(t));
+  if (!toks.length) return null;
+  const fz = toks.some(t => /FZ/.test(t)), solid = toks.some(t => /(SN|SG|PL|GR|GS)/.test(t)), rain = toks.some(t => /RA/.test(t) && t[0] !== '-');
+  const at = new Date(o.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }), km = f0(o.dist);
+  const what = wxFr(toks.join(' '));
+  return { sev: fz ? 3 : solid || rain ? 2 : 1, what, name: o.name || o.id || 'station', id: o.id || '', km, at, ageMin: age,
+    text: `Observation à la station ${o.name || o.id} (${km} km, ${at}) : ${what}` };
 }
 function obsBlock(m) {
   const o = m.obs; if (!o) return '';
@@ -1370,6 +1412,28 @@ function renderCurrent() {
 // Alertes propres aux pneus d'une voiture (et la planification du montage hiver) : jamais dans le verdict « ici, maintenant »
 // d'une autre voiture que celle affichée, ni en tête de l'onglet Météo.
 const TIRE_ALERTS = ['press', 'age', 'mont', 'tread', 'treadgap', 'pre'];
+// Alertes dont le niveau dépend du type de pneus des voitures évaluées (computeAlerts : < 5 °C avec pneus été, neige).
+const CAR_TYPE_ALERTS = ['t5s', 'snow'];
+const carArt = c => { const n = String(c.short || c.name || c.id); return (/^[aeiouyhéèê]/i.test(n) ? 'l’' : 'la ') + n; };
+// Alertes d'une voiture évaluée : pour CAR_TYPE_ALERTS, celles de SA monte (computeAlerts sur cette seule voiture, même moteur) ;
+// une autre voiture du garage plus exposée est rendue à part (« Si tu prends la voiture A : PRUDENCE »), jamais dans le verdict
+// de la voiture évaluée. Sans voiture évaluée (ou sans pneus renseignés) : alertes de tout le garage, inchangées.
+function carScopedAlerts(fleet, byCar, car) {
+  const own = car && hasTires(car) && byCar && byCar[car.id];
+  if (!own) return { alerts: fleet, others: [] };
+  const alerts = [...fleet.filter(a => !CAR_TYPE_ALERTS.includes(a.id)), ...Object.values(own).filter(a => CAR_TYPE_ALERTS.includes(a.id))];
+  const others = [];
+  for (const c of TCARS()) {
+    if (c.id === car.id || !byCar[c.id]) continue;
+    for (const id of CAR_TYPE_ALERTS) {
+      const a = byCar[c.id][id], mine = own[id];
+      if (a && S.alerts[id] && Number.isFinite(a.sev) && a.sev > (mine ? mine.sev : 0))
+        others.push({ car: c, id, sev: a.sev, title: String(a.title).replace(' (' + c.short + ')', '') });
+    }
+  }
+  return { alerts, others };
+}
+const otherCarText = o => `Si tu prends ${carArt(o.car)} : ${LV[Math.min(3, o.sev)].name} · ${o.title}`;
 const NOW_HOURS = 3, NOW_EXTRA = ['press', 'age', 'vigi', 'rain15'];
 const curLoc = () => allLocs().find(x => x.id === UI.loc) || allLocs()[0];
 const scrollBehavior = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
@@ -2212,7 +2276,13 @@ function tripRisk(t) {
   // Pluie et neige (A5, mission du 14/11) : mêmes seuils et même fenêtre que « État de la route » (F1Pure.rainLevel, seuils du
   // poste Météo) ; constat : état de la route en VIGILANCE (pluie prévue) et risque global « RAS · aucune cause identifiée ».
   { const rl = typeof F1Pure !== 'undefined' && F1Pure.rainLevel ? F1Pure.rainLevel(s.Pmax) : 0;
-    if (rl >= 1) c.push({ k: 'rain', lv: rl, why: `pluie ${f1(s.Pmax)} mm/h${at(s.iPmax)}` }); }
+    if (rl >= 1) c.push({ k: 'rain', lv: rl, why: `pluie ${f1(s.Pmax)} mm/h${at(s.iPmax)}` });
+    // Modèles en désaccord (P5, 15/11) : même fenêtre (t.seq, celle de t.sum), même point et même heure ; VIGILANCE nommée,
+    // valeurs et modèles cités. Jamais le modèle le plus rassurant retenu en silence.
+    else if (Array.isArray(t.seq) && typeof F1Pure !== 'undefined' && F1Pure.rainDisagree) {
+      const q = t.seq.find(q => q && q.hs && F1Pure.rainDisagree(q.hs[q.i]));
+      if (q) { const x = q.hs[q.i]; c.push({ k: 'rain', lv: 1, why: `pluie : modèles en désaccord (base ${f1(x.Pb)} mm/h, AROME ${f1(x.Pl != null ? x.Pl : x.P)} mm/h)${at(q)}` }); }
+    } }
   if ((s.snowSum || 0) > 0 || s.snowCode) c.push({ k: 'snow', lv: 2, why: `neige prévue${at(s.iSnow)}` });
   // Gel, y compris l'incertitude en VIGILANCE sans humidité : le risque global n'est jamais vert.
   if (fb && fb.lv >= 1) c.push({ k: 'frost', lv: fb.lv, why: `chaussée ${f1(s.TrMin)} °C${at(s.iTrMin)} (${fb.t.toLowerCase()})` });
@@ -3549,20 +3619,42 @@ function trendOf(key, dep, snap) {
   Object.keys(T).forEach(k => { if (T[k].dep < addMin(now, -1440)) delete T[k]; });
   if (!T[key]) { T[key] = { dep, at: now, ...snap }; lsSet('twrc.trend', JSON.stringify(T)); return { first: true, at: now }; }
   const r = T[key], at = r.at.slice(11, 16) + (r.at.slice(0, 10) !== now.slice(0, 10) ? ' (veille)' : ''), ch = [];
-  if (r.lv != null && snap.lv != null && snap.lv !== r.lv) ch.push({ w: snap.lv > r.lv ? 1 : -1, t: `${LV[r.lv].name} → ${LV[snap.lv].name}` });
-  if (r.pp != null && snap.pp != null && Math.abs(snap.pp - r.pp) >= 20) ch.push({ w: snap.pp > r.pp ? 1 : -1, t: `pluie ${snap.pp > r.pp ? '+' : '−'}${Math.round(Math.abs(snap.pp - r.pp))} pts` });
+  // Fenêtres comparables seulement (P4, 15/11) : un horaire de départ modifié n'est pas comparé à l'ancien (aucune réécriture).
+  if (r.dep && dep && r.dep !== dep) return { at, ch: [], incomparable: true, g: snap.g, gi: snap.gi };
+  // Risque GLOBAL (tripRisk : pluie, gel, brouillard, neige, pneus) quand les deux relevés le portent ; un relevé antérieur
+  // (sans `g`) n'est jamais réinterprété. L'indice pneus est comparé à part et nommé comme tel : constat du 15/11, « s’améliore :
+  // DANGER → RAS » (indice pneus) dans une carte en VIGILANCE (pluie). INDÉTERMINÉ (gi) n'est jamais lu comme RAS.
+  const gName = (g, gi) => gi ? 'INDÉTERMINÉ' : LV[g].name, gRank = (g, gi) => gi ? 0.5 : g;
+  if (Number.isInteger(r.g) && Number.isInteger(snap.g) && (r.g !== snap.g || !!r.gi !== !!snap.gi))
+    ch.push({ w: snap.gi || gRank(snap.g, snap.gi) > gRank(r.g, r.gi) ? 1 : -1, t: `risque global ${gName(r.g, r.gi)} → ${gName(snap.g, snap.gi)}`, global: true });
+  if (r.lv != null && snap.lv != null && snap.lv !== r.lv) ch.push({ w: snap.lv > r.lv ? 1 : -1, t: `indice pneus ${LV[r.lv].name} → ${LV[snap.lv].name}`, tyre: true });
+  if (r.pp != null && snap.pp != null && Math.abs(snap.pp - r.pp) >= 20) ch.push({ w: snap.pp > r.pp ? 1 : -1, t: `probabilité de pluie ${snap.pp > r.pp ? '+' : '−'}${Math.round(Math.abs(snap.pp - r.pp))} pts` });
   if (r.vis != null && snap.vis != null && r.vis < 20000 && snap.vis <= r.vis / 2) ch.push({ w: 1, t: 'visibilité divisée par ' + Math.max(2, Math.round(r.vis / Math.max(snap.vis, 1))) });
   else if (r.vis != null && snap.vis != null && snap.vis < 20000 && snap.vis >= r.vis * 2) ch.push({ w: -1, t: 'visibilité en hausse' });
   if (r.tr != null && snap.tr != null && Math.abs(snap.tr - r.tr) >= 2) ch.push({ w: snap.tr < r.tr ? 1 : -1, t: `chaussée ${snap.tr < r.tr ? '−' : '+'}${f1(Math.abs(snap.tr - r.tr))} °C` });
-  return { at, ch, worse: ch.some(c => c.w > 0), better: ch.length && ch.every(c => c.w < 0) };
+  return { at, ch, worse: ch.some(c => c.w > 0), better: ch.length && ch.every(c => c.w < 0), g: snap.g, gi: snap.gi,
+    globalTracked: Number.isInteger(r.g) && Number.isInteger(snap.g) };
 }
 function trendHtml(tr) {
   if (!tr) return '';
   if (tr.first) return `<span class="trend">📈 suivi démarré à ${tr.at.slice(11, 16)}</span>`;
+  if (tr.incomparable) return `<span class="trend">→ horaire modifié depuis ${tr.at} : pas de comparaison avec l’ancien départ</span>`;
   if (!tr.ch.length) return `<span class="trend ok">→ conditions stables depuis ${tr.at}</span>`;
-  return `<span class="trend ${tr.worse ? 'bad' : 'good'}">${tr.worse ? '↘ se dégrade' : '↗ s’améliore'} depuis ${tr.at} : ${tr.ch.map(c => esc(c.t)).join(' · ')}</span>`;
+  // Le sens annoncé ne vaut que pour ce qui est listé : sans changement du risque global, celui-ci est rappelé tel qu'il est
+  // (« risque global inchangé : VIGILANCE », ou « actuel » quand l'ancien relevé ne le portait pas).
+  const hasGlobal = tr.ch.some(c => c.global), onlyTyre = tr.ch.every(c => c.tyre);
+  const gNow = Number.isInteger(tr.g) ? (tr.gi ? 'INDÉTERMINÉ' : LV[tr.g].name) : null;
+  const tail = !hasGlobal && gNow ? ` · risque global ${tr.globalTracked ? 'inchangé' : 'actuel'} : ${gNow}` : '';
+  // Sens global (« se dégrade » / « s’améliore ») seulement quand le risque GLOBAL a changé ; sinon les indicateurs listés sont
+  // dits plus ou moins favorables, l'indice pneus seul étant nommé comme tel.
+  const dir = hasGlobal ? (tr.worse ? '↘ se dégrade' : '↗ s’améliore') : onlyTyre ? (tr.worse ? '↘ indice pneus : se dégrade' : '↗ indice pneus : s’améliore')
+    : (tr.worse ? '↘ indicateurs moins favorables' : '↗ indicateurs plus favorables');
+  return `<span class="trend ${tr.worse ? 'bad' : 'good'}">${dir} depuis ${tr.at} : ${tr.ch.map(c => esc(c.t)).join(' · ')}${esc(tail)}</span>`;
 }
-const snapOf = (res, sum, seq) => ({ lv: res.reduce((m, r) => Math.max(m, r.w.level), 0), pp: Math.max(0, ...seq.map(q => q.hs[q.i].pp || 0)), vis: sum.visMin, tr: sum.TrMin });
+// Relevé de tendance d'un trajet : indice pneus (lv), probabilité de pluie max (pp), visibilité et chaussée minimales, et
+// (P4, 15/11) risque global de la MÊME fenêtre (g, gi = INDÉTERMINÉ), calculé par tripRisk comme la pastille du trajet.
+const snapOf = (res, sum, seq) => { const lv = res.reduce((m, r) => Math.max(m, r.w.level), 0), gr = res.length ? tripRisk({ res, sum, seq, worst: lv }) : null;
+  return { lv, pp: Math.max(0, ...seq.map(q => q.hs[q.i].pp || 0)), vis: sum.visMin, tr: sum.TrMin, ...(gr ? { g: gr.lv, gi: !!gr.indet } : {}) }; };
 // briefing de la journée : trajets agenda + trajet domicile/travail, prochain départ, trajet critique
 function dayBriefHtml(td, tdLv) {
   dayBriefHtml.day = dayBriefHtml.first = dayBriefHtml.next = null; dayBriefHtml.lv = 0;
@@ -3911,7 +4003,7 @@ function renderBrief() {
   // Risque global de la MÊME fenêtre que les autres surfaces (mêmes voitures du trajet, tripRisk) ; l'indice pneus de la voiture
   // affichée reste présenté à part et nommé comme tel.
   const gRes = appTripCars().map(c => ({ c, w: windowAssess(c, td.seq, 'trip') })).filter(r => r.w);
-  const gRisk = gRes.length ? tripRisk({ res: gRes, sum: sm, worst: gRes.reduce((m, r) => Math.max(m, r.w.level), 0) }) : null;
+  const gRisk = gRes.length ? tripRisk({ res: gRes, sum: sm, seq: td.seq, worst: gRes.reduce((m, r) => Math.max(m, r.w.level), 0) }) : null;
   const xD = td.A.hs[td.iDep], xA = td.B.hs[td.iArr];
   const cD = xD ? colStats([{ hs: td.A.hs, i: td.iDep }]) : null, cA = xA ? colStats([{ hs: td.B.hs, i: td.iArr }]) : null, cT = colStats(td.seq);
   const yn = (v, t) => v ? `<b style="color:var(--risk-t)">${t || 'oui'}</b>` : 'non';
@@ -4110,7 +4202,7 @@ function renderDays() {
       ${UI.view === 'meteo' ? `<div class="pips dm">${d.pmax != null ? '☂ ' + f0(d.pmax) + ' %' : ''}${d.uv != null ? '<br>UV ' + f0(d.uv) : ''}</div>` : `<div class="pips">${pips}</div>`}</div>`;
   }).join('');
   el.innerHTML = `<div class="mod-h"><h2>📆 Prévisions 7 jours</h2><span class="src obs">prévision météo</span></div>
-   <div class="sub">Barre = min → max. Repères : 0 °C (bleu) et 7 °C (jaune). ${UI.view === 'meteo' ? 'À droite : probabilité de pluie maximale et indice UV maximal du jour.' : `Carrés = verdict pneus du jour (${CX.cars.filter(c => hasTires(c.car)).map(c => esc(c.car.short)).join(', ')}).`}</div><div class="days">${rows}</div>`;
+   <div class="sub">Barre = min → max de la journée entière (00 h–24 h, nuit passée comprise). Repères : 0 °C (bleu) et 7 °C (jaune). ${UI.view === 'meteo' ? 'À droite : probabilité de pluie maximale et indice UV maximal du jour.' : `Carrés = verdict pneus du jour (${CX.cars.filter(c => hasTires(c.car)).map(c => esc(c.car.short)).join(', ')}).`}</div><div class="days">${rows}</div>`;
 }
 function dayInfosOne(m, car, date) {
   const idx = []; m.hs.forEach((x, i) => { if (x.date === date) idx.push({ hs: m.hs, i }); });
@@ -4133,7 +4225,7 @@ function renderSeason() {
     const di = s.days.slice(0, 14);
     const cells = days => days.map(d => { const dt = new Date(d.date + 'T12:00:00Z'), label = gen ? 'Aperçu générique' : d.level == null ? 'Données insuffisantes' : LV[d.level].name;
       return `<div class="cell lv${gen || d.level == null ? 'x' : d.level}" role="img" aria-label="${fmtDay(d.date)} · minimum ${f0(d.tmin)} degrés, maximum ${f0(d.tmax)} degrés · ${label}" title="${fmtDay(d.date)} · ${label}"><b>${DAYN[dt.getUTCDay()]}${pad(dt.getUTCDate())}</b><span class="lo">${f0(d.tmin)}°</span>/<span class="hi">${f0(d.tmax)}°</span></div>`; }).join('');
-    const cal = `<div class="season-week"><div class="sub">Jours 1 à 7 · prévisions min / max</div><div class="cal">${cells(di.slice(0, 7))}</div></div>${di.length > 7 ? `<div class="season-week trend"><div class="sub">Jours 8 à 14 · tendance plus incertaine</div><div class="cal">${cells(di.slice(7))}</div></div>` : ''}`;
+    const cal = `<div class="season-week"><div class="sub">Jours 1 à 7 · prévisions min / max de la journée entière (00 h–24 h, nuit passée comprise ; modèle, sans recalage station)</div><div class="cal">${cells(di.slice(0, 7))}</div></div>${di.length > 7 ? `<div class="season-week trend"><div class="sub">Jours 8 à 14 · tendance plus incertaine</div><div class="cal">${cells(di.slice(7))}</div></div>` : ''}`;
     let cd = '';
     if (car.plan && car.plan.on && car.tire.type !== 'winter') {
       const plan = car.plan, n = s.countdown && s.countdown.n;
