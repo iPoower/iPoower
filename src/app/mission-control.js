@@ -21,7 +21,7 @@ const MissionControl = (() => {
     let vigilance = null, vigilanceSource = null;
     // Risque global du trajet (même synthèse que le briefing et la synthèse) : un danger établi n'est jamais remplacé ici par
     // une vigilance moindre ni par « aucun phénomène ».
-    const global = usable && risk && Number.isInteger(risk.lv) ? { lv: risk.lv, why: str(risk.why), indet: !!risk.indet } : null;
+    const global = usable && risk && Number.isInteger(risk.lv) ? { lv: risk.lv, why: str(risk.why), indet: !!risk.indet, tyreGeneric: !!risk.tyreGeneric } : null;
     if (global && global.lv >= 1 && global.why) { vigilance = global.why.charAt(0).toUpperCase() + global.why.slice(1); vigilanceSource = 'Risque global du trajet · même synthèse que le briefing'; }
     else if (usable && scene && scene.complete && !scene.demo && comparison && comparison.level != null && comparison.reasons && comparison.reasons.length) {
       vigilance = str(comparison.reasons[0]); vigilanceSource = 'Moteur du trajet · prévisions et monte documentées';
@@ -107,7 +107,7 @@ function missionControlHtml(m, navigationHtml = '') {
   return MISSION_STYLE + '<article id="missionControl" class="mission-control" aria-label="Prochaine mission · briefing avant départ">' +
     '<div class="mission-head"><h3>🏁 PROCHAINE MISSION</h3><span class="src est">' + esc(title) + '</span></div>' +
     '<div class="mission-car" data-mission-car>' + esc(m.vehicle ? m.vehicle + (m.carConfirmed === false ? ' · affichée, non confirmée pour le trajet' : '') : 'Voiture du trajet à choisir') + '</div>' + desc +
-    (m.risk ? '<p class="mission-global lv' + (m.risk.indet ? 'x' : m.risk.lv) + '" data-global-risk="' + (m.risk.indet ? 'indetermine' : m.risk.lv) + '" role="status"><b>' + (m.risk.indet ? '⚪' : ['🟢', '🟡', '🟠', '🔴'][m.risk.lv]) + ' RISQUE GLOBAL DU TRAJET : ' + (m.risk.indet ? 'INDÉTERMINÉ' : ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'][m.risk.lv]) + '</b>' + (m.risk.why ? ' · ' + esc(m.risk.why) : '') + '</p>' : '') +
+    (m.risk ? '<p class="mission-global lv' + (m.risk.indet ? 'x' : m.risk.lv) + '" data-global-risk="' + (m.risk.indet ? 'indetermine' : m.risk.lv) + '" role="status"><b>' + (m.risk.indet ? '⚪' : ['🟢', '🟡', '🟠', '🔴'][m.risk.lv]) + ' RISQUE GLOBAL DU TRAJET' + (m.risk.tyreGeneric ? ' (APERÇU GÉNÉRIQUE)' : '') + ' : ' + (m.risk.indet ? 'INDÉTERMINÉ' : ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'][m.risk.lv]) + '</b>' + (m.risk.why ? ' · ' + esc(m.risk.why) : '') + '</p>' : '') +
     '<div class="mission-grid"><div><small>MÉTÉO AU DÉPART · PRÉVISION</small>' + missionPointHtml(m.weather.departure) + '</div>' +
     '<div><small>MÉTÉO À L’ARRIVÉE · PRÉVISION</small>' + missionPointHtml(m.weather.arrival) + '</div>' +
     '<div><small>PNEUS RÉELLEMENT DÉCLARÉS</small><b data-mission-tyres>' + esc(tyre) + '</b><span>' + esc(wear) + '</span></div>' +

@@ -115,11 +115,23 @@ document.addEventListener('submit', async event => {
       await econPersist(car, { ...econ, ref }, ['ref'], 'Références enregistrées');
     } else {
       const category = String(data.get('category') || ''), fuel = category === 'fuel';
-      const next = GarageEconomics.addEntry(econ, { date: GarageEconomics.parseDay(data.get('date')), category, amountCents: GarageEconomics.parseMoney(data.get('amount')),
-        km: GarageEconomics.parseKm(data.get('km')), note: String(data.get('note') || ''),
+      const day = GarageEconomics.parseDay(data.get('date')), km = GarageEconomics.parseKm(data.get('km'));
+      // Même chronologie que la boîte de dépôt et les relevés : le compteur d'un ticket ne contredit aucun kilométrage daté de la fiche.
+      const clash = km != null && day ? RcInbox.kmConflict(car, day, km) : null;
+      if (clash) throw new Error('Ce compteur ne suit pas la chronologie : il contredit ' + clash.label + ' du ' + garageDate(clash.d) + ' (' + Number(clash.km).toLocaleString('fr-FR') + ' km). Corrige la valeur fausse ou laisse le compteur vide.');
+      const next = GarageEconomics.addEntry(econ, { date: day, category, amountCents: GarageEconomics.parseMoney(data.get('amount')),
+        km, note: String(data.get('note') || ''),
         volumeMl: fuel ? GarageEconomics.parseLitres(data.get('litres')) : null, fuelType: fuel ? String(data.get('fuelType') || 'unknown') : null,
         fullTank: fuel && data.get('fullTank') === 'yes' }, econNewId());
       await econPersist(car, next, ['entries'], 'Dépense ajoutée');
+      // Le compteur lu sur le ticket est un relevé réel : il rejoint les relevés de la voiture (sauf relevé déjà saisi ce jour-là).
+      const ix = S.cars.indexOf(car);
+      if (km != null && day && ix >= 0 && !(car.odo || []).some(o => o && o.d === day)) {
+        car.odo = [...(car.odo || []), { d: day, km }].sort((a, b) => String(a.d).localeCompare(String(b.d))); markEdit('cars.' + ix + '.odo'); saveSettings();
+        const vs = window.TWRC_VAULT; if (vs && vs.mode === 'vault') await vs.flush();
+        ECON_STATUS[car.id] = 'Dépense ajoutée · compteur ' + Number(km).toLocaleString('fr-FR') + ' km ajouté aux relevés · enregistré dans le coffre.';
+        renderGarage.last = null; renderGarage(); softRender();
+      }
     }
   } catch (e) { econStatus(form, car, e.message || 'Enregistrement non confirmé.'); }
 });

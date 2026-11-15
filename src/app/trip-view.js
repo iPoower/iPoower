@@ -107,7 +107,7 @@ function tripRouteState() {
   const n = appDay().nextDestination, t = n && APP_CONTEXT.trips.find(x => x.key === n.tripKey);
   if (!n || n.source !== 'manual') return null;
   const l = t && (t.l || t.planL), offline = offlineNow();
-  return { n, t, l, offline, ready: !!(l && !l.originPending && Number.isFinite(l.km) && Number.isFinite(l.min)) };
+  return { n, t, l, offline, error: !offline && !!(l && l.routeError), ready: !!(l && !l.originPending && Number.isFinite(l.km) && Number.isFinite(l.min)) };
 }
 // Contrôles informatifs : aucune décision d'aptitude à conduire et aucune mutation.
 function tripPreflightHtml(route, car, origin, dest, departure) {
@@ -161,6 +161,7 @@ function renderTripView() {
   const carOptions = `<option value="" ${TRIP_FORM.carId ? '' : 'selected'}>— Voiture du trajet à choisir —</option>` + S.cars.map(c => `<option value="${esc(c.id)}" ${TRIP_FORM.carId === c.id ? 'selected' : ''}>${esc(c.name || c.short || c.id)}</option>`).join('');
   const route = tripRouteState(), routeLine = route ? route.ready
     ? `<div class="trip-route-state ${route.offline ? 'old' : ''}"><b>${route.offline ? 'Hors connexion · dernière route connue' : 'Itinéraire prêt'}</b><span>${f1(route.l.km)} km · ~${Math.round(route.l.min)} min${route.t && route.t.wait ? ' · météo de route en attente' : ''}</span></div>`
+    : route.error ? `<div class="trip-route-state old" role="status"><b>Itinéraire indisponible</b><span>Le service de calcul d’itinéraire n’a pas répondu : distance, durée et météo du parcours ne sont pas connues. Départ, destination, véhicule et horaire sont conservés ; nouvel essai automatique chaque minute.</span><button class="btn sm" data-act="trip-route-retry">Réessayer maintenant</button></div>`
     : `<div class="trip-route-state old"><b>${route.offline ? 'Hors connexion' : 'Calcul en cours'}</b><span>${route.offline ? 'Départ, destination, véhicule et horaire sont conservés. La route sera recalculée au retour du réseau.' : 'OSRM et la météo de route se préparent.'}</span></div>` : '';
   const selectedDest = dest ? `<div class="trip-selected"><b>✓ ${esc(dest.name)}</b><span>${esc(dest.address || dest.sub || '')}</span>${dest.provider ? `<small>${esc(dest.provider)}${dest.precision ? ' · ' + esc(dest.precision) : ''}</small>` : ''}</div>` : '';
   const dep = tripDepartureValue(), immediate = TRIP_FORM.when === 'now';
@@ -223,7 +224,7 @@ function renderTripSummary() {
   const t = n ? APP_CONTEXT.trips.find(x => x.key === n.tripKey) : UI.view === 'trajet' && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip);
   if (!['pneus', 'trajet'].includes(UI.view) || (!n && !t) || n && n.source === 'pending') { el.hidden = true; el.innerHTML = ''; return; }
   const shared = tripSharedOrigin(), from = shared.pending ? null : shared.point, to = n && (n.destinationPoint || locById(n.placeId)) || t && appTripPlace(t, 'to');
-  const car = appActiveCar(), l = t && (t.l || t.planL), route = l && !l.originPending && Number.isFinite(l.km) ? `${f1(l.km)} km · ~${Math.round(l.min)} min` : offlineNow() ? 'route à recalculer au retour du réseau' : 'route en préparation';
+  const car = appActiveCar(), l = t && (t.l || t.planL), route = l && !l.originPending && Number.isFinite(l.km) ? `${f1(l.km)} km · ~${Math.round(l.min)} min` : offlineNow() ? 'route à recalculer au retour du réseau' : l && l.routeError ? 'itinéraire indisponible pour le moment' : 'route en préparation';
   const address = to && (to.address || to.sub) || '';
   el.hidden = false;
   el.innerHTML = `<div class="trip-summary-head"><span class="trip-label">🧭 ${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(n && n.dep || t && t.dep || '') || '—')}</b></div>

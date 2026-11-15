@@ -22,7 +22,7 @@ Rien n'est enregistré sans un clic sur « Valider ». Aucun code de déverrouil
 ```
 
 - `format`, `source` et `entries` obligatoires ; `createdAt` facultatif. **Tout autre champ fait refuser le bloc.**
-- 1 à 50 saisies, 32 Ko au plus. Le bloc peut être entouré de ```` ```json ```` (copié tel quel depuis la conversation).
+- 1 à 50 saisies, 32 Ko au plus. Le bloc peut être entouré de ```` ```json ```` et de phrases (message copié en entier) : seul le bloc est lu, toujours strictement. Un seul bloc par collage.
 
 ## Saisie
 
@@ -40,11 +40,11 @@ Rien n'est enregistré sans un clic sur « Valider ». Aucun code de déverrouil
 
 | Type | Champs (`*` obligatoire) | Effet après « Valider » |
 |---|---|---|
-| `fuel` | `amountCents`* (entier, 6050 = 60,50 €), `litres` (≤ 3 décimales), `km`, `fullTank` (vrai : litres et km requis), `fuelType` (`diesel`, `diesel-premium`, `sp98`, `sp95-e5`, `sp95-e10`, `e85`, `other`, `unknown`) | ligne du budget « Coût & rentabilité » |
-| `odometer` | `km`* | relevé du compteur (refusé s'il contredit la chronologie ou un autre relevé du même jour) |
-| `pressure` | `av` et/ou `ar` (bar, 0,8 à 5), `T` (°C) | contrôle des pressions mesurées (refusé si un contrôle plus récent existe ou s'il précède le montage actuel) |
-| `tread` | `mm`* (0 à 12, 1 décimale), `ax`* (`av`, `ar`, `both`) | relevé de profondeur (un relevé ancien entre dans l'historique sans remplacer la valeur actuelle) |
-| `tireMount` | `type`* (`summer`, `winter`, `allseason`), `brand`, `model`, `size`, `dot` (4 chiffres), `km` | pneus montés à cette date ; l'ancien jeu est rangé avec ses mesures |
+| `fuel` | `amountCents`* (entier, 6050 = 60,50 €), `litres` (≤ 3 décimales), `km`, `fullTank` (vrai : litres et km requis), `fuelType` (`diesel`, `diesel-premium`, `sp98`, `sp95-e5`, `sp95-e10`, `e85`, `other`, `unknown`) | ligne du budget « Coût & rentabilité » ; le `km` du ticket rejoint aussi les relevés du compteur (sauf relevé déjà saisi ce jour-là) et doit suivre la chronologie |
+| `odometer` | `km`* | relevé du compteur (refusé s'il contredit un kilométrage daté de la fiche : relevé, plein, révision, montage ; ou un autre relevé du même jour) |
+| `pressure` | `av` et/ou `ar` (bar, 0,8 à 5), `T` (°C) | contrôle des pressions mesurées (refusé si un contrôle plus récent existe, s'il précède le montage actuel ou si la voiture n'a pas de pneus montés). Un essieu non mesuré ce jour-là reste « non mesuré » : la valeur d'un autre jour n'est jamais redatée |
+| `tread` | `mm`* (0 à 12, 1 décimale), `ax`* (`av`, `ar`, `both`) | relevé de profondeur (un relevé ancien entre dans l'historique sans remplacer la valeur actuelle ; refusé si la voiture n'a pas de pneus montés) |
+| `tireMount` | `type`* (`summer`, `winter`, `allseason`), `brand`, `model`, `size`, `dot` (4 chiffres), `km` | pneus montés à cette date ; l'ancien jeu d'un autre type est rangé avec ses mesures. Refusé s'il est plus ancien que le montage enregistré. Pneus remplacés (même type, ou autre marque / modèle / DOT) : les profondeurs et pressions mesurées avant le montage ne sont plus attribuées aux pneus montés (relevés conservés dans l'historique), et l'identité non fournie n'est pas héritée de l'ancien pneu |
 | `maintenance` | `kind`* (`revision`, `ct`), `km`, `amountCents` | dernière révision ou dernier contrôle technique ; dépense ajoutée au budget si un montant est donné |
 
 ## Exemple (données fictives)
@@ -63,5 +63,6 @@ Rien n'est enregistré sans un clic sur « Valider ». Aucun code de déverrouil
 - Une saisie invalide est affichée avec la raison et n'empêche pas les autres.
 - Chaque saisie montre « avant → après » ; seule la voiture désignée change, par les mêmes chemins qu'une saisie à la main (coffre chiffré, synchronisation PC ↔ iPhone).
 - Le journal des trajets n'est jamais lu ni modifié.
+- Une seule chronologie pour tous les kilométrages datés (relevés, pleins et dépenses du budget, révision, montage) : la boîte de dépôt, le budget saisi à la main et le compteur des Paramètres appliquent la même règle, et le refus nomme le relevé contredit.
 - Recoller un bloc : les saisies déjà enregistrées sont reconnues et ignorées.
 - La liste en attente vit en mémoire seulement : fermer l'app la vide, sans rien enregistrer.

@@ -368,7 +368,7 @@ function wxDesk(input) {
     trip = { id: tt.id || null, label: tt.label || 'trajet', from: tt.from || null, to: tt.to || null, dep: hm(tt.dep), arr: hm(tt.arr || tt.dep), day: tt.dep.slice(0, 10), durMin: Math.max(0, Math.round(tt.arrM - tt.depM)),
       running: typeof tt.running === 'boolean' ? tt.running : tt.depM <= nowM, km: finite(tt.km) ? tt.km : null, waiting: !P.length,
       points: P.length ? [pt(P[0], 'Départ'), mid && mid !== P[0] && mid !== P[P.length - 1] ? pt(mid, 'Mi-parcours') : null, P.length > 1 ? pt(P[P.length - 1], 'Arrivée') : null].filter(Boolean) : [],
-      crit, lv: P.length ? P.reduce((a, p) => Math.max(a, p.lv), tt.glare ? 1 : 0) : null, later, pending: !!tt.pending };
+      crit, lv: P.length ? P.reduce((a, p) => Math.max(a, p.lv), tt.glare ? 1 : 0) : null, later, pending: !!tt.pending, routeError: !!tt.routeError };
     if (tt.pending) Object.assign(trip, { dep: null, arr: null, durMin: null, km: null, waiting: true });
   }
 
