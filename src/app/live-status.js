@@ -32,7 +32,7 @@ function renderLiveStatus() {
   // Conserver les nœuds (et le bouton focalisé) lors des changements d'âge ou de statut.
   if (!root.querySelector('#liveClock')) root.innerHTML = `<span id="weatherBadge" class="badge"><i aria-hidden="true"></i><span id="weatherState" role="status" aria-live="polite"></span></span>
     <div class="upd"><div class="status-main"><span class="live-clock-wrap" title="Horloge de cet appareil · Europe/Paris"><span aria-hidden="true">🕒</span> <span class="sr-only">Heure de l’appareil, Europe/Paris : </span><time id="liveClock" aria-live="off"></time></span><span id="weatherReceived" class="weather-received"></span></div><p id="weatherFreshness" class="status-detail" aria-live="off"></p></div>
-    <button class="btn pri sm status-refresh" data-act="refresh" aria-label="Actualiser maintenant"><span class="refresh-icon" aria-hidden="true">⟳</span><span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
+    <button class="btn pri sm status-refresh" data-act="refresh" aria-label="Actualiser maintenant" aria-keyshortcuts="R" title="Raccourci clavier : R"><span class="refresh-icon" aria-hidden="true">⟳</span><span class="lg">Actualiser maintenant</span><span class="sh">Actualiser</span></button>`;
   // Hauteur réelle du bandeau collant : les liens « aller à » s'arrêtent juste dessous, titre jamais masqué.
   if (!root.dataset.h && window.ResizeObserver) {
     root.dataset.h = '1';

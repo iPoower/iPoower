@@ -30,6 +30,104 @@ function garageMaintHtml(m, c) {
   return '<div class="garage-checks garage-maint" data-garage-maint="' + esc(c.id) + '"><h4>🔧 Entretien</h4><ul>' + revision + control + counter + '</ul>' +
     '<button type="button" class="btn sm garage-maint-edit" data-act="garage-quick" data-car="' + esc(c.id) + '" data-garage-target="maintenance">Renseigner l’entretien</button></div>';
 }
+// Évolution du kilométrage (relevés réels de la fiche) et objectif choisi par voiture : kilométrage cible ou « à vie ».
+const ODO_GOAL_STATUS = {};
+function garageMonth(d) { return /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? esc(d.slice(5, 7) + '/' + d.slice(0, 4)) : '—'; }
+function garageOdoChart(tr) {
+  const pts = tr.readings, t = tr.target;
+  if (pts.length < 2 || tr.nonMonotonic) return '';
+  // Projection vers l'objectif tracée seulement si sa date est calculée et proche (≤ 30 ans) : sinon l'historique serait écrasé.
+  const proj = t && t.eta && !t.reached && t.daysLeft != null && t.daysLeft <= 30 * 365 ? { d: t.eta, km: t.km } : null;
+  const day = d => Date.parse(d + 'T00:00:00Z') / 864e5, x0 = day(pts[0].d), x1 = day((proj || pts[pts.length - 1]).d);
+  const y0 = pts[0].km, y1 = Math.max(pts[pts.length - 1].km, proj ? proj.km : 0), W = 300, H = 90;
+  const X = d => ((day(d) - x0) / Math.max(1, x1 - x0) * W).toFixed(1), Y = km => (H - (km - y0) / Math.max(1, y1 - y0) * H).toFixed(1);
+  const step = Math.max(1, Math.ceil(pts.length / 200)), shown = pts.filter((p, i) => i % step === 0 || i === pts.length - 1);
+  const line = shown.map((p, i) => (i ? 'L' : 'M') + X(p.d) + ' ' + Y(p.km)).join(' '), last = pts[pts.length - 1];
+  const label = 'Compteur de ' + garageKm(y0) + ' (' + garageMonth(pts[0].d) + ') à ' + garageKm(last.km) + ' (' + garageMonth(last.d) + ')' +
+    (proj ? ', projection jusqu’à ' + garageKm(proj.km) + ' vers ' + garageMonth(proj.d) : '');
+  return '<figure class="odo-chart"><svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="' + esc(label) + '">' +
+    (proj ? '<line class="odo-goal-line" x1="0" x2="' + W + '" y1="0" y2="0"/><path class="odo-proj" d="M' + X(last.d) + ' ' + Y(last.km) + ' L' + X(proj.d) + ' ' + Y(proj.km) + '"/>' : '') +
+    '<path class="odo-line" d="' + line + '"/></svg>' +
+    '<figcaption><span>' + garageMonth(pts[0].d) + ' · ' + garageKm(y0) + '</span><span>' + (proj ? '🏁 ' + garageMonth(proj.d) + ' · ' + garageKm(proj.km) : garageMonth(last.d) + ' · ' + garageKm(last.km)) + '</span></figcaption></figure>';
+}
+function garageOdoHtml(raw, today) {
+  if (!raw || !raw.id) return '';
+  const tr = Garage.odoTrend(raw, { today }), t = tr.target, g = tr.goal, id = esc(raw.id);
+  const pace = tr.kmPerYear ? '≈ ' + garageKm(Math.round(tr.kmPerYear / 100) * 100) + '/an à ton rythme' : 'rythme inconnu : deux relevés espacés d’au moins 7 jours nécessaires';
+  let head;
+  if (t) {
+    const pct = t.pct == null ? null : Math.floor(t.pct);
+    head = '<div class="odo-goal" data-odo-goal-state="km"><p><b>🎯 Objectif ' + garageKm(t.km) + '</b>' + (pct != null ? ' · ' + pct + ' %' : '') + '</p>' +
+      (pct != null ? '<div class="odo-bar" role="progressbar" aria-label="Progression vers ' + esc(garageKm(t.km)) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '"><i style="width:' + pct + '%"></i></div>' : '') +
+      '<small>' + (!tr.last ? 'Aucun relevé : relève le compteur pour suivre l’objectif'
+        : t.reached ? '🏁 Objectif atteint' + (t.reachedOn ? ' (relevé du ' + garageDate(t.reachedOn) + ')' : '')
+        : 'Reste ' + garageKm(t.remaining) + ' · ' + (t.eta ? 'atteint vers ' + garageMonth(t.eta) + ' (' + pace + ')' : pace)) + '</small></div>';
+  } else if (g && g.life) {
+    head = '<div class="odo-goal" data-odo-goal-state="life"><p><b>♾️ Objectif : à vie</b> · aucune limite de kilométrage</p><small>' +
+      (tr.totalKm != null && tr.count >= 2 ? garageKm(tr.totalKm) + ' parcourus depuis le ' + garageDate(tr.first.d) + ' · ' : '') + pace + '</small></div>';
+  } else head = '<div class="odo-goal" data-odo-goal-state="none"><p><b>Aucun objectif de kilométrage</b></p><small>' + pace + '</small></div>';
+  const stats = tr.count ? '<ul class="odo-stats">' +
+      '<li><span>Relevés</span><b>' + tr.count + '</b><small>depuis le ' + garageDate(tr.first.d) + '</small></li>' +
+      '<li><span>Parcourus</span><b>' + (tr.totalKm != null ? garageKm(tr.totalKm) : '—') + '</b><small>entre le premier et le dernier relevé</small></li>' +
+      '<li><span>12 derniers mois</span><b>' + (tr.last12 != null ? garageKm(tr.last12) : '—') + '</b><small>' + (tr.last12 != null ? 'd’après les relevés' : 'historique de moins d’un an') + '</small></li>' +
+      '<li><span>Rythme</span><b>' + (tr.kmPerYear ? garageKm(Math.round(tr.kmPerYear / 100) * 100) + '/an' : '—') + '</b><small>' + (tr.kmPerDay ? '≈ ' + Math.round(tr.kmPerDay).toLocaleString('fr-FR') + ' km/j' : 'à calculer') + '</small></li></ul>'
+    : '<p class="garage-empty">Aucun relevé du compteur : la courbe apparaîtra dès le premier relevé (« Compteur km » ci-dessus).</p>';
+  const warn = tr.nonMonotonic ? '<p class="odo-warn">⚠️ Un relevé est inférieur au précédent : corrige-le dans Paramètres. Courbe et rythme suspendus.</p>' : '';
+  const mode = g && g.life ? 'life' : t ? 'km' : 'none';
+  const form = '<form class="odo-goal-form" data-odo-goal="' + id + '"><label>Objectif<select name="mode">' +
+      [['none', 'Aucun'], ['km', 'Kilométrage cible'], ['life', 'À vie (sans limite)']].map(([v, l]) => '<option value="' + v + '"' + (v === mode ? ' selected' : '') + '>' + l + '</option>').join('') +
+      '</select></label><label data-odo-goal-km' + (mode === 'km' ? '' : ' hidden') + '>Kilométrage cible (km)<input name="km" inputmode="numeric" autocomplete="off" placeholder="ex. 250 000" value="' + (t ? esc(t.km.toLocaleString('fr-FR')) : '') + '"></label>' +
+      '<button type="submit" class="btn sm pri">Enregistrer l’objectif</button><p class="odo-goal-status" role="status">' + esc(ODO_GOAL_STATUS[raw.id] || '') + '</p></form>';
+  return '<section class="garage-odo" data-garage-odo="' + id + '">' + head +
+    uxFold('garage-odo-' + raw.id, '📈 Évolution du kilométrage', warn + garageOdoChart(tr) + stats + form, tr.count ? tr.count + ' relevé' + (tr.count > 1 ? 's' : '') + ' · objectif' : 'objectif') + '</section>';
+}
+// Écrit, relit et vide le coffre ; sinon l'ancien objectif est remis et l'échec est dit (même contrat que le budget).
+async function odoGoalPersist(car, next) {
+  const ix = S.cars.indexOf(car);
+  if (ix < 0 || LOCKED() || DEMO.on || DeviceStorage.isFrozen()) throw new Error('Garage indisponible : déverrouille Race Control.');
+  const had = Object.prototype.hasOwnProperty.call(car, 'odoGoal'), before = car.odoGoal;
+  car.odoGoal = next; markEdit('cars.' + ix + '.odoGoal');
+  try {
+    saveSettings();
+    const saved = JSON.parse(lsGet('twrc.settings.v1') || 'null');
+    if (!saved || !saved.cars || JSON.stringify(saved.cars[ix] && saved.cars[ix].odoGoal) !== JSON.stringify(next)) throw new Error('relecture');
+    const vs = window.TWRC_VAULT;
+    if (vs && vs.mode === 'vault') { await vs.flush(); if (vs.error || vs.pendingRecovery) throw new Error('coffre'); }
+  } catch (e) {
+    if (had) car.odoGoal = before; else delete car.odoGoal;
+    try { saveSettings(); } catch (x) { /* l'ancienne valeur reste en mémoire */ }
+    throw new Error('Enregistrement non confirmé : rien n’a été modifié. Réessaie.');
+  }
+}
+document.addEventListener('submit', async event => {
+  const form = event.target, carId = form && form.dataset && form.dataset.odoGoal;
+  if (!carId) return;
+  event.preventDefault();
+  const car = (S.cars || []).find(c => c && c.id === carId), status = form.querySelector('.odo-goal-status');
+  if (!car) return;
+  const say = text => { ODO_GOAL_STATUS[carId] = text; if (status) status.textContent = text; };
+  try {
+    const data = new FormData(form), mode = String(data.get('mode') || 'none');
+    let next = null, msg = 'Objectif retiré';
+    if (mode === 'life') { next = { life: 1 }; msg = 'Objectif « à vie » enregistré'; }
+    else if (mode === 'km') {
+      const km = GarageEconomics.parseKm(data.get('km'));
+      if (km == null || !Garage.odoGoal({ km })) throw new Error('Kilométrage cible invalide : un nombre entier de 1 à ' + Garage.GOAL_MAX_KM.toLocaleString('fr-FR') + ' km.');
+      const last = Garage.odoTrend(car, { today: nowIn('Europe/Paris').slice(0, 10) }).last;
+      if (last && km <= last.km && !confirm('Cet objectif (' + km.toLocaleString('fr-FR') + ' km) est déjà atteint par le dernier relevé (' + last.km.toLocaleString('fr-FR') + ' km).\n\nL’enregistrer quand même ?')) { say('Objectif non modifié.'); return; }
+      next = { km }; msg = 'Objectif ' + km.toLocaleString('fr-FR') + ' km enregistré';
+    }
+    await odoGoalPersist(car, next);
+    say(msg + ' · enregistré dans le coffre.');
+    renderGarage.last = null; renderGarage();
+  } catch (e) { say(e.message || 'Enregistrement non confirmé.'); }
+});
+// Le kilométrage cible n'est demandé qu'en mode « Kilométrage cible ».
+document.addEventListener('change', event => {
+  const sel = event.target && event.target.closest && event.target.closest('form[data-odo-goal] select[name=mode]');
+  const box = sel && sel.form.querySelector('[data-odo-goal-km]');
+  if (box) box.hidden = sel.value !== 'km';
+});
 function garageDate(d) {
   return /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? esc(d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4)) : 'date non renseignée';
 }
@@ -73,6 +171,7 @@ function garageVehicleHtml(c) {
     '<button type="button" class="btn garage-edit" data-act="goset-cfg">Modifier la fiche</button>' +
     '<div class="twin-vehicle-art"><span class="twin-plate" aria-hidden="true">' + esc(c.short) + '</span>' + garageCarSvg(c.silhouette) + '<small>SILHOUETTE STYLISÉE · TEINTE ILLUSTRATIVE</small></div>' +
     '<div class="garage-meter"><span>COMPTEUR ENREGISTRÉ</span><strong class="num">' + esc(current) + '</strong><small>' + currentNote + '</small></div>' +
+    garageOdoHtml((S.cars || []).find(x => x && x.id === c.id), nowIn('Europe/Paris').slice(0, 10)) +
     '<div class="twin-quality"><span class="src obs">' + (t ? 'MONTE DÉCLARÉE' : 'MONTE À CONFIRMER') + '</span><span class="src est">' +
     (t && t.tread ? t.tread.estimated ? 'USURE ESTIMÉE' : 'MESURE DÉCLARÉE' : 'USURE INCONNUE') + '</span></div>' +
     mounted + notices +

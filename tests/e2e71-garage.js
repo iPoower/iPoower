@@ -312,7 +312,7 @@ async function twinScenario(browser){
     const synthetic=await p.evaluate(()=>JSON.stringify(S.cars));
     await check(dev+' · compteur, mesure estimée, pression cible et plan hiver explicites',async()=>{
       const car=p.locator('#secGarage .garage-car').first();
-      await tap('#secGarage .garage-car:first-child details[data-ux] > summary');
+      await tap('#secGarage .garage-car:first-child details[data-ux^="garage-records-"] > summary');
       assert.match(await car.innerText(),/121\s?000 km|121.000 km/);
       assert.match(await car.innerText(),/Estimée, non mesurée/);
       assert.match(await car.innerText(),/Cible renseignée|Contrôle déclaré/);

@@ -183,5 +183,42 @@ const Garage = (() => {
       daysLeft: ctDays, status: status(ctDays, null) };
     return { revision, ct: control, odo };
   }
-  return { overview, silhouette, preview, comparison, daylight, maintenance, kmPerDay, MAX_KM_PER_DAY };
+  // Évolution du kilométrage et objectif de la voiture (choix du propriétaire, enregistré dans la fiche : car.odoGoal).
+  // Objectif accepté : { km: entier 1…2 000 000 } (kilométrage cible) ou { life: 1 } (gardée à vie, sans limite) ; rien d'autre.
+  // Projection PURE des relevés réels : aucun relevé inventé, rythme = même règle que l'entretien (kmPerDay), date
+  // d'objectif seulement si ce rythme est calculable ; les 12 derniers mois seulement si l'historique les couvre.
+  const GOAL_MAX_KM = 2000000;
+  function odoGoal(g) {
+    if (!g || typeof g !== 'object') return null;
+    if (g.life === 1 || g.life === true) return { life: true };
+    const km = val(g.km);
+    return km != null && Number.isInteger(km) && km > 0 && km <= GOAL_MAX_KM ? { km } : null;
+  }
+  function odoTrend(car, { today } = {}) {
+    if (!validDate(today)) throw new Error('date du jour requise');
+    const byDay = new Map();   // un relevé par jour (le dernier saisi), comme la saisie des Paramètres
+    (car && Array.isArray(car.odo) ? car.odo : []).forEach(x => { if (x && validDate(x.d) && val(x.km) != null) byDay.set(str(x.d), x.km); });
+    const readings = [...byDay].map(([d, km]) => ({ d, km })).sort((a, b) => a.d.localeCompare(b.d));
+    const first = readings[0] || null, last = readings[readings.length - 1] || null;
+    const nonMonotonic = readings.some((r, i) => i > 0 && r.km < readings[i - 1].km);
+    const rate = kmPerDay(readings), goal = odoGoal(car && car.odoGoal);
+    let last12 = null;
+    if (first && last && !nonMonotonic && dayDiff(first.d, last.d) >= 365) {
+      const from = addDays(last.d, -365), i = readings.findIndex(r => r.d >= from), b = readings[i], a = readings[i - 1];
+      const kmAt = !a || b.d === from ? b.km : a.km + (b.km - a.km) * dayDiff(a.d, from) / dayDiff(a.d, b.d);
+      last12 = Math.max(0, Math.round(last.km - kmAt));
+    }
+    let target = null;
+    if (goal && goal.km) {
+      const remaining = last ? goal.km - last.km : null, reached = remaining != null && remaining <= 0;
+      const hit = reached ? readings.find(r => r.km >= goal.km) : null;
+      const eta = !reached && remaining != null && rate ? addDays(last.d, Math.ceil(remaining / rate)) : null;
+      target = { km: goal.km, remaining, reached, reachedOn: hit ? hit.d : null, eta,
+        pct: last ? Math.min(100, Math.max(0, last.km / goal.km * 100)) : null, daysLeft: eta ? dayDiff(today, eta) : null };
+    }
+    return { readings, first, last, count: readings.length, totalKm: first && last && !nonMonotonic ? last.km - first.km : null,
+      spanDays: first && last ? dayDiff(first.d, last.d) : null, kmPerDay: rate, kmPerYear: rate ? rate * 365.25 : null,
+      last12, goal, target, nonMonotonic };
+  }
+  return { overview, silhouette, preview, comparison, daylight, maintenance, kmPerDay, MAX_KM_PER_DAY, odoGoal, odoTrend, GOAL_MAX_KM };
 })();
