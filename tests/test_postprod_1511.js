@@ -177,6 +177,7 @@ function scenarios(X, out) {
     t('P7 · vue Météo : aucun préfixe ajouté devant une heure déjà datée par le poste', !/const tday = /.test(S.wx) && /<time class="num">\$\{esc\(x\.t\)\}<\/time>/.test(S.wx));
     t('P2 · panneau et lecture vocale lisent la même décision du trajet (f1BriefDecision)', (S.race.match(/decision: f1BriefDecision\(/g) || []).length === 2);
     t('P1 · verdict et bandeaux passent par carScopedAlerts', /carScopedAlerts\(Object\.values\(CX\.alertsNow \|\| CX\.alerts \|\| \{\}\), CX\.alertsNowByCar, shownCar\)/.test(S.app) && /carScopedAlerts\(Object\.values\(alerts\), CX\.alertsByCar, appDisplayedCar\(\)\)/.test(S.app));
+    t('Nouveautés · clé « déjà lu » publique (préférence en clair), jamais dans le coffre ni sur Drive', /const PUBLIC = new Set\(\[[^\]]*'twrc\.news\.seen'/.test(read('session-vault.js')) && /lsGet\('twrc\.news\.seen'\) !== NEWS\.id/.test(S.app) && /\['pneus', 'meteo'\]\.includes\(UI\.view\) && lsGet/.test(S.app));
     t('P6 · alerte « pluie imminente » : la précipitation observée n’est plus masquée', /const op = obsPrecip\(m\.obs\);/.test(S.app) && /obs: DEMO\.on \|\| typeof obsPrecip !== 'function' \? null : obsPrecip\(m\.obs\)/.test(S.wx)); }
   return ok;
 }

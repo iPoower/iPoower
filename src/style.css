@@ -173,6 +173,12 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; }
 .srcline b { color: var(--fg); font-weight: 500; }
 
 /* synthèse Race Control : décision d'abord, détail ensuite */
+/* Encart « Nouveautés » (une fois par appareil, accueil Pneus et onglet Météo) */
+.news-card { background: var(--accent-soft); border: 1px solid var(--accent); border-left-width: 4px; border-radius: 6px; padding: 11px 13px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.news-card h2 { font-size: 15px; margin: 0; }
+.news-card ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.news-card li { font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
+.news-card .btn { align-self: flex-start; min-height: 44px; }
 .decision-core { background: color-mix(in srgb, var(--lv-soft) 55%, var(--panel)); border: 1px solid var(--lv); border-left-width: 4px; border-radius: 6px; padding: 11px 13px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .decision-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .decision-main { min-width: 0; flex: 1 1 360px; }

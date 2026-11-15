@@ -18,8 +18,9 @@
  */
 const SessionVault = (() => {
   const VAULT = 'twrc.vault.v2', SESSION = 'twrc.session.v2', LOCK_SIGNAL = 'twrc.lock.signal', V1 = 'twrc.device.vault.v1', IT = 600000, WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-  // Préférences sans donnée personnelle (onglet, mode sans code, carte repliée, pause de quota, occasion de tenue, anti-boucle).
-  const PUBLIC = new Set(['twrc.view', 'twrc.nocode', 'twrc.tripmap', 'twrc.weather.limit.v1', 'twrc.outfit.occasion', 'twrc.presetv', LOCK_SIGNAL]);
+  // Préférences sans donnée personnelle (onglet, mode sans code, carte repliée, pause de quota, occasion de tenue, anti-boucle,
+  // encart « Nouveautés » déjà lu : identifiant de l'encart seulement).
+  const PUBLIC = new Set(['twrc.view', 'twrc.nocode', 'twrc.tripmap', 'twrc.weather.limit.v1', 'twrc.outfit.occasion', 'twrc.presetv', 'twrc.news.seen', LOCK_SIGNAL]);
   const isPublic = k => PUBLIC.has(k) || k.startsWith('twrc.reload.');
   const isApp = k => typeof k === 'string' && k.startsWith('twrc.');
   // Clés jamais chiffrées dans le coffre : lui-même, la session, le coffre v1 et le journal d'import du stockage brut.

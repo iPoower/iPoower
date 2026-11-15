@@ -1,11 +1,12 @@
 // PR 4 « post-prod 15/11 » (vidéo en production du 15/11/2026, prod-210) : P1 verdict « ici, maintenant » de la voiture choisie,
 // l'autre voiture nommée à part · P2 Ingénieur de course = risque global du trajet · P3 tuile gel = règle unique · P5 modèles en
 // désaccord ⇒ VIGILANCE · P6 précipitation observée à la station, jamais présentée comme locale · P7 aucun « dem. demain »
-// · intégrité des données persistantes. Profil, voitures, lieux et station FICTIFS. Dix contrôles, PC ET iPhone.
+// · intégrité des données persistantes · encart « Nouveautés » (accueil et Météo, une fois). Profil, voitures, lieux et station
+// FICTIFS. Onze contrôles, PC ET iPhone.
 'use strict';
 const { session, BR, errors } = require('./lib/context-session');
 const fx = require('./fixtures/postprod-1511');
-const N = 10; let n = 0; const findings = [];
+const N = 11; let n = 0; const findings = [];
 const expect = (label, ok, detail) => { if (ok) { n++; console.log('✅ ' + label); } else { findings.push(label + ' · ' + String(detail || '').slice(0, 600)); console.log('❌ ' + label + ' · ' + String(detail || '').slice(0, 600)); } };
 const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
 async function grab(b, dev) {
@@ -21,11 +22,13 @@ async function grab(b, dev) {
   const d = {}; d.before = await persisted();
   d.cars = await p.evaluate(() => S.cars.map(c => c.short || c.name || c.id));
   await p.evaluate(() => { UI.view = 'pneus'; renderAll(); }); await s.settle(6);
+  d.newsP = await p.evaluate(() => { const e = document.querySelector('#newsCard'); return e && !e.hidden ? e.innerText : ''; });
   d.core = await text('#decisionCore'); d.coreH = await text('#decisionCore h2'); d.other = await text('#decisionCore [data-other-car]');
   d.banOther = await text('#banners [data-other-car]'); d.banAll = await text('#banners .note');
   d.eng = await text('#f1-panel-raceEngineer');
   d.risk = await p.evaluate(() => { const t = APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip, r = t && tripRisk(t); return r && { lv: r.lv, k: r.k, why: r.why, indet: r.indet, name: riskName(r), dep: t.dep }; });
   await p.evaluate(() => { UI.view = 'meteo'; renderAll(); document.querySelectorAll('.wx-pc').forEach(x => { x.open = true; }); }); await s.settle(6);
+  d.newsM = await p.evaluate(() => { const e = document.querySelector('#newsCard'); return e && !e.hidden ? e.innerText : ''; });
   d.trackLv = await p.evaluate(() => { const t = APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip, x = t && F1Pure.trackConditions(t.seq); return x && x.available ? Math.max(...x.sectors.map(s => s.level)) : null; });
   d.crit = await p.evaluate(() => [...document.querySelectorAll('.wx-crit')].map(e => ({ cls: e.className, t: e.innerText.replace(/\s+/g, ' ') })));
   d.ice = await full('.wx-pc[data-k="ice"]');
@@ -36,6 +39,11 @@ async function grab(b, dev) {
   d.rain = await full('.wx-pc[data-k="rain"]');
   d.rain15 = await p.evaluate(() => { const a = CX && CX.alertsNow && CX.alertsNow.rain15; return a ? { sev: a.sev, title: a.title, obs: !!a.obs } : null; });
   d.page2 = await pageText();
+  // Encart « Nouveautés » : « J'ai compris » depuis l'onglet Météo ; seul l'identifiant de l'encart est retenu, en clair.
+  await p.click('#newsCard [data-act="news-ok"]'); await s.settle(1);
+  d.newsGone = await p.evaluate(() => { const e = document.querySelector('#newsCard'); UI.view = 'pneus'; renderAll(); const e2 = document.querySelector('#newsCard');
+    return { meteo: !e || e.hidden, pneus: !e2 || e2.hidden, raw: localStorage.getItem('twrc.news.seen') }; });
+  await p.evaluate(() => { UI.view = 'meteo'; renderAll(); }); await s.settle(1);
   d.after = await persisted();   // intégrité : relevé AVANT la seule action du test (changement de voiture, ci-dessous)
   // P1 (contrôle inverse) : la voiture été choisie garde SON risque (aucun masquage), sans ligne « Si tu prends » pour la voiture hiver.
   await p.evaluate(() => { appSetCar(S.cars[0].id); UI.view = 'pneus'; renderAll(); }); await s.settle(6);
@@ -58,6 +66,7 @@ async function grab(b, dev) {
   expect('9. P6 · bruine à la station : en tête, « mesure de la station, pas au lieu consulté » ; alerte de pluie imminente VIGILANCE (observée), plus « RAS »', both(d => d.obsOk && /Observation à la station Station test \(6 km, 07:00\) : faible bruine · mesure de la station, pas au lieu consulté/.test(d.page2) && /Observation à la station Station test .* · prévision : /.test(d.rain) && d.rain15 && d.rain15.sev === 1 && d.rain15.obs), show(d => ({ obs: (d.page2.match(/.{0,40}Observation à la station.{0,120}/g) || []).slice(0, 3), rain: d.rain.slice(0, 200), rain15: d.rain15 })));
   // Intégrité mesurée entre la mise en place du profil et la seule action du test (changement de voiture du contrôle inverse).
   expect('10. P7 · aucun « dem. demain » ; chronologie datée « demain HH:MM » · intégrité : voitures, journal, débriefs et contexte identiques', both(d => !/dem\. demain/.test(d.page + d.page2) && d.tl.some(t => /^demain \d\d:\d\d$/.test(t)) && d.before === d.after && d.before.length > 50), show(d => ({ tl: d.tl.slice(0, 8), same: d.before === d.after, diff: d.before === d.after ? null : [d.before.slice(0, 300), d.after.slice(0, 300)] })));
+  expect('11. Nouveautés · encart à la première ouverture sur l’accueil ET sur l’onglet Météo ; « J’ai compris » le retire partout, seul son identifiant est retenu en clair', both(d => /Nouveautés · mise à jour du 15\/11/.test(d.newsP) && /Nouveautés · mise à jour du 15\/11/.test(d.newsM) && /modèles en désaccord/.test(d.newsM) && d.newsGone.meteo && d.newsGone.pneus && d.newsGone.raw === '2026-11-15'), show(d => ({ p: d.newsP.slice(0, 80), m: d.newsM.slice(0, 80), gone: d.newsGone })));
   if (errors.length) findings.push('erreurs de page : ' + errors.join(' | ').slice(0, 600));
   console.log(`\n${n}/${N} contrôle(s) conforme(s) · ${findings.length} écart(s)`);
   if (findings.length || n !== N) { console.log('ÉCARTS :\n- ' + findings.join('\n- ')); process.exit(1); }

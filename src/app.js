@@ -1196,6 +1196,22 @@ function cockpitMatters(alerts) {
   return { desk, items: out.sort((a, b) => b.lv - a.lv).slice(0, 3) };
 }
 // @include app/ux-layout.js
+// Encart « Nouveautés » (demande du propriétaire, 15/11) : affiché à la première ouverture après la mise à jour, sur l'accueil
+// (Pneus) et l'onglet Météo, jusqu'à « J'ai compris » ; seul l'identifiant de l'encart est retenu sur l'appareil
+// (twrc.news.seen : préférence en clair, jamais exportée ni synchronisée). Aucune donnée métier lue ni modifiée.
+const NEWS = { id: '2026-11-15', title: 'Nouveautés · mise à jour du 15/11', items: [
+  '« Ici, maintenant » suit la voiture choisie ; une autre voiture plus exposée est nommée à part (« Si tu prends la … »).',
+  'L’Ingénieur de course reprend le risque global du trajet, celui de la carte « Prochain trajet ».',
+  'Pluie : quand les modèles se contredisent fortement (modèle de base pluvieux, AROME sec), le trajet passe en VIGILANCE « modèles en désaccord ».',
+  'Pluie ou bruine mesurée par la station proche : affichée en tête de la Météo, comme une mesure de la station et non du lieu consulté.',
+  'Gel : même formulation partout. Agenda : tendance sur le risque global. Dates : « demain » écrit une seule fois.',
+  'Ressenti recalé comme la température ; périodes des minimums et maximums écrites ; référence de la pression et plage de gomme expliquées.'] };
+function renderNews() {
+  const el = $('#newsCard'); if (!el) return;
+  const show = ['pneus', 'meteo'].includes(UI.view) && lsGet('twrc.news.seen') !== NEWS.id;
+  el.hidden = !show;
+  el.innerHTML = show ? `<h2>🆕 ${esc(NEWS.title)}</h2><ul>${NEWS.items.map(x => `<li>${esc(x)}</li>`).join('')}</ul><button type="button" class="btn sm" data-act="news-ok">J’ai compris</button>` : '';
+}
 function renderDecisionCore() {
   const el = $('#decisionCore');
   if (!el) return;
@@ -4566,7 +4582,7 @@ function renderAll() {
   APP_CONTEXT.calendarLegs = null;
   try {
     appRefreshContext(); recordJournal();
-    renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+    renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderNews(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
     renderWx(); renderLab(); renderDebrief(); renderGarage(); labThermTick(false); roadSync(); renderF1Pure(); renderWeatherStationButton(); renderWeatherStation();
   } finally {
     APP_CONTEXT.rendering = false; renderAll.view = UI.view;
@@ -4764,6 +4780,7 @@ document.addEventListener('click', async e => {
     if (!confirm('Effacer tous les retours de calibration et les corrections apprises ? Cette action est définitive.')) return;
     S.calib = []; saveSettings(); applyCalib(); rebuild(); renderSettings(); renderAll();
   }
+  else if (a === 'news-ok') { lsSet('twrc.news.seen', NEWS.id); renderNews(); }
   else if (a === 'pchk') { const c = S.cars.find(x => x.id === t.dataset.car), m = M[UI.loc]; if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; } if (c.tire.pchk && [c.tire.pchk.av, c.tire.pchk.ar].some(Number.isFinite)) { commandFeedback(t, 'Les pressions chiffrées et leur date sont conservées : actualise les valeurs mesurées et la date dans Paramètres.'); return; } c.tire.pchk = { date: m ? m.nowStr.slice(0, 10) : new Date().toISOString().slice(0, 10), T: m && curTemp(m) != null ? Math.round(curTemp(m) * 10) / 10 : null }; saveSettings(); renderSettings(); softRender(); }
   else if (a === 'ntfy-test') {
     try { const r = await fetch('https://ntfy.sh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: window.TWRC_NTFY, title: 'Race Control · test', message: 'Les notifications du matin arrivent bien sur ce téléphone.', tags: ['white_check_mark'], click: location.href.split('#')[0] }) });

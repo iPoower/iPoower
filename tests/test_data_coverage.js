@@ -36,6 +36,7 @@ const POLICY = {
   'twrc.plain.v': ['secret', 'version du préréglage'],
   'twrc.view': ['preference', ''], 'twrc.nocode': ['preference', ''], 'twrc.tripmap': ['preference', ''], 'twrc.presetv': ['preference', ''],
   'twrc.outfit.occasion': ['preference', ''], 'twrc.weather.limit.v1': ['preference', ''], 'twrc.lock.signal': ['preference', ''],
+  'twrc.news.seen': ['preference', 'identifiant de l’encart « Nouveautés » déjà lu sur cet appareil, sans donnée personnelle'],
   'twrc.vault.v2': ['meta', ''], 'twrc.session.v2': ['meta', ''], 'twrc.device.vault.v1': ['meta', ''], 'twrc.restore.pending.v1': ['meta', ''],
 };
 // Noms de bases IndexedDB (hors coffre) : file Drive, clé de sync, « appareil personnel ».

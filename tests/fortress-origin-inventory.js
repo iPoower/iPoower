@@ -26,7 +26,7 @@ const groups = {
     'twrc.gps', 'twrc.place.v1', 'twrc.tripstart.v1', 'twrc.tripend.v1',
     'twrc.returnhome.v1', 'twrc.tripdone', 'twrc.debrief.v1',
     'twrc.runtime.v1', 'twrc.weather.limit.v1', 'twrc.nocode',
-    'twrc.presetv', 'twrc.cfghash', 'twrc.lastbackup', 'twrc.tripmap',
+    'twrc.presetv', 'twrc.cfghash', 'twrc.lastbackup', 'twrc.tripmap', 'twrc.news.seen',
     'twrc.calendar.sealed.v1', 'twrc.decision.latest.v1'
   ],
   confidential_metadata: [
