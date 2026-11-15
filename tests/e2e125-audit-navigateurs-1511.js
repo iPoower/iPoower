@@ -1,7 +1,8 @@
 // Audit navigateurs du 15/11/2026 (Chromium, profils Chrome et Brave simulés), données FICTIVES, PC puis iPhone :
 // 1. écran de verrouillage : « Pas de code ? » sur sa propre ligne (plus de « ouverture.Pas de code ») ;
 // 2. carte « Ici, maintenant » : « ANALYSE LIMITÉE » (profondeur inconnue) en ton neutre, jamais en vert ✓,
-//    comme le verdict des cartes voiture ; une fois la profondeur saisie, le RAS retrouve son vert ✓.
+//    comme le verdict des cartes voiture ; une fois la profondeur saisie, le RAS retrouve son vert ✓ ;
+// 3. météo bloquée (HTTP 429, constat sur la prod) : « aucune prévision chargée », pression et chaussée sans unité orpheline.
 'use strict';
 const fs = require('fs'), vm = require('vm'), BR = require('./lib/browser');
 const ctx = { console, Math, Date, Intl, Map, Set, JSON }; vm.createContext(ctx);
@@ -10,11 +11,12 @@ const PW = fs.readFileSync('.passphrase', 'utf8').trim(), SP = process.env.SP, h
 const O = 'https://ipoower.github.io', U = O + '/iPoower/race-control/';
 const PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ? '' : ' · ' + d)); if (!ok) fail++; };
-async function run(b, dev, view) {
+async function run(b, dev, view, limited) {
   const c = await b.newContext({ ...view, timezoneId: 'Europe/Paris' }), p = await c.newPage(), errors = [];
   p.on('pageerror', e => errors.push(e.message)); p.on('dialog', d => d.accept());
   await p.route('**/*', r => {
     const url = new URL(r.request().url()), host = url.hostname, J = o => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(o) });
+    if (limited && (host === 'open-meteo.com' || host.endsWith('.open-meteo.com'))) return r.fulfill({ status: 429, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ error: true, reason: 'Daily API request limit exceeded. Please try again tomorrow.' }) });
     if (host === 'open-meteo.com' || host.endsWith('.open-meteo.com')) {
       const q = url.searchParams, la = String(q.get('latitude')).split(','), lo = String(q.get('longitude')).split(','), one = i => ctx.mk('doux', { lat: +la[i], lon: +lo[i] }, 'Europe/Paris', 0);
       if (la.length > 1) return J(la.map((_, i) => one(i)));
@@ -40,7 +42,21 @@ async function run(b, dev, view) {
   });
   check(`${dev} · verrouillage : « Pas de code ? » sur sa propre ligne, aucun mot collé`, !/ouverture\.Pas/.test(lock.txt) && /Pas de code/.test(lock.txt) && lock.below, JSON.stringify(lock).slice(0, 300));
   await p.fill('#unlockPw', PW); await Promise.all([p.waitForNavigation({ timeout: 60000 }), p.click('#unlockForm button[type=submit]')]);
-  await p.waitForFunction(() => typeof S === 'object' && window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault' && typeof CX === 'object' && CX && document.querySelector('#secCars article.car'), null, { timeout: 40000 });
+  await p.waitForFunction(lim => typeof S === 'object' && window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault' && (lim || typeof CX === 'object' && CX) && document.querySelector('#secCars article.car'), !!limited, { timeout: 40000 });
+  if (limited) {
+    // 4. météo bloquée (quota) : l'intelligence pneumatique ne prétend pas avoir des prévisions ; pression et chaussée lisibles
+    await p.evaluate(() => { const t = S.cars[0].tire; t.brand = 'Michelin'; t.model = 'Pilot Sport 4S'; t.pchk = null; renderCars.last = ''; renderCars(); });
+    await p.waitForTimeout(1500);
+    await p.evaluate(() => document.querySelectorAll('main details:not([open])').forEach(d => { d.open = true; }));
+    await p.waitForTimeout(800);
+    const txt = await p.evaluate(() => document.querySelector('main').innerText);
+    const ti = /Intelligence pneumatique/.test(txt);
+    check(`${dev} · météo bloquée : jamais « prévisions déjà chargées » sans prévision`, ti && !/prévisions déjà chargées/.test(txt) && /aucune prévision chargée/.test(txt), ti ? (txt.match(/.{0,60}prévision.{0,60}/g) || []).slice(0, 3).join(' / ') : 'panneau absent');
+    check(`${dev} · pression sans mesure : « mesure non renseignée », pas « non renseigné bar »`, !/non renseigné bar/.test(txt) && /mesure non renseignée|mesure AV [\d,]+ bar/.test(txt), (txt.match(/.{0,40}mesure .{0,60}/g) || []).slice(0, 2).join(' / '));
+    check(`${dev} · chaussée inconnue accordée au féminin`, !/chaussée non renseigné\b(?!e)/.test(txt), (txt.match(/chaussée non renseign\S*/g) || []).join(' / '));
+    check(`${dev} · aucune erreur JavaScript`, !errors.length, errors.join(' / '));
+    await c.close(); return;
+  }
   // 2. profondeur inconnue : verdict neutre
   await p.evaluate(() => { const t = S.cars[0].tire; ['tread', 'treadAv', 'treadAr'].forEach(k => { t[k] = null; }); t.treads = []; t.brand = 'Marque test'; t.model = 'Été test'; renderCars.last = ''; renderCars(); renderDecisionCore.last = null; renderDecisionCore(); });
   await p.waitForFunction(() => /ANALYSE LIMITÉE/.test((document.querySelector('#decisionCore h2') || {}).textContent || ''), null, { timeout: 15000 });
@@ -69,6 +85,7 @@ async function run(b, dev, view) {
   try {
     await run(b, 'PC', { viewport: { width: 1280, height: 900 } });
     await run(b, 'iPhone', { viewport: { width: 414, height: 896 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+    await run(b, 'PC · météo bloquée (HTTP 429)', { viewport: { width: 1280, height: 900 } }, true);
   } finally { await b.close(); }
   console.log(rows.join('\n'));
   console.log(fail ? `❌ ${fail} contrôle(s) en échec` : `✅ ${rows.length} contrôles au vert`);
