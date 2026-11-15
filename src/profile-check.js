@@ -29,7 +29,7 @@ const ProfileCheck = (() => {
     const byId = id => locs.find(l => l && l.id === id) || null;
     const from = w.from ? byId(w.from) : locs[0] || null, to = w.to ? byId(w.to) : locs[1] || null;
     const gaps = [];
-    if (o.locked) gaps.push({ id: 'locked', text: 'appareil verrouillé : réglages personnels non chargés' });
+    if (o.locked) gaps.push({ id: 'locked', text: o.nocode ? 'mode sans code : réglages personnels chiffrés non chargés' : 'appareil verrouillé : réglages personnels non chargés' });
     const ex = [from, to].filter(isExample);
     if (ex.length) gaps.push({ id: 'places', text: ex.length > 1 ? 'domicile et travail sont les lieux d’exemple' : `${ex[0] === from ? 'domicile' : 'travail'} : lieu d’exemple` });
     const missing = !has(from) || !has(to);

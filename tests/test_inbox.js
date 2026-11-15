@@ -74,7 +74,8 @@ check('plein : ligne du budget avec l’identifiant de la saisie ; voiture d’o
   const r = R.apply(c, x, deps);
   assert.equal(JSON.stringify(c), snap, 'original non modifié');
   assert.deepEqual(r.car.economics.entries, [{ id: 'dep-fuel-01', date: '2026-04-05', category: 'fuel', amountCents: 6050, km: 100850, note: 'Station fictive', volumeMl: 35500, fuelType: 'diesel', fullTank: true }]);
-  assert.deepEqual(r.paths, ['economics.entries']); assert.match(r.lines.join(' '), /60,50 €/);
+  assert.deepEqual(r.paths, ['economics.entries', 'odo']); assert.match(r.lines.join(' '), /60,50 €/);
+  assert.deepEqual(r.car.odo.map(o => o.d + ':' + o.km), ['2026-03-01:100000', '2026-04-05:100850', '2026-04-08:100900'], 'le compteur du ticket rejoint les relevés');
   assert.equal(R.duplicate(x, r.car), true); assert.throws(() => R.apply(r.car, x, deps), /Déjà enregistrée/);
   assert.equal(R.duplicate(x, { ...c, economics: { entries: [], removed: ['dep-fuel-01'] } }), true, 'une dépense retirée ne revient pas');
 });
@@ -86,9 +87,12 @@ check('compteur : ajouté dans l’ordre ; même jour autre valeur, ou hors chro
   assert.throws(() => R.apply(c, ok(e('odometer', { km: 100800 }, { date: '2026-04-08' })), deps), /existe déjà ce jour-là/);
   assert.equal(R.duplicate(ok(e('odometer', { km: 100900 }, { date: '2026-04-08' })), c), true);
 });
-check('pressions : contrôle daté et mesuré ; essieu absent conservé ; contrôle plus récent déjà saisi → refusé', () => {
+check('pressions : contrôle daté et mesuré ; essieu non mesuré ce jour-là jamais redaté ; même jour = complété ; contrôle plus récent déjà saisi → refusé', () => {
   const r = R.apply(car(), ok(e('pressure', { av: 2.4, T: 9.5 })), deps);
-  assert.deepEqual(r.car.tire.pchk, { date: '2026-04-05', T: 9.5, av: 2.4, ar: 2.2 }); assert.deepEqual(r.paths, ['tire.pchk.date', 'tire.pchk.T', 'tire.pchk.av', 'tire.pchk.ar']);
+  assert.deepEqual(r.car.tire.pchk, { date: '2026-04-05', T: 9.5, av: 2.4, ar: null }, 'l’arrière du 01/03 n’est pas présenté comme mesuré le 05/04');
+  assert.match(r.lines.join(' '), /arrière non mesurée ce jour-là : l’ancienne valeur \(2,20 bar du 01\/03\/2026\) n’est pas reconduite/);
+  const sameDay = R.apply(r.car, ok(e('pressure', { ar: 2.3 }, { id: 'dep-press-03' })), deps);
+  assert.deepEqual(sameDay.car.tire.pchk, { date: '2026-04-05', T: 9.5, av: 2.4, ar: 2.3 }, 'deux saisies du même jour se complètent'); assert.deepEqual(r.paths, ['tire.pchk.date', 'tire.pchk.T', 'tire.pchk.av', 'tire.pchk.ar']);
   assert.throws(() => R.apply(r.car, ok(e('pressure', { av: 2.5 }, { id: 'dep-press-02', date: '2026-04-01' })), deps), /plus récent/);
 });
 check('profondeur : relevé daté avec le compteur connu ; valeur actuelle mise à jour ; estimation marquée ; relevé ancien = historique seul', () => {
@@ -113,6 +117,59 @@ check('pneus démontés : une mesure rangée avec l’ancien jeu reste connue ; 
   assert.equal(R.duplicate(press, mounted), true); assert.equal(R.duplicate(tread, mounted), true, 'mesures rangées avec le jeu été');
   assert.throws(() => R.apply(mounted, ok(e('pressure', { av: 2.5 }, { id: 'dep-press-09', date: '2026-04-05' })), deps), /antérieure au montage/);
   assert.throws(() => R.apply(mounted, ok(e('tread', { mm: 5, ax: 'ar' }, { id: 'dep-tread-09', date: '2026-04-05' })), deps), /antérieure au montage/);
+});
+check('montage du même type (pneus remplacés) : les mesures antérieures ne sont plus attribuées aux pneus montés, l’historique est conservé', () => {
+  const worn = car(); worn.tire.tread = worn.tire.treadAv = worn.tire.treadAr = 1.8; worn.tire.treads = [{ d: '2026-03-01', mm: 1.8, km: 100000, ax: 'both' }]; worn.tire.lastRot = 95000;
+  const r = R.apply(worn, ok(e('tireMount', { type: 'summer', brand: 'Marque N', dot: '1026', km: 100400 })), deps), t = r.car.tire;
+  assert.deepEqual([t.tread, t.treadAv, t.treadAr, t.treadEst], [null, null, null, 0], 'profondeur actuelle à mesurer');
+  assert.deepEqual(t.pchk, { date: '', T: null }, 'pression du 01/03 détachée'); assert.equal(t.lastRot, null);
+  assert.deepEqual(t.treads, worn.tire.treads, 'aucun relevé effacé');
+  assert.deepEqual([t.brand, t.model, t.dot, t.size], ['Marque N', '', '1026', '205/55 R16'], 'autre marque : le modèle de l’ancien pneu n’est pas hérité, la dimension reste');
+  assert.match(r.lines.join(' | '), /Pneus montés : été · Marque A → été · Marque N .*Profondeur 1,8 mm : mesurée avant ce montage.*Pressions mesurées le 01\/03\/2026 : antérieures/);
+  for (const p of ['tire.tread', 'tire.treadAv', 'tire.treadAr', 'tire.pchk.date', 'tire.lastRot', 'tire.model', 'tire.mounted']) assert.ok(r.paths.includes(p), p);
+});
+check('montage : date posée sur les pneus déjà mesurés APRÈS cette date → mesures gardées ; jeu saisonnier remonté tel quel → mesures gardées', () => {
+  const c = car(); c.tire.mounted = ''; c.tire.treads = [{ d: '2026-03-01', mm: 6, km: 100000, ax: 'both' }];
+  const dated = R.apply(c, ok(e('tireMount', { type: 'summer' }, { date: '2026-02-01' })), deps).car.tire;
+  assert.deepEqual([dated.treadAv, dated.pchk.av, dated.brand, dated.mounted], [6, 2.2, 'Marque A', '2026-02-01']);
+  const winter = R.apply(car(), ok(e('tireMount', { type: 'winter', brand: 'Marque B' })), deps).car;   // le jeu été (6 mm) est rangé
+  const back = R.apply(winter, ok(e('tireMount', { type: 'summer' }, { id: 'dep-mount-back', date: '2026-04-09' })), deps).car.tire;
+  assert.deepEqual([back.type, back.brand, back.treadAv], ['summer', 'Marque A', 6], 'mêmes pneus remontés : dernière profondeur connue conservée');
+  const replaced = R.apply(winter, ok(e('tireMount', { type: 'summer', brand: 'Marque Z' }, { id: 'dep-mount-new', date: '2026-04-09' })), deps).car.tire;
+  assert.deepEqual([replaced.brand, replaced.model, replaced.treadAv], ['Marque Z', '', null], 'autres pneus été : rien d’hérité de l’ancien jeu');
+});
+check('montage plus ancien que le montage enregistré : refusé, quel que soit le type', () => {
+  assert.throws(() => R.apply(car(), ok(e('tireMount', { type: 'summer', brand: 'Marque Ancienne' }, { date: '2025-03-01' })), deps), /montage plus récent est déjà enregistré \(01\/04\/2025\)/);
+  assert.throws(() => R.apply(car(), ok(e('tireMount', { type: 'winter' }, { date: '2025-03-01' })), deps), /montage plus récent/);
+});
+check('voiture sans pneus montés : profondeur et pression refusées', () => {
+  const none = car(); none.tire = { type: 'none', size: '205/55 R16', pchk: { date: '', T: null } };
+  assert.throws(() => R.apply(none, ok(e('tread', { mm: 6, ax: 'both' })), deps), /Aucun pneu monté/);
+  assert.throws(() => R.apply(none, ok(e('pressure', { av: 2.3 })), deps), /Aucun pneu monté/);
+  assert.equal(R.apply(none, ok(e('tireMount', { type: 'winter', brand: 'Marque B' })), deps).car.tire.type, 'winter');
+});
+check('une seule chronologie pour tous les kilométrages : plein, compteur, révision et montage se contrôlent entre eux', () => {
+  const c = R.apply(car(), ok(e('fuel', { amountCents: 6050, litres: 35.5, km: 100850, fullTank: true })), deps).car;
+  assert.throws(() => R.apply(c, ok(e('fuel', { amountCents: 5000, litres: 30, km: 100700, fullTank: true }, { id: 'dep-fuel-02', date: '2026-04-06' })), deps), /contredit le plein du 05\/04\/2026 \(100.850 km\)/);
+  assert.throws(() => R.apply(c, ok(e('fuel', { amountCents: 5000, km: 1999999 }, { id: 'dep-fuel-03', date: '2026-04-06' })), deps), /contredit le relevé du compteur du 08\/04\/2026 \(100.900 km\)/);
+  assert.throws(() => R.apply(car(), ok(e('odometer', { km: 91000 }, { date: '2025-10-01' })), deps), /contredit la révision du 01\/09\/2025 \(92.000 km\)/);
+  const m = car(); m.tire.mountKm = 99000; m.tire.mounted = '2026-02-01';
+  assert.throws(() => R.apply(m, ok(e('odometer', { km: 98000 }, { date: '2026-02-15' })), deps), /contredit le montage des pneus du 01\/02\/2026/);
+  const sameDay = R.apply(car(), ok(e('fuel', { amountCents: 5000, km: 100950 }, { date: '2026-04-08' })), deps);   // relevé du jour déjà là : 100 900
+  assert.deepEqual(sameDay.paths, ['economics.entries']); assert.match(sameDay.lines.join(' '), /relevé du jour déjà enregistré, conservé/);
+  assert.equal(R.kmConflict(car(), '2026-04-05', 100500), null); assert.equal(R.kmPoints(car()).length, 3);
+});
+check('compteur ancien : l’aperçu annonce un ajout à l’historique, pas un compteur qui recule', () => {
+  const r = R.apply(car(), ok(e('odometer', { km: 99000 }, { date: '2026-01-15' })), deps);
+  assert.match(r.lines[0], /Compteur au 15\/01\/2026 : 99.000 km · relevé ancien ajouté à l’historique, dernier relevé inchangé \(100.900 km le 08\/04\/2026\)/);
+});
+check('bloc entouré de phrases (message de Claude copié en entier) : seul le bloc est lu, toujours strictement ; deux blocs → refusé', () => {
+  const b = block([e('odometer', { km: 100950 })]);
+  assert.equal(R.parse('Voici le bloc :\n```json\n' + b + '\n```\nBonne route !', TODAY)[0].error, null);
+  assert.equal(R.parse('Voici le bloc : ' + b + ' Bonne route !', TODAY)[0].error, null);
+  assert.throws(() => R.parse('```json\n' + b + '\n```\net\n```json\n' + b + '\n```', TODAY), /Plusieurs blocs/);
+  assert.throws(() => R.parse('Voici : ```json\n{"format":"rc-depot-v1","source":"claude","entries":[],"x":1}\n```', TODAY), /champ inconnu/);
+  assert.ok(one(e('tread', { mm: 1e-7, ax: 'av' })).error, 'une valeur infinitésimale n’est pas 0,0 mm');
 });
 check('entretien : révision et contrôle technique datés, compteur et dépense ajoutés ; plus récent déjà saisi → refusé', () => {
   const r = R.apply(car(), ok(e('maintenance', { kind: 'revision', km: 100500, amountCents: 18900 })), deps);

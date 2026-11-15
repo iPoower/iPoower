@@ -969,7 +969,7 @@ const verdictHtml = (l, sm, w) => { const unk = !!(w && w.depthUnknown), lim = u
   return `<div class="verdict ${lim ? 'lvx' : 'lv' + l}${sm ? ' sm' : ''}"><span class="em">${lim ? '⚪' : LV[l].emoji}</span><span>${lim ? 'ANALYSE LIMITÉE' : LV[l].label}${unk ? ' · PROFONDEUR NON RENSEIGNÉE' : ''}</span></div>`; };
 // Profil générique (audit A06) : tant que les lieux et la monte ne sont pas renseignés (ou appareil verrouillé), les conclusions
 // sont un APERÇU : jamais GO ni un score /100 présenté comme un conseil personnel. Seuls les paramètres nécessaires comptent.
-const PROFILE = () => ProfileCheck.check({ locked: LOCKED(), locs: calendarPlaces(), work: S.work });
+const PROFILE = () => ProfileCheck.check({ locked: LOCKED(), nocode: !!lsGet('twrc.nocode'), locs: calendarPlaces(), work: S.work });
 const carProfile = car => PROFILE().car(car);
 // variante compacte, dans le bloc de verdict lui-même (le verdict reste visible sans défilement sur iPhone)
 const genericLine = gaps => `<p class="wx-hl generic-note" data-k="generic">🧪 <b>Aperçu générique — configure tes lieux et ta monte</b> · ${gaps.map(g => esc(g.text)).join(' · ')} <button class="btn sm" data-act="goset-cfg">Configurer</button></p>`;
@@ -2994,7 +2994,7 @@ function tripMontagneHtml(t, car) {
 function briefCard(t, dayLbl) {
   if (t.destinationPending || t.l && t.l.destinationOverride && !t.l.to) return `<div class="brf-h"><span class="brf-k">${APP_CONTEXT.snapshot.status === 'travel' ? '🚗 En trajet' : '🏁 Prochain trajet'}</span></div><div class="brf-ev"><b>${esc(t.from || 'Origine à confirmer')} → Destination à confirmer</b></div><p class="brf-why" role="status">Choisis la destination dans Aujourd’hui pour calculer le trajet.</p>`;
   const src = t.customRoute || t.src === 'local' ? 'trajet choisi' : t.src === 'work' ? 'domicile-travail' : 'agenda';
-  if (t.l && t.l.originPending) return `<div class="brf-h"><span class="brf-k">🏁 Prochain trajet · ${src}</span></div><div class="brf-ev">📅 <b>${esc(t.name)}</b></div><p class="brf-why" role="status">${t.l.originRecalc ? '📍 Départ confirmé : ' + esc(t.l.originName) + ' · recalcul de la route, de l’heure de départ et de la météo en cours. Ancien trajet invalidé.' : 'Origine à confirmer après annulation du trajet précédent'}</p><div class="cal-v">${tripCancelButton(t)}</div>`;
+  if (t.l && t.l.originPending) return `<div class="brf-h"><span class="brf-k">🏁 Prochain trajet · ${src}</span></div><div class="brf-ev">📅 <b>${esc(t.name)}</b></div><p class="brf-why" role="status">${t.l.originRecalc ? '📍 Départ confirmé : ' + esc(t.l.originName) + ' · recalcul de la route, de l’heure de départ et de la météo en cours. Ancien trajet invalidé.' : t.l.routeError ? '⚠️ Itinéraire indisponible pour le moment : le service de calcul d’itinéraire n’a pas répondu. Trajet conservé, nouvel essai automatique.' : t.l.manual ? '⏳ Itinéraire et météo du parcours en cours de calcul…' : 'Origine à confirmer après annulation du trajet précédent'}</p><div class="cal-v">${tripCancelButton(t)}</div>`;
   const head = `<div class="brf-h">${t.manualPreview ? `<span class="brf-k">📍 Aperçu depuis ma position · ${src}</span><span class="brf-w">${dayLbl(t.dep)} · départ estimé <b>${t.previewDep.slice(11, 16)}</b> · arrivée estimée ${t.previewArr.slice(11, 16)}</span>`
     : t.live === 'active' ? `<span class="brf-k">🏎️ Trajet en cours · ${src}</span><span class="brf-w">${f0(t.l.km)} km restants · ${t.l.min} min · arrivée estimée <b>${t.arr.slice(11, 16)}</b></span>`
     : t.manualReturn ? `<span class="brf-k">🏠 Retour maison demandé · ${src}</span><span class="brf-w">départ maintenant · le trajet passe « en cours » uniquement après mouvement confirmé</span>`
@@ -3339,6 +3339,8 @@ function tripCancelRouteLeg(e, leg) {
   }
   const key = tripCancelRouteKey(e, leg);
   let entry = CANCELROUTES.get(key);
+  // Échec du calcul d'itinéraire : état visible (jamais « calcul en cours » sans fin) et nouvel essai au plus une fois par minute.
+  if (entry && entry.phase === 'error' && !offlineNow() && Date.now() - (entry.at || 0) >= 60e3) { CANCELROUTES.delete(key); entry = null; }
   if (!entry && offlineNow()) return { ...leg, min: null, km: null, pts: [], g: [], routed: false, routeOffline: true, originPending: true };
   if (!entry) {
     const gen = CANCELROUTEGEN; entry = { phase: 'loading', leg: null, originExplicit: !!leg.originExplicit }; CANCELROUTES.set(key, entry);
@@ -3359,13 +3361,13 @@ function tripCancelRouteLeg(e, leg) {
         if (old) {
           entry.leg = { ...leg, ...old, from: { ...leg.from, ...a }, to: { ...leg.to, ...b }, navTo: { ...leg.to }, dep: leg.dep, arr: addMin(leg.dep, old.min), routed: true, cachedRoute: true };
           delete entry.leg.originPending; entry.phase = 'weather';
-        } else entry.phase = 'error';
-        renderCal(); renderBrf(); renderTenue();
+        } else { entry.phase = 'error'; entry.at = Date.now(); }
+        renderCal(); renderBrf(); renderTenue(); if (UI.view === 'trajet') renderTripView();
       });
   }
   if (entry.leg && legEval(entry.leg).sum) { entry.phase = 'ready'; return entry.leg; }
   // Ne pas exposer une ancienne route ou une nouvelle heure tant que route ET météo ne sont pas prêtes.
-  return { ...leg, from: null, min: null, km: null, pts: [], g: [], routed: false, originPending: true };
+  return { ...leg, from: null, min: null, km: null, pts: [], g: [], routed: false, originPending: true, ...(entry.phase === 'error' ? { routeError: true } : {}) };
 }
 function effLegs(e, all) {
   if (!calendarSpatial(e) || calendarCancelled(e)) return [];
@@ -3398,7 +3400,7 @@ function legHtml(leg, ev) {
   const action = trip && (leg.arr || leg.dep) >= liveNow() ? tripCancelButton(trip) : '';
   const homeAction = trip ? returnHomeButtonForTrip(trip) : '';
   const cancel = action || homeAction ? `<div class="cal-v">${action}${homeAction}</div>` : '';
-  if (leg.originPending) return `<div class="leg lvx"><div class="leg-h"><b>${leg.k === 'go' ? 'ALLER' : 'RETOUR'}</b></div><p class="sub" role="status">${leg.originRecalc ? '📍 Départ confirmé : ' + esc(leg.originName) + ' · nouvel itinéraire et météo en cours de calcul' : 'Origine à confirmer après annulation du trajet précédent'}</p>${cancel}</div>`;
+  if (leg.originPending) return `<div class="leg lvx"><div class="leg-h"><b>${leg.k === 'go' ? 'ALLER' : 'RETOUR'}</b></div><p class="sub" role="status">${leg.originRecalc ? '📍 Départ confirmé : ' + esc(leg.originName) + ' · nouvel itinéraire et météo en cours de calcul' : leg.routeError ? '⚠️ Itinéraire indisponible pour le moment : le service de calcul d’itinéraire n’a pas répondu. Trajet conservé, nouvel essai automatique.' : 'Origine à confirmer après annulation du trajet précédent'}</p>${cancel}</div>`;
   const r = legEval(leg), go = leg.k === 'go', gen = (r.res || []).some(x => carProfile(x.c).generic);
   const head = `<div class="leg-h"><b>${go ? 'ALLER' : 'RETOUR'}</b> · départ <b>${leg.dep.slice(11, 16)}</b> → ${leg.arr.slice(11, 16)} · ${f0(leg.km)} km · ${leg.min} min${leg.assumed ? ' · <span class="muted">horaire supposé</span>' : ''} · ${cdSpan(leg.dep)}</div>
     <div class="leg-src">${leg.routed ? '<i class="tag prev">🛣 route · OSRM</i>' : '<i class="tag est">≈ route estimée</i>'}${r.seq ? ' ' + legDepSrcTag(r.depSrc) : ''}</div>
@@ -3986,7 +3988,7 @@ function renderCompare() {
   }).join('');
   const [a, b] = res, sporty = res.find(r => r.car.sporty && effType(r.car) === 'summer');
   const why = [
-    `Pneus : ${res.map(r => `${esc(r.car.short)} en ${TYPE_LABEL[r.car.tire.type]} (${esc(r.car.tire.size)})`).join(' ; ')}.`,
+    `Pneus : ${res.map(r => `${esc(r.car.short)} en ${TYPE_LABEL[r.car.tire.type]}${r.car.tire.size ? ` (${esc(r.car.tire.size)})` : ''}`).join(' ; ')}.`,
     `Conditions sur ${esc(label)} : ${f1(sm.Tmin)} à ${f1(sm.Tmax)} °C, chaussée estimée jusqu’à ${f1(sm.TrMin)} °C, pluie max ${f1(sm.Pmax)} mm/h, visibilité min ${visTxt(sm.visMin)}, ${sm.snowSum > 0 || sm.snowCode ? 'neige prévue' : 'pas de neige prévue'}, gel (règle) : ${frostWords(frostRisk(sm)).label}${td.err || frostRisk(sm).level >= 1 ? '' : ' sur la fenêtre du trajet'}, indicateur verglas ${ICE_LV[sm.iceLevel].toLowerCase()} (complémentaire).`,
     genericCompare ? 'Comparaison personnalisée en attente : renseigne les lieux et la monte de chaque voiture.' :
       // Garde-fou de profondeur (#307) : il relève le NIVEAU, pas le score ; deux niveaux différents ne sont jamais « indistincts ».
@@ -4120,7 +4122,7 @@ function renderWeatherLink() {
   const el = $('#secWeatherLink'); el.hidden = UI.view !== 'pneus';
   if (el.hidden) return;
   const c = CX && curNow(CX.m), l = curLoc();
-  el.innerHTML = `<div><h3>🌦️ Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) || 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}${c.vis != null ? ' maintenant' : ''}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="weather-details">Détails météo →</button>`;
+  el.innerHTML = `<div><h3>🌦️ Météo · ${esc(l.name)}</h3><p>${c ? `${f1(c.T)} °C · ${esc(wx(c.code))} · ${rainClass(c.P) ? 'pluie : ' + rainClass(c.P) : 'précipitations non disponibles'} · visibilité ${visTxt(c.vis)}${c.vis != null ? ' maintenant' : ''}` : 'Données météo indisponibles'}</p></div><button class="btn" data-act="weather-details">Détails météo →</button>`;
 }
 
 // @include app/season-actions.js
@@ -4552,6 +4554,7 @@ document.addEventListener('click', async e => {
   if (a === 'trip-dest-known') { tripPickKnown(t.dataset.id); return; }
   if (a === 'trip-plan') { tripProgram(t); return; }
   if (a === 'trip-plan-cancel') { tripCancelPlan(); return; }
+  if (a === 'trip-route-retry') { for (const [key, entry] of CANCELROUTES) if (entry.phase === 'error') CANCELROUTES.delete(key); softRender(); return; }
   if (a === 'day-destination') { if (t.dataset.agendaKey) appChooseAgendaDestination(t.dataset.agendaKey); else appChooseDestination(t.dataset.id || null); return; }
   if (a === 'day-type') { appSetDayType(t.dataset.v); return; }
   if (a === 'day-car') { appSetCar(t.dataset.id || null); return; }
@@ -4649,7 +4652,11 @@ document.addEventListener('click', async e => {
   else if (a === 'odo' || a === 'tread-add' || a === 'rot') {
     const i = +t.dataset.i, c = S.cars[i], today = (M[UI.loc] && M[UI.loc].nowStr.slice(0, 10)) || new Date().toISOString().slice(0, 10);
     if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; }
-    if (a === 'odo') { const input = $('#odo-' + i), v = parseFloat((input || {}).value); if (!isFinite(v) || v < 0) { commandFeedback(t, 'Saisis un compteur positif ou nul', input); return; } c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).slice(-60); }
+    if (a === 'odo') { const input = $('#odo-' + i), v = parseFloat((input || {}).value); if (!isFinite(v) || v < 0) { commandFeedback(t, 'Saisis un compteur positif ou nul', input); return; }
+      // Un compteur ne recule pas : même chronologie que la boîte de dépôt et le budget (relevés, pleins, révision, montage).
+      const clash = RcInbox.kmConflict({ ...c, odo: (c.odo || []).filter(o => o && o.d !== today) }, today, Math.round(v));
+      if (clash && !confirm('Ce compteur (' + Math.round(v).toLocaleString('fr-FR') + ' km) contredit ' + clash.label + ' du ' + clash.d.slice(8) + '/' + clash.d.slice(5, 7) + '/' + clash.d.slice(0, 4) + ' (' + Number(clash.km).toLocaleString('fr-FR') + ' km).\n\nEnregistrer quand même ce relevé ?')) { commandFeedback(t, 'Relevé non enregistré : vérifie le compteur', input); return; }
+      c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).slice(-60); }
     if (a === 'tread-add') { const input = $('#trd-' + i), v = parseFloat(String((input || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) { commandFeedback(t, 'Saisis une profondeur de 0 à 12 mm', input); return; } const lo = lastOdo(c);
       const mm = Math.round(v * 10) / 10, ax = ($('#trdax-' + i) || {}).value || 'both', est = ($('#trdest-' + i) || {}).value === '1', pos = ($('#trdpos-' + i) || {}).value || 'unknown';
       if ((c.tire.treads || []).length >= TREAD_HISTORY_MAX) { commandFeedback(t, 'Historique plein : aucun ancien relevé effacé. Conserve un export avant d’organiser les relevés.', input); return; }

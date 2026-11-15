@@ -39,7 +39,7 @@ function wxTrips(clockModel) {
       const g = glareCheck(t.l.from, t.l.to, t.dep, t.l.min, offSec, cloudAt).glare; if (g) glare = { ts: g.ts };
     }
     const label = t.src === 'work' ? (t.td && t.td.dir === 'ret' ? 'trajet retour' : 'trajet aller') : t.l && t.l.k === 'ret' ? 'trajet retour' : `trajet vers ${t.to || 'le rendez-vous'}`;
-    return { id: t.key || 'trip' + k, src: t.src || null, label, from: t.from || null, to: t.to || null, dep: t.dep, arr: t.arr || t.dep, pending: !!t.originPending,
+    return { id: t.key || 'trip' + k, src: t.src || null, label, from: t.from || null, to: t.to || null, dep: t.dep, arr: t.arr || t.dep, pending: !!(t.originPending || t.l && t.l.originPending), routeError: !!(t.l && t.l.routeError),
       running: !!(APP_CONTEXT.snapshot.activeTrip && APP_CONTEXT.snapshot.activeTrip.key === t.key), km: t.l && t.l.km != null ? t.l.km : null, glare, points };
   });
 }
@@ -124,7 +124,7 @@ function renderWx() {
     : `<div id="wxNextTrip" class="wx-blk wx-trip ${t.lv == null ? 'lvx' : 'lv' + t.lv}"><h3>🧭 Prochain trajet${t.running ? ' · en cours' : ' · ' + esc(dayLbl(t.day))}</h3>
       <p class="wx-route"><b>${esc(t.from || 'Départ')} → ${esc(t.to || 'Arrivée')}</b></p>
       ${appAgendaConflictHtml()}${calendarOriginControls(target)}
-      ${t.pending ? `<p class="sub" role="status">⏳ ${offlineNow() ? 'Hors ligne : itinéraire, horaire conseillé et météo du parcours en attente du réseau.' : 'Nouvel itinéraire, horaire conseillé et météo du parcours en cours de calcul…'}</p>` : `<p class="wx-when num">${t.dep} → ${t.arr} · ${t.durMin} min${t.km != null ? ' · ' + f0(t.km) + ' km' : ''}</p>`}
+      ${t.pending ? `<p class="sub" role="status">⏳ ${offlineNow() ? 'Hors ligne : itinéraire, horaire conseillé et météo du parcours en attente du réseau.' : t.routeError ? 'Itinéraire indisponible pour le moment : durée et météo du parcours non calculées. Nouvel essai automatique.' : 'Nouvel itinéraire, horaire conseillé et météo du parcours en cours de calcul…'}</p>` : `<p class="wx-when num">${t.dep} → ${t.arr} · ${t.durMin} min${t.km != null ? ' · ' + f0(t.km) + ' km' : ''}</p>`}
       ${t.pending ? '' : t.waiting ? `<p class="sub">⏳ Météo du trajet indisponible${offlineNow() ? ' hors ligne' : ' pour le moment'}.</p>` : `<ul class="wx-pts">${t.points.map(p => `<li class="lv${p.lv}"><span class="k">${esc(p.label)} <i class="num">${esc(p.t)}</i></span><span>${p.T != null ? '<b class="num">' + f0(p.T) + ' °C</b> · ' : ''}${esc(p.text)}${p.place && p.label === 'Mi-parcours' ? ' · ' + esc(p.place) : ''}</span></li>`).join('')}</ul>`}
       ${t.crit ? `<p class="wx-crit lv${t.crit.lv}">${E[t.crit.lv]} ${esc(t.crit.text)}</p>` : t.waiting ? '' : '<p class="wx-crit lv0">🟢 Aucun phénomène critique sur le trajet</p>'}
       ${t.later.length ? `<p class="sub">Ensuite : ${t.later.map(x => `${x.lv == null ? '⏳' : E[x.lv]} ${x.day !== today ? esc(dayLbl(x.day)) + ' ' : ''}${esc(x.dep)} ${esc(x.label)}${x.lv == null ? ' · météo indisponible' : ''}`).join(' · ')}</p>` : ''}${calendarOriginEditorHtml()}</div>`;

@@ -363,6 +363,10 @@
     "suite": "e2e59-trip-tab.js",
     "result": "trajet manuel annulé et planning automatique restauré"
   },
+  "trip-route-retry": {
+    "suite": "e2e124-coherence-mesures.js",
+    "result": "nouvel essai du calcul d’itinéraire après un échec, état explicite conservé"
+  },
   "cal-retry": {
     "suite": "e2e89-agenda-sablier.js",
     "result": "nouvelle lecture de l’agenda après un échec, message retiré au succès"

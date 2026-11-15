@@ -6,7 +6,7 @@ const sourcePath = path.join(__dirname, '../src/profile-check.js');
 function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   const ctx = { Math, Number, Array, JSON }; vm.createContext(ctx); vm.runInContext(source + ';this.P=ProfileCheck;', ctx);
   const app = options.appSource || fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
-  ctx.LOCKED = () => false;
+  ctx.LOCKED = () => false; ctx.lsGet = () => null;
   vm.runInContext(app.match(/^const calendarPlaces = .*$/m)[0] + '\n' + app.match(/^const PROFILE = .*$/m)[0] + '\nthis.appProfile=PROFILE;', ctx);
   const P = ctx.P, plain = v => JSON.parse(JSON.stringify(v)); let count = 0;
   const test = (name, fn) => { try { fn(); } catch (error) { error.scenario = name; throw error; } count++; if (!options.quiet) console.log('✅ ' + name); };

@@ -80,7 +80,7 @@ const untouched = p => p.evaluate(() => ({ context: lsGet('twrc.context.v1'), ar
       await check(dev + ' · valider compteur, pressions, profondeur, montage hiver et révision : chaque fiche reçoit exactement la saisie', async () => {
         for (const id of ['dep-odo-0001', 'dep-press-0001', 'dep-tread-0001', 'dep-mount-0001', 'dep-maint-0001']) await act(s, id, 'accept');
         const c = (await cars(s.p))[0];
-        assert.deepEqual(c.odo, [{ d: '2026-03-29', km: 12100 }, { d: '2026-03-31', km: 12150 }]);
+        assert.deepEqual(c.odo, [{ d: '2026-03-28', km: 12000 }, { d: '2026-03-29', km: 12100 }, { d: '2026-03-31', km: 12150 }], 'le compteur du ticket de carburant rejoint les relevés');
         assert.equal(c.tire.type, 'winter'); assert.equal(c.tire.brand, 'Marque B'); assert.equal(c.tire.dot, '3825'); assert.equal(c.tire.mounted, '2026-03-31'); assert.equal(c.tire.mountKm, 12150);
         const summer = await s.p.evaluate(() => S.cars[0].sets.summer);
         assert.deepEqual({ ...summer.pchk }, { date: '2026-03-30', T: 9.5, av: 2.4, ar: 2.3 }, 'pressions mesurées rangées avec le jeu été'); assert.equal(summer.treadAv, 6.2);
