@@ -95,7 +95,7 @@ const layout = (p, mobile) => p.evaluate(mobile => {
     check('1 · heure par heure : provenance modèle, rafraîchissement 5 min et pas de nouvelle API', /Prévisions du modèle/.test(w.hourlyNote) && /toutes les 5 min/.test(w.hourlyNote), w.hourlyNote);
     check('1 · prochain trajet de l’agenda : origine → destination, horaires, départ et arrivée', /Prochain trajet/i.test(w.trip) && /→/.test(w.trip) && /Départ/.test(w.trip) && /Arrivée/.test(w.trip), w.trip);
     check('1 · plusieurs trajets : la chronologie montre plusieurs départs, triés', w.moments.filter(x => /départ/.test(x)).length >= 2, w.moments.join(' | '));
-    check('1 · chronologie dans l’ordre des heures, lendemain signalé', w.ts.length > 2 && w.ts.every((x, i) => !i || w.ts[i - 1] <= x) && w.moments.filter((x, i) => w.ts[i].slice(0, 10) > '2026-10-03').every(x => /^dem\. /.test(x)), w.moments.join(' | '));
+    check('1 · chronologie dans l’ordre des heures, lendemain signalé', w.ts.length > 2 && w.ts.every((x, i) => !i || w.ts[i - 1] <= x) && w.moments.filter((x, i) => w.ts[i].slice(0, 10) > '2026-10-03').every(x => /^demain \d\d:\d\d /.test(x)) && !w.moments.some(x => /dem\. demain/.test(x)), w.moments.join(' | '));   // P7 (15/11) : « demain HH:MM », jamais le doublon « dem. demain »
     check('1 · rendez-vous sans lieu ou 📺 jamais présentés comme trajets', !/France – Italie|Appel sans lieu|Sport/.test(w.moments.join(' ') + w.trip), w.moments.join(' | '));
     check('1 · « ce qui compte » : 1 à 5 lignes', w.matters.length >= 1 && w.matters.length <= 5, w.matters.join(' | '));
     check('1 · sept cartes phénomènes compactes', w.phen.join(',') === 'rain,fog,wind,ice,temp,sun,road', w.phen.join(','));
