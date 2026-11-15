@@ -1101,7 +1101,7 @@ function renderNotice() {
     <select id="demoScn" data-act-change="demoScn" aria-label="Scénario de démo">${Object.keys(DEMO_SCN).map(k => `<option value="${k}" ${k === DEMO.scn ? 'selected' : ''}>${esc(DEMO_SCN[k].name)}</option>`).join('')}</select>
     <button class="btn sm" data-act="demo-off">Quitter la démo</button></div>` : '';
   const lock = LOCKED() && !lsGet('twrc.nocode') ? `<div class="note lvx unlock"><b>🔒 CONFIGURATION</b><span>${storeLocked() ? 'Tes réglages et ton journal sont conservés dans une copie chiffrée. Déverrouille cet appareil avec ton code.' : 'Réglages personnels chiffrés. Entre ton code pour déverrouiller cet appareil.'}
-      <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" aria-label="Code de configuration" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button><label style="width:100%;display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="rememberWeek"> Rester connecté 7 jours sur cet appareil personnel</label></form><span class="sub">Après 7 jours, le code sera redemandé. « Verrouiller cet appareil » ferme immédiatement la session. En cas de refus du stockage local, le code reste nécessaire à chaque ouverture.</span><span class="sub">${storeLocked() ? '' : 'Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button>'}</span><span class="sub" id="unlockMsg"></span></span></div>` : '';
+      <form id="unlockForm" action="#" method="post" style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input type="text" name="username" autocomplete="username" value="Race Control" readonly tabindex="-1" aria-hidden="true" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"><input type="password" name="password" id="unlockPw" aria-label="Code de configuration" autocomplete="current-password" placeholder="code" style="flex:1;min-width:150px"><button class="btn sm" type="submit">Déverrouiller</button><label style="width:100%;display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="rememberWeek"> Rester connecté 7 jours sur cet appareil personnel</label></form><span class="sub">Après 7 jours, le code sera redemandé. « Verrouiller cet appareil » ferme immédiatement la session. En cas de refus du stockage local, le code reste nécessaire à chaque ouverture.</span><span class="sub" style="display:block;margin-top:8px">${storeLocked() ? '' : 'Pas de code ? <button class="btn sm" data-act="nocode">Utiliser l’app avec mes propres réglages</button>'}</span><span class="sub" id="unlockMsg"></span></span></div>` : '';
   const setup = lock || (CFG_IMPORTED ? `<div class="note lv0"><b>CONFIGURÉ</b><span>Tes lieux et tes voitures sont enregistrés sur cet appareil. Ajoute la page à l’écran d’accueil depuis ce lien.</span></div>`
     : !S.configured ? `<div class="note lvx"><b>À CONFIGURER</b><span>Renseigne tes lieux et tes voitures dans les paramètres. Ils restent sur cet appareil. <button class="btn sm" data-act="goset-cfg">Ouvrir les paramètres</button></span></div>` : '');
   // Une réponse météo peut arriver entre la saisie et la validation du code.
@@ -1221,7 +1221,9 @@ function renderDecisionCore() {
   const changes = DECISION_HISTORY.changes(state).slice(0, 4);
   DECISION_HISTORY.save(state);
   DECISION_LAST = { confidence, decision, state, changes };
-  const icon = ['✓', '◌', '⚠', '⛔'][decision.displayLevel] || '•';
+  // « ANALYSE LIMITÉE » (profondeur inconnue) n'est pas un feu vert : ton neutre, comme le verdict des cartes voiture (⚪ · lvx).
+  const limited = decision.label === 'ANALYSE LIMITÉE', tone = limited ? 'lvx' : 'lv' + decision.displayLevel;
+  const icon = limited ? '◌' : ['✓', '◌', '⚠', '⛔'][decision.displayLevel] || '•';
   const confClass = 'lv' + Math.min(2, confidence.level);
   const destination = snap.destination && snap.destination.name || (snap.destination ? 'Destination' : 'Aucune destination immédiate');
   const trip = snap.activeTrip || snap.nextTrip;
@@ -1268,7 +1270,7 @@ function renderDecisionCore() {
   const confidenceHtml = confidence.level > 0 && whyLeft.length
     ? '<details class="decision-confidence ' + confClass + '" data-ux="decision-confidence"><summary>' + confidenceLabel + '<span aria-hidden="true"> ⌄</span></summary><div class="decision-why">' + whyLeft.map(r => '<span>' + esc(r) + '</span>').join('') + '</div></details>'
     : '<span class="decision-confidence ' + confClass + '">' + confidenceLabel + '</span>';
-  el.className = UI.view === 'analyse' ? 'decision-context' : 'decision-core lv' + decision.displayLevel;
+  el.className = UI.view === 'analyse' ? 'decision-context' : 'decision-core ' + tone;
   el.hidden = false;
   // À retenir : la conclusion déjà rédigée par le récit pneus de la voiture active (aucun conseil nouveau), dès qu'un signal existe.
   // Conseils propres à la voiture utilisée : seulement pour une voiture CONFIRMÉE (jamais pour une voiture seulement affichée).
@@ -1288,7 +1290,7 @@ function renderDecisionCore() {
     '</div>' +
     changesHtml;
   const html = UI.view === 'analyse'
-    ? uxFold('analysis-context', 'Contexte météo et voiture', '<div class="decision-core lv' + decision.displayLevel + '">' + coreHtml + '</div>') : coreHtml;
+    ? uxFold('analysis-context', 'Contexte météo et voiture', '<div class="decision-core ' + tone + '">' + coreHtml + '</div>') : coreHtml;
   if (html === renderDecisionCore.last) return;
   const changesOpen = !!el.querySelector('.decision-changes[open]');
   const foldFocus = uxFocusKey(el);
