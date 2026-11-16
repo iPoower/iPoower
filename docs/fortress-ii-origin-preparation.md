@@ -118,3 +118,17 @@ Les tests simulés Chromium/WebKit **ne prouvent jamais** une session Safari phy
 - Toute création de projet Cloudflare, DNS, secret, changement relais, déploiement, fusion ou transfert réel nécessite une **autorisation nouvelle et distincte**.
 
 Sources : [MDN same-origin](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Same-origin_policy), [Cloudflare Pages headers](https://developers.cloudflare.com/pages/configuration/headers/), [limites Pages](https://developers.cloudflare.com/pages/platform/limits/), [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/).
+
+## Actualisation Forteresse III — 13 octobre 2026, préparation seulement
+
+Le [dossier Forteresse III](fortress-iii-origin-readiness.md) complète cette
+préparation sans la remplacer : trois applications actives sous la même
+origine, lectures HTTP publiques archivées, en-têtes HTTP absents mais CSP meta
+présente, taille CSP de build fictif mesurée, limites Backup V2 maintenues.
+Il prouve aussi un blocage supplémentaire : `registerSW()` n'enregistre
+aujourd'hui que sur `github.io`, donc pas automatiquement sur une nouvelle
+origine. Un préflight de 13 scénarios est ajouté à la CI consolidée PR-only,
+sans permission supplémentaire, hébergement ou publication.
+
+**R1 reste ouvert, NO GO migration. Aucun ancien test ni document ne constitue
+une autorisation de créer un domaine ou transférer des données personnelles.**

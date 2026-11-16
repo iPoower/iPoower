@@ -1,0 +1,66 @@
+{
+  "read_at_utc": "2026-10-13T10:54:50.615231+00:00",
+  "method": "Public GET only, no cookies, authentication, scripts or user-profile access",
+  "responses": [
+    {
+      "app": "Race Control",
+      "url": "https://ipoower.github.io/iPoower/race-control/",
+      "status": 200,
+      "bytes": 1165305,
+      "sha256": "c54414500aee0f0ae28a684f57274a305ec0d8fcb8ca75f42fdd0a16213080bf",
+      "headers": {
+        "Content-Security-Policy": null,
+        "Referrer-Policy": null,
+        "Permissions-Policy": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Cross-Origin-Opener-Policy": null,
+        "Cache-Control": "max-age=600",
+        "Strict-Transport-Security": "max-age=31556952"
+      },
+      "set_cookie_observed": false,
+      "meta_csp_observed": true,
+      "browser_profile_accessed": false
+    },
+    {
+      "app": "Reconversion Control",
+      "url": "https://ipoower.github.io/Reconversion-Control/",
+      "status": 200,
+      "bytes": 3763,
+      "sha256": "d25bc8c3fd656d2a701abc839b3a0598bb5d9a087bfc25190f6914815f8be0c5",
+      "headers": {
+        "Content-Security-Policy": null,
+        "Referrer-Policy": null,
+        "Permissions-Policy": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Cross-Origin-Opener-Policy": null,
+        "Cache-Control": "max-age=600",
+        "Strict-Transport-Security": "max-age=31556952"
+      },
+      "set_cookie_observed": false,
+      "meta_csp_observed": true,
+      "browser_profile_accessed": false
+    },
+    {
+      "app": "Control Vault",
+      "url": "https://ipoower.github.io/Control-Vault/",
+      "status": 200,
+      "bytes": 1736,
+      "sha256": "0a6cce2edd526201c75daaa43462546ca051673ea99e1a4186b99d6ee4c5b47c",
+      "headers": {
+        "Content-Security-Policy": null,
+        "Referrer-Policy": null,
+        "Permissions-Policy": null,
+        "X-Frame-Options": null,
+        "X-Content-Type-Options": null,
+        "Cross-Origin-Opener-Policy": null,
+        "Cache-Control": "max-age=600",
+        "Strict-Transport-Security": "max-age=31556952"
+      },
+      "set_cookie_observed": false,
+      "meta_csp_observed": true,
+      "browser_profile_accessed": false
+    }
+  ]
+}

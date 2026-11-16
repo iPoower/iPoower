@@ -45,6 +45,8 @@ jobs:
         run: node tests/fortress-ii-readiness.js
       - name: Offline/service worker cache simulation
         run: node tests/fortress-ii-offline-rehearsal.js
+      - name: Forteresse III dedicated origins, HTTP templates and PWA readiness blockers
+        run: node tests/fortress-iii-origin-preflight.js
 
   browser-labs:
     if: github.event_name == 'pull_request'
