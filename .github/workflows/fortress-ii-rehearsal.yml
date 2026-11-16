@@ -1,0 +1,31 @@
+name: Forteresse II · répétition à blanc
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/fortress-ii-dryrun-acceptance.md'
+      - 'tests/fortress-ii-readiness.js'
+      - 'tests/fortress-ii-offline-rehearsal.js'
+      - '.github/workflows/fortress-ii-rehearsal.yml'
+permissions:
+  contents: read
+jobs:
+  dryrun-only:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+      - name: Check syntax
+        run: |
+          node --check tests/fortress-ii-readiness.js
+          node --check tests/fortress-ii-offline-rehearsal.js
+      - name: Check fake migration readiness
+        run: node tests/fortress-ii-readiness.js
+      - name: Check fake offline cache
+        run: node tests/fortress-ii-offline-rehearsal.js
