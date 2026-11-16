@@ -1417,7 +1417,7 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .bilan-days { display: grid; gap: 8px; }
 .bilan-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .bilan-cal > div { display: grid; justify-items: center; gap: 2px; padding: 6px 0; border-radius: 6px; color: #04131b; }
-.bilan-cal > div span:first-child { font-size: 10px; }
+.bilan-cal > div span:first-child { font-size: 11px; }
 .bilan-cal b { font: 600 13px var(--f-mono); }
 .bilan-leg { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--fg2); }
 .bilan-leg i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
