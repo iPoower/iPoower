@@ -1,0 +1,21 @@
+# Addition
+print(4 + 5)
+
+# Subtraction
+print(5 - 5 )
+
+# Multiplication
+print(3 * 5)
+
+# Division
+print(10 / 2 )
+-----------------
+
+>>> num = 42    
+>>> type(num)
+<class 'int'>
+>>> type(42)
+<class 'int'>
+>>> name = "Alice"
+>>> type(name)
+<class 'str'>
