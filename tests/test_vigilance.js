@@ -17,6 +17,7 @@ function make(source) {
   this.parse = (data, code = '80') => parseVigi(data, code, '', Date.parse('2026-10-11T12:00Z'));
   this.fetch = async data => { response = data; await fetchVigi(); return { url: fetchedUrl, state: VIGI, html: vigiBlock(), top: vigiTop() }; };
   this.render = () => ({ html: vigiBlock(), top: vigiTop() });
+  this.topToday = () => vigiTop(Date.now(), true);   // verdict « Ici, maintenant » : vigilance du jour seulement
 `, ctx);
   return ctx;
 }
@@ -51,8 +52,11 @@ const plain = x => JSON.parse(JSON.stringify(x));
   const orange = { records: [record({ ...J }), record({ ...J1, color_id: 3, color: 'orange', phenomenon: 'neige / verglas' })] };
   at = Date.parse('2026-11-09T16:30:00Z'); r = plain(await ctx.fetch(orange));
   assert.match(r.html, /ORANGE<\/span> neige \/ verglas · demain/); assert.equal(r.top.lvl, 3); assert.equal(r.top.text, 'neige / verglas · demain');
+  // Constat du 16/11 : la vigilance de demain ne relève pas le verdict « Ici, maintenant » (seule celle du jour y entre).
+  assert.equal(plain(ctx.topToday()).lvl, 1, 'veille : orange de demain hors du verdict du jour');
   at = Date.parse('2026-11-10T00:08:00Z'); r = plain(await ctx.fetch(orange));
   assert.match(r.html, /ORANGE<\/span> neige \/ verglas · aujourd’hui/); assert.equal(r.top.text, 'neige / verglas · aujourd’hui');
+  assert.equal(plain(ctx.topToday()).lvl, 3, 'après minuit : l’orange concerne aujourd’hui et entre dans le verdict');
   // Sans nouvel appel réseau : l'état chargé la veille est relu après minuit, le libellé suit l'heure réelle.
   at = Date.parse('2026-11-09T16:30:00Z'); await ctx.fetch(orange); at = Date.parse('2026-11-10T00:08:00Z');
   assert.match(plain(ctx.render()).html, /neige \/ verglas · aujourd’hui/);

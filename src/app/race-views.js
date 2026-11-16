@@ -49,7 +49,7 @@ function f1TrackHtml() {
   const complete = t && t.seq && t.seq.every(q => q && q.hs && q.hs[q.i] && ['T', 'Tr', 'P', 'vis'].every(k => Number.isFinite(q.hs[q.i][k])));
   const x = F1Pure.trackConditions(complete ? t.seq : null, { ageMin: age });
   const rows = x.available ? '<ol class="lab-why">' + x.sectors.map(s => '<li><b>Secteur ' + s.index +
-    ' · ' + esc(s.label) + '</b> · ' + s.points + ' point(s) météo · ' +
+    ' · ' + esc(s.label) + '</b> · ' + s.points + (s.points > 1 ? ' points météo · ' : ' point météo · ') +
     esc(s.notes.length ? s.notes.join(' / ') : 'aucun signal notable sur ces prévisions') + '</li>').join('') + '</ol>'
     : '<p class="sub">' + esc(x.reason) + '</p>';
   return f1Panel('trackConditions', 'ÉTAT DE LA ROUTE', t ? t.name || 'Prochain trajet' : 'Aucun trajet', rows +

@@ -150,6 +150,10 @@ html[data-theme=light] #secGarage .twin-night{fill:var(--fg)}
 #secGarage .odo-list li em{font-style:normal;font-size:12px}
 #secGarage .odo-list li.odo-bad{background:color-mix(in srgb,#f39c12 12%,transparent)}
 #secGarage .odo-list li > .btn{min-height:44px}
+#secGarage .odo-list li.odo-dup{opacity:.75}
+#secGarage .odo-fix-danger{flex-basis:100%;margin:10px 0 0;padding-top:10px;border-top:1px dashed var(--line2);display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+#secGarage .odo-fix-danger small{font-size:12px;color:var(--fg2);flex:1 1 200px}
+#secGarage .odo-fix-danger .odo-void{min-height:44px;border-color:color-mix(in srgb,#e74c3c 60%,var(--line2))}
 #secGarage .odo-fix-form{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 #secGarage .odo-fix-form label{display:grid;gap:4px;font-size:12px;color:var(--fg2);flex:1 1 180px;min-width:0}
 #secGarage .odo-fix-form input,#secGarage .odo-fix-form button{min-height:44px;box-sizing:border-box}

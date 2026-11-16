@@ -125,10 +125,10 @@ function tripPreflightHtml(route, car, origin, dest, departure) {
   const rows = [
     ['route', routeReady ? 'disponible' : 'à vérifier', pendingRoute],
     ['meteo', weatherFresh ? 'récente' : 'à vérifier', weatherFresh
-      ? 'Météo locale reçue il y a ' + Math.floor(minutes) + ' min · pas une observation sur tout le parcours'
+      ? 'Météo locale reçue il y a ' + (minutes < 1 ? '< 1' : Math.floor(minutes)) + ' min · pas une observation sur tout le parcours'
       : offlineNow() ? 'Hors connexion · conditions à actualiser dès que possible'
         : minutes == null ? 'Réception météo locale non vérifiée'
-          : 'Dernière météo locale reçue il y a ' + Math.max(0, Math.floor(minutes)) + ' min'],
+          : 'Dernière météo locale reçue il y a ' + (minutes < 1 ? '< 1' : Math.floor(minutes)) + ' min'],
     // Aucune voiture choisie : ne pas accuser une fiche incomplète (audit du 12/11/2026, monte pourtant renseignée).
     ['pneus', !car ? 'voiture à choisir' : tyreKnown ? 'déclarés' : 'à compléter', !car
       ? 'Choisis la voiture du trajet ci-dessus : sa monte sera contrôlée'

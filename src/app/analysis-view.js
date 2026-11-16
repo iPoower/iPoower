@@ -94,7 +94,7 @@ function briefThermalHtml(t, car) {
     : reached ? `Fenêtre favorable atteinte${rows.find(x => x.s === 2).km != null ? ' vers le km ' + rows.find(x => x.s === 2).km : ''}`
     : 'N’atteint pas sa fenêtre favorable sur ce trajet : freinages et virages comme sur pneu froid';
   return `<div class="frost lv${lv} brf-gum" data-k="gum"><b>🌡️ Gomme · estimation</b>
-    <span>${live ? `Maintenant : <strong>${low(r.thermal)}</strong> (${rg(r.thermal.range)}) · ` : `Départ : <strong>${low(a)}</strong> (${rg(a.range)}) → `}Arrivée : <strong>${low(z)}</strong> (${rg(z.range)})</span>
+    <span>${live ? `Maintenant : <strong>${low(r.thermal)}</strong> (gomme estimée ${rg(r.thermal.range)}) · ` : `Départ : <strong>${low(a)}</strong> (gomme estimée ${rg(a.range)}) → `}Arrivée : <strong>${low(z)}</strong> (gomme estimée ${rg(z.range)})</span>
     <span>${esc(verdict)} <button class="btn sm" data-act="brf-lab">Détail ›</button></span></div>`;
 }
 // suivi de la mémoire thermique : pendant un trajet vivant (toutes les 2 min au plus) et à l'arrivée

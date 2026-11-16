@@ -864,8 +864,12 @@ function parseVigi(js, code, name, now = Date.now()) {
 // Jour réel d'un élément : sa période de validité fait foi. L'échéance « J1 » d'un bulletin de la veille désigne aujourd'hui
 // après minuit ; sans date de début, l'échéance est rapportée au jour du bulletin. Un élément échu n'est plus affiché.
 const VIGI_DAY = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' });
-function vigiTop(now = Date.now()) {
-  const today = VIGI_DAY.format(new Date(now)), live = (VIGI.items || []).filter(i => !(Number.isFinite(i.e) && i.e <= now));
+// onlyToday : vigilance du JOUR seulement (verdict « Ici, maintenant ») ; un phénomène de jour inconnu reste compté (prudence).
+function vigiTop(now = Date.now(), onlyToday = false) {
+  const today = VIGI_DAY.format(new Date(now));
+  const dayOf = i => Number.isFinite(i.b) ? (i.b <= now ? today : VIGI_DAY.format(new Date(i.b)))
+    : Number.isFinite(VIGI.issuedAt) && i.per ? (base => i.per === 'J' ? base : new Date(Date.parse(base + 'T12:00:00Z') + 86400000).toISOString().slice(0, 10))(VIGI_DAY.format(new Date(VIGI.issuedAt))) : null;
+  const live = (VIGI.items || []).filter(i => !(Number.isFinite(i.e) && i.e <= now)).filter(i => !onlyToday || !dayOf(i) || dayOf(i) <= today);
   if (!live.length) return null;
   const lvl = Math.max(...live.map(i => i.lvl)), groups = new Map();
   live.filter(i => i.lvl === lvl).forEach(i => {
@@ -891,7 +895,9 @@ async function fetchVigi() {
   if (CX) {
     const extra = extraAlerts(CX.m, CX.sum24);
     if (!extra.vigi) delete CX.alerts.vigi; // état dérivé : un ancien bulletin n'est pas une donnée actuelle
-    Object.assign(CX.alerts, extra); renderAlerts(); renderBanners();
+    const { vigiNow, ...listed } = extra; Object.assign(CX.alerts, listed);
+    if (CX.alertsNow) { if (vigiNow) CX.alertsNow.vigi = vigiNow; else delete CX.alertsNow.vigi; }   // vigilance du jour seulement
+    renderAlerts(); renderBanners();
   }
 }
 function vigiBlock() {
@@ -1019,6 +1025,9 @@ function extraAlerts(m, sum24) {
   if (VIGI.state === 'ok' && VIGI.items.length) {
     const top = vigiTop();
     if (top && top.lvl >= 2) out.vigi = { id: 'vigi', sev: top.lvl - 1, title: `Vigilance ${['', 'verte', 'jaune', 'orange', 'rouge'][top.lvl]} : ${top.text}`, detail: `${S.dept.name || S.dept.code}. Source : Météo-France, relayée par Opendatasoft. Confirme sur le site officiel.` };
+    // Constat du 16/11 : une vigilance « vent · demain » relevait le verdict « Ici, maintenant ». Seule celle du jour y entre.
+    const now = vigiTop(Date.now(), true);
+    if (now && now.lvl >= 2) out.vigiNow = { id: 'vigi', sev: now.lvl - 1, title: `Vigilance ${['', 'verte', 'jaune', 'orange', 'rouge'][now.lvl]} : ${now.text}`, detail: out.vigi.detail };
   }
   return out;
 }
@@ -1034,11 +1043,12 @@ function computeCtx() {
   });
   const sum24 = summarize(seqOf(m, m.nowI, 24)); sum24.horizon = '24 h';
   const seasons = Object.fromEntries(cars.filter(c => c.season).map(c => [c.car.id, c.season])), extra = extraAlerts(m, sum24);
-  const alerts = Object.assign(computeAlerts(m, TCARS(), S, seasons), extra);
+  const listed = Object.fromEntries(Object.entries(extra).filter(([k]) => k !== 'vigiNow'));   // vigiNow : verdict « Ici, maintenant » seulement
+  const alerts = Object.assign(computeAlerts(m, TCARS(), S, seasons), listed);
   // Verdict « ici, maintenant » : phénomènes des NOW_HOURS prochaines heures au lieu consulté, plus l'état courant
   // (vigilance du jour, pluie imminente, pneus). Le soleil rasant, la Loi Montagne et les scénarios 24 h relèvent du trajet.
   const alertsNow = Object.assign(computeAlerts(m, TCARS(), S, seasons, NOW_HOURS),
-    Object.fromEntries(Object.entries(extra).filter(([id]) => NOW_EXTRA.includes(id))));
+    Object.fromEntries(Object.entries(extra).filter(([id]) => NOW_EXTRA.includes(id) && id !== 'vigi')), extra.vigiNow ? { vigi: extra.vigiNow } : {});
   return { m, seq, sum, cars, sum24, alerts, alertsNow };
 }
 
@@ -3036,7 +3046,7 @@ function briefCard(t, dayLbl) {
     <div class="kpis">
       ${k('Route', deg(sum.TrMin), '±2', 'est', fb ? 'lv' + (fb.lv == null ? 'x' : fb.lv) : '')}
       ${k('Air', deg(sum.Tmin), '', 'prev')}
-      ${k('Pluie', Pmax >= 0.1 ? f1(Pmax) : f0(ppMax), Pmax >= 0.1 ? 'mm' : '%', 'prev', Pmax >= 2 ? 'lv2' : '')}
+      ${k('Pluie', Pmax >= 0.1 ? f1(Pmax) : f0(ppMax), Pmax >= 0.1 ? 'mm/h' : '%', 'prev', Pmax >= 2 ? 'lv2' : '')}
       ${k('Verglas (ind.)', iceS[Math.min(3, sum.iceLevel || 0)], '', 'est', 'wd')}
       ${k('Visib.', visV(sum.visMin), visU(sum.visMin), 'prev', (sum.visMin != null && sum.visMin < 1000 ? 'lv2' : ''))}
     </div>
@@ -3958,7 +3968,12 @@ function renderBrief() {
 /* ---------- comparateur ---------- */
 function renderCompare() {
   const el = $('#secCmp'); if (!CX) { el.innerHTML = ''; el.hidden = true; return; } el.hidden = false;
-  const td = tripData(); let seq, label;
+  // Même trajet que le reste de l'app (constat du 16/11 : la comparaison suivait le sens choisi dans le Briefing départ,
+  // « Aller » par défaut, et comparait le trajet du lendemain matin pendant que tout l'écran annonçait le retour du jour).
+  // Ordre : trajet en cours, sinon prochain trajet du contexte (mêmes heures, même série) ; à défaut, le Briefing départ.
+  const snap = APP_CONTEXT.snapshot, nt = snap && (snap.activeTrip || snap.nextTrip);
+  const shared = nt && Array.isArray(nt.seq) && nt.seq.length ? nt : null;
+  const td = shared ? { err: null, seq: shared.seq, fromName: shared.from, toName: shared.to, dep: shared.dep, arr: shared.arr } : tripData(); let seq, label;
   if (td.err) { seq = CX.seq; label = `les ${S.horizon} prochaines heures`; } else { seq = td.seq; label = `le trajet ${td.fromName} → ${td.toName} (${tripSpan(td)})`; }
   const mode = td.err ? 'card' : 'trip', sm = summarize(seq);
   const res = TCARS().map(car => ({ car, w: windowAssess(car, seq, mode) })).filter(r => r.w);
