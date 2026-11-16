@@ -50,6 +50,88 @@ function garageOdoChart(tr) {
     '<path class="odo-line" d="' + line + '"/></svg>' +
     '<figcaption><span>' + garageMonth(pts[0].d) + ' · ' + garageKm(y0) + '</span><span>' + (proj ? '🏁 ' + garageMonth(proj.d) + ' · ' + garageKm(proj.km) : garageMonth(last.d) + ' · ' + garageKm(last.km)) + '</span></figcaption></figure>';
 }
+// Relevés enregistrés et correction : on n'efface jamais ; corriger = marqueur d'annulation + valeur juste (Garage.odoReplace).
+const ODO_FIX = {}, ODO_FIX_STATUS = {};
+function garageOdoList(raw, tr) {
+  const id = esc(raw.id), live = Garage.odoLive(raw.odo).filter(o => /^\d{4}-\d{2}-\d{2}$/.test(o.d || '') && Number.isFinite(o.km)).sort((a, b) => b.d.localeCompare(a.d));
+  const voided = (Array.isArray(raw.odo) ? raw.odo : []).filter(o => o && o.void).length;
+  if (!live.length && !voided) return '';
+  const bad = new Set(tr.suspect ? [tr.suspect.d] : tr.nonMonotonic && tr.pair ? [tr.pair.from.d, tr.pair.to.d] : []);
+  live.sort((a, b) => (bad.has(b.d) ? 1 : 0) - (bad.has(a.d) ? 1 : 0));   // relevé(s) incohérent(s) en tête, puis du plus récent au plus ancien
+  const row = o => {
+    const flag = bad.has(o.d), editing = ODO_FIX[raw.id] === o.d, when = esc(o.d);
+    const action = editing
+      ? '<form class="odo-fix-form" data-odo-fix-form="' + id + '" data-d="' + when + '"><label>Kilométrage juste du ' + garageDate(o.d) +
+        '<input name="km" inputmode="numeric" autocomplete="off" value="' + esc(o.km.toLocaleString('fr-FR')) + '"></label>' +
+        '<button type="submit" class="btn sm pri">Enregistrer la correction</button>' +
+        '<button type="button" class="btn sm" data-odo-void="' + id + '" data-d="' + when + '">Annuler ce relevé</button>' +
+        '<button type="button" class="btn sm" data-odo-fix-cancel="' + id + '">Fermer</button></form>'
+      : '<button type="button" class="btn sm" data-odo-fix="' + id + '" data-d="' + when + '">Corriger</button>';
+    return '<li class="' + (flag ? 'odo-bad' : '') + '" data-odo-day="' + when + '"><span>' + garageDate(o.d) + '</span><b>' + garageKm(o.km) + '</b>' +
+      (flag ? '<em>⚠️ incohérent</em>' : '') + action + '</li>';
+  };
+  return '<div class="odo-list"><h5>Relevés enregistrés</h5><p class="odo-fix-status" role="status">' + esc(ODO_FIX_STATUS[raw.id] || '') + '</p>' +
+    (live.length ? '<ul>' + live.map(row).join('') + '</ul>' : '') +
+    (voided ? '<p class="sub">' + voided + ' relevé' + (voided > 1 ? 's' : '') + ' corrigé' + (voided > 1 ? 's' : '') + ' ou annulé' + (voided > 1 ? 's' : '') + ' : conservé' + (voided > 1 ? 's' : '') + ' comme annulé' + (voided > 1 ? 's' : '') + ', jamais effacé' + (voided > 1 ? 's' : '') + '.</p>' : '') + '</div>';
+}
+async function odoPersist(car, next) {
+  const ix = S.cars.indexOf(car);
+  if (ix < 0 || LOCKED() || DEMO.on || DeviceStorage.isFrozen()) throw new Error('Garage indisponible : déverrouille Race Control.');
+  const before = car.odo;
+  car.odo = next; markEdit('cars.' + ix + '.odo');
+  try {
+    saveSettings();
+    const saved = JSON.parse(lsGet('twrc.settings.v1') || 'null');
+    if (!saved || !saved.cars || JSON.stringify(saved.cars[ix] && saved.cars[ix].odo) !== JSON.stringify(next)) throw new Error('relecture');
+    const vs = window.TWRC_VAULT;
+    if (vs && vs.mode === 'vault') { await vs.flush(); if (vs.error || vs.pendingRecovery) throw new Error('coffre'); }
+  } catch (e) {
+    car.odo = before; try { saveSettings(); } catch (x) { /* l'ancienne liste reste en mémoire */ }
+    throw new Error('Enregistrement non confirmé : rien n’a été modifié. Réessaie.');
+  }
+}
+function odoFixRefresh(carId, focus) {
+  renderGarage.last = null; renderGarage();
+  const fold = focus && document.querySelector('[data-garage-odo="' + CSS.escape(carId) + '"] details.ux-fold');
+  if (fold && !fold.open) fold.open = true;   // « Corriger » depuis l'alerte : le volet s'ouvre sur la saisie
+  if (focus) { const i = document.querySelector('[data-odo-fix-form="' + CSS.escape(carId) + '"] input[name=km]'); if (i) { i.focus(); i.select(); } }
+}
+document.addEventListener('click', async event => {
+  const t = event.target && event.target.closest && event.target.closest('[data-odo-fix],[data-odo-fix-cancel],[data-odo-void]');
+  if (!t) return;
+  event.preventDefault();
+  if (t.dataset.odoFix) { ODO_FIX[t.dataset.odoFix] = t.dataset.d; ODO_FIX_STATUS[t.dataset.odoFix] = ''; odoFixRefresh(t.dataset.odoFix, true); return; }
+  if (t.dataset.odoFixCancel) { delete ODO_FIX[t.dataset.odoFixCancel]; odoFixRefresh(t.dataset.odoFixCancel); return; }
+  const carId = t.dataset.odoVoid, day = t.dataset.d, car = (S.cars || []).find(c => c && c.id === carId);
+  const cur = car && Garage.odoLive(car.odo).find(o => o.d === day);
+  if (!car || !cur) return;
+  if (!confirm('Annuler le relevé du ' + day.slice(8) + '/' + day.slice(5, 7) + '/' + day.slice(0, 4) + ' (' + cur.km.toLocaleString('fr-FR') + ' km) ?\n\nIl ne comptera plus dans les calculs ; il reste tracé comme annulé, sur tous tes appareils.')) return;
+  try { await odoPersist(car, Garage.odoReplace(car.odo, day, null)); delete ODO_FIX[carId]; ODO_FIX_STATUS[carId] = 'Relevé du ' + garageDate(day) + ' annulé · enregistré dans le coffre.'; }
+  catch (e) { ODO_FIX_STATUS[carId] = e.message || 'Enregistrement non confirmé.'; }
+  odoFixRefresh(carId); softRender();
+});
+document.addEventListener('submit', async event => {
+  const form = event.target, carId = form && form.dataset && form.dataset.odoFixForm;
+  if (!carId) return;
+  event.preventDefault();
+  const day = form.dataset.d, car = (S.cars || []).find(c => c && c.id === carId), cur = car && Garage.odoLive(car.odo).find(o => o.d === day);
+  if (!car || !cur) return;
+  const dd = day.slice(8) + '/' + day.slice(5, 7) + '/' + day.slice(0, 4);
+  try {
+    const km = GarageEconomics.parseKm(new FormData(form).get('km'));
+    if (km == null) throw new Error('Saisis le kilométrage juste (nombre entier de kilomètres), ou « Annuler ce relevé ».');
+    if (km === cur.km) { ODO_FIX_STATUS[carId] = 'Valeur identique : rien n’a été modifié.'; delete ODO_FIX[carId]; odoFixRefresh(carId); return; }
+    // Même chronologie et même borne de vraisemblance que toute saisie (relevés, pleins, révision, montage).
+    const clash = RcInbox.kmConflict({ ...car, odo: Garage.odoLive(car.odo).filter(o => o.d !== day) }, day, km);
+    if (clash && !confirm('Ce kilométrage (' + km.toLocaleString('fr-FR') + ' km) contredit ' + clash.label + ' du ' + garageDate(clash.d) + ' (' + Number(clash.km).toLocaleString('fr-FR') + ' km).\n\nCorriger quand même ?')) return;
+    const jump = !clash && Garage.kmJump(car, day, km);
+    if (jump && !confirm('Ce kilométrage implique ≈ ' + jump.kmPerDay.toLocaleString('fr-FR') + ' km par jour par rapport au relevé du ' + garageDate(jump.d) + ' (' + Number(jump.km).toLocaleString('fr-FR') + ' km).\n\nCorriger quand même ?')) return;
+    if (!confirm('Corriger le relevé du ' + dd + ' : ' + cur.km.toLocaleString('fr-FR') + ' km → ' + km.toLocaleString('fr-FR') + ' km ?\n\nL’ancienne valeur reste tracée comme annulée, sur tous tes appareils.')) return;
+    await odoPersist(car, Garage.odoReplace(car.odo, day, km));
+    delete ODO_FIX[carId]; ODO_FIX_STATUS[carId] = 'Relevé du ' + dd + ' corrigé : ' + km.toLocaleString('fr-FR') + ' km · enregistré dans le coffre.';
+  } catch (e) { ODO_FIX_STATUS[carId] = e.message || 'Enregistrement non confirmé.'; }
+  odoFixRefresh(carId); softRender();
+});
 function garageOdoHtml(raw, today) {
   if (!raw || !raw.id) return '';
   const tr = Garage.odoTrend(raw, { today }), t = tr.target, g = tr.goal, id = esc(raw.id);
@@ -72,14 +154,25 @@ function garageOdoHtml(raw, today) {
       '<li><span>12 derniers mois</span><b>' + (tr.last12 != null ? garageKm(tr.last12) : '—') + '</b><small>' + (tr.last12 != null ? 'd’après les relevés' : 'historique de moins d’un an') + '</small></li>' +
       '<li><span>Rythme</span><b>' + (tr.kmPerYear ? garageKm(Math.round(tr.kmPerYear / 100) * 100) + '/an' : '—') + '</b><small>' + (tr.kmPerDay ? '≈ ' + Math.round(tr.kmPerDay).toLocaleString('fr-FR') + ' km/j' : 'à calculer') + '</small></li></ul>'
     : '<p class="garage-empty">Aucun relevé du compteur : la courbe apparaîtra dès le premier relevé (« Compteur km » ci-dessus).</p>';
-  const warn = tr.nonMonotonic ? '<p class="odo-warn">⚠️ Un relevé est inférieur au précédent : corrige-le dans Paramètres. Courbe et rythme suspendus.</p>' : '';
+  // Relevé invraisemblable (compteur qui recule ou saut > 1 500 km/j) : jamais effacé, écarté des calculs s'il est seul en cause.
+  const pr = tr.pair, jump = pr ? (pr.to.km < pr.from.km ? 'le compteur recule' : '≈ ' + pr.kmPerDay.toLocaleString('fr-FR') + ' km/j') : '';
+  const warnText = tr.suspect
+    ? '⚠️ Relevé du ' + garageDate(tr.suspect.d) + ' (' + garageKm(tr.suspect.km) + ') écarté des calculs : incohérent avec les autres relevés (' + jump +
+      ' entre le ' + garageDate(pr.from.d) + ' et le ' + garageDate(pr.to.d) + '). Un chiffre manque ou est en trop ? Il reste enregistré dans la fiche.'
+    : tr.nonMonotonic && pr
+      ? '⚠️ Relevés incohérents : ' + garageDate(pr.from.d) + ' (' + garageKm(pr.from.km) + ') puis ' + garageDate(pr.to.d) + ' (' + garageKm(pr.to.km) + '), ' + jump +
+        '. Impossible de savoir lequel est faux : courbe et rythme suspendus.'
+      : '';
+  const warn = warnText ? '<p class="odo-warn" role="status">' + warnText + '</p>' : '';
   const mode = g && g.life ? 'life' : t ? 'km' : 'none';
   const form = '<form class="odo-goal-form" data-odo-goal="' + id + '"><label>Objectif<select name="mode">' +
       [['none', 'Aucun'], ['km', 'Kilométrage cible'], ['life', 'À vie (sans limite)']].map(([v, l]) => '<option value="' + v + '"' + (v === mode ? ' selected' : '') + '>' + l + '</option>').join('') +
       '</select></label><label data-odo-goal-km' + (mode === 'km' ? '' : ' hidden') + '>Kilométrage cible (km)<input name="km" inputmode="numeric" autocomplete="off" placeholder="ex. 250 000" value="' + (t ? esc(t.km.toLocaleString('fr-FR')) : '') + '"></label>' +
       '<button type="submit" class="btn sm pri">Enregistrer l’objectif</button><p class="odo-goal-status" role="status">' + esc(ODO_GOAL_STATUS[raw.id] || '') + '</p></form>';
-  return '<section class="garage-odo" data-garage-odo="' + id + '">' + head +
-    uxFold('garage-odo-' + raw.id, '📈 Évolution du kilométrage', warn + garageOdoChart(tr) + stats + form, tr.count ? tr.count + ' relevé' + (tr.count > 1 ? 's' : '') + ' · objectif' : 'objectif') + '</section>';
+  return '<section class="garage-odo" data-garage-odo="' + id + '">' + head + (warn ? '<p class="odo-warn odo-warn-head" data-odo-suspect>' +
+      (tr.suspect ? '⚠️ 1 relevé incohérent écarté des calculs (' + garageDate(tr.suspect.d) + ', ' + garageKm(tr.suspect.km) + ') ' +
+        '<button type="button" class="btn sm" data-odo-fix="' + id + '" data-d="' + esc(tr.suspect.d) + '">Corriger</button>' : '⚠️ Relevés incohérents : calculs suspendus') + '</p>' : '') +
+    uxFold('garage-odo-' + raw.id, '📈 Évolution du kilométrage', warn + garageOdoChart(tr) + stats + garageOdoList(raw, tr) + form, tr.count ? tr.count + ' relevé' + (tr.count > 1 ? 's' : '') + ' · objectif' : 'objectif') + '</section>';
 }
 // Écrit, relit et vide le coffre ; sinon l'ancien objectif est remis et l'échec est dit (même contrat que le budget).
 async function odoGoalPersist(car, next) {

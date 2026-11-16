@@ -7,6 +7,22 @@ const Garage = (() => {
   const str = x => typeof x === 'string' ? x.trim() : '';
   const val = x => typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : null;
   const validDate = x => /^\d{4}-\d{2}-\d{2}$/.test(str(x));
+  // Relevés du compteur EN VIGUEUR : un relevé corrigé ou annulé n'est jamais effacé ; un marqueur { d, km, void: 1 }
+  // l'annule. La synchronisation fusionne les relevés par union : le marqueur se propage comme un relevé, sans perte.
+  const odoKey = o => o.d + '|' + o.km;
+  function odoLive(list) {
+    const a = Array.isArray(list) ? list : [], voided = new Set(a.filter(o => o && o.void).map(odoKey));
+    return a.filter(o => o && !o.void && !voided.has(odoKey(o)));
+  }
+  // Remplace le relevé EN VIGUEUR d'un jour (correction, saisie du jour) : l'ancien est annulé par marqueur, jamais retiré.
+  // km null = annulation seule. Retourne une nouvelle liste triée ; la liste reçue n'est jamais modifiée.
+  function odoReplace(list, day, km) {
+    const a = Array.isArray(list) ? list.slice() : [];
+    const live = odoLive(a).filter(o => o.d === day), keep = km != null && live.some(o => o.km === km);
+    live.filter(o => km == null || o.km !== km).forEach(o => a.push({ d: o.d, km: o.km, void: 1 }));
+    if (km != null && !keep) a.push({ d: day, km });
+    return a.sort((x, y) => String(x.d).localeCompare(String(y.d)) || (x.void ? 1 : 0) - (y.void ? 1 : 0));
+  }
   function overview(cars, activeId, stateFor) {
     if (!Array.isArray(cars)) return [];
     const used = new Set();
@@ -16,7 +32,7 @@ const Garage = (() => {
       used.add(key);
       const t = car.tire || {}, p = car.plan || {};
       const state = typeof stateFor === 'function' ? stateFor(car) : null;
-      const readings = (Array.isArray(car.odo) ? car.odo : [])
+      const readings = odoLive(car.odo)
         .filter(x => x && val(x.km) != null && validDate(x.d))
         .slice().sort((a, b) => String(a.d).localeCompare(String(b.d)));
       const last = readings.length ? readings[readings.length - 1] : null;
@@ -151,19 +167,50 @@ const Garage = (() => {
   // Rythme km/jour : seulement entre DEUX relevés réels (km > 0, dates valides) espacés d'au moins 7 jours, et
   // physiquement plausible (≤ MAX_KM_PER_DAY). Sinon null = « rythme inconnu » : jamais compteur total ÷ jours.
   const MAX_KM_PER_DAY = 1500;
+  // Série de relevés fiable (règle unique du Garage) : un relevé par jour (le dernier saisi), ordre chronologique, compteur
+  // qui ne recule pas et rythme ≤ MAX_KM_PER_DAY entre deux relevés consécutifs. Si UN seul relevé, une fois retiré, rend la
+  // série plausible, il est « suspect » : écarté des calculs, jamais effacé de la fiche. Sinon la série est « incohérente »
+  // (calculs suspendus, les deux relevés en cause nommés).
+  function odoSeries(odo) {
+    const byDay = new Map();
+    odoLive(odo).forEach(x => { if (validDate(x.d) && val(x.km) != null) byDay.set(str(x.d), x.km); });
+    const all = [...byDay].map(([d, km]) => ({ d, km })).sort((a, b) => a.d.localeCompare(b.d));
+    const perDay = (a, b) => (b.km - a.km) / Math.max(1, dayDiff(a.d, b.d));
+    const firstBad = list => { for (let i = 1; i < list.length; i++) if (list[i].km < list[i - 1].km || perDay(list[i - 1], list[i]) > MAX_KM_PER_DAY) return i; return -1; };
+    const k = firstBad(all);
+    if (k < 0) return { readings: all, all, suspect: null, incoherent: false, pair: null };
+    const pair = { from: all[k - 1], to: all[k], kmPerDay: Math.round(perDay(all[k - 1], all[k])) };
+    const fixes = [k - 1, k].filter(i => firstBad(all.filter((_, j) => j !== i)) < 0);
+    if (fixes.length === 1) return { readings: all.filter((_, j) => j !== fixes[0]), all, suspect: all[fixes[0]], incoherent: false, pair };
+    return { readings: all, all, suspect: null, incoherent: true, pair };
+  }
+  // Rythme km/jour : seulement entre DEUX relevés réels (km > 0, dates valides) de la série fiable, espacés d'au moins
+  // 7 jours, et physiquement plausible (≤ MAX_KM_PER_DAY). Sinon null = « rythme inconnu » : jamais compteur total ÷ jours.
   function kmPerDay(odo) {
-    const o = (Array.isArray(odo) ? odo : []).filter(x => x && validDate(x.d) && Number.isFinite(x.km) && x.km > 0)
-      .slice().sort((a, b) => String(a.d).localeCompare(String(b.d)));
+    const s = odoSeries(odo);
+    if (s.incoherent) return null;
+    const o = s.readings.filter(x => x.km > 0);
     if (o.length < 2) return null;
     const a = o[0], b = o[o.length - 1], days = dayDiff(a.d, b.d), km = b.km - a.km;
     if (days < 7 || km < 0) return null;
     const rate = km / days;
     return rate <= MAX_KM_PER_DAY ? rate : null;
   }
+  // Nouveau relevé (jour, km) comparé aux relevés fiables voisins : saut invraisemblable (> MAX_KM_PER_DAY) signalé
+  // avant l'enregistrement. Le recul du compteur reste traité par la chronologie unique (RcInbox.kmConflict).
+  function kmJump(car, day, km) {
+    if (!validDate(day) || val(km) == null) return null;
+    const r = odoSeries(car && car.odo).readings.filter(x => x.d !== day);
+    const prev = r.filter(x => x.d < day).pop(), next = r.find(x => x.d > day);
+    const rate = (a, b) => (b.km - a.km) / Math.max(1, dayDiff(a.d, b.d));
+    if (prev && km >= prev.km && rate(prev, { d: day, km }) > MAX_KM_PER_DAY) return { d: prev.d, km: prev.km, kmPerDay: Math.round(rate(prev, { d: day, km })) };
+    if (next && next.km >= km && rate({ d: day, km }, next) > MAX_KM_PER_DAY) return { d: next.d, km: next.km, kmPerDay: Math.round(rate({ d: day, km }, next)) };
+    return null;
+  }
   function maintenance(car, { today, kmPerDay = null, odoEveryDays = 7 } = {}) {
     if (!validDate(today)) throw new Error('date du jour requise');
     const m = car && car.maint || {}, r = m.rev || {}, ct = m.ct || {};
-    const readings = (car && Array.isArray(car.odo) ? car.odo : []).filter(x => x && val(x.km) != null && validDate(x.d))
+    const readings = odoLive(car && car.odo).filter(x => x && val(x.km) != null && validDate(x.d))
       .slice().sort((a, b) => String(a.d).localeCompare(String(b.d)));
     const last = readings.length ? readings[readings.length - 1] : null, rate = pos(kmPerDay);
     const odoAge = last ? dayDiff(last.d, today) : null;
@@ -196,11 +243,9 @@ const Garage = (() => {
   }
   function odoTrend(car, { today } = {}) {
     if (!validDate(today)) throw new Error('date du jour requise');
-    const byDay = new Map();   // un relevé par jour (le dernier saisi), comme la saisie des Paramètres
-    (car && Array.isArray(car.odo) ? car.odo : []).forEach(x => { if (x && validDate(x.d) && val(x.km) != null) byDay.set(str(x.d), x.km); });
-    const readings = [...byDay].map(([d, km]) => ({ d, km })).sort((a, b) => a.d.localeCompare(b.d));
+    const series = odoSeries(car && car.odo), readings = series.readings;
     const first = readings[0] || null, last = readings[readings.length - 1] || null;
-    const nonMonotonic = readings.some((r, i) => i > 0 && r.km < readings[i - 1].km);
+    const nonMonotonic = series.incoherent;   // calculs suspendus : aucune correction unique ne rend la série plausible
     const rate = kmPerDay(readings), goal = odoGoal(car && car.odoGoal);
     let last12 = null;
     if (first && last && !nonMonotonic && dayDiff(first.d, last.d) >= 365) {
@@ -218,7 +263,7 @@ const Garage = (() => {
     }
     return { readings, first, last, count: readings.length, totalKm: first && last && !nonMonotonic ? last.km - first.km : null,
       spanDays: first && last ? dayDiff(first.d, last.d) : null, kmPerDay: rate, kmPerYear: rate ? rate * 365.25 : null,
-      last12, goal, target, nonMonotonic };
+      last12, goal, target, nonMonotonic, suspect: series.suspect, pair: series.pair };
   }
-  return { overview, silhouette, preview, comparison, daylight, maintenance, kmPerDay, MAX_KM_PER_DAY, odoGoal, odoTrend, GOAL_MAX_KM };
+  return { overview, silhouette, preview, comparison, daylight, maintenance, kmPerDay, MAX_KM_PER_DAY, odoGoal, odoTrend, odoSeries, kmJump, odoLive, odoReplace, GOAL_MAX_KM };
 })();

@@ -65,6 +65,19 @@ async function run(b, dev, view) {
   await p.locator('#odo-0').fill('199000'); await p.locator('[data-act="odo"][data-i="0"]').click(); await p.waitForTimeout(900);
   const odo = await p.evaluate(() => ({ n: S.cars[0].odo.length, first: S.cars[0].odo[0].km, sorted: S.cars[0].odo.every((o, i, a) => !i || a[i - 1].d <= o.d) }));
   check(`${dev} · relevé ajouté dans Paramètres : 66 relevés gardés (aucun des 60 premiers effacé), ordre chronologique`, odo.n === 66 && odo.first === 150000 && odo.sorted, JSON.stringify(odo));
+  // Relevé invraisemblable (un chiffre manquant au premier relevé, valeurs FICTIVES) : écarté des calculs, signalé, jamais effacé
+  await p.evaluate(([a, b, c, d]) => { S.cars[0].odo = [{ d: a, km: 21100 }, { d: b, km: 211300 }, { d: c, km: 211650 }, { d: d, km: 212000 }]; saveSettings(); }, [day(29), day(22), day(15), day(8)]);
+  await p.locator('#viewSeg [data-act=view][data-v=garage]').first().click(); await p.waitForTimeout(900);
+  await p.evaluate(() => { renderGarage.last = null; renderGarage(); }); await p.waitForTimeout(300);
+  const sus = await p.evaluate(() => { const el = document.querySelector('[data-garage-odo="carA"]'); return { head: (el.querySelector('[data-odo-suspect]') || {}).textContent || '', all: el.textContent, kept: S.cars[0].odo.length }; });
+  check(`${dev} · relevé à qui il manque un chiffre : signalé sans ouvrir le volet, écarté des calculs, gardé dans la fiche`,
+    /1 relevé incohérent écarté/.test(sus.head) && /21\s100 km/.test(sus.head) && /km\/j/.test(sus.all) && /Reste 38\s000 km/.test(sus.all) && sus.kept === 4, sus.head + ' | ' + sus.all.slice(0, 300));
+  // Saisie dans Paramètres d'un compteur avec un chiffre en trop : confirmation qui chiffre le saut
+  const dialogs = []; const onDialog = d => dialogs.push(d.message()); p.on('dialog', onDialog);
+  await p.evaluate(() => { document.querySelector('#settings').open = true; renderSettings(true); }); await p.waitForTimeout(500);
+  await p.locator('#odo-0').fill('2124000'); await p.locator('[data-act="odo"][data-i="0"]').click(); await p.waitForTimeout(800);
+  p.off('dialog', onDialog);
+  check(`${dev} · Paramètres : un saut invraisemblable demande confirmation (km par jour et relevé de référence nommés)`, dialogs.some(m => /km par jour/.test(m) && /212\s000 km/.test(m)), dialogs.join(' / '));
   await p.locator('#viewSeg [data-act=view][data-v=garage]').first().click(); await p.waitForTimeout(900);
   const over = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check(`${dev} · aucun débordement horizontal`, over <= 1, String(over));

@@ -2,7 +2,7 @@
 // puis valide ou rejette une par une. La liste vit en mémoire seulement : rien n'est stocké tant qu'aucune saisie n'est validée.
 // Tout texte du bloc est affiché par esc() (jamais interprété comme du HTML). Aucun accès au journal des trajets.
 const INBOX = { items: [], choice: {}, status: '', done: { accepted: 0, rejected: 0 } };
-function inboxDeps() { return { switchTire, setTreadAxle, treadAxles, maxTreads: TREAD_HISTORY_MAX, addEntry: GarageEconomics.addEntry }; }
+function inboxDeps() { return { switchTire, setTreadAxle, treadAxles, maxTreads: TREAD_HISTORY_MAX, addEntry: GarageEconomics.addEntry, kmJump: Garage.kmJump }; }
 function inboxCar(item) {
   const chosen = INBOX.choice[item.key];
   return chosen ? (S.cars || []).find(c => c && c.id === chosen) || null : RcInbox.matchCar(item.entry, S.cars);
