@@ -1,0 +1,48 @@
+"""Deliberately defective, synthetic-only fixture. Never use for real backups."""
+import hashlib
+import hmac
+import json
+import os
+import tempfile
+from pathlib import Path
+
+
+def restore(target, backup, expected_revision, interrupt=False):
+    target = Path(target)
+    if target.is_symlink():
+        raise ValueError("SYMLINK")
+    original = json.loads(target.read_text())
+    if type(expected_revision) is not int or original["revision"] != expected_revision:
+        raise ValueError("CONFLICT")
+    if set(backup) != {"schema", "payload_hex", "sha256"} or backup["schema"] != 1:
+        raise ValueError("SCHEMA")
+    if not isinstance(backup["payload_hex"], str) or len(backup["payload_hex"]) > 131072:
+        raise ValueError("SIZE")
+    payload = bytes.fromhex(backup["payload_hex"])
+    if not isinstance(backup["sha256"], str) or len(backup["sha256"]) != 64:
+        raise ValueError("INTEGRITY")
+    # BUG: only the digest's length is checked, not its relationship to the payload.
+    content = json.loads(payload)
+    if not isinstance(content, dict) or set(content) != {"records"} or not isinstance(content["records"], list):
+        raise ValueError("SCHEMA")
+    updated = {**original, "revision": expected_revision + 1, "records": content["records"]}
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=target.parent, prefix=".restore-", delete=False) as handle:
+            temporary = Path(handle.name)
+            json.dump(updated, handle, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if interrupt:
+            raise ValueError("INTERRUPTED")
+        os.replace(temporary, target)
+        temporary = None
+        directory = os.open(target.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return updated

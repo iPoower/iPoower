@@ -1,0 +1,31 @@
+# EXEMPLE INACTIF. Revue propriétaire explicite avant toute adoption dans la CI.
+name: NOESIS 8 synthetic qualification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: noesis8-synthetic-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  synthetic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      # SHA repris du workflow de confiance existant; à revoir avant activation.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Bornes, non-régression et refus des faux verts
+        run: python3 -m unittest discover -s noesis8 -p 'test_*.py' -v
+      - name: Boucle synthétique et relecture des preuves
+        env:
+          NOESIS_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          python3 noesis8/controller.py --run-id "$NOESIS_RUN_ID"
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, sys
+          directory = pathlib.Path("noesis8/runs") / os.environ["NOESIS_RUN_ID"]
+          head = json.loads((directory / "summary.json").read_text())["journal_head"]
+          subprocess.run([sys.executable, "noesis8/verify_evidence.py", str(directory), "--head", head], check=True)
+          PY
