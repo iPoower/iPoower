@@ -1,0 +1,46 @@
+name: Forteresse II · restauration multi-stockages fictive
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tests/fortress-ii-browser-recovery.js'
+      - 'docs/fortress-ii-recovery-lab.md'
+      - '.github/workflows/fortress-ii-recovery-lab.yml'
+permissions:
+  contents: read
+jobs:
+  recovery-fixture:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # pinned
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # pinned
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install pinned test dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install isolated browser
+        timeout-minutes: 17
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          for i in 1 2; do
+            timeout 420 npx playwright install --with-deps "$BROWSER" && exit 0
+            echo "::warning::Browser setup retry $i/2"
+            sleep 5
+          done
+          echo "::error::Browser unavailable"; exit 1
+      - name: Syntax only
+        run: node --check tests/fortress-ii-browser-recovery.js
+      - name: Verify fully synthetic restore and recovery
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: node tests/fortress-ii-browser-recovery.js
