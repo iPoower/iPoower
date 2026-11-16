@@ -60,4 +60,44 @@ test('immutabilité : la fiche n’est jamais modifiée', () => {
   const car = { odo: [{ d: '2026-05-01', km: 1300 }, { d: '2026-02-01', km: 1000 }], odoGoal: { km: 5000 } }, before = JSON.stringify(car);
   G.odoTrend(car, { today: T }); assert.equal(JSON.stringify(car), before);
 });
+// Relevé invraisemblable (constat du 16/11 sur valeurs FICTIVES) : un chiffre manquant au premier relevé.
+const SUS = [{ d: '2026-10-18', km: 21100 }, { d: '2026-10-25', km: 211300 }, { d: '2026-11-01', km: 211650 }, { d: '2026-11-08', km: 212000 }, { d: '2026-11-15', km: 212350 }];
+test('chiffre manquant : le relevé seul en cause est écarté des calculs, jamais retiré de la fiche', () => {
+  const car = { odo: SUS.map(o => ({ ...o })), odoGoal: { km: 250000 } }, before = JSON.stringify(car);
+  const r = G.odoTrend(car, { today: T });
+  assert.equal(r.suspect.d, '2026-10-18'); assert.equal(r.suspect.km, 21100); assert.equal(r.nonMonotonic, false);
+  assert.equal(r.count, 4); assert.equal(r.totalKm, 1050); assert.equal(r.first.d, '2026-10-25');
+  assert.ok(r.pair.kmPerDay > 1500, 'saut chiffré'); assert.ok(r.kmPerDay > 40 && r.kmPerDay < 60, 'rythme réel sur les relevés fiables');
+  assert.ok(r.target.eta, 'date d’objectif calculée sans le relevé faux');
+  assert.equal(JSON.stringify(car), before, 'fiche intacte');
+});
+test('rythme de l’entretien : même série fiable (règle unique Garage.kmPerDay)', () => {
+  assert.ok(G.kmPerDay(SUS) > 40 && G.kmPerDay(SUS) < 60);
+  assert.equal(G.kmPerDay([{ d: '2026-10-18', km: 2520 }, { d: '2026-10-31', km: 252071 }]), null, 'deux relevés seulement : impossible de savoir lequel est faux');
+});
+test('chiffre en trop au dernier relevé : c’est lui qui est écarté', () => {
+  const r = G.odoTrend({ odo: [{ d: '2026-10-01', km: 50000 }, { d: '2026-10-15', km: 50600 }, { d: '2026-11-01', km: 51300 }, { d: '2026-11-14', km: 518500 }] }, { today: T });
+  assert.equal(r.suspect.d, '2026-11-14'); assert.equal(r.last.km, 51300);
+});
+test('ambigu (aucune correction unique) : calculs suspendus, les deux relevés nommés', () => {
+  const r = G.odoTrend({ odo: [{ d: '2026-10-01', km: 5000 }, { d: '2026-11-01', km: 90000 }] }, { today: T });
+  assert.equal(r.suspect, null); assert.equal(r.nonMonotonic, true); assert.equal(r.totalKm, null); assert.equal(r.kmPerDay, null);
+  assert.equal(r.pair.from.d, '2026-10-01'); assert.equal(r.pair.to.d, '2026-11-01');
+});
+test('nouveau relevé : saut > 1 500 km/j signalé par rapport aux relevés fiables (le relevé faux n’est pas la référence)', () => {
+  const car = { odo: SUS.map(o => ({ ...o })) };
+  assert.equal(G.kmJump(car, '2026-11-16', 212400), null, 'relevé normal');
+  const j = G.kmJump(car, '2026-11-16', 21240); assert.equal(j, null, 'recul : traité par la chronologie, pas ici');
+  const k = G.kmJump(car, '2026-11-16', 2124000); assert.equal(k.d, '2026-11-15'); assert.ok(k.kmPerDay > 1500);
+  assert.equal(G.kmJump({ odo: [] }, '2026-11-16', 5000), null, 'premier relevé : rien à comparer');
+});
+test('boîte de dépôt : un compteur invraisemblable est refusé avec le relevé de référence nommé', () => {
+  const ic = { Number, Array, Object, String, Set, Map, JSON, Date, Math, Error, isFinite }; vm.createContext(ic);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/app/inbox-core.js'), 'utf8') + ';this.I=RcInbox;', ic);
+  const car = { id: 'a', name: 'Voiture test', tire: { type: 'summer' }, odo: SUS.map(o => ({ ...o })) };
+  const deps = { kmJump: G.kmJump, switchTire: () => {}, setTreadAxle: () => {}, treadAxles: () => [], maxTreads: 60, addEntry: () => {} };
+  assert.throws(() => ic.I.apply(car, { type: 'odometer', date: '2026-11-16', values: { km: 2124000 } }, deps), /km par jour.*15\/11\/2026/);
+  const ok = ic.I.apply(car, { type: 'odometer', date: '2026-11-16', values: { km: 212400 } }, deps);
+  assert.ok(ok.paths.includes('odo'));
+});
 console.log(`\n${n}/${n} contrôles « évolution du kilométrage »`);

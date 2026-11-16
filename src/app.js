@@ -4662,6 +4662,9 @@ document.addEventListener('click', async e => {
       // Un compteur ne recule pas : même chronologie que la boîte de dépôt et le budget (relevés, pleins, révision, montage).
       const clash = RcInbox.kmConflict({ ...c, odo: (c.odo || []).filter(o => o && o.d !== today) }, today, Math.round(v));
       if (clash && !confirm('Ce compteur (' + Math.round(v).toLocaleString('fr-FR') + ' km) contredit ' + clash.label + ' du ' + clash.d.slice(8) + '/' + clash.d.slice(5, 7) + '/' + clash.d.slice(0, 4) + ' (' + Number(clash.km).toLocaleString('fr-FR') + ' km).\n\nEnregistrer quand même ce relevé ?')) { commandFeedback(t, 'Relevé non enregistré : vérifie le compteur', input); return; }
+      // Saut invraisemblable (> 1 500 km/j) par rapport aux relevés fiables voisins : chiffre manquant ou en trop ?
+      const jump = !clash && Garage.kmJump(c, today, Math.round(v));
+      if (jump && !confirm('Ce compteur (' + Math.round(v).toLocaleString('fr-FR') + ' km) implique ≈ ' + jump.kmPerDay.toLocaleString('fr-FR') + ' km par jour par rapport au relevé du ' + jump.d.slice(8) + '/' + jump.d.slice(5, 7) + '/' + jump.d.slice(0, 4) + ' (' + Number(jump.km).toLocaleString('fr-FR') + ' km) : un chiffre manque ou est en trop ?\n\nEnregistrer quand même ce relevé ?')) { commandFeedback(t, 'Relevé non enregistré : vérifie le compteur', input); return; }
       // Historique complet conservé (évolution du kilométrage, voiture gardée à vie) : plus de troncature aux 60 derniers relevés.
       c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).sort((x, y) => String(x.d).localeCompare(String(y.d))); }
     if (a === 'tread-add') { const input = $('#trd-' + i), v = parseFloat(String((input || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) { commandFeedback(t, 'Saisis une profondeur de 0 à 12 mm', input); return; } const lo = lastOdo(c);

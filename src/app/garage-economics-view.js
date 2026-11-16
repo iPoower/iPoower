@@ -119,6 +119,8 @@ document.addEventListener('submit', async event => {
       // Même chronologie que la boîte de dépôt et les relevés : le compteur d'un ticket ne contredit aucun kilométrage daté de la fiche.
       const clash = km != null && day ? RcInbox.kmConflict(car, day, km) : null;
       if (clash) throw new Error('Ce compteur ne suit pas la chronologie : il contredit ' + clash.label + ' du ' + garageDate(clash.d) + ' (' + Number(clash.km).toLocaleString('fr-FR') + ' km). Corrige la valeur fausse ou laisse le compteur vide.');
+      const jump = km != null && day ? Garage.kmJump(car, day, km) : null;
+      if (jump && !confirm('Ce compteur (' + km.toLocaleString('fr-FR') + ' km) implique ≈ ' + jump.kmPerDay.toLocaleString('fr-FR') + ' km par jour par rapport au relevé du ' + garageDate(jump.d) + ' (' + Number(jump.km).toLocaleString('fr-FR') + ' km) : un chiffre manque ou est en trop ?\n\nEnregistrer quand même ?')) throw new Error('Rien n’a été enregistré : vérifie le compteur du ticket ou laisse-le vide.');
       const next = GarageEconomics.addEntry(econ, { date: day, category, amountCents: GarageEconomics.parseMoney(data.get('amount')),
         km, note: String(data.get('note') || ''),
         volumeMl: fuel ? GarageEconomics.parseLitres(data.get('litres')) : null, fuelType: fuel ? String(data.get('fuelType') || 'unknown') : null,

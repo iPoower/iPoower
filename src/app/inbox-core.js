@@ -139,6 +139,9 @@ const RcInbox = (() => {
       if (same && same.km !== km) fail('Un autre relevé du compteur existe déjà ce jour-là (' + fr(same.km) + ' km) : corrige-le dans Paramètres');
       const clash = kmConflict(next, e.date, km);
       if (clash) fail('Ce compteur ne suit pas la chronologie : ' + conflictText(clash) + '. Corrige la valeur fausse avant de valider');
+      // Saut invraisemblable (> 1 500 km/j) par rapport aux relevés fiables : refusé, le chiffre est à vérifier.
+      const jump = deps && typeof deps.kmJump === 'function' ? deps.kmJump(next, e.date, km) : null;
+      if (jump) fail('Ce compteur implique ≈ ' + fr(jump.kmPerDay) + ' km par jour par rapport au relevé du ' + fd(jump.d) + ' (' + fr(jump.km) + ' km) : un chiffre manque ou est en trop. Vérifie la valeur avant de valider');
       if (!same) { next.odo = [...(next.odo || []), { d: e.date, km }].sort((a, b) => String(a.d).localeCompare(String(b.d))); paths.push('odo'); }
       const last = lastOdoBefore(car, '9999-12-31');
       // Un relevé plus ancien que le dernier connu complète l'historique : le compteur affiché ne recule pas.

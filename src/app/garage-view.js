@@ -72,13 +72,23 @@ function garageOdoHtml(raw, today) {
       '<li><span>12 derniers mois</span><b>' + (tr.last12 != null ? garageKm(tr.last12) : '—') + '</b><small>' + (tr.last12 != null ? 'd’après les relevés' : 'historique de moins d’un an') + '</small></li>' +
       '<li><span>Rythme</span><b>' + (tr.kmPerYear ? garageKm(Math.round(tr.kmPerYear / 100) * 100) + '/an' : '—') + '</b><small>' + (tr.kmPerDay ? '≈ ' + Math.round(tr.kmPerDay).toLocaleString('fr-FR') + ' km/j' : 'à calculer') + '</small></li></ul>'
     : '<p class="garage-empty">Aucun relevé du compteur : la courbe apparaîtra dès le premier relevé (« Compteur km » ci-dessus).</p>';
-  const warn = tr.nonMonotonic ? '<p class="odo-warn">⚠️ Un relevé est inférieur au précédent : corrige-le dans Paramètres. Courbe et rythme suspendus.</p>' : '';
+  // Relevé invraisemblable (compteur qui recule ou saut > 1 500 km/j) : jamais effacé, écarté des calculs s'il est seul en cause.
+  const pr = tr.pair, jump = pr ? (pr.to.km < pr.from.km ? 'le compteur recule' : '≈ ' + pr.kmPerDay.toLocaleString('fr-FR') + ' km/j') : '';
+  const warnText = tr.suspect
+    ? '⚠️ Relevé du ' + garageDate(tr.suspect.d) + ' (' + garageKm(tr.suspect.km) + ') écarté des calculs : incohérent avec les autres relevés (' + jump +
+      ' entre le ' + garageDate(pr.from.d) + ' et le ' + garageDate(pr.to.d) + '). Un chiffre manque ou est en trop ? Il reste enregistré dans la fiche.'
+    : tr.nonMonotonic && pr
+      ? '⚠️ Relevés incohérents : ' + garageDate(pr.from.d) + ' (' + garageKm(pr.from.km) + ') puis ' + garageDate(pr.to.d) + ' (' + garageKm(pr.to.km) + '), ' + jump +
+        '. Impossible de savoir lequel est faux : courbe et rythme suspendus.'
+      : '';
+  const warn = warnText ? '<p class="odo-warn" role="status">' + warnText + '</p>' : '';
   const mode = g && g.life ? 'life' : t ? 'km' : 'none';
   const form = '<form class="odo-goal-form" data-odo-goal="' + id + '"><label>Objectif<select name="mode">' +
       [['none', 'Aucun'], ['km', 'Kilométrage cible'], ['life', 'À vie (sans limite)']].map(([v, l]) => '<option value="' + v + '"' + (v === mode ? ' selected' : '') + '>' + l + '</option>').join('') +
       '</select></label><label data-odo-goal-km' + (mode === 'km' ? '' : ' hidden') + '>Kilométrage cible (km)<input name="km" inputmode="numeric" autocomplete="off" placeholder="ex. 250 000" value="' + (t ? esc(t.km.toLocaleString('fr-FR')) : '') + '"></label>' +
       '<button type="submit" class="btn sm pri">Enregistrer l’objectif</button><p class="odo-goal-status" role="status">' + esc(ODO_GOAL_STATUS[raw.id] || '') + '</p></form>';
-  return '<section class="garage-odo" data-garage-odo="' + id + '">' + head +
+  return '<section class="garage-odo" data-garage-odo="' + id + '">' + head + (warn ? '<p class="odo-warn odo-warn-head" data-odo-suspect>' +
+      (tr.suspect ? '⚠️ 1 relevé incohérent écarté des calculs (' + garageDate(tr.suspect.d) + ', ' + garageKm(tr.suspect.km) + ')' : '⚠️ Relevés incohérents : calculs suspendus') + '</p>' : '') +
     uxFold('garage-odo-' + raw.id, '📈 Évolution du kilométrage', warn + garageOdoChart(tr) + stats + form, tr.count ? tr.count + ' relevé' + (tr.count > 1 ? 's' : '') + ' · objectif' : 'objectif') + '</section>';
 }
 // Écrit, relit et vide le coffre ; sinon l'ancien objectif est remis et l'échec est dit (même contrat que le budget).
