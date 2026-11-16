@@ -196,6 +196,9 @@ function renderLab() {
   html += tyreIntelligenceHtml(car, 'analyse');
   html += '<p class="sub">Modèle thermique historique : hypothèses générales, distinctes des essais et des mesures réelles. Le seuil de 7 °C n’est pas une frontière physique universelle.</p>';
   html += `<p class="sub lab-foot">Estimations Race Control (plages, tendances, indicateurs) : aucune mesure de capteur, aucune distance de freinage garantie. État, références et montage : <button class="btn sm" data-act="view" data-v="pneus">onglet Pneus</button></p>`;
+  // « Mon bilan » en tête (16/11/2026) ; le laboratoire historique, inchangé, est replié dessous.
+  const lab = html.startsWith(cars) ? html.slice(cars.length) : html;
+  html = cars + bilanHtml(car) + uxFold('lab-full', 'Laboratoire pneus', lab, 'Gomme estimée · essais publiés · fiche du pneu · confiance');
   if (html === renderLab.last) return;
   const open = new Set([...el.querySelectorAll('details[open][data-k]')].map(x => x.dataset.k));
   const form = el.querySelector('#labLastDriveForm'), draft = !renderLab.clearDriveDraft && form && car && form.dataset.car === car.id ? [...form.querySelectorAll('[name]')].map(x => [x.name, x.value]) : null;
