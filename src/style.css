@@ -122,7 +122,7 @@ html { scroll-padding-top: calc(env(safe-area-inset-top, 0px) + var(--bar-h, 54p
 #driveBadge { gap: 0; }
 #driveBadge .db-ic { flex: none; margin-right: 4px; }
 #driveBadge .db-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-#driveBadge .db-at, #driveBadge .db-tail { flex: none; }
+#driveBadge .db-at, #driveBadge .db-tail { flex: none; margin-left: .3em; }   /* l'espace en tête d'un élément flex est supprimée à l'affichage (« requise· copie », audit du 16/11) */
 .badge.drive-badge { background: none; color: var(--fg2); cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 0; justify-content: center; }
 .badge.drive-badge.nogo { color: var(--nogo-t); border-color: var(--nogo); }
 @media (pointer: coarse) { .badge.drive-badge { min-height: 44px; } }

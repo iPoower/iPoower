@@ -173,7 +173,9 @@ const Garage = (() => {
   // (calculs suspendus, les deux relevés en cause nommés).
   function odoSeries(odo) {
     const byDay = new Map();
-    odoLive(odo).forEach(x => { if (validDate(x.d) && val(x.km) != null) byDay.set(str(x.d), x.km); });
+    // Deux relevés le même jour (ex. compteur du matin et ticket de plein du soir) : le plus élevé est retenu, quel que soit
+    // l'ordre d'enregistrement ou de synchronisation (un compteur ne recule pas dans la journée).
+    odoLive(odo).forEach(x => { if (validDate(x.d) && val(x.km) != null && !(byDay.get(str(x.d)) >= x.km)) byDay.set(str(x.d), x.km); });
     const all = [...byDay].map(([d, km]) => ({ d, km })).sort((a, b) => a.d.localeCompare(b.d));
     const perDay = (a, b) => (b.km - a.km) / Math.max(1, dayDiff(a.d, b.d));
     const firstBad = list => { for (let i = 1; i < list.length; i++) if (list[i].km < list[i - 1].km || perDay(list[i - 1], list[i]) > MAX_KM_PER_DAY) return i; return -1; };

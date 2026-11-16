@@ -57,18 +57,23 @@ function garageOdoList(raw, tr) {
   const voided = (Array.isArray(raw.odo) ? raw.odo : []).filter(o => o && o.void).length;
   if (!live.length && !voided) return '';
   const bad = new Set(tr.suspect ? [tr.suspect.d] : tr.nonMonotonic && tr.pair ? [tr.pair.from.d, tr.pair.to.d] : []);
-  live.sort((a, b) => (bad.has(b.d) ? 1 : 0) - (bad.has(a.d) ? 1 : 0));   // relevé(s) incohérent(s) en tête, puis du plus récent au plus ancien
+  live.sort((a, b) => (bad.has(b.d) ? 1 : 0) - (bad.has(a.d) ? 1 : 0) || b.d.localeCompare(a.d) || b.km - a.km);
+  // Même jour : seul le plus élevé compte (règle de Garage.odoSeries) ; les autres sont montrés « non comptés », corrigeables.
+  const kept = new Set(), dup = o => { if (kept.has(o.d)) return true; const top = Math.max(...live.filter(x => x.d === o.d).map(x => x.km)); if (o.km === top) { kept.add(o.d); return false; } return true; };
+  const dupOf = new Map(live.slice().sort((a, b) => b.km - a.km).map(o => [o, false]));
+  kept.clear(); [...dupOf.keys()].forEach(o => dupOf.set(o, dup(o)));   // relevé(s) incohérent(s) en tête, puis du plus récent au plus ancien
   const row = o => {
-    const flag = bad.has(o.d), editing = ODO_FIX[raw.id] === o.d, when = esc(o.d);
+    const flag = bad.has(o.d), same = dupOf.get(o), editing = ODO_FIX[raw.id] === o.d && !same, when = esc(o.d);
     const action = editing
       ? '<form class="odo-fix-form" data-odo-fix-form="' + id + '" data-d="' + when + '"><label>Kilométrage juste du ' + garageDate(o.d) +
         '<input name="km" inputmode="numeric" autocomplete="off" value="' + esc(o.km.toLocaleString('fr-FR')) + '"></label>' +
         '<button type="submit" class="btn sm pri">Enregistrer la correction</button>' +
-        '<button type="button" class="btn sm" data-odo-void="' + id + '" data-d="' + when + '">Annuler ce relevé</button>' +
-        '<button type="button" class="btn sm" data-odo-fix-cancel="' + id + '">Fermer</button></form>'
+        '<button type="button" class="btn sm" data-odo-fix-cancel="' + id + '">Fermer</button>' +
+        '<p class="odo-fix-danger"><button type="button" class="btn sm odo-void" data-odo-void="' + id + '" data-d="' + when + '">Annuler ce relevé…</button>' +
+        '<small>Il ne comptera plus ; il reste tracé comme annulé. Une confirmation est demandée.</small></p></form>'
       : '<button type="button" class="btn sm" data-odo-fix="' + id + '" data-d="' + when + '">Corriger</button>';
-    return '<li class="' + (flag ? 'odo-bad' : '') + '" data-odo-day="' + when + '"><span>' + garageDate(o.d) + '</span><b>' + garageKm(o.km) + '</b>' +
-      (flag ? '<em>⚠️ incohérent</em>' : '') + action + '</li>';
+    return '<li class="' + (flag ? 'odo-bad' : same ? 'odo-dup' : '') + '" data-odo-day="' + when + '"' + (same ? ' data-odo-dup="1"' : '') + '><span>' + garageDate(o.d) + '</span><b>' + garageKm(o.km) + '</b>' +
+      (flag ? '<em>⚠️ incohérent</em>' : same ? '<em>même jour · non compté</em>' : '') + (same ? '' : action) + '</li>';
   };
   return '<div class="odo-list"><h5>Relevés enregistrés</h5><p class="odo-fix-status" role="status">' + esc(ODO_FIX_STATUS[raw.id] || '') + '</p>' +
     (live.length ? '<ul>' + live.map(row).join('') + '</ul>' : '') +
@@ -94,7 +99,7 @@ function odoFixRefresh(carId, focus) {
   renderGarage.last = null; renderGarage();
   const fold = focus && document.querySelector('[data-garage-odo="' + CSS.escape(carId) + '"] details.ux-fold');
   if (fold && !fold.open) fold.open = true;   // « Corriger » depuis l'alerte : le volet s'ouvre sur la saisie
-  if (focus) { const i = document.querySelector('[data-odo-fix-form="' + CSS.escape(carId) + '"] input[name=km]'); if (i) { i.focus(); i.select(); } }
+  if (focus) { const i = document.querySelector('[data-odo-fix-form="' + CSS.escape(carId) + '"] input[name=km]'); if (i) { i.focus({ preventScroll: true }); i.select(); const f = i.closest('li'); if (f && f.scrollIntoView) f.scrollIntoView({ block: 'nearest' }); } }
 }
 document.addEventListener('click', async event => {
   const t = event.target && event.target.closest && event.target.closest('[data-odo-fix],[data-odo-fix-cancel],[data-odo-void]');
@@ -149,7 +154,7 @@ function garageOdoHtml(raw, today) {
       (tr.totalKm != null && tr.count >= 2 ? garageKm(tr.totalKm) + ' parcourus depuis le ' + garageDate(tr.first.d) + ' · ' : '') + pace + '</small></div>';
   } else head = '<div class="odo-goal" data-odo-goal-state="none"><p><b>Aucun objectif de kilométrage</b></p><small>' + pace + '</small></div>';
   const stats = tr.count ? '<ul class="odo-stats">' +
-      '<li><span>Relevés</span><b>' + tr.count + '</b><small>depuis le ' + garageDate(tr.first.d) + '</small></li>' +
+      '<li><span>' + (Garage.odoLive(raw.odo).length > tr.count ? 'Jours relevés' : 'Relevés') + '</span><b>' + tr.count + '</b><small>depuis le ' + garageDate(tr.first.d) + '</small></li>' +
       '<li><span>Parcourus</span><b>' + (tr.totalKm != null ? garageKm(tr.totalKm) : '—') + '</b><small>entre le premier et le dernier relevé</small></li>' +
       '<li><span>12 derniers mois</span><b>' + (tr.last12 != null ? garageKm(tr.last12) : '—') + '</b><small>' + (tr.last12 != null ? 'd’après les relevés' : 'historique de moins d’un an') + '</small></li>' +
       '<li><span>Rythme</span><b>' + (tr.kmPerYear ? garageKm(Math.round(tr.kmPerYear / 100) * 100) + '/an' : '—') + '</b><small>' + (tr.kmPerDay ? '≈ ' + Math.round(tr.kmPerDay).toLocaleString('fr-FR') + ' km/j' : 'à calculer') + '</small></li></ul>'
@@ -172,7 +177,7 @@ function garageOdoHtml(raw, today) {
   return '<section class="garage-odo" data-garage-odo="' + id + '">' + head + (warn ? '<p class="odo-warn odo-warn-head" data-odo-suspect>' +
       (tr.suspect ? '⚠️ 1 relevé incohérent écarté des calculs (' + garageDate(tr.suspect.d) + ', ' + garageKm(tr.suspect.km) + ') ' +
         '<button type="button" class="btn sm" data-odo-fix="' + id + '" data-d="' + esc(tr.suspect.d) + '">Corriger</button>' : '⚠️ Relevés incohérents : calculs suspendus') + '</p>' : '') +
-    uxFold('garage-odo-' + raw.id, '📈 Évolution du kilométrage', warn + garageOdoChart(tr) + stats + garageOdoList(raw, tr) + form, tr.count ? tr.count + ' relevé' + (tr.count > 1 ? 's' : '') + ' · objectif' : 'objectif') + '</section>';
+    uxFold('garage-odo-' + raw.id, '📈 Évolution du kilométrage', warn + garageOdoChart(tr) + stats + garageOdoList(raw, tr) + form, (n => (n ? n + ' relevé' + (n > 1 ? 's' : '') + ' · ' : '') + (t ? 'objectif ' + garageKm(t.km) : g && g.life ? 'objectif à vie' : 'aucun objectif'))(Garage.odoLive(raw.odo).length)) + '</section>';
 }
 // Écrit, relit et vide le coffre ; sinon l'ancien objectif est remis et l'échec est dit (même contrat que le budget).
 async function odoGoalPersist(car, next) {

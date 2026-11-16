@@ -73,7 +73,7 @@ const rg = x => `${String(x[0]).replace('-', '−')}–${String(x[1]).replace('-
       check(tag + ' · passages entre le départ et l’arrivée, kilomètres qui ne reculent jamais', g.ordered, JSON.stringify(g));
       if (g.txt && g.first) {
         check(tag + ' · départ et arrivée identiques au calcul tyreLab du trajet (état + plage °C)',
-          g.txt.includes(`Départ : ${g.first.lvl} (${rg(g.first.range)})`) && g.txt.includes(`Arrivée : ${g.last.lvl} (${rg(g.last.range)})`), JSON.stringify(g));
+          g.txt.includes(`Départ : ${g.first.lvl} (gomme estimée ${rg(g.first.range)})`) && g.txt.includes(`Arrivée : ${g.last.lvl} (gomme estimée ${rg(g.last.range)})`), JSON.stringify(g));
         const want = g.hot ? /Gomme chaude/ : g.reached ? /Fenêtre favorable atteinte/ : /N’atteint pas sa fenêtre favorable/;
         check(tag + ' · verdict cohérent avec la fenêtre (atteinte, non atteinte ou chaude)', want.test(g.txt), JSON.stringify(g));
       }
