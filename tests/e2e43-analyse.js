@@ -82,7 +82,11 @@ const layout = (p, mobile) => p.evaluate(mobile => {
   return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6),
     heroBottom: Math.round(hero.bottom), heroTop: Math.round(hero.top), decisionBottom: Math.round(decision.bottom) };
 }, mobile);
-const toLab = async s => { await s.p.click('[data-act=view][data-v=analyse]'); await s.settle(3); await s.p.evaluate(() => window.scrollTo(0, 0)); };
+// Analyse (16/11/2026) : le laboratoire historique est replié sous « Mon bilan » ; on l'ouvre comme l'utilisateur.
+const toLab = async s => { await s.p.click('[data-act=view][data-v=analyse]'); await s.settle(3);
+  const fold = s.p.locator('#secLab details[data-ux="lab-full"]');
+  if (await fold.count() && !await fold.evaluate(d => d.open)) { await fold.locator(':scope > summary').click(); await s.settle(1); }
+  await s.p.evaluate(() => window.scrollTo(0, 0)); };
 // libellé « tendance · niveau » : la tendance (en chauffe, stabilisé, en refroidissement, au repos) est distincte du niveau (froid … très chaud)
 const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT|FROID|SOUS LA PLAGE FAVORABLE|FAVORABLE|CHAUD|TRÈS CHAUD))|SUPPOSÉ AMBIANT/;
 

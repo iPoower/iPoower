@@ -87,6 +87,14 @@ async function run(b, dev, view) {
   const keep = await p.evaluate(() => { renderLab.last = null; renderLab(); const f = document.querySelector('details[data-ux="lab-full"]'), m = document.querySelector('details.bilan-more');
     return { lab: f.open, more: m ? m.open : null, labVisible: f.querySelector('.ux-fold-body').getBoundingClientRect().height > 0 }; });
   check(`${dev} · « Laboratoire pneus » et « Voir les autres » restent ouverts après rafraîchissement`, keep.lab && keep.labVisible && keep.more !== false, JSON.stringify(keep));
+  // 6 bis. Alerte critique (profondeur 1,4 mm à l'avant, sous le minimum légal de 1,6 mm) : l'en-tête « Analyse pneus » est épinglé au-dessus du bilan, jamais replié
+  const crit = await p.evaluate(() => { const today = nowIn('Europe/Paris').slice(0, 10), a = S.cars[0];
+    Object.assign(a.tire, { tread: 1.4, treadAv: 1.4, treadAr: 5, treadEst: 0, treads: [{ d: today, mm: 1.4, km: null, ax: 'av' }, { d: today, mm: 5, km: null, ax: 'ar' }] });
+    saveSettings(); rebuild(); renderAll(); renderLab.last = null; renderLab();
+    const el = $('#secLab'), hero = el.querySelector(':scope > .lab-hero'), bil = el.querySelector('section.bilan');
+    return { pinned: !!hero, before: !!(hero && bil && (hero.compareDocumentPosition(bil) & Node.DOCUMENT_POSITION_FOLLOWING)), alert: hero ? (hero.querySelector('[role=alert]') || {}).textContent || '' : '', h: hero ? hero.getBoundingClientRect().height : 0,
+      folded: !!el.querySelector('details[data-ux="lab-full"] .lab-hero') }; });
+  check(`${dev} · profondeur critique : « Analyse pneus » et ⛔ épinglés au-dessus du bilan (pas dans le repli)`, crit.pinned && crit.before && /⛔/.test(crit.alert) && crit.h > 0 && !crit.folded, JSON.stringify(crit));
   // 7. « Saisir » ouvre les Paramètres sur le champ existant, sans rien écrire
   const before = await p.evaluate(() => JSON.stringify(S.cars));
   const first = p.locator('#secLab [data-bilan="todo"] [data-act="garage-quick"]').first();
