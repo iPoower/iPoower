@@ -87,7 +87,8 @@ const layout = (p, mobile) => p.evaluate(mobile => {
 const toLab = async s => { await s.p.click('[data-act=view][data-v=analyse]'); await s.settle(3);
   const fold = s.p.locator('#secLab details[data-ux="lab-full"]');
   if (await fold.count() && !await fold.evaluate(d => d.open)) { await fold.locator(':scope > summary').click(); await s.settle(1); }
-  await s.p.evaluate(() => window.scrollTo(0, 0)); };
+  // Retour en haut immédiat : html { scroll-behavior: smooth } anime sinon le défilement sous WebKit pendant les mesures.
+  await s.p.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })); await s.p.waitForFunction(() => window.scrollY === 0); };
 // libellé « tendance · niveau » : la tendance (en chauffe, stabilisé, en refroidissement, au repos) est distincte du niveau (froid … très chaud)
 const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT|FROID|SOUS LA PLAGE FAVORABLE|FAVORABLE|CHAUD|TRÈS CHAUD))|SUPPOSÉ AMBIANT/;
 
@@ -109,8 +110,8 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     check('1 · pression : cible saisie et estimation, jamais « réelle »', /Cible saisie : 2,3 bar/.test(a.all) && /estimation/.test(a.all) && !/pression réelle/i.test(a.all));
     check('1 · fiche : DONNÉE CONSTRUCTEUR séparée, rubriques « non disponible » sans modèle', /DONNÉE CONSTRUCTEUR/.test(a.all) && /DÉCODAGE DE LA MONTE SAISIE/.test(a.all) && /Étiquette UE : non disponible/.test(a.all) && !a.links.length);
     check('1 · aucune fausse précision : pas de « exactement », mention estimation et absence de capteur', !/exactement/i.test(a.all) && /aucune mesure de capteur/.test(a.all) && /aucun capteur direct/.test(a.all));
-    const L = await layout(s.p, true);
-    check('1 · iPhone : aucun débordement, cibles ≥ 44 pt, synthèse globale visible et verdict Analyse déjà engagé', L.sw <= L.W && !L.wide.length && !L.small.length && L.decisionBottom > 0 && L.decisionBottom < 896 && L.heroTop > 0 && L.heroTop < 896, JSON.stringify(L));
+    const L = await layout(s.p, true); if (process.env.E2E43_DEBUG) console.log('L1', JSON.stringify(L));
+    check('1 · iPhone : aucun débordement, cibles ≥ 44 pt, synthèse globale visible et verdict Analyse déjà engagé', L.sw <= L.W && !L.wide.length && !L.small.length && L.decisionBottom > 0 && L.decisionBottom < 896 && L.heroTop > 0 && L.heroTop < 896, JSON.stringify({ heroTop: L.heroTop, decisionBottom: L.decisionBottom, heroBottom: L.heroBottom, sw: L.sw, W: L.W, small: L.small, wide: L.wide }));
     if (process.env.LAB_SHOT) await s.p.locator('#secLab').screenshot({ path: process.env.LAB_SHOT + '-iphone.png' });   // capture locale facultative, après les mesures
     await s.p.locator('#secLab details[data-k=why] summary').click(); await s.settle(1);
     await s.p.evaluate(() => renderAll()); await s.settle(2);
