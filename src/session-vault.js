@@ -74,11 +74,29 @@ const SessionVault = (() => {
   // Copies lisibles retirées seulement après un coffre relu ET déchiffré identique (appelé uniquement dans ce cas).
   function dropPlain(raw, names) { names.forEach(k => { if (secret(k)) put(raw, k, null); }); }
   function plainSnapshot(raw) { const o = {}; keysOf(raw).filter(secret).forEach(k => { const v = raw.getItem(k); if (v != null) o[k] = v; }); return o; }
-  function mergeStray(saved, stray) {
+  function mergeStray(saved, stray, at) {
     const values = { ...stray, ...saved };
     if (saved[JournalArchive.KEY] != null) values[JournalArchive.KEY] = JSON.stringify(JournalArchive.union(JournalArchive.capture(saved), JournalArchive.capture(stray)));
-    return values;
+    return preserve(values, stray, 'copie en clair', at);
   }
+  // Zéro perte (lot A, 16/11/2026) : une valeur écartée par une réunion locale (copie en clair égarée ou restée après une migration,
+  // quand le coffre authentifié fait foi) n'est jamais détruite. Elle est gardée CHIFFRÉE dans le coffre, sous une clé propre
+  // à l'appareil (jamais synchronisée), et reste dans la copie de récupération. Code, préréglage re-déchiffrable et caches exceptés.
+  const RECOVER = 'twrc.restore.stray.v1';
+  const recoverable = k => secret(k) && k !== RECOVER && !['twrc.key', 'twrc.plain', 'twrc.plain.v'].includes(k) && !CACHE(k);
+  function preserve(vals, losing, source, at) {
+    const lost = Object.keys(losing).filter(k => recoverable(k) && typeof losing[k] === 'string' && vals[k] !== losing[k]).sort();
+    if (!lost.length) return vals;
+    const prev = vals[RECOVER] == null ? losing[RECOVER] : vals[RECOVER];
+    let book = null;
+    try { book = prev == null ? { v: 1, items: [] } : JSON.parse(prev); } catch (e) { book = null; }
+    // Un carnet illisible n'est pas jeté : il devient lui-même une entrée conservée.
+    if (!book || book.v !== 1 || !Array.isArray(book.items)) book = { v: 1, items: [{ source: 'carnet illisible', at, values: { [RECOVER]: String(prev) } }] };
+    const values = Object.fromEntries(lost.map(k => [k, losing[k]])), sig = JSON.stringify([source, values]);
+    if (!book.items.some(i => i && JSON.stringify([i.source, i.values]) === sig)) book.items.push({ source, at, values });
+    return { ...vals, [RECOVER]: JSON.stringify(book) };
+  }
+  const preserved = (before, after) => before !== after && after != null;
   // Les caches recalculables (météo, routes) peuvent être sacrifiés si le stockage est plein — jamais les données durables.
   const CACHE = k => k.startsWith('twrc.cache.') || k.startsWith('twrc.croute') || k.startsWith('twrc.road.');
   // seul un stockage PLEIN justifie de sacrifier les caches ; un refus (mode privé, permission) ne supprime rien
@@ -315,24 +333,65 @@ const SessionVault = (() => {
       const vault = readVault(raw), plainKey = raw.getItem('twrc.key');
       // 1. Ancien format en clair, appareil déverrouillé : migration vérifiée.
       if (plainKey) {
+        const snap = plainSnapshot(raw); let salt, rawKey = null, opened = null, stored = null, kept = false;
         try {
-          const snap = plainSnapshot(raw); let salt, rawKey;
-          if (vault && !vault.invalid) {   // migration interrompue : revérifier le coffre contre les données en clair
-            salt = dec(vault.s); rawKey = await deriveRaw(plainKey, salt, crypto); await useKey(rawKey, salt);
-            let ok = false; try { ok = same((await open(vault, st.key, crypto)).values, snap); } catch (e) { ok = false; }
-            if (!ok) await writeWithRoom(snap, salt);
+          if (vault) {
+            // Lot A (fail closed) : un coffre déjà présent n'est JAMAIS remplacé sans avoir été relu et authentifié avec ce code.
+            // Illisible (version inconnue, altéré) ou ouvert par un autre code : le coffre ET la copie en clair restent tels quels,
+            // aucune écriture, code demandé. Le déverrouillage les réunit ensuite sans perte (mergeStray).
+            let data = null;
+            if (!vault.invalid) {
+              try { salt = dec(vault.s); rawKey = await deriveRaw(plainKey, salt, crypto); await useKey(rawKey, salt); data = await open(vault, st.key, crypto); }
+              catch (e) { data = null; }
+            }
+            if (!data) {
+              if (rawKey) rawKey.fill(0);
+              st.key = null; st.salt = null; st.mem = memStore(raw, {}, () => {}); st.mode = 'locked';
+              st.warn = vault.invalid ? 'Coffre local illisible et ancienne copie en clair : les deux sont conservés tels quels, rien n’a été remplacé ni effacé. Mets l’app à jour ou exporte la copie brute.'
+                : 'Ancienne copie en clair d’un autre code trouvée à côté du coffre : rien n’a été remplacé. Saisis ton code : les deux seront réunis, l’ancienne copie gardée chiffrée.';
+              return st.mode;
+            }
+            opened = data.values; st.n = order(data).n; st.t = order(data).t;
+            if (same(data.values, snap)) stored = data.values;
+            else {
+              // Copie en clair différente d'un coffre authentifié : on ne peut pas savoir laquelle est la plus récente. Même règle que
+              // pour toute copie égarée : le coffre fait foi, la copie en clair est gardée chiffrée (récupération), le journal v3 est
+              // réuni. Avant le lot A, la copie en clair remplaçait le coffre entier (journal v2 du coffre perdu).
+              let vals = mergeStray(data.values, snap, now());
+              if (data.v === 3) vals = JournalArchive.protect(data.values, vals);
+              stored = await writeWithRoom(vals, salt); kept = preserved(data.values[RECOVER], stored[RECOVER]);
+            }
           } else {
             salt = crypto.getRandomValues(new Uint8Array(16)); rawKey = await deriveRaw(plainKey, salt, crypto); await useKey(rawKey, salt);
             await writeWithRoom(snap, salt);
+            stored = (await open(JSON.parse(raw.getItem(VAULT)), st.key, crypto)).values;
           }
-          const stored = (await open(JSON.parse(raw.getItem(VAULT)), st.key, crypto)).values;
-          await saveSession(rawKey, salt); rawKey.fill(0); dropPlain(raw, Object.keys(snap));
-          if (!sameKeysGone(raw, snap)) throw new Error('Nettoyage incomplet.');
-          enter(stored); st.migrated = true; return st.mode;
+          await saveSession(rawKey, salt);
         } catch (e) {
-          // Rien n'a été retiré tant que la vérification n'a pas réussi : l'app continue sur l'ancien stockage.
-          st.mode = 'plain'; st.warn = 'Chiffrement local non terminé : tes données restent intactes sur cet appareil (non chiffrées). ' + (e.unsupported ? e.message : 'Libère de l’espace ou exporte une sauvegarde.'); return st.mode;
+          if (rawKey) rawKey.fill(0);
+          if (!stored && opened) {
+            // Réunion impossible (stockage plein, écriture refusée) : coffre authentifié inchangé (écriture annulée par writeVerified),
+            // copie en clair laissée telle quelle. Aucune suppression ; nouvel essai au prochain démarrage.
+            enter(opened);
+            st.warn = 'Ancienne copie en clair conservée telle quelle : la réunir au coffre chiffré a échoué (' + (full(e) ? 'stockage plein' : 'écriture refusée') + '). Rien n’a été effacé.';
+            return st.mode;
+          }
+          if (!stored) {
+            // Rien n'a été retiré tant que la vérification n'a pas réussi : l'app continue sur l'ancien stockage, sans coffre.
+            st.key = null; st.salt = null;
+            st.mode = 'plain'; st.warn = 'Chiffrement local non terminé : tes données restent intactes sur cet appareil (non chiffrées). ' + (e.unsupported ? e.message : 'Libère de l’espace ou exporte une sauvegarde.'); return st.mode;
+          }
+          // Coffre écrit et relu : il fait foi, même si la session n'a pas pu être mémorisée (code redemandé au prochain chargement).
         }
+        if (rawKey) rawKey.fill(0);
+        // Nettoyage : le code en clair d'abord, pour qu'une copie restante ne puisse plus jamais repasser par cette étape.
+        const names = Object.keys(snap).sort((a, b) => (b === 'twrc.key') - (a === 'twrc.key'));
+        try { dropPlain(raw, names); } catch (e) { /* vérifié ci-dessous */ }
+        // Lot A : un nettoyage incomplet ne renvoie plus l'app sur des copies en clair partielles. Le coffre vérifié fait foi.
+        enter(stored); st.migrated = true;
+        if (!sameKeysGone(raw, snap)) st.warn = 'Données chiffrées, mais des copies lisibles n’ont pas pu être retirées : elles seront réunies au prochain démarrage, sans perte.';
+        else if (kept) st.warn = 'Deux versions locales différaient : le coffre chiffré a été retenu, l’ancienne copie en clair est conservée chiffrée (récupération), rien n’a été effacé.';
+        return st.mode;
       }
       // 2. Coffre v2 : session d'onglet valide OU autorisation locale de 7 jours.
       if (vault && !vault.invalid) {
@@ -374,11 +433,11 @@ const SessionVault = (() => {
             const data = await open(vault, st.key, crypto);
             if (raw.getItem(LOCK_SIGNAL) !== signal || now() >= active.expiresAt) throw new Error('Autorisation révoquée');
             st.n = order(data).n; st.t = order(data).t;
-            const stray = plainSnapshot(raw), vals = mergeStray(data.values, stray);
+            const stray = plainSnapshot(raw), vals = mergeStray(data.values, stray, now());
             const kept = Object.keys(stray).length ? await writeWithRoom(vals, st.salt) : vals;
             await saveSession(active.rawKey, st.salt, active.expiresAt, valid && ses.v === 4 ? ses : null); active.rawKey.fill(0);
             enter(kept);
-            if (Object.keys(stray).length) dropPlain(raw, Object.keys(stray));
+            if (Object.keys(stray).length) try { dropPlain(raw, Object.keys(stray)); } catch (e) { st.warn = 'Données chiffrées, mais des copies lisibles n’ont pas pu être retirées : elles seront réunies au prochain démarrage, sans perte.'; }
             return st.mode;
           } catch (e) {
             active.rawKey.fill(0); clearSession();
@@ -411,7 +470,7 @@ const SessionVault = (() => {
         salt = dec(vault.s); rawKey = await deriveRaw(pass, salt, crypto);
         const key = await importKey(rawKey, crypto), data = await open(vault, key, crypto);   // code faux → OperationError, clé de la session inchangée
         st.key = key; st.salt = salt;
-        const stray = plainSnapshot(raw); vals = mergeStray(data.values, stray); drop = Object.keys(stray); st.n = order(data).n; st.t = order(data).t;
+        const stray = plainSnapshot(raw); vals = mergeStray(data.values, stray, now()); drop = Object.keys(stray); st.n = order(data).n; st.t = order(data).t;
         // Suite à une expiration, seules les modifications non confirmées sont reprises.
         // Aucune perte sur mauvais code / quota plein : l'ancien MemStore reste intact jusqu'au coffre vérifié.
         if (st.mode === 'expired' && st.mem) st.mem.dirty.forEach(k => {
@@ -431,8 +490,12 @@ const SessionVault = (() => {
       const kept = await writeWithRoom(vals, salt, guard);
       await saveSession(rawKey, salt);
       if (guard) guard();
-      dropPlain(raw, drop); if (dropV1) put(raw, V1, null);
+      // Lot A : coffre écrit et relu, copies gardées chiffrées si différentes. Un retrait refusé ne bloque plus l'accès (réessayé au
+      // prochain démarrage, sans perte) ; avant, le déverrouillage échouait indéfiniment après une écriture pourtant réussie.
+      let left = false;
+      try { dropPlain(raw, drop); if (dropV1) put(raw, V1, null); } catch (e) { left = true; }
       enter(kept);
+      if (left) st.warn = 'Données chiffrées, mais des copies lisibles n’ont pas pu être retirées : elles seront réunies au prochain démarrage, sans perte.';
       // Autorisation persistante facultative, non exportée dans les sauvegardes.
       if (remembered) {
         try {
