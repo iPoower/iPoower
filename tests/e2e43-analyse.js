@@ -78,7 +78,8 @@ const layout = (p, mobile) => p.evaluate(mobile => {
   const W = document.documentElement.clientWidth, el = document.getElementById('secLab'), small = [], wide = [];
   document.querySelectorAll('#secLab button, #secLab summary, #viewSeg button').forEach(e => { const b = e.getBoundingClientRect(); if (b.height > 0 && mobile && b.height < 43.5) small.push((e.dataset.act || e.tagName) + ' ' + Math.round(b.height)); });
   el.querySelectorAll('*').forEach(e => { const b = e.getBoundingClientRect(); if (b.width > 0 && b.right > W + 1) wide.push(e.className || e.tagName); });
-  const hero = el.querySelector('.lab-hero').getBoundingClientRect(), decision = document.getElementById('decisionCore').getBoundingClientRect();
+  // Analyse (16/11/2026) : en tête, l'en-tête pneus épinglé (trajet, alerte critique) sinon « Mon bilan » ; le laboratoire est dessous.
+  const hero = (el.querySelector(':scope > .lab-hero') || el.querySelector('section.bilan') || el.querySelector('.lab-hero')).getBoundingClientRect(), decision = document.getElementById('decisionCore').getBoundingClientRect();
   return { sw: document.documentElement.scrollWidth, W, small, wide: [...new Set(wide)].slice(0, 6),
     heroBottom: Math.round(hero.bottom), heroTop: Math.round(hero.top), decisionBottom: Math.round(decision.bottom) };
 }, mobile);
