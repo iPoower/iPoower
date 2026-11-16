@@ -24,7 +24,7 @@ function driveConflictText(path, v) {
   if (/^cars\.\d+\.tire\.treads$/.test(path) && Array.isArray(v)) return v.length ? list(v, r => r && typeof r === 'object'
     ? driveConflictDate(r.d) + ' · ' + driveConflictNum(+r.mm, 1) + ' mm · ' + (DRIVE_AXLE[r.ax] || 'essieu non précisé') + (Number.isFinite(r.km) ? ' · ' + driveConflictNum(r.km) + ' km' : '') + (r.est ? ' (estimation)' : '')
     : 'relevé illisible') : 'aucun relevé';
-  if (/^cars\.\d+\.odo$/.test(path) && Array.isArray(v)) return v.length ? list(v, r => r && typeof r === 'object' ? driveConflictDate(r.d) + ' · ' + driveConflictNum(+r.km) + ' km' : 'relevé illisible') : 'aucun relevé';
+  if (/^cars\.\d+\.odo$/.test(path) && Array.isArray(v)) return v.length ? list(v, r => r && typeof r === 'object' ? driveConflictDate(r.d) + ' · ' + driveConflictNum(+r.km) + ' km' + (r.void ? ' (annulé)' : '') : 'relevé illisible') : 'aucun relevé';
   // Montants du budget stockés en centimes : affichés en euros, jamais en centimes bruts.
   if (/^cars\.\d+\.economics\.ref\.\w+Cents$/.test(path) && Number.isFinite(v)) return driveConflictNum(v / 100, Number.isInteger(v / 100) ? 0 : 2) + ' €';
   if (typeof v === 'boolean') return v ? 'oui' : 'non';
@@ -45,7 +45,9 @@ function driveConflictSummary(path, v) {
     const av = at('av'), ar = at('ar'), mm = xs => xs.length ? driveConflictNum(Math.min(...xs), 1) : '—';
     return (av.length || ar.length ? 'AV ' + mm(av) + ' / AR ' + mm(ar) + ' mm' : driveConflictNum(+r.mm, 1) + ' mm') + ', relevé du ' + driveConflictDate(day);
   }
-  if (/^cars\.\d+\.odo$/.test(path) && Array.isArray(v) && v.length) { const r = last(v); return r ? driveConflictNum(+r.km) + ' km, relevé du ' + driveConflictDate(r.d) : 'relevé illisible'; }
+  // Relevés en vigueur (règle Garage.odoLive, recopiée ici : vue autonome) : un relevé annulé n'est pas « le dernier relevé ».
+  const odoLive = Array.isArray(v) && /^cars\.\d+\.odo$/.test(path) ? (vd => v.filter(o => o && !o.void && !vd.has(o.d + '|' + o.km)))(new Set(v.filter(o => o && o.void).map(o => o.d + '|' + o.km))) : [];
+  if (/^cars\.\d+\.odo$/.test(path) && Array.isArray(v) && odoLive.length) { const r = last(odoLive); return r ? driveConflictNum(+r.km) + ' km, relevé du ' + driveConflictDate(r.d) : 'relevé illisible'; }
   const t = driveConflictText(path, v); return t.length > 60 ? t.slice(0, 57) + '…' : t;
 }
 // Libellé d'un bouton de conflit : jamais la clé technique (« cars.0.tire.treads »).

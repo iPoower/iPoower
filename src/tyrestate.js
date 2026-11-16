@@ -8,6 +8,8 @@
    (frais ≤ 14 j, ancien > 30 j). Âge : depuis la fabrication (DOT) ≠ depuis le montage (date de montage) ; repère Michelin :
    contrôle professionnel annuel après 5 ans d'usage, remplacement au-delà de 10 ans depuis la fabrication. L'âge n'est
    jamais converti en perte d'adhérence : il nourrit la surveillance, l'incertitude et l'entretien. */
+// Relevés du compteur en vigueur : un relevé annulé par un marqueur { d, km, void: 1 } ne compte plus (règle Garage.odoLive).
+function odoLive(l) { const a = Array.isArray(l) ? l : [], v = new Set(a.filter(o => o && o.void).map(o => o.d + '|' + o.km)); return a.filter(o => o && !o.void && !v.has(o.d + '|' + o.km)); }
 const TS_TREAD = [60, 180], TS_PRESS = [14, 30];
 const TS_TYPES = { summer: 'été', winter: 'hiver', allseason: '4 saisons' };
 /* Profondeur par essieu : tire.treadAv / tire.treadAr (mm), tire.treadEst = 1 quand la valeur est une estimation de
@@ -201,7 +203,7 @@ function tyreState(car, opt = {}) {
     if (ageY > -0.1) dot = { raw: dm[0], week: +dm[1], year, ageY: Math.max(0, ageY), txt: `DOT ${dm[0]} · fabrication semaine ${+dm[1]} / ${year} · ≈ ${yrs(Math.max(0, ageY))}`, src: 'USER_ENTERED' };
   }
   // montage : âge d'usage et kilométrage depuis le montage (seulement si le compteur est connu)
-  const odo = (car.odo || []).filter(o => o && num(o.km) != null).sort((a, b) => String(a.d).localeCompare(String(b.d)));
+  const odo = odoLive(car.odo).filter(o => num(o.km) != null).sort((a, b) => String(a.d).localeCompare(String(b.d)));
   const lastOdo = odo[odo.length - 1] || null, mountKm = num(t.mountKm);
   const serviceD = days(t.mounted);
   const mount = { date: t.mounted || null, serviceY: serviceD != null && serviceD >= 0 ? serviceD / 365.25 : null, km: mountKm,
@@ -289,12 +291,13 @@ function confirmWinterMount(car, { date, km, today } = {}) {
   if (!validDate(date) || !validDate(today) || date > today) return { error: 'Choisis la date réelle du montage, aujourd’hui ou avant.' };
   const value = km == null || String(km).trim() === '' ? null : Number(km);
   if (value != null && (!Number.isSafeInteger(value) || value < 0)) return { error: 'Le compteur doit être un nombre entier positif ou nul.' };
-  const readings = (car.odo || []).filter(o => o && Number.isFinite(o.km));
+  const readings = odoLive(car.odo).filter(o => Number.isFinite(o.km));
   if (value != null && readings.some(o => o.d <= date && o.km > value || o.d > date && o.km < value)) return { error: 'Ce compteur ne correspond pas à la chronologie des relevés enregistrés.' };
   const next = JSON.parse(JSON.stringify(car));
   switchTire(next, 'winter');
   Object.assign(next.tire, { mounted: date, mountKm: value, lastRot: null, pchk: { date: '', T: null } });
-  if (value != null) next.odo = [...(next.odo || []).filter(o => o.d !== date), { d: date, km: value }].sort((a, b) => String(a.d).localeCompare(String(b.d)));
+  // Relevé du jour du montage : l'ancien est annulé par marqueur (jamais retiré), comme Garage.odoReplace.
+  if (value != null) { const old = odoLive(next.odo).filter(o => o.d === date && o.km !== value); next.odo = [...(next.odo || []), ...old.map(o => ({ d: o.d, km: o.km, void: 1 })), ...(odoLive(next.odo).some(o => o.d === date && o.km === value) ? [] : [{ d: date, km: value }])].sort((a, b) => String(a.d).localeCompare(String(b.d)) || (a.void ? 1 : 0) - (b.void ? 1 : 0)); }
   next.plan.on = 0;
   return { car: next };
 }

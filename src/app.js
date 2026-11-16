@@ -3603,7 +3603,7 @@ const tireTxt = car => {
   const t = car.tire, a = [t.brand, t.model].filter(Boolean).join(' ');
   return `${a ? esc(a) : '<span class="muted">marque / modèle non renseignés</span>'} · <span class="tt">${esc(t.size || '—')}</span>${t.tread != null ? ` · <span class="tt">${esc(treadTxt(treadAxles(t), treadAxles(t).worst))}${t.treadEst ? ' (estimée)' : ''}</span>` : ''}`;
 };
-const lastOdo = car => (car.odo || []).slice().sort((x, y) => x.km - y.km).slice(-1)[0] || null;
+const lastOdo = car => odoLive(car.odo).slice().sort((x, y) => x.km - y.km).slice(-1)[0] || null;
 // Une profondeur de la fiche rejoint l'historique du jour (remplace la saisie non localisée du même jour et du même essieu),
 // avec le compteur connu et l'indication estimée / mesurée. Plafond de 30 relevés : rien n'est effacé pour faire de la place.
 // Chaque ligne porte l'origine choisie À SA SAISIE (est : mesure à la jauge = false, estimation = true), jamais treadEst, qui décrit
@@ -3679,7 +3679,7 @@ function wearInfo(car) {
   return out;
 }
 function wearLine(car) {
-  const w = wearInfo(car), t = car.tire; if (!w.last && !(car.odo || []).length) return '';
+  const w = wearInfo(car), t = car.tire; if (!w.last && !odoLive(car.odo).length) return '';
   const parts = [];
   if (w.last) parts.push(`Profondeur <b>${f1(w.last.mm)} mm</b> (${fmtDay(w.last.d)})`);
   if (w.rate) parts.push(`${w.rate.toFixed(2).replace('.', ',')} mm / 1 000 km`, `${w.thr} mm vers ${(Math.round(w.kmThr / 100) * 100).toLocaleString('fr-FR')} km${w.dateThr ? ' (≈ ' + new Date(w.dateThr + 'T12:00:00Z').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) + ')' : ''}`);
@@ -4660,13 +4660,14 @@ document.addEventListener('click', async e => {
     if (!c) { commandFeedback(t, 'Véhicule indisponible'); return; }
     if (a === 'odo') { const input = $('#odo-' + i), v = parseFloat((input || {}).value); if (!isFinite(v) || v < 0) { commandFeedback(t, 'Saisis un compteur positif ou nul', input); return; }
       // Un compteur ne recule pas : même chronologie que la boîte de dépôt et le budget (relevés, pleins, révision, montage).
-      const clash = RcInbox.kmConflict({ ...c, odo: (c.odo || []).filter(o => o && o.d !== today) }, today, Math.round(v));
+      const clash = RcInbox.kmConflict({ ...c, odo: Garage.odoLive(c.odo).filter(o => o.d !== today) }, today, Math.round(v));
       if (clash && !confirm('Ce compteur (' + Math.round(v).toLocaleString('fr-FR') + ' km) contredit ' + clash.label + ' du ' + clash.d.slice(8) + '/' + clash.d.slice(5, 7) + '/' + clash.d.slice(0, 4) + ' (' + Number(clash.km).toLocaleString('fr-FR') + ' km).\n\nEnregistrer quand même ce relevé ?')) { commandFeedback(t, 'Relevé non enregistré : vérifie le compteur', input); return; }
       // Saut invraisemblable (> 1 500 km/j) par rapport aux relevés fiables voisins : chiffre manquant ou en trop ?
       const jump = !clash && Garage.kmJump(c, today, Math.round(v));
       if (jump && !confirm('Ce compteur (' + Math.round(v).toLocaleString('fr-FR') + ' km) implique ≈ ' + jump.kmPerDay.toLocaleString('fr-FR') + ' km par jour par rapport au relevé du ' + jump.d.slice(8) + '/' + jump.d.slice(5, 7) + '/' + jump.d.slice(0, 4) + ' (' + Number(jump.km).toLocaleString('fr-FR') + ' km) : un chiffre manque ou est en trop ?\n\nEnregistrer quand même ce relevé ?')) { commandFeedback(t, 'Relevé non enregistré : vérifie le compteur', input); return; }
       // Historique complet conservé (évolution du kilométrage, voiture gardée à vie) : plus de troncature aux 60 derniers relevés.
-      c.odo = (c.odo || []).filter(o => o.d !== today).concat([{ d: today, km: Math.round(v) }]).sort((x, y) => String(x.d).localeCompare(String(y.d))); }
+      // Relevé du jour remplacé par marqueur d'annulation (jamais retiré : la synchronisation par union le ferait revenir).
+      c.odo = Garage.odoReplace(c.odo, today, Math.round(v)); }
     if (a === 'tread-add') { const input = $('#trd-' + i), v = parseFloat(String((input || {}).value).replace(',', '.')); if (!isFinite(v) || v < 0 || v > 12) { commandFeedback(t, 'Saisis une profondeur de 0 à 12 mm', input); return; } const lo = lastOdo(c);
       const mm = Math.round(v * 10) / 10, ax = ($('#trdax-' + i) || {}).value || 'both', est = ($('#trdest-' + i) || {}).value === '1', pos = ($('#trdpos-' + i) || {}).value || 'unknown';
       if ((c.tire.treads || []).length >= TREAD_HISTORY_MAX) { commandFeedback(t, 'Historique plein : aucun ancien relevé effacé. Conserve un export avant d’organiser les relevés.', input); return; }

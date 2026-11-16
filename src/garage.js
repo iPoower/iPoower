@@ -7,6 +7,22 @@ const Garage = (() => {
   const str = x => typeof x === 'string' ? x.trim() : '';
   const val = x => typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : null;
   const validDate = x => /^\d{4}-\d{2}-\d{2}$/.test(str(x));
+  // Relevés du compteur EN VIGUEUR : un relevé corrigé ou annulé n'est jamais effacé ; un marqueur { d, km, void: 1 }
+  // l'annule. La synchronisation fusionne les relevés par union : le marqueur se propage comme un relevé, sans perte.
+  const odoKey = o => o.d + '|' + o.km;
+  function odoLive(list) {
+    const a = Array.isArray(list) ? list : [], voided = new Set(a.filter(o => o && o.void).map(odoKey));
+    return a.filter(o => o && !o.void && !voided.has(odoKey(o)));
+  }
+  // Remplace le relevé EN VIGUEUR d'un jour (correction, saisie du jour) : l'ancien est annulé par marqueur, jamais retiré.
+  // km null = annulation seule. Retourne une nouvelle liste triée ; la liste reçue n'est jamais modifiée.
+  function odoReplace(list, day, km) {
+    const a = Array.isArray(list) ? list.slice() : [];
+    const live = odoLive(a).filter(o => o.d === day), keep = km != null && live.some(o => o.km === km);
+    live.filter(o => km == null || o.km !== km).forEach(o => a.push({ d: o.d, km: o.km, void: 1 }));
+    if (km != null && !keep) a.push({ d: day, km });
+    return a.sort((x, y) => String(x.d).localeCompare(String(y.d)) || (x.void ? 1 : 0) - (y.void ? 1 : 0));
+  }
   function overview(cars, activeId, stateFor) {
     if (!Array.isArray(cars)) return [];
     const used = new Set();
@@ -16,7 +32,7 @@ const Garage = (() => {
       used.add(key);
       const t = car.tire || {}, p = car.plan || {};
       const state = typeof stateFor === 'function' ? stateFor(car) : null;
-      const readings = (Array.isArray(car.odo) ? car.odo : [])
+      const readings = odoLive(car.odo)
         .filter(x => x && val(x.km) != null && validDate(x.d))
         .slice().sort((a, b) => String(a.d).localeCompare(String(b.d)));
       const last = readings.length ? readings[readings.length - 1] : null;
@@ -157,7 +173,7 @@ const Garage = (() => {
   // (calculs suspendus, les deux relevés en cause nommés).
   function odoSeries(odo) {
     const byDay = new Map();
-    (Array.isArray(odo) ? odo : []).forEach(x => { if (x && validDate(x.d) && val(x.km) != null) byDay.set(str(x.d), x.km); });
+    odoLive(odo).forEach(x => { if (validDate(x.d) && val(x.km) != null) byDay.set(str(x.d), x.km); });
     const all = [...byDay].map(([d, km]) => ({ d, km })).sort((a, b) => a.d.localeCompare(b.d));
     const perDay = (a, b) => (b.km - a.km) / Math.max(1, dayDiff(a.d, b.d));
     const firstBad = list => { for (let i = 1; i < list.length; i++) if (list[i].km < list[i - 1].km || perDay(list[i - 1], list[i]) > MAX_KM_PER_DAY) return i; return -1; };
@@ -194,7 +210,7 @@ const Garage = (() => {
   function maintenance(car, { today, kmPerDay = null, odoEveryDays = 7 } = {}) {
     if (!validDate(today)) throw new Error('date du jour requise');
     const m = car && car.maint || {}, r = m.rev || {}, ct = m.ct || {};
-    const readings = (car && Array.isArray(car.odo) ? car.odo : []).filter(x => x && val(x.km) != null && validDate(x.d))
+    const readings = odoLive(car && car.odo).filter(x => x && val(x.km) != null && validDate(x.d))
       .slice().sort((a, b) => String(a.d).localeCompare(String(b.d)));
     const last = readings.length ? readings[readings.length - 1] : null, rate = pos(kmPerDay);
     const odoAge = last ? dayDiff(last.d, today) : null;
@@ -249,5 +265,5 @@ const Garage = (() => {
       spanDays: first && last ? dayDiff(first.d, last.d) : null, kmPerDay: rate, kmPerYear: rate ? rate * 365.25 : null,
       last12, goal, target, nonMonotonic, suspect: series.suspect, pair: series.pair };
   }
-  return { overview, silhouette, preview, comparison, daylight, maintenance, kmPerDay, MAX_KM_PER_DAY, odoGoal, odoTrend, odoSeries, kmJump, GOAL_MAX_KM };
+  return { overview, silhouette, preview, comparison, daylight, maintenance, kmPerDay, MAX_KM_PER_DAY, odoGoal, odoTrend, odoSeries, kmJump, odoLive, odoReplace, GOAL_MAX_KM };
 })();

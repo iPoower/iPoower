@@ -10,7 +10,7 @@ function econField(label, name, value, type = 'text', extra = '') {
   return '<label class="econ-field"><span>' + esc(label) + '</span><input name="' + name + '" type="' + type + '" value="' + esc(value == null ? '' : String(value)) + '" ' + extra + '></label>';
 }
 function econCurrentKm(car) {
-  const last = (Array.isArray(car && car.odo) ? car.odo : []).filter(o => o && Number.isFinite(o.km) && /^\d{4}-\d{2}-\d{2}$/.test(o.d || '')).sort((a, b) => a.d.localeCompare(b.d)).pop();
+  const last = Garage.odoLive(car && car.odo).filter(o => o && Number.isFinite(o.km) && /^\d{4}-\d{2}-\d{2}$/.test(o.d || '')).sort((a, b) => a.d.localeCompare(b.d)).pop();
   return last ? Math.round(last.km) : null;
 }
 function econProject(car) { return GarageEconomics.project(car && car.economics, { today: nowIn('Europe/Paris').slice(0, 10), currentKm: econCurrentKm(car) }); }
@@ -128,7 +128,7 @@ document.addEventListener('submit', async event => {
       await econPersist(car, next, ['entries'], 'Dépense ajoutée');
       // Le compteur lu sur le ticket est un relevé réel : il rejoint les relevés de la voiture (sauf relevé déjà saisi ce jour-là).
       const ix = S.cars.indexOf(car);
-      if (km != null && day && ix >= 0 && !(car.odo || []).some(o => o && o.d === day)) {
+      if (km != null && day && ix >= 0 && !Garage.odoLive(car.odo).some(o => o.d === day)) {
         car.odo = [...(car.odo || []), { d: day, km }].sort((a, b) => String(a.d).localeCompare(String(b.d))); markEdit('cars.' + ix + '.odo'); saveSettings();
         const vs = window.TWRC_VAULT; if (vs && vs.mode === 'vault') await vs.flush();
         ECON_STATUS[car.id] = 'Dépense ajoutée · compteur ' + Number(km).toLocaleString('fr-FR') + ' km ajouté aux relevés · enregistré dans le coffre.';

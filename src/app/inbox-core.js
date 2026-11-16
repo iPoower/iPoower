@@ -87,12 +87,14 @@ const RcInbox = (() => {
     const hits = list.filter(c => c.id === e.car || [c.short, c.name].some(n => typeof n === 'string' && n.trim().toLowerCase() === key));
     return hits.length === 1 ? hits[0] : null;
   }
-  const lastOdoBefore = (car, day) => (car.odo || []).filter(o => o && Number.isFinite(o.km) && validDay(o.d) && o.d <= day).sort((a, b) => a.d.localeCompare(b.d)).pop() || null;
+  // Relevés en vigueur : un relevé annulé par un marqueur { d, km, void: 1 } ne compte plus (même règle que Garage.odoLive).
+  const odoLive = (l => { const a = Array.isArray(l) ? l : [], v = new Set(a.filter(o => o && o.void).map(o => o.d + '|' + o.km)); return a.filter(o => o && !o.void && !v.has(o.d + '|' + o.km)); });
+  const lastOdoBefore = (car, day) => odoLive(car.odo).filter(o => o && Number.isFinite(o.km) && validDay(o.d) && o.d <= day).sort((a, b) => a.d.localeCompare(b.d)).pop() || null;
   // Tous les kilométrages datés de la fiche : relevés du compteur, tickets du budget, révision, montage des pneus.
   // Une seule chronologie pour toutes les saisies (boîte de dépôt, Paramètres, budget) : un compteur ne recule jamais.
   function kmPoints(car) {
     const out = [], add = (d, km, label) => { if (validDay(d) && Number.isFinite(km) && km >= 0) out.push({ d, km, label }); };
-    for (const o of Array.isArray(car && car.odo) ? car.odo : []) if (o) add(o.d, o.km, 'le relevé du compteur');
+    for (const o of odoLive(car && car.odo)) add(o.d, o.km, 'le relevé du compteur');
     const eco = car && car.economics;
     for (const x of eco && Array.isArray(eco.entries) ? eco.entries : []) if (x) add(x.date, x.km, x.category === 'fuel' ? 'le plein' : 'la dépense du budget');
     const m = car && car.maint; if (m && m.rev) add(m.rev.d, m.rev.km, 'la révision');
@@ -116,7 +118,7 @@ const RcInbox = (() => {
     const inBudget = !!(car.economics && Array.isArray(car.economics.entries) && car.economics.entries.some(x => x && x.id === e.id)) || !!(car.economics && Array.isArray(car.economics.removed) && car.economics.removed.includes(e.id));
     switch (e.type) {
       case 'fuel': return inBudget;
-      case 'odometer': return (car.odo || []).some(o => o && o.d === e.date && o.km === v.km);
+      case 'odometer': return odoLive(car.odo).some(o => o.d === e.date && o.km === v.km);
       case 'tread': return sets.some(x => Array.isArray(x.treads) && x.treads.some(r => r && r.d === e.date && Number(r.mm) === v.mm && r.ax === v.ax));
       case 'pressure': return sets.some(x => !!x.pchk && x.pchk.date === e.date && (x.pchk.av ?? null) === v.av && (x.pchk.ar ?? null) === v.ar);
       case 'tireMount': return t.type === v.type && t.mounted === e.date;
@@ -135,7 +137,7 @@ const RcInbox = (() => {
     if ((e.type === 'pressure' || e.type === 'tread') && t.type === 'none') fail('Aucun pneu monté sur cette voiture : enregistre d’abord le montage des pneus');
     if ((e.type === 'pressure' || e.type === 'tread') && validDay(t.mounted) && e.date < t.mounted) fail('Mesure antérieure au montage des pneus actuels (' + fd(t.mounted) + ') : saisis-la dans Paramètres pour l’ancien jeu');
     const odoAdd = km => {
-      const same = (next.odo || []).find(o => o && o.d === e.date);
+      const same = odoLive(next.odo).find(o => o.d === e.date);
       if (same && same.km !== km) fail('Un autre relevé du compteur existe déjà ce jour-là (' + fr(same.km) + ' km) : corrige-le dans Paramètres');
       const clash = kmConflict(next, e.date, km);
       if (clash) fail('Ce compteur ne suit pas la chronologie : ' + conflictText(clash) + '. Corrige la valeur fausse avant de valider');
@@ -160,7 +162,7 @@ const RcInbox = (() => {
           const clash = kmConflict(car, e.date, v.km);
           if (clash) fail('Le compteur du ticket ne suit pas la chronologie : ' + conflictText(clash));
           // Le compteur lu sur le ticket est un relevé réel : il rejoint les relevés de la voiture, sauf si un relevé existe déjà ce jour-là.
-          if (!(next.odo || []).some(o => o && o.d === e.date)) odoAdd(v.km); else lines.push('Compteur du ticket : ' + fr(v.km) + ' km · relevé du jour déjà enregistré, conservé');
+          if (!odoLive(next.odo).some(o => o.d === e.date)) odoAdd(v.km); else lines.push('Compteur du ticket : ' + fr(v.km) + ' km · relevé du jour déjà enregistré, conservé');
         }
         break;
       case 'odometer': odoAdd(v.km); break;

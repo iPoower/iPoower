@@ -135,5 +135,23 @@ html[data-theme=light] #secGarage .twin-night{fill:var(--fg)}
 #secGarage .odo-goal-form select,#secGarage .odo-goal-form input{min-height:44px;width:100%;box-sizing:border-box}
 #secGarage .odo-goal-form button{min-height:44px}
 #secGarage .odo-goal-status{flex-basis:100%;margin:0;font-size:12px;color:var(--fg2)}
+#secGarage .odo-fix-status{margin:0 0 6px;font-size:12px;color:var(--fg2)}
+#secGarage .odo-fix-status:empty{display:none}
 #secGarage .odo-warn{margin:0 0 8px;font-size:13px}
+#secGarage .odo-warn-head{margin:0;padding:8px 12px;border:1px solid color-mix(in srgb,#f39c12 55%,var(--line));border-radius:6px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+#secGarage .odo-warn-head .btn{min-height:44px}
+#secGarage .odo-list{margin:0 0 12px;min-width:0}
+#secGarage .odo-list h5{margin:0 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg2)}
+#secGarage .odo-list ul{list-style:none;margin:0;padding:0;max-height:320px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+#secGarage .odo-list li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 10px;border-bottom:1px solid var(--line);min-width:0}
+#secGarage .odo-list li:last-child{border-bottom:0}
+#secGarage .odo-list li span{font:12px var(--f-mono);color:var(--fg2);min-width:86px}
+#secGarage .odo-list li b{flex:1 1 auto}
+#secGarage .odo-list li em{font-style:normal;font-size:12px}
+#secGarage .odo-list li.odo-bad{background:color-mix(in srgb,#f39c12 12%,transparent)}
+#secGarage .odo-list li > .btn{min-height:44px}
+#secGarage .odo-fix-form{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+#secGarage .odo-fix-form label{display:grid;gap:4px;font-size:12px;color:var(--fg2);flex:1 1 180px;min-width:0}
+#secGarage .odo-fix-form input,#secGarage .odo-fix-form button{min-height:44px;box-sizing:border-box}
+#secGarage .odo-fix-form input{width:100%}
 </style>`;

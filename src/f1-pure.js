@@ -97,7 +97,7 @@ const F1Pure = (() => {
   function theGarage(cars) {
     if (!Array.isArray(cars) || !cars.length) return { available: false, cars: [] };
     return { available: true, cars: cars.filter(Boolean).map(car => {
-      const t = car.tire || {}, odos = Array.isArray(car.odo) ? car.odo.filter(x => x && finite(x.km)) : [];
+      const t = car.tire || {}, odos = Array.isArray(car.odo) ? (v => car.odo.filter(x => x && !x.void && finite(x.km) && !v.has(x.d + '|' + x.km)))(new Set(car.odo.filter(x => x && x.void).map(x => x.d + '|' + x.km))) : [];   // relevés annulés exclus (Garage.odoLive)
       const odo = odos.reduce((m, x) => !m || x.km > m.km ? x : m, null);
       return { name: text(car.short || car.name || car.id), tyre: [t.brand, t.model].filter(Boolean).join(' ') || 'Pneu non renseigné',
         odo: odo ? odo.km : null, mounted: text(t.mounted) || null, pressure: text(t.press) || null };
