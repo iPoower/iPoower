@@ -63,7 +63,7 @@ function bilanHtml(car) {
   // 3. Tes pneus dans le temps (voiture analysée)
   const st = hasTires(car) ? tyreStateOf(car) : null, tire = car.tire || {};
   let tyres;
-  if (!st) tyres = '<div class="bilan-card" data-bilan="tyres"><div class="bilan-h"><h3>Tes pneus dans le temps</h3></div><p class="sub">Monte non confirmée : renseigne les pneus montés.</p>' +
+  if (!st) tyres = '<div class="bilan-card" data-bilan="tyres"><div class="bilan-h"><h3>Tes pneus dans le temps</h3></div><p class="sub">Monte active inconnue : renseigne les pneus montés pour suivre leur âge, leur usure et les départs du matin.</p>' +
     '<button type="button" class="btn sm" data-act="garage-quick" data-car="' + esc(car.id) + '" data-garage-target="model">Renseigner les pneus</button></div>';
   else {
     const w = Bilan.wear(wearInfo(car)), cal = Bilan.calendar(bilanMornings(today), effType(car), 14);
