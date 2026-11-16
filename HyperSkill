@@ -1,0 +1,8 @@
+
+print("hello word")  # Cette ligne affiche "hello word" dans la console. Cependant, il semble y avoir une petite faute de frappe, car il devrait plutôt dire "hello world" avec un 'l' à la fin de "world".
+
+user = input()  # Cette ligne utilise la fonction input() pour attendre que l'utilisateur saisisse quelque chose au clavier. La saisie de l'utilisateur sera stockée dans la variable 'user'.
+
+reply = "nice to meet you, " + user + "!"  # Cette ligne crée une nouvelle chaîne en utilisant la saisie de l'utilisateur stockée dans 'user'. La variable 'reply' contiendra la chaîne "nice to meet you, " suivie du contenu de 'user' et d'un point d'exclamation.
+
+print(reply)  # Cette ligne affiche le contenu de la variable 'reply' dans la console.
