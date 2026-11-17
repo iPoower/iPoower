@@ -212,12 +212,13 @@ document.addEventListener('toggle', e => {
     // Une commande peut avoir déjà rendu et focalisé le formulaire avant cet
     // événement différé. Ne pas détruire son focus ni les saisies en cours.
     if (body && (body.dataset.stale === '1' || !body.childElementCount)) renderSettings(true);
+    refreshTireDB();   // base pneus publiée : vérifiée ici seulement (au plus une fois par heure), jamais au démarrage
   }
 }, true);
 (function init() {
   if (LOCKED() && lsGet('twrc.key')) unseal(lsGet('twrc.key'), false).then(ok => { if (ok) location.reload(); });
   armSessionDeadline();
-  registerSW(); readGeoPermission(); refreshTireDB(); tripCancelSchedulePurge();
+  registerSW(); readGeoPermission(); tripCancelSchedulePurge();
   if (GPS && !(locHasCoords(GPS) && Number.isFinite(GPS.t) && GPS.t <= Date.now() + 60e3 && Number.isFinite(GPS.acc) && GPS.acc >= 0 && GPS.acc <= PLACE_ACC_APPROX)) { GPS = null; try { APP_STORAGE.removeItem('twrc.gps'); } catch (e) { /* stockage */ } }   // ancienne position imprécise ou invalide : jamais un lieu fiable
   if (S.gpsAuto && GPS) UI.loc = 'gps';
   { const c = placeNow(); if (c.source === 'manual') UI.loc = c.place.id; }   // lieu confirmé : contexte de tous les modules (origine verrouillée)
