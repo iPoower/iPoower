@@ -212,3 +212,4 @@ SUITE.push(['e2e130-coffre-demarrage-ferme.js', 'lot A : échec d’ouverture du
 SUITE.push(['test_engine_tyre_golden.js', 'pneus V2 : verdicts du moteur figés (576 horaires + 576 trajets), relais limité à engine.js et evidence.js, train prévu sans effet, contre-tests', false],
   ['test_tyre_v2.js', 'pneus V2 : 10 scénarios pluie/froid/verglas/eau stagnante, limites thermiques sans marche à 7 °C, indice de vitesse sans effet, isolation des véhicules, catalogue jamais converti en coefficient', false],
   ['e2e131-pneus-v2.js', 'pneus V2 : essais ADAC affichés avec comparabilité, aucune règle des 7 °C ni « haute performance » déduite de l’indice, isolation des deux voitures, hors ligne, PC et iPhone', true]);
+SUITE.push(['test_metar_trend.js', 'METAR : seule la partie observée est une mesure (TEMPO, BECMG, NOSIG, PROB, FM et RMK exclus) dans le relais et le moteur de preuves ; rejeu LFAQ du 18/11', false]);

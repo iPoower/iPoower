@@ -51,7 +51,13 @@ let EV = null; try { const f = path.join(dir, 'evidence.js'); if (fs.existsSync(
 const obsFile = path.join(dataDir, 'obs.json');
 const prev = fs.existsSync(obsFile) ? JSON.parse(fs.readFileSync(obsFile, 'utf8')) : { stations: {}, notified: null };
 
+// Partie OBSERVÉE seulement : la tendance (TEMPO, BECMG, NOSIG, PROBxx, FM/TL/AT) et les remarques (RMK) sont des prévisions
+// ou des notes, jamais une mesure. 18/11/2026 : « … TEMPO VRB20G35KT 2500 -TSRA BKN008 » était publié comme un orage OBSERVÉ
+// (wx « -TSRA ») sur 8 relevés sur 13 ; un « TEMPO … FG » aurait mis l'heure en brouillard (engine.js, applyObs).
+const METAR_TREND = / (?:TEMPO|BECMG|NOSIG|RMK|PROB\d{2}|FM\d{6}|TL\d{4}|AT\d{4})(?= |$)/;
+const metarObserved = raw => String(raw || '').split(METAR_TREND)[0];
 function parseMetar(raw) {
+  raw = metarObserved(raw);
   const o = {}; const s = ' ' + raw + ' ';
   let m = / (M?\d{2})\/(M?\d{2}) /.exec(s); if (m) { const v = x => x[0] === 'M' ? -(+x.slice(1)) : +x; o.T = v(m[1]); o.Td = v(m[2]); }
   if (/ CAVOK /.test(s)) o.vis = 10000; else { m = / (\d{4})(?:NDV)? /.exec(s.replace(/ \d{6}Z /, ' ')); if (m) o.vis = +m[1] === 9999 ? 10000 : +m[1]; }
