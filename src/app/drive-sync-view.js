@@ -315,7 +315,8 @@ function driveEnsurePrepared() {
 function driveReconnect() {
   const d = DRIVE_UI;
   if (!d.prepared || !d.hint || d.busy) return false;
-  d.sync.stop(); d.selected = false; d.busy = true; const promise = d.session.connect();   // appel synchrone dans le geste
+  // Compte déjà vérifié pendant cette ouverture : reconnexion sans écran de choix de compte (indice en mémoire seulement).
+  d.sync.stop(); d.selected = false; d.busy = true; const promise = d.session.connect({ reuse: true });   // appel synchrone dans le geste
   (async () => {
     try {
       await promise; const selected = await d.session.resume(d.hint);
@@ -401,6 +402,21 @@ function driveOnChange(state) {
   }
   renderDriveSync();
 }
+// Prolongation discrète (18/11/2026) : dans les 10 dernières minutes de l'autorisation Google, le prochain appui dans
+// l'application (hors saisie) demande à Google de la prolonger pour le MÊME compte, sans écran de choix. Au plus une
+// tentative toutes les 10 minutes. Échec, refus ou fenêtre bloquée : rien ne change, l'autorisation en cours reste valable
+// et la reconnexion habituelle reste proposée à l'expiration. Aucun jeton n'est stocké.
+const DRIVE_RENEW_BEFORE_MS = 10 * 60000, DRIVE_RENEW_RETRY_MS = 10 * 60000;
+function driveRenewOnGesture(e) {
+  const d = DRIVE_UI, s = d.session, t = e && e.target;
+  if (!s || typeof s.renew !== 'function' || !d.selected || d.busy || DEMO.on || document.hidden || s.renewing) return;
+  if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) return;   // jamais pendant une saisie
+  const left = s.remainingMs;
+  if (!left || left > DRIVE_RENEW_BEFORE_MS || Date.now() - (d.renewAt || 0) < DRIVE_RENEW_RETRY_MS) return;
+  d.renewAt = Date.now();
+  s.renew().then(() => { d.renewedAt = Date.now(); d.text = 'Autorisation Google prolongée pour le même compte, sans reconnexion.'; renderDriveSync(); },
+    () => { renderDriveBadge(); });
+}
 // Session Google expirée ou révoquée : même libellé que le badge, même bouton que la reprise.
 function driveSessionLost() {
   DRIVE_UI.text = DRIVE_LABEL.reconnect + ' : autorisation Google expirée ou révoquée. Les saisies restent enregistrées sur cet appareil ; appuie sur « ' + DRIVE_RECONNECT + ' ».';
@@ -445,7 +461,8 @@ async function initDriveSync() {
     setInterval(() => { if (DRIVE_UI.selected && !DRIVE_UI.session.connected) tick(); else renderDriveBadge(); }, 5000);
     document.addEventListener('visibilitychange', () => { DRIVE_BADGE.hidden = document.hidden; renderDriveBadge(); });
     document.addEventListener('visibilitychange', tick); window.addEventListener('online', tick); window.addEventListener('focus', tick);
-    window.addEventListener('pageshow', tick); window.addEventListener('offline', renderDriveBadge); window.addEventListener('online', () => { renderDriveBadge(); driveSoon(); });
+    window.addEventListener('pageshow', tick); window.addEventListener('offline', renderDriveBadge);
+    document.addEventListener('click', driveRenewOnGesture, true);   // phase de capture : la demande reste dans le geste window.addEventListener('online', () => { renderDriveBadge(); driveSoon(); });
     // iPhone : l'app peut être suspendue dès son passage en arrière-plan ; envoyer la dernière saisie
     // sans attendre la fenêtre de calme (blocages et délais de reprise respectés).
     document.addEventListener('visibilitychange', () => { if (document.hidden && !DEMO.on && DRIVE_UI.selected && DRIVE_UI.session.connected) DRIVE_UI.sync.run(false, true); });

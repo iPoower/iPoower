@@ -1,6 +1,9 @@
 /* Google Identity Services + Picker, jeton exclusivement en mémoire.
  * Aucun accès au stockage. Même client Web et même projet pour les deux origines.
  * Les bibliothèques Google ne sont chargées qu'après un geste explicite.
+ * Reconnexion (18/11/2026) : l'adresse du compte déjà vérifié reste en mémoire comme simple indice (login_hint), jamais
+ * stockée ; renew() prolonge l'autorisation avant expiration, sans choix de compte, et n'adopte le nouveau jeton que si
+ * Drive confirme le MÊME compte. Échec : l'autorisation en cours est conservée jusqu'à son expiration normale.
  */
 const GoogleDriveSession = (() => {
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
@@ -32,6 +35,10 @@ const GoogleDriveSession = (() => {
     const cfg = config(input, host.location.origin);
     let token = null, until = 0, epoch = 0, prepared = false, pending = null, picker = null, pickReject = null, pickerBusy = false, identity = null, approvedAccount = null, pendingFolder = null;
     let dedicated = new Set();
+    // Indice de reconnexion : adresse du dernier compte vérifié par Drive, en mémoire seulement (perdue au rechargement).
+    // Elle ne vaut jamais approbation : la liaison compte + dossier reste revérifiée par resume().
+    let lastLabel = null, reuseFailed = false, renewing = null;
+    const err = code => Object.assign(new Error(code), { code });
     const script = src => new Promise((resolve, reject) => {
       const el = host.document.createElement('script'); el.src = src; el.async = true; el.referrerPolicy = 'strict-origin-when-cross-origin';
       const timer = setTimeout(() => { el.remove(); reject(Object.assign(new Error('network'), { code: 'network' })); }, 20000);
@@ -67,8 +74,11 @@ const GoogleDriveSession = (() => {
     }
     // Chaque demande a son propre callback/epoch : une réponse tardive de la
     // fenêtre de l'ancien compte ne peut pas authentifier la nouvelle demande.
-    function connect() {
+    // options.reuse : reconnexion au compte déjà vérifié (pas d'écran de choix). Première connexion, changement de compte
+    // ou échec de la reconnexion silencieuse précédente : choix du compte, comme avant.
+    function connect(options) {
       if (!prepared || pending) return Promise.reject(Object.assign(new Error('configuration'), { code: 'configuration' }));
+      const reuse = !!(options && options.reuse) && !!lastLabel && !reuseFailed;
       disconnect();
       return new Promise((resolve, reject) => {
         const request = { resolve, reject, epoch }; pending = request;
@@ -83,12 +93,47 @@ const GoogleDriveSession = (() => {
               token = response.access_token; until = Date.now() + (seconds - 30) * 1000;
               const selected = await provider.identity();
               if (request !== pending || request.epoch !== epoch) return;
-              identity = Object.freeze({ ...selected }); pending = null; request.resolve();
-            } catch { if (request !== pending || request.epoch !== epoch) return; pending = null; disconnect(); request.reject(Object.assign(new Error('auth'), { code: 'auth' })); }
-          }, error_callback: () => { if (request !== pending || request.epoch !== epoch) return; pending = null; disconnect(); request.reject(Object.assign(new Error('auth'), { code: 'auth' })); } });
-        try { client.requestAccessToken({ prompt: 'select_account' }); }
-        catch { pending = null; disconnect(); reject(Object.assign(new Error('auth'), { code: 'auth' })); }
+              identity = Object.freeze({ ...selected }); lastLabel = identity.label; reuseFailed = false; pending = null; request.resolve();
+            } catch { if (request !== pending || request.epoch !== epoch) return; if (reuse) reuseFailed = true; pending = null; disconnect(); request.reject(Object.assign(new Error('auth'), { code: 'auth' })); }
+          }, error_callback: () => { if (request !== pending || request.epoch !== epoch) return; if (reuse) reuseFailed = true; pending = null; disconnect(); request.reject(Object.assign(new Error('auth'), { code: 'auth' })); } });
+        try { client.requestAccessToken(reuse ? { prompt: '', login_hint: lastLabel } : { prompt: 'select_account' }); }
+        catch { if (reuse) reuseFailed = true; pending = null; disconnect(); reject(Object.assign(new Error('auth'), { code: 'auth' })); }
       });
+    }
+    // Prolongation avant expiration, appelée dans un geste de l'utilisateur. Rien n'est réinitialisé tant que le nouveau jeton
+    // n'est pas validé : même portée, puis même compte relu par Drive. Autre compte : session coupée (jamais adoptée).
+    // Refus, fenêtre fermée, réseau : l'autorisation en cours reste valable jusqu'à son expiration.
+    function renew() {
+      if (!prepared || pending || renewing) return Promise.reject(err('busy'));
+      if (!token || Date.now() >= until || !identity || !approvedAccount || approvedAccount !== identity.id) return Promise.reject(err('auth'));
+      const lease = epoch, account = identity.id, label = identity.label;
+      let settled = false, current = null;
+      current = new Promise((resolve, reject) => {
+        let timer = null;
+        // Une seule issue par demande ; l'état « en cours » est libéré même si Google répond de façon synchrone.
+        const done = e => { if (settled) return; settled = true; clearTimeout(timer); if (renewing === current) renewing = null; e ? reject(e) : resolve(); };
+        const restore = previous => { if (lease === epoch && Date.now() < previous.until) provider.connect(previous.token, Math.floor((previous.until - Date.now()) / 1000) + 30, [SCOPE]); };
+        timer = setTimeout(() => done(err('auth')), 120000);
+        const client = host.google.accounts.oauth2.initTokenClient({ client_id: cfg.clientId, scope: SCOPE, include_granted_scopes: false,
+          callback: async response => {
+            if (lease !== epoch) return done(err('auth'));
+            if (response.error || typeof response.access_token !== 'string' ||
+              !host.google.accounts.oauth2.hasGrantedAllScopes(response, SCOPE) || response.scope?.split(/\s+/).filter(Boolean).join(' ') !== SCOPE) return done(err('auth'));
+            const seconds = Number(response.expires_in), previous = { token, until };
+            if (!Number.isFinite(seconds) || seconds <= 60) return done(err('auth'));
+            try {
+              provider.connect(response.access_token, seconds, [SCOPE]);
+              const selected = await provider.identity();
+              if (lease !== epoch) return done(err('auth'));
+              if (!selected || selected.id !== account) { disconnect(); return done(err('confirmation')); }
+              token = response.access_token; until = Date.now() + (seconds - 30) * 1000; lastLabel = label;
+              done();
+            } catch { restore(previous); done(err('auth')); }
+          }, error_callback: () => done(err('auth')) });
+        try { client.requestAccessToken({ prompt: '', login_hint: label }); } catch { done(err('auth')); }
+      });
+      if (!settled) renewing = current;
+      return current;
     }
     function confirmAccount(accountId) {
       if (!token || Date.now() >= until || !identity || identity.id !== accountId) return fail('confirmation');
@@ -180,7 +225,8 @@ const GoogleDriveSession = (() => {
         picker.setVisible(true);
       });
     }
-    return Object.freeze({ prepare, connect, confirmAccount, newFolder, listDedicatedFolders, chooseDedicatedFolder, chooseFolder, resume, disconnect,
+    return Object.freeze({ prepare, connect, renew, confirmAccount, newFolder, listDedicatedFolders, chooseDedicatedFolder, chooseFolder, resume, disconnect,
+      get remainingMs() { return token && Date.now() < until ? until - Date.now() : 0; }, get renewing() { return !!renewing; },
       get identity() { return identity && { ...identity }; }, get confirmed() { return !!approvedAccount; },
       get connected() { if (token && (Date.now() >= until || provider.connected === false)) disconnect(); return !!token; } });
   }
