@@ -59,11 +59,20 @@ test('matins : journal de saison des 30 derniers jours (T < 5 °C, verglas ≥ 1
   const r = json(B.mornings({ '2026-11-15': { T: 3, ice: 1 }, '2026-11-10': { T: 8, ice: 0 }, '2026-10-01': { T: 0, ice: 2 }, x: { T: 1 } }, T, 30));
   assert.deepEqual(r, { days: 2, cold: 1, frost: 1 });
 });
-test('calendrier : pneus été 7 °C / 3 °C, pneus hiver douceur ≥ 20 °C, valeur absente inconnue', () => {
-  assert.deepEqual(['summer', 'summer', 'summer', 'winter', 'winter', 'allseason'].map((t, i) => B.morningLevel(t, [8, 5, 1, 4, 22, 2][i])), ['ok', 'limit', 'cold', 'ok', 'limit', 'ok']);
-  const cal = json(B.calendar([{ date: '2026-11-17', T: 2 }, { date: '2026-11-18', T: 6 }, { date: '2026-11-19', T: null }], 'summer'));
-  assert.equal(cal.cold, 1); assert.equal(cal.limit, 1); assert.equal(cal.rows[2].level, 'unknown');
-  assert.equal(json(B.calendar(Array.from({ length: 20 }, (_, i) => ({ date: '2026-12-' + String(i + 1).padStart(2, '0'), T: 9 })), 'summer')).rows.length, 14);
+test('calendrier (Pneus V2) : gomme au départ dans la fenêtre de saison, aucune marche à 7 °C, hiver ≥ 20 °C, sans fenêtre inconnu', () => {
+  const W = { summer: [10, 20, 50, 65], allseason: [5, 15, 45, 60], winter: [-5, 5, 35, 50] };   // TL_WIN du laboratoire
+  const src = /const TL_WIN = (\{[^}]+\});/.exec(fs.readFileSync(path.join(__dirname, '../src/tyrelab.js'), 'utf8'));
+  assert(src, 'TL_WIN introuvable dans tyrelab.js'); assert.equal(JSON.stringify(vm.runInNewContext('(' + src[1] + ')')), JSON.stringify(W), 'mêmes fenêtres que le laboratoire');
+  const lv = (t, T) => B.morningLevel(W[t], t, T);
+  assert.deepEqual([lv('summer', 9.9), lv('summer', 10), lv('summer', 20)], ['cold', 'limit', 'ok']);
+  assert.equal(lv('summer', 6.95), lv('summer', 7.05), 'aucune discontinuité à 7 °C');
+  assert.deepEqual([lv('allseason', 4), lv('allseason', 8), lv('allseason', 15)], ['cold', 'limit', 'ok']);
+  assert.deepEqual([lv('winter', -6), lv('winter', 0), lv('winter', 8), lv('winter', 20)], ['cold', 'limit', 'ok', 'warm']);
+  assert.equal(B.morningLevel(null, 'unknown', 8), 'unknown'); assert.equal(lv('summer', null), 'unknown');
+  const cal = json(B.calendar([{ date: '2026-11-19', T: 2 }, { date: '2026-11-20', T: 12 }, { date: '2026-11-21', T: null }, { date: '2026-11-22', T: 21 }], 'summer', W.summer));
+  assert.equal(cal.cold, 1); assert.equal(cal.limit, 1); assert.equal(cal.warm, 0); assert.equal(cal.rows[2].level, 'unknown'); assert.equal(cal.rows[3].level, 'ok');
+  assert.equal(json(B.calendar([{ date: '2026-07-01', T: 24 }], 'winter', W.winter)).warm, 1);
+  assert.equal(json(B.calendar(Array.from({ length: 20 }, (_, i) => ({ date: '2026-12-' + String(i + 1).padStart(2, '0'), T: 9 })), 'summer', W.summer)).rows.length, 14);
 });
 test('usure : date seulement avec la projection existante ; sinon ce qu’il manque', () => {
   assert.equal(json(B.wear({ dateThr: '2027-05-01', kmThr: 210000, kmLegal: 230000, thr: 3, rate: 0.05 })).kind, 'projection');

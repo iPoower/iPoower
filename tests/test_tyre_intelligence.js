@@ -13,7 +13,7 @@ const analyse = (i, c = catalog) => copy(TI.analyse(copy(i), c));
 let n = 0;
 const check = (name, fn) => { fn(); n++; console.log('✅ ' + name); };
 check('catalogue V1 valide, immuable, trois modèles et trois protocoles sources', () => {
-  assert(TI.validate(catalog)); assert(Object.isFrozen(catalog.tests[0].metrics[0])); assert.equal(catalog.models.length, 3); assert.equal(catalog.tests.length, 3);
+  assert(TI.validate(catalog)); assert(Object.isFrozen(catalog.tests[0].metrics[0])); assert.equal(catalog.models.length, 7); assert.equal(catalog.tests.length, 6);
   const t = catalog.tests[0]; assert.equal(t.source.organisation, 'Tyre Reviews'); assert.equal(t.metrics.find(x => x.id === 'wetBraking').value, 35.52);
   assert.equal(t.metrics.find(x => x.id === 'wetBraking').endKmh, 1); assert.equal(t.metrics.find(x => x.id === 'aquaLongitudinal').unit, 'km/h');
 });

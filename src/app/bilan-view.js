@@ -2,7 +2,7 @@
 /* Analyse · « Mon bilan » (16/11/2026) : trois cartes en tête de l'onglet Analyse, le laboratoire existant replié dessous.
  * Lecture seule : chaque bouton mène à la saisie existante (Paramètres ou Garage), aucune valeur n'est écrite ici. */
 const BILAN_TONE = { late: 'var(--nogo)', soon: 'var(--risk)', todo: 'var(--cau)', info: 'var(--accent)' };
-const BILAN_LEVEL = { ok: 'var(--go)', limit: 'var(--cau)', cold: 'var(--risk)', unknown: 'var(--line2)' };
+const BILAN_LEVEL = { ok: 'var(--go)', limit: 'var(--cau)', cold: 'var(--risk)', warm: 'var(--cau)', unknown: 'var(--line2)' };
 const bilanMonth = d => new Date(d + 'T12:00:00Z').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const bilanDm = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') ? d.slice(8, 10) + '/' + d.slice(5, 7) : '—';
 function bilanInputs(today) {
@@ -66,18 +66,25 @@ function bilanHtml(car) {
   if (!st) tyres = '<div class="bilan-card" data-bilan="tyres"><div class="bilan-h"><h3>Tes pneus dans le temps</h3></div><p class="sub">Monte active inconnue : renseigne les pneus montés pour suivre leur âge, leur usure et les départs du matin.</p>' +
     '<button type="button" class="btn sm" data-act="garage-quick" data-car="' + esc(car.id) + '" data-garage-target="model">Renseigner les pneus</button></div>';
   else {
-    const w = Bilan.wear(wearInfo(car)), cal = Bilan.calendar(bilanMornings(today), effType(car), 14);
+    const w = Bilan.wear(wearInfo(car)), kind = effType(car), win = typeof TL_WIN === 'object' && TL_WIN[kind] ? TL_WIN[kind] : null, cal = Bilan.calendar(bilanMornings(today), kind, win, 14);
     const wearHead = w.kind === 'projection' ? w.thr + ' mm vers ' + esc(bilanMonth(w.date)) : w.kind === 'km' ? w.thr + ' mm vers ' + esc(garageKm(Math.round(w.kmThr / 100) * 100)) : w.kind === 'one' ? 'Une mesure : ' + esc(String(w.mm).replace('.', ',')) + ' mm' : 'Mesure nécessaire';
     const wearNote = w.kind === 'projection' ? (w.kmLegal != null ? '1,6 mm (minimum légal) vers ' + esc(garageKm(Math.round(w.kmLegal / 100) * 100)) + ' · ' : '') + 'usure ' + esc(w.rate.toFixed(2).replace('.', ',')) + ' mm / 1 000 km'
       : w.kind === 'km' ? 'Date : rythme du compteur à calculer · usure ' + esc(w.rate.toFixed(2).replace('.', ',')) + ' mm / 1 000 km'
       : w.kind === 'one' ? 'Relevé du ' + bilanDm(w.date) + ' · une deuxième mesure, au moins 1 000 km plus tard, donne l’usure et la date de remplacement'
       : 'Deux mesures de profondeur espacées d’au moins 1 000 km donnent l’usure et la date de remplacement (' + (w.thr || 3) + ' mm, puis 1,6 mm légal).';
     const dows = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'], dow = d => dows[new Date(d + 'T12:00:00Z').getUTCDay()];
-    const kind = effType(car), lvTxt = { ok: 'pneus adaptés', limit: kind === 'winter' ? 'douceur pour des pneus hiver' : 'limite', cold: 'trop froid pour la monte', unknown: 'inconnu' };
+    // Pneus V2 : gomme au départ dans la fenêtre de saison du laboratoire (aucun seuil fixe d'air) ; le pneu chauffe ensuite en roulant.
+    const lvTxt = { ok: 'gomme dans sa plage favorable au départ', limit: 'gomme sous sa plage favorable au départ', cold: 'gomme froide au départ', warm: 'douceur pour des pneus hiver', unknown: 'inconnu' };
+    const leg = (k, t) => '<span><i style="background:' + BILAN_LEVEL[k] + '"></i>' + t + '</span>';
+    const nb = (n, t) => n + ' départ' + (n > 1 ? 's' : '') + ' ' + t;
+    const under = cal.cold + cal.limit;
+    const sum = !win ? 'Monte sans fenêtre de saison connue : aucun classement'
+      : (under ? nb(under, 'sur ' + cal.rows.length + ' avec une gomme sous sa plage favorable (' + win[1] + ' °C) au départ' + (cal.cold ? ', dont ' + cal.cold + ' froide (sous ' + win[0] + ' °C)' : '') + ' : chauffe plus longue en roulant')
+        : 'Gomme dans sa plage favorable dès le départ sur ces matins') + (cal.warm ? ' · ' + nb(cal.warm, 'à ' + Bilan.WINTER_WARM + ' °C ou plus : douceur, usure accrue des pneus hiver') : '');
     const calHtml = cal.rows.length ? '<div class="bilan-cal" role="list">' + cal.rows.map(x => '<div role="listitem" data-level="' + x.level + '" title="' + esc(dow(x.date) + ' ' + bilanDm(x.date) + ' · ' + (x.T == null ? '—' : f0(x.T) + ' °C') + ' · ' + lvTxt[x.level]) + '" style="background:' + BILAN_LEVEL[x.level] + '">' +
         '<span>' + dow(x.date) + '</span><b>' + (x.T == null ? '—' : String(Math.round(x.T)).replace('-', '−') + '°') + '</b><span class="sr-sep"> · ' + lvTxt[x.level] + '</span></div>').join('') + '</div>' +
-        '<div class="bilan-leg"><span><i style="background:' + BILAN_LEVEL.ok + '"></i>pneus adaptés</span><span><i style="background:' + BILAN_LEVEL.limit + '"></i>' + (kind === 'winter' ? 'douceur' : 'limite') + '</span>' + (kind === 'winter' ? '' : '<span><i style="background:' + BILAN_LEVEL.cold + '"></i>trop froid pour la monte</span>') + '</div>' +
-        '<small>' + (kind === 'summer' || kind === 'unknown' ? (cal.cold + cal.limit ? (cal.cold + cal.limit) + ' départ' + (cal.cold + cal.limit > 1 ? 's' : '') + ' sur ' + cal.rows.length + ' sous 7 °C en pneus été' + (cal.cold ? ' (dont ' + cal.cold + ' sous 3 °C)' : '') : 'Tous les départs au-dessus de 7 °C') : kind === 'winter' ? (cal.limit ? cal.limit + ' départ' + (cal.limit > 1 ? 's' : '') + ' à 20 °C ou plus : usure accrue des pneus hiver' : 'Tous les départs dans la plage des pneus hiver') : 'Pneus 4 saisons : polyvalents sur ces départs') + ' · départ habituel à ' + esc(String(S.work.dep || '').slice(0, 5)) + '.</small>'
+        '<div class="bilan-leg">' + leg('ok', 'plage favorable') + leg('limit', 'sous la plage') + leg('cold', 'gomme froide') + (kind === 'winter' ? leg('warm', 'douceur (hiver)') : '') + '</div>' +
+        '<small>' + esc(sum) + ' · fenêtre de saison du laboratoire, hypothèse générique non calibrée · départ habituel à ' + esc(String(S.work.dep || '').slice(0, 5)) + '.</small>'
       : '<p class="sub">Prévisions indisponibles pour les prochains départs.</p>';
     tyres = '<div class="bilan-card" data-bilan="tyres"><div class="bilan-h"><h3>Tes pneus dans le temps</h3><span>' + esc((TYPE_LABEL[tire.type] || '').toUpperCase()) + '</span></div>' +
       '<p class="bilan-tyre"><b>' + esc([tire.brand, tire.model].filter(Boolean).join(' ') || 'Modèle non renseigné') + (tire.size ? ' · ' + esc(tire.size) : '') + '</b>' +

@@ -1,4 +1,4 @@
-// Analyse · « Mon bilan » (16/11/2026), données FICTIVES, PC puis iPhone : trois cartes en tête (à faire bientôt, chiffres
+// Analyse · « Mon bilan » (16/11/2026 ; départs selon Pneus V2 le 18/11), données FICTIVES, PC puis iPhone : trois cartes en tête (à faire bientôt, chiffres
 // du mois, pneus dans le temps), laboratoire historique replié dessous, kilomètres des 30 derniers jours calculés à la main,
 // objectif et « à vie », replis conservés au rafraîchissement, « Saisir » vers le champ existant sans rien écrire.
 'use strict';
@@ -72,8 +72,9 @@ async function run(b, dev, view) {
   check(`${dev} · matins froids et verglas = journal de saison (au moins les 2 et 1 saisis)`, st.mo.cold >= 2 && st.mo.frost >= 1 && st.cells.some(x => x.startsWith(String(st.mo.cold)) && /sous 5 °C/.test(x)) && st.cells.some(x => x.startsWith(String(st.mo.frost)) && /verglas/.test(x)), JSON.stringify(st.cells) + ' ' + JSON.stringify(st.mo));
   // 4. Tes pneus dans le temps : 14 départs au plus, à partir d'aujourd'hui, niveau selon la monte
   const ty = await p.evaluate(() => { const c = document.querySelector('[data-bilan="tyres"]'), cells = [...c.querySelectorAll('.bilan-cal [data-level]')];
-    return { n: cells.length, levels: cells.map(x => x.dataset.level), titles: cells.map(x => x.title), wear: (c.querySelector('.bilan-wear') || {}).textContent || '', confirm: !!c.querySelector('[data-garage-target="model"]') }; });
-  check(`${dev} · pneus : usure (ou mesure manquante) et calendrier des départs (≤ 14, niveaux connus)`, (ty.confirm || (/REMPLACEMENT ESTIMÉ/.test(ty.wear) && ty.n > 0 && ty.n <= 14 && ty.levels.every(l => ['ok', 'limit', 'cold', 'unknown'].includes(l)) && ty.titles.every(t => /^\S+ \d\d\/\d\d · /.test(t)))), JSON.stringify(ty).slice(0, 400));
+    return { n: cells.length, levels: cells.map(x => x.dataset.level), titles: cells.map(x => x.title), wear: (c.querySelector('.bilan-wear') || {}).textContent || '', confirm: !!c.querySelector('[data-garage-target="model"]'), text: c.textContent }; });
+  check(`${dev} · Pneus V2 : aucune règle fixe d’air (« sous 7 °C », « sous 3 °C »), classement par fenêtre de saison`, !/sous [37] °C|règle des 7/.test(ty.text) && (ty.confirm || /fenêtre de saison du laboratoire/.test(ty.text)), ty.text.slice(-400));
+  check(`${dev} · pneus : usure (ou mesure manquante) et calendrier des départs (≤ 14, niveaux connus)`, (ty.confirm || (/REMPLACEMENT ESTIMÉ/.test(ty.wear) && ty.n > 0 && ty.n <= 14 && ty.levels.every(l => ['ok', 'limit', 'cold', 'warm', 'unknown'].includes(l)) && ty.titles.every(t => /^\S+ \d\d\/\d\d · /.test(t)))), JSON.stringify(ty).slice(0, 400));
   // 5. Voiture B (objectif « à vie ») : le bilan suit la voiture choisie
   if (await p.locator('#secLab .lab-cars [data-act=labcar]').count() > 1) {
     await p.locator('#secLab .lab-cars [data-act=labcar]').nth(1).click(); await p.waitForTimeout(700);

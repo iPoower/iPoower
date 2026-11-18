@@ -118,10 +118,17 @@ async function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = 
     const { vs } = make(raw); assert.equal(await vs.boot(), 'vault'); assert.deepEqual(leaks(raw), []);
     for (const [k, v] of Object.entries(L)) if (SV.secret(k)) assert.equal(vs.store.getItem(k), v, k);
   });
-  await test('migration interrompue avec données en clair plus récentes que le coffre : les données en clair font foi', async () => {
+  // Lot A (16/11/2026) : avant, la copie en clair remplaçait le coffre ENTIER (journal du coffre perdu, constat F2). On ne peut pas
+  // savoir laquelle est la plus récente : le coffre authentifié fait foi, la copie en clair n'est jamais détruite (gardée chiffrée).
+  await test('migration interrompue avec copie en clair différente du coffre : le coffre fait foi, la copie en clair est gardée chiffrée', async () => {
     const raw = fakeStorage(), L = LEGACY(); fill(raw, L); await make(raw).vs.boot(); const vault = raw.getItem(SV.VAULT);
-    fill(raw, { ...L, 'twrc.context.v1': JSON.stringify({ debrief: { entries: [{ key: 'plus-recent-fictif' }] } }) }); raw.setItem(SV.VAULT, vault);
-    const { vs } = make(raw); await vs.boot(); assert.match(vs.store.getItem('twrc.context.v1'), /plus-recent-fictif/); assert.deepEqual(leaks(raw), []);
+    const newer = JSON.stringify({ debrief: { entries: [{ key: 'plus-recent-fictif' }] } });
+    fill(raw, { ...L, 'twrc.context.v1': newer }); raw.setItem(SV.VAULT, vault);
+    const { vs } = make(raw); assert.equal(await vs.boot(), 'vault');
+    assert.equal(vs.store.getItem('twrc.context.v1'), L['twrc.context.v1'], 'le coffre authentifié fait foi');
+    const book = JSON.parse(vs.store.getItem('twrc.restore.stray.v1')); assert.equal(book.items.length, 1);
+    assert.equal(book.items[0].values['twrc.context.v1'], newer, 'la copie en clair différente est conservée à l’identique, chiffrée');
+    assert.match(vs.warn || '', /conservée chiffrée/); assert.deepEqual(leaks(raw), []);
   });
   await test('stockage refusé pendant la migration : rien n’est supprimé, l’app continue sur l’ancien stockage avec un avertissement', async () => {
     const raw = fakeStorage({ refuse: k => k === 'twrc.vault.v2' }), L = LEGACY(); fill(raw, L); const before = JSON.stringify(raw.dump());

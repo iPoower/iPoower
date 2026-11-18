@@ -2,7 +2,8 @@
  * inventée, aucune horloge interne : « today » et « now » sont fournis). Trois cartes :
  *   1. À faire bientôt : plan hiver, pressions, profondeur, compteur, révision, contrôle technique (toutes voitures) ;
  *   2. Tes chiffres du mois : compteur, km des 30 derniers jours, rythme, coût/km, objectif, trajets et matins froids ;
- *   3. Tes pneus dans le temps : âge, usure projetée (seulement avec deux mesures), 14 prochains départs du matin.
+ *   3. Tes pneus dans le temps : âge, usure projetée (seulement avec deux mesures), 14 prochains départs du matin
+ *      (gomme au départ dans la fenêtre de saison du laboratoire, aucun seuil fixe d'air).
  * Les entrées viennent des règles existantes (Garage.odoTrend / maintenance / overview, tyreState, wearInfo, budget,
  * journal des trajets, journal de saison, prévisions horaires) : une seule vérité, ce module ne fait que les réunir. */
 'use strict';
@@ -83,17 +84,20 @@ const Bilan = (() => {
     return { days: rows.length, cold: rows.filter(([, r]) => r.T < 5).length, frost: rows.filter(([, r]) => Number.isFinite(r.ice) && r.ice >= 1).length };
   }
 
-  // Départs du matin des prochains jours (température de l'air à l'heure de départ) classés selon la monte réellement montée.
-  function morningLevel(type, T) {
-    if (!Number.isFinite(T)) return 'unknown';
-    if (type === 'summer' || type === 'unknown') return T >= 7 ? 'ok' : T >= 3 ? 'limit' : 'cold';
-    if (type === 'winter') return T >= 20 ? 'limit' : 'ok';
-    if (type === 'allseason') return T <= -5 ? 'limit' : 'ok';
-    return 'unknown';
+  // Départs du matin des prochains jours (Pneus V2, 18/11/2026) : aucun seuil fixe d'air (plus de « règle des 7 °C »). Au départ
+  // la gomme est à l'air ambiant : elle est classée dans la fenêtre de SAISON de la monte réellement montée (TL_WIN du laboratoire,
+  // hypothèse générique non calibrée, fournie par l'appelant) ; seul facteur d'ambiance conservé : pneus hiver au-dessus de 20 °C.
+  //   cold : sous la fenêtre (gomme froide au départ) · limit : sous la plage favorable · ok : plage favorable dès le départ · warm : hiver ≥ 20 °C
+  const WINTER_WARM = 20;
+  function morningLevel(win, type, T) {
+    if (!Number.isFinite(T) || !Array.isArray(win) || win.length < 2) return 'unknown';
+    if (type === 'winter' && T >= WINTER_WARM) return 'warm';
+    return T < win[0] ? 'cold' : T < win[1] ? 'limit' : 'ok';
   }
-  function calendar(days, type, n = 14) {
-    const rows = (Array.isArray(days) ? days : []).filter(x => x && valid(x.date)).slice(0, n).map(x => ({ date: x.date, T: Number.isFinite(x.T) ? x.T : null, level: morningLevel(type, x.T) }));
-    return { rows, cold: rows.filter(x => x.level === 'cold').length, limit: rows.filter(x => x.level === 'limit').length };
+  function calendar(days, type, win, n = 14) {
+    const rows = (Array.isArray(days) ? days : []).filter(x => x && valid(x.date)).slice(0, n).map(x => ({ date: x.date, T: Number.isFinite(x.T) ? x.T : null, level: morningLevel(win, type, x.T) }));
+    const count = k => rows.filter(x => x.level === k).length;
+    return { rows, cold: count('cold'), limit: count('limit'), warm: count('warm') };
   }
 
   // Usure : une date seulement avec la projection existante (wearInfo : deux mesures comparables) ; sinon ce qu'il manque.
@@ -104,5 +108,5 @@ const Bilan = (() => {
     return { kind: 'none', thr: w && w.thr };
   }
 
-  return { todo, kmWindow, trips, mornings, calendar, morningLevel, wear, PRESSURE_DAYS, TREAD_DAYS };
+  return { todo, kmWindow, trips, mornings, calendar, morningLevel, wear, PRESSURE_DAYS, TREAD_DAYS, WINTER_WARM };
 })();
