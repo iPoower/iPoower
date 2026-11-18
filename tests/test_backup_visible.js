@@ -176,7 +176,7 @@ const mutationsSync = [
 ];
 const tapMutations = [
   ['appui pendant la préparation : panneau ouvert', /if \(act === 'wait'\) \{ d\.text = /, "if (act === 'wait') { driveOpenBackup(); return; d.text = "],
-  ['fenêtre ouverte après une attente (hors du geste)', /const promise = d\.session\.connect\(\);   \/\/ appel synchrone dans le geste/, 'const promise = Promise.resolve().then(() => d.session.connect());'],
+  ['fenêtre ouverte après une attente (hors du geste)', /const promise = d\.session\.connect\(\{ reuse: true \}\);   \/\/ appel synchrone dans le geste/, 'const promise = Promise.resolve().then(() => d.session.connect({ reuse: true }));'],
   ['échec de préparation ignoré en silence', /e => \{ d\.prepared = false; d\.prep = 'failed';/, "e => { d.prepared = false; d.prep = 'idle'; return;"],
   ['préparation non relancée après un échec', /if \(act === 'prepare'\) \{ driveEnsurePrepared\(\); return; \}/, "if (act === 'prepare') { return; }"],
 ];

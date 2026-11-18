@@ -56,3 +56,22 @@ Ces tests n'utilisent ni compte ni jeton Google réel. Ils ne prouvent pas l'éc
 Retour arrière : retirer la variable `GOOGLE_DRIVE_CONFIG` désactive les futures connexions au prochain déploiement vérifié ; les sessions déjà ouvertes doivent être déconnectées/fermées. Revert par PR avec CI normale. Ne supprimer ni anciennes installations, ni magasins IDB, ni fichiers Drive. Un revert de code ne restaure pas des données : utiliser une copie chiffrée vérifiée et le chemin d'import du propriétaire.
 
 Sources officielles consultées le **23/10/2026** : [GIS token model](https://developers.google.com/identity/oauth2/web/guides/use-token-model), [configuration Google, CSP et COOP](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid), [Google Picker Web](https://developers.google.com/workspace/drive/picker/guides/web-picker), [scope drive.file](https://developers.google.com/workspace/drive/api/guides/api-specific-auth), [propriétés privées de fichier](https://developers.google.com/workspace/drive/api/guides/properties), [envois](https://developers.google.com/workspace/drive/api/guides/manage-uploads), [téléchargements](https://developers.google.com/workspace/drive/api/guides/manage-downloads).
+
+## Reconnexion et prolongation de l'autorisation Google (18/11/2026)
+
+Google ne délivre à une application web sans serveur qu'une autorisation d'environ 1 h (`expires_in`), sans jeton de
+rafraîchissement. Le jeton reste **exclusivement en mémoire** ; rien de nouveau n'est stocké.
+
+- **Reconnexion au même compte (C)** : pendant une ouverture de l'application, l'adresse du compte déjà vérifié par Drive est
+  gardée en mémoire comme simple indice (`login_hint`). Le bouton « Reconnecter » demande l'autorisation sans écran de choix
+  de compte (`prompt: ''`). L'indice ne vaut jamais approbation : la liaison compte + dossier reste revérifiée par `resume()`.
+  Échec de cette reconnexion directe : la suivante repasse par le choix du compte. Après un rechargement (ou une fermeture de
+  l'application par iOS), l'indice est perdu : choix du compte, comme avant.
+- **Prolongation discrète (A)** : dans les 10 dernières minutes de l'autorisation, le prochain appui dans l'application (hors
+  champ de saisie) appelle `renew()` dans le geste, au plus une fois toutes les 10 minutes. Le nouveau jeton n'est adopté que
+  si Drive confirme le **même** compte ; autre compte : session coupée, confirmation exigée. Refus, fenêtre fermée ou bloquée,
+  réseau : l'autorisation en cours reste valable jusqu'à son expiration, puis la reconnexion habituelle est proposée.
+- Limite : Google ouvre brièvement sa fenêtre d'autorisation (elle se referme seule si la session Google est active et le
+  consentement déjà donné). Le comportement sur iPhone réel (application installée sur l'écran d'accueil) reste à vérifier.
+
+Tests : `tests/test_drive_session_renew.js` (15 scénarios), `tests/e2e132-drive-prolongation.js` (vrai build Drive et sa CSP).
