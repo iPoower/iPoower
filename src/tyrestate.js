@@ -237,9 +237,9 @@ function tyreState(car, opt = {}) {
     note: tx.split ? 'Profondeur saisie par essieu : les calculs utilisent l’essieu le plus usé'
       : 'Même pneu, même profondeur saisie à l’avant et à l’arrière : pas de différence inventée entre essieux' };
   // profil technique : fiche constructeur sourcée si elle existe, sinon profil générique de la saison
-  const spec = typeof tireSpecFor === 'function' ? tireSpecFor(t.brand, t.model) : null, uhp = type === 'summer' && d && (d.zr || d.si === 'W' || d.si === 'Y');
+  const spec = typeof tireSpecFor === 'function' ? tireSpecFor(t.brand, t.model) : null;   // V2 : aucune « haute performance » déduite de l'indice de vitesse
   const profile = spec ? { kind: 'manufacturer-specific', label: `${spec.b} ${spec.m} (fiche constructeur)`, conf: 'élevée' }
-    : { kind: 'generic', label: `profil générique ${TS_TYPES[type] || 'inconnu'}${uhp ? ' haute performance' : ''}`, conf: t.brand && t.model ? 'moyenne' : 'faible' };
+    : { kind: 'generic', label: `profil générique ${TS_TYPES[type] || 'inconnu'}`, conf: t.brand && t.model ? 'moyenne' : 'faible' };
   // jeux stockés : connus, jamais analysés
   const stored = Object.entries(car.sets || {}).filter(([k, v]) => k !== type && v && (v.brand || v.model || v.size)).map(([k, v]) => ({ type: k, label: TS_TYPES[k] || 'saison non renseignée', title: [v.brand, v.model].filter(Boolean).join(' ') || 'modèle non renseigné' }));
   // qualité des données (qualité et fraîcheur, pas le nombre de champs remplis)

@@ -101,7 +101,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
   });
   test('profil technique : fiche constructeur ou profil générique déclaré', () => {
     assert.equal(TS(car(), { today }).profile.kind, 'manufacturer-specific');
-    assert.equal(TS(car({ brand: 'Inconnue', model: 'X' }), { today }).profile.label, 'profil générique été haute performance');
+    assert.equal(TS(car({ brand: 'Inconnue', model: 'X' }), { today }).profile.label, 'profil générique été');
   });
   test('monte inconnue : pas d’état actif inventé', () => {
     const st = TS(car({ type: 'unknown' }), { today }); assert.equal(st.known, false); assert.equal(st.active, null);
