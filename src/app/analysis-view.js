@@ -144,7 +144,7 @@ function renderLab() {
   else {
     const t = r.tyre, idx = [t.li != null ? `charge ${t.li}${t.kg ? ' (' + t.kg + ' kg)' : ''}` : null, t.si ? `vitesse ${t.si}${t.kmh ? ' (' + t.kmh + ' km/h)' : ''}` : null, t.xl ? 'XL renforcé' : null, t.fp ? 'protège-jante' : null, t.rf ? 'roulage à plat' : null, t.pmsf === true ? '3PMSF' : null].filter(Boolean);
     const fiche = `<details class="wx-pc lab-d" data-k="spec"><summary><span class="ic" aria-hidden="true">📋</span><span class="tt">Fiche du pneu monté</span><span class="ln">${esc(t.title)}${t.size ? ' · ' + esc(t.size) : ''}</span></summary>
-      <div class="lab-sp"><p class="lab-tag est">DÉCODAGE DE LA MONTE SAISIE</p><ul><li>Saison : ${esc(t.season)}${t.uhp ? ' · haute performance (fenêtre décalée de +5 °C, hypothèse Race Control)' : ''}</li>${idx.length ? `<li>${esc(idx.join(' · '))}</li>` : ''}<li>${esc(t.axles)}</li>${r.spec.db && r.spec.db.cat ? `<li>Base Race Control : ${esc(r.spec.db.cat)}${r.spec.db.tier ? ' · gamme ' + esc(r.spec.db.tier) : ''}</li>` : ''}</ul>
+      <div class="lab-sp"><p class="lab-tag est">DÉCODAGE DE LA MONTE SAISIE</p><ul><li>Saison : ${esc(t.season)}${t.si ? ' · indice de vitesse ' + esc(t.si) + ' : capacité de vitesse homologuée, sans effet sur la fenêtre thermique' : ''}</li>${idx.length ? `<li>${esc(idx.join(' · '))}</li>` : ''}<li>${esc(t.axles)}</li>${r.spec.db && r.spec.db.cat ? `<li>Base Race Control : ${esc(r.spec.db.cat)}${r.spec.db.tier ? ' · gamme ' + esc(r.spec.db.tier) : ''}</li>` : ''}</ul>
       <p class="lab-tag fab">DONNÉE CONSTRUCTEUR</p><ul>${r.spec.known.map(f => f.v ? `<li><b>${esc(f.k)}</b> : ${esc(f.v)} · <a href="${esc(f.src)}" target="_blank" rel="noopener">source ↗</a>${f.check ? ' <span class="sub">(relevé via recherche le 05/10/2026, à confirmer)</span>' : ''}</li>` : `<li class="muted"><b>${esc(f.k)}</b> : non disponible</li>`).join('')}</ul>
       <p class="sub">Étiquette européenne : elle dépend de la dimension exacte (registre EPREL) et n’est jamais déduite du modèle seul.</p></div></details>`;
     // état du pneu monté, lu dans l'onglet Pneus (aucune saisie ici) : provenance, fraîcheur, essieux, jeux stockés, entretien
@@ -194,7 +194,7 @@ function renderLab() {
   }
   // Le nouveau domaine de preuves ne reprend aucun pourcentage ni distance du simulateur historique.
   html += tyreIntelligenceHtml(car, 'analyse');
-  html += '<p class="sub">Modèle thermique historique : hypothèses générales, distinctes des essais et des mesures réelles. Le seuil de 7 °C n’est pas une frontière physique universelle.</p>';
+  html += '<p class="sub">Modèle thermique historique : hypothèses générales, distinctes des essais et des mesures réelles. Il n’applique plus de seuil fixe à 7 °C : le froid passe par l’état estimé de la gomme, hypothèse générique de saison non calibrée sur un modèle.</p>';
   html += `<p class="sub lab-foot">Estimations Race Control (plages, tendances, indicateurs) : aucune mesure de capteur, aucune distance de freinage garantie. État, références et montage : <button class="btn sm" data-act="view" data-v="pneus">onglet Pneus</button></p>`;
   if (html === renderLab.last) return;
   const open = new Set([...el.querySelectorAll('details[open][data-k]')].map(x => x.dataset.k));

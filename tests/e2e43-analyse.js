@@ -186,15 +186,15 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
     const cooling = await s.p.evaluate(() => {
       const car = labCar(), m = CX.m, now = Date.now();
       Object.assign(car.tire, { type: 'summer', brand: '', model: '', size: '215/40 ZR18 89Y XL', press: '2,4', tread: 6, pchk: { date: '2026-09-20', T: 15 } });
-      m.hs = m.hs.map(h => ({ ...h, T: 12, Tr: 13, RH: 70, P: 0, Pl: 0, snow: 0, code: 1, gust: 15, rad: 0, ice: { ...h.ice, level: 0, score: 0 } }));
+      m.hs = m.hs.map(h => ({ ...h, T: 7, Tr: 8, RH: 70, P: 0, Pl: 0, snow: 0, code: 1, gust: 15, rad: 0, ice: { ...h.ice, level: 0, score: 0 } }));   // V2 : fenêtre de saison (l’indice Y/ZR ne la décale plus) → −5 °C pour garder le même état
       RAW[UI.loc].t = now; localStorage.removeItem(TT_KEY);
-      TT = { [car.id]: { at: localTs(now - 30 * 60000), T: 45, sig: tyreStateOf(car).sig } };
+      TT = { [car.id]: { at: localTs(now - 30 * 60000), T: 40, sig: tyreStateOf(car).sig } };
       LIVE.phase = 'idle'; LIVE.key = LIVE.startFix = LIVE.base = LIVE.route0 = LIVE.route = LIVE.lastFix = FIX = TRIPSTART = null; labThermTick.at = now;
       const r = tyreLab(labInput(car)); renderLab();
       return { state: r.hero.state, trend: r.thermal.trend, range: r.thermal.range, warm: r.hero.warm, why: r.thermal.why };
     });
     a = await lab(s.p); const Lc = await layout(s.p, true);
-    check('8 · arrêt récent : en refroidissement sous la plage favorable, estimation prudente inchangée', cooling.state === 'En refroidissement · sous la plage favorable' && cooling.trend === 'cooling' && cooling.range.join(',') === '22,38' && cooling.warm === 'limite' && a.all.includes('Avant la zone favorable : limite') && cooling.why.some(x => /bas de plage/.test(x) && /prudence/.test(x)), JSON.stringify(cooling));
+    check('8 · arrêt récent : en refroidissement sous la plage favorable, estimation prudente inchangée', cooling.state === 'En refroidissement · sous la plage favorable' && cooling.trend === 'cooling' && cooling.range.join(',') === '17,33' && cooling.warm === 'limite' && a.all.includes('Avant la zone favorable : limite') && cooling.why.some(x => /bas de plage/.test(x) && /prudence/.test(x)), JSON.stringify(cooling));
     check('8 · iPhone domicile confirmé : synthèse globale visible, verdict Analyse engagé, aucune cible masquée ni débordement', a.hero.includes('EN REFROIDISSEMENT · SOUS LA PLAGE FAVORABLE') && Lc.sw <= Lc.W && !Lc.wide.length && !Lc.small.length && Lc.decisionBottom > 0 && Lc.decisionBottom < 896 && Lc.heroTop > 0 && Lc.heroTop < 896, JSON.stringify(Lc));
     if (process.env.LAB_SHOT) await s.p.screenshot({ path: process.env.LAB_SHOT + '-iphone-cooling.png' });
     await s.close();

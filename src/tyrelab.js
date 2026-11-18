@@ -27,15 +27,18 @@
      arrêt    « ambiant » à ±3 °C de l'environnement (indiscernable à l'incertitude de base) ; au-dessus : en refroidissement
      Un pneu peut donc être « Stabilisé · sous la plage favorable » : équilibre atteint, mais trop frais pour entrer dans la plage.
 
-   FENÊTRES (hypothèses Race Control, gomme estimée, °C)  froid | sous la plage favorable | favorable | chaud | très chaud
-     été          < 10 | 10–20 | 20–50 | 50–65 | > 65     (été UHP, indices W/Y/ZR : +5 °C sur les deux premiers seuils)
+   FENÊTRES (hypothèses génériques Race Control par SAISON, non calibrées sur un modèle, gomme estimée, °C)
+                  froid | sous la plage favorable | favorable | chaud | très chaud
+     été          < 10 | 10–20 | 20–50 | 50–65 | > 65     (V2 : l'indice de vitesse W/Y/ZR ne décale plus la fenêtre)
      4 saisons    <  5 |  5–15 | 15–45 | 45–60 | > 60
      hiver        < −5 | −5–5  |  5–35 | 35–50 | > 50
    ADHÉRENCE relative (1 = sec, pneu en température) = surface × température × gomme/ambiance × profondeur × pression :
      surface      sec 1 · humide 0,85 · pluie 0,7 · pluie ≥ 2 mm/h 0,6 · eau stagnante 0,5 · neige 0,2 (été) 0,4 (4 saisons) 0,45 (3PMSF) 0,5 (hiver)
                   · verglas 0,15 (hiver 0,2)
-     température  froid 0,85 / 0,92 / 0,97 (été / 4 saisons / hiver) · en chauffe 0,93 / 0,96 / 0,99 · chaud 0,97 · très chaud 0,9
-     ambiance     été sous 7 °C ×0,9 · hiver au-dessus de 20 °C ×0,92 (règle pratique des 7 °C déjà utilisée par l'app)
+     température  froid 0,85 / 0,92 / 0,97 (été / 4 saisons / hiver) · sous la plage 0,93 / 0,96 / 0,99 · chaud 0,97 · très chaud 0,9
+                  HYPOTHÈSE GÉNÉRIQUE NON CALIBRÉE : ordre de grandeur par saison, jamais une mesure d'un modèle ; un essai publié
+                  ne la remplace pas (aucune conversion d'essai ou d'étiquette UE en coefficient). Seul facteur du froid.
+     ambiance     hiver au-dessus de 20 °C ×0,92 (V2 : l'ancien « été sous 7 °C ×0,9 » est supprimé, il doublait le froid)
      profondeur   sur mouillé : < 3 mm ×0,85 · < 1,6 mm ×0,7 · pression estimée sous la cible de 0,3 bar ×0,95
      niveaux      ≥ 0,9 optimal 🟢 · ≥ 0,72 bon 🟡 · ≥ 0,5 dégradé 🟠 · sinon très dégradé 🔴
    DISTANCES (ordre de grandeur, jamais une mesure) : d = v² / (2 μ g), μ sec 0,7–0,9 et mouillé 0,4–0,55 (μ ≈ 0,8 sec, environ
@@ -67,10 +70,8 @@ const TL_TREAD_WET_DM = { opt: [[1.6, 6.9], [3, 2.65], [8, 0]], pru: [[1.6, 13],
 const TL_WEAR_SURF = ['damp', 'rain', 'heavy'];
 function tlCurve(x, pts) { if (x <= pts[0][0]) return pts[0][1]; for (let i = 1; i < pts.length; i++) if (x <= pts[i][0]) { const [a, fa] = pts[i - 1], [b, fb] = pts[i]; return fa + (fb - fa) * (x - a) / (b - a); } return pts[pts.length - 1][1]; }
 function tlTreadWet(mm) { return mm == null || !Number.isFinite(mm) ? null : { opt: tlCurve(mm, TL_TREAD_WET_DM.opt), pru: tlCurve(mm, TL_TREAD_WET_DM.pru), belowLegal: mm < 1.6 }; }
-// Pneu été sous 7 °C et gomme sous sa plage : deux effets en partie corrélés. Trois formulations comparables ;
-// 'product' = comportement historique, conservé tant que le propriétaire n'a pas choisi (voir la PR « cohérence freinage »).
-const TL_COLD_MODE = 'product';
-function tlColdCombine(tf, c7, mode) { if (c7 >= 1) return tf; return mode === 'max' ? Math.min(tf, c7) : mode === 'overlap' ? tf * (1 - 0.5 * (1 - c7)) : tf * c7; }
+// V2 (17/11, décision du propriétaire) : le double comptage du froid est supprimé. L'ancien facteur « pneu été sous 7 °C » (×0,9)
+// et ses trois modes de combinaison (produit, max, recouvrement) n'existent plus : le froid ne passe que par l'état de la gomme.
 const TL_TAU_PARK = 50;
 const TL_REPORT_KM = 5, TL_REPORT_MIN = 60;
 function tyreLab(input) {
@@ -86,13 +87,14 @@ function tyreLab(input) {
   const TYPES = { summer: 'été', winter: 'hiver', allseason: '4 saisons' };
   if (!tire || !TYPES[tire.type]) return { known: false, reason: 'Monte active inconnue — sélectionner les pneus montés.', car: car ? car.name || car.short : null };
   const type = tire.type, d = typeof decodeSize === 'function' ? decodeSize(tire.size) : null;
-  const uhp = type === 'summer' && d && (d.zr || d.si === 'W' || d.si === 'Y');
   const pmsf = inp.db ? inp.db.pmsf === true : null;
-  const win = TL_WIN[type].slice(); if (uhp) { win[0] += 5; win[1] += 5; }
+  // V2 (17/11) : fenêtre de la SAISON seulement. L'indice de vitesse (V, W, Y) et le marquage ZR décrivent une capacité de
+  // vitesse homologuée, pas la plage de température d'une gomme : ils ne déplacent plus la fenêtre thermique.
+  const win = TL_WIN[type].slice();
   const spec = typeof tireSpecFor === 'function' ? tireSpecFor(tire.brand, tire.model) : null;
   const modelKnown = !!(tire.brand && tire.model);
   const title = modelKnown ? `${tire.brand} ${tire.model}` : `Modèle non renseigné · pneu ${TYPES[type]}`;
-  const tyre = { title, brand: tire.brand || null, model: tire.model || null, size: tire.size || null, season: TYPES[type], uhp, pmsf,
+  const tyre = { title, brand: tire.brand || null, model: tire.model || null, size: tire.size || null, season: TYPES[type], pmsf,
     li: d && d.li, kg: d && d.kg, si: d && d.si, kmh: d && d.kmh, xl: d ? d.xl : null, fp: d ? d.fp : null, rf: d ? d.rf : null, width: d ? d.w : null,
     axles: 'Même monte à l’avant et à l’arrière (positions non différenciées dans Race Control)', generic: !modelKnown };
   // pressions cibles par essieu quand elles sont saisies (« 2,3 AV / 2,5 AR »)
@@ -179,7 +181,7 @@ function tyreLab(input) {
     if (hist.source === 'manual') why.push('Dernier roulage saisi par vous : départ supposé froid, température estimée');
   } else { T = eNow.Tenv; phase = 'unknown'; why.push('Historique de roulage inconnu : pneu supposé froid (hypothèse prudente)'); }
   why.unshift(`Air : ${r1(eNow.Ta)} °C`, `Chaussée estimée : ${r1(eNow.Tr)} °C`);
-  why.push(`Pneu ${TYPES[type]}${uhp ? ' haute performance (indice ' + (d.si || 'ZR') + ')' : ''}`, `Chaussée : ${SURF_TXT[eNow.surf]}${eNow.reported ? ' (signalée par vous)' : ''}`);
+  why.push(`Pneu ${TYPES[type]}${d && d.si ? ' · indice de vitesse ' + d.si + ' (sans effet sur la fenêtre thermique)' : ''}`, `Chaussée : ${SURF_TXT[eNow.surf]}${eNow.reported ? ' (signalée par vous)' : ''}`);
   /* ---------- 5. incertitude, état, fenêtre ---------- */
   const unknownAge = !finite(inp.ageMin) || inp.ageMin < 0;
   const stale = unknownAge || inp.ageMin > TL_STALE_AFTER_MIN;
@@ -216,7 +218,8 @@ function tyreLab(input) {
   const cT = cls(T);
   if (cT > st) why.push(`Estimation centrale ≈ ${r0(T)} °C (${TL_LEVEL_TXT[cT]}) mais bas de plage ≈ ${r0(lo)} °C : état affiché par prudence (${TL_LEVEL_TXT[st]})`);
   else if (cT < st) why.push(`Estimation centrale ≈ ${r0(T)} °C (${TL_LEVEL_TXT[cT]}) mais haut de plage ≈ ${r0(hi)} °C : état affiché par prudence (${TL_LEVEL_TXT[st]})`);
-  if (type === 'summer' && eNow.Tenv < 7) why.push(`Pneu été sous 7 °C (air/chaussée ≈ ${r1(eNow.Tenv)} °C) : adhérence réduite même une fois la gomme stabilisée (règle des 7 °C)`);
+  // V2 (17/11) : plus de marche fixe à 7 °C. Le froid est porté une seule fois, par l'état estimé de la gomme dans la fenêtre de saison.
+  if (type === 'summer' && eNow.Tenv < win[0]) why.push(`Pneu été, air/chaussée ≈ ${r1(eNow.Tenv)} °C : l’effet du froid est porté par l’état estimé de la gomme (hypothèse générique de saison, non calibrée sur ce modèle) ; aucun seuil fixe à 7 °C`);
   /* ---------- 6. mise en température (plages) ---------- */
   const tripKind = inp.trip && inp.trip.kind && TL_KIND[inp.trip.kind] ? inp.trip.kind : null;
   const kind = driveKind || tripKind || 'route';
@@ -265,12 +268,9 @@ function tyreLab(input) {
     const SURF = { dry: 1, damp: 0.85, rain: 0.7, heavy: 0.6, pool: 0.5, snow: type === 'summer' ? 0.2 : type === 'winter' ? 0.5 : pmsf ? 0.45 : 0.4, ice: type === 'winter' ? 0.2 : 0.15 }, S = SURF[e.surf];
     f.push({ k: 'Chaussée ' + SURF_TXT[e.surf], v: S });
     const tf = s === 0 ? { summer: 0.85, allseason: 0.92, winter: 0.97 }[type] : s === 1 ? { summer: 0.93, allseason: 0.96, winter: 0.99 }[type] : s === 3 ? 0.97 : s === 4 ? 0.9 : 1;
-    // froid : la combinaison des deux facteurs suit TL_COLD_MODE ; chaque facteur affiché garde sa raison
-    const c7 = type === 'summer' && e.Tenv < 7 ? 0.9 : 1; let vT = tf, v7 = c7;
-    if (c7 < 1 && TL_COLD_MODE === 'max') { if (c7 < tf) vT = 1; else v7 = 1; }
-    else if (c7 < 1 && TL_COLD_MODE === 'overlap') v7 = tlColdCombine(tf, c7, 'overlap') / tf;
-    f.push({ k: 'Gomme ' + ['froide', 'sous la plage favorable', 'dans sa fenêtre favorable', 'chaude', 'très chaude'][s], v: vT });
-    if (c7 < 1) f.push({ k: `Pneu été sous 7 °C (${r1(e.Tenv)} °C air/chaussée)`, v: v7 });
+    // froid : UN seul facteur, l'état estimé de la gomme (V2, 17/11). L'ancien ×0,9 « pneu été sous 7 °C » doublait cet effet
+    // (les deux étaient corrélés) et créait une marche à 7 °C : supprimé. Valeurs = hypothèse générique de saison, non calibrée.
+    f.push({ k: 'Gomme ' + ['froide', 'sous la plage favorable', 'dans sa fenêtre favorable', 'chaude', 'très chaude'][s] + (tf < 1 ? ' (hypothèse générique de saison, non calibrée sur ce modèle)' : ''), v: tf });
     if (type === 'winter' && e.Ta > 20) f.push({ k: `Pneu hiver au-dessus de 20 °C`, v: 0.92 });
     // usure : écarts mesurés ajoutés aux distances ; pour l'indicateur relatif, facteur équivalent sur la référence mouillé moyenne
     const g0 = 9.81, v0 = 80 / 3.6, ddx = mu0 => v0 * v0 / (2 * mu0 * g0);
@@ -430,13 +430,15 @@ function tyreLab(input) {
   const confidence = { level: score >= 1.5 ? 'moyenne' : 'faible', score, reasons, axes, limits };
   /* ---------- 12. verdict principal ---------- */
   const limiting = gNow.dom ? (gNow.dom.k.startsWith('Gomme') ? ['gomme froide', 'gomme sous sa plage favorable', 'gomme dans sa fenêtre', 'gomme chaude', 'gomme très chaude'][st] : gNow.dom.k.toLowerCase()) : 'aucun';
-  const lvl = Math.max(stLv(st), gNow.lv);
+  // V2 (17/11) : le niveau d'aquaplaning entre dans le niveau global. Sans cela, l'eau stagnante (aquaplaning « Critique ») n'était
+  // affichée critique que si un autre malus abaissait aussi l'adhérence : l'alerte ne dépend plus d'une hypothèse de gomme.
+  const lvl = Math.max(stLv(st), gNow.lv, gNow.aqua.lv);
   const hero = { title: tyre.title, size: tyre.size, state: stateTxt, s: st, lvl, emoji: EMO[lvl], range,
     warm: warm.reached ? (warm.sinceMin != null ? `Zone favorable atteinte depuis ~${warm.sinceMin} min` : null) : warm.marginal ? 'limite' : warm.never ? 'Zone favorable non atteinte dans ces conditions' : warm.min[1] == null ? `≥ ${warm.min[0]} min · ≥ ${warm.km[0]} km (peut ne pas être atteinte)` : `≈ ${warm.min[0]}–${warm.min[1]} min · ≈ ${warm.km[0]}–${warm.km[1]} km`,
     brake: gNow.word, corner: gNow.bars[2].word, rain: gNow.aqua.lv ? ['Faible', 'Vigilance', 'Risque élevé', 'Critique'][gNow.aqua.lv] : gripAt({ ...eNow, surf: 'rain', Pl: 1 }, st, kind).word, limiting, confidence: confidence.level,
     critical: criticalTread ? estimatedTread ? `Profondeur estimée ${r1(tread)} mm : sous le repère réglementaire de ${String(TL_LEGAL_MM).replace('.', ',')} mm. Mesurer à la jauge avant de circuler ; la conformité n’est pas établie.` : `Profondeur ${r1(tread)} mm : sous le minimum légal de ${String(TL_LEGAL_MM).replace('.', ',')} mm. Pneu non conforme : remplacer avant de rouler, aucune estimation ne le rend acceptable.` : null };
   return { known: true, tyre, spec: specOut, now: inp.now, phase, stopped, parkedMin, drivenKm, drivenMin, kind, env: { Ta: eNow.Ta, Tr: eNow.Tr, Tenv: eNow.Tenv, surf: eNow.surf, surfTxt: SURF_TXT[eNow.surf], Pl: eNow.Pl },
-    thermal: { T, range, state: stateTxt, level: TL_STATES[st], trend, trendTxt: TL_TREND_TXT[trend], eq: Math.round(eq * 10) / 10, s: st, lv: stLv(st), win, pos, marks, why, uhp }, warm, cool, grip: gNow, trip, tripIssue, compare, press, confidence, hero, state: inp.state || null };
+    thermal: { T, range, state: stateTxt, level: TL_STATES[st], trend, trendTxt: TL_TREND_TXT[trend], eq: Math.round(eq * 10) / 10, s: st, lv: stLv(st), win, pos, marks, why }, warm, cool, grip: gNow, trip, tripIssue, compare, press, confidence, hero, state: inp.state || null };
 }
 
 // Convertit un roulage déclaré en point de départ thermique, avec le même modèle que le suivi automatique.
