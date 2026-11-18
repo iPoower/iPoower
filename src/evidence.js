@@ -40,7 +40,9 @@ function evidenceEngine(input) {
   const obsRecent = o => { const a = obsAge(o); return a != null && a <= EV_OBS_RECENT_MIN; };
   const fmtVis = v => v >= 10000 ? '> 10 km' : v >= 1000 ? (Math.round(v / 100) / 10).toString().replace('.', ',') + ' km' : Math.round(v / 10) * 10 + ' m';
   const visLv = v => v == null ? null : v < C.vis[0] ? 3 : v < C.vis[1] ? 2 : v < C.vis[2] ? 1 : 0;
-  const ceilOf = raw => { let b = null; String(raw || '').replace(/\b(FEW|SCT|BKN|OVC|VV)(\d{3})\b/g, (_, k, h) => { const ft = +h * 100; if (b == null || ft < b) b = ft; }); return b; };
+  // Nuages de la partie OBSERVÉE du METAR : la tendance (TEMPO, BECMG…) et les remarques sont des prévisions, pas une mesure
+  // (18/11/2026 : « TEMPO … BKN008 » donnait un plafond de 800 ft au lieu de 4 100 ft observés).
+  const ceilOf = raw => { let b = null; String(raw || '').split(/ (?:TEMPO|BECMG|NOSIG|RMK|PROB\d{2}|FM\d{6}|TL\d{4}|AT\d{4})(?= |$)/)[0].replace(/\b(FEW|SCT|BKN|OVC|VV)(\d{3})\b/g, (_, k, h) => { const ft = +h * 100; if (b == null || ft < b) b = ft; }); return b; };
   const locTrust = (inp.location && inp.location.trust) || 'Indisponible';
   const locCap = { Confirmée: 2, Fiable: 2, Estimée: 1, Incertaine: 0, Indisponible: 0 }[locTrust] ?? 0;
   const fresh = inp.fresh || {}, ageKnown = fin(fresh.modelAgeMin) && fresh.modelAgeMin >= 0;
