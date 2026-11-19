@@ -223,6 +223,10 @@
     "suite": "e2e30.js",
     "result": "arrivée confirmée, moteur terminé"
   },
+  "trip-arrived-key": {
+    "suite": "e2e136-trajet-bien-arrive.js",
+    "result": "trajet parti et arrivé depuis moins de 3 h clos (même machine que l’arrivée GPS), lieu d’arrivée confirmé, carte retirée"
+  },
   "trip-cancel": {
     "suite": "e2e34.js",
     "result": "annulation locale du trajet et de sa chaîne"

@@ -4526,7 +4526,7 @@ function renderAll() {
 // déverrouillage, sans avertissement. Les contrôles qui écrivent sont désactivés avec un message visible, et les
 // gestionnaires refusent l'écriture (défense en profondeur). Jamais de report d'une saisie verrouillée dans le coffre.
 // Le mode « sans code » n'est PAS verrouillé (stockage en clair durable) : storeLocked(), pas LOCKED().
-const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar']);
+const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key']);
 const LOCKED_WRITE_MSG = 'Déverrouille l’app pour modifier : rien n’est enregistré tant que l’app est verrouillée';
 const LOCKED_WRITE_FREE = '#unlockForm, #twrcExpiryForm, #twrcExpiryOverlay';
 let lockedWriteObserver = null;
@@ -4761,6 +4761,12 @@ document.addEventListener('click', async e => {
   else if (a === 'debrief-snooze') debriefSnooze();
   else if (a === 'debrief-open') debriefOpen(t.dataset.key);
   else if (a === 'trip-arrived') { if (LIVE.key) liveArrive('confirmé'); }
+  else if (a === 'trip-arrived-key') {
+    const x = tripArrivalPending();
+    if (!x || x.t.key !== t.dataset.key) { commandFeedback(t, 'Trajet déjà terminé ou introuvable'); renderAll(); return; }
+    if (x.live) liveArrive('confirmé'); else closeTrip(x.t, 'confirmé');
+    rebuild(); renderAll();
+  }
   else if (a === 'trip-start') liveStart(t.dataset.key);
   else if (a === 'lab-drive-forget') {
     const car = labCar(); if (!car || DEMO.on || LIVE.phase === 'active') return;
