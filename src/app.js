@@ -4622,6 +4622,14 @@ document.addEventListener('click', async e => {
   else if (a === 'race-toggle') f1Toggle(t.dataset.f1);
   else if (a === 'cal-retry') { CALFAIL = null; CALDONE = false; renderBrf(); renderCal(); loadCalendar(true); }
   else if (a === 'race-speak') f1Speak(t);
+  // État de la route : secteur touché et départ simulé (état de vue, rien n'est écrit) ; le focus revient au bouton redessiné.
+  else if (a === 'track-sector' || a === 'track-shift') {
+    if (a === 'track-sector') F1_TRACK.sector = Math.max(0, Math.min(2, parseInt(t.dataset.i, 10) || 0));
+    else { const h = parseInt(t.dataset.h, 10); F1_TRACK.shift = [-1, 0, 1].includes(h) ? h : 0; }
+    renderF1Pure();
+    const sel = a === 'track-sector' ? '[data-act=track-sector][data-i="' + F1_TRACK.sector + '"]' : '[data-act=track-shift][data-h="' + F1_TRACK.shift + '"]';
+    const back = document.querySelector('#f1-panel-trackConditions ' + sel); if (back) back.focus({ preventScroll: true });
+  }
   else if (a === 'gps-forget') { stopGps(); PLACE_DOUBT = PLACE_FORCE = null; gpsWeatherOrigin = gpsNameOrigin = null; gpsWeatherGen++; gpsNameGen++; GPS = null; GEO.raw = null; GEO.error = null; GEO.reason = ''; GEO.status = 'suivi désactivé'; PLACE_FIX = PLACE_PENDING = PLACE_REJ = null; PLACE_HOLD = false; alertLoc('Suivi de position désactivé.'); WEATHER_REQUESTS.cancelGroup('gps'); S.gpsAuto = 0; saveSettings(); try { localStorage.removeItem('twrc.gps'); localStorage.removeItem('twrc.cache.gps'); } catch (err) { /* stockage */ } delete RAW.gps; delete ENSRAW.gps; delete NOWRAW.gps; delete AQRAW.gps; FIX = FIXPREV = null; liveReset(); tripPreviewReset(); UI.loc = S.locs[0].id; rebuild(); renderSettings(); renderAll(); }
   else if (a === 'loc') { APP_CONTEXT.weatherPreview = t.dataset.id; UI.loc = t.dataset.id; UI.chartIdx = null; UI.locsOpen = false;
     // Après un choix météo depuis le GPS, retrouver le cockpit sans les raccourcis dépliés.

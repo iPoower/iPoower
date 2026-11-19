@@ -1422,3 +1422,45 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .bilan-leg { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--fg2); }
 .bilan-leg i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
 .bilan-more > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--accent); font-size: 13px; }
+/* État de la route (19/11/2026) : trajet daté, ruban des secteurs, chiffres du secteur, meilleur départ. */
+.trk-when { margin: 0 0 8px; font: 13px var(--f-mono); color: var(--fg2); }
+.trk-verdict { margin: 0 0 10px; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line2); background: var(--panel2); }
+.trk-verdict b { font: 700 18px var(--f-disp); letter-spacing: .04em; }
+.trk-verdict b, .trk-verdict span { color: var(--fg); }
+.trk-verdict[data-lv="0"] b { color: var(--go-t); } .trk-verdict[data-lv="1"] b { color: var(--cau-t); } .trk-verdict[data-lv="2"] b { color: var(--risk-t); } .trk-verdict[data-lv="3"] b { color: var(--nogo-t); }
+.trk-verdict[data-lv="0"] { border-color: var(--go); background: var(--go-soft); }
+.trk-verdict[data-lv="1"] { border-color: var(--cau); background: var(--cau-soft); }
+.trk-verdict[data-lv="2"] { border-color: var(--risk); background: var(--risk-soft); }
+.trk-verdict[data-lv="3"] { border-color: var(--nogo); background: var(--nogo-soft); }
+.trk-strip { display: flex; gap: 3px; }
+.trk-seg { min-width: 0; min-height: 48px; border-radius: 6px; border: 2px solid transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 4px 2px; font: 12px var(--f-mono); cursor: pointer; }
+.trk-seg b { font-weight: 600; }
+.trk-seg[aria-pressed="true"] { border-color: var(--fg); }
+.trk-seg[data-lv="0"] { background: var(--go); color: var(--on-go); }
+.trk-seg[data-lv="1"] { background: var(--cau); color: var(--on-cau); }
+.trk-seg[data-lv="2"] { background: var(--risk); color: var(--on-risk); }
+.trk-seg[data-lv="3"] { background: var(--nogo); color: var(--on-nogo); }
+.trk-km { display: flex; justify-content: space-between; margin: 4px 0 10px; font: 11px var(--f-mono); color: var(--fg3); }
+.trk-detail { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.trk-detail-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.trk-detail-h b { font: 700 17px var(--f-disp); }
+.trk-detail-h span { font: 12px var(--f-mono); color: var(--fg2); }
+.trk-figs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0 6px; }
+.trk-figs div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.trk-figs span { font: 11px var(--f-mono); color: var(--fg2); }
+.trk-figs b { font: 600 17px var(--f-mono); }
+.trk-best { border-top: 1px solid var(--line); padding-top: 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 8px; }
+.trk-best p { margin: 0; }
+.trk-k { font: 600 12px var(--f-mono); letter-spacing: .14em; color: var(--accent); }
+.trk-deps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.trk-dep { min-height: 72px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel2); color: var(--fg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 6px 4px; cursor: pointer; }
+.trk-dep[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.trk-dep:disabled { opacity: .55; cursor: default; }
+.trk-dep span { font: 11px var(--f-mono); color: var(--fg2); text-align: center; }
+.trk-dep b { font: 600 17px var(--f-mono); }
+.trk-dep i { font: 600 11px var(--f-mono); font-style: normal; padding: 2px 6px; border-radius: 4px; background: var(--line); }
+.trk-dep i[data-lv="0"] { background: var(--go); color: var(--on-go); }
+.trk-dep i[data-lv="1"] { background: var(--cau); color: var(--on-cau); }
+.trk-dep i[data-lv="2"] { background: var(--risk); color: var(--on-risk); }
+.trk-dep i[data-lv="3"] { background: var(--nogo); color: var(--on-nogo); }
+.trk-best-ok { margin: 0 0 8px; }
