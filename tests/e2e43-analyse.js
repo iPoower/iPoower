@@ -242,7 +242,8 @@ const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT
       check('10 · ' + dev + ' · Pneus : départ et voitures prioritaires, détails météo regroupés dans Météo', await s.p.evaluate(() => {
         const shown = id => !!document.getElementById(id).getClientRects().length;
         const ids = [...document.querySelectorAll('.wrap > section,.wrap > .grid2,#deskMain > section,#deskMain > .grid2,#deskRail > section,#deskRail > .grid2')].filter(e => e.getClientRects().length).map(e => e.id);
-        return ids[0] === 'secBrf' && ids.indexOf('secCars') < ids.indexOf('secWeatherLink') && shown('secWeatherLink') && ['secCur','secChart','secDays','secRadar','secAir'].every(id => !shown(id));
+        // Départ d'abord : l'épreuve spéciale (prochain trajet, 19/11) puis le briefing, ou le briefing seul quand elle est masquée.
+        return (ids[0] === 'secBrf' || ids[0] === 'secRally' && ids[1] === 'secBrf') && ids.indexOf('secCars') < ids.indexOf('secWeatherLink') && shown('secWeatherLink') && ['secCur','secChart','secDays','secRadar','secAir'].every(id => !shown(id));
       }));
       await s.p.locator('#secWeatherLink [data-act=weather-details]').click(); await s.settle(1);
       check('10 · ' + dev + ' · bouton météo ouvre les détails conservés', await s.p.locator('#secCur').isVisible() && await s.p.locator('#secChart').isVisible() && await s.p.locator('#secRadar').isVisible());
