@@ -1587,17 +1587,21 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 :root {
   --bg: #0d0f13; --panel: #151a21; --panel2: #1b212a; --line: #252d39; --line2: #2f3846;
   --accent: #5fb0e8; --accent-soft: rgba(95, 176, 232, .14); --c-air: #5fb0e8;
-  --i20-blue: #5fb0e8; --i20-red: #d3122e; --on-i20-blue: #0b1622;
+  --i20-blue: #5fb0e8; --i20-red: #8f2133; --on-i20-blue: #0b1622;
 }
 body { background: var(--bg); }
 .top > .title { background: var(--i20-blue); color: var(--on-i20-blue); border-radius: 8px; padding: 8px 12px 9px; border-bottom: 4px solid var(--i20-red); }
 .top > .title small { color: var(--on-i20-blue); opacity: .85; }
 .seg.view button[aria-pressed="true"] { background: var(--i20-blue); color: var(--on-i20-blue); box-shadow: inset 0 -3px 0 var(--i20-red); }
-.btn.pri { background: var(--i20-red); border-color: var(--i20-red); color: #ffffff; }
-.btn.pri:hover { border-color: #ff4a5e; }
+/* Retour du 19/11 (iPhone) : le rouge vif fatiguait les yeux. Rouge sombre réservé aux liserés fins ; actions en bleu i20 N. */
+.btn.pri { background: var(--i20-blue); border-color: var(--i20-blue); color: var(--on-i20-blue); }
+.btn.pri:hover { border-color: #9fd2f3; }
 .mod-h h2 { letter-spacing: .06em; }
 #secRally { --rl-y: var(--i20-blue); --rl-on-y: var(--on-i20-blue); }
 .rl-plate-k { border-bottom: 3px solid var(--i20-red); }
-.rl-go { background: var(--i20-red); color: #ffffff; }
-.pw-l .trip-form .btn.pri.trip-main { background: var(--i20-red); border-color: var(--i20-red); }
+/* Plaque sombre au lieu du blanc cassé (éblouissant de nuit) : même contenu, texte clair. */
+.rl-plate { background: #1b2733; color: var(--fg); border: 1px solid #2f4256; }
+.rl-plate-b span { color: var(--fg2); }
+.rl-go { background: var(--i20-blue); color: var(--on-i20-blue); }
+.pw-l .trip-form .btn.pri.trip-main { background: var(--i20-blue); border-color: var(--i20-blue); color: var(--on-i20-blue); }
 #secTripSummary.pw-head { border-bottom-color: var(--i20-red); }
