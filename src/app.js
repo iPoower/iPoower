@@ -1387,6 +1387,7 @@ function renderCurrent() {
 // @include app/debrief-view.js
 // @include app/race-views.js
 // @include app/garage-view.js
+// @include app/stage-view.js
 // @include app/desk-presence.js
 /* ---------- mode Météo : bascule, ordre des modules ---------- */
 // Alertes propres aux pneus d'une voiture (et la planification du montage hiver) : jamais dans le verdict « ici, maintenant »
@@ -1458,7 +1459,7 @@ function renderView() {
     ? ['secTenue', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vg
     ? ['secGarage', 'hdrMore', 'banners', 'secBrf', 'secCal', 'secCur', 'secTip', 'secCars', 'secBrief', 'secCmp', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab'] : vm
     ? ['secWx', 'banners', 'hdrMore', 'secRadar', 'secChart', 'secDays', 'secCur', 'secAir', 'secIce', 'secAlerts', 'secTip', 'secCal', 'secBrf', 'secCars', 'secBrief', 'secCmp', 'secSeason', 'secJournal', 'secLab']
-    : ['secTripSummary', 'secBrf', 'banners', 'hdrMore', 'secCars', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue'];
+    : ['secTripSummary', 'secRally', 'secBrf', 'banners', 'hdrMore', 'secCars', 'secBrief', 'secCmp', 'secWeatherLink', 'secCal', 'secCur', 'secTip', 'secIce', 'secChart', 'secDays', 'secRadar', 'secAir', 'secSeason', 'secJournal', 'secAlerts', 'secWx', 'secLab', 'secTenue'];
   if (!order.includes('secGarage')) order.push('secGarage');
   if (!order.includes('secTenue')) order.push('secTenue');
   // Pneus : le prochain trajet passe avant le journal (lecture), sauf question de débrief ouverte juste après une arrivée.
@@ -4511,7 +4512,7 @@ function renderAll() {
   APP_CONTEXT.calendarLegs = null;
   try {
     appRefreshContext(); recordJournal();
-    renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
+    renderView(); renderTripView(); renderTripSummary(); renderDecisionCore(); renderStatus(); renderLocChips(); renderDayContext(); renderSrc(); renderNotice(); renderBanners(); renderBrfCore(); renderCal(); renderCurrent(); renderWeatherLink(); renderTenue(); renderTip(); renderCars(); renderBrief(); renderCompare(); renderStage(); renderIce(); renderChartShell(); renderDays(); renderRadar(); renderAir(); renderSeason(); renderJournal(); renderAlerts();
     renderWx(); renderLab(); renderDebrief(); renderGarage(); labThermTick(false); roadSync(); renderF1Pure(); renderWeatherStationButton(); renderWeatherStation();
   } finally {
     APP_CONTEXT.rendering = false; renderAll.view = UI.view;

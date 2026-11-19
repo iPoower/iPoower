@@ -134,6 +134,53 @@ const F1Pure = (() => {
         level: lv, label: lv == null ? null : label(lv), notes: one.available ? one.sectors[0].notes : [] };
     });
   }
+  // Onglet Pneus · épreuve spéciale (19/11/2026) : ruban de surface et notes du copilote tirés des lignes de routeTower
+  // (mêmes points, mêmes niveaux, mêmes signaux, mêmes seuils de pluie 0,2 / 2 mm/h). Rien d'inventé : valeur absente = pas de chiffre.
+  const SURFACE = { ice: 'GEL POSSIBLE', snow: 'NEIGE', wet: 'MOUILLÉ', damp: 'HUMIDE', dry: 'SEC' };
+  function surfaceOf(r) {
+    const notes = r && Array.isArray(r.notes) ? r.notes.join(' ') : '';
+    if (/Gel|Verglas|verglaçante|0 °C ou moins/.test(notes)) return 'ice';
+    if (/Neige/.test(notes)) return 'snow';
+    if (!r || !finite(r.rain)) return null;
+    return r.rain >= RAIN_STRONG_MMH ? 'wet' : r.rain >= RAIN_MMH ? 'damp' : 'dry';
+  }
+  function stageSurface(rows) {
+    const pts = Array.isArray(rows) ? rows.filter(Boolean) : [], out = [];
+    pts.forEach((r, k) => {
+      const kind = surfaceOf(r), last = out[out.length - 1];
+      if (last && last.kind === kind) last.to = k; else out.push({ kind, label: kind ? SURFACE[kind] : 'INCONNU', from: k, to: k });
+    });
+    // Part de chaque segment : kilomètres du parcours quand ils sont tous connus et croissants, sinon nombre de points.
+    const km = pts.map(r => r.km), byKm = pts.length > 1 && km.every(finite) && km.every((v, i) => !i || v >= km[i - 1]) && km[km.length - 1] > km[0];
+    const span = byKm ? km[km.length - 1] - km[0] : pts.length;
+    return out.map((s, i) => {
+      const a = byKm ? km[s.from] : s.from, b = byKm ? (i + 1 < out.length ? km[out[i + 1].from] : km[km.length - 1]) : s.to + 1;
+      return { ...s, kmFrom: finite(km[s.from]) ? km[s.from] : null, kmTo: finite(km[s.to]) ? km[s.to] : null, share: span > 0 ? Math.round(1000 * (b - a) / span) / 10 : 0 };
+    });
+  }
+  function copilotNotes(rows, { dep = null, arr = null, frost = null, tyre = null } = {}) {
+    const pts = Array.isArray(rows) ? rows.filter(Boolean) : []; if (!pts.length) return [];
+    const fr = v => String(Math.round(v * 10) / 10).replace('.', ','), km = v => finite(v) ? 'km ' + Math.round(v) : null, notes = [];
+    const first = pts[0], cond = [first.T != null ? 'air ' + fr(first.T) + ' °C' : null, first.road != null ? 'chaussée ' + fr(first.road) + ' °C' : null].filter(Boolean);
+    // Pneus été : mêmes repères que « Quelle voiture prendre ? » (air < 5 °C : route froide ; < 7 °C et chaussée humide : fraîche et humide).
+    const Ts = pts.map(r => r.T).filter(finite), Tmin = Ts.length ? Math.min(...Ts) : null, wet = pts.some(r => finite(r.rain) && r.rain >= RAIN_MMH);
+    const cold = tyre === 'summer' && Tmin != null ? (Tmin < 5 ? 'Route froide pour des pneus été.' : Tmin < 7 && wet ? 'Route fraîche et humide pour des pneus été.' : null) : null;
+    notes.push({ level: first.level, text: 'Départ' + (hhmm(dep) || first.at ? ' ' + (hhmm(dep) || first.at) : '') + (cond.length ? ' · ' + cond.join(', ') : '') + '.' + (cold ? ' ' + cold : '') });
+    const groups = [];
+    pts.forEach((r, k) => { const g = groups[groups.length - 1]; if (g && g.level === r.level) g.to = k; else groups.push({ level: r.level, from: k, to: k }); });
+    groups.forEach((g, i) => {
+      const a = pts[g.from], b = pts[g.to], part = pts.slice(g.from, g.to + 1), rains = part.map(r => r.rain).filter(finite), worst = part.reduce((m, r) => !m || (r.level || 0) > (m.level || 0) ? r : m, null);
+      const where = groups.length === 1 ? 'Sur tout le parcours' : i === 0 ? (g.from === g.to ? 'Au départ' : km(b.km) ? 'Jusqu’au ' + km(b.km) : 'Secteur S' + a.sector)
+        : i === groups.length - 1 ? (g.from === g.to ? 'À l’arrivée' : km(a.km) ? 'Après le ' + km(a.km) : 'Secteur S' + a.sector) : (km(a.km) && km(b.km) ? 'Du ' + km(a.km) + ' au ' + km(b.km) : 'Secteur S' + a.sector);
+      const when = i > 0 && a.at ? ', vers ' + a.at : '', rain = rains.length ? Math.max(...rains) : null;
+      const what = worst && worst.level && worst.notes && worst.notes.length ? worst.notes.join(' / ') + (rain != null && rain >= RAIN_MMH ? ' (' + fr(rain) + ' mm/h)' : '')
+        : rain == null ? (g.level == null ? 'lecture indisponible' : 'RAS') : rain >= RAIN_MMH ? 'pluie ' + fr(rain) + ' mm/h' : 'sec, RAS';
+      notes.push({ level: g.level, text: where + when + ' : ' + what + '.' });
+    });
+    const fl = finite(frost) ? frost : null;
+    notes.push({ level: fl, text: 'Arrivée' + (hhmm(arr) ? ' ' + hhmm(arr) : '') + (fl == null ? '.' : fl === 0 ? '. Aucun risque de gel.' : '. Gel : ' + label(fl).toLowerCase() + '.') });
+    return notes.map((n, i) => ({ n: i + 1, level: n.level == null ? null : n.level, text: n.text }));
+  }
   function tyreManagement(state) {
     if (!state || !state.active) return { available: false, lines: ['Monte active non confirmée : aucun diagnostic pneus.'] };
     const lines = [ 'Monte active : ' + text(state.active.label) ];
@@ -176,5 +223,5 @@ const F1Pure = (() => {
     ];
     return { available: true, lines, note: 'Relecture du journal local : aucune télémétrie de vitesse, freinage, GPS ou capteur ajoutée.' };
   }
-  return { FEATURES, raceEngineer, trackConditions, shiftSeq, departureOptions, routeTower, tyreManagement, strategyAB, theGarage, telemetryReplay, rainLevel };
+  return { FEATURES, raceEngineer, trackConditions, shiftSeq, departureOptions, routeTower, stageSurface, copilotNotes, tyreManagement, strategyAB, theGarage, telemetryReplay, rainLevel };
 })();

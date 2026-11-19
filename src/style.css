@@ -1523,3 +1523,56 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 @media (min-width: 1360px) {
   .pw-cols, .pw-row { grid-template-columns: 40px minmax(0, 1fr) 64px 56px 64px; }
 }
+/* Onglet Pneus · épreuve spéciale (maquette B « Rallye », 19/11/2026) : plaque, notes du copilote, surface, choix des pneus. */
+#secRally { --rl-y: #ffd400; --rl-on-y: #111111; padding: 14px; }
+.rl-grid { display: flex; flex-direction: column; gap: 14px; }
+.rl-grid > div { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.rl-h { margin: 0; font: 700 15px var(--f-disp); letter-spacing: .14em; }
+.rl-k { font: 600 11px var(--f-mono); letter-spacing: .08em; }
+.rl-mono { font: 12px var(--f-mono); color: var(--fg2); }
+.rl-plate { background: #f3f1ea; color: #111111; border-radius: 10px; overflow: hidden; }
+.rl-plate-k { display: flex; justify-content: space-between; gap: 8px; background: var(--rl-y); padding: 6px 14px; font: 800 14px var(--f-disp); letter-spacing: .16em; }
+.rl-plate-b { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px 12px; }
+.rl-plate-b b { font: 800 26px/1.08 var(--f-disp); overflow-wrap: anywhere; }
+.rl-plate-b span { font: 13px var(--f-mono); color: #3b3b38; }
+.rl-flag { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line2); }
+.rl-flag b { font: 800 26px/1.1 var(--f-disp); letter-spacing: .04em; }
+.rl-flag[data-lv="0"] { background: var(--go); color: var(--on-go); border-color: var(--go); }
+.rl-flag[data-lv="1"] { background: var(--cau); color: var(--on-cau); border-color: var(--cau); }
+.rl-flag[data-lv="2"] { background: var(--risk); color: var(--on-risk); border-color: var(--risk); }
+.rl-flag[data-lv="3"] { background: var(--nogo); color: var(--on-nogo); border-color: var(--nogo); }
+.rl-notes, .rl-box, .rl-choice { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.rl-notes .rl-h { color: var(--rl-y); }
+.rl-notes ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.rl-notes li { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: start; font: 15px/1.45 var(--f-mono); }
+.rl-n { font: 600 19px/1.2 var(--f-mono); color: var(--rl-y); }
+.rl-n[data-lv="0"] { color: var(--go-t); } .rl-n[data-lv="2"] { color: var(--risk-t); } .rl-n[data-lv="3"] { color: var(--nogo-t); }
+.rl-surface { display: flex; flex-direction: column; gap: 6px; }
+.rl-row-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.rl-ribbon { display: flex; gap: 3px; min-height: 40px; }
+.rl-ribbon span { min-width: 56px; display: flex; align-items: center; padding: 0 8px; border-radius: 6px; font: 600 12px var(--f-mono); background: var(--line); color: var(--fg); overflow: hidden; }
+.rl-ribbon span[data-k="dry"] { background: #3b3a33; } .rl-ribbon span[data-k="damp"] { background: #2b4a66; } .rl-ribbon span[data-k="wet"] { background: #1f4e79; }
+.rl-ribbon span[data-k="snow"] { background: #e6edf3; color: #111111; } .rl-ribbon span[data-k="ice"] { background: var(--nogo); color: var(--on-nogo); }
+.rl-cars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rl-car { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 11px; border-radius: 10px; border: 1px solid var(--line2); background: var(--panel2); }
+.rl-car.best { border: 2px solid var(--rl-y); padding: 10px; }
+.rl-car.best .rl-k { color: var(--rl-y); }
+.rl-car .rl-k { color: var(--fg2); overflow-wrap: anywhere; }
+.rl-type { font: 800 21px var(--f-disp); }
+.rl-score { font: 600 24px var(--f-mono); }
+.rl-score[data-lv="0"] { color: var(--go-t); } .rl-score[data-lv="1"] { color: var(--cau-t); } .rl-score[data-lv="2"] { color: var(--risk-t); } .rl-score[data-lv="3"] { color: var(--nogo-t); }
+.rl-car small { font-size: 13px; color: var(--fg2); }
+.rl-btn, .rl-link { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line2); background: none; color: var(--rl-y); font: inherit; cursor: pointer; text-decoration: none; }
+.rl-btn { justify-content: center; }
+.rl-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.rl-chip { font: 600 12px var(--f-mono); padding: 8px 10px; border-radius: 6px; background: var(--cau-soft); color: var(--cau-t); }
+.rl-chip[data-lv="0"] { background: var(--go-soft); color: var(--go-t); } .rl-chip[data-lv="2"] { background: var(--risk-soft); color: var(--risk-t); } .rl-chip[data-lv="3"] { background: var(--nogo-soft); color: var(--nogo-t); }
+.rl-bulletin { display: flex; flex-direction: column; }
+.rl-bulletin .rl-h { margin-bottom: 4px; }
+.rl-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 48px; padding: 0 4px; border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none; }
+.rl-line:last-child { border-bottom: 0; }
+.rl-line b[data-lv="0"] { color: var(--go-t); } .rl-line b[data-lv="1"] { color: var(--cau-t); } .rl-line b[data-lv="2"] { color: var(--risk-t); } .rl-line b[data-lv="3"] { color: var(--nogo-t); } .rl-line b[data-lv="x"] { color: var(--rl-y); }
+.rl-go { min-height: 56px; border: 0; border-radius: 12px; background: var(--rl-y); color: var(--rl-on-y); font: 800 20px var(--f-disp); letter-spacing: .1em; cursor: pointer; }
+@media (min-width: 900px) {
+  .rl-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: 16px; }
+}
