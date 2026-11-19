@@ -1464,3 +1464,59 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .trk-dep i[data-lv="2"] { background: var(--risk); color: var(--on-risk); }
 .trk-dep i[data-lv="3"] { background: var(--nogo); color: var(--on-nogo); }
 .trk-best-ok { margin: 0 0 8px; }
+/* Onglet Trajet · « mur des stands » (19/11/2026) : iPhone en une colonne (piste, tour, stratégie, paramètres, radar),
+   PC en trois colonnes (paramètres | tour du parcours | stratégie et radar). Rouge réservé au bouton principal et au filet. */
+#secTripSummary.pw-head { border-bottom: 2px solid var(--nogo); }
+#secTripSummary.pw-head .trip-summary-route b { font: 800 26px/1.05 var(--f-disp); letter-spacing: .02em; text-transform: uppercase; }
+.pw-count .cd { display: inline-block; margin: 4px 0; font: 600 30px/1.1 var(--f-mono); color: var(--fg); text-transform: uppercase; letter-spacing: -.01em; }
+.pw-count .cd.now { color: var(--cau-t); }
+.pw-grid { display: flex; flex-direction: column; gap: 12px; }
+.pw-c { order: 1; } .pw-s { order: 2; } .pw-l { order: 3; } .pw-r { order: 4; }
+.pw-h { margin: 0 0 8px; font: 700 15px var(--f-disp); letter-spacing: .14em; }
+.pw-flag { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; background: var(--panel2); border: 1px solid var(--line2); }
+.pw-flag b { font: 800 18px/1.1 var(--f-disp); letter-spacing: .06em; }
+.pw-flag[data-lv="0"] { background: var(--go); color: var(--on-go); border-color: var(--go); }
+.pw-flag[data-lv="1"] { background: var(--cau); color: var(--on-cau); border-color: var(--cau); }
+.pw-flag[data-lv="2"] { background: var(--risk); color: var(--on-risk); border-color: var(--risk); }
+.pw-flag[data-lv="3"] { background: var(--nogo); color: var(--on-nogo); border-color: var(--nogo); }
+.pw-tower { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.pw-tower-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; background: var(--panel2); }
+.pw-tower-h b { font: 700 15px var(--f-disp); letter-spacing: .14em; }
+.pw-tower-h span { font: 11px var(--f-mono); color: var(--fg2); }
+.pw-cols, .pw-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 54px 42px 50px; gap: 0 6px; align-items: center; }
+.pw-cols { padding: 6px 12px; font: 600 11px var(--f-mono); color: var(--fg2); letter-spacing: .06em; }
+.pw-row { width: 100%; min-height: 50px; padding: 6px 12px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--fg); text-align: left; cursor: pointer; font: inherit; }
+.pw-row[aria-pressed="true"] { background: var(--panel2); box-shadow: inset 0 0 0 2px var(--accent); }
+.pw-row i { font: 700 11px var(--f-mono); font-style: normal; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: var(--line); color: var(--fg); }
+.pw-row i[data-lv="0"] { background: var(--go); color: var(--on-go); } .pw-row i[data-lv="1"] { background: var(--cau); color: var(--on-cau); }
+.pw-row i[data-lv="2"] { background: var(--risk); color: var(--on-risk); } .pw-row i[data-lv="3"] { background: var(--nogo); color: var(--on-nogo); }
+.pw-pt { display: flex; flex-direction: column; min-width: 0; }
+.pw-pt b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pw-pt small, .pw-mono { font: 13px var(--f-mono); }
+.pw-pt small { font-size: 11px; color: var(--fg2); }
+.pw-rain { font-weight: 600; } .pw-rain[data-lv="1"] { color: var(--cau-t); } .pw-rain[data-lv="2"] { color: var(--risk-t); } .pw-rain[data-lv="3"] { color: var(--nogo-t); } .pw-rain[data-lv="0"] { color: var(--go-t); }
+.pw-detail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.pw-detail div { display: flex; flex-direction: column; min-width: 0; }
+.pw-detail span { font: 11px var(--f-mono); color: var(--fg2); }
+.pw-detail b { font: 600 16px var(--f-mono); }
+.pw-note { margin: 0; padding: 0 12px 10px; }
+.pw-strat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.pw-tyre { display: flex; gap: 12px; align-items: center; }
+.pw-tyre div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pw-tyre small { font: 12px var(--f-mono); color: var(--fg2); }
+.pw-compound { flex: none; width: 52px; height: 52px; border-radius: 50%; border: 6px solid var(--line2); background: var(--panel2); display: flex; align-items: center; justify-content: center; font: 800 20px var(--f-disp); }
+.pw-compound[data-t="summer"] { border-color: var(--cau); } .pw-compound[data-t="winter"] { border-color: var(--accent); } .pw-compound[data-t="allseason"] { border-color: var(--go); }
+.pw-ab { display: flex; flex-direction: column; gap: 8px; }
+.pw-k { font: 600 11px var(--f-mono); color: var(--fg2); letter-spacing: .08em; }
+.pw-bar { display: grid; grid-template-columns: minmax(0, 92px) minmax(0, 1fr) 34px; gap: 8px; align-items: center; }
+.pw-bar > span { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.pw-bar i { display: block; height: 10px; border-radius: 5px; background: var(--fg3); }
+.pw-bar i[data-lv="0"] { background: var(--go); } .pw-bar i[data-lv="1"] { background: var(--cau); } .pw-bar i[data-lv="2"] { background: var(--risk); } .pw-bar i[data-lv="3"] { background: var(--nogo); }
+.pw-best { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 44px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--fg); text-align: left; cursor: pointer; font: inherit; }
+.pw-best span:last-child { color: var(--accent); }
+.pw-l .trip-form .btn.pri.trip-main { background: var(--nogo); border-color: var(--nogo); color: #fff; font: 800 19px var(--f-disp); letter-spacing: .1em; min-height: 56px; }
+@media (min-width: 1100px) {
+  .pw-grid { display: grid; grid-template-columns: minmax(300px, 340px) minmax(0, 1fr) minmax(320px, 380px); grid-template-areas: "l c s" "l c r"; grid-template-rows: auto 1fr; align-items: start; gap: 16px; }
+  .pw-l { grid-area: l; } .pw-c { grid-area: c; } .pw-s { grid-area: s; } .pw-r { grid-area: r; min-width: 0; }
+  .pw-cols, .pw-row { grid-template-columns: 40px minmax(0, 1fr) 64px 56px 64px; }
+}

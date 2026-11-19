@@ -120,6 +120,20 @@ const F1Pure = (() => {
     }
     return { available: true, reason: 'Points de prévision existants, secteurs de lecture non géolocalisés.', sectors };
   }
+  // Tour du parcours (onglet Trajet, 19/11/2026) : une ligne par point météo réel du trajet, dans l'ordre, avec le secteur de
+  // lecture (même découpage que trackConditions), l'heure de passage, les valeurs de l'heure lue et le niveau du point calculé
+  // par la MÊME lecture (trackConditions sur ce seul point). Aucune valeur inventée : absente = null.
+  function routeTower(seq, { ageMin = null } = {}) {
+    const pts = Array.isArray(seq) ? seq.filter(q => q && q.hs && q.hs[q.i]) : [];
+    if (!pts.length || ageMin != null && (!finite(ageMin) || ageMin > STALE_AFTER_MIN)) return [];
+    const count = Math.min(3, pts.length), sectorOf = k => { for (let n = 0; n < count; n++) if (k < Math.floor((n + 1) * pts.length / count)) return n + 1; return count; };
+    return pts.map((q, k) => {
+      const x = q.hs[q.i], one = trackConditions([q]), lv = one.available ? one.sectors[0].level : null;
+      return { index: k, sector: sectorOf(k), name: text(q.name) || null, km: finite(q.km) ? q.km : null, at: hhmm(q.t) || (typeof x.t === 'string' ? x.t.slice(11, 13) + ' h' : null),
+        T: finite(x.T) ? x.T : null, road: finite(x.Tr) ? x.Tr : null, rain: finite(rainOf(x)) ? rainOf(x) : null, vis: finite(x.vis) ? x.vis : null, gust: finite(x.gust) ? x.gust : null,
+        level: lv, label: lv == null ? null : label(lv), notes: one.available ? one.sectors[0].notes : [] };
+    });
+  }
   function tyreManagement(state) {
     if (!state || !state.active) return { available: false, lines: ['Monte active non confirmée : aucun diagnostic pneus.'] };
     const lines = [ 'Monte active : ' + text(state.active.label) ];
@@ -162,5 +176,5 @@ const F1Pure = (() => {
     ];
     return { available: true, lines, note: 'Relecture du journal local : aucune télémétrie de vitesse, freinage, GPS ou capteur ajoutée.' };
   }
-  return { FEATURES, raceEngineer, trackConditions, shiftSeq, departureOptions, tyreManagement, strategyAB, theGarage, telemetryReplay, rainLevel };
+  return { FEATURES, raceEngineer, trackConditions, shiftSeq, departureOptions, routeTower, tyreManagement, strategyAB, theGarage, telemetryReplay, rainLevel };
 })();

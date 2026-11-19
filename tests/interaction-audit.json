@@ -438,5 +438,9 @@
   "track-shift": {
     "suite": "e2e133-etat-route.js",
     "result": "départ simulé à −1 h / +1 h nommé comme simulation, retour à l’horaire prévu, rien d’écrit"
+  },
+  "pw-point": {
+    "suite": "e2e134-trajet-mur-des-stands.js",
+    "result": "point du tour du parcours sélectionné, ses chiffres affichés, focus conservé, rien d’écrit"
   }
 }

@@ -4622,6 +4622,11 @@ document.addEventListener('click', async e => {
   else if (a === 'race-toggle') f1Toggle(t.dataset.f1);
   else if (a === 'cal-retry') { CALFAIL = null; CALDONE = false; renderBrf(); renderCal(); loadCalendar(true); }
   else if (a === 'race-speak') f1Speak(t);
+  // Onglet Trajet · tour du parcours : point sélectionné (état de vue, rien n'est écrit), focus rendu au bouton redessiné.
+  else if (a === 'pw-point') {
+    PW.point = Math.max(0, parseInt(t.dataset.i, 10) || 0); renderTripView();
+    const back = document.querySelector('#secTrip [data-act=pw-point][data-i="' + PW.point + '"]'); if (back) back.focus({ preventScroll: true });
+  }
   // État de la route : secteur touché et départ simulé (état de vue, rien n'est écrit) ; le focus revient au bouton redessiné.
   else if (a === 'track-sector' || a === 'track-shift') {
     if (a === 'track-sector') F1_TRACK.sector = Math.max(0, Math.min(2, parseInt(t.dataset.i, 10) || 0));
