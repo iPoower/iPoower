@@ -67,6 +67,21 @@ async function run(b, dev) {
   const cut = await p.evaluate(() => [...document.querySelectorAll('#secTrip .pw-pt b, #secTrip .pw-cols > span')].filter(x => x.scrollWidth > x.clientWidth + 1).map(x => x.textContent));
   check(`${dev} · tour du parcours lisible : noms des points et en-têtes de colonnes ni tronqués ni chevauchés`, !cut.length, JSON.stringify(cut));
   check(`${dev} · aucun débordement horizontal`, lay.over <= 1, String(lay.over));
+  // Retour du 19/11 (app iPhone) : une voiture choisie dans « Véhicule » devient la voiture active, enregistrée tout de suite,
+  // visible dans le Garage et conservée après réouverture, sans programmer de trajet. « — à choisir — » ne la retire pas.
+  const other = await p.evaluate(() => { const a = appDay().activeCarId; return (S.cars.find(c => c.id !== a) || {}).id; });
+  await p.locator('#tripCar').selectOption(other); await s.settle(2);
+  const picked = await p.evaluate(() => ({ active: appDay().activeCarId, next: !!appDay().nextDestination, sel: document.getElementById('tripCar').value }));
+  check(`${dev} · « Véhicule » du Trajet : la voiture choisie devient la voiture active, sans trajet programmé`, picked.active === other && picked.sel === other, JSON.stringify(picked) + ' · attendu ' + other);
+  await p.evaluate(() => { UI.view = 'garage'; renderAll(); }); await s.settle(2);
+  const badge = await p.evaluate(() => { const b = document.querySelector('#secGarage .garage-active'); const c = b && b.closest('[data-garage-car]'); return c && c.dataset.garageCar; });
+  check(`${dev} · Garage : « VOITURE ACTIVE » sur la voiture choisie dans le Trajet`, badge === other, String(badge));
+  await p.evaluate(async () => { await window.TWRC_VAULT.flush(); if (window.TWRC_VAULT.pendingWrites || window.TWRC_VAULT.error) throw new Error('enregistrement non confirmé avant réouverture'); });
+  await p.reload(); await s.settle(8);
+  check(`${dev} · réouverture : voiture active conservée`, await p.evaluate(() => appDay().activeCarId) === other);
+  await p.evaluate(() => { UI.view = 'trajet'; renderAll(); }); await s.settle(2);
+  await p.locator('#tripCar').selectOption(''); await s.settle(2);
+  check(`${dev} · « — à choisir — » dans le Trajet ne retire pas la voiture active`, await p.evaluate(() => appDay().activeCarId) === other);
   await s.c.close();
 }
 (async () => {

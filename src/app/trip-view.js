@@ -323,6 +323,10 @@ function tripPickKnown(id) {
 function tripFieldChanged(target) {
   tripCaptureForm();
   if (target.dataset.tripField === 'origin' && TRIP_FORM.originMode !== '__manual') { TRIP_FORM.originGen++; TRIP_FORM.originHit = null; TRIP_FORM.originResults = []; TRIP_FORM.originQuery = ''; }
+  // Une voiture choisie ici est un choix explicite : elle devient la voiture active, enregistrée tout de suite comme
+  // « Choisir pour mes trajets » du Garage (une seule vérité). « — à choisir — » ne retire jamais la voiture active.
+  if (target.dataset.tripField === 'car' && TRIP_FORM.carId && TRIP_FORM.carId !== (appDay().activeCarId || null) && appSetCar(TRIP_FORM.carId) !== false)
+    TRIP_FORM.activeCarSeed = TRIP_FORM.carId;
   TRIP_FORM.message = ''; renderTripView();
 }
 function tripProgram(button) {
