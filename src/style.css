@@ -1581,3 +1581,23 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 @media (min-width: 900px) {
   .rl-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: 16px; }
 }
+/* Style « Rallye i20 N » (19/11/2026, maquette validée par le propriétaire) : toute l'app aux couleurs de la voiture.
+   Habillage seulement : mêmes niveaux de risque (vert, jaune, orange, rouge), mêmes calculs, aucune valeur déplacée.
+   Bleu clair i20 N (teinte approchée) pour les repères et l'onglet actif, rouge pour l'action principale et les liserés. */
+:root {
+  --bg: #0d0f13; --panel: #151a21; --panel2: #1b212a; --line: #252d39; --line2: #2f3846;
+  --accent: #5fb0e8; --accent-soft: rgba(95, 176, 232, .14); --c-air: #5fb0e8;
+  --i20-blue: #5fb0e8; --i20-red: #d3122e; --on-i20-blue: #0b1622;
+}
+body { background: var(--bg); }
+.top > .title { background: var(--i20-blue); color: var(--on-i20-blue); border-radius: 8px; padding: 8px 12px 9px; border-bottom: 4px solid var(--i20-red); }
+.top > .title small { color: var(--on-i20-blue); opacity: .85; }
+.seg.view button[aria-pressed="true"] { background: var(--i20-blue); color: var(--on-i20-blue); box-shadow: inset 0 -3px 0 var(--i20-red); }
+.btn.pri { background: var(--i20-red); border-color: var(--i20-red); color: #ffffff; }
+.btn.pri:hover { border-color: #ff4a5e; }
+.mod-h h2 { letter-spacing: .06em; }
+#secRally { --rl-y: var(--i20-blue); --rl-on-y: var(--on-i20-blue); }
+.rl-plate-k { border-bottom: 3px solid var(--i20-red); }
+.rl-go { background: var(--i20-red); color: #ffffff; }
+.pw-l .trip-form .btn.pri.trip-main { background: var(--i20-red); border-color: var(--i20-red); }
+#secTripSummary.pw-head { border-bottom-color: var(--i20-red); }
