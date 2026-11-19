@@ -1467,11 +1467,12 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 /* Onglet Trajet · « mur des stands » (19/11/2026) : iPhone en une colonne (piste, tour, stratégie, paramètres, radar),
    PC en trois colonnes (paramètres | tour du parcours | stratégie et radar). Rouge réservé au bouton principal et au filet. */
 #secTripSummary.pw-head { border-bottom: 2px solid var(--nogo); }
-#secTripSummary.pw-head .trip-summary-route b { font: 800 26px/1.05 var(--f-disp); letter-spacing: .02em; text-transform: uppercase; }
-.pw-count .cd { display: inline-block; margin: 4px 0; font: 600 30px/1.1 var(--f-mono); color: var(--fg); text-transform: uppercase; letter-spacing: -.01em; }
+#secTripSummary.pw-head .trip-summary-route b { font: 800 26px/1.05 var(--f-disp); letter-spacing: .02em; }
+.pw-count .cd { display: inline-block; max-width: 100%; margin: 4px 0; font: 600 clamp(20px, 7.4vw, 30px)/1.15 var(--f-mono); color: var(--fg); letter-spacing: -.01em; white-space: normal; overflow-wrap: anywhere; }
 .pw-count .cd.now { color: var(--cau-t); }
 .pw-grid { display: flex; flex-direction: column; gap: 12px; }
 .pw-c { order: 1; } .pw-s { order: 2; } .pw-l { order: 3; } .pw-r { order: 4; }
+.pw-grid > div { min-width: 0; }
 .pw-h { margin: 0 0 8px; font: 700 15px var(--f-disp); letter-spacing: .14em; }
 .pw-flag { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; background: var(--panel2); border: 1px solid var(--line2); }
 .pw-flag b { font: 800 18px/1.1 var(--f-disp); letter-spacing: .06em; }
@@ -1516,7 +1517,9 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .pw-best span:last-child { color: var(--accent); }
 .pw-l .trip-form .btn.pri.trip-main { background: var(--nogo); border-color: var(--nogo); color: #fff; font: 800 19px var(--f-disp); letter-spacing: .1em; min-height: 56px; }
 @media (min-width: 1100px) {
-  .pw-grid { display: grid; grid-template-columns: minmax(300px, 340px) minmax(0, 1fr) minmax(320px, 380px); grid-template-areas: "l c s" "l c r"; grid-template-rows: auto 1fr; align-items: start; gap: 16px; }
+  .pw-grid { display: grid; grid-template-columns: minmax(270px, 320px) minmax(380px, 1fr) minmax(280px, 340px); grid-template-areas: "l c s" "l c r"; grid-template-rows: auto 1fr; align-items: start; gap: 16px; }
   .pw-l { grid-area: l; } .pw-c { grid-area: c; } .pw-s { grid-area: s; } .pw-r { grid-area: r; min-width: 0; }
+}
+@media (min-width: 1360px) {
   .pw-cols, .pw-row { grid-template-columns: 40px minmax(0, 1fr) 64px 56px 64px; }
 }

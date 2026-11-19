@@ -64,6 +64,8 @@ async function run(b, dev) {
     const small = await p.evaluate(() => [...document.querySelectorAll('#secTrip .pw-row, #secTrip .pw-best')].filter(x => x.getBoundingClientRect().height < 43.5).map(x => x.className));
     check(`${dev} · cibles tactiles ≥ 44 pt (points du tour, meilleur départ)`, !small.length, JSON.stringify(small));
   }
+  const cut = await p.evaluate(() => [...document.querySelectorAll('#secTrip .pw-pt b, #secTrip .pw-cols > span')].filter(x => x.scrollWidth > x.clientWidth + 1).map(x => x.textContent));
+  check(`${dev} · tour du parcours lisible : noms des points et en-têtes de colonnes ni tronqués ni chevauchés`, !cut.length, JSON.stringify(cut));
   check(`${dev} · aucun débordement horizontal`, lay.over <= 1, String(lay.over));
   await s.c.close();
 }
