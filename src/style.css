@@ -1467,6 +1467,11 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 /* Onglet Trajet · « mur des stands » (19/11/2026) : iPhone en une colonne (piste, tour, stratégie, paramètres, radar),
    PC en trois colonnes (paramètres | tour du parcours | stratégie et radar). Rouge réservé au bouton principal et au filet. */
 #secTripSummary.pw-head { border-bottom: 2px solid var(--nogo); }
+.pw-arrive { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; background: var(--go-soft); border: 1px solid var(--go); }
+.pw-arrive span { display: flex; flex-direction: column; min-width: 0; }
+.pw-arrive b { font: 700 15px var(--f-disp); letter-spacing: .12em; color: var(--go-t); }
+.pw-arrive small { font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
+.pw-arrive .btn { min-height: 44px; }
 #secTripSummary.pw-head .trip-summary-route b { font: 800 26px/1.05 var(--f-disp); letter-spacing: .02em; }
 .pw-count .cd { display: inline-block; max-width: 100%; margin: 4px 0; font: 600 clamp(20px, 7.4vw, 30px)/1.15 var(--f-mono); color: var(--fg); letter-spacing: -.01em; white-space: normal; overflow-wrap: anywhere; }
 .pw-count .cd.now { color: var(--cau-t); }

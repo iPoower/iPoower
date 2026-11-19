@@ -264,6 +264,39 @@ function renderTripView() {
   const radarMounted = el.querySelector('.trip-radar'); if (radarMounted) radarMounted._radarHTML = radarShell;
   el._tripControlsHTML = controlsHTML;
 }
+// « Bien arrivé » dans l'onglet Trajet (retour du 19/11, app iPhone) : trajet parti et arrivé depuis moins de 3 h, non clos,
+// quelle que soit la destination (domicile, travail, agenda, adresse saisie). La confirmation passe par la MÊME machine que
+// l'arrivée GPS ou « Bien arrivé » du trajet suivi (closeTrip, journal, lieu confirmé) : aucune autre source de vérité.
+function tripArrivalPending() {
+  if (DEMO.on) return null;
+  if (LIVE.key && LIVE.base && LIVE.phase === 'active') return { t: LIVE.base, live: true };
+  const now = liveNow(), done = USER_STORE.state.done || {};
+  // Trajets affichés et trajets planifiés du jour (un aller passé quitte la liste affichée mais reste planifié).
+  // Un trajet dont l'heure est passée quitte ces listes : l'aller et le retour domicile-travail du jour et les trajets agenda
+  // du jour sont reconstruits comme le fait déjà la confirmation de lieu (mêmes clés, mêmes données de planning).
+  const today = now.slice(0, 10), past = [];
+  if (appWorkOn(today)) ['go', 'ret'].forEach(d => {
+    if (today + 'T' + (d === 'go' ? S.work.dep : S.work.ret) > now) return;
+    const r = appWorkTripData(d, 0);
+    if (r && !r.err) past.push({ src: 'work', td: r, dep: r.dep, arr: r.arr, from: r.fromName, to: r.toName, name: appCommuteLabel(r), key: 'commute|' + r.dep + '|' + d });
+  });
+  if (CAL && Array.isArray(CAL.events)) CAL.events.filter(e => calendarSpatial(e) && !calendarCancelled(e)).forEach(e => effLegs(e).forEach(l => {
+    if (!l || !l.dep || l.dep > now || l.dep.slice(0, 10) !== today) return;
+    past.push({ src: 'cal', dep: l.dep, planDep: l.dep, planL: l, l, arr: l.arr, name: (l.k === 'ret' ? 'Retour' : 'Aller') + ' · ' + calTitle(e.t),
+      from: l.from ? l.from.city || l.from.label : 'Origine', to: l.to ? l.to.city || l.to.label : 'Destination', key: calendarTripKey(e, l) });
+  }));
+  const seen = new Set(), all = [...(Array.isArray(BRF_SHOWN) ? BRF_SHOWN : []), ...(Array.isArray(BRF_TRIPS) ? BRF_TRIPS : []), ...past].filter(t => t && t.key && !seen.has(t.key) && seen.add(t.key));
+  const list = all.filter(t => t && t.key && t.dep && t.dep <= now && !done[t.key] && !LIVE.done[t.key]
+    && liveMin(t.arr || t.dep, now) <= 180 && !(PLACE.conf && (appTripPlace(t, 'to') || {}).id === PLACE.conf.placeId && PLACE.conf.at >= tsToDate(t.dep)));
+  const t = list.sort((a, b) => String(b.dep).localeCompare(String(a.dep)))[0];
+  return t ? { t, live: false } : null;
+}
+function tripArrivalHtml() {
+  const x = tripArrivalPending(); if (!x) return '';
+  const t = x.t, to = appTripPlace(t, 'to'), arr = /T\d{2}:\d{2}/.test(t.arr || '') ? t.arr.slice(11, 16) : '';
+  return '<div class="pw-arrive" role="group" aria-label="Arrivée du trajet"><span><b>ARRIVÉE À CONFIRMER</b><small>' + esc((t.from || 'Départ') + ' → ' + (to && to.name || t.to || 'Destination')) +
+    (arr ? ' · arrivée prévue ' + arr : '') + '</small></span><button type="button" class="btn pri" data-act="trip-arrived-key" data-key="' + esc(t.key) + '">✅ Bien arrivé</button></div>';
+}
 function renderTripSummary() {
   const el = $('#secTripSummary'); if (!el) return;
   const n = appDay().nextDestination;
@@ -276,7 +309,7 @@ function renderTripSummary() {
   // Onglet Trajet : en-tête du mur des stands, compte à rebours du départ (même minuterie que les autres cartes).
   const depTs = n && n.dep || t && t.dep || '', wall = UI.view === 'trajet';
   el.classList.toggle('pw-head', wall);
-  el.innerHTML = `<div class="trip-summary-head"><span class="trip-label">${wall ? '' : '🧭 '}${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(depTs) || '—')}</b></div>
+  el.innerHTML = (wall ? tripArrivalHtml() : '') + `<div class="trip-summary-head"><span class="trip-label">${wall ? '' : '🧭 '}${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(depTs) || '—')}</b></div>
     ${wall && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(depTs) && !(t && t === APP_CONTEXT.snapshot.activeTrip) ? '<div class="pw-count">' + cdSpan(depTs.slice(0, 16)) + '</div>' : ''}
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}${from ? `<small class="trip-origin-src">Départ : ${esc(shared.source)}</small>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(appCarLabel().text)}</span><span>${esc(route)}</span></div>
