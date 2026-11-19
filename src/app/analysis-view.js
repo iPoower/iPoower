@@ -137,7 +137,7 @@ function renderLab() {
   const cars = S.cars.length > 1 ? `<div class="chips lab-cars" role="group" aria-label="Véhicule analysé">${S.cars.map(c => `<button class="chip" data-act="labcar" data-car="${esc(c.id)}" aria-pressed="${c === car}">${esc(c.short || c.name)}</button>`).join('')}</div>` : '';
   const li = car ? labInput(car) : null, r = car ? tyreLab(li) : { known: false, reason: 'Monte active inconnue — sélectionner les pneus montés.' };
   const panel = engineeringCockpitHtml(car, li && li.trip);
-  let html;
+  let html, live = '';   // état épinglé au-dessus du bilan (trajet, alerte critique), jamais replié
   if (!r.known) html = `${cars}<div class="lab-hero lvx"><div class="wx-hk"><span>🔬 Analyse pneus · ${esc(car ? car.short || car.name : '')}</span></div>
       <h2 class="wx-ht">${esc(r.reason)}</h2><p class="wx-hl">Race Control n’analyse jamais un autre pneu que celui réellement monté.</p>
       <div class="cal-v"><button class="btn" data-act="goset-cfg">Renseigner les pneus montés</button><button class="btn" data-act="view" data-v="pneus">Onglet Pneus</button></div></div>${panel}`;
@@ -185,7 +185,9 @@ function renderLab() {
         : `<div class="wx-blk lab-trip"><h3>🧭 Analyse du trajet</h3><p class="sub">${r.tripIssue ? esc(r.tripIssue) : 'Aucun trajet prévu : l’analyse suppose un départ sur route (≈ 70 km/h).'}</p></div>`;
       const p = r.press, press = `<div class="wx-blk lab-pr ${p.known && p.low ? 'lv2' : ''}"><h3>🎈 Pression</h3>${p.known ? `<ul class="lab-why">${p.notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="sub">Source : ${esc(p.src)}.</p>` : `<p class="sub">${esc(p.text)}</p>`}</div>`;
       const conf = `<details class="wx-pc lab-d" data-k="conf"><summary><span class="ic" aria-hidden="true">🎯</span><span class="tt">Niveau de confiance</span><span class="ln">${esc(cf.level[0].toUpperCase() + cf.level.slice(1))}</span></summary><ul>${(cf.axes || []).map(([k, v]) => `<li><b>${esc(k)}</b> : ${esc(v)}</li>`).join('')}${cf.reasons.map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="lab-tag est">LIMITES DE CETTE ESTIMATION</p><ul class="lab-limits">${(cf.limits || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
-      html = cars + hero + panel + labLastDriveHtml(car, li) + labTripState(r, li) +
+      // Trajet (avant départ, en cours, terminé) ou alerte critique : l'état des pneus reste épinglé au-dessus du bilan.
+      live = labTripState(r, li); const pin = !!(live || h.critical); if (pin) live = hero + live;
+      html = cars + (pin ? '' : hero) + panel + labLastDriveHtml(car, li) +
         (p.known && p.low ? press : '') +
         uxFold('lab-grip', 'Adhérence et freinage', win + brake + aqua + (p.known && p.low ? '' : press), 'Calculs · chauffe · pression') +
         uxFold('lab-route', 'Projection du trajet', tr, r.trip ? r.trip.label + ' · ' + r.trip.dep + ' → ' + r.trip.arr : 'Données du parcours') +
@@ -196,6 +198,9 @@ function renderLab() {
   html += tyreIntelligenceHtml(car, 'analyse');
   html += '<p class="sub">Modèle thermique historique : hypothèses générales, distinctes des essais et des mesures réelles. Il n’applique plus de seuil fixe à 7 °C : le froid passe par l’état estimé de la gomme, hypothèse générique de saison non calibrée sur un modèle.</p>';
   html += `<p class="sub lab-foot">Estimations Race Control (plages, tendances, indicateurs) : aucune mesure de capteur, aucune distance de freinage garantie. État, références et montage : <button class="btn sm" data-act="view" data-v="pneus">onglet Pneus</button></p>`;
+  // « Mon bilan » en tête (16/11/2026) ; le laboratoire historique, inchangé, est replié dessous.
+  const lab = html.startsWith(cars) ? html.slice(cars.length) : html;
+  html = cars + live + bilanHtml(car) + uxFold('lab-full', 'Laboratoire pneus', lab, 'Gomme estimée · essais publiés · fiche du pneu · confiance');
   if (html === renderLab.last) return;
   const open = new Set([...el.querySelectorAll('details[open][data-k]')].map(x => x.dataset.k));
   const form = el.querySelector('#labLastDriveForm'), draft = !renderLab.clearDriveDraft && form && car && form.dataset.car === car.id ? [...form.querySelectorAll('[name]')].map(x => [x.name, x.value]) : null;

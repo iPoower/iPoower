@@ -58,7 +58,10 @@ let count = 0;
       await settle();
       if (await page.locator('#dayContext details.day-editor').getAttribute('open') !== null) await page.locator('#dayContext details.day-editor > summary').click();
       const before = await page.evaluate(() => JSON.stringify(S.cars));
-      const tab = async name => { await page.locator(`#viewSeg [data-v="${name}"]`).click(); await settle(); };
+      // Analyse (16/11/2026) : le laboratoire historique est replié sous « Mon bilan » ; on l'ouvre comme l'utilisateur.
+      const tab = async name => { await page.locator(`#viewSeg [data-v="${name}"]`).click(); await settle();
+        const fold = page.locator('#secLab details[data-ux="lab-full"]');
+        if (name === 'analyse' && await fold.count() && !await fold.evaluate(d => d.open)) { await fold.locator(':scope > summary').click(); await settle(); } };
       await tab('pneus');
       const panel = page.locator('#secCars .ti-panel').first();
       const tyreText = await panel.textContent(); assert.match(tyreText, /Pilot Sport 4S/); assert.match(tyreText, /dimension différente/); assert.match(tyreText, /épaules/); assert.match(tyreText, /centre/); assert.match(tyreText, /NON MONTÉ/);

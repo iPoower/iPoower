@@ -1379,3 +1379,46 @@ body.twrc-session-expired > :not(#twrcExpiryOverlay) { visibility: hidden !impor
 .car.wait.wait-fold .waitbox .wt { font-size: 18px; }
 .tread-todo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; padding: 10px 16px; border-bottom: 1px solid var(--line); }
 .tread-todo .sub { flex: 1 1 180px; }
+
+/* Analyse · « Mon bilan » (16/11/2026) */
+.bilan { display: grid; gap: 14px; margin: 4px 0 16px; min-width: 0; }
+.bilan .bk { font: 500 11px var(--f-mono); letter-spacing: .1em; color: var(--fg2); }
+.bilan-top { display: grid; gap: 2px; }
+.bilan-top .bk { color: var(--accent); }
+.bilan-top h2 { margin: 0; font: 700 30px/1.05 var(--f-disp); }
+.bilan-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 12px; min-width: 0; }
+.bilan-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.bilan-h h3 { margin: 0; font: 700 22px var(--f-disp); }
+.bilan-h span { font: 500 12px var(--f-mono); color: var(--fg2); }
+.bilan-todo { list-style: none; margin: 0; padding: 0; display: grid; }
+.bilan-todo li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line); min-width: 0; }
+.bilan-todo li > i { flex: none; width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; }
+.bilan-todo .bt { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.bilan-todo .bt small, .bilan small { font-size: 12px; color: var(--fg2); overflow-wrap: anywhere; }
+.bilan-todo .bw { flex: none; display: grid; justify-items: end; gap: 6px; }
+.bilan-todo .bw em { font: 500 12px var(--f-mono); font-style: normal; }
+.bilan .btn { min-height: 44px; }
+.bilan-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.bilan-tile { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 2px; min-width: 0; }
+.bilan-tile span { font: 500 11px var(--f-mono); letter-spacing: .08em; color: var(--fg2); }
+.bilan-tile b { font: 700 26px/1.1 var(--f-disp); }
+.bilan-goal { display: grid; gap: 6px; }
+.bilan-goal > div:first-child { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.bilan .odo-bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.bilan .odo-bar i { display: block; height: 100%; background: var(--accent); border-radius: 5px; }
+.bilan-trips { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 8px; }
+.bilan-trips > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.bilan-trips > div > div { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border-radius: 8px; background: var(--panel2); text-align: center; }
+.bilan-trips b { font: 700 22px var(--f-disp); }
+.bilan-trips > div span { font-size: 11px; color: var(--fg2); }
+.bilan-tyre { margin: 0; display: grid; gap: 2px; }
+.bilan-wear { border: 1px dashed var(--line2); border-radius: 8px; padding: 12px; display: grid; gap: 6px; justify-items: start; }
+.bilan-wear b { font: 700 22px var(--f-disp); }
+.bilan-days { display: grid; gap: 8px; }
+.bilan-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.bilan-cal > div { display: grid; justify-items: center; gap: 2px; padding: 6px 0; border-radius: 6px; color: #04131b; }
+.bilan-cal > div span:first-child { font-size: 11px; }
+.bilan-cal b { font: 600 13px var(--f-mono); }
+.bilan-leg { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--fg2); }
+.bilan-leg i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.bilan-more > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--accent); font-size: 13px; }

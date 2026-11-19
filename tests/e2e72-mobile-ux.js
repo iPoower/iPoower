@@ -90,6 +90,8 @@ async function run(browser, width, dev) {
       for (const key of keys) {
         const selector = root[view] + ' details[data-ux="' + key + '"]';
         await check(label + ' · ouvrir ' + key + ', actualiser sans perdre le focus', async () => {
+          // Repli imbriqué (ex. dans « Laboratoire pneus ») : l'utilisateur ouvre d'abord le repli parent.
+          await p.locator(selector).evaluate(x => { for (let d = x.parentElement.closest('details'); d; d = d.parentElement.closest('details')) d.open = true; }); await s.settle(1);
           await press(selector + ' > summary'); await s.settle(1);
           assert(await p.locator(selector).evaluate(x => x.open)); await overflow(p);
           await p.locator(selector + ' > summary').focus();

@@ -64,6 +64,9 @@ const values = p => p.evaluate(() => ({ rate: tyreStateOf(S.cars[0]).tread.rate,
         await pp.locator('#viewSeg [data-act=view][data-v=pneus]').click();
         assert.match(await pp.locator('#secCars .tirebox').first().innerText(), /estimée/);
         await pp.locator('#viewSeg [data-act=view][data-v=analyse]').click();
+        // Analyse (16/11/2026) : laboratoire replié sous « Mon bilan », ouvert comme l'utilisateur.
+        const labFold = pp.locator('#secLab details[data-ux="lab-full"]');
+        if (await labFold.count() && !await labFold.evaluate(el => el.open)) await labFold.locator(':scope > summary').click();
         const statePanel = pp.locator('#secLab details[data-k=state]');
         if (!await statePanel.evaluate(el => el.open)) await statePanel.locator(':scope > summary').click();
         assert(await statePanel.locator('.lab-sp').isVisible());
