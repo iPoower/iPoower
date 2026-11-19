@@ -88,7 +88,12 @@ const toLab = async s => { await s.p.click('[data-act=view][data-v=analyse]'); a
   const fold = s.p.locator('#secLab details[data-ux="lab-full"]');
   if (await fold.count() && !await fold.evaluate(d => d.open)) { await fold.locator(':scope > summary').click(); await s.settle(1); }
   // Retour en haut immédiat : html { scroll-behavior: smooth } anime sinon le défilement sous WebKit pendant les mesures.
-  await s.p.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })); await s.p.waitForFunction(() => window.scrollY === 0); };
+  // Jamais waitForFunction ici : il sonde à chaque image, et l'horloge simulée figée de ces sessions n'en produit pas.
+  // Une animation lancée par le clic peut encore bouger la page : on recommence après avoir fait avancer l'horloge du test.
+  for (let k = 0; k < 5; k++) {
+    if (await s.p.evaluate(() => { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); return window.scrollY === 0; })) { await s.settle(1);
+      if (await s.p.evaluate(() => window.scrollY === 0)) break; } else await s.settle(1);
+  } };
 // libellé « tendance · niveau » : la tendance (en chauffe, stabilisé, en refroidissement, au repos) est distincte du niveau (froid … très chaud)
 const STATES = /((EN CHAUFFE|STABILISÉ|EN REFROIDISSEMENT|AU REPOS) · (AMBIANT|FROID|SOUS LA PLAGE FAVORABLE|FAVORABLE|CHAUD|TRÈS CHAUD))|SUPPOSÉ AMBIANT/;
 
