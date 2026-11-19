@@ -18,7 +18,7 @@ const core = p => p.evaluate(() => { const el = document.getElementById('decisio
 const layout = p => p.evaluate(() => {
   const r = id => { const e = document.getElementById(id); if (!e || e.hidden) return null; const b = e.getBoundingClientRect(); return b.height ? { top: Math.round(b.top), bottom: Math.round(b.bottom) } : null; };
   const nav = document.getElementById('viewSeg').getBoundingClientRect();
-  return { W: innerWidth, H: innerHeight, sw: document.documentElement.scrollWidth, core: r('decisionCore'), brf: r('secBrf'), place: r('placeBar'), navTop: Math.round(nav.top), navBottom: Math.round(nav.bottom),
+  return { W: innerWidth, H: innerHeight, sw: document.documentElement.scrollWidth, core: r('decisionCore'), brf: r('secBrf'), rally: r('secRally'), place: r('placeBar'), navTop: Math.round(nav.top), navBottom: Math.round(nav.bottom),
     order: [...document.querySelectorAll('#decisionCore, #placeBar, #secBrf')].map(e => e.id) };
 });
 (async () => {
@@ -122,12 +122,13 @@ const layout = p => p.evaluate(() => {
         await p.evaluate(() => { document.querySelector('#placeBar [data-act=place-confirm][data-place=home]')?.click(); window.scrollTo(0, 0); }); await s.settle(4);
         const L = await layout(p), visibleBottom = Math.min(L.H, L.navTop > L.H / 2 ? L.navTop : L.H);
         assert(L.sw <= L.W + 1, JSON.stringify(L)); assert(L.core && L.core.bottom <= visibleBottom, 'décision coupée : ' + JSON.stringify(L));
-        assert(L.brf && L.brf.top < visibleBottom - 60, 'trajet sous la ligne de flottaison : ' + JSON.stringify(L));
+        // Début du trajet : l'épreuve spéciale (plaque du prochain trajet, 19/11) quand elle est affichée, sinon le briefing.
+        const trip = L.rally || L.brf; assert(trip && trip.top < visibleBottom - 60, 'trajet sous la ligne de flottaison : ' + JSON.stringify(L));
         if (process.env.COCKPIT_SHOT) await p.screenshot({ path: process.env.COCKPIT_SHOT + '-iphone.png' });
       });
       if (dev === 'pc') for (const [w, h] of [[1440, 900], [1920, 1080], [1024, 768]]) await check(`PC ${w}×${h} · décision et prochain trajet visibles d’emblée, aucun débordement`, async () => {
         await p.setViewportSize({ width: w, height: h }); await s.settle(3); await p.evaluate(() => window.scrollTo(0, 0));
-        const L = await layout(p); assert(L.sw <= L.W + 1, JSON.stringify(L)); assert(L.core && L.core.bottom <= h, JSON.stringify(L)); assert(L.brf && L.brf.top < (w >= 1200 ? h - 80 : h - 20), JSON.stringify(L));   // bureau : trajet lisible ; tablette (empilée) : trajet entamé
+        const L = await layout(p); assert(L.sw <= L.W + 1, JSON.stringify(L)); assert(L.core && L.core.bottom <= h, JSON.stringify(L)); const trip = L.rally || L.brf; assert(trip && trip.top < (w >= 1200 ? h - 80 : h - 20), JSON.stringify(L));   // bureau : trajet lisible ; tablette (empilée) : trajet entamé
         if (process.env.COCKPIT_SHOT) await p.screenshot({ path: `${process.env.COCKPIT_SHOT}-pc-${w}.png` });
       });
       await check(dev + ' · six modules F1 actifs : décision et résumé du prochain trajet lisibles dans le premier écran', async () => {
