@@ -430,5 +430,17 @@
   "loc-force": {
     "suite": "e2e93-position-vraisemblance.js",
     "result": "zone acceptée pour la page, position utilisée"
+  },
+  "track-sector": {
+    "suite": "e2e133-etat-route.js",
+    "result": "secteur du parcours sélectionné, ses chiffres affichés, focus conservé, rien d’écrit"
+  },
+  "track-shift": {
+    "suite": "e2e133-etat-route.js",
+    "result": "départ simulé à −1 h / +1 h nommé comme simulation, retour à l’horaire prévu, rien d’écrit"
+  },
+  "pw-point": {
+    "suite": "e2e134-trajet-mur-des-stands.js",
+    "result": "point du tour du parcours sélectionné, ses chiffres affichés, focus conservé, rien d’écrit"
   }
 }

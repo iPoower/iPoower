@@ -51,13 +51,58 @@ const F1Pure = (() => {
   const RAIN_MMH = 0.2, RAIN_STRONG_MMH = 2;
   const rainLevel = mm => finite(mm) ? (mm >= RAIN_STRONG_MMH ? 2 : mm >= RAIN_MMH ? 1 : 0) : 0;
   const rainOf = x => finite(x.Pl) ? x.Pl : finite(x.P) && !(finite(x.snow) && x.snow > 0.05) ? x.P : null;
+  // Chiffres d'un secteur (18/11/2026) : heures de passage et kilomètres du parcours (legSeq), pire pluie, chaussée estimée la
+  // plus froide, visibilité la plus faible, rafale la plus forte. Valeur absente = null, jamais inventée.
+  const hhmm = t => typeof t === 'string' && /T\d{2}:\d{2}/.test(t) ? t.slice(11, 16) : null;
+  function sectorFigures(qs, points) {
+    const pick = (f, k) => { const v = points.map(x => x[k]).filter(finite); return v.length ? f(...v) : null; };
+    const rains = points.map(rainOf).filter(finite), km = qs.map(q => q.km).filter(finite);
+    // Heure de la prévision lue (« 06 h ») : repère honnête quand le point n'a pas d'heure de passage (trajet domicile-travail).
+    const hh = x => x && typeof x.t === 'string' && /T\d{2}/.test(x.t) ? x.t.slice(11, 13) + ' h' : null;
+    return { from: hhmm(qs.length && qs[0].t), to: hhmm(qs.length && qs[qs.length - 1].t), h0: hh(points[0]), h1: hh(points[points.length - 1]),
+      km0: km.length ? Math.min(...km) : null, km1: km.length ? Math.max(...km) : null,
+      rain: rains.length ? Math.max(...rains) : null, road: pick(Math.min, 'Tr'), vis: pick(Math.min, 'vis'), gust: pick(Math.max, 'gust') };
+  }
+  // Même trajet, départ décalé d'heures ENTIÈRES (prévisions horaires) : chaque point garde sa série et sa place sur le parcours,
+  // seule l'heure avance d'un cran. Heure absente ou série non contiguë (changement d'heure, fin de prévision) : null, jamais deviné.
+  const shiftTs = (t, h) => { const ms = Date.parse(String(t).slice(0, 16) + ':00Z'); return finite(ms) ? new Date(ms + h * 3600e3).toISOString().slice(0, 16) : null; };
+  function shiftSeq(seq, hours) {
+    if (!Array.isArray(seq) || !seq.length || !Number.isInteger(hours)) return null;
+    const out = [];
+    for (const q of seq) {
+      if (!q || !Array.isArray(q.hs) || !Number.isInteger(q.i)) return null;
+      const a = q.hs[q.i], b = q.hs[q.i + hours];
+      if (!a || !b || typeof a.t !== 'string' || typeof b.t !== 'string' || shiftTs(a.t, hours) !== b.t.slice(0, 16)) return null;
+      out.push({ ...q, i: q.i + hours, ...(typeof q.t === 'string' ? { t: shiftTs(q.t, hours) } : {}) });
+    }
+    return out;
+  }
+  // Meilleur départ : la MÊME lecture (trackConditions, mêmes seuils que le risque global) à −1 h, à l'heure prévue et à +1 h.
+  // Conseillé seulement s'il fait baisser le niveau ; à égalité l'horaire prévu reste (jamais de déplacement pour rien).
+  function departureOptions(seq, { ageMin = null, shifts = [-1, 1] } = {}) {
+    const read = h => {
+      const s = h ? shiftSeq(seq, h) : seq, x = s && trackConditions(s, { ageMin });
+      if (!x || !x.available) return { shift: h, available: false };
+      const worst = x.sectors.reduce((m, z) => !m || z.level > m.level ? z : m, null);
+      const rain = Math.max(...x.sectors.map(z => finite(z.figures && z.figures.rain) ? z.figures.rain : 0));
+      return { shift: h, available: true, level: worst.level, label: label(worst.level), cause: worst.level ? worst.notes[0] || null : null,
+        sector: worst.index, rain, dep: s[0] && typeof s[0].t === 'string' ? s[0].t : null, sectors: x.sectors };
+    };
+    const planned = read(0);
+    if (!planned.available) return null;
+    const options = [...shifts.filter(h => h < 0).sort((a, b) => a - b).map(read), planned, ...shifts.filter(h => h > 0).sort((a, b) => a - b).map(read)];
+    const better = options.filter(o => o.available && o.shift && o.level < planned.level)
+      .sort((a, b) => a.level - b.level || a.rain - b.rain || Math.abs(a.shift) - Math.abs(b.shift) || a.shift - b.shift)[0] || null;
+    return { planned, options, best: better, needed: planned.level >= 1 };
+  }
   function trackConditions(seq, { ageMin = null } = {}) {
-    const rows = Array.isArray(seq) ? seq.map(q => q && q.hs && q.hs[q.i]).filter(Boolean) : [];
+    // Points du parcours avec leur heure de passage et leur kilomètre (legSeq) : seuls les points lisibles sont gardés.
+    const pts = Array.isArray(seq) ? seq.filter(q => q && q.hs && q.hs[q.i]) : [], rows = pts.map(q => q.hs[q.i]);
     if (!rows.length || ageMin != null && (!finite(ageMin) || ageMin > STALE_AFTER_MIN))
       return { available: false, reason: rows.length ? 'Prévisions de parcours trop anciennes.' : 'Aucun point météo de parcours disponible.', sectors: [] };
     const count = Math.min(3, rows.length), sectors = [];
     for (let n = 0; n < count; n++) {
-      const a = Math.floor(n * rows.length / count), b = Math.floor((n + 1) * rows.length / count), points = rows.slice(a, b);
+      const a = Math.floor(n * rows.length / count), b = Math.floor((n + 1) * rows.length / count), points = rows.slice(a, b), qs = pts.slice(a, b);
       let worst = 0; const signals = new Set();
       points.forEach(x => {
         // Gel : niveau de la règle unique (frostHour) quand le moteur est chargé ; le verglas estimé n'en fixe plus le niveau.
@@ -71,9 +116,23 @@ const F1Pure = (() => {
         if (!fh && finite(x.Tr) && x.Tr <= 0) { worst = Math.max(worst, 1); signals.add('Chaussée estimée à 0 °C ou moins'); }
       });
       sectors.push({ index: n + 1, points: points.length, level: worst, label: label(worst), notes: [...signals].slice(0, 3),
-        estimated: true });
+        estimated: true, figures: sectorFigures(qs, points) });
     }
     return { available: true, reason: 'Points de prévision existants, secteurs de lecture non géolocalisés.', sectors };
+  }
+  // Tour du parcours (onglet Trajet, 19/11/2026) : une ligne par point météo réel du trajet, dans l'ordre, avec le secteur de
+  // lecture (même découpage que trackConditions), l'heure de passage, les valeurs de l'heure lue et le niveau du point calculé
+  // par la MÊME lecture (trackConditions sur ce seul point). Aucune valeur inventée : absente = null.
+  function routeTower(seq, { ageMin = null } = {}) {
+    const pts = Array.isArray(seq) ? seq.filter(q => q && q.hs && q.hs[q.i]) : [];
+    if (!pts.length || ageMin != null && (!finite(ageMin) || ageMin > STALE_AFTER_MIN)) return [];
+    const count = Math.min(3, pts.length), sectorOf = k => { for (let n = 0; n < count; n++) if (k < Math.floor((n + 1) * pts.length / count)) return n + 1; return count; };
+    return pts.map((q, k) => {
+      const x = q.hs[q.i], one = trackConditions([q]), lv = one.available ? one.sectors[0].level : null;
+      return { index: k, sector: sectorOf(k), name: text(q.name) || null, km: finite(q.km) ? q.km : null, at: hhmm(q.t) || (typeof x.t === 'string' ? x.t.slice(11, 13) + ' h' : null),
+        T: finite(x.T) ? x.T : null, road: finite(x.Tr) ? x.Tr : null, rain: finite(rainOf(x)) ? rainOf(x) : null, vis: finite(x.vis) ? x.vis : null, gust: finite(x.gust) ? x.gust : null,
+        level: lv, label: lv == null ? null : label(lv), notes: one.available ? one.sectors[0].notes : [] };
+    });
   }
   function tyreManagement(state) {
     if (!state || !state.active) return { available: false, lines: ['Monte active non confirmée : aucun diagnostic pneus.'] };
@@ -117,5 +176,5 @@ const F1Pure = (() => {
     ];
     return { available: true, lines, note: 'Relecture du journal local : aucune télémétrie de vitesse, freinage, GPS ou capteur ajoutée.' };
   }
-  return { FEATURES, raceEngineer, trackConditions, tyreManagement, strategyAB, theGarage, telemetryReplay, rainLevel };
+  return { FEATURES, raceEngineer, trackConditions, shiftSeq, departureOptions, routeTower, tyreManagement, strategyAB, theGarage, telemetryReplay, rainLevel };
 })();
