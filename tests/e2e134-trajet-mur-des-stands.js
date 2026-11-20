@@ -39,14 +39,14 @@ async function run(b, dev) {
       flag: q('#secTrip .pw-flag') ? { lv: q('#secTrip .pw-flag').dataset.lv, t: q('#secTrip .pw-flag').textContent } : null, risk: risk && { lv: risk.lv, why: risk.why },
       rows: all('#secTrip .pw-row').map(x => ({ on: x.getAttribute('aria-pressed'), lv: x.querySelector('i').dataset.lv, t: x.textContent })), tower: tower.map(x => x.level),
       compound: (q('#secTrip .pw-compound') || {}).dataset, bars: all('#secTrip .pw-bar').length, res: t && t.res ? t.res.filter(x => x && x.w && Number.isFinite(x.w.score)).length : 0,
-      best: (q('#secTrip .pw-best') || {}).textContent || '', form: !!q('#secTrip #tripDestQ') && !!q('#secTrip [data-act=trip-plan]'), check: (q('#secTrip .trip-preflight h3') || {}).textContent || '',
+      best: (q('#secTrip .sl-col[aria-pressed="true"]') || {}).textContent || '', bestTag: (q('#secTrip .sl-col[aria-pressed="true"] .sl-tag') || {}).textContent || '', bestDetail: (q('#secTrip .sl-detail') || {}).textContent || '', oldBest: !!q('#secTrip .pw-best'), form: !!q('#secTrip #tripDestQ') && !!q('#secTrip [data-act=trip-plan]'), check: (q('#secTrip .trip-preflight h3') || {}).textContent || '',
       text: (q('#secTrip') || {}).innerText || '' };
   });
   check(`${dev} · en-tête : « PROCHAIN TRAJET » daté lun. 16/11 · 06:30 et compte à rebours « départ dans … »`, /PROCHAIN TRAJET/.test(r.head) && /lun\. 16\/11 · 06:30/.test(r.head) && /^départ dans \d+ j$|^départ dans \d+ h \d\d$/.test(r.cd), r.cd + ' | ' + r.head.slice(0, 200));
   check(`${dev} · état de la piste = risque global du trajet (même niveau, même cause)`, !!r.flag && !!r.risk && String(r.risk.lv) === r.flag.lv && r.flag.t.includes(r.risk.why || '§'), JSON.stringify({ flag: r.flag, risk: r.risk }));
   check(`${dev} · tour du parcours : une ligne par point météo, niveaux de la même lecture, le pire point sélectionné par défaut`, r.rows.length > 0 && r.rows.length === r.tower.length && r.rows.every((x, i) => x.lv === String(r.tower[i])) && r.rows.filter(x => x.on === 'true').length === 1 && r.rows.findIndex(x => x.on === 'true') === r.tower.indexOf(Math.max(...r.tower)), JSON.stringify(r.rows.map(x => [x.lv, x.on])) + ' | ' + JSON.stringify(r.tower));
   check(`${dev} · stratégie : monte été de la voiture A ; comparatif seulement à partir de deux voitures évaluées sur ce trajet`, !!r.compound && r.compound.t === 'summer' && r.res >= 1 && r.bars === (r.res >= 2 ? r.res : 0), JSON.stringify({ c: r.compound, bars: r.bars, res: r.res }));
-  check(`${dev} · meilleur départ : « −1 h · vigilance au lieu de prudence » renvoie à Météo`, /−1 h · vigilance au lieu de prudence/.test(r.best), r.best);
+  check(`${dev} · meilleur départ (créneau de départ, 20/11) : 05:30 sélectionné et marqué « MIEUX », vigilance au lieu de prudence ; ancien lien vers Météo retiré`, /05:30/.test(r.best) && r.bestTag === 'MIEUX' && /VIGILANCE/.test(r.bestDetail) && /Départ 1 h 00 plus tôt/.test(r.bestDetail) && !r.oldBest, r.best + ' | ' + r.bestTag + ' | ' + r.bestDetail);
   check(`${dev} · paramètres de course et « CHECK DES STANDS » conservés (formulaire intact)`, r.form && /CHECK DES STANDS/.test(r.check) && /PARAMÈTRES DE COURSE/.test(r.text), r.check);
   check(`${dev} · aucun « undefined », « NaN » ni « null » affiché`, !/undefined|NaN|\bnull\b/.test(r.text + r.head), r.text.slice(0, 300));
   // Touche d'un autre point : sélection, chiffres du point, focus conservé, rien d'écrit.
@@ -61,8 +61,8 @@ async function run(b, dev) {
   if (dev === 'pc') check(`${dev} · trois colonnes : paramètres | tour du parcours | stratégie, en haut de l’onglet`, lay.l.l < lay.c.l && lay.c.l < lay.s.l && Math.abs(lay.l.t - lay.c.t) < 4 && Math.abs(lay.c.t - lay.s.t) < 4, JSON.stringify(lay));
   else {
     check(`${dev} · une colonne : piste et tour, puis stratégie, puis paramètres, puis radar`, lay.c.t < lay.s.t && lay.s.t < lay.l.t && lay.l.t < lay.r.t && lay.sum < lay.c.t, JSON.stringify(lay));
-    const small = await p.evaluate(() => [...document.querySelectorAll('#secTrip .pw-row, #secTrip .pw-best')].filter(x => x.getBoundingClientRect().height < 43.5).map(x => x.className));
-    check(`${dev} · cibles tactiles ≥ 44 pt (points du tour, meilleur départ)`, !small.length, JSON.stringify(small));
+    const small = await p.evaluate(() => [...document.querySelectorAll('#secTrip .pw-row, #secTrip .sl-col')].filter(x => x.getBoundingClientRect().height < 43.5).map(x => x.className));
+    check(`${dev} · cibles tactiles ≥ 44 pt (points du tour, heures du créneau)`, !small.length, JSON.stringify(small));
   }
   const cut = await p.evaluate(() => [...document.querySelectorAll('#secTrip .pw-pt b, #secTrip .pw-cols > span')].filter(x => x.scrollWidth > x.clientWidth + 1).map(x => x.textContent));
   check(`${dev} · tour du parcours lisible : noms des points et en-têtes de colonnes ni tronqués ni chevauchés`, !cut.length, JSON.stringify(cut));

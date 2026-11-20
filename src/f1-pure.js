@@ -79,6 +79,7 @@ const F1Pure = (() => {
   }
   // Meilleur départ : la MÊME lecture (trackConditions, mêmes seuils que le risque global) à −1 h, à l'heure prévue et à +1 h.
   // Conseillé seulement s'il fait baisser le niveau ; à égalité l'horaire prévu reste (jamais de déplacement pour rien).
+  // À niveau égal, le décalage le plus court l'emporte (20/11 : jamais 2 h plus tôt pour quelques dixièmes de millimètre), puis la pluie.
   function departureOptions(seq, { ageMin = null, shifts = [-1, 1] } = {}) {
     const read = h => {
       const s = h ? shiftSeq(seq, h) : seq, x = s && trackConditions(s, { ageMin });
@@ -92,7 +93,7 @@ const F1Pure = (() => {
     if (!planned.available) return null;
     const options = [...shifts.filter(h => h < 0).sort((a, b) => a - b).map(read), planned, ...shifts.filter(h => h > 0).sort((a, b) => a - b).map(read)];
     const better = options.filter(o => o.available && o.shift && o.level < planned.level)
-      .sort((a, b) => a.level - b.level || a.rain - b.rain || Math.abs(a.shift) - Math.abs(b.shift) || a.shift - b.shift)[0] || null;
+      .sort((a, b) => a.level - b.level || Math.abs(a.shift) - Math.abs(b.shift) || a.rain - b.rain || a.shift - b.shift)[0] || null;
     return { planned, options, best: better, needed: planned.level >= 1 };
   }
   function trackConditions(seq, { ageMin = null } = {}) {
