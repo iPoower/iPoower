@@ -88,7 +88,7 @@ const CONNECT=["'self'",'https://api.open-meteo.com','https://ensemble-api.open-
   'https://public.opendatasoft.com','https://api.bigdatacloud.net','https://router.project-osrm.org','https://nominatim.openstreetmap.org','https://data.geopf.fr',
   'https://api.rainviewer.com','https://ntfy.sh',...(DATA_BASE?[new URL(DATA_BASE).origin]:[]),...(DRIVE?['https://www.googleapis.com','https://accounts.google.com/gsi/']:[])];
 const CSP=[`default-src 'self'`,`script-src ${[...inline,deferred,recoveryScript].map(sha).join(' ')} '${webAssets.LEAFLET.js}'${DRIVE?' https://accounts.google.com/gsi/client https://apis.google.com':''}`,`script-src-attr 'none'`,`style-src 'self' 'unsafe-inline' https://fonts.googleapis.com${DRIVE?' https://accounts.google.com/gsi/style':''}`,
-  `font-src https://fonts.gstatic.com`,`img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://server.arcgisonline.com https://tilecache.rainviewer.com`,
+  `font-src https://fonts.gstatic.com`,`img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://server.arcgisonline.com https://tilecache.rainviewer.com https://data.geopf.fr`,
   `connect-src ${CONNECT.join(' ')}`,`worker-src 'self'`,`manifest-src 'self'`,`object-src 'none'`,`base-uri 'none'`,`form-action 'self'`,`frame-src ${DRIVE?'https://accounts.google.com/gsi/ https://docs.google.com':"'none'"}`].join('; ');
 w(OUT+'/index.html',page.replace('<head>','<head><meta http-equiv="Content-Security-Policy" content="'+CSP+'">'));
 w(OUT+'/recovery.html',require('./drive-recovery-build')(recoveryScript,CSP));

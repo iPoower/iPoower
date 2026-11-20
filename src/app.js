@@ -252,6 +252,7 @@ let TRIPCANCELTIMER = null;
 // @include app/trip-view.js
 // @include app/trip-day-view.js
 // @include app/loan-view.js
+// @include app/drive-view.js
 // @include app/calendar-origin-editor.js
 function tripContextLocs() {
   const n = USER_STORE.state.dayContext && USER_STORE.state.dayContext.nextDestination;
@@ -4675,6 +4676,9 @@ document.addEventListener('click', async e => {
   else if (a === 'loan-car') loanChoose('carId', a, t);
   else if (a === 'loan-dep') loanChoose('dep', a, t);
   else if (a === 'loan-ret') loanChoose('ret', a, t);
+  else if (a === 'drive-open') driveOpen();
+  else if (a === 'drive-close') driveClose();
+  else if (a === 'drive-follow') { DRIVE.follow = true; t.hidden = true; driveTick(); }
   else if (a === 'split-pick') { SPLIT.pick = parseInt(t.dataset.i, 10) || 0; renderTripSummary(); const back = document.querySelector('#secTripSummary [data-act=split-pick][data-i="' + SPLIT.pick + '"]'); if (back) back.focus({ preventScroll: true }); }
   else if (a === 'split-apply') { if (loanSplitApply(parseInt(t.dataset.i, 10) || 0)) commandFeedback(t, 'Répartition appliquée'); else commandFeedback(t, 'Répartition impossible : trajets changés'); }
   else if (a === 'loan-search') loanSearch(t);

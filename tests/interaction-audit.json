@@ -518,5 +518,17 @@
   "split-apply": {
     "suite": "e2e141-repartition-voitures.js",
     "result": "voiture active et voiture du trajet imprévu échangées selon la répartition choisie"
+  },
+  "drive-open": {
+    "suite": "e2e142-mode-en-direct.js",
+    "result": "mode « EN DIRECT » ouvert en plein écran, focus sur « ✕ »"
+  },
+  "drive-close": {
+    "suite": "e2e142-mode-en-direct.js",
+    "result": "mode « EN DIRECT » refermé, onglet Trajet intact"
+  },
+  "drive-follow": {
+    "suite": "e2e142-mode-en-direct.js",
+    "result": "carte recentrée sur la position après un déplacement manuel"
   }
 }

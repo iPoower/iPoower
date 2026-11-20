@@ -306,7 +306,7 @@ function renderTripSummary() {
     ${wall && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(depTs) && !(t && t === APP_CONTEXT.snapshot.activeTrip) ? '<div class="pw-count">' + cdSpan(depTs.slice(0, 16)) + '</div>' : ''}
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}${from ? `<small class="trip-origin-src">Départ : ${esc(shared.source)}</small>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(appCarLabel().text)}</span><span>${esc(route)}</span></div>
-    ${UI.view === 'trajet' ? '<a class="btn pri" href="#secTrip">Modifier le trajet</a>' : '<div class="chips"><button class="btn sm" data-act="view" data-v="trajet">Voir / modifier le trajet</button></div>'}`;
+    ${UI.view === 'trajet' ? '<div class="dv-launch"><button type="button" class="btn pri dv-go" data-act="drive-open">⤢ EN DIRECT</button><a class="btn" href="#secTrip">Modifier le trajet</a></div>' : '<div class="chips"><button class="btn sm" data-act="view" data-v="trajet">Voir / modifier le trajet</button></div>'}`;
 }
 async function tripSearch(kind, button) {
   tripCaptureForm();
@@ -372,7 +372,8 @@ function tripProgram(button) {
     destinationId: destKnown, destinationPoint: destKnown ? null : tripPoint(dest, 'manual-destination', dest.name), dep, carId: TRIP_FORM.carId });
   TRIP_FORM.bound = null; rebuild(); renderAll();
   if (!offlineNow()) refreshAll();
-  if (TRIP_FORM.when === 'now') setTimeout(() => { appRefreshContext(); const t = APP_CONTEXT.trips.find(x => x.key === key); if (t) liveStart(key); }, 0);
+  // Départ immédiat : suivi lancé puis mode « EN DIRECT » plein écran (maquette A validée le 20/11).
+  if (TRIP_FORM.when === 'now') setTimeout(() => { appRefreshContext(); const t = APP_CONTEXT.trips.find(x => x.key === key); if (t) { liveStart(key); if (typeof driveOpen === 'function') driveOpen(); } }, 0);
   else { TRIP_FORM.message = 'Trajet programmé.'; renderTripView(); }
   if (button) commandFeedback(button, TRIP_FORM.when === 'now' ? 'Trajet démarré' : 'Trajet programmé');
 }
