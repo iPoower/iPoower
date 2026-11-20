@@ -23,7 +23,7 @@ const BASE = {
   ],
   customs: [],
   work: { from: 'home', to: 'work', durMin: 180, dep: '07:30', ret: '17:30', days: [1, 2, 3, 4, 5] },
-  horizon: 24, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on', f1RaceEngineer: 0, f1TrackConditions: 0, f1TyreManagement: 0,
+  loans: [], horizon: 24, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on', f1RaceEngineer: 0, f1TrackConditions: 0, f1TyreManagement: 0,
     f1StrategyAB: 0, f1TheGarage: 0, f1TelemetryReplay: 0 }, road: { on: 1 },
   alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, tread: 1, treadgap: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
   cars: [
@@ -50,6 +50,7 @@ function deepMerge(d, s) {
   Object.keys(s).forEach(k => { if (!(k in o)) o[k] = s[k]; });
   return o;
 }
+// @include app/loan-core.js
 function normalize(saved, base) {
   const S = deepMerge(base, saved ? { ...saved, locs: undefined, cars: undefined, customs: undefined } : null);
   if (saved && Array.isArray(saved.locs)) S.locs = base.locs.map((d, i) => {
@@ -65,6 +66,8 @@ function normalize(saved, base) {
   (S.cars || []).forEach(c => { const m = c.maint || {}; c.maint = { rev: { d: '', km: null, everyKm: null, everyMonths: null, ...(m.rev || {}) }, ct: { d: '', next: '', ...(m.ct || {}) } }; });
   S.customs = saved && Array.isArray(saved.customs) ? saved.customs : clone(base.customs);
   S.calOrigins = CalendarOrigin.clean(saved && saved.calOrigins);
+  // Trajets imprévus (20/11) : liste fermée et bornée, voitures connues seulement (RcLoans).
+  S.loans = RcLoans.clean(saved && saved.loans, (S.cars || []).map(c => c.id), Date.now());
   return S;
 }
 // Migration étroite d'une ancienne identité véhicule déjà enregistrée.
@@ -248,6 +251,7 @@ let TRIPCANCELTIMER = null;
 // @include app/engineering-cockpit-view.js
 // @include app/trip-view.js
 // @include app/trip-day-view.js
+// @include app/loan-view.js
 // @include app/calendar-origin-editor.js
 function tripContextLocs() {
   const n = USER_STORE.state.dayContext && USER_STORE.state.dayContext.nextDestination;
@@ -4558,7 +4562,7 @@ function renderAll() {
 // déverrouillage, sans avertissement. Les contrôles qui écrivent sont désactivés avec un message visible, et les
 // gestionnaires refusent l'écriture (défense en profondeur). Jamais de report d'une saisie verrouillée dans le coffre.
 // Le mode « sans code » n'est PAS verrouillé (stockage en clair durable) : storeLocked(), pas LOCKED().
-const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key', 'slot-apply', 'slot-undo']);
+const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key', 'slot-apply', 'slot-undo', 'loan-save', 'loan-back']);
 const LOCKED_WRITE_MSG = 'Déverrouille l’app pour modifier : rien n’est enregistré tant que l’app est verrouillée';
 const LOCKED_WRITE_FREE = '#unlockForm, #twrcExpiryForm, #twrcExpiryOverlay';
 let lockedWriteObserver = null;
@@ -4665,6 +4669,15 @@ document.addEventListener('click', async e => {
   else if (a === 'slot-apply') { if (!tripSlotApply(parseInt(t.dataset.s, 10))) commandFeedback(t, 'Décalage impossible : trajet changé ou heure passée'); }
   else if (a === 'slot-undo') tripSlotUndo();
   else if (a === 'brief-play') { const k = t.dataset.key, snap = APP_CONTEXT.snapshot; tripBriefPlay(t, tripUnion().find(x => x.key === k) || [snap.activeTrip, snap.nextTrip].find(x => x && x.key === k) || null); }
+  // Trajets imprévus (quelqu'un part avec une voiture) : formulaire (états de vue), enregistrement et retour (seules écritures).
+  else if (a === 'loan-open') { LOAN_FORM.open = true; LOAN_FORM.message = ''; renderTripView(); const d = document.getElementById('loanDriver'); if (d) d.focus({ preventScroll: true }); }
+  else if (a === 'loan-cancel') { LOAN_FORM.open = false; LOAN_FORM.message = ''; renderTripView(); }
+  else if (a === 'loan-car' || a === 'loan-dep' || a === 'loan-ret') { loanCapture(); LOAN_FORM[{ 'loan-car': 'carId', 'loan-dep': 'dep', 'loan-ret': 'ret' }[a]] = t.dataset.v; LOAN_FORM.message = ''; renderTripView();
+    const back = document.querySelector('#secTrip [data-act="' + a + '"][data-v="' + CSS.escape(t.dataset.v) + '"]'); if (back) back.focus({ preventScroll: true }); }
+  else if (a === 'loan-search') loanSearch(t);
+  else if (a === 'loan-pick') { loanCapture(); const h = (LOAN_FORM.results || [])[parseInt(t.dataset.i, 10)]; if (h) { LOAN_FORM.hit = h; LOAN_FORM.query = h.name; LOAN_FORM.results = []; LOAN_FORM.message = ''; } renderTripView(); }
+  else if (a === 'loan-save') { if (loanSave()) commandFeedback(t, 'Trajet imprévu enregistré'); }
+  else if (a === 'loan-back') { if (!loanBack(t.dataset.id)) commandFeedback(t, 'Trajet déjà rentré ou introuvable'); }
   else if (a === 'brief-rate') { BRIEF.rate = t.dataset.v === '0.8' ? 0.8 : 1; renderTripView(); }
   // Onglet Trajet · tour du parcours : point sélectionné (état de vue, rien n'est écrit), focus rendu au bouton redessiné.
   else if (a === 'pw-point') {

@@ -215,6 +215,7 @@ function renderTripView() {
   // décrire le nouveau trajet à démarrer).
   const wall = tripWallHtml(radarTrip), strat = tripStrategyHtml(radarTrip, S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar()) + tripBriefHtml(radarTrip);
   const html = `<div class="mod-h"><h2>TRAJET · MUR DES STANDS</h2><span class="src obs">contexte partagé Race Control</span></div>
+    <div class="ln-slot">${loanFormHtml()}</div>
     <div class="pw-grid"><div class="pw-c">${wall}</div><div class="pw-s">${strat}</div><div class="pw-l"><div class="trip-form"><h3 class="pw-h">PARAMÈTRES DE COURSE</h3>
       <div class="trip-field"><span class="trip-label">Départ</span><div class="trip-origin-head"><b>${origin ? esc(origin.name) : 'Origine à choisir'}</b><span>${TRIP_FORM.originMode === rec.mode ? esc(rec.source) : 'choisi'}</span></div>
         <label class="sr-only" for="tripOriginSel">Modifier le départ</label><select id="tripOriginSel" data-trip-field="origin">${opts.map(([v,t]) => `<option value="${esc(v)}" ${TRIP_FORM.originMode === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
@@ -301,7 +302,7 @@ function renderTripSummary() {
   // Onglet Trajet : en-tête du mur des stands, compte à rebours du départ (même minuterie que les autres cartes).
   const depTs = n && n.dep || t && t.dep || '', wall = UI.view === 'trajet';
   el.classList.toggle('pw-head', wall);
-  el.innerHTML = (wall ? tripArrivalHtml() + tripDayHtml() : '') + `<div class="trip-summary-head"><span class="trip-label">${wall ? '' : '🧭 '}${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(depTs) || '—')}</b></div>
+  el.innerHTML = (wall ? tripArrivalHtml() + loanBannerHtml() + tripDayHtml() : '') + `<div class="trip-summary-head"><span class="trip-label">${wall ? '' : '🧭 '}${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(depTs) || '—')}</b></div>
     ${wall && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(depTs) && !(t && t === APP_CONTEXT.snapshot.activeTrip) ? '<div class="pw-count">' + cdSpan(depTs.slice(0, 16)) + '</div>' : ''}
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}${from ? `<small class="trip-origin-src">Départ : ${esc(shared.source)}</small>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(appCarLabel().text)}</span><span>${esc(route)}</span></div>

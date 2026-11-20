@@ -137,6 +137,14 @@ const test = async (name, fn) => { stage = name; await fn(); n++; console.log('�
       assert.equal(t.location.hash, '#view=analyse'); assert.equal((await cf.process(a.vs)).state, 'invalid'); assert.deepEqual(a.raw.dump(), disk); assert.deepEqual(stored(a.vs), values); }
     const t = target(link(fixture()) + '&' + 'cfg=' + encoded(fixture())), cf = CI.create(t); cf.capture(); assert.equal((await cf.process(a.vs)).state, 'invalid'); assert.equal(t.location.hash, '');
   });
+  await test('trajets imprévus (20/11) : liste valide acceptée, entrée hostile ou hors bornes refusée', async () => {
+    const ok = fixture(), loan = { id: 'loan-abc123', carId: ok.cars[1].id, driver: 'Conducteur B', from: { id: ok.locs[0].id, name: 'Lieu A', lat: 49.2, lon: 2.5 },
+      to: { name: 'Lieu C', lat: 49.6, lon: 2.9, address: '1 rue test' }, dep: '2026-11-16T14:05', ret: null, back: null, at: 1 };
+    ok.loans = [loan]; assert.equal(CI.validate(copy(ok)), true);
+    const bad = [{ ...loan, id: 'x' }, { ...loan, extra: 1 }, { ...loan, to: { ...loan.to, lat: 91 } }, { ...loan, dep: 'demain' }, { ...loan, driver: 'x'.repeat(41) }];
+    for (const b of bad) { const cfg = fixture(); cfg.loans = [b]; assert.equal(CI.validate(cfg), false, JSON.stringify(b).slice(0, 80)); }
+    const many = fixture(); many.loans = Array.from({ length: 11 }, (_, i) => ({ ...loan, id: 'loan-a' + String(i).padStart(4, '0') })); assert.equal(CI.validate(many), false);
+  });
   await test('structure hostile, champs inconnus, coordonnées/types invalides : refus complet, sans pollution de prototype', async () => {
     const list = [];
     const mutate = fn => { const cfg = fixture(); fn(cfg); list.push(cfg); };

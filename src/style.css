@@ -1701,3 +1701,23 @@ details.mod > summary h2 { color: var(--i20-blue); letter-spacing: .12em; }
 .bf-rate button { min-height: 44px; }
 /* Audit PC du 20/11 : pastille d'état de l'intelligence pneumatique jamais coupée entre deux lignes. */
 .ti-panel summary .ti-state { display: inline-block; white-space: nowrap; }
+/* Trajets imprévus (20/11/2026) : quelqu'un d'autre part avec une voiture. */
+.ln-slot { margin-bottom: 12px; }
+.ln-open { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; width: 100%; min-height: 48px; justify-content: flex-start; text-align: left; }
+.ln-open .sub { font-size: 12px; }
+.ln-form { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-top: 3px solid var(--i20-red); border-radius: 12px; background: var(--panel); }
+.ln-form input, .ln-form select { min-height: 44px; }
+.ln-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ln-h b { font: 700 16px var(--f-disp); letter-spacing: .14em; color: var(--i20-blue); }
+.ln-h span { font: 12px var(--f-mono); color: var(--fg2); }
+.ln-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.ln-actions .btn { min-height: 48px; }
+.ln-busy { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); border: 1px solid var(--i20-blue); }
+.ln-busy span { display: flex; flex-direction: column; min-width: 0; }
+.ln-busy b { font: 700 15px var(--f-disp); letter-spacing: .12em; color: var(--i20-blue); }
+.ln-busy small { font-size: 13px; }
+.ln-busy .btn { min-height: 44px; }
+.ln-advice { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; font-size: 13px; border: 1px solid var(--cau); background: var(--cau-soft); }
+.ln-advice[data-lv="2"] { border-color: var(--risk); background: var(--risk-soft); } .ln-advice[data-lv="3"] { border-color: var(--nogo); background: var(--nogo-soft); }
+.fr-card[data-src="loan"] .fr-n { border-style: dashed; }
+.rl-car.lent { opacity: .6; }

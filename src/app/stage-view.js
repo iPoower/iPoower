@@ -25,14 +25,16 @@ function stageChoiceHtml(t, shown) {
   const res = t && Array.isArray(t.seq) && t.seq.length ? TCARS().map(c => ({ c, w: windowAssess(c, t.seq, 'trip') }))
     .filter(r => r.w && Number.isFinite(r.w.score) && Number.isInteger(r.w.level)) : [];
   if (!res.length) return '';
-  const real = res.filter(r => !carProfile(r.c).generic);
+  // Voiture partie avec quelqu'un (trajet imprévu) : affichée, jamais conseillée.
+  const real = res.filter(r => !carProfile(r.c).generic && !(typeof loanBusy === 'function' && loanBusy(r.c.id)));
   // Conseillée : un niveau plus bas, ou au moins 5 points d'écart à niveau égal (même lecture que « Quelle voiture prendre ? »).
   const sorted = [...real].sort((a, b) => a.w.level - b.w.level || b.w.score - a.w.score), top = sorted[0], next = sorted[1];
   const best = top && next && (top.w.level < next.w.level || top.w.score - next.w.score >= 5) ? top : null;
   const card = r => {
     const gen = carProfile(r.c).generic, ty = STAGE_TYPE[effType(r.c)] || ['?', 'MONTE À CONFIRMER'], a = treadAxles(r.c.tire);
     const tread = a && (a.av != null || a.ar != null) ? 'AV ' + (a.av == null ? '—' : f1(a.av)) + ' · AR ' + (a.ar == null ? '—' : f1(a.ar)) + ' mm' : 'profondeur à mesurer';
-    return '<div class="rl-car' + (best === r ? ' best' : '') + '" data-car="' + esc(r.c.id) + '"><span class="rl-k">' + esc((r.c.short || r.c.name || 'Voiture').toUpperCase() + (best === r ? ' · CONSEILLÉE' : '')) + '</span>' +
+    const lent = typeof loanBusy === 'function' ? loanBusy(r.c.id) : null;
+    return '<div class="rl-car' + (best === r ? ' best' : '') + (lent ? ' lent' : '') + '" data-car="' + esc(r.c.id) + '"><span class="rl-k">' + esc((r.c.short || r.c.name || 'Voiture').toUpperCase() + (best === r ? ' · CONSEILLÉE' : lent ? ' · PARTIE AVEC ' + lent.driver.toUpperCase() : '')) + '</span>' +
       '<b class="rl-type">' + ty[1] + '</b><b class="rl-score" data-lv="' + (gen ? 'x' : r.w.level) + '">' + (gen ? 'aperçu' : r.w.score) + '</b><small>' + esc(tread) + '</small></div>';
   };
   const pick = best && (!shown || shown.id !== best.c.id || !appActiveCar())
