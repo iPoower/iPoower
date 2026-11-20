@@ -1605,3 +1605,19 @@ body { background: var(--bg); }
 .rl-go { background: var(--i20-blue); color: var(--on-i20-blue); }
 .pw-l .trip-form .btn.pri.trip-main { background: var(--i20-blue); border-color: var(--i20-blue); color: var(--on-i20-blue); }
 #secTripSummary.pw-head { border-bottom-color: var(--i20-red); }
+/* Kit « Rallye i20 N » partout (étape 1, 20/11/2026) : mêmes briques visuelles dans tous les onglets (Météo, Pneus, Trajet,
+   Garage, Analyse, Paramètres). Cartes sombres à liseré rouge sombre, titres de section façon carnet de rallye (bleu i20 N,
+   capitales condensées), drapeaux et repères arrondis, choix actifs en bleu. Style seulement : niveaux et textes inchangés. */
+.mod { border-radius: 12px; border-top: 3px solid var(--i20-red); }
+.mod-h { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.mod-h h2 { color: var(--i20-blue); font-size: 18px; letter-spacing: .12em; }
+details.mod > summary h2 { color: var(--i20-blue); letter-spacing: .12em; }
+.src { border-radius: 5px; }
+.verdict { border-radius: 10px; }
+.note, .frost { border-radius: 8px; }
+.decision-core { border-radius: 12px; }
+.chip { border-radius: 6px; }
+.chip[aria-pressed="true"], .chip.on { background: var(--i20-blue); border-color: var(--i20-blue); color: var(--on-i20-blue); }
+.seg button[aria-pressed="true"] { background: var(--i20-blue); color: var(--on-i20-blue); }
+.btn { border-radius: 8px; }
+.cmpc, .rl-car, .pw-tower, .pw-strat { border-radius: 10px; }
