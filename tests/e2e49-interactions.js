@@ -218,7 +218,13 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
         await click('[data-act=demo-sel]'); assert.equal(await p.evaluate(() => DEMO.on), true);
         await p.selectOption('#demoScn', 'pluie'); assert.equal(await p.evaluate(() => DEMO.scn), 'pluie');
         await click('[data-act=demo-off]'); await s.settle(8); assert.equal(await p.evaluate(() => DEMO.on), false);
-        await click('[data-act=reset]'); await s.settle(8); assert.equal(await p.evaluate(() => S.horizon), await p.evaluate(() => DEFAULTS.horizon));
+        // Recette R3 (20/11) : la confirmation est ACCEPTÉE (sans quoi le navigateur de test la refuse et rien n'est réinitialisé ;
+        // l'ancienne assertion passait par hasard tant que l'horizon choisi plus haut, 12 h, était aussi la valeur par défaut).
+        let asked = ''; p.once('dialog', dialog => { asked = dialog.message(); dialog.accept(); });
+        await click('[data-act=reset]'); await s.settle(8);
+        assert.match(asked, /Réinitialiser tous les réglages/);
+        assert.equal(await p.evaluate(() => S.horizon), await p.evaluate(() => DEFAULTS.horizon));
+        assert.notEqual(await p.evaluate(() => DEFAULTS.horizon), 12, 'le choix « 12 h » fait plus haut doit être effacé par la réinitialisation');
       });
       assert.deepEqual(s.errors, []); await s.c.close();
     }
