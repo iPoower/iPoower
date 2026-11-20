@@ -510,5 +510,13 @@
   "loan-back": {
     "suite": "e2e140-trajet-imprevu.js",
     "result": "prêt clos, bandeau retiré, voiture libre"
+  },
+  "split-pick": {
+    "suite": "e2e141-repartition-voitures.js",
+    "result": "répartition sélectionnée (aucune écriture), focus conservé"
+  },
+  "split-apply": {
+    "suite": "e2e141-repartition-voitures.js",
+    "result": "voiture active et voiture du trajet imprévu échangées selon la répartition choisie"
   }
 }

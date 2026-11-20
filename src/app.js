@@ -4562,7 +4562,7 @@ function renderAll() {
 // déverrouillage, sans avertissement. Les contrôles qui écrivent sont désactivés avec un message visible, et les
 // gestionnaires refusent l'écriture (défense en profondeur). Jamais de report d'une saisie verrouillée dans le coffre.
 // Le mode « sans code » n'est PAS verrouillé (stockage en clair durable) : storeLocked(), pas LOCKED().
-const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key', 'slot-apply', 'slot-undo', 'loan-save', 'loan-back']);
+const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key', 'slot-apply', 'slot-undo', 'loan-save', 'loan-back', 'split-apply']);
 const LOCKED_WRITE_MSG = 'Déverrouille l’app pour modifier : rien n’est enregistré tant que l’app est verrouillée';
 const LOCKED_WRITE_FREE = '#unlockForm, #twrcExpiryForm, #twrcExpiryOverlay';
 let lockedWriteObserver = null;
@@ -4675,6 +4675,8 @@ document.addEventListener('click', async e => {
   else if (a === 'loan-car') loanChoose('carId', a, t);
   else if (a === 'loan-dep') loanChoose('dep', a, t);
   else if (a === 'loan-ret') loanChoose('ret', a, t);
+  else if (a === 'split-pick') { SPLIT.pick = parseInt(t.dataset.i, 10) || 0; renderTripSummary(); const back = document.querySelector('#secTripSummary [data-act=split-pick][data-i="' + SPLIT.pick + '"]'); if (back) back.focus({ preventScroll: true }); }
+  else if (a === 'split-apply') { if (loanSplitApply(parseInt(t.dataset.i, 10) || 0)) commandFeedback(t, 'Répartition appliquée'); else commandFeedback(t, 'Répartition impossible : trajets changés'); }
   else if (a === 'loan-search') loanSearch(t);
   else if (a === 'loan-pick') { loanCapture(); const h = (LOAN_FORM.results || [])[parseInt(t.dataset.i, 10)]; if (h) { LOAN_FORM.hit = h; LOAN_FORM.query = h.name; LOAN_FORM.results = []; LOAN_FORM.message = ''; } renderTripView(); }
   else if (a === 'loan-save') { if (loanSave()) commandFeedback(t, 'Trajet imprévu enregistré'); }

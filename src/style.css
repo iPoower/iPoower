@@ -1721,3 +1721,19 @@ details.mod > summary h2 { color: var(--i20-blue); letter-spacing: .12em; }
 .ln-advice[data-lv="2"] { border-color: var(--risk); background: var(--risk-soft); } .ln-advice[data-lv="3"] { border-color: var(--nogo); background: var(--nogo-soft); }
 .fr-card[data-src="loan"] .fr-n { border-style: dashed; }
 .rl-car.lent { opacity: .6; }
+/* Répartition des voitures (20/11/2026) : « Qui prend quelle voiture ? ». */
+.sp-box { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; padding: 12px; border: 1px solid var(--line); border-top: 3px solid var(--i20-red); border-radius: 12px; background: var(--panel); }
+.sp-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.sp-h b { font: 700 16px var(--f-disp); letter-spacing: .14em; color: var(--i20-blue); }
+.sp-h span { font: 12px var(--f-mono); color: var(--fg2); }
+.sp-warn { margin: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--risk); background: var(--risk-soft); font-size: 13px; }
+.sp-opt { display: flex; flex-direction: column; gap: 6px; width: 100%; min-height: 48px; padding: 10px 12px; text-align: left; border-radius: 10px; border: 1px solid var(--line2); background: var(--panel2); color: inherit; font: inherit; cursor: pointer; }
+.sp-opt[aria-pressed="true"] { border: 2px solid var(--i20-blue); }
+.sp-top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.sp-top b { font: 800 15px var(--f-disp); letter-spacing: .1em; }
+.sp-top span, .sp-grid b { font: 600 12px var(--f-mono); }
+.sp-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; font-size: 14px; }
+.sp-opt small { font: 12px var(--f-mono); color: var(--fg2); }
+.sp-box [data-lv="0"] { color: var(--go-t); } .sp-box [data-lv="1"] { color: var(--cau-t); } .sp-box [data-lv="2"] { color: var(--risk-t); } .sp-box [data-lv="3"] { color: var(--nogo-t); }
+.sp-apply { min-height: 50px; border: 0; border-radius: 10px; background: var(--i20-blue); color: var(--on-i20-blue); font: 800 16px var(--f-disp); letter-spacing: .06em; cursor: pointer; }
+.sp-apply:disabled { background: var(--panel2); color: var(--fg2); cursor: default; }

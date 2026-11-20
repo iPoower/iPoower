@@ -20,7 +20,9 @@ function loanTrips() {
     const l0 = { k: 'local', from: g.from, to: g.to, navTo: g.to, dep: g.dep, arr: addMin(g.dep, 30), min: 30, pts: [], manual: true };
     const ready = typeof tripCancelRouteLeg === 'function' ? tripCancelRouteLeg({ id: g.key, s: g.dep, manual: true }, { ...l0, originPending: true }) : l0;
     const r = !ready.originPending && typeof legEval === 'function' ? legEval(ready) : {};
-    const res = Array.isArray(r.res) ? r.res.filter(z => z && z.c && z.c.id === x.carId) : [];
+    // Verdict pour la voiture PRÊTÉE (legEval n'évalue que la voiture active de l'utilisateur quand elle est choisie).
+    const car = loanCar(x.carId), w = car && Array.isArray(r.seq) && r.seq.length && typeof windowAssess === 'function' ? windowAssess(car, r.seq, 'trip') : null;
+    const res = w ? [{ c: car, w }] : [];
     out.push({ src: 'loan', key: g.key, loanId: x.id, leg: g.k, driver: x.driver, carId: x.carId, back: x.back, dep: g.dep,
       arr: Number.isFinite(ready.min) && !ready.originPending ? addMin(g.dep, ready.min) : null, l: ready,
       from: g.from.name, to: g.to.name, name: (g.k === 'ret' ? 'Retour · ' : 'Aller · ') + x.driver,
@@ -121,4 +123,59 @@ function loanBack(id) {
 function loanChoose(field, act, t) {
   loanCapture(); LOAN_FORM[field] = t.dataset.v; LOAN_FORM.message = ''; renderTripView();
   const back = document.querySelector('#secTrip [data-act="' + act + '"][data-v="' + CSS.escape(t.dataset.v) + '"]'); if (back) back.focus({ preventScroll: true });
+}
+
+// Répartition des voitures (20/11, maquette validée) : ton prochain trajet et un trajet imprévu le même jour, aux heures qui se
+// chevauchent. Les deux répartitions possibles sont évaluées avec la météo de CHAQUE parcours (windowAssess, mode trajet) :
+// conseil = pire niveau le plus bas, puis somme des niveaux, puis meilleur total d'indice pneus. Rien n'est appliqué sans appui.
+const SPLIT = { key: null, pick: null };
+function loanSplit() {
+  const snap = APP_CONTEXT.snapshot || {}, u = snap.activeTrip || snap.nextTrip, mine = appActiveCar() || appDisplayedCar && appDisplayedCar();
+  if (!u || !u.dep || !Array.isArray(u.seq) || !u.seq.length || !mine) return null;
+  const uEnd = u.arr || RcLoans.addMinutes(u.dep.slice(0, 16), 60);
+  const legs = loanTrips().filter(t => t.leg === 'go' && !t.back && t.dep.slice(0, 10) === u.dep.slice(0, 10));
+  const x = legs.map(t => ({ t, loan: loanList().find(l => l.id === t.loanId) })).find(({ t, loan }) => loan &&
+    t.dep < uEnd && (loan.ret || RcLoans.addMinutes(t.dep, 12 * 60)) > u.dep.slice(0, 16));
+  if (!x || !Array.isArray(x.t.seq) || !x.t.seq.length) return null;
+  const other = S.cars.find(c => c.id !== mine.id && hasTires(c)), loanCarNow = loanCar(x.loan.carId);
+  if (!other || !loanCarNow) return null;
+  const pairs = [[mine, loanCarNow.id === mine.id ? other : loanCarNow], [loanCarNow.id === mine.id ? other : loanCarNow, mine]];
+  const opts = pairs.map(([a, b]) => {
+    const wa = windowAssess(a, u.seq, 'trip'), wb = windowAssess(b, x.t.seq, 'trip');
+    if (!wa || !wb || !Number.isInteger(wa.level) || !Number.isInteger(wb.level)) return null;
+    return { me: a, them: b, wa, wb, worst: Math.max(wa.level, wb.level), sum: wa.level + wb.level, score: (wa.score || 0) + (wb.score || 0) };
+  });
+  if (opts.some(o => !o)) return null;
+  const best = opts.slice().sort((p, q) => p.worst - q.worst || p.sum - q.sum || q.score - p.score)[0];
+  const key = u.key + '|' + x.loan.id;
+  if (SPLIT.key !== key) { SPLIT.key = key; SPLIT.pick = null; }
+  return { u, t: x.t, loan: x.loan, opts, best, double: loanCarNow.id === mine.id,
+    applied: opts.findIndex(o => o.me.id === mine.id && o.them.id === x.loan.carId) };
+}
+function loanSplitHtml() {
+  let sp = null; try { sp = loanSplit(); } catch (e) { sp = null; }
+  if (!sp) return '';
+  const names = ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'], nm = c => c.short || c.name || c.id;
+  const pick = SPLIT.pick != null ? SPLIT.pick : sp.opts.indexOf(sp.best);
+  const why = o => { const w = o.wa.level >= o.wb.level ? o.wa : o.wb, who = o.wa.level >= o.wb.level ? 'ton trajet' : 'le trajet de ' + sp.loan.driver;
+    return w.level ? 'Point le plus délicat : ' + who + ' (' + names[w.level].toLowerCase() + ')' : 'Aucun signal notable sur les deux trajets'; };
+  const row = (o, i) => '<button type="button" class="sp-opt" data-act="split-pick" data-i="' + i + '" aria-pressed="' + (i === pick) + '">' +
+    '<span class="sp-top"><b>' + (o === sp.best ? 'CONSEILLÉ' : 'AUTRE CHOIX') + (i === sp.applied ? ' · ACTUEL' : '') + '</b><span data-lv="' + o.worst + '">PIRE RISQUE : ' + names[o.worst] + '</span></span>' +
+    '<span class="sp-grid"><span>Toi · ' + esc(tripHm(sp.u.dep)) + '</span><b data-lv="' + o.wa.level + '">' + esc(nm(o.me)) + ' · ' + names[o.wa.level] + '</b>' +
+    '<span>' + esc(sp.loan.driver) + ' · ' + esc(tripHm(sp.t.dep)) + '</span><b data-lv="' + o.wb.level + '">' + esc(nm(o.them)) + ' · ' + names[o.wb.level] + '</b></span>' +
+    '<small>' + esc(why(o)) + '</small></button>';
+  const sel = sp.opts[pick], same = pick === sp.applied;
+  return '<section class="sp-box" aria-label="Qui prend quelle voiture"><div class="sp-h"><b>QUI PREND QUELLE VOITURE ?</b><span>2 trajets en même temps</span></div>' +
+    (sp.double ? '<p class="sp-warn" role="status">La même voiture est prévue pour les deux trajets : choisis une répartition.</p>' : '') +
+    sp.opts.map(row).join('') +
+    '<button type="button" class="sp-apply" data-act="split-apply" data-i="' + pick + '"' + (same ? ' disabled' : '') + '>' +
+    (same ? 'RÉPARTITION ACTUELLE' : 'APPLIQUER : TOI ' + esc(nm(sel.me).toUpperCase()) + ' · ' + esc(sp.loan.driver.toUpperCase()) + ' ' + esc(nm(sel.them).toUpperCase())) + '</button>' +
+    '<p class="sub">Rien n’est appliqué sans ton appui. Calcul : météo de chaque parcours et pneus de chaque voiture.</p></section>';
+}
+function loanSplitApply(i) {
+  let sp = null; try { sp = loanSplit(); } catch (e) { sp = null; }
+  const o = sp && sp.opts[i]; if (!o) return false;
+  if (appSetCar(o.me.id) === false) return false;
+  loanSaveList(loanList().map(x => x.id === sp.loan.id ? { ...x, carId: o.them.id } : x));
+  SPLIT.pick = null; rebuild(); renderAll(); return true;
 }
