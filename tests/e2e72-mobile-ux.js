@@ -91,7 +91,15 @@ async function run(browser, width, dev) {
         const selector = root[view] + ' details[data-ux="' + key + '"]';
         await check(label + ' · ouvrir ' + key + ', actualiser sans perdre le focus', async () => {
           // Repli imbriqué (ex. dans « Laboratoire pneus ») : l'utilisateur ouvre d'abord le repli parent.
-          await p.locator(selector).evaluate(x => { for (let d = x.parentElement.closest('details'); d; d = d.parentElement.closest('details')) d.open = true; }); await s.settle(1);
+          // Relu dans la page au moment de l'action : un rendu peut remplacer le repli entre la recherche et l'évaluation
+          // (WebKit, 20/11/2026 : élément détaché, parentElement nul). Trois essais bornés, jamais d'attente infinie.
+          let opened = false;
+          for (let k = 0; k < 3 && !opened; k++) {
+            opened = await p.evaluate(sel => { const x = document.querySelector(sel); if (!x || !x.isConnected) return false;
+              for (let d = x.parentElement && x.parentElement.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true; return true; }, selector);
+            await s.settle(1);
+          }
+          assert(opened, 'repli introuvable après trois essais : ' + selector);
           await press(selector + ' > summary'); await s.settle(1);
           assert(await p.locator(selector).evaluate(x => x.open)); await overflow(p);
           await p.locator(selector + ' > summary').focus();
