@@ -474,5 +474,41 @@
   "brief-rate": {
     "suite": "e2e137-trajet-feuille-creneau-briefing.js",
     "result": "débit de lecture du briefing choisi"
+  },
+  "loan-open": {
+    "suite": "e2e140-trajet-imprevu.js",
+    "result": "formulaire « Trajet imprévu » ouvert, focus sur le conducteur"
+  },
+  "loan-cancel": {
+    "suite": "e2e140-trajet-imprevu.js",
+    "result": "formulaire refermé sans écriture"
+  },
+  "loan-car": {
+    "suite": "e2e140-trajet-imprevu.js",
+    "result": "voiture du trajet imprévu choisie, saisie conservée"
+  },
+  "loan-dep": {
+    "suite": "e2e140-trajet-imprevu.js",
+    "result": "départ maintenant ou à une heure"
+  },
+  "loan-ret": {
+    "suite": "e2e140-trajet-imprevu.js",
+    "result": "retour à une heure prévue ou à confirmer"
+  },
+  "loan-search": {
+    "suite": "e2e140-trajet-imprevu.js",
+    "result": "recherche d’adresse de la destination"
+  },
+  "loan-pick": {
+    "suite": "e2e140-trajet-imprevu.js",
+    "result": "destination choisie dans les résultats"
+  },
+  "loan-save": {
+    "suite": "e2e140-trajet-imprevu.js",
+    "result": "trajet imprévu enregistré (ou refusé avec message si incomplet)"
+  },
+  "loan-back": {
+    "suite": "e2e140-trajet-imprevu.js",
+    "result": "prêt clos, bandeau retiré, voiture libre"
   }
 }

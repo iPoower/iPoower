@@ -89,7 +89,7 @@ const ConfigImport = (() => {
       optional(v, 'odo', x => boundedArray(x, 60, r => fields(r, ['d', 'km']) && date(r.d) && r.d !== '' && number(r.km, 0, 10000000))) &&
       optional(v, 'photo', x => text(x, 96000) && /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(x));
   }
-  const ROOT_FIELDS = ['v', 'configured', 'locs', 'customs', 'work', 'cars', 'dept', 'horizon', 'rainThr', 'alerts', 'flags', 'gpsAuto', 'road', 'calib', 'journal', 'edits', 'calOrigins', 'calDirect', 'ntfy'];
+  const ROOT_FIELDS = ['v', 'configured', 'locs', 'customs', 'work', 'cars', 'dept', 'horizon', 'rainThr', 'alerts', 'flags', 'gpsAuto', 'road', 'calib', 'journal', 'edits', 'calOrigins', 'calDirect', 'ntfy', 'loans'];
   const ALERTS = ['t7', 't5s', 't0', 'ice', 'snow', 'rain', 'fog', 'vis', 'frost', 'drop', 'pre', 'press', 'age', 'glare', 'mont', 'vigi', 'ens', 'rain15'];
   const FLAGS = ['weatherEvidenceV2', 'f1RaceEngineer', 'f1TrackConditions', 'f1TyreManagement', 'f1StrategyAB', 'f1TheGarage', 'f1TelemetryReplay'];
   function journal(v) {
@@ -103,6 +103,15 @@ const ConfigImport = (() => {
         (r.choice === null || fields(r.choice, ['kind', 'placeId', 'point']) && ['home', 'saved', 'address', 'gps'].includes(r.choice.kind) &&
           optional(r.choice, 'placeId', x => text(x, 120)) && optional(r.choice, 'point', p => fields(p, ['lat', 'lon', 'name', 'address', 'provider', 'precision']) &&
             number(p.lat, -90, 90) && number(p.lon, -180, 180) && stringFields(p, ['name', 'address', 'provider', 'precision'])))));
+  }
+  // Trajets imprévus (20/11/2026) : liste fermée, 10 au plus ; chaque champ typé et borné (voir RcLoans dans l'app).
+  function loans(v) {
+    const ts = x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(x);
+    const pt = p => fields(p, ['id', 'name', 'lat', 'lon', 'address']) && number(p.lat, -90, 90) && number(p.lon, -180, 180) && text(p.name, 80) &&
+      optional(p, 'id', x => text(x, 120)) && optional(p, 'address', x => text(x, 160));
+    return boundedArray(v, 10, l => fields(l, ['id', 'carId', 'driver', 'from', 'to', 'dep', 'ret', 'back', 'at']) && typeof l.id === 'string' && /^loan-[a-z0-9]{4,32}$/.test(l.id) &&
+      text(l.carId, 120) && text(l.driver, 40) && pt(l.from) && pt(l.to) && ts(l.dep) && (l.ret === null || ts(l.ret)) &&
+      (l.back === null || number(l.back, 0, 1e15)) && number(l.at, 0, 1e15));
   }
   function validate(v) {
     try {
@@ -124,7 +133,7 @@ const ConfigImport = (() => {
         optional(v, 'journal', journal) && optional(v, 'calib', x => boundedArray(x, 30, r => fields(r, ['t', 'loc', 'kind', 'Tr', 'T']) &&
           text(r.t, 40) && text(r.loc, 120) && ['ice', 'wet', 'dry'].includes(r.kind) && (r.Tr === null || number(r.Tr, -100, 150)) && number(r.T, -100, 100))) &&
         optional(v, 'edits', x => obj(x) && Object.entries(x).every(([k, a]) => ROOT_FIELDS.includes(k.split('.')[0]) && flag(a))) &&
-        optional(v, 'calOrigins', calOrigins) && optional(v, 'calDirect', x => obj(x) && Object.entries(x).every(([k, a]) => text(k, 120) && flag(a))) &&
+        optional(v, 'calOrigins', calOrigins) && optional(v, 'loans', loans) && optional(v, 'calDirect', x => obj(x) && Object.entries(x).every(([k, a]) => text(k, 120) && flag(a))) &&
         new TextEncoder().encode(JSON.stringify(v)).length <= MAX_BYTES;
     } catch (e) { return false; }
   }

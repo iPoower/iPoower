@@ -43,11 +43,15 @@ function tripLv(t) {
 }
 function tripDayList() {
   const now = liveNow(), today = now.slice(0, 10), done = USER_STORE.state.done || {};
-  const list = tripUnion(tripTodayPast(now)).filter(t => t.dep.slice(0, 10) === today).sort((a, b) => a.dep.localeCompare(b.dep));
+  const loans = typeof loanTrips === 'function' ? loanTrips() : [];
+  const list = tripUnion([...tripTodayPast(now), ...loans]).filter(t => t.dep.slice(0, 10) === today).sort((a, b) => a.dep.localeCompare(b.dep));
   let nextSeen = false;
   return list.map((t, i) => {
     const d = done[t.key], liveDone = LIVE.done && LIVE.done[t.key];
     let state = 'later';
+    // Trajet d'un autre conducteur (prêt) : jamais « PROCHAINE » de l'utilisateur ; en cours entre départ et arrivée estimée, sans GPS.
+    if (t.src === 'loan') return { t, n: i + 1, state: t.back ? 'done' : t.dep <= now && (!t.arr || t.arr > now) ? 'live' : t.dep <= now ? 'past' : 'later',
+      at: t.back || null, risk: tripLv(t), size: tripKmMin(t) };
     if (LIVE.key === t.key && LIVE.phase === 'active') state = 'live';
     else if (d || liveDone) state = d && /annul/i.test(String(d.reason || d.how || '')) ? 'cancel' : 'done';
     else if (t.dep <= now) state = 'past';
@@ -62,12 +66,14 @@ function tripDayHtml() {
   const est = list.some(x => x.size.est || !Number.isFinite(x.size.km));
   const ended = list.filter(x => ['done', 'cancel', 'past'].includes(x.state)).length, ahead = list.filter(x => ['next', 'later', 'live'].includes(x.state));
   const worst = ahead.filter(x => x.risk).sort((a, b) => b.risk.lv - a.risk.lv || a.t.dep.localeCompare(b.t.dep))[0];
-  const stateTxt = x => x.state === 'live' ? 'EN COURS'
+  const stateTxt = x => x.t.src === 'loan' ? (x.state === 'live' ? 'EN COURS · ' + esc(x.t.driver.toUpperCase()) + (x.t.arr ? ' · ARRIVÉE ESTIMÉE ' + tripHm(x.t.arr) : '') + ' · SANS GPS'
+      : x.state === 'done' ? '✓ RENTRÉ·E' + (x.at ? ' À ' + hmLocal(x.at) : '') : x.state === 'past' ? 'PARTI·E · ' + esc(x.t.driver.toUpperCase()) : 'PRÉVU · ' + esc(x.t.driver.toUpperCase()))
+    : x.state === 'live' ? 'EN COURS'
     : x.state === 'done' ? '✓ ARRIVÉE CONFIRMÉE' + (x.at ? ' À ' + hmLocal(x.at) : '')
     : x.state === 'cancel' ? 'ANNULÉE'
     : x.state === 'past' ? 'PARTIE · ARRIVÉE NON CONFIRMÉE'
     : x.state === 'next' ? 'PROCHAINE · ' + cdSpan(x.t.dep.slice(0, 16)) : 'PRÉVUE';
-  const src = t => t.src === 'work' ? 'domicile-travail' : t.src === 'cal' ? 'agenda' : 'saisi';
+  const src = t => t.src === 'loan' ? t.driver + ' · ' + loanCarName(t.carId) : t.src === 'work' ? 'domicile-travail' : t.src === 'cal' ? 'agenda' : 'saisi';
   const rows = [];
   list.forEach((x, i) => {
     const prev = list[i - 1];
@@ -79,14 +85,14 @@ function tripDayHtml() {
     const detail = open ? '<div class="fr-more"><span>' + esc(x.risk ? (x.risk.why || 'Aucune cause identifiée sur ce trajet') : 'Verdict indisponible : météo du parcours pas encore reçue.') + '</span>' +
       '<small>' + esc((t.arr ? 'arrivée prévue ' + tripHm(t.arr) : '') + (t.name ? (t.arr ? ' · ' : '') + t.name : '')) + '</small>' +
       (future ? '<button type="button" class="fr-go" data-act="fr-focus" data-key="' + esc(t.key) + '"><span>Voir dans le mur des stands</span><span aria-hidden="true">→</span></button>' : '') + '</div>' : '';
-    rows.push('<div class="fr-card" data-state="' + x.state + '"><button type="button" class="fr-head" data-act="fr-open" data-key="' + esc(t.key) + '" aria-expanded="' + open + '">' +
+    rows.push('<div class="fr-card" data-state="' + x.state + '" data-src="' + esc(t.src || '') + '"><button type="button" class="fr-head" data-act="fr-open" data-key="' + esc(t.key) + '" aria-expanded="' + open + '">' +
       '<span class="fr-n">ES ' + x.n + '</span><span class="fr-r"><b>' + esc(route) + '</b><small>' + esc(meta) + '</small></span>' +
       '<span class="fr-t"><b>' + esc(tripHm(t.dep)) + '</b><small data-lv="' + (x.risk ? x.risk.lv : 'x') + '">' + (x.risk ? TRIP_LV_NAMES[x.risk.lv] : '—') + '</small></span></button>' +
-      '<span class="fr-state">' + stateTxt(x) + '</span>' + detail + '</div>');
+      '<span class="fr-state">' + stateTxt(x) + '</span>' + (typeof loanAdviceHtml === 'function' ? loanAdviceHtml(t) : '') + detail + '</div>');
   });
   const today = liveNow().slice(0, 10);
   return '<section class="fr-sheet" aria-label="Feuille de route du jour"><div class="fr-plate"><div class="fr-band"><span>FEUILLE DE ROUTE</span><span>' + esc(fmtDay(today).toUpperCase()) + '</span></div>' +
-    '<div class="fr-sum"><b>' + list.length + ' SPÉCIALES' + (km > 0 ? ' · ' + (est ? '~' : '') + f0(km) + ' KM' : '') + '</b>' +
+    '<div class="fr-sum"><b>' + list.length + ' SPÉCIALES' + (new Set(list.map(x => x.t.carId || '')).size > 1 && list.some(x => x.t.src === 'loan') ? ' · ' + new Set(list.map(x => x.t.carId)).size + ' VOITURES' : km > 0 ? ' · ' + (est ? '~' : '') + f0(km) + ' KM' : '') + '</b>' +
     '<span>' + [min > 0 ? '~' + tripDur(min) + ' de route' : '', ended ? ended + ' passée' + (ended > 1 ? 's' : '') : '', ahead.length ? ahead.length + ' à venir' : ''].filter(Boolean).join(' · ') + '</span>' +
     (worst && worst.risk.lv >= 1 ? '<span class="fr-worst" data-lv="' + worst.risk.lv + '">ÉTAPE LA PLUS DÉLICATE : ES ' + worst.n + ' · ' + TRIP_LV_NAMES[worst.risk.lv] + '</span>' : '') +
     '</div></div><div class="fr-list">' + rows.join('') + '</div><p class="sub">Lecture seule : la feuille ne crée ni ne modifie aucun trajet.</p></section>';
@@ -94,7 +100,7 @@ function tripDayHtml() {
 // Trajet affiché dans le mur des stands quand une spéciale à venir est choisie dans la feuille (état de vue, rien n'est écrit).
 function tripDayFocusTrip() {
   if (!FR.focus) return null;
-  const now = liveNow(), t = tripUnion().find(x => x.key === FR.focus && x.dep > now);
+  const now = liveNow(), t = tripUnion(typeof loanTrips === 'function' ? loanTrips() : []).find(x => x.key === FR.focus && x.dep > now);
   if (!t) FR.focus = null;
   return t || null;
 }
