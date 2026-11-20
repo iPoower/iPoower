@@ -48,6 +48,8 @@ async function run(b, dev) {
   check(`${dev} · stratégie : monte été de la voiture A ; comparatif seulement à partir de deux voitures évaluées sur ce trajet`, !!r.compound && r.compound.t === 'summer' && r.res >= 1 && r.bars === (r.res >= 2 ? r.res : 0), JSON.stringify({ c: r.compound, bars: r.bars, res: r.res }));
   check(`${dev} · meilleur départ (créneau de départ, 20/11) : 05:30 sélectionné et marqué « MIEUX », vigilance au lieu de prudence ; ancien lien vers Météo retiré`, /05:30/.test(r.best) && r.bestTag === 'MIEUX' && /VIGILANCE/.test(r.bestDetail) && /Départ 1 h 00 plus tôt/.test(r.bestDetail) && !r.oldBest, r.best + ' | ' + r.bestTag + ' | ' + r.bestDetail);
   const day = await p.evaluate(() => ({ slot: (document.querySelector('#secTrip .sl-h span') || {}).textContent || '', brief: (document.querySelector('#secTrip .bf-h span') || {}).textContent || '' }));
+  const titleH = await p.evaluate(() => { const b = document.querySelector('#secTrip .sl-h b'); return b ? Math.round(b.getBoundingClientRect().height) : 0; });
+  check(`${dev} · titre « CRÉNEAU DE DÉPART » sur une seule ligne, même avec le jour affiché`, titleH > 0 && titleH < 30, String(titleH));
   check(`${dev} · trajet d’un autre jour : créneau et briefing nomment le jour (16/11), pas seulement l’heure`, /16\/11/.test(day.slot) && /départ .*16\/11 06:30/.test(day.brief), JSON.stringify(day));
   check(`${dev} · paramètres de course et « CHECK DES STANDS » conservés (formulaire intact)`, r.form && /CHECK DES STANDS/.test(r.check) && /PARAMÈTRES DE COURSE/.test(r.text), r.check);
   check(`${dev} · aucun « undefined », « NaN » ni « null » affiché`, !/undefined|NaN|\bnull\b/.test(r.text + r.head), r.text.slice(0, 300));
