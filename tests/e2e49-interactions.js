@@ -136,8 +136,19 @@ async function check(name, fn) { step = name; await fn(); count++; console.log('
       });
       await check(tag + ' · diagnostic sépare application chargée et version serveur', async () => { assert.match(await p.locator('#diagBox').innerText(), /Application chargée/); assert.match(await p.locator('#diagBox').innerText(), /Version publiée/); assert.equal(await p.evaluate(() => window.TWRC_BUILD.length), 12); });
       await check(tag + ' · compteur vide puis compteur nul et valide', async () => {
-        await click('[data-act=odo][data-i="0"]'); assert.match(await p.locator('[data-act=odo][data-i="0"]').innerText(), /Saisis/);
-        for (const km of [0, 42150]) { await p.fill('#odo-0', String(km)); await click('[data-act=odo][data-i="0"]'); assert.equal(await p.evaluate(() => lastOdo(S.cars[0]).km), km); assert.equal(await p.locator('[data-act=odo][data-i="0"]').innerText(), 'Enregistré'); }
+        // Message de retour écrit sur le bouton : un rendu peut le remplacer avant la lecture (WebKit, 19/11/2026). Tous les textes
+        // affichés par le bouton sont relevés pendant le clic ; l'assertion porte sur ce que l'utilisateur a réellement vu.
+        const seen = async selector => {
+          await p.evaluate(sel => { window.__fbSeen = []; window.__fbMo = new MutationObserver(() => document.querySelectorAll(sel).forEach(x => window.__fbSeen.push(x.textContent)));
+            window.__fbMo.observe(document.body, { subtree: true, childList: true, characterData: true }); }, selector);
+          await click(selector);
+          return p.evaluate(sel => { window.__fbMo.disconnect(); const x = document.querySelector(sel); return window.__fbSeen.concat(x ? [x.textContent] : []); }, selector);
+        };
+        const before = await p.evaluate(() => { const o = lastOdo(S.cars[0]); return o ? o.km : null; });
+        const empty = await seen('[data-act=odo][data-i="0"]');
+        assert(empty.some(t => /Saisis/.test(t)), JSON.stringify(empty));
+        assert.equal(await p.evaluate(() => { const o = lastOdo(S.cars[0]); return o ? o.km : null; }), before, 'compteur vide : rien d’enregistré');
+        for (const km of [0, 42150]) { await p.fill('#odo-0', String(km)); const shown = await seen('[data-act=odo][data-i="0"]'); assert.equal(await p.evaluate(() => lastOdo(S.cars[0]).km), km); assert(shown.includes('Enregistré'), JSON.stringify(shown)); }
       });
       await check(tag + ' · profondeur invalide et mesure valide, permutation', async () => {
         await p.fill('#trd-0', '20'); await click('[data-act=tread-add][data-i="0"]'); assert.match(await p.locator('[data-act=tread-add][data-i="0"]').innerText(), /0 à 12/);
