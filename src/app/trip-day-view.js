@@ -26,6 +26,8 @@ function tripUnion(extra) {
   return [...(Array.isArray(BRF_SHOWN) ? BRF_SHOWN : []), ...(Array.isArray(BRF_TRIPS) ? BRF_TRIPS : []), ...(extra || [])]
     .filter(t => t && t.key && t.dep && !seen.has(t.key) && seen.add(t.key));
 }
+// Jour du trajet quand ce n'est pas aujourd'hui (audit PC du 20/11 : « départ 06:30 » d'un trajet de lundi sans le jour).
+const tripDayTag = ts => typeof ts === 'string' && ts.slice(0, 10) !== liveNow().slice(0, 10) && typeof fmtDay === 'function' ? fmtDay(ts.slice(0, 10)) : '';
 const tripHm = ts => typeof ts === 'string' && /T\d{2}:\d{2}/.test(ts) ? ts.slice(11, 16) : '';
 const tripDur = m => !Number.isFinite(m) || m < 0 ? '' : m >= 60 ? Math.floor(m / 60) + ' h ' + String(Math.round(m % 60)).padStart(2, '0') : Math.round(m) + ' min';
 // Distance et durée connues seulement : itinéraire calculé, sinon distance à vol d'oiseau majorée (même repère que l'Analyse).
@@ -135,7 +137,7 @@ function tripSlotsHtml(t) {
   else if (manual && sel && sel.shift !== 0) action = sel.past || !sel.available ? '<button type="button" class="sl-apply" disabled>' + (sel.past ? 'Heure déjà passée' : 'Prévisions indisponibles') + '</button>'
     : '<button type="button" class="sl-apply" data-act="slot-apply" data-s="' + sel.shift + '">Décaler le départ à ' + esc(tripHm(sel.dep)) + '</button>';
   else if (!manual) action = '<p class="sub">Simulation seulement : ' + (t.src === 'cal' ? 'l’heure vient de ton agenda' : t.src === 'work' ? 'l’horaire vient de tes réglages domicile-travail' : 'trajet planifié automatiquement') + ', rien n’est modifié ici.</p>';
-  return '<section class="sl-box" aria-label="Créneau de départ"><div class="sl-h"><b>CRÉNEAU DE DÉPART</b><span>−2 h · +2 h</span></div>' +
+  return '<section class="sl-box" aria-label="Créneau de départ"><div class="sl-h"><b>CRÉNEAU DE DÉPART</b><span>' + esc([tripDayTag(t.dep), '−2 h · +2 h'].filter(Boolean).join(' · ')) + '</span></div>' +
     '<div class="sl-cols" role="group" aria-label="Heures de départ possibles">' + cols + '</div>' + detail + action +
     '<p class="sub">Même lecture que l’état de la piste, départ décalé d’heures entières · prévisions du modèle.</p></section>';
 }
@@ -176,7 +178,7 @@ function tripBriefHtml(t) {
   const play = BRIEF.playing && BRIEF.key === t.key;
   const body = notes.length ? '<ol class="bf-notes">' + notes.map((x, i) => '<li data-lv="' + (x.level == null ? 'x' : x.level) + '"' + (play && BRIEF.idx === i ? ' aria-current="true"' : '') + '><b>' + String(x.n).padStart(2, '0') + '</b><span>' + esc(x.text) + '</span></li>').join('') + '</ol>'
     : '<p class="sub">Briefing en attente : points météo du trajet pas encore reçus ou trop anciens.</p>';
-  return '<section class="bf-box" aria-label="Briefing copilote"><div class="bf-h"><b>BRIEFING COPILOTE</b><span>' + esc((to && to.name || t.to || '') + (t.dep ? ' · départ ' + tripHm(t.dep) : '')) + '</span></div>' +
+  return '<section class="bf-box" aria-label="Briefing copilote"><div class="bf-h"><b>BRIEFING COPILOTE</b><span>' + esc([to && to.name || t.to || '', t.dep ? 'départ ' + [tripDayTag(t.dep), tripHm(t.dep)].filter(Boolean).join(' ') : ''].filter(Boolean).join(' · ')) + '</span></div>' +
     (notes.length ? '<button type="button" class="bf-play" data-act="brief-play" data-key="' + esc(t.key || '') + '" aria-pressed="' + play + '"><span class="bf-ico" aria-hidden="true">' + (play ? '■' : '▶') + '</span><span><b>' + (play ? 'ARRÊTER LA LECTURE' : 'ÉCOUTER LE BRIEFING') + '</b><small>' +
       (play ? 'note ' + (BRIEF.idx + 1) + ' sur ' + notes.length : notes.length + ' note' + (notes.length > 1 ? 's' : '') + ' · lecture à voix haute') + '</small></span></button>' : '') + body +
     (notes.length ? '<div class="seg bf-rate" role="group" aria-label="Débit de lecture"><button type="button" data-act="brief-rate" data-v="1" aria-pressed="' + (BRIEF.rate === 1) + '">Débit normal</button><button type="button" data-act="brief-rate" data-v="0.8" aria-pressed="' + (BRIEF.rate !== 1) + '">Plus lent</button></div>' : '') +

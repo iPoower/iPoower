@@ -273,7 +273,7 @@ a.btn { display: inline-flex; align-items: center; justify-content: center; }
 .scoreRow { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
 .score { font-family: var(--f-disp); font-weight: 600; font-size: 56px; line-height: .85; color: var(--lv-t); }
 .score small { font-size: 22px; color: var(--fg3); font-weight: 500; }
-.scoreRow .lab { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg3); }
+.scoreRow .lab { display: block; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg3); }
 .bar { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; border: 1px solid var(--line); }
 .bar i { display: block; height: 100%; background: var(--lv); }
 .expl { font-size: 13.5px; line-height: 1.55; color: var(--fg); }
@@ -1687,7 +1687,7 @@ details.mod > summary h2 { color: var(--i20-blue); letter-spacing: .12em; }
 .bf-play { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--i20-blue); color: var(--on-i20-blue); text-align: left; font: inherit; cursor: pointer; }
 .bf-play[aria-pressed="true"] { background: var(--panel2); color: var(--fg); box-shadow: inset 0 0 0 2px var(--i20-blue); }
 .bf-play > span:last-child { display: flex; flex-direction: column; }
-.bf-play b { font: 800 19px/1.1 var(--f-disp); letter-spacing: .08em; }
+.bf-play b { font: 800 18px/1.1 var(--f-disp); letter-spacing: .05em; }
 .bf-play small { font: 12px var(--f-mono); opacity: .85; }
 .bf-ico { display: flex; align-items: center; justify-content: center; flex: none; width: 38px; height: 38px; border-radius: 50%; background: var(--on-i20-blue); color: var(--i20-blue); font-size: 15px; }
 .bf-play[aria-pressed="true"] .bf-ico { background: var(--i20-blue); color: var(--on-i20-blue); }
@@ -1698,3 +1698,5 @@ details.mod > summary h2 { color: var(--i20-blue); letter-spacing: .12em; }
 .bf-notes b { font: 600 14px var(--f-mono); color: var(--fg2); }
 .bf-rate { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .bf-rate button { min-height: 44px; }
+/* Audit PC du 20/11 : pastille d'état de l'intelligence pneumatique jamais coupée entre deux lignes. */
+.ti-panel summary .ti-state { display: inline-block; white-space: nowrap; }

@@ -82,9 +82,11 @@ async function run(b, dev) {
   if (dev === 'iphone') { const small = e1.slots.filter(x => x.h < 44); check(`${dev} · colonnes du créneau ≥ 44 pt`, !small.length, JSON.stringify(small)); }
   // 3 · Briefing copilote : mêmes notes que le carnet de l'onglet Pneus
   const pneus = await p.evaluate(() => { const t = APP_CONTEXT.snapshot.nextTrip; return tripBriefNotes(t).map(n => n.text); });
-  check(`${dev} · briefing : mêmes notes que copilotNotes, bouton « ÉCOUTER LE BRIEFING » au-dessus de « Programmer »`,
+  check(`${dev} · briefing : mêmes notes que copilotNotes, bouton « ÉCOUTER LE BRIEFING », rangé avec la stratégie sous le mur du même trajet (jamais dans le formulaire du nouveau trajet)`,
     pneus.length > 0 && JSON.stringify(e1.notes) === JSON.stringify(pneus) && /ÉCOUTER LE BRIEFING/.test(e1.brief) &&
-    await p.evaluate(() => { const b = document.querySelector('#secTrip .bf-box'), a = document.querySelector('#secTrip .trip-actions'); return !!b && !!a && b.compareDocumentPosition(a) === Node.DOCUMENT_POSITION_FOLLOWING; }), JSON.stringify({ notes: e1.notes, pneus }));
+    await p.evaluate(() => { const b = document.querySelector('#secTrip .bf-box'); return !!b && !!b.closest('.pw-s') && !b.closest('.trip-form'); }), JSON.stringify({ notes: e1.notes, pneus }));
+  if (dev === 'pc') { const wrap = await p.evaluate(() => { const t = document.querySelector('#secTrip .bf-play b'); return t ? Math.round(t.getBoundingClientRect().height) : 0; });
+    check(`${dev} · titre « ÉCOUTER LE BRIEFING » sur une seule ligne dans la colonne PC`, wrap > 0 && wrap < 30, String(wrap)); }
   // Synthèse vocale simulée : les phrases lues sont relevées, rien n'est lu sans appui.
   await p.evaluate(() => { window.__said = []; const fake = { speak: u => { window.__said.push(u.text); }, cancel: () => {} };
     Object.defineProperty(window, 'speechSynthesis', { configurable: true, get: () => fake }); window.SpeechSynthesisUtterance = function (t) { this.text = t; }; });
@@ -114,6 +116,11 @@ async function run(b, dev) {
     const j = await read(p);
     check(`${dev} · « Revenir » : départ rétabli à 07:00, même trajet`, j.nd && j.nd.dep === '2026-11-16T07:00' && j.nd.key === g.nd.key, JSON.stringify(j.nd));
   }
+  // Audit PC du 20/11 : fiche voiture de l'onglet Pneus, le libellé « Niveau de risque » n'est plus découpé en colonnes de 30 px.
+  await p.evaluate(() => { UI.view = 'pneus'; renderAll(); }); await s.settle(3);
+  const sc = await p.evaluate(() => [...document.querySelectorAll('.scoreRow')].filter(r => r.offsetParent).map(r => ({ w: Math.round(r.getBoundingClientRect().width), b: Math.round(r.children[1].getBoundingClientRect().width), lab: getComputedStyle(r.querySelector('.lab')).display })));
+  check(`${dev} · fiche voiture : bloc « Niveau de risque » lisible (≥ 40 % de la ligne, libellés en bloc)`, sc.length > 0 && sc.every(x => x.lab === 'block' && x.b >= x.w * 0.4), JSON.stringify(sc));
+  await p.evaluate(() => { UI.view = 'trajet'; renderAll(); }); await s.settle(3);
   const z = await read(p);
   check(`${dev} · aucun « undefined », « NaN » ni « null » affiché, aucun débordement horizontal`, !/undefined|NaN|\bnull\b/.test(z.text) && z.over <= 1, z.text.slice(0, 300) + ' | ' + z.over);
   await s.c.close();
