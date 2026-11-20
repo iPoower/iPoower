@@ -67,7 +67,7 @@ function normalize(saved, base) {
   S.customs = saved && Array.isArray(saved.customs) ? saved.customs : clone(base.customs);
   S.calOrigins = CalendarOrigin.clean(saved && saved.calOrigins);
   // Trajets imprévus (20/11) : liste fermée et bornée, voitures connues seulement (RcLoans).
-  S.loans = RcLoans.clean(saved && saved.loans, (S.cars || []).map(c => c.id), Date.now());
+  S.loans = typeof RcLoans !== 'undefined' ? RcLoans.clean(saved && saved.loans, (S.cars || []).map(c => c.id), Date.now()) : [];   // module absent (tests isolés) : aucune donnée inventée
   return S;
 }
 // Migration étroite d'une ancienne identité véhicule déjà enregistrée.
@@ -4672,8 +4672,9 @@ document.addEventListener('click', async e => {
   // Trajets imprévus (quelqu'un part avec une voiture) : formulaire (états de vue), enregistrement et retour (seules écritures).
   else if (a === 'loan-open') { LOAN_FORM.open = true; LOAN_FORM.message = ''; renderTripView(); const d = document.getElementById('loanDriver'); if (d) d.focus({ preventScroll: true }); }
   else if (a === 'loan-cancel') { LOAN_FORM.open = false; LOAN_FORM.message = ''; renderTripView(); }
-  else if (a === 'loan-car' || a === 'loan-dep' || a === 'loan-ret') { loanCapture(); LOAN_FORM[{ 'loan-car': 'carId', 'loan-dep': 'dep', 'loan-ret': 'ret' }[a]] = t.dataset.v; LOAN_FORM.message = ''; renderTripView();
-    const back = document.querySelector('#secTrip [data-act="' + a + '"][data-v="' + CSS.escape(t.dataset.v) + '"]'); if (back) back.focus({ preventScroll: true }); }
+  else if (a === 'loan-car') loanChoose('carId', a, t);
+  else if (a === 'loan-dep') loanChoose('dep', a, t);
+  else if (a === 'loan-ret') loanChoose('ret', a, t);
   else if (a === 'loan-search') loanSearch(t);
   else if (a === 'loan-pick') { loanCapture(); const h = (LOAN_FORM.results || [])[parseInt(t.dataset.i, 10)]; if (h) { LOAN_FORM.hit = h; LOAN_FORM.query = h.name; LOAN_FORM.results = []; LOAN_FORM.message = ''; } renderTripView(); }
   else if (a === 'loan-save') { if (loanSave()) commandFeedback(t, 'Trajet imprévu enregistré'); }

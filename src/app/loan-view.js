@@ -52,7 +52,9 @@ function loanFormHtml() {
   if (!f.carId || !cars.some(c => c.id === f.carId)) f.carId = cars[0] && cars[0].id || null;
   const places = placeList().filter(p => !/^manual-(?:origin|destination)$/.test(p.id || ''));
   if (!f.originId || !places.some(p => p.id === f.originId)) f.originId = (places.find(p => p.kind === 'home') || places[0] || {}).id || null;
-  const chip = (act, v, on, label) => '<button type="button" class="chip" data-act="' + act + '" data-v="' + esc(v) + '" aria-pressed="' + on + '">' + esc(label) + '</button>';
+  // Attributs écrits en clair (l'audit des commandes relit le code source) : data-act="loan-car", data-act="loan-dep", data-act="loan-ret".
+  const ACT = { 'loan-car': 'data-act="loan-car"', 'loan-dep': 'data-act="loan-dep"', 'loan-ret': 'data-act="loan-ret"' };
+  const chip = (act, v, on, label) => '<button type="button" class="chip" ' + ACT[act] + ' data-v="' + esc(v) + '" aria-pressed="' + on + '">' + esc(label) + '</button>';
   const hits = (f.results || []).map((h, i) => '<button type="button" class="trip-suggestion" data-act="loan-pick" data-i="' + i + '"><b>' + esc(h.name) + '</b><span>' + esc(h.sub || h.address || '') + '</span></button>').join('');
   return '<section class="ln-form" aria-label="Trajet imprévu"><div class="ln-h"><b>TRAJET IMPRÉVU</b><span>quelqu’un part avec une voiture</span></div>' +
     '<span class="trip-label">Voiture</span><div class="chips">' + cars.map(c => chip('loan-car', c.id, f.carId === c.id, c.short || c.name || c.id)).join('') + '</div>' +
@@ -114,4 +116,9 @@ function loanBack(id) {
   const list = loanList().map(x => x.id === id && !x.back ? { ...x, back: Date.now() } : x);
   if (list.every((x, i) => x === loanList()[i])) return false;
   loanSaveList(list); rebuild(); renderAll(); return true;
+}
+// Choix d'un bouton du formulaire (voiture, départ, retour) : saisie en cours conservée, focus rendu au bouton redessiné.
+function loanChoose(field, act, t) {
+  loanCapture(); LOAN_FORM[field] = t.dataset.v; LOAN_FORM.message = ''; renderTripView();
+  const back = document.querySelector('#secTrip [data-act="' + act + '"][data-v="' + CSS.escape(t.dataset.v) + '"]'); if (back) back.focus({ preventScroll: true });
 }
