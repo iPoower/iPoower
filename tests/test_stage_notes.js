@@ -49,4 +49,9 @@ test('notes : un seul niveau → « Sur tout le parcours » ; valeurs absentes j
   assert.equal(x[2].text, 'Arrivée.'); assert.equal(x[2].level, null);
   assert.equal(F.copilotNotes([]).length, 0); assert.equal(F.copilotNotes(null).length, 0);
 });
+test('CLARA R3-04 : pluie sous le seuil jamais affichée « 0,2 » (affichage cohérent avec le niveau)', () => {
+  assert.equal(F.rainShown(0.15), '< 0,2'); assert.equal(F.rainShown(0.19), '< 0,2'); assert.equal(F.rainLevel(0.19), 0);
+  assert.equal(F.rainShown(0.2), '0,2'); assert.equal(F.rainLevel(0.2), 1);
+  assert.equal(F.rainShown(0.25), '0,3'); assert.equal(F.rainShown(0.1), '0,1'); assert.equal(F.rainShown(0), '0'); assert.equal(F.rainShown(null), null);
+});
 console.log(`\n${n}/${n} contrôles « épreuve spéciale »`);

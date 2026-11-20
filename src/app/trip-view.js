@@ -165,7 +165,7 @@ function tripWallHtml(t) {
   const line = (r, i) => '<button type="button" class="pw-row" data-act="pw-point" data-i="' + i + '" aria-pressed="' + (i === PW.point) + '" aria-label="' +
     esc('Point ' + (i + 1) + (r.name ? ', ' + r.name : '') + ', secteur ' + r.sector + (r.at ? ', passage ' + r.at : '') + (r.label ? ', ' + r.label : '')) + '">' +
     '<i data-lv="' + (r.level == null ? 'x' : r.level) + '">S' + r.sector + '</i><span class="pw-pt"><b>' + esc(r.name || 'Point ' + (i + 1)) + '</b><small>' + (r.km != null ? 'km ' + f0(r.km) : '') + '</small></span>' +
-    '<span class="pw-mono">' + esc(r.at || '—') + '</span><span class="pw-mono">' + (r.T == null ? '—' : f0(r.T) + '°') + '</span><span class="pw-mono pw-rain" data-lv="' + (r.level == null ? 'x' : r.level) + '">' + n(r.rain) + '</span></button>';
+    '<span class="pw-mono">' + esc(r.at || '—') + '</span><span class="pw-mono">' + (r.T == null ? '—' : f0(r.T) + '°') + '</span><span class="pw-mono pw-rain" data-lv="' + (r.level == null ? 'x' : r.level) + '">' + (r.rain == null ? '—' : F1Pure.rainShown(r.rain)) + '</span></button>';
   return '<section class="pw-wall" aria-label="Mur des stands">' + focus + banner + slots +
     '<div class="pw-tower"><div class="pw-tower-h"><b>TOUR DU PARCOURS</b><span>' + rows.length + ' point' + (rows.length > 1 ? 's' : '') + ' météo · prévu</span></div>' +
     '<div class="pw-cols" aria-hidden="true"><span>S</span><span>POINT</span><span>HEURE</span><span>AIR</span><span>PLUIE</span></div>' + rows.map(line).join('') +
@@ -211,8 +211,9 @@ function renderTripView() {
   const radarTrip = tripDayFocusTrip() || current && APP_CONTEXT.trips.find(x => x.key === current.tripKey) || (!current && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip)) || null;
   const radarShell = `<div class="trip-radar">${routeRadarHtml(radarTrip)}</div>`;
   const intelligence = tyreIntelligenceHtml(S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar(), 'trajet', CX && wxTrips(CX.m).find(t => current && t.id === current.tripKey) || null);
-  const wall = tripWallHtml(radarTrip), strat = tripStrategyHtml(radarTrip, S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar());
-  const brief = tripBriefHtml(radarTrip);
+  // Briefing copilote : avec la stratégie, sous le mur du MÊME trajet (audit PC du 20/11 : dans le formulaire, il semblait
+  // décrire le nouveau trajet à démarrer).
+  const wall = tripWallHtml(radarTrip), strat = tripStrategyHtml(radarTrip, S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar()) + tripBriefHtml(radarTrip);
   const html = `<div class="mod-h"><h2>TRAJET · MUR DES STANDS</h2><span class="src obs">contexte partagé Race Control</span></div>
     <div class="pw-grid"><div class="pw-c">${wall}</div><div class="pw-s">${strat}</div><div class="pw-l"><div class="trip-form"><h3 class="pw-h">PARAMÈTRES DE COURSE</h3>
       <div class="trip-field"><span class="trip-label">Départ</span><div class="trip-origin-head"><b>${origin ? esc(origin.name) : 'Origine à choisir'}</b><span>${TRIP_FORM.originMode === rec.mode ? esc(rec.source) : 'choisi'}</span></div>
@@ -228,26 +229,19 @@ function renderTripView() {
         <label><input type="radio" name="tripWhen" data-trip-field="when" value="date" ${TRIP_FORM.when === 'date' ? 'checked' : ''}> Autre date</label>
       </div><div class="trip-time">${TRIP_FORM.when === 'date' ? `<label>Date<input type="date" id="tripDate" data-trip-field="date" value="${esc(TRIP_FORM.date)}"></label>` : ''}${TRIP_FORM.when !== 'now' ? `<label>Heure<input type="time" id="tripTime" data-trip-field="time" value="${esc(TRIP_FORM.time)}"></label>` : `<span class="sub">Départ immédiat · ${esc(dep.slice(11,16))}</span>`}</div></fieldset>
       <div class="trip-field"><label class="trip-label" for="tripCar">Véhicule</label><select id="tripCar" data-trip-field="car">${carOptions}</select></div>
-      ${TRIP_FORM.message ? `<p class="trip-message" role="status">${esc(TRIP_FORM.message)}</p>` : ''}${routeLine}${preflight}${brief}
+      ${TRIP_FORM.message ? `<p class="trip-message" role="status">${esc(TRIP_FORM.message)}</p>` : ''}${routeLine}${preflight}
       <div class="trip-actions"><button class="btn pri trip-main" data-act="trip-plan">${immediate ? 'DÉMARRER LE TRAJET' : existing ? 'METTRE À JOUR LE TRAJET' : 'PROGRAMMER LE TRAJET'}</button>
       ${existing ? '<button class="btn" data-act="trip-plan-cancel">Annuler le trajet</button>' : ''}</div>
     </div></div><div class="pw-r">${radarShell}<div class="trip-intelligence">${intelligence}</div></div></div>`;
   // Les mises à jour de la route ne doivent pas détacher les commandes pendant un appui,
   // ni remplacer les champs lorsqu'aucune valeur du formulaire n'a changé.
-  const controlsHTML = html.replace(routeLine, '').replace(preflight, '').replace(radarShell, '').replace(intelligence, '').replace(wall, '').replace(strat, '').replace(brief, '');
+  const controlsHTML = html.replace(routeLine, '').replace(preflight, '').replace(radarShell, '').replace(intelligence, '').replace(wall, '').replace(strat, '');
   if (el._tripControlsHTML === controlsHTML && el.querySelector('.trip-form')) {
     const previous = el.querySelector('.trip-route-state');
     if (previous) { if (previous.outerHTML !== routeLine) previous.outerHTML = routeLine; }
     else if (routeLine) el.querySelector('.trip-actions').insertAdjacentHTML('beforebegin', routeLine);
     const preflightPanel = el.querySelector('.trip-preflight');
     if (preflightPanel && preflightPanel.outerHTML !== preflight) preflightPanel.outerHTML = preflight;
-    // Briefing copilote : redessiné seul, au-dessus des boutons (le bouton de lecture garde le focus).
-    const briefPanel = el.querySelector('.bf-box');
-    if (briefPanel ? briefPanel.outerHTML !== brief : brief) {
-      const a = document.activeElement, keep = a && briefPanel && briefPanel.contains(a) && a.dataset && a.dataset.act ? '[data-act="' + a.dataset.act + '"]' + (a.dataset.v ? '[data-v="' + a.dataset.v + '"]' : '') : null;
-      if (briefPanel) briefPanel.outerHTML = brief; else el.querySelector('.trip-actions').insertAdjacentHTML('beforebegin', brief);
-      const back = keep && el.querySelector('.bf-box ' + keep); if (back) back.focus({ preventScroll: true });
-    }
     const radarPanel = el.querySelector('.trip-radar');
     if (radarPanel && radarPanel._radarHTML !== radarShell) {
       const focus = uxFocusKey(radarPanel); radarPanel.outerHTML = radarShell;
@@ -255,7 +249,7 @@ function renderTripView() {
     }
     // Mur des stands et stratégie : redessinés seuls (le formulaire et le focus de saisie restent en place).
     for (const [sel, part] of [['.pw-c', wall], ['.pw-s', strat]]) { const box = el.querySelector(sel); if (box && box.innerHTML !== part) {
-      const a = document.activeElement, keep = a && box.contains(a) && a.dataset && a.dataset.act ? '[data-act="' + a.dataset.act + '"]' + (a.dataset.i != null ? '[data-i="' + a.dataset.i + '"]' : '') : null;
+      const a = document.activeElement, keep = a && box.contains(a) && a.dataset && a.dataset.act ? '[data-act="' + a.dataset.act + '"]' + (a.dataset.i != null ? '[data-i="' + a.dataset.i + '"]' : '') + (a.dataset.v != null ? '[data-v="' + a.dataset.v + '"]' : '') : null;
       box.innerHTML = part; const back = keep && box.querySelector(keep); if (back) back.focus({ preventScroll: true }); } }
     const panel = el.querySelector('.trip-intelligence');
     if (panel && panel.innerHTML !== intelligence) { const focus = uxFocusKey(panel); panel.innerHTML = intelligence; uxRestoreFocus(panel, focus); }

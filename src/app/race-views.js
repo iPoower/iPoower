@@ -87,7 +87,7 @@ function f1TrackHtml() {
   const vis = Number.isFinite(f.vis) ? (f.vis >= 1000 ? f1(f.vis / 1000).replace(/,0$/, '') + ' km' : f0(f.vis) + ' m') : '—';
   const cell = (k, v) => '<div><span>' + k + '</span><b>' + v + '</b></div>';
   const detail = '<div class="trk-detail"><div class="trk-detail-h"><b>Secteur ' + z.index + ' · ' + esc(z.label) + '</b><span>' + esc(f.from && f.to ? f.from + '–' + f.to : f.from || (f.h0 ? 'prévision de ' + (f.h0 === f.h1 || !f.h1 ? f.h0 : f.h0 + '–' + f.h1) : '')) + '</span></div>' +
-    '<div class="trk-figs">' + cell('PLUIE', Number.isFinite(f.rain) ? f1(f.rain) + ' mm/h' : '—') + cell('CHAUSSÉE ESTIMÉE', Number.isFinite(f.road) ? f1(f.road) + ' °C' : '—') +
+    '<div class="trk-figs">' + cell('PLUIE', Number.isFinite(f.rain) ? F1Pure.rainShown(f.rain) + ' mm/h' : '—') + cell('CHAUSSÉE ESTIMÉE', Number.isFinite(f.road) ? f1(f.road) + ' °C' : '—') +
     cell('VISIBILITÉ', vis) + cell('RAFALES', Number.isFinite(f.gust) ? f0(f.gust) + ' km/h' : '—') + '</div>' +
     '<p class="sub">' + esc((km(f.km0) != null && km(f.km1) != null ? 'km ' + km(f.km0) + '–' + km(f.km1) + ' · ' : '') + z.points + (z.points > 1 ? ' points météo · ' : ' point météo · ') +
       (z.notes.length ? z.notes.join(' / ') : 'aucun signal notable sur ces prévisions')) + '</p></div>';
