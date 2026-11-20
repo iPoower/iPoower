@@ -302,7 +302,7 @@ function renderTripSummary() {
   // Onglet Trajet : en-tête du mur des stands, compte à rebours du départ (même minuterie que les autres cartes).
   const depTs = n && n.dep || t && t.dep || '', wall = UI.view === 'trajet';
   el.classList.toggle('pw-head', wall);
-  el.innerHTML = (wall ? tripArrivalHtml() + loanBannerHtml() + tripDayHtml() : '') + `<div class="trip-summary-head"><span class="trip-label">${wall ? '' : '🧭 '}${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(depTs) || '—')}</b></div>
+  el.innerHTML = (wall ? tripArrivalHtml() + loanBannerHtml() + loanSplitHtml() + tripDayHtml() : '') + `<div class="trip-summary-head"><span class="trip-label">${wall ? '' : '🧭 '}${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(depTs) || '—')}</b></div>
     ${wall && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(depTs) && !(t && t === APP_CONTEXT.snapshot.activeTrip) ? '<div class="pw-count">' + cdSpan(depTs.slice(0, 16)) + '</div>' : ''}
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}${from ? `<small class="trip-origin-src">Départ : ${esc(shared.source)}</small>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(appCarLabel().text)}</span><span>${esc(route)}</span></div>
