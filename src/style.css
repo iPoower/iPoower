@@ -1687,8 +1687,8 @@ details.mod > summary h2 { color: var(--i20-blue); letter-spacing: .12em; }
 .bf-h span { font: 12px var(--f-mono); color: var(--fg2); }
 .bf-play { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 0 14px; border: 0; border-radius: 12px; background: var(--i20-blue); color: var(--on-i20-blue); text-align: left; font: inherit; cursor: pointer; }
 .bf-play[aria-pressed="true"] { background: var(--panel2); color: var(--fg); box-shadow: inset 0 0 0 2px var(--i20-blue); }
-.bf-play > span:last-child { display: flex; flex-direction: column; }
-.bf-play b { font: 800 18px/1.1 var(--f-disp); letter-spacing: .05em; }
+.bf-play > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.bf-play b { font: 800 16px/1.15 var(--f-disp); letter-spacing: .03em; white-space: nowrap; }   /* une ligne quelle que soit la police de repli (CI) */
 .bf-play small { font: 12px var(--f-mono); opacity: .85; }
 .bf-ico { display: flex; align-items: center; justify-content: center; flex: none; width: 38px; height: 38px; border-radius: 50%; background: var(--on-i20-blue); color: var(--i20-blue); font-size: 15px; }
 .bf-play[aria-pressed="true"] .bf-ico { background: var(--i20-blue); color: var(--on-i20-blue); }
