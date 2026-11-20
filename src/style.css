@@ -1737,3 +1737,35 @@ details.mod > summary h2 { color: var(--i20-blue); letter-spacing: .12em; }
 .sp-box [data-lv="0"] { color: var(--go-t); } .sp-box [data-lv="1"] { color: var(--cau-t); } .sp-box [data-lv="2"] { color: var(--risk-t); } .sp-box [data-lv="3"] { color: var(--nogo-t); }
 .sp-apply { min-height: 50px; border: 0; border-radius: 10px; background: var(--i20-blue); color: var(--on-i20-blue); font: 800 16px var(--f-disp); letter-spacing: .06em; cursor: pointer; }
 .sp-apply:disabled { background: var(--panel2); color: var(--fg2); cursor: default; }
+/* Mode « EN DIRECT » (20/11/2026, maquette A) : plein écran iPhone, encoches et barre d'accueil respectées. */
+html.dv-on, html.dv-on body { overflow: hidden; }
+.dv { position: fixed; inset: 0; z-index: 9000; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); height: 100vh; height: 100dvh; }
+.dv[hidden] { display: none; }
+.dv-map { position: relative; flex: 1 1 42%; min-height: 220px; background: #121821; }
+.dv-map .dv-dark { filter: invert(.92) hue-rotate(180deg) brightness(.85) contrast(.9); }
+.dv-car span { display: block; width: 30px; height: 30px; border-radius: 50%; background: var(--i20-blue); border: 4px solid var(--on-i20-blue); box-shadow: 0 0 0 3px rgba(95, 176, 232, .35); }
+.dv-top { position: absolute; top: 0; left: 0; right: 0; z-index: 9010; display: flex; align-items: center; gap: 8px; padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 0; pointer-events: none; }
+.dv-tag { font: 800 14px var(--f-disp); letter-spacing: .16em; background: var(--i20-blue); color: var(--on-i20-blue); padding: 6px 10px; border-radius: 6px; border-bottom: 3px solid var(--i20-red); }
+.dv-gps { font: 600 12px var(--f-mono); background: rgba(13, 15, 19, .85); color: var(--fg); padding: 6px 8px; border-radius: 6px; }
+.dv-close { pointer-events: auto; margin-left: auto; width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--line2); background: rgba(13, 15, 19, .9); color: var(--fg); font-size: 20px; cursor: pointer; }
+.dv-recenter { position: absolute; z-index: 9010; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 70px); min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--line2); background: rgba(13, 15, 19, .9); color: var(--i20-blue); font-weight: 600; }
+.dv-panel { flex: 0 0 auto; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px calc(env(safe-area-inset-bottom, 0px) + 12px); border-top: 3px solid var(--i20-red); background: var(--bg); }
+.dv-km { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dv-km > div { background: var(--panel); border-radius: 12px; padding: 10px 12px; }
+.dv-km small, .dv-figs small { display: block; font: 600 11px var(--f-mono); color: var(--fg2); letter-spacing: .06em; }
+.dv-km b { font: 600 clamp(34px, 11vw, 48px)/1 var(--f-mono); }
+.dv-km span { color: var(--fg2); margin-left: 4px; }
+.dv-left { color: var(--i20-blue); }
+.dv-bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+.dv-bar i { display: block; height: 100%; width: 0; background: var(--i20-blue); transition: width .6s linear; }
+.dv-figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+.dv-figs span { background: var(--panel); border-radius: 10px; padding: 8px 4px; }
+.dv-figs b { font: 600 24px var(--f-mono); }
+.dv-next { display: flex; gap: 10px; align-items: center; min-height: 56px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--go); background: var(--go-soft); }
+.dv-next b { font: 800 22px var(--f-disp); white-space: nowrap; }
+.dv-next[data-dv-lv="1"] { border-color: var(--cau); background: var(--cau-soft); } .dv-next[data-dv-lv="1"] b { color: var(--cau-t); }
+.dv-next[data-dv-lv="2"] { border-color: var(--risk); background: var(--risk-soft); } .dv-next[data-dv-lv="2"] b { color: var(--risk-t); }
+.dv-next[data-dv-lv="3"] { border-color: var(--nogo); background: var(--nogo-soft); } .dv-next[data-dv-lv="3"] b { color: var(--nogo-t); }
+.dv-foot { margin: 0; font-size: 11px; color: var(--fg2); }
+.dv-launch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.dv-launch .btn { min-height: 48px; justify-content: center; }
