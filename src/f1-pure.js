@@ -50,6 +50,8 @@ const F1Pure = (() => {
   // ≥ 0,2 mm/h VIGILANCE, ≥ 2 mm/h PRUDENCE. Lue par « État de la route » ET par le risque global du trajet (tripRisk).
   const RAIN_MMH = 0.2, RAIN_STRONG_MMH = 2;
   const rainLevel = mm => finite(mm) ? (mm >= RAIN_STRONG_MMH ? 2 : mm >= RAIN_MMH ? 1 : 0) : 0;
+  // CLARA R3-04 (20/11) : une pluie sous le seuil (0,2 mm/h) ne s'affiche jamais « 0,2 » par arrondi : « < 0,2 », cohérent avec RAS.
+  const rainShown = mm => !finite(mm) ? null : mm > 0 && mm < RAIN_MMH && Math.round(mm * 10) / 10 >= RAIN_MMH ? '< 0,2' : String(Math.round(mm * 10) / 10).replace('.', ',');
   const rainOf = x => finite(x.Pl) ? x.Pl : finite(x.P) && !(finite(x.snow) && x.snow > 0.05) ? x.P : null;
   // Chiffres d'un secteur (18/11/2026) : heures de passage et kilomètres du parcours (legSeq), pire pluie, chaussée estimée la
   // plus froide, visibilité la plus faible, rafale la plus forte. Valeur absente = null, jamais inventée.
@@ -224,5 +226,5 @@ const F1Pure = (() => {
     ];
     return { available: true, lines, note: 'Relecture du journal local : aucune télémétrie de vitesse, freinage, GPS ou capteur ajoutée.' };
   }
-  return { FEATURES, raceEngineer, trackConditions, shiftSeq, departureOptions, routeTower, stageSurface, copilotNotes, tyreManagement, strategyAB, theGarage, telemetryReplay, rainLevel };
+  return { rainShown, FEATURES, raceEngineer, trackConditions, shiftSeq, departureOptions, routeTower, stageSurface, copilotNotes, tyreManagement, strategyAB, theGarage, telemetryReplay, rainLevel };
 })();

@@ -109,7 +109,12 @@ function wxDesk(input) {
   const rainFirst = spans.find(s => s.id === 'rain');
   if (nc && rainFirst) {
     if (!nc.nowWet && finite(nc.startIn) && rainFirst.start > nowM && rainFirst.start - nowM <= 180) rainFirst.start = Math.max(nowM, Math.round((nowM + nc.startIn) / 5) * 5), rainFirst.precise = true;
-    else if (nc.nowWet && rainFirst.start <= nowM && typeof nc.stopAt === 'string') { const s = mins(now.slice(0, 11) + nc.stopAt); if (Number.isFinite(s) && s > nowM && s < rainFirst.end) rainFirst.end = s, rainFirst.precise = true; }
+    else if (nc.nowWet && rainFirst.start <= nowM && typeof nc.stopAt === 'string') {
+      // CLARA R3-01 (20/11) : la fin au quart d'heure ne raccourcit l'épisode que si AUCUNE heure pluvieuse de la prévision horaire
+      // ne commence après elle (jamais « fin de la pluie 14:15 » quand 15:00 annonce 4,3 mm/h : le pire l'emporte).
+      const s = mins(now.slice(0, 11) + nc.stopAt);
+      if (Number.isFinite(s) && s > nowM && s < rainFirst.end && rainFirst.rows.every(r => r.m < s)) rainFirst.end = s, rainFirst.precise = true;
+    }
   }
   spans.sort((a, b) => a.start - b.start || ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
   const active = s => s.start <= nowM && s.end > nowM;

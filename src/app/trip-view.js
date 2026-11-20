@@ -165,7 +165,7 @@ function tripWallHtml(t) {
   const line = (r, i) => '<button type="button" class="pw-row" data-act="pw-point" data-i="' + i + '" aria-pressed="' + (i === PW.point) + '" aria-label="' +
     esc('Point ' + (i + 1) + (r.name ? ', ' + r.name : '') + ', secteur ' + r.sector + (r.at ? ', passage ' + r.at : '') + (r.label ? ', ' + r.label : '')) + '">' +
     '<i data-lv="' + (r.level == null ? 'x' : r.level) + '">S' + r.sector + '</i><span class="pw-pt"><b>' + esc(r.name || 'Point ' + (i + 1)) + '</b><small>' + (r.km != null ? 'km ' + f0(r.km) : '') + '</small></span>' +
-    '<span class="pw-mono">' + esc(r.at || '—') + '</span><span class="pw-mono">' + (r.T == null ? '—' : f0(r.T) + '°') + '</span><span class="pw-mono pw-rain" data-lv="' + (r.level == null ? 'x' : r.level) + '">' + n(r.rain) + '</span></button>';
+    '<span class="pw-mono">' + esc(r.at || '—') + '</span><span class="pw-mono">' + (r.T == null ? '—' : f0(r.T) + '°') + '</span><span class="pw-mono pw-rain" data-lv="' + (r.level == null ? 'x' : r.level) + '">' + (r.rain == null ? '—' : F1Pure.rainShown(r.rain)) + '</span></button>';
   return '<section class="pw-wall" aria-label="Mur des stands">' + focus + banner + slots +
     '<div class="pw-tower"><div class="pw-tower-h"><b>TOUR DU PARCOURS</b><span>' + rows.length + ' point' + (rows.length > 1 ? 's' : '') + ' météo · prévu</span></div>' +
     '<div class="pw-cols" aria-hidden="true"><span>S</span><span>POINT</span><span>HEURE</span><span>AIR</span><span>PLUIE</span></div>' + rows.map(line).join('') +

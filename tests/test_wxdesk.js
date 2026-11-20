@@ -54,6 +54,15 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const r = desk({ now: '2026-10-06T06:18', hours: hs, nowcast: { nowWet: false, startIn: 52 } });
     assert.equal(r.hero.title, 'PLUIE FAIBLE À PARTIR DE 07:10'); assert(r.hero.lines.includes('Début estimé dans 52 min'));
   });
+  test('CLARA R3-01 : fin de pluie au quart d’heure jamais avant une heure pluvieuse de la prévision horaire', () => {
+    // 0,6 mm/h maintenant, 4,3 mm/h à H+1 : la fin « 14:15 » du quart d'heure est ignorée, PRUDENCE et fin après H+1.
+    const hs = set(set(set(H(), '14', { P: 0.6, Pl: 0.6, pp: 90, code: 61 }), '15', { P: 4.3, Pl: 4.3, pp: 100, code: 63 }), '16', { P: 1, Pl: 1, pp: 94, code: 61 });
+    const r = desk({ now: '2026-10-06T14:03', hours: hs, nowcast: { nowWet: true, stopAt: '14:15' } });
+    assert.equal(r.level, 2); assert(!r.hero.lines.some(l => /14:15/.test(l)), r.hero.lines.join(' | ')); assert(r.hero.lines.includes('Fin probable vers 17:00'));
+    // averse limitée à l'heure en cours : la fin au quart d'heure reste prise en compte
+    const one = desk({ now: '2026-10-06T14:03', hours: set(H(), '14', { P: 0.6, Pl: 0.6, pp: 90, code: 61 }), nowcast: { nowWet: true, stopAt: '14:15' } });
+    assert(one.hero.lines.includes('Fin probable vers 14:15'), one.hero.lines.join(' | '));
+  });
   test('verglas : 🔴, fenêtre critique, chaussée estimée', () => {
     const hs = set(set(H(), '05', { T: 1, Tr: -1.2, ice: { level: 2, score: 55 }, RH: 96 }, 2), '00', { T: 4, Tr: 3 }, 5);
     const r = desk({ now: '2026-10-06T04:30', hours: hs });

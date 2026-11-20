@@ -905,6 +905,7 @@ async function fetchVigi() {
     if (CX.alertsNow) { if (vigiNow) CX.alertsNow.vigi = vigiNow; else delete CX.alertsNow.vigi; }   // vigilance du jour seulement
     renderAlerts(); renderBanners();
   }
+  renderDecisionCore();   // fin d'attente de la vigilance (R3-02) : le verdict peut s'afficher
 }
 function vigiBlock() {
   if (!S.dept.code) return '';
@@ -1192,11 +1193,31 @@ function cockpitMatters(alerts) {
   return { desk, items: out.sort((a, b) => b.lv - a.lv).slice(0, 3) };
 }
 // @include app/ux-layout.js
+const DECISION_BOOT_AT = Date.now(), DECISION_BOOT_MAX_MS = 20000;
+setTimeout(() => { try { renderDecisionCore(); } catch (e) { /* rendu suivant */ } }, DECISION_BOOT_MAX_MS + 100);   // fin de l'attente bornée
+// Sources encore attendues au démarrage (texte), sinon '' : vigilance du département renseigné, agenda configuré sur cet appareil.
+function decisionBootPending() {
+  if (Date.now() - DECISION_BOOT_AT > DECISION_BOOT_MAX_MS) return '';
+  const wait = [];
+  if (String(S.dept && S.dept.code || '').trim() && !DEMO.on && VIGI.state === 'none') wait.push('vigilance en cours de lecture');
+  let agenda = false; try { agenda = !!lsGet('twrc.key') && location.protocol === 'https:' && !!(window.crypto && crypto.subtle); } catch (e) { agenda = false; }
+  if (agenda && !CALDONE) wait.push('agenda en cours de lecture');
+  return wait.join(' · ');
+}
 function renderDecisionCore() {
   const el = $('#decisionCore');
   if (!el) return;
   if (!CX || !APP_CONTEXT.snapshot || DEMO.on || LOCKED()) {
     el.hidden = true; el.innerHTML = ''; renderDecisionCore.last = null; DECISION_LAST = null; deskPresence(null); return;
+  }
+  // CLARA R3-02 (20/11) : aucun verdict tant que la vigilance et l'agenda attendus n'ont pas répondu (au plus DECISION_BOOT_MAX_MS) :
+  // un RAS « Confiance solide » calculé sur la seule météo, ou le verdict d'un autre trajet, ne s'affiche jamais pendant le chargement.
+  if (decisionBootPending()) {
+    const wait = '<div class="decision-top"><div class="decision-main"><span class="decision-k">ICI, MAINTENANT · MÉTÉO ET PNEUS</span><h2>⏳ CALCUL EN COURS</h2><p>' +
+      esc(decisionBootPending()) + ' · aucun verdict avant la fin du chargement</p></div></div>';
+    el.className = UI.view === 'analyse' ? 'decision-context' : 'decision-core lvx'; el.hidden = false;
+    if (renderDecisionCore.last !== wait) { el.innerHTML = wait; renderDecisionCore.last = wait; }
+    DECISION_LAST = null; deskPresence(null); return;
   }
   const snap = APP_CONTEXT.snapshot, now = Date.now(), raw = RAW[UI.loc];
   const ageMin = value => {
@@ -3156,7 +3177,7 @@ function loadCalendar(force = false) {
     // Un agenda valide reçu entre-temps (réponse tardive) l'emporte sur l'échec de cette lecture.
     // Hors connexion avec une copie locale : comportement hors ligne habituel, pas une panne.
     if (outcome !== 'ok' && !(CAL && !CAL.offline && CAL.readAt >= read.at) && !(outcome === 'offline' && CAL)) CALFAIL = { at: Date.now(), kind: outcome };
-    CALDONE = true; renderBrf();
+    CALDONE = true; renderBrf(); renderDecisionCore();
     return outcome;
   });
   CALREAD = read; return read.promise;
