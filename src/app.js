@@ -23,7 +23,7 @@ const BASE = {
   ],
   customs: [],
   work: { from: 'home', to: 'work', durMin: 180, dep: '07:30', ret: '17:30', days: [1, 2, 3, 4, 5] },
-  horizon: 12, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on', f1RaceEngineer: 0, f1TrackConditions: 0, f1TyreManagement: 0,
+  horizon: 24, rainThr: 5, dept: { code: '', name: '' }, calib: [], journal: {}, gpsAuto: 0, flags: { weatherEvidenceV2: 'on', f1RaceEngineer: 0, f1TrackConditions: 0, f1TyreManagement: 0,
     f1StrategyAB: 0, f1TheGarage: 0, f1TelemetryReplay: 0 }, road: { on: 1 },
   alerts: { t7: 1, t5s: 1, t0: 1, ice: 1, snow: 1, rain: 1, fog: 1, vis: 1, frost: 1, drop: 1, pre: 1, tread: 1, treadgap: 1, press: 1, age: 1, glare: 1, mont: 1, vigi: 1, ens: 1, rain15: 1 },
   cars: [
@@ -905,7 +905,7 @@ async function fetchVigi() {
     if (CX.alertsNow) { if (vigiNow) CX.alertsNow.vigi = vigiNow; else delete CX.alertsNow.vigi; }   // vigilance du jour seulement
     renderAlerts(); renderBanners();
   }
-  renderDecisionCore();   // fin d'attente de la vigilance (R3-02) : le verdict peut s'afficher
+  if (typeof renderDecisionCore === 'function') renderDecisionCore();   // fin d'attente de la vigilance (R3-02) : le verdict peut s'afficher
 }
 function vigiBlock() {
   if (!S.dept.code) return '';
@@ -980,6 +980,16 @@ function icon(code) {
 // Un RAS devient « Analyse limitée » (libellé de #304) ; un niveau venant de la météo reste affiché, avec la même mention.
 const verdictHtml = (l, sm, w) => { const unk = !!(w && w.depthUnknown), lim = unk && l === 0;
   return `<div class="verdict ${lim ? 'lvx' : 'lv' + l}${sm ? ' sm' : ''}"><span class="em">${lim ? '⚪' : LV[l].emoji}</span><span>${lim ? 'ANALYSE LIMITÉE' : LV[l].label}${unk ? ' · PROFONDEUR NON RENSEIGNÉE' : ''}</span></div>`; };
+// CLARA R3-03 (20/11, choix du propriétaire) : le titre d'une carte voiture est le PIRE de l'indice pneus et du gel sur 24 h (même
+// fenêtre que le bulletin et les alertes) : jamais « RAS · conditions adaptées » au-dessus d'un gel DANGER, aucun saut quand une
+// heure de gel entre dans la fenêtre de l'indice. L'indice pneus reste affiché, nommé, juste en dessous.
+function carCardVerdict(w, sum24) {
+  const fr = sum24 && typeof frostRisk === 'function' ? frostRisk(sum24) : null, fl = fr && Number.isInteger(fr.level) ? fr.level : 0;
+  if (!w || fl <= w.level) return { level: w ? w.level : 0, frost: null, html: verdictHtml(w ? w.level : 0, false, w) };
+  const words = typeof frostWords === 'function' ? frostWords(fr).word : 'gel possible';
+  return { level: fl, frost: fr, html: `<div class="verdict lv${fl}" data-card-frost="${fl}"><span class="em">${LV[fl].emoji}</span><span>${LV[fl].name} · ${esc(String(words).toUpperCase())} (24 H)</span></div>` +
+    `<p class="sub verdict-tyre">Indice pneus seul : ${esc(LV[w.level].label)}${w.depthUnknown ? ' · profondeur non renseignée' : ''} · ${w.score}/100</p>` };
+}
 // Profil générique (audit A06) : tant que les lieux et la monte ne sont pas renseignés (ou appareil verrouillé), les conclusions
 // sont un APERÇU : jamais GO ni un score /100 présenté comme un conseil personnel. Seuls les paramètres nécessaires comptent.
 const PROFILE = () => ProfileCheck.check({ locked: LOCKED(), nocode: !!lsGet('twrc.nocode'), locs: calendarPlaces(), work: S.work });
@@ -3177,7 +3187,7 @@ function loadCalendar(force = false) {
     // Un agenda valide reçu entre-temps (réponse tardive) l'emporte sur l'échec de cette lecture.
     // Hors connexion avec une copie locale : comportement hors ligne habituel, pas une panne.
     if (outcome !== 'ok' && !(CAL && !CAL.offline && CAL.readAt >= read.at) && !(outcome === 'offline' && CAL)) CALFAIL = { at: Date.now(), kind: outcome };
-    CALDONE = true; renderBrf(); renderDecisionCore();
+    CALDONE = true; renderBrf(); if (typeof renderDecisionCore === 'function') renderDecisionCore();
     return outcome;
   });
   CALREAD = read; return read.promise;
@@ -3784,13 +3794,13 @@ function renderCars() {
     const c = curNow(m), i = m.nowI;
     const strip = []; for (let k = 0; k <= 24; k++) { const v = hourVerdict(car, m.hs, i + k); strip.push(v ? `<i class="lv${v.level}" title="${m.hs[i + k].t.slice(11, 16)} · ${LV[v.level].name} · ${v.score}/100"></i>` : ''); }
     const labels = [0, 6, 12, 18, 24].map(k => `<span>${m.hs[i + k] ? m.hs[i + k].t.slice(11, 16) : ''}</span>`).join('');
-    const wi = w.worst, pf = carProfile(car), gen = pf.generic;
-    return `<article class="car ${gen ? 'lvx generic' : 'lv' + w.level}${appActiveCar() && car.id === appActiveCar().id ? ' car-active' : ''}">
+    const wi = w.worst, pf = carProfile(car), gen = pf.generic, cv = carCardVerdict(w, CX.sum24), lvCard = cv.level;
+    return `<article class="car ${gen ? 'lvx generic' : 'lv' + lvCard}${appActiveCar() && car.id === appActiveCar().id ? ' car-active' : ''}">
       <div class="car-h"><div class="car-top"><div><h3>${esc(car.name)}</h3><span class="spec">${esc(car.spec)}</span></div>${carThumb(car)}</div>
         ${appActiveCar() && car.id === appActiveCar().id ? '<span class="garage-active">VOITURE ACTIVE</span>' : ''}
         <div class="tirebox"><span><b>Pneus montés : ${TYPE_LABEL[car.tire.type]}</b></span><span>${tireTxt(car)}</span></div>
         ${uxFold('tyre-records-' + car.id, 'Mesures et historique', tireExtra(car, m), 'Pression · DOT · usure')}</div>
-      ${gen ? genericNote(pf.gaps) : verdictHtml(w.level, false, w)}
+      ${gen ? genericNote(pf.gaps) : cv.html}
       ${!gen && w.depthUnknown ? `<p class="tread-todo"><button type="button" class="btn sm pri" data-act="garage-quick" data-car="${esc(car.id)}" data-garage-target="tread-wheels">Saisir la profondeur des pneus</button><span class="sub">Deux minutes à la jauge : l’analyse n’est plus limitée, sur tous les écrans.</span></p>` : ''}
       <div class="car-b">
         <div class="scoreRow"><div><div class="lab">TYRE WEATHER SCORE</div><div class="score num">${gen ? '—' : w.score}<small>${gen ? 'aperçu' : '/100'}</small></div></div>
