@@ -37,6 +37,10 @@ async function run(b, dev) {
       segs: all('.trk-seg').map(x => ({ lv: x.dataset.lv, on: x.getAttribute('aria-pressed'), t: x.textContent })), detail: (q('.trk-detail') || {}).textContent || '',
       deps: all('.trk-dep').map(x => ({ h: x.dataset.h, on: x.getAttribute('aria-pressed'), t: x.textContent })), best: (q('.trk-best') || {}).textContent || '', text: el.textContent }; }, P);
   const before = await p.evaluate(() => JSON.stringify({ cars: S.cars, work: S.work }));
+  // Retour du 20/11 (« ÉTAT DE LA ROUTE disparaît après ») : l'horloge redessine la section Météo chaque minute ; le panneau reste.
+  const present = () => p.evaluate(P => !!document.querySelector(P), P);
+  const t0 = await present(); await p.clock.runFor(3 * 60e3); await s.settle(4); const t3 = await present();
+  check(`${dev} · « ÉTAT DE LA ROUTE » toujours affiché après 3 min (rafraîchissements minute par minute de la section Météo)`, t0 && t3, JSON.stringify({ t0, t3 }));
   let r = await read();
   check(`${dev} · en-tête daté « lun. 16/11 · 06:30 → arrivée 07:10 » (jamais l’heure seule pour un autre jour)`, !!r && /Départ lun\. 16\/11 · 06:30 → arrivée 07:10/.test(r.when), r && r.when);
   check(`${dev} · verdict PRUDENCE nommé avec sa cause et son secteur`, !!r && r.vlv === '2' && /PRUDENCE/.test(r.verdict) && /Pluie modérée ou forte prévue · secteur \d/.test(r.verdict), r && r.verdict);

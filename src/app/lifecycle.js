@@ -129,6 +129,9 @@ function renderTemporalWeather() {
     else if (UI.view === 'pneus') {
       project('#secCars', renderCars); renderWeatherLink(); renderDecisionCore(); renderBrfCore(); renderBrief(); renderCompare(); renderSeason(); renderAlerts();
     }
+    // Retour du 20/11 (« ÉTAT DE LA ROUTE disparaît après ») : la projection minute par minute redessine la section qui héberge
+    // les modules F1 (#secWx, #secBrief…) ; ils sont reposés aussitôt, comme après un rendu complet.
+    if (typeof renderF1Pure === 'function') renderF1Pure();
     renderWeatherStation();
   } finally { APP_CONTEXT.rendering = false; }
   if (Number.isFinite(y)) window.scrollTo({ top: y, behavior: 'instant' });
