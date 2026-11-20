@@ -372,8 +372,8 @@ function tripProgram(button) {
     destinationId: destKnown, destinationPoint: destKnown ? null : tripPoint(dest, 'manual-destination', dest.name), dep, carId: TRIP_FORM.carId });
   TRIP_FORM.bound = null; rebuild(); renderAll();
   if (!offlineNow()) refreshAll();
-  // Départ immédiat : suivi lancé puis mode « EN DIRECT » plein écran (maquette A validée le 20/11).
-  if (TRIP_FORM.when === 'now') setTimeout(() => { appRefreshContext(); const t = APP_CONTEXT.trips.find(x => x.key === key); if (t) { liveStart(key); if (typeof driveOpen === 'function') driveOpen(); } }, 0);
+  // Départ immédiat : suivi lancé puis mode « EN DIRECT » plein écran dès que l'itinéraire est prêt (maquette A validée le 20/11).
+  if (TRIP_FORM.when === 'now') setTimeout(() => { appRefreshContext(); const t = APP_CONTEXT.trips.find(x => x.key === key); if (t) { liveStart(key); if (typeof driveAutoOpen === 'function') driveAutoOpen(key); } }, 0);
   else { TRIP_FORM.message = 'Trajet programmé.'; renderTripView(); }
   if (button) commandFeedback(button, TRIP_FORM.when === 'now' ? 'Trajet démarré' : 'Trajet programmé');
 }

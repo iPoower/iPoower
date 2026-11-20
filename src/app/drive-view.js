@@ -28,6 +28,15 @@ async function driveOpen() {
   clearInterval(DRIVE.timer); DRIVE.timer = setInterval(driveTick, 1000);
   const close = root.querySelector('.dv-close'); if (close) close.focus({ preventScroll: true });
 }
+// Ouverture automatique après « Partir maintenant » : seulement quand l'itinéraire est prêt (au plus 20 s d'attente). Un
+// itinéraire en échec laisse le Trajet visible, avec son message et « Réessayer » : jamais masqués par le plein écran.
+function driveAutoOpen(key, left = 20, routeOf = t => LiveRoute.route(t, null)) {
+  if (DRIVE.open || LOCKED()) return;
+  const t = driveTrip();
+  if (!t || t.key !== key) return;
+  if (routeOf(t)) { driveOpen(); return; }
+  if (left > 0) setTimeout(() => driveAutoOpen(key, left - 1, routeOf), 1000);
+}
 function driveClose() {
   const root = $('#liveDrive'); DRIVE.open = false; clearInterval(DRIVE.timer); DRIVE.timer = null; driveWake(false);
   if (DRIVE.map) { try { DRIVE.map.remove(); } catch (e) { /* carte déjà retirée */ } }

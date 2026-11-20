@@ -1,7 +1,8 @@
 // Mode « EN DIRECT » (20/11/2026, maquette A validée), données FICTIVES, iPhone puis PC : plein écran pendant le trajet.
 // Ouverture depuis l'onglet Trajet ; la vue couvre tout l'écran (aucun onglet ni contenu visible dessous) ; carte Plan IGN
 // demandée à la Géoplateforme ; trajet démarré et GPS simulé qui avance sur l'itinéraire : km parcourus qui montent, km restants
-// qui baissent, vitesse GPS affichée ; « ✕ » referme et rend l'app intacte ; rien n'est écrit.
+// qui baissent, vitesse GPS affichée ; « ✕ » referme et rend l'app intacte ; ouverture automatique seulement avec un
+// itinéraire prêt ; rien n'est écrit.
 'use strict';
 const { session, BR, errors } = require('./lib/context-session');
 let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ? '' : ' · ' + String(d).slice(0, 600))); if (!ok) fail++; };
@@ -45,6 +46,12 @@ async function run(b, dev) {
   await p.locator('#liveDrive [data-act=drive-close]').click(); await s.settle(2);
   const z = await p.evaluate(() => ({ hidden: document.getElementById('liveDrive').hidden, cls: document.documentElement.classList.contains('dv-on'), view: UI.view }));
   check(`${dev} · « ✕ » referme le mode en direct, l’onglet Trajet est intact`, z.hidden && !z.cls && z.view === 'trajet', JSON.stringify(z));
+  // Ouverture automatique (« Partir maintenant ») : seulement avec un itinéraire prêt ; sans itinéraire, le Trajet reste visible.
+  await p.evaluate(() => { const t = APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip; driveAutoOpen(t.key, 2, () => null); });
+  await s.settle(5); const without = await p.evaluate(() => !document.getElementById('liveDrive').hidden);
+  await p.evaluate(() => { const t = APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip; driveAutoOpen(t.key); });
+  await s.settle(2); const auto = { without, withRoute: await p.evaluate(() => !document.getElementById('liveDrive').hidden) }; await p.evaluate(() => driveClose());
+  check(`${dev} · ouverture automatique seulement quand l’itinéraire est prêt (échec d’itinéraire : Trajet et « Réessayer » restent visibles)`, !auto.without && auto.withRoute, JSON.stringify(auto));
   check(`${dev} · rien d’écrit (voitures, trajets imprévus)`, before === await p.evaluate(() => JSON.stringify({ cars: S.cars, loans: S.loans || [] })));
   await s.c.close();
 }
