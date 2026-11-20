@@ -156,7 +156,9 @@ function tripWallHtml(t) {
   const risk = typeof tripRisk === 'function' ? tripRisk(t) : null, names = ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'];
   const lv = risk && Number.isInteger(risk.lv) ? risk.lv : null;
   const banner = lv == null ? '' : '<div class="pw-flag" role="status" data-lv="' + lv + '"><b>PISTE · ' + names[lv] + '</b><span>' + esc(risk.why || 'aucune cause identifiée sur ce trajet') + '</span></div>';
-  if (!rows.length) return '<section class="pw-wall" aria-label="Mur des stands">' + banner + '<p class="sub">Tour du parcours en attente : points météo du trajet pas encore reçus ou trop anciens.</p></section>';
+  const focus = FR.focus && FR.focus === t.key ? '<div class="fr-focus" role="status"><span>Spéciale choisie dans la feuille de route · départ ' + esc(tripHm(t.dep)) + '</span><button type="button" class="btn sm" data-act="fr-focus" data-key="">Revenir au prochain trajet</button></div>' : '';
+  const slots = tripSlotsHtml(t);
+  if (!rows.length) return '<section class="pw-wall" aria-label="Mur des stands">' + focus + banner + slots + '<p class="sub">Tour du parcours en attente : points météo du trajet pas encore reçus ou trop anciens.</p></section>';
   if (PW.point == null || PW.point >= rows.length) PW.point = rows.reduce((b, r, i) => r.level != null && (b == null || r.level > rows[b].level) ? i : b, null) ?? 0;
   const n = v => v == null ? '—' : f1(v), z = rows[PW.point];
   const vis = v => v == null ? '—' : v >= 1000 ? f1(v / 1000).replace(/,0$/, '') + ' km' : f0(v) + ' m';
@@ -164,7 +166,7 @@ function tripWallHtml(t) {
     esc('Point ' + (i + 1) + (r.name ? ', ' + r.name : '') + ', secteur ' + r.sector + (r.at ? ', passage ' + r.at : '') + (r.label ? ', ' + r.label : '')) + '">' +
     '<i data-lv="' + (r.level == null ? 'x' : r.level) + '">S' + r.sector + '</i><span class="pw-pt"><b>' + esc(r.name || 'Point ' + (i + 1)) + '</b><small>' + (r.km != null ? 'km ' + f0(r.km) : '') + '</small></span>' +
     '<span class="pw-mono">' + esc(r.at || '—') + '</span><span class="pw-mono">' + (r.T == null ? '—' : f0(r.T) + '°') + '</span><span class="pw-mono pw-rain" data-lv="' + (r.level == null ? 'x' : r.level) + '">' + n(r.rain) + '</span></button>';
-  return '<section class="pw-wall" aria-label="Mur des stands">' + banner +
+  return '<section class="pw-wall" aria-label="Mur des stands">' + focus + banner + slots +
     '<div class="pw-tower"><div class="pw-tower-h"><b>TOUR DU PARCOURS</b><span>' + rows.length + ' point' + (rows.length > 1 ? 's' : '') + ' météo · prévu</span></div>' +
     '<div class="pw-cols" aria-hidden="true"><span>S</span><span>POINT</span><span>HEURE</span><span>AIR</span><span>PLUIE</span></div>' + rows.map(line).join('') +
     '<div class="pw-detail"><div><span>CHAUSSÉE</span><b>' + (z.road == null ? '—' : n(z.road) + ' °C') + '</b></div><div><span>VISIBILITÉ</span><b>' + vis(z.vis) + '</b></div><div><span>RAFALES</span><b>' + (z.gust == null ? '—' : f0(z.gust) + ' km/h') + '</b></div></div>' +
@@ -181,9 +183,8 @@ function tripStrategyHtml(t, car) {
       (tread || target ? '<small>' + esc([tread, target ? 'cible ' + target : ''].filter(Boolean).join(' · ')) + '</small>' : '<small>Profondeur et pression à renseigner</small>') + '</div></div>';
   const res = t && Array.isArray(t.res) ? t.res.filter(r => r && r.c && r.w && Number.isFinite(r.w.score)) : [];
   const ab = res.length > 1 ? '<div class="pw-ab"><span class="pw-k">QUELLE VOITURE · MÊME TRAJET</span>' + res.map(r => '<div class="pw-bar"><b>' + esc(r.c.short || r.c.name) + '</b><span><i data-lv="' + r.w.level + '" style="width:' + Math.max(4, Math.min(100, r.w.score)) + '%"></i></span><b class="pw-mono">' + r.w.score + '</b></div>').join('') + '</div>' : '';
-  const opts = t && typeof F1Pure.departureOptions === 'function' ? F1Pure.departureOptions(t.seq) : null;
-  const best = opts && opts.needed && opts.best ? '<button type="button" class="pw-best" data-act="view" data-v="meteo"><span><b class="pw-mono">' + (opts.best.shift < 0 ? '−' : '+') + Math.abs(opts.best.shift) + ' h</b> · ' + esc(opts.best.label.toLowerCase() + ' au lieu de ' + opts.planned.label.toLowerCase()) + '</span><span>Meilleur départ →</span></button>' : '';
-  return '<section class="pw-strat" aria-label="Stratégie pneus"><h3 class="pw-h">STRATÉGIE PNEUS</h3>' + head + ab + best + '</section>';
+  // « Meilleur départ » : remplacé par le créneau de départ du mur des stands (même lecture, ±2 h).
+  return '<section class="pw-strat" aria-label="Stratégie pneus"><h3 class="pw-h">STRATÉGIE PNEUS</h3>' + head + ab + '</section>';
 }
 function renderTripView() {
   const el = $('#secTrip'); if (!el) return;
@@ -207,10 +208,11 @@ function renderTripView() {
   const selectedDest = dest ? `<div class="trip-selected"><b>✓ ${esc(dest.name)}</b><span>${esc(dest.address || dest.sub || '')}</span>${dest.provider ? `<small>${esc(dest.provider)}${dest.precision ? ' · ' + esc(dest.precision) : ''}</small>` : ''}</div>` : '';
   const dep = tripDepartureValue(), immediate = TRIP_FORM.when === 'now';
   const preflight = tripPreflightHtml(route, S.cars.find(c => c.id === TRIP_FORM.carId), origin, dest, dep);
-  const radarTrip = current && APP_CONTEXT.trips.find(x => x.key === current.tripKey) || (!current && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip)) || null;
+  const radarTrip = tripDayFocusTrip() || current && APP_CONTEXT.trips.find(x => x.key === current.tripKey) || (!current && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip)) || null;
   const radarShell = `<div class="trip-radar">${routeRadarHtml(radarTrip)}</div>`;
   const intelligence = tyreIntelligenceHtml(S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar(), 'trajet', CX && wxTrips(CX.m).find(t => current && t.id === current.tripKey) || null);
   const wall = tripWallHtml(radarTrip), strat = tripStrategyHtml(radarTrip, S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar());
+  const brief = tripBriefHtml(radarTrip);
   const html = `<div class="mod-h"><h2>TRAJET · MUR DES STANDS</h2><span class="src obs">contexte partagé Race Control</span></div>
     <div class="pw-grid"><div class="pw-c">${wall}</div><div class="pw-s">${strat}</div><div class="pw-l"><div class="trip-form"><h3 class="pw-h">PARAMÈTRES DE COURSE</h3>
       <div class="trip-field"><span class="trip-label">Départ</span><div class="trip-origin-head"><b>${origin ? esc(origin.name) : 'Origine à choisir'}</b><span>${TRIP_FORM.originMode === rec.mode ? esc(rec.source) : 'choisi'}</span></div>
@@ -226,19 +228,26 @@ function renderTripView() {
         <label><input type="radio" name="tripWhen" data-trip-field="when" value="date" ${TRIP_FORM.when === 'date' ? 'checked' : ''}> Autre date</label>
       </div><div class="trip-time">${TRIP_FORM.when === 'date' ? `<label>Date<input type="date" id="tripDate" data-trip-field="date" value="${esc(TRIP_FORM.date)}"></label>` : ''}${TRIP_FORM.when !== 'now' ? `<label>Heure<input type="time" id="tripTime" data-trip-field="time" value="${esc(TRIP_FORM.time)}"></label>` : `<span class="sub">Départ immédiat · ${esc(dep.slice(11,16))}</span>`}</div></fieldset>
       <div class="trip-field"><label class="trip-label" for="tripCar">Véhicule</label><select id="tripCar" data-trip-field="car">${carOptions}</select></div>
-      ${TRIP_FORM.message ? `<p class="trip-message" role="status">${esc(TRIP_FORM.message)}</p>` : ''}${routeLine}${preflight}
+      ${TRIP_FORM.message ? `<p class="trip-message" role="status">${esc(TRIP_FORM.message)}</p>` : ''}${routeLine}${preflight}${brief}
       <div class="trip-actions"><button class="btn pri trip-main" data-act="trip-plan">${immediate ? 'DÉMARRER LE TRAJET' : existing ? 'METTRE À JOUR LE TRAJET' : 'PROGRAMMER LE TRAJET'}</button>
       ${existing ? '<button class="btn" data-act="trip-plan-cancel">Annuler le trajet</button>' : ''}</div>
     </div></div><div class="pw-r">${radarShell}<div class="trip-intelligence">${intelligence}</div></div></div>`;
   // Les mises à jour de la route ne doivent pas détacher les commandes pendant un appui,
   // ni remplacer les champs lorsqu'aucune valeur du formulaire n'a changé.
-  const controlsHTML = html.replace(routeLine, '').replace(preflight, '').replace(radarShell, '').replace(intelligence, '').replace(wall, '').replace(strat, '');
+  const controlsHTML = html.replace(routeLine, '').replace(preflight, '').replace(radarShell, '').replace(intelligence, '').replace(wall, '').replace(strat, '').replace(brief, '');
   if (el._tripControlsHTML === controlsHTML && el.querySelector('.trip-form')) {
     const previous = el.querySelector('.trip-route-state');
     if (previous) { if (previous.outerHTML !== routeLine) previous.outerHTML = routeLine; }
     else if (routeLine) el.querySelector('.trip-actions').insertAdjacentHTML('beforebegin', routeLine);
     const preflightPanel = el.querySelector('.trip-preflight');
     if (preflightPanel && preflightPanel.outerHTML !== preflight) preflightPanel.outerHTML = preflight;
+    // Briefing copilote : redessiné seul, au-dessus des boutons (le bouton de lecture garde le focus).
+    const briefPanel = el.querySelector('.bf-box');
+    if (briefPanel ? briefPanel.outerHTML !== brief : brief) {
+      const a = document.activeElement, keep = a && briefPanel && briefPanel.contains(a) && a.dataset && a.dataset.act ? '[data-act="' + a.dataset.act + '"]' + (a.dataset.v ? '[data-v="' + a.dataset.v + '"]' : '') : null;
+      if (briefPanel) briefPanel.outerHTML = brief; else el.querySelector('.trip-actions').insertAdjacentHTML('beforebegin', brief);
+      const back = keep && el.querySelector('.bf-box ' + keep); if (back) back.focus({ preventScroll: true });
+    }
     const radarPanel = el.querySelector('.trip-radar');
     if (radarPanel && radarPanel._radarHTML !== radarShell) {
       const focus = uxFocusKey(radarPanel); radarPanel.outerHTML = radarShell;
@@ -274,18 +283,7 @@ function tripArrivalPending() {
   // Trajets affichés et trajets planifiés du jour (un aller passé quitte la liste affichée mais reste planifié).
   // Un trajet dont l'heure est passée quitte ces listes : l'aller et le retour domicile-travail du jour et les trajets agenda
   // du jour sont reconstruits comme le fait déjà la confirmation de lieu (mêmes clés, mêmes données de planning).
-  const today = now.slice(0, 10), past = [];
-  if (appWorkOn(today)) ['go', 'ret'].forEach(d => {
-    if (today + 'T' + (d === 'go' ? S.work.dep : S.work.ret) > now) return;
-    const r = appWorkTripData(d, 0);
-    if (r && !r.err) past.push({ src: 'work', td: r, dep: r.dep, arr: r.arr, from: r.fromName, to: r.toName, name: appCommuteLabel(r), key: 'commute|' + r.dep + '|' + d });
-  });
-  if (CAL && Array.isArray(CAL.events)) CAL.events.filter(e => calendarSpatial(e) && !calendarCancelled(e)).forEach(e => effLegs(e).forEach(l => {
-    if (!l || !l.dep || l.dep > now || l.dep.slice(0, 10) !== today) return;
-    past.push({ src: 'cal', dep: l.dep, planDep: l.dep, planL: l, l, arr: l.arr, name: (l.k === 'ret' ? 'Retour' : 'Aller') + ' · ' + calTitle(e.t),
-      from: l.from ? l.from.city || l.from.label : 'Origine', to: l.to ? l.to.city || l.to.label : 'Destination', key: calendarTripKey(e, l) });
-  }));
-  const seen = new Set(), all = [...(Array.isArray(BRF_SHOWN) ? BRF_SHOWN : []), ...(Array.isArray(BRF_TRIPS) ? BRF_TRIPS : []), ...past].filter(t => t && t.key && !seen.has(t.key) && seen.add(t.key));
+  const all = tripUnion(tripTodayPast(now));
   const list = all.filter(t => t && t.key && t.dep && t.dep <= now && !done[t.key] && !LIVE.done[t.key]
     && liveMin(t.arr || t.dep, now) <= 180 && !(PLACE.conf && (appTripPlace(t, 'to') || {}).id === PLACE.conf.placeId && PLACE.conf.at >= tsToDate(t.dep)));
   const t = list.sort((a, b) => String(b.dep).localeCompare(String(a.dep)))[0];
@@ -309,7 +307,7 @@ function renderTripSummary() {
   // Onglet Trajet : en-tête du mur des stands, compte à rebours du départ (même minuterie que les autres cartes).
   const depTs = n && n.dep || t && t.dep || '', wall = UI.view === 'trajet';
   el.classList.toggle('pw-head', wall);
-  el.innerHTML = (wall ? tripArrivalHtml() : '') + `<div class="trip-summary-head"><span class="trip-label">${wall ? '' : '🧭 '}${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(depTs) || '—')}</b></div>
+  el.innerHTML = (wall ? tripArrivalHtml() + tripDayHtml() : '') + `<div class="trip-summary-head"><span class="trip-label">${wall ? '' : '🧭 '}${t && t === APP_CONTEXT.snapshot.activeTrip ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(depTs) || '—')}</b></div>
     ${wall && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(depTs) && !(t && t === APP_CONTEXT.snapshot.activeTrip) ? '<div class="pw-count">' + cdSpan(depTs.slice(0, 16)) + '</div>' : ''}
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}${from ? `<small class="trip-origin-src">Départ : ${esc(shared.source)}</small>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(appCarLabel().text)}</span><span>${esc(route)}</span></div>

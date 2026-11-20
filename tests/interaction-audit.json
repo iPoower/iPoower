@@ -446,5 +446,33 @@
   "pw-point": {
     "suite": "e2e134-trajet-mur-des-stands.js",
     "result": "point du tour du parcours sélectionné, ses chiffres affichés, focus conservé, rien d’écrit"
+  },
+  "fr-open": {
+    "suite": "e2e137-trajet-feuille-creneau-briefing.js",
+    "result": "détail d’une spéciale de la feuille de route ouvert, focus conservé"
+  },
+  "fr-focus": {
+    "suite": "e2e137-trajet-feuille-creneau-briefing.js",
+    "result": "spéciale choisie affichée dans le mur des stands, puis retour au prochain trajet"
+  },
+  "slot-pick": {
+    "suite": "e2e137-trajet-feuille-creneau-briefing.js",
+    "result": "heure de départ sélectionnée, détail du créneau affiché, focus conservé"
+  },
+  "slot-apply": {
+    "suite": "e2e137-trajet-feuille-creneau-briefing.js",
+    "result": "départ du trajet saisi décalé (même trajet, même fonction que la mise à jour)"
+  },
+  "slot-undo": {
+    "suite": "e2e137-trajet-feuille-creneau-briefing.js",
+    "result": "départ du trajet saisi rétabli à l’heure d’origine"
+  },
+  "brief-play": {
+    "suite": "e2e137-trajet-feuille-creneau-briefing.js",
+    "result": "briefing lu à voix haute sur appui (une phrase par note), second appui = arrêt"
+  },
+  "brief-rate": {
+    "suite": "e2e137-trajet-feuille-creneau-briefing.js",
+    "result": "débit de lecture du briefing choisi"
   }
 }

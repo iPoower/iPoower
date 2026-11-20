@@ -247,6 +247,7 @@ let TRIPCANCELTIMER = null;
 // @include app/engineering-cockpit.js
 // @include app/engineering-cockpit-view.js
 // @include app/trip-view.js
+// @include app/trip-day-view.js
 // @include app/calendar-origin-editor.js
 function tripContextLocs() {
   const n = USER_STORE.state.dayContext && USER_STORE.state.dayContext.nextDestination;
@@ -4526,7 +4527,7 @@ function renderAll() {
 // déverrouillage, sans avertissement. Les contrôles qui écrivent sont désactivés avec un message visible, et les
 // gestionnaires refusent l'écriture (défense en profondeur). Jamais de report d'une saisie verrouillée dans le coffre.
 // Le mode « sans code » n'est PAS verrouillé (stockage en clair durable) : storeLocked(), pas LOCKED().
-const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key']);
+const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key', 'slot-apply', 'slot-undo']);
 const LOCKED_WRITE_MSG = 'Déverrouille l’app pour modifier : rien n’est enregistré tant que l’app est verrouillée';
 const LOCKED_WRITE_FREE = '#unlockForm, #twrcExpiryForm, #twrcExpiryOverlay';
 let lockedWriteObserver = null;
@@ -4623,6 +4624,17 @@ document.addEventListener('click', async e => {
   else if (a === 'race-toggle') f1Toggle(t.dataset.f1);
   else if (a === 'cal-retry') { CALFAIL = null; CALDONE = false; renderBrf(); renderCal(); loadCalendar(true); }
   else if (a === 'race-speak') f1Speak(t);
+  // Onglet Trajet · feuille de route du jour, créneau de départ, briefing copilote (états de vue ; seul « Décaler » écrit).
+  else if (a === 'fr-open') { FR.open = FR.open === t.dataset.key ? null : t.dataset.key; renderTripSummary();
+    const back = document.querySelector('#secTripSummary [data-act=fr-open][data-key="' + CSS.escape(t.dataset.key) + '"]'); if (back) back.focus({ preventScroll: true }); }
+  else if (a === 'fr-focus') { FR.focus = t.dataset.key || null; FR.open = null; renderAll();
+    const w = document.querySelector('#secTrip .pw-wall'); if (w && FR.focus) w.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); }
+  else if (a === 'slot-pick') { SLOT.sel = parseInt(t.dataset.s, 10) || 0; renderTripView();
+    const back = document.querySelector('#secTrip [data-act=slot-pick][data-s="' + SLOT.sel + '"]'); if (back) back.focus({ preventScroll: true }); }
+  else if (a === 'slot-apply') { if (!tripSlotApply(parseInt(t.dataset.s, 10))) commandFeedback(t, 'Décalage impossible : trajet changé ou heure passée'); }
+  else if (a === 'slot-undo') tripSlotUndo();
+  else if (a === 'brief-play') { const k = t.dataset.key, snap = APP_CONTEXT.snapshot; tripBriefPlay(t, tripUnion().find(x => x.key === k) || [snap.activeTrip, snap.nextTrip].find(x => x && x.key === k) || null); }
+  else if (a === 'brief-rate') { BRIEF.rate = t.dataset.v === '0.8' ? 0.8 : 1; renderTripView(); }
   // Onglet Trajet · tour du parcours : point sélectionné (état de vue, rien n'est écrit), focus rendu au bouton redessiné.
   else if (a === 'pw-point') {
     PW.point = Math.max(0, parseInt(t.dataset.i, 10) || 0); renderTripView();
