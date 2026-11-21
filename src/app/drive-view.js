@@ -24,6 +24,12 @@ const DRIVE_LIGHT_SVG = '<svg viewBox="0 0 14 32" width="14" height="32" aria-hi
 const IGN_PLAN = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/png&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
 const driveTrip = () => { const s = APP_CONTEXT.snapshot || {}; return s.activeTrip || s.nextTrip || null; };
+// Ouverture du GPS : trajet en cours, ou programmé dans les 3 h ; plus tard (le trajet de demain matin), choix de la voiture d'abord.
+function driveSoonTrip() {
+  const s = APP_CONTEXT.snapshot || {}; if (s.activeTrip) return s.activeTrip;
+  const t = s.nextTrip, min = t && typeof t.dep === 'string' ? (Date.parse(t.dep.slice(0, 16)) - Date.parse(liveNow().slice(0, 16))) / 60e3 : NaN;
+  return Number.isFinite(min) && min <= 180 ? t : null;
+}
 function driveShell() {
   return '<div class="dv-map" role="region" aria-label="Carte du trajet en direct"></div>' +
     '<div class="dv-top"><span class="dv-tag">EN DIRECT</span><span class="dv-gps" data-dv="gps">GPS —</span>' +
@@ -72,7 +78,7 @@ function driveAutoOpen(key, left = 20, routeOf = t => LiveRoute.route(t, null)) 
 // voiture d'abord (voiture du jour présélectionnée), puis « Rouler sans destination » ou « Choisir une destination ».
 function driveGps() {
   if (LOCKED()) return;
-  if (driveTrip()) { driveOpen(); return; }
+  if (driveSoonTrip()) { driveOpen(); return; }
   const root = $('#liveDrive'); if (!root) return;
   DRIVE.setup = { carId: appDay().activeCarId || (S.cars[0] && S.cars[0].id) || null };
   root.hidden = false; root.classList.add('dv-setupmode'); document.documentElement.classList.add('dv-on'); driveSetupRender();
