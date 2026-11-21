@@ -121,6 +121,8 @@ async function driveMapGl(node, route, night) {
     anim = requestAnimationFrame(step);
   }
   let fitted = false;
+  // Cadre redimensionné (bandeaux, barre d'outils de Safari) sans que la carte l'ait vu : canvas recalé sur le cadre.
+  const fit = () => { const c = map.getCanvas(); if (c && (c.clientWidth !== node.clientWidth || c.clientHeight !== node.clientHeight)) map.resize(); };
   return {
     kind: '3d', map, credit: 'Carte © IGN Géoplateforme (PLAN.IGN, BD TOPO' + (base === 'ortho' ? ', BD ORTHO' : '') + ') · itinéraire OSRM · feux © OpenStreetMap',
     on: (ev, fn) => map.on(ev === 'drag' ? 'dragstart' : ev, fn),
@@ -129,10 +131,10 @@ async function driveMapGl(node, route, night) {
     setCar: moveCar,
     shown: () => shown.slice(),
     // Caméra : sens de la marche, inclinée, zoom demandé (vitesse, manœuvre) ; 0,9 s de transition ou recadrage direct.
-    follow(p, bearing, zoom) { const cam = { center: [p[1], p[0]], bearing: Number.isFinite(bearing) ? bearing : map.getBearing(), pitch: 60, zoom: Number.isFinite(zoom) ? zoom : Math.max(map.getZoom(), 16.5) };
+    follow(p, bearing, zoom) { fit(); const cam = { center: [p[1], p[0]], bearing: Number.isFinite(bearing) ? bearing : map.getBearing(), pitch: 60, zoom: Number.isFinite(zoom) ? zoom : Math.max(map.getZoom(), 16.5) };
       if (driveReduced()) map.jumpTo(cam); else map.easeTo({ ...cam, duration: 900, easing: t => t }); },
     setLights(list) { counts.lights = (list || []).length; set('lights', driveFc((list || []).map(l => [l.lon, l.lat]))); },
-    async setTheme(n) { const b = driveBasePref(); if (n === theme && b === base) return; theme = n; base = b;
+    async setTheme(n) { fit(); const b = driveBasePref(); if (n === theme && b === base) return; theme = n; base = b;
       try { style = await driveGlStyle(n, b); map.setStyle(style, { diff: false }); this.credit = 'Carte © IGN Géoplateforme (PLAN.IGN, BD TOPO' + (b === 'ortho' ? ', BD ORTHO' : '') + ') · itinéraire OSRM · feux © OpenStreetMap'; } catch (e) { /* style inchangé si le chargement échoue */ } },
     theme: () => (theme ? 'nuit' : 'jour') + (base === 'ortho' ? '+photo' : ''),
     counts: () => ({ ...counts }),
