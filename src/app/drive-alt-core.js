@@ -1,8 +1,9 @@
 /* Altitude du parcours (21/11/2026, lot 5) : profil du tracé (service d'altimétrie IGN, RGE ALTI), altitude à la position,
- * prochain point haut et gel prévu à son altitude. Module PUR : aucune requête ni stockage ; les réponses sont fournies.
- * Un col peut être sous 0 °C quand la vallée ne l'est pas (et l'inverse en cas d'inversion hivernale) : AUCUNE correction fixe
- * par l'altitude n'est appliquée ; la température vient d'Open-Meteo interrogé aux coordonnées du col AVEC son altitude réelle
- * (paramètre « elevation », réduction d'échelle du modèle). Sans réponse : « non couvert », jamais « pas de gel ».
+ * prochain point haut. Module PUR : aucune requête ni stockage ; les réponses sont fournies.
+ * Gel au point haut : AUCUNE règle propre à ce module. La vue lit la règle UNIQUE d'engine.js (chaussée estimée + humidité de
+ * la même heure, option A amendée le 14/11) sur la prévision Open-Meteo demandée aux coordonnées du col AVEC son altitude
+ * réelle (paramètre « elevation ») ; ce module ne fait que mettre en forme le niveau et le libellé qu'elle produit.
+ * Aucune correction fixe par l'altitude (les inversions hivernales la rendraient fausse). Sans réponse : « non couverte ».
  * Les portions à moins de 1,5 km d'un lieu enregistré ne sont jamais envoyées (altitude inconnue là, rien d'inventé). */
 const DriveAlt = (() => {
   const finite = Number.isFinite, RAD = Math.PI / 180;
@@ -46,25 +47,25 @@ const DriveAlt = (() => {
     if (!(top.z >= 600 || here != null && top.z - here >= 150)) return null;
     return { z: top.z, along: top.along, dist: top.along - along, at: top.at, gain: here != null ? top.z - here : null };
   }
-  // Gel au point haut : température prévue (°C) à son altitude, à l'heure de passage. ≤ 0 : DANGER ; ≤ 2 : VIGILANCE ; sinon RAS.
-  function frost(tempC) {
-    if (!finite(tempC)) return null;
-    return { level: tempC <= 0 ? 2 : tempC <= 2 ? 1 : 0, label: tempC <= 0 ? 'gel probable' : tempC <= 2 ? 'gel possible' : 'pas de gel prévu' };
-  }
-  // Heure prévue (« AAAA-MM-JJTHH:00 ») la plus proche du passage dans une réponse horaire Open-Meteo ; température ou null.
-  function tempAt(json, ts) {
-    const h = json && json.hourly, t = h && Array.isArray(h.time) ? h.time : null, v = h && Array.isArray(h.temperature_2m) ? h.temperature_2m : null;
-    if (!t || !v || typeof ts !== 'string') return null;
-    const key = ts.slice(0, 13) + ':00', i = t.indexOf(key);
-    return i >= 0 && finite(v[i]) ? v[i] : null;
-  }
-  // Libellé de la température au point haut : jamais « RAS » sans donnée ; quota atteint (429) ou panne → « non couverte ».
+  // Libellé du gel au point haut : niveau et mots de la règle d'engine.js, fournis par la vue (v = { lv, name, words, ref, basis,
+  // at, stale }) ; ce module n'a aucun seuil. Quota atteint (429), panne ou plafond sans prévision antérieure : « non couverte ».
+  const n1 = v => (Math.round(v * 10) / 10).toFixed(1).replace('.', ',').replace(/,0$/, '').replace('-', '−');
   function summitLabel(t) {
-    if (t && t.err) return t.err === 429 ? 'température non couverte (service météo saturé)' : 'température non couverte';
-    const f = frost(t && t.v); if (!f) return 'température non couverte';
-    return (Math.round(t.v * 10) / 10).toString().replace('.', ',').replace('-', '−') + ' °C prévus · ' + f.label;
+    if (!t || t.err) return t && t.err === 429 ? 'gel non couvert (service météo saturé)' : 'gel non couvert';
+    if (!t.words) return 'gel non couvert';
+    const ref = finite(t.ref) ? (t.basis === 'road' ? 'chaussée est. ' : 'air ') + n1(t.ref) + ' °C' + (t.basis === 'road' ? '' : ' (repli : chaussée non estimée)') : '';
+    const hh = typeof t.at === 'string' && /T\d{2}:\d{2}/.test(t.at) ? t.at.slice(11, 16) : '';
+    return [t.name, t.words, ref].filter(Boolean).join(' · ') + (t.stale && hh ? ' · prévision de ' + hh + ' (plafond d’appels atteint)' : '');
+  }
+  // Verdict gel au point haut pour l'heure de passage : la règle d'engine.js (fournie : summarize, frostRisk, frostWords, LV),
+  // appliquée à l'heure du modèle du col (makeModel d'engine.js), exactement comme un point de la carte trajet. Null sans heure.
+  function verdict(m, passTs, eng) {
+    const i = m && m.byTime && typeof passTs === 'string' ? m.byTime.get(passTs.slice(0, 13) + ':00') : null;
+    if (i == null || !eng) return null;
+    const fr = eng.frostRisk(eng.summarize([{ hs: m.hs, i }])), ok = Number.isInteger(fr.level);
+    return { lv: ok ? fr.level : null, name: ok ? eng.LV[fr.level].name : 'INDÉTERMINÉ', words: eng.frostWords(fr).label, ref: fr.ref, basis: fr.basis, key: fr.key, at: m.hs[i].t };
   }
   const MAX_CALLS = 3;   // appels météo « point haut » par trajet, au plus (Open-Meteo a déjà renvoyé des 429)
-  return Object.freeze({ samples, profile, altAt, summit, frost, tempAt, summitLabel, MAX_CALLS });
+  return Object.freeze({ samples, profile, altAt, summit, summitLabel, verdict, MAX_CALLS });
 })();
 if (typeof module !== 'undefined') module.exports = DriveAlt;

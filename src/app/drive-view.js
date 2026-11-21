@@ -152,7 +152,7 @@ function driveClose() {
   DRIVE.free = null; DRIVE.setup = null; const r0 = $('#liveDrive'); if (r0) r0.classList.remove('dv-setupmode');
   const root = $('#liveDrive'); DRIVE.open = false; clearInterval(DRIVE.timer); DRIVE.timer = null; driveWake(false);
   if (DRIVE.mv) DRIVE.mv.remove();
-  Object.assign(DRIVE, { mv: null, mvPending: false, map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, prevFix: null, speed: null, hist: [], summitCalls: 0, summitKey: null, summitT: null,
+  Object.assign(DRIVE, { mv: null, mvPending: false, map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, prevFix: null, speed: null, hist: [], summitCalls: 0, summitKey: null, summitT: null, summitLast: null, summitCol: null, summitCache: null,
     nav: null, navGen: DRIVE.navGen + 1, navAt: 0, navAsked: null, km0: 0, off: null, rerouting: false, rerouteAt: 0, reroutes: 0, navMsg: '', navMsgAt: 0,
     lights: null, lightsSig: null, lightsLayer: null, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null });
   document.documentElement.classList.remove('dv-on');
@@ -347,19 +347,39 @@ async function driveAltFetch(nav) {
   } catch (e) { nav.profile = null; }
   if (DRIVE.open) driveTick();
 }
-// Température au point haut : UN appel Open-Meteo par (point haut, heure de passage), au plus DriveAlt.MAX_CALLS par trajet.
-// Altitude réelle du col transmise (paramètre « elevation ») : aucune correction fixe par l'altitude. Échec ou plafond atteint :
-// « non couverte » (jamais « pas de gel »).
+// Gel au point haut : Open-Meteo interrogé aux coordonnées du col AVEC son altitude réelle (« elevation »), avec les mêmes variables
+// horaires que les points d'un trajet. UNE réponse (toute la série horaire) sert chaque heure de passage du même col pendant 60 min ;
+// au plus DriveAlt.MAX_CALLS appels par trajet ; un appel bloqué par la pause 429 commune n'est pas compté (nouvel essai après).
+// Verdict = règle UNIQUE d'engine.js, par le même chemin qu'un point de la carte trajet : makeModel → summarize de l'heure de
+// passage → frostRisk / frostWords (chaussée estimée + humidité de la même heure, repli sur l'air signalé). Aucun seuil ici.
+// Quota (429) ou panne : « non couvert ». Plafond atteint : dernière prévision valide de CE col, avec son heure.
+const DRIVE_SUMMIT_TTL = 60 * 60e3;
+const driveSummitFromModel = (m, passTs) => DriveAlt.verdict(m, passTs, { summarize, frostRisk, frostWords, LV });
+const driveSummitModel = (json, at) => json && json.hourly && Array.isArray(json.hourly.time) ? makeModel(json, 'live', { lat: at[0], lon: at[1] }) : null;
+// Un col = le même point haut à ≤ 1 km et ≤ 50 m d'altitude près : un profil rafraîchi (tracé GPS, recalcul) qui déplace le point
+// haut de quelques mètres garde son identité et ne coûte pas un nouvel appel météo.
+function driveSummitSpot(top) {
+  const c = DRIVE.summitCol;
+  if (c && DriveNav.meters(c.at, top.at) <= 1000 && Math.abs(c.z - top.z) <= 50) return c.id;
+  DRIVE.summitCol = { at: top.at.slice(), z: top.z, id: top.at.join(',') + '|' + top.z }; return DRIVE.summitCol.id;
+}
 async function driveSummitTemp(top, passTs) {
-  const key = top.at.join(',') + '|' + top.z + '|' + passTs.slice(0, 13);
+  const spot = driveSummitSpot(top), key = spot + '|' + passTs.slice(0, 13);
   if (DRIVE.summitKey === key) return;
-  DRIVE.summitKey = key;
-  if ((DRIVE.summitCalls || 0) >= DriveAlt.MAX_CALLS) { DRIVE.summitT = { err: 'plafond' }; return; }
-  DRIVE.summitCalls = (DRIVE.summitCalls || 0) + 1; DRIVE.summitT = null;
+  const c = DRIVE.summitCache, hit = c && c.spot === spot && Date.now() - c.at < DRIVE_SUMMIT_TTL ? driveSummitFromModel(c.model, passTs) : null;
+  if (hit) { DRIVE.summitKey = key; DRIVE.summitT = hit; DRIVE.summitLast = { spot, v: hit }; return; }
+  if ((DRIVE.summitCalls || 0) >= DriveAlt.MAX_CALLS) {
+    const last = DRIVE.summitLast && DRIVE.summitLast.spot === spot ? DRIVE.summitLast.v : null;
+    DRIVE.summitKey = key; DRIVE.summitT = last ? { ...last, stale: true } : { err: 'plafond' }; return;
+  }
+  const pause = typeof WEATHER_REQUESTS !== 'undefined' && WEATHER_REQUESTS.state();
+  if (pause && pause.until > Date.now()) { DRIVE.summitKey = spot + '|pause'; DRIVE.summitT = { err: 429 }; return; }
+  DRIVE.summitKey = key; DRIVE.summitCalls = (DRIVE.summitCalls || 0) + 1; DRIVE.summitT = null;
   try {
-    const j = await fetchJSON('https://api.open-meteo.com/v1/forecast?latitude=' + top.at[0] + '&longitude=' + top.at[1] + '&elevation=' + top.z + '&hourly=temperature_2m&timezone=Europe%2FParis&forecast_days=3', 12000);
-    const v = DriveAlt.tempAt(j, passTs);
-    if (DRIVE.summitKey === key) { DRIVE.summitT = Number.isFinite(v) ? { v } : { err: 'absente' }; if (DRIVE.open) driveTick(); }
+    const j = await fetchJSON(API + '?latitude=' + top.at[0] + '&longitude=' + top.at[1] + '&elevation=' + top.z + '&hourly=' + Q_HR + '&timezone=Europe%2FParis&past_days=1&forecast_days=3', 12000);
+    const m = driveSummitModel(j, top.at), v = m ? driveSummitFromModel(m, passTs) : null;
+    if (m) DRIVE.summitCache = { spot, model: m, at: Date.now() };
+    if (DRIVE.summitKey === key) { DRIVE.summitT = v || { err: 'absente' }; if (v) DRIVE.summitLast = { spot, v }; if (DRIVE.open) driveTick(); }
   } catch (e) { if (DRIVE.summitKey === key) { DRIVE.summitT = { err: e && (e.status === 429 || /429/.test(e.message || '')) ? 429 : 'panne' }; if (DRIVE.open) driveTick(); } }
 }
 function driveAltRow(route, along, active) {
@@ -370,9 +390,9 @@ function driveAltRow(route, along, active) {
   if (!top) { row.dataset.dvLv = '0'; driveSet('altTop', 'Pas de point haut notable devant'); return; }
   const speed = Number.isFinite(DRIVE.speed) && DRIVE.speed > 20 ? DRIVE.speed : 60, pass = addMin(liveNow().slice(0, 16), Math.round(top.dist / 1000 / speed * 60));
   if (active) driveSummitTemp(top, pass);
-  const mine = DRIVE.summitKey && DRIVE.summitKey.startsWith(top.at.join(',') + '|' + top.z), t = mine ? DRIVE.summitT : null, fr = t && !t.err ? DriveAlt.frost(t.v) : null;
-  row.dataset.dvLv = fr ? String(fr.level) : t && t.err ? 'x' : '0';
-  driveSet('altTop', 'Point haut ' + top.z + ' m dans ' + driveKm(top.dist / 1000) + ' km · ' + (t ? DriveAlt.summitLabel(t) : 'température en cours de chargement'));
+  const mine = DRIVE.summitKey && DRIVE.summitKey.startsWith(driveSummitSpot(top) + '|'), t = mine ? DRIVE.summitT : null;
+  row.dataset.dvLv = t && !t.err && Number.isInteger(t.lv) ? String(t.lv) : t ? 'x' : '';
+  driveSet('altTop', 'Point haut ' + top.z + ' m dans ' + driveKm(top.dist / 1000) + ' km · ' + (t ? DriveAlt.summitLabel(t) : 'gel en cours de calcul'));
 }
 async function driveLightsFetch(nav) {
   if (!nav || !nav.full || DRIVE.lightsSig === nav.signature) return;
@@ -472,7 +492,7 @@ function driveTick() {
   const t = driveTrip();
   if (!t) { driveSet('foot', 'Aucun trajet en cours ni prévu'); return; }
   if (DRIVE.key !== t.key) {
-    Object.assign(DRIVE, { key: t.key, to: t.to, carId: t.carId || appDay().activeCarId, plan: t.planL || t.l, last: null, hist: [], nav: null, navAt: 0, navAsked: null, km0: 0, off: null, lights: null, lightsSig: null, fixTs: 0, navFuzzy: false, refineAt: 0, summitCalls: 0, summitKey: null, summitT: null });
+    Object.assign(DRIVE, { key: t.key, to: t.to, carId: t.carId || appDay().activeCarId, plan: t.planL || t.l, last: null, hist: [], nav: null, navAt: 0, navAsked: null, km0: 0, off: null, lights: null, lightsSig: null, fixTs: 0, navFuzzy: false, refineAt: 0, summitCalls: 0, summitKey: null, summitT: null, summitLast: null, summitCol: null, summitCache: null, summitCol: null });
     DRIVE.navGen++; if (DRIVE.mv) { DRIVE.mv.remove(); DRIVE.mv = null; DRIVE.map = null; }
   }
   const planned = LiveRoute.route(t, null), route = DRIVE.nav || planned;
