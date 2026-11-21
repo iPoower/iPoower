@@ -253,6 +253,7 @@ let TRIPCANCELTIMER = null;
 // @include app/trip-day-view.js
 // @include app/loan-view.js
 // @include app/drive-nav-core.js
+// @include app/drive-guide-core.js
 // @include app/drive-map-gl.js
 // @include app/drive-view.js
 // @include app/calendar-origin-editor.js
