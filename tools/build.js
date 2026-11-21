@@ -85,7 +85,7 @@ const inline=[...page.matchAll(/<script>([\s\S]*?)<\/script>/gi)].map(m=>m[1]);
 const deferred=(page.match(/<script type="text\/plain" id="twrc-app">([\s\S]*?)<\/script>/)||[])[1];
 if(deferred==null)throw new Error('Bloc applicatif différé introuvable');
 const CONNECT=["'self'",'https://api.open-meteo.com','https://ensemble-api.open-meteo.com','https://air-quality-api.open-meteo.com','https://geocoding-api.open-meteo.com',
-  'https://public.opendatasoft.com','https://api.bigdatacloud.net','https://router.project-osrm.org','https://nominatim.openstreetmap.org','https://data.geopf.fr',
+  'https://public.opendatasoft.com','https://api.bigdatacloud.net','https://router.project-osrm.org','https://overpass-api.de','https://nominatim.openstreetmap.org','https://data.geopf.fr',
   'https://api.rainviewer.com','https://ntfy.sh',...(DATA_BASE?[new URL(DATA_BASE).origin]:[]),...(DRIVE?['https://www.googleapis.com','https://accounts.google.com/gsi/']:[])];
 const CSP=[`default-src 'self'`,`script-src ${[...inline,deferred,recoveryScript].map(sha).join(' ')} '${webAssets.LEAFLET.js}'${DRIVE?' https://accounts.google.com/gsi/client https://apis.google.com':''}`,`script-src-attr 'none'`,`style-src 'self' 'unsafe-inline' https://fonts.googleapis.com${DRIVE?' https://accounts.google.com/gsi/style':''}`,
   `font-src https://fonts.gstatic.com`,`img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://server.arcgisonline.com https://tilecache.rainviewer.com https://data.geopf.fr`,

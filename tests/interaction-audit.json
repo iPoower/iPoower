@@ -530,5 +530,17 @@
   "drive-follow": {
     "suite": "e2e142-mode-en-direct.js",
     "result": "carte recentrée sur la position après un déplacement manuel"
+  },
+  "drive-arrived": {
+    "suite": "e2e143-en-direct-recalcul.js",
+    "result": "trajet clos (journal, lieu confirmé) et km du trajet ajoutés au compteur de sa voiture"
+  },
+  "drive-odo": {
+    "suite": "e2e143-en-direct-recalcul.js",
+    "result": "après une arrivée détectée par le GPS, km du trajet ajoutés au compteur sur appui"
+  },
+  "drive-beep": {
+    "suite": "e2e143-en-direct-recalcul.js",
+    "result": "bip d’approche des feux activé ou coupé (préférence de l’appareil), un bip par feu à 300 m"
   }
 }

@@ -252,6 +252,7 @@ let TRIPCANCELTIMER = null;
 // @include app/trip-view.js
 // @include app/trip-day-view.js
 // @include app/loan-view.js
+// @include app/drive-nav-core.js
 // @include app/drive-view.js
 // @include app/calendar-origin-editor.js
 function tripContextLocs() {
@@ -4563,7 +4564,7 @@ function renderAll() {
 // déverrouillage, sans avertissement. Les contrôles qui écrivent sont désactivés avec un message visible, et les
 // gestionnaires refusent l'écriture (défense en profondeur). Jamais de report d'une saisie verrouillée dans le coffre.
 // Le mode « sans code » n'est PAS verrouillé (stockage en clair durable) : storeLocked(), pas LOCKED().
-const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key', 'slot-apply', 'slot-undo', 'loan-save', 'loan-back', 'split-apply']);
+const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key', 'slot-apply', 'slot-undo', 'loan-save', 'loan-back', 'split-apply', 'drive-arrived', 'drive-odo']);
 const LOCKED_WRITE_MSG = 'Déverrouille l’app pour modifier : rien n’est enregistré tant que l’app est verrouillée';
 const LOCKED_WRITE_FREE = '#unlockForm, #twrcExpiryForm, #twrcExpiryOverlay';
 let lockedWriteObserver = null;
@@ -4679,6 +4680,9 @@ document.addEventListener('click', async e => {
   else if (a === 'drive-open') driveOpen();
   else if (a === 'drive-close') driveClose();
   else if (a === 'drive-follow') { DRIVE.follow = true; t.hidden = true; driveTick(); }
+  else if (a === 'drive-arrived') driveArrived();
+  else if (a === 'drive-odo') driveOdoConfirm();
+  else if (a === 'drive-beep') driveBeepToggle(t);
   else if (a === 'split-pick') { SPLIT.pick = parseInt(t.dataset.i, 10) || 0; renderTripSummary(); const back = document.querySelector('#secTripSummary [data-act=split-pick][data-i="' + SPLIT.pick + '"]'); if (back) back.focus({ preventScroll: true }); }
   else if (a === 'split-apply') { if (loanSplitApply(parseInt(t.dataset.i, 10) || 0)) commandFeedback(t, 'Répartition appliquée'); else commandFeedback(t, 'Répartition impossible : trajets changés'); }
   else if (a === 'loan-search') loanSearch(t);
