@@ -76,6 +76,19 @@ test('alerte d’approche : prochain feu à ≤ 300 m, feux enchaînés dans les
   assert.deepEqual(JSON.parse(JSON.stringify(N.lightAlert(L, 1800))), { dist: 200, chain: 1, key: 2000 });
   assert.equal(N.lightAlert([], 0), null); assert.equal(N.lightAlert(L, null), null);
 });
+test('étapes OSRM : manœuvres placées le long du tracé, voies seulement si OSRM les fournit ; prochaine manœuvre réelle ; zoom automatique', () => {
+  const r = N.fromOsrm({ routes: [{ distance: 7400, duration: 600, geometry: { coordinates: co }, legs: [{ steps: [
+    { name: 'Rue A', maneuver: { type: 'depart', location: [2, 49] } },
+    { name: 'Rue A bis', maneuver: { type: 'new name', modifier: 'straight', location: [2.02, 49] } },
+    { name: 'Avenue B', maneuver: { type: 'turn', modifier: 'right', location: [2.05, 49] }, intersections: [{ lanes: [{ valid: false, indications: ['left'] }, { valid: true, indications: ['straight', 'right'] }] }] },
+    { name: 'loin', maneuver: { type: 'turn', modifier: 'left', location: [2.05, 49.01] } },
+    { name: '', maneuver: { type: 'arrive', location: [2.1, 49] } }] }] }] });
+  assert.deepEqual(JSON.parse(JSON.stringify(r.steps.map(s => [s.type, s.name, !!s.lanes]))), [['depart', 'Rue A', false], ['new name', 'Rue A bis', false], ['turn', 'Avenue B', true], ['arrive', '', false]]);
+  assert.ok(Math.abs(r.steps[2].along - r.total / 2) < 40);
+  assert.equal(N.nextStep(r, 100).name, 'Avenue B');                          // « new name » tout droit ignoré
+  assert.equal(N.nextStep(r, r.total / 2 + 30).type, 'arrive'); assert.equal(N.nextStep(null, 0), null);
+  assert.equal(N.autoZoom(30, null), 17.3); assert.equal(N.autoZoom(95, 5000), 15.9); assert.equal(N.autoZoom(120, 300), 17.4); assert.equal(N.autoZoom(95, 700), 16.8); assert.equal(N.autoZoom(null, null), 16.6);
+});
 test('km du trajet pour le compteur : distance suivie si elle couvre la moitié du prévu, sinon prévue ; arrondi au km', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(N.tripKm(31.4, 30))), { km: 31, src: 'gps' });
   assert.deepEqual(JSON.parse(JSON.stringify(N.tripKm(3, 30))), { km: 30, src: 'route' });
