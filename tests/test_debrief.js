@@ -139,6 +139,33 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), { quiet = false 
     const far = D.close(state, { key: 'cal|later', name: 'Aller · Piano', from: 'Maison', to: 'École', how: 'confirmé' }, at + 30 * 60e3);
     assert(!D.possibleDuplicates(far, at + 30 * 60e3).includes('cal|later'));
   });
+  check('relevé terrain GPS : compteurs 0 à 99 et batterie 0 à 100 % gardés ; hors bornes ou absent = inconnu (jamais 0) ; aucun lieu', () => {
+    const base = D.close(D.begin(null, departure(), at), { key: 'aller', how: 'confirmé' }, at);
+    const st = D.reply(base, 'aller', { conditions: [], field: { wrong: 1, late: 2, loss: 0, batStart: 92, batEnd: 80, lieu: 'X', lat: 48 } }, at + 1000);
+    assert.deepEqual(json(st.entries[0].feedback.field), { wrong: 1, late: 2, loss: 0, batStart: 92, batEnd: 80 });
+    const bad = D.reply(base, 'aller', { conditions: [], field: { wrong: -1, late: 100, loss: 1.5, batStart: 101, batEnd: '50' } }, at + 1000);
+    assert.equal(bad.entries[0].feedback.field, undefined);
+    const part = D.reply(base, 'aller', { conditions: [], field: { batEnd: 70 } }, at + 1000);
+    assert.deepEqual(json(part.entries[0].feedback.field), { wrong: null, late: null, loss: null, batStart: null, batEnd: 70 });
+    assert.equal(D.reply(base, 'aller', { conditions: [] }, at + 1000).entries[0].feedback.field, undefined);
+  });
+  check('relevé terrain GPS : consommation %/h sur la durée réelle du trajet ; incalculable si recharge, < 10 min ou batterie inconnue', () => {
+    const e = st => st.entries[0], base = D.close(D.begin(null, departure(), at), { key: 'aller', how: 'confirmé' }, at);   // 30 min de trajet
+    assert.equal(D.batteryRate(e(D.reply(base, 'aller', { conditions: [], field: { batStart: 92, batEnd: 86 } }, at + 1000))), 12);
+    assert.equal(D.batteryRate(e(D.reply(base, 'aller', { conditions: [], field: { batStart: 80, batEnd: 85 } }, at + 1000))), null);
+    assert.equal(D.batteryRate(e(D.reply(base, 'aller', { conditions: [], field: { batStart: 92 } }, at + 1000))), null);
+    const short = D.close(D.begin(null, departure({ at: at - 5 * 60e3 }), at), { key: 'aller', how: 'confirmé' }, at);
+    assert.equal(D.batteryRate(e(D.reply(short, 'aller', { conditions: [], field: { batStart: 92, batEnd: 90 } }, at + 1000))), null);
+  });
+  check('relevé terrain GPS jamais perdu à la fusion : une copie du même retour sans relevé (ancienne version de l’app) ne l’efface pas', () => {
+    const base = D.close(D.begin(null, departure(), at), { key: 'aller', how: 'confirmé' }, at);
+    const withField = D.reply(base, 'aller', { conditions: ['wet'], grip: 'normal', id: 'a'.repeat(32), field: { wrong: 0, late: 1, batStart: 90, batEnd: 84 } }, at + 1000);
+    const raw = withField.archive.records.map(r => JSON.parse(r)), legacy = raw.map(r => r.feedback ? { ...r, feedback: { at: r.feedback.at, conditions: r.feedback.conditions, grip: r.feedback.grip, id: r.feedback.id } } : r);
+    for (const order of [[...legacy, ...raw], [...raw, ...legacy]]) {
+      const merged = D.clean({ entries: order, archive: { v: 1, records: order.map(r => JSON.stringify(r)) } }, at + 2000);
+      assert.deepEqual(json(merged.entries[0].feedback.field), { wrong: 0, late: 1, loss: null, batStart: 90, batEnd: 84 });
+    }
+  });
   return n;
 }
 if (require.main === module) { const n = runTests(); console.log(`${n}/${n} scénarios OK`); }

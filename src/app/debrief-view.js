@@ -97,6 +97,7 @@ function debriefDetails(e) {
     ${p ? `<div><dt>Données au départ</dt><dd>${p.fetchedAt ? 'Récupérées ' + Math.max(0, Math.round((e.start.at - p.fetchedAt) / 60e3)) + ' min avant le départ' : 'Âge non disponible'}${p.offline ? ' · hors ligne' : ''}</dd></div>` : ''}
     ${p && p.evidence ? `<div><dt>Preuves brouillard au départ</dt><dd>${['Risque faible', 'Brume possible', 'Risque élevé', 'Brouillard dense possible'][p.evidence.fogLevel]}${p.evidence.trust ? ' · confiance locale ' + p.evidence.trust : ''}${p.evidence.proofs.length ? ' · ' + esc(p.evidence.proofs.join(' · ')) : ''}${p.evidence.contradiction ? ' · contradiction détectée' : ''}</dd></div>` : ''}
     ${e.feedback ? `<div><dt>Rencontré sur la route</dt><dd>${esc(debriefConditions(e.feedback.conditions))}</dd></div><div><dt>Adhérence ressentie</dt><dd>${esc({ normal: 'Habituelle', reduced: 'Moins bonne', slip: 'Glissement ressenti', unknown: 'Non évaluée' }[e.feedback.grip])}</dd></div>` : ''}
+    ${debriefFieldText(e) ? `<div><dt>Relevé terrain GPS</dt><dd data-dv-field="1">${esc(debriefFieldText(e))}</dd></div>` : ''}
     ${p && p.thermal ? `<div><dt>Thermique prévue à l’arrivée</dt><dd>${esc(therm(p.thermal))}</dd></div>` : ''}
     ${e.end && e.end.thermal ? `<div><dt>Thermique estimée à l’arrivée</dt><dd>${esc(therm(e.end.thermal))}${e.end.km != null ? ' · ' + f1(e.end.km) + ' km (' + (e.end.kmSrc === 'route' ? 'itinéraire' : 'estimés') + ')' : ''}</dd></div>` : ''}</dl>
     ${e.feedback ? `<p class="debrief-result"><b>${DEBRIEF_COMPARE[cmp.kind]}</b>${cmp.missed.length ? ' · rencontré sans annonce : ' + esc(debriefConditions(cmp.missed)) : ''}${cmp.unused.length ? ' · annoncé sans rencontre : ' + esc(debriefConditions(cmp.unused)) : ''}</p>` : ''}`;
@@ -104,7 +105,7 @@ function debriefDetails(e) {
 function debriefOpen(key) {
   if (DEBRIEF_PENDING) return;
   const e = USER_STORE.state.debrief.entries.find(e => e.key === key); if (!e) return;
-  DEBRIEF_FORM = { key, conditions: e.feedback ? e.feedback.conditions.slice() : null, grip: e.feedback ? e.feedback.grip : 'unknown' };
+  DEBRIEF_FORM = { key, conditions: e.feedback ? e.feedback.conditions.slice() : null, grip: e.feedback ? e.feedback.grip : 'unknown', field: e.feedback && e.feedback.field ? { ...e.feedback.field } : {} };
   renderDebrief(); $('#secDebrief').scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
 }
 function debriefPick(kind, value) {
@@ -117,6 +118,24 @@ function debriefPick(kind, value) {
     }
   } else if (['normal', 'reduced', 'slip', 'unknown'].includes(value)) DEBRIEF_FORM.grip = value;
   renderDebrief();
+}
+// Relevé terrain du GPS (gel des fonctions GPS, docs/GPS_ASSEZ_BON.md) : compteurs par paliers d'une unité, batterie saisie en %.
+const DEBRIEF_FIELD = [['wrong', 'Consignes fausses'], ['late', 'Annonces trop tardives'], ['loss', 'Pertes du GPS']];
+function debriefField(k, d) {
+  if (!DEBRIEF_FORM || DEBRIEF_PENDING || !DEBRIEF_FIELD.some(x => x[0] === k) || !(d === 1 || d === -1)) return;
+  const f = DEBRIEF_FORM.field || (DEBRIEF_FORM.field = {}), v = Number.isInteger(f[k]) ? f[k] : 0;
+  f[k] = Math.max(0, Math.min(99, v + d)); renderDebrief();
+}
+if (typeof document !== 'undefined') document.addEventListener('input', e => {   // absent hors navigateur (tests du coffre)
+  const t = e.target; if (!t || !t.dataset || !t.dataset.debriefBat || !DEBRIEF_FORM) return;
+  const v = t.value.trim() === '' ? null : Number(t.value), k = t.dataset.debriefBat === 'start' ? 'batStart' : 'batEnd';
+  (DEBRIEF_FORM.field || (DEBRIEF_FORM.field = {}))[k] = Number.isInteger(v) && v >= 0 && v <= 100 ? v : null;
+});
+function debriefFieldText(e) {
+  const f = e && e.feedback && e.feedback.field; if (!f) return '';
+  const n = (v, one, many) => v == null ? null : v + ' ' + (v > 1 ? many : one), rate = Debrief.batteryRate(e);
+  return [n(f.wrong, 'consigne fausse', 'consignes fausses'), n(f.late, 'annonce trop tardive', 'annonces trop tardives'), n(f.loss, 'perte du GPS', 'pertes du GPS'),
+    f.batStart != null || f.batEnd != null ? 'batterie ' + (f.batStart != null ? f.batStart + ' %' : '?') + ' → ' + (f.batEnd != null ? f.batEnd + ' %' : '?') + (rate != null ? ' (' + String(rate).replace('.', ',') + ' %/h)' : '') : null].filter(Boolean).join(' · ');
 }
 async function debriefCommit(change) {
   if (!DEBRIEF_FORM || DEBRIEF_PENDING || !journalWritable()) return;
@@ -143,7 +162,11 @@ async function debriefSave() {
   // identiques, simultanées dans deux onglets, restent deux versions distinctes.
   return debriefCommit((state, form) => {
     if (!form.id) form.id = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
-    return Debrief.reply(state, form.key, form);
+    // Relevé terrain : dès qu'une valeur est saisie, les compteurs affichés à 0 sont enregistrés à 0 (ce que l'écran montrait) ;
+    // relevé laissé vide : rien n'est enregistré (inconnu, jamais 0).
+    const f = form.field || {}, used = Object.values(f).some(v => v != null && v !== 0) || f.batStart != null || f.batEnd != null;
+    const field = used ? { ...f, ...Object.fromEntries(DEBRIEF_FIELD.map(([k]) => [k, Number.isInteger(f[k]) ? f[k] : 0])) } : null;
+    return Debrief.reply(state, form.key, { ...form, field });
   });
 }
 async function debriefLater() {
@@ -165,6 +188,8 @@ function renderDebrief() {
   const form = e ? `<div class="debrief-form"><div class="mod-h"><h2>🏁 Débrief du trajet</h2><span class="src">${esc(e.name || 'Trajet terminé')}</span></div>${debriefSummary(e)}
     <fieldset><legend>Ce que tu as rencontré</legend><p class="sub">Plusieurs réponses possibles. Renseigne ce que tu as effectivement observé.</p><div class="debrief-choices">${choice('debrief-condition', 'normal', 'Aucun de ces phénomènes', Array.isArray(DEBRIEF_FORM.conditions) && !DEBRIEF_FORM.conditions.length)}${Debrief.CONDITIONS.map(k => choice('debrief-condition', k, Debrief.LABELS[k], (DEBRIEF_FORM.conditions || []).includes(k))).join('')}</div></fieldset>
     <fieldset><legend>Adhérence ressentie · facultatif</legend><div class="debrief-choices">${[['unknown', 'Non évaluée'], ['normal', 'Habituelle'], ['reduced', 'Moins bonne'], ['slip', 'Glissement ressenti']].map(([v, label]) => choice('debrief-grip', v, label, DEBRIEF_FORM.grip === v)).join('')}</div></fieldset>
+    <fieldset class="debrief-field"><legend>Relevé terrain GPS · facultatif, rempli par le passager</legend><p class="sub">Mode EN DIRECT seulement. Critères : docs/GPS_ASSEZ_BON.md.</p>${DEBRIEF_FIELD.map(([k, label]) => `<div class="debrief-step"><span>${label}</span><button class="btn sm" data-act="debrief-field" data-f="${k}" data-d="-1" aria-label="${label} : moins">−</button><b data-debrief-count="${k}">${Number.isInteger((DEBRIEF_FORM.field || {})[k]) ? DEBRIEF_FORM.field[k] : 0}</b><button class="btn sm" data-act="debrief-field" data-f="${k}" data-d="1" aria-label="${label} : plus">+</button></div>`).join('')}
+      <div class="debrief-bat"><label>Batterie au départ (%)<input type="number" inputmode="numeric" min="0" max="100" step="1" data-debrief-bat="start" value="${(DEBRIEF_FORM.field || {}).batStart ?? ''}"></label><label>Batterie à l’arrivée (%)<input type="number" inputmode="numeric" min="0" max="100" step="1" data-debrief-bat="end" value="${(DEBRIEF_FORM.field || {}).batEnd ?? ''}"></label></div></fieldset>
     <div class="debrief-actions"><button class="btn" data-act="debrief-save"${DEBRIEF_PENDING || DEBRIEF_FORM.conditions == null ? ' disabled' : ''}>Enregistrer le débrief</button><button class="btn sm" data-act="debrief-later"${DEBRIEF_PENDING ? ' disabled' : ''}>Plus tard</button><button class="btn sm" data-act="debrief-snooze"${DEBRIEF_PENDING ? ' disabled' : ''}>Ne plus demander aujourd’hui</button></div><details class="debrief-snapshot" data-dk="snapshot"${open.has('snapshot') ? ' open' : ''}><summary>Prévision au départ et bilan estimé</summary>${debriefDetails(e)}</details></div>` : '';
   const counts = st.comparable ? `${st.comparable} retour${st.comparable > 1 ? 's' : ''} comparable${st.comparable > 1 ? 's' : ''} : ${st.counts.match} concordant${st.counts.match > 1 ? 's' : ''} · ${st.counts.missed} phénomène${st.counts.missed > 1 ? 's' : ''} non annoncé${st.counts.missed > 1 ? 's' : ''} · ${st.counts.unused} alerte${st.counts.unused > 1 ? 's' : ''} non rencontrée${st.counts.unused > 1 ? 's' : ''} · ${st.counts.mixed} écart${st.counts.mixed > 1 ? 's' : ''} mixte${st.counts.mixed > 1 ? 's' : ''}.` : 'Aucun retour comparable pour le moment.';
   const duplicates = new Set(Debrief.possibleDuplicates(state));

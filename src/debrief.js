@@ -31,11 +31,28 @@ const Debrief = (() => {
     return { key: v.key, at: v.at, name: text(v.name), from: text(v.from), to: text(v.to),
       carId: text(v.carId, 120), car: text(v.car), prediction: prediction(v.prediction, v.at) };
   }
+  // Relevé terrain du GPS (21/11/2026, gel des fonctions GPS) : rempli après le trajet par le passager. Compteurs de 0 à 99,
+  // batterie en % de 0 à 100 ; tout champ absent ou hors bornes reste inconnu (null), jamais 0. Aucun lieu ni position.
+  const count = x => Number.isInteger(x) && x >= 0 && x <= 99 ? x : null;
+  const pct = x => Number.isInteger(x) && x >= 0 && x <= 100 ? x : null;
+  function field(v) {
+    if (!obj(v)) return null;
+    const f = { wrong: count(v.wrong), late: count(v.late), loss: count(v.loss), batStart: pct(v.batStart), batEnd: pct(v.batEnd) };
+    return Object.values(f).some(x => x != null) ? f : null;
+  }
+  // Consommation (%/h) d'après le relevé et la durée réelle (départ → arrivée) ; null si incalculable (recharge, < 10 min).
+  function batteryRate(e) {
+    const f = e && e.feedback && e.feedback.field, s = e && e.start;
+    if (!f || f.batStart == null || f.batEnd == null || !s || !Number.isFinite(s.at) || !Number.isFinite(e.at)) return null;
+    const h = (e.at - s.at) / 3600e3; if (!(h >= 1 / 6) || f.batEnd > f.batStart) return null;
+    return Math.round((f.batStart - f.batEnd) / h * 10) / 10;
+  }
   function feedback(v, now) {
     if (!obj(v) || !time(v.at, now) || !Array.isArray(v.conditions) || v.conditions.some(k => !CONDITIONS.includes(k))) return null;
+    const fd = field(v.field);
     return { at: v.at, conditions: conditions(v.conditions),
       grip: ['normal', 'reduced', 'slip', 'unknown'].includes(v.grip) ? v.grip : 'unknown',
-      ...(/^[0-9a-f]{32}$/.test(v.id || '') ? { id: v.id } : {}) };
+      ...(/^[0-9a-f]{32}$/.test(v.id || '') ? { id: v.id } : {}), ...(fd ? { field: fd } : {}) };
   }
   function entry(v, now) {
     if (!obj(v) || !key(v.key) || !time(v.at, now) || !['auto', 'confirmé'].includes(v.how)) return null;
@@ -62,6 +79,12 @@ const Debrief = (() => {
       // prévision d'un autre instantané. Toutes les sources restent archivées.
       if (!chosen.start) chosen.start = rows.find(e => e.at === chosen.at && e.start)?.start || null;
       if (!chosen.end) chosen.end = rows.find(e => e.at === chosen.at && e.end)?.end || null;
+      // Relevé terrain : jamais perdu si une copie du même retour (même instant) le porte et que la version choisie ne l'a pas
+      // (copie réécrite par une version de l'app antérieure au relevé, sur un autre appareil).
+      if (chosen.feedback && !chosen.feedback.field) {
+        const r = rows.find(e => e.feedback && e.feedback.at === chosen.feedback.at && e.feedback.field);
+        if (r) chosen.feedback = { ...chosen.feedback, field: r.feedback.field };
+      }
       return chosen;
     }).sort((a, b) => b.at - a.at || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
     // Silence facultatif, uniquement jusqu'à la fin d'une journée locale ; aucune suppression d'historique.
@@ -134,5 +157,5 @@ const Debrief = (() => {
     return { total: entries.length, answered: entries.filter(e => e.feedback).length,
       comparable: counts.match + counts.missed + counts.unused + counts.mixed, counts };
   }
-  return { LIMIT, CONDITIONS, LABELS, thermal, clean, begin, close, reply, defer, snooze, possibleDuplicates, undo, compare, stats };
+  return { LIMIT, CONDITIONS, LABELS, thermal, field, batteryRate, clean, begin, close, reply, defer, snooze, possibleDuplicates, undo, compare, stats };
 })();
