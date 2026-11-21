@@ -27,7 +27,7 @@ let n=0, stage=''; const check=async(label,fn)=>{stage=label;await fn();n++;cons
     await p.locator('#garageLiveRoute').scrollIntoViewIfNeeded();
     await p.waitForFunction(()=>!!GARAGE_LIVE.map&&!!GARAGE_LIVE.marker);
     await check(dev+' · carte Leaflet, même Garage premium et même silhouette',async()=>{
-     assert.equal(await p.locator('#viewSeg [data-act=view]').count(),5);
+     assert.equal(await p.locator('#viewSeg [data-act=view]').count(),6);
      assert.equal(await p.locator('.garage-car').count(),2);
      assert.equal(await p.locator('#garageLiveRoute .leaflet-container').count(),1);
      assert.equal(await p.locator('#garageLiveRoute .lr-vehicle-icon .twin-car-svg').count(),1);

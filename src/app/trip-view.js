@@ -215,7 +215,6 @@ function renderTripView() {
   // décrire le nouveau trajet à démarrer).
   const wall = tripWallHtml(radarTrip), strat = tripStrategyHtml(radarTrip, S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar()) + tripBriefHtml(radarTrip);
   const html = `<div class="mod-h"><h2>TRAJET · MUR DES STANDS</h2><span class="src obs">contexte partagé Race Control</span></div>
-    <div class="dv-gps-entry"><button type="button" class="btn pri" data-act="drive-gps">🧭 GPS · EN DIRECT</button><span class="sub">${driveSoonTrip() ? 'Ouvre le trajet en cours ou des 3 prochaines heures' : 'Choisis ta voiture, puis roule avec ou sans destination'}</span></div>
     <div class="ln-slot">${loanFormHtml()}</div>
     <div class="pw-grid"><div class="pw-c">${wall}</div><div class="pw-s">${strat}</div><div class="pw-l"><div class="trip-form"><h3 class="pw-h">PARAMÈTRES DE COURSE</h3>
       <div class="trip-field"><span class="trip-label">Départ</span><div class="trip-origin-head"><b>${origin ? esc(origin.name) : 'Origine à choisir'}</b><span>${TRIP_FORM.originMode === rec.mode ? esc(rec.source) : 'choisi'}</span></div>
@@ -307,7 +306,7 @@ function renderTripSummary() {
     ${wall && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(depTs) && !(t && t === APP_CONTEXT.snapshot.activeTrip) ? '<div class="pw-count">' + cdSpan(depTs.slice(0, 16)) + '</div>' : ''}
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${address ? `<span>${esc(address)}</span>` : ''}${from ? `<small class="trip-origin-src">Départ : ${esc(shared.source)}</small>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(appCarLabel().text)}</span><span>${esc(route)}</span></div>
-    ${UI.view === 'trajet' ? '<div class="dv-launch"><button type="button" class="btn pri dv-go" data-act="drive-open">⤢ EN DIRECT</button><a class="btn" href="#secTrip">Modifier le trajet</a></div>' : '<div class="chips"><button class="btn sm" data-act="view" data-v="trajet">Voir / modifier le trajet</button></div>'}`;
+    ${UI.view === 'trajet' ? '<div class="dv-launch"><a class="btn" href="#secTrip">Modifier le trajet</a></div>' : '<div class="chips"><button class="btn sm" data-act="view" data-v="trajet">Voir / modifier le trajet</button></div>'}`;
 }
 async function tripSearch(kind, button) {
   tripCaptureForm();

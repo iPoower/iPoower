@@ -12,7 +12,7 @@
 // restaurée, jamais une vue affichée automatiquement (même règle que main). Un lien direct ?vue=garage reste lu à
 // l'ouverture (voir UI.view dans app.js), sans être réécrit. Mode sans code : même comportement (aucune condition de verrou).
 const NAV = { ready: false, applying: false, shown: null, panelBefore: false };
-const NAV_VIEWS = ['pneus', 'meteo', 'trajet', 'garage', 'analyse'];
+const NAV_VIEWS = ['pneus', 'meteo', 'trajet', 'gps', 'garage', 'analyse'];
 const navPanelOpen = () => { const s = document.getElementById('settings'); return !!(s && s.open); };
 function navInit() {
   if (NAV.ready) return;

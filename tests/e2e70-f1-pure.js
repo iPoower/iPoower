@@ -1,4 +1,4 @@
-// F1 Pure : six modules opt-in dans les cinq onglets, vrais taps iPhone / clics PC.
+// F1 Pure : six modules opt-in dans les six onglets, vrais taps iPhone / clics PC.
 'use strict';
 const assert = require('node:assert/strict');
 const { BR, session, errors } = require('./lib/context-session');
@@ -25,7 +25,7 @@ const active = p => p.evaluate(() => ({
         await check(dev + ' · aucun panneau F1 par défaut, navigation à 5 vues', async () => {
           assert.equal(before.modules.length, 0);
           assert.equal(await p.locator('#f1Dock').count(), 0, 'aucun bandeau F1 quand tout est désactivé');
-          assert.deepEqual(before.tabs, ['meteo', 'pneus', 'trajet', 'garage', 'analyse']);
+          assert.deepEqual(before.tabs, ['meteo', 'pneus', 'trajet', 'gps', 'garage', 'analyse']);
           assert.equal(await p.evaluate(() => F1Pure.FEATURES.every(f => !f1Enabled(f.id))), true);
         });
         await p.evaluate(() => { document.getElementById('settings').open = true; renderSettings(true); });
@@ -36,7 +36,7 @@ const active = p => p.evaluate(() => ({
           assert.equal(await p.locator('#settings [data-act=race-toggle][aria-pressed=true]').count(), 6);
         });
         await view('pneus');
-        await check(dev + ' · Race Engineer + Tyre Management + Garage sans ajouter de section ni modifier les cinq onglets', async () => {
+        await check(dev + ' · Race Engineer + Tyre Management + Garage sans ajouter de section ni modifier les six onglets', async () => {
           const x = await active(p);
           assert.deepEqual(x.tabs, before.tabs);
           assert(x.modules.includes('raceEngineer'), JSON.stringify(x.modules));
@@ -152,7 +152,7 @@ const active = p => p.evaluate(() => ({
         await view('garage');
         await check(dev + ' · onglet Garage utilisable sans extension F1', async () => {
           assert.equal((await active(p)).modules.length, 0);
-          assert.equal(await p.locator('#viewSeg [data-act=view]').count(), 5);
+          assert.equal(await p.locator('#viewSeg [data-act=view]').count(), 6);
         });
       } finally { await s.c.close(); }
     }

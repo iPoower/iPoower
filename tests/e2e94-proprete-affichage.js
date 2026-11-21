@@ -29,7 +29,7 @@ async function enrich(s) {
   if (await s.p.locator('#dayContext details.day-editor').getAttribute('open') === null) await s.p.locator('#dayContext details.day-editor > summary').click();
   await s.p.locator('#dayContext [data-act="day-car"]').first().click(); await s.settle(4);
 }
-const VIEWS = ['pneus', 'meteo', 'trajet', 'garage', 'analyse'];
+const VIEWS = ['pneus', 'meteo', 'trajet', 'gps', 'garage', 'analyse'];
 async function run(browser, iphone) {
   const tag = iphone ? 'iPhone' : 'PC', s = await session(browser, { iphone });
   try {

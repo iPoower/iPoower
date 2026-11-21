@@ -22,7 +22,7 @@ async function run(b, dev) {
     UI.view = 'trajet'; rebuild(); renderAll(); return { a: [o.lat, o.lon], b: [d.lat, d.lon] }; });
   await s.settle(8);
   const before = await p.evaluate(() => JSON.stringify({ cars: S.cars, loans: S.loans || [] }));
-  await p.locator('#secTripSummary [data-act=drive-open]').click(); await s.settle(4);
+  await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(1); await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(4);
   const a = await p.evaluate(() => { const el = document.getElementById('liveDrive'), r = el.getBoundingClientRect(), top = document.elementFromPoint(innerWidth / 2, innerHeight - 30);
     return { hidden: el.hidden, w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight, covers: !!top && el.contains(top), text: el.innerText, focus: document.activeElement && document.activeElement.dataset.act }; });
   check(`${dev} · « EN DIRECT » ouvert depuis le Trajet : plein écran (${a.vw}×${a.vh}), rien de l’app visible dessous, focus sur « ✕ »`, !a.hidden && a.w === a.vw && a.h === a.vh && a.covers && a.focus === 'drive-close', JSON.stringify(a).slice(0, 400));
@@ -45,7 +45,7 @@ async function run(b, dev) {
   check(`${dev} · vitesse GPS déduite des relevés (≈ 90 km/h) et précision indiquée`, second && Math.abs(num(second.speed) - 90) <= 15 && /GPS ± \d+ m/.test(second.gps), JSON.stringify(second));
   await p.locator('#liveDrive [data-act=drive-close]').click(); await s.settle(2);
   const z = await p.evaluate(() => ({ hidden: document.getElementById('liveDrive').hidden, cls: document.documentElement.classList.contains('dv-on'), view: UI.view }));
-  check(`${dev} · « ✕ » referme le mode en direct, l’onglet Trajet est intact`, z.hidden && !z.cls && z.view === 'trajet', JSON.stringify(z));
+  check(`${dev} · « ✕ » referme le mode en direct, retour à l’onglet GPS intact`, z.hidden && !z.cls && z.view === 'gps', JSON.stringify(z));
   // Ouverture automatique (« Partir maintenant ») : seulement avec un itinéraire prêt ; sans itinéraire, le Trajet reste visible.
   await p.evaluate(() => { const t = APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip; driveAutoOpen(t.key, 2, () => null); });
   await s.settle(5); const without = await p.evaluate(() => !document.getElementById('liveDrive').hidden);

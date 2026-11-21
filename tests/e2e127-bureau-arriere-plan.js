@@ -34,7 +34,7 @@ async function run(b, dev, view, scn) {
   await p.goto(U); await p.waitForTimeout(800);
   // Verrouillé : titre neutre, raccourcis inactifs
   check(`${dev} · verrouillé : titre d’origine, aucun état affiché`, await p.title() === 'TYRE WEATHER RACE CONTROL', await p.title());
-  await p.keyboard.press('4'); await p.waitForTimeout(200);
+  await p.keyboard.press('5'); await p.waitForTimeout(200);
   check(`${dev} · verrouillé : les raccourcis ne font rien`, await p.evaluate(() => typeof UI === 'undefined' || UI.view !== 'garage'));
   await unlockIfLocked(p);
   await p.waitForFunction(() => typeof S === 'object' && window.TWRC_VAULT && window.TWRC_VAULT.mode === 'vault' && typeof CX === 'object' && CX && document.querySelector('#decisionCore h2'), null, { timeout: 40000 });
@@ -45,10 +45,10 @@ async function run(b, dev, view, scn) {
   check(`${dev} · titre : heure de départ, aucun lieu enregistré`, /départ (\S+ \d{2}\/\d{2} )?\d{2}:\d{2}/.test(st.title) && !st.places.some(n => st.title.includes(n.split(' / ')[0])), st.title);
   check(`${dev} · icône d’onglet : pastille SVG de la couleur du niveau`, /^data:image\/svg\+xml,/.test(st.icon));
   check(`${dev} · pastille de l’app installée : ${scn === 'doux' ? 'effacée (RAS ou analyse limitée)' : 'posée dès VIGILANCE'}`, st.badge === ((st.lv >= 1 && !/ANALYSE LIMITÉE/.test(st.h2)) ? 'set' : 'clear'), JSON.stringify({ badge: st.badge, lv: st.lv, h2: st.h2 }));
-  // Raccourcis : 4 → Garage, 1 → Météo, 3 → Trajet, 5 → Analyse, 2 → Pneus
+  // Raccourcis : 5 → Garage, 1 → Météo, 3 → Trajet, 6 → Analyse, 4 → GPS, 2 → Pneus
   const views = [];
-  for (const k of ['4', '1', '3', '5', '2']) { await p.keyboard.press(k); await p.waitForTimeout(250); views.push(await p.evaluate(() => UI.view)); }
-  check(`${dev} · touches 1 à 5 : onglets dans l’ordre affiché`, views.join(',') === 'garage,meteo,trajet,analyse,pneus', views.join(','));
+  for (const k of ['5', '1', '3', '6', '4', '2']) { await p.keyboard.press(k); await p.waitForTimeout(250); views.push(await p.evaluate(() => UI.view)); }
+  check(`${dev} · touches 1 à 6 : onglets dans l’ordre affiché`, views.join(',') === 'garage,meteo,trajet,analyse,gps,pneus', views.join(','));
   // Pas pendant une saisie ni avec un modificateur
   await p.evaluate(() => { const i = document.createElement('input'); i.id = 'kbdProbe'; document.body.appendChild(i); i.focus(); });
   await p.keyboard.press('4'); await p.waitForTimeout(200);
@@ -59,7 +59,7 @@ async function run(b, dev, view, scn) {
   await p.evaluate(() => { window.__refresh = 0; window.refreshAll = () => { window.__refresh++; }; });
   await p.keyboard.press('r'); await p.waitForTimeout(200);
   check(`${dev} · touche R : actualisation demandée`, await p.evaluate(() => window.__refresh) === 1);
-  check(`${dev} · onglets annoncés avec leur raccourci (aria-keyshortcuts)`, await p.evaluate(() => ['meteo', 'pneus', 'trajet', 'garage', 'analyse'].every((v, i) => (document.querySelector('#viewSeg [data-v="' + v + '"]') || {}).getAttribute && document.querySelector('#viewSeg [data-v="' + v + '"]').getAttribute('aria-keyshortcuts') === String(i + 1))));
+  check(`${dev} · onglets annoncés avec leur raccourci (aria-keyshortcuts)`, await p.evaluate(() => ['meteo', 'pneus', 'trajet', 'gps', 'garage', 'analyse'].every((v, i) => (document.querySelector('#viewSeg [data-v="' + v + '"]') || {}).getAttribute && document.querySelector('#viewSeg [data-v="' + v + '"]').getAttribute('aria-keyshortcuts') === String(i + 1))));
   check(`${dev} · aucune erreur JavaScript`, !errors.length, errors.join(' / '));
   await c.close();
 }

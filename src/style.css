@@ -1016,6 +1016,19 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
 .trip-summary-route span, .trip-summary-meta { color: var(--fg2); font-size: 12px; }
 .vtr #placeBar, .vtr #locChips, .vtr #dayContext, .vtr #decisionCore, .vtr #hdrMore, .vtr #jump, .vtr #banners, .vtr .foot { display: none !important; }
 .vtr .wrap .mod:not(#secTrip):not(#secTripSummary):not(#settings), .vtr #secCars { display: none !important; }
+/* Onglet GPS (21/11/2026) : seule la section GPS (et les réglages) ; cibles larges, rien à lire de petit en voiture. */
+.vgps #placeBar, .vgps #locChips, .vgps #dayContext, .vgps #decisionCore, .vgps #hdrMore, .vgps #jump, .vgps #banners, .vgps .foot { display: none !important; }
+.vgps .wrap .mod:not(#secGps):not(#settings), .vgps #secCars { display: none !important; }
+body:not(.vgps) #secGps { display: none !important; }
+#secGps .gps-trip { display: grid; gap: 10px; }
+#secGps .gps-go { min-height: 64px; font-size: 20px; font-weight: 800; width: 100%; }
+#secGps .dv-cars { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
+#secGps .dv-cars button { min-height: 64px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line2); background: var(--panel); color: inherit; text-align: left; }
+#secGps .dv-cars button[aria-pressed="true"] { border-color: var(--i20-blue); box-shadow: inset 0 0 0 2px var(--i20-blue); }
+#secGps .dv-cars small { font-size: 12px; color: var(--fg2); }
+#secGps .dv-setup-go { display: grid; gap: 10px; margin: 10px 0; }
+#secGps .dv-setup-go .btn { min-height: 52px; }
+#secGps .dv-foot { margin: 12px 0 0; font-size: 12px; color: var(--fg2); }
 @media (max-width: 560px) {
   #viewSeg .seg.view button { padding-inline: 2px; font-size: 11px; }
   #viewSeg .seg.view .trip-tab { font-size: 11.5px; }
@@ -1024,8 +1037,8 @@ body:not(.va) #secSeason, body:not(.va) #secJournal,
   .trip-actions .btn { width: 100%; }
 }
 
-/* onglets : icône au-dessus du libellé sur les écrans étroits (iPhone SE, 320 px), pour les cinq onglets à l'identique */
-@media (max-width: 360px) {
+/* onglets : icône au-dessus du libellé sur les écrans de téléphone (6 onglets dès 440 px : iPhone 11 Pro Max, 375 px, SE 320 px) */
+@media (max-width: 440px) {
   #viewSeg .seg.view button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; line-height: 1.15; }
   #viewSeg .seg.view .tab-ic { font-size: 15px; }
 }

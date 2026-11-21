@@ -26,7 +26,7 @@ async function run(b, dev) {
   await p.emulateMedia({ reducedMotion: 'reduce' }); await s.settle(4);
   await p.evaluate(() => { S.work.days = []; S.gpsAuto = 1; saveSettings(); const [o, d] = S.locs;
     appProgramManualTrip({ originId: o.id, originPoint: null, destinationId: d.id, destinationPoint: null, dep: liveNow().slice(0, 16), carId: S.cars[0].id }); UI.view = 'trajet'; rebuild(); renderAll(); });
-  await s.settle(8); await p.locator('#secTripSummary [data-act=drive-open]').click(); await s.settle(6);
+  await s.settle(8); await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(1); await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(6);
   await p.evaluate(() => { const t = APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip; liveStart(t.key); });
   // Positions exprimées sur le tracé suivi (tracé détaillé recalculé depuis le départ réel) : distance avant la manœuvre.
   const push = async (lat, lon) => { await p.evaluate(g => { window.__geo = { lat: g[0], lon: g[1], acc: 8 }; window.__geoPush(); }, [lat, lon]); await s.settle(3); };

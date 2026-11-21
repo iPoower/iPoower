@@ -13,7 +13,7 @@ const check = async (label, fn) => { stage = label; await fn(); count++; console
         await p.locator('#viewSeg [data-act=view][data-v=trajet]').click();
         await check(dev + ' · affichage compact repliable sans nouvel onglet', async () => {
           assert.equal(await p.locator('#secTrip .trip-radar details[data-ux=route-radar]').count(), 1);
-          assert.equal(await p.locator('#viewSeg [data-act=view]').count(), 5);
+          assert.equal(await p.locator('#viewSeg [data-act=view]').count(), 6);
         });
         const synthetic = await p.evaluate(() => {
           const m = M[UI.loc] || Object.values(M).find(Boolean);

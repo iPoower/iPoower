@@ -17,7 +17,7 @@ async function precisionReference(browser,dev){
   });
   await s.settle(4);
   const views=[];
-  for(const view of ['meteo','pneus','trajet','garage','analyse']){
+  for(const view of ['meteo','pneus','trajet','gps','garage','analyse']){
    const button=p.locator('#viewSeg [data-v='+view+']');
    if(dev==='iphone')await button.tap();else await button.click();
    await s.settle(2);
@@ -286,9 +286,9 @@ async function twinScenario(browser){
     await s.settle(3);
    };
    try{
-    await check(dev+' · cinq onglets, Garage visible, Tenue absent',async()=>{
+    await check(dev+' · six onglets, Garage visible, Tenue absent',async()=>{
      assert.deepEqual(await p.locator('#viewSeg [data-act=view]').evaluateAll(xs=>xs.map(x=>x.dataset.v)),
-      ['meteo','pneus','trajet','garage','analyse']);
+      ['meteo','pneus','trajet','gps','garage','analyse']);
      assert.equal(await p.locator('#viewSeg [data-v=tenue]').count(),0);
     });
     await tap('#viewSeg [data-act=view][data-v=garage]');

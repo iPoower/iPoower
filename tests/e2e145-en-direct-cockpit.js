@@ -27,7 +27,7 @@ async function run(b, dev) {
   const line = f => [ends.a[0] + (ends.b[0] - ends.a[0]) * f, ends.a[1] + (ends.b[1] - ends.a[1]) * f], total = meters(ends.a, ends.b);
   lightsAt = [line(0.3), line(0.5), line(0.7)];
   await s.settle(8);
-  await p.locator('#secTripSummary [data-act=drive-open]').click(); await s.settle(6);
+  await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(1); await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(6);
   const look = () => p.evaluate(COLORFUL => { const colorful = eval(COLORFUL), root = document.getElementById('liveDrive'), sp = root.querySelector('.dv-speed'), cs = sp && getComputedStyle(sp);
     const icons = [...root.querySelectorAll('.dv-light, .dv-li')], parts = icons.flatMap(el => [el, ...el.querySelectorAll('*')]);
     const loud = parts.flatMap(el => { const c = getComputedStyle(el); return [c.fill, c.stroke, c.backgroundColor, c.color].filter(colorful).map(x => el.tagName + ':' + x)
@@ -62,7 +62,7 @@ async function run(b, dev) {
   const opt = p.locator('#settings [data-act=drive-base][data-v=ortho]');
   if (await opt.count()) { await opt.click(); await s.settle(2); }
   const pref = await p.evaluate(() => { const x = document.querySelector('#settings [data-act=drive-base][data-v=ortho]'); return { v: lsGet('twrc.drive.base'), pressed: x ? x.getAttribute('aria-pressed') : 'réglage absent' }; });
-  await p.locator('#secTripSummary [data-act=drive-open]').click(); await s.settle(6);
+  await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(1); await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(6);
   const o = await look();
   check(`${dev} · Réglages → « Photo aérienne IGN » : choix conservé, BD ORTHO demandée, assombrie la nuit`, pref.v === 'ortho' && pref.pressed === 'true' && tiles.includes('ORTHOIMAGERY.ORTHOPHOTOS') && /brightness/.test(o.orthoFilter || '') && o.night, JSON.stringify({ pref, o, tiles: [...new Set(tiles)] }));
   await s.c.close();

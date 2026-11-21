@@ -35,7 +35,7 @@ async function setup(s, dev, osrmSteps) {
     appProgramManualTrip({ originId: o.id, originPoint: null, destinationId: d.id, destinationPoint: null, dep: liveNow().slice(0, 16), carId: S.cars[0].id });
     UI.view = 'trajet'; rebuild(); renderAll(); return { a: [o.lat, o.lon], b: [d.lat, d.lon] }; });
   await s.settle(8);
-  await p.locator('#secTripSummary [data-act=drive-open]').click(); await s.settle(12);
+  await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(1); await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(12);
   return { tiles, styles, ends, line: f => [ends.a[0] + (ends.b[0] - ends.a[0]) * f, ends.a[1] + (ends.b[1] - ends.a[1]) * f], total: meters(ends.a, ends.b) };
 }
 const state = p => p.evaluate(() => { const mv = DRIVE.mv, m = mv && mv.map, gl = mv && mv.kind === '3d', node = document.querySelector('#liveDrive .dv-map'), cv = node && node.querySelector('canvas');

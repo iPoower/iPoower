@@ -29,8 +29,8 @@ const snapshot = p => p.evaluate(() => JSON.stringify({ settings: S, place: PLAC
         S.calib = [{ t: '2026-10-07T07:00', loc: 'home', kind: 'ice', Tr: 2, T: 3 }];
         S.cars[0].name = 'Véhicule personnalisé test'; saveSettings(); UI.dir = 'go'; renderAll();
       });
-      await check(dev + ' · cinq onglets : identifiants HTML uniques avec Réglages ouverts', async () => {
-        for (const view of ['meteo', 'pneus', 'trajet', 'garage', 'analyse']) {
+      await check(dev + ' · six onglets : identifiants HTML uniques avec Réglages ouverts', async () => {
+        for (const view of ['meteo', 'pneus', 'trajet', 'gps', 'garage', 'analyse']) {
           await p.locator('#viewSeg [data-act=view][data-v=' + view + ']').click();
           await reveal(p, '#f-work-dep');
           const duplicates = await p.evaluate(() => {

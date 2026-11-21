@@ -35,7 +35,7 @@ const tapView = async (p, v) => { await p.evaluate(() => scrollTo(0, 0)); await 
       expect(`${dev} · changement de vue automatique : aucune écriture d’historique (ni entrée, ni état), URL inchangée`, wa.len === w0.len && wa.search === '' && ca.length === 0, JSON.stringify({ wa, ca }));
       // Rechargement après ce changement AUTOMATIQUE : la vue affichée d'office n'est pas restaurée (seul un choix l'est),
       // règle de main : dernière vue CHOISIE de la session (rc.tab), sinon Pneus.
-      const mainRule = await p.evaluate(() => { const v = sessionStorage.getItem('rc.tab'); return ['meteo', 'trajet', 'garage', 'analyse'].includes(v) ? v : 'pneus'; });
+      const mainRule = await p.evaluate(() => { const v = sessionStorage.getItem('rc.tab'); return ['meteo', 'trajet', 'gps', 'garage', 'analyse'].includes(v) ? v : 'pneus'; });
       await reset(); await p.reload(); await s.settle(10); const wr = await where(p), cr = await calls();
       expect(`${dev} · rechargement après un changement automatique (${auto}) : vue selon la règle de main (${mainRule}), aucun choix inventé, aucune écriture d’historique`, wr.view === mainRule && wr.search === '' && (!wr.state || !wr.state.pick) && wr.len === w0.len && cr.length === 0, JSON.stringify({ wr, cr }));
       await p.evaluate(v => { UI.view = v; renderAll(); }, w0.view); await s.settle(2);
