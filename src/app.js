@@ -253,6 +253,7 @@ let TRIPCANCELTIMER = null;
 // @include app/trip-day-view.js
 // @include app/loan-view.js
 // @include app/drive-nav-core.js
+// @include app/drive-map-gl.js
 // @include app/drive-view.js
 // @include app/calendar-origin-editor.js
 function tripContextLocs() {
@@ -4685,7 +4686,7 @@ document.addEventListener('click', async e => {
   else if (a === 'drive-arrived') driveArrived();
   else if (a === 'drive-odo') driveOdoConfirm();
   else if (a === 'drive-beep') driveBeepToggle(t);
-  else if (a === 'drive-base') { lsSet(DRIVE_BASE_KEY, t.dataset.v === 'ortho' ? 'ortho' : 'plan'); renderSettings(true); if (DRIVE.open && DRIVE.map) driveBaseLayer(DRIVE.map); }
+  else if (a === 'drive-base') { lsSet(DRIVE_BASE_KEY, t.dataset.v === 'ortho' ? 'ortho' : 'plan'); renderSettings(true); if (DRIVE.open && DRIVE.mv) DRIVE.mv.setTheme(document.getElementById('liveDrive').classList.contains('dv-night')); }
   else if (a === 'split-pick') { SPLIT.pick = parseInt(t.dataset.i, 10) || 0; renderTripSummary(); const back = document.querySelector('#secTripSummary [data-act=split-pick][data-i="' + SPLIT.pick + '"]'); if (back) back.focus({ preventScroll: true }); }
   else if (a === 'split-apply') { if (loanSplitApply(parseInt(t.dataset.i, 10) || 0)) commandFeedback(t, 'Répartition appliquée'); else commandFeedback(t, 'Répartition impossible : trajets changés'); }
   else if (a === 'loan-search') loanSearch(t);

@@ -23,7 +23,41 @@ const DriveNav = (() => {
     if (total < 1) return null;
     const km = finite(r.distance) && r.distance > 0 ? r.distance / 1000 : total / 1000;
     const min = finite(r.duration) && r.duration > 0 ? r.duration / 60 : null;
-    return { key: key || null, pts, cumulative, total, km, min, full: true, signature: pts.length + '|' + pts[0].join(',') + '|' + pts[pts.length - 1].join(',') + '|' + Math.round(total) };
+    const nav = { key: key || null, pts, cumulative, total, km, min, full: true, steps: [], signature: pts.length + '|' + pts[0].join(',') + '|' + pts[pts.length - 1].join(',') + '|' + Math.round(total) };
+    nav.steps = steps(r, nav);
+    return nav;
+  }
+  // Étapes OSRM (manœuvres) → [{ type, modifier, name, ref, exit, lanes, along (m depuis le départ du tracé), at: [lat, lon] }].
+  // Voies seulement si OSRM les fournit (intersections[].lanes) ; rien n'est déduit. Étapes illisibles ignorées.
+  function steps(r, nav) {
+    const legs = Array.isArray(r.legs) ? r.legs : [], out = [];
+    legs.forEach(l => (Array.isArray(l.steps) ? l.steps : []).forEach(st => {
+      const m = st && st.maneuver, loc = m && Array.isArray(m.location) ? [m.location[1], m.location[0]] : null;
+      if (!m || !loc || !ok(loc) || typeof m.type !== 'string') return;
+      const hit = nearest(nav, loc); if (!hit || hit.gap > 60) return;
+      const inter = Array.isArray(st.intersections) && st.intersections[0], lanes = inter && Array.isArray(inter.lanes) && inter.lanes.length && inter.lanes.every(x => x && Array.isArray(x.indications))
+        ? inter.lanes.map(x => ({ valid: !!x.valid, indications: x.indications.filter(v => typeof v === 'string').slice(0, 4) })) : null;
+      out.push({ type: m.type, modifier: typeof m.modifier === 'string' ? m.modifier : null, name: typeof st.name === 'string' ? st.name.slice(0, 80) : '', ref: typeof st.ref === 'string' ? st.ref.slice(0, 20) : '',
+        exit: Number.isInteger(m.exit) ? m.exit : null, lanes, along: hit.along, at: loc });
+    }));
+    return out.sort((a, b) => a.along - b.along);
+  }
+  // Prochaine manœuvre réelle (ni départ, ni simple changement de nom) après la position (m le long du tracé), à 15 m près.
+  function nextStep(nav, along) {
+    if (!nav || !Array.isArray(nav.steps) || !finite(along)) return null;
+    return nav.steps.find(st => st.along > along + 15 && st.type !== 'depart' && !(st.type === 'new name' && (!st.modifier || st.modifier === 'straight'))) || null;
+  }
+  // Fluidité mesurée (intervalles entre images, ms) : « lente » si au moins 30 images et médiane > 70 ms (< 15 images/s).
+  function slowFrames(iv) {
+    const x = (iv || []).filter(finite).slice().sort((a, b) => a - b);
+    return x.length >= 30 && x[Math.floor(x.length / 2)] > 70;
+  }
+  // Zoom automatique : selon la vitesse (ville proche, voie rapide plus loin), et rapproché avant une manœuvre (≤ 800 m, ≤ 350 m).
+  function autoZoom(kmh, toStep) {
+    const v = finite(kmh) ? kmh : 50, base = v < 40 ? 17.3 : v < 80 ? 16.6 : v < 110 ? 15.9 : 15.3;
+    if (finite(toStep) && toStep <= 350) return Math.max(base, 17.4);
+    if (finite(toStep) && toStep <= 800) return Math.max(base, 16.8);
+    return base;
   }
   // Point du tracé le plus proche : écart (m) et distance le long du tracé (m).
   function nearest(route, p) {
@@ -124,6 +158,6 @@ const DriveNav = (() => {
     const km = f != null && (p == null || f >= p * .5) ? f : p;
     return km != null && km <= 2000 ? { km: Math.max(1, Math.round(km)), src: km === f ? 'gps' : 'route' } : null;
   }
-  return Object.freeze({ OFF, fromOsrm, nearest, offStep, heading, lightsQuery, lights, lightsAhead, lightAlert, sunAltitude, isNight, lightsLabel, tripKm, meters });
+  return Object.freeze({ OFF, fromOsrm, nearest, offStep, heading, lightsQuery, lights, lightsAhead, lightAlert, sunAltitude, isNight, lightsLabel, nextStep, autoZoom, slowFrames, tripKm, meters });
 })();
 if (typeof module !== 'undefined') module.exports = DriveNav;

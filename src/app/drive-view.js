@@ -11,7 +11,8 @@
 // Écritures : seulement la clôture du trajet et le relevé du compteur, sur appui. Pas de guidage tournant par tournant ni de radars.
 const DRIVE = { open: false, map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, timer: null, wake: null, wakeState: '', prevFix: null, speed: null, hist: [], follow: true,
   nav: null, navGen: 0, navAt: 0, navAsked: null, km0: 0, off: null, rerouting: false, rerouteAt: 0, reroutes: 0, navMsg: '', navMsgAt: 0,
-  lights: null, lightsSig: null, lightsLayer: null, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null, beeps: 0, audio: null };
+  lights: null, lightsSig: null, lightsLayer: null, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null, beeps: 0, audio: null,
+  mv: null, mvPending: false, glErr: '' };
 const DRIVE_LIGHTS = new Map();   // feux par tracé (mémoire de la session seulement, 6 tracés au plus)
 const IGN_ORTHO = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
 // Fond de carte : « plan » (Plan IGN, clair le jour, sombre la nuit) ou « ortho » (photo aérienne BD ORTHO), choisi dans les Réglages.
@@ -64,8 +65,8 @@ function driveAutoOpen(key, left = 20, routeOf = t => LiveRoute.route(t, null)) 
 }
 function driveClose() {
   const root = $('#liveDrive'); DRIVE.open = false; clearInterval(DRIVE.timer); DRIVE.timer = null; driveWake(false);
-  if (DRIVE.map) { try { DRIVE.map.remove(); } catch (e) { /* carte déjà retirée */ } }
-  Object.assign(DRIVE, { map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, prevFix: null, speed: null, hist: [],
+  if (DRIVE.mv) DRIVE.mv.remove();
+  Object.assign(DRIVE, { mv: null, mvPending: false, map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, prevFix: null, speed: null, hist: [],
     nav: null, navGen: DRIVE.navGen + 1, navAt: 0, navAsked: null, km0: 0, off: null, rerouting: false, rerouteAt: 0, reroutes: 0, navMsg: '', navMsgAt: 0,
     lights: null, lightsSig: null, lightsLayer: null, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null });
   document.documentElement.classList.remove('dv-on');
@@ -82,19 +83,62 @@ async function driveWake(on) {
 }
 document.addEventListener('visibilitychange', () => { if (DRIVE.open && !document.hidden) driveWake(true); });
 document.addEventListener('keydown', e => { if (DRIVE.open && e.key === 'Escape') driveClose(); });
-async function driveMap(route) {
-  const root = $('#liveDrive'), node = root && root.querySelector('.dv-map'); if (!node || DRIVE.map) return;
-  try { await loadLeaflet(); } catch (e) { driveSet('foot', 'Carte indisponible · chiffres du trajet conservés'); return; }
-  if (!DRIVE.open || DRIVE.map || !node.isConnected) return;
+// Carte : 3D IGN (MapLibre, drive-map-gl.js) si le téléphone sait l'afficher, sinon Plan IGN à plat (Leaflet) ; même interface.
+async function driveMap(route, night) {
+  const root = $('#liveDrive'), node = root && root.querySelector('.dv-map'); if (!node || DRIVE.mv || DRIVE.mvPending) return;
+  DRIVE.mvPending = true; const key = DRIVE.key;
+  let mv = null;
+  let flat = false; try { flat = sessionStorage.getItem('rc-dv-flat') === '1'; } catch (e) { /* stockage de session indisponible */ }
+  if (driveWebGL() && !offlineNow() && !flat) { try { mv = await driveMapGl(node, route, night); } catch (e) { mv = null; DRIVE.glErr = String(e && e.message || e).slice(0, 120); node.innerHTML = ''; } }
+  if (!mv) { try { mv = await driveMapFlat(node, route); } catch (e) { driveSet('foot', 'Carte indisponible · chiffres du trajet conservés'); } }
+  DRIVE.mvPending = false;
+  if (!mv) return;
+  if (!DRIVE.open || DRIVE.key !== key || !node.isConnected) { mv.remove(); return; }
+  DRIVE.mv = mv; DRIVE.map = mv.map;
+  if (mv.kind === '3d') driveGlProbe(mv, route);
+  mv.on('drag', () => { DRIVE.follow = false; const b2 = root.querySelector('.dv-recenter'); if (b2) b2.hidden = false; });
+  if (DRIVE.route) mv.setRoute(DRIVE.route, true);
+  mv.setLights(DRIVE.lights || []);
+  driveTick();
+}
+// Fluidité de la 3D mesurée pendant 8 s : trop lente sur cet appareil (< 15 images/s) → carte à plat pour la session, dit à l'écran.
+// Drapeau de session seulement (sessionStorage « rc-dv-flat ») : ni stockage durable, ni export, ni synchronisation.
+function driveGlProbe(mv, route) {
+  const iv = []; let last = null; const t0 = performance.now();
+  const loop = t => { if (DRIVE.mv !== mv) return; if (last != null) iv.push(t - last); last = t;
+    if (t - t0 < 8000) { requestAnimationFrame(loop); return; }
+    if (DriveNav.slowFrames(iv)) { try { sessionStorage.setItem('rc-dv-flat', '1'); } catch (e) { /* stockage de session indisponible */ }
+      mv.remove(); DRIVE.mv = null; DRIVE.map = null; DRIVE.glSlow = true; const node = document.querySelector('#liveDrive .dv-map'); if (node) node.innerHTML = ''; driveMap(DRIVE.route, false); } };
+  requestAnimationFrame(loop);
+}
+// Repli à plat : Plan IGN (clair le jour, sombre la nuit par une classe) ou photo aérienne, voiture, tracé, feux neutres.
+async function driveMapFlat(node, route) {
+  await loadLeaflet();
   const map = L.map(node, { zoomControl: false, attributionControl: true, zoomAnimation: false, keyboard: false });
-  DRIVE.map = map;
-  let loaded = false, errors = 0;
   driveBaseLayer(map);
-  DRIVE.lightsLayer = L.layerGroup().addTo(map);
-  driveDrawRoute(route, true);
-  DRIVE.marker = L.marker(route ? route.pts[0] : [46.6, 2.4], { icon: L.divIcon({ className: 'dv-car', html: '<span></span>', iconSize: [30, 30], iconAnchor: [15, 15] }), interactive: false, keyboard: false, zIndexOffset: 900 }).addTo(map);
-  map.on('dragstart', () => { DRIVE.follow = false; const b = root.querySelector('.dv-recenter'); if (b) b.hidden = false; });
-  driveDrawLights();
+  const lights = L.layerGroup().addTo(map), counts = { lights: 0 };
+  let line = null, done = null;
+  const car = L.marker(route ? route.pts[0] : [46.6, 2.4], { icon: L.divIcon({ className: 'dv-car', html: '<span></span>', iconSize: [30, 30], iconAnchor: [15, 15] }), interactive: false, keyboard: false, zIndexOffset: 900 }).addTo(map);
+  const api = {
+    kind: 'plat', map, credit: '',
+    on: (ev, fn) => map.on(ev === 'drag' ? 'dragstart' : ev, fn),
+    setRoute(r, fit) { [line, done].forEach(l => { if (l) map.removeLayer(l); }); line = done = null;
+      if (!r) { map.setView([46.6, 2.4], 6); return; }
+      line = L.polyline(r.pts, { color: '#5fb0e8', weight: 6, opacity: .45 }).addTo(map); done = L.polyline([], { color: '#5fb0e8', weight: 6, opacity: 1 }).addTo(map);
+      if (fit) map.fitBounds(line.getBounds(), { padding: [24, 24] }); },
+    setDone(pts) { if (done) done.setLatLngs(pts); },
+    setCar(p) { car.setLatLng(p); },
+    shown: () => { const l = car.getLatLng(); return [l.lat, l.lng]; },
+    follow(p) { map.setView(p, Math.max(map.getZoom() || 15, 15), { animate: false }); },
+    setLights(list) { lights.clearLayers(); counts.lights = (list || []).length;
+      (list || []).forEach(l => L.marker([l.lat, l.lon], { icon: L.divIcon({ className: 'dv-light', html: DRIVE_LIGHT_SVG, iconSize: [14, 32], iconAnchor: [7, 16] }), interactive: false, keyboard: false, title: 'Feu tricolore (OpenStreetMap)' }).addTo(lights)); },
+    async setTheme() { driveBaseLayer(map); },
+    theme: () => 'plat',
+    counts: () => ({ ...counts }),
+    remove() { try { map.remove(); } catch (e) { /* carte déjà retirée */ } }
+  };
+  api.setRoute(route, true);
+  return api;
 }
 // Fond de carte (Plan IGN ou photo aérienne) : remplacé en direct si le réglage change ; jour / nuit par une classe sur la vue.
 // Plan IGN indisponible (3 tuiles en échec avant la première) : repli OpenStreetMap, comme avant.
@@ -116,21 +160,8 @@ function driveBaseLayer(map) {
   if (map._dvBase.bringToBack) map._dvBase.bringToBack();
 }
 // Tracé affiché = tracé suivi (DRIVE.nav, sinon tracé prévu). Redessiné à chaque nouvel itinéraire, sans recadrer si la carte suit.
-function driveDrawRoute(route, fit) {
-  const map = DRIVE.map; if (!map) return;
-  [DRIVE.line, DRIVE.done].forEach(l => { if (l) map.removeLayer(l); });
-  DRIVE.line = DRIVE.done = null; DRIVE.route = route || null;
-  if (!route) { map.setView([46.6, 2.4], 6); return; }
-  DRIVE.line = L.polyline(route.pts, { color: '#5fb0e8', weight: 6, opacity: .45 }).addTo(map);
-  DRIVE.done = L.polyline([], { color: '#5fb0e8', weight: 6, opacity: 1 }).addTo(map);
-  if (fit || !DRIVE.follow) map.fitBounds(DRIVE.line.getBounds(), { padding: [24, 24] });
-}
-function driveDrawLights() {
-  const layer = DRIVE.lightsLayer; if (!layer || !DRIVE.map) return;
-  layer.clearLayers();
-  (DRIVE.lights || []).forEach(l => L.marker([l.lat, l.lon], { icon: L.divIcon({ className: 'dv-light', html: DRIVE_LIGHT_SVG, iconSize: [14, 32], iconAnchor: [7, 16] }),
-    interactive: false, keyboard: false, title: 'Feu tricolore (OpenStreetMap)' }).addTo(layer));
-}
+function driveDrawRoute(route, fit) { DRIVE.route = route || null; if (DRIVE.mv) DRIVE.mv.setRoute(DRIVE.route, fit && !DRIVE.last); }
+function driveDrawLights() { if (DRIVE.mv) DRIVE.mv.setLights(DRIVE.lights || []); }
 // Point envoyé au calculateur d'itinéraire : à moins de 1,5 km du domicile, du travail ou d'un lieu enregistré, arrondi à ~1 km
 // (règle rc2 de l'app) ; ailleurs, 3 décimales (≈ 100 m) comme le suivi du trajet, et 4 décimales (≈ 10 m) pour la position
 // d'une voiture EN ROUTE qui demande un recalcul : sinon le tracé repartirait d'une rue voisine et se recalculerait en boucle.
@@ -286,14 +317,16 @@ function driveTick() {
   if (!t) { driveSet('foot', 'Aucun trajet en cours ni prévu'); return; }
   if (DRIVE.key !== t.key) {
     Object.assign(DRIVE, { key: t.key, to: t.to, carId: t.carId || appDay().activeCarId, plan: t.planL || t.l, last: null, hist: [], nav: null, navAt: 0, navAsked: null, km0: 0, off: null, lights: null, lightsSig: null, fixTs: 0, navFuzzy: false, refineAt: 0 });
-    DRIVE.navGen++; if (DRIVE.map) { DRIVE.map.remove(); DRIVE.map = null; DRIVE.lightsLayer = null; }
+    DRIVE.navGen++; if (DRIVE.mv) { DRIVE.mv.remove(); DRIVE.mv = null; DRIVE.map = null; }
   }
   const planned = LiveRoute.route(t, null), route = DRIVE.nav || planned;
   // Jour / nuit selon le soleil à la position (sinon au départ du tracé), jamais selon le mode sombre du téléphone ; changé en direct.
   const sunAt = FIX && liveFresh(FIX, LIVE_AGE_RUN) ? [FIX.lat, FIX.lon] : route ? route.pts[0] : null, rootEl = $('#liveDrive');
-  if (rootEl) rootEl.classList.toggle('dv-night', sunAt ? DriveNav.isNight(sunAt[0], sunAt[1], Date.now()) : true);
-  if (!DRIVE.map) driveMap(route);
-  else { if (DRIVE.route !== route) driveDrawRoute(route, false); driveBaseLayer(DRIVE.map); }
+  const night = sunAt ? DriveNav.isNight(sunAt[0], sunAt[1], Date.now()) : true;
+  if (rootEl) rootEl.classList.toggle('dv-night', night);
+  if (DRIVE.route !== route) driveDrawRoute(route, !DRIVE.route);
+  if (!DRIVE.mv) driveMap(route, night);
+  else DRIVE.mv.setTheme(night);
   const active = !!(LIVE.key === t.key && LIVE.phase === 'active');
   const fresh = active && FIX && liveFresh(FIX, LIVE_AGE_RUN) && FIX.ts >= appGpsFloor() ? FIX : null;
   // Tracé complet demandé une fois par trajet (et redemandé depuis ta position au démarrage si l'ouverture était avant).
@@ -362,12 +395,16 @@ function driveTick() {
     const k = near ? driveTripKm(t) : null, label = '✅ BIEN ARRIVÉ' + (k ? ' · +' + k.km + ' km au compteur' : '');
     arrive.hidden = !near; if (near && arrive.textContent !== label) arrive.textContent = label;
   }
-  driveSet('foot', [route ? (DRIVE.nav ? '' : 'Itinéraire détaillé en préparation') : 'Itinéraire en préparation', DRIVE.wakeState, 'prévisions du modèle, pas une mesure sur la route'].filter(Boolean).join(' · '));
-  // Hors du tracé : la voiture est montrée à sa vraie position (jamais recollée sur l'ancien tracé).
+  driveSet('foot', [route ? (DRIVE.nav ? '' : 'Itinéraire détaillé en préparation') : 'Itinéraire en préparation', DRIVE.wakeState, 'prévisions du modèle, pas une mesure sur la route', DRIVE.glSlow ? 'carte 3D trop lente sur cet appareil : carte à plat' : '', DRIVE.mv && DRIVE.mv.credit].filter(Boolean).join(' · '));
+  // Hors du tracé : la voiture est montrée à sa vraie position (jamais recollée sur l'ancien tracé), cap = direction suivie.
+  // Caméra : sens de la marche, zoom automatique selon la vitesse et la prochaine manœuvre (étapes OSRM du tracé détaillé).
   const carAt = g.valid ? g.point : offNow && fresh ? [fresh.lat, fresh.lon] : pose && pose.point;
-  if (DRIVE.map && carAt) {
-    if (DRIVE.marker) DRIVE.marker.setLatLng(carAt);
-    if (DRIVE.done && route && pose) { const k = route.cumulative.findIndex(c => c >= route.total * pose.fraction); DRIVE.done.setLatLngs(route.pts.slice(0, Math.max(1, k)).concat([pose.point])); }
-    if (DRIVE.follow) DRIVE.map.setView(carAt, Math.max(DRIVE.map.getZoom() || 15, 15), { animate: false });
+  const head = g.valid ? g.bearing : offNow && fresh && DRIVE.prevFix ? DriveNav.heading(DRIVE.prevFix, fresh) : pose ? pose.bearing : null;
+  const stepNext = DRIVE.nav && Number.isFinite(along) ? DriveNav.nextStep(DRIVE.nav, along) : null;
+  DRIVE.zoom = DriveNav.autoZoom(Number.isFinite(DRIVE.speed) ? DRIVE.speed : null, stepNext ? stepNext.along - along : null);
+  if (DRIVE.mv && carAt) {
+    DRIVE.mv.setCar(carAt, head);
+    if (route && pose) { const k = route.cumulative.findIndex(c => c >= route.total * pose.fraction); DRIVE.mv.setDone(route.pts.slice(0, Math.max(1, k)).concat([pose.point])); }
+    if (DRIVE.follow && (active || pose)) DRIVE.mv.follow(carAt, head, DRIVE.zoom);
   }
 }
