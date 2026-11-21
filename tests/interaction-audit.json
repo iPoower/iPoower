@@ -547,10 +547,6 @@
     "suite": "e2e145-en-direct-cockpit.js",
     "result": "fond de carte du mode EN DIRECT choisi dans les Réglages (Plan IGN jour/nuit automatique ou photo aérienne IGN), appliqué en direct"
   },
-  "drive-gps": {
-    "suite": "e2e148-gps-voiture-libre.js",
-    "result": "GPS ouvert : trajet programmé → mode EN DIRECT directement ; sinon choix de la voiture d’abord"
-  },
   "drive-car": {
     "suite": "e2e148-gps-voiture-libre.js",
     "result": "voiture du trajet choisie (sélection visible), rien d’écrit avant de démarrer"

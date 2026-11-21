@@ -94,7 +94,14 @@ function driveSetupRender() {
     '<button type="button" class="btn" data-act="drive-dest"' + (s.carId ? '' : ' disabled') + '>Choisir une destination</button></div>' +
     '<p class="dv-foot">La voiture choisie devient ta voiture du jour (verdicts, pneus). Aucun trajet n\'est créé tant que tu n\'as pas choisi.</p></div>';
 }
-function driveSetupCar(id) { if (DRIVE.setup && S.cars.some(c => c.id === id)) { DRIVE.setup.carId = id; driveSetupRender(); const b = $('#liveDrive [data-act="drive-car"][data-id="' + CSS.escape(id) + '"]'); if (b) b.focus({ preventScroll: true }); } }
+// Choix de la voiture : dans l'écran GPS plein écran (ouverture par « 🧭 GPS ») ou dans l'onglet GPS ; seul l'écran visible est redessiné.
+function driveSetupCar(id) {
+  if (!DRIVE.setup || !S.cars.some(c => c.id === id)) return;
+  DRIVE.setup.carId = id;
+  const root = $('#liveDrive'), overlay = !!root && !root.hidden && root.classList.contains('dv-setupmode');
+  if (overlay) driveSetupRender(); else if (typeof renderGps === 'function') renderGps();
+  const b = $((overlay ? '#liveDrive' : '#secGps') + ' [data-act="drive-car"][data-id="' + CSS.escape(id) + '"]'); if (b) b.focus({ preventScroll: true });
+}
 // « Choisir une destination » : formulaire du Trajet, départ maintenant, voiture choisie ; « Partir maintenant » rouvre le GPS.
 function driveSetupDest() {
   const id = DRIVE.setup && DRIVE.setup.carId; if (!id) return;
@@ -157,6 +164,7 @@ function driveClose() {
     lights: null, lightsSig: null, lightsLayer: null, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null });
   document.documentElement.classList.remove('dv-on');
   if (root) { root.hidden = true; root.innerHTML = ''; root.classList.remove('dv-arrived'); }
+  if (typeof renderGps === 'function') renderGps();   // onglet GPS : retour au choix de la voiture ou à la carte du trajet
 }
 // Écran maintenu allumé (Wake Lock) : demandé à l'ouverture, redemandé au retour au premier plan ; état affiché, jamais promis.
 async function driveWake(on) {

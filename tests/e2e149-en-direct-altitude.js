@@ -36,7 +36,7 @@ async function run(b, dev) {
   const priv = await p.evaluate(() => { S.work.days = []; S.gpsAuto = 1; saveSettings(); const [o, d] = S.locs;
     appProgramManualTrip({ originId: o.id, originPoint: null, destinationId: d.id, destinationPoint: null, dep: liveNow().slice(0, 16), carId: S.cars[0].id }); UI.view = 'trajet'; rebuild(); renderAll();
     return S.locs.filter(locHasCoords).map(l => [l.lat, l.lon]); });
-  await s.settle(8); await p.locator('#secTripSummary [data-act=drive-open]').click(); await s.settle(6);
+  await s.settle(8); await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(1); await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(6);
   await p.evaluate(() => { const t = APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip; liveStart(t.key); });
   const push = async f => { await p.evaluate(f => { const [o, d] = S.locs; window.__geo = { lat: o.lat + (d.lat - o.lat) * f, lon: o.lon + (d.lon - o.lon) * f, acc: 8 }; window.__geoPush(); }, f); await s.settle(3); };
   await push(0.2); await p.clock.runFor(25e3); await push(0.22); await p.clock.runFor(20e3); await push(0.24); await s.settle(6);

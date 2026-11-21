@@ -66,8 +66,8 @@ const wx = (o, kind) => {
       content: document.getElementById('secWx').innerHTML, tabs: [...document.querySelectorAll('#viewSeg [data-act="view"]')].map(x => x.dataset.v),
       rawKeys: Object.keys(window.TWRC_RAW_STORAGE).sort() }));
     const initialCalls = s.S.calls;
-    await check('PC · station désactivée à l’ouverture, cinq onglets et accès discret', async () => {
-      assert.equal((await sample(p)).active, false); assert.equal(before.tabs.length, 5);
+    await check('PC · station désactivée à l’ouverture, six onglets et accès discret', async () => {
+      assert.equal((await sample(p)).active, false); assert.equal(before.tabs.length, 6);
       assert(await p.locator('[data-act="station-open"]').isVisible()); assert.equal(await p.locator('#wxStation').count(), 0);
     });
     await check('PC · ouverture par clic : température, ressenti, 12 heures et sources du moteur commun', async () => {
@@ -286,12 +286,12 @@ const wx = (o, kind) => {
       } finally { await a.c.close(); }
     });
     supplierAt = Date.parse('2026-10-12T08:00:00+02:00'); temp = 12;
-    await check('iPhone 11 Pro Max · UX historique préservée, station masquée, cinq onglets et aucun débordement', async () => {
+    await check('iPhone 11 Pro Max · UX historique préservée, station masquée, six onglets et aucun débordement', async () => {
       const a = await session(browser, { at: '2026-10-12T08:00:00+02:00', dev: 'iphone', wx });
       try {
         assert.equal(await a.p.locator('[data-act="station-open"]').isVisible(), false);
         await a.p.evaluate(() => weatherStationOpen()); assert.equal((await sample(a.p)).active, false);
-        assert.equal(await a.p.locator('#viewSeg [data-act="view"]').count(), 5);
+        assert.equal(await a.p.locator('#viewSeg [data-act="view"]').count(), 6);
         assert(await a.p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
         await a.p.screenshot({ path: path.join(process.env.SP, 'weather-watch-iphone-' + BR.NAME + '.png'), fullPage: true });
         assert.equal(await a.p.evaluate(() => TWRC_RAW_STORAGE.getItem('twrc.key')), null);

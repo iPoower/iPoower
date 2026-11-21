@@ -78,7 +78,7 @@ async function layout(p){return p.evaluate(()=>{const W=document.documentElement
 (async()=>{const b=await BR.launch();try{
  for(const dev of ['iphone','pc']){
   const s=await session(b,{at:'2026-10-07T15:00:00+02:00',dev}),p=s.p,ctl=await setup(s,dev);
-  await check(dev+' · TRAJET visible en un geste, navigation à cinq onglets',async()=>{const L=await layout(p);assert.deepEqual(L.tabs,['meteo','pneus','trajet','garage','analyse']);assert.equal((await state(p)).view,'trajet');assert(await p.locator('#secTrip').isVisible());});
+  await check(dev+' · TRAJET visible en un geste, navigation à six onglets',async()=>{const L=await layout(p);assert.deepEqual(L.tabs,['meteo','pneus','trajet','gps','garage','analyse']);assert.equal((await state(p)).view,'trajet');assert(await p.locator('#secTrip').isVisible());});
   await check(dev+' · départ proposé depuis le lieu Travail confirmé',async()=>assert.match(await p.locator('#secTrip').innerText(),/Travail test/));
   await check(dev+' · CHECK AVANT DÉPART : trois constats réels sans feu vert automatique',async()=>{
     const panel=p.locator('#secTrip .trip-preflight');

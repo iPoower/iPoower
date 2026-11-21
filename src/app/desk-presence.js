@@ -1,13 +1,13 @@
 /* Présence sur ordinateur (16/11/2026) : Race Control lisible quand l'onglet reste ouvert en arrière-plan.
  * 1. Titre d'onglet et icône (pastille de couleur) = le verdict « Ici, maintenant » déjà calculé, sans nouveau calcul.
  * 2. Pastille sur l'icône de l'app installée (Badging API : Chrome, Edge, Brave sur ordinateur) dès VIGILANCE.
- * 3. Raccourcis clavier : 1 à 5 pour les onglets (ordre affiché), R pour actualiser ; jamais pendant une saisie,
+ * 3. Raccourcis clavier : 1 à 6 pour les onglets (ordre affiché), R pour actualiser ; jamais pendant une saisie,
  *    ni avec Ctrl, Alt ou Cmd (les raccourcis du navigateur restent intacts).
  * Confidentialité : le titre est visible dans la barre des tâches et les partages d'écran ; il ne contient jamais de lieu,
  * seulement le niveau et l'heure de départ. Icône en SVG (data:) : aucune lecture de canvas (protégée par Brave). */
 const DESK_TITLE = 'TYRE WEATHER RACE CONTROL';
 const DESK_TONE = { 0: ['🟢', '#2ecc71'], 1: ['🟡', '#f1c40f'], 2: ['🟠', '#f39c12'], 3: ['🔴', '#e74c3c'], x: ['⚪', '#8a96a3'] };
-const DESK_VIEWS = ['meteo', 'pneus', 'trajet', 'garage', 'analyse'];   // ordre des onglets affichés : 1 Météo … 5 Analyse
+const DESK_VIEWS = ['meteo', 'pneus', 'trajet', 'gps', 'garage', 'analyse'];   // ordre des onglets affichés : 1 Météo … 6 Analyse
 let DESK_PRESENCE = '';
 // state : null (verrouillé, démo, données absentes) ou { level 0-3, limited, label, dep: 'HH:MM' | 'lun. 16/11 06:30' | null }
 function deskPresence(state) {
@@ -37,7 +37,7 @@ document.addEventListener('keydown', e => {
   const t = e.target;
   if (t && (t.isContentEditable || (t.closest && t.closest('input, textarea, select, [contenteditable], dialog[open]')))) return;
   if (LOCKED()) return;
-  const n = /^[1-5]$/.test(e.key) ? +e.key : 0;
+  const n = /^[1-6]$/.test(e.key) ? +e.key : 0;
   if (n) { e.preventDefault(); chooseView(DESK_VIEWS[n - 1]); return; }
   if (e.key === 'r' || e.key === 'R') { e.preventDefault(); refreshAll(); }
 });

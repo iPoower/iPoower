@@ -34,7 +34,7 @@ async function run(b, dev) {
   // Feux fictifs sur le tracé prévu : 30 %, 50 % (deux nœuds du même carrefour), 70 % ; un quatrième à 400 m du tracé (ignoré).
   lightsAt = [at(0.3), at(0.5), at(0.5, 15), at(0.7), at(0.6, 400)];
   await s.settle(8);
-  await p.locator('#secTripSummary [data-act=drive-open]').click(); await s.settle(6);
+  await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(1); await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(6);
   const geo = async (pt, acc = 8) => { await p.evaluate(g => { window.__geo = { lat: g[0], lon: g[1], acc: g[2] }; window.__geoPush(); }, [pt[0], pt[1], acc]); await s.settle(2); };
   const read = () => p.evaluate(() => { const q = k => (document.querySelector('#liveDrive [data-dv="' + k + '"]') || {}).textContent || '', n = document.querySelector('#liveDrive [data-dv="nav"]');
     return { done: q('done'), left: q('left'), label: q('lightsLabel'), gps: q('gps'), nav: n && !n.hidden ? n.textContent : '', markers: document.querySelectorAll('#liveDrive .dv-light').length,

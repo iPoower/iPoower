@@ -4,8 +4,8 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { BR, session, errors } = require('./lib/context-session');
 let stage = '', count = 0;
 const check = async (label, fn) => { stage = label; await fn(); count++; console.log('✅ ' + label); };
-const views = ['meteo', 'pneus', 'trajet', 'garage', 'analyse'];
-const root = { meteo: '#secWx', pneus: '#secCars', trajet: '#secTrip', garage: '#secGarage', analyse: '#secLab' };
+const views = ['meteo', 'pneus', 'trajet', 'gps', 'garage', 'analyse'];
+const root = { meteo: '#secWx', pneus: '#secCars', trajet: '#secTrip', gps: '#secGps', garage: '#secGarage', analyse: '#secLab' };
 async function overflow(p) {
   const size = await p.evaluate(() => ({ width: innerWidth, document: document.documentElement.scrollWidth }));
   assert(size.document <= size.width + 1, JSON.stringify(size));
@@ -66,8 +66,9 @@ async function run(browser, width, dev) {
           assert(pos.summary < pos.form, JSON.stringify(pos));
           assert.equal(await p.locator('#secTripSummary a').innerText(), 'Modifier le trajet');
         }
+        if (view === 'gps') assert(await p.locator('#secGps .gps-go').first().isVisible());   // action principale (Démarrer ou Rouler sans destination)
         if (width === 414) {
-          const key = { pneus: '#decisionCore .decision-mount', meteo: '#decisionCore .decision-trip', garage: '#secGarage .garage-edit', analyse: '#secLab .lab-hero', trajet: '#secTripSummary a' }[view];
+          const key = { pneus: '#decisionCore .decision-mount', meteo: '#decisionCore .decision-trip', garage: '#secGarage .garage-edit', analyse: '#secLab .lab-hero', trajet: '#secTripSummary a', gps: '#secGps .gps-go' }[view];
           const screen = await p.evaluate(selector => {
             const box = document.querySelector(selector).getBoundingClientRect(), nav = document.getElementById('viewSeg').getBoundingClientRect();
             return { top: box.top, bottom: box.bottom, nav: nav.top };

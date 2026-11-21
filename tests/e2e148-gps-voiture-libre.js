@@ -1,5 +1,5 @@
 // GPS · ouverture (21/11/2026, lot 4), données FICTIVES, iPhone puis PC, GPS simulé.
-// Sans trajet programmé, « 🧭 GPS » demande d'abord la voiture (voiture du jour présélectionnée, rien d'écrit avant de démarrer) ;
+// Onglet GPS sans trajet dans les 3 h : choix de la voiture directement dans l'onglet (voiture du jour présélectionnée, rien d'écrit avant de démarrer) ;
 // « Rouler sans destination » : voiture du jour mise à jour, km parcourus au GPS, ni feux ni guidage, « Terminer » → km ajoutés
 // au compteur de CETTE voiture seulement sur appui ; « Choisir une destination » : formulaire du Trajet, départ maintenant,
 // voiture choisie ; avec un trajet en cours ou dans les 3 h : mode EN DIRECT directement, sans question (celui de demain matin ne compte pas).
@@ -16,15 +16,15 @@ async function run(b, dev) {
     UI.view = 'trajet'; rebuild(); renderAll(); return { A: S.cars[0].id, B: S.cars[1].id, trip: typeof driveSoonTrip === 'function' ? !!driveSoonTrip() : !!(APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip), later: (APP_CONTEXT.snapshot.nextTrip || {}).dep || null }; });
   await s.settle(3);
   check(`${dev} · situation de départ : aucun trajet en cours ni dans les 3 h (prochain : ${ids.later || 'aucun'}, demain matin ne compte pas)`, !ids.trip && (!ids.later || ids.later.slice(0, 10) > '2026-11-16'), JSON.stringify(ids));
-  await p.locator('#secTrip [data-act=drive-gps]').click(); await s.settle(2);
-  const a = await p.evaluate(() => { const r = document.getElementById('liveDrive'); return { shown: !r.hidden, h: (r.querySelector('h2') || {}).textContent, cars: [...r.querySelectorAll('[data-act=drive-car]')].map(x => [x.dataset.id, x.getAttribute('aria-pressed')]), h44: [...r.querySelectorAll('[data-act=drive-car], [data-act=drive-free], [data-act=drive-dest]')].every(x => x.getBoundingClientRect().height >= 44), driving: DRIVE.open }; });
-  check(`${dev} · « 🧭 GPS » sans trajet : « Quelle voiture conduis-tu ? », voiture du jour présélectionnée, grandes cibles`, a.shown && /Quelle voiture/.test(a.h) && a.cars.length >= 2 && a.cars.find(c => c[0] === ids.A)[1] === 'true' && a.h44 && !a.driving, JSON.stringify(a));
-  await p.locator(`#liveDrive [data-act=drive-car][data-id="${ids.B}"]`).click(); await s.settle(1);
-  const sel = await p.evaluate(B => ({ pressed: document.querySelector(`#liveDrive [data-act=drive-car][data-id="${B}"]`).getAttribute('aria-pressed'), active: appDay().activeCarId }), ids.B);
+  await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(2);
+  const a = await p.evaluate(() => { const r = document.getElementById('secGps'); return { shown: !r.hidden && r.getBoundingClientRect().height > 0, h: (r.querySelector('h3') || {}).textContent, cars: [...r.querySelectorAll('[data-act=drive-car]')].map(x => [x.dataset.id, x.getAttribute('aria-pressed')]), h44: [...r.querySelectorAll('[data-act=drive-car], [data-act=drive-free], [data-act=drive-dest]')].every(x => x.getBoundingClientRect().height >= 44), driving: DRIVE.open }; });
+  check(`${dev} · onglet GPS sans trajet : « Quelle voiture conduis-tu ? », voiture du jour présélectionnée, grandes cibles`, a.shown && /Quelle voiture/.test(a.h) && a.cars.length >= 2 && a.cars.find(c => c[0] === ids.A)[1] === 'true' && a.h44 && !a.driving, JSON.stringify(a));
+  await p.locator(`#secGps [data-act=drive-car][data-id="${ids.B}"]`).click(); await s.settle(1);
+  const sel = await p.evaluate(B => ({ pressed: document.querySelector(`#secGps [data-act=drive-car][data-id="${B}"]`).getAttribute('aria-pressed'), active: appDay().activeCarId }), ids.B);
   check(`${dev} · voiture choisie visible, rien d’écrit avant de démarrer`, sel.pressed === 'true' && sel.active === ids.A, JSON.stringify(sel));
   // Trajet libre : 2 km à 60 km/h (1 km par minute).
   await p.evaluate(() => { const [o] = S.locs; window.__geo = { lat: o.lat + 0.02, lon: o.lon, acc: 6 }; });
-  await p.locator('#liveDrive [data-act=drive-free]').click(); await s.settle(4);
+  await p.locator('#secGps [data-act=drive-free]').click(); await s.settle(4);
   for (let i = 1; i <= 2; i++) { await p.clock.runFor(60e3); await p.evaluate(k => { const [o] = S.locs; window.__geo = { lat: o.lat + 0.02 + k * 0.009, lon: o.lon, acc: 6 }; window.__geoPush(); }, i); await s.settle(3); }
   const f = await p.evaluate(() => { const q = k => (document.querySelector('#liveDrive [data-dv="' + k + '"]') || {}).textContent || ''; const e = document.querySelector('#liveDrive .dv-freeend'), g = document.querySelector('#liveDrive [data-dv="guide"]');
     return { active: appDay().activeCarId, done: q('done'), speed: q('speed'), lights: q('lightsLabel'), end: e && !e.hidden ? e.textContent : '', guide: !!g && !g.hidden, odo: lastOdo(S.cars[1]).km }; });
@@ -41,15 +41,15 @@ async function run(b, dev) {
   const w = await p.evaluate(() => ({ hidden: document.getElementById('liveDrive').hidden, free: !!DRIVE.free }));
   check(`${dev} · « Fermer » : GPS du trajet libre arrêté, vue fermée`, w.hidden && !w.free, JSON.stringify(w));
   // « Choisir une destination » : formulaire du Trajet, départ maintenant, voiture choisie.
-  await p.locator('#secTrip [data-act=drive-gps]').click(); await s.settle(1);
-  await p.locator(`#liveDrive [data-act=drive-car][data-id="${ids.A}"]`).click(); await p.locator('#liveDrive [data-act=drive-dest]').click(); await s.settle(2);
+  await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(1);
+  await p.locator(`#secGps [data-act=drive-car][data-id="${ids.A}"]`).click(); await p.locator('#secGps [data-act=drive-dest]').click(); await s.settle(2);
   const d = await p.evaluate(() => ({ hidden: document.getElementById('liveDrive').hidden, car: TRIP_FORM.carId, when: TRIP_FORM.when, focus: document.activeElement && document.activeElement.id, active: appDay().activeCarId }));
   check(`${dev} · « Choisir une destination » : formulaire du Trajet, champ destination, départ maintenant, voiture choisie`, d.hidden && d.car === ids.A && d.when === 'now' && d.focus === 'tripDestQ' && d.active === ids.A, JSON.stringify(d));
   // Trajet programmé : le GPS s'ouvre directement, sans question.
   await p.evaluate(B => { const [o, dd] = S.locs; appProgramManualTrip({ originId: o.id, originPoint: null, destinationId: dd.id, destinationPoint: null, dep: '2026-11-16T11:00', carId: B }); rebuild(); renderAll(); }, ids.B); await s.settle(4);
-  await p.locator('#secTrip [data-act=drive-gps]').click(); await s.settle(3);
+  await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(2); await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(3);
   const t = await p.evaluate(() => ({ open: DRIVE.open, setup: !!document.querySelector('#liveDrive [data-act=drive-car]'), key: DRIVE.key, trip: (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip || {}).key }));
-  check(`${dev} · trajet déjà programmé : mode EN DIRECT ouvert directement, sans choix de voiture`, t.open && !t.setup && !!t.key && t.key === t.trip, JSON.stringify(t));
+  check(`${dev} · trajet déjà programmé : onglet GPS « Démarrer » → mode EN DIRECT sur ce trajet, sans choix de voiture`, t.open && !t.setup && !!t.key && t.key === t.trip, JSON.stringify(t));
   await s.c.close();
 }
 (async () => {
