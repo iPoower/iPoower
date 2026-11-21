@@ -102,7 +102,10 @@ const ll = h => (/ll=([-\d.]+),([-\d.]+)/.exec(h) || []).slice(1).join(',');
     const A = (await links(p, '#secCal')).map(x => ll(x.h));
     check('1 · agenda : aller vers le rendez-vous', A.includes('49.207,2.586') && A.includes('49.381,3.323'), A.join(' | '));
     check('1 · agenda : retour vers le domicile local EXACT, jamais le domicile arrondi du relais', A.includes('48.84627,2.34478') && !A.includes('48.85,2.35'), A.join(' | '));
-    check('1 · plus aucun lien Apple Plans', !(await p.content()).includes('maps.apple.com'));
+    // Plans en coordonnées seules est signalé défaillant : aucun lien Apple Plans affiché sans adresse (« Guider avec… » de
+    // l'onglet GPS n'en crée qu'avec une adresse ; le code de construction du lien est embarqué dans la page, d'où le test du DOM).
+    check('1 · aucun lien Apple Plans en coordonnées seules (Plans seulement avec une adresse)', await p.evaluate(() => [...document.querySelectorAll('a[href*="maps.apple.com"]')]
+      .every(a => { const d = new URL(a.href).searchParams.get('daddr') || ''; return /[A-Za-zÀ-ÿ]/.test(d) && !/^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$/.test(d); })));
     // la fenêtre ouverte par le clic est une nouvelle page : Waze est simulé au niveau du contexte (sinon le filet de sécurité la bloque)
     await s.c.route('https://waze.com/**', r => { S.reqs.push({ u: r.request().url(), m: r.request().method() }); S.waze = (S.waze || []).concat(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>waze</body></html>' }); });
     const [pop] = await Promise.all([p.waitForEvent('popup', { timeout: 15000 }), p.click('#secBrf ' + W)]); await pop.waitForLoadState().catch(() => {});
