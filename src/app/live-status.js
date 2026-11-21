@@ -36,7 +36,14 @@ function renderLiveStatus() {
   // Hauteur réelle du bandeau collant : les liens « aller à » s'arrêtent juste dessous, titre jamais masqué.
   if (!root.dataset.h && window.ResizeObserver) {
     root.dataset.h = '1';
-    new ResizeObserver(() => document.documentElement.style.setProperty('--bar-h', Math.ceil(root.parentElement.getBoundingClientRect().height) + 'px')).observe(root.parentElement);
+    // Mise à jour à l'image suivante, et seulement si la hauteur change : aucune écriture de style pendant la livraison des
+    // notifications (WebKit signalait sinon « ResizeObserver loop completed with undelivered notifications »).
+    let barH = '', barRaf = 0;
+    new ResizeObserver(() => {
+      if (barRaf) return;
+      barRaf = requestAnimationFrame(() => { barRaf = 0; const h = Math.ceil(root.parentElement.getBoundingClientRect().height) + 'px';
+        if (h !== barH) { barH = h; document.documentElement.style.setProperty('--bar-h', h); } });
+    }).observe(root.parentElement);
   }
   const now = Date.now(), mode = DEMO.on ? 'demo' : mainMode(), off = !DEMO.on && offlineNow();
   const state = weatherLiveState({ now, receivedAt: DEMO.on ? null : dataAt(), mode, offline: off, busy, demo: DEMO.on,
