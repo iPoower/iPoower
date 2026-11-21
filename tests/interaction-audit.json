@@ -542,5 +542,9 @@
   "drive-beep": {
     "suite": "e2e143-en-direct-recalcul.js",
     "result": "bip d’approche des feux activé ou coupé (préférence de l’appareil), un bip par feu à 300 m"
+  },
+  "drive-base": {
+    "suite": "e2e145-en-direct-cockpit.js",
+    "result": "fond de carte du mode EN DIRECT choisi dans les Réglages (Plan IGN jour/nuit automatique ou photo aérienne IGN), appliqué en direct"
   }
 }
