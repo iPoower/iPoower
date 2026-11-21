@@ -12,7 +12,7 @@
 const DRIVE = { open: false, map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, timer: null, wake: null, wakeState: '', prevFix: null, speed: null, hist: [], follow: true,
   nav: null, navGen: 0, navAt: 0, navAsked: null, km0: 0, off: null, rerouting: false, rerouteAt: 0, reroutes: 0, navMsg: '', navMsgAt: 0,
   lights: null, lightsSig: null, lightsLayer: null, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null, beeps: 0, audio: null,
-  mv: null, mvPending: false, glErr: '' };
+  mv: null, mvPending: false, glErr: '', setup: null, free: null };
 const DRIVE_LIGHTS = new Map();   // feux par tracé (mémoire de la session seulement, 6 tracés au plus)
 const IGN_ORTHO = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
 // Fond de carte : « plan » (Plan IGN, clair le jour, sombre la nuit) ou « ortho » (photo aérienne BD ORTHO), choisi dans les Réglages.
@@ -24,6 +24,12 @@ const DRIVE_LIGHT_SVG = '<svg viewBox="0 0 14 32" width="14" height="32" aria-hi
 const IGN_PLAN = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/png&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
 const driveTrip = () => { const s = APP_CONTEXT.snapshot || {}; return s.activeTrip || s.nextTrip || null; };
+// Ouverture du GPS : trajet en cours, ou programmé dans les 3 h ; plus tard (le trajet de demain matin), choix de la voiture d'abord.
+function driveSoonTrip() {
+  const s = APP_CONTEXT.snapshot || {}; if (s.activeTrip) return s.activeTrip;
+  const t = s.nextTrip, min = t && typeof t.dep === 'string' ? (Date.parse(t.dep.slice(0, 16)) - Date.parse(liveNow().slice(0, 16))) / 60e3 : NaN;
+  return Number.isFinite(min) && min <= 180 ? t : null;
+}
 function driveShell() {
   return '<div class="dv-map" role="region" aria-label="Carte du trajet en direct"></div>' +
     '<div class="dv-top"><span class="dv-tag">EN DIRECT</span><span class="dv-gps" data-dv="gps">GPS —</span>' +
@@ -42,6 +48,7 @@ function driveShell() {
     '<p class="dv-lights"><span class="dv-li">' + DRIVE_LIGHT_SVG + '</span><span data-dv="lightsLabel">—</span></p>' +
     '<div class="dv-next" data-dv-lv="x"><b data-dv="next">—</b><span data-dv="nextWhat"></span></div>' +
     '<button type="button" class="btn pri dv-arrive" data-act="drive-arrived" hidden>✅ BIEN ARRIVÉ</button>' +
+    '<button type="button" class="btn pri dv-arrive dv-freeend" data-act="drive-free-end" hidden>Terminer le trajet</button>' +
     '<div class="dv-done" data-dv="arrived" hidden></div>' +
     '<p class="dv-foot" data-dv="foot"></p></div>';
 }
@@ -51,7 +58,7 @@ const driveM = m => !Number.isFinite(m) ? '' : m < 1000 ? Math.round(m / 10) * 1
 async function driveOpen() {
   const root = $('#liveDrive'); if (!root || LOCKED()) return;
   const t = driveTrip();
-  if (!t) { commandFeedback && document.activeElement && commandFeedback(document.activeElement, 'Aucun trajet en cours ni prévu'); return; }
+  if (!t && !DRIVE.free) { commandFeedback && document.activeElement && commandFeedback(document.activeElement, 'Aucun trajet en cours ni prévu'); return; }
   DRIVE.open = true; DRIVE.follow = true; root.hidden = false; root.innerHTML = driveShell(); document.documentElement.classList.add('dv-on');
   driveWake(true); driveTick();
   clearInterval(DRIVE.timer); DRIVE.timer = setInterval(driveTick, 1000);
@@ -66,7 +73,82 @@ function driveAutoOpen(key, left = 20, routeOf = t => LiveRoute.route(t, null)) 
   if (routeOf(t)) { driveOpen(); return; }
   if (left > 0) setTimeout(() => driveAutoOpen(key, left - 1, routeOf), 1000);
 }
+// Lot 4 · ouverture du GPS : trajet en cours ou programmé → mode EN DIRECT directement (voiture du trajet). Sinon : choix de la
+// voiture d'abord (voiture du jour présélectionnée), puis « Rouler sans destination » ou « Choisir une destination ».
+function driveGps() {
+  if (LOCKED()) return;
+  if (driveSoonTrip()) { driveOpen(); return; }
+  const root = $('#liveDrive'); if (!root) return;
+  DRIVE.setup = { carId: appDay().activeCarId || (S.cars[0] && S.cars[0].id) || null };
+  root.hidden = false; root.classList.add('dv-setupmode'); document.documentElement.classList.add('dv-on'); driveSetupRender();
+  const first = root.querySelector('[data-act="drive-car"][aria-pressed="true"]') || root.querySelector('[data-act="drive-car"]'); if (first) first.focus({ preventScroll: true });
+}
+const DRIVE_TYRE = { summer: 'pneus été', winter: 'pneus hiver', allseason: 'pneus 4 saisons' };
+function driveSetupRender() {
+  const root = $('#liveDrive'), s = DRIVE.setup; if (!root || !s) return;
+  root.innerHTML = '<div class="dv-setup"><div class="dv-top"><span class="dv-tag">GPS</span><button type="button" class="dv-close" data-act="drive-close" aria-label="Fermer">✕</button></div>' +
+    '<h2 id="dvSetupH">Quelle voiture conduis-tu ?</h2><div class="dv-cars" role="group" aria-labelledby="dvSetupH">' +
+    S.cars.map(c => '<button type="button" data-act="drive-car" data-id="' + esc(c.id) + '" aria-pressed="' + (c.id === s.carId) + '"><b>' + esc(c.short || c.name) + '</b><small>' + esc(DRIVE_TYRE[c.tire && c.tire.type] || 'pneus non renseignés') + '</small></button>').join('') +
+    '</div><div class="dv-setup-go"><button type="button" class="btn pri" data-act="drive-free"' + (s.carId ? '' : ' disabled') + '>Rouler sans destination</button>' +
+    '<button type="button" class="btn" data-act="drive-dest"' + (s.carId ? '' : ' disabled') + '>Choisir une destination</button></div>' +
+    '<p class="dv-foot">La voiture choisie devient ta voiture du jour (verdicts, pneus). Aucun trajet n\'est créé tant que tu n\'as pas choisi.</p></div>';
+}
+function driveSetupCar(id) { if (DRIVE.setup && S.cars.some(c => c.id === id)) { DRIVE.setup.carId = id; driveSetupRender(); const b = $('#liveDrive [data-act="drive-car"][data-id="' + CSS.escape(id) + '"]'); if (b) b.focus({ preventScroll: true }); } }
+// « Choisir une destination » : formulaire du Trajet, départ maintenant, voiture choisie ; « Partir maintenant » rouvre le GPS.
+function driveSetupDest() {
+  const id = DRIVE.setup && DRIVE.setup.carId; if (!id) return;
+  appSetCar(id); TRIP_FORM.carId = id; TRIP_FORM.when = 'now'; driveClose();
+  UI.view = 'trajet'; renderAll(); const q = $('#tripDestQ'); if (q) { q.scrollIntoView({ block: 'center', behavior: scrollBehavior() }); q.focus({ preventScroll: true }); }
+}
+// « Rouler sans destination » : carte qui suit, vitesse, km parcourus (GPS), jour/nuit ; pas d'itinéraire, donc ni feux ni guidage.
+// GPS de ce mode seulement (watchPosition), arrêté à la fermeture ; positions gardées en mémoire, jamais envoyées.
+function driveFreeStart() {
+  const id = DRIVE.setup && DRIVE.setup.carId; if (!id || !('geolocation' in navigator)) return;
+  appSetCar(id);
+  const free = DRIVE.free = { carId: id, at: Date.now(), km: 0, last: null, fix: null, prev: null, watch: null, err: '' };
+  try { free.watch = navigator.geolocation.watchPosition(p => { const c = p && p.coords; if (!c || DRIVE.free !== free) return; free.fix = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, ts: p.timestamp, speed: Number.isFinite(c.speed) ? c.speed : null }; driveFreeMove(free); },
+    e => { if (DRIVE.free === free) free.err = e && e.code === 1 ? 'Localisation refusée' : 'Position introuvable'; }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }); } catch (e) { free.err = 'Localisation indisponible'; }
+  DRIVE.setup = null; const root = $('#liveDrive'); if (root) root.classList.remove('dv-setupmode');
+  driveOpen();
+}
+// Distance parcourue : seulement entre relevés précis (≤ 30 m), déplacement réel (> 8 m et > incertitude) et plausible (≤ 70 m/s).
+function driveFreeMove(free) {
+  const f = free.fix; if (!f || !Number.isFinite(f.ts) || f.acc > 30) return;
+  const l = free.last;
+  if (!l) { free.last = f; return; }
+  if (f.ts <= l.ts) return;
+  const d = DriveNav.meters([l.lat, l.lon], [f.lat, f.lon]), dt = (f.ts - l.ts) / 1000;
+  if (d / dt > 70) { free.last = f; return; }
+  if (d > Math.max(8, (l.acc + f.acc) / 2)) { free.km += d / 1000; free.prev = l; free.last = f; free.speed = f.speed != null ? f.speed * 3.6 : d / dt * 3.6; }
+  else if (dt > 20) free.speed = 0;
+}
+function driveFreeEnd() {
+  const free = DRIVE.free; if (!free) return;
+  try { if (free.watch != null) navigator.geolocation.clearWatch(free.watch); } catch (e) { /* GPS déjà arrêté */ }
+  const car = S.cars.find(c => c.id === free.carId) || null, km = free.km >= 0.5 ? { km: Math.max(1, Math.round(free.km)), src: 'gps' } : null;
+  DRIVE.arrived = { key: 'free', free: true, to: 'trajet libre', car, k: km, odo: km ? null : { ok: false, msg: 'Moins de 500 m parcourus : compteur inchangé' } };
+  free.done = true; driveTick();
+}
+function driveFreeTick() {
+  const free = DRIVE.free, f = free.fix, fresh = f && Date.now() - f.ts <= 15000 && f.acc <= 50 ? f : null;
+  const night = fresh ? DriveNav.isNight(fresh.lat, fresh.lon, Date.now()) : true, root = $('#liveDrive');
+  if (root) root.classList.toggle('dv-night', night);
+  if (!DRIVE.mv) driveMap(null, night); else DRIVE.mv.setTheme(night);
+  driveSet('done', driveKm(free.km)); driveSet('left', '—'); driveSet('eta', '—'); driveSet('sector', '—');
+  driveSet('speed', fresh && Number.isFinite(free.speed) ? f0(free.speed) : '—');
+  driveSet('lightsLabel', 'Sans destination : ni feux ni guidage'); driveSet('next', 'Libre'); driveSet('nextWhat', 'Aucun itinéraire : seulement ta position, ta vitesse et les km');
+  driveSet('gps', fresh ? 'GPS ± ' + Math.round(fresh.acc) + ' m' : free.err || 'Recherche du GPS…');
+  const car = S.cars.find(c => c.id === free.carId), end = $('#liveDrive .dv-freeend');
+  if (end) { end.hidden = false; const k = Math.round(free.km); end.textContent = 'Terminer le trajet' + (free.km >= 0.5 ? ' · ' + Math.max(1, k) + ' km' : ''); }
+  driveSet('foot', ['Trajet libre · ' + (car ? car.short || car.name : ''), DRIVE.wakeState, DRIVE.mv && DRIVE.mv.credit].filter(Boolean).join(' · '));
+  if (DRIVE.mv && fresh) {
+    const head = free.prev ? DriveNav.heading(free.prev, free.last) : null, at = [fresh.lat, fresh.lon];
+    DRIVE.mv.setCar(at, head); if (DRIVE.follow) DRIVE.mv.follow(at, head, DriveNav.autoZoom(free.speed, null));
+  }
+}
 function driveClose() {
+  if (DRIVE.free && DRIVE.free.watch != null && !DRIVE.free.done) { try { navigator.geolocation.clearWatch(DRIVE.free.watch); } catch (e) { /* GPS déjà arrêté */ } }
+  DRIVE.free = null; DRIVE.setup = null; const r0 = $('#liveDrive'); if (r0) r0.classList.remove('dv-setupmode');
   const root = $('#liveDrive'); DRIVE.open = false; clearInterval(DRIVE.timer); DRIVE.timer = null; driveWake(false);
   if (DRIVE.mv) DRIVE.mv.remove();
   Object.assign(DRIVE, { mv: null, mvPending: false, map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, prevFix: null, speed: null, hist: [],
@@ -324,6 +406,7 @@ function driveArrivedHtml(a) {
   const odo = !a.odo ? '<button type="button" class="btn pri" data-act="drive-odo">Ajouter ' + esc(km) + ' au compteur</button>'
     : a.odo.ok ? '<p>Compteur ' + esc(a.car ? a.car.short || a.car.name : '') + ' : <b>' + a.odo.km.toLocaleString('fr-FR') + ' km</b> <small>(relevé du jour, estimé : dernier relevé + km du trajet · corrigeable dans Garage)</small></p>'
     : '<p class="dv-warn">' + esc(a.odo.msg) + '</p>';
+  if (a.free) return '<b>✅ TRAJET TERMINÉ</b><p>' + esc(km) + ' parcourus (GPS) · ' + esc(a.car ? a.car.short || a.car.name : '') + '</p>' + odo + '<button type="button" class="btn" data-act="drive-close">Fermer</button>';
   return '<b>✅ ARRIVÉ · ' + esc(String(a.to).toUpperCase()) + '</b><p>' + esc(km) + ' · position : ' + esc(a.to) + ' confirmée</p>' + odo +
     '<button type="button" class="btn" data-act="drive-close">Fermer</button>';
 }
@@ -336,6 +419,7 @@ function driveTick() {
     DRIVE.arrived = { key: DRIVE.key, to: DRIVE.to || 'destination', car: driveTripCar(t), k: driveTripKm(t), odo: null };
   }
   if (DRIVE.arrived) {
+    const fe = document.querySelector('#liveDrive .dv-freeend'); if (fe) fe.hidden = true;
     if (box) { const h = driveArrivedHtml(DRIVE.arrived); if (box.dataset.h !== h) { box.innerHTML = h; box.dataset.h = h; } box.hidden = false; }
     if (arrive) arrive.hidden = true;
     const la0 = document.querySelector('#liveDrive [data-dv="lightAlert"]'); if (la0) la0.hidden = true;
@@ -343,6 +427,7 @@ function driveTick() {
     const root = $('#liveDrive'); if (root) root.classList.add('dv-arrived');
     driveSet('gps', 'Trajet terminé'); return;
   }
+  if (DRIVE.free) { driveFreeTick(); return; }
   const t = driveTrip();
   if (!t) { driveSet('foot', 'Aucun trajet en cours ni prévu'); return; }
   if (DRIVE.key !== t.key) {

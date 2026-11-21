@@ -1784,6 +1784,17 @@ html.dv-on, html.dv-on body { overflow: hidden; }
 .dv-then > span:first-child { color: #c7c7cc; font-weight: 600; }
 .dv-lanes { display: flex; gap: 4px; justify-content: center; padding: 6px; border-radius: 12px; background: #1c1c1e; }
 .dv-lane { display: inline-flex; padding: 2px 6px; border-radius: 6px; color: #636366; border: 1px solid #3a3a3c; } .dv-lane.ok { color: #fff; border-color: #fff; }
+/* Lot 4 : ouverture du GPS, choix de la voiture (grandes cibles), puis avec ou sans destination. */
+.dv-gps-entry { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; }
+.dv-gps-entry .btn { min-height: 52px; font-weight: 800; letter-spacing: .02em; }
+.dv-setup { position: absolute; inset: 0; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding: calc(env(safe-area-inset-top, 0px) + 72px) 16px calc(env(safe-area-inset-bottom, 0px) + 20px); background: var(--bg); }
+.dv-setup .dv-top { pointer-events: auto; }
+.dv-setup h2 { margin: 0; font: 800 26px var(--f-disp); }
+.dv-cars { display: grid; gap: 10px; }
+.dv-cars button { min-height: 64px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 10px 16px; border-radius: 16px; border: 2px solid var(--line2); background: var(--panel); color: var(--fg); text-align: left; cursor: pointer; }
+.dv-cars button b { font: 800 20px var(--f-disp); } .dv-cars button small { color: var(--fg2); }
+.dv-cars button[aria-pressed="true"] { border-color: #0a84ff; box-shadow: 0 0 0 2px #0a84ff inset; }
+.dv-setup-go { display: grid; gap: 10px; } .dv-setup-go .btn { min-height: 56px; justify-content: center; font-weight: 800; }
 .dv-gnote { margin: 0; align-self: flex-start; padding: 3px 8px; border-radius: 8px; background: rgba(28, 28, 30, .8); color: #d1d1d6; font-size: 11px; font-weight: 600; }
 .dv-beep { pointer-events: auto; width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--line2); background: rgba(13, 15, 19, .9); color: var(--fg); font-size: 20px; cursor: pointer; margin-left: auto; }
 .dv-beep + .dv-close { margin-left: 0; }
