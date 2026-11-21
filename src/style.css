@@ -1742,6 +1742,12 @@ html.dv-on, html.dv-on body { overflow: hidden; }
 .dv { position: fixed; inset: 0; z-index: 9000; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); height: 100vh; height: 100dvh; }
 .dv[hidden] { display: none; }
 .dv-map { position: relative; flex: 1 1 42%; min-height: 220px; background: #121821; }
+/* MapLibre (carte 3D) : les seules règles utiles de sa feuille de style, recopiées ici (la feuille n'est pas embarquée). */
+.maplibregl-map { position: relative; overflow: hidden; -webkit-tap-highlight-color: transparent; }
+.maplibregl-canvas { position: absolute; left: 0; top: 0; }
+.maplibregl-canvas-container.maplibregl-interactive { cursor: grab; -webkit-user-select: none; user-select: none; }
+.maplibregl-canvas-container.maplibregl-touch-zoom-rotate.maplibregl-touch-drag-pan, .maplibregl-canvas-container.maplibregl-touch-zoom-rotate.maplibregl-touch-drag-pan .maplibregl-canvas { touch-action: none; }
+.maplibregl-marker { position: absolute; left: 0; top: 0; will-change: transform; }
 #liveDrive.dv-night .dv-plan { filter: invert(.92) hue-rotate(180deg) brightness(.85) contrast(.9); }   /* nuit : Plan IGN sombre (C) */
 #liveDrive.dv-night .dv-ortho { filter: brightness(.72); }
 .dv-car span { display: block; width: 30px; height: 30px; border-radius: 50%; background: var(--i20-blue); border: 4px solid var(--on-i20-blue); box-shadow: 0 0 0 3px rgba(95, 176, 232, .35); }
