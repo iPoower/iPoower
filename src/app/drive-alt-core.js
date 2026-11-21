@@ -1,6 +1,8 @@
 /* Altitude du parcours (21/11/2026, lot 5) : profil du tracé (service d'altimétrie IGN, RGE ALTI), altitude à la position,
  * prochain point haut et gel prévu à son altitude. Module PUR : aucune requête ni stockage ; les réponses sont fournies.
- * Il gèle plus tôt en altitude (≈ −0,6 °C par 100 m en moyenne) : un col peut être sous 0 °C quand la vallée ne l'est pas.
+ * Un col peut être sous 0 °C quand la vallée ne l'est pas (et l'inverse en cas d'inversion hivernale) : AUCUNE correction fixe
+ * par l'altitude n'est appliquée ; la température vient d'Open-Meteo interrogé aux coordonnées du col AVEC son altitude réelle
+ * (paramètre « elevation », réduction d'échelle du modèle). Sans réponse : « non couvert », jamais « pas de gel ».
  * Les portions à moins de 1,5 km d'un lieu enregistré ne sont jamais envoyées (altitude inconnue là, rien d'inventé). */
 const DriveAlt = (() => {
   const finite = Number.isFinite, RAD = Math.PI / 180;
@@ -56,6 +58,13 @@ const DriveAlt = (() => {
     const key = ts.slice(0, 13) + ':00', i = t.indexOf(key);
     return i >= 0 && finite(v[i]) ? v[i] : null;
   }
-  return Object.freeze({ samples, profile, altAt, summit, frost, tempAt });
+  // Libellé de la température au point haut : jamais « RAS » sans donnée ; quota atteint (429) ou panne → « non couverte ».
+  function summitLabel(t) {
+    if (t && t.err) return t.err === 429 ? 'température non couverte (service météo saturé)' : 'température non couverte';
+    const f = frost(t && t.v); if (!f) return 'température non couverte';
+    return (Math.round(t.v * 10) / 10).toString().replace('.', ',').replace('-', '−') + ' °C prévus · ' + f.label;
+  }
+  const MAX_CALLS = 3;   // appels météo « point haut » par trajet, au plus (Open-Meteo a déjà renvoyé des 429)
+  return Object.freeze({ samples, profile, altAt, summit, frost, tempAt, summitLabel, MAX_CALLS });
 })();
 if (typeof module !== 'undefined') module.exports = DriveAlt;

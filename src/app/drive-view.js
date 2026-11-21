@@ -329,14 +329,20 @@ async function driveAltFetch(nav) {
   } catch (e) { nav.profile = null; }
   if (DRIVE.open) driveTick();
 }
+// Température au point haut : UN appel Open-Meteo par (point haut, heure de passage), au plus DriveAlt.MAX_CALLS par trajet.
+// Altitude réelle du col transmise (paramètre « elevation ») : aucune correction fixe par l'altitude. Échec ou plafond atteint :
+// « non couverte » (jamais « pas de gel »).
 async function driveSummitTemp(top, passTs) {
   const key = top.at.join(',') + '|' + top.z + '|' + passTs.slice(0, 13);
   if (DRIVE.summitKey === key) return;
-  DRIVE.summitKey = key; DRIVE.summitT = null;
+  DRIVE.summitKey = key;
+  if ((DRIVE.summitCalls || 0) >= DriveAlt.MAX_CALLS) { DRIVE.summitT = { err: 'plafond' }; return; }
+  DRIVE.summitCalls = (DRIVE.summitCalls || 0) + 1; DRIVE.summitT = null;
   try {
     const j = await fetchJSON('https://api.open-meteo.com/v1/forecast?latitude=' + top.at[0] + '&longitude=' + top.at[1] + '&elevation=' + top.z + '&hourly=temperature_2m&timezone=Europe%2FParis&forecast_days=3', 12000);
-    if (DRIVE.summitKey === key) { DRIVE.summitT = DriveAlt.tempAt(j, passTs); if (DRIVE.open) driveTick(); }
-  } catch (e) { /* température indisponible : point haut affiché sans verdict */ }
+    const v = DriveAlt.tempAt(j, passTs);
+    if (DRIVE.summitKey === key) { DRIVE.summitT = Number.isFinite(v) ? { v } : { err: 'absente' }; if (DRIVE.open) driveTick(); }
+  } catch (e) { if (DRIVE.summitKey === key) { DRIVE.summitT = { err: e && (e.status === 429 || /429/.test(e.message || '')) ? 429 : 'panne' }; if (DRIVE.open) driveTick(); } }
 }
 function driveAltRow(route, along, active) {
   const row = document.querySelector('#liveDrive .dv-alt'); if (!row) return;
@@ -346,9 +352,9 @@ function driveAltRow(route, along, active) {
   if (!top) { row.dataset.dvLv = '0'; driveSet('altTop', 'Pas de point haut notable devant'); return; }
   const speed = Number.isFinite(DRIVE.speed) && DRIVE.speed > 20 ? DRIVE.speed : 60, pass = addMin(liveNow().slice(0, 16), Math.round(top.dist / 1000 / speed * 60));
   if (active) driveSummitTemp(top, pass);
-  const fr = DriveAlt.frost(DRIVE.summitKey && DRIVE.summitKey.startsWith(top.at.join(',') + '|' + top.z) ? DRIVE.summitT : null);
-  row.dataset.dvLv = fr ? String(fr.level) : '0';
-  driveSet('altTop', 'Point haut ' + top.z + ' m dans ' + driveKm(top.dist / 1000) + ' km' + (fr ? ' · ' + (Math.round(DRIVE.summitT * 10) / 10).toString().replace('.', ',') + ' °C prévus · ' + fr.label : ''));
+  const mine = DRIVE.summitKey && DRIVE.summitKey.startsWith(top.at.join(',') + '|' + top.z), t = mine ? DRIVE.summitT : null, fr = t && !t.err ? DriveAlt.frost(t.v) : null;
+  row.dataset.dvLv = fr ? String(fr.level) : t && t.err ? 'x' : '0';
+  driveSet('altTop', 'Point haut ' + top.z + ' m dans ' + driveKm(top.dist / 1000) + ' km · ' + (t ? DriveAlt.summitLabel(t) : 'température en cours de chargement'));
 }
 async function driveLightsFetch(nav) {
   if (!nav || !nav.full || DRIVE.lightsSig === nav.signature) return;

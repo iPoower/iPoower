@@ -37,4 +37,9 @@ test('gel au point haut : ≤ 0 °C probable, ≤ 2 °C possible, sinon non ; te
   const j = { hourly: { time: ['2026-11-16T07:00', '2026-11-16T08:00'], temperature_2m: [-2.4, -1.1] } };
   assert.equal(A.tempAt(j, '2026-11-16T08:35'), -1.1); assert.equal(A.tempAt(j, '2026-11-16T09:10'), null);
 });
+test('libellé au point haut : jamais « RAS » sans donnée ; quota atteint (429) ou panne → « non couverte » ; plafond 3 appels', () => {
+  assert.equal(A.summitLabel({ v: -1.24 }), '−1,2 °C prévus · gel probable'); assert.equal(A.summitLabel({ v: 4 }), '4 °C prévus · pas de gel prévu');
+  assert.equal(A.summitLabel({ err: 429 }), 'température non couverte (service météo saturé)'); assert.equal(A.summitLabel({ err: 'plafond' }), 'température non couverte');
+  assert.equal(A.summitLabel(null), 'température non couverte'); assert.equal(A.MAX_CALLS, 3);
+});
 console.log(`\n${n}/${n} contrôles « altitude du parcours »`);
