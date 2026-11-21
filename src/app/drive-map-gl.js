@@ -85,7 +85,8 @@ async function driveMapGl(node, route, night) {
   let base = driveBasePref(), theme = night, style = await driveGlStyle(night, base);
   const start = route ? route.pts[0] : [46.6, 2.4];
   const map = new maplibregl.Map({ container: node, style, center: [start[1], start[0]], zoom: route ? 16.5 : 6, pitch: route ? 60 : 0, bearing: 0, maxPitch: 70,
-    attributionControl: false, fadeDuration: 0, keyboard: false });   // sources affichées en clair dans le panneau (credit)
+    attributionControl: false, fadeDuration: 0, keyboard: false, antialias: false,
+    pixelRatio: Math.min(2, window.devicePixelRatio || 1) });   // rendu plafonné à 2× (iPhone 3× : ≈ 55 % de pixels en moins) ; sources dans le panneau
   const data = { route: driveLine(route && route.pts), done: driveLine([]), lights: driveFc([]) }, counts = { lights: 0 };
   const el = document.createElement('div'); el.className = 'dv-car3d';
   el.innerHTML = '<svg width="54" height="54" viewBox="0 0 54 54" aria-hidden="true"><circle cx="27" cy="27" r="24" fill="#fff" opacity=".95"/><circle cx="27" cy="27" r="20" fill="#0a84ff"/><path d="M27 12 L37 38 L27 32 L17 38 Z" fill="#fff"/></svg>';

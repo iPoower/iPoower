@@ -91,16 +91,28 @@ async function driveMap(route, night) {
   const root = $('#liveDrive'), node = root && root.querySelector('.dv-map'); if (!node || DRIVE.mv || DRIVE.mvPending) return;
   DRIVE.mvPending = true; const key = DRIVE.key;
   let mv = null;
-  if (driveWebGL() && !offlineNow()) { try { mv = await driveMapGl(node, route, night); } catch (e) { mv = null; DRIVE.glErr = String(e && e.message || e).slice(0, 120); node.innerHTML = ''; } }
+  let flat = false; try { flat = sessionStorage.getItem('rc-dv-flat') === '1'; } catch (e) { /* stockage de session indisponible */ }
+  if (driveWebGL() && !offlineNow() && !flat) { try { mv = await driveMapGl(node, route, night); } catch (e) { mv = null; DRIVE.glErr = String(e && e.message || e).slice(0, 120); node.innerHTML = ''; } }
   if (!mv) { try { mv = await driveMapFlat(node, route); } catch (e) { driveSet('foot', 'Carte indisponible · chiffres du trajet conservés'); } }
   DRIVE.mvPending = false;
   if (!mv) return;
   if (!DRIVE.open || DRIVE.key !== key || !node.isConnected) { mv.remove(); return; }
   DRIVE.mv = mv; DRIVE.map = mv.map;
+  if (mv.kind === '3d') driveGlProbe(mv, route);
   mv.on('drag', () => { DRIVE.follow = false; const b2 = root.querySelector('.dv-recenter'); if (b2) b2.hidden = false; });
   if (DRIVE.route) mv.setRoute(DRIVE.route, true);
   mv.setLights(DRIVE.lights || []);
   driveTick();
+}
+// Fluidité de la 3D mesurée pendant 8 s : trop lente sur cet appareil (< 15 images/s) → carte à plat pour la session, dit à l'écran.
+// Drapeau de session seulement (sessionStorage « rc-dv-flat ») : ni stockage durable, ni export, ni synchronisation.
+function driveGlProbe(mv, route) {
+  const iv = []; let last = null; const t0 = performance.now();
+  const loop = t => { if (DRIVE.mv !== mv) return; if (last != null) iv.push(t - last); last = t;
+    if (t - t0 < 8000) { requestAnimationFrame(loop); return; }
+    if (DriveNav.slowFrames(iv)) { try { sessionStorage.setItem('rc-dv-flat', '1'); } catch (e) { /* stockage de session indisponible */ }
+      mv.remove(); DRIVE.mv = null; DRIVE.map = null; DRIVE.glSlow = true; const node = document.querySelector('#liveDrive .dv-map'); if (node) node.innerHTML = ''; driveMap(DRIVE.route, false); } };
+  requestAnimationFrame(loop);
 }
 // Repli à plat : Plan IGN (clair le jour, sombre la nuit par une classe) ou photo aérienne, voiture, tracé, feux neutres.
 async function driveMapFlat(node, route) {
@@ -414,7 +426,7 @@ function driveTick() {
     const k = near ? driveTripKm(t) : null, label = '✅ BIEN ARRIVÉ' + (k ? ' · +' + k.km + ' km au compteur' : '');
     arrive.hidden = !near; if (near && arrive.textContent !== label) arrive.textContent = label;
   }
-  driveSet('foot', [route ? (DRIVE.nav ? '' : 'Itinéraire détaillé en préparation') : 'Itinéraire en préparation', DRIVE.wakeState, 'prévisions du modèle, pas une mesure sur la route', DRIVE.mv && DRIVE.mv.credit].filter(Boolean).join(' · '));
+  driveSet('foot', [route ? (DRIVE.nav ? '' : 'Itinéraire détaillé en préparation') : 'Itinéraire en préparation', DRIVE.wakeState, 'prévisions du modèle, pas une mesure sur la route', DRIVE.glSlow ? 'carte 3D trop lente sur cet appareil : carte à plat' : '', DRIVE.mv && DRIVE.mv.credit].filter(Boolean).join(' · '));
   // Hors du tracé : la voiture est montrée à sa vraie position (jamais recollée sur l'ancien tracé), cap = direction suivie.
   // Caméra : sens de la marche, zoom automatique selon la vitesse et la prochaine manœuvre (étapes OSRM du tracé détaillé).
   const carAt = g.valid ? g.point : offNow && fresh ? [fresh.lat, fresh.lon] : pose && pose.point;
