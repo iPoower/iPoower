@@ -257,6 +257,7 @@ let TRIPCANCELTIMER = null;
 // @include app/drive-alt-core.js
 // @include app/drive-map-gl.js
 // @include app/drive-view.js
+// @include app/guide-links-core.js
 // @include app/gps-view.js
 // @include app/calendar-origin-editor.js
 function tripContextLocs() {

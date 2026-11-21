@@ -13,7 +13,31 @@ function gpsTripCardHtml(t) {
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${to && (to.address || to.sub) ? `<span>${esc(to.address || to.sub)}</span>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(car ? car.short || car.name : 'voiture à choisir')}</span><span>${esc(route)}</span><span>Départ ${esc(tripWhen(t.dep) || '—')}</span></div>
     <button type="button" class="btn pri gps-go" data-act="drive-open">Démarrer</button>
+    ${gpsGuideHtml(t)}
     <button type="button" class="btn sm" data-act="view" data-v="trajet">Modifier dans Trajet</button></div>`;
+}
+// « Guider avec… » : destination du trajet pour un guidage dans Waze, Plans ou Google Maps (GuideLinks). Une destination à
+// ≤ 1,5 km d'un lieu enregistré est privée : domicile et travail passent par les favoris Waze, jamais par une adresse.
+function gpsGuideDest(t) {
+  const to = appTripPlace(t, 'to'); if (!to || !locHasCoords(to)) return null;
+  const home = S.locs[0], saved = [...(S.locs || []), ...(S.customs || [])].filter(locHasCoords);
+  const near = saved.filter(l => to.id && l.id === to.id || distKm(l, to) <= 1.5).sort((a, b) => distKm(a, to) - distKm(b, to))[0];
+  const privacy = !near ? null : home && near.id === home.id ? 'home' : near.id === S.work.to ? 'work' : 'private';
+  return { address: typeof to.address === 'string' ? to.address : null, lat: +to.lat, lon: +to.lon, privacy };
+}
+// Rappel du verdict du trajet (même synthèse que l'onglet Trajet : risque global, indice pneus, règle gel d'engine.js).
+function gpsVerdictLine(t) {
+  const tr = tripRisk(t), tf = tripFrost(t), tyre = Number.isInteger(t.worst) && LV[t.worst] ? LV[t.worst].name : null;
+  if (!tr && !tf) return 'Verdict du trajet en cours de calcul : consulte l’onglet Trajet avant de partir.';
+  return 'Verdict du trajet : ' + [tr ? riskName(tr) : null, tyre ? 'pneus ' + tyre : null, tf ? frostWords(tf.fr).label : 'gel indéterminé'].filter(Boolean).join(' · ');
+}
+function gpsGuideHtml(t) {
+  const d = gpsGuideDest(t), label = { waze: 'Guider avec Waze', plans: 'avec Plans', google: 'avec Google Maps' };
+  const apps = GuideLinks.all(d).map(a => a.url
+    ? `<a class="btn" data-guide="${a.id}" href="${esc(a.url)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">${label[a.id]}</a>`
+    : `<span class="gps-guide-off"><button type="button" class="btn" data-guide="${a.id}" disabled>${label[a.id]}</button><small>${esc(a.why)}</small></span>`).join('');
+  return `<div class="gps-guide" data-gps="guide"><p class="gps-verdict" data-gps="verdict">${esc(gpsVerdictLine(t))}</p><div class="gps-guide-apps">${apps}</div>
+    <small class="sub">Race Control garde le verdict pneus, météo et gel ; l’app choisie guide. Rien n’est envoyé avant l’appui.</small></div>`;
 }
 function gpsSetupHtml() {
   const s = DRIVE.setup || (DRIVE.setup = { carId: appDay().activeCarId || (S.cars[0] && S.cars[0].id) || null });
