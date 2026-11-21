@@ -215,7 +215,7 @@ function renderTripView() {
   // décrire le nouveau trajet à démarrer).
   const wall = tripWallHtml(radarTrip), strat = tripStrategyHtml(radarTrip, S.cars.find(c => c.id === TRIP_FORM.carId) || appActiveCar()) + tripBriefHtml(radarTrip);
   const html = `<div class="mod-h"><h2>TRAJET · MUR DES STANDS</h2><span class="src obs">contexte partagé Race Control</span></div>
-    <div class="dv-gps-entry"><button type="button" class="btn pri" data-act="drive-gps">🧭 GPS · EN DIRECT</button><span class="sub">${APP_CONTEXT.snapshot && (APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip) ? 'Ouvre le trajet en cours ou programmé' : 'Choisis ta voiture, puis roule avec ou sans destination'}</span></div>
+    <div class="dv-gps-entry"><button type="button" class="btn pri" data-act="drive-gps">🧭 GPS · EN DIRECT</button><span class="sub">${driveSoonTrip() ? 'Ouvre le trajet en cours ou des 3 prochaines heures' : 'Choisis ta voiture, puis roule avec ou sans destination'}</span></div>
     <div class="ln-slot">${loanFormHtml()}</div>
     <div class="pw-grid"><div class="pw-c">${wall}</div><div class="pw-s">${strat}</div><div class="pw-l"><div class="trip-form"><h3 class="pw-h">PARAMÈTRES DE COURSE</h3>
       <div class="trip-field"><span class="trip-label">Départ</span><div class="trip-origin-head"><b>${origin ? esc(origin.name) : 'Origine à choisir'}</b><span>${TRIP_FORM.originMode === rec.mode ? esc(rec.source) : 'choisi'}</span></div>

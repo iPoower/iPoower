@@ -2,7 +2,7 @@
 // Sans trajet programmé, « 🧭 GPS » demande d'abord la voiture (voiture du jour présélectionnée, rien d'écrit avant de démarrer) ;
 // « Rouler sans destination » : voiture du jour mise à jour, km parcourus au GPS, ni feux ni guidage, « Terminer » → km ajoutés
 // au compteur de CETTE voiture seulement sur appui ; « Choisir une destination » : formulaire du Trajet, départ maintenant,
-// voiture choisie ; avec un trajet programmé : mode EN DIRECT directement, sans question.
+// voiture choisie ; avec un trajet en cours ou dans les 3 h : mode EN DIRECT directement, sans question (celui de demain matin ne compte pas).
 'use strict';
 const { session, BR, errors } = require('./lib/context-session');
 let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ? '' : ' · ' + String(d).slice(0, 700))); if (!ok) fail++; };
@@ -12,10 +12,10 @@ async function run(b, dev) {
   await p.route('https://data.geopf.fr/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: PX }));
   await p.route('https://router.project-osrm.org/**', r => r.abort());
   await p.emulateMedia({ reducedMotion: 'reduce' }); await s.settle(4);
-  const ids = await p.evaluate(() => { S.work.days = []; S.cars[1].odo = [{ d: '2026-11-15', km: 42000 }]; S.cars[0].odo = [{ d: '2026-11-15', km: 15000 }]; saveSettings(); appSetCar(S.cars[0].id);
-    UI.view = 'trajet'; rebuild(); renderAll(); return { A: S.cars[0].id, B: S.cars[1].id, trip: !!(APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip) }; });
+  const ids = await p.evaluate(() => { S.work.days = []; appSetDayType('off'); S.cars[1].odo = [{ d: '2026-11-15', km: 42000 }]; S.cars[0].odo = [{ d: '2026-11-15', km: 15000 }]; saveSettings(); appSetCar(S.cars[0].id);
+    UI.view = 'trajet'; rebuild(); renderAll(); return { A: S.cars[0].id, B: S.cars[1].id, trip: typeof driveSoonTrip === 'function' ? !!driveSoonTrip() : !!(APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip), later: (APP_CONTEXT.snapshot.nextTrip || {}).dep || null }; });
   await s.settle(3);
-  check(`${dev} · situation de départ : aucun trajet programmé`, !ids.trip);
+  check(`${dev} · situation de départ : aucun trajet en cours ni dans les 3 h (prochain : ${ids.later || 'aucun'}, demain matin ne compte pas)`, !ids.trip && (!ids.later || ids.later.slice(0, 10) > '2026-11-16'), JSON.stringify(ids));
   await p.locator('#secTrip [data-act=drive-gps]').click(); await s.settle(2);
   const a = await p.evaluate(() => { const r = document.getElementById('liveDrive'); return { shown: !r.hidden, h: (r.querySelector('h2') || {}).textContent, cars: [...r.querySelectorAll('[data-act=drive-car]')].map(x => [x.dataset.id, x.getAttribute('aria-pressed')]), h44: [...r.querySelectorAll('[data-act=drive-car], [data-act=drive-free], [data-act=drive-dest]')].every(x => x.getBoundingClientRect().height >= 44), driving: DRIVE.open }; });
   check(`${dev} · « 🧭 GPS » sans trajet : « Quelle voiture conduis-tu ? », voiture du jour présélectionnée, grandes cibles`, a.shown && /Quelle voiture/.test(a.h) && a.cars.length >= 2 && a.cars.find(c => c[0] === ids.A)[1] === 'true' && a.h44 && !a.driving, JSON.stringify(a));
