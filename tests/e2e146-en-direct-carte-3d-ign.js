@@ -44,7 +44,14 @@ const state = p => p.evaluate(() => { const mv = DRIVE.mv, m = mv && mv.map, gl 
     b3d, parcelle: gl ? !!m.getLayer('parcelle') : null, flat: gl ? !!m.getLayer('bati plat 16') : null, bg: gl && m.getLayer('dv-bg') ? m.getPaintProperty('dv-bg', 'background-color') : null, road: gl && m.getLayer('route') ? m.getPaintProperty('route', 'line-color') : null,
     ortho: gl ? !!m.getSource('ortho') : null, canvas: cv ? [cv.clientWidth, cv.clientHeight] : null, box: node ? [node.clientWidth, node.clientHeight] : null, foot: (document.querySelector('#liveDrive [data-dv="foot"]') || {}).textContent || '', csp: (window.__csp || []).join(' ') }; });
 async function run(b, dev) {
-  const s = await session(b, { at: '2026-11-16T16:30:00+01:00', dev }), p = s.p, x = await setup(s, dev, true);
+  const s = await session(b, { at: '2026-11-16T16:30:00+01:00', dev }), p = s.p;
+  // Navigateur de test sans WebGL (possible dans certains WebKit de CI) : seule la voie de repli est vérifiable, et elle l'est.
+  if (!await p.evaluate(() => driveWebGL())) {
+    const y = await setup(s, dev, false), w = await state(p);
+    check(`${dev} · ce navigateur de test n’a pas WebGL : repli à plat vérifié (Plan IGN), carte 3D non vérifiable ici`, w.kind === 'plat' && y.tiles.includes('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2'), JSON.stringify(w));
+    rows.push('ℹ️ ' + dev + ' · WebGL absent du navigateur de test : contrôles 3D à faire sur un appareil réel'); await s.c.close(); return;
+  }
+  const x = await setup(s, dev, true);
   const a = await state(p);
   check(`${dev} · carte 3D IGN : style vectoriel IGN demandé, bâtiments extrudés à la « hauteur » BD TOPO, couches inutiles retirées, plein cadre`,
     a.kind === '3d' && x.styles.length >= 1 && a.b3d && a.b3d.src === 'bati_surf' && /hauteur/.test(a.b3d.h) && a.parcelle === false && a.flat === false && !!a.canvas && a.canvas[0] === a.box[0] && a.canvas[1] === a.box[1] && /IGN Géoplateforme/.test(a.foot), JSON.stringify(a));
