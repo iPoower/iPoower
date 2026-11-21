@@ -4568,7 +4568,7 @@ function renderAll() {
 // déverrouillage, sans avertissement. Les contrôles qui écrivent sont désactivés avec un message visible, et les
 // gestionnaires refusent l'écriture (défense en profondeur). Jamais de report d'une saisie verrouillée dans le coffre.
 // Le mode « sans code » n'est PAS verrouillé (stockage en clair durable) : storeLocked(), pas LOCKED().
-const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key', 'slot-apply', 'slot-undo', 'loan-save', 'loan-back', 'split-apply', 'drive-arrived', 'drive-odo']);
+const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key', 'slot-apply', 'slot-undo', 'loan-save', 'loan-back', 'split-apply', 'drive-arrived', 'drive-odo', 'drive-free', 'drive-dest', 'drive-free-end']);
 const LOCKED_WRITE_MSG = 'Déverrouille l’app pour modifier : rien n’est enregistré tant que l’app est verrouillée';
 const LOCKED_WRITE_FREE = '#unlockForm, #twrcExpiryForm, #twrcExpiryOverlay';
 let lockedWriteObserver = null;
@@ -4687,6 +4687,11 @@ document.addEventListener('click', async e => {
   else if (a === 'drive-arrived') driveArrived();
   else if (a === 'drive-odo') driveOdoConfirm();
   else if (a === 'drive-beep') driveBeepToggle(t);
+  else if (a === 'drive-gps') driveGps();
+  else if (a === 'drive-car') driveSetupCar(t.dataset.id);
+  else if (a === 'drive-free') driveFreeStart();
+  else if (a === 'drive-dest') driveSetupDest();
+  else if (a === 'drive-free-end') driveFreeEnd();
   else if (a === 'drive-base') { lsSet(DRIVE_BASE_KEY, t.dataset.v === 'ortho' ? 'ortho' : 'plan'); renderSettings(true); if (DRIVE.open && DRIVE.mv) DRIVE.mv.setTheme(document.getElementById('liveDrive').classList.contains('dv-night')); }
   else if (a === 'split-pick') { SPLIT.pick = parseInt(t.dataset.i, 10) || 0; renderTripSummary(); const back = document.querySelector('#secTripSummary [data-act=split-pick][data-i="' + SPLIT.pick + '"]'); if (back) back.focus({ preventScroll: true }); }
   else if (a === 'split-apply') { if (loanSplitApply(parseInt(t.dataset.i, 10) || 0)) commandFeedback(t, 'Répartition appliquée'); else commandFeedback(t, 'Répartition impossible : trajets changés'); }
