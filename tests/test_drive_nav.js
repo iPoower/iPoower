@@ -89,6 +89,10 @@ test('étapes OSRM : manœuvres placées le long du tracé, voies seulement si O
   assert.equal(N.nextStep(r, r.total / 2 + 30).type, 'arrive'); assert.equal(N.nextStep(null, 0), null);
   assert.equal(N.autoZoom(30, null), 17.3); assert.equal(N.autoZoom(95, 5000), 15.9); assert.equal(N.autoZoom(120, 300), 17.4); assert.equal(N.autoZoom(95, 700), 16.8); assert.equal(N.autoZoom(null, null), 16.6);
 });
+test('fluidité : lente si ≥ 30 images et médiane > 70 ms ; trop peu d’images : jamais conclu', () => {
+  assert.equal(N.slowFrames(Array(40).fill(16)), false); assert.equal(N.slowFrames(Array(40).fill(120)), true);
+  assert.equal(N.slowFrames(Array(10).fill(500)), false); assert.equal(N.slowFrames(Array(20).fill(16).concat(Array(21).fill(90))), true);
+});
 test('km du trajet pour le compteur : distance suivie si elle couvre la moitié du prévu, sinon prévue ; arrondi au km', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(N.tripKm(31.4, 30))), { km: 31, src: 'gps' });
   assert.deepEqual(JSON.parse(JSON.stringify(N.tripKm(3, 30))), { km: 30, src: 'route' });

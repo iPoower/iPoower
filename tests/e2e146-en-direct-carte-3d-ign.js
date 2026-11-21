@@ -8,7 +8,7 @@ const { session, BR, errors } = require('./lib/context-session');
 let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ? '' : ' · ' + String(d).slice(0, 700))); if (!ok) fail++; };
 const PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const RAD = Math.PI / 180, meters = (a, b) => 6371000 * RAD * Math.hypot(b[0] - a[0], (b[1] - a[1]) * Math.cos((a[0] + b[0]) * RAD / 2));
-const STYLE = { version: 8, sources: { plan_ign: { type: 'vector', tiles: ['https://data.geopf.fr/tms/1.0.0/PLAN.IGN/{z}/{x}/{y}.pbf'], minzoom: 0, maxzoom: 18 } }, layers: [
+const STYLE = { version: 8, glyphs: 'https://data.geopf.fr/annexes/ressources/vectorTiles/fonts/{fontstack}/{range}.pbf', sources: { plan_ign: { type: 'vector', tiles: ['https://data.geopf.fr/tms/1.0.0/PLAN.IGN/{z}/{x}/{y}.pbf'], minzoom: 0, maxzoom: 18 } }, layers: [
   { id: 'vegetation', type: 'fill', source: 'plan_ign', 'source-layer': 'ocs_vegetation_surf', paint: { 'fill-color': '#d8ebc8' } },
   { id: 'route', type: 'line', source: 'plan_ign', 'source-layer': 'routier_route', paint: { 'line-color': '#ffffff', 'line-width': 6 } },
   { id: 'parcelle', type: 'line', source: 'plan_ign', 'source-layer': 'parcellaire_parcelle', paint: { 'line-color': '#999999' } },
@@ -19,7 +19,7 @@ async function setup(s, dev, osrmSteps) {
   const p = s.p, tiles = [], styles = [];
   await p.route('https://data.geopf.fr/**', r => { const u = r.request().url();
     if (/styles\/PLAN\.IGN\/standard\.json/.test(u)) { styles.push('standard'); return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(STYLE) }); }
-    if (/PLAN\.IGN\/\d+/.test(u)) return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' }, body: '' });
+    if (/PLAN\.IGN\/\d+|vectorTiles\/fonts\//.test(u)) return r.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' }, body: '' });
     const L = /LAYER=([A-Z0-9.]+)/.exec(u); if (L) tiles.push(L[1]); return r.fulfill({ status: 200, contentType: /jpeg/.test(u) ? 'image/jpeg' : 'image/png', headers: { 'access-control-allow-origin': '*' }, body: PX }); });
   await p.route('https://router.project-osrm.org/**', r => {
     const m = /driving\/([^;]+);([^?]+)/.exec(new URL(r.request().url()).pathname), A = m[1].split(',').map(Number), B = m[2].split(',').map(Number);
@@ -46,7 +46,7 @@ const state = p => p.evaluate(() => { const mv = DRIVE.mv, m = mv && mv.map, gl 
 async function run(b, dev) {
   const s = await session(b, { at: '2026-11-16T16:30:00+01:00', dev }), p = s.p;
   // Navigateur de test sans WebGL (possible dans certains WebKit de CI) : seule la voie de repli est vérifiable, et elle l'est.
-  if (!await p.evaluate(() => driveWebGL())) {
+  if (!await p.evaluate(() => typeof driveWebGL !== 'function' || driveWebGL())) {
     const y = await setup(s, dev, false), w = await state(p);
     check(`${dev} · ce navigateur de test n’a pas WebGL : repli à plat vérifié (Plan IGN), carte 3D non vérifiable ici`, w.kind === 'plat' && y.tiles.includes('GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2'), JSON.stringify(w));
     rows.push('ℹ️ ' + dev + ' · WebGL absent du navigateur de test : contrôles 3D à faire sur un appareil réel'); await s.c.close(); return;
@@ -66,11 +66,11 @@ async function run(b, dev) {
   check(`${dev} · à 250 m d’une manœuvre : zoom rapproché (${z.zoom})`, z.zoom >= 17.3, JSON.stringify(z));
   // Flèche interpolée (animations actives) : position intermédiaire, puis exactement le relevé, jamais au-delà sans nouveau relevé.
   await p.emulateMedia({ reducedMotion: 'no-preference' });
-  const before = await p.evaluate(() => DRIVE.mv.shown()), next = x.line(0.6 - 200 / x.total);
+  const before = await p.evaluate(() => DRIVE.mv && DRIVE.mv.shown ? DRIVE.mv.shown() : [0, 0]), next = x.line(0.6 - 200 / x.total);
   await p.clock.runFor(4e3); await p.evaluate(g => { window.__geo = { lat: g[0], lon: g[1], acc: 8 }; window.__geoPush(); driveTick(); }, next);
-  await p.clock.runFor(350); const mid = await p.evaluate(() => DRIVE.mv.shown());
-  await p.clock.runFor(1500); const end = await p.evaluate(() => DRIVE.mv.shown());
-  await p.clock.runFor(3000); const still = await p.evaluate(() => DRIVE.mv.shown());
+  await p.clock.runFor(350); const mid = await p.evaluate(() => DRIVE.mv && DRIVE.mv.shown ? DRIVE.mv.shown() : [0, 0]);
+  await p.clock.runFor(1500); const end = await p.evaluate(() => DRIVE.mv && DRIVE.mv.shown ? DRIVE.mv.shown() : [0, 0]);
+  await p.clock.runFor(3000); const still = await p.evaluate(() => DRIVE.mv && DRIVE.mv.shown ? DRIVE.mv.shown() : [0, 0]);
   const dMid = meters(before, mid), dAll = meters(before, next);
   check(`${dev} · flèche interpolée : à mi-chemin (${Math.round(dMid)} m sur ${Math.round(dAll)} m), puis au relevé, jamais extrapolée après 3 s sans relevé`,
     dMid > 5 && dMid < dAll - 5 && meters(end, next) < 1 && meters(still, next) < 1, JSON.stringify({ before, mid, end, still, next }));
