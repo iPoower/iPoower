@@ -562,5 +562,9 @@
   "drive-free-end": {
     "suite": "e2e148-gps-voiture-libre.js",
     "result": "trajet libre terminé : km parcourus, compteur ajouté seulement sur appui"
+  },
+  "debrief-field": {
+    "suite": "e2e152-releve-terrain-gps.js",
+    "result": "compteur du relevé terrain GPS modifié (0 à 99)"
   }
 }
