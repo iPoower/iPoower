@@ -89,6 +89,24 @@ const DriveNav = (() => {
     const ahead = (list || []).filter(l => !finite(along) || l.along > along - 15);
     return { count: ahead.length, next: ahead.length && finite(along) ? Math.max(0, ahead[0].along - along) : null };
   }
+  // Hauteur du soleil (degrés) à une position et un instant (formules astronomiques usuelles, précision ≈ 0,5°), sans réseau.
+  function sunAltitude(lat, lon, ms) {
+    if (!finite(lat) || !finite(lon) || !finite(ms)) return null;
+    const d = ms / 864e5 + 2440587.5 - 2451545.0, g = (357.529 + 0.98560028 * d) * RAD, q = 280.459 + 0.98564736 * d;
+    const L = (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * RAD, e = (23.439 - 0.00000036 * d) * RAD;
+    const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L)), dec = Math.asin(Math.sin(e) * Math.sin(L));
+    const H = ((((18.697374558 + 24.06570982441908 * d) % 24) + 24) % 24 * 15 + lon) * RAD - ra;
+    return Math.asin(Math.sin(lat * RAD) * Math.sin(dec) + Math.cos(lat * RAD) * Math.cos(dec) * Math.cos(H)) / RAD;
+  }
+  // Nuit = « il fait noir » : soleil à plus de 3° sous l'horizon (≈ 20 min après le coucher, avant le lever), quel que soit le
+  // mode sombre du téléphone. Jour sinon.
+  const isNight = (lat, lon, ms) => { const a = sunAltitude(lat, lon, ms); return a != null && a < -3; };
+  // Libellé des feux : « 3 feux · prochain à 180 m », « 1 feu · prochain à 40 m », « Aucun feu sur le parcours ».
+  function lightsLabel(ahead, meters) {
+    if (!ahead) return null;
+    if (!ahead.count) return 'Aucun feu sur le parcours';
+    return ahead.count + (ahead.count > 1 ? ' feux' : ' feu') + (finite(ahead.next) ? ' · prochain à ' + meters(ahead.next) : '');
+  }
   // Alerte d'approche : prochain feu à ≤ 300 m (et pas encore franchi, 15 m de marge), feux enchaînés dans les 150 m suivants.
   // Renvoie null hors de portée. « key » identifie le feu (un seul bip par feu).
   function lightAlert(list, along, reach = 300) {
@@ -106,6 +124,6 @@ const DriveNav = (() => {
     const km = f != null && (p == null || f >= p * .5) ? f : p;
     return km != null && km <= 2000 ? { km: Math.max(1, Math.round(km)), src: km === f ? 'gps' : 'route' } : null;
   }
-  return Object.freeze({ OFF, fromOsrm, nearest, offStep, heading, lightsQuery, lights, lightsAhead, lightAlert, tripKm, meters });
+  return Object.freeze({ OFF, fromOsrm, nearest, offStep, heading, lightsQuery, lights, lightsAhead, lightAlert, sunAltitude, isNight, lightsLabel, tripKm, meters });
 })();
 if (typeof module !== 'undefined') module.exports = DriveNav;

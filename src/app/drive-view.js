@@ -5,11 +5,21 @@
 // (même réponse reprise par le suivi du trajet : km, arrivée, météo), feux tricolores du parcours (OpenStreetMap, Overpass)
 // avec alerte d'approche à 300 m (bandeau, bip facultatif ; la couleur du feu n'est connue de personne),
 // « BIEN ARRIVÉ » qui clôt le trajet (même machine que l'arrivée GPS : journal, lieu confirmé) et ajoute les km au compteur.
+// 21/11 (lot 1 « EN DIRECT v2 ») : vitesse GPS dans une pastille neutre (jamais un cercle rouge, qui se lit comme une limitation),
+// icône de feu neutre sans lampe colorée (la couleur réelle d'un feu n'est connue de personne), libellé « 3 feux · prochain à 180 m »,
+// fond Plan IGN clair le jour et sombre la nuit (soleil à la position, automatique), photo aérienne IGN en option (Réglages).
 // Écritures : seulement la clôture du trajet et le relevé du compteur, sur appui. Pas de guidage tournant par tournant ni de radars.
 const DRIVE = { open: false, map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, timer: null, wake: null, wakeState: '', prevFix: null, speed: null, hist: [], follow: true,
   nav: null, navGen: 0, navAt: 0, navAsked: null, km0: 0, off: null, rerouting: false, rerouteAt: 0, reroutes: 0, navMsg: '', navMsgAt: 0,
   lights: null, lightsSig: null, lightsLayer: null, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null, beeps: 0, audio: null };
 const DRIVE_LIGHTS = new Map();   // feux par tracé (mémoire de la session seulement, 6 tracés au plus)
+const IGN_ORTHO = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
+// Fond de carte : « plan » (Plan IGN, clair le jour, sombre la nuit) ou « ortho » (photo aérienne BD ORTHO), choisi dans les Réglages.
+const DRIVE_BASE_KEY = 'twrc.drive.base';
+const driveBasePref = () => lsGet(DRIVE_BASE_KEY) === 'ortho' ? 'ortho' : 'plan';
+// Icône de feu NEUTRE : boîtier et trois feux éteints (contours gris), aucune couleur rouge, orange ou verte.
+const DRIVE_LIGHT_SVG = '<svg viewBox="0 0 14 32" width="14" height="32" aria-hidden="true" focusable="false"><rect x="1" y="1" width="12" height="30" rx="4" fill="#2c2c2e" stroke="#f2f2f7" stroke-width="1.5"/>' +
+  '<circle cx="7" cy="8" r="3" fill="none" stroke="#aeaeb2" stroke-width="1.4"/><circle cx="7" cy="16" r="3" fill="none" stroke="#aeaeb2" stroke-width="1.4"/><circle cx="7" cy="24" r="3" fill="none" stroke="#aeaeb2" stroke-width="1.4"/></svg>';
 const IGN_PLAN = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/png&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
 const driveTrip = () => { const s = APP_CONTEXT.snapshot || {}; return s.activeTrip || s.nextTrip || null; };
@@ -18,13 +28,14 @@ function driveShell() {
     '<div class="dv-top"><span class="dv-tag">EN DIRECT</span><span class="dv-gps" data-dv="gps">GPS —</span>' +
     '<button type="button" class="dv-beep" data-act="drive-beep" aria-pressed="' + (driveBeepOn() ? 'true' : 'false') + '" aria-label="Bip à l’approche des feux">' + (driveBeepOn() ? '🔔' : '🔕') + '</button>' +
     '<button type="button" class="dv-close" data-act="drive-close" aria-label="Quitter le mode en direct">✕</button></div>' +
-    '<div class="dv-alerts"><p class="dv-nav" data-dv="nav" role="status" hidden></p><p class="dv-lightalert" data-dv="lightAlert" role="status" hidden></p></div>' +
+    '<div class="dv-alerts"><p class="dv-nav" data-dv="nav" role="status" hidden></p><p class="dv-lightalert" data-dv="lightAlert" role="status" hidden><span class="dv-li">' + DRIVE_LIGHT_SVG + '</span><span data-dv="lightAlertText"></span></p></div>' +
+
     '<button type="button" class="dv-recenter" data-act="drive-follow" hidden>Recentrer</button>' +
-    '<div class="dv-panel">' +
+    '<div class="dv-panel"><div class="dv-speed" aria-label="Vitesse GPS"><b data-dv="speed">—</b><small>km/h</small></div>' +
     '<div class="dv-km"><div><small>PARCOURUS</small><b data-dv="done">—</b><span>km</span></div><div><small>RESTANTS</small><b data-dv="left" class="dv-left">—</b><span>km</span></div></div>' +
     '<div class="dv-bar" aria-hidden="true"><i data-dv="bar"></i></div>' +
-    '<div class="dv-figs"><span><small>VITESSE GPS</small><b data-dv="speed">—</b></span><span><small>ARRIVÉE</small><b data-dv="eta">—</b></span>' +
-    '<span><small>FEUX</small><b data-dv="lights">—</b><em data-dv="lightNext"></em></span><span><small>SECTEUR</small><b data-dv="sector">—</b></span></div>' +
+    '<div class="dv-figs"><span><small>ARRIVÉE</small><b data-dv="eta">—</b></span><span><small>SECTEUR</small><b data-dv="sector">—</b></span></div>' +
+    '<p class="dv-lights"><span class="dv-li">' + DRIVE_LIGHT_SVG + '</span><span data-dv="lightsLabel">—</span></p>' +
     '<div class="dv-next" data-dv-lv="x"><b data-dv="next">—</b><span data-dv="nextWhat"></span></div>' +
     '<button type="button" class="btn pri dv-arrive" data-act="drive-arrived" hidden>✅ BIEN ARRIVÉ</button>' +
     '<div class="dv-done" data-dv="arrived" hidden></div>' +
@@ -71,26 +82,38 @@ async function driveWake(on) {
 }
 document.addEventListener('visibilitychange', () => { if (DRIVE.open && !document.hidden) driveWake(true); });
 document.addEventListener('keydown', e => { if (DRIVE.open && e.key === 'Escape') driveClose(); });
-async function driveMap(route, dark) {
+async function driveMap(route) {
   const root = $('#liveDrive'), node = root && root.querySelector('.dv-map'); if (!node || DRIVE.map) return;
   try { await loadLeaflet(); } catch (e) { driveSet('foot', 'Carte indisponible · chiffres du trajet conservés'); return; }
   if (!DRIVE.open || DRIVE.map || !node.isConnected) return;
   const map = L.map(node, { zoomControl: false, attributionControl: true, zoomAnimation: false, keyboard: false });
   DRIVE.map = map;
   let loaded = false, errors = 0;
-  const base = L.tileLayer(IGN_PLAN, { maxZoom: 19, maxNativeZoom: 19, className: dark ? 'dv-dark' : '', attribution: '© IGN Géoplateforme · Itinéraire © OSRM · Feux © OpenStreetMap' }).addTo(map);
-  base.on('tileload', () => { loaded = true; });
-  base.on('tileerror', () => {
-    if (++errors >= 3 && !loaded && DRIVE.map === map && !map._osm) {
-      map._osm = 1; map.removeLayer(base);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, className: dark ? 'osm-dark' : '', attribution: '© OpenStreetMap · Itinéraire © OSRM' }).addTo(map);
-    }
-  });
+  driveBaseLayer(map);
   DRIVE.lightsLayer = L.layerGroup().addTo(map);
   driveDrawRoute(route, true);
   DRIVE.marker = L.marker(route ? route.pts[0] : [46.6, 2.4], { icon: L.divIcon({ className: 'dv-car', html: '<span></span>', iconSize: [30, 30], iconAnchor: [15, 15] }), interactive: false, keyboard: false, zIndexOffset: 900 }).addTo(map);
   map.on('dragstart', () => { DRIVE.follow = false; const b = root.querySelector('.dv-recenter'); if (b) b.hidden = false; });
   driveDrawLights();
+}
+// Fond de carte (Plan IGN ou photo aérienne) : remplacé en direct si le réglage change ; jour / nuit par une classe sur la vue.
+// Plan IGN indisponible (3 tuiles en échec avant la première) : repli OpenStreetMap, comme avant.
+function driveBaseLayer(map) {
+  const kind = driveBasePref();
+  if (map._dvBase && map._dvKind === kind) return;
+  if (map._dvBase) map.removeLayer(map._dvBase);
+  let loaded = false, errors = 0;
+  const layer = kind === 'ortho'
+    ? L.tileLayer(IGN_ORTHO, { maxZoom: 19, maxNativeZoom: 19, className: 'dv-ortho', attribution: '© IGN Géoplateforme · BD ORTHO · Itinéraire © OSRM · Feux © OpenStreetMap' })
+    : L.tileLayer(IGN_PLAN, { maxZoom: 19, maxNativeZoom: 19, className: 'dv-plan', attribution: '© IGN Géoplateforme · Itinéraire © OSRM · Feux © OpenStreetMap' });
+  layer.on('tileload', () => { loaded = true; });
+  layer.on('tileerror', () => {
+    if (++errors >= 3 && !loaded && DRIVE.map === map && map._dvBase === layer) {
+      map.removeLayer(layer); map._dvBase = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, className: 'dv-plan', attribution: '© OpenStreetMap · Itinéraire © OSRM' }).addTo(map);
+    }
+  });
+  map._dvBase = layer.addTo(map); map._dvKind = kind;
+  if (map._dvBase.bringToBack) map._dvBase.bringToBack();
 }
 // Tracé affiché = tracé suivi (DRIVE.nav, sinon tracé prévu). Redessiné à chaque nouvel itinéraire, sans recadrer si la carte suit.
 function driveDrawRoute(route, fit) {
@@ -105,7 +128,7 @@ function driveDrawRoute(route, fit) {
 function driveDrawLights() {
   const layer = DRIVE.lightsLayer; if (!layer || !DRIVE.map) return;
   layer.clearLayers();
-  (DRIVE.lights || []).forEach(l => L.marker([l.lat, l.lon], { icon: L.divIcon({ className: 'dv-light', html: '<i></i>', iconSize: [12, 26], iconAnchor: [6, 13] }),
+  (DRIVE.lights || []).forEach(l => L.marker([l.lat, l.lon], { icon: L.divIcon({ className: 'dv-light', html: DRIVE_LIGHT_SVG, iconSize: [14, 32], iconAnchor: [7, 16] }),
     interactive: false, keyboard: false, title: 'Feu tricolore (OpenStreetMap)' }).addTo(layer));
 }
 // Point envoyé au calculateur d'itinéraire : à moins de 1,5 km du domicile, du travail ou d'un lieu enregistré, arrondi à ~1 km
@@ -266,8 +289,11 @@ function driveTick() {
     DRIVE.navGen++; if (DRIVE.map) { DRIVE.map.remove(); DRIVE.map = null; DRIVE.lightsLayer = null; }
   }
   const planned = LiveRoute.route(t, null), route = DRIVE.nav || planned;
-  if (!DRIVE.map) driveMap(route, !isLight());
-  else if (DRIVE.route !== route) driveDrawRoute(route, false);
+  // Jour / nuit selon le soleil à la position (sinon au départ du tracé), jamais selon le mode sombre du téléphone ; changé en direct.
+  const sunAt = FIX && liveFresh(FIX, LIVE_AGE_RUN) ? [FIX.lat, FIX.lon] : route ? route.pts[0] : null, rootEl = $('#liveDrive');
+  if (rootEl) rootEl.classList.toggle('dv-night', sunAt ? DriveNav.isNight(sunAt[0], sunAt[1], Date.now()) : true);
+  if (!DRIVE.map) driveMap(route);
+  else { if (DRIVE.route !== route) driveDrawRoute(route, false); driveBaseLayer(DRIVE.map); }
   const active = !!(LIVE.key === t.key && LIVE.phase === 'active');
   const fresh = active && FIX && liveFresh(FIX, LIVE_AGE_RUN) && FIX.ts >= appGpsFloor() ? FIX : null;
   // Tracé complet demandé une fois par trajet (et redemandé depuis ta position au démarrage si l'ouverture était avant).
@@ -310,14 +336,13 @@ function driveTick() {
   driveSet('sector', m.sector ? 'S' + m.sector : '—');
   // Feux : nombre encore devant et distance du prochain (le long du tracé).
   const L0 = DRIVE.lights, along = pose && route ? route.total * pose.fraction : active ? null : 0, la = L0 ? DriveNav.lightsAhead(L0, along) : null;
-  driveSet('lights', la ? String(la.count) : '—');
-  driveSet('lightNext', la && la.count && la.next != null ? 'à ' + driveM(la.next) : la && !la.count ? 'aucun' : DRIVE.lightsErr ? 'indisponibles' : '');
+  driveSet('lightsLabel', la ? DriveNav.lightsLabel(la, driveM) : DRIVE.lightsErr ? 'Feux indisponibles' : 'Feux : recherche…');
   // Alerte d'approche (≤ 300 m) : grand bandeau, et un bip court par feu si l'utilisateur l'a activé (appareil seulement).
   const alert = active && g.valid && L0 ? DriveNav.lightAlert(L0, along) : null, ab = document.querySelector('#liveDrive [data-dv="lightAlert"]');
   if (ab) {
     ab.hidden = !alert;
-    if (alert) driveSet('lightAlert', '🚦 ' + (alert.dist < 30 ? (alert.chain > 1 ? alert.chain + ' FEUX ENCHAÎNÉS' : 'FEU') + ' · MAINTENANT'
-      : (alert.chain > 1 ? alert.chain + ' FEUX ENCHAÎNÉS DANS ' : 'FEU DANS ') + driveM(alert.dist)));
+    if (alert) driveSet('lightAlertText', alert.dist < 30 ? (alert.chain > 1 ? alert.chain + ' feux enchaînés' : 'Feu') + ' · maintenant'
+      : (alert.chain > 1 ? alert.chain + ' feux enchaînés dans ' : 'Feu dans ') + driveM(alert.dist));
   }
   if (alert && DRIVE.beepKey !== alert.key) { DRIVE.beepKey = alert.key; if (driveBeepOn()) driveBeep(); }
   const offNow = DRIVE.off && DRIVE.off.n > 0 && active;

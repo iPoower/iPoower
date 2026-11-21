@@ -37,13 +37,13 @@ async function run(b, dev) {
   await p.locator('#secTripSummary [data-act=drive-open]').click(); await s.settle(6);
   const geo = async (pt, acc = 8) => { await p.evaluate(g => { window.__geo = { lat: g[0], lon: g[1], acc: g[2] }; window.__geoPush(); }, [pt[0], pt[1], acc]); await s.settle(2); };
   const read = () => p.evaluate(() => { const q = k => (document.querySelector('#liveDrive [data-dv="' + k + '"]') || {}).textContent || '', n = document.querySelector('#liveDrive [data-dv="nav"]');
-    return { done: q('done'), left: q('left'), lights: q('lights'), lightNext: q('lightNext'), gps: q('gps'), nav: n && !n.hidden ? n.textContent : '', markers: document.querySelectorAll('#liveDrive .dv-light').length,
+    return { done: q('done'), left: q('left'), label: q('lightsLabel'), gps: q('gps'), nav: n && !n.hidden ? n.textContent : '', markers: document.querySelectorAll('#liveDrive .dv-light').length,
       sig: DRIVE.nav && DRIVE.nav.signature, navStart: DRIVE.nav && DRIVE.nav.pts[0], full: !!(DRIVE.nav && DRIVE.nav.full), liveO: LIVE.route && LIVE.route.o, liveKey: LIVE.key,
       arrive: (() => { const x = document.querySelector('#liveDrive .dv-arrive'); return x && !x.hidden ? x.textContent : ''; })(), csp: (window.__csp || []).join(' ') }; });
   const num = v => parseFloat(String(v).replace(',', '.'));
   const a = await read();
   check(`${dev} · tracé routier complet demandé à l’ouverture (OSRM), feux du parcours : 3 carrefours (doublon regroupé, nœud hors tracé ignoré), icônes sur la carte`,
-    a.full && osrm.length >= 1 && a.lights === '3' && a.markers === 3, JSON.stringify({ a, osrm: osrm.length, over: over.length }));
+    a.full && osrm.length >= 1 && /^3 feux · /.test(a.label) && a.markers === 3, JSON.stringify({ a, osrm: osrm.length, over: over.length }));
   const coords = over.length ? (over[0].match(/around:30,([\d.,]+)\)/g) || []).flatMap(x => { const n = x.slice(10, -1).split(',').map(Number), out = []; for (let i = 0; i < n.length; i += 2) out.push([n[i], n[i + 1]]); return out; }) : [];
   const closest = coords.length ? Math.min(...coords.flatMap(c => ends.priv.map(q => meters(c, q)))) : 0;
   check(`${dev} · requête des feux : aucune portion à moins de 800 m d’un lieu privé (au plus près : ${Math.round(closest)} m), 4 décimales au plus`,
@@ -55,20 +55,20 @@ async function run(b, dev) {
   for (let i = 0; i < 3; i++) { if (i) await p.clock.runFor(60e3); await geo(at(f)); f += step; }
   f -= step; await p.clock.runFor(25e3); await geo(at(f));
   const c = await read();
-  check(`${dev} · sur l’itinéraire : km parcourus et prochain feu affichés`, num(c.done) > 1 && /^à \d/.test(c.lightNext) && /GPS ± \d+ m/.test(c.gps), JSON.stringify(c));
+  check(`${dev} · sur l’itinéraire : km parcourus et prochain feu affichés`, num(c.done) > 1 && /^\d feux? · prochain à \d+ m$/.test(c.label) && /GPS ± \d+ m/.test(c.gps), JSON.stringify(c));
   // Approche d'un feu (carrefour à 50 %) : bandeau à ≤ 300 m, un seul bip par feu quand le bip est activé.
   const tap = () => p.locator('#liveDrive [data-act=drive-beep]').click();
   await tap(); await s.settle(1);
   const beep0 = await p.evaluate(() => ({ on: document.querySelector('#liveDrive [data-act=drive-beep]').getAttribute('aria-pressed'), pref: localStorage.getItem('twrc.drive.beep'), n: DRIVE.beeps }));
-  const banner = () => p.evaluate(() => { const x = document.querySelector('#liveDrive [data-dv="lightAlert"]'); return x && !x.hidden ? x.textContent : ''; });
+  const banner = () => p.evaluate(() => { const x = document.querySelector('#liveDrive [data-dv="lightAlert"]'); return x && !x.hidden ? x.querySelector('[data-dv="lightAlertText"]').textContent : ''; });
   const far = await banner();
   f = 0.5 - 250 / total; await p.clock.runFor(80e3); await geo(at(f));
   const near = await banner(), n1 = await p.evaluate(() => DRIVE.beeps);
   await p.clock.runFor(4e3); f += 80 / total; await geo(at(f));
   const n2 = await p.evaluate(() => DRIVE.beeps), near2 = await banner();
   check(`${dev} · « 🔔 » active le bip (préférence de l’appareil)`, beep0.on === 'true' && beep0.pref === '1', JSON.stringify(beep0));
-  check(`${dev} · à l’approche d’un feu : « 🚦 FEU DANS 250 m » (rien quand il est loin), un seul bip pour ce feu`,
-    !far && /🚦 FEU DANS 2[45]0 m/.test(near) && /🚦 FEU DANS 1[678]0 m/.test(near2) && n1 === beep0.n + 1 && n2 === n1, JSON.stringify({ far, near, near2, beeps: [beep0.n, n1, n2] }));
+  check(`${dev} · à l’approche d’un feu : « Feu dans 250 m » (rien quand il est loin), un seul bip pour ce feu`,
+    !far && /^Feu dans 2[45]0 m$/.test(near) && /^Feu dans 1[678]0 m$/.test(near2) && n1 === beep0.n + 1 && n2 === n1, JSON.stringify({ far, near, near2, beeps: [beep0.n, n1, n2] }));
   await tap(); await s.settle(1);
   check(`${dev} · « 🔕 » coupe le bip`, await p.evaluate(() => localStorage.getItem('twrc.drive.beep') === '0' && document.querySelector('#liveDrive [data-act=drive-beep]').getAttribute('aria-pressed') === 'false'));
   // Sortie d'itinéraire : la voiture s'écarte (100, 200, 300 m), relevés toutes les 5 s.
