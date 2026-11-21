@@ -11,7 +11,6 @@ function loadMapLibre() {
   if (loadMapLibre.p) return loadMapLibre.p;
   loadMapLibre.p = new Promise((res, rej) => {
     // empreintes SRI = octets du paquet npm maplibre-gl@4.7.1 (tools/web-assets.js) : tout fichier modifié est refusé
-    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'vendor/maplibre/maplibre-gl.css'; css.integrity = 'sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V'; css.crossOrigin = 'anonymous'; css.referrerPolicy = 'no-referrer'; document.head.appendChild(css);
     const js = document.createElement('script'); js.src = 'vendor/maplibre/maplibre-gl-csp.js'; js.integrity = 'sha384-wkz3bHd2XHn0zfBLsJfGiElUhnowWv/hdfV/QfPpaQXPrS1euKdOIZFHNVrbocON'; js.crossOrigin = 'anonymous'; js.referrerPolicy = 'no-referrer';
     js.onload = () => { try { maplibregl.setWorkerUrl('vendor/maplibre/maplibre-gl-csp-worker.js'); res(); } catch (e) { loadMapLibre.p = null; rej(e); } };
     js.onerror = () => { loadMapLibre.p = null; rej(new Error('carte 3D indisponible')); }; document.head.appendChild(js);

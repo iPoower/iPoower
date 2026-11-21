@@ -9,10 +9,11 @@ const LEAFLET = {
 };
 const MAPLIBRE = {
   js: 'sha384-wkz3bHd2XHn0zfBLsJfGiElUhnowWv/hdfV/QfPpaQXPrS1euKdOIZFHNVrbocON',
-  worker: 'sha384-nihfgYxLAwZc2OGkDb9/UgCi7mzsDxEbeUKuYBlMywKVRZPdD1dNli4fql0bu19P',
-  css: 'sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V'
+  worker: 'sha384-nihfgYxLAwZc2OGkDb9/UgCi7mzsDxEbeUKuYBlMywKVRZPdD1dNli4fql0bu19P'
 };
-const MAPLIBRE_ASSETS = ['maplibre-gl-csp.js', 'maplibre-gl-csp-worker.js', 'maplibre-gl.css', 'LICENSE.txt'];
+// Feuille de style de MapLibre NON embarquée (contrôle de confidentialité : motif numérique pris pour une coordonnée) :
+// les 4 règles utiles sont dans src/style.css.
+const MAPLIBRE_ASSETS = ['maplibre-gl-csp.js', 'maplibre-gl-csp-worker.js', 'LICENSE.txt'];
 const ASSETS = ['leaflet.js', 'leaflet.css', 'images/layers.png', 'images/layers-2x.png', 'images/marker-icon.png', 'images/marker-icon-2x.png', 'images/marker-shadow.png'];
 function readAsset(source) {
   let fd;
@@ -33,7 +34,7 @@ function copy(root, out) {
     fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, bytes.get(file));
   }
   const ml = new Map(MAPLIBRE_ASSETS.map(file => [file, readAsset(path.join(root, 'src/vendor/maplibre', file))]));
-  for (const [file, expected] of [['maplibre-gl-csp.js', MAPLIBRE.js], ['maplibre-gl-csp-worker.js', MAPLIBRE.worker], ['maplibre-gl.css', MAPLIBRE.css]]) {
+  for (const [file, expected] of [['maplibre-gl-csp.js', MAPLIBRE.js], ['maplibre-gl-csp-worker.js', MAPLIBRE.worker]]) {
     if ('sha384-' + crypto.createHash('sha384').update(ml.get(file)).digest('base64') !== expected) throw new Error('Intégrité MapLibre refusée : ' + file);
   }
   for (const file of MAPLIBRE_ASSETS) {
