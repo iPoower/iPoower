@@ -39,6 +39,7 @@ function driveShell() {
     '<div class="dv-km"><div><small>PARCOURUS</small><b data-dv="done">—</b><span>km</span></div><div><small>RESTANTS</small><b data-dv="left" class="dv-left">—</b><span>km</span></div></div>' +
     '<div class="dv-bar" aria-hidden="true"><i data-dv="bar"></i></div>' +
     '<div class="dv-figs"><span><small>ARRIVÉE</small><b data-dv="eta">—</b></span><span><small>SECTEUR</small><b data-dv="sector">—</b></span></div>' +
+    '<p class="dv-alt" data-dv-lv="0" hidden><span class="dv-alti"><small>ALTITUDE</small><b data-dv="alt">—</b></span><span data-dv="altTop"></span></p>' +
     '<p class="dv-lights"><span class="dv-li">' + DRIVE_LIGHT_SVG + '</span><span data-dv="lightsLabel">—</span></p>' +
     '<div class="dv-next" data-dv-lv="x"><b data-dv="next">—</b><span data-dv="nextWhat"></span></div>' +
     '<button type="button" class="btn pri dv-arrive" data-act="drive-arrived" hidden>✅ BIEN ARRIVÉ</button>' +
@@ -295,7 +296,7 @@ function driveNavRequest(t, fix, reroute) {
         DRIVE.navMsg = 'Itinéraire recalculé depuis ta position' + (Number.isFinite(diff) && Math.abs(diff) >= .1 ? ' · ' + (diff > 0 ? '+' : '−') + f1(Math.abs(diff)) + ' km' : ''); DRIVE.navMsgAt = Date.now();
         driveFeedLive(j, fix, d);
       }
-      driveLightsFetch(nav);
+      driveLightsFetch(nav); driveAltFetch(nav);
       driveTick();
     })
     .catch(() => {
@@ -315,6 +316,40 @@ function driveFeedLive(j, fix, d) {
   renderBrf();
 }
 // Feux tricolores du parcours : une demande Overpass par tracé (mémorisée pour la session), hors portions privées.
+// Altitude du parcours (lot 5) : profil du tracé par l'altimétrie IGN (RGE ALTI, data.geopf.fr déjà autorisé), hors zones privées ;
+// prochain point haut ; température prévue à SON altitude à l'heure de passage (Open-Meteo, altitude imposée), gel signalé.
+const IGN_ALTI = 'https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevation.json';
+async function driveAltFetch(nav) {
+  if (!nav || !nav.full || nav.profile || nav.altAsked || offlineNow()) return;
+  nav.altAsked = true;
+  const pts = DriveAlt.samples(nav, (S.locs || []).filter(locHasCoords)); if (pts.length < 2) return;
+  try {
+    const j = await fetchJSON(IGN_ALTI + '?lon=' + pts.map(p => p.at[1]).join('|') + '&lat=' + pts.map(p => p.at[0]).join('|') + '&resource=ign_rge_alti_wld&zonly=true', 15000);
+    nav.profile = DriveAlt.profile(j, pts);
+  } catch (e) { nav.profile = null; }
+  if (DRIVE.open) driveTick();
+}
+async function driveSummitTemp(top, passTs) {
+  const key = top.at.join(',') + '|' + top.z + '|' + passTs.slice(0, 13);
+  if (DRIVE.summitKey === key) return;
+  DRIVE.summitKey = key; DRIVE.summitT = null;
+  try {
+    const j = await fetchJSON('https://api.open-meteo.com/v1/forecast?latitude=' + top.at[0] + '&longitude=' + top.at[1] + '&elevation=' + top.z + '&hourly=temperature_2m&timezone=Europe%2FParis&forecast_days=3', 12000);
+    if (DRIVE.summitKey === key) { DRIVE.summitT = DriveAlt.tempAt(j, passTs); if (DRIVE.open) driveTick(); }
+  } catch (e) { /* température indisponible : point haut affiché sans verdict */ }
+}
+function driveAltRow(route, along, active) {
+  const row = document.querySelector('#liveDrive .dv-alt'); if (!row) return;
+  const prof = route && route.profile, here = prof ? DriveAlt.altAt(prof, along) : null, top = prof ? DriveAlt.summit(prof, along) : null;
+  row.hidden = !(prof && (here != null || top)); if (row.hidden) return;
+  driveSet('alt', here != null ? here + ' m' : '—');
+  if (!top) { row.dataset.dvLv = '0'; driveSet('altTop', 'Pas de point haut notable devant'); return; }
+  const speed = Number.isFinite(DRIVE.speed) && DRIVE.speed > 20 ? DRIVE.speed : 60, pass = addMin(liveNow().slice(0, 16), Math.round(top.dist / 1000 / speed * 60));
+  if (active) driveSummitTemp(top, pass);
+  const fr = DriveAlt.frost(DRIVE.summitKey && DRIVE.summitKey.startsWith(top.at.join(',') + '|' + top.z) ? DRIVE.summitT : null);
+  row.dataset.dvLv = fr ? String(fr.level) : '0';
+  driveSet('altTop', 'Point haut ' + top.z + ' m dans ' + driveKm(top.dist / 1000) + ' km' + (fr ? ' · ' + (Math.round(DRIVE.summitT * 10) / 10).toString().replace('.', ',') + ' °C prévus · ' + fr.label : ''));
+}
 async function driveLightsFetch(nav) {
   if (!nav || !nav.full || DRIVE.lightsSig === nav.signature) return;
   DRIVE.lightsSig = nav.signature; DRIVE.lightsErr = false;
@@ -476,6 +511,7 @@ function driveTick() {
   }
   if (alert && DRIVE.beepKey !== alert.key) { DRIVE.beepKey = alert.key; if (driveBeepOn()) driveBeep(); }
   const offNow = DRIVE.off && DRIVE.off.n > 0 && active;
+  driveAltRow(route, along, active);
   driveGuide(active && g.valid && !offNow && !DRIVE.rerouting && !!DRIVE.nav && route === DRIVE.nav, along);
   driveSet('gps', active ? (g.valid ? 'GPS ± ' + Math.round(g.acc) + ' m' : offNow || DRIVE.rerouting ? 'Hors itinéraire' : g.reason) : 'Départ prévu ' + tripWhen(t.dep));
   const nav = document.querySelector('#liveDrive [data-dv="nav"]');

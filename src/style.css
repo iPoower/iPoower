@@ -1789,6 +1789,12 @@ html.dv-on, html.dv-on body { overflow: hidden; }
 .dv-cars button b { font: 800 20px var(--f-disp); } .dv-cars button small { color: var(--fg2); }
 .dv-cars button[aria-pressed="true"] { border-color: #0a84ff; box-shadow: 0 0 0 2px #0a84ff inset; }
 .dv-setup-go { display: grid; gap: 10px; } .dv-setup-go .btn { min-height: 56px; justify-content: center; font-weight: 800; }
+/* Lot 5 : altitude du parcours et gel au point haut (couleurs de niveau de l'app, jamais seules : texte explicite). */
+.dv-alt { margin: 0; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 10px; background: var(--panel); font-weight: 600; }
+.dv-alt[hidden] { display: none; }
+.dv-alti small { display: block; font: 600 11px var(--f-mono); color: var(--fg2); } .dv-alti b { font: 700 20px var(--f-mono); white-space: nowrap; }
+.dv-alt[data-dv-lv="1"] { background: var(--cau-soft); color: var(--cau-t); } .dv-alt[data-dv-lv="2"] { background: var(--nogo-soft); color: var(--nogo-t); }
+.dv.dv-arrived .dv-alt { display: none; }
 .dv-gnote { margin: 0; align-self: flex-start; padding: 3px 8px; border-radius: 8px; background: rgba(28, 28, 30, .8); color: #d1d1d6; font-size: 11px; font-weight: 600; }
 .dv-beep { pointer-events: auto; width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--line2); background: rgba(13, 15, 19, .9); color: var(--fg); font-size: 20px; cursor: pointer; margin-left: auto; }
 .dv-beep + .dv-close { margin-left: 0; }
