@@ -152,7 +152,7 @@ function driveClose() {
   DRIVE.free = null; DRIVE.setup = null; const r0 = $('#liveDrive'); if (r0) r0.classList.remove('dv-setupmode');
   const root = $('#liveDrive'); DRIVE.open = false; clearInterval(DRIVE.timer); DRIVE.timer = null; driveWake(false);
   if (DRIVE.mv) DRIVE.mv.remove();
-  Object.assign(DRIVE, { mv: null, mvPending: false, map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, prevFix: null, speed: null, hist: [],
+  Object.assign(DRIVE, { mv: null, mvPending: false, map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, prevFix: null, speed: null, hist: [], summitCalls: 0, summitKey: null, summitT: null,
     nav: null, navGen: DRIVE.navGen + 1, navAt: 0, navAsked: null, km0: 0, off: null, rerouting: false, rerouteAt: 0, reroutes: 0, navMsg: '', navMsgAt: 0,
     lights: null, lightsSig: null, lightsLayer: null, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null });
   document.documentElement.classList.remove('dv-on');
@@ -472,7 +472,7 @@ function driveTick() {
   const t = driveTrip();
   if (!t) { driveSet('foot', 'Aucun trajet en cours ni prévu'); return; }
   if (DRIVE.key !== t.key) {
-    Object.assign(DRIVE, { key: t.key, to: t.to, carId: t.carId || appDay().activeCarId, plan: t.planL || t.l, last: null, hist: [], nav: null, navAt: 0, navAsked: null, km0: 0, off: null, lights: null, lightsSig: null, fixTs: 0, navFuzzy: false, refineAt: 0 });
+    Object.assign(DRIVE, { key: t.key, to: t.to, carId: t.carId || appDay().activeCarId, plan: t.planL || t.l, last: null, hist: [], nav: null, navAt: 0, navAsked: null, km0: 0, off: null, lights: null, lightsSig: null, fixTs: 0, navFuzzy: false, refineAt: 0, summitCalls: 0, summitKey: null, summitT: null });
     DRIVE.navGen++; if (DRIVE.mv) { DRIVE.mv.remove(); DRIVE.mv = null; DRIVE.map = null; }
   }
   const planned = LiveRoute.route(t, null), route = DRIVE.nav || planned;

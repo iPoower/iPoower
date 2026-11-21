@@ -33,11 +33,13 @@ async function run(b, dev) {
   check(`${dev} · profil demandé à l’altimétrie IGN, aucun point à moins de 1,5 km d’un lieu enregistré (au plus près : ${Math.round(closest)} m)`, alti.length >= 1 && closest > 1500 && a.profile, JSON.stringify({ n: alti.length, closest }));
   check(`${dev} · altitude à la position affichée (${a.alt})`, a.shown && /^\d+ m$/.test(a.alt), JSON.stringify(a));
   check(`${dev} · point haut devant (≈ 990 m) et température prévue à son altitude : « gel probable » mis en évidence`, /^Point haut 9[89]\d m dans [\d,]+ km · −1,2 °C prévus · gel probable$/.test(a.top) && a.lv === '2' && elevQ.length >= 1 && /elevation=9[89]\d/.test(elevQ[0]), JSON.stringify({ a, q: elevQ[0] }));
-  // Quota Open-Meteo atteint (429) pour l'heure suivante : « non couverte », jamais « pas de gel » ; plafond de 3 appels par trajet.
+  // Quota Open-Meteo atteint (429) pour l'heure suivante (une heure plus tard) : « non couverte », jamais « pas de gel » ; plafond de 3 appels par trajet.
   await p.route(/api\.open-meteo\.com\/v1\/forecast.*elevation=/, r => r.fulfill({ status: 429, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"error":true,"reason":"Too many requests"}' }));
-  await p.clock.runFor(30 * 60e3); await push(0.25); await s.settle(6);
+  await p.clock.runFor(60 * 60e3); await push(0.25); await s.settle(6);   // heure de passage suivante : nouvel appel (un par point haut et par heure)
   const q = await p.evaluate(() => { const r = document.querySelector('#liveDrive .dv-alt'); return { lv: r && r.dataset.dvLv, top: (document.querySelector('#liveDrive [data-dv="altTop"]') || {}).textContent || '', calls: DRIVE.summitCalls }; });
   check(`${dev} · Open-Meteo saturé (429) : « température non couverte », jamais « pas de gel » ; ${q.calls} appel(s) « point haut » (plafond 3)`, /température non couverte/.test(q.top) && !/pas de gel/.test(q.top) && q.lv === 'x' && q.calls <= 3, JSON.stringify(q));
+  const z = await p.evaluate(() => { const before = DRIVE.summitCalls; DRIVE.key = 'autre-trajet'; driveTick(); return { before, after: DRIVE.summitCalls }; });
+  check(`${dev} · plafond compté PAR TRAJET : un autre trajet repart à 0 appel (${z.before} → ${z.after})`, z.before >= 1 && z.after === 0, JSON.stringify(z));
   rows.push('ℹ️ ' + dev + ' · appels « point haut » vers Open-Meteo pendant ce trajet : ' + elevQ.length + ' (plafond 3) ; altimétrie IGN : ' + alti.length);
   await s.c.close();
 }
