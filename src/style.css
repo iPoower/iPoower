@@ -1774,6 +1774,17 @@ html.dv-on, html.dv-on body { overflow: hidden; }
 .dv-alerts { position: absolute; z-index: 9010; left: 12px; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 66px); display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 .dv-lightalert { margin: 0; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px; border-radius: 12px; background: #15181d; color: #fff; border: 2px solid #f2f2f7; font: 800 22px var(--f-disp); letter-spacing: .02em; text-align: center; box-shadow: 0 4px 14px rgba(0, 0, 0, .45); }
 .dv-lightalert[hidden] { display: none; }
+/* Guidage (lot 3) : bandeau principal (grande flèche, distance très grande, rue), « Puis », voies si OSRM les fournit, mention fixe. */
+.dv-guide { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 18px; background: #1c1c1e; color: #fff; box-shadow: 0 6px 20px rgba(0, 0, 0, .45); }
+.dv-guide[hidden], .dv-then[hidden], .dv-lanes[hidden] { display: none; }
+.dv-garrow { flex: none; color: #fff; display: grid; place-items: center; }
+.dv-gmain b { display: block; font: 800 clamp(34px, 11vw, 46px)/1 var(--f-disp); letter-spacing: -.01em; }
+.dv-gmain span { display: block; margin-top: 4px; font-size: 18px; font-weight: 700; line-height: 1.2; }
+.dv-then { margin: 0; align-self: flex-start; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 12px; background: #2c2c2e; color: #fff; font-weight: 700; font-size: 15px; }
+.dv-then > span:first-child { color: #c7c7cc; font-weight: 600; }
+.dv-lanes { display: flex; gap: 4px; justify-content: center; padding: 6px; border-radius: 12px; background: #1c1c1e; }
+.dv-lane { display: inline-flex; padding: 2px 6px; border-radius: 6px; color: #636366; border: 1px solid #3a3a3c; } .dv-lane.ok { color: #fff; border-color: #fff; }
+.dv-gnote { margin: 0; align-self: flex-start; padding: 3px 8px; border-radius: 8px; background: rgba(28, 28, 30, .8); color: #d1d1d6; font-size: 11px; font-weight: 600; }
 .dv-beep { pointer-events: auto; width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--line2); background: rgba(13, 15, 19, .9); color: var(--fg); font-size: 20px; cursor: pointer; margin-left: auto; }
 .dv-beep + .dv-close { margin-left: 0; }
 .dv-nav { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--i20-blue); color: var(--on-i20-blue); font-weight: 700; text-align: center; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); }

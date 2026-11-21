@@ -29,7 +29,10 @@ function driveShell() {
     '<div class="dv-top"><span class="dv-tag">EN DIRECT</span><span class="dv-gps" data-dv="gps">GPS —</span>' +
     '<button type="button" class="dv-beep" data-act="drive-beep" aria-pressed="' + (driveBeepOn() ? 'true' : 'false') + '" aria-label="Bip à l’approche des feux">' + (driveBeepOn() ? '🔔' : '🔕') + '</button>' +
     '<button type="button" class="dv-close" data-act="drive-close" aria-label="Quitter le mode en direct">✕</button></div>' +
-    '<div class="dv-alerts"><p class="dv-nav" data-dv="nav" role="status" hidden></p><p class="dv-lightalert" data-dv="lightAlert" role="status" hidden><span class="dv-li">' + DRIVE_LIGHT_SVG + '</span><span data-dv="lightAlertText"></span></p></div>' +
+    '<div class="dv-alerts"><div class="dv-guide" data-dv="guide" role="status" aria-live="polite" hidden><span class="dv-garrow" data-dv="garrow" aria-hidden="true"></span>' +
+    '<span class="dv-gmain"><b data-dv="gdist"></b><span data-dv="gtext"></span></span></div><div class="dv-lanes" data-dv="glanes" aria-label="Voies conseillées" hidden></div>' +
+    '<p class="dv-then" data-dv="gthenbox" hidden><span>Puis</span><span class="dv-tarrow" data-dv="gtarrow" aria-hidden="true"></span><span data-dv="gthen"></span></p>' +
+    '<p class="dv-gnote" data-dv="gnote">' + DriveGuide.NOTICE + '</p><p class="dv-nav" data-dv="nav" role="status" hidden></p><p class="dv-lightalert" data-dv="lightAlert" role="status" hidden><span class="dv-li">' + DRIVE_LIGHT_SVG + '</span><span data-dv="lightAlertText"></span></p></div>' +
 
     '<button type="button" class="dv-recenter" data-act="drive-follow" hidden>Recentrer</button>' +
     '<div class="dv-panel"><div class="dv-speed" aria-label="Vitesse GPS"><b data-dv="speed">—</b><small>km/h</small></div>' +
@@ -162,6 +165,32 @@ function driveBaseLayer(map) {
 // Tracé affiché = tracé suivi (DRIVE.nav, sinon tracé prévu). Redessiné à chaque nouvel itinéraire, sans recadrer si la carte suit.
 function driveDrawRoute(route, fit) { DRIVE.route = route || null; if (DRIVE.mv) DRIVE.mv.setRoute(DRIVE.route, fit && !DRIVE.last); }
 function driveDrawLights() { if (DRIVE.mv) DRIVE.mv.setLights(DRIVE.lights || []); }
+// Pictogrammes de manœuvre (dessins propres à l'app, traits blancs, aucune couleur) : forme de la flèche seulement.
+const DRIVE_ARROWS = {
+  straight: '<path d="M24 42V9M13 19 24 8l11 11"/>', right: '<path d="M17 42V25q0-9 9-9h12M30 8l8 8-8 8"/>', left: '<path d="M31 42V25q0-9-9-9H10M18 8l-8 8 8 8"/>',
+  'slight-right': '<path d="M19 42V29l15-16M24 11l11 1-1 11"/>', 'slight-left': '<path d="M29 42V29L14 13M24 11l-11 1 1 11"/>',
+  'sharp-right': '<path d="M16 42V13l19 19M35 21v11H24"/>', 'sharp-left': '<path d="M32 42V13L13 32M13 21v11h11"/>',
+  uturn: '<path d="M32 42V18q0-10-9-10t-9 10v10M8 22l6 8 6-8"/>', roundabout: '<circle cx="24" cy="21" r="8"/><path d="M24 42V29M30 15l8-8M30 7h8v8"/>',
+  arrive: '<path d="M15 42V7h19l-4 7 4 7H15"/>' };
+const driveArrowSvg = (k, size) => '<svg viewBox="0 0 48 48" width="' + size + '" height="' + size + '" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + (DRIVE_ARROWS[k] || DRIVE_ARROWS.straight) + '</svg>';
+// Voies (seulement si OSRM les fournit) : une case par voie, conseillée en clair, les autres estompées ; flèches tirées des indications.
+const DRIVE_LANE_ARROW = { left: 'left', 'slight left': 'slight-left', 'sharp left': 'sharp-left', right: 'right', 'slight right': 'slight-right', 'sharp right': 'sharp-right', uturn: 'uturn', straight: 'straight' };
+const driveLanesHtml = lanes => lanes.map(l => '<span class="dv-lane' + (l.ok ? ' ok' : '') + '">' + (l.dirs.length ? l.dirs : ['straight']).slice(0, 2).map(d => driveArrowSvg(DRIVE_LANE_ARROW[d] || 'straight', 18)).join('') + '</span>').join('');
+// Guidage : manœuvre en cours (tracé détaillé, trajet démarré, position sur le tracé). Hors du tracé ou pendant un recalcul :
+// bandeau masqué, aucune consigne tirée d'un tracé qu'on ne suit plus. Annonces aux paliers notées (pour une future voix).
+function driveGuide(on, along) {
+  const box = document.querySelector('#liveDrive [data-dv="guide"]'); if (!box) return;
+  const g = on ? DriveGuide.state(DRIVE.nav, along) : null, lanesEl = document.querySelector('#liveDrive [data-dv="glanes"]'), thenEl = document.querySelector('#liveDrive [data-dv="gthenbox"]');
+  box.hidden = !g; if (lanesEl) lanesEl.hidden = !(g && g.lanes); if (thenEl) thenEl.hidden = !(g && g.then);
+  if (!g) return;
+  const a = document.querySelector('#liveDrive [data-dv="garrow"]');
+  if (a && a.dataset.k !== g.arrow) { a.dataset.k = g.arrow; a.innerHTML = driveArrowSvg(g.arrow, 64); }
+  driveSet('gdist', g.label === 'maintenant' ? 'Maintenant' : g.label); driveSet('gtext', g.text);
+  if (g.lanes && lanesEl) { const h = driveLanesHtml(g.lanes); if (lanesEl.dataset.h !== h) { lanesEl.innerHTML = h; lanesEl.dataset.h = h; } }
+  if (g.then) { const t = document.querySelector('#liveDrive [data-dv="gtarrow"]'); if (t && t.dataset.k !== g.then.arrow) { t.dataset.k = g.then.arrow; t.innerHTML = driveArrowSvg(g.then.arrow, 22); } driveSet('gthen', g.then.text); }
+  const mark = g.key + '|' + g.tier;
+  if (DRIVE.gMark !== mark) { DRIVE.gMark = mark; (DRIVE.announces || (DRIVE.announces = [])).push({ key: g.key, label: g.label, text: g.text }); if (DRIVE.announces.length > 200) DRIVE.announces.shift(); }
+}
 // Point envoyé au calculateur d'itinéraire : à moins de 1,5 km du domicile, du travail ou d'un lieu enregistré, arrondi à ~1 km
 // (règle rc2 de l'app) ; ailleurs, 3 décimales (≈ 100 m) comme le suivi du trajet, et 4 décimales (≈ 10 m) pour la position
 // d'une voiture EN ROUTE qui demande un recalcul : sinon le tracé repartirait d'une rue voisine et se recalculerait en boucle.
@@ -208,7 +237,7 @@ function driveNavRequest(t, fix, reroute) {
     .catch(() => {
       if (gen !== DRIVE.navGen) return;
       DRIVE.rerouting = false;
-      if (reroute) { DRIVE.navMsg = 'Recalcul impossible pour le moment · nouvel essai dans 20 s'; DRIVE.navMsgAt = Date.now(); }
+      if (reroute) { DRIVE.navMsg = 'Recalcul impossible · itinéraire précédent conservé, nouvel essai dans 20 s'; DRIVE.navMsgAt = Date.now(); }
     });
 }
 // La même réponse alimente le suivi du trajet (LIVE) : km, heure d'arrivée et météo du nouveau parcours, sans second appel.
@@ -310,6 +339,7 @@ function driveTick() {
     if (box) { const h = driveArrivedHtml(DRIVE.arrived); if (box.dataset.h !== h) { box.innerHTML = h; box.dataset.h = h; } box.hidden = false; }
     if (arrive) arrive.hidden = true;
     const la0 = document.querySelector('#liveDrive [data-dv="lightAlert"]'); if (la0) la0.hidden = true;
+    driveGuide(false);
     const root = $('#liveDrive'); if (root) root.classList.add('dv-arrived');
     driveSet('gps', 'Trajet terminé'); return;
   }
@@ -379,6 +409,7 @@ function driveTick() {
   }
   if (alert && DRIVE.beepKey !== alert.key) { DRIVE.beepKey = alert.key; if (driveBeepOn()) driveBeep(); }
   const offNow = DRIVE.off && DRIVE.off.n > 0 && active;
+  driveGuide(active && g.valid && !offNow && !DRIVE.rerouting && !!DRIVE.nav && route === DRIVE.nav, along);
   driveSet('gps', active ? (g.valid ? 'GPS ± ' + Math.round(g.acc) + ' m' : offNow || DRIVE.rerouting ? 'Hors itinéraire' : g.reason) : 'Départ prévu ' + tripWhen(t.dep));
   const nav = document.querySelector('#liveDrive [data-dv="nav"]');
   if (nav) { const show = !!DRIVE.navMsg && (DRIVE.rerouting || Date.now() - DRIVE.navMsgAt < 10e3); nav.hidden = !show; if (show) driveSet('nav', DRIVE.navMsg); }
