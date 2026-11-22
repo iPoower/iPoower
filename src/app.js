@@ -4839,6 +4839,7 @@ document.addEventListener('click', async e => {
   else if (a === 'day') { UI.dayOff = +t.dataset.off; softRender(); }
   else if (a === 'debrief-condition') debriefPick('condition', t.dataset.v);
   else if (a === 'debrief-grip') debriefPick('grip', t.dataset.v);
+  else if (a === 'debrief-field') debriefField(t.dataset.f, +t.dataset.d);
   else if (a === 'debrief-save') debriefSave();
   else if (a === 'debrief-later') debriefLater();
   else if (a === 'debrief-snooze') debriefSnooze();
