@@ -1,6 +1,6 @@
 // Compatibilité avec le build EN PRODUCTION 53315c242870 (run 192, après #307 et #308), celui qui tournera sur le PC et l'iPhone
 // pendant la transition. Copie figée tests/fixtures/race-control.prod-192.html : code de l'app identique à l'octet près (empreintes vérifiées ci-dessous),
-// seule la configuration scellée chiffrée est retirée. Données 100 % fictives.
+// seules la configuration scellée chiffrée et une migration citant un véhicule réel sont retirées. Données 100 % fictives.
 // Prouve, avec le vrai code de l'ancienne version : (1) sa fusion PC ↔ iPhone reçoit le nouveau format sans perte ; (2) elle lit la
 // bonne profondeur (minimum par essieu) et lève son alerte ; (3) ses saisies par essieu, changements de monte et rechargements
 // n'effacent jamais l'enregistrement séparé settings.treadWheels ; (4) elle EFFACE en revanche un champ inconnu placé dans
@@ -20,7 +20,7 @@ const O = 'https://race-control-ipoower.pages.dev', U = O + '/';
 let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ? '' : ' · ' + String(d).slice(0, 400))); if (!ok) fail++; };
 (async () => {
   const problems = checkFixture(html, manifest);
-  check(`copie figée = build de production ${manifest.build} (empreinte : original à l’octet près, seule la configuration scellée remplacée)`, !problems.length && manifest.build === '53315c242870', problems.join(', '));
+  check(`copie figée = build de production ${manifest.build} (empreinte : original à l’octet près, seules la configuration scellée et la migration véhicule neutralisées)`, !problems.length && manifest.build === '53315c242870', problems.join(', '));
   const b = await BR.launch();
   try {
     const c = await b.newContext({ viewport: { width: 414, height: 896 }, timezoneId: 'Europe/Paris', locale: 'fr-FR' });

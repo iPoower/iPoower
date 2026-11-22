@@ -30,7 +30,8 @@ jobs:
           APP_KEY: ${{ secrets.APP_KEY }}
           RC_KEY: ${{ secrets.RC_KEY }}
           GCAL_ICS: ${{ secrets.GCAL_ICS }}
-        run: node tools/check-secrets.js
+        # --mask : journal public, ni nom de fichier ni valeur
+        run: node tools/check-secrets.js --mask
       - name: Séparation des clés (dépôt)
         env:
           APP_KEY: ${{ secrets.APP_KEY }}
