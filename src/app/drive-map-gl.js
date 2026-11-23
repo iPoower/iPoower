@@ -96,7 +96,7 @@ async function driveMapGl(node, route, night) {
     Object.keys(data).forEach(k => { if (!map.getSource('dv-' + k)) map.addSource('dv-' + k, { type: 'geojson', data: data[k] }); });
     const line = (id, src, color, width, opacity = 1) => map.addLayer({ id, type: 'line', source: src, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': color, 'line-width': width, 'line-opacity': opacity } }, 'dv-b3d');
     line('dv-route-case', 'dv-route', theme ? '#003a80' : '#0040a8', 17); line('dv-route', 'dv-route', theme ? '#3fa9ff' : '#0a84ff', 12); line('dv-done', 'dv-done', '#8e8e93', 10, .8);
-    map.addLayer({ id: 'dv-lights', type: 'symbol', source: 'dv-lights', layout: { 'icon-image': 'dv-light', 'icon-anchor': 'bottom', 'icon-size': 1, 'icon-pitch-alignment': 'viewport', 'icon-allow-overlap': true } });
+    map.addLayer({ id: 'dv-lights', type: 'symbol', source: 'dv-lights', layout: { 'icon-image': 'dv-light', 'icon-anchor': 'bottom', 'icon-size': 1.25, 'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport', 'icon-allow-overlap': true } });
   }
   map.on('style.load', layers);
   // Chargement : seul un style illisible ou un délai dépassé font revenir à la carte à plat ; une tuile en erreur est ignorée.

@@ -18,8 +18,12 @@ async function run(b, dev) {
     return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ routes: [{ distance: d, duration: d / 20,
       geometry: { coordinates: coords }, legs: [{ annotation: { duration: coords.slice(1).map(() => d / 20 / 40) } }] }] }) });
   });
-  let lightsAt = [];
-  await p.route('https://overpass-api.de/**', r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ elements: lightsAt.map(([lat, lon], i) => ({ type: 'node', id: i + 1, lat, lon })) }) }));
+  let lightsAt = [], lightsMode = 'ok', lightsCalls = 0;
+  await p.route('https://overpass-api.de/**', r => {
+    lightsCalls++;
+    const body = lightsMode === 'incomplete' ? { elements: [], remark: 'runtime error: Query timed out' } : { elements: lightsAt.map(([lat, lon], i) => ({ type: 'node', id: i + 1, lat, lon })) };
+    return r.fulfill({ status: lightsMode === '503' ? 503 : 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
+  });
   await s.settle(4);
   const ends = await p.evaluate(() => { S.work.days = []; S.gpsAuto = 1; saveSettings(); const [o, d] = S.locs;
     appProgramManualTrip({ originId: o.id, originPoint: null, destinationId: d.id, destinationPoint: null, dep: liveNow().slice(0, 16), carId: S.cars[0].id });
@@ -65,6 +69,32 @@ async function run(b, dev) {
   await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(1); await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(6);
   const o = await look();
   check(`${dev} · Réglages → « Photo aérienne IGN » : choix conservé, BD ORTHO demandée, assombrie la nuit`, pref.v === 'ortho' && pref.pressed === 'true' && tiles.includes('ORTHOIMAGERY.ORTHOPHOTOS') && /brightness/.test(o.orthoFilter || '') && o.night, JSON.stringify({ pref, o, tiles: [...new Set(tiles)] }));
+  await p.clock.setSystemTime(new Date('2026-11-16T17:00:00+01:00')); await geo(f);
+  // Une erreur HTTP ou une réponse Overpass tronquée laisse le résultat inconnu, puis le même tracé se rétablit tout seul.
+  for (const mode of ['503', 'incomplete']) {
+    await p.locator('#liveDrive [data-act=drive-close]').click(); await s.settle(1);
+    await p.evaluate(() => DRIVE_LIGHTS.clear()); lightsMode = mode;
+    const before = lightsCalls;
+    await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(5);
+    const bad = await p.evaluate(() => ({ unknown: DRIVE.lights === null, cached: DRIVE_LIGHTS.size, attempts: DRIVE.lightsAttempts, retryIn: DRIVE.lightsRetryAt - Date.now(), visible: document.getElementById('liveDrive').innerText }));
+    check(`${dev} · feux ${mode} : résultat inconnu, sans faux « aucun feu », état rangé dans Détails`, bad.unknown && bad.cached === 0 && bad.attempts === 1 && !/Feux indisponibles|Aucun feu sur le parcours/.test(bad.visible), JSON.stringify(bad));
+    await p.clock.runFor(Math.max(0, bad.retryIn - 1000));
+    check(`${dev} · feux ${mode} : aucun nouvel appel avant le délai de reprise`, lightsCalls === before + 1, String(lightsCalls - before));
+    lightsMode = 'ok'; await p.clock.runFor(2500); await s.settle(4);
+    const recovered = await p.evaluate(() => ({ n: DRIVE.lights && DRIVE.lights.length, markers: DRIVE.mv && DRIVE.mv.counts().lights, attempts: DRIVE.lightsAttempts, err: DRIVE.lightsErr }));
+    check(`${dev} · feux ${mode} : reprise automatique, feux dessinés sur la carte (${recovered.markers})`, recovered.n > 0 && recovered.markers === recovered.n && recovered.attempts === 2 && !recovered.err && lightsCalls === before + 2, JSON.stringify(recovered));
+  }
+  // Une panne prolongée est bornée à trois essais et une fermeture annule la reprise.
+  await p.locator('#liveDrive [data-act=drive-close]').click(); await s.settle(1);
+  await p.evaluate(() => DRIVE_LIGHTS.clear()); lightsMode = '503';
+  const capBefore = lightsCalls;
+  await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(5);
+  await p.clock.runFor(180000); await s.settle(4);
+  const capped = await p.evaluate(() => ({ attempts: DRIVE.lightsAttempts, unknown: DRIVE.lights === null }));
+  check(`${dev} · feux en panne prolongée : trois essais au plus, résultat toujours inconnu`, lightsCalls === capBefore + 3 && capped.attempts === 3 && capped.unknown, JSON.stringify({ capped, calls: lightsCalls - capBefore }));
+  await p.locator('#liveDrive [data-act=drive-close]').click();
+  const closedCalls = lightsCalls; await p.clock.runFor(120000);
+  check(`${dev} · aucun appel des feux après la fermeture du GPS`, lightsCalls === closedCalls);
   await s.c.close();
 }
 (async () => {

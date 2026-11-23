@@ -26,7 +26,11 @@ async function run(b, dev) {
   const a = await p.evaluate(() => { const el = document.getElementById('liveDrive'), r = el.getBoundingClientRect(), top = document.elementFromPoint(innerWidth / 2, innerHeight - 30);
     return { hidden: el.hidden, w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight, covers: !!top && el.contains(top), text: el.innerText, focus: document.activeElement && document.activeElement.dataset.act }; });
   check(`${dev} · « EN DIRECT » ouvert depuis le Trajet : plein écran (${a.vw}×${a.vh}), rien de l’app visible dessous, focus sur « ✕ »`, !a.hidden && a.w === a.vw && a.h === a.vh && a.covers && a.focus === 'drive-close', JSON.stringify(a).slice(0, 400));
-  check(`${dev} · cockpit : PARCOURUS, RESTANTS, vitesse (km/h), ARRIVÉE, SECTEUR, feux et prochain danger`, ['PARCOURUS', 'RESTANTS', 'km/h', 'ARRIVÉE', 'SECTEUR'].every(k => a.text.includes(k)), a.text.slice(0, 300));
+  check(`${dev} · conduite : ARRIVÉE, RESTANTS et vitesse visibles, Détails repliés`, ['RESTANTS', 'km/h', 'ARRIVÉE', 'Détails'].every(k => a.text.includes(k)) && !a.text.includes('PARCOURUS') && !a.text.includes('Feux indisponibles'), a.text.slice(0, 300));
+  await p.locator('#liveDrive .dv-details summary').click();
+  const details = await p.locator('#liveDrive').innerText();
+  check(`${dev} · Détails conserve les km parcourus, le secteur et les sources`, ['PARCOURUS', 'SECTEUR', 'la signalisation prime'].every(k => details.includes(k)), details.slice(0, 300));
+  await p.locator('#liveDrive .dv-details summary').click();
   check(`${dev} · fond de carte Plan IGN demandé à la Géoplateforme`, ign.length > 0 && ign.every(u => /LAYER=GEOGRAPHICALGRIDSYSTEMS\.PLANIGNV2/.test(u)), String(ign.length));
   // Trajet démarré, GPS qui avance sur l'itinéraire (30 % puis 60 %).
   await p.evaluate(() => { const t = APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip; liveStart(t.key); });
