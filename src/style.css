@@ -1777,6 +1777,7 @@ html.dv-on, html.dv-on body { overflow: hidden; }
 .dv-panel { position: relative; flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px calc(env(safe-area-inset-bottom, 0px) + 10px); border-top: 2px solid var(--i20-red); background: var(--bg); z-index: 9010; }
 .dv-credit { position: absolute; right: 0; bottom: 100%; padding: 1px 4px; background: rgba(13, 15, 19, .85); color: #e9eff6; font-size: 11px; }
 .dv-credit:empty { display: none; }
+.dv-panel { padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
 .dv-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
 .dv-metric small, .dv-figs small { display: block; font: 600 11px var(--f-mono); color: var(--fg2); letter-spacing: .04em; }
 .dv-metric b { font: 700 28px/1.2 var(--f-mono); white-space: nowrap; }

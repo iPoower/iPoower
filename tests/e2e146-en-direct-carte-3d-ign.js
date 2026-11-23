@@ -28,7 +28,12 @@ async function setup(s, dev, osrmSteps) {
     return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ routes: [{ distance: d, duration: d / 20,
       geometry: { coordinates: coords }, legs: [{ steps, annotation: { duration: coords.slice(1).map(() => d / 20 / 40) } }] }] }) });
   });
-  await p.route('https://overpass-api.de/**', r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"elements":[]}' }));
+  await p.route('https://overpass-api.de/**', r => {
+    const query = new URLSearchParams(r.request().postData()).get('data'), segment = /around:30,([^)]+)/.exec(query || '');
+    const values = segment ? segment[1].split(',').map(Number) : [], i = Math.floor(values.length / 4) * 2;
+    const elements = values.length >= 4 ? [{ type: 'node', id: 1, lat: values[i], lon: values[i + 1] }] : [];
+    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ elements }) });
+  });
   await p.emulateMedia({ reducedMotion: 'reduce' });   // longues minutes simulées : recadrage direct (sinon rendu image par image)
   await s.settle(4);
   const ends = await p.evaluate(() => { S.work.days = []; S.gpsAuto = 1; saveSettings(); const [o, d] = S.locs;
@@ -55,6 +60,14 @@ async function run(b, dev) {
   const a = await state(p);
   check(`${dev} · carte 3D IGN : style vectoriel IGN demandé, bâtiments extrudés à la « hauteur » BD TOPO, couches inutiles retirées, plein cadre`,
     a.kind === '3d' && x.styles.length >= 1 && a.b3d && a.b3d.src === 'bati_surf' && /hauteur/.test(a.b3d.h) && a.parcelle === false && a.flat === false && !!a.canvas && a.canvas[0] === a.box[0] && a.canvas[1] === a.box[1] && /IGN Géoplateforme/.test(a.foot), JSON.stringify(a));
+  const lights = await p.evaluate(() => {
+    const m = DRIVE.mv && DRIVE.mv.kind === '3d' && DRIVE.mv.map;
+    const src = m && m.getStyle().sources['dv-lights'], features = src && src.data && src.data.features || [];
+    return { expected: (DRIVE.lights || []).map(l => [l.lon, l.lat]), actual: features.map(f => f.geometry.coordinates),
+      size: m && m.getLayoutProperty('dv-lights', 'icon-size'), align: m && m.getLayoutProperty('dv-lights', 'icon-pitch-alignment'),
+      credit: (document.querySelector('#liveDrive [data-dv="credit"]') || {}).innerText || '' };
+  });
+  check(`${dev} · feux dans la couche de la carte 3D aux coordonnées reçues, icônes droites et crédits visibles`, lights.actual.length > 0 && JSON.stringify(lights.actual) === JSON.stringify(lights.expected) && lights.size >= 1.25 && lights.align === 'viewport' && /IGN.*OpenStreetMap/.test(lights.credit), JSON.stringify(lights));
   await p.evaluate(() => { const t = APP_CONTEXT.snapshot.activeTrip || APP_CONTEXT.snapshot.nextTrip; liveStart(t.key); });
   const step = 1500 / x.total, geo = async (f, n = 3) => { await p.evaluate(g => { window.__geo = { lat: g[0], lon: g[1], acc: 8 }; window.__geoPush(); }, x.line(f)); await s.settle(n); };
   let f = 0.2; for (let i = 0; i < 3; i++) { if (i) await p.clock.runFor(60e3); await geo(f); f += step; }
