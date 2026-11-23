@@ -1828,7 +1828,7 @@ html.dv-on, html.dv-on body { overflow: hidden; }
 .dv-alt { margin: 0; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; background: var(--panel); font-size: 13px; font-weight: 600; }
 .dv-alt[hidden] { display: none; }
 .dv:has(.dv-details:not([open])) .dv-alt[data-dv-lv="0"] { display: none; }
-.dv-alti small { display: block; font: 600 10px var(--f-mono); color: var(--fg2); } .dv-alti b { font: 700 16px var(--f-mono); white-space: nowrap; }
+.dv-alti small { display: block; font: 600 11px var(--f-mono); color: var(--fg2); } .dv-alti b { font: 700 16px var(--f-mono); white-space: nowrap; }
 .dv-alt[data-dv-lv="1"] { background: var(--cau-soft); color: var(--cau-t); } .dv-alt[data-dv-lv="2"] { background: var(--risk-soft); color: var(--risk-t); } .dv-alt[data-dv-lv="3"] { background: var(--nogo-soft); color: var(--nogo-t); } .dv-alt[data-dv-lv="x"] { border: 1px dashed var(--line2); }
 .dv.dv-arrived .dv-alt { display: none; }
 .dv-gnote { margin: 0; align-self: flex-start; padding: 3px 8px; border-radius: 8px; background: rgba(28, 28, 30, .8); color: #d1d1d6; font-size: 11px; font-weight: 600; }
