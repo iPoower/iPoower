@@ -55,21 +55,6 @@ async function run(b, dev) {
   f = 0.5 - 250 / total; await p.clock.runFor(80e3); await geo(f);
   const d = await look();
   check(`${dev} · alerte d’approche « Feu dans 250 m » : icône neutre, aucun emoji`, /^Feu dans 2[45]0 m$/.test(d.alert) && !d.loud.length && !d.emoji, JSON.stringify({ alert: d.alert, loud: d.loud }));
-  // Nuit noire pendant le trajet : même carte, Plan IGN sombre.
-  await p.evaluate(() => { window.__map0 = DRIVE.map; });
-  await p.clock.setSystemTime(new Date('2026-11-16T17:35:00+01:00')); await s.settle(4);
-  const n = await look(), same = await p.evaluate(() => !!DRIVE.map && DRIVE.map === window.__map0);
-  check(`${dev} · 17:35 (il fait noir) : Plan IGN sombre en direct, sur la même carte`, n.night && /invert/.test(n.planFilter || '') && same, JSON.stringify({ n, same }));
-  // Photo aérienne choisie dans les Réglages : conservée, demandée à la Géoplateforme, assombrie la nuit.
-  await p.locator('#liveDrive [data-act=drive-close]').click(); await s.settle(2);
-  await p.evaluate(() => { const d = document.getElementById('settings'); if (d) d.open = true; renderSettings(true); }); await s.settle(1);
-  const opt = p.locator('#settings [data-act=drive-base][data-v=ortho]');
-  if (await opt.count()) { await opt.click(); await s.settle(2); }
-  const pref = await p.evaluate(() => { const x = document.querySelector('#settings [data-act=drive-base][data-v=ortho]'); return { v: lsGet('twrc.drive.base'), pressed: x ? x.getAttribute('aria-pressed') : 'réglage absent' }; });
-  await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(1); await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(6);
-  const o = await look();
-  check(`${dev} · Réglages → « Photo aérienne IGN » : choix conservé, BD ORTHO demandée, assombrie la nuit`, pref.v === 'ortho' && pref.pressed === 'true' && tiles.includes('ORTHOIMAGERY.ORTHOPHOTOS') && /brightness/.test(o.orthoFilter || '') && o.night, JSON.stringify({ pref, o, tiles: [...new Set(tiles)] }));
-  await p.clock.setSystemTime(new Date('2026-11-16T17:00:00+01:00')); await geo(f);
   // Une erreur HTTP ou une réponse Overpass tronquée laisse le résultat inconnu, puis le même tracé se rétablit tout seul.
   for (const mode of ['503', 'incomplete']) {
     await p.locator('#liveDrive [data-act=drive-close]').click(); await s.settle(1);
@@ -95,6 +80,22 @@ async function run(b, dev) {
   await p.locator('#liveDrive [data-act=drive-close]').click();
   const closedCalls = lightsCalls; await p.clock.runFor(120000);
   check(`${dev} · aucun appel des feux après la fermeture du GPS`, lightsCalls === closedCalls);
+  lightsMode = 'ok'; await geo(f);
+  await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(6);
+  // Nuit noire pendant le trajet : même carte, Plan IGN sombre.
+  await p.evaluate(() => { window.__map0 = DRIVE.map; });
+  await p.clock.setSystemTime(new Date('2026-11-16T17:35:00+01:00')); await s.settle(4);
+  const n = await look(), same = await p.evaluate(() => !!DRIVE.map && DRIVE.map === window.__map0);
+  check(`${dev} · 17:35 (il fait noir) : Plan IGN sombre en direct, sur la même carte`, n.night && /invert/.test(n.planFilter || '') && same, JSON.stringify({ n, same }));
+  // Photo aérienne choisie dans les Réglages : conservée, demandée à la Géoplateforme, assombrie la nuit.
+  await p.locator('#liveDrive [data-act=drive-close]').click(); await s.settle(2);
+  await p.evaluate(() => { const d = document.getElementById('settings'); if (d) d.open = true; renderSettings(true); }); await s.settle(1);
+  const opt = p.locator('#settings [data-act=drive-base][data-v=ortho]');
+  if (await opt.count()) { await opt.click(); await s.settle(2); }
+  const pref = await p.evaluate(() => { const x = document.querySelector('#settings [data-act=drive-base][data-v=ortho]'); return { v: lsGet('twrc.drive.base'), pressed: x ? x.getAttribute('aria-pressed') : 'réglage absent' }; });
+  await p.locator('#viewSeg [data-v=gps]').click(); await s.settle(1); await p.locator('#secGps [data-act=drive-open]').click(); await s.settle(6);
+  const o = await look();
+  check(`${dev} · Réglages → « Photo aérienne IGN » : choix conservé, BD ORTHO demandée, assombrie la nuit`, pref.v === 'ortho' && pref.pressed === 'true' && tiles.includes('ORTHOIMAGERY.ORTHOPHOTOS') && /brightness/.test(o.orthoFilter || '') && o.night, JSON.stringify({ pref, o, tiles: [...new Set(tiles)] }));
   await s.c.close();
 }
 (async () => {

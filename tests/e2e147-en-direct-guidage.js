@@ -65,12 +65,14 @@ async function run(b, dev) {
   check(`${dev} · longues consignes : carte ≥ 75 % de l’écran, bandeau principal ≤ 120 px, aucun débordement`, compact.map >= compact.h * .75 && compact.guide <= 120 && !compact.overflow, JSON.stringify(compact));
   check(`${dev} · route et position dégagées sous les consignes`, compact.carOnMap && (dev !== 'iphone' || compact.clear >= compact.h * .4), JSON.stringify(compact));
   if (dev === 'iphone') {
+    await p.screenshot({ path: process.env.SP + '/place-gps-portrait-' + BR.NAME + '.png' });
     await p.setViewportSize({ width: 320, height: 568 }); await s.settle(3);
     const small = await layout();
     check('petit écran 320×568 : carte ≥ 75 %, position visible et aucun débordement', small.map >= small.h * .75 && small.carOnMap && !small.overflow, JSON.stringify(small));
     await p.setViewportSize({ width: 896, height: 414 }); await s.settle(3);
     const landscape = await layout();
     check('iPhone paysage : carte sur toute la hauteur, position visible et aucun débordement', landscape.map >= landscape.h * .95 && landscape.carOnMap && !landscape.overflow, JSON.stringify(landscape));
+    await p.screenshot({ path: process.env.SP + '/place-gps-paysage-' + BR.NAME + '.png' });
     await p.setViewportSize({ width: 414, height: 896 }); await s.settle(3);
   }
   await p.evaluate(() => { DRIVE.nav.steps[1].name = 'Avenue fictive B'; DRIVE.nav.steps[2].name = 'Rue fictive C'; driveTick(); });

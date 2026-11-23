@@ -418,9 +418,9 @@ async function driveLightsFetch(nav) {
   }
   if (DRIVE.lights || DRIVE.lightsCtl || DRIVE.lightsAttempts >= 3 || Date.now() < DRIVE.lightsRetryAt) return;
   if (DRIVE_LIGHTS.has(nav.signature)) { DRIVE.lights = DRIVE_LIGHTS.get(nav.signature); driveDrawLights(); return; }
+  if (offlineNow()) { DRIVE.lightsErr = true; return; }
   const q = DriveNav.lightsQuery(nav, (S.locs || []).filter(locHasCoords));
   if (!q) { DRIVE.lights = []; return; }
-  if (offlineNow()) { DRIVE.lightsErr = true; return; }
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 20000);
   DRIVE.lightsCtl = ctl; DRIVE.lightsAttempts++; DRIVE.lightsErr = false;
   try {
