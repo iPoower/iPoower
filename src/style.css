@@ -1760,6 +1760,10 @@ html.dv-on, html.dv-on body { overflow: hidden; }
 .dv { position: fixed; inset: 0; z-index: 9000; display: flex; flex-direction: column; background: var(--bg); color: var(--fg); height: 100vh; height: 100dvh; }
 .dv[hidden] { display: none; }
 .dv-map { position: relative; flex: 1 1 auto; min-height: 0; background: #121821; }
+.dv-map .leaflet-control-attribution { max-width: calc(100vw - 104px); font-size: 11px; }
+@media (max-height: 500px) and (orientation: landscape) {
+  .dv-map .leaflet-bottom.leaflet-right { right: auto; left: max(0px, env(safe-area-inset-left, 0px)); }
+}
 /* MapLibre (carte 3D) : les seules règles utiles de sa feuille de style, recopiées ici (la feuille n'est pas embarquée). */
 .maplibregl-map { position: relative; overflow: hidden; -webkit-tap-highlight-color: transparent; }
 .maplibregl-canvas { position: absolute; left: 0; top: 0; }

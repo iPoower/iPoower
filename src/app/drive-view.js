@@ -214,7 +214,8 @@ function driveGlProbe(mv, route) {
 // Repli à plat : Plan IGN (clair le jour, sombre la nuit par une classe) ou photo aérienne, voiture, tracé, feux neutres.
 async function driveMapFlat(node, route) {
   await loadLeaflet();
-  const map = L.map(node, { zoomControl: false, attributionControl: true, zoomAnimation: false, keyboard: false });
+  const map = L.map(node, { zoomControl: false, attributionControl: false, zoomAnimation: false, keyboard: false });
+  L.control.attribution({ prefix: false }).addTo(map);
   driveBaseLayer(map);
   const lights = L.layerGroup().addTo(map), counts = { lights: 0 };
   let line = null, done = null;
@@ -248,12 +249,12 @@ function driveBaseLayer(map) {
   if (map._dvBase) map.removeLayer(map._dvBase);
   let loaded = false, errors = 0;
   const layer = kind === 'ortho'
-    ? L.tileLayer(IGN_ORTHO, { maxZoom: 19, maxNativeZoom: 19, className: 'dv-ortho', attribution: '© IGN Géoplateforme · BD ORTHO · Itinéraire © OSRM · Feux © OpenStreetMap' })
-    : L.tileLayer(IGN_PLAN, { maxZoom: 19, maxNativeZoom: 19, className: 'dv-plan', attribution: '© IGN Géoplateforme · Itinéraire © OSRM · Feux © OpenStreetMap' });
+    ? L.tileLayer(IGN_ORTHO, { maxZoom: 19, maxNativeZoom: 19, className: 'dv-ortho', attribution: '© IGN · © OpenStreetMap · OSRM' })
+    : L.tileLayer(IGN_PLAN, { maxZoom: 19, maxNativeZoom: 19, className: 'dv-plan', attribution: '© IGN · © OpenStreetMap · OSRM' });
   layer.on('tileload', () => { loaded = true; });
   layer.on('tileerror', () => {
     if (++errors >= 3 && !loaded && DRIVE.map === map && map._dvBase === layer) {
-      map.removeLayer(layer); map._dvBase = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, className: 'dv-plan', attribution: '© OpenStreetMap · Itinéraire © OSRM' }).addTo(map);
+      map.removeLayer(layer); map._dvBase = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, className: 'dv-plan', attribution: '© OpenStreetMap · OSRM' }).addTo(map);
     }
   });
   map._dvBase = layer.addTo(map); map._dvKind = kind;
