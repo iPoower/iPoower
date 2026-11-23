@@ -1654,6 +1654,10 @@ details.mod > summary h2 { color: var(--i20-blue); letter-spacing: .12em; }
 .fr-card { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); }
 .fr-card[data-state="next"], .fr-card[data-state="live"] { border: 2px solid var(--i20-blue); background: var(--panel2); }
 .fr-card[data-state="done"], .fr-card[data-state="cancel"], .fr-card[data-state="past"] { opacity: .78; }
+.fr-card[data-arrival="pending"] { opacity: 1; }
+.fr-arrival { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.fr-arrival .btn { min-height: 44px; white-space: normal; }
+.fr-arrival small { color: var(--fg2); font-size: 12px; }
 .fr-head { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; min-height: 48px; padding: 0; border: 0; background: none; color: inherit; text-align: left; font: inherit; cursor: pointer; }
 .fr-n { display: flex; align-items: center; justify-content: center; height: 44px; border-radius: 8px; border: 1px solid var(--line2); background: var(--panel2); font: 800 16px var(--f-disp); letter-spacing: .06em; }
 .fr-card[data-state="next"] .fr-n, .fr-card[data-state="live"] .fr-n { background: var(--i20-blue); border-color: var(--i20-blue); color: var(--on-i20-blue); }

@@ -455,6 +455,10 @@
     "suite": "e2e137-trajet-feuille-creneau-briefing.js",
     "result": "spéciale choisie affichée dans le mur des stands, puis retour au prochain trajet"
   },
+  "fr-arrived": {
+    "suite": "e2e136-trajet-bien-arrive.js",
+    "result": "dernier trajet parti du jour confirmé même après 3 h, même clôture que le GPS, heure de confirmation et lieu conservés au rechargement, aucun doublon"
+  },
   "slot-pick": {
     "suite": "e2e137-trajet-feuille-creneau-briefing.js",
     "result": "heure de départ sélectionnée, détail du créneau affiché, focus conservé"

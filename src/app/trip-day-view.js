@@ -1,6 +1,6 @@
 // Onglet Trajet · lot 1 (maquettes validées le 20/11/2026) : feuille de route du jour, créneau de départ, briefing copilote.
 // Lecture des trajets déjà construits (BRF_SHOWN, BRF_TRIPS, trajets du jour reconstruits) : aucune autre source de vérité.
-// Seule écriture : « Décaler le départ » d'un trajet SAISI dans l'onglet, par la même fonction que « Mettre à jour le trajet ».
+// Écritures : arrivée par closeTrip (même clôture que le GPS) et départ décalé d'un trajet SAISI par la fonction existante.
 // Les trajets domicile-travail et agenda restent en simulation : leur horaire vient des réglages ou de l'agenda.
 const FR = { open: null, focus: null };
 const SLOT = { key: null, sel: null, undo: null };
@@ -59,8 +59,25 @@ function tripDayList() {
     return { t, n: i + 1, state, at: d && Number.isFinite(d.at) ? d.at : null, risk: tripLv(t), size: tripKmMin(t) };
   });
 }
+// Confirmation volontaire, même après la fenêtre de 3 h du bandeau : seulement le trajet actif ou le dernier parti du jour.
+// Ne jamais confirmer un ancien aller à la place d'un retour, ni le trajet d'un autre conducteur.
+function tripDayArrival(list = tripDayList()) {
+  if (DEMO.on) return null;
+  const now = liveNow();
+  const active = LIVE.key && LIVE.phase === 'active';
+  const own = list.filter(x => x.t.src !== 'loan' && (x.t.dep <= now || active && x.t.key === LIVE.key));
+  const x = active ? own.find(x => x.t.key === LIVE.key) : own[own.length - 1];
+  return x && ['past', 'live'].includes(x.state) ? { t: x.t, live: !!active } : null;
+}
+function tripDayConfirmArrival(key) {
+  const x = tripDayArrival();
+  if (!x || x.t.key !== key) return false;
+  if (x.live) liveArrive('confirmé'); else closeTrip(x.t, 'confirmé');
+  return !!(USER_STORE.state.done[key] || LIVE.done[key]);
+}
 function tripDayHtml() {
   const list = tripDayList(); if (list.length < 2) return '';
+  const arrival = tripDayArrival(list);
   if (FR.open && !list.some(x => x.t.key === FR.open)) FR.open = null;
   const km = list.reduce((s, x) => s + (Number.isFinite(x.size.km) ? x.size.km : 0), 0), min = list.reduce((s, x) => s + (Number.isFinite(x.size.min) ? x.size.min : 0), 0);
   const est = list.some(x => x.size.est || !Number.isFinite(x.size.km));
@@ -82,20 +99,22 @@ function tripDayHtml() {
     const route = (from && from.name || t.from || 'Départ') + ' → ' + (to && to.name || t.to || 'Destination');
     const meta = [Number.isFinite(x.size.km) ? (x.size.est ? '~' : '') + f0(x.size.km) + ' km' : '', Number.isFinite(x.size.min) ? '~' + tripDur(x.size.min) : '', src(t)].filter(Boolean).join(' · ');
     const future = ['next', 'later'].includes(x.state);
+    const confirm = arrival && arrival.t.key === t.key;
+    const action = confirm ? '<div class="fr-arrival"><button type="button" class="btn pri" data-act="fr-arrived" data-key="' + esc(t.key) + '">✓ Confirmer mon arrivée</button><small>L’heure de confirmation sera enregistrée.</small></div>' : '';
     const detail = open ? '<div class="fr-more"><span>' + esc(x.risk ? (x.risk.why || 'Aucune cause identifiée sur ce trajet') : 'Verdict indisponible : météo du parcours pas encore reçue.') + '</span>' +
       '<small>' + esc((t.arr ? 'arrivée prévue ' + tripHm(t.arr) : '') + (t.name ? (t.arr ? ' · ' : '') + t.name : '')) + '</small>' +
       (future ? '<button type="button" class="fr-go" data-act="fr-focus" data-key="' + esc(t.key) + '"><span>Voir dans le mur des stands</span><span aria-hidden="true">→</span></button>' : '') + '</div>' : '';
-    rows.push('<div class="fr-card" data-state="' + x.state + '" data-src="' + esc(t.src || '') + '"><button type="button" class="fr-head" data-act="fr-open" data-key="' + esc(t.key) + '" aria-expanded="' + open + '">' +
+    rows.push('<div class="fr-card" data-state="' + x.state + '" data-arrival="' + (confirm ? 'pending' : '') + '" data-src="' + esc(t.src || '') + '"><button type="button" class="fr-head" data-act="fr-open" data-key="' + esc(t.key) + '" aria-expanded="' + open + '">' +
       '<span class="fr-n">ES ' + x.n + '</span><span class="fr-r"><b>' + esc(route) + '</b><small>' + esc(meta) + '</small></span>' +
       '<span class="fr-t"><b>' + esc(tripHm(t.dep)) + '</b><small data-lv="' + (x.risk ? x.risk.lv : 'x') + '">' + (x.risk ? TRIP_LV_NAMES[x.risk.lv] : '—') + '</small></span></button>' +
-      '<span class="fr-state">' + stateTxt(x) + '</span>' + (typeof loanAdviceHtml === 'function' ? loanAdviceHtml(t) : '') + detail + '</div>');
+      '<span class="fr-state">' + stateTxt(x) + '</span>' + action + (typeof loanAdviceHtml === 'function' ? loanAdviceHtml(t) : '') + detail + '</div>');
   });
   const today = liveNow().slice(0, 10);
   return '<section class="fr-sheet" aria-label="Feuille de route du jour"><div class="fr-plate"><div class="fr-band"><span>FEUILLE DE ROUTE</span><span>' + esc(fmtDay(today).toUpperCase()) + '</span></div>' +
     '<div class="fr-sum"><b>' + list.length + ' SPÉCIALES' + (new Set(list.map(x => x.t.carId || '')).size > 1 && list.some(x => x.t.src === 'loan') ? ' · ' + new Set(list.map(x => x.t.carId)).size + ' VOITURES' : km > 0 ? ' · ' + (est ? '~' : '') + f0(km) + ' KM' : '') + '</b>' +
     '<span>' + [min > 0 ? '~' + tripDur(min) + ' de route' : '', ended ? ended + ' passée' + (ended > 1 ? 's' : '') : '', ahead.length ? ahead.length + ' à venir' : ''].filter(Boolean).join(' · ') + '</span>' +
     (worst && worst.risk.lv >= 1 ? '<span class="fr-worst" data-lv="' + worst.risk.lv + '">ÉTAPE LA PLUS DÉLICATE : ES ' + worst.n + ' · ' + TRIP_LV_NAMES[worst.risk.lv] + '</span>' : '') +
-    '</div></div><div class="fr-list">' + rows.join('') + '</div><p class="sub">Lecture seule : la feuille ne crée ni ne modifie aucun trajet.</p></section>';
+    '</div></div><div class="fr-list">' + rows.join('') + '</div><p class="sub">La feuille reprend tes trajets prévus. Confirme ton arrivée si elle n’a pas été détectée.</p></section>';
 }
 // Trajet affiché dans le mur des stands quand une spéciale à venir est choisie dans la feuille (état de vue, rien n'est écrit).
 function tripDayFocusTrip() {
