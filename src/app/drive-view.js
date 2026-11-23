@@ -39,7 +39,7 @@ function driveShell() {
     '<span class="dv-gmain"><b data-dv="gdist"></b><span data-dv="gtext"></span></span></div><div class="dv-lanes" data-dv="glanes" aria-label="Voies conseillées" hidden></div>' +
     '<p class="dv-then" data-dv="gthenbox" hidden><span>Puis</span><span class="dv-tarrow" data-dv="gtarrow" aria-hidden="true"></span><span data-dv="gthen"></span></p>' +
     '<p class="dv-nav" data-dv="nav" role="status" hidden></p></div>' +
-    '<div class="dv-panel"><div class="dv-speed" aria-label="Vitesse GPS"><b data-dv="speed">—</b><small>km/h</small></div>' +
+    '<div class="dv-panel"><span class="dv-credit" data-dv="credit"></span><div class="dv-speed" aria-label="Vitesse GPS"><b data-dv="speed">—</b><small>km/h</small></div>' +
     '<button type="button" class="dv-recenter" data-act="drive-follow" hidden>Recentrer</button>' +
     '<p class="dv-lightalert" data-dv="lightAlert" role="status" hidden><span class="dv-li">' + DRIVE_LIGHT_SVG + '</span><span data-dv="lightAlertText"></span></p>' +
     '<div class="dv-summary"><div class="dv-metric"><small data-dv="etaLabel">ARRIVÉE</small><b data-dv="eta">—</b><span class="dv-freeunit">km</span></div>' +
@@ -145,7 +145,7 @@ function driveFreeTick() {
   const night = fresh ? DriveNav.isNight(fresh.lat, fresh.lon, Date.now()) : true, root = $('#liveDrive');
   if (root) root.classList.toggle('dv-night', night);
   if (!DRIVE.mv) driveMap(null, night); else DRIVE.mv.setTheme(night);
-  driveSet('done', driveKm(free.km)); driveSet('left', '—'); driveSet('eta', '—'); driveSet('sector', '—');
+  driveSet('done', driveKm(free.km)); driveSet('left', '—'); driveSet('sector', '—');
   driveSet('etaLabel', 'PARCOURUS'); driveSet('eta', driveKm(free.km));
   driveSet('speed', fresh && Number.isFinite(free.speed) ? f0(free.speed) : '—');
   driveSet('lightsLabel', 'Sans destination : ni feux ni guidage'); driveSet('next', 'Libre'); driveSet('nextWhat', 'Aucun itinéraire : seulement ta position, ta vitesse et les km');
@@ -194,6 +194,7 @@ async function driveMap(route, night) {
   if (!mv) return;
   if (!DRIVE.open || DRIVE.key !== key || !node.isConnected) { mv.remove(); return; }
   DRIVE.mv = mv; DRIVE.map = mv.map;
+  driveSet('credit', mv.kind === '3d' ? '© IGN · © OpenStreetMap · OSRM' : '');
   if (mv.kind === '3d') driveGlProbe(mv, route);
   mv.on('drag', () => { DRIVE.follow = false; const b2 = root.querySelector('.dv-recenter'); if (b2) b2.hidden = false; });
   if (DRIVE.route) mv.setRoute(DRIVE.route, true);
