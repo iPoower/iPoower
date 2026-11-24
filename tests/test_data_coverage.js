@@ -37,8 +37,8 @@ const POLICY = {
   'twrc.plain.v': ['secret', 'version du préréglage'],
   'twrc.view': ['preference', ''], 'twrc.nocode': ['preference', ''], 'twrc.tripmap': ['preference', ''], 'twrc.presetv': ['preference', ''],
   'twrc.outfit.occasion': ['preference', ''], 'twrc.weather.limit.v1': ['preference', ''], 'twrc.lock.signal': ['preference', ''],
-  'twrc.drive.base': ['user', 'fond de carte du mode EN DIRECT (plan ou photo aérienne) : chiffré, exporté et synchronisé comme les autres réglages'],
-  'twrc.drive.beep': ['user', 'choix du bip d’approche des feux (mode EN DIRECT) : chiffré, exporté et synchronisé comme les autres réglages'],
+  'twrc.drive.base': ['device', 'fond de carte du mode EN DIRECT (plan ou photo aérienne), choix propre à chaque appareil : chiffré et exporté, jamais synchronisé (24/11/2026 : synchronisé sans règle de fusion, il bloquait toute la synchro Drive dès qu’il différait)'],
+  'twrc.drive.beep': ['device', 'bip d’approche des feux (mode EN DIRECT), choix propre à chaque appareil (son du téléphone en voiture) : chiffré et exporté, jamais synchronisé (même incident du 24/11/2026)'],
   'twrc.vault.v2': ['meta', ''], 'twrc.session.v2': ['meta', ''], 'twrc.device.vault.v1': ['meta', ''], 'twrc.restore.pending.v1': ['meta', ''],
 };
 // Noms de bases IndexedDB (hors coffre) : file Drive, clé de sync, « appareil personnel ».

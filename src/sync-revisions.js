@@ -37,11 +37,16 @@ const SyncRevisions = (() => {
     }
     return { app: APP, v: 1, at, rev: { ...meta(rev), parents: [...rev.parents] }, values: kept };
   }
+  // Préférences d'appareil que les versions du 21/11/2026 au correctif envoyaient encore sur Drive (bip d'approche des feux, fond
+  // de carte EN DIRECT). Désormais propres à l'appareil : jamais écrites (snapshot les exclut), mais TOLÉRÉES à la lecture dans les
+  // révisions déjà publiées, sinon tout l'historique Drive existant serait refusé (CONSERVATION_BLOCKED → synchronisation bloquée).
+  // La fusion les ignore (clés propres à l'appareil) : la valeur de chaque appareil reste la sienne.
+  const LEGACY_SHARED = Object.freeze(['twrc.drive.beep', 'twrc.drive.base']), legacyShared = k => LEGACY_SHARED.includes(k);
   function content(data, deviceKey) {
     if (!object(data) || data.app !== APP || data.v !== 1 || !fields(data, ['app', 'v', 'at', 'rev', 'values']) || !iso(data.at) || !object(data.values))
       return fail('CONSERVATION_BLOCKED');
     for (const [k, v] of Object.entries(data.values))
-      if (!k.startsWith('twrc.') || typeof v !== 'string' || (typeof deviceKey === 'function' && deviceKey(k))) return fail('CONSERVATION_BLOCKED');
+      if (!k.startsWith('twrc.') || typeof v !== 'string' || (typeof deviceKey === 'function' && deviceKey(k) && !legacyShared(k))) return fail('CONSERVATION_BLOCKED');
     return meta(data.rev);
   }
   // Une entrée de catalogue en clair n'est utilisable qu'après lecture authentifiée identique.
@@ -149,5 +154,5 @@ const SyncRevisions = (() => {
     const best = common.filter(id => !below.has(id));
     return best.length === 1 ? best[0] : null;
   }
-  return Object.freeze({ APP, MAX_PARENTS, meta, next, snapshot, content, confirm, properties, fromProperties, plan, settle, ancestor });
+  return Object.freeze({ APP, MAX_PARENTS, LEGACY_SHARED, legacyShared, meta, next, snapshot, content, confirm, properties, fromProperties, plan, settle, ancestor });
 })();
