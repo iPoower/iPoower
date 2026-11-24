@@ -51,6 +51,36 @@ async function run(b, dev) {
     seen.every(x => x.on && x.text === 'Tournez à droite sur Avenue fictive B' && x.arrow === 'right') && /^Au rond-point, prenez la 2e sortie sur Rue fictive C$/.test(first.then), JSON.stringify(first));
   check(`${dev} · voies conseillées (fournies par OSRM) : 2 voies, la droite conseillée`, JSON.stringify(first.lanes) === '[false,true]', JSON.stringify(first.lanes));
   check(`${dev} · mention fixe « Itinéraire indicatif, la signalisation prime »`, first.note === 'Itinéraire indicatif, la signalisation prime');
+  // Régression de la capture terrain : longues consignes et statistiques ne doivent plus masquer la route.
+  const layout = () => p.evaluate(() => {
+    const root = document.getElementById('liveDrive'), rect = s => root.querySelector(s).getBoundingClientRect();
+    const map = rect('.dv-map'), panel = rect('.dv-panel'), alerts = rect('.dv-alerts'), speed = rect('.dv-speed');
+    const car = root.querySelector('.dv-car, .dv-car3d'), cr = car && car.getBoundingClientRect();
+    const atCar = cr && document.elementFromPoint(cr.x + cr.width / 2, cr.y + cr.height / 2);
+    const credit = root.querySelector('.leaflet-control-attribution, .dv-credit'), ar = credit && credit.getBoundingClientRect();
+    const creditClear = !ar || !(ar.width && ar.height && ar.left < speed.right && ar.right > speed.left && ar.top < speed.bottom && ar.bottom > speed.top);
+    return { w: innerWidth, h: innerHeight, map: map.height, panel: panel.height, clear: speed.top - alerts.bottom,
+      guide: rect('.dv-guide').height, overflow: root.scrollWidth > innerWidth, carOnMap: !!atCar && root.querySelector('.dv-map').contains(atCar), creditClear, creditHeight: ar ? ar.height : 0 };
+  });
+  await p.evaluate(() => { DRIVE.nav.steps[1].name = 'Avenue fictive B du quartier des longs noms de rues'; DRIVE.nav.steps[2].name = 'Boulevard fictif C du quartier des longs noms de rues'; driveTick(); });
+  const compact = await layout();
+  check(`${dev} · longues consignes : carte ≥ 75 % de l’écran, bandeau principal ≤ 120 px, aucun débordement`, compact.map >= compact.h * .75 && compact.guide <= 120 && !compact.overflow, JSON.stringify(compact));
+  check(`${dev} · route et position dégagées sous les consignes`, compact.carOnMap && (dev !== 'iphone' || compact.clear >= compact.h * .4), JSON.stringify(compact));
+  check(`${dev} · mentions cartographiques sur une ligne, sans chevaucher la vitesse`, compact.creditClear && compact.creditHeight <= 18, JSON.stringify(compact));
+  if (dev === 'iphone') {
+    await p.screenshot({ path: process.env.SP + '/place-gps-portrait-' + BR.NAME + '.png' });
+    await p.setViewportSize({ width: 320, height: 568 }); await s.settle(3);
+    const small = await layout();
+    check('petit écran 320×568 : carte ≥ 75 %, position visible et aucun débordement', small.map >= small.h * .75 && small.carOnMap && !small.overflow, JSON.stringify(small));
+    check('petit écran : mentions cartographiques compactes, vitesse dégagée', small.creditClear && small.creditHeight <= 18, JSON.stringify(small));
+    await p.setViewportSize({ width: 896, height: 414 }); await s.settle(3);
+    const landscape = await layout();
+    check('iPhone paysage : carte sur toute la hauteur, position visible et aucun débordement', landscape.map >= landscape.h * .95 && landscape.carOnMap && !landscape.overflow, JSON.stringify(landscape));
+    check('iPhone paysage : mentions cartographiques compactes, vitesse dégagée', landscape.creditClear && landscape.creditHeight <= 18, JSON.stringify(landscape));
+    await p.screenshot({ path: process.env.SP + '/place-gps-paysage-' + BR.NAME + '.png' });
+    await p.setViewportSize({ width: 414, height: 896 }); await s.settle(3);
+  }
+  await p.evaluate(() => { DRIVE.nav.steps[1].name = 'Avenue fictive B'; DRIVE.nav.steps[2].name = 'Rue fictive C'; driveTick(); });
   // Annonces (pour une future voix) : une seule au-delà de 1 km pour ce tracé, puis une par palier franchi, jamais répétée.
   const ann = await p.evaluate(() => { if (typeof DriveGuide === 'undefined' || !DRIVE.nav || !DRIVE.nav.steps) return []; const k = DriveGuide.state(DRIVE.nav, DRIVE.nav.steps[1].along - 1).key; return (DRIVE.announces || []).filter(a => a.key === k).map(a => a.label); });
   check(`${dev} · une annonce par palier franchi (pour une future voix), jamais répétée : ${ann.join(' · ')}`, ann.length === 6 && /^\d+(,\d)? km$/.test(ann[0]) && JSON.stringify(ann.slice(1)) === JSON.stringify(['1 km', '500 m', '200 m', '100 m', 'maintenant']), JSON.stringify(ann));

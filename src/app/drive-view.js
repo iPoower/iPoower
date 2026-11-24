@@ -11,7 +11,7 @@
 // Écritures : seulement la clôture du trajet et le relevé du compteur, sur appui. Pas de guidage tournant par tournant ni de radars.
 const DRIVE = { open: false, map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, timer: null, wake: null, wakeState: '', prevFix: null, speed: null, hist: [], follow: true,
   nav: null, navGen: 0, navAt: 0, navAsked: null, km0: 0, off: null, rerouting: false, rerouteAt: 0, reroutes: 0, navMsg: '', navMsgAt: 0,
-  lights: null, lightsSig: null, lightsLayer: null, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null, beeps: 0, audio: null,
+  lights: null, lightsSig: null, lightsCtl: null, lightsAttempts: 0, lightsRetryAt: 0, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null, beeps: 0, audio: null,
   mv: null, mvPending: false, glErr: '', setup: null, free: null };
 const DRIVE_LIGHTS = new Map();   // feux par tracé (mémoire de la session seulement, 6 tracés au plus)
 const IGN_ORTHO = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
@@ -38,20 +38,23 @@ function driveShell() {
     '<div class="dv-alerts"><div class="dv-guide" data-dv="guide" role="status" aria-live="polite" hidden><span class="dv-garrow" data-dv="garrow" aria-hidden="true"></span>' +
     '<span class="dv-gmain"><b data-dv="gdist"></b><span data-dv="gtext"></span></span></div><div class="dv-lanes" data-dv="glanes" aria-label="Voies conseillées" hidden></div>' +
     '<p class="dv-then" data-dv="gthenbox" hidden><span>Puis</span><span class="dv-tarrow" data-dv="gtarrow" aria-hidden="true"></span><span data-dv="gthen"></span></p>' +
-    '<p class="dv-gnote" data-dv="gnote">' + DriveGuide.NOTICE + '</p><p class="dv-nav" data-dv="nav" role="status" hidden></p><p class="dv-lightalert" data-dv="lightAlert" role="status" hidden><span class="dv-li">' + DRIVE_LIGHT_SVG + '</span><span data-dv="lightAlertText"></span></p></div>' +
-
+    '<p class="dv-nav" data-dv="nav" role="status" hidden></p></div>' +
+    '<div class="dv-panel"><span class="dv-credit" data-dv="credit"></span><div class="dv-speed" aria-label="Vitesse GPS"><b data-dv="speed">—</b><small>km/h</small></div>' +
     '<button type="button" class="dv-recenter" data-act="drive-follow" hidden>Recentrer</button>' +
-    '<div class="dv-panel"><div class="dv-speed" aria-label="Vitesse GPS"><b data-dv="speed">—</b><small>km/h</small></div>' +
-    '<div class="dv-km"><div><small>PARCOURUS</small><b data-dv="done">—</b><span>km</span></div><div><small>RESTANTS</small><b data-dv="left" class="dv-left">—</b><span>km</span></div></div>' +
+    '<p class="dv-lightalert" data-dv="lightAlert" role="status" hidden><span class="dv-li">' + DRIVE_LIGHT_SVG + '</span><span data-dv="lightAlertText"></span></p>' +
+    '<div class="dv-summary"><div class="dv-metric"><small data-dv="etaLabel">ARRIVÉE</small><b data-dv="eta">—</b><span class="dv-freeunit">km</span></div>' +
+    '<div class="dv-metric"><small>RESTANTS</small><b data-dv="left" class="dv-left">—</b><span>km</span></div>' +
+    '<details class="dv-details"><summary>Détails</summary><div class="dv-details-body">' +
+    '<div class="dv-figs"><span><small>PARCOURUS</small><b><span data-dv="done">—</span> km</b></span><span><small>SECTEUR</small><b data-dv="sector">—</b></span></div>' +
     '<div class="dv-bar" aria-hidden="true"><i data-dv="bar"></i></div>' +
-    '<div class="dv-figs"><span><small>ARRIVÉE</small><b data-dv="eta">—</b></span><span><small>SECTEUR</small><b data-dv="sector">—</b></span></div>' +
+    '<p class="dv-lights"><span class="dv-li">' + DRIVE_LIGHT_SVG + '</span><span data-dv="lightsLabel">Recherche des feux…</span></p>' +
+    '<p class="dv-gnote" data-dv="gnote">' + DriveGuide.NOTICE + '</p><p class="dv-foot" data-dv="foot"></p></div></details></div>' +
     '<p class="dv-alt" data-dv-lv="0" hidden><span class="dv-alti"><small>ALTITUDE</small><b data-dv="alt">—</b></span><span data-dv="altTop"></span></p>' +
-    '<p class="dv-lights"><span class="dv-li">' + DRIVE_LIGHT_SVG + '</span><span data-dv="lightsLabel">—</span></p>' +
     '<div class="dv-next" data-dv-lv="x"><b data-dv="next">—</b><span data-dv="nextWhat"></span></div>' +
     '<button type="button" class="btn pri dv-arrive" data-act="drive-arrived" hidden>✅ BIEN ARRIVÉ</button>' +
     '<button type="button" class="btn pri dv-arrive dv-freeend" data-act="drive-free-end" hidden>Terminer le trajet</button>' +
     '<div class="dv-done" data-dv="arrived" hidden></div>' +
-    '<p class="dv-foot" data-dv="foot"></p></div>';
+    '</div>';
 }
 const driveSet = (k, v) => { const el = document.querySelector('#liveDrive [data-dv="' + k + '"]'); if (el && el.textContent !== v) el.textContent = v; };
 const driveKm = v => Number.isFinite(v) ? (v < 10 ? f1(v) : f0(v)) : '—';
@@ -60,7 +63,7 @@ async function driveOpen() {
   const root = $('#liveDrive'); if (!root || LOCKED()) return;
   const t = driveTrip();
   if (!t && !DRIVE.free) { commandFeedback && document.activeElement && commandFeedback(document.activeElement, 'Aucun trajet en cours ni prévu'); return; }
-  DRIVE.open = true; DRIVE.follow = true; root.hidden = false; root.innerHTML = driveShell(); document.documentElement.classList.add('dv-on');
+  DRIVE.open = true; DRIVE.follow = true; root.hidden = false; root.innerHTML = driveShell(); root.classList.toggle('dv-free', !!DRIVE.free); document.documentElement.classList.add('dv-on');
   driveWake(true); driveTick();
   clearInterval(DRIVE.timer); DRIVE.timer = setInterval(driveTick, 1000);
   const close = root.querySelector('.dv-close'); if (close) close.focus({ preventScroll: true });
@@ -142,7 +145,8 @@ function driveFreeTick() {
   const night = fresh ? DriveNav.isNight(fresh.lat, fresh.lon, Date.now()) : true, root = $('#liveDrive');
   if (root) root.classList.toggle('dv-night', night);
   if (!DRIVE.mv) driveMap(null, night); else DRIVE.mv.setTheme(night);
-  driveSet('done', driveKm(free.km)); driveSet('left', '—'); driveSet('eta', '—'); driveSet('sector', '—');
+  driveSet('done', driveKm(free.km)); driveSet('left', '—'); driveSet('sector', '—');
+  driveSet('etaLabel', 'PARCOURUS'); driveSet('eta', driveKm(free.km));
   driveSet('speed', fresh && Number.isFinite(free.speed) ? f0(free.speed) : '—');
   driveSet('lightsLabel', 'Sans destination : ni feux ni guidage'); driveSet('next', 'Libre'); driveSet('nextWhat', 'Aucun itinéraire : seulement ta position, ta vitesse et les km');
   driveSet('gps', fresh ? 'GPS ± ' + Math.round(fresh.acc) + ' m' : free.err || 'Recherche du GPS…');
@@ -155,15 +159,16 @@ function driveFreeTick() {
   }
 }
 function driveClose() {
+  if (DRIVE.lightsCtl) DRIVE.lightsCtl.abort();
   if (DRIVE.free && DRIVE.free.watch != null && !DRIVE.free.done) { try { navigator.geolocation.clearWatch(DRIVE.free.watch); } catch (e) { /* GPS déjà arrêté */ } }
   DRIVE.free = null; DRIVE.setup = null; const r0 = $('#liveDrive'); if (r0) r0.classList.remove('dv-setupmode');
   const root = $('#liveDrive'); DRIVE.open = false; clearInterval(DRIVE.timer); DRIVE.timer = null; driveWake(false);
   if (DRIVE.mv) DRIVE.mv.remove();
   Object.assign(DRIVE, { mv: null, mvPending: false, map: null, base: null, marker: null, line: null, done: null, key: null, route: null, last: null, prevFix: null, speed: null, hist: [], summitCalls: 0, summitKey: null, summitT: null, summitLast: null, summitCol: null, summitCache: null,
     nav: null, navGen: DRIVE.navGen + 1, navAt: 0, navAsked: null, km0: 0, off: null, rerouting: false, rerouteAt: 0, reroutes: 0, navMsg: '', navMsgAt: 0,
-    lights: null, lightsSig: null, lightsLayer: null, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null });
+    lights: null, lightsSig: null, lightsCtl: null, lightsAttempts: 0, lightsRetryAt: 0, lightsErr: false, arrived: null, fixTs: 0, navFuzzy: false, refineAt: 0, beepKey: null });
   document.documentElement.classList.remove('dv-on');
-  if (root) { root.hidden = true; root.innerHTML = ''; root.classList.remove('dv-arrived'); }
+  if (root) { root.hidden = true; root.innerHTML = ''; root.classList.remove('dv-arrived', 'dv-free'); }
   if (typeof renderGps === 'function') renderGps();   // onglet GPS : retour au choix de la voiture ou à la carte du trajet
 }
 // Écran maintenu allumé (Wake Lock) : demandé à l'ouverture, redemandé au retour au premier plan ; état affiché, jamais promis.
@@ -189,6 +194,7 @@ async function driveMap(route, night) {
   if (!mv) return;
   if (!DRIVE.open || DRIVE.key !== key || !node.isConnected) { mv.remove(); return; }
   DRIVE.mv = mv; DRIVE.map = mv.map;
+  driveSet('credit', mv.kind === '3d' ? '© IGN · © OpenStreetMap · OSRM' : '');
   if (mv.kind === '3d') driveGlProbe(mv, route);
   mv.on('drag', () => { DRIVE.follow = false; const b2 = root.querySelector('.dv-recenter'); if (b2) b2.hidden = false; });
   if (DRIVE.route) mv.setRoute(DRIVE.route, true);
@@ -208,7 +214,8 @@ function driveGlProbe(mv, route) {
 // Repli à plat : Plan IGN (clair le jour, sombre la nuit par une classe) ou photo aérienne, voiture, tracé, feux neutres.
 async function driveMapFlat(node, route) {
   await loadLeaflet();
-  const map = L.map(node, { zoomControl: false, attributionControl: true, zoomAnimation: false, keyboard: false });
+  const map = L.map(node, { zoomControl: false, attributionControl: false, zoomAnimation: false, keyboard: false });
+  L.control.attribution({ prefix: false }).addTo(map);
   driveBaseLayer(map);
   const lights = L.layerGroup().addTo(map), counts = { lights: 0 };
   let line = null, done = null;
@@ -225,8 +232,8 @@ async function driveMapFlat(node, route) {
     shown: () => { const l = car.getLatLng(); return [l.lat, l.lng]; },
     follow(p) { map.setView(p, Math.max(map.getZoom() || 15, 15), { animate: false }); },
     setLights(list) { lights.clearLayers(); counts.lights = (list || []).length;
-      (list || []).forEach(l => L.marker([l.lat, l.lon], { icon: L.divIcon({ className: 'dv-light', html: DRIVE_LIGHT_SVG, iconSize: [14, 32], iconAnchor: [7, 16] }), interactive: false, keyboard: false, title: 'Feu tricolore (OpenStreetMap)' }).addTo(lights)); },
-    async setTheme() { driveBaseLayer(map); },
+      (list || []).forEach(l => L.marker([l.lat, l.lon], { icon: L.divIcon({ className: 'dv-light', html: DRIVE_LIGHT_SVG, iconSize: [18, 40], iconAnchor: [9, 40] }), interactive: false, keyboard: false, title: 'Feu tricolore (OpenStreetMap)' }).addTo(lights)); },
+    async setTheme() { map.invalidateSize({ pan: false }); driveBaseLayer(map); },
     theme: () => 'plat',
     counts: () => ({ ...counts }),
     remove() { try { map.remove(); } catch (e) { /* carte déjà retirée */ } }
@@ -242,12 +249,12 @@ function driveBaseLayer(map) {
   if (map._dvBase) map.removeLayer(map._dvBase);
   let loaded = false, errors = 0;
   const layer = kind === 'ortho'
-    ? L.tileLayer(IGN_ORTHO, { maxZoom: 19, maxNativeZoom: 19, className: 'dv-ortho', attribution: '© IGN Géoplateforme · BD ORTHO · Itinéraire © OSRM · Feux © OpenStreetMap' })
-    : L.tileLayer(IGN_PLAN, { maxZoom: 19, maxNativeZoom: 19, className: 'dv-plan', attribution: '© IGN Géoplateforme · Itinéraire © OSRM · Feux © OpenStreetMap' });
+    ? L.tileLayer(IGN_ORTHO, { maxZoom: 19, maxNativeZoom: 19, className: 'dv-ortho', attribution: '© IGN · © OpenStreetMap · OSRM' })
+    : L.tileLayer(IGN_PLAN, { maxZoom: 19, maxNativeZoom: 19, className: 'dv-plan', attribution: '© IGN · © OpenStreetMap · OSRM' });
   layer.on('tileload', () => { loaded = true; });
   layer.on('tileerror', () => {
     if (++errors >= 3 && !loaded && DRIVE.map === map && map._dvBase === layer) {
-      map.removeLayer(layer); map._dvBase = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, className: 'dv-plan', attribution: '© OpenStreetMap · Itinéraire © OSRM' }).addTo(map);
+      map.removeLayer(layer); map._dvBase = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, className: 'dv-plan', attribution: '© OpenStreetMap · OSRM' }).addTo(map);
     }
   });
   map._dvBase = layer.addTo(map); map._dvKind = kind;
@@ -341,7 +348,6 @@ function driveFeedLive(j, fix, d) {
   LIVE.routeAt = Date.now(); LIVE.routeTry = Date.now(); LIVE.routeOrigin = o; LIVE.routeErr = false;
   renderBrf();
 }
-// Feux tricolores du parcours : une demande Overpass par tracé (mémorisée pour la session), hors portions privées.
 // Altitude du parcours (lot 5) : profil du tracé par l'altimétrie IGN (RGE ALTI, data.geopf.fr déjà autorisé), hors zones privées ;
 // prochain point haut ; température prévue à SON altitude à l'heure de passage (Open-Meteo, altitude imposée), gel signalé.
 const IGN_ALTI = 'https://data.geopf.fr/altimetrie/1.0/calcul/alti/rest/elevation.json';
@@ -402,23 +408,37 @@ function driveAltRow(route, along, active) {
   row.dataset.dvLv = t && !t.err && Number.isInteger(t.lv) ? String(t.lv) : t ? 'x' : '';
   driveSet('altTop', 'Point haut ' + top.z + ' m dans ' + driveKm(top.dist / 1000) + ' km · ' + (t ? DriveAlt.summitLabel(t) : 'gel en cours de calcul'));
 }
+// Une panne temporaire ne condamne plus les feux pour tout le trajet. Au plus 3 essais sur le même service, espacés
+// de 30 puis 60 s. Une fermeture ou un nouveau tracé annule l'appel ; seule sa réponse peut alimenter la carte.
 async function driveLightsFetch(nav) {
-  if (!nav || !nav.full || DRIVE.lightsSig === nav.signature) return;
-  DRIVE.lightsSig = nav.signature; DRIVE.lightsErr = false;
+  if (!DRIVE.open || !nav || !nav.full) return;
+  if (DRIVE.lightsSig !== nav.signature) {
+    if (DRIVE.lightsCtl) DRIVE.lightsCtl.abort();
+    Object.assign(DRIVE, { lightsSig: nav.signature, lights: null, lightsCtl: null, lightsAttempts: 0, lightsRetryAt: 0, lightsErr: false });
+    driveDrawLights();
+  }
+  if (DRIVE.lights || DRIVE.lightsCtl || DRIVE.lightsAttempts >= 3 || Date.now() < DRIVE.lightsRetryAt) return;
   if (DRIVE_LIGHTS.has(nav.signature)) { DRIVE.lights = DRIVE_LIGHTS.get(nav.signature); driveDrawLights(); return; }
-  DRIVE.lights = null; driveDrawLights();
+  if (offlineNow()) { DRIVE.lightsErr = true; return; }
   const q = DriveNav.lightsQuery(nav, (S.locs || []).filter(locHasCoords));
   if (!q) { DRIVE.lights = []; return; }
-  if (offlineNow()) { DRIVE.lightsErr = true; return; }
   const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 20000);
+  DRIVE.lightsCtl = ctl; DRIVE.lightsAttempts++; DRIVE.lightsErr = false;
   try {
     const r = await fetch(OVERPASS, { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: ctl.signal, credentials: 'omit', referrerPolicy: 'no-referrer' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    const list = DriveNav.lights(await r.json(), nav);
+    const json = await r.json();
+    if (!json || !Array.isArray(json.elements) || json.elements.length > 5000 || json.remark) throw new Error('Réponse des feux incomplète');
+    if (DRIVE.lightsCtl !== ctl || !DRIVE.open) return;
+    const list = DriveNav.lights(json, nav);
     DRIVE_LIGHTS.set(nav.signature, list); while (DRIVE_LIGHTS.size > 6) DRIVE_LIGHTS.delete(DRIVE_LIGHTS.keys().next().value);
-    if (DRIVE.lightsSig === nav.signature && DRIVE.open) { DRIVE.lights = list; driveDrawLights(); driveTick(); }
-  } catch (e) { if (DRIVE.lightsSig === nav.signature) DRIVE.lightsErr = true; }
-  finally { clearTimeout(to); }
+    DRIVE.lights = list; driveDrawLights();
+  } catch (e) {
+    if (DRIVE.lightsCtl === ctl && DRIVE.open) { DRIVE.lightsErr = true; DRIVE.lightsRetryAt = Date.now() + 30000 * DRIVE.lightsAttempts; }
+  } finally {
+    clearTimeout(to);
+    if (DRIVE.lightsCtl === ctl) { DRIVE.lightsCtl = null; if (DRIVE.open) driveTick(); }
+  }
 }
 // Compteur : dernier relevé + km du trajet, relevé du jour (même chronologie que Garage). Refusé, sans écriture, s'il n'existe
 // aucun relevé, s'il contredit un relevé ou une dépense, ou s'il implique un saut invraisemblable.
@@ -500,7 +520,9 @@ function driveTick() {
   const t = driveTrip();
   if (!t) { driveSet('foot', 'Aucun trajet en cours ni prévu'); return; }
   if (DRIVE.key !== t.key) {
+    if (DRIVE.lightsCtl) DRIVE.lightsCtl.abort();
     Object.assign(DRIVE, { key: t.key, to: t.to, carId: t.carId || appDay().activeCarId, plan: t.planL || t.l, last: null, hist: [], nav: null, navAt: 0, navAsked: null, km0: 0, off: null, lights: null, lightsSig: null, fixTs: 0, navFuzzy: false, refineAt: 0, summitCalls: 0, summitKey: null, summitT: null, summitLast: null, summitCol: null, summitCache: null, summitCol: null });
+    Object.assign(DRIVE, { lightsCtl: null, lightsAttempts: 0, lightsRetryAt: 0, lightsErr: false });
     DRIVE.navGen++; if (DRIVE.mv) { DRIVE.mv.remove(); DRIVE.mv = null; DRIVE.map = null; }
   }
   const planned = LiveRoute.route(t, null), route = DRIVE.nav || planned;
@@ -552,9 +574,10 @@ function driveTick() {
   driveSet('eta', eta && /T\d{2}:\d{2}/.test(eta) ? eta.slice(11, 16) : '—');
   driveSet('sector', m.sector ? 'S' + m.sector : '—');
   // Feux : nombre encore devant et distance du prochain (le long du tracé).
+  driveLightsFetch(DRIVE.nav);
   const L0 = DRIVE.lights, along = pose && route ? route.total * pose.fraction : active ? null : 0, la = L0 ? DriveNav.lightsAhead(L0, along) : null;
-  driveSet('lightsLabel', la ? DriveNav.lightsLabel(la, driveM) : DRIVE.lightsErr ? 'Feux indisponibles' : 'Feux : recherche…');
-  // Alerte d'approche (≤ 300 m) : grand bandeau, et un bip court par feu si l'utilisateur l'a activé (appareil seulement).
+  driveSet('lightsLabel', la ? DriveNav.lightsLabel(la, driveM) : DRIVE.lightsErr ? 'Feux indisponibles' + (DRIVE.lightsAttempts < 3 ? ' · nouvel essai automatique' : '') : 'Feux : recherche…');
+  // Alerte d'approche (≤ 300 m) : pastille sur la carte, et un bip court par feu si l'utilisateur l'a activé (appareil seulement).
   const alert = active && g.valid && L0 ? DriveNav.lightAlert(L0, along) : null, ab = document.querySelector('#liveDrive [data-dv="lightAlert"]');
   if (ab) {
     ab.hidden = !alert;
