@@ -39,6 +39,17 @@ const dump = p => p.evaluate(() => { const r = window.TWRC_RAW_STORAGE || window
       const back = await r.p.evaluate(() => ({ mode: window.TWRC_VAULT && window.TWRC_VAULT.mode, configured: typeof S === 'object' && !!S.configured, settings: (localStorage.getItem('twrc.settings.v1') || '').length }));
       ok(dev + ' · défaut levé : coffre rouvert avec le code, profil intact', back.mode === 'vault' && back.configured && back.settings > 20, JSON.stringify(back));
       await r.c.close();
+      // 4. Audit du lot 1 (constat 2b) : coffre ouvert, mais localStorage impossible à remplacer par le magasin du coffre
+      //    (propriété verrouillée par le navigateur). Avant : l'app démarrait sur le stockage brut à côté du coffre.
+      const q = await session(b, { at: AT, dev, unlock: false, seed: before });
+      await q.c.addInitScript(() => { const ls = window.localStorage; Object.defineProperty(window, 'localStorage', { configurable: false, enumerable: true, get: () => ls }); });
+      await q.p.reload(); await q.p.clock.runFor(2500); await q.p.waitForTimeout(400);
+      const locked = await q.p.evaluate(() => ({ started: !document.getElementById('twrc-app'), halt: (document.getElementById('twrc-boot-halt') || {}).innerText || '' }));
+      ok(dev + ' · localStorage impossible à remplacer : application non démarrée, coffre protégé', locked.started === false && /coffre/i.test(locked.halt), JSON.stringify(locked));
+      const after4 = await dump(q.p); delete after4['e2e.seeded'];
+      const ref4 = { ...before }; delete ref4['e2e.seeded'];
+      ok(dev + ' · localStorage impossible à remplacer : stockage brut identique à l’octet', JSON.stringify(after4) === JSON.stringify(ref4), Object.keys(after4).filter(k => after4[k] !== ref4[k]).join(', '));
+      await q.c.close();
     }
     assert.deepEqual(errors.filter(e => !/refus fictif|SecurityError/.test(e)), [], 'aucune erreur JavaScript inattendue');
     console.log(`\n${checks}/${checks} contrôles OK · erreurs JS : aucune`);

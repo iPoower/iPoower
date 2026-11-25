@@ -88,7 +88,8 @@ jobs:
           APP_KEY: ${{ secrets.APP_KEY }}
           RC_KEY: ${{ secrets.RC_KEY }}
           GCAL_ICS: ${{ secrets.GCAL_ICS }}
-        run: node trusted/tools/check-secrets.js --root trusted --scan target
+        # --mask : journal public, ni nom de fichier ni valeur (un nom indiquerait où chercher dans l'historique)
+        run: node trusted/tools/check-secrets.js --root trusted --scan target --mask
       - name: Séparation des clés (APP_KEY ≠ RC_KEY, chacune n'ouvre que ses fichiers)
         env:
           APP_KEY: ${{ secrets.APP_KEY }}
@@ -350,7 +351,7 @@ jobs:
           if git diff --cached --quiet; then echo "Production déjà à jour"; echo "done=0" >> "$GITHUB_OUTPUT"; exit 0; fi
           git commit -q -m "$MSG"
           PUSHED=0
-          for i in 1 2 3 4 5; do if git push -q; then PUSHED=1; break; fi; sleep 3; git pull -q --rebase; done
+          for i in 1 2 3 4 5; do if git push -q; then PUSHED=1; break; fi; sleep 3; git pull -q --rebase || { echo "::error::Rebase de gh-pages impossible : publication arrêtée"; exit 1; }; done
           if [ "$PUSHED" != 1 ]; then echo "::error::Publication refusée : cinq pushes gh-pages ont échoué"; exit 1; fi
           echo "done=1" >> "$GITHUB_OUTPUT"
       - name: Étiquette de version (point de retour arrière)
@@ -363,7 +364,7 @@ jobs:
         run: |
           want=$(sha256sum dist/index.html | cut -d' ' -f1)
           for i in $(seq 1 30); do
-            got=$(curl -fsS "https://ipoower.github.io/iPoower/race-control/index.html?v=${GITHUB_RUN_ID}$i" | sha256sum | cut -d' ' -f1)
+            got=$(curl -fsS --connect-timeout 10 --max-time 30 "https://ipoower.github.io/iPoower/race-control/index.html?v=${GITHUB_RUN_ID}$i" | sha256sum | cut -d' ' -f1)
             if [ "$got" = "$want" ]; then echo "✅ Version en ligne identique au build"; exit 0; fi
             sleep 20
           done

@@ -8,6 +8,8 @@ name: Race Control · confidentialité des pull requests
 #    servirait d'oracle pour deviner une valeur privée (ex. coordonnées du domicile) en soumettant des candidats.
 #  - le titre et la description de la PR sont contrôlés eux aussi (événement edited inclus) : ils arrivent par variables
 #    d'environnement, sont écrits tels quels dans pr-meta/ puis lus comme données par le même scanner, jamais interpolés dans un script.
+#  - les messages de TOUS les commits de la PR aussi (publics une fois poussés) : lus par l'API GitHub, 100 par page, toutes les
+#    pages, écrits tels quels dans pr-meta/commits.txt. Au-delà de 250 commits, l'API n'en liste pas davantage : refus.
 # Limite assumée : une branche poussée ou une description enregistrée est déjà publique ; ce contrôle détecte et bloque la fusion,
 # la prévention reste le hook local (tools/pre-commit) et la relecture avant publication.
 on:
@@ -15,6 +17,7 @@ on:
     types: [opened, synchronize, reopened, edited]
 permissions:
   contents: read
+  pull-requests: read
 concurrency:
   group: pr-privacy-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -59,7 +62,20 @@ jobs:
         run: |
           mkdir -p pr-meta
           printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > pr-meta/titre-et-description.md
-      - name: Aucune donnée personnelle dans le titre ni la description (scanner de main, vraies valeurs)
+      - name: Messages de commit de la PR (API, toutes les pages, données seulement)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -o pipefail
+          mkdir -p pr-meta
+          n=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits?per_page=100" --jq '.[].sha' | wc -l) || exit 1
+          if [ "$n" -ge 250 ]; then echo "::error title=Confidentialité de la PR · titre, description et commits::$n commits : l'API n'en liste pas davantage, contrôle incomplet refusé"; exit 1; fi
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/commits?per_page=100" --jq '.[].commit.message' > pr-meta/commits.txt
+          echo "$n message(s) de commit contrôlé(s)"
+      - name: Aucune donnée personnelle dans le titre, la description ni les commits (scanner de main, vraies valeurs)
         if: ${{ !cancelled() }}
         env:
           APP_KEY: ${{ secrets.APP_KEY }}

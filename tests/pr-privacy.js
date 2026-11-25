@@ -73,6 +73,83 @@ check('workflow : titre et description jamais interpolés dans un script', !!met
 check('workflow : aucun secret à l\'étape qui écrit la description', !!metaStep && !/secrets\./.test(metaStep));
 check('workflow : description contrôlée par le scanner de main, même si les fichiers sont rouges', !!metaScan && /node trusted\/tools\/check-secrets\.js --root trusted --scan pr-meta/.test(metaScan) &&
   /if: \$\{\{ !cancelled\(\) \}\}/.test(metaScan) && /if: \$\{\{ !cancelled\(\) \}\}/.test(metaStep));
+// ---------- audit du lot 1 (24/11/2026) : variantes que l'ancien scanner laissait passer (valeurs FICTIVES) ----------
+// Lieu précis fictif (6 décimales), nom accentué et véhicule complet : le préréglage de confiance est scellé avec la clé de test.
+const PRECIS = { locs: [{ id: 'home', name: 'Rosières-Témoin-Fictif', lat: 48.813849, lon: 2.138762 }], customs: [],
+  cars: [{ id: 'carZ', name: 'Voiture fictive Z 1.6 essence 2015', short: 'Z', spec: '110 ch · 2015 · BVM5 · fictive' }] };
+const TR2 = path.join(W, 'trusted2');
+['check-secrets.js', 'keys.js'].forEach(f => mk(path.join(TR2, 'tools', f), fs.readFileSync(path.join(ROOT, 'tools', f))));
+mk(path.join(TR2, 'encrypted/preset.sealed.json'), JSON.stringify({ v: 'p2', sealed: seal(PRECIS, APP_KEY_TEST) }));
+const scan2 = (files, extra = [], env = { APP_KEY: APP_KEY_TEST }) => { const d = path.join(W, 'v-' + Object.keys(files).join('-').replace(/[^a-z0-9]+/gi, '_').slice(0, 60) + '-' + rows.length);
+  Object.entries(files).forEach(([f, s]) => mk(path.join(d, 'target', f), s)); fs.symlinkSync(TR2, path.join(d, 'trusted'), 'dir');
+  const r = spawnSync(process.execPath, ['trusted/tools/check-secrets.js', '--root', 'trusted', '--scan', 'target', ...extra], { cwd: d, encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
+  return { code: r.status, out: (r.stdout || '') + (r.stderr || '') }; };
+const red2 = {
+  'coordonnée exacte (6 décimales)': { 'a.json': '{"lat":48.813849}' },
+  'coordonnée tronquée à 4 décimales (l’ancien arrondi à 3 la ratait)': { 'a.txt': 'point 48.8138 environ' },
+  'coordonnée arrondie à 3 décimales': { 'a.txt': 'vers 2.139 est' },
+  'coordonnée tronquée à 3 décimales': { 'a.txt': 'lat 48.813' },
+  'coordonnée à la française (virgule)': { 'a.md': 'Latitude 48,8138 environ' },
+  'coordonnée dans une URL': { 'a.txt': 'https://example.invalid/?ll=48.81385%2C2.13876' },
+  'nom sans accent ni tiret': { 'a.md': 'Départ de Rosieres Temoin Fictif à 7 h' },
+  'nom encodé dans une URL': { 'a.txt': 'q=Rosi%C3%A8res-T%C3%A9moin-Fictif' },
+  'nom en majuscules avec ponctuation': { 'a.md': 'ROSIÈRES · TÉMOIN · FICTIF' },
+  'véhicule : nom complet': { 'b.js': "const v = 'Voiture fictive Z 1.6 essence 2015';" },
+  'véhicule : description complète': { 'b.js': "spec: '110 ch · 2015 · BVM5 · fictive'" },
+  'code tiers : latitude ET longitude à 3 décimales': { 'src/vendor/lib.min.js': 'a=48.814,b=2.139' },
+  'code tiers : une coordonnée à 4 décimales suffit': { 'src/vendor/lib.min.js': 'x=2.1387' },
+};
+const green2 = {
+  'nombre plus long (précédé d’un chiffre)': { 'a.txt': 'v=148.8138 et 12.1387' },
+  'coordonnée peu précise (2 décimales)': { 'a.txt': '48.81, 2.13' },
+  'code tiers : un seul nombre court à 3 décimales': { 'src/vendor/lib.min.js': 'k=2.139;m=0.5' },
+  'modèle seul (jamais un nom court)': { 'a.md': 'Voiture fictive Z' },
+  'pourcentage isolé (décodage tolérant)': { 'a.css': '.x{width:100%}\n.y{height:50%;} %ZZ %C3' },
+  'mot voisin sans accent (forme repliée comparée mot à mot)': { 'a.md': 'Rosieres Temoin Fictifs et autres' },
+};
+for (const [name, files] of Object.entries(red2)) { const r = scan2(files); check(`nouvelle variante détectée : ${name}`, r.code === 1, r.out.trim().split('\n')[0]); }
+for (const [name, files] of Object.entries(green2)) { const r = scan2(files); check(`sans faux positif : ${name}`, r.code === 0, r.out.trim().split('\n')[0]); }
+const wrongKey = scan2({ 'a.txt': 'rien' }, [], { APP_KEY: 'mauvaise-cle-de-test' });
+check('clé fournie qui n’ouvre pas son fichier : rouge (jamais un vert sans valeurs privées)', wrongKey.code === 1 && /APP_KEY fournie mais le préréglage chiffré ne s’ouvre pas/.test(wrongKey.out), wrongKey.out.trim());
+const fifoDir = path.join(W, 'fifo'); mk(path.join(fifoDir, 'target/a.txt'), 'rien'); fs.symlinkSync(TR2, path.join(fifoDir, 'trusted'), 'dir');
+let fifoOk = true; try { require('child_process').execFileSync('mkfifo', [path.join(fifoDir, 'target/tube')]); } catch (e) { fifoOk = false; }
+if (fifoOk) { const r = spawnSync(process.execPath, ['trusted/tools/check-secrets.js', '--root', 'trusted', '--scan', 'target'], { cwd: fifoDir, encoding: 'utf8', env: { PATH: process.env.PATH, APP_KEY: APP_KEY_TEST }, timeout: 20000 });
+  check('fichier spécial (tube) refusé sans être lu, jamais ignoré', r.status === 1 && /tube : fichier spécial refusé/.test(r.stdout), (r.stdout || '') + (r.error ? r.error.message : '')); }
+const masked = scan2({ 'secret-ici.md': 'Rosières-Témoin-Fictif' }, ['--mask']);
+check('--mask (journal public de main) : rouge, sans nom de fichier ni valeur', masked.code === 1 && /\(fichier masqué\) : lieu personnel/.test(masked.out) && !/secret-ici|Rosi|48\.81/.test(masked.out), masked.out.trim());
+const ok2 = scan2({ 'a.txt': 'rien de privé' });
+check('journal : le nombre de valeurs privées n’est plus affiché', ok2.code === 0 && /valeurs privées chargées/.test(ok2.out) && !/\d+ valeurs? privées?/.test(ok2.out), ok2.out.trim());
+// fichiers nommés : chemins relatifs à la racine de confiance (comportement historique de build.js)
+{ const d = path.join(W, 'opt'); fs.mkdirSync(d, { recursive: true }); mk(path.join(TR2, '--root'), 'Rosières-Témoin-Fictif'); fs.symlinkSync(TR2, path.join(d, 'trusted'), 'dir');
+  const run = a => spawnSync(process.execPath, ['trusted/tools/check-secrets.js', '--root', 'trusted', ...a], { cwd: d, encoding: 'utf8', env: { PATH: process.env.PATH, APP_KEY: APP_KEY_TEST } });
+  const asFile = run(['--', '--root']), unknown = run(['--inconnue']);
+  check('« -- » : un nom de fichier qui commence par « -- » est contrôlé, jamais pris pour une option', asFile.status === 1 && /--root : lieu personnel/.test(asFile.stdout), asFile.stdout);
+  check('option inconnue refusée (code 2)', unknown.status === 2, unknown.stdout);
+  const gone = run(['--', 'absent.js']);
+  check('fichier nommé introuvable : rouge, jamais ignoré en silence', gone.status === 1 && /absent\.js : fichier illisible/.test(gone.stdout), gone.stdout);
+  fs.rmSync(path.join(TR2, '--root')); }
+// ---------- hook local tools/pre-commit : il contrôle l'INDEX (ce qui part), pas la copie de travail ----------
+{ const G = path.join(W, 'hook'), git = (...a) => spawnSync('git', a, { cwd: G, encoding: 'utf8', env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } });
+  fs.mkdirSync(G, { recursive: true }); git('init', '-q'); git('config', 'user.email', 'test@example.invalid'); git('config', 'user.name', 'test');
+  ['check-secrets.js', 'keys.js', 'pre-commit'].forEach(f => mk(path.join(G, 'tools', f), fs.readFileSync(path.join(ROOT, 'tools', f))));
+  mk(path.join(G, 'private/preset.json'), JSON.stringify(PRECIS)); mk(path.join(G, '.gitignore'), 'private/\n');
+  git('add', 'tools', '.gitignore'); git('commit', '-q', '-m', 'base');
+  const hook = () => spawnSync('sh', ['tools/pre-commit'], { cwd: G, encoding: 'utf8', env: { PATH: process.env.PATH } });
+  mk(path.join(G, 'notes.md'), 'Départ : Rosières-Témoin-Fictif\n'); git('add', 'notes.md'); mk(path.join(G, 'notes.md'), 'Départ : Lieu A\n');   // copie de travail propre, index pollué
+  const staged = hook();
+  check('hook : donnée privée dans l’index, copie de travail nettoyée → commit refusé', staged.status === 1 && /notes\.md : lieu personnel/.test(staged.stdout), staged.stdout + staged.stderr);
+  git('add', 'notes.md'); const clean = hook();
+  check('hook : index propre → commit accepté', clean.status === 0, clean.stdout + clean.stderr);
+  mk(path.join(G, '--root'), 'Rosières-Témoin-Fictif'); mk(path.join(G, 'a b.md'), '48.8138'); git('add', '--', '--root', 'a b.md'); const odd = hook();
+  check('hook : noms de fichiers piégés (« --root », espace) contrôlés comme des fichiers', odd.status === 1 && /--root : lieu personnel/.test(odd.stdout) && /a b\.md : lieu personnel \(coordonnée\)/.test(odd.stdout), odd.stdout + odd.stderr); }
+// ---------- workflow : messages de commit de la PR contrôlés, lus par l'API (toutes les pages) ----------
+{ const commitStep = steps.find(st => /pulls\/\$PR_NUMBER\/commits/.test(st));
+  check('workflow : messages de commit lus par l’API, 100 par page, toutes les pages, écrits comme données dans pr-meta/', !!commitStep &&
+    /gh api --paginate "repos\/\$REPO\/pulls\/\$PR_NUMBER\/commits\?per_page=100"/.test(commitStep) && /> pr-meta\/commits\.txt/.test(commitStep) &&
+    !/\$\{\{/.test(runOf(commitStep)) && !/secrets\./.test(commitStep) && /if: \$\{\{ !cancelled\(\) \}\}/.test(commitStep), commitStep && commitStep.slice(0, 300));
+  check('workflow : plus de 250 commits → refus (l’API n’en liste pas davantage)', !!commitStep && /-ge 250/.test(runOf(commitStep)) && /exit 1/.test(runOf(commitStep)));
+  check('workflow : droit minimal pull-requests: read en plus de contents: read', /permissions:\n  contents: read\n  pull-requests: read\n/.test(wf));
+  check('workflow : étape des commits placée avant le contrôle de pr-meta', !!commitStep && wf.indexOf(commitStep) < wf.indexOf(metaScan)); }
 fs.rmSync(W, { recursive: true, force: true });
 console.log(rows.join('\n') + `\n\n${fail ? `❌ ${fail} contrôle(s) en échec` : `✅ ${rows.length} contrôles de confidentialité des PR au vert`}`);
 if (fail && process.env.GITHUB_ACTIONS) console.log(`::error title=pr-privacy::${rows.filter(r => r.startsWith('❌')).join(' / ')}`);

@@ -1,7 +1,11 @@
 #!/bin/sh
 # Bloque tout commit qui contiendrait une donnée personnelle ou un secret.
 # Installation : ln -sf ../../tools/pre-commit .git/hooks/pre-commit
+# Contrôle ce qui part VRAIMENT : le contenu de l'index (git add -p, retouche après git add), extrait dans un dossier
+# temporaire et lu comme des données (--scan). Aucun nom de fichier ne passe par le shell ni par les options du scanner.
 [ -f tools/check-secrets.js ] || exit 0   # branche sans garde-fou (ex. gh-pages) : rien à contrôler ici
-files=$(git diff --cached --name-only --diff-filter=ACMR)
-[ -z "$files" ] && exit 0
-node tools/check-secrets.js $files || { echo "Commit refusé : retire la donnée signalée."; exit 1; }
+[ -n "$(git diff --cached --name-only --diff-filter=ACMR -z | tr -d '\0' | head -c 1)" ] || exit 0
+tmp=$(mktemp -d) || { echo "Commit refusé : dossier temporaire indisponible."; exit 1; }
+trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+git diff --cached --name-only --diff-filter=ACMR -z | git checkout-index --stdin -z --prefix="$tmp/" || { echo "Commit refusé : index illisible."; exit 1; }
+node tools/check-secrets.js --scan "$tmp" || { echo "Commit refusé : retire la donnée signalée."; exit 1; }

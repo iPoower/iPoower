@@ -76,9 +76,19 @@ try {
       assert(new RegExp('- name: ' + step + '[^\\n]*\\n        if: steps\\.build\\.outputs\\.go == \'1\'').test(wf), step);
     assert(wf.includes('p="$f"; [ "$f" = index.html ] && p=""'), 'index.html relu à son adresse réelle');
     assert(wf.includes('RC_DATA_BASE: https://ipoower.github.io/iPoower/race-control/'));
-    assert((wf.match(/wrangler@4\.137\.0/g) || []).length === 3 && !/wrangler(@latest)?\s/.test(wf.replace(/wrangler@4\.137\.0/g, '')));
-    for (const h of ['cross-origin-opener-policy: same-origin', 'cross-origin-resource-policy: same-origin', "frame-ancestors 'none'", 'permissions-policy: geolocation=(self)', 'set-cookie'])
-      assert(wf.includes(h), h);
+    // Chaîne d'approvisionnement (audit du lot 1) : wrangler et ses dépendances viennent du lockfile, installés sans script ni jeton.
+    assert(!/\bnpx\b/.test(wf), 'aucun npx (dépendances résolues à la volée)');
+    const steps = wf.split(/\n(?=      - )/), install = steps.find(st => st.includes("- name: Outil d'envoi verrouillé"));
+    assert(install && install.includes('npm ci --prefix tools/cloudflare --ignore-scripts') && !/secrets\.|CLOUDFLARE_API_TOKEN/.test(install), 'installation verrouillée, sans scripts ni jeton');
+    assert(steps.filter(st => /CLOUDFLARE_API_TOKEN/.test(st)).every(st => /tools\/cloudflare\/node_modules\/\.bin\/wrangler/.test(st) && !/npm (ci|install)/.test(st)), 'le jeton ne va qu’au binaire local');
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../tools/cloudflare/package.json'), 'utf8')), lock = JSON.parse(fs.readFileSync(path.join(__dirname, '../tools/cloudflare/package-lock.json'), 'utf8'));
+    assert(pkg.devDependencies.wrangler === '4.137.0' && lock.packages['node_modules/wrangler'].version === '4.137.0' &&
+      Object.entries(lock.packages).filter(([k]) => k).every(([, v]) => /^sha512-/.test(v.integrity || '') && /^https:\/\/registry\.npmjs\.org\//.test(v.resolved || '')), 'lockfile : versions exactes, empreintes sha512, registre officiel');
+    assert(wf.includes('grep -qwF -- "$PROJECT"') && !/2>\/dev\/null \| grep/.test(wf), 'projet cherché comme texte exact, erreurs de l’API jamais masquées');
+    // En-têtes : chaque ligne du bloc « /* » de _headers du build reçue à l'identique (COOP exact : same-origin ou same-origin-allow-popups).
+    assert(wf.includes("expected=$(awk") && wf.includes('dist-cloudflare/_headers') && wf.includes('grep -qixF -- "$h"') && wf.includes('set-cookie'), 'en-têtes comparés au build, ligne entière');
+    assert(/for path in \/ \/sw\.js \/manifest\.webmanifest \/recovery; do/.test(wf) && /for f in index\.html recovery\.html sw\.js/.test(wf), 'recovery.html contrôlé (octets et en-têtes)');
+    assert((wf.match(/curl /g) || []).length === 1 && wf.includes('c() { curl -fsS --connect-timeout 10 --max-time 30 "$@"; }'), 'toutes les requêtes ont un délai maximal');
   });
   check('lecture de version.json gh-pages : valide → numéro, commit, build ; illisible → rien à republier', () => {
     const wf = fs.readFileSync(path.join(ROOT, '.github/workflows/cloudflare.yml'), 'utf8');
