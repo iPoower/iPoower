@@ -29,7 +29,10 @@ const DriveSync = (() => {
     // Le contenu est JSON strict au niveau extérieur ET dans chaque valeur.
     for (const key of [SyncMerge.SETTINGS, SyncMerge.STAMPS, JournalArchive.KEY, JournalArchive.CONTEXT, JournalArchive.MIRROR, 'twrc.reports.v1', 'twrc.shadow.v1', 'twrc.tripdone', 'twrc.tripcancel'])
       if (v[key] !== undefined) ControlVaultPacket.strictJson(new TextEncoder().encode(v[key]), 64);
-    return JSON.stringify(projection(v)) === JSON.stringify(v);
+    // Aucune clé propre à l'appareil dans une révision, sauf les préférences que d'anciennes versions envoyaient encore
+    // (SyncRevisions.LEGACY_SHARED) : tolérées à la lecture, ignorées par la fusion, jamais réécrites.
+    const shared = Object.fromEntries(Object.entries(v).filter(([k]) => !(SyncRevisions.legacyShared(k) && SyncMerge.device(k))));
+    return JSON.stringify(projection(v)) === JSON.stringify(shared);
   }
   // Sans `wanted` : la dernière copie avant fusion de la synchronisation ; sinon la copie désignée
   // par son empreinte (toutes restent exportables). Intégrité vérifiée avant toute restitution.

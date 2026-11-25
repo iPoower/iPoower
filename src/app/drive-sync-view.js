@@ -83,7 +83,9 @@ function renderDriveSync() {
     line('CONFLIT · action requise. Les deux versions sont conservées ; rien n’est remplacé sans ton choix.').setAttribute('role', 'alert');
     for (const c of st.conflictDetails) {
       const what = driveConflictLabel(c.path, typeof S === 'object' && S ? S.cars : null);
-      line(what + ' · cet appareil : ' + driveConflictText(c.path, c.local) + ' · autre appareil (…' + String(c.device).slice(-6) + ') : ' + driveConflictText(c.path, c.remote));
+      // Donnée entière (clé:…) : ses valeurs ne sont pas lues ici ; « (absent) » des deux côtés laissait croire à deux valeurs identiques.
+      if (String(c.path).startsWith('clé:')) line(what + ' · valeur différente sur cet appareil et sur l’autre appareil (…' + String(c.device).slice(-6) + ') · contenu non affiché');
+      else line(what + ' · cet appareil : ' + driveConflictText(c.path, c.local) + ' · autre appareil (…' + String(c.device).slice(-6) + ') : ' + driveConflictText(c.path, c.remote));
       if (!c.resolvable) { line('Résolution impossible dans l’app pour ce type d’écart (véhicule ajouté ou retiré d’un seul côté, ou donnée entière). Les deux versions restent conservées, mais les nouvelles saisies de l’autre appareil ne seront PAS intégrées ici tant que ce point n’est pas traité. Exporte une copie complète de chaque appareil.'); continue; }
       for (const choice of ['local', 'remote'])
         button(driveConflictButton(choice, c.path, choice === 'local' ? c.local : c.remote, typeof S === 'object' && S ? S.cars : null, navigator.userAgent), async () => {
