@@ -3,6 +3,6 @@
   "private": true,
   "description": "Outil d'envoi vers Cloudflare Pages, verrouillé par package-lock.json et installé sans scripts ni jeton (cloudflare.yml)",
   "devDependencies": {
-    "wrangler": "4.137.0"
+    "wrangler": "4.168.0"
   }
 }
