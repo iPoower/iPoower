@@ -442,4 +442,27 @@ check('contre-test (mutation) : sans les dépenses dans le prédicat additif, un
   const r = json(mctx.M.settings(pc, tel, econMarks, econMarks));
   assert(r.report.conflicts.includes('cars.0.economics.entries'), 'la mutation doit être détectée · ' + r.report.conflicts.join(','));
 });
+// Production, 24/11/2026 : « bip d'approche des feux » (twrc.drive.beep) et « fond de carte » (twrc.drive.base) du mode EN DIRECT,
+// réglés sur un seul appareil, devenaient une clé entière en conflit non résoluble qui bloquait toute la synchronisation Drive.
+check('préférences EN DIRECT propres à chaque appareil : jamais un conflit, jamais envoyées, jamais écrasées', () => {
+  const pc = device(), tel = device({ extra: { 'twrc.drive.beep': '1', 'twrc.drive.base': 'ortho' } });
+  const r = M.values(pc, tel), back = M.values(tel, pc);
+  assert.deepEqual(r.report.keysKept, []); assert.deepEqual(back.report.keysKept, []);
+  assert.equal(r.values['twrc.drive.beep'], undefined, 'le PC garde sa propre préférence (aucune)');
+  assert.equal(back.values['twrc.drive.beep'], '1'); assert.equal(back.values['twrc.drive.base'], 'ortho');
+  assert(['twrc.drive.beep', 'twrc.drive.base'].every(k => ctx.M.device(k)), 'déclarées propres à l’appareil (exclues de l’envoi Drive)');
+  const both = M.values(device({ extra: { 'twrc.drive.beep': '0' } }), tel);
+  assert.deepEqual(both.report.keysKept, []); assert.equal(both.values['twrc.drive.beep'], '0');
+});
+// Garde-fou : toute clé de stockage citée par l'app doit avoir une règle de synchronisation explicite. Une nouvelle clé oubliée
+// redevient sinon une « donnée inconnue » qui bloque la synchronisation dès qu'elle diffère entre deux appareils.
+check('toute clé twrc.* de l’app est classée : propre à l’appareil, publique, ou fusionnée par une règle', () => {
+  const src = [path.resolve(__dirname, '../src/app.js'), ...fs.readdirSync(path.resolve(__dirname, '../src/app')).map(f => path.resolve(__dirname, '../src/app', f))];
+  const keys = new Set(); for (const f of src) for (const m of fs.readFileSync(f, 'utf8').matchAll(/['"](twrc\.[a-z0-9_.-]*[a-z0-9])['"]/gi)) keys.add(m[1]);
+  const PUBLIC = ['twrc.view', 'twrc.nocode', 'twrc.tripmap', 'twrc.weather.limit.v1', 'twrc.outfit.occasion', 'twrc.presetv'];
+  const MERGED = [ctx.M.SETTINGS, ctx.M.STAMPS, 'twrc.context.v1', 'twrc.tripdone', 'twrc.tripcancel', 'twrc.reports.v1', 'twrc.shadow.v1', ctx.J.KEY, ctx.J.MIRROR];
+  const loose = [...keys].filter(k => !ctx.M.device(k) && !PUBLIC.includes(k) && !MERGED.includes(k));
+  assert(keys.size > 10, 'clés trouvées : ' + keys.size);
+  assert.deepEqual(loose, [], 'clé sans règle de synchronisation : ' + loose.join(', '));
+});
 console.log(n + '/' + n + ' scénarios fusion PC ↔ iPhone OK');

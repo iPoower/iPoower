@@ -21,7 +21,10 @@ const SyncMerge = (() => {
     'twrc.decision.latest.v1', 'twrc.weather.incidents.v1', 'twrc.lastbackup', 'twrc.tyretherm.v1', 'twrc.view', 'twrc.presetv',
     // Diagnostic d'exécution, lien de configuration importé sur cet appareil, état de synchronisation local.
     'twrc.runtime.v1', 'twrc.cfghash']);
-  const device = k => DEVICE.has(k) || /^twrc\.(cache\.|croute|road\.|session|restore\.|sync\.)/.test(k);
+  // twrc.drive.* : préférences d'affichage du mode EN DIRECT propres à chaque appareil (bip d'approche des feux, fond de carte).
+  // Elles n'étaient pas déclarées ici : une valeur différente entre le PC et l'iPhone devenait une « clé entière » en conflit,
+  // non résoluble, qui bloquait toute la synchronisation Drive (constaté en production le 24/11/2026).
+  const device = k => DEVICE.has(k) || /^twrc\.(cache\.|croute|road\.|session|restore\.|sync\.|drive\.)/.test(k);
   const obj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
   const clone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);

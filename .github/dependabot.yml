@@ -19,3 +19,11 @@ updates:
     ignore:
       # Leaflet est chargé dans l'app avec une empreinte de sécurité (SRI) fixée : sa mise à jour reste manuelle et volontaire
       - dependency-name: leaflet
+  # Outil d'envoi Cloudflare (cloudflare.yml) : verrouillé par son propre package-lock.json, mises à jour proposées en PR
+  - package-ecosystem: npm
+    directory: /tools/cloudflare
+    schedule:
+      interval: weekly
+      day: saturday
+    commit-message:
+      prefix: "Cloudflare"

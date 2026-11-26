@@ -85,7 +85,7 @@ function runTests(source = fs.readFileSync(sourcePath, 'utf8'), options = {}) {
     const r = ctx.appProfile(); assert.equal(r.generic, false); assert.equal(r.car(car()).generic, false); assert.equal(r.commuteOk, true);
   });
   ctx.CalendarOrigin = { clean: x => x || {} };
-  vm.runInContext(app.slice(app.indexOf('const clone ='), app.indexOf('// Migration étroite')), ctx);
+  vm.runInContext(app.slice(app.indexOf('const clone ='), app.indexOf('// réglages chiffrés (site public) : déchiffrés une fois avec le code')), ctx);
   const base = { locs: REAL, cars: [car()], customs: [], work: work() };
   test('nouvelle durée d’exemple : une durée personnelle enregistrée est conservée', () => {
     const saved = { work: { ...work(40) }, locs: REAL, cars: [car()] }, before = JSON.stringify(saved);

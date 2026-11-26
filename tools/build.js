@@ -14,6 +14,10 @@ const PD=process.env.RC_PRIVATE||'private',OUT=process.env.RC_OUT||'dist',ENC=pr
 const PRIV=has(PD+'/preset.json')&&has(PD+'/relay-config.json')&&has(PD+'/.passphrase');
 const LIVE='https://ipoower.github.io/iPoower/race-control/';
 const PASS=PRIV?r(PD+'/.passphrase').trim():null;
+// Le préréglage est scellé avec le code EXACT (l'app l'ouvre avec la saisie exacte, app.js), alors que la CI et le scanner
+// le contrôlent sous sa forme normalisée (norm : minuscules, sans guillemets). Un code non normalisé ferait diverger les deux :
+// refus au build plutôt qu'une normalisation silencieuse qui empêcherait le déverrouillage (audit du lot 2).
+if(PRIV&&PASS!==norm(PASS))throw new Error(PD+'/.passphrase doit être en minuscules, sans guillemets ni espaces autour');
 const RCK=PRIV&&has(PD+'/.rc_key')?norm(r(PD+'/.rc_key')):null;   // facultative : jamais de repli sur le code de l'app
 if(RCK&&RCK.length<16)throw new Error(PD+'/.rc_key trop courte (16 caractères minimum)');
 if(RCK&&RCK===norm(PASS))throw new Error('APP_KEY et RC_KEY identiques : les deux clés doivent être différentes');
@@ -43,7 +47,7 @@ var VS=window.TWRC_VAULT=SessionVault.create({raw:RAW,session:ses,crypto:crypto,
 window.addEventListener('storage',function(e){if(e.storageArea&&e.storageArea!==RAW)return;VS.onStorage(e,function(k,o,n){try{window.dispatchEvent(new StorageEvent('storage',{key:k,oldValue:o,newValue:n,url:location.href}));}catch(x){}}).then(function(r){if(r==='locked')location.reload();});});
 // Lot A (fail closed) : un échec d'ouverture du coffre n'est plus avalé. Avant, l'app démarrait sur le stockage brut et y écrivait
 // réglages, journal et lieu en clair, à côté du coffre (constat F2, reproduit par e2e130).
-var HALT={};VS.boot().then(function(){CF.cleanup(RAW);if(VS.store){try{Object.defineProperty(window,'localStorage',{configurable:true,get:function(){return VS.store;}});}catch(e){window.TWRC_STORAGE_ERROR=true;}}return window.TWRC_STORAGE_ERROR?null:CF.process(VS);},function(){if(hasVault()){halt();throw HALT;}}).then(function(){preset(VS.store||RAW);run();},function(e){if(e!==HALT)run();});
+var HALT={};VS.boot().then(function(){CF.cleanup(RAW);if(VS.store){try{Object.defineProperty(window,'localStorage',{configurable:true,get:function(){return VS.store;}});if(window.localStorage!==VS.store)throw 0;}catch(e){window.TWRC_STORAGE_ERROR=true;if(hasVault()){halt();throw HALT;}}}return window.TWRC_STORAGE_ERROR?null:CF.process(VS);},function(){if(hasVault()){halt();throw HALT;}}).then(function(){preset(VS.store||RAW);run();},function(e){if(e!==HALT)run();});
 })();\n</script>\n`;
 const body=pre=>`${r('src/shell.html')}\n<script>\n${device}\ntry{DeviceStorage.bootstrap(window,localStorage);}catch(e){window.TWRC_STORAGE_ERROR=true;}\n</script>\n${pre||''}<script type="text/plain" id="twrc-app">\n${js}\n</script>\n${start}`;
 const rcfg=PRIV?JSON.parse(r(PD+'/relay-config.json')):null;
@@ -111,5 +115,5 @@ if(PRIV&&!RCK&&(!prevR||prevR.v!==rv))throw new Error('Configuration du relais m
 const rs=(prevR&&prevR.v===rv&&(!RCK||tryUnseal(prevR.sealed,RCK)))?prevR.sealed:seal(relayPriv,RCK);w(ENC+'/relay-config.sealed.json',JSON.stringify({v:rv,sealed:rs}));
 w(OUT+'/relay-config.sealed.json',JSON.stringify(rs));
 // garde-fou : la sortie publique ne doit contenir aucune donnée personnelle
-require('child_process').execFileSync(process.execPath,[path.join(ROOT,'tools/check-secrets.js'),...fs.readdirSync(path.join(ROOT,OUT)).filter(f=>fs.statSync(path.join(ROOT,OUT,f)).isFile()&&!/\.png$/.test(f)).map(f=>OUT+'/'+f),OUT+'/vendor/leaflet/leaflet.js',OUT+'/vendor/leaflet/leaflet.css'],{cwd:ROOT,stdio:'inherit'});
+require('child_process').execFileSync(process.execPath,[path.join(ROOT,'tools/check-secrets.js'),...fs.readdirSync(path.join(ROOT,OUT)).filter(f=>fs.statSync(path.join(ROOT,OUT,f)).isFile()&&!/\.png$/.test(f)).map(f=>OUT+'/'+f),OUT+'/vendor/leaflet/leaflet.js',OUT+'/vendor/leaflet/leaflet.css',...webAssets.MAPLIBRE_ASSETS.map(f=>OUT+'/vendor/maplibre/'+f)],{cwd:ROOT,stdio:'inherit'});
 console.log('ok',fs.statSync(path.join(ROOT,OUT,'index.html')).size,'sealedV',sealedV,PRIV?'(réglages privés présents)':'(fichiers chiffrés seuls)');
