@@ -2,6 +2,7 @@
 // fictif du lundi 16/11 06:30 → 07:10, il est 08:10 (arrivé depuis 1 h, aucune arrivée détectée). La carte « ARRIVÉE À
 // CONFIRMER » s'affiche en tête de l'onglet Trajet ; « Bien arrivé » clôt le trajet par la même machine que l'arrivée GPS
 // (journal, lieu confirmé), la carte disparaît et ne revient pas au rechargement ; aucune carte avant le départ ni 3 h après.
+// La feuille conserve une confirmation volontaire pour le dernier trajet parti du jour, même après 3 h, sans GPS ni réseau.
 'use strict';
 const { session, BR, errors } = require('./lib/context-session');
 let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : '❌ ') + n + (ok || !d ? '' : ' · ' + String(d).slice(0, 500))); if (!ok) fail++; };
@@ -20,7 +21,7 @@ async function run(b, dev) {
   // Avant le départ : aucune carte.
   { const s = await session(b, { at: '2026-11-16T06:00:00+01:00', dev }), p = s.p; await s.settle(4); await p.evaluate(setup); await s.settle(6);
     await p.evaluate(() => { UI.view = 'trajet'; renderAll(); }); await s.settle(3);
-    check(`${dev} · avant le départ (06:00) : aucune carte d’arrivée`, !(await state(p)).card); await s.c.close(); }
+    check(`${dev} · avant le départ (06:00) : aucune carte ni action d’arrivée dans la feuille`, !(await state(p)).card && await p.locator('#secTripSummary [data-act=fr-arrived]').count() === 0); await s.c.close(); }
   const s = await session(b, { at: '2026-11-16T08:10:00+01:00', dev }), p = s.p; await s.settle(4);
   await p.evaluate(setup); await s.settle(6);
   await p.evaluate(() => { UI.view = 'trajet'; renderAll(); window.scrollTo(0, 0); }); await s.settle(3);
@@ -40,6 +41,55 @@ async function run(b, dev) {
   { const q = await session(b, { at: '2026-11-16T10:20:00+01:00', dev }), pp = q.p; await q.settle(4); await pp.evaluate(setup); await q.settle(6);
     await pp.evaluate(() => { UI.view = 'trajet'; renderAll(); }); await q.settle(3);
     check(`${dev} · plus de 3 h après l’arrivée prévue : aucune carte`, !(await state(pp)).card); await q.c.close(); }
+  // Retour oublié : 16:00 → 16:40, il est 20:23. L'aller est déjà clos ; le bandeau de 3 h a disparu.
+  { const q = await session(b, { at: '2026-11-16T20:23:00+01:00', dev }), pp = q.p; await q.settle(4); await pp.evaluate(setup); await q.settle(6);
+    const original = await pp.evaluate(() => {
+      S.work.ret = '16:00'; saveSettings(); rebuild();
+      const go = tripDayList().find(x => /\|go$/.test(x.t.key));
+      appAction(() => { USER_STORE.state.done[go.t.key] = { how: 'confirmé', at: Date.now() - 690 * 60e3, exp: Date.now() + 86400e3 }; });
+      UI.view = 'trajet'; rebuild(); renderAll();
+      return { go: go.t.key, done: JSON.stringify(USER_STORE.state.done[go.t.key]), home: (homeExact() || {}).id };
+    }); await q.settle(3);
+    const before = await pp.evaluate(() => {
+      const b = document.querySelector('#secTripSummary [data-act=fr-arrived]'), c = b && b.closest('.fr-card');
+      return { key: b && b.dataset.key, text: c && c.innerText, h: b && b.getBoundingClientRect().height,
+        opacity: c && getComputedStyle(c).opacity, expanded: c && c.querySelector('.fr-head').getAttribute('aria-expanded') };
+    });
+    check(`${dev} · à 20:23, action visible dans le retour de la feuille fermée malgré l’expiration du bandeau`, !((await state(pp)).card) && /\|ret$/.test(before.key || '') && /ARRIVÉE NON CONFIRMÉE/.test(before.text || '') && /Confirmer mon arrivée/.test(before.text || '') && before.expanded === 'false', JSON.stringify(before));
+    check(`${dev} · confirmation : cible ≥ 44 pt, carte pleinement lisible, heure de confirmation annoncée`, before.h >= 44 && before.opacity === '1' && /heure de confirmation sera enregistrée/.test(before.text || ''), JSON.stringify(before));
+    const guard = await pp.evaluate(({ go, ret }) => {
+      const saved = JSON.stringify(USER_STORE.state), stale = tripDayConfirmArrival(go), unchanged = saved === JSON.stringify(USER_STORE.state);
+      DEMO.on = true; const demo = tripDayConfirmArrival(ret); DEMO.on = false;
+      const now = liveNow(), old = { t: { key: 'ancien', src: 'work', dep: addMin(now, -360) }, state: 'past' }, last = { t: { key: 'dernier', src: 'work', dep: addMin(now, -240) }, state: 'past' };
+      const loan = { t: { key: 'pret', src: 'loan', dep: addMin(now, -60) }, state: 'past' };
+      const done = tripDayArrival([old, { ...last, state: 'done' }]), loans = tripDayArrival([last, loan]);
+      const previous = { key: LIVE.key, phase: LIVE.phase };
+      let other, early;
+      try {
+        Object.assign(LIVE, { key: 'autre', phase: 'active' }); other = tripDayArrival([last]);
+        Object.assign(LIVE, { key: 'parti-en-avance', phase: 'active' });
+        early = tripDayArrival([{ t: { key: LIVE.key, src: 'work', dep: addMin(now, 30) }, state: 'live' }]);
+      } finally { Object.assign(LIVE, previous); }
+      return { stale, unchanged, demo, done: done === null, loans: loans && loans.t.key, other: other === null, early: early && early.live };
+    }, { go: original.go, ret: before.key });
+    check(`${dev} · garde-fous : ancien trajet et démo refusés, aucune réouverture après clôture, prêt exclu, autre suivi préservé, départ anticipé accepté`, !guard.stale && guard.unchanged && !guard.demo && guard.done && guard.loans === 'dernier' && guard.other && guard.early, JSON.stringify(guard));
+    await q.c.setOffline(true);
+    await pp.locator('#secTripSummary [data-act=fr-arrived]').click(); await q.settle(3);
+    const after = await state(pp);
+    const closed = await pp.evaluate(({ key, go }) => {
+      const c = [...document.querySelectorAll('#secTripSummary .fr-card')].find(c => c.querySelector('.fr-head').dataset.key === key);
+      const e = USER_STORE.state.debrief.entries.find(e => e.key === key);
+      return { text: c && c.innerText, state: c && c.dataset.state, at: USER_STORE.state.done[key] && USER_STORE.state.done[key].at,
+        go: JSON.stringify(USER_STORE.state.done[go]), noStart: !e || !e.start, again: tripDayConfirmArrival(key),
+        focused: document.activeElement && document.activeElement.dataset.act === 'fr-open', n: USER_STORE.state.debrief.entries.filter(e => e.key === key).length };
+    }, { key: before.key, go: original.go });
+    check(`${dev} · hors ligne sans GPS : même clôture, lieu domicile confirmé, heure 20:23, aller conservé, aucun départ inventé ni doublon`, after.done.includes(before.key) && (after.journal.includes(before.key) || !after.writable) && after.conf && after.conf.id === original.home && closed.state === 'done' && /ARRIVÉE CONFIRMÉE À 20:23/.test(closed.text || '') && closed.at >= q.T0 && closed.at < q.T0 + 60000 && closed.go === original.done && closed.noStart && !closed.again && closed.n <= 1, JSON.stringify({ after, closed }));
+    check(`${dev} · bouton retiré et focus rendu à la spéciale après confirmation`, await pp.locator('#secTripSummary [data-act=fr-arrived]').count() === 0 && closed.focused);
+    await pp.evaluate(async () => { await window.TWRC_VAULT.flush(); if (window.TWRC_VAULT.pendingWrites || window.TWRC_VAULT.error) throw new Error('enregistrement non confirmé'); });
+    await q.c.setOffline(false); await pp.reload(); await q.settle(8); await pp.evaluate(() => { UI.view = 'trajet'; renderAll(); }); await q.settle(3);
+    check(`${dev} · rechargement : retour toujours confirmé, aucun bouton ni doublon`, (await state(pp)).done.includes(before.key) && await pp.locator('#secTripSummary [data-act=fr-arrived]').count() === 0);
+    await q.c.close();
+  }
 }
 (async () => {
   const b = await BR.launch();
