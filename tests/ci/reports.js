@@ -1,7 +1,10 @@
 'use strict';
-const { select } = require('./plan');
-function verifyReports(reports, total = 3, expectedHash) {
-  const expected = [{ lane: 'unit', browser: 'chromium', index: 1, total: 1 }, ...['chromium', 'webkit'].flatMap(browser => Array.from({ length: total }, (_, i) => ({ lane: 'browser', browser, index: i + 1, total })))];
+const { BROWSER_SHARD_COUNTS, select } = require('./plan');
+function verifyReports(reports, expectedHash) {
+  const expected = [{ lane: 'unit', browser: 'chromium', index: 1, total: 1 }];
+  for (const [browser, total] of Object.entries(BROWSER_SHARD_COUNTS)) {
+    for (let index = 1; index <= total; index++) expected.push({ lane: 'browser', browser, index, total });
+  }
   const key = r => `${r.lane}:${r.browser}:${r.index}/${r.total}`;
   const roles = new Map(); let hash;
   for (const report of reports) {

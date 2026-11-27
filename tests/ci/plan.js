@@ -1,11 +1,12 @@
 'use strict';
 const { SUITE, FIRST } = require('./suites'), durations = require('./durations.json');
+const BROWSER_SHARD_COUNTS = Object.freeze({ chromium: 3, webkit: 4 });
 const unitSuites = () => SUITE.filter(s => !s[2]);
 function browserSuites(browser) {
   if (!['chromium', 'webkit'].includes(browser)) throw new Error('Navigateur CI inconnu');
   return SUITE.filter(s => s[2] && (!s[3] || s[3] === browser));
 }
-function shards(browser, total = 3) {
+function shards(browser, total = BROWSER_SHARD_COUNTS[browser]) {
   const suites = browserSuites(browser);
   if (!Number.isInteger(total) || total < 1 || total > suites.length) throw new Error('Nombre de shards invalide');
   const bins = Array.from({ length: total }, () => ({ seconds: 0, suites: [] }));
@@ -28,4 +29,4 @@ function select({ lane = 'all', browser = 'chromium', index = 1, total = 1, file
   if (lane === 'browser') suites.sort((a, b) => (FIRST.includes(a[0]) ? FIRST.indexOf(a[0]) : FIRST.length) - (FIRST.includes(b[0]) ? FIRST.indexOf(b[0]) : FIRST.length));
   return suites;
 }
-module.exports = { unitSuites, browserSuites, shards, select };
+module.exports = { BROWSER_SHARD_COUNTS, unitSuites, browserSuites, shards, select };
