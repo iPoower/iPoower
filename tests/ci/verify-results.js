@@ -6,7 +6,7 @@ try {
   if (process.argv.includes('--gates-only')) { console.log('✅ Tous les contrôles requis sont verts ; aucun saut inattendu.'); process.exit(0); }
   const dir = process.argv[2];
   const reports = fs.readdirSync(dir).filter(f => /^report-.*\.json$/.test(f)).map(f => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')));
-  const summary = verifyReports(reports, 3, sourceHash());
+  const summary = verifyReports(reports, sourceHash());
   let text = `### Validation complète\n\n${summary.count} exécutions validées ; aucune suite absente, ciblée, dupliquée ou en échec.\n\n| Lane | Suites | Temps du runner |\n|---|---:|---:|\n`;
   for (const r of summary.roles) text += `| ${r.lane === 'unit' ? 'unit' : r.browser + ' ' + r.index + '/' + r.total} | ${r.results.length} | ${(r.durationMs / 1000).toFixed(1)} s |\n`;
   text += '\nUnitaires partagés une seule fois ; E2E Chromium et WebKit inchangés. Les deux tests Service Worker restent sur Chromium, comme avant.\n';
