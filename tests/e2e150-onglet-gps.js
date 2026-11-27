@@ -13,6 +13,7 @@ const tabs = p => p.evaluate(() => [...document.querySelectorAll('#viewSeg [data
   return { v: b.dataset.v, text: b.textContent.replace(/\s+/g, ' ').trim().replace(/^\S+\s/, ''), key: b.getAttribute('aria-keyshortcuts'), w: Math.round(r.width), h: Math.round(r.height), clip: b.scrollWidth > b.clientWidth + 1 }; }));
 async function run(b, dev) {
   const s = await session(b, { at: '2026-11-16T10:00:00+01:00', dev }), p = s.p;
+  await s.p.evaluate(() => { lsSet('twrc.drive.live', '1'); renderAll(); });   // mode EN DIRECT (sans CarPlay) : préférence de l’appareil, désactivée par défaut depuis le 27/11
   await p.route('https://data.geopf.fr/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: PX }));
   await p.route('https://overpass-api.de/**', r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"elements":[]}' }));
   const RAD = Math.PI / 180, meters = (a, c) => 6371000 * RAD * Math.hypot(c[0] - a[0], (c[1] - a[1]) * Math.cos((a[0] + c[0]) * RAD / 2));

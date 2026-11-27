@@ -18,6 +18,10 @@ const IGN_ORTHO = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSI
 // Fond de carte : « plan » (Plan IGN, clair le jour, sombre la nuit) ou « ortho » (photo aérienne BD ORTHO), choisi dans les Réglages.
 const DRIVE_BASE_KEY = 'twrc.drive.base';
 const driveBasePref = () => lsGet(DRIVE_BASE_KEY) === 'ortho' ? 'ortho' : 'plan';
+// Mode EN DIRECT affiché dans l'onglet Départ : préférence de l'appareil (twrc.drive.*, jamais synchronisée), désactivée par
+// défaut (décision du propriétaire, 27/11/2026 : il roule avec CarPlay, qui guide ; EN DIRECT ne sert qu'en voiture sans CarPlay).
+const DRIVE_LIVE_KEY = 'twrc.drive.live';
+const driveLivePref = () => lsGet(DRIVE_LIVE_KEY) === '1';
 // Icône de feu NEUTRE : boîtier et trois feux éteints (contours gris), aucune couleur rouge, orange ou verte.
 const DRIVE_LIGHT_SVG = '<svg viewBox="0 0 14 32" width="14" height="32" aria-hidden="true" focusable="false"><rect x="1" y="1" width="12" height="30" rx="4" fill="#2c2c2e" stroke="#f2f2f7" stroke-width="1.5"/>' +
   '<circle cx="7" cy="8" r="3" fill="none" stroke="#aeaeb2" stroke-width="1.4"/><circle cx="7" cy="16" r="3" fill="none" stroke="#aeaeb2" stroke-width="1.4"/><circle cx="7" cy="24" r="3" fill="none" stroke="#aeaeb2" stroke-width="1.4"/></svg>';
@@ -71,7 +75,7 @@ async function driveOpen() {
 // Ouverture automatique après « Partir maintenant » : seulement quand l'itinéraire est prêt (au plus 20 s d'attente). Un
 // itinéraire en échec laisse le Trajet visible, avec son message et « Réessayer » : jamais masqués par le plein écran.
 function driveAutoOpen(key, left = 20, routeOf = t => LiveRoute.route(t, null)) {
-  if (DRIVE.open || LOCKED()) return;
+  if (DRIVE.open || LOCKED() || !driveLivePref()) return;   // EN DIRECT masqué : rien ne s'ouvre en plein écran
   const t = driveTrip();
   if (!t || t.key !== key) return;
   if (routeOf(t)) { driveOpen(); return; }

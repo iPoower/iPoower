@@ -9,6 +9,7 @@ let fail = 0; const rows = [], check = (n, ok, d) => { rows.push((ok ? '✅ ' : 
 const PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 async function run(b, dev) {
   const s = await session(b, { at: '2026-11-16T10:00:00+01:00', dev }), p = s.p, ign = [];
+  await s.p.evaluate(() => { lsSet('twrc.drive.live', '1'); renderAll(); });   // mode EN DIRECT (sans CarPlay) : préférence de l’appareil, désactivée par défaut depuis le 27/11
   await p.route('https://data.geopf.fr/wmts**', r => { ign.push(r.request().url()); r.fulfill({ status: 200, contentType: 'image/png', body: PX }); });
   await p.route('https://router.project-osrm.org/**', r => {
     const m = /driving\/([^;]+);([^?]+)/.exec(new URL(r.request().url()).pathname), A = m[1].split(',').map(Number), B = m[2].split(',').map(Number);
