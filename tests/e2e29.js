@@ -99,9 +99,10 @@ const ll = h => (/ll=([-\d.]+),([-\d.]+)/.exec(h) || []).slice(1).join(',');
     check('1 · briefing : « Ouvrir dans Waze » vers la destination du trajet affiché (Amiens)', L.length === 1 && ll(L[0].h) === '49.207,2.586' && /navigate=yes/.test(L[0].h), JSON.stringify(L));
     check('1 · lien externe sûr : nouvel onglet, noopener', L[0] && L[0].t === '_blank' && /noopener/.test(L[0].r));
     check('1 · aucune ouverture automatique : aucune requête vers Waze, aucune fenêtre', !S.waze && popups === 0);
-    const A = (await links(p, '#secCal')).map(x => ll(x.h));
+    const AL = await links(p, '#secCal'), A = AL.map(x => ll(x.h));
     check('1 · agenda : aller vers le rendez-vous', A.includes('49.207,2.586') && A.includes('49.381,3.323'), A.join(' | '));
-    check('1 · agenda : retour vers le domicile local EXACT, jamais le domicile arrondi du relais', A.includes('48.84627,2.34478') && !A.includes('48.85,2.35'), A.join(' | '));
+    // Recette R4-01e (27/11) : un lieu enregistré n'est jamais envoyé (même règle que « Guider avec… ») ; le retour passe par le favori Waze « home ».
+    check('1 · agenda : retour vers le domicile par le favori Waze « home », aucune coordonnée du domicile (exacte ou arrondie)', AL.some(x => x.h === 'https://waze.com/ul?favorite=home&navigate=yes') && !A.includes('48.84627,2.34478') && !A.includes('48.85,2.35'), AL.map(x => x.h).join(' | '));
     // Plans en coordonnées seules est signalé défaillant : aucun lien Apple Plans affiché sans adresse (« Guider avec… » de
     // l'onglet GPS n'en crée qu'avec une adresse ; le code de construction du lien est embarqué dans la page, d'où le test du DOM).
     check('1 · aucun lien Apple Plans en coordonnées seules (Plans seulement avec une adresse)', await p.evaluate(() => [...document.querySelectorAll('a[href*="maps.apple.com"]')]
@@ -115,12 +116,12 @@ const ll = h => (/ll=([-\d.]+),([-\d.]+)/.exec(h) || []).slice(1).join(',');
   {
     const s = await session(b, '2026-10-05T05:30:00+02:00'); all.push(s);
     await s.waitFor(/DOMICILE-TRAVAIL/i); await s.settle(4); const L = await links(s.p, '#secBrf');
-    check('2 · boulot aller : destination = travail', L.length === 1 && ll(L[0].h) === '48.9,2.25', JSON.stringify(L));
+    check('2 · boulot aller : destination = travail par le favori Waze « work », aucune coordonnée', L.length === 1 && L[0].h === 'https://waze.com/ul?favorite=work&navigate=yes', JSON.stringify(L));
   }
   {
     const s = await session(b, '2026-10-05T15:30:00+02:00'); all.push(s);
     await s.waitFor(/Retour domicile-travail/i); await exactHome(s); await s.settle(4); const L = await links(s.p, '#secBrf');
-    check('2 · boulot retour : destination = domicile local exact', L.length === 1 && ll(L[0].h) === '48.84627,2.34478', JSON.stringify(L));
+    check('2 · boulot retour : destination = domicile par le favori Waze « home », aucune coordonnée', L.length === 1 && L[0].h === 'https://waze.com/ul?favorite=home&navigate=yes', JSON.stringify(L));
   }
   // ===== 3. ordinateur : bouton visible (le bouton « Voir le trajet » y est masqué, Waze non) =====
   {
@@ -138,7 +139,7 @@ const ll = h => (/ll=([-\d.]+),([-\d.]+)/.exec(h) || []).slice(1).join(',');
   {
     const s = await session(b, '2026-10-03T22:30:00+02:00'); all.push(s);
     await exactHome(s); await s.enableGps(G.loin); await s.waitFor(/Ma position/i); await s.settle(4); const L = await links(s.p, '#secBrf');
-    check('5 · retour vivant : Waze vers le domicile local exact, aucune coordonnée GPS', L.length === 1 && ll(L[0].h) === '48.84627,2.34478' && !GPS_MARK.some(v => L[0].h.includes(v)), JSON.stringify(L));
+    check('5 · retour vivant : Waze vers le domicile par le favori « home », aucune coordonnée (domicile ni GPS)', L.length === 1 && L[0].h === 'https://waze.com/ul?favorite=home&navigate=yes' && !GPS_MARK.some(v => L[0].h.includes(v)), JSON.stringify(L));
     check('5 · OSRM garde le domicile arrondi à 0,01° (confidentialité inchangée)', s.S.osrm.some(x => x.endsWith(';2.35,48.85')) && !s.S.osrm.some(x => x.includes('2.345') && x.includes('48.846')), s.S.osrm.join(' | '));
   }
   const reqs = all.flatMap(s => s.S.reqs);

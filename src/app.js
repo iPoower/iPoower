@@ -1062,7 +1062,11 @@ function computeCtx() {
   const alerts = Object.assign(computeAlerts(m, TCARS(), S, seasons), listed);
   // Verdict « ici, maintenant » : phénomènes des NOW_HOURS prochaines heures au lieu consulté, plus l'état courant
   // (vigilance du jour, pluie imminente, pneus). Le soleil rasant, la Loi Montagne et les scénarios 24 h relèvent du trajet.
-  const alertsNow = Object.assign(computeAlerts(m, TCARS(), S, seasons, NOW_HOURS),
+  // Recette R4-04c (27/11) : le verdict « ici, maintenant » ne parle que de la voiture du jour (même règle que e2e98, 01/11).
+  // Sans elle, « pneus été » d'une AUTRE voiture relevait le verdict à PRUDENCE (et la neige à DANGER) alors que la voiture du jour
+  // est en hiver. Les alertes 24 h (liste des alertes, planification) restent calculées sur toutes les voitures.
+  const dayCar = typeof appActiveCar === 'function' ? appActiveCar() : null, nowCars = dayCar && hasTires(dayCar) ? [dayCar] : TCARS();
+  const alertsNow = Object.assign(computeAlerts(m, nowCars, S, seasons, NOW_HOURS),
     Object.fromEntries(Object.entries(extra).filter(([id]) => NOW_EXTRA.includes(id) && id !== 'vigi')), extra.vigiNow ? { vigi: extra.vigiNow } : {});
   return { m, seq, sum, cars, sum24, alerts, alertsNow };
 }
@@ -2994,10 +2998,17 @@ function tripCancelUndo(id) {
 }
 // navigation externe : Waze (lien universel), ouvert UNIQUEMENT par un geste de l'utilisateur. Seule la destination est transmise :
 // Waze part lui-même de la position courante de l'appareil (aucune origine, aucune position GPS envoyée) ; rien n'est stocké.
-const wazeUrl = p => p && p.lat != null && p.lon != null && isFinite(+p.lat) && isFinite(+p.lon) ? `https://waze.com/ul?ll=${+p.lat},${+p.lon}&navigate=yes` : null;
+// Recette R4-01e (27/11) : même règle que « Guider avec… » (#368). Une destination à ≤ 1,5 km d'un lieu enregistré n'est jamais
+// envoyée : domicile et travail par le favori Waze, autre lieu enregistré sans lien. Les autres destinations gardent le lien ll=.
+const wazeUrl = p => {
+  if (!p || p.lat == null || p.lon == null || !isFinite(+p.lat) || !isFinite(+p.lon)) return null;
+  const d = typeof guidePlaceDest === 'function' ? guidePlaceDest(p) : null;
+  if (d && d.privacy) return GuideLinks.waze(d).url || null;
+  return `https://waze.com/ul?ll=${+p.lat},${+p.lon}&navigate=yes`;
+};
 const wazeBtn = p => { const u = wazeUrl(p); return u ? `<a class="btn sm" href="${u}" target="_blank" rel="noopener noreferrer">🚙 Ouvrir dans Waze</a>` : ''; };
 // domicile local EXACT (préréglage de l'appareil). Le relais n'a qu'un domicile arrondi à 0,01° (confidentialité des appels OSRM) :
-// pour Waze, ouvert par l'utilisateur, un retour vise le vrai domicile. L'arrondi OSRM, le relais et l'agenda chiffré ne changent pas.
+// un retour vise le vrai domicile, que wazeUrl reconnaît comme lieu enregistré (favori Waze « home », aucune coordonnée envoyée).
 const homeExact = () => { const L = S.locs || [], h = L.find(l => l.id === 'home') || L[0]; return locHasCoords(h) ? h : null; };
 const legNavTo = leg => leg && leg.k === 'ret' && !leg.destinationOverride ? (homeExact() || leg.to) : leg && (leg.navTo || leg.to);
 // destination du trajet AFFICHÉ (vivant, adaptatif, agenda ou boulot) ; planL = trajet agenda d'origine d'un trajet vivant
