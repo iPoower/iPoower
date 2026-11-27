@@ -16,6 +16,7 @@ const STYLE = { version: 8, glyphs: 'https://data.geopf.fr/annexes/ressources/ve
   { id: 'nom de rue', type: 'symbol', source: 'plan_ign', 'source-layer': 'toponyme_routier_odonyme_lin', layout: { 'text-field': ['get', 'texte'] }, paint: { 'text-color': '#333333', 'text-halo-color': '#ffffff' } }] };
 const lum = c => { const m = /hsla?\(([\d.]+),\s*([\d.]+)%,\s*([\d.]+)%/.exec(c || ''); if (m) return +m[3] / 100; const x = /#([0-9a-f]{6})/i.exec(c || ''); if (!x) return null; const v = [0, 2, 4].map(i => parseInt(x[1].slice(i, i + 2), 16) / 255); return (Math.max(...v) + Math.min(...v)) / 2; };
 async function setup(s, dev, osrmSteps) {
+  await s.p.evaluate(() => { lsSet('twrc.drive.live', '1'); renderAll(); });   // mode EN DIRECT (sans CarPlay), aussi pour la session sans WebGL
   const p = s.p, tiles = [], styles = [];
   await p.route('https://data.geopf.fr/**', r => { const u = r.request().url();
     if (/styles\/PLAN\.IGN\/standard\.json/.test(u)) { styles.push('standard'); return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(STYLE) }); }
@@ -50,6 +51,7 @@ const state = p => p.evaluate(() => { const mv = DRIVE.mv, m = mv && mv.map, gl 
     ortho: gl ? !!m.getSource('ortho') : null, canvas: cv ? [cv.clientWidth, cv.clientHeight] : null, box: node ? [node.clientWidth, node.clientHeight] : null, foot: (document.querySelector('#liveDrive [data-dv="foot"]') || {}).textContent || '', csp: (window.__csp || []).join(' ') }; });
 async function run(b, dev) {
   const s = await session(b, { at: '2026-11-16T16:30:00+01:00', dev }), p = s.p;
+  await s.p.evaluate(() => { lsSet('twrc.drive.live', '1'); renderAll(); });   // mode EN DIRECT (sans CarPlay) : préférence de l’appareil, désactivée par défaut depuis le 27/11
   // Navigateur de test sans WebGL (possible dans certains WebKit de CI) : seule la voie de repli est vérifiable, et elle l'est.
   if (!await p.evaluate(() => typeof driveWebGL !== 'function' || driveWebGL())) {
     const y = await setup(s, dev, false), w = await state(p);

@@ -11,6 +11,7 @@ const RAD = Math.PI / 180, meters = (a, b) => 6371000 * RAD * Math.hypot(b[0] - 
 const COLORFUL = `c => { const m = /rgba?\\(([^)]+)\\)/.exec(c || ''); if (!m) return false; const [r, g, b, a = 1] = m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number); return a > 0 && Math.max(r, g, b) - Math.min(r, g, b) > 60; }`;
 async function run(b, dev) {
   const s = await session(b, { at: '2026-11-16T16:30:00+01:00', dev }), p = s.p, tiles = [];
+  await s.p.evaluate(() => { lsSet('twrc.drive.live', '1'); renderAll(); });   // mode EN DIRECT (sans CarPlay) : préférence de l’appareil, désactivée par défaut depuis le 27/11
   await p.route('https://data.geopf.fr/wmts**', r => { const u = r.request().url(); tiles.push(/LAYER=([A-Z0-9.]+)/.exec(u)[1]); return r.fulfill({ status: 200, contentType: /jpeg/.test(u) ? 'image/jpeg' : 'image/png', body: PX }); });
   await p.route('https://router.project-osrm.org/**', r => {
     const m = /driving\/([^;]+);([^?]+)/.exec(new URL(r.request().url()).pathname), A = m[1].split(',').map(Number), B = m[2].split(',').map(Number);

@@ -20,6 +20,7 @@ function summitJson(T, hum, z = 990) {
 }
 async function run(b, dev) {
   const s = await session(b, { at: '2026-11-16T10:00:00+01:00', dev }), p = s.p, alti = [], elevQ = [];
+  await s.p.evaluate(() => { lsSet('twrc.drive.live', '1'); renderAll(); });   // mode EN DIRECT (sans CarPlay) : préférence de l’appareil, désactivée par défaut depuis le 27/11
   let summit = summitJson(-1.2, 'humide'), summitStatus = 200;
   p.on('request', r => { const u = r.url(); if (/api\.open-meteo\.com\/v1\/forecast/.test(u) && /[?&]elevation=/.test(u)) elevQ.push(u); });
   await p.route('https://data.geopf.fr/**', r => { const u = new URL(r.request().url());

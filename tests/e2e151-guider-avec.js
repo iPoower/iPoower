@@ -11,6 +11,7 @@ const ADDR = "3 rue fictive de l'Église, Lieu B", ENC = "3%20rue%20fictive%20de
 const GUIDE = /(^|\.)waze\.com$|^maps\.apple\.com$|(^|\.)google\.com$/;
 async function run(b, dev) {
   const s = await session(b, { at: '2026-11-16T10:00:00+01:00', dev }), p = s.p, sent = [];
+  await s.p.evaluate(() => { lsSet('twrc.drive.live', '1'); renderAll(); });   // mode EN DIRECT (sans CarPlay) : préférence de l’appareil, désactivée par défaut depuis le 27/11
   await s.c.route(u => GUIDE.test(new URL(u).hostname), r => { sent.push(r.request().url()); return r.fulfill({ status: 200, contentType: 'text/html', body: '<p>guidage</p>' }); });
   await p.route('https://data.geopf.fr/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: PX }));
   await p.route('https://overpass-api.de/**', r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"elements":[]}' }));
