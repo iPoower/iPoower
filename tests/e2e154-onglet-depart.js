@@ -38,6 +38,13 @@ async function run(b, dev) {
     const t = await tabs(p), d = t.find(x => x.v === 'gps');
     check(`${dev} ${w} px · onglet « Départ » (raccourci 4), cible ≥ 44 px, aucun libellé coupé`, !!d && d.text === 'Départ' && d.h >= 44 && d.w >= 44 && t.every(x => !x.clip), JSON.stringify(t));
   }
+  // Recette R4-04b (27/11) : sur PC (≥ 1200 px, souris), les six onglets tiennent dans la colonne sans être coupés.
+  if (dev === 'pc') { for (const w of [1280, 1440, 1920, 2560]) {
+    await p.setViewportSize({ width: w, height: 1000 }); await s.settle(1);
+    const t = await tabs(p), bar = await p.evaluate(() => { const seg = document.querySelector('#viewSeg .seg.view'), r = seg.getBoundingClientRect();
+      return { over: seg.scrollWidth - seg.clientWidth, out: [...seg.querySelectorAll('button')].filter(b => b.getBoundingClientRect().right > r.right + 1).map(b => b.textContent.trim()) }; });
+    check(`${dev} ${w} px · six onglets entiers (« Analyse » compris), aucun débordement, cibles ≥ 44 px`, t.length === 6 && t.every(x => !x.clip && x.h >= 44) && bar.over <= 1 && !bar.out.length, JSON.stringify({ t, bar }));
+  } await p.setViewportSize({ width: 1280, height: 800 }); await s.settle(1); }
   // Trajet vers une adresse NON enregistrée : verdict, puis « Lancer dans Plans ».
   await p.evaluate(A => { S.work.days = []; appSetDayType('off'); saveSettings(); const [o] = S.locs, pt = { id: 'fictif-b', name: 'Lieu fictif B', address: A, lat: +(o.lat + 0.27).toFixed(5), lon: +(o.lon + 0.01).toFixed(5) };
     appProgramManualTrip({ originId: o.id, originPoint: null, destinationId: null, destinationPoint: pt, dep: liveNow().slice(0, 16), carId: S.cars[0].id }); rebuild(); renderAll(); }, ADDR);

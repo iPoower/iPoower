@@ -55,8 +55,10 @@ function gpsTripCardHtml(t) {
 }
 // « Guider avec… » : destination du trajet pour un guidage dans Waze, Plans ou Google Maps (GuideLinks). Une destination à
 // ≤ 1,5 km d'un lieu enregistré est privée : domicile et travail passent par les favoris Waze, jamais par une adresse.
-function gpsGuideDest(t) {
-  const to = appTripPlace(t, 'to'); if (!to || !locHasCoords(to)) return null;
+function gpsGuideDest(t) { return guidePlaceDest(appTripPlace(t, 'to')); }
+// Même règle pour tout lien de guidage, y compris l'ancien bouton « Ouvrir dans Waze » de l'onglet Trajet (recette R4-01e, 27/11).
+function guidePlaceDest(to) {
+  if (!to || !locHasCoords(to)) return null;
   const home = S.locs[0], saved = [...(S.locs || []), ...(S.customs || [])].filter(locHasCoords);
   const near = saved.filter(l => to.id && l.id === to.id || distKm(l, to) <= 1.5).sort((a, b) => distKm(a, to) - distKm(b, to))[0];
   const privacy = !near ? null : home && near.id === home.id ? 'home' : near.id === S.work.to ? 'work' : 'private';
