@@ -75,6 +75,37 @@ function tripDayConfirmArrival(key) {
   if (x.live) liveArrive('confirmé'); else closeTrip(x.t, 'confirmé');
   return !!(USER_STORE.state.done[key] || LIVE.done[key]);
 }
+// Retour du soir (27/11/2026, choix du propriétaire) : « Domicile » ou un autre lieu enregistré, avant le départ (« Ce soir, je
+// rentre ») ou après coup (« Arrivé ailleurs »). Lieux proposés : domicile puis lieux enregistrés, jamais le travail, au plus trois.
+const tripIsReturn = t => !!t && t.src !== 'loan' && (t.src === 'work' ? /\|ret$/.test(t.key) : (t.planL || t.l || {}).k === 'ret');
+function tripReturnPlaces() {
+  const home = S.locs[0], saved = new Set([...(S.locs || []), ...(S.customs || [])].map(l => l && l.id));
+  return placeList().filter(p => p.kind !== 'work' && saved.has(p.id)).sort((a, b) => (b.id === (home && home.id)) - (a.id === (home && home.id))).slice(0, 3);
+}
+const tripReturnTo = t => { const n = appDay().nextDestination, home = S.locs[0]; return n && n.tripKey === t.key && n.placeId ? n.placeId : home && home.id; };
+function tripReturnChoose(key, placeId) {
+  const x = tripDayList().find(x => x.t.key === key); if (!x || !tripIsReturn(x.t) || !['next', 'later'].includes(x.state)) return false;
+  appChooseTripDestination(x.t, placeId); return true;
+}
+function tripDayArriveAt(key, placeId) {
+  const x = tripDayArrival(); if (!x || x.t.key !== key || !tripIsReturn(x.t) || !tripReturnPlaces().some(p => p.id === placeId)) return false;
+  if (tripReturnTo(x.t) === placeId) return tripDayConfirmArrival(key);
+  appChooseTripDestination(x.t, placeId); rebuild();
+  const y = tripDayArrival(); if (!y || y.t.key !== key) return false;
+  closeTrip(y.t, 'confirmé');   // même clôture ; trajet actif compris (closeTrip remet le suivi à zéro)
+  return !!(USER_STORE.state.done[key] || LIVE.done[key]);
+}
+function tripReturnHtml(x, arrival) {
+  if (!tripIsReturn(x.t) || DEMO.on) return '';
+  const places = tripReturnPlaces(), cur = tripReturnTo(x.t); if (places.length < 2) return '';
+  const icon = p => p.id === (S.locs[0] && S.locs[0].id) ? '🏠 ' : '📍 ';
+  if (arrival) {
+    const others = places.filter(p => p.id !== cur); if (!others.length) return '';
+    return '<div class="fr-ret" data-fr-ret="arrived"><small>Arrivé ailleurs :</small>' + others.map(p => '<button type="button" class="chip" data-act="fr-arrived-at" data-key="' + esc(x.t.key) + '" data-id="' + esc(p.id) + '">✓ ' + icon(p) + esc(p.name) + '</button>').join('') + '</div>';
+  }
+  if (!['next', 'later'].includes(x.state)) return '';
+  return '<div class="fr-ret" data-fr-ret="choose"><small>Ce soir, je rentre :</small>' + places.map(p => '<button type="button" class="chip" data-act="trip-ret-dest" data-key="' + esc(x.t.key) + '" data-id="' + esc(p.id) + '" aria-pressed="' + (p.id === cur) + '">' + icon(p) + esc(p.name) + '</button>').join('') + '</div>';
+}
 // Relevé guidé du compteur (27/11/2026, choix du propriétaire) : après un trajet clos aujourd'hui, invitation à relever le compteur
 // de SA voiture tant qu'aucun relevé n'est daté d'aujourd'hui. Rien n'est écrit ni ajouté d'office : le bouton ouvre le champ
 // existant du Garage (garage-quick « odo »), le propriétaire tape le vrai chiffre. Calculé à chaque rendu, aucune donnée stockée.
@@ -120,7 +151,7 @@ function tripDayHtml() {
     const future = ['next', 'later'].includes(x.state);
     const confirm = arrival && arrival.t.key === t.key;
     const odo = odoHint && odoHint.t.key === t.key ? tripOdoHintHtml(odoHint) : '';
-    const action = confirm ? '<div class="fr-arrival"><button type="button" class="btn pri" data-act="fr-arrived" data-key="' + esc(t.key) + '">✓ Confirmer mon arrivée</button><small>L’heure de confirmation sera enregistrée.</small></div>' : '';
+    const action = confirm ? '<div class="fr-arrival"><button type="button" class="btn pri" data-act="fr-arrived" data-key="' + esc(t.key) + '">✓ Confirmer mon arrivée</button><small>L’heure de confirmation sera enregistrée.</small>' + tripReturnHtml(x, true) + '</div>' : tripReturnHtml(x, false);
     const detail = open ? '<div class="fr-more"><span>' + esc(x.risk ? (x.risk.why || 'Aucune cause identifiée sur ce trajet') : 'Verdict indisponible : météo du parcours pas encore reçue.') + '</span>' +
       '<small>' + esc((t.arr ? 'arrivée prévue ' + tripHm(t.arr) : '') + (t.name ? (t.arr ? ' · ' : '') + t.name : '')) + '</small>' +
       (future ? '<button type="button" class="fr-go" data-act="fr-focus" data-key="' + esc(t.key) + '"><span>Voir dans le mur des stands</span><span aria-hidden="true">→</span></button>' : '') + '</div>' : '';
