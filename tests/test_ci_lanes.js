@@ -68,8 +68,17 @@ try {
   check('lien dans un artifact refusé', () => { fs.symlinkSync(path.join(prep, 'w/engine.js'), path.join(prep, 'w/linked.js')); assert.throws(() => validatePrepared(prep), /non régulière/); fs.unlinkSync(path.join(prep, 'w/linked.js')); });
   check('fixture d’une autre version refusée', () => { const meta = JSON.parse(fs.readFileSync(path.join(prep, 'meta.json'))); meta.sourceHash = '0'.repeat(64); fs.writeFileSync(path.join(prep, 'meta.json'), JSON.stringify(meta)); assert.throws(() => validatePrepared(prep), /autre version/); });
 } finally { fs.rmSync(temp, { recursive: true, force: true }); }
-// Exécuter la vraie fin de l'étape de publication avec un Git fictif : aucun dépôt ni réseau.
 const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/ci.yml'), 'utf8');
+check('unitaires et E2E épinglés au SHA du run, retour arrière sur le tag vérifié', () => {
+  const expected = { unit: '${{ github.sha }}', tests: '${{ github.sha }}', 'tests-rollback': '${{ needs.version.outputs.ref }}' };
+  for (const [job, ref] of Object.entries(expected)) {
+    const block = workflow.split(`\n  ${job}:\n`)[1]?.split(/\n  [\w-]+:\n/, 1)[0];
+    assert(block, 'Job CI introuvable : ' + job);
+    assert.deepEqual([...block.matchAll(/^          ref: (.+)$/gm)].map(match => match[1]), [ref], job);
+  }
+});
+
+// Exécuter la vraie fin de l'étape de publication avec un Git fictif : aucun dépôt ni réseau.
 const publishBlock = workflow.split('      - name: Publier sur gh-pages\n')[1].split('      - name: Étiquette de version')[0];
 const publishScript = publishBlock.split('        run: |\n')[1].split('\n').map(line => line.slice(10)).join('\n');
 const publishTail = publishScript.slice(publishScript.indexOf('git config user.name'));
