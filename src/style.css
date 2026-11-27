@@ -1660,7 +1660,9 @@ details.mod > summary h2 { color: var(--i20-blue); letter-spacing: .12em; }
 .fr-card { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); }
 .fr-card[data-state="next"], .fr-card[data-state="live"] { border: 2px solid var(--i20-blue); background: var(--panel2); }
 .fr-card[data-state="done"], .fr-card[data-state="cancel"], .fr-card[data-state="past"] { opacity: .78; }
-.fr-card[data-arrival="pending"] { opacity: 1; }
+.fr-card[data-arrival="pending"], .fr-card[data-arrival="odo"] { opacity: 1; }
+.trip-odo { display: grid; gap: 4px; margin: 4px 0 8px; padding: 8px 10px; border-radius: 10px; border: 1px dashed var(--line2); background: var(--panel2); }
+.trip-odo small { color: var(--fg2); font-size: 12px; } .trip-odo .btn { min-height: 44px; justify-self: start; }
 .fr-arrival { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .fr-arrival .btn { min-height: 44px; white-space: normal; }
 .fr-arrival small { color: var(--fg2); font-size: 12px; }
