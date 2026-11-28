@@ -278,7 +278,7 @@ function tripArrivalPending() {
   // Trajets affichés et trajets planifiés du jour (un aller passé quitte la liste affichée mais reste planifié).
   // Un trajet dont l'heure est passée quitte ces listes : l'aller et le retour domicile-travail du jour et les trajets agenda
   // du jour sont reconstruits comme le fait déjà la confirmation de lieu (mêmes clés, mêmes données de planning).
-  const all = tripUnion(tripTodayPast(now));
+  const all = tripUnion([...tripTodayPast(now), ...tripPastOn(now, -1)]);   // la veille : retour parti avant minuit
   const list = all.filter(t => t && t.key && t.dep && t.dep <= now && !done[t.key] && !LIVE.done[t.key]
     && liveMin(t.arr || t.dep, now) <= 180 && !(PLACE.conf && (appTripPlace(t, 'to') || {}).id === PLACE.conf.placeId && PLACE.conf.at >= tsToDate(t.dep)));
   const t = list.sort((a, b) => String(b.dep).localeCompare(String(a.dep)))[0];
