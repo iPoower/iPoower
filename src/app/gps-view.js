@@ -46,6 +46,7 @@ function gpsDepartHtml() {
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${to && (to.address || to.sub) ? `<span>${esc(to.address || to.sub)}</span>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(car ? car.short || car.name : 'voiture à choisir')}</span><span>${esc(route)}</span><span>Départ ${esc(tripWhen(t.dep) || '—')}</span></div>
     ${(() => { const x = typeof tripReturnHtml === 'function' && tripDayList().find(y => y.t.key === t.key); return x ? tripReturnHtml(x, false) : ''; })()}
+    ${car && typeof pressDepartLine === 'function' && !active ? pressDepartLine(car, t.dep) : ''}
     ${gpsLaunchHtml(t)}
     <button type="button" class="btn sm" data-act="view" data-v="trajet">Modifier dans Trajet</button></div>`;
 }

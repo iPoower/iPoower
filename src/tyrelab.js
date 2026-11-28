@@ -137,7 +137,9 @@ function tyreLab(input) {
   const target = typeof pressTarget === 'function' ? pressTarget(tire.press) : null, pc = tire.pchk || {}, Tchk = n(pc.T);
   const pAbs = 1.013;
   // une seule formule de pression pour toute l'app : pressLoss (engine.js), loi des gaz à volume constant
-  const coldAt = Tenv => target == null || Tchk == null ? null : target - (typeof pressLoss === 'function' ? pressLoss(target, Tchk, Tenv) : (target + pAbs) * (Tchk - Tenv) / (273.15 + Tchk));
+  // base : la pression réellement mesurée au contrôle (essieu le plus bas) quand elle existe, sinon la cible (28/11/2026)
+  const measured = [pc.av, pc.ar].filter(v => Number.isFinite(v) && v > 0 && v < 6), pBase = measured.length ? Math.min(...measured) : target;
+  const coldAt = Tenv => target == null || Tchk == null ? null : pBase - (typeof pressLoss === 'function' ? pressLoss(pBase, Tchk, Tenv) : (pBase + pAbs) * (Tchk - Tenv) / (273.15 + Tchk));
   /* ---------- 4. dynamique thermique ---------- */
   function kindOf(v) { return v == null ? null : v < 45 ? 'ville' : v < 80 ? 'route' : 'autoroute'; }
   const fType = { summer: 1, allseason: 1.05, winter: 1.1 }[type];
@@ -389,6 +391,7 @@ function tyreLab(input) {
     const notes = [`Cible saisie : ${r1(target)} bar à froid (pression enregistrée par l’utilisateur)`];
     if (Tchk == null) notes.push('Température du dernier contrôle inconnue : variation non estimée');
     else {
+      if (measured.length) notes.push(`Mesuré au contrôle : ${r1(pBase)} bar (essieu le plus bas) : base de l’estimation`);
       notes.push(`Dernier contrôle : ${/^\d{4}-\d{2}-\d{2}$/.test(pc.date || '') ? pc.date.slice(8, 10) + '/' + pc.date.slice(5, 7) + '/' + pc.date.slice(0, 4) : pc.date || 'date inconnue'} à ${r1(Tchk)} °C`);   // affichage JJ/MM/AAAA, donnée inchangée
       notes.push(`À froid maintenant (${r1(eNow.Tenv)} °C) : ≈ ${r1(cold - 0.05)}–${r1(cold + 0.05)} bar (estimation, loi des gaz : ≈ 0,1 bar par 10 °C)`);
       if (phase === 'driving') notes.push(`En roulage : ≈ ${r1(cold + 0.1)}–${r1(cold + 0.3)} bar (ordre de grandeur : +0,1 à +0,3 bar à chaud, aucun capteur) ; une hausse à chaud est normale, ne jamais dégonfler à chaud`);
