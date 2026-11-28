@@ -31,6 +31,26 @@ function appCommuteLabel(td) {
   const home = S.locs[0].id, from = td.dir === 'go' ? home : S.work.to, to = td.dir === 'go' ? S.work.to : home;
   return td.LA.id === from && td.LB.id === to ? `${td.dir === 'go' ? 'Aller' : 'Retour'} domicile-travail` : `Trajet · ${td.fromName} → ${td.toName}`;
 }
+// Retour du soir (27/11/2026, choix du propriétaire) : destination d'UN trajet précis (clé), par le même nextDestination que
+// « prochaine destination » (DayContext.returnLeg pour l'agenda, appCommuteEndpoints pour domicile-travail). Le domicile efface le
+// choix (retour normal). Un lieu enregistré seulement ; aucune donnée nouvelle ; expire à minuit comme tout choix du jour.
+function appChooseTripDestination(t, placeId) {
+  const home = S.locs[0];
+  return appAction(() => {
+    if (!t || !t.key) return;
+    const n = appDay().nextDestination;
+    if (!placeId || home && placeId === home.id) { if (n && n.tripKey === t.key) appDay().nextDestination = null; }
+    else {
+      if (!placeList().some(p => p.id === placeId)) return;
+      const at = Date.now(), dep = t.planDep || t.dep, from = appTripPlace(t, 'from');
+      appDay().nextDestination = { placeId, destinationPoint: null, source: 'manual', confirmedAt: at, expiresAt: DayContext.tripExpiry(dep, at),
+        originId: from && from.id || null, tripKey: t.key, dep, createdAt: at, updatedAt: at };
+    }
+    if (LIVE.key === t.key && LIVE.phase !== 'active') liveReset();
+    if (TRIPPREVIEW.key === t.key) tripPreviewReset();
+    APP_CONTEXT.weatherPreview = null;
+  });
+}
 function appChooseDestination(placeId, source = 'user') {
   return appAction(() => {
     const places = placeList(); if (placeId != null && !places.some(p => p.id === placeId)) return;

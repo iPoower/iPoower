@@ -27,17 +27,19 @@ function gpsArrivalHtml() {
   const x = typeof tripDayArrival === 'function' ? tripDayArrival() : null; if (!x) return '';
   const to = appTripPlace(x.t, 'to');
   return `<div class="gps-arrival" data-gps="arrival"><span class="trip-label">ARRIVÉE À CONFIRMER</span><b>${esc(to && to.name || x.t.to || 'Destination')}</b>` +
-    `<button type="button" class="btn pri" data-act="fr-arrived" data-key="${esc(x.t.key)}">✓ Confirmer mon arrivée</button><small class="sub">L’heure de confirmation sera enregistrée.</small></div>`;
+    `<button type="button" class="btn pri" data-act="fr-arrived" data-key="${esc(x.t.key)}">✓ Confirmer mon arrivée</button><small class="sub">L’heure de confirmation sera enregistrée.</small>${typeof tripReturnHtml === 'function' ? tripReturnHtml(x, true) : ''}</div>`;
 }
 function gpsDepartHtml() {
   const t = typeof driveSoonTrip === 'function' ? driveSoonTrip() : null;
-  if (!t) return gpsArrivalHtml() + '<div class="gps-trip" data-gps="none"><p>Aucun trajet en cours ni dans les 3 h.</p><button type="button" class="btn pri gps-go" data-act="view" data-v="trajet">Préparer un trajet</button></div>';
+  const odo = typeof tripOdoHint === 'function' ? tripOdoHintHtml(tripOdoHint()) : '';   // relevé guidé après une arrivée du jour
+  if (!t) return gpsArrivalHtml() + odo + '<div class="gps-trip" data-gps="none"><p>Aucun trajet en cours ni dans les 3 h.</p><button type="button" class="btn pri gps-go" data-act="view" data-v="trajet">Préparer un trajet</button></div>';
   const shared = tripSharedOrigin(), from = !shared.pending && shared.point || appTripPlace(t, 'from'), to = appTripPlace(t, 'to'), l = t.l || t.planL, active = t === APP_CONTEXT.snapshot.activeTrip;
   const car = S.cars.find(c => c.id === t.carId) || appActiveCar();
   const route = l && !l.originPending && Number.isFinite(l.km) ? `${f1(l.km)} km · ~${Math.round(l.min)} min` : offlineNow() ? 'route à recalculer au retour du réseau' : l && l.routeError ? 'itinéraire indisponible pour le moment' : 'route en préparation';
-  return gpsArrivalHtml() + `<div class="gps-trip" data-gps="trip"><div class="trip-summary-head"><span class="trip-label">${active ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(t.dep) || '—')}</b></div>
+  return gpsArrivalHtml() + odo + `<div class="gps-trip" data-gps="trip"><div class="trip-summary-head"><span class="trip-label">${active ? 'TRAJET EN COURS' : 'PROCHAIN TRAJET'}</span><b class="mono">${esc(tripWhen(t.dep) || '—')}</b></div>
     <div class="trip-summary-route"><b>${esc(from && from.name || 'Origine à confirmer')} → ${esc(to && to.name || 'Destination à confirmer')}</b>${to && (to.address || to.sub) ? `<span>${esc(to.address || to.sub)}</span>` : ''}</div>
     <div class="trip-summary-meta"><span>🚗 ${esc(car ? car.short || car.name : 'voiture à choisir')}</span><span>${esc(route)}</span><span>Départ ${esc(tripWhen(t.dep) || '—')}</span></div>
+    ${(() => { const x = typeof tripReturnHtml === 'function' && tripDayList().find(y => y.t.key === t.key); return x ? tripReturnHtml(x, false) : ''; })()}
     ${gpsLaunchHtml(t)}
     <button type="button" class="btn sm" data-act="view" data-v="trajet">Modifier dans Trajet</button></div>`;
 }

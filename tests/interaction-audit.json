@@ -455,6 +455,14 @@
     "suite": "e2e137-trajet-feuille-creneau-briefing.js",
     "result": "spéciale choisie affichée dans le mur des stands, puis retour au prochain trajet"
   },
+  "fr-arrived-at": {
+    "suite": "e2e157-retour-du-soir.js",
+    "result": "retour parti non confirmé clos sur un autre lieu enregistré (lieu confirmé, journal), aller intact, domicile-travail et agenda"
+  },
+  "trip-ret-dest": {
+    "suite": "e2e157-retour-du-soir.js",
+    "result": "retour du soir redirigé vers le domicile ou un autre lieu enregistré, conservé au rechargement, réversible"
+  },
   "fr-arrived": {
     "suite": "e2e136-trajet-bien-arrive.js",
     "result": "dernier trajet parti du jour confirmé même après 3 h, même clôture que le GPS, heure de confirmation et lieu conservés au rechargement, aucun doublon"

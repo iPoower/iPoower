@@ -4575,7 +4575,7 @@ function renderAll() {
 // déverrouillage, sans avertissement. Les contrôles qui écrivent sont désactivés avec un message visible, et les
 // gestionnaires refusent l'écriture (défense en profondeur). Jamais de report d'une saisie verrouillée dans le coffre.
 // Le mode « sans code » n'est PAS verrouillé (stockage en clair durable) : storeLocked(), pas LOCKED().
-const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key', 'fr-arrived', 'slot-apply', 'slot-undo', 'loan-save', 'loan-back', 'split-apply', 'drive-arrived', 'drive-odo', 'drive-free', 'drive-dest', 'drive-free-end']);
+const LOCKED_WRITE_ACTS = new Set(['day-type', 'day-car', 'day-destination', 'place-confirm', 'trip-plan', 'labcar', 'trip-arrived-key', 'fr-arrived', 'fr-arrived-at', 'trip-ret-dest', 'slot-apply', 'slot-undo', 'loan-save', 'loan-back', 'split-apply', 'drive-arrived', 'drive-odo', 'drive-free', 'drive-dest', 'drive-free-end']);
 const LOCKED_WRITE_MSG = 'Déverrouille l’app pour modifier : rien n’est enregistré tant que l’app est verrouillée';
 const LOCKED_WRITE_FREE = '#unlockForm, #twrcExpiryForm, #twrcExpiryOverlay';
 let lockedWriteObserver = null;
@@ -4677,6 +4677,14 @@ document.addEventListener('click', async e => {
     const back = document.querySelector('#secTripSummary [data-act=fr-open][data-key="' + CSS.escape(t.dataset.key) + '"]'); if (back) back.focus({ preventScroll: true }); }
   else if (a === 'fr-focus') { FR.focus = t.dataset.key || null; FR.open = null; renderAll();
     const w = document.querySelector('#secTrip .pw-wall'); if (w && FR.focus) w.scrollIntoView({ behavior: scrollBehavior(), block: 'start' }); }
+  else if (a === 'trip-ret-dest') { if (!tripReturnChoose(t.dataset.key, t.dataset.id)) commandFeedback(t, 'Choix impossible : trajet déjà parti ou plus disponible'); rebuild(); renderAll();
+    const back = document.querySelector('[data-act=trip-ret-dest][data-key="' + CSS.escape(t.dataset.key) + '"][data-id="' + CSS.escape(t.dataset.id) + '"]'); if (back) back.focus({ preventScroll: true }); }
+  else if (a === 'fr-arrived-at') {
+    const key = t.dataset.key;
+    if (!tripDayArriveAt(key, t.dataset.id)) { commandFeedback(t, 'Trajet déjà terminé ou plus disponible pour cette confirmation'); renderAll(); return; }
+    rebuild(); renderAll();
+    const back = document.querySelector('#secTripSummary [data-act=fr-open][data-key="' + CSS.escape(key) + '"]'); if (back) back.focus({ preventScroll: true });
+  }
   else if (a === 'fr-arrived') {
     const key = t.dataset.key;
     if (!tripDayConfirmArrival(key)) { commandFeedback(t, 'Trajet déjà terminé ou plus disponible pour cette confirmation'); renderAll(); return; }

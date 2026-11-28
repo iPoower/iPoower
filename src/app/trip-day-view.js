@@ -75,9 +75,59 @@ function tripDayConfirmArrival(key) {
   if (x.live) liveArrive('confirmé'); else closeTrip(x.t, 'confirmé');
   return !!(USER_STORE.state.done[key] || LIVE.done[key]);
 }
+// Retour du soir (27/11/2026, choix du propriétaire) : « Domicile » ou un autre lieu enregistré, avant le départ (« Ce soir, je
+// rentre ») ou après coup (« Arrivé ailleurs »). Lieux proposés : domicile puis lieux enregistrés, jamais le travail, au plus trois.
+const tripIsReturn = t => !!t && t.src !== 'loan' && (t.src === 'work' ? /\|ret$/.test(t.key) : (t.planL || t.l || {}).k === 'ret');
+function tripReturnPlaces() {
+  const home = S.locs[0], saved = new Set([...(S.locs || []), ...(S.customs || [])].map(l => l && l.id));
+  return placeList().filter(p => p.kind !== 'work' && saved.has(p.id)).sort((a, b) => (b.id === (home && home.id)) - (a.id === (home && home.id))).slice(0, 3);
+}
+const tripReturnTo = t => { const n = appDay().nextDestination, home = S.locs[0]; return n && n.tripKey === t.key && n.placeId ? n.placeId : home && home.id; };
+function tripReturnChoose(key, placeId) {
+  const x = tripDayList().find(x => x.t.key === key); if (!x || !tripIsReturn(x.t) || !['next', 'later'].includes(x.state)) return false;
+  appChooseTripDestination(x.t, placeId); return true;
+}
+function tripDayArriveAt(key, placeId) {
+  const x = tripDayArrival(); if (!x || x.t.key !== key || !tripIsReturn(x.t) || !tripReturnPlaces().some(p => p.id === placeId)) return false;
+  if (tripReturnTo(x.t) === placeId) return tripDayConfirmArrival(key);
+  appChooseTripDestination(x.t, placeId); rebuild();
+  const y = tripDayArrival(); if (!y || y.t.key !== key) return false;
+  closeTrip(y.t, 'confirmé');   // même clôture ; trajet actif compris (closeTrip remet le suivi à zéro)
+  return !!(USER_STORE.state.done[key] || LIVE.done[key]);
+}
+function tripReturnHtml(x, arrival) {
+  if (!tripIsReturn(x.t) || DEMO.on) return '';
+  const places = tripReturnPlaces(), cur = tripReturnTo(x.t); if (places.length < 2) return '';
+  const icon = p => p.id === (S.locs[0] && S.locs[0].id) ? '🏠 ' : '📍 ';
+  if (arrival) {
+    const others = places.filter(p => p.id !== cur); if (!others.length) return '';
+    return '<div class="fr-ret" data-fr-ret="arrived"><small>Arrivé ailleurs :</small>' + others.map(p => '<button type="button" class="chip" data-act="fr-arrived-at" data-key="' + esc(x.t.key) + '" data-id="' + esc(p.id) + '">✓ ' + icon(p) + esc(p.name) + '</button>').join('') + '</div>';
+  }
+  if (!['next', 'later'].includes(x.state)) return '';
+  return '<div class="fr-ret" data-fr-ret="choose"><small>Ce soir, je rentre :</small>' + places.map(p => '<button type="button" class="chip" data-act="trip-ret-dest" data-key="' + esc(x.t.key) + '" data-id="' + esc(p.id) + '" aria-pressed="' + (p.id === cur) + '">' + icon(p) + esc(p.name) + '</button>').join('') + '</div>';
+}
+// Relevé guidé du compteur (27/11/2026, choix du propriétaire) : après un trajet clos aujourd'hui, invitation à relever le compteur
+// de SA voiture tant qu'aucun relevé n'est daté d'aujourd'hui. Rien n'est écrit ni ajouté d'office : le bouton ouvre le champ
+// existant du Garage (garage-quick « odo »), le propriétaire tape le vrai chiffre. Calculé à chaque rendu, aucune donnée stockée.
+function tripOdoHint(list = tripDayList()) {
+  if (DEMO.on) return null;
+  const done = list.filter(x => x.state === 'done' && x.t.src !== 'loan'), x = done[done.length - 1]; if (!x) return null;
+  // Trajet sans voiture propre (domicile-travail, agenda) : la voiture du jour, comme pour ses verdicts.
+  const car = S.cars.find(c => c.id === (x.t.carId || appDay().activeCarId)); if (!car) return null;
+  const today = liveNow().slice(0, 10); if (odoLive(car.odo).some(o => o && o.d === today)) return null;
+  return { t: x.t, car, lo: lastOdo(car), km: Number.isFinite(x.size.km) ? x.size.km : null, est: !!x.size.est };
+}
+function tripOdoHintHtml(h) {
+  if (!h) return '';
+  const info = [h.lo ? 'dernier relevé ' + h.lo.km.toLocaleString('fr-FR') + ' km' + (h.lo.d ? ' le ' + fmtDay(h.lo.d) : '') : 'aucun relevé enregistré',
+    Number.isFinite(h.km) ? 'trajet ' + (h.est ? '~' : '≈ ') + f0(h.km) + ' km' : ''].filter(Boolean).join(' · ');
+  return '<div class="trip-odo" data-trip-odo="' + esc(h.t.key) + '"><b>🛠️ Compteur de ' + esc(h.car.short || h.car.name) + ' à relever</b><small>' + esc(info) + '</small>' +
+    '<button type="button" class="btn sm" data-act="garage-quick" data-car="' + esc(h.car.id) + '" data-garage-target="odo">Relever le compteur</button></div>';
+}
 function tripDayHtml() {
   const list = tripDayList(); if (list.length < 2) return '';
   const arrival = tripDayArrival(list);
+  const odoHint = tripOdoHint(list);
   if (FR.open && !list.some(x => x.t.key === FR.open)) FR.open = null;
   const km = list.reduce((s, x) => s + (Number.isFinite(x.size.km) ? x.size.km : 0), 0), min = list.reduce((s, x) => s + (Number.isFinite(x.size.min) ? x.size.min : 0), 0);
   const est = list.some(x => x.size.est || !Number.isFinite(x.size.km));
@@ -100,14 +150,15 @@ function tripDayHtml() {
     const meta = [Number.isFinite(x.size.km) ? (x.size.est ? '~' : '') + f0(x.size.km) + ' km' : '', Number.isFinite(x.size.min) ? '~' + tripDur(x.size.min) : '', src(t)].filter(Boolean).join(' · ');
     const future = ['next', 'later'].includes(x.state);
     const confirm = arrival && arrival.t.key === t.key;
-    const action = confirm ? '<div class="fr-arrival"><button type="button" class="btn pri" data-act="fr-arrived" data-key="' + esc(t.key) + '">✓ Confirmer mon arrivée</button><small>L’heure de confirmation sera enregistrée.</small></div>' : '';
+    const odo = odoHint && odoHint.t.key === t.key ? tripOdoHintHtml(odoHint) : '';
+    const action = confirm ? '<div class="fr-arrival"><button type="button" class="btn pri" data-act="fr-arrived" data-key="' + esc(t.key) + '">✓ Confirmer mon arrivée</button><small>L’heure de confirmation sera enregistrée.</small>' + tripReturnHtml(x, true) + '</div>' : tripReturnHtml(x, false);
     const detail = open ? '<div class="fr-more"><span>' + esc(x.risk ? (x.risk.why || 'Aucune cause identifiée sur ce trajet') : 'Verdict indisponible : météo du parcours pas encore reçue.') + '</span>' +
       '<small>' + esc((t.arr ? 'arrivée prévue ' + tripHm(t.arr) : '') + (t.name ? (t.arr ? ' · ' : '') + t.name : '')) + '</small>' +
       (future ? '<button type="button" class="fr-go" data-act="fr-focus" data-key="' + esc(t.key) + '"><span>Voir dans le mur des stands</span><span aria-hidden="true">→</span></button>' : '') + '</div>' : '';
-    rows.push('<div class="fr-card" data-state="' + x.state + '" data-arrival="' + (confirm ? 'pending' : '') + '" data-src="' + esc(t.src || '') + '"><button type="button" class="fr-head" data-act="fr-open" data-key="' + esc(t.key) + '" aria-expanded="' + open + '">' +
+    rows.push('<div class="fr-card" data-state="' + x.state + '" data-arrival="' + (confirm ? 'pending' : odo ? 'odo' : '') + '" data-src="' + esc(t.src || '') + '"><button type="button" class="fr-head" data-act="fr-open" data-key="' + esc(t.key) + '" aria-expanded="' + open + '">' +
       '<span class="fr-n">ES ' + x.n + '</span><span class="fr-r"><b>' + esc(route) + '</b><small>' + esc(meta) + '</small></span>' +
       '<span class="fr-t"><b>' + esc(tripHm(t.dep)) + '</b><small data-lv="' + (x.risk ? x.risk.lv : 'x') + '">' + (x.risk ? TRIP_LV_NAMES[x.risk.lv] : '—') + '</small></span></button>' +
-      '<span class="fr-state">' + stateTxt(x) + '</span>' + action + (typeof loanAdviceHtml === 'function' ? loanAdviceHtml(t) : '') + detail + '</div>');
+      '<span class="fr-state">' + stateTxt(x) + '</span>' + action + odo + (typeof loanAdviceHtml === 'function' ? loanAdviceHtml(t) : '') + detail + '</div>');
   });
   const today = liveNow().slice(0, 10);
   return '<section class="fr-sheet" aria-label="Feuille de route du jour"><div class="fr-plate"><div class="fr-band"><span>FEUILLE DE ROUTE</span><span>' + esc(fmtDay(today).toUpperCase()) + '</span></div>' +
