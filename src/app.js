@@ -1418,6 +1418,8 @@ function renderCurrent() {
 // @include app/weather-station.js
 // @include app/analysis-view.js
 // @include app/bilan-view.js
+// @include app/pressure-forecast.js
+// @include app/pressure-view.js
 // @include app/debrief-view.js
 // @include app/race-views.js
 // @include app/garage-view.js
