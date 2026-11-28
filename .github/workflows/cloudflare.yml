@@ -85,7 +85,7 @@ jobs:
         if: steps.build.outputs.go == '1'
         run: |
           npm ci --prefix tools/cloudflare --ignore-scripts --no-audit --no-fund
-          [ "$(tools/cloudflare/node_modules/.bin/wrangler --version | tail -1)" = "4.137.0" ] || { echo "::error::wrangler inattendu"; exit 1; }
+          [ "$(tools/cloudflare/node_modules/.bin/wrangler --version | tail -1)" = "4.168.0" ] || { echo "::error::wrangler inattendu"; exit 1; }
       - name: Projet en envoi direct (créé une seule fois, sans connexion Git)
         if: steps.build.outputs.go == '1'
         env:
