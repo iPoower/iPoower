@@ -7,11 +7,14 @@ const SLOT = { key: null, sel: null, undo: null };
 const BRIEF = { playing: false, idx: -1, rate: 1, key: null, gen: 0 };
 const TRIP_LV_NAMES = ['RAS', 'VIGILANCE', 'PRUDENCE', 'DANGER'];
 // Trajets du jour déjà partis : mêmes reconstructions que la confirmation d'arrivée (mêmes clés, mêmes données de planning).
-function tripTodayPast(now) {
-  const today = now.slice(0, 10), past = [];
+function tripTodayPast(now) { return tripPastOn(now, 0); }
+// Trajets partis un jour donné (0 = aujourd'hui, -1 = veille), reconstruits avec les mêmes clés. La veille sert à l'arrivée à
+// confirmer d'un retour parti avant minuit et arrivé après (recherche de bugs du 28/11 : il disparaissait à minuit).
+function tripPastOn(now, off = 0) {
+  const today = off ? addMin(now.slice(0, 10) + 'T00:00', off * 1440).slice(0, 10) : now.slice(0, 10), past = [];
   if (appWorkOn(today)) ['go', 'ret'].forEach(d => {
     if (today + 'T' + (d === 'go' ? S.work.dep : S.work.ret) > now) return;
-    const r = appWorkTripData(d, 0);
+    const r = appWorkTripData(d, off);
     if (r && !r.err) past.push({ src: 'work', td: r, dep: r.dep, arr: r.arr, from: r.fromName, to: r.toName, name: appCommuteLabel(r), key: 'commute|' + r.dep + '|' + d });
   });
   if (typeof CAL !== 'undefined' && CAL && Array.isArray(CAL.events)) CAL.events.filter(e => calendarSpatial(e) && !calendarCancelled(e)).forEach(e => effLegs(e).forEach(l => {
@@ -82,9 +85,11 @@ function tripReturnPlaces() {
   const home = S.locs[0], saved = new Set([...(S.locs || []), ...(S.customs || [])].map(l => l && l.id));
   return placeList().filter(p => p.kind !== 'work' && saved.has(p.id)).sort((a, b) => (b.id === (home && home.id)) - (a.id === (home && home.id))).slice(0, 3);
 }
+const tripReturnEvening = (L = tripDayList()) => L.filter(y => tripIsReturn(y.t) && ['next', 'later'].includes(y.state)).pop() || null;   // retour du soir
 const tripReturnTo = t => { const n = appDay().nextDestination, home = S.locs[0]; return n && n.tripKey === t.key && n.placeId ? n.placeId : home && home.id; };
 function tripReturnChoose(key, placeId) {
-  const x = tripDayList().find(x => x.t.key === key); if (!x || !tripIsReturn(x.t) || !['next', 'later'].includes(x.state)) return false;
+  const L = tripDayList(), x = L.find(x => x.t.key === key), last = tripReturnEvening(L);
+  if (!x || !tripIsReturn(x.t) || !['next', 'later'].includes(x.state) || !last || last.t.key !== key) return false;
   appChooseTripDestination(x.t, placeId); return true;
 }
 function tripDayArriveAt(key, placeId) {
@@ -104,6 +109,9 @@ function tripReturnHtml(x, arrival) {
     return '<div class="fr-ret" data-fr-ret="arrived"><small>Arrivé ailleurs :</small>' + others.map(p => '<button type="button" class="chip" data-act="fr-arrived-at" data-key="' + esc(x.t.key) + '" data-id="' + esc(p.id) + '">✓ ' + icon(p) + esc(p.name) + '</button>').join('') + '</div>';
   }
   if (!['next', 'later'].includes(x.state)) return '';
+  // Un seul choix du soir à la fois (nextDestination) : proposé sur le DERNIER retour à venir du jour (celui du soir), sinon choisir
+  // sur un second retour effaçait en silence le choix du premier (recherche de bugs du 28/11).
+  const last = tripReturnEvening(); if (!last || last.t.key !== x.t.key) return '';
   return '<div class="fr-ret" data-fr-ret="choose"><small>Ce soir, je rentre :</small>' + places.map(p => '<button type="button" class="chip" data-act="trip-ret-dest" data-key="' + esc(x.t.key) + '" data-id="' + esc(p.id) + '" aria-pressed="' + (p.id === cur) + '">' + icon(p) + esc(p.name) + '</button>').join('') + '</div>';
 }
 // Relevé guidé du compteur (27/11/2026, choix du propriétaire) : après un trajet clos aujourd'hui, invitation à relever le compteur

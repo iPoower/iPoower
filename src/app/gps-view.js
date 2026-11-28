@@ -24,7 +24,13 @@ function gpsLaunchHtml(t) {
     `<small class="sub">${main && main.id === 'plans' ? 'Plans s’affiche sur CarPlay dès que l’iPhone est branché. ' : ''}Race Control garde le verdict pneus, météo et gel ; l’app choisie guide. Rien n’est envoyé avant l’appui.</small></div>`;
 }
 function gpsArrivalHtml() {
-  const x = typeof tripDayArrival === 'function' ? tripDayArrival() : null; if (!x) return '';
+  const x = typeof tripDayArrival === 'function' ? tripDayArrival() : null;
+  if (!x) {   // après minuit, le retour de la veille n'est plus dans la feuille du jour : même action que le bandeau « Bien arrivé »
+    const y = typeof tripArrivalPending === 'function' ? tripArrivalPending() : null; if (!y) return '';
+    const to = appTripPlace(y.t, 'to');
+    return `<div class="gps-arrival" data-gps="arrival"><span class="trip-label">ARRIVÉE À CONFIRMER</span><b>${esc(to && to.name || y.t.to || 'Destination')}</b>` +
+      `<button type="button" class="btn pri" data-act="trip-arrived-key" data-key="${esc(y.t.key)}">✓ Confirmer mon arrivée</button><small class="sub">L’heure de confirmation sera enregistrée.</small></div>`;
+  }
   const to = appTripPlace(x.t, 'to');
   return `<div class="gps-arrival" data-gps="arrival"><span class="trip-label">ARRIVÉE À CONFIRMER</span><b>${esc(to && to.name || x.t.to || 'Destination')}</b>` +
     `<button type="button" class="btn pri" data-act="fr-arrived" data-key="${esc(x.t.key)}">✓ Confirmer mon arrivée</button><small class="sub">L’heure de confirmation sera enregistrée.</small>${typeof tripReturnHtml === 'function' ? tripReturnHtml(x, true) : ''}</div>`;
