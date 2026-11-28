@@ -82,7 +82,7 @@ try {
     assert(install && install.includes('npm ci --prefix tools/cloudflare --ignore-scripts') && !/secrets\.|CLOUDFLARE_API_TOKEN/.test(install), 'installation verrouillée, sans scripts ni jeton');
     assert(steps.filter(st => /CLOUDFLARE_API_TOKEN/.test(st)).every(st => /tools\/cloudflare\/node_modules\/\.bin\/wrangler/.test(st) && !/npm (ci|install)/.test(st)), 'le jeton ne va qu’au binaire local');
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../tools/cloudflare/package.json'), 'utf8')), lock = JSON.parse(fs.readFileSync(path.join(__dirname, '../tools/cloudflare/package-lock.json'), 'utf8'));
-    assert(pkg.devDependencies.wrangler === '4.137.0' && lock.packages['node_modules/wrangler'].version === '4.137.0' &&
+    assert(pkg.devDependencies.wrangler === '4.168.0' && lock.packages['node_modules/wrangler'].version === '4.168.0' &&
       Object.entries(lock.packages).filter(([k]) => k).every(([, v]) => /^sha512-/.test(v.integrity || '') && /^https:\/\/registry\.npmjs\.org\//.test(v.resolved || '')), 'lockfile : versions exactes, empreintes sha512, registre officiel');
     assert(wf.includes('grep -qwF -- "$PROJECT"') && !/2>\/dev\/null \| grep/.test(wf), 'projet cherché comme texte exact, erreurs de l’API jamais masquées');
     // En-têtes : chaque ligne du bloc « /* » de _headers du build reçue à l'identique (COOP exact : same-origin ou same-origin-allow-popups).
